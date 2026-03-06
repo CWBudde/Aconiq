@@ -3,7 +3,7 @@ import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapContext } from "./use-map";
-import { BASEMAP_STYLES, OFFLINE_STYLE } from "./basemap";
+import { BASEMAP_STYLES } from "./basemap";
 import { useMapStore } from "./map-store";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
@@ -45,14 +45,12 @@ export function MapView({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const style = BASEMAP_STYLES[basemap];
-
     const m = new maplibregl.Map({
       container: containerRef.current,
-      style: style ?? OFFLINE_STYLE,
+      style: BASEMAP_STYLES[basemap],
       center,
       zoom,
-      attributionControl: true,
+      attributionControl: {},
     });
 
     m.addControl(new maplibregl.NavigationControl(), "top-right");
