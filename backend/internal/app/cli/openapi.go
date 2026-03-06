@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/soundplan/soundplan/backend/internal/api/httpv1"
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/api/httpv1"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/spf13/cobra"
 )
 

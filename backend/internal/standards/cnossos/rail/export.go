@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 // ExportOutputs describes written files for receiver table and raster output.

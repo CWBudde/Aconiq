@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
-	"github.com/soundplan/soundplan/backend/internal/standards/framework"
+	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 const (

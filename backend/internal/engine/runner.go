@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
-	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
+	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
 // Runner executes chunked compute runs.

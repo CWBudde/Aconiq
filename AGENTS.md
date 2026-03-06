@@ -4,7 +4,7 @@ This file provides guidance to AI agents (Claude Code, Codex etc.) when working 
 
 ## Project Overview
 
-Soundplan is a SoundPLAN-like environmental noise modeling system (CLI-first, offline-first). The Go backend is the active development target; the React/TypeScript frontend is deferred. Currently at **Phase 6** (result containers completed; Phases 0–6 done).
+Aconiq is a SoundPLAN-like environmental noise modeling system (CLI-first, offline-first). The Go backend is the active development target; the React/TypeScript frontend is deferred. Currently at **Phase 6** (result containers completed; Phases 0–6 done).
 
 ## Commands
 
@@ -107,4 +107,4 @@ Standards are plug-in modules under `internal/standards/` (e.g., `cnossos/`, `rl
 
 ## Module Name
 
-`github.com/soundplan/soundplan/backend`
+`github.com/aconiq/backend`

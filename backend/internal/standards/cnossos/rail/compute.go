@@ -3,7 +3,7 @@ package rail
 import (
 	"fmt"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo"
 )
 
 // ReceiverOutput stores one computed receiver record.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 func TestExportGeneratesReportBundle(t *testing.T) {

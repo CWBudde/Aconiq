@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
-	"github.com/soundplan/soundplan/backend/internal/qa/golden"
-	"github.com/soundplan/soundplan/backend/internal/report/results"
-	cnossosroad "github.com/soundplan/soundplan/backend/internal/standards/cnossos/road"
-	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/qa/golden"
+	"github.com/aconiq/backend/internal/report/results"
+	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
 func TestRunDummyFreefieldPhase8Golden(t *testing.T) {

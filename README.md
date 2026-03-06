@@ -1,4 +1,4 @@
-# Soundplan
+# Aconiq
 
 Monorepo for an environmental noise modeling system (CLI-first, offline-first) with:
 

@@ -1,6 +1,6 @@
-# Soundplan Frontend
+# Aconiq Frontend
 
-React/TypeScript UI for the Soundplan environmental noise modeling system.
+React/TypeScript UI for the Aconiq environmental noise modeling system.
 
 ## Stack
 

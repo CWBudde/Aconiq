@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/spf13/cobra"
 )
 

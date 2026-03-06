@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo"
 )
 
 // PropagationConfig defines deterministic attenuation terms.

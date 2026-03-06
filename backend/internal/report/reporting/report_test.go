@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
-	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {

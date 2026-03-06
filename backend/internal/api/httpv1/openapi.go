@@ -18,9 +18,9 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 	return map[string]any{
 		"openapi": OpenAPIVersion,
 		"info": map[string]any{
-			"title":       "Soundplan Local API",
+			"title":       "Aconiq Local API",
 			"version":     "v1",
-			"description": "Local-first API used by the Soundplan frontend and local integrations.",
+			"description": "Local-first API used by the Aconiq frontend and local integrations.",
 		},
 		"servers": []map[string]any{
 			{"url": server},
@@ -60,9 +60,9 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 								},
 							},
 						},
-						"404": errorResponse("Project not initialized"),
+						"404": openapiErrorResponse("Project not initialized"),
 						"405": methodNotAllowedResponse(),
-						"500": errorResponse("Internal server error"),
+						"500": openapiErrorResponse("Internal server error"),
 					},
 				},
 			},
@@ -212,10 +212,10 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 }
 
 func methodNotAllowedResponse() map[string]any {
-	return errorResponse("Method not allowed")
+	return openapiErrorResponse("Method not allowed")
 }
 
-func errorResponse(description string) map[string]any {
+func openapiErrorResponse(description string) map[string]any {
 	return map[string]any{
 		"description": description,
 		"content": map[string]any{

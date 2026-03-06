@@ -65,7 +65,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		CreatedAt:      time.Now().UTC(),
 		CellCount:      len(values),
 		DataBytes:      len(binaryPayload),
-		SchemaName:     "soundplan.raster.v1",
+		SchemaName:     "aconiq.raster.v1",
 	}
 	encodedMeta, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 const (
