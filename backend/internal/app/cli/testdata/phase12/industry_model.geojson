@@ -1,0 +1,31 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "stack-1",
+        "kind": "source",
+        "source_type": "point"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0, 0]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "yard-1",
+        "kind": "source",
+        "source_type": "area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[25, -10], [55, -10], [55, 20], [25, 20], [25, -10]]
+        ]
+      }
+    }
+  ]
+}

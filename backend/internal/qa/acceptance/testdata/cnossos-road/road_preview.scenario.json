@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "id": "road-1",
+      "centerline": [
+        { "x": -50, "y": 0 },
+        { "x": 50, "y": 0 }
+      ],
+      "road_category": "urban_major",
+      "surface_type": "dense_asphalt",
+      "speed_kph": 70,
+      "junction_type": "none",
+      "junction_distance_m": 0,
+      "temperature_c": 20,
+      "studded_tyre_share": 0,
+      "traffic_day": {
+        "light_vehicles_per_hour": 900,
+        "medium_vehicles_per_hour": 120,
+        "heavy_vehicles_per_hour": 90,
+        "powered_two_wheelers_per_hour": 40
+      },
+      "traffic_evening": {
+        "light_vehicles_per_hour": 500,
+        "medium_vehicles_per_hour": 60,
+        "heavy_vehicles_per_hour": 45,
+        "powered_two_wheelers_per_hour": 20
+      },
+      "traffic_night": {
+        "light_vehicles_per_hour": 250,
+        "medium_vehicles_per_hour": 30,
+        "heavy_vehicles_per_hour": 30,
+        "powered_two_wheelers_per_hour": 5
+      }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -10, "y": 10 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 10, "y": 10 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": -10, "y": 30 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": 10, "y": 30 }, "height_m": 4 }
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

@@ -1,0 +1,54 @@
+{
+  "roads": [
+    {
+      "id": "road-1",
+      "centerline": [
+        { "x": -120, "y": 0 },
+        { "x": 120, "y": 0 }
+      ],
+      "surface_type": "dense_asphalt",
+      "road_function_class": "urban_main",
+      "speed_kph": 60,
+      "junction_type": "none",
+      "junction_distance_m": 0,
+      "temperature_c": 15,
+      "studded_tyre_share": 0,
+      "traffic_day": { "light_vehicles_per_hour": 900, "medium_vehicles_per_hour": 120, "heavy_vehicles_per_hour": 90, "powered_two_wheelers_per_hour": 30 },
+      "traffic_evening": { "light_vehicles_per_hour": 500, "medium_vehicles_per_hour": 60, "heavy_vehicles_per_hour": 45, "powered_two_wheelers_per_hour": 15 },
+      "traffic_night": { "light_vehicles_per_hour": 250, "medium_vehicles_per_hour": 30, "heavy_vehicles_per_hour": 30, "powered_two_wheelers_per_hour": 5 }
+    }
+  ],
+  "buildings": [
+    {
+      "id": "b-1",
+      "usage_type": "residential",
+      "height_m": 9,
+      "floor_count": 3,
+      "footprint": [
+        [
+          { "x": 25, "y": -10 },
+          { "x": 40, "y": -10 },
+          { "x": 40, "y": 5 },
+          { "x": 25, "y": 5 },
+          { "x": 25, "y": -10 }
+        ]
+      ]
+    },
+    {
+      "id": "b-2",
+      "usage_type": "residential",
+      "height_m": 12,
+      "estimated_dwellings": 5,
+      "estimated_persons": 9.5,
+      "footprint": [
+        [
+          { "x": 70, "y": 20 },
+          { "x": 90, "y": 20 },
+          { "x": 90, "y": 40 },
+          { "x": 70, "y": 40 },
+          { "x": 70, "y": 20 }
+        ]
+      ]
+    }
+  ]
+}

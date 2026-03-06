@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "bub-road-1",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-80, 0], [80, 0]]
+      }
+    }
+  ]
+}

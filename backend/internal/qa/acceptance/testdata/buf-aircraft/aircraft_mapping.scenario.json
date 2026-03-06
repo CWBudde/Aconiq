@@ -1,0 +1,60 @@
+{
+  "sources": [
+    {
+      "id": "flight-1",
+      "source_type": "line",
+      "airport": {
+        "airport_id": "APT",
+        "runway_id": "RWY-09"
+      },
+      "operation_type": "departure",
+      "aircraft_class": "narrow_body",
+      "procedure_type": "standard_sid",
+      "thrust_mode": "takeoff",
+      "flight_track": [
+        { "x": -200, "y": 0, "z": 30 },
+        { "x": 0, "y": 0, "z": 120 },
+        { "x": 200, "y": 0, "z": 320 }
+      ],
+      "lateral_offset_m": 0,
+      "reference_power_level_db": 108,
+      "engine_state_factor": 1,
+      "bank_angle_deg": 0,
+      "movement_day": { "movements_per_hour": 10 },
+      "movement_evening": { "movements_per_hour": 5 },
+      "movement_night": { "movements_per_hour": 2 }
+    },
+    {
+      "id": "flight-2",
+      "source_type": "line",
+      "airport": {
+        "airport_id": "APT",
+        "runway_id": "RWY-27"
+      },
+      "operation_type": "arrival",
+      "aircraft_class": "regional",
+      "procedure_type": "continuous_descent",
+      "thrust_mode": "idle",
+      "flight_track": [
+        { "x": -250, "y": 100, "z": 280 },
+        { "x": 0, "y": 50, "z": 140 },
+        { "x": 250, "y": 0, "z": 40 }
+      ],
+      "lateral_offset_m": 180,
+      "reference_power_level_db": 104,
+      "engine_state_factor": 0.85,
+      "bank_angle_deg": 8,
+      "movement_day": { "movements_per_hour": 8 },
+      "movement_evening": { "movements_per_hour": 4 },
+      "movement_night": { "movements_per_hour": 2 }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -50, "y": -50 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 50, "y": -50 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": -50, "y": 50 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": 50, "y": 50 }, "height_m": 4 }
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

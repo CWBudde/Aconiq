@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rail-1",
+        "kind": "source",
+        "source_type": "line",
+        "rail_traction_type": "electric",
+        "rail_track_type": "slab",
+        "rail_track_roughness_class": "standard",
+        "rail_average_train_speed_kph": 120,
+        "rail_curve_radius_m": 320,
+        "rail_on_bridge": true,
+        "traffic_day_trains_per_hour": 10,
+        "traffic_night_trains_per_hour": 4
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 0], [120, 0]]
+      }
+    }
+  ]
+}

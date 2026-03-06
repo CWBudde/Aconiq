@@ -1,0 +1,48 @@
+{
+  "sources": [
+    {
+      "id": "stack-open",
+      "source_type": "point",
+      "source_category": "stack",
+      "enclosure_state": "open",
+      "point": { "x": 0, "y": 0 },
+      "source_height_m": 18,
+      "sound_power_level_db": 104,
+      "tonality_correction_db": 2,
+      "impulsivity_correction_db": 1,
+      "operation_day": { "operating_factor": 1 },
+      "operation_evening": { "operating_factor": 0.75 },
+      "operation_night": { "operating_factor": 0.45 }
+    },
+    {
+      "id": "yard-enclosed",
+      "source_type": "area",
+      "source_category": "yard",
+      "enclosure_state": "enclosed",
+      "area_polygon": [
+        [
+          { "x": 25, "y": -15 },
+          { "x": 70, "y": -15 },
+          { "x": 70, "y": 25 },
+          { "x": 25, "y": 25 },
+          { "x": 25, "y": -15 }
+        ]
+      ],
+      "source_height_m": 6,
+      "sound_power_level_db": 87,
+      "tonality_correction_db": 1,
+      "impulsivity_correction_db": 0,
+      "operation_day": { "operating_factor": 1 },
+      "operation_evening": { "operating_factor": 0.55 },
+      "operation_night": { "operating_factor": 0.3 }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -15, "y": -10 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 15, "y": -10 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": 15, "y": 20 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": 45, "y": 35 }, "height_m": 4 }
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

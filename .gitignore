@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Go
+bin/
+coverage.out
+*.test
+
+# Node/Bun
+node_modules/
+frontend/**/dist/
+frontend/**/.vite/
+frontend/**/.cache/
+
+# Logs and temp
+*.log
+.tmp/
+tmp/
+
+# AI Agents
+.claude/
+.serena/
+
+# Local research downloads
+docs/research/external/**
+!docs/research/external/
+!docs/research/external/README.md

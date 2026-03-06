@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "flight-1",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-200, 0], [0, 0], [200, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "flight-2",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-250, 100], [0, 50], [250, 0]]
+      }
+    }
+  ]
+}
