@@ -78,9 +78,7 @@ export default function StatusPage() {
       </section>
 
       <section className="grid gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Project
-        </h3>
+        <h3 className="text-sm font-medium text-muted-foreground">Project</h3>
         <QueryResult {...project} loadingText="Loading...">
           {(data) => <ProjectSection data={data} />}
         </QueryResult>

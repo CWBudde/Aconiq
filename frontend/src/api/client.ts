@@ -71,9 +71,9 @@ export class APIClient {
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as
-        | ErrorEnvelope
-        | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as ErrorEnvelope | null;
       if (payload?.error.message) {
         throw new Error(`${payload.error.code}: ${payload.error.message}`);
       }

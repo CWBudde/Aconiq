@@ -19,4 +19,3 @@ func (levels PeriodLevels) ToReceiverIndicators() ReceiverIndicators {
 		LrNight: levels.LrNight,
 	}
 }
-

@@ -42,14 +42,14 @@ Copy `.env.example` to `.env` and adjust as needed. All environment variables us
 
 All commands are available via `just` from the repo root:
 
-| Command          | What it does                |
-| ---------------- | --------------------------- |
-| `just fe-install`  | Install dependencies        |
-| `just fe-dev`      | Start Vite dev server       |
-| `just fe-build`    | Production build            |
-| `just fe-typecheck` | TypeScript type checking   |
-| `just fe-lint`     | Run ESLint                  |
-| `just fe-test`     | Run Vitest tests            |
-| `just fe-ci`       | All checks (CI)             |
+| Command             | What it does             |
+| ------------------- | ------------------------ |
+| `just fe-install`   | Install dependencies     |
+| `just fe-dev`       | Start Vite dev server    |
+| `just fe-build`     | Production build         |
+| `just fe-typecheck` | TypeScript type checking |
+| `just fe-lint`      | Run ESLint               |
+| `just fe-test`      | Run Vitest tests         |
+| `just fe-ci`        | All checks (CI)          |
 
 See `../PLAN.md` Phase 23a-23h for the full frontend roadmap.

@@ -5,7 +5,14 @@ import tseslint from "typescript-eslint";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist/", "eslint.config.ts", "vite.config.ts", "vitest.config.ts"] },
+  {
+    ignores: [
+      "dist/",
+      "eslint.config.ts",
+      "vite.config.ts",
+      "vitest.config.ts",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

@@ -106,4 +106,3 @@ func energySumDB(levels []float64) float64 {
 	}
 	return 10 * math.Log10(sum)
 }
-

@@ -93,4 +93,3 @@ func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RoadSource, cfg
 		LrNight: energySumDB(nightContrib),
 	}, nil
 }
-

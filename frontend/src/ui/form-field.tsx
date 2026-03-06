@@ -2,8 +2,7 @@ import { Label } from "@/ui/components/label";
 import { Input } from "@/ui/components/input";
 import { cn } from "@/ui/lib/utils";
 
-interface FormFieldProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
   hint?: string;
