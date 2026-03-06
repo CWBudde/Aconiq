@@ -458,17 +458,21 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** make the SPA structure scalable and type-safe.
 
-- [ ] Routing architecture decision and implementation
-  - [ ] Evaluate React Router Data mode vs TanStack Router file-based routing
-  - [ ] Implement route-level code splitting
-  - [ ] Add route guards for long-running run sessions
-- [ ] Server-state strategy
-  - [ ] Integrate TanStack Query for API data fetching/cache/invalidation
-  - [ ] Define query key conventions and cache TTL defaults
-- [ ] Client-state strategy
-  - [ ] Choose global store pattern for UI-only state (selection/tool panels)
-  - [ ] Define URL state policy (map viewport, active layers, scenario selection)
-- [ ] Error boundaries + suspense/loading architecture per route
+- [x] Routing architecture decision and implementation
+  - [x] React Router v7 (data mode) — simple, well-established for ~7 routes
+  - [x] Route-level code splitting via `lazy()` (each page is a separate chunk)
+  - [x] Route guard support via Zustand `runInProgress` flag (enforced in Phase 23f)
+- [x] Server-state strategy
+  - [x] TanStack Query for API data fetching/cache/invalidation
+  - [x] Query key factory in `src/api/query-keys.ts` (hierarchical, invalidation-friendly)
+  - [x] Cache defaults: 30s stale, 5min GC, 1 retry, no refetch-on-focus
+- [x] Client-state strategy
+  - [x] Zustand for UI-only state (active nav, run-in-progress guard)
+  - [x] URL state via React Router search params (shareable state for scenarios/runs)
+- [x] Error boundaries + Suspense/loading architecture per route
+  - [x] `ErrorBoundary` component with retry action
+  - [x] `PageSkeleton` loading fallback
+  - [x] Suspense wraps lazy-loaded route content in `RootLayout`
 
 ---
 

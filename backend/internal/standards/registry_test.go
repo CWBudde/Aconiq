@@ -40,4 +40,12 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if rail.StandardID != "cnossos-rail" {
 		t.Fatalf("unexpected rail standard id: %s", rail.StandardID)
 	}
+
+	rls19, err := registry.Resolve("rls19-road", "", "")
+	if err != nil {
+		t.Fatalf("resolve rls19-road: %v", err)
+	}
+	if rls19.StandardID != "rls19-road" {
+		t.Fatalf("unexpected rls19 standard id: %s", rls19.StandardID)
+	}
 }

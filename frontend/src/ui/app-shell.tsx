@@ -7,6 +7,7 @@ import {
   Settings,
   Activity,
 } from "lucide-react";
+import { Link, useLocation } from "react-router";
 import {
   Sidebar,
   SidebarContent,
@@ -26,19 +27,21 @@ import { Separator } from "@/ui/components/separator";
 import { ThemeToggle } from "@/ui/theme-toggle";
 
 const navMain = [
-  { title: "Map", icon: Map, isActive: true },
-  { title: "Import", icon: FileInput },
-  { title: "Run", icon: Play },
-  { title: "Results", icon: BarChart3 },
-  { title: "Export", icon: FileOutput },
+  { title: "Map", icon: Map, path: "/map" },
+  { title: "Import", icon: FileInput, path: "/import" },
+  { title: "Run", icon: Play, path: "/run" },
+  { title: "Results", icon: BarChart3, path: "/results" },
+  { title: "Export", icon: FileOutput, path: "/export" },
 ];
 
 const navFooter = [
-  { title: "Status", icon: Activity },
-  { title: "Settings", icon: Settings },
+  { title: "Status", icon: Activity, path: "/status" },
+  { title: "Settings", icon: Settings, path: "/settings" },
 ];
 
 function AppSidebar() {
+  const location = useLocation();
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
@@ -46,7 +49,9 @@ function AppSidebar() {
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
             SP
           </div>
-          <span className="text-sm font-semibold tracking-tight">Aconiq</span>
+          <span className="text-sm font-semibold tracking-tight">
+            Soundplan
+          </span>
         </div>
       </SidebarHeader>
 
@@ -57,9 +62,14 @@ function AppSidebar() {
             <SidebarMenu>
               {navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton isActive={item.isActive === true}>
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname === item.path}
+                  >
+                    <Link to={item.path}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -74,9 +84,14 @@ function AppSidebar() {
             <SidebarMenu>
               {navFooter.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton>
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname === item.path}
+                  >
+                    <Link to={item.path}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -85,6 +100,17 @@ function AppSidebar() {
         </SidebarGroup>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function PageTitle() {
+  const location = useLocation();
+  const allNav = [...navMain, ...navFooter];
+  const current = allNav.find((item) => item.path === location.pathname);
+  return (
+    <h1 className="text-sm font-medium text-muted-foreground">
+      {current?.title ?? "Workspace"}
+    </h1>
   );
 }
 
@@ -97,9 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex flex-1 items-center justify-between">
-            <h1 className="text-sm font-medium text-muted-foreground">
-              Workspace
-            </h1>
+            <PageTitle />
             <ThemeToggle />
           </div>
         </header>
