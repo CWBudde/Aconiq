@@ -27,8 +27,10 @@ Status date: 2026-03-06
 ## Planned v1 -> v2 Direction
 
 Primary expected trigger:
+
 - Move metadata storage from JSON-only to SQLite when query and scale needs justify it.
 
 Compatibility approach:
+
 - Keep core domain entities stable (`Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`).
 - Introduce adapters so CLI/app layers are storage-agnostic.

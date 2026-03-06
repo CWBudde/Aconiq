@@ -1,6 +1,7 @@
 # Soundplan
 
 Monorepo for an environmental noise modeling system (CLI-first, offline-first) with:
+
 - Go backend (`backend/`)
 - React/TypeScript frontend (`frontend/`), deferred until API/GUI phases
 - Planning and governance docs (`docs/`, `PLAN.md`, `goal.md`)
@@ -15,4 +16,4 @@ Monorepo for an environmental noise modeling system (CLI-first, offline-first) w
 
 ## Current Status
 
-Phase 0 preflight through Phase 9 (standards framework baseline) are completed.
+Phase 0 preflight through Phase 10 (CNOSSOS Road baseline implementation) are completed.

@@ -5,11 +5,13 @@ Status date: 2026-03-06
 ## Storage Strategy Decision
 
 Chosen for v1: **Option B**
+
 - JSON-only metadata initially
 - File-based artifacts and run files
 - SQLite deferred to a later migration
 
 Rationale:
+
 - Keeps Phase 3 simple and portable across Linux/macOS/Windows.
 - Reduces schema/tooling complexity during CLI-first MVP phases.
 - Preserves a clear migration path toward SQLite if query/performance needs increase.
@@ -17,6 +19,7 @@ Rationale:
 ## On-Disk Layout
 
 `<project-root>/`
+
 - `.noise/project.json` : project manifest (v1)
 - `.noise/runs/<run-id>/run.log` : run-local log
 - `.noise/runs/<run-id>/provenance.json` : run provenance manifest
@@ -26,6 +29,7 @@ Rationale:
 ## Manifest Schema (`.noise/project.json`)
 
 Top-level fields:
+
 - `manifest_version` (int)
 - `project_id` (string)
 - `name` (string)
@@ -38,6 +42,7 @@ Top-level fields:
 - `created_at`, `updated_at` (RFC3339 timestamps)
 
 Core entities in v1:
+
 - `Project`
 - `Scenario`
 - `Run`

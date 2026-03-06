@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -19,6 +22,7 @@ import (
 	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
 	"github.com/soundplan/soundplan/backend/internal/report/results"
 	"github.com/soundplan/soundplan/backend/internal/standards"
+	cnossosroad "github.com/soundplan/soundplan/backend/internal/standards/cnossos/road"
 	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +41,25 @@ type dummyRunOptions struct {
 	Workers         int
 	ChunkSize       int
 	DisableCache    bool
+}
+
+type cnossosRoadRunOptions struct {
+	GridResolutionM        float64
+	GridPaddingM           float64
+	ReceiverHeightM        float64
+	SurfaceType            string
+	SpeedKPH               float64
+	GradientPercent        float64
+	TrafficDayLightVPH     float64
+	TrafficDayHeavyVPH     float64
+	TrafficEveningLightVPH float64
+	TrafficEveningHeavyVPH float64
+	TrafficNightLightVPH   float64
+	TrafficNightHeavyVPH   float64
+	AirAbsorptionDBPerKM   float64
+	GroundAttenuationDB    float64
+	BarrierAttenuationDB   float64
+	MinDistanceM           float64
 }
 
 type persistedRunOutputs struct {

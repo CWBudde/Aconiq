@@ -41,11 +41,11 @@ type TrafficPeriod struct {
 
 // RoadSource describes one road source segment.
 type RoadSource struct {
-	ID              string       `json:"id"`
+	ID              string        `json:"id"`
 	Centerline      []geo.Point2D `json:"centerline"`
-	SurfaceType     string       `json:"surface_type"`
-	SpeedKPH        float64      `json:"speed_kph"`
-	GradientPercent float64      `json:"gradient_percent,omitempty"`
+	SurfaceType     string        `json:"surface_type"`
+	SpeedKPH        float64       `json:"speed_kph"`
+	GradientPercent float64       `json:"gradient_percent,omitempty"`
 	TrafficDay      TrafficPeriod `json:"traffic_day"`
 	TrafficEvening  TrafficPeriod `json:"traffic_evening"`
 	TrafficNight    TrafficPeriod `json:"traffic_night"`
@@ -104,7 +104,8 @@ func isAllowedSurfaceType(surfaceType string) bool {
 func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
 	minPositive := 0.001
-	minChunk := 1.0
+	minGradient := -20.0
+	maxGradient := 20.0
 	return framework.StandardDescriptor{
 		ID:             StandardID,
 		Description:    "CNOSSOS-EU road preview module with typed source schema and deterministic indicators.",
@@ -120,14 +121,28 @@ func Descriptor() framework.StandardDescriptor {
 						SupportedIndicators:  []string{IndicatorLday, IndicatorLevening, IndicatorLnight, IndicatorLden},
 						ParameterSchema: framework.ParameterSchema{
 							Parameters: []framework.ParameterDefinition{
+								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "10", Min: &minPositive, Description: "Receiver grid spacing in meters"},
+								{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "20", Min: &minZero, Description: "Padding around source extent in meters"},
 								{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Receiver height in meters"},
+								{
+									Name:         "road_surface_type",
+									Kind:         framework.ParameterKindString,
+									DefaultValue: SurfaceDenseAsphalt,
+									Enum:         []string{SurfaceDenseAsphalt, SurfacePorousAsphalt, SurfaceConcrete, SurfaceCobblestone},
+									Description:  "Default surface type for imported line sources",
+								},
+								{Name: "road_speed_kph", Kind: framework.ParameterKindFloat, DefaultValue: "70", Min: &minPositive, Description: "Default speed for imported line sources"},
+								{Name: "road_gradient_percent", Kind: framework.ParameterKindFloat, DefaultValue: "0", Min: &minGradient, Max: &maxGradient, Description: "Default gradient for imported line sources"},
+								{Name: "traffic_day_light_vph", Kind: framework.ParameterKindFloat, DefaultValue: "900", Min: &minZero, Description: "Day light vehicles per hour"},
+								{Name: "traffic_day_heavy_vph", Kind: framework.ParameterKindFloat, DefaultValue: "90", Min: &minZero, Description: "Day heavy vehicles per hour"},
+								{Name: "traffic_evening_light_vph", Kind: framework.ParameterKindFloat, DefaultValue: "500", Min: &minZero, Description: "Evening light vehicles per hour"},
+								{Name: "traffic_evening_heavy_vph", Kind: framework.ParameterKindFloat, DefaultValue: "45", Min: &minZero, Description: "Evening heavy vehicles per hour"},
+								{Name: "traffic_night_light_vph", Kind: framework.ParameterKindFloat, DefaultValue: "250", Min: &minZero, Description: "Night light vehicles per hour"},
+								{Name: "traffic_night_heavy_vph", Kind: framework.ParameterKindFloat, DefaultValue: "30", Min: &minZero, Description: "Night heavy vehicles per hour"},
 								{Name: "air_absorption_db_per_km", Kind: framework.ParameterKindFloat, DefaultValue: "0.7", Min: &minZero, Description: "Air absorption term"},
 								{Name: "ground_attenuation_db", Kind: framework.ParameterKindFloat, DefaultValue: "1.5", Min: &minZero, Description: "Ground attenuation term"},
 								{Name: "barrier_attenuation_db", Kind: framework.ParameterKindFloat, DefaultValue: "0", Min: &minZero, Description: "Barrier attenuation term"},
 								{Name: "min_distance_m", Kind: framework.ParameterKindFloat, DefaultValue: "3", Min: &minPositive, Description: "Minimum propagation distance"},
-								{Name: "chunk_size", Kind: framework.ParameterKindInt, DefaultValue: "128", Min: &minChunk, Description: "Engine receiver chunk size"},
-								{Name: "workers", Kind: framework.ParameterKindInt, DefaultValue: "0", Min: &minZero, Description: "Engine worker count (0=auto)"},
-								{Name: "disable_cache", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Disable chunk cache"},
 							},
 						},
 					},

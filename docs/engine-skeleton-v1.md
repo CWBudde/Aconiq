@@ -7,6 +7,7 @@ Implemented in `backend/internal/engine`.
 ## Pipeline
 
 Execution stages are explicit and emitted as structured progress events:
+
 1. `load`
 2. `prepare`
 3. `chunk`

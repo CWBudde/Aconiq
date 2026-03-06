@@ -1,6 +1,7 @@
 # Phase 0 Preflight
 
 This folder contains Phase 0 baseline decisions:
+
 - `compliance-boundaries.md`
 - `target-platforms.md`
 - `definition-of-done.md`

@@ -1,6 +1,7 @@
 package road
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,12 +71,13 @@ func TestLdenAggregation(t *testing.T) {
 
 	levels := PeriodLevels{
 		Lday:     60,
-		Levening: 55,
-		Lnight:   50,
+		Levening: 60,
+		Lnight:   60,
 	}
 	lden := ComputeLden(levels)
-	if lden <= levels.Lday {
-		t.Fatalf("expected Lden > Lday due to evening/night penalties: lden=%f lday=%f", lden, levels.Lday)
+	expected := 66.39524300131856
+	if math.Abs(lden-expected) > 1e-9 {
+		t.Fatalf("unexpected Lden: got %f expected %f", lden, expected)
 	}
 }
 

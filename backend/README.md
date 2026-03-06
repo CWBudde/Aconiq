@@ -3,6 +3,7 @@
 Go backend (CLI-first) for project management, validation, compute engine, standards modules, and reporting.
 
 Planned package structure:
+
 - `cmd/noise/`
 - `internal/app/`
 - `internal/domain/`
@@ -82,3 +83,18 @@ Planned package structure:
   - resolves selected standard/version/profile through registry
   - validates and normalizes `--param` values against profile schema
   - records resolved standard + normalized parameters in run provenance
+
+## Phase 10 Baseline
+
+- CNOSSOS road module: `internal/standards/cnossos/road`
+  - typed road source schema (`RoadSource`) with validation for speed/surface/traffic inputs
+  - deterministic piecewise emission model for day/evening/night periods
+  - propagation chain baseline (distance + air/ground/barrier attenuation terms)
+  - indicators:
+    - `Lday`, `Levening`, `Lnight`
+    - `Lden` aggregation
+  - export helper for:
+    - receiver table (`receivers.json`, `receivers.csv`)
+    - raster bands (`Lden`, `Lnight`) via `cnossos-road.json/bin`
+- Standards registry now includes `cnossos-road` descriptor.
+- `noise run` execution path for `cnossos-road` is pending dedicated model-to-source mapping work.
