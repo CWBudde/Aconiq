@@ -7,3 +7,7 @@ export type {
   LastRunStatus,
   ProjectStatusResponse,
 } from "./client";
+
+export { queryClient } from "./query-client";
+export { queryKeys } from "./query-keys";
+export { useHealth, useProjectStatus } from "./hooks";
