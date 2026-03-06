@@ -68,4 +68,3 @@ export function FeaturePopup({ feature, lngLat }: FeaturePopupProps) {
 
   return null;
 }
-

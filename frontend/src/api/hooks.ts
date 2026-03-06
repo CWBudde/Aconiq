@@ -27,7 +27,6 @@ export function useHealth() {
 export function useProjectStatus() {
   return useQuery({
     queryKey: queryKeys.project.status(),
-    queryFn: () =>
-      fetchJSON<ProjectStatusResponse>("/api/v1/project/status"),
+    queryFn: () => fetchJSON<ProjectStatusResponse>("/api/v1/project/status"),
   });
 }
