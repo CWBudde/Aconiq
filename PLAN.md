@@ -511,20 +511,20 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** enable practical model authoring and correction from the GUI.
 
-- [ ] Source editor workflow
-  - [ ] Point/line/area drawing and editing
-  - [ ] Attribute forms per source type
-- [ ] Building/barrier editing workflow
-  - [ ] Geometry edits
-  - [ ] Height and required attribute editors
-- [ ] Validation overlay integration
-  - [ ] Display per-feature validation issues on map and in side panel
-  - [ ] Deep-link from issue list to map feature
-- [ ] Import assistant UI
-  - [ ] Upload/select local files
-  - [ ] Preview normalized model changes
-  - [ ] Confirm-and-apply flow with diff summary
-- [ ] Undo/redo command stack for map edits
+- [x] Source editor workflow
+  - [x] Point/line/area drawing and editing (terra-draw integration)
+  - [x] Attribute forms per source type (source type picker)
+- [x] Building/barrier editing workflow
+  - [x] Geometry edits (terra-draw select mode with drag/midpoints/delete)
+  - [x] Height and required attribute editors (height input field)
+- [x] Validation overlay integration
+  - [x] Display per-feature validation issues on map and in side panel (ValidationPanel)
+  - [x] Deep-link from issue list to map feature ("Go to" button selects feature)
+- [x] Import assistant UI
+  - [x] Upload/select local files (drag-and-drop + file picker)
+  - [x] Preview normalized model changes (feature counts, skipped, validation)
+  - [x] Confirm-and-apply flow with diff summary
+- [x] Undo/redo command stack for map edits (CommandStack + Ctrl+Z/Ctrl+Shift+Z)
 
 ---
 
