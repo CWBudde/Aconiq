@@ -480,24 +480,30 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** ship a robust interactive map workspace for model and result layers.
 
-- [ ] Implement MapLibre map module with controlled camera state
-- [ ] Layer system v1
-  - [ ] Basemap/style loader
-  - [ ] Model layers (sources/buildings/barriers/receivers)
-  - [ ] Result layers (rasters/contours/point tables)
-  - [ ] Layer ordering and visibility controls
-- [ ] Legend and color ramp subsystem
-- [ ] Map interaction model
-  - [ ] Identify/select features
-  - [ ] Hover and click inspect popups
-  - [ ] Box select and multi-select support
-- [ ] CRS and coordinate display conventions in UI
-- [ ] Performance guardrails for large feature counts (clustering/virtualization/tile fallback)
+- [x] Implement MapLibre map module with controlled camera state
+  - [x] Ref-based React wrapper (`MapView`), map instance via context (`useMap`)
+  - [x] Navigation control + metric scale bar
+- [x] Layer system v1
+  - [x] Basemap/style loader (OpenFreeMap: light/bright/dark + offline fallback)
+  - [x] Model layers (sources point/line/area, buildings fill+outline, barriers dashed, receivers)
+  - [x] Result layers (raster placeholder, contour lines + labels)
+  - [x] Layer ordering and visibility controls (`LayerControl` panel with per-group toggles)
+- [x] Legend and color ramp subsystem
+  - [x] `NOISE_LEVEL_RAMP` (green→red, 5 dB steps, ISO/EU END convention)
+  - [x] `Legend` component with color swatches
+  - [x] `rampToExpression()` for MapLibre paint property interpolation
+- [x] Map interaction model
+  - [x] Identify/select features (click → popup with properties table)
+  - [x] Hover cursor change on interactive layers
+  - [ ] Box select and multi-select support (deferred to Phase 23e)
+- [x] CRS and coordinate display (`CoordinateDisplay` shows lat/lng on mouse move)
+- [ ] Performance guardrails for large feature counts (deferred — clustering/tile fallback when needed)
+- [x] Map state store (Zustand: basemap, layer visibility, selection, hover)
 
 ### Research
 
-- [ ] React binding strategy: native `maplibre-gl` integration vs wrapper libraries
-- [ ] Offline/portable basemap strategy (PMTiles/vector tiles/raster fallback)
+- [x] React binding strategy: native `maplibre-gl` with thin ref-based wrapper (no wrapper library)
+- [x] Offline basemap: inline fallback style for air-gapped use; PMTiles deferred to Phase 25
 
 ---
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
-import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import type { MapGeoJSONFeature } from "maplibre-gl";
 import { useMap } from "./use-map";
 
 interface FeaturePopupProps {
@@ -30,7 +30,7 @@ export function FeaturePopup({ feature, lngLat }: FeaturePopupProps) {
     if (!feature || !lngLat) return;
 
     const props = formatProperties(
-      (feature.properties ?? {}) as Record<string, unknown>,
+      feature.properties as Record<string, unknown>,
     );
     if (props.length === 0) return;
 
@@ -69,7 +69,3 @@ export function FeaturePopup({ feature, lngLat }: FeaturePopupProps) {
   return null;
 }
 
-/** Helper to extract lngLat from a MapMouseEvent for the popup */
-export function eventToLngLat(e: MapMouseEvent): [number, number] {
-  return [e.lngLat.lng, e.lngLat.lat];
-}

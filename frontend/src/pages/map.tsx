@@ -1,12 +1,33 @@
+import { useCallback, useState } from "react";
+import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import { MapView } from "@/map/map-view";
+import { LayerControl } from "@/map/layer-control";
+import { CoordinateDisplay } from "@/map/coordinate-display";
+import { FeaturePopup } from "@/map/feature-popup";
+
 export default function MapPage() {
+  const [clickedFeature, setClickedFeature] =
+    useState<MapGeoJSONFeature | null>(null);
+  const [popupLngLat, setPopupLngLat] = useState<[number, number] | null>(
+    null,
+  );
+
+  const handleFeatureClick = useCallback(
+    (features: MapGeoJSONFeature[], e: MapMouseEvent) => {
+      const feature = features[0];
+      if (feature) {
+        setClickedFeature(feature);
+        setPopupLngLat([e.lngLat.lng, e.lngLat.lat]);
+      }
+    },
+    [],
+  );
+
   return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold">Map</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Model and result map workspace (Phase 23d)
-        </p>
-      </div>
-    </div>
+    <MapView onFeatureClick={handleFeatureClick}>
+      <LayerControl />
+      <CoordinateDisplay />
+      <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
+    </MapView>
   );
 }
