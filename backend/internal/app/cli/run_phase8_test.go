@@ -2,16 +2,19 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/soundplan/soundplan/backend/internal/domain/project"
 	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
 	"github.com/soundplan/soundplan/backend/internal/qa/golden"
 	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
 )
 
 func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
@@ -78,7 +81,7 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 			"x":        round6(record.X),
 			"y":        round6(record.Y),
 			"height_m": round6(record.HeightM),
-			"ldummy":   round6(record.Values[dummyIndicatorName]),
+			"ldummy":   round6(record.Values[freefield.IndicatorLdummy]),
 		})
 	}
 
@@ -104,14 +107,39 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	golden.AssertJSONSnapshot(t, testdataPath(t, "phase8-dummy-freefield.golden.json"), snapshot)
 }
 
+func TestRunRejectsUnknownRunParameter(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase8", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+
+	err := runCLI("--project", projectDir, "run", "--standard", "dummy-freefield", "--param", "not_allowed=1")
+	if err == nil {
+		t.Fatal("expected run command error")
+	}
+	if !strings.Contains(err.Error(), `unknown run parameter "not_allowed"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func mustRunCLI(t *testing.T, args ...string) {
 	t.Helper()
 
+	if err := runCLI(args...); err != nil {
+		t.Fatalf("noise %v: %v", args, err)
+	}
+}
+
+func runCLI(args ...string) error {
 	cmd := newRootCommand()
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("noise %v: %v", args, err)
+		return fmt.Errorf("noise %v: %w", args, err)
 	}
+	return nil
 }
 
 func round6(value float64) float64 {

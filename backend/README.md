@@ -67,3 +67,18 @@ Planned package structure:
 - Golden E2E fixture + snapshot:
   - `internal/app/cli/testdata/phase8/model.geojson`
   - `internal/app/cli/testdata/phase8-dummy-freefield.golden.json`
+
+## Phase 9 Baseline
+
+- Standards framework package: `internal/standards/framework`
+  - standard descriptor model (ID, version/profile, supported source types, indicators)
+  - run parameter schema model with normalization + validation
+  - version/profile resolution
+- Registry package: `internal/standards`
+  - central registration of available standards
+- Dummy module integration:
+  - `dummy-freefield` exported as a standards descriptor with profiles (`default`, `highres`)
+- `noise run` integration:
+  - resolves selected standard/version/profile through registry
+  - validates and normalizes `--param` values against profile schema
+  - records resolved standard + normalized parameters in run provenance

@@ -15,4 +15,4 @@ Monorepo for an environmental noise modeling system (CLI-first, offline-first) w
 
 ## Current Status
 
-Phase 0 preflight through Phase 8 (dummy freefield end-to-end baseline) are completed.
+Phase 0 preflight through Phase 9 (standards framework baseline) are completed.
