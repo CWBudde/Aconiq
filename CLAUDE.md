@@ -11,38 +11,45 @@ Soundplan is a SoundPLAN-like environmental noise modeling system (CLI-first, of
 All backend commands run from `backend/` unless noted.
 
 **Build & run:**
+
 ```bash
 cd backend && go build ./...
 cd backend && go run ./cmd/noise -- --help
 ```
 
 **Tests:**
+
 ```bash
 scripts/test-go.sh          # runs go test ./... from backend/
 ```
 
 **Update golden snapshots** (after intentional behavior changes):
+
 ```bash
 scripts/update-golden.sh    # runs UPDATE_GOLDEN=1 go test ./...
 ```
 
 **Format (mandatory before commit):**
+
 ```bash
 gofmt -w $(find backend -type f -name '*.go')
 scripts/check-gofmt.sh      # CI enforcer; fails on unformatted files
 ```
 
 **Vet:**
+
 ```bash
 cd backend && go vet ./...
 ```
 
 **Run a single test:**
+
 ```bash
 cd backend && go test ./internal/geo/... -run TestFunctionName
 ```
 
 **Fuzz tests:**
+
 ```bash
 cd backend && go test ./internal/geo/... -fuzz FuzzFunctionName
 ```
@@ -61,24 +68,25 @@ examples/         License-safe sample projects (reserved)
 
 ### Go Package Structure (`backend/internal/`)
 
-| Package | Responsibility |
-|---|---|
-| `app/cli/` | Cobra commands (`init`, `import`, `validate`, `run`, `status`, `export`, `bench`) |
-| `app/config/` | Config loading (project path, log level, cache dir) |
-| `app/logging/` | Structured logging baseline |
-| `domain/project/` | Core entities: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef` |
-| `domain/errors/` | Error taxonomy (user input vs internal) |
-| `geo/` | CRS, geometry primitives, spatial index, receiver sets |
-| `geo/modelgeojson/` | GeoJSON normalization and validation |
-| `io/projectfs/` | Project folder store (JSON manifest in `.noise/project.json`) |
-| `report/results/` | Raster container API + receiver table API |
-| `qa/golden/` | Golden snapshot helper |
-| `engine/` | Compute engine (not yet implemented) |
-| `standards/` | Standards modules (not yet implemented) |
+| Package             | Responsibility                                                                    |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `app/cli/`          | Cobra commands (`init`, `import`, `validate`, `run`, `status`, `export`, `bench`) |
+| `app/config/`       | Config loading (project path, log level, cache dir)                               |
+| `app/logging/`      | Structured logging baseline                                                       |
+| `domain/project/`   | Core entities: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`         |
+| `domain/errors/`    | Error taxonomy (user input vs internal)                                           |
+| `geo/`              | CRS, geometry primitives, spatial index, receiver sets                            |
+| `geo/modelgeojson/` | GeoJSON normalization and validation                                              |
+| `io/projectfs/`     | Project folder store (JSON manifest in `.noise/project.json`)                     |
+| `report/results/`   | Raster container API + receiver table API                                         |
+| `qa/golden/`        | Golden snapshot helper                                                            |
+| `engine/`           | Compute engine (not yet implemented)                                              |
+| `standards/`        | Standards modules (not yet implemented)                                           |
 
 ### Project Format v1
 
 A project is a folder with `.noise/` containing:
+
 - `.noise/project.json` — manifest (scenarios, runs, artifacts, migrations)
 - `.noise/runs/<run-id>/run.log` — run log
 - `.noise/runs/<run-id>/provenance.json` — standard ID, version, parameters, input hashes

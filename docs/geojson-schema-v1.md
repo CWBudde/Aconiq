@@ -52,6 +52,7 @@ Validation uses project CRS from `.noise/project.json`.
 ## Debug Exports
 
 `noise import` writes:
+
 - `.noise/model/model.normalized.geojson`
 - `.noise/model/model.dump.json`
 - `.noise/model/validation-report.json`

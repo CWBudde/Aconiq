@@ -9,14 +9,17 @@ Select a portability-first geometry stack for early phases (import validation, b
 ## Candidate Libraries (Go)
 
 1. `github.com/paulmach/orb`
+
 - Strengths: simple geometry types, GeoJSON utilities, practical ergonomics.
 - Risks: not a full GIS engine; advanced operations may require complementary libraries.
 
 2. `github.com/twpayne/go-geom`
+
 - Strengths: robust geometry data model, WKB/WKT ecosystem support.
 - Risks: additional complexity for simple workflows.
 
 3. `github.com/tidwall/rtree` or equivalent R-tree implementation
+
 - Strengths: lightweight spatial indexing for candidate pruning.
 - Risks: must benchmark against project workload before locking choice.
 

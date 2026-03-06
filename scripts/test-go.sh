@@ -4,6 +4,6 @@ set -euo pipefail
 export GOCACHE="${GOCACHE:-/tmp/go-build-soundplan}"
 
 (
-  cd backend
-  go test ./...
+	cd backend
+	go test ./...
 )

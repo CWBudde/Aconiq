@@ -43,6 +43,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 **Goal:** compile, run, and test; no domain logic “guessed” yet.
 
 ### Backend (Go)
+
 - [x] Create Go module
 - [x] Create packages: `cmd/`, `internal/app/`, `internal/domain/`, `internal/geo/`, `internal/engine/`, `internal/standards/`, `internal/io/`, `internal/report/`, `internal/qa/`
 - [x] Define configuration layer (project path, logging level, cache dir)
@@ -50,14 +51,17 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [x] Error taxonomy (user input errors vs internal errors)
 
 ### CLI (Cobra)
+
 - [x] Create `noise` root command
 - [x] Add placeholder subcommands: `init`, `import`, `validate`, `run`, `status`, `export`, `bench`
 - [x] Common flags/config plumbing (`--project`, `--verbose`, `--json`)
 
 ### Tests
+
 - [x] Ensure `go test ./...` works locally
 
 ### Research (technical choices)
+
 - [x] Evaluate Go geometry/spatial libs (robustness, performance, license)
 - [x] Evaluate CRS/PROJ strategy (pure Go vs cgo/PROJ; accuracy vs portability)
 
@@ -91,6 +95,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [x] Implement `noise status` (run list, last status, logs)
 
 ### Provenance / audit trail
+
 - [x] Each run writes a provenance manifest (standard ID, version/profile, parameters, input file hashes)
 - [x] Define project migrations strategy (v1 → later)
 
@@ -101,18 +106,21 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 **Goal:** load model data and validate it without running any calculation.
 
 ### Import (GeoJSON only)
+
 - [x] Define GeoJSON feature schemas (minimal common set)
   - [x] Sources: point/line/area
   - [x] Buildings/barriers: geometry + minimal attributes (e.g., height)
 - [x] Implement `noise import` (GeoJSON)
 
 ### Validation
+
 - [x] Implement `noise validate`
   - [x] Required fields
   - [x] Geometry sanity (no NaNs, rings, basic self-intersection checks where possible)
   - [x] CRS plausibility checks
 
 ### Export
+
 - [x] Add debug exports (normalized GeoJSON/JSON “model dump”)
 
 ---
@@ -130,6 +138,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Facade receivers (data model + stub; full implementation deferred)
 
 ### Tests
+
 - [x] Geo unit tests (edge cases)
 - [x] Fuzz/property tests for geometry primitives
 
@@ -147,6 +156,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [x] Implement `noise export` skeleton
 
 ### Research
+
 - [x] Evaluate GeoTIFF writing in Go (pure Go vs GDAL via cgo)
 - [x] Evaluate contours/isoline generation library (Marching Squares)
 
@@ -165,6 +175,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [x] Disk-backed cache v1 (per run/chunk)
 
 ### Tests
+
 - [x] Determinism test: 1 worker vs N workers produce identical output hashes
 - [x] Cancel test: abort leaves a consistent state
 
@@ -198,16 +209,17 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** first real normative module.
 
-- [ ] Define CNOSSOS Road source schema (speed, surface, traffic, …)
-- [ ] Implement emission model (table/piecewise logic)
-- [ ] Implement propagation chain needed for Road use-case
-- [ ] Implement indicators
-  - [ ] Lday, Levening, Lnight
-  - [ ] Lden aggregation
-  - [ ] Lnight output
-- [ ] Export: Lden/Lnight rasters + receiver point tables
+- [x] Define CNOSSOS Road source schema (speed, surface, traffic, …)
+- [x] Implement emission model (table/piecewise logic)
+- [x] Implement propagation chain needed for Road use-case
+- [x] Implement indicators
+  - [x] Lday, Levening, Lnight
+  - [x] Lden aggregation
+  - [x] Lnight output
+- [x] Export: Lden/Lnight rasters + receiver point tables
 
 ### QA / Research
+
 - [ ] Collect public validation/verification cases for CNOSSOS Road (license-safe)
 - [ ] Document rounding/tolerance rules used by the implementation
 
@@ -249,6 +261,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [ ] Add acceptance suite integration hooks in `internal/qa/`
 
 ### Research
+
 - [ ] Clarify availability and formats for BUB-related datasets (e.g., BUB-D) and import rights
 
 ---
@@ -280,6 +293,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [ ] Generate a conformance report artifact (test suite status + versions)
 
 ### Research
+
 - [ ] Clarify how TEST‑20 data is obtained, stored, and legally redistributed (if at all)
 
 ---
@@ -315,6 +329,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [ ] PDF export (optional) or HTML-only MVP
 
 ### Research
+
 - [ ] Evaluate HTML→PDF pipeline (headless Chromium) vs Go PDF libraries
 
 ---
@@ -349,6 +364,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [ ] Output: runtime, memory, IO, numeric drift
 
 ### Optional (advanced, non-normative)
+
 - [ ] Use algo-fft/algo-dsp for post-processing pipelines (kept separate from normative outputs)
 
 ---
@@ -369,6 +385,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [ ] E2E tests (Playwright): import → validate → run → visualize → export
 
 ### Research
+
 - [ ] OpenAPI vs gRPC/Connect
 - [ ] TypeScript DTO generation
 
@@ -385,6 +402,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - [ ] Building footprints/import pipelines beyond GeoJSON (deferred)
 
 For each importer:
+
 - [ ] Define schema + units
 - [ ] Implement import + validation
 - [ ] Add roundtrip tests
@@ -411,6 +429,7 @@ For each importer:
 - [ ] Smoke tests for desktop build
 
 ### Risk / Research
+
 - [ ] Re-check Wails v3 maturity (alpha risk) and define fallback options
 
 ---
@@ -446,6 +465,7 @@ For each importer:
 This list is explicitly focused on “what is missing” and turns it into concrete tasks.
 
 ## Standards & test data
+
 - [ ] CNOSSOS Road/Rail/Industry/Aircraft: collect license-safe validation cases and define tolerances
 - [ ] BUB/BUF/BEB: obtain the current documents/annexes and define the exact input requirements per module
 - [ ] RLS‑19 TEST‑20: clarify sourcing, storage format, legal redistribution, and CI automation
@@ -453,15 +473,18 @@ This list is explicitly focused on “what is missing” and turns it into concr
 - [ ] ISO 9613‑2: identify public example cases (or create synthetic ones) to validate implementation
 
 ## GIS / formats
+
 - [ ] CRS/PROJ decision (accuracy vs portability)
 - [ ] GeoTIFF vs custom raster: portability and dependency strategy
 - [ ] (Deferred) GPKG/FlatGeobuf/CSV import: choose libraries and schemas
 
 ## Determinism & tolerances
+
 - [ ] Standardize numeric tolerances (per standard/test suite)
 - [ ] Define stable summation strategy and document where it applies
 
 ## UX/workflow (deferred while offline-only)
+
 - [ ] When GUI starts: define minimal workflow (import → validate → run → visualize → export)
 - [ ] Define “must-have” exports (GeoTIFF/CSV/PNG/report) and which are deferred
 
@@ -473,6 +496,6 @@ This list is explicitly focused on “what is missing” and turns it into concr
 - [ ] Phases 4–7 (GeoJSON import/validate + geo core + result containers + engine)
 - [x] Phase 8 (dummy E2E)
 - [x] Phase 9 (standards framework)
-- [ ] Phase 10 (CNOSSOS Road)
+- [x] Phase 10 (CNOSSOS Road)
 
 Then: Reporting (Phase 20) and/or start the deferred standards phases.
