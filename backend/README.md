@@ -17,7 +17,7 @@ Planned package structure:
 ## QA Baseline
 
 - Golden snapshot helper: `internal/qa/golden`
-- Golden update workflow: run `scripts/update-golden.sh` from repository root
+- Golden update workflow: run `just update-golden` from repository root
 - Determinism and formatting policies: see `docs/policies/`
 
 ## Phase 3 Baseline
@@ -97,4 +97,21 @@ Planned package structure:
     - receiver table (`receivers.json`, `receivers.csv`)
     - raster bands (`Lden`, `Lnight`) via `cnossos-road.json/bin`
 - Standards registry now includes `cnossos-road` descriptor.
-- `noise run` execution path for `cnossos-road` is pending dedicated model-to-source mapping work.
+- `noise run --standard cnossos-road` is wired to line-source model extraction and result export.
+
+## Phase 11 Baseline
+
+- CNOSSOS rail module: `internal/standards/cnossos/rail`
+  - typed rail source schema (`RailSource`) with validation for traction, roughness, speed, braking, traffic, and geometry
+  - deterministic rail emission path (rolling + traction + braking terms)
+  - rail-specific propagation adjustments (bridge + curve squeal)
+  - indicators:
+    - `Lday`, `Levening`, `Lnight`
+    - `Lden` aggregation
+  - export helper for:
+    - receiver table (`receivers.json`, `receivers.csv`)
+    - raster bands (`Lden`, `Lnight`) via `cnossos-rail.json/bin`
+- Standards registry now includes `cnossos-rail` descriptor.
+- Golden regression scenario:
+  - `internal/standards/cnossos/rail/testdata/rail_scenario.json`
+  - `internal/standards/cnossos/rail/testdata/rail_scenario.golden.json`

@@ -118,20 +118,6 @@ func newRunCommand() *cobra.Command {
 				return err
 			}
 
-			if resolvedStandard.StandardID != freefield.StandardID {
-				return domainerrors.New(
-					domainerrors.KindUserInput,
-					"cli.run",
-					fmt.Sprintf("standard %q is registered but not wired in run pipeline yet", resolvedStandard.StandardID),
-					nil,
-				)
-			}
-
-			options, err := parseDummyRunOptions(resolvedParams)
-			if err != nil {
-				return err
-			}
-
 			resolvedModelPath := resolvePath(store.Root(), modelPath)
 			relModelPath := relativePath(store.Root(), resolvedModelPath)
 			combinedInputs := mergeInputPaths(append([]string{relModelPath}, inputPaths...))
@@ -166,110 +152,135 @@ func newRunCommand() *cobra.Command {
 				return finalizeRunFailure(store, run, logLines, err)
 			}
 
-			sources, err := extractDummySources(model, options.SourceEmission, resolvedStandard.SupportedSourceTypes)
-			if err != nil {
-				logLines = append(logLines, fmt.Sprintf("%s failed to extract sources: %v", nowUTC().Format(time.RFC3339), err))
-				return finalizeRunFailure(store, run, logLines, err)
-			}
-
-			receivers, gridWidth, gridHeight, err := buildDummyReceivers(sources, options)
-			if err != nil {
-				logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), err))
-				return finalizeRunFailure(store, run, logLines, err)
-			}
-
-			logLines = append(
-				logLines,
-				fmt.Sprintf("%s sources=%d", nowUTC().Format(time.RFC3339), len(sources)),
-				fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), len(receivers), gridWidth, gridHeight),
-			)
-
-			engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
-				if event.Stage == "compute" && event.Message == "chunk_done" {
-					logLines = append(logLines, fmt.Sprintf("%s stage=%s chunk=%d %d/%d", event.Time.Format(time.RFC3339), event.Stage, event.ChunkIndex, event.CompletedChunks, event.TotalChunks))
-					return
-				}
-				logLines = append(logLines, fmt.Sprintf("%s stage=%s message=%s", event.Time.Format(time.RFC3339), event.Stage, event.Message))
-			})
-
-			engineSources := make([]engine.Source, 0, len(sources))
-			for _, source := range sources {
-				engineSources = append(engineSources, engine.Source{
-					ID:       source.ID,
-					Point:    source.Point,
-					Emission: source.EmissionDB,
-				})
-			}
-
-			runOutput, err := engineRunner.Run(context.Background(), engine.RunConfig{
-				RunID:          run.ID,
-				Workers:        options.Workers,
-				ChunkSize:      options.ChunkSize,
-				CacheDir:       state.Config.CacheDir,
-				Receivers:      receivers,
-				Sources:        engineSources,
-				DisableCache:   options.DisableCache,
-				DeterminismTag: "phase8-dummy-freefield",
-			})
-			if err != nil {
-				logLines = append(logLines, fmt.Sprintf("%s engine failed: %v", nowUTC().Format(time.RFC3339), err))
-				return finalizeRunFailure(store, run, logLines, err)
-			}
-
 			runDir := filepath.Join(store.Root(), ".noise", "runs", run.ID)
-			persisted, err := persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators))
-			if err != nil {
-				logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-				return finalizeRunFailure(store, run, logLines, err)
+			var persisted persistedRunOutputs
+			var outputHash string
+			var finishedAt time.Time
+			var sourceCount int
+			var receiverCount int
+
+			switch resolvedStandard.StandardID {
+			case freefield.StandardID:
+				options, parseErr := parseDummyRunOptions(resolvedParams)
+				if parseErr != nil {
+					return parseErr
+				}
+
+				sources, extractErr := extractDummySources(model, options.SourceEmission, resolvedStandard.SupportedSourceTypes)
+				if extractErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to extract sources: %v", nowUTC().Format(time.RFC3339), extractErr))
+					return finalizeRunFailure(store, run, logLines, extractErr)
+				}
+
+				receivers, gridWidth, gridHeight, receiverErr := buildDummyReceivers(sources, options)
+				if receiverErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
+					return finalizeRunFailure(store, run, logLines, receiverErr)
+				}
+
+				sourceCount = len(sources)
+				receiverCount = len(receivers)
+				logLines = append(
+					logLines,
+					fmt.Sprintf("%s sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
+					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
+				)
+
+				engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
+					if event.Stage == "compute" && event.Message == "chunk_done" {
+						logLines = append(logLines, fmt.Sprintf("%s stage=%s chunk=%d %d/%d", event.Time.Format(time.RFC3339), event.Stage, event.ChunkIndex, event.CompletedChunks, event.TotalChunks))
+						return
+					}
+					logLines = append(logLines, fmt.Sprintf("%s stage=%s message=%s", event.Time.Format(time.RFC3339), event.Stage, event.Message))
+				})
+
+				engineSources := make([]engine.Source, 0, len(sources))
+				for _, source := range sources {
+					engineSources = append(engineSources, engine.Source{
+						ID:       source.ID,
+						Point:    source.Point,
+						Emission: source.EmissionDB,
+					})
+				}
+
+				runOutput, runErr := engineRunner.Run(context.Background(), engine.RunConfig{
+					RunID:          run.ID,
+					Workers:        options.Workers,
+					ChunkSize:      options.ChunkSize,
+					CacheDir:       state.Config.CacheDir,
+					Receivers:      receivers,
+					Sources:        engineSources,
+					DisableCache:   options.DisableCache,
+					DeterminismTag: "phase8-dummy-freefield",
+				})
+				if runErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s engine failed: %v", nowUTC().Format(time.RFC3339), runErr))
+					return finalizeRunFailure(store, run, logLines, runErr)
+				}
+
+				persisted, err = persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators))
+				if err != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
+					return finalizeRunFailure(store, run, logLines, err)
+				}
+				outputHash = runOutput.OutputHash
+				finishedAt = runOutput.FinishedAt
+			case cnossosroad.StandardID:
+				options, parseErr := parseCnossosRoadRunOptions(resolvedParams)
+				if parseErr != nil {
+					return parseErr
+				}
+
+				roadSources, extractErr := extractCnossosRoadSources(model, options, resolvedStandard.SupportedSourceTypes)
+				if extractErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to extract road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
+					return finalizeRunFailure(store, run, logLines, extractErr)
+				}
+
+				receivers, gridWidth, gridHeight, receiverErr := buildCnossosRoadReceivers(roadSources, options)
+				if receiverErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
+					return finalizeRunFailure(store, run, logLines, receiverErr)
+				}
+
+				sourceCount = len(roadSources)
+				receiverCount = len(receivers)
+				logLines = append(
+					logLines,
+					fmt.Sprintf("%s road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
+					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
+				)
+
+				receiverOutputs, computeErr := cnossosroad.ComputeReceiverOutputs(receivers, roadSources, options.PropagationConfig())
+				if computeErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s cnossos compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
+					return finalizeRunFailure(store, run, logLines, computeErr)
+				}
+
+				persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				if err != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
+					return finalizeRunFailure(store, run, logLines, err)
+				}
+			default:
+				return domainerrors.New(
+					domainerrors.KindUserInput,
+					"cli.run",
+					fmt.Sprintf("standard %q is registered but not wired in run pipeline yet", resolvedStandard.StandardID),
+					nil,
+				)
 			}
 
-			now := nowUTC()
-			artifacts := []project.ArtifactRef{
-				{
-					ID:        fmt.Sprintf("artifact-run-%s-receivers-json", run.ID),
-					RunID:     run.ID,
-					Kind:      "run.result.receiver_table_json",
-					Path:      relativePath(store.Root(), persisted.ReceiverJSONPath),
-					CreatedAt: now,
-				},
-				{
-					ID:        fmt.Sprintf("artifact-run-%s-receivers-csv", run.ID),
-					RunID:     run.ID,
-					Kind:      "run.result.receiver_table_csv",
-					Path:      relativePath(store.Root(), persisted.ReceiverCSVPath),
-					CreatedAt: now,
-				},
-				{
-					ID:        fmt.Sprintf("artifact-run-%s-raster-meta", run.ID),
-					RunID:     run.ID,
-					Kind:      "run.result.raster_metadata",
-					Path:      relativePath(store.Root(), persisted.RasterMetadataPath),
-					CreatedAt: now,
-				},
-				{
-					ID:        fmt.Sprintf("artifact-run-%s-raster-data", run.ID),
-					RunID:     run.ID,
-					Kind:      "run.result.raster_binary",
-					Path:      relativePath(store.Root(), persisted.RasterDataPath),
-					CreatedAt: now,
-				},
-				{
-					ID:        fmt.Sprintf("artifact-run-%s-summary", run.ID),
-					RunID:     run.ID,
-					Kind:      "run.result.summary",
-					Path:      relativePath(store.Root(), persisted.SummaryPath),
-					CreatedAt: now,
-				},
-			}
+			artifacts := buildRunArtifacts(store.Root(), run.ID, persisted)
 
 			logLines = append(
 				logLines,
-				fmt.Sprintf("%s output_hash=%s", nowUTC().Format(time.RFC3339), runOutput.OutputHash),
+				fmt.Sprintf("%s output_hash=%s", nowUTC().Format(time.RFC3339), outputHash),
 				fmt.Sprintf("%s persisted=%s", nowUTC().Format(time.RFC3339), relativePath(store.Root(), persisted.SummaryPath)),
 				fmt.Sprintf("%s run completed", nowUTC().Format(time.RFC3339)),
 			)
 
-			if err := finalizeRun(store, run, project.RunStatusCompleted, runOutput.FinishedAt, logLines, artifacts); err != nil {
+			if err := finalizeRun(store, run, project.RunStatusCompleted, finishedAt, logLines, artifacts); err != nil {
 				return err
 			}
 
@@ -279,7 +290,7 @@ func newRunCommand() *cobra.Command {
 				"status", project.RunStatusCompleted,
 				"standard_id", run.Standard.ID,
 				"provenance", provenance.ManifestPath,
-				"output_hash", runOutput.OutputHash,
+				"output_hash", outputHash,
 			)
 
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Completed run %s (%s)\n", run.ID, project.RunStatusCompleted)
@@ -386,6 +397,95 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 	options.DisableCache = parsed
 
 	return options, nil
+}
+
+func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions, error) {
+	options := cnossosRoadRunOptions{}
+
+	parseFloat := func(key string, target *float64) error {
+		value, ok := params[key]
+		if !ok {
+			return domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosRoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+		}
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.parseCnossosRoadRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
+		}
+		*target = parsed
+		return nil
+	}
+
+	getString := func(key string) (string, error) {
+		value, ok := params[key]
+		if !ok {
+			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosRoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+		}
+		return strings.TrimSpace(value), nil
+	}
+
+	if err := parseFloat("grid_resolution_m", &options.GridResolutionM); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("grid_padding_m", &options.GridPaddingM); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("receiver_height_m", &options.ReceiverHeightM); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+
+	surfaceType, err := getString("road_surface_type")
+	if err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	options.SurfaceType = surfaceType
+
+	if err := parseFloat("road_speed_kph", &options.SpeedKPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("road_gradient_percent", &options.GradientPercent); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_day_light_vph", &options.TrafficDayLightVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_day_heavy_vph", &options.TrafficDayHeavyVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_evening_light_vph", &options.TrafficEveningLightVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_night_light_vph", &options.TrafficNightLightVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("traffic_night_heavy_vph", &options.TrafficNightHeavyVPH); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("air_absorption_db_per_km", &options.AirAbsorptionDBPerKM); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("ground_attenuation_db", &options.GroundAttenuationDB); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("barrier_attenuation_db", &options.BarrierAttenuationDB); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+	if err := parseFloat("min_distance_m", &options.MinDistanceM); err != nil {
+		return cnossosRoadRunOptions{}, err
+	}
+
+	return options, nil
+}
+
+func (o cnossosRoadRunOptions) PropagationConfig() cnossosroad.PropagationConfig {
+	return cnossosroad.PropagationConfig{
+		AirAbsorptionDBPerKM: o.AirAbsorptionDBPerKM,
+		GroundAttenuationDB:  o.GroundAttenuationDB,
+		BarrierAttenuationDB: o.BarrierAttenuationDB,
+		MinDistanceM:         o.MinDistanceM,
+	}
 }
 
 func mergeInputPaths(paths []string) []string {
@@ -502,6 +602,78 @@ func extractDummySources(model modelgeojson.Model, emissionDB float64, supported
 	return sources, nil
 }
 
+func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunOptions, supportedSourceTypes []string) ([]cnossosroad.RoadSource, error) {
+	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
+	for _, sourceType := range supportedSourceTypes {
+		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
+		if trimmed == "" {
+			continue
+		}
+		allowedSourceType[trimmed] = struct{}{}
+	}
+
+	sources := make([]cnossosroad.RoadSource, 0)
+	for featureIndex, feature := range model.Features {
+		if feature.Kind != "source" {
+			continue
+		}
+
+		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
+		if normalizedSourceType != "" {
+			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
+				return nil, domainerrors.New(
+					domainerrors.KindValidation,
+					"cli.extractCnossosRoadSources",
+					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
+					nil,
+				)
+			}
+		}
+
+		lines, err := lineStringsFromFeature(feature)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		baseID := strings.TrimSpace(feature.ID)
+		if baseID == "" {
+			baseID = fmt.Sprintf("road-source-%03d", featureIndex)
+		}
+
+		for lineIndex, line := range lines {
+			sourceID := baseID
+			if len(lines) > 1 {
+				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
+			}
+			sources = append(sources, cnossosroad.RoadSource{
+				ID:              sourceID,
+				Centerline:      line,
+				SurfaceType:     options.SurfaceType,
+				SpeedKPH:        options.SpeedKPH,
+				GradientPercent: options.GradientPercent,
+				TrafficDay: cnossosroad.TrafficPeriod{
+					LightVehiclesPerHour: options.TrafficDayLightVPH,
+					HeavyVehiclesPerHour: options.TrafficDayHeavyVPH,
+				},
+				TrafficEvening: cnossosroad.TrafficPeriod{
+					LightVehiclesPerHour: options.TrafficEveningLightVPH,
+					HeavyVehiclesPerHour: options.TrafficEveningHeavyVPH,
+				},
+				TrafficNight: cnossosroad.TrafficPeriod{
+					LightVehiclesPerHour: options.TrafficNightLightVPH,
+					HeavyVehiclesPerHour: options.TrafficNightHeavyVPH,
+				},
+			})
+		}
+	}
+
+	if len(sources) == 0 {
+		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", "model does not contain any supported line source features", nil)
+	}
+
+	return sources, nil
+}
+
 func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error) {
 	switch feature.GeometryType {
 	case "Point":
@@ -527,6 +699,52 @@ func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error
 	default:
 		return nil, fmt.Errorf("unsupported source geometry type %q (dummy-freefield supports Point/MultiPoint only)", feature.GeometryType)
 	}
+}
+
+func lineStringsFromFeature(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+	switch feature.GeometryType {
+	case "LineString":
+		line, err := parseLineStringCoordinates(feature.Coordinates)
+		if err != nil {
+			return nil, err
+		}
+		return [][]geo.Point2D{line}, nil
+	case "MultiLineString":
+		rawLines, ok := feature.Coordinates.([]any)
+		if !ok {
+			return nil, fmt.Errorf("geometry MultiLineString coordinates must be an array")
+		}
+		lines := make([][]geo.Point2D, 0, len(rawLines))
+		for _, rawLine := range rawLines {
+			line, err := parseLineStringCoordinates(rawLine)
+			if err != nil {
+				return nil, err
+			}
+			lines = append(lines, line)
+		}
+		return lines, nil
+	default:
+		return nil, fmt.Errorf("unsupported source geometry type %q (cnossos-road supports LineString/MultiLineString only)", feature.GeometryType)
+	}
+}
+
+func parseLineStringCoordinates(value any) ([]geo.Point2D, error) {
+	rawPoints, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("line coordinates must be an array")
+	}
+	if len(rawPoints) < 2 {
+		return nil, fmt.Errorf("line coordinates must contain at least 2 points")
+	}
+	points := make([]geo.Point2D, 0, len(rawPoints))
+	for _, rawPoint := range rawPoints {
+		point, err := parsePointCoordinate(rawPoint)
+		if err != nil {
+			return nil, err
+		}
+		points = append(points, point)
+	}
+	return points, nil
 }
 
 func parsePointCoordinate(value any) (geo.Point2D, error) {
@@ -610,6 +828,47 @@ func buildDummyReceivers(sources []freefield.Source, options dummyRunOptions) ([
 	width, height, err := inferGridShape(receivers)
 	if err != nil {
 		return nil, 0, 0, domainerrors.New(domainerrors.KindInternal, "cli.buildDummyReceivers", "infer receiver grid dimensions", err)
+	}
+
+	return receivers, width, height, nil
+}
+
+func buildCnossosRoadReceivers(sources []cnossosroad.RoadSource, options cnossosRoadRunOptions) ([]geo.PointReceiver, int, int, error) {
+	sourcePoints := make([]geo.Point2D, 0)
+	for _, source := range sources {
+		sourcePoints = append(sourcePoints, source.Centerline...)
+	}
+	bbox, ok := geo.BBoxFromPoints(sourcePoints)
+	if !ok {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildCnossosRoadReceivers", "failed to derive source extent", nil)
+	}
+
+	grid := geo.GridReceiverSet{
+		ID: "grid",
+		Extent: geo.BBox{
+			MinX: bbox.MinX - options.GridPaddingM,
+			MinY: bbox.MinY - options.GridPaddingM,
+			MaxX: bbox.MaxX + options.GridPaddingM,
+			MaxY: bbox.MaxY + options.GridPaddingM,
+		},
+		Resolution: options.GridResolutionM,
+		HeightM:    options.ReceiverHeightM,
+	}
+
+	receivers, err := grid.Generate()
+	if err != nil {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildCnossosRoadReceivers", "generate receiver grid", err)
+	}
+	if len(receivers) == 0 {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildCnossosRoadReceivers", "receiver grid is empty", nil)
+	}
+	if len(receivers) > maxDummyReceivers {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindUserInput, "cli.buildCnossosRoadReceivers", fmt.Sprintf("receiver grid too large (%d > %d)", len(receivers), maxDummyReceivers), nil)
+	}
+
+	width, height, err := inferGridShape(receivers)
+	if err != nil {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindInternal, "cli.buildCnossosRoadReceivers", "infer receiver grid dimensions", err)
 	}
 
 	return receivers, width, height, nil
@@ -735,6 +994,108 @@ func persistDummyRunOutputs(
 		RasterDataPath:     rasterPersistence.DataPath,
 		SummaryPath:        summaryPath,
 	}, nil
+}
+
+func persistCnossosRoadRunOutputs(
+	runDir string,
+	outputs []cnossosroad.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+) (persistedRunOutputs, string, time.Time, error) {
+	resultsDir := filepath.Join(runDir, "results")
+	exported, err := cnossosroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "export cnossos road results", err)
+	}
+
+	outputHash, err := hashCnossosRoadOutputs(outputs)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "hash cnossos outputs", err)
+	}
+
+	summary := map[string]any{
+		"run_id":         filepath.Base(runDir),
+		"status":         project.RunStatusCompleted,
+		"output_hash":    outputHash,
+		"grid_width":     gridWidth,
+		"grid_height":    gridHeight,
+		"source_count":   sourceCount,
+		"receiver_count": len(outputs),
+	}
+	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if err := writeJSONFile(summaryPath, summary); err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, err
+	}
+
+	return persistedRunOutputs{
+		ReceiverJSONPath:   exported.ReceiverJSONPath,
+		ReceiverCSVPath:    exported.ReceiverCSVPath,
+		RasterMetadataPath: exported.RasterMetaPath,
+		RasterDataPath:     exported.RasterDataPath,
+		SummaryPath:        summaryPath,
+	}, outputHash, nowUTC(), nil
+}
+
+func hashCnossosRoadOutputs(outputs []cnossosroad.ReceiverOutput) (string, error) {
+	type record struct {
+		ReceiverID string                         `json:"receiver_id"`
+		Indicators cnossosroad.ReceiverIndicators `json:"indicators"`
+	}
+	records := make([]record, 0, len(outputs))
+	for _, output := range outputs {
+		records = append(records, record{
+			ReceiverID: output.Receiver.ID,
+			Indicators: output.Indicators,
+		})
+	}
+	payload, err := json.Marshal(records)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func buildRunArtifacts(projectRoot string, runID string, persisted persistedRunOutputs) []project.ArtifactRef {
+	now := nowUTC()
+	return []project.ArtifactRef{
+		{
+			ID:        fmt.Sprintf("artifact-run-%s-receivers-json", runID),
+			RunID:     runID,
+			Kind:      "run.result.receiver_table_json",
+			Path:      relativePath(projectRoot, persisted.ReceiverJSONPath),
+			CreatedAt: now,
+		},
+		{
+			ID:        fmt.Sprintf("artifact-run-%s-receivers-csv", runID),
+			RunID:     runID,
+			Kind:      "run.result.receiver_table_csv",
+			Path:      relativePath(projectRoot, persisted.ReceiverCSVPath),
+			CreatedAt: now,
+		},
+		{
+			ID:        fmt.Sprintf("artifact-run-%s-raster-meta", runID),
+			RunID:     runID,
+			Kind:      "run.result.raster_metadata",
+			Path:      relativePath(projectRoot, persisted.RasterMetadataPath),
+			CreatedAt: now,
+		},
+		{
+			ID:        fmt.Sprintf("artifact-run-%s-raster-data", runID),
+			RunID:     runID,
+			Kind:      "run.result.raster_binary",
+			Path:      relativePath(projectRoot, persisted.RasterDataPath),
+			CreatedAt: now,
+		},
+		{
+			ID:        fmt.Sprintf("artifact-run-%s-summary", runID),
+			RunID:     runID,
+			Kind:      "run.result.summary",
+			Path:      relativePath(projectRoot, persisted.SummaryPath),
+			CreatedAt: now,
+		},
+	}
 }
 
 func finalizeRunFailure(store projectfs.Store, run project.Run, logLines []string, runErr error) error {

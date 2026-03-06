@@ -48,6 +48,6 @@ func AssertJSONSnapshot(t *testing.T, snapshotPath string, got any) {
 	}
 
 	if !bytes.Equal(expected, serialized) {
-		t.Fatalf("snapshot mismatch for %s\nexpected:\n%s\ngot:\n%s\nHint: run scripts/update-golden.sh if change is intentional.", snapshotPath, expected, serialized)
+		t.Fatalf("snapshot mismatch for %s\nexpected:\n%s\ngot:\n%s\nHint: run `just update-golden` if change is intentional.", snapshotPath, expected, serialized)
 	}
 }

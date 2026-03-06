@@ -32,4 +32,12 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if cnossos.Version == "" || cnossos.Profile == "" {
 		t.Fatalf("expected default cnossos version/profile")
 	}
+
+	rail, err := registry.Resolve("cnossos-rail", "", "")
+	if err != nil {
+		t.Fatalf("resolve cnossos-rail: %v", err)
+	}
+	if rail.StandardID != "cnossos-rail" {
+		t.Fatalf("unexpected rail standard id: %s", rail.StandardID)
+	}
 }

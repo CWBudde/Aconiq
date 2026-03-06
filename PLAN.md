@@ -227,10 +227,10 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ## Phase 11 — CNOSSOS-EU: Rail (required, deferred)
 
-- [ ] Define CNOSSOS Rail source schema
-- [ ] Implement rail emission path
-- [ ] Implement required propagation adjustments
-- [ ] Add golden projects + regression tests
+- [x] Define CNOSSOS Rail source schema
+- [x] Implement rail emission path
+- [x] Implement required propagation adjustments
+- [x] Add golden projects + regression tests
 
 ---
 

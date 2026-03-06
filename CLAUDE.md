@@ -8,39 +8,22 @@ Soundplan is a SoundPLAN-like environmental noise modeling system (CLI-first, of
 
 ## Commands
 
-All backend commands run from `backend/` unless noted.
+All common tasks are orchestrated via [`just`](https://github.com/casey/just) from the repo root. Run `just` to list available recipes.
 
-**Build & run:**
-
-```bash
-cd backend && go build ./...
-cd backend && go run ./cmd/noise -- --help
-```
-
-**Tests:**
-
-```bash
-scripts/test-go.sh          # runs go test ./... from backend/
-```
-
-**Update golden snapshots** (after intentional behavior changes):
-
-```bash
-scripts/update-golden.sh    # runs UPDATE_GOLDEN=1 go test ./...
-```
-
-**Format (mandatory before commit):**
-
-```bash
-gofmt -w $(find backend -type f -name '*.go')
-scripts/check-gofmt.sh      # CI enforcer; fails on unformatted files
-```
-
-**Vet:**
-
-```bash
-cd backend && go vet ./...
-```
+| Command                | What it does                                       |
+| ---------------------- | -------------------------------------------------- |
+| `just fmt`             | Format all files (Go, shell, markdown, YAML, JSON) |
+| `just check-formatted` | Check formatting without writing (CI)              |
+| `just lint`            | Run golangci-lint (`backend/`)                     |
+| `just lint-fix`        | Run golangci-lint with `--fix`                     |
+| `just test`            | Run all Go tests                                   |
+| `just test-race`       | Run tests with race detector                       |
+| `just test-coverage`   | Run tests with coverage report                     |
+| `just update-golden`   | Update golden snapshots (`UPDATE_GOLDEN=1`)        |
+| `just build`           | Build CLI → `bin/noise`                            |
+| `just check-tidy`      | Verify `go.mod` is tidy                            |
+| `just ci`              | Run all checks (format, test, lint, tidy)          |
+| `just clean`           | Remove build artifacts                             |
 
 **Run a single test:**
 
@@ -62,8 +45,11 @@ cd backend && go test ./internal/geo/... -fuzz FuzzFunctionName
 backend/          Go application (active)
 frontend/         React/TypeScript (deferred)
 docs/             Specs, policies, research notes
-scripts/          CI/build automation
+scripts/          CI/build automation (legacy, being replaced by justfile)
 examples/         License-safe sample projects (reserved)
+justfile          Task runner (just) — primary entry point for dev commands
+.golangci.yml     golangci-lint v2 config (all linters enabled, tuned exclusions)
+treefmt.toml      Multi-language formatter config (gofumpt, gci, shfmt, prettier)
 ```
 
 ### Go Package Structure (`backend/internal/`)
@@ -111,9 +97,11 @@ Standards are plug-in modules under `internal/standards/` (e.g., `cnossos/`, `rl
 
 **Determinism:** Same inputs + standard/profile → identical outputs regardless of worker count. Map iteration must never influence numeric results. Partial results merge in fixed order (no "first finished wins"). See `docs/policies/determinism.md`.
 
-**Formatting:** `gofmt` is mandatory; CI will fail without it.
+**Formatting:** Enforced via `just fmt` (treefmt: gofumpt + gci + shfmt + prettier). `just check-formatted` is the CI gate.
 
-**Golden tests:** Snapshots live in `testdata/` next to the owning test package, named `<scenario>.golden.<ext>`. Update only intentionally via `scripts/update-golden.sh`; review diffs before committing.
+**Linting:** `just lint` runs golangci-lint v2 with all linters enabled and project-tuned exclusions. Fix issues before committing.
+
+**Golden tests:** Snapshots live in `testdata/` next to the owning test package, named `<scenario>.golden.<ext>`. Update only intentionally via `just update-golden`; review diffs before committing.
 
 **Floating-point:** Keep calculations at `float64`. Apply rounding only at defined output boundaries. Document rounding rules per standards module. Use stable (pairwise/compensated) summation for sensitive reductions.
 
