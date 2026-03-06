@@ -18,20 +18,15 @@ import (
 	"github.com/soundplan/soundplan/backend/internal/geo/modelgeojson"
 	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
 	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/soundplan/soundplan/backend/internal/standards"
 	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
 	"github.com/spf13/cobra"
 )
 
 const (
-	dummyIndicatorName     = "Ldummy"
-	dummyResultUnit        = "dB"
-	defaultModelPath       = ".noise/model/model.normalized.geojson"
-	defaultGridResolutionM = 10.0
-	defaultGridPaddingM    = 20.0
-	defaultReceiverHeightM = 4.0
-	defaultSourceEmission  = 90.0
-	defaultChunkSize       = 128
-	maxDummyReceivers      = 250000
+	dummyResultUnit   = "dB"
+	defaultModelPath  = ".noise/model/model.normalized.geojson"
+	maxDummyReceivers = 250000
 )
 
 type dummyRunOptions struct {
@@ -75,6 +70,21 @@ func newRunCommand() *cobra.Command {
 				return err
 			}
 
+			registry, err := standards.NewRegistry()
+			if err != nil {
+				return domainerrors.New(domainerrors.KindInternal, "cli.run", "initialize standards registry", err)
+			}
+
+			resolvedStandard, err := registry.Resolve(standardID, standardVersion, standardProfile)
+			if err != nil {
+				return domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+			}
+
+			resolvedParams, err := resolvedStandard.RunParameterSchema.NormalizeAndValidate(params)
+			if err != nil {
+				return domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+			}
+
 			store, err := projectfs.New(state.Config.ProjectPath)
 			if err != nil {
 				return err
@@ -85,16 +95,16 @@ func newRunCommand() *cobra.Command {
 				return err
 			}
 
-			if standardID != freefield.StandardID {
+			if resolvedStandard.StandardID != freefield.StandardID {
 				return domainerrors.New(
 					domainerrors.KindUserInput,
 					"cli.run",
-					fmt.Sprintf("unsupported --standard %q (only %q is available in Phase 8)", standardID, freefield.StandardID),
+					fmt.Sprintf("standard %q is registered but not wired in run pipeline yet", resolvedStandard.StandardID),
 					nil,
 				)
 			}
 
-			options, err := parseDummyRunOptions(params)
+			options, err := parseDummyRunOptions(resolvedParams)
 			if err != nil {
 				return err
 			}
@@ -106,11 +116,11 @@ func newRunCommand() *cobra.Command {
 			run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
 				ScenarioID: scenarioID,
 				Standard: project.StandardRef{
-					ID:      standardID,
-					Version: standardVersion,
-					Profile: standardProfile,
+					ID:      resolvedStandard.StandardID,
+					Version: resolvedStandard.Version,
+					Profile: resolvedStandard.Profile,
 				},
-				Parameters: params,
+				Parameters: resolvedParams,
 				InputPaths: combinedInputs,
 				Status:     project.RunStatusRunning,
 				LogLines: []string{
@@ -123,7 +133,7 @@ func newRunCommand() *cobra.Command {
 
 			logLines := []string{
 				fmt.Sprintf("%s run started", run.StartedAt.Format(time.RFC3339)),
-				fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), run.Standard.ID, run.Standard.Version, run.Standard.Profile),
+				fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
 				fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
 			}
 
@@ -133,7 +143,7 @@ func newRunCommand() *cobra.Command {
 				return finalizeRunFailure(store, run, logLines, err)
 			}
 
-			sources, err := extractDummySources(model, options.SourceEmission)
+			sources, err := extractDummySources(model, options.SourceEmission, resolvedStandard.SupportedSourceTypes)
 			if err != nil {
 				logLines = append(logLines, fmt.Sprintf("%s failed to extract sources: %v", nowUTC().Format(time.RFC3339), err))
 				return finalizeRunFailure(store, run, logLines, err)
@@ -184,7 +194,7 @@ func newRunCommand() *cobra.Command {
 			}
 
 			runDir := filepath.Join(store.Root(), ".noise", "runs", run.ID)
-			persisted, err := persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight)
+			persisted, err := persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators))
 			if err != nil {
 				logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 				return finalizeRunFailure(store, run, logLines, err)
@@ -259,8 +269,8 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&scenarioID, "scenario", "default", "Scenario ID")
 	cmd.Flags().StringVar(&standardID, "standard", freefield.StandardID, "Standard identifier")
 	cmd.Flags().StringVar(&standardID, "standard-id", freefield.StandardID, "Deprecated alias for --standard")
-	cmd.Flags().StringVar(&standardVersion, "standard-version", "v0", "Standard version")
-	cmd.Flags().StringVar(&standardProfile, "standard-profile", "default", "Standard profile")
+	cmd.Flags().StringVar(&standardVersion, "standard-version", "", "Standard version (defaults to standard default)")
+	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter key=value (repeatable)")
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
@@ -289,18 +299,12 @@ func parseKeyValueFlags(values []string) (map[string]string, error) {
 }
 
 func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
-	options := dummyRunOptions{
-		GridResolutionM: defaultGridResolutionM,
-		GridPaddingM:    defaultGridPaddingM,
-		ReceiverHeightM: defaultReceiverHeightM,
-		SourceEmission:  defaultSourceEmission,
-		ChunkSize:       defaultChunkSize,
-	}
+	options := dummyRunOptions{}
 
 	parseFloat := func(key string, target *float64, min float64) error {
 		value, ok := params[key]
 		if !ok {
-			return nil
+			return domainerrors.New(domainerrors.KindInternal, "cli.parseDummyRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
 		}
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if err != nil {
@@ -316,7 +320,7 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 	parseInt := func(key string, target *int, min int) error {
 		value, ok := params[key]
 		if !ok {
-			return nil
+			return domainerrors.New(domainerrors.KindInternal, "cli.parseDummyRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
 		}
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
@@ -348,13 +352,15 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 		return dummyRunOptions{}, err
 	}
 
-	if rawDisable, ok := params["disable_cache"]; ok {
-		parsed, err := strconv.ParseBool(strings.TrimSpace(rawDisable))
-		if err != nil {
-			return dummyRunOptions{}, domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("invalid disable_cache=%q", rawDisable), err)
-		}
-		options.DisableCache = parsed
+	rawDisable, ok := params["disable_cache"]
+	if !ok {
+		return dummyRunOptions{}, domainerrors.New(domainerrors.KindInternal, "cli.parseDummyRunOptions", `normalized parameter "disable_cache" missing`, nil)
 	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(rawDisable))
+	if err != nil {
+		return dummyRunOptions{}, domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("invalid disable_cache=%q", rawDisable), err)
+	}
+	options.DisableCache = parsed
 
 	return options, nil
 }
@@ -377,6 +383,16 @@ func mergeInputPaths(paths []string) []string {
 	}
 
 	return out
+}
+
+func firstIndicator(indicators []string) string {
+	for _, indicator := range indicators {
+		trimmed := strings.TrimSpace(indicator)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return freefield.IndicatorLdummy
 }
 
 func loadValidatedModel(modelPath string, projectCRS string, sourcePath string) (modelgeojson.Model, error) {
@@ -405,11 +421,32 @@ func loadValidatedModel(modelPath string, projectCRS string, sourcePath string) 
 	return model, nil
 }
 
-func extractDummySources(model modelgeojson.Model, emissionDB float64) ([]freefield.Source, error) {
+func extractDummySources(model modelgeojson.Model, emissionDB float64, supportedSourceTypes []string) ([]freefield.Source, error) {
+	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
+	for _, sourceType := range supportedSourceTypes {
+		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
+		if trimmed == "" {
+			continue
+		}
+		allowedSourceType[trimmed] = struct{}{}
+	}
+
 	sources := make([]freefield.Source, 0)
 	for featureIndex, feature := range model.Features {
 		if feature.Kind != "source" {
 			continue
+		}
+
+		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
+		if normalizedSourceType != "" {
+			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
+				return nil, domainerrors.New(
+					domainerrors.KindValidation,
+					"cli.extractDummySources",
+					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
+					nil,
+				)
+			}
 		}
 
 		points, err := sourcePointsFromFeature(feature)
@@ -583,6 +620,7 @@ func persistDummyRunOutputs(
 	receivers []geo.PointReceiver,
 	gridWidth int,
 	gridHeight int,
+	indicator string,
 ) (persistedRunOutputs, error) {
 	resultsDir := filepath.Join(runDir, "results")
 	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
@@ -595,7 +633,7 @@ func persistDummyRunOutputs(
 	}
 
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{dummyIndicatorName},
+		IndicatorOrder: []string{indicator},
 		Unit:           dummyResultUnit,
 		Records:        make([]results.ReceiverRecord, 0, len(receivers)),
 	}
@@ -610,7 +648,7 @@ func persistDummyRunOutputs(
 			Y:       receiver.Point.Y,
 			HeightM: receiver.HeightM,
 			Values: map[string]float64{
-				dummyIndicatorName: level,
+				indicator: level,
 			},
 		})
 	}
@@ -630,7 +668,7 @@ func persistDummyRunOutputs(
 		Bands:     1,
 		NoData:    -9999,
 		Unit:      dummyResultUnit,
-		BandNames: []string{dummyIndicatorName},
+		BandNames: []string{indicator},
 	})
 	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "build raster", err)
@@ -645,7 +683,7 @@ func persistDummyRunOutputs(
 		}
 	}
 
-	rasterBasePath := filepath.Join(resultsDir, "ldummy")
+	rasterBasePath := filepath.Join(resultsDir, strings.ToLower(indicator))
 	rasterPersistence, err := results.SaveRaster(rasterBasePath, raster)
 	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save raster", err)

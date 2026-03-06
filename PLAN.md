@@ -186,11 +186,11 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** make standards truly modular before implementing multiple complex ones.
 
-- [ ] Define standards plugin interface
-  - [ ] Standard ID, version/profile, supported source types, supported indicators
-  - [ ] Parameter schema definition for runs
-- [ ] Implement standard version profiles (e.g., CNOSSOS profiles)
-- [ ] Enforce run provenance (standard + profile + parameters are always recorded)
+- [x] Define standards plugin interface
+  - [x] Standard ID, version/profile, supported source types, supported indicators
+  - [x] Parameter schema definition for runs
+- [x] Implement standard version profiles (e.g., CNOSSOS profiles)
+- [x] Enforce run provenance (standard + profile + parameters are always recorded)
 
 ---
 
@@ -472,7 +472,7 @@ This list is explicitly focused on “what is missing” and turns it into concr
 - [ ] Phases 1–3 (foundations + CI + project format)
 - [ ] Phases 4–7 (GeoJSON import/validate + geo core + result containers + engine)
 - [x] Phase 8 (dummy E2E)
-- [ ] Phase 9 (standards framework)
+- [x] Phase 9 (standards framework)
 - [ ] Phase 10 (CNOSSOS Road)
 
 Then: Reporting (Phase 20) and/or start the deferred standards phases.
