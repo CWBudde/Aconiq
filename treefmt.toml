@@ -26,6 +26,7 @@ excludes = [
     # Build artifacts
     "bin/**",
     "dist/**",
+    "frontend/node_modules/**",
     "coverage.out",
     "coverage.html",
 
@@ -58,7 +59,7 @@ options = ["-s", "-w"]
 includes = ["*.sh"]
 priority = 1
 
-# Markdown, YAML, JSON formatter
+# Markdown, YAML, JSON, and frontend formatter
 [formatter.prettier]
 command = "prettier"
 options = ["-w"]
@@ -67,7 +68,13 @@ includes = [
     "*.yaml",
     "*.yml",
     "*.json",
+    "*.ts",
+    "*.tsx",
+    "*.css",
+    "*.html",
 ]
 excludes = [
     "**/*.sops.*",
+    # Go files are handled by gofumpt/gci
+    "*.go",
 ]

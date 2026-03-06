@@ -47,8 +47,43 @@ build:
     cd backend && go build -o ../bin/noise ./cmd/noise
 
 # Run all checks (formatting, linting, tests, tidiness)
-ci: check-formatted test lint check-tidy
+ci: check-formatted test lint check-tidy fe-ci
+
+# --- Frontend recipes ---
+
+# Install frontend dependencies
+fe-install:
+    cd frontend && bun install
+
+# Start frontend dev server
+fe-dev:
+    cd frontend && bun run dev
+
+# Build frontend for production
+fe-build:
+    cd frontend && bun run build
+
+# Run frontend type checking
+fe-typecheck:
+    cd frontend && bun run typecheck
+
+# Run frontend linter
+fe-lint:
+    cd frontend && bun run lint
+
+# Fix frontend lint issues
+fe-lint-fix:
+    cd frontend && bun run lint:fix
+
+# Run frontend tests
+fe-test:
+    cd frontend && bun run test
+
+# Run all frontend checks (typecheck, lint, test, build)
+fe-ci: fe-typecheck fe-lint fe-test fe-build
+
+# --- General ---
 
 # Clean build artifacts
 clean:
-    rm -rf bin/ backend/coverage.out backend/coverage.html
+    rm -rf bin/ backend/coverage.out backend/coverage.html frontend/dist
