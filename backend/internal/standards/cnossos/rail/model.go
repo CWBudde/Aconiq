@@ -114,6 +114,7 @@ func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod
 func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
 	minPositive := 0.001
+	maxOne := 1.0
 	return framework.StandardDescriptor{
 		ID:             StandardID,
 		Description:    "CNOSSOS-EU rail preview module with typed source schema and deterministic indicators.",
@@ -145,7 +146,7 @@ func Descriptor() framework.StandardDescriptor {
 									Description:  "Default track roughness class for imported rail line sources",
 								},
 								{Name: "rail_average_train_speed_kph", Kind: framework.ParameterKindFloat, DefaultValue: "90", Min: &minPositive, Description: "Default train speed for imported rail sources"},
-								{Name: "rail_braking_share", Kind: framework.ParameterKindFloat, DefaultValue: "0.1", Min: &minZero, Max: &[]float64{1.0}[0], Description: "Default braking share for imported rail sources"},
+								{Name: "rail_braking_share", Kind: framework.ParameterKindFloat, DefaultValue: "0.1", Min: &minZero, Max: &maxOne, Description: "Default braking share for imported rail sources"},
 								{Name: "rail_curve_radius_m", Kind: framework.ParameterKindFloat, DefaultValue: "500", Min: &minZero, Description: "Default curve radius for imported rail sources"},
 								{Name: "rail_on_bridge", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Default bridge flag for imported rail sources"},
 								{Name: "traffic_day_trains_per_hour", Kind: framework.ParameterKindFloat, DefaultValue: "12", Min: &minZero, Description: "Day trains per hour"},
