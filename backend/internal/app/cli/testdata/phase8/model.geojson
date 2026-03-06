@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "src-a",
+        "kind": "source",
+        "source_type": "point"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0, 0]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "src-b",
+        "kind": "source",
+        "source_type": "point"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [20, 20]
+      }
+    }
+  ]
+}
