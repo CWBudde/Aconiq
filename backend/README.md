@@ -115,3 +115,16 @@ Planned package structure:
 - Golden regression scenario:
   - `internal/standards/cnossos/rail/testdata/rail_scenario.json`
   - `internal/standards/cnossos/rail/testdata/rail_scenario.golden.json`
+
+## Phase 20 Baseline
+
+- Reporting package: `internal/report/reporting`
+  - generates `report-context.json`, `report.md`, `report.html`
+  - report sections:
+    - input overview
+    - standard ID/version/profile + parameters
+    - maps/images from raster artifacts
+    - receiver table statistics
+    - QA status summary
+- `noise export` now copies run result artifacts into export bundles and generates report files by default.
+- Optional flag: `--skip-report` to export bundle artifacts without report generation.

@@ -28,4 +28,4 @@ just test     # run tests
 
 ## Current Status
 
-Phase 0 preflight through Phase 11 (CNOSSOS Rail baseline implementation) are completed.
+Phase 0 preflight through Phase 11 are completed, and Phase 20 (offline reporting v1, HTML MVP) is implemented.

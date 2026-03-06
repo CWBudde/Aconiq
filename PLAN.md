@@ -319,18 +319,31 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** reproducible reports from offline artifacts.
 
-- [ ] Report templating v1 (Markdown/HTML)
-- [ ] Required report sections
-  - [ ] Input overview
-  - [ ] Standard ID + version/profile + parameters
-  - [ ] Maps/images if available
-  - [ ] Tables (receiver stats)
-  - [ ] QA status (which suites passed)
-- [ ] PDF export (optional) or HTML-only MVP
+- [x] Report templating v1 (Markdown/HTML)
+- [x] Required report sections
+  - [x] Input overview
+  - [x] Standard ID + version/profile + parameters
+  - [x] Maps/images if available
+  - [x] Tables (receiver stats)
+  - [x] QA status (which suites passed)
+- [x] HTML-only MVP
+
+---
+
+## Phase 20b — PDF report export via Typst (deferred)
+
+**Goal:** deterministic, versioned PDF output generated from offline report context.
+
+- [ ] Add Typst template set for report PDF export
+- [ ] Add `noise export --pdf` mode using Typst compilation
+- [ ] Ensure report context (`report-context.json`) is sufficient for PDF rendering without re-reading run artifacts
+- [ ] Define deterministic font and asset strategy for reproducible output hashes
+- [ ] Add PDF golden/snapshot checks in CI (metadata and selected page text/image probes)
 
 ### Research
 
-- [ ] Evaluate HTML→PDF pipeline (headless Chromium) vs Go PDF libraries
+- [ ] Evaluate Typst invocation strategy (embedded binary vs system dependency)
+- [ ] Define template/versioning policy for backward-compatible report styles
 
 ---
 
