@@ -128,3 +128,14 @@ Planned package structure:
     - QA status summary
 - `noise export` now copies run result artifacts into export bundles and generates report files by default.
 - Optional flag: `--skip-report` to export bundle artifacts without report generation.
+
+## Phase 23 Initial Slice
+
+- Local API package: `internal/api/httpv1`
+  - `GET /api/v1/health`
+  - `GET /api/v1/project/status`
+  - `GET /api/v1/events` (SSE stream: heartbeat + project status snapshots)
+  - standardized JSON error envelope (`code`, `message`, `details`, `hint`)
+- CLI command: `noise serve`
+  - starts local HTTP server (default `127.0.0.1:8080`)
+  - graceful shutdown on `SIGINT`/`SIGTERM`

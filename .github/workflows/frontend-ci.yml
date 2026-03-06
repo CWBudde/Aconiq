@@ -1,0 +1,44 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  frontend-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: bun run typecheck
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Test
+        working-directory: frontend
+        run: bun run test
+
+      - name: Build
+        working-directory: frontend
+        run: bun run build

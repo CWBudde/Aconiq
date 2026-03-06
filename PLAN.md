@@ -9,6 +9,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 - **Offline-only is fine for now.** The near-term MVP is CLI-driven and writes artifacts into a project folder. A local API (`serve`) and browser GUI are deferred.
 - **Input data:** **GeoJSON only for now.** All other import formats exist as explicit deferred phases.
 - **Standards:** **all standards mentioned are required long-term.** Each one has a dedicated phase (even if deferred).
+- **Frontend stack (when GUI starts):** **React + TypeScript + Vite + Bun + shadcn/ui**.
 
 ## Guiding principles (from goal.md)
 
@@ -382,25 +383,198 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ---
 
-## Phase 23 — Deferred: local API + GUI (when “offline-only” changes)
+## Phase 23 — Deferred: local API + GUI activation (when “offline-only” changes)
 
-**Goal:** enable a browser GUI to drive runs and visualize results.
+**Goal:** introduce the local API contract and runtime needed to support a browser app.
 
 - [ ] Introduce `noise serve` (local-only)
-  - [ ] Define HTTP API v1 endpoints + DTOs
+  - [x] Initial `noise serve` command with graceful shutdown
+  - [x] Define initial HTTP API v1 endpoints + DTOs (`/api/v1/health`, `/api/v1/project/status`)
   - [ ] Progress streaming (SSE/WebSocket)
-  - [ ] Standardized error format
-- [ ] Frontend foundation
-  - [ ] Project explorer (scenarios, runs, artifacts)
-  - [ ] MapLibre layers for model and results
-  - [ ] Editors and validation overlays
-  - [ ] Run dialog + run monitor
-- [ ] E2E tests (Playwright): import → validate → run → visualize → export
+    - [x] Initial SSE endpoint `/api/v1/events` (heartbeat + project status stream)
+    - [ ] WebSocket support (optional path)
+  - [x] Standardized error format
+  - [ ] API versioning policy (`/api/v1`)
+  - [ ] Local CORS/CSRF model for desktop-local usage
+- [ ] API contract artifacts
+  - [ ] OpenAPI spec generation in CI
+  - [ ] TypeScript client generation pipeline for frontend
+  - [ ] Error envelope schema (`code`, `message`, `details`, `hint`)
+- [ ] E2E smoke flow API-side (headless): import → validate → run → export
 
 ### Research
 
-- [ ] OpenAPI vs gRPC/Connect
-- [ ] TypeScript DTO generation
+- [ ] OpenAPI vs gRPC/Connect (keep local-first ergonomics)
+- [ ] DTO generation strategy and backward compatibility policy
+
+---
+
+## Phase 23a — Frontend foundation (React/TS + Vite + Bun)
+
+**Goal:** establish the frontend workspace and developer workflow.
+
+- [x] Create frontend app scaffold with Bun + Vite + React + TypeScript
+- [x] Define source layout
+  - [x] `frontend/src/` for the main app (flat, no workspaces)
+  - [x] `frontend/src/ui/` for shared UI wrappers/theme primitives
+  - [x] `frontend/src/map/` for map adapters and layer helpers
+  - [x] `frontend/src/api/` for backend API client and types
+- [x] Configure strict TypeScript + ESLint + formatter integration
+- [x] Configure environment handling (`.env`, API base URL, build-time flags)
+- [x] Add frontend CI jobs (`bun install`, typecheck, lint, test, build)
+- [x] Create architecture decision records for frontend conventions
+
+---
+
+## Phase 23b — UI system & design baseline (shadcn/ui)
+
+**Goal:** build a consistent, accessible UI foundation.
+
+- [ ] Initialize shadcn/ui in the Vite app (use baseui)
+- [ ] Define design tokens and theme contract
+  - [ ] Color scales for maps + UI chrome
+  - [ ] Typography scale
+  - [ ] Spacing/radius/elevation tokens
+- [ ] Build reusable app primitives
+  - [ ] App shell layout
+  - [ ] Sidebar/navigation
+  - [ ] Dialog/sheet patterns
+  - [ ] Data table wrapper
+  - [ ] Form field wrappers
+- [ ] Accessibility baseline
+  - [ ] Keyboard navigation requirements for all shell components
+  - [ ] Focus management and visible focus states
+  - [ ] Screen-reader labels for icon-only actions
+
+### Research
+
+- [ ] Form stack decision: React Hook Form + Zod vs TanStack Form + Zod
+- [ ] Notification/toast strategy (`sonner` vs alternative)
+
+---
+
+## Phase 23c — App shell, routing, and data orchestration
+
+**Goal:** make the SPA structure scalable and type-safe.
+
+- [ ] Routing architecture decision and implementation
+  - [ ] Evaluate React Router Data mode vs TanStack Router file-based routing
+  - [ ] Implement route-level code splitting
+  - [ ] Add route guards for long-running run sessions
+- [ ] Server-state strategy
+  - [ ] Integrate TanStack Query for API data fetching/cache/invalidation
+  - [ ] Define query key conventions and cache TTL defaults
+- [ ] Client-state strategy
+  - [ ] Choose global store pattern for UI-only state (selection/tool panels)
+  - [ ] Define URL state policy (map viewport, active layers, scenario selection)
+- [ ] Error boundaries + suspense/loading architecture per route
+
+---
+
+## Phase 23d — Map workspace core (MapLibre)
+
+**Goal:** ship a robust interactive map workspace for model and result layers.
+
+- [ ] Implement MapLibre map module with controlled camera state
+- [ ] Layer system v1
+  - [ ] Basemap/style loader
+  - [ ] Model layers (sources/buildings/barriers/receivers)
+  - [ ] Result layers (rasters/contours/point tables)
+  - [ ] Layer ordering and visibility controls
+- [ ] Legend and color ramp subsystem
+- [ ] Map interaction model
+  - [ ] Identify/select features
+  - [ ] Hover and click inspect popups
+  - [ ] Box select and multi-select support
+- [ ] CRS and coordinate display conventions in UI
+- [ ] Performance guardrails for large feature counts (clustering/virtualization/tile fallback)
+
+### Research
+
+- [ ] React binding strategy: native `maplibre-gl` integration vs wrapper libraries
+- [ ] Offline/portable basemap strategy (PMTiles/vector tiles/raster fallback)
+
+---
+
+## Phase 23e — Model editing workflows
+
+**Goal:** enable practical model authoring and correction from the GUI.
+
+- [ ] Source editor workflow
+  - [ ] Point/line/area drawing and editing
+  - [ ] Attribute forms per source type
+- [ ] Building/barrier editing workflow
+  - [ ] Geometry edits
+  - [ ] Height and required attribute editors
+- [ ] Validation overlay integration
+  - [ ] Display per-feature validation issues on map and in side panel
+  - [ ] Deep-link from issue list to map feature
+- [ ] Import assistant UI
+  - [ ] Upload/select local files
+  - [ ] Preview normalized model changes
+  - [ ] Confirm-and-apply flow with diff summary
+- [ ] Undo/redo command stack for map edits
+
+---
+
+## Phase 23f — Run configuration and execution UX
+
+**Goal:** make run setup and monitoring reliable for long-running jobs.
+
+- [ ] Run setup dialog
+  - [ ] Standard/version/profile picker
+  - [ ] Parameter editor generated from schema
+  - [ ] Receiver set selector
+- [ ] Run execution monitor
+  - [ ] Progress timeline/steps
+  - [ ] Live logs
+  - [ ] Cancel/retry actions
+- [ ] Run history UX
+  - [ ] Filter by scenario/status/standard
+  - [ ] Artifact links per run
+- [ ] Determinism-aware UX hints (same inputs/profile expectation messaging)
+
+---
+
+## Phase 23g — Results analysis, comparison, and exports UX
+
+**Goal:** visualize outputs and compare scenarios/runs effectively.
+
+- [ ] Result map views
+  - [ ] Raster rendering controls (ramp, min/max, opacity)
+  - [ ] Contour overlays and labels
+  - [ ] Receiver value probe tool
+- [ ] Tabular analysis views
+  - [ ] Receiver table grid with sorting/filtering/export
+  - [ ] Indicator summary cards (min/max/mean/percentiles)
+- [ ] Comparison workflows
+  - [ ] Run-to-run diff layer
+  - [ ] Scenario A/B side-by-side mode
+- [ ] Export center UI
+  - [ ] Bundle export triggers
+  - [ ] Report preview for HTML report files
+  - [ ] Typst-PDF phase hook placeholder (Phase 20b)
+
+---
+
+## Phase 23h — Frontend QA, accessibility, and performance hardening
+
+**Goal:** make frontend behavior stable, testable, and scalable.
+
+- [ ] Testing pyramid for frontend
+  - [ ] Unit/component tests (Bun test + DOM testing stack)
+  - [ ] Route and state integration tests
+  - [ ] E2E (Playwright): import → validate → run → visualize → export
+- [ ] Accessibility test automation
+  - [ ] Keyboard-only navigation tests
+  - [ ] Core screen-reader semantics checks
+- [ ] Performance observability
+  - [ ] Frame-time and interaction telemetry in dev mode
+  - [ ] Large-model synthetic benchmark scenes
+  - [ ] Bundle size budgets + CI guard
+- [ ] Reliability features
+  - [ ] Autosave + unsaved-change protection
+  - [ ] Crash-safe local draft recovery
 
 ---
 
@@ -500,6 +674,11 @@ This list is explicitly focused on “what is missing” and turns it into concr
 
 - [ ] When GUI starts: define minimal workflow (import → validate → run → visualize → export)
 - [ ] Define “must-have” exports (GeoTIFF/CSV/PNG/report) and which are deferred
+- [ ] Finalize frontend router decision (React Router Data mode vs TanStack Router)
+- [ ] Finalize frontend form strategy (RHF+Zod vs TanStack Form)
+- [ ] Define frontend state boundaries (query cache vs global UI store vs URL state)
+- [ ] Define map layer performance thresholds (feature count, tile fallback triggers)
+- [ ] Define accessibility baseline and automated checks for map-heavy interactions
 
 ---
 
@@ -511,4 +690,4 @@ This list is explicitly focused on “what is missing” and turns it into concr
 - [x] Phase 9 (standards framework)
 - [x] Phase 10 (CNOSSOS Road)
 
-Then: Reporting (Phase 20) and/or start the deferred standards phases.
+Then: Reporting (Phase 20), deferred standards phases, and when GUI is activated start frontend track with Phase 23 → 23a → 23b → 23c.
