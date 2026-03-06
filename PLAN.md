@@ -284,18 +284,69 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ## Phase 17 — Germany planning track: RLS‑19 (required, deferred)
 
-- [ ] Implement `rls19/` module
-  - [ ] Emission
-  - [ ] Propagation
-  - [ ] Result indicators/outputs for the workflow
-- [ ] Integrate official acceptance suite where legally possible
-  - [ ] RLS‑19 TEST‑20 in CI
-  - [ ] Per-test tolerance rules
-- [ ] Generate a conformance report artifact (test suite status + versions)
+- [ ] Define scope + compliance boundaries for `rls19/`
+  - [ ] Planning track (16. BImSchV): compute `Lr` for **day (06–22)** and **night (22–06)**
+  - [ ] Separate **implementation** from **restricted normative tables/text** (no verbatim standard embedding)
+  - [ ] Add a short “legal notes” section for the module (sources used, what is stored in-repo vs external)
+
+- [ ] Replace the current `rls19-road` _preview_ with a standards-faithful implementation
+  - [ ] Keep deterministic behavior (segment splitting, stable reductions, canonical ordering)
+  - [ ] Keep float64 internally; document any required rounding rules at output boundaries
+
+- [ ] Data model + inputs (RLS‑19 road)
+  - [ ] Vehicle groups: Pkw, Lkw1, Lkw2, Krad (and how buses are mapped/handled)
+  - [ ] Time periods: day/night traffic inputs (support both direct hourly inputs and optional DTV→hourly conversion helpers)
+  - [ ] Road: surface/cover type, speeds per vehicle group, gradient/sign, junction type + distance, lane/direction layout
+  - [ ] Geometry: source line(s) per direction, receivers (height), buildings/barriers for reflection/shielding scenarios
+
+- [ ] Emission (align with TEST‑20 “E\*” coverage)
+  - [ ] E1: Base (speed-dependent) “Grundwert” per vehicle group
+  - [ ] E2: Straßendeckschicht correction (including “not provided combination” warnings)
+  - [ ] E3: Längsneigung correction (vehicle-group dependent; sign matters)
+  - [ ] E4: Knotenpunkt correction (signalized / roundabout / other; distance-dependent)
+  - [ ] E5: Mehrfachreflexionszuschlag / street-canyon surcharge inputs (building height + canyon width)
+  - [ ] E6: Per-vehicle sound power levels with additive corrections
+  - [ ] E7/EG: Längenbezogener Schallleistungspegel per lane/direction and per period (day/night)
+  - [ ] Make all normative coefficients/tables data-driven (loadable from an external “standards data pack”)
+
+- [ ] Propagation (align with TEST‑20 “I*” + “K*” coverage)
+  - [ ] Use the Teilstückverfahren-style approach with deterministic segment/sub-segment splitting
+  - [ ] Free-field case: geometric divergence + air absorption + ground/meteorology
+  - [ ] Shielding: wall/berm diffraction handling consistent with the test suite scenarios
+  - [ ] Topography: road in cut (Tieflage), embankment (Hochlage), rising/descending roads, “wegführende” roads
+  - [ ] Reflections: implement up to two reflections and reflection-loss handling
+  - [ ] Building/courtyard scenarios: house fronts parallel to road, perpendicular buildings, “Hinterhof”
+  - [ ] Reflection conditions test task (K5): ensure the specific reflection edge-cases pass
+
+- [ ] Indicators / outputs
+  - [ ] Export `LrDay` and `LrNight` to rasters + receiver tables (consistent naming + metadata)
+  - [ ] Add provenance fields for: RLS‑19 version/profile, data-pack version, and key parameters
+  - [ ] Document rounding + reporting precision (keep distinct from internal computation)
+
+- [ ] QA / acceptance integration
+  - [ ] Add a dedicated `internal/qa/acceptance/rls19_test20` runner with stable, per-task pass/fail output
+  - [ ] Support two modes:
+    - [ ] “Local suite” mode: run against locally downloaded TEST‑20 PDFs / extracted data (not committed)
+    - [ ] “CI-safe” mode: run only against license-safe derived fixtures (or skip with explicit reason)
+  - [ ] Per-task tolerance rules (match TEST‑20 expectations: emission strictness, immission reference vs check settings)
+  - [ ] Generate a conformance report artifact (suite version(s), task list, pass/fail, tolerances used)
 
 ### Research
 
 - [ ] Clarify how TEST‑20 data is obtained, stored, and legally redistributed (if at all)
+- [ ] Track public sources and versions:
+  - [ ] BASt download page for TEST‑20 + conformance form (note: published versions may differ from DIN-hosted copies)
+    - https://www.bast.de/DE/Publikationen/Regelwerke/Verkehrstechnik/Unterseiten/test20.html
+    - https://www.bast.de/DE/Publikationen/Regelwerke/Verkehrstechnik/Downloads/test20-aufgaben.pdf?__blob=publicationFile&v=1
+    - https://www.bast.de/DE/Publikationen/Regelwerke/Verkehrstechnik/Downloads/test20-konformitaet.pdf?__blob=publicationFile&v=1
+  - [ ] Legal adoption context (16. BImSchV update referencing RLS‑19 day/night periods)
+    - https://dserver.bundestag.de/btd/19/184/1918471.pdf
+  - [ ] Example guidance for RLS‑19 input derivation from traffic data (DTV → day/night + vehicle groups)
+    - https://www.berlin.de/sen/uvk/_assets/verkehr/verkehrsdaten/umrechungsfaktoren-von-verkehrsmengen/rechenbeispiel.pdf
+    - https://rp-darmstadt.hessen.de/sites/rp-darmstadt.hessen.de/files/2023-06/22_02laermkennwerte_rls2019_0.pdf
+  - [ ] Practitioner overview of RLS‑19 structure (emission vs propagation, two reflections)
+    - https://www.ingenieur.de/fachmedien/laermbekaempfung/verkehrslaerm/richtlinien-fuer-den-laermschutz-an-strassen-rls19/
+  - [ ] Identify authoritative version for CI gating (and how updates are handled)
 
 ---
 
