@@ -57,7 +57,7 @@ function AppSidebar() {
             <SidebarMenu>
               {navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton isActive={item.isActive}>
+                  <SidebarMenuButton isActive={item.isActive === true}>
                     <item.icon className="h-4 w-4" />
                     <span>{item.title}</span>
                   </SidebarMenuButton>

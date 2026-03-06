@@ -430,26 +430,27 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** build a consistent, accessible UI foundation.
 
-- [ ] Initialize shadcn/ui in the Vite app (use baseui)
-- [ ] Define design tokens and theme contract
-  - [ ] Color scales for maps + UI chrome
-  - [ ] Typography scale
-  - [ ] Spacing/radius/elevation tokens
-- [ ] Build reusable app primitives
-  - [ ] App shell layout
-  - [ ] Sidebar/navigation
-  - [ ] Dialog/sheet patterns
-  - [ ] Data table wrapper
-  - [ ] Form field wrappers
-- [ ] Accessibility baseline
-  - [ ] Keyboard navigation requirements for all shell components
-  - [ ] Focus management and visible focus states
-  - [ ] Screen-reader labels for icon-only actions
+- [x] Initialize shadcn/ui in the Vite app (Tailwind CSS v4 + shadcn CLI)
+- [x] Define design tokens and theme contract
+  - [x] Color scales for maps + UI chrome (OKLCH, muted teal accent, warm slate neutrals)
+  - [x] Typography scale (IBM Plex Sans / IBM Plex Mono)
+  - [x] Spacing/radius/elevation tokens (CSS variables via `@theme inline`)
+- [x] Build reusable app primitives
+  - [x] App shell layout
+  - [x] Sidebar/navigation
+  - [x] Dialog/sheet patterns
+  - [x] Data table wrapper
+  - [x] Form field wrappers
+- [x] Accessibility baseline
+  - [x] Keyboard navigation requirements for all shell components (via Radix UI primitives)
+  - [x] Focus management and visible focus states (outline-ring)
+  - [x] Screen-reader labels for icon-only actions (aria-label on theme toggle)
+- [x] Dark mode support (system preference default, localStorage persistence)
 
 ### Research
 
-- [ ] Form stack decision: React Hook Form + Zod vs TanStack Form + Zod
-- [ ] Notification/toast strategy (`sonner` vs alternative)
+- [x] Form stack decision: deferred to Phase 23e (React Hook Form + Zod likely; FormField wrapper ready)
+- [x] Notification/toast strategy: deferred to Phase 23f (`sonner` likely; no toast needed yet)
 
 ---
 
