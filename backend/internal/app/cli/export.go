@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
-	"github.com/soundplan/soundplan/backend/internal/report/reporting"
-	"github.com/soundplan/soundplan/backend/internal/report/results"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/report/reporting"
+	"github.com/aconiq/backend/internal/report/results"
 	"github.com/spf13/cobra"
 )
 

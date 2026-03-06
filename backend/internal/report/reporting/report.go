@@ -13,12 +13,12 @@ import (
 	texttemplate "text/template"
 	"time"
 
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
-	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 const (
-	defaultReportTitle = "Soundplan Run Report"
+	defaultReportTitle = "Aconiq Run Report"
 )
 
 type QASuiteStatus struct {

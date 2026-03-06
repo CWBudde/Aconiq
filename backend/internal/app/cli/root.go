@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/soundplan/soundplan/backend/internal/app/config"
-	"github.com/soundplan/soundplan/backend/internal/app/logging"
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/app/config"
+	"github.com/aconiq/backend/internal/app/logging"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/spf13/cobra"
 )
 

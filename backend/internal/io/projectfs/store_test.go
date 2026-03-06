@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/domain/project"
 )
 
 func TestInitAndLoadProject(t *testing.T) {

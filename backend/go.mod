@@ -1,4 +1,4 @@
-module github.com/soundplan/soundplan/backend
+module github.com/aconiq/backend
 
 go 1.25.0
 

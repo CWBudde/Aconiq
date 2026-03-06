@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo"
 )
 
 func TestComputeReceiverLevelDBSingleSourceAtOneMeter(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/soundplan/soundplan/backend/internal/geo"
-	"github.com/soundplan/soundplan/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 func TestRoadSourceValidate(t *testing.T) {

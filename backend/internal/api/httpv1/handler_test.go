@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 func TestHealthEndpoint(t *testing.T) {

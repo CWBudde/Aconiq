@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/soundplan/soundplan/backend/internal/app/cli"
+	"github.com/aconiq/backend/internal/app/cli"
 )
 
 func main() {

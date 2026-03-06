@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	domainerrors "github.com/soundplan/soundplan/backend/internal/domain/errors"
-	"github.com/soundplan/soundplan/backend/internal/domain/project"
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
 )
 
 func resolvePath(baseDir string, value string) string {
