@@ -37,5 +37,5 @@ This phase introduces a deterministic CNOSSOS road baseline module with typed so
 ## Notes
 
 - This baseline is deterministic and test-covered.
-- CLI `noise run` integration for `cnossos-road` is still pending model-mapping wiring.
+- `noise run --standard cnossos-road` is wired for line-source model extraction and result export.
 - Public validation datasets and formal tolerance/rounding benchmarking remain tracked as open QA tasks in `PLAN.md`.

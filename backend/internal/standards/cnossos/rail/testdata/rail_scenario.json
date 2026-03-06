@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "id": "rail-1",
+      "track_centerline": [
+        {"x": -100, "y": 0},
+        {"x": 100, "y": 0}
+      ],
+      "traction_type": "electric",
+      "track_roughness_class": "standard",
+      "average_train_speed_kph": 100,
+      "braking_share": 0.15,
+      "curve_radius_m": 350,
+      "on_bridge": false,
+      "traffic_day": {"trains_per_hour": 14},
+      "traffic_evening": {"trains_per_hour": 8},
+      "traffic_night": {"trains_per_hour": 5}
+    },
+    {
+      "id": "rail-2",
+      "track_centerline": [
+        {"x": -100, "y": 80},
+        {"x": 100, "y": 80}
+      ],
+      "traction_type": "diesel",
+      "track_roughness_class": "rough",
+      "average_train_speed_kph": 75,
+      "braking_share": 0.05,
+      "curve_radius_m": 700,
+      "on_bridge": true,
+      "traffic_day": {"trains_per_hour": 10},
+      "traffic_evening": {"trains_per_hour": 6},
+      "traffic_night": {"trains_per_hour": 3}
+    }
+  ],
+  "receivers": [
+    {"id": "rx-1", "point": {"x": 0, "y": 20}, "height_m": 4},
+    {"id": "rx-2", "point": {"x": 0, "y": 40}, "height_m": 4},
+    {"id": "rx-3", "point": {"x": 0, "y": 60}, "height_m": 4},
+    {"id": "rx-4", "point": {"x": 0, "y": 90}, "height_m": 4}
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

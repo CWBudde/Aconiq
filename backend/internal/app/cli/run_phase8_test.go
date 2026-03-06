@@ -14,6 +14,7 @@ import (
 	"github.com/soundplan/soundplan/backend/internal/io/projectfs"
 	"github.com/soundplan/soundplan/backend/internal/qa/golden"
 	"github.com/soundplan/soundplan/backend/internal/report/results"
+	cnossosroad "github.com/soundplan/soundplan/backend/internal/standards/cnossos/road"
 	"github.com/soundplan/soundplan/backend/internal/standards/dummy/freefield"
 )
 
@@ -122,6 +123,72 @@ func TestRunRejectsUnknownRunParameter(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `unknown run parameter "not_allowed"`) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCnossosRoadProducesOutputs(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase10", "road_model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase10", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-road")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+	if len(proj.Runs) == 0 {
+		t.Fatal("expected one run")
+	}
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.Status != project.RunStatusCompleted {
+		t.Fatalf("expected completed run status, got %q", run.Status)
+	}
+
+	resultsDir := filepath.Join(projectDir, ".noise", "runs", run.ID, "results")
+	for _, path := range []string{
+		filepath.Join(resultsDir, "receivers.json"),
+		filepath.Join(resultsDir, "receivers.csv"),
+		filepath.Join(resultsDir, "cnossos-road.json"),
+		filepath.Join(resultsDir, "cnossos-road.bin"),
+		filepath.Join(resultsDir, "run-summary.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected result file %s: %v", path, err)
+		}
+	}
+
+	payload, err := os.ReadFile(filepath.Join(resultsDir, "receivers.json"))
+	if err != nil {
+		t.Fatalf("read receiver table: %v", err)
+	}
+	var table results.ReceiverTable
+	if err := json.Unmarshal(payload, &table); err != nil {
+		t.Fatalf("decode receiver table: %v", err)
+	}
+	if len(table.IndicatorOrder) == 0 {
+		t.Fatal("expected indicator order in receiver table")
+	}
+	expectedIndicators := map[string]bool{
+		cnossosroad.IndicatorLden:   false,
+		cnossosroad.IndicatorLnight: false,
+	}
+	for _, indicator := range table.IndicatorOrder {
+		if _, ok := expectedIndicators[indicator]; ok {
+			expectedIndicators[indicator] = true
+		}
+	}
+	for indicator, found := range expectedIndicators {
+		if !found {
+			t.Fatalf("expected indicator %s in receiver table order", indicator)
+		}
 	}
 }
 

@@ -17,13 +17,31 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
-      - name: Verify formatting (gofmt)
-        run: scripts/check-gofmt.sh
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: backend
+          args: --timeout=2m
+          skip-cache: false
+
+      - name: Install formatters
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          go install github.com/daixiang0/gci@latest
+
+      - name: Check formatting
+        run: just check-formatted
 
       - name: Go vet
         working-directory: backend
         run: go vet ./...
 
       - name: Go tests
-        working-directory: backend
-        run: go test ./...
+        run: just test
+
+      - name: Check tidy
+        run: just check-tidy
