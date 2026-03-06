@@ -1,0 +1,57 @@
+{
+  "name": "rls19-test20-derived-ci-safe",
+  "standard_id": "rls19-road",
+  "suite_version": "derived-ci-safe-v1",
+  "evidence_class": "license-safe derived fixture suite",
+  "provenance": "repo-authored scenarios derived from Phase 17 implementation and public TEST-20 task categories",
+  "tasks": [
+    {
+      "name": "E1-derived-base-emission",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived emission baseline using a single straight road and one receiver.",
+      "scenario_path": "ci_safe/e1_base_emission.scenario.json",
+      "expected_path": "ci_safe/e1_base_emission.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "I1-derived-immission-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived immission reference setting with a shielding barrier and coarser segment length.",
+      "scenario_path": "ci_safe/i1_immission_reference.scenario.json",
+      "expected_path": "ci_safe/i1_immission_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I1-derived-immission-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived immission check setting with the same geometry and finer deterministic segmentation.",
+      "scenario_path": "ci_safe/i1_immission_check.scenario.json",
+      "expected_path": "ci_safe/i1_immission_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K5-derived-reflection-conditions",
+      "category": "reflection",
+      "setting": "check",
+      "description": "Derived reflection-condition task with a single explicit reflector.",
+      "scenario_path": "ci_safe/k5_reflection_conditions.scenario.json",
+      "expected_path": "ci_safe/k5_reflection_conditions.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reflection task absolute deviation <= 1e-6 dB"
+      }
+    }
+  ]
+}

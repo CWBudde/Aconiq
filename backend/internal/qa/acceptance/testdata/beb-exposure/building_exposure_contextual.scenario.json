@@ -1,0 +1,63 @@
+{
+  "config": {
+    "occupancy_mode": "height_derived",
+    "facade_evaluation_mode": "max_facade",
+    "floor_height_m": 3,
+    "dwellings_per_floor": 1.2,
+    "persons_per_dwelling": 2.0,
+    "threshold_lden_db": 55,
+    "threshold_lnight_db": 50
+  },
+  "roads": [
+    {
+      "id": "road-1",
+      "centerline": [
+        { "x": -140, "y": -5 },
+        { "x": 140, "y": -5 }
+      ],
+      "surface_type": "cobblestone",
+      "road_function_class": "urban_main",
+      "speed_kph": 40,
+      "junction_type": "traffic_light",
+      "junction_distance_m": 10,
+      "temperature_c": 2,
+      "studded_tyre_share": 0.25,
+      "traffic_day": { "light_vehicles_per_hour": 700, "medium_vehicles_per_hour": 150, "heavy_vehicles_per_hour": 110, "powered_two_wheelers_per_hour": 40 },
+      "traffic_evening": { "light_vehicles_per_hour": 450, "medium_vehicles_per_hour": 90, "heavy_vehicles_per_hour": 70, "powered_two_wheelers_per_hour": 18 },
+      "traffic_night": { "light_vehicles_per_hour": 220, "medium_vehicles_per_hour": 45, "heavy_vehicles_per_hour": 45, "powered_two_wheelers_per_hour": 6 }
+    }
+  ],
+  "buildings": [
+    {
+      "id": "b-1",
+      "usage_type": "residential",
+      "height_m": 9,
+      "estimated_dwellings": 9,
+      "estimated_persons": 18,
+      "footprint": [
+        [
+          { "x": 20, "y": -20 },
+          { "x": 50, "y": -20 },
+          { "x": 50, "y": 5 },
+          { "x": 20, "y": 5 },
+          { "x": 20, "y": -20 }
+        ]
+      ]
+    },
+    {
+      "id": "b-2",
+      "usage_type": "residential",
+      "height_m": 15,
+      "floor_count": 5,
+      "footprint": [
+        [
+          { "x": 75, "y": 15 },
+          { "x": 105, "y": 15 },
+          { "x": 105, "y": 45 },
+          { "x": 75, "y": 45 },
+          { "x": 75, "y": 15 }
+        ]
+      ]
+    }
+  ]
+}

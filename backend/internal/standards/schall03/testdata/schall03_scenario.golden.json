@@ -1,0 +1,39 @@
+{
+  "grid_height": 2,
+  "grid_width": 2,
+  "receiver_count": 4,
+  "receivers": [
+    {
+      "LrDay": 89.921052,
+      "LrNight": 86.537376,
+      "height_m": 4,
+      "id": "rx-1",
+      "x": 0,
+      "y": 20
+    },
+    {
+      "LrDay": 87.359551,
+      "LrNight": 84.061187,
+      "height_m": 4,
+      "id": "rx-2",
+      "x": 0,
+      "y": 40
+    },
+    {
+      "LrDay": 87.721765,
+      "LrNight": 84.561362,
+      "height_m": 4,
+      "id": "rx-3",
+      "x": 0,
+      "y": 60
+    },
+    {
+      "LrDay": 89.59924,
+      "LrNight": 86.53694,
+      "height_m": 4,
+      "id": "rx-4",
+      "x": 0,
+      "y": 90
+    }
+  ]
+}

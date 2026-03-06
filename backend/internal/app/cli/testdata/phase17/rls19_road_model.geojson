@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rls19-rd-1",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 0], [120, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rls19-rd-2",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 50], [120, 50]]
+      }
+    }
+  ]
+}

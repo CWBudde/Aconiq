@@ -1,0 +1,44 @@
+{
+  "buildings": [
+    {
+      "Lden": 60.362364,
+      "Lnight": 52.573611,
+      "affected_dwellings_lden": 3,
+      "affected_dwellings_lnight": 3,
+      "affected_persons_lden": 6.6,
+      "affected_persons_lnight": 6.6,
+      "estimated_dwellings": 3,
+      "estimated_persons": 6.6,
+      "id": "b-1",
+      "x": 32.5,
+      "y": -2.5
+    },
+    {
+      "Lden": 48.727618,
+      "Lnight": 40.938865,
+      "affected_dwellings_lden": 0,
+      "affected_dwellings_lnight": 0,
+      "affected_persons_lden": 0,
+      "affected_persons_lnight": 0,
+      "estimated_dwellings": 5,
+      "estimated_persons": 9.5,
+      "id": "b-2",
+      "x": 80,
+      "y": 30
+    }
+  ],
+  "summary": {
+    "affected_dwellings_lden": 3,
+    "affected_dwellings_lnight": 3,
+    "affected_persons_lden": 6.6,
+    "affected_persons_lnight": 6.6,
+    "building_count": 2,
+    "estimated_dwellings": 8,
+    "estimated_persons": 16.1,
+    "facade_evaluation_mode": "centroid",
+    "occupancy_mode": "prefer_feature_overrides",
+    "threshold_lden_db": 55,
+    "threshold_lnight_db": 50,
+    "upstream_mapping_standard": "bub-road"
+  }
+}

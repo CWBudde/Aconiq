@@ -1,0 +1,93 @@
+{
+  "raster": {
+    "band_names": [
+      "Ldummy"
+    ],
+    "bands": 1,
+    "height": 3,
+    "unit": "dB",
+    "values": [
+      90.005425,
+      70.791812,
+      66.9897,
+      70.791812,
+      70,
+      70.791812,
+      66.9897,
+      70.791812,
+      90.005425
+    ],
+    "width": 3
+  },
+  "receivers": [
+    {
+      "height_m": 4,
+      "id": "grid-000000",
+      "ldummy": 90.005425,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000001",
+      "ldummy": 70.791812,
+      "x": 10,
+      "y": 0
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000002",
+      "ldummy": 66.9897,
+      "x": 20,
+      "y": 0
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000003",
+      "ldummy": 70.791812,
+      "x": 0,
+      "y": 10
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000004",
+      "ldummy": 70,
+      "x": 10,
+      "y": 10
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000005",
+      "ldummy": 70.791812,
+      "x": 20,
+      "y": 10
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000006",
+      "ldummy": 66.9897,
+      "x": 0,
+      "y": 20
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000007",
+      "ldummy": 70.791812,
+      "x": 10,
+      "y": 20
+    },
+    {
+      "height_m": 4,
+      "id": "grid-000008",
+      "ldummy": 90.005425,
+      "x": 20,
+      "y": 20
+    }
+  ],
+  "standard": {
+    "context": "planning",
+    "id": "dummy-freefield",
+    "version": "v0",
+    "profile": "default"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "sources": [
+    {
+      "id": "rail-ballasted",
+      "track_centerline": [
+        { "x": -120, "y": 0 },
+        { "x": 120, "y": 0 }
+      ],
+      "traction_type": "electric",
+      "track_type": "ballasted",
+      "track_roughness_class": "smooth",
+      "average_train_speed_kph": 140,
+      "braking_share": 0.05,
+      "curve_radius_m": 800,
+      "on_bridge": false,
+      "traffic_day": { "trains_per_hour": 16 },
+      "traffic_evening": { "trains_per_hour": 9 },
+      "traffic_night": { "trains_per_hour": 5 }
+    },
+    {
+      "id": "rail-slab-bridge",
+      "track_centerline": [
+        { "x": -120, "y": 70 },
+        { "x": 120, "y": 70 }
+      ],
+      "traction_type": "diesel",
+      "track_type": "slab",
+      "track_roughness_class": "rough",
+      "average_train_speed_kph": 85,
+      "braking_share": 0.35,
+      "curve_radius_m": 220,
+      "on_bridge": true,
+      "traffic_day": { "trains_per_hour": 11 },
+      "traffic_evening": { "trains_per_hour": 7 },
+      "traffic_night": { "trains_per_hour": 4 }
+    }
+  ],
+  "receivers": [
+    { "id": "rx-1", "point": { "x": 0, "y": 15 }, "height_m": 4 },
+    { "id": "rx-2", "point": { "x": 0, "y": 35 }, "height_m": 4 },
+    { "id": "rx-3", "point": { "x": 0, "y": 60 }, "height_m": 4 },
+    { "id": "rx-4", "point": { "x": 0, "y": 95 }, "height_m": 4 }
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

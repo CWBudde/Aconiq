@@ -1,0 +1,48 @@
+{
+  "sources": [
+    {
+      "id": "bub-road-context-1",
+      "centerline": [
+        { "x": -120, "y": -10 },
+        { "x": 120, "y": -10 }
+      ],
+      "surface_type": "cobblestone",
+      "road_function_class": "urban_main",
+      "speed_kph": 40,
+      "gradient_percent": 4,
+      "junction_type": "traffic_light",
+      "junction_distance_m": 20,
+      "temperature_c": 2,
+      "studded_tyre_share": 0.25,
+      "traffic_day": { "light_vehicles_per_hour": 700, "medium_vehicles_per_hour": 150, "heavy_vehicles_per_hour": 110, "powered_two_wheelers_per_hour": 40 },
+      "traffic_evening": { "light_vehicles_per_hour": 450, "medium_vehicles_per_hour": 90, "heavy_vehicles_per_hour": 70, "powered_two_wheelers_per_hour": 18 },
+      "traffic_night": { "light_vehicles_per_hour": 220, "medium_vehicles_per_hour": 45, "heavy_vehicles_per_hour": 45, "powered_two_wheelers_per_hour": 6 }
+    },
+    {
+      "id": "bub-road-context-2",
+      "centerline": [
+        { "x": -90, "y": 35 },
+        { "x": 90, "y": 35 }
+      ],
+      "surface_type": "porous_asphalt",
+      "road_function_class": "urban_local",
+      "speed_kph": 30,
+      "gradient_percent": 0,
+      "junction_type": "roundabout",
+      "junction_distance_m": 10,
+      "temperature_c": 10,
+      "studded_tyre_share": 0.05,
+      "traffic_day": { "light_vehicles_per_hour": 260, "medium_vehicles_per_hour": 25, "heavy_vehicles_per_hour": 10, "powered_two_wheelers_per_hour": 22 },
+      "traffic_evening": { "light_vehicles_per_hour": 180, "medium_vehicles_per_hour": 16, "heavy_vehicles_per_hour": 8, "powered_two_wheelers_per_hour": 10 },
+      "traffic_night": { "light_vehicles_per_hour": 90, "medium_vehicles_per_hour": 8, "heavy_vehicles_per_hour": 4, "powered_two_wheelers_per_hour": 3 }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -40, "y": 0 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 40, "y": 0 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": -40, "y": 55 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": 40, "y": 55 }, "height_m": 4 }
+  ],
+  "grid_width": 2,
+  "grid_height": 2
+}

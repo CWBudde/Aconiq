@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rd-1",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 0], [100, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rd-2",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 60], [100, 60]]
+      }
+    }
+  ]
+}

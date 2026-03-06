@@ -1,0 +1,79 @@
+{
+  "sources": [
+    {
+      "id": "road-urban-local",
+      "centerline": [
+        { "x": -80, "y": 0 },
+        { "x": 80, "y": 0 }
+      ],
+      "road_category": "urban_local",
+      "surface_type": "concrete",
+      "speed_kph": 45,
+      "gradient_percent": 4,
+      "junction_type": "traffic_light",
+      "junction_distance_m": 15,
+      "temperature_c": -5,
+      "studded_tyre_share": 0.35,
+      "traffic_day": {
+        "light_vehicles_per_hour": 700,
+        "medium_vehicles_per_hour": 110,
+        "heavy_vehicles_per_hour": 55,
+        "powered_two_wheelers_per_hour": 45
+      },
+      "traffic_evening": {
+        "light_vehicles_per_hour": 420,
+        "medium_vehicles_per_hour": 70,
+        "heavy_vehicles_per_hour": 35,
+        "powered_two_wheelers_per_hour": 25
+      },
+      "traffic_night": {
+        "light_vehicles_per_hour": 180,
+        "medium_vehicles_per_hour": 30,
+        "heavy_vehicles_per_hour": 20,
+        "powered_two_wheelers_per_hour": 8
+      }
+    },
+    {
+      "id": "road-rural-major",
+      "centerline": [
+        { "x": -80, "y": 60 },
+        { "x": 80, "y": 60 }
+      ],
+      "road_category": "rural_major",
+      "surface_type": "porous_asphalt",
+      "speed_kph": 95,
+      "gradient_percent": -3,
+      "junction_type": "roundabout",
+      "junction_distance_m": 40,
+      "temperature_c": 25,
+      "studded_tyre_share": 0.05,
+      "traffic_day": {
+        "light_vehicles_per_hour": 950,
+        "medium_vehicles_per_hour": 160,
+        "heavy_vehicles_per_hour": 120,
+        "powered_two_wheelers_per_hour": 18
+      },
+      "traffic_evening": {
+        "light_vehicles_per_hour": 560,
+        "medium_vehicles_per_hour": 90,
+        "heavy_vehicles_per_hour": 75,
+        "powered_two_wheelers_per_hour": 10
+      },
+      "traffic_night": {
+        "light_vehicles_per_hour": 260,
+        "medium_vehicles_per_hour": 45,
+        "heavy_vehicles_per_hour": 50,
+        "powered_two_wheelers_per_hour": 4
+      }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -20, "y": 15 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 20, "y": 15 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": -20, "y": 45 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": 20, "y": 45 }, "height_m": 4 },
+    { "id": "r5", "point": { "x": 0, "y": 90 }, "height_m": 4 }
+  ],
+  "grid_width": 3,
+  "grid_height": 2
+}

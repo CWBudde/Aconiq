@@ -1,0 +1,47 @@
+{
+  "grid_height": 2,
+  "grid_width": 2,
+  "receiver_count": 4,
+  "receivers": [
+    {
+      "Lday": 50.576837,
+      "Lden": 52.956949,
+      "Levening": 47.842578,
+      "Lnight": 45.120914,
+      "height_m": 4,
+      "id": "r1",
+      "x": -10,
+      "y": 10
+    },
+    {
+      "Lday": 50.576837,
+      "Lden": 52.956949,
+      "Levening": 47.842578,
+      "Lnight": 45.120914,
+      "height_m": 4,
+      "id": "r2",
+      "x": 10,
+      "y": 10
+    },
+    {
+      "Lday": 44.532935,
+      "Lden": 46.913046,
+      "Levening": 41.798676,
+      "Lnight": 39.077012,
+      "height_m": 4,
+      "id": "r3",
+      "x": -10,
+      "y": 30
+    },
+    {
+      "Lday": 44.532935,
+      "Lden": 46.913046,
+      "Levening": 41.798676,
+      "Lnight": 39.077012,
+      "height_m": 4,
+      "id": "r4",
+      "x": 10,
+      "y": 30
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "road-1",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-120, 0], [120, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "building-1",
+        "kind": "building",
+        "height_m": 9
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[25, -10], [40, -10], [40, 5], [25, 5], [25, -10]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "building-2",
+        "kind": "building",
+        "height_m": 12
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[70, 20], [90, 20], [90, 40], [70, 40], [70, 20]]]
+      }
+    }
+  ]
+}
