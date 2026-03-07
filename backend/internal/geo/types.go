@@ -1,7 +1,7 @@
 package geo
 
 import (
-	"fmt"
+	"errors"
 	"math"
 )
 
@@ -15,6 +15,20 @@ func (p Point2D) IsFinite() bool {
 	return isFinite(p.X) && isFinite(p.Y)
 }
 
+// Point3D is a 3D coordinate with absolute elevation.
+type Point3D struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"` // absolute elevation [m]
+}
+
+func (p Point3D) IsFinite() bool {
+	return isFinite(p.X) && isFinite(p.Y) && isFinite(p.Z)
+}
+
+// XY returns the plan-view (2D) projection.
+func (p Point3D) XY() Point2D { return Point2D{X: p.X, Y: p.Y} }
+
 // BBox is an axis-aligned bounding box.
 type BBox struct {
 	MinX float64 `json:"min_x"`
@@ -26,10 +40,11 @@ type BBox struct {
 func NewBBox(minX, minY, maxX, maxY float64) (BBox, error) {
 	b := BBox{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
 	if !b.IsFinite() {
-		return BBox{}, fmt.Errorf("bbox contains non-finite values")
+		return BBox{}, errors.New("bbox contains non-finite values")
 	}
+
 	if !b.IsValid() {
-		return BBox{}, fmt.Errorf("bbox min values must be <= max values")
+		return BBox{}, errors.New("bbox min values must be <= max values")
 	}
 
 	return b, nil
@@ -63,15 +78,19 @@ func (b BBox) ExpandToIncludePoint(p Point2D) BBox {
 	if p.X < b.MinX {
 		b.MinX = p.X
 	}
+
 	if p.X > b.MaxX {
 		b.MaxX = p.X
 	}
+
 	if p.Y < b.MinY {
 		b.MinY = p.Y
 	}
+
 	if p.Y > b.MaxY {
 		b.MaxY = p.Y
 	}
+
 	return b
 }
 
@@ -79,15 +98,19 @@ func (b BBox) ExpandToIncludeBBox(other BBox) BBox {
 	if other.MinX < b.MinX {
 		b.MinX = other.MinX
 	}
+
 	if other.MinY < b.MinY {
 		b.MinY = other.MinY
 	}
+
 	if other.MaxX > b.MaxX {
 		b.MaxX = other.MaxX
 	}
+
 	if other.MaxY > b.MaxY {
 		b.MaxY = other.MaxY
 	}
+
 	return b
 }
 

@@ -150,6 +150,7 @@ func validateTrafficInput(sourceID, period string, t TrafficInput) error {
 
 		return nil
 	}
+
 	err := check("pkw_per_hour", t.PkwPerHour)
 	if err != nil {
 		return err
@@ -205,6 +206,7 @@ func validateSpeedInput(sourceID string, s SpeedInput) error {
 
 		return nil
 	}
+
 	err := check("pkw_kph", s.PkwKPH)
 	if err != nil {
 		return err
@@ -232,8 +234,17 @@ func validateSpeedInput(sourceID string, s SpeedInput) error {
 type RoadSource struct {
 	ID string `json:"id"`
 
-	// Geometry: source line for this direction/lane group.
+	// Geometry: source line for this direction/lane group (plan view, 2D).
 	Centerline []geo.Point2D `json:"centerline"`
+
+	// ElevationM is the absolute Z of the road surface (uniform for flat roads).
+	// Default 0. Used as fallback when CenterlineElevations is not provided.
+	ElevationM float64 `json:"elevation_m,omitempty"`
+
+	// CenterlineElevations gives per-vertex absolute Z for rising or descending
+	// roads (Ansteigende/Wegführende Straße). Must have the same length as
+	// Centerline if provided; overrides ElevationM at each vertex.
+	CenterlineElevations []float64 `json:"centerline_elevations,omitempty"`
 
 	// Road attributes.
 	SurfaceType       SurfaceType  `json:"surface_type"`
@@ -268,11 +279,16 @@ func (s RoadSource) Validate() error {
 		}
 	}
 
+	err := s.validateElevation()
+	if err != nil {
+		return err
+	}
+
 	if s.SurfaceType != SurfaceNotSpecified && !isAllowedSurface(s.SurfaceType) {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
 	}
 
-	err := validateSpeedInput(s.ID, s.Speeds)
+	err = validateSpeedInput(s.ID, s.Speeds)
 	if err != nil {
 		return err
 	}
@@ -304,6 +320,25 @@ func (s RoadSource) Validate() error {
 
 func isFinite(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+func (s RoadSource) validateElevation() error {
+	if !isFinite(s.ElevationM) {
+		return fmt.Errorf("road source %q elevation_m must be finite", s.ID)
+	}
+
+	if len(s.CenterlineElevations) > 0 && len(s.CenterlineElevations) != len(s.Centerline) {
+		return fmt.Errorf("road source %q centerline_elevations length %d must match centerline length %d",
+			s.ID, len(s.CenterlineElevations), len(s.Centerline))
+	}
+
+	for i, z := range s.CenterlineElevations {
+		if !isFinite(z) {
+			return fmt.Errorf("road source %q centerline_elevations[%d] is not finite", s.ID, i)
+		}
+	}
+
+	return nil
 }
 
 // Descriptor returns the standards-framework descriptor for RLS-19 road.

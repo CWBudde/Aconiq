@@ -39,6 +39,7 @@ func TestRoadSourceValidate(t *testing.T) {
 	t.Parallel()
 
 	source := sampleSource()
+
 	err := source.Validate()
 	if err != nil {
 		t.Fatalf("valid source failed validation: %v", err)
@@ -51,6 +52,7 @@ func TestRoadSourceValidate_MissingID(t *testing.T) {
 	s := sampleSource()
 
 	s.ID = ""
+
 	err := s.Validate()
 	if err == nil {
 		t.Fatal("expected error for empty ID")
@@ -63,6 +65,7 @@ func TestRoadSourceValidate_ShortCenterline(t *testing.T) {
 	s := sampleSource()
 
 	s.Centerline = []geo.Point2D{{X: 0, Y: 0}}
+
 	err := s.Validate()
 	if err == nil {
 		t.Fatal("expected error for short centerline")
@@ -75,6 +78,7 @@ func TestRoadSourceValidate_InvalidSpeed(t *testing.T) {
 	s := sampleSource()
 
 	s.Speeds.PkwKPH = 0
+
 	err := s.Validate()
 	if err == nil {
 		t.Fatal("expected error for zero speed")
@@ -87,6 +91,7 @@ func TestRoadSourceValidate_NegativeTraffic(t *testing.T) {
 	s := sampleSource()
 
 	s.TrafficDay.PkwPerHour = -1
+
 	err := s.Validate()
 	if err == nil {
 		t.Fatal("expected error for negative traffic")
@@ -99,6 +104,7 @@ func TestRoadSourceValidate_InvalidSurface(t *testing.T) {
 	s := sampleSource()
 
 	s.SurfaceType = "bogus"
+
 	err := s.Validate()
 	if err == nil {
 		t.Fatal("expected error for invalid surface type")
@@ -436,7 +442,7 @@ func TestSplitLineIntoSegments_BasicLine(t *testing.T) {
 
 	line := []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}}
 
-	segs := SplitLineIntoSegments(line, 10)
+	segs := SplitLineIntoSegments(line, nil, 10)
 	if len(segs) != 10 {
 		t.Fatalf("expected 10 segments, got %d", len(segs))
 	}
@@ -450,6 +456,12 @@ func TestSplitLineIntoSegments_BasicLine(t *testing.T) {
 			t.Fatalf("segment %d length: expected 10, got %f", i, seg.LengthM)
 		}
 	}
+	// MidZ should be zero when no elevations provided.
+	for _, seg := range segs {
+		if seg.MidZ != 0 {
+			t.Fatalf("expected MidZ=0 without elevations, got %f", seg.MidZ)
+		}
+	}
 }
 
 func TestSplitLineIntoSegments_ShortLine(t *testing.T) {
@@ -457,7 +469,7 @@ func TestSplitLineIntoSegments_ShortLine(t *testing.T) {
 
 	line := []geo.Point2D{{X: 0, Y: 0}, {X: 3, Y: 0}}
 
-	segs := SplitLineIntoSegments(line, 10)
+	segs := SplitLineIntoSegments(line, nil, 10)
 	if len(segs) != 1 {
 		t.Fatalf("short line should produce 1 segment, got %d", len(segs))
 	}
@@ -472,7 +484,7 @@ func TestSplitLineIntoSegments_Polyline(t *testing.T) {
 	// L-shaped line: 50m east + 50m north = 100m total.
 	line := []geo.Point2D{{X: 0, Y: 0}, {X: 50, Y: 0}, {X: 50, Y: 50}}
 
-	segs := SplitLineIntoSegments(line, 10)
+	segs := SplitLineIntoSegments(line, nil, 10)
 	if len(segs) != 10 {
 		t.Fatalf("expected 10 segments, got %d", len(segs))
 	}
@@ -491,9 +503,9 @@ func TestSplitLineIntoSegments_Deterministic(t *testing.T) {
 	t.Parallel()
 
 	line := []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}}
-	segs1 := SplitLineIntoSegments(line, 7)
+	segs1 := SplitLineIntoSegments(line, nil, 7)
 
-	segs2 := SplitLineIntoSegments(line, 7)
+	segs2 := SplitLineIntoSegments(line, nil, 7)
 	if len(segs1) != len(segs2) {
 		t.Fatal("segments should be deterministic")
 	}
@@ -637,8 +649,8 @@ func TestComputeReceiverOutputs(t *testing.T) {
 	// Verify monotonic decrease with distance.
 	for i := 1; i < len(outputs); i++ {
 		if outputs[i].Indicators.LrDay >= outputs[i-1].Indicators.LrDay {
-			t.Fatalf("level should decrease with distance: receiver[%d]=%f receiver[%d]=%f",
-				i, outputs[i-1].Indicators.LrDay, i+1, outputs[i].Indicators.LrDay)
+			t.Fatalf("level should decrease with distance: at=%d prev=%f next=%f",
+				i, outputs[i-1].Indicators.LrDay, outputs[i].Indicators.LrDay)
 		}
 	}
 }
@@ -660,6 +672,7 @@ func TestDescriptorValidates(t *testing.T) {
 	t.Parallel()
 
 	descriptor := Descriptor()
+
 	err := descriptor.Validate()
 	if err != nil {
 		t.Fatalf("descriptor should validate: %v", err)
@@ -689,12 +702,14 @@ func TestBarrierValidate(t *testing.T) {
 	t.Parallel()
 
 	b := sampleBarrier()
+
 	err := b.Validate()
 	if err != nil {
 		t.Fatalf("valid barrier failed: %v", err)
 	}
 
 	b.HeightM = 0
+
 	err = b.Validate()
 	if err == nil {
 		t.Fatal("expected error for zero height")
@@ -917,6 +932,7 @@ func TestMaekawaInsertionLoss(t *testing.T) {
 
 	// Loss increases with delta.
 	lossSmall := maekawaInsertionLoss(0.1)
+
 	lossLarge := maekawaInsertionLoss(1.0)
 	if lossLarge <= lossSmall {
 		t.Fatalf("loss should increase with delta: small=%f large=%f", lossSmall, lossLarge)
@@ -950,5 +966,752 @@ func TestEnergySumDB(t *testing.T) {
 	result = energySumDB([]float64{55.0})
 	if !almostEqual(result, 55.0, 0.01) {
 		t.Fatalf("single value: expected 55, got %f", result)
+	}
+}
+
+// --- topography tests ---
+
+// sampleTieflageSource returns a source at Z=100 (road in cut, terrain at Z=105.5).
+// Geometry matches TEST-20 I6 (simplified single Teilstück at midpoint X=100, Y=50).
+func sampleTieflageSource() RoadSource {
+	s := sampleSource()
+	s.ElevationM = 100.0 // road surface at Z=100, terrain at Z=105.5
+
+	return s
+}
+
+// tieflageSlopeCrest returns the Böschungskante for TEST-20 I6:
+// slope crest at Y=62.8, Z=105.5 (terrain level), running along X-axis.
+func tieflageSlopeCrest() TerrainEdge {
+	return TerrainEdge{
+		ID: "boeschungskante-i6",
+		Geometry: []geo.Point3D{
+			{X: -200, Y: 62.8, Z: 105.5},
+			{X: 400, Y: 62.8, Z: 105.5},
+		},
+	}
+}
+
+// tieflageSlopeFoot returns the Böschungsfuß for TEST-20 I6:
+// slope foot at Y=55.3, Z=100 (road level), running along X-axis.
+func tieflageSlopeFoot() TerrainEdge {
+	return TerrainEdge{
+		ID: "boeschungsfuss-i6",
+		Geometry: []geo.Point3D{
+			{X: -200, Y: 55.3, Z: 100.0},
+			{X: 400, Y: 55.3, Z: 100.0},
+		},
+	}
+}
+
+func TestTerrainEdgeValidate(t *testing.T) {
+	t.Parallel()
+
+	e := tieflageSlopeCrest()
+	err := e.Validate()
+	if err != nil {
+		t.Fatalf("valid edge failed: %v", err)
+	}
+
+	// Too few points.
+	e2 := TerrainEdge{ID: "x", Geometry: []geo.Point3D{{X: 0, Y: 0, Z: 0}}}
+	if err := e2.Validate(); err == nil {
+		t.Fatal("expected error for single-point edge")
+	}
+
+	// Missing ID.
+	e3 := TerrainEdge{Geometry: []geo.Point3D{{}, {}}}
+	if err := e3.Validate(); err == nil {
+		t.Fatal("expected error for empty ID")
+	}
+}
+
+func TestComputeTerrainAvgZ_NoProfiles(t *testing.T) {
+	t.Parallel()
+
+	avg := computeTerrainAvgZ(
+		geo.Point2D{X: 0, Y: 0},
+		geo.Point2D{X: 100, Y: 0},
+		nil,
+	)
+
+	if avg != 0 {
+		t.Fatalf("expected 0 for no terrain profiles, got %f", avg)
+	}
+}
+
+func TestComputeTerrainAvgZ_FlatTerrain(t *testing.T) {
+	t.Parallel()
+
+	// Single terrain edge at a constant Z=105.5 crossing the path.
+	edge := TerrainEdge{
+		ID:       "flat-edge",
+		Geometry: []geo.Point3D{{X: -10, Y: 50, Z: 105.5}, {X: 200, Y: 50, Z: 105.5}},
+	}
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: edge}}}
+
+	avg := computeTerrainAvgZ(
+		geo.Point2D{X: 100, Y: 0},
+		geo.Point2D{X: 100, Y: 100},
+		[]TerrainProfile{profile},
+	)
+
+	// Edge crosses at midpoint of path; terrain before = 105.5, after = 105.5.
+	if !almostEqual(avg, 105.5, 0.01) {
+		t.Fatalf("expected terrain avg ~105.5, got %f", avg)
+	}
+}
+
+// TestComputeMeanHeight_Tieflage verifies the h_m formula against TEST-20 I6 IO1.
+// I6 IO1: source Z=100.5, receiver Z=108.3, terrain=105.5 → expected h_m ≈ -0.10.
+func TestComputeMeanHeight_Tieflage(t *testing.T) {
+	t.Parallel()
+
+	foot := tieflageSlopeFoot()
+	crest := tieflageSlopeCrest()
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	// Source midpoint (TEST-20 Teilstück midpoint), receiver IO1.
+	source := geo.Point2D{X: 100, Y: 50}
+	receiver := geo.Point2D{X: 0, Y: 100}
+	sourceZ := 100.5   // road at 100, + 0.5 m source height
+	receiverZ := 108.3 // IO1 absolute Z
+
+	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+
+	// TEST-20 reference: h_m = -0.104
+	if !almostEqual(hm, -0.104, 0.05) {
+		t.Fatalf("Tieflage I6 IO1: expected h_m ≈ -0.10, got %f", hm)
+	}
+}
+
+// TestComputeMeanHeight_TieflageFarReceiver verifies h_m for TEST-20 I6 IO2.
+// I6 IO2: source Z=100.5, receiver Z=120.5 → expected h_m ≈ 5.99.
+func TestComputeMeanHeight_TieflageFarReceiver(t *testing.T) {
+	t.Parallel()
+
+	foot := tieflageSlopeFoot()
+	crest := tieflageSlopeCrest()
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	source := geo.Point2D{X: 100, Y: 50}
+	receiver := geo.Point2D{X: 0, Y: 100}
+	sourceZ := 100.5
+	receiverZ := 120.5 // IO2 absolute Z
+
+	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+
+	// TEST-20 reference: h_m = 5.988
+	if !almostEqual(hm, 5.988, 0.05) {
+		t.Fatalf("Tieflage I6 IO2: expected h_m ≈ 5.99, got %f", hm)
+	}
+}
+
+// TestComputeMeanHeight_Hochlage verifies the h_m formula against TEST-20 I7 IO1.
+// I7 IO1: road at Z=105, terrain at Z=100, receiver Z=102.6 → expected h_m ≈ 2.24.
+func TestComputeMeanHeight_Hochlage(t *testing.T) {
+	t.Parallel()
+
+	// I7: Böschungskante at Y=55.3, Z=105 (top of embankment = road level)
+	//      Böschungsfuß  at Y=62.8, Z=100 (bottom = terrain level)
+	crest := TerrainEdge{
+		ID:       "boeschungskante-i7",
+		Geometry: []geo.Point3D{{X: -200, Y: 55.3, Z: 105.0}, {X: 400, Y: 55.3, Z: 105.0}},
+	}
+	foot := TerrainEdge{
+		ID:       "boeschungsfuss-i7",
+		Geometry: []geo.Point3D{{X: -200, Y: 62.8, Z: 100.0}, {X: 400, Y: 62.8, Z: 100.0}},
+	}
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	source := geo.Point2D{X: 100, Y: 50}
+	receiver := geo.Point2D{X: 0, Y: 75}
+	sourceZ := 105.5   // road at 105, + 0.5 m
+	receiverZ := 102.6 // IO1 absolute Z
+
+	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+
+	// TEST-20 reference: h_m = 2.237
+	if !almostEqual(hm, 2.237, 0.05) {
+		t.Fatalf("Hochlage I7 IO1: expected h_m ≈ 2.24, got %f", hm)
+	}
+}
+
+// TestTerrainEdgeShielding_Tieflage verifies that the Böschungskante shields IO1
+// in a Tieflage scenario (road in cut below terrain).
+func TestTerrainEdgeShielding_Tieflage(t *testing.T) {
+	t.Parallel()
+
+	foot := tieflageSlopeFoot()
+	crest := tieflageSlopeCrest()
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	// IO1 is behind the Böschungskante — should be shielded.
+	result := computeTerrainEdgeShielding(
+		geo.Point2D{X: 100, Y: 50}, 100.5,
+		geo.Point2D{X: 0, Y: 100}, 108.3,
+		[]TerrainProfile{profile},
+	)
+
+	if !result.Shielded {
+		t.Fatal("IO1 behind Böschungskante should be shielded")
+	}
+
+	if result.InsertionLoss <= 0 {
+		t.Fatalf("expected positive insertion loss, got %f", result.InsertionLoss)
+	}
+}
+
+// TestTerrainEdgeShielding_NoShielding verifies that IO2 (high receiver) is not
+// shielded in TEST-20 I6 because the line of sight clears the Böschungskante.
+func TestTerrainEdgeShielding_NoShielding(t *testing.T) {
+	t.Parallel()
+
+	foot := tieflageSlopeFoot()
+	crest := tieflageSlopeCrest()
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	// IO2 at Z=120.5: line of sight clears the 105.5 crest.
+	result := computeTerrainEdgeShielding(
+		geo.Point2D{X: 100, Y: 50}, 100.5,
+		geo.Point2D{X: 0, Y: 100}, 120.5,
+		[]TerrainProfile{profile},
+	)
+
+	if result.Shielded {
+		t.Fatalf("IO2 line-of-sight clears Böschungskante — should not be shielded")
+	}
+}
+
+// TestPropagation_Tieflage verifies that a road in a cut is louder for a
+// high receiver (not shielded) than for a low receiver (shielded by crest).
+func TestPropagation_Tieflage(t *testing.T) {
+	t.Parallel()
+
+	source := sampleTieflageSource()
+	foot := tieflageSlopeFoot()
+	crest := tieflageSlopeCrest()
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	cfg := DefaultPropagationConfig()
+	cfg.ReceiverTerrainZ = 105.5
+	cfg.Terrain = []TerrainProfile{profile}
+
+	// IO1: low receiver (2.8 m above terrain), shielded by Böschungskante.
+	cfg.ReceiverHeightM = 2.8
+
+	shieldedLevel, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 100}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("Tieflage shielded: %v", err)
+	}
+
+	// IO2: high receiver (15 m above terrain), not shielded.
+	cfg.ReceiverHeightM = 15.0
+
+	unshieldedLevel, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 100}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("Tieflage unshielded: %v", err)
+	}
+
+	// The higher receiver (not shielded) is closer in effective distance
+	// but the shielded one has extra D_z. Net result: unshielded should be louder.
+	if unshieldedLevel.LrDay <= shieldedLevel.LrDay {
+		t.Fatalf("unshielded (high receiver) should be louder: unshielded=%f shielded=%f",
+			unshieldedLevel.LrDay, shieldedLevel.LrDay)
+	}
+}
+
+// TestPropagation_Hochlage verifies that a road on an embankment is louder
+// at a receiver not blocked by the embankment edge than one that is blocked.
+func TestPropagation_Hochlage(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.ElevationM = 105.0 // road elevated 5 m above terrain
+
+	// I7: Böschungskante at road level Y=55.3, Böschungsfuß at Y=62.8 terrain level.
+	crest := TerrainEdge{
+		ID:       "crest-i7",
+		Geometry: []geo.Point3D{{X: -200, Y: 55.3, Z: 105.0}, {X: 400, Y: 55.3, Z: 105.0}},
+	}
+	foot := TerrainEdge{
+		ID:       "foot-i7",
+		Geometry: []geo.Point3D{{X: -200, Y: 62.8, Z: 100.0}, {X: 400, Y: 62.8, Z: 100.0}},
+	}
+	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: crest, SlopeFoot: &foot}}}
+
+	cfg := DefaultPropagationConfig()
+	cfg.ReceiverTerrainZ = 100.0
+	cfg.Terrain = []TerrainProfile{profile}
+
+	// IO1: low receiver (2.6 m above terrain at Z=102.6) — shielded by embankment.
+	cfg.ReceiverHeightM = 2.6
+
+	shieldedLevel, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 75}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("Hochlage shielded: %v", err)
+	}
+
+	// IO2: receiver at road height (5 m above terrain at Z=105) — just clears.
+	cfg.ReceiverHeightM = 5.0
+	cfg.ReceiverTerrainZ = 100.0
+
+	higherLevel, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 75}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("Hochlage higher: %v", err)
+	}
+
+	// Higher receiver should not be shielded and thus louder.
+	if higherLevel.LrDay <= shieldedLevel.LrDay {
+		t.Fatalf("higher receiver should be louder: higher=%f shielded=%f",
+			higherLevel.LrDay, shieldedLevel.LrDay)
+	}
+}
+
+// TestPropagation_Ansteigende verifies that a rising road (Ansteigende Straße)
+// produces valid results using per-vertex CenterlineElevations.
+func TestPropagation_Ansteigende(t *testing.T) {
+	t.Parallel()
+
+	// Rising road: from Z=100 at X=250 to Z=122 at X=30 (matches TEST-20 I8 geometry).
+	source := sampleSource()
+	source.Centerline = []geo.Point2D{{X: 250, Y: 50}, {X: 30, Y: 50}}
+	source.CenterlineElevations = []float64{100.0, 122.0}
+
+	cfg := DefaultPropagationConfig()
+	cfg.ReceiverTerrainZ = 100.0
+	cfg.ReceiverHeightM = 5.5
+
+	levels, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 110}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("ansteigende: %v", err)
+	}
+
+	// Day > night (traffic pattern).
+	if levels.LrDay <= levels.LrNight {
+		t.Fatalf("ansteigende: expected day > night: day=%f night=%f", levels.LrDay, levels.LrNight)
+	}
+
+	// Both should be finite (not -999 empty-sum sentinel).
+	if levels.LrDay < -500 {
+		t.Fatalf("ansteigende: day level unexpectedly low: %f", levels.LrDay)
+	}
+}
+
+// TestPropagation_Ansteigende_HigherEndLouder verifies that the rising end of the
+// road is louder for a nearby receiver on that end than the lower end.
+func TestPropagation_Ansteigende_HigherEndLouder(t *testing.T) {
+	t.Parallel()
+
+	// Rising road from X=0,Z=100 to X=200,Z=120.
+	source := sampleSource()
+	source.Centerline = []geo.Point2D{{X: 0, Y: 0}, {X: 200, Y: 0}}
+	source.CenterlineElevations = []float64{100.0, 120.0}
+
+	cfgLow := DefaultPropagationConfig()
+	cfgLow.ReceiverTerrainZ = 100.0
+	cfgLow.ReceiverHeightM = 4.0
+
+	// Receiver close to low end of road.
+	levelLow, err := ComputeReceiverLevels(geo.Point2D{X: 10, Y: 20}, []RoadSource{source}, nil, cfgLow)
+	if err != nil {
+		t.Fatalf("low end: %v", err)
+	}
+
+	cfgHigh := DefaultPropagationConfig()
+	cfgHigh.ReceiverTerrainZ = 120.0
+	cfgHigh.ReceiverHeightM = 4.0
+
+	// Receiver close to high end of road.
+	levelHigh, err := ComputeReceiverLevels(geo.Point2D{X: 190, Y: 20}, []RoadSource{source}, nil, cfgHigh)
+	if err != nil {
+		t.Fatalf("high end: %v", err)
+	}
+
+	// Both finite and meaningful.
+	if levelLow.LrDay < -500 || levelHigh.LrDay < -500 {
+		t.Fatalf("levels unexpectedly low: low=%f high=%f", levelLow.LrDay, levelHigh.LrDay)
+	}
+}
+
+// TestSplitLineIntoSegments_WithElevations verifies Z interpolation.
+func TestSplitLineIntoSegments_WithElevations(t *testing.T) {
+	t.Parallel()
+
+	// Road rising from Z=100 to Z=120 over 100 m.
+	line := []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}}
+	elevations := []float64{100.0, 120.0}
+
+	segs := SplitLineIntoSegments(line, elevations, 10)
+	if len(segs) != 10 {
+		t.Fatalf("expected 10 segments, got %d", len(segs))
+	}
+
+	// First segment midpoint at distance 5 m → Z should be 100 + 5/100*20 = 101.
+	if !almostEqual(segs[0].MidZ, 101.0, 0.01) {
+		t.Fatalf("first segment MidZ: expected 101.0, got %f", segs[0].MidZ)
+	}
+
+	// Last segment midpoint at distance 95 m → Z should be 100 + 95/100*20 = 119.
+	if !almostEqual(segs[len(segs)-1].MidZ, 119.0, 0.01) {
+		t.Fatalf("last segment MidZ: expected 119.0, got %f", segs[len(segs)-1].MidZ)
+	}
+}
+
+// TestPropagation_WegfuehrendeStrasse verifies that an angled (wegführende)
+// road produces decreasing levels as the road leads away from the receiver.
+// This is handled naturally by the Teilstueckverfahren geometry (no special
+// topography features needed for a flat angled road).
+func TestPropagation_WegfuehrendeStrasse(t *testing.T) {
+	t.Parallel()
+
+	// Road leading diagonally away: from (100,60) to (550,330) — TEST-20 I9 geometry.
+	source := sampleSource()
+	source.Centerline = []geo.Point2D{{X: 100, Y: 60}, {X: 550, Y: 330}}
+
+	cfg := DefaultPropagationConfig()
+
+	// IO1: close receiver.
+	close1, err := ComputeReceiverLevels(geo.Point2D{X: 50, Y: 30}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("wegführende close: %v", err)
+	}
+
+	// IO2: farther receiver.
+	far1, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 0}, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("wegführende far: %v", err)
+	}
+
+	// Closer receiver should be louder.
+	if close1.LrDay <= far1.LrDay {
+		t.Fatalf("close receiver should be louder for wegführende: close=%f far=%f",
+			close1.LrDay, far1.LrDay)
+	}
+}
+
+// TestGroundCorrection_ProperFormula verifies the D_gr formula against TEST-20 I1.
+func TestGroundCorrection_ProperFormula(t *testing.T) {
+	t.Parallel()
+
+	// I1 IO1: h_m=15.5, s_gr=101.98 → D_gr = 0 (formula yields negative).
+	dgr1 := computeGroundCorrection(101.98, 15.5)
+	if dgr1 != 0 {
+		t.Fatalf("I1 IO1: expected D_gr=0 (clamped), got %f", dgr1)
+	}
+
+	// I1 IO2: h_m=3.0, s_gr=111.803 → D_gr ≈ 3.74.
+	dgr2 := computeGroundCorrection(111.803, 3.0)
+	if !almostEqual(dgr2, 3.74, 0.05) {
+		t.Fatalf("I1 IO2: expected D_gr≈3.74, got %f", dgr2)
+	}
+
+	// I6 IO1: h_m=-0.104, s_gr=111.939 → D_gr ≈ 4.84.
+	dgr3 := computeGroundCorrection(111.939, -0.104)
+	if !almostEqual(dgr3, 4.84, 0.05) {
+		t.Fatalf("I6 IO1: expected D_gr≈4.84, got %f", dgr3)
+	}
+}
+
+// --- reflection tests ---
+
+func TestReflector_Validate(t *testing.T) {
+	t.Parallel()
+
+	valid := Reflector{
+		ID:       "wall-1",
+		Geometry: []geo.Point2D{{X: 15, Y: -10}, {X: 15, Y: 10}},
+		HeightM:  8.0,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("expected valid reflector, got %v", err)
+	}
+
+	// Missing ID.
+	r := valid
+	r.ID = ""
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for missing ID")
+	}
+
+	// Too few points.
+	r = valid
+	r.Geometry = []geo.Point2D{{X: 0, Y: 0}}
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for single-point geometry")
+	}
+
+	// Zero height.
+	r = valid
+	r.HeightM = 0
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for zero height")
+	}
+
+	// Negative reflection loss.
+	r = valid
+	r.ReflectionLossDB = -1
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for negative reflection loss")
+	}
+}
+
+func TestMirrorPoint_PerpendicularWall(t *testing.T) {
+	t.Parallel()
+
+	// Mirror (0, 0) across the vertical wall at x=10.
+	img := mirrorPoint(
+		geo.Point2D{X: 0, Y: 0},
+		geo.Point2D{X: 10, Y: -5},
+		geo.Point2D{X: 10, Y: 5},
+	)
+	if !almostEqual(img.X, 20, 1e-9) || !almostEqual(img.Y, 0, 1e-9) {
+		t.Fatalf("expected (20, 0), got (%f, %f)", img.X, img.Y)
+	}
+}
+
+func TestMirrorPoint_AngledWall(t *testing.T) {
+	t.Parallel()
+
+	// Mirror (0, 2) across the line y=x (wall from origin to (1,1)).
+	// Mirror of (0,2) across y=x is (2,0).
+	img := mirrorPoint(
+		geo.Point2D{X: 0, Y: 2},
+		geo.Point2D{X: 0, Y: 0},
+		geo.Point2D{X: 1, Y: 1},
+	)
+	if !almostEqual(img.X, 2, 1e-6) || !almostEqual(img.Y, 0, 1e-6) {
+		t.Fatalf("expected (2, 0), got (%f, %f)", img.X, img.Y)
+	}
+}
+
+// TestComputeReflectedPaths_SingleReflection verifies the image-source path
+// distance for a simple reflection off a perpendicular wall.
+//
+// Geometry: source (0,0), receiver (10,0), wall at x=15 (y ∈ [-20,20]).
+// Image source: (30, 0); reflected plan distance = 20 m.
+func TestComputeReflectedPaths_SingleReflection(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "wall",
+		Geometry: []geo.Point2D{{X: 15, Y: -20}, {X: 15, Y: 20}},
+		HeightM:  8,
+	}
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 10, Y: 0}, 4.0,
+		[]Reflector{wall},
+	)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 reflected path, got %d", len(paths))
+	}
+	// Image source = (30,0), receiver = (10,0) → plan dist = 20.
+	if !almostEqual(paths[0].planDistM, 20.0, 1e-6) {
+		t.Fatalf("expected plan dist 20.0 m, got %f", paths[0].planDistM)
+	}
+	// Default reflection loss = 1.0 dB.
+	if !almostEqual(paths[0].lossDB, 1.0, 1e-9) {
+		t.Fatalf("expected reflection loss 1.0 dB, got %f", paths[0].lossDB)
+	}
+}
+
+// TestComputeReflectedPaths_WallSegmentMissed verifies that no reflection is
+// returned when the reflected ray crosses the infinite wall line but misses
+// the actual wall segment.
+//
+// Geometry: source (0,0), receiver (10,0), wall segment from (15,5) to (15,20).
+// Reflection point would land at (15,0) — below the wall segment → no hit.
+func TestComputeReflectedPaths_WallSegmentMissed(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "partial-wall",
+		Geometry: []geo.Point2D{{X: 15, Y: 5}, {X: 15, Y: 20}},
+		HeightM:  8,
+	}
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 10, Y: 0}, 4.0,
+		[]Reflector{wall},
+	)
+	if len(paths) != 0 {
+		t.Fatalf("expected 0 reflected paths, got %d", len(paths))
+	}
+}
+
+// TestComputeReflectedPaths_NoReflectors verifies empty input returns no paths.
+func TestComputeReflectedPaths_NoReflectors(t *testing.T) {
+	t.Parallel()
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 10, Y: 0}, 4.0,
+		nil,
+	)
+	if len(paths) != 0 {
+		t.Fatalf("expected 0 paths for nil reflectors, got %d", len(paths))
+	}
+}
+
+// TestComputeReflectedPaths_DoubleReflection_Corner verifies that two
+// perpendicular walls generate single reflections off each wall plus one
+// valid second-order reflection (A→B only; B→A is geometrically invalid here).
+//
+// Geometry:
+//
+//	Wall A: x=15 (y ∈ [-20,20])
+//	Wall B: y=12 (x ∈ [-20,20])
+//	Source: (0, 0), Receiver: (5, 5)
+//
+// Expected paths: 1st-A, 1st-B, 2nd-A-then-B (total 3).
+// 2nd-B-then-A is invalid because the back-leg check fails.
+func TestComputeReflectedPaths_DoubleReflection_Corner(t *testing.T) {
+	t.Parallel()
+
+	wallA := Reflector{
+		ID:       "wall-a",
+		Geometry: []geo.Point2D{{X: 15, Y: -20}, {X: 15, Y: 20}},
+		HeightM:  8,
+	}
+	wallB := Reflector{
+		ID:       "wall-b",
+		Geometry: []geo.Point2D{{X: -20, Y: 12}, {X: 20, Y: 12}},
+		HeightM:  8,
+	}
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 5, Y: 5}, 4.0,
+		[]Reflector{wallA, wallB},
+	)
+	if len(paths) != 3 {
+		t.Fatalf("expected 3 reflected paths (1st-A, 1st-B, 2nd-A-then-B), got %d", len(paths))
+	}
+
+	// The double-reflection plan distance = dist2D(S''=(30,24), R=(5,5)) = sqrt(986).
+	expectedDouble := math.Sqrt(986.0)
+	maxDist := 0.0
+	maxLoss := 0.0
+	for _, p := range paths {
+		if p.planDistM > maxDist {
+			maxDist = p.planDistM
+			maxLoss = p.lossDB
+		}
+	}
+	if !almostEqual(maxDist, expectedDouble, 0.01) {
+		t.Fatalf("expected double-reflection plan dist ≈ %f, got %f", expectedDouble, maxDist)
+	}
+	// Double reflection loss = 1.0 + 1.0 = 2.0 dB.
+	if !almostEqual(maxLoss, 2.0, 1e-9) {
+		t.Fatalf("expected double-reflection loss 2.0 dB, got %f", maxLoss)
+	}
+}
+
+// TestComputeReceiverLevels_ReflectionIncreasesLevel verifies that adding a
+// reflector wall behind the road increases the receiver level.
+//
+// Geometry: road along x-axis (-50 to 50), receiver at (0, 50),
+// reflector wall at y=-10 (behind road). Every segment has a valid reflection.
+func TestComputeReceiverLevels_ReflectionIncreasesLevel(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	cfg := DefaultPropagationConfig()
+
+	lvlNoRefl, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("no reflector: %v", err)
+	}
+
+	cfg.Reflectors = []Reflector{{
+		ID:       "back-wall",
+		Geometry: []geo.Point2D{{X: -200, Y: -10}, {X: 200, Y: -10}},
+		HeightM:  8,
+	}}
+
+	lvlWithRefl, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("with reflector: %v", err)
+	}
+
+	if lvlWithRefl.LrDay <= lvlNoRefl.LrDay {
+		t.Fatalf("reflection should increase level: no-refl=%.2f dB, with-refl=%.2f dB",
+			lvlNoRefl.LrDay, lvlWithRefl.LrDay)
+	}
+}
+
+// TestComputeReceiverLevels_ReflectionCustomLoss verifies that a higher
+// reflection loss results in a smaller level increase than default.
+func TestComputeReceiverLevels_ReflectionCustomLoss(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	cfgDefault := DefaultPropagationConfig()
+	cfgDefault.Reflectors = []Reflector{{
+		ID:       "back-wall",
+		Geometry: []geo.Point2D{{X: -200, Y: -10}, {X: 200, Y: -10}},
+		HeightM:  8,
+		// ReflectionLossDB = 0 → uses default 1.0 dB
+	}}
+
+	cfgHighLoss := DefaultPropagationConfig()
+	cfgHighLoss.Reflectors = []Reflector{{
+		ID:               "back-wall",
+		Geometry:         []geo.Point2D{{X: -200, Y: -10}, {X: 200, Y: -10}},
+		HeightM:          8,
+		ReflectionLossDB: 5.0, // absorptive surface
+	}}
+
+	lvlDefault, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgDefault)
+	if err != nil {
+		t.Fatalf("default loss: %v", err)
+	}
+
+	lvlHighLoss, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgHighLoss)
+	if err != nil {
+		t.Fatalf("high loss: %v", err)
+	}
+
+	if lvlHighLoss.LrDay >= lvlDefault.LrDay {
+		t.Fatalf("higher reflection loss should reduce level increase: default=%.2f high=%.2f",
+			lvlDefault.LrDay, lvlHighLoss.LrDay)
+	}
+}
+
+// TestPropagation_ShieldedNoGroundEffect verifies that when shielded (D_z > 0)
+// the ground effect (D_gr) is replaced by D_z, not added on top.
+func TestPropagation_ShieldedNoGroundEffect(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	cfg := DefaultPropagationConfig()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	// Free-field level (D_gr applies).
+	freeField, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	// Level with a very tall barrier (effectively full shielding, D_z >> D_gr).
+	tallBarrier := Barrier{
+		ID:       "tall",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  20.0,
+	}
+
+	withBarrier, err := ComputeReceiverLevels(receiver, []RoadSource{source}, []Barrier{tallBarrier}, cfg)
+	if err != nil {
+		t.Fatalf("with barrier: %v", err)
+	}
+
+	// Barrier should significantly attenuate.
+	reduction := freeField.LrDay - withBarrier.LrDay
+	if reduction < 10 {
+		t.Fatalf("tall barrier should attenuate by >10 dB, got %f dB", reduction)
 	}
 }

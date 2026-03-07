@@ -16,8 +16,21 @@ type PropagationConfig struct {
 	// MinDistanceM is the minimum propagation distance (clamped).
 	MinDistanceM float64
 
-	// ReceiverHeightM is the receiver height above ground.
+	// ReceiverHeightM is the receiver height above ground [m].
 	ReceiverHeightM float64
+
+	// ReceiverTerrainZ is the absolute terrain elevation at receiver positions.
+	// Default 0 (ground at Z = 0 relative to the source datum).
+	// Receiver absolute Z = ReceiverTerrainZ + ReceiverHeightM.
+	ReceiverTerrainZ float64
+
+	// Terrain describes topographic features (cuts, embankments) near the road.
+	// Used for terrain-edge shielding (Böschungskante) and the h_m calculation.
+	Terrain []TerrainProfile
+
+	// Reflectors are building facades or other vertical surfaces that reflect
+	// sound to the receiver via additional propagation paths (up to 2 bounces).
+	Reflectors []Reflector
 }
 
 // DefaultPropagationConfig returns baseline propagation parameters.
@@ -43,23 +56,33 @@ func (cfg PropagationConfig) Validate() error {
 		return errors.New("receiver_height_m must be finite and >= 0")
 	}
 
+	if !isFinite(cfg.ReceiverTerrainZ) {
+		return errors.New("receiver_terrain_z must be finite")
+	}
+
 	return nil
 }
 
 // Segment represents one sub-segment of a source line for the
 // Teilstueckverfahren (partial segment method).
 type Segment struct {
-	MidPoint geo.Point2D // midpoint of this sub-segment
+	MidPoint geo.Point2D // midpoint of this sub-segment (plan view)
+	MidZ     float64     // absolute elevation of the midpoint [m]
 	LengthM  float64     // length of this sub-segment [m]
 }
 
 // SplitLineIntoSegments deterministically splits a polyline into
 // equal-length sub-segments for the Teilstueckverfahren.
+// elevations provides per-vertex absolute Z (same length as line); if nil or
+// mismatched, MidZ = 0 for all segments (flat road at Z = 0).
 // The splitting is stable: same input always produces the same segments.
-func SplitLineIntoSegments(line []geo.Point2D, targetLengthM float64) []Segment {
+func SplitLineIntoSegments(line []geo.Point2D, elevations []float64, targetLengthM float64) []Segment {
 	if len(line) < 2 || targetLengthM <= 0 {
 		return nil
 	}
+
+	// Validate elevations.
+	haveElevations := len(elevations) == len(line)
 
 	// Calculate total line length.
 	totalLength := polylineLength(line)
@@ -73,6 +96,7 @@ func SplitLineIntoSegments(line []geo.Point2D, targetLengthM float64) []Segment 
 	segLen := totalLength / float64(n)
 
 	segments := make([]Segment, 0, n)
+
 	for i := range n {
 		// Find midpoint of the i-th sub-segment along the polyline.
 		startDist := float64(i) * segLen
@@ -80,8 +104,15 @@ func SplitLineIntoSegments(line []geo.Point2D, targetLengthM float64) []Segment 
 		midDist := (startDist + endDist) / 2.0
 
 		midPt := interpolateAlongPolyline(line, midDist)
+
+		midZ := 0.0
+		if haveElevations {
+			midZ = interpolateZAlongPolyline(line, elevations, midDist)
+		}
+
 		segments = append(segments, Segment{
 			MidPoint: midPt,
+			MidZ:     midZ,
 			LengthM:  segLen,
 		})
 	}
@@ -92,6 +123,7 @@ func SplitLineIntoSegments(line []geo.Point2D, targetLengthM float64) []Segment 
 // polylineLength computes the total length of a polyline.
 func polylineLength(line []geo.Point2D) float64 {
 	total := 0.0
+
 	for i := 1; i < len(line); i++ {
 		total += dist2D(line[i-1], line[i])
 	}
@@ -132,6 +164,36 @@ func interpolateAlongPolyline(line []geo.Point2D, distance float64) geo.Point2D 
 	return line[len(line)-1]
 }
 
+// interpolateZAlongPolyline linearly interpolates elevation at a given
+// cumulative distance along a polyline with per-vertex elevations.
+func interpolateZAlongPolyline(line []geo.Point2D, elevations []float64, distance float64) float64 {
+	if distance <= 0 {
+		return elevations[0]
+	}
+
+	cumDist := 0.0
+
+	for i := 1; i < len(line); i++ {
+		segLen := dist2D(line[i-1], line[i])
+		if cumDist+segLen >= distance {
+			t := (distance - cumDist) / segLen
+			if t < 0 {
+				t = 0
+			}
+
+			if t > 1 {
+				t = 1
+			}
+
+			return elevations[i-1] + t*(elevations[i]-elevations[i-1])
+		}
+
+		cumDist += segLen
+	}
+
+	return elevations[len(elevations)-1]
+}
+
 func dist2D(a, b geo.Point2D) float64 {
 	dx := b.X - a.X
 	dy := b.Y - a.Y
@@ -142,41 +204,42 @@ func dist2D(a, b geo.Point2D) float64 {
 // AttenuationComponents holds the individual attenuation terms for one
 // source-receiver path (for diagnostics/reporting).
 type AttenuationComponents struct {
-	GeometricDivergence  float64 // A_div: geometric spreading [dB]
-	AirAbsorption        float64 // A_atm: atmospheric absorption [dB]
-	GroundMeteorological float64 // A_ground: ground + meteorological [dB]
-	BarrierShielding     float64 // A_bar: barrier insertion loss [dB]
+	GeometricDivergence  float64 // D_div: geometric spreading [dB]
+	AirAbsorption        float64 // D_atm: atmospheric absorption [dB]
+	GroundMeteorological float64 // D_gr: ground + meteorological [dB]
+	BarrierShielding     float64 // D_z: barrier/terrain-edge insertion loss [dB]
 	Total                float64 // total attenuation [dB]
 }
 
-// computeAttenuation computes the propagation attenuation from a point
-// source to a receiver in the free-field case (no barriers/reflections).
+// computeAttenuation computes free-field propagation attenuation.
 //
-// RLS-19 free-field propagation for a point source at distance d:
+// RLS-19 / DIN ISO 9613-2 point-source attenuation:
 //
-//	A_div   = 20*lg(d) + 11  (geometric divergence for point source)
-//	A_atm   = alpha_air * d / 1000  (air absorption)
-//	A_ground = ground + meteorological correction
+//	D_div = 20·lg(s) + 11      geometric spreading  [3D slant distance s]
+//	D_atm = α · s / 1000       air absorption       [3D slant distance s]
+//	D_gr  = ground correction  [plan distance s_gr, mean height h_m]
 //
-// For the Teilstueckverfahren, each sub-segment is treated as a point source
-// at its midpoint. The line-source character is recovered by summing the
-// energy contributions of all sub-segments with their length weighting.
-func computeAttenuation(distanceM float64, cfg PropagationConfig) AttenuationComponents {
-	d := distanceM
-	if d < cfg.MinDistanceM {
-		d = cfg.MinDistanceM
+// When a barrier or terrain edge shields the path, the caller replaces D_gr
+// with D_z and resets Total (RLS-19 rule: D_z replaces, not adds to, D_gr).
+func computeAttenuation(planDistM, slantDistM, hm float64, cfg PropagationConfig) AttenuationComponents {
+	s := slantDistM
+	if s < cfg.MinDistanceM {
+		s = cfg.MinDistanceM
 	}
 
-	// Geometric divergence (point source).
-	aDiv := 20*math.Log10(d) + 11.0
+	sgr := planDistM
+	if sgr < cfg.MinDistanceM {
+		sgr = cfg.MinDistanceM
+	}
 
-	// Air absorption.
-	aAtm := PropagationConstants.AirAbsorptionCoeff * (d / 1000.0)
+	// Geometric divergence (point source, 3D slant distance).
+	aDiv := 20*math.Log10(s) + 11.0
+
+	// Air absorption (3D slant distance).
+	aAtm := PropagationConstants.AirAbsorptionCoeff * (s / 1000.0)
 
 	// Ground + meteorological correction.
-	// Simplified: use a distance-dependent ground correction that
-	// increases with distance (accounts for meteorological favorability).
-	aGround := computeGroundCorrection(d)
+	aGround := computeGroundCorrection(sgr, hm)
 
 	total := aDiv + aAtm + aGround
 
@@ -189,23 +252,22 @@ func computeAttenuation(distanceM float64, cfg PropagationConfig) AttenuationCom
 }
 
 // computeGroundCorrection returns the combined ground and meteorological
-// correction term A_ground for a given distance.
-// This is a simplified representation of the RLS-19 ground correction;
-// a full implementation would account for ground type, terrain profile,
-// source and receiver heights, and meteorological conditions.
-func computeGroundCorrection(distanceM float64) float64 {
-	if distanceM <= 0 {
+// attenuation term D_gr (RLS-19 / DIN ISO 9613-2):
+//
+//	D_gr = 4.8 − (2·h_m / s_gr) · (17 + 300/s_gr),   minimum 0
+//
+// h_m is the mean path height above terrain; s_gr is the plan-view distance.
+func computeGroundCorrection(planDistM, hm float64) float64 {
+	if planDistM <= 0 {
 		return 0
 	}
-	// RLS-19 uses a favorable meteorological correction that depends on
-	// the source-receiver geometry. As a baseline free-field approximation:
-	// A_ground = 4.8 - (2*h_m/d)*(17 + 300/d)
-	// where h_m = mean height above ground. For simplicity we use a
-	// conservative fixed estimate.
-	//
-	// This returns a small positive correction (attenuation increases
-	// slightly with distance beyond geometric spreading).
-	return math.Max(0, 1.5*(1-math.Exp(-distanceM/200)))
+
+	dgr := 4.8 - (2*hm/planDistM)*(17+300/planDistM)
+	if dgr < 0 {
+		return 0
+	}
+
+	return dgr
 }
 
 // ComputeReceiverLevels computes LrDay/LrNight at one receiver from all sources
@@ -225,7 +287,10 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		return PeriodLevels{}, errors.New("at least one source is required")
 	}
 
-	// Source height above ground (RLS-19: road surface level, typically 0.5 m).
+	// Absolute receiver Z = terrain elevation + height above ground.
+	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
+
+	// Source height above road surface (RLS-19: 0.5 m).
 	const sourceHeightM = 0.5
 
 	dayContrib := make([]float64, 0, len(sources)*4)
@@ -241,8 +306,18 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 			return PeriodLevels{}, err
 		}
 
+		// Prepare per-vertex elevations: use CenterlineElevations if provided,
+		// otherwise fill from the uniform ElevationM field.
+		elevations := source.CenterlineElevations
+		if len(elevations) != len(source.Centerline) {
+			elevations = make([]float64, len(source.Centerline))
+			for i := range elevations {
+				elevations[i] = source.ElevationM
+			}
+		}
+
 		// Split the source line into sub-segments (Teilstueckverfahren).
-		segments := SplitLineIntoSegments(source.Centerline, cfg.SegmentLengthM)
+		segments := SplitLineIntoSegments(source.Centerline, elevations, cfg.SegmentLengthM)
 		if len(segments) == 0 {
 			continue
 		}
@@ -252,30 +327,67 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 			continue
 		}
 
-		// For each sub-segment, compute attenuation from midpoint to receiver
-		// and weight by segment length relative to total source length.
 		for _, seg := range segments {
-			d := dist2D(seg.MidPoint, receiver)
-			att := computeAttenuation(d, cfg)
+			// Absolute source Z (road surface + 0.5 m source height).
+			sourceZ := seg.MidZ + sourceHeightM
 
-			// Check for barrier shielding on this sub-segment path.
+			// Plan-view and 3D slant distances.
+			planDist := dist2D(seg.MidPoint, receiver)
+			dz := receiverZ - sourceZ
+			slantDist := math.Sqrt(planDist*planDist + dz*dz)
+
+			// Mean height above terrain for ground correction.
+			hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, cfg.Terrain)
+
+			// Free-field attenuation (D_div + D_atm + D_gr).
+			att := computeAttenuation(planDist, slantDist, hm, cfg)
+
+			// Barrier shielding (relative heights, existing approach).
+			barrierLoss := 0.0
+
 			if len(barriers) > 0 {
 				shielding := ComputeShielding(
 					seg.MidPoint, sourceHeightM,
 					receiver, cfg.ReceiverHeightM,
 					barriers,
 				)
-
-				att.BarrierShielding = shielding.InsertionLoss
-				att.Total += shielding.InsertionLoss
+				barrierLoss = shielding.InsertionLoss
 			}
 
-			// Length weighting: the emission level applies to the full source.
-			// Each sub-segment contributes proportionally to its length.
+			// Terrain-edge shielding (absolute Z).
+			terrainLoss := 0.0
+
+			if len(cfg.Terrain) > 0 {
+				terrainShield := computeTerrainEdgeShielding(
+					seg.MidPoint, sourceZ,
+					receiver, receiverZ,
+					cfg.Terrain,
+				)
+				terrainLoss = terrainShield.InsertionLoss
+			}
+
+			// RLS-19 rule: when shielded, D_z replaces D_gr (not added on top).
+			totalShielding := math.Max(barrierLoss, terrainLoss)
+			if totalShielding > 0 {
+				att.BarrierShielding = totalShielding
+				att.Total = att.GeometricDivergence + att.AirAbsorption + totalShielding
+			}
+
+			// Length weighting: each sub-segment contributes proportionally.
 			lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)
 
 			dayContrib = append(dayContrib, emission.LmEDay+lengthWeight-att.Total)
 			nightContrib = append(nightContrib, emission.LmENight+lengthWeight-att.Total)
+
+			// Reflected paths: each adds an independent energy contribution via
+			// the image-source method. Ground correction uses mean height along
+			// the reflected path (flat terrain approximation for reflected legs).
+			appendReflectedContribs(
+				&dayContrib, &nightContrib,
+				emission, lengthWeight,
+				seg.MidPoint, sourceZ, receiver, receiverZ,
+				cfg,
+			)
 		}
 	}
 
@@ -283,4 +395,32 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		LrDay:   energySumDB(dayContrib),
 		LrNight: energySumDB(nightContrib),
 	}, nil
+}
+
+// appendReflectedContribs appends reflected-path energy contributions to the
+// day and night contribution slices. Each reflected path is treated as an
+// additional point source at the image-source position; ground correction uses
+// the mean height of the direct path (flat terrain approximation for the
+// reflected legs, which is adequate for first-order use).
+func appendReflectedContribs(
+	dayContrib, nightContrib *[]float64,
+	emission EmissionResult,
+	lengthWeight float64,
+	source geo.Point2D, sourceZ float64,
+	receiver geo.Point2D, receiverZ float64,
+	cfg PropagationConfig,
+) {
+	if len(cfg.Reflectors) == 0 {
+		return
+	}
+
+	reflPaths := computeReflectedPaths(source, sourceZ, receiver, receiverZ, cfg.Reflectors)
+
+	for _, rp := range reflPaths {
+		hmRefl := (sourceZ + receiverZ) / 2.0
+		attRefl := computeAttenuation(rp.planDistM, rp.slantDistM, hmRefl, cfg)
+		attRefl.Total += rp.lossDB
+		*dayContrib = append(*dayContrib, emission.LmEDay+lengthWeight-attRefl.Total)
+		*nightContrib = append(*nightContrib, emission.LmENight+lengthWeight-attRefl.Total)
+	}
 }
