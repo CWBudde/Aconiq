@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/standards"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -180,6 +181,128 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	}
 	if _, exists := paths["/api/v1/events"]; !exists {
 		t.Fatalf("expected /api/v1/events path in openapi document")
+	}
+}
+
+func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	if _, err := store.Init("Runs Test", "EPSG:25832"); err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/runs", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response []runSummaryResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+	if len(response) != 0 {
+		t.Fatalf("expected empty list, got %d runs", len(response))
+	}
+}
+
+func TestRunLogEndpointReturnsNotFoundForUnknownRun(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	if _, err := store.Init("Runs Log Test", "EPSG:25832"); err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-nope/log", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+	if response.Error.Code != "not_found" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
+	}
+}
+
+func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	registry, err := standards.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+
+	handler := NewHandlerWithRegistry(store, nil, registry)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/standards", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response []standardResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+	if len(response) == 0 {
+		t.Fatal("expected at least one standard")
+	}
+
+	found := false
+	for _, s := range response {
+		if s.ID == "rls19-road" {
+			found = true
+			if len(s.Versions) == 0 {
+				t.Fatal("rls19-road: expected at least one version")
+			}
+			if len(s.Versions[0].Profiles) == 0 {
+				t.Fatal("rls19-road: expected at least one profile")
+			}
+			if len(s.Versions[0].Profiles[0].Parameters) == 0 {
+				t.Fatal("rls19-road: expected parameters")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected rls19-road in standards list")
+	}
+}
+
+func TestStandardsEndpointReturnsUnavailableWithoutRegistry(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/standards", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
