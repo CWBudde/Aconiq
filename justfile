@@ -46,8 +46,18 @@ update-golden:
 build:
     cd backend && go build -o ../bin/noise ./cmd/noise
 
+# Build the WebAssembly computation kernel (outputs to frontend/public/)
+wasm-build:
+    cd backend && GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
+    cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" frontend/public/wasm_exec.js
+
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy fe-ci
+
+# Start dev environment (frontend only; backend HTTP server not yet implemented)
+# Future: will start `noise serve` + frontend in parallel once serve command exists
+dev:
+    cd frontend && bun run dev
 
 # --- Frontend recipes ---
 
@@ -86,4 +96,4 @@ fe-ci: fe-typecheck fe-lint fe-test fe-build
 
 # Clean build artifacts
 clean:
-    rm -rf bin/ backend/coverage.out backend/coverage.html frontend/dist
+    rm -rf bin/ backend/coverage.out backend/coverage.html frontend/dist frontend/public/aconiq.wasm frontend/public/wasm_exec.js

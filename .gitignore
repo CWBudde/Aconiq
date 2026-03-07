@@ -22,3 +22,7 @@ frontend/**/.cache/
 *.log
 .tmp/
 tmp/
+
+# AI Agents
+.claude/
+.serena/
