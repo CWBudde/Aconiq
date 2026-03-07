@@ -101,8 +101,11 @@ func TestRailExportResultBundle(t *testing.T) {
 	}
 
 	for _, path := range []string{exported.ReceiverJSONPath, exported.ReceiverCSVPath, exported.RasterMetaPath, exported.RasterDataPath} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected exported file %s: %v", path, err)
+		{
+			_, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("expected exported file %s: %v", path, err)
+			}
 		}
 	}
 
@@ -131,7 +134,8 @@ func TestRailGoldenScenario(t *testing.T) {
 		t.Fatalf("read rail scenario: %v", err)
 	}
 
-	if err := json.Unmarshal(payload, &scenario); err != nil {
+	err = json.Unmarshal(payload, &scenario)
+	if err != nil {
 		t.Fatalf("decode rail scenario: %v", err)
 	}
 

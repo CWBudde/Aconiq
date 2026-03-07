@@ -54,9 +54,18 @@ wasm-build:
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy fe-ci
 
-# Start dev environment (frontend only; backend HTTP server not yet implemented)
-# Future: will start `noise serve` + frontend in parallel once serve command exists
-dev:
+# Start dev environment: backend API server + frontend Vite dev server in parallel.
+# Requires a project at the repo root (run `bin/noise init .` first if needed).
+# Backend serves on :8080; frontend on :5173 (CORS is pre-configured for localhost).
+dev: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill $(jobs -p) 2>/dev/null; wait' EXIT INT TERM
+    bin/noise serve --project . &
+    cd frontend && bun run dev
+
+# Start only the frontend dev server (no backend)
+fe-dev-only:
     cd frontend && bun run dev
 
 # --- Frontend recipes ---

@@ -21,11 +21,13 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 		t.Fatalf("new raster: %v", err)
 	}
 
-	if err := raster.Set(0, 0, 0, 50.5); err != nil {
+	err = raster.Set(0, 0, 0, 50.5)
+	if err != nil {
 		t.Fatalf("set value: %v", err)
 	}
 
-	if err := raster.Set(2, 1, 1, 42.0); err != nil {
+	err = raster.Set(2, 1, 1, 42.0)
+	if err != nil {
 		t.Fatalf("set value: %v", err)
 	}
 
@@ -67,8 +69,10 @@ func TestRasterBoundsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new raster: %v", err)
 	}
-
-	if _, err := raster.At(2, 0, 0); err == nil {
-		t.Fatal("expected bounds error")
+	{
+		_, err := raster.At(2, 0, 0)
+		if err == nil {
+			t.Fatal("expected bounds error")
+		}
 	}
 }

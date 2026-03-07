@@ -308,8 +308,11 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	nightContrib := make([]float64, 0, len(sources)*4)
 
 	for _, source := range sources {
-		if err := source.Validate(); err != nil {
-			return PeriodLevels{}, err
+		{
+			err := source.Validate()
+			if err != nil {
+				return PeriodLevels{}, err
+			}
 		}
 
 		emission, err := ComputeEmission(source)

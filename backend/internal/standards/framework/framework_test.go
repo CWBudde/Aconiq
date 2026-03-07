@@ -85,8 +85,10 @@ func TestParameterSchemaRejectsUnknownParameter(t *testing.T) {
 			{Name: "chunk_size", Kind: ParameterKindInt, DefaultValue: "128"},
 		},
 	}
-
-	if _, err := schema.NormalizeAndValidate(map[string]string{"not_allowed": "1"}); err == nil {
-		t.Fatal("expected unknown parameter error")
+	{
+		_, err := schema.NormalizeAndValidate(map[string]string{"not_allowed": "1"})
+		if err == nil {
+			t.Fatal("expected unknown parameter error")
+		}
 	}
 }

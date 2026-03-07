@@ -63,8 +63,11 @@ func (r CommandRun) End(err error) {
 
 func newRunID() string {
 	buf := make([]byte, 8)
-	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
-		return "runid-unavailable"
+	{
+		_, err := io.ReadFull(rand.Reader, buf)
+		if err != nil {
+			return "runid-unavailable"
+		}
 	}
 
 	return hex.EncodeToString(buf)

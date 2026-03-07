@@ -23,11 +23,13 @@ func TestReceiverTableSaveJSONAndCSV(t *testing.T) {
 	jsonPath := filepath.Join(dir, "receivers.json")
 	csvPath := filepath.Join(dir, "receivers.csv")
 
-	if err := SaveReceiverTableJSON(jsonPath, table); err != nil {
+	err := SaveReceiverTableJSON(jsonPath, table)
+	if err != nil {
 		t.Fatalf("save receiver json: %v", err)
 	}
 
-	if err := SaveReceiverTableCSV(csvPath, table); err != nil {
+	err = SaveReceiverTableCSV(csvPath, table)
+	if err != nil {
 		t.Fatalf("save receiver csv: %v", err)
 	}
 

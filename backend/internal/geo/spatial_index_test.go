@@ -8,14 +8,16 @@ func TestGridSpatialIndexQuery(t *testing.T) {
 	index, err := NewGridSpatialIndex(10)
 	if err != nil {
 		t.Fatalf("create index: %v", err)
-	}
 
-	if err := index.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 5, MaxY: 5}}); err != nil {
-		t.Fatalf("insert a: %v", err)
-	}
+		err := index.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 5, MaxY: 5}})
+		if err != nil {
+			t.Fatalf("insert a: %v", err)
+		}
 
-	if err := index.Insert(IndexedItem{ID: "b", BBox: BBox{MinX: 20, MinY: 20, MaxX: 25, MaxY: 25}}); err != nil {
-		t.Fatalf("insert b: %v", err)
+		err = index.Insert(IndexedItem{ID: "b", BBox: BBox{MinX: 20, MinY: 20, MaxX: 25, MaxY: 25}})
+		if err != nil {
+			t.Fatalf("insert b: %v", err)
+		}
 	}
 
 	items, err := index.Query(BBox{MinX: -1, MinY: -1, MaxX: 6, MaxY: 6})

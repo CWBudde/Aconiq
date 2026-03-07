@@ -22,11 +22,13 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	rasterMetaPath := filepath.Join(bundleDir, "results", "lden.json")
 	modelDumpPath := filepath.Join(bundleDir, "model", "model.dump.json")
 
-	if err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o755); err != nil {
+	err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o755)
+	if err != nil {
 		t.Fatalf("create results dir: %v", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(modelDumpPath), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(modelDumpPath), 0o755)
+	if err != nil {
 		t.Fatalf("create model dir: %v", err)
 	}
 
@@ -45,7 +47,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			"traffic/road.geojson":                  "def456",
 		},
 	}
-	if err := writeJSONFile(provenancePath, provenance); err != nil {
+
+	err = writeJSONFile(provenancePath, provenance)
+	if err != nil {
 		t.Fatalf("write provenance: %v", err)
 	}
 
@@ -56,7 +60,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		"grid_height":    1,
 		"output_hash":    "hash-001",
 	}
-	if err := writeJSONFile(runSummaryPath, runSummary); err != nil {
+
+	err = writeJSONFile(runSummaryPath, runSummary)
+	if err != nil {
 		t.Fatalf("write run summary: %v", err)
 	}
 
@@ -69,26 +75,30 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			{ID: "rx-3", X: 2, Y: 0, HeightM: 4, Values: map[string]float64{"Lden": 53, "Lnight": 43}},
 		},
 	}
-	if err := results.SaveReceiverTableJSON(receiverPath, table); err != nil {
+
+	err = results.SaveReceiverTableJSON(receiverPath, table)
+	if err != nil {
 		t.Fatalf("write receiver table: %v", err)
 	}
 
-	if err := writeJSONFile(rasterMetaPath, map[string]any{
+	err = writeJSONFile(rasterMetaPath, map[string]any{
 		"width":      3,
 		"height":     1,
 		"bands":      1,
 		"unit":       "dB",
 		"band_names": []string{"Lden"},
 		"data_file":  "lden.bin",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("write raster metadata: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(bundleDir, "results", "lden.bin"), []byte{1, 2, 3, 4}, 0o644); err != nil {
+	err = os.WriteFile(filepath.Join(bundleDir, "results", "lden.bin"), []byte{1, 2, 3, 4}, 0o644)
+	if err != nil {
 		t.Fatalf("write raster binary: %v", err)
 	}
 
-	if err := writeJSONFile(modelDumpPath, map[string]any{
+	err = writeJSONFile(modelDumpPath, map[string]any{
 		"source_path":   "traffic/road.geojson",
 		"feature_count": 4,
 		"counts_by_kind": map[string]int{
@@ -96,7 +106,8 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			"building": 1,
 			"barrier":  1,
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("write model dump: %v", err)
 	}
 
@@ -156,7 +167,8 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	}
 
 	var context map[string]any
-	if err := json.Unmarshal(payload, &context); err != nil {
+	err = json.Unmarshal(payload, &context)
+	if err != nil {
 		t.Fatalf("decode context json: %v", err)
 	}
 

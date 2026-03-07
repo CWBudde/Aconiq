@@ -60,7 +60,8 @@ func TestProjectStatusEndpoint(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("Phase23 API", "EPSG:25832"); err != nil {
+	_, err = store.Init("Phase23 API", "EPSG:25832")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
@@ -209,7 +210,8 @@ func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("Runs Test", "EPSG:25832"); err != nil {
+	_, err = store.Init("Runs Test", "EPSG:25832")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
@@ -240,7 +242,8 @@ func TestRunLogEndpointReturnsNotFoundForUnknownRun(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("Runs Log Test", "EPSG:25832"); err != nil {
+	_, err = store.Init("Runs Log Test", "EPSG:25832")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
@@ -343,7 +346,8 @@ func TestEventsEndpointStreamsProjectStatusAndHeartbeat(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("Phase23 Stream", "EPSG:25832"); err != nil {
+	_, err = store.Init("Phase23 Stream", "EPSG:25832")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
@@ -377,7 +381,9 @@ func TestEventsEndpointStreamsProjectStatusAndHeartbeat(t *testing.T) {
 	}
 
 	var statusPayload map[string]any
-	if err := json.Unmarshal([]byte(eventData["project_status"]), &statusPayload); err != nil {
+
+	err = json.Unmarshal([]byte(eventData["project_status"]), &statusPayload)
+	if err != nil {
 		t.Fatalf("decode project_status payload: %v", err)
 	}
 
@@ -417,7 +423,9 @@ func TestEventsEndpointReportsMissingProject(t *testing.T) {
 	}
 
 	var statusPayload map[string]any
-	if err := json.Unmarshal([]byte(eventData["project_status"]), &statusPayload); err != nil {
+
+	err = json.Unmarshal([]byte(eventData["project_status"]), &statusPayload)
+	if err != nil {
 		t.Fatalf("decode project_status payload: %v", err)
 	}
 

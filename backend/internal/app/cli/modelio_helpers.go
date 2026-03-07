@@ -37,11 +37,13 @@ func writeJSONFile(path string, value any) error {
 
 	encoded = append(encoded, '\n')
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "create directory for "+path, err)
 	}
 
-	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+	err = os.WriteFile(path, encoded, 0o644)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "write "+path, err)
 	}
 

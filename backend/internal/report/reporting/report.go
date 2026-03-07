@@ -166,7 +166,8 @@ func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 		generatedAt = time.Now().UTC()
 	}
 
-	if err := os.MkdirAll(opts.BundleDir, 0o755); err != nil {
+	err := os.MkdirAll(opts.BundleDir, 0o755)
+	if err != nil {
 		return GeneratedReport{}, fmt.Errorf("create report directory: %w", err)
 	}
 
@@ -176,17 +177,20 @@ func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 	}
 
 	contextPath := filepath.Join(opts.BundleDir, "report-context.json")
-	if err := writeJSON(contextPath, ctx); err != nil {
+	err = writeJSON(contextPath, ctx)
+	if err != nil {
 		return GeneratedReport{}, err
 	}
 
 	markdownPath := filepath.Join(opts.BundleDir, "report.md")
-	if err := writeMarkdown(markdownPath, ctx); err != nil {
+	err = writeMarkdown(markdownPath, ctx)
+	if err != nil {
 		return GeneratedReport{}, err
 	}
 
 	htmlPath := filepath.Join(opts.BundleDir, "report.html")
-	if err := writeHTML(htmlPath, ctx); err != nil {
+	err = writeHTML(htmlPath, ctx)
+	if err != nil {
 		return GeneratedReport{}, err
 	}
 
@@ -315,7 +319,8 @@ func loadProvenance(path string) (provenanceEnvelope, bool, error) {
 	}
 
 	var parsed provenanceEnvelope
-	if err := json.Unmarshal(payload, &parsed); err != nil {
+	err = json.Unmarshal(payload, &parsed)
+	if err != nil {
 		return provenanceEnvelope{}, false, fmt.Errorf("decode provenance %s: %w", path, err)
 	}
 
@@ -337,7 +342,8 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 	}
 
 	var parsed map[string]any
-	if err := json.Unmarshal(payload, &parsed); err != nil {
+	err = json.Unmarshal(payload, &parsed)
+	if err != nil {
 		return runSummaryEnvelope{}, false, fmt.Errorf("decode run summary %s: %w", path, err)
 	}
 
@@ -369,7 +375,8 @@ func loadModelDump(path string) (modelDumpEnvelope, bool, error) {
 	}
 
 	var parsed modelDumpEnvelope
-	if err := json.Unmarshal(payload, &parsed); err != nil {
+	err = json.Unmarshal(payload, &parsed)
+	if err != nil {
 		return modelDumpEnvelope{}, false, fmt.Errorf("decode model dump %s: %w", path, err)
 	}
 
@@ -391,11 +398,13 @@ func loadReceiverTable(path string) (results.ReceiverTable, bool, error) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		return results.ReceiverTable{}, false, fmt.Errorf("decode receiver table %s: %w", path, err)
 	}
 
-	if err := table.Validate(); err != nil {
+	err = table.Validate()
+	if err != nil {
 		return results.ReceiverTable{}, false, fmt.Errorf("validate receiver table %s: %w", path, err)
 	}
 
@@ -427,8 +436,11 @@ func loadRasterMaps(bundleDir string, metaPaths []string) ([]rasterMapView, erro
 		}
 
 		var meta rasterMetaEnvelope
-		if err := json.Unmarshal(payload, &meta); err != nil {
-			return nil, fmt.Errorf("decode raster metadata %s: %w", metaPath, err)
+		{
+			err := json.Unmarshal(payload, &meta)
+			if err != nil {
+				return nil, fmt.Errorf("decode raster metadata %s: %w", metaPath, err)
+			}
 		}
 
 		dataPath := meta.DataFile
@@ -646,8 +658,8 @@ func writeJSON(path string, value any) error {
 	}
 
 	encoded = append(encoded, '\n')
-
-	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+	err = os.WriteFile(path, encoded, 0o644)
+	if err != nil {
 		return fmt.Errorf("write report json %s: %w", path, err)
 	}
 
@@ -661,11 +673,14 @@ func writeMarkdown(path string, ctx reportContext) error {
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, ctx); err != nil {
+
+	err = tmpl.Execute(&buf, ctx)
+	if err != nil {
 		return fmt.Errorf("execute markdown template: %w", err)
 	}
 
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	err = os.WriteFile(path, buf.Bytes(), 0o644)
+	if err != nil {
 		return fmt.Errorf("write report markdown %s: %w", path, err)
 	}
 
@@ -679,11 +694,14 @@ func writeHTML(path string, ctx reportContext) error {
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, ctx); err != nil {
+
+	err = tmpl.Execute(&buf, ctx)
+	if err != nil {
 		return fmt.Errorf("execute html template: %w", err)
 	}
 
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	err = os.WriteFile(path, buf.Bytes(), 0o644)
+	if err != nil {
 		return fmt.Errorf("write report html %s: %w", path, err)
 	}
 

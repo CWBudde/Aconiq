@@ -50,7 +50,10 @@ func TestBuildTransformPipelineUnsupported(t *testing.T) {
 	projectCRS, _ := ParseCRS("EPSG:25832")
 
 	importCRS, _ := ParseCRS("EPSG:4326")
-	if _, err := BuildTransformPipeline(projectCRS, importCRS); err == nil {
-		t.Fatal("expected unsupported transform error")
+	{
+		_, err := BuildTransformPipeline(projectCRS, importCRS)
+		if err == nil {
+			t.Fatal("expected unsupported transform error")
+		}
 	}
 }

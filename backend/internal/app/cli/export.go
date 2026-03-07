@@ -75,7 +75,9 @@ func newExportCommand() *cobra.Command {
 			exportID := fmt.Sprintf("%s-%s", run.ID, time.Now().UTC().Format("20060102T150405Z"))
 
 			bundleDir := filepath.Join(outRoot, exportID)
-			if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+
+			err = os.MkdirAll(bundleDir, 0o755)
+			if err != nil {
 				return domainerrors.New(domainerrors.KindInternal, "cli.export", "create export directory: "+bundleDir, err)
 			}
 
@@ -197,7 +199,9 @@ func newExportCommand() *cobra.Command {
 			}
 
 			summaryPath := filepath.Join(bundleDir, "export-summary.json")
-			if err := writeJSONFile(summaryPath, summary); err != nil {
+
+			err = writeJSONFile(summaryPath, summary)
+			if err != nil {
 				return err
 			}
 
@@ -210,7 +214,9 @@ func newExportCommand() *cobra.Command {
 			})
 
 			proj.Artifacts = append(proj.Artifacts, reportArtifacts...)
-			if err := store.Save(proj); err != nil {
+
+			err = store.Save(proj)
+			if err != nil {
 				return err
 			}
 
@@ -265,7 +271,8 @@ func findRunForExport(runs []project.Run, runID string) (project.Run, error) {
 }
 
 func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
-	if _, err := os.Stat(srcPath); err != nil {
+	_, err := os.Stat(srcPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
@@ -273,7 +280,8 @@ func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
 		return false, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(dstPath), 0o755)
+	if err != nil {
 		return false, err
 	}
 
@@ -289,7 +297,8 @@ func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, src); err != nil {
+	_, err = io.Copy(dst, src)
+	if err != nil {
 		return false, err
 	}
 
@@ -490,7 +499,9 @@ func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.
 
 func emitSampleResultBundle(bundleDir string) ([]string, error) {
 	resultsDir := filepath.Join(bundleDir, "sample-results")
-	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+
+	err := os.MkdirAll(resultsDir, 0o755)
+	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "create sample results directory", err)
 	}
 
@@ -535,11 +546,13 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 	jsonPath := filepath.Join(resultsDir, "receivers.json")
 	csvPath := filepath.Join(resultsDir, "receivers.csv")
 
-	if err := results.SaveReceiverTableJSON(jsonPath, table); err != nil {
+	err = results.SaveReceiverTableJSON(jsonPath, table)
+	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "save sample receiver json", err)
 	}
 
-	if err := results.SaveReceiverTableCSV(csvPath, table); err != nil {
+	err = results.SaveReceiverTableCSV(csvPath, table)
+	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "save sample receiver csv", err)
 	}
 

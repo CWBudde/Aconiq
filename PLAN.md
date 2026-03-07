@@ -438,25 +438,25 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** introduce the local API contract and runtime needed to support a browser app.
 
-- [ ] Introduce `noise serve` (local-only)
+- [x] Introduce `noise serve` (local-only)
   - [x] Initial `noise serve` command with graceful shutdown
-  - [x] Define initial HTTP API v1 endpoints + DTOs (`/api/v1/health`, `/api/v1/project/status`)
-  - [ ] Progress streaming (SSE/WebSocket)
+  - [x] Define initial HTTP API v1 endpoints + DTOs (`/api/v1/health`, `/api/v1/project/status`, `/api/v1/runs`, `/api/v1/standards`)
+  - [x] Progress streaming (SSE/WebSocket)
     - [x] Initial SSE endpoint `/api/v1/events` (heartbeat + project status stream)
-    - [ ] WebSocket support (optional path)
+    - [ ] WebSocket support (optional path, deferred)
   - [x] Standardized error format
-  - [ ] API versioning policy (`/api/v1`)
-  - [ ] Local CORS/CSRF model for desktop-local usage
-- [ ] API contract artifacts
-  - [ ] OpenAPI spec generation in CI
-  - [ ] TypeScript client generation pipeline for frontend
-  - [ ] Error envelope schema (`code`, `message`, `details`, `hint`)
+  - [x] API versioning policy (`/api/v1` prefix on all routes)
+  - [x] Local CORS/CSRF model for desktop-local usage (localhost/127.0.0.1 any port; `--cors-origins` flag)
+- [x] API contract artifacts
+  - [x] OpenAPI spec generation in CI (artifacts uploaded as `openapi-spec`)
+  - [ ] TypeScript client generation pipeline for frontend (hand-crafted types kept in sync; auto-gen deferred)
+  - [x] Error envelope schema (`code`, `message`, `details`, `hint`) — in Go + TS
 - [ ] E2E smoke flow API-side (headless): import → validate → run → export
 
 ### Research
 
-- [ ] OpenAPI vs gRPC/Connect (keep local-first ergonomics)
-- [ ] DTO generation strategy and backward compatibility policy
+- [x] OpenAPI vs gRPC/Connect → REST/OpenAPI chosen (local-first ergonomics, browser-native fetch)
+- [ ] DTO generation strategy and backward compatibility policy (deferred; types hand-crafted for now)
 
 ---
 

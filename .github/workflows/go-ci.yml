@@ -45,3 +45,16 @@ jobs:
 
       - name: Check tidy
         run: just check-tidy
+
+      - name: Build CLI
+        run: just build
+
+      - name: Generate OpenAPI spec
+        run: bin/noise openapi --out docs/api/openapi.v1.json --server-url http://127.0.0.1:8080
+
+      - name: Upload OpenAPI spec
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: docs/api/openapi.v1.json
+          retention-days: 30

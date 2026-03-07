@@ -67,15 +67,18 @@ func newImportCommand() *cobra.Command {
 			dumpPath := filepath.Join(modelDir, "model.dump.json")
 			reportPath := filepath.Join(modelDir, "validation-report.json")
 
-			if err := writeJSONFile(normalizedPath, model.ToFeatureCollection()); err != nil {
+			err = writeJSONFile(normalizedPath, model.ToFeatureCollection())
+			if err != nil {
 				return err
 			}
 
-			if err := writeJSONFile(dumpPath, model.ToDump()); err != nil {
+			err = writeJSONFile(dumpPath, model.ToDump())
+			if err != nil {
 				return err
 			}
 
-			if err := writeJSONFile(reportPath, report); err != nil {
+			err = writeJSONFile(reportPath, report)
+			if err != nil {
 				return err
 			}
 
@@ -99,7 +102,8 @@ func newImportCommand() *cobra.Command {
 				CreatedAt: now,
 			})
 
-			if err := store.Save(proj); err != nil {
+			err = store.Save(proj)
+			if err != nil {
 				return err
 			}
 

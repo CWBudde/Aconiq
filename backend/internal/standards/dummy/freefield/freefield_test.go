@@ -55,7 +55,8 @@ func TestDescriptorIsValid(t *testing.T) {
 	t.Parallel()
 
 	descriptor := Descriptor()
-	if err := descriptor.Validate(); err != nil {
+	err := descriptor.Validate()
+	if err != nil {
 		t.Fatalf("descriptor should validate: %v", err)
 	}
 
