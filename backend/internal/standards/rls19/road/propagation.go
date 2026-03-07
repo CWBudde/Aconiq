@@ -145,6 +145,7 @@ type AttenuationComponents struct {
 	GeometricDivergence  float64 // A_div: geometric spreading [dB]
 	AirAbsorption        float64 // A_atm: atmospheric absorption [dB]
 	GroundMeteorological float64 // A_ground: ground + meteorological [dB]
+	BarrierShielding     float64 // A_bar: barrier insertion loss [dB]
 	Total                float64 // total attenuation [dB]
 }
 
@@ -209,7 +210,8 @@ func computeGroundCorrection(distanceM float64) float64 {
 
 // ComputeReceiverLevels computes LrDay/LrNight at one receiver from all sources
 // using the Teilstueckverfahren (partial segment method).
-func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, cfg PropagationConfig) (PeriodLevels, error) {
+// Barriers are optional; pass nil for free-field calculation.
+func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers []Barrier, cfg PropagationConfig) (PeriodLevels, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return PeriodLevels{}, err
@@ -222,6 +224,9 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, cfg Propa
 	if len(sources) == 0 {
 		return PeriodLevels{}, errors.New("at least one source is required")
 	}
+
+	// Source height above ground (RLS-19: road surface level, typically 0.5 m).
+	const sourceHeightM = 0.5
 
 	dayContrib := make([]float64, 0, len(sources)*4)
 	nightContrib := make([]float64, 0, len(sources)*4)
@@ -252,6 +257,18 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, cfg Propa
 		for _, seg := range segments {
 			d := dist2D(seg.MidPoint, receiver)
 			att := computeAttenuation(d, cfg)
+
+			// Check for barrier shielding on this sub-segment path.
+			if len(barriers) > 0 {
+				shielding := ComputeShielding(
+					seg.MidPoint, sourceHeightM,
+					receiver, cfg.ReceiverHeightM,
+					barriers,
+				)
+
+				att.BarrierShielding = shielding.InsertionLoss
+				att.Total += shielding.InsertionLoss
+			}
 
 			// Length weighting: the emission level applies to the full source.
 			// Each sub-segment contributes proportionally to its length.

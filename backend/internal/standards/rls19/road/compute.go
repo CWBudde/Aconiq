@@ -15,7 +15,8 @@ type ReceiverOutput struct {
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
 // This is the top-level entry point for RLS-19 road calculations.
-func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+// Barriers are optional; pass nil for free-field calculation.
+func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource, barriers []Barrier, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -30,7 +31,7 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource,
 			return nil, fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
 		}
 
-		periodLevels, err := ComputeReceiverLevels(receiver.Point, sources, cfg)
+		periodLevels, err := ComputeReceiverLevels(receiver.Point, sources, barriers, cfg)
 		if err != nil {
 			return nil, err
 		}

@@ -52,16 +52,24 @@ type versionResponse struct {
 	Profiles       []profileResponse `json:"profiles"`
 }
 
+type artifactRefResponse struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type runSummaryResponse struct {
-	ID         string    `json:"id"`
-	ScenarioID string    `json:"scenario_id"`
-	StandardID string    `json:"standard_id"`
-	Version    string    `json:"version"`
-	Profile    string    `json:"profile,omitempty"`
-	Status     string    `json:"status"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	LogPath    string    `json:"log_path"`
+	ID         string                 `json:"id"`
+	ScenarioID string                 `json:"scenario_id"`
+	StandardID string                 `json:"standard_id"`
+	Version    string                 `json:"version"`
+	Profile    string                 `json:"profile,omitempty"`
+	Status     string                 `json:"status"`
+	StartedAt  time.Time              `json:"started_at"`
+	FinishedAt time.Time              `json:"finished_at"`
+	LogPath    string                 `json:"log_path"`
+	Artifacts  []artifactRefResponse  `json:"artifacts"`
 }
 
 type runLogResponse struct {
@@ -229,9 +237,27 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Index artifacts by run ID.
+	artifactsByRun := make(map[string][]artifactRefResponse, len(proj.Artifacts))
+	for _, a := range proj.Artifacts {
+		if a.RunID == "" {
+			continue
+		}
+		artifactsByRun[a.RunID] = append(artifactsByRun[a.RunID], artifactRefResponse{
+			ID:        a.ID,
+			Kind:      a.Kind,
+			Path:      a.Path,
+			CreatedAt: a.CreatedAt,
+		})
+	}
+
 	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
 	for i := len(proj.Runs) - 1; i >= 0; i-- {
 		run := proj.Runs[i]
+		artifacts := artifactsByRun[run.ID]
+		if artifacts == nil {
+			artifacts = []artifactRefResponse{}
+		}
 		summaries = append(summaries, runSummaryResponse{
 			ID:         run.ID,
 			ScenarioID: run.ScenarioID,
@@ -242,6 +268,7 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 			StartedAt:  run.StartedAt,
 			FinishedAt: run.FinishedAt,
 			LogPath:    run.LogPath,
+			Artifacts:  artifacts,
 		})
 	}
 

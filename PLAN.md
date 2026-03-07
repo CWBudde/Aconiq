@@ -591,9 +591,9 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Progress timeline/steps
   - [x] Live logs
   - [x] Cancel/retry actions
-- [ ] Run history UX
-  - [ ] Filter by scenario/status/standard
-  - [ ] Artifact links per run
+- [x] Run history UX
+  - [x] Filter by scenario/status/standard
+  - [x] Artifact links per run
 - [ ] Determinism-aware UX hints (same inputs/profile expectation messaging)
 
 ---
