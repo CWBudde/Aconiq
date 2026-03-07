@@ -313,7 +313,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Use the Teilstückverfahren-style approach with deterministic segment/sub-segment splitting
   - [x] Free-field case: geometric divergence + air absorption + ground/meteorology
   - [x] Shielding: wall/berm diffraction handling consistent with the test suite scenarios
-  - [ ] Topography: road in cut (Tieflage), embankment (Hochlage), rising/descending roads, “wegführende” roads
+  - [x] Topography: road in cut (Tieflage), embankment (Hochlage), rising/descending roads, “wegführende” roads
   - [ ] Reflections: implement up to two reflections and reflection-loss handling
   - [ ] Building/courtyard scenarios: house fronts parallel to road, perpendicular buildings, “Hinterhof”
   - [ ] Reflection conditions test task (K5): ensure the specific reflection edge-cases pass
