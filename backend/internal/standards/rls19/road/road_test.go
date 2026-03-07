@@ -513,12 +513,12 @@ func TestPropagation_DecreasesWithDistance(t *testing.T) {
 	source := sampleSource()
 	cfg := DefaultPropagationConfig()
 
-	near, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 5}, []RoadSource{source}, cfg)
+	near, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 5}, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute near: %v", err)
 	}
 
-	far, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 200}, []RoadSource{source}, cfg)
+	far, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 200}, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute far: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestPropagation_DayHigherThanNight(t *testing.T) {
 	source := sampleSource()
 	cfg := DefaultPropagationConfig()
 
-	levels, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source}, cfg)
+	levels, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
 	}
@@ -550,13 +550,13 @@ func TestPropagation_MultipleSources(t *testing.T) {
 	source := sampleSource()
 	cfg := DefaultPropagationConfig()
 
-	single, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source}, cfg)
+	single, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute single: %v", err)
 	}
 
 	// Two identical sources: +3 dB.
-	double, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source, source}, cfg)
+	double, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 25}, []RoadSource{source, source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute double: %v", err)
 	}
@@ -574,12 +574,12 @@ func TestPropagation_Deterministic(t *testing.T) {
 	cfg := DefaultPropagationConfig()
 	receiver := geo.Point2D{X: 0, Y: 50}
 
-	r1, err := ComputeReceiverLevels(receiver, []RoadSource{source}, cfg)
+	r1, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("run 1: %v", err)
 	}
 
-	r2, err := ComputeReceiverLevels(receiver, []RoadSource{source}, cfg)
+	r2, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("run 2: %v", err)
 	}
@@ -595,7 +595,7 @@ func TestPropagation_InvalidConfig(t *testing.T) {
 	source := sampleSource()
 	cfg := PropagationConfig{SegmentLengthM: -1, MinDistanceM: 3}
 
-	_, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 10}, []RoadSource{source}, cfg)
+	_, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 10}, []RoadSource{source}, nil, cfg)
 	if err == nil {
 		t.Fatal("expected error for invalid config")
 	}
@@ -606,7 +606,7 @@ func TestPropagation_NoSources(t *testing.T) {
 
 	cfg := DefaultPropagationConfig()
 
-	_, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 10}, nil, cfg)
+	_, err := ComputeReceiverLevels(geo.Point2D{X: 0, Y: 10}, nil, nil, cfg)
 	if err == nil {
 		t.Fatal("expected error for no sources")
 	}
@@ -625,7 +625,7 @@ func TestComputeReceiverOutputs(t *testing.T) {
 		{ID: "r3", Point: geo.Point2D{X: 0, Y: 100}, HeightM: 4},
 	}
 
-	outputs, err := ComputeReceiverOutputs(receivers, []RoadSource{source}, cfg)
+	outputs, err := ComputeReceiverOutputs(receivers, []RoadSource{source}, nil, cfg)
 	if err != nil {
 		t.Fatalf("compute outputs: %v", err)
 	}
@@ -648,7 +648,7 @@ func TestComputeReceiverOutputs_EmptyReceivers(t *testing.T) {
 
 	cfg := DefaultPropagationConfig()
 
-	_, err := ComputeReceiverOutputs(nil, []RoadSource{sampleSource()}, cfg)
+	_, err := ComputeReceiverOutputs(nil, []RoadSource{sampleSource()}, nil, cfg)
 	if err == nil {
 		t.Fatal("expected error for empty receivers")
 	}
@@ -671,6 +671,261 @@ func TestDescriptorValidates(t *testing.T) {
 
 	if descriptor.DefaultVersion != "2019" {
 		t.Fatalf("unexpected version: %s", descriptor.DefaultVersion)
+	}
+}
+
+// --- shielding tests ---
+
+func sampleBarrier() Barrier {
+	// Barrier running east-west at y=10, between source (y=0) and receiver (y>10).
+	return Barrier{
+		ID:       "wall-1",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  4.0,
+	}
+}
+
+func TestBarrierValidate(t *testing.T) {
+	t.Parallel()
+
+	b := sampleBarrier()
+	err := b.Validate()
+	if err != nil {
+		t.Fatalf("valid barrier failed: %v", err)
+	}
+
+	b.HeightM = 0
+	err = b.Validate()
+	if err == nil {
+		t.Fatal("expected error for zero height")
+	}
+}
+
+func TestComputeShielding_NoBarriers(t *testing.T) {
+	t.Parallel()
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		nil,
+	)
+	if result.Shielded {
+		t.Fatal("expected no shielding without barriers")
+	}
+}
+
+func TestComputeShielding_BarrierBetween(t *testing.T) {
+	t.Parallel()
+
+	barrier := sampleBarrier()
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5, // source at y=0, height 0.5m
+		geo.Point2D{X: 0, Y: 50}, 4.0, // receiver at y=50, height 4m
+		[]Barrier{barrier}, // barrier at y=10, height 4m
+	)
+
+	if !result.Shielded {
+		t.Fatal("expected shielding from barrier")
+	}
+
+	if result.InsertionLoss <= 0 {
+		t.Fatalf("expected positive insertion loss, got %f", result.InsertionLoss)
+	}
+
+	if result.BarrierID != "wall-1" {
+		t.Fatalf("expected barrier ID wall-1, got %q", result.BarrierID)
+	}
+}
+
+func TestComputeShielding_BarrierNotCrossing(t *testing.T) {
+	t.Parallel()
+
+	// Barrier parallel to source-receiver path, does not cross it.
+	barrier := Barrier{
+		ID:       "parallel",
+		Geometry: []geo.Point2D{{X: 5, Y: -10}, {X: 5, Y: 100}},
+		HeightM:  4.0,
+	}
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{barrier},
+	)
+
+	if result.Shielded {
+		t.Fatal("expected no shielding from parallel barrier")
+	}
+}
+
+func TestComputeShielding_LowBarrier(t *testing.T) {
+	t.Parallel()
+
+	// Barrier lower than line of sight — should not shield.
+	lowBarrier := Barrier{
+		ID:       "low",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  0.1, // very low
+	}
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{lowBarrier},
+	)
+
+	if result.Shielded {
+		t.Fatal("expected no shielding from very low barrier")
+	}
+}
+
+func TestComputeShielding_TallBarrier(t *testing.T) {
+	t.Parallel()
+
+	tall := Barrier{
+		ID:       "tall",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  10.0,
+	}
+
+	short := Barrier{
+		ID:       "short",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  4.0,
+	}
+
+	tallResult := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{tall},
+	)
+
+	shortResult := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{short},
+	)
+
+	if tallResult.InsertionLoss <= shortResult.InsertionLoss {
+		t.Fatalf("taller barrier should have more attenuation: tall=%f short=%f",
+			tallResult.InsertionLoss, shortResult.InsertionLoss)
+	}
+}
+
+func TestComputeShielding_MultipleBarriers(t *testing.T) {
+	t.Parallel()
+
+	// Two barriers: the taller one should determine the result.
+	shortBarrier := Barrier{
+		ID:       "short",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  4.0,
+	}
+
+	tallBarrier := Barrier{
+		ID:       "tall",
+		Geometry: []geo.Point2D{{X: -100, Y: 20}, {X: 100, Y: 20}},
+		HeightM:  8.0,
+	}
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{shortBarrier, tallBarrier},
+	)
+
+	if !result.Shielded {
+		t.Fatal("expected shielding")
+	}
+
+	if result.BarrierID != "tall" {
+		t.Fatalf("expected tall barrier to dominate, got %q", result.BarrierID)
+	}
+}
+
+func TestPropagation_WithBarrier(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	cfg := DefaultPropagationConfig()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	// Free-field level.
+	freeField, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	// With barrier between source and receiver.
+	barrier := sampleBarrier()
+
+	shielded, err := ComputeReceiverLevels(receiver, []RoadSource{source}, []Barrier{barrier}, cfg)
+	if err != nil {
+		t.Fatalf("with barrier: %v", err)
+	}
+
+	// Barrier should reduce the level.
+	reduction := freeField.LrDay - shielded.LrDay
+	if reduction <= 0 {
+		t.Fatalf("barrier should reduce level: free=%f shielded=%f", freeField.LrDay, shielded.LrDay)
+	}
+
+	// Reduction should be meaningful (several dB for a 4m wall at 10m from source).
+	if reduction < 2 {
+		t.Fatalf("expected at least 2 dB reduction, got %f", reduction)
+	}
+}
+
+func TestPathDifference(t *testing.T) {
+	t.Parallel()
+
+	// Barrier exactly at line of sight: delta should be ~0.
+	// Source at (0, h=0.5), barrier at (10, h=4), receiver at (50, h=4).
+	// Line of sight from source to receiver: at x=10, height = 0.5 + (4-0.5)*10/50 = 1.2.
+	// Barrier height 1.2 → delta ≈ 0.
+	delta := pathDifference(10, 0.5, 40, 4.0, 1.2)
+	if math.Abs(delta) > 0.01 {
+		t.Fatalf("barrier at line of sight should have delta ~0, got %f", delta)
+	}
+
+	// Barrier well above line of sight: positive delta.
+	delta = pathDifference(10, 0.5, 40, 4.0, 8.0)
+	if delta <= 0 {
+		t.Fatalf("tall barrier should have positive delta, got %f", delta)
+	}
+
+	// Barrier below line of sight: non-positive delta.
+	delta = pathDifference(10, 0.5, 40, 4.0, 0.1)
+	if delta > 0 {
+		t.Fatalf("low barrier should have non-positive delta, got %f", delta)
+	}
+}
+
+func TestMaekawaInsertionLoss(t *testing.T) {
+	t.Parallel()
+
+	// Zero delta: no loss.
+	if maekawaInsertionLoss(0) != 0 {
+		t.Fatal("zero delta should give zero loss")
+	}
+
+	// Positive delta: positive loss.
+	loss := maekawaInsertionLoss(0.5)
+	if loss <= 0 {
+		t.Fatalf("positive delta should give positive loss, got %f", loss)
+	}
+
+	// Loss increases with delta.
+	lossSmall := maekawaInsertionLoss(0.1)
+	lossLarge := maekawaInsertionLoss(1.0)
+	if lossLarge <= lossSmall {
+		t.Fatalf("loss should increase with delta: small=%f large=%f", lossSmall, lossLarge)
+	}
+
+	// Capped at 20 dB.
+	lossCapped := maekawaInsertionLoss(100)
+	if lossCapped > 20 {
+		t.Fatalf("loss should be capped at 20, got %f", lossCapped)
 	}
 }
 

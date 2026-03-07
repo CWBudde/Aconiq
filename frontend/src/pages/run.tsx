@@ -68,7 +68,11 @@ type RunStatus = RunSummary["status"];
 
 const statusConfig: Record<
   RunStatus,
-  { label: string; icon: React.ComponentType<{ className?: string }>; className: string }
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    className: string;
+  }
 > = {
   pending: {
     label: "Pending",
@@ -167,8 +171,7 @@ function parseTimeline(lines: string[], status: RunStatus): TimelineStep[] {
     const active =
       !done &&
       status === "running" &&
-      (i === 0 ||
-        matched.has(LOG_STAGES[i - 1].key)) &&
+      (i === 0 || matched.has(LOG_STAGES[i - 1].key)) &&
       (!nextStage || !matched.has(nextStage.key));
     return { label: stage.label, timestamp: ts, done, active };
   });
@@ -298,9 +301,7 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
   }
 
   if (artifacts.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">No artifacts yet.</p>
-    );
+    return <p className="text-xs text-muted-foreground">No artifacts yet.</p>;
   }
 
   return (
@@ -457,13 +458,7 @@ function RunFilterBar({
 // Run detail panel
 // ---------------------------------------------------------------------------
 
-function RunDetail({
-  run,
-  onRetry,
-}: {
-  run: RunSummary;
-  onRetry: () => void;
-}) {
+function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
   const { data: log, isLoading: logLoading } = useRunLog(run.id);
   const lines = log?.lines ?? [];
   const isRunning = run.status === "running";
@@ -843,8 +838,7 @@ function RunSetupDialog({
               <p className="mb-2 font-medium">Run queued</p>
               <p className="text-muted-foreground">
                 <span className="font-mono">{submittedConfig.standardId}</span>{" "}
-                /{" "}
-                <span className="font-mono">{submittedConfig.version}</span> /{" "}
+                / <span className="font-mono">{submittedConfig.version}</span> /{" "}
                 <span className="font-mono">{submittedConfig.profile}</span>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -1037,7 +1031,11 @@ function RunSetupDialog({
 // Run page
 // ---------------------------------------------------------------------------
 
-const EMPTY_FILTERS: RunFilters = { status: "", standardId: "", scenarioId: "" };
+const EMPTY_FILTERS: RunFilters = {
+  status: "",
+  standardId: "",
+  scenarioId: "",
+};
 
 export default function RunPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1126,11 +1124,7 @@ export default function RunPage() {
         <div className="flex flex-1 overflow-hidden">
           {/* Run list */}
           <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
-            <RunFilterBar
-              runs={runs}
-              filters={filters}
-              onChange={setFilters}
-            />
+            <RunFilterBar runs={runs} filters={filters} onChange={setFilters} />
             <div className="overflow-y-auto">
               {filteredRuns.length === 0 ? (
                 <p className="px-4 py-6 text-center text-xs text-muted-foreground">
