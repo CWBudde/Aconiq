@@ -13,7 +13,8 @@ type periodEmission struct {
 // This preview implementation combines rolling, traction, and braking noise
 // terms with period train-flow weighting.
 func ComputeEmission(source RailSource) (periodEmission, error) {
-	if err := source.Validate(); err != nil {
+	err := source.Validate()
+	if err != nil {
 		return periodEmission{}, err
 	}
 
@@ -29,6 +30,7 @@ func emissionForPeriod(source RailSource, traffic TrafficPeriod) float64 {
 	rolling := 43.0 + baseFlow + speedCorrection(source.AverageTrainSpeedKPH) + roughnessCorrection(source.TrackRoughnessClass)
 	traction := 38.0 + baseFlow + tractionCorrection(source.TractionType)
 	braking := 35.0 + baseFlow + brakingCorrection(source.BrakingShare)
+
 	return energySumDB([]float64{rolling, traction, braking})
 }
 
@@ -37,6 +39,7 @@ func speedCorrection(speedKPH float64) float64 {
 	if clamped < 30 {
 		clamped = 30
 	}
+
 	if clamped > 250 {
 		clamped = 250
 	}
@@ -83,14 +86,18 @@ func brakingCorrection(share float64) float64 {
 
 func energySumDB(levels []float64) float64 {
 	sum := 0.0
+
 	for _, level := range levels {
 		if math.IsNaN(level) || math.IsInf(level, 0) {
 			continue
 		}
+
 		sum += math.Pow(10, level/10)
 	}
+
 	if sum <= 0 {
 		return -999.0
 	}
+
 	return 10 * math.Log10(sum)
 }

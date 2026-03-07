@@ -52,6 +52,7 @@ func newStatusCommand() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path: %s\n", store.Root())
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manifest Version: v%d\n", proj.ManifestVersion)
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "CRS: %s\n", proj.CRS)
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Scenarios: %d\n", len(proj.Scenarios))
 			if hasLatest {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Run Status: %s (%s)\n", latestRun.Status, latestRun.ID)
@@ -65,10 +66,8 @@ func newStatusCommand() *cobra.Command {
 			if len(proj.Runs) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  (no runs yet)")
 			} else {
-				start := len(proj.Runs) - limit
-				if start < 0 {
-					start = 0
-				}
+				start := max(len(proj.Runs)-limit, 0)
+
 				for _, run := range proj.Runs[start:] {
 					_, _ = fmt.Fprintf(
 						cmd.OutOrStdout(),
@@ -88,12 +87,14 @@ func newStatusCommand() *cobra.Command {
 
 			if hasLatest && tailLines > 0 {
 				fullLogPath := filepath.Join(store.Root(), filepath.FromSlash(latestRun.LogPath))
+
 				tail, err := readTail(fullLogPath, tailLines)
 				if err != nil {
 					return err
 				}
 
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "")
+
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Recent log lines (%s):\n", latestRun.ID)
 				if len(tail) == 0 {
 					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  (no log lines)")
@@ -125,17 +126,19 @@ func latestRun(runs []project.Run) (project.Run, bool) {
 func readTail(path string, lines int) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", fmt.Sprintf("open run log: %s", path), err)
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", "open run log: "+path, err)
 	}
 	defer file.Close()
 
 	all := make([]string, 0, lines)
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		all = append(all, strings.TrimRight(scanner.Text(), "\r\n"))
 	}
+
 	if err := scanner.Err(); err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", fmt.Sprintf("scan run log: %s", path), err)
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", "scan run log: "+path, err)
 	}
 
 	if lines >= len(all) {

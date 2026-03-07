@@ -1,6 +1,7 @@
 package road
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -54,34 +55,46 @@ type RoadSource struct {
 // Validate validates one road source schema payload.
 func (s RoadSource) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
-		return fmt.Errorf("road source id is required")
+		return errors.New("road source id is required")
 	}
+
 	if len(s.Centerline) < 2 {
 		return fmt.Errorf("road source %q centerline must contain at least 2 points", s.ID)
 	}
+
 	for i, point := range s.Centerline {
 		if !point.IsFinite() {
 			return fmt.Errorf("road source %q centerline point[%d] is not finite", s.ID, i)
 		}
 	}
+
 	if !isAllowedSurfaceType(s.SurfaceType) {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
 	}
+
 	if math.IsNaN(s.SpeedKPH) || math.IsInf(s.SpeedKPH, 0) || s.SpeedKPH <= 0 {
 		return fmt.Errorf("road source %q speed_kph must be finite and > 0", s.ID)
 	}
+
 	if math.IsNaN(s.GradientPercent) || math.IsInf(s.GradientPercent, 0) {
 		return fmt.Errorf("road source %q gradient_percent must be finite", s.ID)
 	}
-	if err := validateTrafficPeriod(s.ID, "day", s.TrafficDay); err != nil {
+
+	err := validateTrafficPeriod(s.ID, "day", s.TrafficDay)
+	if err != nil {
 		return err
 	}
-	if err := validateTrafficPeriod(s.ID, "evening", s.TrafficEvening); err != nil {
+
+	err = validateTrafficPeriod(s.ID, "evening", s.TrafficEvening)
+	if err != nil {
 		return err
 	}
-	if err := validateTrafficPeriod(s.ID, "night", s.TrafficNight); err != nil {
+
+	err = validateTrafficPeriod(s.ID, "night", s.TrafficNight)
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -89,9 +102,11 @@ func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod
 	if math.IsNaN(traffic.LightVehiclesPerHour) || math.IsInf(traffic.LightVehiclesPerHour, 0) || traffic.LightVehiclesPerHour < 0 {
 		return fmt.Errorf("road source %q traffic_%s light_vehicles_per_hour must be finite and >= 0", sourceID, period)
 	}
+
 	if math.IsNaN(traffic.HeavyVehiclesPerHour) || math.IsInf(traffic.HeavyVehiclesPerHour, 0) || traffic.HeavyVehiclesPerHour < 0 {
 		return fmt.Errorf("road source %q traffic_%s heavy_vehicles_per_hour must be finite and >= 0", sourceID, period)
 	}
+
 	return nil
 }
 
@@ -106,6 +121,7 @@ func Descriptor() framework.StandardDescriptor {
 	minPositive := 0.001
 	minGradient := -20.0
 	maxGradient := 20.0
+
 	return framework.StandardDescriptor{
 		ID:             StandardID,
 		Description:    "CNOSSOS-EU road preview module with typed source schema and deterministic indicators.",

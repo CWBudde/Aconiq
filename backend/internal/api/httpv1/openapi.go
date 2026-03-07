@@ -2,6 +2,7 @@ package httpv1
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -191,19 +192,22 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 
 func WriteOpenAPISpec(path string, serverURL string) error {
 	if path == "" {
-		return fmt.Errorf("openapi output path is required")
+		return errors.New("openapi output path is required")
 	}
 
 	spec := BuildOpenAPISpec(serverURL)
+
 	encoded, err := json.MarshalIndent(spec, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode openapi spec: %w", err)
 	}
+
 	encoded = append(encoded, '\n')
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create openapi output directory: %w", err)
 	}
+
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
 		return fmt.Errorf("write openapi spec %s: %w", path, err)
 	}

@@ -30,17 +30,21 @@ type Source struct {
 // This is explicitly for technical E2E validation and not a normative method.
 func ComputeReceiverLevelDB(receiver geo.Point2D, sources []Source) float64 {
 	linearSum := 0.0
+
 	for _, source := range sources {
 		d := geo.Distance(receiver, source.Point)
 		if d < 1 {
 			d = 1
 		}
+
 		contributionDB := source.EmissionDB - 20*math.Log10(d)
 		linearSum += math.Pow(10, contributionDB/10)
 	}
+
 	if linearSum <= 0 {
 		return -999.0
 	}
+
 	return 10 * math.Log10(linearSum)
 }
 
@@ -49,6 +53,7 @@ func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
 	minResolution := 0.001
 	minChunkSize := 1.0
+
 	return framework.StandardDescriptor{
 		ID:             StandardID,
 		Description:    "Non-normative free-field demonstrator for offline E2E verification.",

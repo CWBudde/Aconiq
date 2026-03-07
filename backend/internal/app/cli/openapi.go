@@ -25,12 +25,16 @@ func newOpenAPICommand() *cobra.Command {
 			if outPath == "" {
 				outPath = filepath.Join(".noise", "api", "openapi.v1.json")
 			}
+
 			resolvedOut := resolvePath(state.Config.ProjectPath, outPath)
-			if err := httpv1.WriteOpenAPISpec(resolvedOut, serverURL); err != nil {
+
+			err := httpv1.WriteOpenAPISpec(resolvedOut, serverURL)
+			if err != nil {
 				return domainerrors.New(domainerrors.KindInternal, "cli.openapi", "write openapi spec", err)
 			}
 
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "OpenAPI exported: %s\n", resolvedOut)
+
 			return nil
 		},
 	}

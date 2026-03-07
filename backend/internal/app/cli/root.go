@@ -26,6 +26,7 @@ func Execute(args []string) int {
 	rootCmd.SetArgs(args)
 
 	err := rootCmd.Execute()
+
 	state, hasState := stateFromCommand(rootCmd)
 	if hasState {
 		state.Run.End(err)

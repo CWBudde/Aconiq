@@ -25,9 +25,11 @@ func TestPointInPolygonWithHole(t *testing.T) {
 	if !PointInPolygon(Point2D{X: 2, Y: 2}, rings) {
 		t.Fatal("expected point to be inside polygon")
 	}
+
 	if PointInPolygon(Point2D{X: 4, Y: 4}, rings) {
 		t.Fatal("expected point inside hole to be outside polygon")
 	}
+
 	if !PointInPolygon(Point2D{X: 0, Y: 5}, rings) {
 		t.Fatal("expected edge point to be treated as inside")
 	}
@@ -110,6 +112,7 @@ func TestBBoxFromPoints(t *testing.T) {
 	if !ok {
 		t.Fatal("expected bbox")
 	}
+
 	if bbox.MinX != -3 || bbox.MinY != -2 || bbox.MaxX != 5 || bbox.MaxY != 10 {
 		t.Fatalf("unexpected bbox %#v", bbox)
 	}

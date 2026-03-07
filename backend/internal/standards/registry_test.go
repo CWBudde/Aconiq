@@ -18,6 +18,7 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if resolved.StandardID != "dummy-freefield" {
 		t.Fatalf("unexpected standard id: %s", resolved.StandardID)
 	}
+
 	if len(resolved.SupportedIndicators) == 0 {
 		t.Fatalf("expected indicators in resolved descriptor")
 	}
@@ -26,9 +27,11 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve cnossos-road: %v", err)
 	}
+
 	if cnossos.StandardID != "cnossos-road" {
 		t.Fatalf("unexpected cnossos standard id: %s", cnossos.StandardID)
 	}
+
 	if cnossos.Version == "" || cnossos.Profile == "" {
 		t.Fatalf("expected default cnossos version/profile")
 	}
@@ -37,6 +40,7 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve cnossos-rail: %v", err)
 	}
+
 	if rail.StandardID != "cnossos-rail" {
 		t.Fatalf("unexpected rail standard id: %s", rail.StandardID)
 	}
@@ -45,6 +49,7 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve rls19-road: %v", err)
 	}
+
 	if rls19.StandardID != "rls19-road" {
 		t.Fatalf("unexpected rls19 standard id: %s", rls19.StandardID)
 	}

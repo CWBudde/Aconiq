@@ -10,6 +10,7 @@ func DistancePointToSegment(p, a, b Point2D) float64 {
 
 	abx := b.X - a.X
 	aby := b.Y - a.Y
+
 	len2 := abx*abx + aby*aby
 	if len2 == 0 {
 		return Distance(p, a)
@@ -19,11 +20,13 @@ func DistancePointToSegment(p, a, b Point2D) float64 {
 	if t < 0 {
 		t = 0
 	}
+
 	if t > 1 {
 		t = 1
 	}
 
 	closest := Point2D{X: a.X + t*abx, Y: a.Y + t*aby}
+
 	return Distance(p, closest)
 }
 
@@ -32,12 +35,14 @@ func DistancePointToLineString(p Point2D, line []Point2D) float64 {
 	if len(line) == 0 {
 		return math.NaN()
 	}
+
 	if len(line) == 1 {
 		return Distance(p, line[0])
 	}
 
 	best := math.MaxFloat64
-	for i := 0; i < len(line)-1; i++ {
+
+	for i := range len(line) - 1 {
 		d := DistancePointToSegment(p, line[i], line[i+1])
 		if d < best {
 			best = d
@@ -51,6 +56,7 @@ func DistancePointToLineString(p Point2D, line []Point2D) float64 {
 func Distance(a, b Point2D) float64 {
 	dx := a.X - b.X
 	dy := a.Y - b.Y
+
 	return math.Hypot(dx, dy)
 }
 
@@ -76,6 +82,7 @@ func PointInPolygon(p Point2D, rings [][]Point2D) bool {
 
 func pointInRing(p Point2D, ring []Point2D) bool {
 	inside := false
+
 	for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
 		pi := ring[i]
 		pj := ring[j]
@@ -138,7 +145,7 @@ func LineStringIntersectsSegment(line []Point2D, p1, p2 Point2D) (Point2D, int, 
 	bestPt := Point2D{}
 	bestEdge := -1
 
-	for i := 0; i < len(line)-1; i++ {
+	for i := range len(line) - 1 {
 		pt, t, ok := SegmentIntersection(p1, p2, line[i], line[i+1])
 		if ok && t < bestT {
 			bestT = t
@@ -168,6 +175,7 @@ func BBoxFromPoints(points []Point2D) (BBox, bool) {
 	if !b.IsFinite() || !b.IsValid() {
 		return BBox{}, false
 	}
+
 	return b, true
 }
 
@@ -186,5 +194,6 @@ func BBoxFromPolygon(rings [][]Point2D) (BBox, bool) {
 	for _, ring := range rings {
 		all = append(all, ring...)
 	}
+
 	return BBoxFromPoints(all)
 }

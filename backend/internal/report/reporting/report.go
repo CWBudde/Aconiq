@@ -3,12 +3,14 @@ package reporting
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	texttemplate "text/template"
 	"time"
@@ -152,16 +154,18 @@ type rasterMetaEnvelope struct {
 
 func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 	if strings.TrimSpace(opts.BundleDir) == "" {
-		return GeneratedReport{}, fmt.Errorf("bundle directory is required")
+		return GeneratedReport{}, errors.New("bundle directory is required")
 	}
+
 	if strings.TrimSpace(opts.Run.ID) == "" {
-		return GeneratedReport{}, fmt.Errorf("run id is required")
+		return GeneratedReport{}, errors.New("run id is required")
 	}
 
 	generatedAt := opts.GeneratedAt.UTC()
 	if generatedAt.IsZero() {
 		generatedAt = time.Now().UTC()
 	}
+
 	if err := os.MkdirAll(opts.BundleDir, 0o755); err != nil {
 		return GeneratedReport{}, fmt.Errorf("create report directory: %w", err)
 	}
@@ -219,15 +223,18 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	if hasProvenance {
 		if provenance.Standard.ID != "" {
 			ctx.StandardID = provenance.Standard.ID
 			ctx.StandardVersion = provenance.Standard.Version
 			ctx.StandardProfile = provenance.Standard.Profile
 		}
+
 		ctx.InputFiles = inputFilesFromHashes(provenance.InputHashes)
 		ctx.Parameters = kvPairsFromMap(provenance.Parameters)
 	}
+
 	if len(ctx.Parameters) == 0 {
 		ctx.Parameters = []kvPairView{{Key: "(none)", Value: ""}}
 	}
@@ -236,6 +243,7 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	if hasSummary {
 		ctx.SourceCount = optionalIntString(summary.SourceCount)
 		ctx.ReceiverCount = optionalIntString(summary.ReceiverCount)
@@ -248,9 +256,10 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	if hasModelDump {
 		ctx.ModelSourcePath = modelDump.SourcePath
-		ctx.ModelFeatureCnt = fmt.Sprintf("%d", modelDump.FeatureCount)
+		ctx.ModelFeatureCnt = strconv.Itoa(modelDump.FeatureCount)
 		ctx.CountsByKind = kindCountsFromMap(modelDump.CountsByKind)
 	}
 
@@ -258,11 +267,13 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	if hasTable {
 		ctx.ReceiverUnit = table.Unit
+
 		ctx.Indicators = buildIndicatorStats(table)
 		if ctx.ReceiverCount == "" {
-			ctx.ReceiverCount = fmt.Sprintf("%d", len(table.Records))
+			ctx.ReceiverCount = strconv.Itoa(len(table.Records))
 		}
 	}
 
@@ -270,15 +281,18 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	ctx.Maps = maps
 
 	ctx.QASuites = normalizeQASuites(opts.QASuites)
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
 	}
+
 	if len(ctx.Indicators) == 0 {
 		ctx.Notes = append(ctx.Notes, "No receiver table statistics were available.")
 	}
+
 	if len(ctx.InputFiles) == 0 {
 		ctx.Notes = append(ctx.Notes, "No input hashes were found in provenance.")
 	}
@@ -290,17 +304,21 @@ func loadProvenance(path string) (provenanceEnvelope, bool, error) {
 	if strings.TrimSpace(path) == "" {
 		return provenanceEnvelope{}, false, nil
 	}
+
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return provenanceEnvelope{}, false, nil
 		}
+
 		return provenanceEnvelope{}, false, fmt.Errorf("read provenance %s: %w", path, err)
 	}
+
 	var parsed provenanceEnvelope
 	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return provenanceEnvelope{}, false, fmt.Errorf("decode provenance %s: %w", path, err)
 	}
+
 	return parsed, true, nil
 }
 
@@ -308,13 +326,16 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 	if strings.TrimSpace(path) == "" {
 		return runSummaryEnvelope{}, false, nil
 	}
+
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return runSummaryEnvelope{}, false, nil
 		}
+
 		return runSummaryEnvelope{}, false, fmt.Errorf("read run summary %s: %w", path, err)
 	}
+
 	var parsed map[string]any
 	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return runSummaryEnvelope{}, false, fmt.Errorf("decode run summary %s: %w", path, err)
@@ -329,6 +350,7 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 	if hashText, ok := parsed["output_hash"].(string); ok {
 		out.OutputHash = strings.TrimSpace(hashText)
 	}
+
 	return out, true, nil
 }
 
@@ -336,17 +358,21 @@ func loadModelDump(path string) (modelDumpEnvelope, bool, error) {
 	if strings.TrimSpace(path) == "" {
 		return modelDumpEnvelope{}, false, nil
 	}
+
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return modelDumpEnvelope{}, false, nil
 		}
+
 		return modelDumpEnvelope{}, false, fmt.Errorf("read model dump %s: %w", path, err)
 	}
+
 	var parsed modelDumpEnvelope
 	if err := json.Unmarshal(payload, &parsed); err != nil {
 		return modelDumpEnvelope{}, false, fmt.Errorf("decode model dump %s: %w", path, err)
 	}
+
 	return parsed, true, nil
 }
 
@@ -354,20 +380,25 @@ func loadReceiverTable(path string) (results.ReceiverTable, bool, error) {
 	if strings.TrimSpace(path) == "" {
 		return results.ReceiverTable{}, false, nil
 	}
+
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return results.ReceiverTable{}, false, nil
 		}
+
 		return results.ReceiverTable{}, false, fmt.Errorf("read receiver table %s: %w", path, err)
 	}
+
 	var table results.ReceiverTable
 	if err := json.Unmarshal(payload, &table); err != nil {
 		return results.ReceiverTable{}, false, fmt.Errorf("decode receiver table %s: %w", path, err)
 	}
+
 	if err := table.Validate(); err != nil {
 		return results.ReceiverTable{}, false, fmt.Errorf("validate receiver table %s: %w", path, err)
 	}
+
 	return table, true, nil
 }
 
@@ -378,8 +409,10 @@ func loadRasterMaps(bundleDir string, metaPaths []string) ([]rasterMapView, erro
 		if trimmed == "" {
 			continue
 		}
+
 		paths = append(paths, trimmed)
 	}
+
 	sort.Strings(paths)
 
 	views := make([]rasterMapView, 0, len(paths))
@@ -389,8 +422,10 @@ func loadRasterMaps(bundleDir string, metaPaths []string) ([]rasterMapView, erro
 			if os.IsNotExist(err) {
 				continue
 			}
+
 			return nil, fmt.Errorf("read raster metadata %s: %w", metaPath, err)
 		}
+
 		var meta rasterMetaEnvelope
 		if err := json.Unmarshal(payload, &meta); err != nil {
 			return nil, fmt.Errorf("decode raster metadata %s: %w", metaPath, err)
@@ -411,6 +446,7 @@ func loadRasterMaps(bundleDir string, metaPaths []string) ([]rasterMapView, erro
 			BandNames:    strings.Join(meta.BandNames, ", "),
 		})
 	}
+
 	return views, nil
 }
 
@@ -429,21 +465,26 @@ func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {
 	for _, suite := range in {
 		name := strings.TrimSpace(suite.Name)
 		status := strings.TrimSpace(suite.Status)
+
 		if name == "" {
 			continue
 		}
+
 		if status == "" {
 			status = "unknown"
 		}
+
 		out = append(out, qaSuiteView{
 			Name:    name,
 			Status:  status,
 			Details: strings.TrimSpace(suite.Details),
 		})
 	}
+
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Name < out[j].Name
 	})
+
 	if len(out) == 0 {
 		return []qaSuiteView{
 			{
@@ -453,6 +494,7 @@ func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {
 			},
 		}
 	}
+
 	return out
 }
 
@@ -460,10 +502,12 @@ func inputFilesFromHashes(hashes map[string]string) []inputFileView {
 	if len(hashes) == 0 {
 		return []inputFileView{}
 	}
+
 	keys := make([]string, 0, len(hashes))
 	for key := range hashes {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	out := make([]inputFileView, 0, len(keys))
@@ -473,6 +517,7 @@ func inputFilesFromHashes(hashes map[string]string) []inputFileView {
 			SHA256: hashes[key],
 		})
 	}
+
 	return out
 }
 
@@ -480,16 +525,19 @@ func kvPairsFromMap(values map[string]string) []kvPairView {
 	if len(values) == 0 {
 		return []kvPairView{}
 	}
+
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	out := make([]kvPairView, 0, len(keys))
 	for _, key := range keys {
 		out = append(out, kvPairView{Key: key, Value: values[key]})
 	}
+
 	return out
 }
 
@@ -497,16 +545,19 @@ func kindCountsFromMap(values map[string]int) []kindCountView {
 	if len(values) == 0 {
 		return []kindCountView{}
 	}
+
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	out := make([]kindCountView, 0, len(keys))
 	for _, key := range keys {
 		out = append(out, kindCountView{Kind: key, Count: values[key]})
 	}
+
 	return out
 }
 
@@ -517,20 +568,25 @@ func buildIndicatorStats(table results.ReceiverTable) []indicatorView {
 		maxValue := math.Inf(-1)
 		sum := 0.0
 		count := 0
+
 		for _, record := range table.Records {
 			value := record.Values[indicator]
 			if value < minValue {
 				minValue = value
 			}
+
 			if value > maxValue {
 				maxValue = value
 			}
+
 			sum += value
 			count++
 		}
+
 		if count == 0 {
 			continue
 		}
+
 		stats = append(stats, indicatorView{
 			Indicator: indicator,
 			Min:       minValue,
@@ -538,6 +594,7 @@ func buildIndicatorStats(table results.ReceiverTable) []indicatorView {
 			Max:       maxValue,
 		})
 	}
+
 	return stats
 }
 
@@ -561,13 +618,15 @@ func optionalIntString(value *int) string {
 	if value == nil {
 		return ""
 	}
-	return fmt.Sprintf("%d", *value)
+
+	return strconv.Itoa(*value)
 }
 
 func formatTime(value time.Time) string {
 	if value.IsZero() {
 		return "n/a"
 	}
+
 	return value.UTC().Format(time.RFC3339)
 }
 
@@ -576,6 +635,7 @@ func relativeFrom(baseDir string, fullPath string) string {
 	if err != nil {
 		return fullPath
 	}
+
 	return rel
 }
 
@@ -584,11 +644,13 @@ func writeJSON(path string, value any) error {
 	if err != nil {
 		return fmt.Errorf("encode report json: %w", err)
 	}
+
 	encoded = append(encoded, '\n')
 
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
 		return fmt.Errorf("write report json %s: %w", path, err)
 	}
+
 	return nil
 }
 
@@ -597,13 +659,16 @@ func writeMarkdown(path string, ctx reportContext) error {
 	if err != nil {
 		return fmt.Errorf("parse markdown template: %w", err)
 	}
+
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, ctx); err != nil {
 		return fmt.Errorf("execute markdown template: %w", err)
 	}
+
 	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write report markdown %s: %w", path, err)
 	}
+
 	return nil
 }
 
@@ -612,13 +677,16 @@ func writeHTML(path string, ctx reportContext) error {
 	if err != nil {
 		return fmt.Errorf("parse html template: %w", err)
 	}
+
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, ctx); err != nil {
 		return fmt.Errorf("execute html template: %w", err)
 	}
+
 	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write report html %s: %w", path, err)
 	}
+
 	return nil
 }
 

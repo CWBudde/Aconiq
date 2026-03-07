@@ -24,6 +24,7 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 	if err := raster.Set(0, 0, 0, 50.5); err != nil {
 		t.Fatalf("set value: %v", err)
 	}
+
 	if err := raster.Set(2, 1, 1, 42.0); err != nil {
 		t.Fatalf("set value: %v", err)
 	}
@@ -32,11 +33,13 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get value: %v", err)
 	}
+
 	if math.Abs(v0-50.5) > 1e-9 {
 		t.Fatalf("unexpected value %.6f", v0)
 	}
 
 	dir := t.TempDir()
+
 	paths, err := SaveRaster(filepath.Join(dir, "noise_map"), raster)
 	if err != nil {
 		t.Fatalf("save raster: %v", err)
@@ -51,6 +54,7 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loaded value: %v", err)
 	}
+
 	if math.Abs(v1-42.0) > 1e-9 {
 		t.Fatalf("unexpected loaded value %.6f", v1)
 	}

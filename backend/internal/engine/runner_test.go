@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ func TestDeterministicHashAcrossWorkerCounts(t *testing.T) {
 	t.Parallel()
 
 	receivers := make([]Receiver, 0, 180)
-	for i := 0; i < 180; i++ {
+	for i := range 180 {
 		receivers = append(receivers, Receiver{
 			ID:      "rx-" + padInt(i),
 			Point:   geo.Point2D{X: float64(i % 30), Y: float64(i / 30)},
@@ -66,6 +67,7 @@ func TestDeterministicHashAcrossWorkerCounts(t *testing.T) {
 	if out1.OutputHash != outN.OutputHash {
 		t.Fatalf("expected identical output hash, got %s vs %s", out1.OutputHash, outN.OutputHash)
 	}
+
 	if len(out1.Results) != len(outN.Results) {
 		t.Fatalf("expected same result length")
 	}
@@ -75,7 +77,7 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 	t.Parallel()
 
 	receivers := make([]Receiver, 0, 600)
-	for i := 0; i < 600; i++ {
+	for i := range 600 {
 		receivers = append(receivers, Receiver{
 			ID:      "rx-" + padInt(i),
 			Point:   geo.Point2D{X: float64(i % 50), Y: float64(i / 50)},
@@ -89,6 +91,7 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 	runner := NewRunner(nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
+
 	go func() {
 		time.Sleep(40 * time.Millisecond)
 		cancel()
@@ -107,29 +110,36 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}
-	if err != context.Canceled {
+
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 
 	statePath := filepath.Join(cacheDir, "cancel-test", "run-state.json")
+
 	payload, readErr := os.ReadFile(statePath)
 	if readErr != nil {
 		t.Fatalf("read run state: %v", readErr)
 	}
 
 	var state RunState
-	if decodeErr := json.Unmarshal(payload, &state); decodeErr != nil {
+
+	decodeErr := json.Unmarshal(payload, &state)
+	if decodeErr != nil {
 		t.Fatalf("decode run state: %v", decodeErr)
 	}
+
 	if state.Status != RunStateCanceled {
 		t.Fatalf("expected canceled state, got %s", state.Status)
 	}
 
 	chunksDir := filepath.Join(cacheDir, "cancel-test", "chunks")
+
 	entries, readDirErr := os.ReadDir(chunksDir)
 	if readDirErr != nil {
 		t.Fatalf("read chunks dir: %v", readDirErr)
 	}
+
 	for _, entry := range entries {
 		if strings.HasSuffix(entry.Name(), ".tmp") {
 			t.Fatalf("unexpected tmp file left behind: %s", entry.Name())
@@ -141,7 +151,7 @@ func TestChunkCacheReuse(t *testing.T) {
 	t.Parallel()
 
 	receivers := make([]Receiver, 0, 90)
-	for i := 0; i < 90; i++ {
+	for i := range 90 {
 		receivers = append(receivers, Receiver{
 			ID:      "rx-" + padInt(i),
 			Point:   geo.Point2D{X: float64(i), Y: float64(i % 10)},
@@ -182,6 +192,7 @@ func TestChunkCacheReuse(t *testing.T) {
 	if first.OutputHash != second.OutputHash {
 		t.Fatalf("expected equal output hashes for cache reuse")
 	}
+
 	if second.UsedCachedChunks == 0 {
 		t.Fatalf("expected cached chunks to be reused")
 	}
@@ -198,6 +209,7 @@ func TestProgressEventsIncludePipelineStages(t *testing.T) {
 	runner := NewRunner(func(event ProgressEvent) {
 		mu.Lock()
 		defer mu.Unlock()
+
 		events = append(events, event)
 	})
 
@@ -220,6 +232,7 @@ func TestProgressEventsIncludePipelineStages(t *testing.T) {
 				return true
 			}
 		}
+
 		return false
 	}
 

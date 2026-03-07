@@ -1,6 +1,7 @@
 package framework
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,13 +16,16 @@ type Registry struct {
 func NewRegistry(descriptors ...StandardDescriptor) (Registry, error) {
 	registered := make(map[string]StandardDescriptor, len(descriptors))
 	for _, descriptor := range descriptors {
-		if err := descriptor.Validate(); err != nil {
+		err := descriptor.Validate()
+		if err != nil {
 			return Registry{}, err
 		}
+
 		id := strings.TrimSpace(descriptor.ID)
 		if _, exists := registered[id]; exists {
 			return Registry{}, fmt.Errorf("standard %q registered more than once", id)
 		}
+
 		registered[id] = descriptor
 	}
 
@@ -34,12 +38,14 @@ func (r Registry) List() []StandardDescriptor {
 	for id := range r.descriptors {
 		ids = append(ids, id)
 	}
+
 	sort.Strings(ids)
 
 	result := make([]StandardDescriptor, 0, len(ids))
 	for _, id := range ids {
 		result = append(result, r.descriptors[id])
 	}
+
 	return result
 }
 
@@ -47,7 +53,7 @@ func (r Registry) List() []StandardDescriptor {
 func (r Registry) Resolve(standardID string, version string, profile string) (ResolvedProfile, error) {
 	standardID = strings.TrimSpace(standardID)
 	if standardID == "" {
-		return ResolvedProfile{}, fmt.Errorf("standard id is required")
+		return ResolvedProfile{}, errors.New("standard id is required")
 	}
 
 	descriptor, ok := r.descriptors[standardID]

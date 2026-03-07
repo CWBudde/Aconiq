@@ -25,6 +25,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o755); err != nil {
 		t.Fatalf("create results dir: %v", err)
 	}
+
 	if err := os.MkdirAll(filepath.Dir(modelDumpPath), 0o755); err != nil {
 		t.Fatalf("create model dir: %v", err)
 	}
@@ -82,6 +83,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write raster metadata: %v", err)
 	}
+
 	if err := os.WriteFile(filepath.Join(bundleDir, "results", "lden.bin"), []byte{1, 2, 3, 4}, 0o644); err != nil {
 		t.Fatalf("write raster binary: %v", err)
 	}
@@ -120,6 +122,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read markdown report: %v", err)
 	}
+
 	markdownText := string(markdown)
 	for _, section := range []string{
 		"## Input overview",
@@ -132,6 +135,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			t.Fatalf("expected markdown to contain section %q", section)
 		}
 	}
+
 	if !strings.Contains(markdownText, "Lden | 50.000 | 52.667 | 55.000") {
 		t.Fatalf("expected receiver stats row in markdown: %s", markdownText)
 	}
@@ -140,6 +144,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read html report: %v", err)
 	}
+
 	htmlText := string(html)
 	if !strings.Contains(htmlText, "<h2>QA status (which suites passed)</h2>") {
 		t.Fatalf("expected QA section in html report")
@@ -149,10 +154,12 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read report context: %v", err)
 	}
+
 	var context map[string]any
 	if err := json.Unmarshal(payload, &context); err != nil {
 		t.Fatalf("decode context json: %v", err)
 	}
+
 	indicators, ok := context["indicators"].([]any)
 	if !ok || len(indicators) != 2 {
 		t.Fatalf("expected two indicator stats in context, got %#v", context["indicators"])
@@ -163,6 +170,7 @@ func TestBuildRunReportUsesDefaultQABaseline(t *testing.T) {
 	t.Parallel()
 
 	bundleDir := t.TempDir()
+
 	report, err := BuildRunReport(BuildOptions{
 		BundleDir: bundleDir,
 		Project:   project.Project{ProjectID: "proj-2", Name: "NoData"},
@@ -176,6 +184,7 @@ func TestBuildRunReportUsesDefaultQABaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read markdown: %v", err)
 	}
+
 	text := string(markdown)
 	if !strings.Contains(text, "phase20-baseline") {
 		t.Fatalf("expected default QA suite row, got: %s", text)
@@ -187,6 +196,8 @@ func writeJSONFile(path string, value any) error {
 	if err != nil {
 		return err
 	}
+
 	encoded = append(encoded, '\n')
+
 	return os.WriteFile(path, encoded, 0o644)
 }

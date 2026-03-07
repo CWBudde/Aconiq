@@ -1,6 +1,7 @@
 package road
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -18,7 +19,7 @@ type Barrier struct {
 // Validate checks a barrier definition.
 func (b Barrier) Validate() error {
 	if b.ID == "" {
-		return fmt.Errorf("barrier id is required")
+		return errors.New("barrier id is required")
 	}
 
 	if len(b.Geometry) < 2 {

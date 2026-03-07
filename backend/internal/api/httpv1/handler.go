@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -243,6 +244,7 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		if a.RunID == "" {
 			continue
 		}
+
 		artifactsByRun[a.RunID] = append(artifactsByRun[a.RunID], artifactRefResponse{
 			ID:        a.ID,
 			Kind:      a.Kind,
@@ -254,10 +256,12 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
 	for i := len(proj.Runs) - 1; i >= 0; i-- {
 		run := proj.Runs[i]
+
 		artifacts := artifactsByRun[run.ID]
 		if artifacts == nil {
 			artifacts = []artifactRefResponse{}
 		}
+
 		summaries = append(summaries, runSummaryResponse{
 			ID:         run.ID,
 			ScenarioID: run.ScenarioID,
@@ -286,6 +290,7 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 			Code:    "bad_request",
 			Message: "run id is required",
 		})
+
 		return
 	}
 
@@ -296,27 +301,32 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var logPath string
+
 	for _, run := range proj.Runs {
 		if run.ID == runID {
 			logPath = run.LogPath
 			break
 		}
 	}
+
 	if logPath == "" {
 		writeAPIError(w, http.StatusNotFound, apiError{
 			Code:    "not_found",
 			Message: fmt.Sprintf("run %q not found", runID),
 		})
+
 		return
 	}
 
 	absLogPath := h.store.Root() + "/" + strings.ReplaceAll(logPath, "\\", "/")
+
 	raw, readErr := os.ReadFile(absLogPath)
 	if readErr != nil {
 		writeAPIError(w, http.StatusInternalServerError, apiError{
 			Code:    "internal_error",
 			Message: "failed to read run log",
 		})
+
 		return
 	}
 
@@ -337,10 +347,12 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 			Code:    "standards_unavailable",
 			Message: "standards registry not configured",
 		})
+
 		return
 	}
 
 	descriptors := h.registry.List()
+
 	standards := make([]standardResponse, 0, len(descriptors))
 	for _, d := range descriptors {
 		versions := make([]versionResponse, 0, len(d.Versions))
@@ -360,6 +372,7 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 						Max:          param.Max,
 					})
 				}
+
 				profiles = append(profiles, profileResponse{
 					Name:                 p.Name,
 					SupportedSourceTypes: p.SupportedSourceTypes,
@@ -367,12 +380,14 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 					Parameters:           params,
 				})
 			}
+
 			versions = append(versions, versionResponse{
 				Name:           v.Name,
 				DefaultProfile: v.DefaultProfile,
 				Profiles:       profiles,
 			})
 		}
+
 		standards = append(standards, standardResponse{
 			ID:             d.ID,
 			Description:    d.Description,
@@ -415,6 +430,7 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			Code:    "stream_not_supported",
 			Message: "streaming is not supported by this server",
 		})
+
 		return
 	}
 
@@ -433,15 +449,21 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		if key == lastStatusKey {
 			return nil
 		}
-		if err := writeSSEEvent(w, "project_status", event); err != nil {
+
+		err := writeSSEEvent(w, "project_status", event)
+		if err != nil {
 			return err
 		}
+
 		lastStatusKey = key
+
 		flusher.Flush()
+
 		return nil
 	}
 
-	if err := pushStatusEvent(); err != nil {
+	err := pushStatusEvent()
+	if err != nil {
 		return
 	}
 
@@ -453,14 +475,18 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
-			if err := writeSSEEvent(w, "heartbeat", map[string]any{
+			err := writeSSEEvent(w, "heartbeat", map[string]any{
 				"time": h.now().UTC(),
-			}); err != nil {
+			})
+			if err != nil {
 				return
 			}
-			if err := pushStatusEvent(); err != nil {
+
+			err = pushStatusEvent()
+			if err != nil {
 				return
 			}
+
 			flusher.Flush()
 		}
 	}
@@ -468,17 +494,20 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 	now := h.now().UTC()
+
 	proj, err := h.store.Load()
 	if err != nil {
 		apiErr := apiError{
 			Code:    "internal_error",
 			Message: "failed to load project status",
 		}
+
 		var appErr *domainerrors.AppError
 		if stderrors.As(err, &appErr) {
 			if appErr.Msg != "" {
 				apiErr.Message = appErr.Msg
 			}
+
 			switch appErr.Kind {
 			case domainerrors.KindNotFound:
 				apiErr.Code = "not_found"
@@ -489,6 +518,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 			default:
 				apiErr.Code = "internal_error"
 			}
+
 			apiErr.Details = map[string]any{
 				"operation": appErr.Op,
 				"kind":      appErr.Kind,
@@ -496,6 +526,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		}
 
 		key := fmt.Sprintf("missing:%s:%s", apiErr.Code, apiErr.Message)
+
 		return map[string]any{
 			"time":              now,
 			"project_available": false,
@@ -515,6 +546,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 	lastRunID := ""
 	lastRunState := ""
 	lastRunUpdated := ""
+
 	if len(proj.Runs) > 0 {
 		last := proj.Runs[len(proj.Runs)-1]
 		status.LastRun = &lastRunStatus{
@@ -534,7 +566,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 	key := strings.Join([]string{
 		"available",
 		proj.ProjectID,
-		fmt.Sprintf("%d", len(proj.Runs)),
+		strconv.Itoa(len(proj.Runs)),
 		lastRunID,
 		lastRunState,
 		lastRunUpdated,
@@ -549,12 +581,14 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 
 func splitLogLines(text string) []string {
 	raw := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+
 	lines := make([]string, 0, len(raw))
 	for _, line := range raw {
 		if line != "" {
 			lines = append(lines, line)
 		}
 	}
+
 	return lines
 }
 
@@ -572,6 +606,7 @@ func requireMethod(w http.ResponseWriter, r *http.Request, expected string) bool
 			"path":     r.URL.Path,
 		},
 	})
+
 	return false
 }
 
@@ -580,12 +615,15 @@ func writeSSEEvent(w io.Writer, event string, data any) error {
 	if err != nil {
 		return err
 	}
+
 	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
 		return err
 	}
+
 	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -601,6 +639,7 @@ func writeDomainError(w http.ResponseWriter, err error) {
 		if appErr.Msg != "" {
 			apiErr.Message = appErr.Msg
 		}
+
 		apiErr.Details = map[string]any{
 			"operation": appErr.Op,
 			"kind":      appErr.Kind,
@@ -636,6 +675,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 		encoded = []byte(`{"error":{"code":"internal_error","message":"failed to encode response"}}`)
 		status = http.StatusInternalServerError
 	}
+
 	encoded = append(encoded, '\n')
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

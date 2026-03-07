@@ -1,7 +1,7 @@
 package road
 
 import (
-	"fmt"
+	"errors"
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -27,17 +27,21 @@ func DefaultPropagationConfig() PropagationConfig {
 
 func (cfg PropagationConfig) Validate() error {
 	if math.IsNaN(cfg.AirAbsorptionDBPerKM) || math.IsInf(cfg.AirAbsorptionDBPerKM, 0) || cfg.AirAbsorptionDBPerKM < 0 {
-		return fmt.Errorf("air_absorption_db_per_km must be finite and >= 0")
+		return errors.New("air_absorption_db_per_km must be finite and >= 0")
 	}
+
 	if math.IsNaN(cfg.GroundAttenuationDB) || math.IsInf(cfg.GroundAttenuationDB, 0) || cfg.GroundAttenuationDB < 0 {
-		return fmt.Errorf("ground_attenuation_db must be finite and >= 0")
+		return errors.New("ground_attenuation_db must be finite and >= 0")
 	}
+
 	if math.IsNaN(cfg.BarrierAttenuationDB) || math.IsInf(cfg.BarrierAttenuationDB, 0) || cfg.BarrierAttenuationDB < 0 {
-		return fmt.Errorf("barrier_attenuation_db must be finite and >= 0")
+		return errors.New("barrier_attenuation_db must be finite and >= 0")
 	}
+
 	if math.IsNaN(cfg.MinDistanceM) || math.IsInf(cfg.MinDistanceM, 0) || cfg.MinDistanceM <= 0 {
-		return fmt.Errorf("min_distance_m must be finite and > 0")
+		return errors.New("min_distance_m must be finite and > 0")
 	}
+
 	return nil
 }
 
@@ -50,19 +54,23 @@ func attenuation(distanceM float64, cfg PropagationConfig) float64 {
 	// Line-source style geometric attenuation baseline.
 	geometric := 10*math.Log10(d) + 8.0
 	air := cfg.AirAbsorptionDBPerKM * (d / 1000.0)
+
 	return geometric + air + cfg.GroundAttenuationDB + cfg.BarrierAttenuationDB
 }
 
 // ComputeReceiverPeriodLevels computes Lday/Levening/Lnight at one receiver.
 func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RoadSource, cfg PropagationConfig) (PeriodLevels, error) {
-	if err := cfg.Validate(); err != nil {
+	err := cfg.Validate()
+	if err != nil {
 		return PeriodLevels{}, err
 	}
+
 	if !receiver.IsFinite() {
-		return PeriodLevels{}, fmt.Errorf("receiver is not finite")
+		return PeriodLevels{}, errors.New("receiver is not finite")
 	}
+
 	if len(sources) == 0 {
-		return PeriodLevels{}, fmt.Errorf("at least one source is required")
+		return PeriodLevels{}, errors.New("at least one source is required")
 	}
 
 	dayContrib := make([]float64, 0, len(sources))

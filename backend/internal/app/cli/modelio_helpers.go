@@ -16,6 +16,7 @@ func resolvePath(baseDir string, value string) string {
 	if filepath.IsAbs(value) {
 		return value
 	}
+
 	return filepath.Join(baseDir, value)
 }
 
@@ -24,22 +25,24 @@ func relativePath(baseDir string, absPath string) string {
 	if err != nil {
 		return filepath.ToSlash(absPath)
 	}
+
 	return filepath.ToSlash(rel)
 }
 
 func writeJSONFile(path string, value any) error {
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", fmt.Sprintf("encode %s", path), err)
+		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "encode "+path, err)
 	}
+
 	encoded = append(encoded, '\n')
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", fmt.Sprintf("create directory for %s", path), err)
+		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "create directory for "+path, err)
 	}
 
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", fmt.Sprintf("write %s", path), err)
+		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "write "+path, err)
 	}
 
 	return nil
@@ -51,9 +54,12 @@ func upsertArtifact(artifacts []project.ArtifactRef, artifact project.ArtifactRe
 		if current.ID == artifact.ID {
 			continue
 		}
+
 		out = append(out, current)
 	}
+
 	out = append(out, artifact)
+
 	return out
 }
 
@@ -67,14 +73,13 @@ func summarizeValidationErrors(errors []string, max int) string {
 	}
 
 	parts := make([]string, 0, max)
-	for _, msg := range errors[:max] {
-		parts = append(parts, msg)
-	}
+	parts = append(parts, errors[:max]...)
 
 	summary := strings.Join(parts, "; ")
 	if len(errors) > max {
 		summary += fmt.Sprintf(" (+%d more)", len(errors)-max)
 	}
+
 	return summary
 }
 
