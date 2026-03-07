@@ -33,6 +33,76 @@ func TestPointInPolygonWithHole(t *testing.T) {
 	}
 }
 
+func TestSegmentIntersection_Crossing(t *testing.T) {
+	t.Parallel()
+
+	// Two crossing segments.
+	pt, tVal, ok := SegmentIntersection(
+		Point2D{X: 0, Y: 0}, Point2D{X: 10, Y: 0},
+		Point2D{X: 5, Y: -5}, Point2D{X: 5, Y: 5},
+	)
+	if !ok {
+		t.Fatal("expected intersection")
+	}
+
+	if math.Abs(pt.X-5) > 1e-9 || math.Abs(pt.Y) > 1e-9 {
+		t.Fatalf("expected (5,0), got (%f,%f)", pt.X, pt.Y)
+	}
+
+	if math.Abs(tVal-0.5) > 1e-9 {
+		t.Fatalf("expected t=0.5, got %f", tVal)
+	}
+}
+
+func TestSegmentIntersection_NoIntersection(t *testing.T) {
+	t.Parallel()
+
+	// Parallel segments.
+	_, _, ok := SegmentIntersection(
+		Point2D{X: 0, Y: 0}, Point2D{X: 10, Y: 0},
+		Point2D{X: 0, Y: 1}, Point2D{X: 10, Y: 1},
+	)
+	if ok {
+		t.Fatal("expected no intersection for parallel segments")
+	}
+
+	// Non-overlapping segments.
+	_, _, ok = SegmentIntersection(
+		Point2D{X: 0, Y: 0}, Point2D{X: 5, Y: 0},
+		Point2D{X: 6, Y: -1}, Point2D{X: 6, Y: 1},
+	)
+	if ok {
+		t.Fatal("expected no intersection for non-overlapping segments")
+	}
+}
+
+func TestLineStringIntersectsSegment(t *testing.T) {
+	t.Parallel()
+
+	// Barrier polyline running north-south at x=5.
+	barrier := []Point2D{{X: 5, Y: -10}, {X: 5, Y: 10}}
+
+	// Source-receiver line crossing the barrier.
+	pt, edge, ok := LineStringIntersectsSegment(barrier, Point2D{X: 0, Y: 0}, Point2D{X: 10, Y: 0})
+	if !ok {
+		t.Fatal("expected intersection")
+	}
+
+	if math.Abs(pt.X-5) > 1e-9 || math.Abs(pt.Y) > 1e-9 {
+		t.Fatalf("expected (5,0), got (%f,%f)", pt.X, pt.Y)
+	}
+
+	if edge != 0 {
+		t.Fatalf("expected edge 0, got %d", edge)
+	}
+
+	// Line that does not cross the barrier.
+	_, _, ok = LineStringIntersectsSegment(barrier, Point2D{X: 0, Y: 0}, Point2D{X: 3, Y: 0})
+	if ok {
+		t.Fatal("expected no intersection")
+	}
+}
+
 func TestBBoxFromPoints(t *testing.T) {
 	t.Parallel()
 

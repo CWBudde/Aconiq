@@ -60,16 +60,16 @@ type artifactRefResponse struct {
 }
 
 type runSummaryResponse struct {
-	ID         string                 `json:"id"`
-	ScenarioID string                 `json:"scenario_id"`
-	StandardID string                 `json:"standard_id"`
-	Version    string                 `json:"version"`
-	Profile    string                 `json:"profile,omitempty"`
-	Status     string                 `json:"status"`
-	StartedAt  time.Time              `json:"started_at"`
-	FinishedAt time.Time              `json:"finished_at"`
-	LogPath    string                 `json:"log_path"`
-	Artifacts  []artifactRefResponse  `json:"artifacts"`
+	ID         string                `json:"id"`
+	ScenarioID string                `json:"scenario_id"`
+	StandardID string                `json:"standard_id"`
+	Version    string                `json:"version"`
+	Profile    string                `json:"profile,omitempty"`
+	Status     string                `json:"status"`
+	StartedAt  time.Time             `json:"started_at"`
+	FinishedAt time.Time             `json:"finished_at"`
+	LogPath    string                `json:"log_path"`
+	Artifacts  []artifactRefResponse `json:"artifacts"`
 }
 
 type runLogResponse struct {

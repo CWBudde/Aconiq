@@ -127,8 +127,8 @@ func ComputeShielding(
 	return best
 }
 
-// pathDifference computes the path length difference delta for single-edge
-// diffraction in a vertical cross-section.
+// pathDifference computes the signed path length difference delta for
+// single-edge diffraction in a vertical cross-section.
 //
 // The geometry in the vertical plane:
 //
@@ -136,20 +136,33 @@ func ComputeShielding(
 //	B (barrier top) at height hB
 //	R (receiver) at height hR, horizontal distance dBR from barrier
 //
-// delta = sqrt(dSB^2 + (hB-hS)^2) + sqrt(dBR^2 + (hB-hR)^2) - sqrt((dSB+dBR)^2 + (hR-hS)^2)
-//
-// If delta > 0, the barrier is above the line of sight and causes diffraction.
-// If delta <= 0, the barrier is below the line of sight (no shielding).
+// The unsigned path difference is always >= 0 (triangle inequality).
+// We apply a sign: positive when the barrier top is above the source-receiver
+// line of sight (diffraction occurs), negative when below (no shielding).
 func pathDifference(dSB, hS, dBR, hR, hB float64) float64 {
+	dTotal := dSB + dBR
+	if dTotal <= 0 {
+		return 0
+	}
+
+	// Height of the line of sight at the barrier location.
+	hLOS := hS + (hR-hS)*dSB/dTotal
+
 	// Path over barrier: S → barrier top → R.
 	pathSB := math.Sqrt(dSB*dSB + (hB-hS)*(hB-hS))
 	pathBR := math.Sqrt(dBR*dBR + (hB-hR)*(hB-hR))
 
 	// Direct path: S → R.
-	dTotal := dSB + dBR
 	pathDirect := math.Sqrt(dTotal*dTotal + (hR-hS)*(hR-hS))
 
-	return pathSB + pathBR - pathDirect
+	delta := pathSB + pathBR - pathDirect
+
+	// Sign: positive only when barrier is above line of sight.
+	if hB < hLOS {
+		return -delta
+	}
+
+	return delta
 }
 
 // maekawaInsertionLoss computes the barrier insertion loss using the
