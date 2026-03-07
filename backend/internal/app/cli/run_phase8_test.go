@@ -66,7 +66,9 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	}
 
 	var receiverTable results.ReceiverTable
-	if err := json.Unmarshal(receiverTablePayload, &receiverTable); err != nil {
+
+	err = json.Unmarshal(receiverTablePayload, &receiverTable)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -169,7 +171,8 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "cnossos-road.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -180,7 +183,9 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 

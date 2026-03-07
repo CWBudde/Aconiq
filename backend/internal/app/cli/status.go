@@ -137,7 +137,8 @@ func readTail(path string, lines int) ([]string, error) {
 		all = append(all, strings.TrimRight(scanner.Text(), "\r\n"))
 	}
 
-	if err := scanner.Err(); err != nil {
+	err = scanner.Err()
+	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", "scan run log: "+path, err)
 	}
 

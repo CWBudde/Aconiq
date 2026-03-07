@@ -11,11 +11,14 @@ import (
 
 // SaveReceiverTableJSON writes receiver table as JSON.
 func SaveReceiverTableJSON(path string, table ReceiverTable) error {
-	if err := table.Validate(); err != nil {
+
+	err := table.Validate()
+	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create receiver table directory: %w", err)
 	}
 
@@ -25,8 +28,8 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 	}
 
 	payload = append(payload, '\n')
-
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	err = os.WriteFile(path, payload, 0o644)
+	if err != nil {
 		return fmt.Errorf("write receiver table json %s: %w", path, err)
 	}
 
@@ -35,11 +38,13 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 
 // SaveReceiverTableCSV writes receiver table as CSV.
 func SaveReceiverTableCSV(path string, table ReceiverTable) error {
-	if err := table.Validate(); err != nil {
+	err := table.Validate()
+	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create receiver table directory: %w", err)
 	}
 
@@ -53,7 +58,9 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 	header := []string{"id", "x", "y", "height_m"}
 
 	header = append(header, table.IndicatorOrder...)
-	if err := writer.Write(header); err != nil {
+
+	err = writer.Write(header)
+	if err != nil {
 		return fmt.Errorf("write receiver table csv header: %w", err)
 	}
 
@@ -75,8 +82,8 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 	}
 
 	writer.Flush()
-
-	if err := writer.Error(); err != nil {
+	err = writer.Error()
+	if err != nil {
 		return fmt.Errorf("flush receiver table csv: %w", err)
 	}
 

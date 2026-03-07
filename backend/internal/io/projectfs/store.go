@@ -104,20 +104,22 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 	if exists {
 		return project.Project{}, domainerrors.New(domainerrors.KindUserInput, "projectfs.Init", "project already initialized: "+s.manifestPath(), nil)
 	}
-
-	if err := os.MkdirAll(s.root, 0o755); err != nil {
+	err = os.MkdirAll(s.root, 0o755)
+	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create project directory", err)
 	}
-
-	if err := os.MkdirAll(s.runsDir(), 0o755); err != nil {
+	err = os.MkdirAll(s.runsDir(), 0o755)
+	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create runs directory", err)
 	}
 
-	if err := os.MkdirAll(s.artifactsDir(), 0o755); err != nil {
+	err = os.MkdirAll(s.artifactsDir(), 0o755)
+	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create artifacts directory", err)
 	}
 
-	if err := os.MkdirAll(s.logsDir(), 0o755); err != nil {
+	err = os.MkdirAll(s.logsDir(), 0o755)
+	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create logs directory", err)
 	}
 
@@ -163,7 +165,8 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 		UpdatedAt: now,
 	}
 
-	if err := s.Save(proj); err != nil {
+	err = s.Save(proj)
+	if err != nil {
 		return project.Project{}, err
 	}
 
@@ -182,7 +185,9 @@ func (s Store) Load() (project.Project, error) {
 	}
 
 	var proj project.Project
-	if err := json.Unmarshal(payload, &proj); err != nil {
+
+	err = json.Unmarshal(payload, &proj)
+	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindValidation, "projectfs.Load", "decode project manifest", err)
 	}
 
@@ -203,17 +208,18 @@ func (s Store) Save(proj project.Project) error {
 	}
 
 	serialized = append(serialized, '\n')
-
-	if err := os.MkdirAll(filepath.Dir(s.manifestPath()), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(s.manifestPath()), 0o755)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "create manifest directory", err)
 	}
 
 	tmpPath := s.manifestPath() + ".tmp"
-	if err := os.WriteFile(tmpPath, serialized, 0o644); err != nil {
+	err = os.WriteFile(tmpPath, serialized, 0o644)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "write temporary project manifest", err)
 	}
-
-	if err := os.Rename(tmpPath, s.manifestPath()); err != nil {
+	err = os.Rename(tmpPath, s.manifestPath())
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "replace project manifest", err)
 	}
 
@@ -258,7 +264,8 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	runID := buildID("run")
 
 	runDir := filepath.Join(s.runsDir(), runID)
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
+	err = os.MkdirAll(runDir, 0o755)
+	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, domainerrors.New(domainerrors.KindInternal, "projectfs.CreateRun", "create run directory", err)
 	}
 
@@ -270,7 +277,8 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	logRelPath := filepath.ToSlash(filepath.Join(".noise", "runs", runID, "run.log"))
 	provRelPath := filepath.ToSlash(filepath.Join(".noise", "runs", runID, "provenance.json"))
 
-	if err := writeRunLog(filepath.Join(s.root, filepath.FromSlash(logRelPath)), spec.LogLines); err != nil {
+	err = writeRunLog(filepath.Join(s.root, filepath.FromSlash(logRelPath)), spec.LogLines)
+	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, err
 	}
 
@@ -290,7 +298,8 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 		ToolVersion: toolVersion,
 	}
 
-	if err := writeJSONFile(filepath.Join(s.root, filepath.FromSlash(provRelPath)), provenance); err != nil {
+	err = writeJSONFile(filepath.Join(s.root, filepath.FromSlash(provRelPath)), provenance)
+	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, err
 	}
 
@@ -306,7 +315,9 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	}
 
 	proj.Runs = append(proj.Runs, run)
-	if err := s.Save(proj); err != nil {
+
+	err = s.Save(proj)
+	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, err
 	}
 
@@ -378,7 +389,8 @@ func writeJSONFile(path string, v any) error {
 
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	err = os.WriteFile(path, data, 0o644)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write json file "+path, err)
 	}
 
@@ -408,8 +420,11 @@ func cloneStringMap(in map[string]string) map[string]string {
 
 func buildID(prefix string) string {
 	buf := make([]byte, 6)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%s-%d", prefix, time.Now().UTC().UnixNano())
+	{
+		_, err := rand.Read(buf)
+		if err != nil {
+			return fmt.Sprintf("%s-%d", prefix, time.Now().UTC().UnixNano())
+		}
 	}
 
 	return fmt.Sprintf("%s-%s", prefix, hex.EncodeToString(buf))

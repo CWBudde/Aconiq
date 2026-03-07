@@ -282,7 +282,8 @@ func newRunCommand() *cobra.Command {
 				nowUTC().Format(time.RFC3339)+" run completed",
 			)
 
-			if err := finalizeRun(store, run, project.RunStatusCompleted, finishedAt, logLines, artifacts); err != nil {
+			err = finalizeRun(store, run, project.RunStatusCompleted, finishedAt, logLines, artifacts)
+			if err != nil {
 				return err
 			}
 
@@ -379,27 +380,33 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 		return nil
 	}
 
-	if err := parseFloat("grid_resolution_m", &options.GridResolutionM, 0.001); err != nil {
+	err := parseFloat("grid_resolution_m", &options.GridResolutionM, 0.001)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
-	if err := parseFloat("grid_padding_m", &options.GridPaddingM, 0); err != nil {
+	err = parseFloat("grid_padding_m", &options.GridPaddingM, 0)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
-	if err := parseFloat("receiver_height_m", &options.ReceiverHeightM, 0); err != nil {
+	err = parseFloat("receiver_height_m", &options.ReceiverHeightM, 0)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
-	if err := parseFloat("source_emission_db", &options.SourceEmission, 0); err != nil {
+	err = parseFloat("source_emission_db", &options.SourceEmission, 0)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
-	if err := parseInt("workers", &options.Workers, 0); err != nil {
+	err = parseInt("workers", &options.Workers, 0)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
-	if err := parseInt("chunk_size", &options.ChunkSize, 1); err != nil {
+	err = parseInt("chunk_size", &options.ChunkSize, 1)
+	if err != nil {
 		return dummyRunOptions{}, err
 	}
 
@@ -446,15 +453,18 @@ func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions
 		return strings.TrimSpace(value), nil
 	}
 
-	if err := parseFloat("grid_resolution_m", &options.GridResolutionM); err != nil {
+	err := parseFloat("grid_resolution_m", &options.GridResolutionM)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("grid_padding_m", &options.GridPaddingM); err != nil {
+	err = parseFloat("grid_padding_m", &options.GridPaddingM)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("receiver_height_m", &options.ReceiverHeightM); err != nil {
+	err = parseFloat("receiver_height_m", &options.ReceiverHeightM)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
@@ -465,51 +475,63 @@ func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions
 
 	options.SurfaceType = surfaceType
 
-	if err := parseFloat("road_speed_kph", &options.SpeedKPH); err != nil {
+	err = parseFloat("road_speed_kph", &options.SpeedKPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("road_gradient_percent", &options.GradientPercent); err != nil {
+	err = parseFloat("road_gradient_percent", &options.GradientPercent)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_day_light_vph", &options.TrafficDayLightVPH); err != nil {
+	err = parseFloat("traffic_day_light_vph", &options.TrafficDayLightVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_day_heavy_vph", &options.TrafficDayHeavyVPH); err != nil {
+	err = parseFloat("traffic_day_heavy_vph", &options.TrafficDayHeavyVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_evening_light_vph", &options.TrafficEveningLightVPH); err != nil {
+	err = parseFloat("traffic_evening_light_vph", &options.TrafficEveningLightVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH); err != nil {
+	err = parseFloat("traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_night_light_vph", &options.TrafficNightLightVPH); err != nil {
+	err = parseFloat("traffic_night_light_vph", &options.TrafficNightLightVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("traffic_night_heavy_vph", &options.TrafficNightHeavyVPH); err != nil {
+	err = parseFloat("traffic_night_heavy_vph", &options.TrafficNightHeavyVPH)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("air_absorption_db_per_km", &options.AirAbsorptionDBPerKM); err != nil {
+	err = parseFloat("air_absorption_db_per_km", &options.AirAbsorptionDBPerKM)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("ground_attenuation_db", &options.GroundAttenuationDB); err != nil {
+	err = parseFloat("ground_attenuation_db", &options.GroundAttenuationDB)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("barrier_attenuation_db", &options.BarrierAttenuationDB); err != nil {
+	err = parseFloat("barrier_attenuation_db", &options.BarrierAttenuationDB)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("min_distance_m", &options.MinDistanceM); err != nil {
+	err = parseFloat("min_distance_m", &options.MinDistanceM)
+	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
 
@@ -979,7 +1001,8 @@ func persistDummyRunOutputs(
 	indicator string,
 ) (persistedRunOutputs, error) {
 	resultsDir := filepath.Join(runDir, "results")
-	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+	err := os.MkdirAll(resultsDir, 0o755)
+	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "create results directory "+resultsDir, err)
 	}
 
@@ -1012,12 +1035,13 @@ func persistDummyRunOutputs(
 
 	receiverJSONPath := filepath.Join(resultsDir, "receivers.json")
 	receiverCSVPath := filepath.Join(resultsDir, "receivers.csv")
-
-	if err := results.SaveReceiverTableJSON(receiverJSONPath, table); err != nil {
+	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
+	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save receiver table json", err)
 	}
 
-	if err := results.SaveReceiverTableCSV(receiverCSVPath, table); err != nil {
+	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
+	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save receiver table csv", err)
 	}
 
@@ -1065,7 +1089,8 @@ func persistDummyRunOutputs(
 	}
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, err
 	}
 
@@ -1108,7 +1133,8 @@ func persistCnossosRoadRunOutputs(
 	}
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -1238,8 +1264,8 @@ func finalizeRun(
 	for _, artifact := range artifacts {
 		proj.Artifacts = upsertArtifact(proj.Artifacts, artifact)
 	}
-
-	if err := store.Save(proj); err != nil {
+	err = store.Save(proj)
+	if err != nil {
 		return err
 	}
 
@@ -1250,7 +1276,9 @@ func finalizeRun(
 	logContent := strings.Join(logLines, "\n") + "\n"
 
 	logPath := filepath.Join(store.Root(), filepath.FromSlash(run.LogPath))
-	if err := os.WriteFile(logPath, []byte(logContent), 0o644); err != nil {
+
+	err = os.WriteFile(logPath, []byte(logContent), 0o644)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.finalizeRun", "write run log "+logPath, err)
 	}
 

@@ -21,7 +21,9 @@ func TestOpenAPICommandWritesSpec(t *testing.T) {
 	}
 
 	var doc map[string]any
-	if err := json.Unmarshal(payload, &doc); err != nil {
+
+	err = json.Unmarshal(payload, &doc)
+	if err != nil {
 		t.Fatalf("decode openapi output: %v", err)
 	}
 
@@ -61,7 +63,9 @@ func TestOpenAPICommandEmbedsServerURL(t *testing.T) {
 	}
 
 	var doc map[string]any
-	if err := json.Unmarshal(payload, &doc); err != nil {
+
+	err = json.Unmarshal(payload, &doc)
+	if err != nil {
 		t.Fatalf("decode openapi output: %v", err)
 	}
 

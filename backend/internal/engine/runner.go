@@ -30,7 +30,9 @@ func NewRunner(progress ProgressSink) *Runner {
 
 func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	cfg = normalizeConfig(cfg)
-	if err := validateConfig(cfg); err != nil {
+
+	err := validateConfig(cfg)
+	if err != nil {
 		return RunOutput{}, err
 	}
 
@@ -40,29 +42,33 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	outputPath := filepath.Join(runDir, "run-output.json")
 	statePath := filepath.Join(runDir, "run-state.json")
 
-	if err := os.MkdirAll(chunksDir, 0o755); err != nil {
+	err = os.MkdirAll(chunksDir, 0o755)
+	if err != nil {
 		return RunOutput{}, fmt.Errorf("create run cache directory: %w", err)
 	}
 
 	r.emit(cfg.RunID, "load", "start", -1, 0, 0)
 
-	if err := writeRunState(statePath, RunState{
+	err = writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
 		Status:          RunStateRunning,
 		UpdatedAt:       time.Now().UTC(),
 		TotalChunks:     0,
 		CompletedChunks: 0,
 		Message:         "load",
-	}); err != nil {
+	})
+	if err != nil {
 		return RunOutput{}, err
 	}
 
 	r.emit(cfg.RunID, "load", "done", -1, 0, 0)
 
 	r.emit(cfg.RunID, "prepare", "start", -1, 0, 0)
-
-	if _, err := buildSourceIndex(cfg); err != nil {
-		return RunOutput{}, err
+	{
+		_, err := buildSourceIndex(cfg)
+		if err != nil {
+			return RunOutput{}, err
+		}
 	}
 
 	r.emit(cfg.RunID, "prepare", "done", -1, 0, 0)
@@ -71,14 +77,16 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	chunks := chunkReceivers(cfg.Receivers, cfg.ChunkSize)
 
 	totalChunks := len(chunks)
-	if err := writeRunState(statePath, RunState{
+
+	err = writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
 		Status:          RunStateRunning,
 		UpdatedAt:       time.Now().UTC(),
 		TotalChunks:     totalChunks,
 		CompletedChunks: 0,
 		Message:         "chunk",
-	}); err != nil {
+	})
+	if err != nil {
 		return RunOutput{}, err
 	}
 
@@ -149,18 +157,20 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 
 	r.emit(cfg.RunID, "persist", "start", -1, len(received), totalChunks)
 
-	if err := writeJSONFile(outputPath, output); err != nil {
+	err = writeJSONFile(outputPath, output)
+	if err != nil {
 		return RunOutput{}, err
 	}
 
-	if err := writeRunState(statePath, RunState{
+	err = writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
 		Status:          RunStateCompleted,
 		UpdatedAt:       finishedAt,
 		TotalChunks:     totalChunks,
 		CompletedChunks: totalChunks,
 		Message:         "persisted",
-	}); err != nil {
+	})
+	if err != nil {
 		return RunOutput{}, err
 	}
 
@@ -354,11 +364,15 @@ func computeOrLoadChunk(
 	chunksDir string,
 ) ([]ReceiverResult, bool, error) {
 	cachePath := filepath.Join(chunksDir, fmt.Sprintf("chunk-%06d.json", chunk.Index))
+
 	if !cfg.DisableCache {
-		if cached, ok, err := readChunk(cachePath); err != nil {
-			return nil, false, err
-		} else if ok {
-			return cached, true, nil
+		{
+			cached, ok, err := readChunk(cachePath)
+			if err != nil {
+				return nil, false, err
+			} else if ok {
+				return cached, true, nil
+			}
 		}
 	}
 
@@ -443,7 +457,9 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 	}
 
 	var results []ReceiverResult
-	if err := json.Unmarshal(payload, &results); err != nil {
+
+	err = json.Unmarshal(payload, &results)
+	if err != nil {
 		return nil, false, fmt.Errorf("decode chunk cache %s: %w", path, err)
 	}
 
@@ -477,12 +493,13 @@ func writeJSONFile(path string, value any) error {
 	}
 
 	encoded = append(encoded, '\n')
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
 
-	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+	err = os.WriteFile(path, encoded, 0o644)
+	if err != nil {
 		return fmt.Errorf("write json %s: %w", path, err)
 	}
 

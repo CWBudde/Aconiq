@@ -113,8 +113,11 @@ func TestExportResultBundle(t *testing.T) {
 	}
 
 	for _, path := range []string{exported.ReceiverJSONPath, exported.ReceiverCSVPath, exported.RasterMetaPath, exported.RasterDataPath} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected exported file %s: %v", path, err)
+		{
+			_, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("expected exported file %s: %v", path, err)
+			}
 		}
 	}
 

@@ -44,7 +44,8 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 	metadataPath := basePath + ".json"
 	dataPath := basePath + ".bin"
 
-	if err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {
+	err := os.MkdirAll(filepath.Dir(basePath), 0o755)
+	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("create raster output directory: %w", err)
 	}
 
@@ -59,7 +60,8 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		binary.LittleEndian.PutUint64(binaryPayload[i*8:], math.Float64bits(value))
 	}
 
-	if err := os.WriteFile(dataPath, binaryPayload, 0o644); err != nil {
+	err = os.WriteFile(dataPath, binaryPayload, 0o644)
+	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster data %s: %w", dataPath, err)
 	}
 
@@ -79,8 +81,8 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 	}
 
 	encodedMeta = append(encodedMeta, '\n')
-
-	if err := os.WriteFile(metadataPath, encodedMeta, 0o644); err != nil {
+	err = os.WriteFile(metadataPath, encodedMeta, 0o644)
+	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster metadata %s: %w", metadataPath, err)
 	}
 
@@ -99,7 +101,9 @@ func LoadRaster(metadataPath string) (*Raster, error) {
 	}
 
 	var metaFile rasterMetadataFile
-	if err := json.Unmarshal(payload, &metaFile); err != nil {
+
+	err = json.Unmarshal(payload, &metaFile)
+	if err != nil {
 		return nil, fmt.Errorf("decode raster metadata %s: %w", metadataPath, err)
 	}
 

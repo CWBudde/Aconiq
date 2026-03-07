@@ -249,8 +249,11 @@ func (s ParameterSchema) Validate() error {
 
 		defaultValue := strings.TrimSpace(param.DefaultValue)
 		if defaultValue != "" {
-			if _, err := validateScalar(param, defaultValue); err != nil {
-				return fmt.Errorf("parameter %q default: %w", name, err)
+			{
+				_, err := validateScalar(param, defaultValue)
+				if err != nil {
+					return fmt.Errorf("parameter %q default: %w", name, err)
+				}
 			}
 		}
 	}

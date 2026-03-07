@@ -66,7 +66,9 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	}
 
 	var summary map[string]any
-	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
 		t.Fatalf("decode export summary: %v", err)
 	}
 
@@ -118,7 +120,9 @@ func TestExportSkipReport(t *testing.T) {
 	mustRunCLI(t, "--project", projectDir, "export", "--skip-report")
 
 	bundleDir := latestExportBundleDir(t, projectDir)
-	if _, err := os.Stat(filepath.Join(bundleDir, "report.html")); !os.IsNotExist(err) {
+
+	_, err := os.Stat(filepath.Join(bundleDir, "report.html"))
+	if !os.IsNotExist(err) {
 		t.Fatalf("expected report.html to be skipped")
 	}
 
@@ -128,7 +132,9 @@ func TestExportSkipReport(t *testing.T) {
 	}
 
 	var summary map[string]any
-	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
 		t.Fatalf("decode export summary: %v", err)
 	}
 
@@ -172,7 +178,8 @@ func latestExportBundleDir(t *testing.T, projectDir string) string {
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 
-	if _, err := os.Stat(path); err != nil {
+	_, err := os.Stat(path)
+	if err != nil {
 		t.Fatalf("expected file %s: %v", path, err)
 	}
 }

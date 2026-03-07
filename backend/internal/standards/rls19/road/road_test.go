@@ -1016,13 +1016,16 @@ func TestTerrainEdgeValidate(t *testing.T) {
 
 	// Too few points.
 	e2 := TerrainEdge{ID: "x", Geometry: []geo.Point3D{{X: 0, Y: 0, Z: 0}}}
-	if err := e2.Validate(); err == nil {
+
+	err = e2.Validate()
+	if err == nil {
 		t.Fatal("expected error for single-point edge")
 	}
 
 	// Missing ID.
 	e3 := TerrainEdge{Geometry: []geo.Point3D{{}, {}}}
-	if err := e3.Validate(); err == nil {
+	err = e3.Validate()
+	if err == nil {
 		t.Fatal("expected error for empty ID")
 	}
 }

@@ -58,13 +58,16 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-
-	if _, err := store.Init("", ""); err != nil {
-		t.Fatalf("init project: %v", err)
+	{
+		_, err := store.Init("", "")
+		if err != nil {
+			t.Fatalf("init project: %v", err)
+		}
 	}
 
 	inputPath := filepath.Join(root, "input.geojson")
-	if err := os.WriteFile(inputPath, []byte(`{"type":"FeatureCollection","features":[]}`), 0o644); err != nil {
+	err = os.WriteFile(inputPath, []byte(`{"type":"FeatureCollection","features":[]}`), 0o644)
+	if err != nil {
 		t.Fatalf("write input file: %v", err)
 	}
 
@@ -92,13 +95,17 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if run.ProvenancePath == "" {
 		t.Fatal("run provenance path must be set")
 	}
-
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.ProvenancePath))); err != nil {
-		t.Fatalf("provenance file missing: %v", err)
+	{
+		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.ProvenancePath)))
+		if err != nil {
+			t.Fatalf("provenance file missing: %v", err)
+		}
 	}
-
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.LogPath))); err != nil {
-		t.Fatalf("run log missing: %v", err)
+	{
+		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.LogPath)))
+		if err != nil {
+			t.Fatalf("run log missing: %v", err)
+		}
 	}
 
 	if len(provenance.InputHashes) != 1 {

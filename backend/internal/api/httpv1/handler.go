@@ -131,6 +131,7 @@ func NewHandler(store projectfs.Store, clock func() time.Time) http.Handler {
 }
 
 // NewHandlerWithRegistry returns a handler that also exposes /api/v1/standards.
+// CORS is enabled by default (localhost/127.0.0.1 allowed).
 func NewHandlerWithRegistry(store projectfs.Store, clock func() time.Time, registry framework.Registry) http.Handler {
 	return newHandlerWithOptions(store, handlerOptions{
 		clock:       clock,
@@ -139,10 +140,23 @@ func NewHandlerWithRegistry(store projectfs.Store, clock func() time.Time, regis
 	})
 }
 
+// NewServeHandler builds a handler suitable for `noise serve` with CORS enabled.
+// corsOrigins holds extra allowed origins beyond localhost/127.0.0.1 (nil is fine for local use).
+func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, corsOrigins []string) http.Handler {
+	return newHandlerWithOptions(store, handlerOptions{
+		clock:       clock,
+		sseInterval: 2 * time.Second,
+		registry:    &registry,
+		corsOrigins: corsOrigins,
+	})
+}
+
 type handlerOptions struct {
-	clock       func() time.Time
-	sseInterval time.Duration
-	registry    *framework.Registry
+	clock        func() time.Time
+	sseInterval  time.Duration
+	registry     *framework.Registry
+	corsOrigins  []string // extra allowed origins beyond localhost/127.0.0.1
+	corsDisabled bool     // set true for same-origin deployments (Wails etc.)
 }
 
 func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Handler {
@@ -175,7 +189,11 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/", handler.handleNotFound)
 
-	return mux
+	if opts.corsDisabled {
+		return mux
+	}
+
+	return corsMiddleware(opts.corsOrigins)(mux)
 }
 
 func (h Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -439,7 +457,8 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
+	_, err := io.WriteString(w, "retry: 3000\n\n")
+	if err != nil {
 		return
 	}
 
@@ -462,7 +481,7 @@ func (h Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 
-	err := pushStatusEvent()
+	err = pushStatusEvent()
 	if err != nil {
 		return
 	}
@@ -616,11 +635,13 @@ func writeSSEEvent(w io.Writer, event string, data any) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+	_, err = fmt.Fprintf(w, "event: %s\n", event)
+	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+	_, err = fmt.Fprintf(w, "data: %s\n\n", payload)
+	if err != nil {
 		return err
 	}
 
