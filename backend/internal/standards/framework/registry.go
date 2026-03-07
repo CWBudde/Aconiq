@@ -2,6 +2,7 @@ package framework
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +26,21 @@ func NewRegistry(descriptors ...StandardDescriptor) (Registry, error) {
 	}
 
 	return Registry{descriptors: registered}, nil
+}
+
+// List returns all registered standard descriptors in deterministic (sorted) order.
+func (r Registry) List() []StandardDescriptor {
+	ids := make([]string, 0, len(r.descriptors))
+	for id := range r.descriptors {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	result := make([]StandardDescriptor, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, r.descriptors[id])
+	}
+	return result
 }
 
 // Resolve resolves standard ID + optional version/profile to one concrete profile.

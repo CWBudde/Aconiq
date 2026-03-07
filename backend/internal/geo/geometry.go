@@ -95,6 +95,65 @@ func pointInRing(p Point2D, ring []Point2D) bool {
 	return inside
 }
 
+// SegmentIntersection computes the intersection point of segments (a1,a2) and (b1,b2).
+// Returns the intersection point, the parameter t along segment a (0..1), and true
+// if the segments intersect. Returns zero values and false if they are parallel or
+// do not intersect within their extents.
+func SegmentIntersection(a1, a2, b1, b2 Point2D) (Point2D, float64, bool) {
+	dx1 := a2.X - a1.X
+	dy1 := a2.Y - a1.Y
+	dx2 := b2.X - b1.X
+	dy2 := b2.Y - b1.Y
+
+	denom := dx1*dy2 - dy1*dx2
+	if math.Abs(denom) < 1e-12 {
+		return Point2D{}, 0, false // parallel or coincident
+	}
+
+	dx3 := b1.X - a1.X
+	dy3 := b1.Y - a1.Y
+
+	t := (dx3*dy2 - dy3*dx2) / denom
+	u := (dx3*dy1 - dy3*dx1) / denom
+
+	if t < 0 || t > 1 || u < 0 || u > 1 {
+		return Point2D{}, 0, false // intersection outside segment extents
+	}
+
+	return Point2D{
+		X: a1.X + t*dx1,
+		Y: a1.Y + t*dy1,
+	}, t, true
+}
+
+// LineStringIntersectsSegment reports whether any edge of a polyline intersects
+// the segment (p1,p2). If so, it returns the intersection point closest to p1
+// and the intersected edge index. Returns false if no intersection.
+func LineStringIntersectsSegment(line []Point2D, p1, p2 Point2D) (Point2D, int, bool) {
+	if len(line) < 2 {
+		return Point2D{}, 0, false
+	}
+
+	bestT := math.MaxFloat64
+	bestPt := Point2D{}
+	bestEdge := -1
+
+	for i := 0; i < len(line)-1; i++ {
+		pt, t, ok := SegmentIntersection(p1, p2, line[i], line[i+1])
+		if ok && t < bestT {
+			bestT = t
+			bestPt = pt
+			bestEdge = i
+		}
+	}
+
+	if bestEdge < 0 {
+		return Point2D{}, 0, false
+	}
+
+	return bestPt, bestEdge, true
+}
+
 // BBoxFromPoints computes a bbox from a point slice.
 func BBoxFromPoints(points []Point2D) (BBox, bool) {
 	if len(points) == 0 {

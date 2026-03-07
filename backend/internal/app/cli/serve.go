@@ -12,6 +12,7 @@ import (
 	"github.com/aconiq/backend/internal/api/httpv1"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/standards"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,12 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 
-			handler := httpv1.NewHandler(store, nowUTC)
+			registry, err := standards.NewRegistry()
+			if err != nil {
+				return domainerrors.New(domainerrors.KindInternal, "cli.serve", "build standards registry", err)
+			}
+
+			handler := httpv1.NewHandlerWithRegistry(store, nowUTC, registry)
 			server := &http.Server{
 				Addr:         listenAddr,
 				Handler:      handler,

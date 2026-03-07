@@ -284,42 +284,42 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ## Phase 17 — Germany planning track: RLS‑19 (required, deferred)
 
-- [ ] Define scope + compliance boundaries for `rls19/`
-  - [ ] Planning track (16. BImSchV): compute `Lr` for **day (06–22)** and **night (22–06)**
-  - [ ] Separate **implementation** from **restricted normative tables/text** (no verbatim standard embedding)
-  - [ ] Add a short “legal notes” section for the module (sources used, what is stored in-repo vs external)
+- [x] Define scope + compliance boundaries for `rls19/`
+  - [x] Planning track (16. BImSchV): compute `Lr` for **day (06–22)** and **night (22–06)**
+  - [x] Separate **implementation** from **restricted normative tables/text** (no verbatim standard embedding)
+  - [x] Add a short “legal notes” section for the module (sources used, what is stored in-repo vs external)
 
-- [ ] Replace the current `rls19-road` _preview_ with a standards-faithful implementation
-  - [ ] Keep deterministic behavior (segment splitting, stable reductions, canonical ordering)
-  - [ ] Keep float64 internally; document any required rounding rules at output boundaries
+- [x] Replace the current `rls19-road` _preview_ with a standards-faithful implementation
+  - [x] Keep deterministic behavior (segment splitting, stable reductions, canonical ordering)
+  - [x] Keep float64 internally; document any required rounding rules at output boundaries
 
-- [ ] Data model + inputs (RLS‑19 road)
-  - [ ] Vehicle groups: Pkw, Lkw1, Lkw2, Krad (and how buses are mapped/handled)
-  - [ ] Time periods: day/night traffic inputs (support both direct hourly inputs and optional DTV→hourly conversion helpers)
-  - [ ] Road: surface/cover type, speeds per vehicle group, gradient/sign, junction type + distance, lane/direction layout
+- [x] Data model + inputs (RLS‑19 road)
+  - [x] Vehicle groups: Pkw, Lkw1, Lkw2, Krad (and how buses are mapped/handled)
+  - [x] Time periods: day/night traffic inputs (support both direct hourly inputs and optional DTV→hourly conversion helpers)
+  - [x] Road: surface/cover type, speeds per vehicle group, gradient/sign, junction type + distance, lane/direction layout
   - [ ] Geometry: source line(s) per direction, receivers (height), buildings/barriers for reflection/shielding scenarios
 
-- [ ] Emission (align with TEST‑20 “E\*” coverage)
-  - [ ] E1: Base (speed-dependent) “Grundwert” per vehicle group
-  - [ ] E2: Straßendeckschicht correction (including “not provided combination” warnings)
-  - [ ] E3: Längsneigung correction (vehicle-group dependent; sign matters)
-  - [ ] E4: Knotenpunkt correction (signalized / roundabout / other; distance-dependent)
-  - [ ] E5: Mehrfachreflexionszuschlag / street-canyon surcharge inputs (building height + canyon width)
-  - [ ] E6: Per-vehicle sound power levels with additive corrections
-  - [ ] E7/EG: Längenbezogener Schallleistungspegel per lane/direction and per period (day/night)
-  - [ ] Make all normative coefficients/tables data-driven (loadable from an external “standards data pack”)
+- [x] Emission (align with TEST‑20 “E\*” coverage)
+  - [x] E1: Base (speed-dependent) “Grundwert” per vehicle group
+  - [x] E2: Straßendeckschicht correction (including “not provided combination” warnings)
+  - [x] E3: Längsneigung correction (vehicle-group dependent; sign matters)
+  - [x] E4: Knotenpunkt correction (signalized / roundabout / other; distance-dependent)
+  - [x] E5: Mehrfachreflexionszuschlag / street-canyon surcharge inputs (building height + canyon width)
+  - [x] E6: Per-vehicle sound power levels with additive corrections
+  - [x] E7/EG: Längenbezogener Schallleistungspegel per lane/direction and per period (day/night)
+  - [x] Make all normative coefficients/tables data-driven (loadable from an external “standards data pack”)
 
-- [ ] Propagation (align with TEST‑20 “I*” + “K*” coverage)
-  - [ ] Use the Teilstückverfahren-style approach with deterministic segment/sub-segment splitting
-  - [ ] Free-field case: geometric divergence + air absorption + ground/meteorology
+- [x] Propagation (align with TEST‑20 “I*” + “K*” coverage)
+  - [x] Use the Teilstückverfahren-style approach with deterministic segment/sub-segment splitting
+  - [x] Free-field case: geometric divergence + air absorption + ground/meteorology
   - [ ] Shielding: wall/berm diffraction handling consistent with the test suite scenarios
   - [ ] Topography: road in cut (Tieflage), embankment (Hochlage), rising/descending roads, “wegführende” roads
   - [ ] Reflections: implement up to two reflections and reflection-loss handling
   - [ ] Building/courtyard scenarios: house fronts parallel to road, perpendicular buildings, “Hinterhof”
   - [ ] Reflection conditions test task (K5): ensure the specific reflection edge-cases pass
 
-- [ ] Indicators / outputs
-  - [ ] Export `LrDay` and `LrNight` to rasters + receiver tables (consistent naming + metadata)
+- [x] Indicators / outputs
+  - [x] Export `LrDay` and `LrNight` to rasters + receiver tables (consistent naming + metadata)
   - [ ] Add provenance fields for: RLS‑19 version/profile, data-pack version, and key parameters
   - [ ] Document rounding + reporting precision (keep distinct from internal computation)
 
@@ -583,14 +583,14 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** make run setup and monitoring reliable for long-running jobs.
 
-- [ ] Run setup dialog
-  - [ ] Standard/version/profile picker
-  - [ ] Parameter editor generated from schema
-  - [ ] Receiver set selector
-- [ ] Run execution monitor
-  - [ ] Progress timeline/steps
-  - [ ] Live logs
-  - [ ] Cancel/retry actions
+- [x] Run setup dialog
+  - [x] Standard/version/profile picker
+  - [x] Parameter editor generated from schema
+  - [x] Receiver set selector
+- [x] Run execution monitor
+  - [x] Progress timeline/steps
+  - [x] Live logs
+  - [x] Cancel/retry actions
 - [ ] Run history UX
   - [ ] Filter by scenario/status/standard
   - [ ] Artifact links per run

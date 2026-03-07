@@ -13,4 +13,12 @@ export const queryKeys = {
     all: ["project"] as const,
     status: () => [...queryKeys.project.all, "status"] as const,
   },
+  standards: {
+    all: ["standards"] as const,
+  },
+  runs: {
+    all: ["runs"] as const,
+    list: () => [...queryKeys.runs.all, "list"] as const,
+    log: (id: string) => [...queryKeys.runs.all, id, "log"] as const,
+  },
 } as const;
