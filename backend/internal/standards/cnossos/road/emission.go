@@ -16,7 +16,8 @@ type periodEmission struct {
 // This preview implementation uses deterministic piecewise corrections for
 // speed, surface, and gradient and is intended as a transparent baseline.
 func ComputeEmission(source RoadSource) (periodEmission, error) {
-	if err := source.Validate(); err != nil {
+	err := source.Validate()
+	if err != nil {
 		return periodEmission{}, err
 	}
 
@@ -38,6 +39,7 @@ func emissionForPeriod(source RoadSource, traffic TrafficPeriod) float64 {
 
 	lightDB := 36.0 + 10*math.Log10(traffic.LightVehiclesPerHour+1) + speedLightCorr + surfaceCorr
 	heavyDB := 42.0 + 10*math.Log10(traffic.HeavyVehiclesPerHour+1) + speedHeavyCorr + surfaceCorr + gradientCorr
+
 	return energySumDB([]float64{lightDB, heavyDB})
 }
 
@@ -46,6 +48,7 @@ func speedCorrection(speedKPH float64) (lightCorr float64, heavyCorr float64) {
 	if clamped < 20 {
 		clamped = 20
 	}
+
 	if clamped > 130 {
 		clamped = 130
 	}
@@ -90,15 +93,19 @@ func gradientCorrection(gradientPercent float64) float64 {
 
 func energySumDB(levels []float64) float64 {
 	sum := 0.0
+
 	for _, level := range levels {
 		if math.IsNaN(level) || math.IsInf(level, 0) {
 			continue
 		}
+
 		sum += math.Pow(10, level/10)
 	}
+
 	if sum <= 0 {
 		return -999.0
 	}
+
 	return 10 * math.Log10(sum)
 }
 
@@ -106,5 +113,6 @@ func mustFinite(level float64, field string) error {
 	if math.IsNaN(level) || math.IsInf(level, 0) {
 		return fmt.Errorf("%s is not finite", field)
 	}
+
 	return nil
 }

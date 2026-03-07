@@ -31,6 +31,11 @@ type PropagationConfig struct {
 	// Reflectors are building facades or other vertical surfaces that reflect
 	// sound to the receiver via additional propagation paths (up to 2 bounces).
 	Reflectors []Reflector
+
+	// Buildings act as both barriers (shielding the direct path) and reflectors
+	// (adding reflected paths via the image-source method). They enable
+	// house-front, perpendicular, and courtyard ("Hinterhof") scenarios.
+	Buildings []Building
 }
 
 // DefaultPropagationConfig returns baseline propagation parameters.
@@ -293,6 +298,12 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	// Source height above road surface (RLS-19: 0.5 m).
 	const sourceHeightM = 0.5
 
+	// Merge explicit barriers with building barriers, and explicit reflectors
+	// with building reflectors. Buildings act as both.
+	effectiveBarriers := buildingBarriers(barriers, cfg.Buildings)
+	effectiveCfg := cfg
+	effectiveCfg.Reflectors = buildingReflectors(cfg.Reflectors, cfg.Buildings)
+
 	dayContrib := make([]float64, 0, len(sources)*4)
 	nightContrib := make([]float64, 0, len(sources)*4)
 
@@ -337,19 +348,19 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 			slantDist := math.Sqrt(planDist*planDist + dz*dz)
 
 			// Mean height above terrain for ground correction.
-			hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, cfg.Terrain)
+			hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, effectiveCfg.Terrain)
 
 			// Free-field attenuation (D_div + D_atm + D_gr).
-			att := computeAttenuation(planDist, slantDist, hm, cfg)
+			att := computeAttenuation(planDist, slantDist, hm, effectiveCfg)
 
 			// Barrier shielding (relative heights, existing approach).
 			barrierLoss := 0.0
 
-			if len(barriers) > 0 {
+			if len(effectiveBarriers) > 0 {
 				shielding := ComputeShielding(
 					seg.MidPoint, sourceHeightM,
-					receiver, cfg.ReceiverHeightM,
-					barriers,
+					receiver, effectiveCfg.ReceiverHeightM,
+					effectiveBarriers,
 				)
 				barrierLoss = shielding.InsertionLoss
 			}
@@ -386,7 +397,7 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 				&dayContrib, &nightContrib,
 				emission, lengthWeight,
 				seg.MidPoint, sourceZ, receiver, receiverZ,
-				cfg,
+				effectiveCfg,
 			)
 		}
 	}
@@ -395,6 +406,41 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		LrDay:   energySumDB(dayContrib),
 		LrNight: energySumDB(nightContrib),
 	}, nil
+}
+
+// buildingBarriers returns the combined list of explicit barriers and barriers
+// derived from buildings (each building footprint acts as a shielding barrier).
+func buildingBarriers(explicit []Barrier, buildings []Building) []Barrier {
+	if len(buildings) == 0 {
+		return explicit
+	}
+
+	merged := make([]Barrier, 0, len(explicit)+len(buildings))
+	merged = append(merged, explicit...)
+
+	for _, b := range buildings {
+		merged = append(merged, b.asBarrier())
+	}
+
+	return merged
+}
+
+// buildingReflectors returns the combined list of explicit reflectors and
+// reflectors derived from buildings (each building footprint acts as a
+// reflecting surface).
+func buildingReflectors(explicit []Reflector, buildings []Building) []Reflector {
+	if len(buildings) == 0 {
+		return explicit
+	}
+
+	merged := make([]Reflector, 0, len(explicit)+len(buildings))
+	merged = append(merged, explicit...)
+
+	for _, b := range buildings {
+		merged = append(merged, b.asReflector())
+	}
+
+	return merged
 }
 
 // appendReflectedContribs appends reflected-path energy contributions to the

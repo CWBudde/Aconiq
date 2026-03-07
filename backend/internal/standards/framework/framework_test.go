@@ -36,6 +36,7 @@ func TestResolveVersionProfileDefaults(t *testing.T) {
 	if resolved.Version != "v1" {
 		t.Fatalf("expected version v1, got %s", resolved.Version)
 	}
+
 	if resolved.Profile != "default" {
 		t.Fatalf("expected profile default, got %s", resolved.Profile)
 	}
@@ -66,9 +67,11 @@ func TestParameterSchemaNormalizeAndValidate(t *testing.T) {
 	if normalized["grid_resolution_m"] != "10" {
 		t.Fatalf("unexpected grid_resolution_m: %q", normalized["grid_resolution_m"])
 	}
+
 	if normalized["workers"] != "0" {
 		t.Fatalf("expected default workers=0, got %q", normalized["workers"])
 	}
+
 	if normalized["disable_cache"] != "true" {
 		t.Fatalf("expected normalized bool true, got %q", normalized["disable_cache"])
 	}

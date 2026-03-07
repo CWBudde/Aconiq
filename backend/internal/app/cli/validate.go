@@ -40,12 +40,14 @@ func newValidateCommand() *cobra.Command {
 			}
 
 			absoluteInput := resolvePath(store.Root(), inputPath)
+
 			payload, err := os.ReadFile(absoluteInput)
 			if err != nil {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.validate", fmt.Sprintf("read input file: %s", absoluteInput), err)
+				return domainerrors.New(domainerrors.KindUserInput, "cli.validate", "read input file: "+absoluteInput, err)
 			}
 
 			relInput := relativePath(store.Root(), absoluteInput)
+
 			model, err := modelgeojson.Normalize(payload, proj.CRS, relInput)
 			if err != nil {
 				return domainerrors.New(domainerrors.KindValidation, "cli.validate", "invalid geojson input", err)
@@ -55,7 +57,9 @@ func newValidateCommand() *cobra.Command {
 
 			if writeReport {
 				reportPath := filepath.Join(store.Root(), ".noise", "model", "validation-report.json")
-				if err := writeJSONFile(reportPath, report); err != nil {
+
+				err := writeJSONFile(reportPath, report)
+				if err != nil {
 					return err
 				}
 
@@ -65,7 +69,9 @@ func newValidateCommand() *cobra.Command {
 					Path:      relativePath(store.Root(), reportPath),
 					CreatedAt: nowUTC(),
 				})
-				if err := store.Save(proj); err != nil {
+
+				err = store.Save(proj)
+				if err != nil {
 					return err
 				}
 			}
@@ -87,6 +93,7 @@ func newValidateCommand() *cobra.Command {
 				for _, issue := range report.Errors {
 					messages = append(messages, fmt.Sprintf("%s: %s", issue.Code, issue.Message))
 				}
+
 				return domainerrors.New(domainerrors.KindValidation, "cli.validate", summarizeValidationErrors(messages, 5), nil)
 			}
 

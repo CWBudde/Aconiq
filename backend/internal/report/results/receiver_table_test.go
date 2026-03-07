@@ -26,6 +26,7 @@ func TestReceiverTableSaveJSONAndCSV(t *testing.T) {
 	if err := SaveReceiverTableJSON(jsonPath, table); err != nil {
 		t.Fatalf("save receiver json: %v", err)
 	}
+
 	if err := SaveReceiverTableCSV(csvPath, table); err != nil {
 		t.Fatalf("save receiver csv: %v", err)
 	}
@@ -34,6 +35,7 @@ func TestReceiverTableSaveJSONAndCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read csv: %v", err)
 	}
+
 	if !strings.Contains(string(csvPayload), "id,x,y,height_m,Lden,Lnight") {
 		t.Fatalf("unexpected csv header: %s", string(csvPayload))
 	}
@@ -48,7 +50,9 @@ func TestReceiverTableValidation(t *testing.T) {
 			{ID: "r1", X: 1, Y: 2, HeightM: 4, Values: map[string]float64{}},
 		},
 	}
-	if err := table.Validate(); err == nil {
+
+	err := table.Validate()
+	if err == nil {
 		t.Fatal("expected validation error")
 	}
 }

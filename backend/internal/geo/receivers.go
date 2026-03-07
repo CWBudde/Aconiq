@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"errors"
 	"fmt"
 	"math"
 )
@@ -20,7 +21,7 @@ type PointReceiverSet struct {
 
 func (s PointReceiverSet) Validate() error {
 	if s.ID == "" {
-		return fmt.Errorf("point receiver set id is required")
+		return errors.New("point receiver set id is required")
 	}
 
 	seen := make(map[string]struct{}, len(s.Receivers))
@@ -28,15 +29,19 @@ func (s PointReceiverSet) Validate() error {
 		if receiver.ID == "" {
 			return fmt.Errorf("point receiver[%d] id is required", i)
 		}
+
 		if _, exists := seen[receiver.ID]; exists {
 			return fmt.Errorf("point receiver id %q is duplicated", receiver.ID)
 		}
+
 		if !receiver.Point.IsFinite() {
 			return fmt.Errorf("point receiver %q has invalid coordinates", receiver.ID)
 		}
+
 		if receiver.HeightM < 0 || math.IsNaN(receiver.HeightM) || math.IsInf(receiver.HeightM, 0) {
 			return fmt.Errorf("point receiver %q has invalid height", receiver.ID)
 		}
+
 		seen[receiver.ID] = struct{}{}
 	}
 
@@ -53,16 +58,19 @@ type GridReceiverSet struct {
 
 func (g GridReceiverSet) Validate() error {
 	if g.ID == "" {
-		return fmt.Errorf("grid receiver set id is required")
+		return errors.New("grid receiver set id is required")
 	}
+
 	if !g.Extent.IsFinite() || !g.Extent.IsValid() {
-		return fmt.Errorf("grid receiver extent is invalid")
+		return errors.New("grid receiver extent is invalid")
 	}
+
 	if g.Resolution <= 0 || math.IsNaN(g.Resolution) || math.IsInf(g.Resolution, 0) {
-		return fmt.Errorf("grid receiver resolution must be finite and > 0")
+		return errors.New("grid receiver resolution must be finite and > 0")
 	}
+
 	if g.HeightM < 0 || math.IsNaN(g.HeightM) || math.IsInf(g.HeightM, 0) {
-		return fmt.Errorf("grid receiver height must be finite and >= 0")
+		return errors.New("grid receiver height must be finite and >= 0")
 	}
 
 	return nil
@@ -70,12 +78,14 @@ func (g GridReceiverSet) Validate() error {
 
 // Generate creates deterministic point receivers from the grid definition.
 func (g GridReceiverSet) Generate() ([]PointReceiver, error) {
-	if err := g.Validate(); err != nil {
+	err := g.Validate()
+	if err != nil {
 		return nil, err
 	}
 
 	points := make([]PointReceiver, 0)
 	index := 0
+
 	for y := g.Extent.MinY; y <= g.Extent.MaxY+1e-9; y += g.Resolution {
 		for x := g.Extent.MinX; x <= g.Extent.MaxX+1e-9; x += g.Resolution {
 			points = append(points, PointReceiver{
@@ -108,16 +118,19 @@ func (f FacadeReceiverSet) IsImplemented() bool {
 // Validate validates basic facade set shape without generating points.
 func (f FacadeReceiverSet) Validate() error {
 	if f.ID == "" {
-		return fmt.Errorf("facade receiver set id is required")
+		return errors.New("facade receiver set id is required")
 	}
+
 	if len(f.BuildingIDs) == 0 {
-		return fmt.Errorf("facade receiver set must reference at least one building id")
+		return errors.New("facade receiver set must reference at least one building id")
 	}
+
 	if f.OffsetM < 0 || math.IsNaN(f.OffsetM) || math.IsInf(f.OffsetM, 0) {
-		return fmt.Errorf("facade offset must be finite and >= 0")
+		return errors.New("facade offset must be finite and >= 0")
 	}
+
 	if f.VerticalStepM <= 0 || math.IsNaN(f.VerticalStepM) || math.IsInf(f.VerticalStepM, 0) {
-		return fmt.Errorf("facade vertical_step_m must be finite and > 0")
+		return errors.New("facade vertical_step_m must be finite and > 0")
 	}
 
 	return nil

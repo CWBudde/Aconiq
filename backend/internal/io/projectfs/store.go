@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -99,8 +100,9 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 	if err != nil {
 		return project.Project{}, err
 	}
+
 	if exists {
-		return project.Project{}, domainerrors.New(domainerrors.KindUserInput, "projectfs.Init", fmt.Sprintf("project already initialized: %s", s.manifestPath()), nil)
+		return project.Project{}, domainerrors.New(domainerrors.KindUserInput, "projectfs.Init", "project already initialized: "+s.manifestPath(), nil)
 	}
 
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
@@ -110,9 +112,11 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 	if err := os.MkdirAll(s.runsDir(), 0o755); err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create runs directory", err)
 	}
+
 	if err := os.MkdirAll(s.artifactsDir(), 0o755); err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create artifacts directory", err)
 	}
+
 	if err := os.MkdirAll(s.logsDir(), 0o755); err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create logs directory", err)
 	}
@@ -120,6 +124,7 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 	if name == "" {
 		name = filepath.Base(s.root)
 	}
+
 	if crs == "" {
 		crs = "EPSG:4326"
 	}
@@ -172,6 +177,7 @@ func (s Store) Load() (project.Project, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return project.Project{}, domainerrors.New(domainerrors.KindNotFound, "projectfs.Load", fmt.Sprintf("project is not initialized (%s missing)", s.manifestPath()), err)
 		}
+
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Load", "read project manifest", err)
 	}
 
@@ -195,6 +201,7 @@ func (s Store) Save(proj project.Project) error {
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "encode project manifest", err)
 	}
+
 	serialized = append(serialized, '\n')
 
 	if err := os.MkdirAll(filepath.Dir(s.manifestPath()), 0o755); err != nil {
@@ -234,18 +241,22 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	if std.ID == "" {
 		std = scenario.Standard
 	}
+
 	if std.ID == "" || std.ID == "unassigned" {
 		return project.Run{}, project.ProvenanceManifest{}, domainerrors.New(domainerrors.KindUserInput, "projectfs.CreateRun", "standard ID is required", nil)
 	}
+
 	if std.Version == "" {
 		std.Version = "v0"
 	}
+
 	if std.Profile == "" {
 		std.Profile = "default"
 	}
 
 	now := time.Now().UTC()
 	runID := buildID("run")
+
 	runDir := filepath.Join(s.runsDir(), runID)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, domainerrors.New(domainerrors.KindInternal, "projectfs.CreateRun", "create run directory", err)
@@ -300,6 +311,7 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	}
 
 	provenance.ManifestPath = provRelPath
+
 	return run, provenance, nil
 }
 
@@ -314,8 +326,10 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 		if trimmed == "" {
 			continue
 		}
+
 		resolved = append(resolved, trimmed)
 	}
+
 	slices.Sort(resolved)
 
 	hashes := make(map[string]string, len(resolved))
@@ -328,9 +342,10 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 		content, err := os.ReadFile(absPath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				return nil, domainerrors.New(domainerrors.KindUserInput, "projectfs.hashInputs", fmt.Sprintf("input file does not exist: %s", p), err)
+				return nil, domainerrors.New(domainerrors.KindUserInput, "projectfs.hashInputs", "input file does not exist: "+p, err)
 			}
-			return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.hashInputs", fmt.Sprintf("read input file: %s", p), err)
+
+			return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.hashInputs", "read input file: "+p, err)
 		}
 
 		sum := sha256.Sum256(content)
@@ -344,9 +359,11 @@ func writeRunLog(path string, lines []string) error {
 	if len(lines) == 0 {
 		lines = []string{"run executed"}
 	}
+
 	text := strings.Join(lines, "\n") + "\n"
 
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+	err := os.WriteFile(path, []byte(text), 0o644)
+	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeRunLog", "write run log", err)
 	}
 
@@ -358,10 +375,11 @@ func writeJSONFile(path string, v any) error {
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
 	}
+
 	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", fmt.Sprintf("write json file %s", path), err)
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write json file "+path, err)
 	}
 
 	return nil
@@ -383,9 +401,7 @@ func cloneStringMap(in map[string]string) map[string]string {
 	}
 
 	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 
 	return out
 }

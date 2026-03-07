@@ -32,7 +32,9 @@ func TestPointReceiverSetValidateDuplicateID(t *testing.T) {
 			{ID: "r1", Point: Point2D{X: 1, Y: 1}, HeightM: 4},
 		},
 	}
-	if err := set.Validate(); err == nil {
+
+	err := set.Validate()
+	if err == nil {
 		t.Fatal("expected duplicate id validation error")
 	}
 }
@@ -50,7 +52,9 @@ func TestFacadeReceiverSetStub(t *testing.T) {
 	if facade.IsImplemented() {
 		t.Fatal("facade generation should be deferred in phase 5")
 	}
-	if err := facade.Validate(); err != nil {
+
+	err := facade.Validate()
+	if err != nil {
 		t.Fatalf("expected valid facade stub, got %v", err)
 	}
 }

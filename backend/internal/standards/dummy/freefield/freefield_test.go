@@ -67,6 +67,7 @@ func TestDescriptorIsValid(t *testing.T) {
 	if resolved.StandardID != StandardID {
 		t.Fatalf("expected standard id %s, got %s", StandardID, resolved.StandardID)
 	}
+
 	if len(resolved.SupportedIndicators) != 1 || resolved.SupportedIndicators[0] != IndicatorLdummy {
 		t.Fatalf("unexpected indicators: %#v", resolved.SupportedIndicators)
 	}

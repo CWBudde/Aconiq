@@ -35,9 +35,11 @@ func TestNormalizeAndValidateValidModel(t *testing.T) {
 	if !report.Valid {
 		t.Fatalf("expected valid model, got errors: %#v", report.Errors)
 	}
+
 	if report.ErrorCount() != 0 {
 		t.Fatalf("expected 0 errors, got %d", report.ErrorCount())
 	}
+
 	if report.WarningCount() != 0 {
 		t.Fatalf("expected 0 warnings, got %d", report.WarningCount())
 	}
@@ -70,6 +72,7 @@ func TestValidateMissingBuildingHeight(t *testing.T) {
 	if report.Valid {
 		t.Fatal("expected validation error")
 	}
+
 	if report.ErrorCount() == 0 {
 		t.Fatal("expected at least one error")
 	}
@@ -100,12 +103,14 @@ func TestValidateSelfIntersectingPolygon(t *testing.T) {
 	}
 
 	found := false
+
 	for _, issue := range report.Errors {
 		if issue.Code == "geometry.polygon.self_intersection" {
 			found = true
 			break
 		}
 	}
+
 	if !found {
 		t.Fatalf("expected self-intersection error, got %#v", report.Errors)
 	}
@@ -134,6 +139,7 @@ func TestValidateProjectedCRSWithLonLatWarning(t *testing.T) {
 	if report.ErrorCount() != 0 {
 		t.Fatalf("expected no errors, got %#v", report.Errors)
 	}
+
 	if report.WarningCount() == 0 {
 		t.Fatal("expected at least one warning")
 	}

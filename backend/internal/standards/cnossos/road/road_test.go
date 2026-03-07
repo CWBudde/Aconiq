@@ -14,12 +14,16 @@ func TestRoadSourceValidate(t *testing.T) {
 	t.Parallel()
 
 	source := sampleSource()
-	if err := source.Validate(); err != nil {
+
+	err := source.Validate()
+	if err != nil {
 		t.Fatalf("valid source failed validation: %v", err)
 	}
 
 	source.SpeedKPH = 0
-	if err := source.Validate(); err == nil {
+
+	err = source.Validate()
+	if err == nil {
 		t.Fatal("expected invalid speed error")
 	}
 }
@@ -29,6 +33,7 @@ func TestEmissionIncreasesWithTraffic(t *testing.T) {
 
 	low := sampleSource()
 	low.TrafficDay = TrafficPeriod{LightVehiclesPerHour: 200, HeavyVehiclesPerHour: 20}
+
 	lowEmission, err := ComputeEmission(low)
 	if err != nil {
 		t.Fatalf("compute low emission: %v", err)
@@ -36,6 +41,7 @@ func TestEmissionIncreasesWithTraffic(t *testing.T) {
 
 	high := sampleSource()
 	high.TrafficDay = TrafficPeriod{LightVehiclesPerHour: 1200, HeavyVehiclesPerHour: 150}
+
 	highEmission, err := ComputeEmission(high)
 	if err != nil {
 		t.Fatalf("compute high emission: %v", err)
@@ -56,6 +62,7 @@ func TestPropagationDecreasesWithDistance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compute near receiver: %v", err)
 	}
+
 	far, err := ComputeReceiverPeriodLevels(geo.Point2D{X: 0, Y: 200}, []RoadSource{source}, cfg)
 	if err != nil {
 		t.Fatalf("compute far receiver: %v", err)
@@ -75,6 +82,7 @@ func TestLdenAggregation(t *testing.T) {
 		Lnight:   60,
 	}
 	lden := ComputeLden(levels)
+
 	expected := 66.39524300131856
 	if math.Abs(lden-expected) > 1e-9 {
 		t.Fatalf("unexpected Lden: got %f expected %f", lden, expected)
@@ -98,6 +106,7 @@ func TestExportResultBundle(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+
 	exported, err := ExportResultBundle(dir, outputs, 2, 2)
 	if err != nil {
 		t.Fatalf("export bundle: %v", err)
@@ -113,10 +122,12 @@ func TestExportResultBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load raster: %v", err)
 	}
+
 	meta := raster.Metadata()
 	if meta.Bands != 2 {
 		t.Fatalf("expected 2 raster bands, got %d", meta.Bands)
 	}
+
 	if filepath.Base(exported.RasterMetaPath) != "cnossos-road.json" {
 		t.Fatalf("unexpected raster metadata name: %s", exported.RasterMetaPath)
 	}
@@ -126,7 +137,9 @@ func TestDescriptorValidates(t *testing.T) {
 	t.Parallel()
 
 	descriptor := Descriptor()
-	if err := descriptor.Validate(); err != nil {
+
+	err := descriptor.Validate()
+	if err != nil {
 		t.Fatalf("descriptor should validate: %v", err)
 	}
 }

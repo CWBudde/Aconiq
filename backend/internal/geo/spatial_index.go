@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"errors"
 	"fmt"
 	"math"
 )
@@ -33,7 +34,7 @@ type cellKey struct {
 
 func NewGridSpatialIndex(cellSize float64) (*GridSpatialIndex, error) {
 	if cellSize <= 0 || math.IsNaN(cellSize) || math.IsInf(cellSize, 0) {
-		return nil, fmt.Errorf("cell size must be a finite number > 0")
+		return nil, errors.New("cell size must be a finite number > 0")
 	}
 
 	return &GridSpatialIndex{
@@ -47,18 +48,21 @@ func (s *GridSpatialIndex) Len() int {
 	if s == nil {
 		return 0
 	}
+
 	return len(s.items)
 }
 
 func (s *GridSpatialIndex) Insert(item IndexedItem) error {
 	if s == nil {
-		return fmt.Errorf("spatial index is nil")
+		return errors.New("spatial index is nil")
 	}
+
 	if item.ID == "" {
-		return fmt.Errorf("indexed item id is required")
+		return errors.New("indexed item id is required")
 	}
+
 	if !item.BBox.IsFinite() || !item.BBox.IsValid() {
-		return fmt.Errorf("indexed item bbox is invalid")
+		return errors.New("indexed item bbox is invalid")
 	}
 
 	if _, exists := s.items[item.ID]; exists {
@@ -75,10 +79,11 @@ func (s *GridSpatialIndex) Insert(item IndexedItem) error {
 
 func (s *GridSpatialIndex) Query(query BBox) ([]IndexedItem, error) {
 	if s == nil {
-		return nil, fmt.Errorf("spatial index is nil")
+		return nil, errors.New("spatial index is nil")
 	}
+
 	if !query.IsFinite() || !query.IsValid() {
-		return nil, fmt.Errorf("query bbox is invalid")
+		return nil, errors.New("query bbox is invalid")
 	}
 
 	seen := make(map[string]struct{})
@@ -90,9 +95,11 @@ func (s *GridSpatialIndex) Query(query BBox) ([]IndexedItem, error) {
 			if _, ok := seen[item.ID]; ok {
 				continue
 			}
+
 			if !item.BBox.Intersects(query) {
 				continue
 			}
+
 			seen[item.ID] = struct{}{}
 			results = append(results, item)
 		}

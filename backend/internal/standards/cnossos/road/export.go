@@ -1,6 +1,7 @@
 package road
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,14 +20,17 @@ type ExportOutputs struct {
 // ExportResultBundle exports Lden/Lnight receiver table and raster outputs.
 func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int, gridHeight int) (ExportOutputs, error) {
 	if baseDir == "" {
-		return ExportOutputs{}, fmt.Errorf("base dir is required")
+		return ExportOutputs{}, errors.New("base dir is required")
 	}
+
 	if len(outputs) == 0 {
-		return ExportOutputs{}, fmt.Errorf("at least one receiver output is required")
+		return ExportOutputs{}, errors.New("at least one receiver output is required")
 	}
+
 	if gridWidth <= 0 || gridHeight <= 0 {
-		return ExportOutputs{}, fmt.Errorf("grid dimensions must be > 0")
+		return ExportOutputs{}, errors.New("grid dimensions must be > 0")
 	}
+
 	if gridWidth*gridHeight != len(outputs) {
 		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", gridWidth, gridHeight, len(outputs))
 	}
@@ -57,9 +61,11 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 
 	receiverJSONPath := filepath.Join(baseDir, "receivers.json")
 	receiverCSVPath := filepath.Join(baseDir, "receivers.csv")
+
 	if err := results.SaveReceiverTableJSON(receiverJSONPath, table); err != nil {
 		return ExportOutputs{}, err
 	}
+
 	if err := results.SaveReceiverTableCSV(receiverCSVPath, table); err != nil {
 		return ExportOutputs{}, err
 	}
@@ -78,11 +84,16 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 
 	for index, output := range outputs {
 		x := index % gridWidth
+
 		y := index / gridWidth
-		if err := raster.Set(x, y, 0, output.Indicators.Lden); err != nil {
+
+		err := raster.Set(x, y, 0, output.Indicators.Lden)
+		if err != nil {
 			return ExportOutputs{}, err
 		}
-		if err := raster.Set(x, y, 1, output.Indicators.Lnight); err != nil {
+
+		err = raster.Set(x, y, 1, output.Indicators.Lnight)
+		if err != nil {
 			return ExportOutputs{}, err
 		}
 	}

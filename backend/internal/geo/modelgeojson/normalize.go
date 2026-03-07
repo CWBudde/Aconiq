@@ -12,7 +12,9 @@ import (
 // Normalize decodes raw GeoJSON and maps it into the normalized project model.
 func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error) {
 	var collection FeatureCollection
-	if err := json.Unmarshal(data, &collection); err != nil {
+
+	err := json.Unmarshal(data, &collection)
+	if err != nil {
 		return Model{}, fmt.Errorf("decode geojson: %w", err)
 	}
 
@@ -25,12 +27,14 @@ func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error)
 		if raw.Type != "Feature" {
 			return Model{}, fmt.Errorf("feature[%d]: expected type Feature, got %q", idx, raw.Type)
 		}
+
 		if raw.Properties == nil {
 			return Model{}, fmt.Errorf("feature[%d]: properties are required", idx)
 		}
 
 		id := featureID(raw)
 		kind := normalizeKind(raw.Properties["kind"])
+
 		geometryType := strings.TrimSpace(raw.Geometry.Type)
 		if geometryType == "" {
 			return Model{}, fmt.Errorf("feature[%d]: geometry type is required", idx)
@@ -81,6 +85,7 @@ func (m Model) ToFeatureCollection() FeatureCollection {
 		if f.SourceType != "" {
 			props["source_type"] = f.SourceType
 		}
+
 		if f.HeightM != nil {
 			props["height_m"] = *f.HeightM
 		}
@@ -114,6 +119,7 @@ func (m Model) ToFeatureCollection() FeatureCollection {
 // ToDump produces a compact JSON-friendly model debug view.
 func (m Model) ToDump() ModelDump {
 	counts := make(map[string]int)
+
 	dumpFeatures := make([]FeatureDump, 0, len(m.Features))
 	for _, f := range m.Features {
 		counts[f.Kind]++
@@ -157,6 +163,7 @@ func stringifyID(value any) string {
 		if v == float64(int64(v)) {
 			return strconv.FormatInt(int64(v), 10)
 		}
+
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	case int:
 		return strconv.Itoa(v)
@@ -205,10 +212,12 @@ func readOptionalNumber(value any) (float64, bool, error) {
 		if trimmed == "" {
 			return 0, false, nil
 		}
+
 		parsed, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
 			return 0, false, err
 		}
+
 		return parsed, true, nil
 	default:
 		return 0, false, fmt.Errorf("unsupported numeric type %T", value)

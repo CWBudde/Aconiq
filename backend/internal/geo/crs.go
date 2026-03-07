@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,11 +26,12 @@ type CRS struct {
 func ParseCRS(value string) (CRS, error) {
 	trimmed := strings.TrimSpace(strings.ToUpper(value))
 	if trimmed == "" {
-		return CRS{}, fmt.Errorf("crs id is required")
+		return CRS{}, errors.New("crs id is required")
 	}
 
-	if strings.HasPrefix(trimmed, "EPSG:") {
-		codeText := strings.TrimPrefix(trimmed, "EPSG:")
+	if after, ok := strings.CutPrefix(trimmed, "EPSG:"); ok {
+		codeText := after
+
 		code, err := strconv.Atoi(codeText)
 		if err != nil {
 			return CRS{}, fmt.Errorf("invalid EPSG code %q", codeText)
@@ -53,6 +55,7 @@ func classifyEPSG(code int) CRSKind {
 		if code >= 2000 {
 			return CRSKindProjected
 		}
+
 		return CRSKindUnknown
 	}
 }
@@ -74,7 +77,7 @@ type TransformPipeline struct {
 // Phase 5 baseline supports identity transforms and explicit errors otherwise.
 func BuildTransformPipeline(projectCRS CRS, importCRS CRS) (TransformPipeline, error) {
 	if projectCRS.ID == "" || importCRS.ID == "" {
-		return TransformPipeline{}, fmt.Errorf("project and import CRS must both be set")
+		return TransformPipeline{}, errors.New("project and import CRS must both be set")
 	}
 
 	pipeline := TransformPipeline{
@@ -94,12 +97,14 @@ func BuildTransformPipeline(projectCRS CRS, importCRS CRS) (TransformPipeline, e
 // ApplyPoint applies all transform steps to one coordinate.
 func (p TransformPipeline) ApplyPoint(point Point2D) (Point2D, error) {
 	if !point.IsFinite() {
-		return Point2D{}, fmt.Errorf("point must contain finite coordinates")
+		return Point2D{}, errors.New("point must contain finite coordinates")
 	}
 
 	result := point
+
 	for _, step := range p.Steps {
 		var err error
+
 		result, err = step.TransformPoint(result)
 		if err != nil {
 			return Point2D{}, fmt.Errorf("%s: %w", step.Name(), err)
@@ -116,7 +121,8 @@ func (IdentityTransform) Name() string { return "identity" }
 
 func (IdentityTransform) TransformPoint(point Point2D) (Point2D, error) {
 	if !point.IsFinite() {
-		return Point2D{}, fmt.Errorf("point must contain finite coordinates")
+		return Point2D{}, errors.New("point must contain finite coordinates")
 	}
+
 	return point, nil
 }

@@ -315,8 +315,8 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Shielding: wall/berm diffraction handling consistent with the test suite scenarios
   - [x] Topography: road in cut (Tieflage), embankment (Hochlage), rising/descending roads, “wegführende” roads
   - [x] Reflections: implement up to two reflections and reflection-loss handling
-  - [ ] Building/courtyard scenarios: house fronts parallel to road, perpendicular buildings, “Hinterhof”
-  - [ ] Reflection conditions test task (K5): ensure the specific reflection edge-cases pass
+  - [x] Building/courtyard scenarios: house fronts parallel to road, perpendicular buildings, “Hinterhof”
+  - [x] Reflection conditions test task (K5): ensure the specific reflection edge-cases pass
 
 - [x] Indicators / outputs
   - [x] Export `LrDay` and `LrNight` to rasters + receiver tables (consistent naming + metadata)

@@ -73,8 +73,9 @@ type reflectedPath struct {
 
 // wallSeg is an internal view of one wall segment from a Reflector.
 type wallSeg struct {
-	a, b geo.Point2D
-	loss float64 // per-reflection loss for this wall
+	a, b    geo.Point2D
+	loss    float64 // per-reflection loss for this wall
+	heightM float64 // wall top height above ground [m]
 }
 
 // reflectorWalls flattens all reflectors into individual wall segments.
@@ -84,9 +85,10 @@ func reflectorWalls(reflectors []Reflector) []wallSeg {
 	for _, r := range reflectors {
 		for i := range len(r.Geometry) - 1 {
 			walls = append(walls, wallSeg{
-				a:    r.Geometry[i],
-				b:    r.Geometry[i+1],
-				loss: r.effectiveLoss(),
+				a:       r.Geometry[i],
+				b:       r.Geometry[i+1],
+				loss:    r.effectiveLoss(),
+				heightM: r.HeightM,
 			})
 		}
 	}
@@ -137,23 +139,35 @@ func computeReflectedPaths(
 	walls := reflectorWalls(reflectors)
 	dz := receiverZ - sourceZ
 
-	paths := firstOrderReflections(source, receiver, dz, walls)
+	paths := firstOrderReflections(source, receiver, sourceZ, dz, walls)
 
-	return append(paths, secondOrderReflections(source, receiver, dz, walls)...)
+	return append(paths, secondOrderReflections(source, receiver, sourceZ, dz, walls)...)
 }
 
-func firstOrderReflections(source, receiver geo.Point2D, dz float64, walls []wallSeg) []reflectedPath {
+func firstOrderReflections(source, receiver geo.Point2D, sourceZ, dz float64, walls []wallSeg) []reflectedPath {
 	var paths []reflectedPath
 
 	for _, w := range walls {
 		img := mirrorPoint(source, w.a, w.b)
-		_, _, ok := geo.LineStringIntersectsSegment([]geo.Point2D{w.a, w.b}, img, receiver)
+		p, _, ok := geo.LineStringIntersectsSegment([]geo.Point2D{w.a, w.b}, img, receiver)
 
 		if !ok {
 			continue
 		}
 
+		// Height condition: the wall must be tall enough at the reflection
+		// point P so the ray does not pass over it.
+		// Height at P = sourceZ + dz · dist(img, P) / dist(img, receiver).
 		planDist := dist2D(img, receiver)
+		if planDist > 0 {
+			t := dist2D(img, p) / planDist
+
+			heightAtP := sourceZ + dz*t
+			if w.heightM < heightAtP {
+				continue // ray passes over the wall
+			}
+		}
+
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 		paths = append(paths, reflectedPath{
 			planDistM:  planDist,
@@ -165,7 +179,7 @@ func firstOrderReflections(source, receiver geo.Point2D, dz float64, walls []wal
 	return paths
 }
 
-func secondOrderReflections(source, receiver geo.Point2D, dz float64, walls []wallSeg) []reflectedPath {
+func secondOrderReflections(source, receiver geo.Point2D, sourceZ, dz float64, walls []wallSeg) []reflectedPath {
 	var paths []reflectedPath
 
 	for i, w1 := range walls {
@@ -184,13 +198,24 @@ func secondOrderReflections(source, receiver geo.Point2D, dz float64, walls []wa
 				continue
 			}
 
+			// Height condition at P2: wall 2 must be tall enough at P2.
+			// Height at P2 = sourceZ + dz · dist(img2, P2) / dist(img2, receiver).
+			planDist := dist2D(img2, receiver)
+			if planDist > 0 {
+				t2 := dist2D(img2, p2) / planDist
+
+				heightAtP2 := sourceZ + dz*t2
+				if w2.heightM < heightAtP2 {
+					continue // ray passes over wall 2 at P2
+				}
+			}
+
 			// Check: P2→S' crosses wall 1 (confirms 1st leg is geometrically valid).
 			_, _, ok1 := geo.LineStringIntersectsSegment([]geo.Point2D{w1.a, w1.b}, p2, img1)
 			if !ok1 {
 				continue
 			}
 
-			planDist := dist2D(img2, receiver)
 			slantDist := math.Sqrt(planDist*planDist + dz*dz)
 			paths = append(paths, reflectedPath{
 				planDistM:  planDist,

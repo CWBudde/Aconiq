@@ -46,6 +46,7 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read report markdown: %v", err)
 	}
+
 	reportText := string(reportMarkdown)
 	for _, section := range []string{
 		"## Input overview",
@@ -63,14 +64,17 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read export summary: %v", err)
 	}
+
 	var summary map[string]any
 	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
 		t.Fatalf("decode export summary: %v", err)
 	}
+
 	generatedReports, ok := summary["generated_reports"].([]any)
 	if !ok || len(generatedReports) < 3 {
 		t.Fatalf("expected generated report files in summary, got %#v", summary["generated_reports"])
 	}
+
 	copiedFiles := anySliceToStrings(summary["copied_files"])
 	for _, expected := range []string{"results/receivers.json", "results/run-summary.json", "provenance.json"} {
 		if !slices.Contains(copiedFiles, expected) {
@@ -82,18 +86,21 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
+
 	proj, err := store.Load()
 	if err != nil {
 		t.Fatalf("load project: %v", err)
 	}
 
 	foundHTMLArtifact := false
+
 	for _, artifact := range proj.Artifacts {
 		if artifact.Kind == "export.report_html" {
 			foundHTMLArtifact = true
 			break
 		}
 	}
+
 	if !foundHTMLArtifact {
 		t.Fatalf("expected export.report_html artifact in project manifest")
 	}
@@ -119,10 +126,12 @@ func TestExportSkipReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read export summary: %v", err)
 	}
+
 	var summary map[string]any
 	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
 		t.Fatalf("decode export summary: %v", err)
 	}
+
 	if generated, exists := summary["generated_reports"]; exists && len(anySliceToStrings(generated)) > 0 {
 		t.Fatalf("expected generated_reports to be empty when --skip-report is set, got %#v", generated)
 	}
@@ -132,10 +141,12 @@ func latestExportBundleDir(t *testing.T, projectDir string) string {
 	t.Helper()
 
 	exportRoot := filepath.Join(projectDir, ".noise", "exports")
+
 	entries, err := os.ReadDir(exportRoot)
 	if err != nil {
 		t.Fatalf("read exports directory: %v", err)
 	}
+
 	if len(entries) == 0 {
 		t.Fatal("expected at least one export bundle")
 	}
@@ -145,17 +156,22 @@ func latestExportBundleDir(t *testing.T, projectDir string) string {
 		if !entry.IsDir() {
 			continue
 		}
+
 		names = append(names, entry.Name())
 	}
+
 	if len(names) == 0 {
 		t.Fatal("expected at least one export bundle directory")
 	}
+
 	slices.Sort(names)
+
 	return filepath.Join(exportRoot, names[len(names)-1])
 }
 
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
+
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file %s: %v", path, err)
 	}
@@ -166,13 +182,16 @@ func anySliceToStrings(value any) []string {
 	if !ok {
 		return nil
 	}
+
 	out := make([]string, 0, len(rawSlice))
 	for _, item := range rawSlice {
 		text, ok := item.(string)
 		if !ok {
 			continue
 		}
+
 		out = append(out, text)
 	}
+
 	return out
 }

@@ -1008,6 +1008,7 @@ func TestTerrainEdgeValidate(t *testing.T) {
 	t.Parallel()
 
 	e := tieflageSlopeCrest()
+
 	err := e.Validate()
 	if err != nil {
 		t.Fatalf("valid edge failed: %v", err)
@@ -1413,6 +1414,281 @@ func TestGroundCorrection_ProperFormula(t *testing.T) {
 	}
 }
 
+// --- building / courtyard tests ---
+
+func TestBuilding_Validate(t *testing.T) {
+	t.Parallel()
+
+	valid := Building{
+		ID:        "bldg-1",
+		Footprint: []geo.Point2D{{X: 0, Y: 10}, {X: 10, Y: 10}, {X: 10, Y: 15}, {X: 0, Y: 15}},
+		HeightM:   8.0,
+	}
+
+	err := valid.Validate()
+	if err != nil {
+		t.Fatalf("expected valid building, got %v", err)
+	}
+
+	// Missing ID.
+	b := valid
+	b.ID = ""
+
+	err = b.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing ID")
+	}
+
+	// Too few vertices (need at least 3 for a polygon).
+	b = valid
+	b.Footprint = []geo.Point2D{{X: 0, Y: 0}, {X: 10, Y: 0}}
+
+	err = b.Validate()
+	if err == nil {
+		t.Fatal("expected error for fewer than 3 footprint vertices")
+	}
+
+	// Zero height.
+	b = valid
+	b.HeightM = 0
+
+	err = b.Validate()
+	if err == nil {
+		t.Fatal("expected error for zero height")
+	}
+
+	// Negative reflection loss.
+	b = valid
+	b.ReflectionLossDB = -1
+
+	err = b.Validate()
+	if err == nil {
+		t.Fatal("expected error for negative reflection loss")
+	}
+}
+
+func TestBuilding_AsBarrier_ClosedPolygon(t *testing.T) {
+	t.Parallel()
+
+	// 4-vertex rectangle — asBarrier should close it to 5 points.
+	b := Building{
+		ID:        "rect",
+		Footprint: []geo.Point2D{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 5}, {X: 0, Y: 5}},
+		HeightM:   8.0,
+	}
+
+	barrier := b.asBarrier()
+
+	if barrier.HeightM != 8.0 {
+		t.Fatalf("expected height 8.0, got %f", barrier.HeightM)
+	}
+
+	// Closed polygon: 4 vertices + closing vertex = 5 points.
+	if len(barrier.Geometry) != 5 {
+		t.Fatalf("expected 5 geometry points (closed), got %d", len(barrier.Geometry))
+	}
+
+	// Closing point equals first point.
+	first, last := barrier.Geometry[0], barrier.Geometry[4]
+	if first.X != last.X || first.Y != last.Y {
+		t.Fatalf("barrier polygon not closed: first=%v last=%v", first, last)
+	}
+}
+
+func TestBuilding_AsBarrier_AlreadyClosedPolygon(t *testing.T) {
+	t.Parallel()
+
+	// Pre-closed polygon must not add a duplicate point.
+	b := Building{
+		ID: "pre-closed",
+		Footprint: []geo.Point2D{
+			{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 5}, {X: 0, Y: 5}, {X: 0, Y: 0},
+		},
+		HeightM: 8.0,
+	}
+
+	barrier := b.asBarrier()
+
+	if len(barrier.Geometry) != 5 {
+		t.Fatalf("expected 5 points for pre-closed polygon, got %d", len(barrier.Geometry))
+	}
+}
+
+func TestBuilding_AsReflector_Properties(t *testing.T) {
+	t.Parallel()
+
+	b := Building{
+		ID:               "facade",
+		Footprint:        []geo.Point2D{{X: 0, Y: 20}, {X: 10, Y: 20}, {X: 10, Y: 25}, {X: 0, Y: 25}},
+		HeightM:          6.0,
+		ReflectionLossDB: 2.0,
+	}
+
+	refl := b.asReflector()
+
+	if refl.HeightM != 6.0 {
+		t.Fatalf("expected reflector height 6.0, got %f", refl.HeightM)
+	}
+
+	if refl.ReflectionLossDB != 2.0 {
+		t.Fatalf("expected reflection loss 2.0, got %f", refl.ReflectionLossDB)
+	}
+
+	// Closed polygon: 4 + 1 closing = 5 points.
+	if len(refl.Geometry) != 5 {
+		t.Fatalf("expected 5 geometry points, got %d", len(refl.Geometry))
+	}
+}
+
+// TestBuilding_ShieldsDirectPath verifies that a building standing between
+// source and receiver reduces the receiver level compared to the same geometry
+// acting only as a reflector (no barrier shielding).
+//
+// Note: the image-source method can produce phantom reflections off interior
+// faces of a building polygon (e.g. north↔south bounce inside a thin building
+// body). Both test scenarios use the same reflector geometry, so phantom paths
+// cancel out. The difference is purely from the barrier shielding component.
+//
+// Geometry: source near (0,0), receiver at (0,100), building at y=20..25 (h=10m).
+// The building's south wall at y=20 crosses the direct source-receiver path.
+func TestBuilding_ShieldsDirectPath(t *testing.T) {
+	t.Parallel()
+
+	source := RoadSource{
+		ID:           "src",
+		Centerline:   []geo.Point2D{{X: -1, Y: 0}, {X: 1, Y: 0}},
+		SurfaceType:  SurfaceSMA,
+		Speeds:       SpeedInput{PkwKPH: 100, Lkw1KPH: 80, Lkw2KPH: 70, KradKPH: 100},
+		TrafficDay:   TrafficInput{PkwPerHour: 900, Lkw1PerHour: 40, Lkw2PerHour: 60, KradPerHour: 10},
+		TrafficNight: TrafficInput{PkwPerHour: 200, Lkw1PerHour: 10, Lkw2PerHour: 20, KradPerHour: 2},
+	}
+	receiver := geo.Point2D{X: 0, Y: 100}
+
+	bldg := Building{
+		ID:        "blocker",
+		Footprint: []geo.Point2D{{X: -5, Y: 20}, {X: 5, Y: 20}, {X: 5, Y: 25}, {X: -5, Y: 25}},
+		HeightM:   10.0,
+	}
+
+	// Reflector-only: same geometry, same reflected paths, but no barrier shielding.
+	cfgReflOnly := DefaultPropagationConfig()
+	cfgReflOnly.Reflectors = []Reflector{bldg.asReflector()}
+
+	lvlReflOnly, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgReflOnly)
+	if err != nil {
+		t.Fatalf("refl-only: %v", err)
+	}
+
+	// Building: same reflections PLUS barrier shielding of the direct path.
+	cfgBuilding := DefaultPropagationConfig()
+	cfgBuilding.Buildings = []Building{bldg}
+
+	lvlBuilding, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgBuilding)
+	if err != nil {
+		t.Fatalf("building: %v", err)
+	}
+
+	// Building (shielding active) must be quieter than reflector-only (no shielding).
+	if lvlBuilding.LrDay >= lvlReflOnly.LrDay {
+		t.Fatalf("building with shielding should be lower than reflector-only: "+
+			"building=%.2f refl-only=%.2f", lvlBuilding.LrDay, lvlReflOnly.LrDay)
+	}
+}
+
+// TestBuilding_ParallelFacade_IncreasesLevel verifies that a building facade
+// parallel to the road (house-front scenario) increases the receiver level by
+// adding a reflected path.
+//
+// Geometry: road along x-axis, receiver at (0,30), building at y=45..50.
+// The building's south face at y=45 reflects road sound back to the receiver.
+func TestBuilding_ParallelFacade_IncreasesLevel(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	receiver := geo.Point2D{X: 0, Y: 30}
+
+	cfg := DefaultPropagationConfig()
+
+	lvlFree, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	// Building with south facade at y=45 (behind receiver at y=30).
+	bldg := Building{
+		ID:        "house-front",
+		Footprint: []geo.Point2D{{X: -20, Y: 45}, {X: 20, Y: 45}, {X: 20, Y: 50}, {X: -20, Y: 50}},
+		HeightM:   8.0,
+	}
+	cfg.Buildings = []Building{bldg}
+
+	lvlWithBldg, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("with building: %v", err)
+	}
+
+	if lvlWithBldg.LrDay <= lvlFree.LrDay {
+		t.Fatalf("parallel facade should increase level: free=%.2f with-bldg=%.2f",
+			lvlFree.LrDay, lvlWithBldg.LrDay)
+	}
+}
+
+// TestBuilding_Courtyard_IncreasesLevel verifies that a U-shaped courtyard
+// (buildings on north, east, and west) raises the receiver level compared to
+// an open field receiver at the same position. This is the "Hinterhof" scenario.
+//
+// Geometry:
+//
+//	Road: x=-50..50, y=0 (sampleSource)
+//	Receiver: (0, 40) — inside the courtyard opening
+//	North building: south face at y=60 (reflects back)
+//	East building:  west face at x=20  (reflects inward)
+//	West building:  east face at x=-20 (reflects inward)
+func TestBuilding_Courtyard_IncreasesLevel(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	receiver := geo.Point2D{X: 0, Y: 40}
+
+	cfg := DefaultPropagationConfig()
+
+	lvlFree, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	cfg.Buildings = []Building{
+		// North wall of the courtyard — reflects sound back toward road.
+		{
+			ID:        "north-wall",
+			Footprint: []geo.Point2D{{X: -20, Y: 60}, {X: 20, Y: 60}, {X: 20, Y: 65}, {X: -20, Y: 65}},
+			HeightM:   10.0,
+		},
+		// East wall of the courtyard — reflects inward.
+		{
+			ID:        "east-wall",
+			Footprint: []geo.Point2D{{X: 20, Y: 0}, {X: 25, Y: 0}, {X: 25, Y: 65}, {X: 20, Y: 65}},
+			HeightM:   10.0,
+		},
+		// West wall of the courtyard — reflects inward.
+		{
+			ID:        "west-wall",
+			Footprint: []geo.Point2D{{X: -25, Y: 0}, {X: -20, Y: 0}, {X: -20, Y: 65}, {X: -25, Y: 65}},
+			HeightM:   10.0,
+		},
+	}
+
+	lvlCourtyard, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("courtyard: %v", err)
+	}
+
+	if lvlCourtyard.LrDay <= lvlFree.LrDay {
+		t.Fatalf("courtyard should increase level: free=%.2f courtyard=%.2f",
+			lvlFree.LrDay, lvlCourtyard.LrDay)
+	}
+}
+
 // --- reflection tests ---
 
 func TestReflector_Validate(t *testing.T) {
@@ -1696,6 +1972,157 @@ func TestComputeReceiverLevels_ReflectionCustomLoss(t *testing.T) {
 	if lvlHighLoss.LrDay >= lvlDefault.LrDay {
 		t.Fatalf("higher reflection loss should reduce level increase: default=%.2f high=%.2f",
 			lvlDefault.LrDay, lvlHighLoss.LrDay)
+	}
+}
+
+// K5: Reflection height condition tests.
+//
+// A reflector only produces a valid reflected path when the wall is tall enough
+// that the reflected ray does not pass over it. At the reflection point P the
+// ray height is interpolated linearly between sourceZ and receiverZ:
+//
+//	t          = dist2D(imageSource, P) / dist2D(imageSource, receiver)
+//	heightAtP  = sourceZ + (receiverZ − sourceZ) · t
+//
+// The reflection is valid only when wall.HeightM >= heightAtP.
+
+// TestComputeReflectedPaths_HeightTooShort_NoReflection verifies that a
+// geometrically plausible wall that is too short to intercept the ray produces
+// no reflected path.
+//
+// Geometry: source (0,0) z=0.5 m, receiver (10,0) z=4.0 m,
+// wall at x=15 (y ∈ [−5, 5]), height=2.0 m.
+//
+// Image source S′=(30,0).  Reflection point P=(15,0).
+// t = dist(S′,P)/dist(S′,R) = 15/20 = 0.75.
+// heightAtP = 0.5 + 3.5·0.75 = 3.125 m.
+// 2.0 < 3.125 → ray passes over the wall → no reflection.
+func TestComputeReflectedPaths_HeightTooShort_NoReflection(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "short-wall",
+		Geometry: []geo.Point2D{{X: 15, Y: -5}, {X: 15, Y: 5}},
+		HeightM:  2.0, // shorter than the 3.125 m ray height at reflection point
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 10, Y: 0}, 4.0,
+		[]Reflector{wall},
+	)
+
+	if len(paths) != 0 {
+		t.Fatalf("expected 0 reflected paths (wall too short), got %d", len(paths))
+	}
+}
+
+// TestComputeReflectedPaths_HeightJustEnough_Reflection verifies that the same
+// wall geometry with sufficient height produces one reflected path.
+//
+// Same geometry as above but wall height=5.0 m >= 3.125 m → reflection valid.
+func TestComputeReflectedPaths_HeightJustEnough_Reflection(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "tall-wall",
+		Geometry: []geo.Point2D{{X: 15, Y: -5}, {X: 15, Y: 5}},
+		HeightM:  5.0, // 5.0 >= 3.125 → valid reflection
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 10, Y: 0}, 4.0,
+		[]Reflector{wall},
+	)
+
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 reflected path (wall tall enough), got %d", len(paths))
+	}
+
+	// Image source S′=(30,0), receiver=(10,0) → plan dist = 20 m.
+	if !almostEqual(paths[0].planDistM, 20.0, 1e-6) {
+		t.Fatalf("expected plan dist 20.0 m, got %f", paths[0].planDistM)
+	}
+}
+
+// TestComputeReflectedPaths_DoubleReflection_SecondWallTooShort verifies that
+// when the second wall in a two-bounce path is too short to reflect the ray at
+// its reflection point, the double reflection is suppressed. Single reflections
+// that independently satisfy the height condition remain valid.
+//
+// Geometry: source (0,0) z=0.5, receiver (5,5) z=4.0.
+// wallA at x=15 (y ∈ [−20,20]), height=8 m (tall enough for 1st bounce).
+// wallB at y=12 (x ∈ [−20,20]), height=1 m (too short for both 1st-order
+// off wallB and for the 2nd leg of A→B).
+//
+// Expected: only 1 path (1st-order off wallA). The 1st-order off wallB and
+// the 2nd-order A→B path are suppressed by the height condition.
+func TestComputeReflectedPaths_DoubleReflection_SecondWallTooShort(t *testing.T) {
+	t.Parallel()
+
+	wallA := Reflector{
+		ID:       "wall-a",
+		Geometry: []geo.Point2D{{X: 15, Y: -20}, {X: 15, Y: 20}},
+		HeightM:  8, // tall: 1st-order off A valid (heightAtP ≈ 2.6 m)
+	}
+	wallB := Reflector{
+		ID:       "wall-b",
+		Geometry: []geo.Point2D{{X: -20, Y: 12}, {X: 20, Y: 12}},
+		HeightM:  1, // short: 1st-order off B invalid (heightAtP ≈ 2.7 m) and
+		// 2nd-order A→B invalid (heightAtP2 ≈ 2.7 m)
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 5, Y: 5}, 4.0,
+		[]Reflector{wallA, wallB},
+	)
+
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 reflected path (1st-order off wall-a only), got %d", len(paths))
+	}
+}
+
+// TestComputeReceiverLevels_ShortReflector_NoLevelIncrease verifies that a
+// reflector too short to intercept any reflected ray does not increase the
+// receiver level compared to free-field propagation.
+//
+// Geometry: road along x-axis, receiver at (0,50), reflector at y=−10 with
+// height=0.6 m. The reflected ray height at the wall is ~0.52 m (very close to
+// source height) for nearby segments, but increases for distant segments.
+// We use a very short wall (0.6 m) so at least for a close segment the height
+// condition can fail; for a fully opaque wall (height=30 m) it must fail for all.
+func TestComputeReceiverLevels_ShortReflector_NoLevelIncrease(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	cfgFree := DefaultPropagationConfig()
+
+	lvlFree, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgFree)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	// A reflector that is far shorter than any ray height at the reflection point.
+	cfgShort := DefaultPropagationConfig()
+	cfgShort.Reflectors = []Reflector{{
+		ID:       "too-short",
+		Geometry: []geo.Point2D{{X: -200, Y: -10}, {X: 200, Y: -10}},
+		HeightM:  0.1, // essentially at ground level — no ray can reflect off this
+	}}
+
+	lvlShort, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgShort)
+	if err != nil {
+		t.Fatalf("short reflector: %v", err)
+	}
+
+	// A wall so short that no reflected ray can reach it → level must not increase.
+	if lvlShort.LrDay > lvlFree.LrDay+0.01 {
+		t.Fatalf("short reflector should not increase level: free=%.2f dB, short=%.2f dB",
+			lvlFree.LrDay, lvlShort.LrDay)
 	}
 }
 

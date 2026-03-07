@@ -1,6 +1,7 @@
 package rail
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -66,40 +67,54 @@ type RailSource struct {
 // Validate validates one rail source payload.
 func (s RailSource) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
-		return fmt.Errorf("rail source id is required")
+		return errors.New("rail source id is required")
 	}
+
 	if len(s.TrackCenterline) < 2 {
 		return fmt.Errorf("rail source %q track_centerline must contain at least 2 points", s.ID)
 	}
+
 	for i, point := range s.TrackCenterline {
 		if !point.IsFinite() {
 			return fmt.Errorf("rail source %q track_centerline point[%d] is not finite", s.ID, i)
 		}
 	}
+
 	if _, ok := allowedTractionTypes[strings.TrimSpace(s.TractionType)]; !ok {
 		return fmt.Errorf("rail source %q has unsupported traction_type %q", s.ID, s.TractionType)
 	}
+
 	if _, ok := allowedRoughnessClasses[strings.TrimSpace(s.TrackRoughnessClass)]; !ok {
 		return fmt.Errorf("rail source %q has unsupported track_roughness_class %q", s.ID, s.TrackRoughnessClass)
 	}
+
 	if math.IsNaN(s.AverageTrainSpeedKPH) || math.IsInf(s.AverageTrainSpeedKPH, 0) || s.AverageTrainSpeedKPH <= 0 {
 		return fmt.Errorf("rail source %q average_train_speed_kph must be finite and > 0", s.ID)
 	}
+
 	if math.IsNaN(s.BrakingShare) || math.IsInf(s.BrakingShare, 0) || s.BrakingShare < 0 || s.BrakingShare > 1 {
 		return fmt.Errorf("rail source %q braking_share must be within [0,1]", s.ID)
 	}
+
 	if math.IsNaN(s.CurveRadiusM) || math.IsInf(s.CurveRadiusM, 0) {
 		return fmt.Errorf("rail source %q curve_radius_m must be finite", s.ID)
 	}
-	if err := validateTrafficPeriod(s.ID, "day", s.TrafficDay); err != nil {
+
+	err := validateTrafficPeriod(s.ID, "day", s.TrafficDay)
+	if err != nil {
 		return err
 	}
-	if err := validateTrafficPeriod(s.ID, "evening", s.TrafficEvening); err != nil {
+
+	err = validateTrafficPeriod(s.ID, "evening", s.TrafficEvening)
+	if err != nil {
 		return err
 	}
-	if err := validateTrafficPeriod(s.ID, "night", s.TrafficNight); err != nil {
+
+	err = validateTrafficPeriod(s.ID, "night", s.TrafficNight)
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -107,6 +122,7 @@ func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod
 	if math.IsNaN(traffic.TrainsPerHour) || math.IsInf(traffic.TrainsPerHour, 0) || traffic.TrainsPerHour < 0 {
 		return fmt.Errorf("rail source %q traffic_%s trains_per_hour must be finite and >= 0", sourceID, period)
 	}
+
 	return nil
 }
 
@@ -115,6 +131,7 @@ func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
 	minPositive := 0.001
 	maxOne := 1.0
+
 	return framework.StandardDescriptor{
 		ID:             StandardID,
 		Description:    "CNOSSOS-EU rail preview module with typed source schema and deterministic indicators.",

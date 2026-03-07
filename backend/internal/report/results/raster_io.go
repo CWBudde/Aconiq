@@ -3,6 +3,7 @@ package results
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -20,6 +21,7 @@ type RasterPersistence struct {
 
 type rasterMetadataFile struct {
 	RasterMetadata
+
 	DataFile   string    `json:"data_file"`
 	Encoding   string    `json:"encoding"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -32,10 +34,11 @@ type rasterMetadataFile struct {
 // basePath is the file prefix without extension.
 func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 	if raster == nil {
-		return RasterPersistence{}, fmt.Errorf("raster is nil")
+		return RasterPersistence{}, errors.New("raster is nil")
 	}
+
 	if basePath == "" {
-		return RasterPersistence{}, fmt.Errorf("base path is required")
+		return RasterPersistence{}, errors.New("base path is required")
 	}
 
 	metadataPath := basePath + ".json"
@@ -46,11 +49,13 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 	}
 
 	values := raster.Values()
+
 	binaryPayload := make([]byte, len(values)*8)
 	for i, value := range values {
 		if math.IsNaN(value) || math.IsInf(value, 0) {
 			return RasterPersistence{}, fmt.Errorf("raster value at index %d is non-finite", i)
 		}
+
 		binary.LittleEndian.PutUint64(binaryPayload[i*8:], math.Float64bits(value))
 	}
 
@@ -67,10 +72,12 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		DataBytes:      len(binaryPayload),
 		SchemaName:     "aconiq.raster.v1",
 	}
+
 	encodedMeta, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("encode raster metadata: %w", err)
 	}
+
 	encodedMeta = append(encodedMeta, '\n')
 
 	if err := os.WriteFile(metadataPath, encodedMeta, 0o644); err != nil {
@@ -83,7 +90,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 // LoadRaster reconstructs a raster from metadata JSON and binary data.
 func LoadRaster(metadataPath string) (*Raster, error) {
 	if metadataPath == "" {
-		return nil, fmt.Errorf("metadata path is required")
+		return nil, errors.New("metadata path is required")
 	}
 
 	payload, err := os.ReadFile(metadataPath)

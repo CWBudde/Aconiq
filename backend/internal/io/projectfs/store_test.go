@@ -12,6 +12,7 @@ func TestInitAndLoadProject(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+
 	store, err := New(root)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -30,15 +31,19 @@ func TestInitAndLoadProject(t *testing.T) {
 	if loaded.ProjectID != created.ProjectID {
 		t.Fatalf("expected project ID %q, got %q", created.ProjectID, loaded.ProjectID)
 	}
+
 	if loaded.Name != "Demo Project" {
 		t.Fatalf("unexpected project name: %q", loaded.Name)
 	}
+
 	if loaded.CRS != "EPSG:25832" {
 		t.Fatalf("unexpected CRS: %q", loaded.CRS)
 	}
+
 	if loaded.Storage.Kind != project.StorageKindJSONV1 {
 		t.Fatalf("unexpected storage kind: %q", loaded.Storage.Kind)
 	}
+
 	if len(loaded.Scenarios) != 1 || loaded.Scenarios[0].ID != "default" {
 		t.Fatalf("expected one default scenario, got %#v", loaded.Scenarios)
 	}
@@ -48,6 +53,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+
 	store, err := New(root)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -82,6 +88,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if run.ID == "" {
 		t.Fatal("run ID must be set")
 	}
+
 	if run.ProvenancePath == "" {
 		t.Fatal("run provenance path must be set")
 	}
@@ -89,6 +96,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.ProvenancePath))); err != nil {
 		t.Fatalf("provenance file missing: %v", err)
 	}
+
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(run.LogPath))); err != nil {
 		t.Fatalf("run log missing: %v", err)
 	}
@@ -96,6 +104,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if len(provenance.InputHashes) != 1 {
 		t.Fatalf("expected one input hash, got %d", len(provenance.InputHashes))
 	}
+
 	if provenance.Standard.ID != "dummy-freefield" {
 		t.Fatalf("unexpected provenance standard: %q", provenance.Standard.ID)
 	}
@@ -104,6 +113,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load project: %v", err)
 	}
+
 	if len(loaded.Runs) != 1 {
 		t.Fatalf("expected one run in manifest, got %d", len(loaded.Runs))
 	}

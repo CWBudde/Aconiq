@@ -29,16 +29,20 @@ func AssertJSONSnapshot(t *testing.T, snapshotPath string, got any) {
 	if err != nil {
 		t.Fatalf("marshal snapshot value: %v", err)
 	}
+
 	serialized = append(serialized, '\n')
 
 	if UpdateEnabled() {
-		if err := os.MkdirAll(filepath.Dir(snapshotPath), 0o755); err != nil {
+		err := os.MkdirAll(filepath.Dir(snapshotPath), 0o755)
+		if err != nil {
 			t.Fatalf("create snapshot directory: %v", err)
 		}
 
-		if err := os.WriteFile(snapshotPath, serialized, 0o644); err != nil {
+		err = os.WriteFile(snapshotPath, serialized, 0o644)
+		if err != nil {
 			t.Fatalf("write snapshot file: %v", err)
 		}
+
 		return
 	}
 

@@ -23,6 +23,7 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 	if err != nil {
 		return fmt.Errorf("encode receiver table json: %w", err)
 	}
+
 	payload = append(payload, '\n')
 
 	if err := os.WriteFile(path, payload, 0o644); err != nil {
@@ -50,6 +51,7 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 
 	writer := csv.NewWriter(file)
 	header := []string{"id", "x", "y", "height_m"}
+
 	header = append(header, table.IndicatorOrder...)
 	if err := writer.Write(header); err != nil {
 		return fmt.Errorf("write receiver table csv header: %w", err)
@@ -65,12 +67,15 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 		for _, indicator := range table.IndicatorOrder {
 			row = append(row, strconv.FormatFloat(record.Values[indicator], 'f', -1, 64))
 		}
-		if err := writer.Write(row); err != nil {
+
+		err := writer.Write(row)
+		if err != nil {
 			return fmt.Errorf("write receiver table csv row for %s: %w", record.ID, err)
 		}
 	}
 
 	writer.Flush()
+
 	if err := writer.Error(); err != nil {
 		return fmt.Errorf("flush receiver table csv: %w", err)
 	}

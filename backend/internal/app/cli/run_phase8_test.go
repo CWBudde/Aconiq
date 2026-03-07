@@ -48,6 +48,7 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load project: %v", err)
 	}
+
 	if len(proj.Runs) == 0 {
 		t.Fatal("expected at least one run")
 	}
@@ -58,6 +59,7 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	}
 
 	receiverTablePath := filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "receivers.json")
+
 	receiverTablePayload, err := os.ReadFile(receiverTablePath)
 	if err != nil {
 		t.Fatalf("read receiver table: %v", err)
@@ -69,12 +71,14 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	}
 
 	rasterPath := filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "ldummy.json")
+
 	raster, err := results.LoadRaster(rasterPath)
 	if err != nil {
 		t.Fatalf("load raster: %v", err)
 	}
 
 	meta := raster.Metadata()
+
 	recordsSnapshot := make([]map[string]any, 0, len(receiverTable.Records))
 	for _, record := range receiverTable.Records {
 		recordsSnapshot = append(recordsSnapshot, map[string]any{
@@ -87,6 +91,7 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 	}
 
 	rasterValues := raster.Values()
+
 	rasterValuesRounded := make([]float64, 0, len(rasterValues))
 	for _, value := range rasterValues {
 		rasterValuesRounded = append(rasterValuesRounded, round6(value))
@@ -121,6 +126,7 @@ func TestRunRejectsUnknownRunParameter(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected run command error")
 	}
+
 	if !strings.Contains(err.Error(), `unknown run parameter "not_allowed"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -140,13 +146,16 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new project store: %v", err)
 	}
+
 	proj, err := store.Load()
 	if err != nil {
 		t.Fatalf("load project: %v", err)
 	}
+
 	if len(proj.Runs) == 0 {
 		t.Fatal("expected one run")
 	}
+
 	run := proj.Runs[len(proj.Runs)-1]
 	if run.Status != project.RunStatusCompleted {
 		t.Fatalf("expected completed run status, got %q", run.Status)
@@ -169,13 +178,16 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read receiver table: %v", err)
 	}
+
 	var table results.ReceiverTable
 	if err := json.Unmarshal(payload, &table); err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
+
 	if len(table.IndicatorOrder) == 0 {
 		t.Fatal("expected indicator order in receiver table")
 	}
+
 	expectedIndicators := map[string]bool{
 		cnossosroad.IndicatorLden:   false,
 		cnossosroad.IndicatorLnight: false,
@@ -185,6 +197,7 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 			expectedIndicators[indicator] = true
 		}
 	}
+
 	for indicator, found := range expectedIndicators {
 		if !found {
 			t.Fatalf("expected indicator %s in receiver table order", indicator)
@@ -195,7 +208,8 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 func mustRunCLI(t *testing.T, args ...string) {
 	t.Helper()
 
-	if err := runCLI(args...); err != nil {
+	err := runCLI(args...)
+	if err != nil {
 		t.Fatalf("noise %v: %v", args, err)
 	}
 }
@@ -203,9 +217,12 @@ func mustRunCLI(t *testing.T, args ...string) {
 func runCLI(args ...string) error {
 	cmd := newRootCommand()
 	cmd.SetArgs(args)
-	if err := cmd.Execute(); err != nil {
+
+	err := cmd.Execute()
+	if err != nil {
 		return fmt.Errorf("noise %v: %w", args, err)
 	}
+
 	return nil
 }
 
@@ -223,5 +240,6 @@ func testdataPath(t *testing.T, parts ...string) string {
 
 	base := filepath.Join(filepath.Dir(filePath), "testdata")
 	all := append([]string{base}, parts...)
+
 	return filepath.Join(all...)
 }

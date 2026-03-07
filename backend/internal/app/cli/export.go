@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -69,11 +70,13 @@ func newExportCommand() *cobra.Command {
 			if outDir == "" {
 				outDir = filepath.Join(".noise", "exports")
 			}
+
 			outRoot := resolvePath(store.Root(), outDir)
 			exportID := fmt.Sprintf("%s-%s", run.ID, time.Now().UTC().Format("20060102T150405Z"))
+
 			bundleDir := filepath.Join(outRoot, exportID)
 			if err := os.MkdirAll(bundleDir, 0o755); err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", fmt.Sprintf("create export directory: %s", bundleDir), err)
+				return domainerrors.New(domainerrors.KindInternal, "cli.export", "create export directory: "+bundleDir, err)
 			}
 
 			copiedFiles := make([]string, 0, 12)
@@ -82,10 +85,12 @@ func newExportCommand() *cobra.Command {
 			if run.LogPath != "" {
 				src := filepath.Join(store.Root(), filepath.FromSlash(run.LogPath))
 				dst := filepath.Join(bundleDir, "run.log")
+
 				copied, err := copyFileIfExists(src, dst)
 				if err != nil {
 					return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run log", err)
 				}
+
 				if copied {
 					copiedFiles = append(copiedFiles, filepath.ToSlash("run.log"))
 				}
@@ -94,10 +99,12 @@ func newExportCommand() *cobra.Command {
 			if run.ProvenancePath != "" {
 				src := filepath.Join(store.Root(), filepath.FromSlash(run.ProvenancePath))
 				dst := filepath.Join(bundleDir, "provenance.json")
+
 				copied, err := copyFileIfExists(src, dst)
 				if err != nil {
 					return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy provenance", err)
 				}
+
 				if copied {
 					copiedFiles = append(copiedFiles, filepath.ToSlash("provenance.json"))
 					provenancePath = dst
@@ -108,12 +115,14 @@ func newExportCommand() *cobra.Command {
 			if err != nil {
 				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run result artifacts", err)
 			}
+
 			copiedFiles = append(copiedFiles, copiedResults.CopiedFiles...)
 
 			modelDumpPath, modelDumpRel, err := copyModelDumpToBundle(store.Root(), bundleDir, proj.Artifacts)
 			if err != nil {
 				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model dump artifact", err)
 			}
+
 			if modelDumpPath != "" {
 				copiedFiles = append(copiedFiles, modelDumpRel)
 				copiedResults.ModelDump = modelDumpPath
@@ -129,6 +138,7 @@ func newExportCommand() *cobra.Command {
 			}
 
 			reportArtifacts := make([]project.ArtifactRef, 0, 3)
+
 			if !skipReport {
 				reportBundle, reportErr := reporting.BuildRunReport(reporting.BuildOptions{
 					BundleDir:         bundleDir,
@@ -182,6 +192,7 @@ func newExportCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+
 				summary.GeneratedSampleData = generated
 			}
 
@@ -197,6 +208,7 @@ func newExportCommand() *cobra.Command {
 				Path:      relativePath(store.Root(), summaryPath),
 				CreatedAt: nowUTC(),
 			})
+
 			proj.Artifacts = append(proj.Artifacts, reportArtifacts...)
 			if err := store.Save(proj); err != nil {
 				return err
@@ -212,10 +224,12 @@ func newExportCommand() *cobra.Command {
 			)
 
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exported run %s to %s\n", run.ID, bundleDir)
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)
 			if emitSampleResults {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Sample results generated: %d files\n", len(summary.GeneratedSampleData))
 			}
+
 			if len(summary.GeneratedReports) > 0 {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Report files generated: %d\n", len(summary.GeneratedReports))
 			}
@@ -234,7 +248,7 @@ func newExportCommand() *cobra.Command {
 
 func findRunForExport(runs []project.Run, runID string) (project.Run, error) {
 	if len(runs) == 0 {
-		return project.Run{}, fmt.Errorf("project has no runs to export")
+		return project.Run{}, errors.New("project has no runs to export")
 	}
 
 	if runID == "" {
@@ -255,6 +269,7 @@ func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+
 		return false, err
 	}
 
@@ -287,15 +302,19 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 		if artifact.RunID != runID {
 			continue
 		}
+
 		if !strings.HasPrefix(artifact.Kind, "run.result.") {
 			continue
 		}
+
 		filtered = append(filtered, artifact)
 	}
+
 	sort.Slice(filtered, func(i, j int) bool {
 		if filtered[i].Kind == filtered[j].Kind {
 			return filtered[i].Path < filtered[j].Path
 		}
+
 		return filtered[i].Kind < filtered[j].Kind
 	})
 
@@ -317,11 +336,13 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 		if err != nil {
 			return copiedRunResults{}, err
 		}
+
 		if !copied {
 			continue
 		}
 
 		out.CopiedFiles = append(out.CopiedFiles, filepath.ToSlash(destRel))
+
 		switch artifact.Kind {
 		case "run.result.receiver_table_json":
 			out.ReceiverTableJSON = dstPath
@@ -334,21 +355,25 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 
 	out.CopiedFiles = dedupeAndSort(out.CopiedFiles)
 	sort.Strings(out.RasterMetadataList)
+
 	return out, nil
 }
 
 func copyModelDumpToBundle(projectRoot string, bundleDir string, artifacts []project.ArtifactRef) (string, string, error) {
 	modelDumpPath := ""
 	var latestAt time.Time
+
 	for _, artifact := range artifacts {
 		if artifact.Kind != "model.dump_json" {
 			continue
 		}
+
 		if modelDumpPath == "" || artifact.CreatedAt.After(latestAt) {
 			modelDumpPath = artifact.Path
 			latestAt = artifact.CreatedAt
 		}
 	}
+
 	if modelDumpPath == "" {
 		return "", "", nil
 	}
@@ -356,13 +381,16 @@ func copyModelDumpToBundle(projectRoot string, bundleDir string, artifacts []pro
 	srcPath := filepath.Join(projectRoot, filepath.FromSlash(modelDumpPath))
 	destRel := filepath.ToSlash(filepath.Join("model", "model.dump.json"))
 	dstPath := filepath.Join(bundleDir, filepath.FromSlash(destRel))
+
 	copied, err := copyFileIfExists(srcPath, dstPath)
 	if err != nil {
 		return "", "", err
 	}
+
 	if !copied {
 		return "", "", nil
 	}
+
 	return dstPath, destRel, nil
 }
 
@@ -385,6 +413,7 @@ func ensureUniqueDestination(destRel string, used map[string]struct{}) string {
 	}
 
 	ext := filepath.Ext(destRel)
+
 	base := strings.TrimSuffix(destRel, ext)
 	for i := 2; ; i++ {
 		candidate := fmt.Sprintf("%s-%d%s", base, i, ext)
@@ -398,50 +427,64 @@ func dedupeAndSort(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
 	}
+
 	seen := make(map[string]struct{}, len(values))
+
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
 			continue
 		}
+
 		normalized := filepath.ToSlash(trimmed)
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
+
 		seen[normalized] = struct{}{}
 		out = append(out, normalized)
 	}
+
 	sort.Strings(out)
+
 	return out
 }
 
 func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.QASuiteStatus {
 	suites := make([]reporting.QASuiteStatus, 0)
+
 	for _, artifact := range artifacts {
 		if artifact.RunID != runID {
 			continue
 		}
+
 		if !strings.HasPrefix(artifact.Kind, "qa.") {
 			continue
 		}
+
 		name := strings.TrimPrefix(artifact.Kind, "qa.")
+
 		status := "unknown"
 		if strings.Contains(name, ".passed") {
 			status = "passed"
 		}
+
 		if strings.Contains(name, ".failed") {
 			status = "failed"
 		}
+
 		suites = append(suites, reporting.QASuiteStatus{
 			Name:    name,
 			Status:  status,
-			Details: fmt.Sprintf("artifact=%s", artifact.Path),
+			Details: "artifact=" + artifact.Path,
 		})
 	}
+
 	sort.Slice(suites, func(i, j int) bool {
 		return suites[i].Name < suites[j].Name
 	})
+
 	return suites
 }
 
@@ -463,10 +506,12 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "build sample raster", err)
 	}
 
-	for y := 0; y < raster.Metadata().Height; y++ {
-		for x := 0; x < raster.Metadata().Width; x++ {
+	for y := range raster.Metadata().Height {
+		for x := range raster.Metadata().Width {
 			value := 45.0 + float64(x)/4.0 + float64(y)/5.0
-			if err := raster.Set(x, y, 0, value); err != nil {
+
+			err := raster.Set(x, y, 0, value)
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "set sample raster cell", err)
 			}
 		}
@@ -489,9 +534,11 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 
 	jsonPath := filepath.Join(resultsDir, "receivers.json")
 	csvPath := filepath.Join(resultsDir, "receivers.csv")
+
 	if err := results.SaveReceiverTableJSON(jsonPath, table); err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "save sample receiver json", err)
 	}
+
 	if err := results.SaveReceiverTableCSV(csvPath, table); err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "save sample receiver csv", err)
 	}

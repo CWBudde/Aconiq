@@ -1,6 +1,7 @@
 package results
 
 import (
+	"errors"
 	"fmt"
 	"math"
 )
@@ -23,22 +24,27 @@ type Raster struct {
 
 func NewRaster(meta RasterMetadata) (*Raster, error) {
 	if meta.Width <= 0 {
-		return nil, fmt.Errorf("raster width must be > 0")
+		return nil, errors.New("raster width must be > 0")
 	}
+
 	if meta.Height <= 0 {
-		return nil, fmt.Errorf("raster height must be > 0")
+		return nil, errors.New("raster height must be > 0")
 	}
+
 	if meta.Bands <= 0 {
-		return nil, fmt.Errorf("raster bands must be > 0")
+		return nil, errors.New("raster bands must be > 0")
 	}
+
 	if math.IsNaN(meta.NoData) || math.IsInf(meta.NoData, 0) {
-		return nil, fmt.Errorf("raster nodata must be finite")
+		return nil, errors.New("raster nodata must be finite")
 	}
+
 	if len(meta.BandNames) > 0 && len(meta.BandNames) != meta.Bands {
 		return nil, fmt.Errorf("band_names length (%d) must match bands (%d)", len(meta.BandNames), meta.Bands)
 	}
 
 	cellCount := meta.Width * meta.Height * meta.Bands
+
 	values := make([]float64, cellCount)
 	for i := range values {
 		values[i] = meta.NoData
@@ -52,6 +58,7 @@ func (r *Raster) Metadata() RasterMetadata {
 	if len(copyMeta.BandNames) > 0 {
 		copyMeta.BandNames = append([]string(nil), copyMeta.BandNames...)
 	}
+
 	return copyMeta
 }
 
@@ -79,11 +86,13 @@ func (r *Raster) Set(x, y, band int, value float64) error {
 	if err != nil {
 		return err
 	}
+
 	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return fmt.Errorf("raster value must be finite")
+		return errors.New("raster value must be finite")
 	}
 
 	r.data[idx] = value
+
 	return nil
 }
 
@@ -95,9 +104,11 @@ func (r *Raster) index(x, y, band int) (int, error) {
 	if x < 0 || x >= r.meta.Width {
 		return 0, fmt.Errorf("x index out of bounds: %d", x)
 	}
+
 	if y < 0 || y >= r.meta.Height {
 		return 0, fmt.Errorf("y index out of bounds: %d", y)
 	}
+
 	if band < 0 || band >= r.meta.Bands {
 		return 0, fmt.Errorf("band index out of bounds: %d", band)
 	}

@@ -12,6 +12,7 @@ func FuzzDistancePointToSegment(f *testing.F) {
 	f.Fuzz(func(t *testing.T, px, py, ax, ay, bx, by float64) {
 		p := Point2D{X: px, Y: py}
 		a := Point2D{X: ax, Y: ay}
+
 		b := Point2D{X: bx, Y: by}
 		if !p.IsFinite() || !a.IsFinite() || !b.IsFinite() {
 			t.Skip()

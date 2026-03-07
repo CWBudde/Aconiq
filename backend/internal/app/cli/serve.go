@@ -52,6 +52,7 @@ func newServeCommand() *cobra.Command {
 			defer stopSignals()
 
 			errCh := make(chan error, 1)
+
 			go func() {
 				errCh <- server.ListenAndServe()
 			}()
@@ -65,10 +66,12 @@ func newServeCommand() *cobra.Command {
 				if errors.Is(err, http.ErrServerClosed) {
 					return nil
 				}
-				return domainerrors.New(domainerrors.KindInternal, "cli.serve", fmt.Sprintf("listen on %s", listenAddr), err)
+
+				return domainerrors.New(domainerrors.KindInternal, "cli.serve", "listen on "+listenAddr, err)
 			case <-runCtx.Done():
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 				defer cancel()
+
 				if err := server.Shutdown(shutdownCtx); err != nil {
 					return domainerrors.New(domainerrors.KindInternal, "cli.serve", "graceful shutdown", err)
 				}
@@ -79,6 +82,7 @@ func newServeCommand() *cobra.Command {
 				}
 
 				state.Logger.Info("serve stopped")
+
 				return nil
 			}
 		},

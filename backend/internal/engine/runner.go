@@ -45,6 +45,7 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}
 
 	r.emit(cfg.RunID, "load", "start", -1, 0, 0)
+
 	if err := writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
 		Status:          RunStateRunning,
@@ -55,16 +56,20 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}); err != nil {
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "load", "done", -1, 0, 0)
 
 	r.emit(cfg.RunID, "prepare", "start", -1, 0, 0)
+
 	if _, err := buildSourceIndex(cfg); err != nil {
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "prepare", "done", -1, 0, 0)
 
 	r.emit(cfg.RunID, "chunk", "start", -1, 0, 0)
 	chunks := chunkReceivers(cfg.Receivers, cfg.ChunkSize)
+
 	totalChunks := len(chunks)
 	if err := writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
@@ -76,10 +81,12 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}); err != nil {
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "chunk", "done", -1, 0, totalChunks)
 
 	r.emit(cfg.RunID, "compute", "start", -1, 0, totalChunks)
 	ffSources := convertSourcesToFreefield(cfg.Sources)
+
 	received, usedCached, err := r.computeChunks(ctx, cfg, chunks, ffSources, chunksDir, statePath)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -93,6 +100,7 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 				Message:         "canceled",
 			})
 			r.emit(cfg.RunID, "compute", "canceled", -1, len(received), totalChunks)
+
 			return RunOutput{}, context.Canceled
 		}
 
@@ -105,16 +113,20 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 			CompletedChunks: len(received),
 			Message:         err.Error(),
 		})
+
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "compute", "done", -1, len(received), totalChunks)
 
 	r.emit(cfg.RunID, "reduce", "start", -1, len(received), totalChunks)
 	results := reduceDeterministic(received)
+
 	hash, err := hashResults(results)
 	if err != nil {
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "reduce", "done", -1, len(received), totalChunks)
 
 	finishedAt := time.Now().UTC()
@@ -136,9 +148,11 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}
 
 	r.emit(cfg.RunID, "persist", "start", -1, len(received), totalChunks)
+
 	if err := writeJSONFile(outputPath, output); err != nil {
 		return RunOutput{}, err
 	}
+
 	if err := writeRunState(statePath, RunState{
 		RunID:           cfg.RunID,
 		Status:          RunStateCompleted,
@@ -149,6 +163,7 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}); err != nil {
 		return RunOutput{}, err
 	}
+
 	r.emit(cfg.RunID, "persist", "done", -1, len(received), totalChunks)
 
 	return output, nil
@@ -156,43 +171,49 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 
 func normalizeConfig(cfg RunConfig) RunConfig {
 	if cfg.Workers <= 0 {
-		cfg.Workers = runtime.NumCPU()
-		if cfg.Workers < 1 {
-			cfg.Workers = 1
-		}
+		cfg.Workers = max(runtime.NumCPU(), 1)
 	}
+
 	if cfg.ChunkSize <= 0 {
 		cfg.ChunkSize = 128
 	}
+
 	if cfg.SourceIndexCellM <= 0 {
 		cfg.SourceIndexCellM = 100
 	}
+
 	return cfg
 }
 
 func validateConfig(cfg RunConfig) error {
 	if cfg.RunID == "" {
-		return fmt.Errorf("engine run_id is required")
+		return errors.New("engine run_id is required")
 	}
+
 	if cfg.CacheDir == "" {
-		return fmt.Errorf("engine cache_dir is required")
+		return errors.New("engine cache_dir is required")
 	}
+
 	if len(cfg.Receivers) == 0 {
-		return fmt.Errorf("engine requires at least one receiver")
+		return errors.New("engine requires at least one receiver")
 	}
+
 	if len(cfg.Sources) == 0 {
-		return fmt.Errorf("engine requires at least one source")
+		return errors.New("engine requires at least one source")
 	}
+
 	for _, receiver := range cfg.Receivers {
 		if receiver.ID == "" || !receiver.Point.IsFinite() {
-			return fmt.Errorf("invalid receiver in input")
+			return errors.New("invalid receiver in input")
 		}
 	}
+
 	for _, source := range cfg.Sources {
 		if source.ID == "" || !source.Point.IsFinite() || math.IsNaN(source.Emission) || math.IsInf(source.Emission, 0) {
-			return fmt.Errorf("invalid source in input")
+			return errors.New("invalid source in input")
 		}
 	}
+
 	return nil
 }
 
@@ -203,7 +224,7 @@ func buildSourceIndex(cfg RunConfig) (geo.SpatialIndex, error) {
 	}
 
 	for _, source := range cfg.Sources {
-		if err := index.Insert(geo.IndexedItem{
+		err := index.Insert(geo.IndexedItem{
 			ID: source.ID,
 			BBox: geo.BBox{
 				MinX: source.Point.X,
@@ -211,7 +232,8 @@ func buildSourceIndex(cfg RunConfig) (geo.SpatialIndex, error) {
 				MaxX: source.Point.X,
 				MaxY: source.Point.Y,
 			},
-		}); err != nil {
+		})
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -227,13 +249,12 @@ type receiverChunk struct {
 func chunkReceivers(receivers []Receiver, chunkSize int) []receiverChunk {
 	chunks := make([]receiverChunk, 0, (len(receivers)+chunkSize-1)/chunkSize)
 	for start, index := 0, 0; start < len(receivers); start, index = start+chunkSize, index+1 {
-		end := start + chunkSize
-		if end > len(receivers) {
-			end = len(receivers)
-		}
+		end := min(start+chunkSize, len(receivers))
+
 		receiverCopy := append([]Receiver(nil), receivers[start:end]...)
 		chunks = append(chunks, receiverChunk{Index: index, Receivers: receiverCopy})
 	}
+
 	return chunks
 }
 
@@ -255,31 +276,25 @@ func (r *Runner) computeChunks(
 	jobs := make(chan receiverChunk)
 	resultsCh := make(chan chunkComputeResult, len(chunks))
 
-	workerCount := cfg.Workers
-	if workerCount > len(chunks) {
-		workerCount = len(chunks)
-	}
-	if workerCount < 1 {
-		workerCount = 1
-	}
+	workerCount := max(min(cfg.Workers, len(chunks)), 1)
 
 	var wg sync.WaitGroup
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workerCount {
+		wg.Go(func() {
 			for chunk := range jobs {
 				res, fromCache, err := computeOrLoadChunk(ctx, cfg, chunk, ffSources, chunksDir)
 				resultsCh <- chunkComputeResult{chunkIndex: chunk.Index, results: res, fromCache: fromCache, err: err}
+
 				if err != nil {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	go func() {
 		defer close(jobs)
+
 		for _, chunk := range chunks {
 			select {
 			case <-ctx.Done():
@@ -297,17 +312,21 @@ func (r *Runner) computeChunks(
 	received := make(map[int][]ReceiverResult, len(chunks))
 	usedCached := 0
 	completed := 0
+
 	for result := range resultsCh {
 		if result.err != nil {
 			if errors.Is(result.err, context.Canceled) {
 				return received, usedCached, context.Canceled
 			}
+
 			return received, usedCached, result.err
 		}
+
 		received[result.chunkIndex] = result.results
 		if result.fromCache {
 			usedCached++
 		}
+
 		completed++
 		r.emit(cfg.RunID, "compute", "chunk_done", result.chunkIndex, completed, len(chunks))
 		_ = writeRunState(statePath, RunState{
@@ -364,7 +383,8 @@ func computeOrLoadChunk(
 	}
 
 	if !cfg.DisableCache {
-		if err := writeChunk(cachePath, results); err != nil {
+		err := writeChunk(cachePath, results)
+		if err != nil {
 			return nil, false, err
 		}
 	}
@@ -381,6 +401,7 @@ func convertSourcesToFreefield(sources []Source) []freefield.Source {
 			EmissionDB: source.Emission,
 		})
 	}
+
 	return out
 }
 
@@ -389,12 +410,14 @@ func reduceDeterministic(chunks map[int][]ReceiverResult) []ReceiverResult {
 	for idx := range chunks {
 		indices = append(indices, idx)
 	}
+
 	sort.Ints(indices)
 
 	merged := make([]ReceiverResult, 0)
 	for _, idx := range indices {
 		merged = append(merged, chunks[idx]...)
 	}
+
 	return merged
 }
 
@@ -403,7 +426,9 @@ func hashResults(results []ReceiverResult) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal results for hash: %w", err)
 	}
+
 	sum := sha256.Sum256(payload)
+
 	return hex.EncodeToString(sum[:]), nil
 }
 
@@ -413,6 +438,7 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 		if os.IsNotExist(err) {
 			return nil, false, nil
 		}
+
 		return nil, false, fmt.Errorf("read chunk cache %s: %w", path, err)
 	}
 
@@ -420,17 +446,23 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 	if err := json.Unmarshal(payload, &results); err != nil {
 		return nil, false, fmt.Errorf("decode chunk cache %s: %w", path, err)
 	}
+
 	return results, true, nil
 }
 
 func writeChunk(path string, results []ReceiverResult) error {
 	tmpPath := path + ".tmp"
-	if err := writeJSONFile(tmpPath, results); err != nil {
+
+	err := writeJSONFile(tmpPath, results)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
+
+	err = os.Rename(tmpPath, path)
+	if err != nil {
 		return fmt.Errorf("persist chunk cache %s: %w", path, err)
 	}
+
 	return nil
 }
 
@@ -443,14 +475,17 @@ func writeJSONFile(path string, value any) error {
 	if err != nil {
 		return fmt.Errorf("encode json %s: %w", path, err)
 	}
+
 	encoded = append(encoded, '\n')
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
+
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
 		return fmt.Errorf("write json %s: %w", path, err)
 	}
+
 	return nil
 }
 
@@ -460,19 +495,24 @@ func cleanupTmpFiles(root string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
+
 		return err
 	}
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
+
 		name := entry.Name()
 		if filepath.Ext(name) == ".tmp" {
-			if err := os.Remove(filepath.Join(root, name)); err != nil && !os.IsNotExist(err) {
+			err := os.Remove(filepath.Join(root, name))
+			if err != nil && !os.IsNotExist(err) {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -480,6 +520,7 @@ func (r *Runner) emit(runID string, stage string, message string, chunkIndex int
 	if r == nil || r.progress == nil {
 		return
 	}
+
 	r.progress(ProgressEvent{
 		Time:            time.Now().UTC(),
 		RunID:           runID,

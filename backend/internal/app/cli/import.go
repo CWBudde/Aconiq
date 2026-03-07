@@ -23,6 +23,7 @@ func newImportCommand() *cobra.Command {
 			if !ok {
 				return domainerrors.New(domainerrors.KindInternal, "cli.import", "command state unavailable", nil)
 			}
+
 			if inputPath == "" {
 				return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input is required", nil)
 			}
@@ -38,12 +39,14 @@ func newImportCommand() *cobra.Command {
 			}
 
 			absoluteInput := resolvePath(store.Root(), inputPath)
+
 			payload, err := os.ReadFile(absoluteInput)
 			if err != nil {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.import", fmt.Sprintf("read input file: %s", absoluteInput), err)
+				return domainerrors.New(domainerrors.KindUserInput, "cli.import", "read input file: "+absoluteInput, err)
 			}
 
 			relInput := relativePath(store.Root(), absoluteInput)
+
 			model, err := modelgeojson.Normalize(payload, proj.CRS, relInput)
 			if err != nil {
 				return domainerrors.New(domainerrors.KindValidation, "cli.import", "invalid geojson input", err)
@@ -55,6 +58,7 @@ func newImportCommand() *cobra.Command {
 				for _, issue := range report.Errors {
 					messages = append(messages, fmt.Sprintf("%s: %s", issue.Code, issue.Message))
 				}
+
 				return domainerrors.New(domainerrors.KindValidation, "cli.import", summarizeValidationErrors(messages, 3), nil)
 			}
 
@@ -66,9 +70,11 @@ func newImportCommand() *cobra.Command {
 			if err := writeJSONFile(normalizedPath, model.ToFeatureCollection()); err != nil {
 				return err
 			}
+
 			if err := writeJSONFile(dumpPath, model.ToDump()); err != nil {
 				return err
 			}
+
 			if err := writeJSONFile(reportPath, report); err != nil {
 				return err
 			}
@@ -108,6 +114,7 @@ func newImportCommand() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d features from %s\n", len(model.Features), relInput)
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Normalized GeoJSON: %s\n", relativePath(store.Root(), normalizedPath))
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Model dump: %s\n", relativePath(store.Root(), dumpPath))
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation report: %s\n", relativePath(store.Root(), reportPath))
 			if report.WarningCount() > 0 {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation warnings: %d\n", report.WarningCount())

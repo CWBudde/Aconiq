@@ -1,8 +1,10 @@
 package modelgeojson
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 )
@@ -24,6 +26,7 @@ func Validate(model Model) ValidationReport {
 	if len(model.Features) == 0 {
 		addError(&report, "model.empty", "", "feature collection contains no features")
 		report.Valid = false
+
 		return report
 	}
 
@@ -38,6 +41,7 @@ func Validate(model Model) ValidationReport {
 			if _, exists := ids[fid]; exists {
 				addError(&report, "feature.id.duplicate", fid, "feature id must be unique")
 			}
+
 			ids[fid] = struct{}{}
 		}
 
@@ -48,6 +52,7 @@ func Validate(model Model) ValidationReport {
 	validateCRSPlausibility(model.ProjectCRS, allPoints, &report)
 
 	report.Valid = len(report.Errors) == 0
+
 	return report
 }
 
@@ -72,6 +77,7 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		} else if *feature.HeightM <= 0 {
 			addError(report, "building.height.invalid", id, "building height_m must be > 0")
 		}
+
 		if !isOneOf(geomType, "Polygon", "MultiPolygon") {
 			addError(report, "building.geometry.invalid", id, "building geometry must be Polygon or MultiPolygon")
 		}
@@ -81,6 +87,7 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		} else if *feature.HeightM <= 0 {
 			addError(report, "barrier.height.invalid", id, "barrier height_m must be > 0")
 		}
+
 		if !isOneOf(geomType, "LineString", "MultiLineString") {
 			addError(report, "barrier.geometry.invalid", id, "barrier geometry must be LineString or MultiLineString")
 		}
@@ -108,6 +115,7 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 			addError(report, "geometry.point.invalid", id, err.Error())
 			return nil, false
 		}
+
 		return []point2{p}, true
 	case "MultiPoint":
 		rawPoints, ok := coords.([]any)
@@ -123,8 +131,10 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 				addError(report, "geometry.multipoint.invalid", id, err.Error())
 				return nil, false
 			}
+
 			points = append(points, p)
 		}
+
 		return points, true
 	case "LineString":
 		line, err := parseLineString(coords)
@@ -132,9 +142,11 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 			addError(report, "geometry.linestring.invalid", id, err.Error())
 			return nil, false
 		}
+
 		if hasSelfIntersection(line, false) {
 			addError(report, "geometry.linestring.self_intersection", id, "LineString has self-intersections")
 		}
+
 		return line, true
 	case "MultiLineString":
 		rawLines, ok := coords.([]any)
@@ -142,6 +154,7 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 			addError(report, "geometry.multilinestring.invalid", id, "MultiLineString coordinates must be a non-empty array")
 			return nil, false
 		}
+
 		points := make([]point2, 0, len(rawLines)*2)
 		for _, rawLine := range rawLines {
 			line, err := parseLineString(rawLine)
@@ -149,11 +162,14 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 				addError(report, "geometry.multilinestring.invalid", id, err.Error())
 				return nil, false
 			}
+
 			if hasSelfIntersection(line, false) {
 				addError(report, "geometry.multilinestring.self_intersection", id, "MultiLineString member has self-intersections")
 			}
+
 			points = append(points, line...)
 		}
+
 		return points, true
 	case "Polygon":
 		rings, err := parsePolygon(coords)
@@ -161,13 +177,17 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 			addError(report, "geometry.polygon.invalid", id, err.Error())
 			return nil, false
 		}
+
 		points := make([]point2, 0)
+
 		for idx, ring := range rings {
 			if hasSelfIntersection(ring, true) {
 				addError(report, "geometry.polygon.self_intersection", id, fmt.Sprintf("polygon ring %d has self-intersections", idx))
 			}
+
 			points = append(points, ring...)
 		}
+
 		return points, true
 	case "MultiPolygon":
 		rawPolygons, ok := coords.([]any)
@@ -175,20 +195,25 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 			addError(report, "geometry.multipolygon.invalid", id, "MultiPolygon coordinates must be a non-empty array")
 			return nil, false
 		}
+
 		points := make([]point2, 0)
+
 		for polyIdx, rawPoly := range rawPolygons {
 			rings, err := parsePolygon(rawPoly)
 			if err != nil {
 				addError(report, "geometry.multipolygon.invalid", id, err.Error())
 				return nil, false
 			}
+
 			for ringIdx, ring := range rings {
 				if hasSelfIntersection(ring, true) {
 					addError(report, "geometry.multipolygon.self_intersection", id, fmt.Sprintf("multipolygon polygon %d ring %d has self-intersections", polyIdx, ringIdx))
 				}
+
 				points = append(points, ring...)
 			}
 		}
+
 		return points, true
 	default:
 		addError(report, "geometry.type.unsupported", id, fmt.Sprintf("unsupported geometry type %q", geomType))
@@ -199,16 +224,17 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 func parsePoint(value any) (point2, error) {
 	raw, ok := value.([]any)
 	if !ok || len(raw) < 2 {
-		return point2{}, fmt.Errorf("point coordinates must be [x,y]")
+		return point2{}, errors.New("point coordinates must be [x,y]")
 	}
 
 	x, ok := asFiniteFloat(raw[0])
 	if !ok {
-		return point2{}, fmt.Errorf("point x must be finite number")
+		return point2{}, errors.New("point x must be finite number")
 	}
+
 	y, ok := asFiniteFloat(raw[1])
 	if !ok {
-		return point2{}, fmt.Errorf("point y must be finite number")
+		return point2{}, errors.New("point y must be finite number")
 	}
 
 	return point2{x: x, y: y}, nil
@@ -217,7 +243,7 @@ func parsePoint(value any) (point2, error) {
 func parseLineString(value any) ([]point2, error) {
 	raw, ok := value.([]any)
 	if !ok || len(raw) < 2 {
-		return nil, fmt.Errorf("LineString must contain at least two points")
+		return nil, errors.New("LineString must contain at least two points")
 	}
 
 	line := make([]point2, 0, len(raw))
@@ -226,6 +252,7 @@ func parseLineString(value any) ([]point2, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		line = append(line, p)
 	}
 
@@ -235,7 +262,7 @@ func parseLineString(value any) ([]point2, error) {
 func parsePolygon(value any) ([][]point2, error) {
 	rawRings, ok := value.([]any)
 	if !ok || len(rawRings) == 0 {
-		return nil, fmt.Errorf("Polygon must contain at least one ring")
+		return nil, errors.New("Polygon must contain at least one ring")
 	}
 
 	rings := make([][]point2, 0, len(rawRings))
@@ -244,12 +271,15 @@ func parsePolygon(value any) ([][]point2, error) {
 		if err != nil {
 			return nil, fmt.Errorf("ring %d: %w", ringIdx, err)
 		}
+
 		if len(ring) < 4 {
 			return nil, fmt.Errorf("ring %d must contain at least 4 coordinates", ringIdx)
 		}
+
 		if !pointsEqual(ring[0], ring[len(ring)-1]) {
 			return nil, fmt.Errorf("ring %d is not closed", ringIdx)
 		}
+
 		rings = append(rings, ring)
 	}
 
@@ -269,17 +299,21 @@ func validateCRSPlausibility(projectCRS string, points []point2, report *Validat
 	}
 
 	minX, minY := points[0].x, points[0].y
+
 	maxX, maxY := minX, minY
 	for _, p := range points[1:] {
 		if p.x < minX {
 			minX = p.x
 		}
+
 		if p.x > maxX {
 			maxX = p.x
 		}
+
 		if p.y < minY {
 			minY = p.y
 		}
+
 		if p.y > maxY {
 			maxY = p.y
 		}
@@ -292,6 +326,7 @@ func validateCRSPlausibility(projectCRS string, points []point2, report *Validat
 		if !insideLonLatRange {
 			addError(report, "crs.range.mismatch", "", fmt.Sprintf("CRS %s expects lon/lat range, but bounds are [%.3f, %.3f] x [%.3f, %.3f]", crs, minX, maxX, minY, maxY))
 		}
+
 		return
 	}
 
@@ -306,8 +341,9 @@ func hasSelfIntersection(points []point2, closed bool) bool {
 	}
 
 	segmentCount := len(points) - 1
-	for i := 0; i < segmentCount; i++ {
+	for i := range segmentCount {
 		a1 := points[i]
+
 		a2 := points[i+1]
 		for j := i + 1; j < segmentCount; j++ {
 			if areAdjacentSegments(i, j, segmentCount, closed) {
@@ -315,6 +351,7 @@ func hasSelfIntersection(points []point2, closed bool) bool {
 			}
 
 			b1 := points[j]
+
 			b2 := points[j+1]
 			if segmentsIntersect(a1, a2, b1, b2) {
 				return true
@@ -329,12 +366,15 @@ func areAdjacentSegments(i int, j int, segmentCount int, closed bool) bool {
 	if i == j {
 		return true
 	}
+
 	if j == i+1 {
 		return true
 	}
+
 	if closed && i == 0 && j == segmentCount-1 {
 		return true
 	}
+
 	return false
 }
 
@@ -351,12 +391,15 @@ func segmentsIntersect(a, b, c, d point2) bool {
 	if o1 == 0 && onSegment(a, c, b) {
 		return true
 	}
+
 	if o2 == 0 && onSegment(a, d, b) {
 		return true
 	}
+
 	if o3 == 0 && onSegment(c, a, d) {
 		return true
 	}
+
 	if o4 == 0 && onSegment(c, b, d) {
 		return true
 	}
@@ -366,6 +409,7 @@ func segmentsIntersect(a, b, c, d point2) bool {
 
 func orientation(a, b, c point2) int {
 	value := (b.y-a.y)*(c.x-b.x) - (b.x-a.x)*(c.y-b.y)
+
 	const epsilon = 1e-9
 	switch {
 	case math.Abs(value) <= epsilon:
@@ -392,9 +436,11 @@ func asFiniteFloat(value any) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
+
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0, false
 	}
+
 	return v, true
 }
 
@@ -412,12 +458,7 @@ func geometryCompatibleWithSourceType(geometryType string, sourceType string) bo
 }
 
 func isOneOf(value string, options ...string) bool {
-	for _, option := range options {
-		if value == option {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(options, value)
 }
 
 func addError(report *ValidationReport, code string, featureID string, message string) {
