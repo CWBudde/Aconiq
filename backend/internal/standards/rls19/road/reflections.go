@@ -122,9 +122,9 @@ func mirrorPoint(p, a, b geo.Point2D) geo.Point2D {
 //
 // For a 2nd-order reflection off wall W1 then W2:
 //   - S'  = mirror of S  across W1
-//   - S'' = mirror of S' across W2
-//   - Valid if segment S''→R crosses W2 (gives P2) AND segment P2→S' crosses W1
-//   - Plan dist = dist2D(S'', R)
+//   - S” = mirror of S' across W2
+//   - Valid if segment S”→R crosses W2 (gives P2) AND segment P2→S' crosses W1
+//   - Plan dist = dist2D(S”, R)
 func computeReflectedPaths(
 	source geo.Point2D, sourceZ float64,
 	receiver geo.Point2D, receiverZ float64,
@@ -137,12 +137,9 @@ func computeReflectedPaths(
 	walls := reflectorWalls(reflectors)
 	dz := receiverZ - sourceZ
 
-	var paths []reflectedPath
+	paths := firstOrderReflections(source, receiver, dz, walls)
 
-	paths = append(paths, firstOrderReflections(source, receiver, dz, walls)...)
-	paths = append(paths, secondOrderReflections(source, receiver, dz, walls)...)
-
-	return paths
+	return append(paths, secondOrderReflections(source, receiver, dz, walls)...)
 }
 
 func firstOrderReflections(source, receiver geo.Point2D, dz float64, walls []wallSeg) []reflectedPath {

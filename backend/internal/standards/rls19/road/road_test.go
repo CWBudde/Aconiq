@@ -1423,35 +1423,45 @@ func TestReflector_Validate(t *testing.T) {
 		Geometry: []geo.Point2D{{X: 15, Y: -10}, {X: 15, Y: 10}},
 		HeightM:  8.0,
 	}
-	if err := valid.Validate(); err != nil {
+
+	err := valid.Validate()
+	if err != nil {
 		t.Fatalf("expected valid reflector, got %v", err)
 	}
 
 	// Missing ID.
 	r := valid
 	r.ID = ""
-	if err := r.Validate(); err == nil {
+
+	err = r.Validate()
+	if err == nil {
 		t.Fatal("expected error for missing ID")
 	}
 
 	// Too few points.
 	r = valid
 	r.Geometry = []geo.Point2D{{X: 0, Y: 0}}
-	if err := r.Validate(); err == nil {
+
+	err = r.Validate()
+	if err == nil {
 		t.Fatal("expected error for single-point geometry")
 	}
 
 	// Zero height.
 	r = valid
 	r.HeightM = 0
-	if err := r.Validate(); err == nil {
+
+	err = r.Validate()
+	if err == nil {
 		t.Fatal("expected error for zero height")
 	}
 
 	// Negative reflection loss.
 	r = valid
 	r.ReflectionLossDB = -1
-	if err := r.Validate(); err == nil {
+
+	err = r.Validate()
+	if err == nil {
 		t.Fatal("expected error for negative reflection loss")
 	}
 }
@@ -1498,11 +1508,13 @@ func TestComputeReflectedPaths_SingleReflection(t *testing.T) {
 		Geometry: []geo.Point2D{{X: 15, Y: -20}, {X: 15, Y: 20}},
 		HeightM:  8,
 	}
+
 	paths := computeReflectedPaths(
 		geo.Point2D{X: 0, Y: 0}, 0.5,
 		geo.Point2D{X: 10, Y: 0}, 4.0,
 		[]Reflector{wall},
 	)
+
 	if len(paths) != 1 {
 		t.Fatalf("expected 1 reflected path, got %d", len(paths))
 	}
@@ -1530,11 +1542,13 @@ func TestComputeReflectedPaths_WallSegmentMissed(t *testing.T) {
 		Geometry: []geo.Point2D{{X: 15, Y: 5}, {X: 15, Y: 20}},
 		HeightM:  8,
 	}
+
 	paths := computeReflectedPaths(
 		geo.Point2D{X: 0, Y: 0}, 0.5,
 		geo.Point2D{X: 10, Y: 0}, 4.0,
 		[]Reflector{wall},
 	)
+
 	if len(paths) != 0 {
 		t.Fatalf("expected 0 reflected paths, got %d", len(paths))
 	}
@@ -1584,6 +1598,7 @@ func TestComputeReflectedPaths_DoubleReflection_Corner(t *testing.T) {
 		geo.Point2D{X: 5, Y: 5}, 4.0,
 		[]Reflector{wallA, wallB},
 	)
+
 	if len(paths) != 3 {
 		t.Fatalf("expected 3 reflected paths (1st-A, 1st-B, 2nd-A-then-B), got %d", len(paths))
 	}
@@ -1592,12 +1607,14 @@ func TestComputeReflectedPaths_DoubleReflection_Corner(t *testing.T) {
 	expectedDouble := math.Sqrt(986.0)
 	maxDist := 0.0
 	maxLoss := 0.0
+
 	for _, p := range paths {
 		if p.planDistM > maxDist {
 			maxDist = p.planDistM
 			maxLoss = p.lossDB
 		}
 	}
+
 	if !almostEqual(maxDist, expectedDouble, 0.01) {
 		t.Fatalf("expected double-reflection plan dist ≈ %f, got %f", expectedDouble, maxDist)
 	}
