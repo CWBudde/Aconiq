@@ -36,6 +36,13 @@ export interface ProjectStatusResponse {
   last_run?: LastRunStatus;
 }
 
+export interface ArtifactRef {
+  id: string;
+  kind: string;
+  path: string;
+  created_at: string;
+}
+
 export interface RunSummary {
   id: string;
   scenario_id: string;
@@ -46,6 +53,7 @@ export interface RunSummary {
   started_at: string;
   finished_at: string;
   log_path: string;
+  artifacts: ArtifactRef[];
 }
 
 export interface RunLog {

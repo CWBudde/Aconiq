@@ -32,7 +32,12 @@ import {
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import { useStandards, useRuns, useRunLog } from "@/api/hooks";
-import type { ParameterDefinition, ProfileInfo, RunSummary } from "@/api/client";
+import type {
+  ArtifactRef,
+  ParameterDefinition,
+  ProfileInfo,
+  RunSummary,
+} from "@/api/client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -269,6 +274,186 @@ function LogViewer({ lines }: { lines: string[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Artifact links
+// ---------------------------------------------------------------------------
+
+const ARTIFACT_KIND_LABELS: Record<string, string> = {
+  "run.result.receiver_table_json": "Receivers (JSON)",
+  "run.result.receiver_table_csv": "Receivers (CSV)",
+  "run.result.raster_metadata": "Raster metadata",
+  "run.result.raster_binary": "Raster data",
+  "run.result.summary": "Run summary",
+};
+
+function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  function copyPath(path: string) {
+    void navigator.clipboard.writeText(path).then(() => {
+      setCopied(path);
+      setTimeout(() => {
+        setCopied(null);
+      }, 1500);
+    });
+  }
+
+  if (artifacts.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">No artifacts yet.</p>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {artifacts.map((a) => {
+        const label = ARTIFACT_KIND_LABELS[a.kind] ?? a.kind;
+        const filename = a.path.split("/").pop() ?? a.path;
+        return (
+          <div
+            key={a.id}
+            className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium">{label}</p>
+              <p
+                className="truncate font-mono text-xs text-muted-foreground"
+                title={a.path}
+              >
+                {filename}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 px-2 text-xs"
+              onClick={() => {
+                copyPath(a.path);
+              }}
+            >
+              {copied === a.path ? "Copied!" : "Copy path"}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filter bar
+// ---------------------------------------------------------------------------
+
+interface RunFilters {
+  status: string;
+  standardId: string;
+  scenarioId: string;
+}
+
+function RunFilterBar({
+  runs,
+  filters,
+  onChange,
+}: {
+  runs: RunSummary[];
+  filters: RunFilters;
+  onChange: (f: RunFilters) => void;
+}) {
+  const statuses = useMemo(
+    () => Array.from(new Set(runs.map((r) => r.status))).sort(),
+    [runs],
+  );
+  const standards = useMemo(
+    () => Array.from(new Set(runs.map((r) => r.standard_id))).sort(),
+    [runs],
+  );
+  const scenarios = useMemo(
+    () => Array.from(new Set(runs.map((r) => r.scenario_id))).sort(),
+    [runs],
+  );
+
+  const hasFilter =
+    filters.status !== "" ||
+    filters.standardId !== "" ||
+    filters.scenarioId !== "";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+      <Select
+        value={filters.status || "_all"}
+        onValueChange={(v) => {
+          onChange({ ...filters, status: v === "_all" ? "" : v });
+        }}
+      >
+        <SelectTrigger className="h-7 w-32 text-xs">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="_all">All statuses</SelectItem>
+          {statuses.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={filters.standardId || "_all"}
+        onValueChange={(v) => {
+          onChange({ ...filters, standardId: v === "_all" ? "" : v });
+        }}
+      >
+        <SelectTrigger className="h-7 w-36 text-xs">
+          <SelectValue placeholder="Standard" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="_all">All standards</SelectItem>
+          {standards.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {scenarios.length > 1 ? (
+        <Select
+          value={filters.scenarioId || "_all"}
+          onValueChange={(v) => {
+            onChange({ ...filters, scenarioId: v === "_all" ? "" : v });
+          }}
+        >
+          <SelectTrigger className="h-7 w-32 text-xs">
+            <SelectValue placeholder="Scenario" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">All scenarios</SelectItem>
+            {scenarios.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+
+      {hasFilter ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => {
+            onChange({ status: "", standardId: "", scenarioId: "" });
+          }}
+        >
+          Clear
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Run detail panel
 // ---------------------------------------------------------------------------
 
@@ -344,6 +529,14 @@ function RunDetail({
         ) : (
           <LogViewer lines={lines} />
         )}
+      </section>
+
+      {/* Artifacts */}
+      <section>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Artifacts
+        </h4>
+        <ArtifactLinks artifacts={run.artifacts} />
       </section>
 
       {/* Actions */}
@@ -844,25 +1037,38 @@ function RunSetupDialog({
 // Run page
 // ---------------------------------------------------------------------------
 
+const EMPTY_FILTERS: RunFilters = { status: "", standardId: "", scenarioId: "" };
+
 export default function RunPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<RunFilters>(EMPTY_FILTERS);
 
-  // Fetch runs; poll every 3 s when any run is "running".
+  // Fetch runs; poll every 3 s to pick up CLI-launched runs quickly.
   const { data: runs = [], isLoading, error } = useRuns(3_000);
 
   const hasRunning = runs.some((r) => r.status === "running");
-  // When nothing is running we can use a slower poll via react-query staleTime.
-  // useRuns already sets refetchInterval=3000; that's fine regardless.
+
+  // Client-side filtering.
+  const filteredRuns = useMemo(() => {
+    return runs.filter((r) => {
+      if (filters.status && r.status !== filters.status) return false;
+      if (filters.standardId && r.standard_id !== filters.standardId)
+        return false;
+      if (filters.scenarioId && r.scenario_id !== filters.scenarioId)
+        return false;
+      return true;
+    });
+  }, [runs, filters]);
 
   const selectedRun = useMemo(
-    () => runs.find((r) => r.id === selectedRunId) ?? null,
-    [runs, selectedRunId],
+    () => filteredRuns.find((r) => r.id === selectedRunId) ?? null,
+    [filteredRuns, selectedRunId],
   );
 
-  // Auto-select first run if none selected.
-  if (!selectedRunId && runs.length > 0) {
-    setSelectedRunId(runs[0].id);
+  // Auto-select first visible run if current selection isn't visible.
+  if (!selectedRun && filteredRuns.length > 0 && !isLoading) {
+    setSelectedRunId(filteredRuns[0].id);
   }
 
   const hasRuns = runs.length > 0;
@@ -919,17 +1125,29 @@ export default function RunPage() {
       ) : (
         <div className="flex flex-1 overflow-hidden">
           {/* Run list */}
-          <div className="w-72 shrink-0 overflow-y-auto border-r">
-            {runs.map((run) => (
-              <RunListItem
-                key={run.id}
-                run={run}
-                selected={run.id === selectedRunId}
-                onClick={() => {
-                  setSelectedRunId(run.id);
-                }}
-              />
-            ))}
+          <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
+            <RunFilterBar
+              runs={runs}
+              filters={filters}
+              onChange={setFilters}
+            />
+            <div className="overflow-y-auto">
+              {filteredRuns.length === 0 ? (
+                <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+                  No runs match the current filters.
+                </p>
+              ) : null}
+              {filteredRuns.map((run) => (
+                <RunListItem
+                  key={run.id}
+                  run={run}
+                  selected={run.id === selectedRunId}
+                  onClick={() => {
+                    setSelectedRunId(run.id);
+                  }}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Detail panel */}
