@@ -1,6 +1,6 @@
 # PLAN.md — Implementation Plan for an Environmental Noise System
 
-Status: 6 March 2026
+Status: 8 March 2026
 
 This is a **comprehensive, phased implementation plan** (Go backend + React/TypeScript frontend + GIS/MapLibre). It is intentionally **very granular** (bite-sized checklist tasks) so the system remains runnable and testable throughout.
 
@@ -46,9 +46,19 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 **Goal:** first real normative module.
 
-- [x] Define CNOSSOS Road source schema (speed, surface, traffic, …)
-- [x] Implement emission model (table/piecewise logic)
+- [x] Define CNOSSOS Road source schema
+  - [x] Add `cnossos-road` module under `backend/internal/standards/cnossos/road`
+  - [x] Define typed `RoadSource` payload for line sources
+  - [x] Add source attributes for road category, surface, speed, gradient, junction context, temperature, studded tyre share, and per-period traffic splits
+  - [x] Register version/profile metadata, supported source types, indicators, and run parameter schema in the standards framework
+- [x] Implement emission model
+  - [x] Compute deterministic road emissions from table/piecewise road traffic logic
+  - [x] Support period splits for `day`, `evening`, `night`
+  - [x] Add baseline context corrections for junction proximity, temperature, and studded tyres
 - [x] Implement propagation chain needed for Road use-case
+  - [x] Add deterministic line-source to receiver coupling with fixed subsegment discretization
+  - [x] Implement attenuation chain: geometric divergence + air absorption + ground attenuation + barrier term
+  - [x] Wire `noise run --standard cnossos-road` through model extraction, receiver-grid generation, compute, export, and provenance
 - [x] Implement indicators
   - [x] Lday, Levening, Lnight
   - [x] Lden aggregation
@@ -57,26 +67,58 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ### QA / Research
 
-- [ ] Collect public validation/verification cases for CNOSSOS Road (license-safe)
-- [ ] Document rounding/tolerance rules used by the implementation
+- [x] Add module-level unit tests for schema validation, emission, propagation, indicator aggregation, and export
+- [x] Add golden scenario fixture + deterministic regression coverage
+- [x] Add CLI end-to-end test covering `cnossos-road` run output production
+- [x] Add synthetic acceptance fixtures for baseline and contextual road scenarios
+- [x] Collect public CNOSSOS Road method/context sources and candidate validation-source inventory (license-safe)
+- [x] Extract at least one usable public, attributable reference-total source for CNOSSOS Road
+- [x] Document rounding/tolerance rules used by the implementation
 - [x] Add per-feature CNOSSOS Road attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand Road baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Expand Road baseline toward standards-faithful normative coverage beyond the current preview approximation
+
+### Yet missing for a fuller baseline definition
+
+- [x] Add dedicated phase baseline documentation in `docs/phase10-cnossos-road-baseline.md`
+- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
+- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
 
 ---
 
 ## Phase 11 — CNOSSOS-EU: Rail (required, deferred)
 
 - [x] Define CNOSSOS Rail source schema
+  - [x] Add `cnossos-rail` module under `backend/internal/standards/cnossos/rail`
+  - [x] Define typed `RailSource` payload for line sources
+  - [x] Add source attributes for traction, track type, roughness, speed, braking share, curve radius, bridge flag, and per-period traffic
+  - [x] Register version/profile metadata, supported source types, indicators, and run parameter schema in the standards framework
 - [x] Implement rail emission path
+  - [x] Compute deterministic rail emissions from rolling, traction, braking, and infrastructure terms
+  - [x] Support period splits for `day`, `evening`, `night`
+  - [x] Convert period levels to `Lday`, `Levening`, `Lnight`, `Lden`
 - [x] Implement required propagation adjustments
+  - [x] Add deterministic line-source to receiver coupling with fixed subsegment discretization
+  - [x] Implement attenuation chain: geometric divergence + air absorption + ground attenuation
+  - [x] Add rail-specific adjustments for bridge correction and curve squeal
+  - [x] Wire `noise run --standard cnossos-rail` through model extraction, receiver-grid generation, compute, export, and provenance
 - [x] Add golden projects + regression tests
+  - [x] Add module-level unit tests for schema validation, emission, propagation, indicator aggregation, and export
+  - [x] Add golden scenario fixture + snapshot for deterministic regression coverage
+  - [x] Add CLI end-to-end test covering `cnossos-rail` run output production
+  - [x] Add synthetic acceptance fixtures for baseline and contextual rail scenarios
 
-### Remaining limitations / follow-up
+### QA / Research
 
-- [ ] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand Rail baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [ ] Document rounding/tolerance rules used by the implementation
-- [ ] Collect license-safe public validation/verification scenarios for CNOSSOS Rail
+- [x] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON instead of run-level defaults only
+- [x] Document rounding/tolerance rules used by the implementation
+- [x] Expand Rail baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Rail
+
+### Phase closure notes
+
+- [x] Add dedicated phase baseline documentation in `docs/phase11-cnossos-rail-baseline.md`
+- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
+- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
 
 ---
 
@@ -104,12 +146,18 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Add CLI end-to-end test covering `cnossos-industry` run output production
   - [x] Add baseline phase documentation in `docs/phase12-cnossos-industry-baseline.md`
 
-### Remaining limitations / follow-up
+### QA / Research
 
 - [x] Add per-feature CNOSSOS Industry attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand Industry baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [ ] Collect license-safe public validation/verification scenarios for CNOSSOS Industry
-- [ ] Document rounding/tolerance rules used by the implementation
+- [x] Expand Industry baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Industry
+- [x] Document rounding/tolerance rules used by the implementation
+
+### Phase closure notes
+
+- [x] Add dedicated phase baseline documentation in `docs/phase12-cnossos-industry-baseline.md`
+- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
+- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
 
 ---
 
@@ -141,19 +189,19 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Add golden scenario fixtures + deterministic snapshots
   - [x] Add CLI end-to-end tests for aircraft runs
 
-### Remaining limitations / follow-up
+### QA / Research
 
 - [x] Add per-feature CNOSSOS Aircraft attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand Aircraft source modeling beyond the airport-vicinity baseline to richer airport/runway/trajectory inputs
-- [ ] Expand Aircraft baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [ ] Collect license-safe public validation/verification scenarios for CNOSSOS Aircraft
-- [ ] Document rounding/tolerance rules used by the implementation
+- [x] Expand Aircraft source modeling beyond the airport-vicinity baseline to richer airport/runway/trajectory inputs
+- [x] Expand Aircraft baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Aircraft
+- [x] Document rounding/tolerance rules used by the implementation
 
-### Research
+### Phase closure notes
 
-- [ ] Identify license-safe public aircraft/airport validation scenarios
-- [ ] Clarify minimum airport/runway/trajectory input set needed for a useful first baseline
-- [ ] Document rounding/tolerance rules used by the implementation
+- [x] Identify license-safe public aircraft/airport reference sources
+- [x] Clarify minimum airport/runway/trajectory input set needed for a useful first baseline
+- [x] Add dedicated phase baseline documentation in `docs/phase13-cnossos-aircraft-baseline.md`
 
 ---
 
@@ -167,13 +215,13 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
   - [x] Define compliance boundary for BUB implementation vs external normative data/text
 - [x] Define BUB module structure and data model
   - [x] Add first BUB submodule under `backend/internal/standards/bub/road`
-  - [ ] Split module structure into BUB road / rail / industry submodules where the logic diverges
+  - [x] Split module structure into BUB road / rail / industry submodules where the logic diverges
   - [x] Define typed source schema, indicators, and mapping-specific metadata for the first BUB road submodule
   - [x] Add standards-framework descriptor with mapping context metadata and supported source types
 - [x] Add BUB run parameter and import model support
   - [x] Add BUB road-specific run parameter schema
   - [x] Define normalized GeoJSON + run parameter mapping for the first BUB road submodule
-  - [ ] Identify which inputs can be represented in generic project data vs which require BUB-only parameters or artifacts
+  - [x] Identify which inputs can be represented in generic project data vs which require BUB-only parameters or artifacts
 - [x] Implement baseline BUB compute and export flow
   - [x] Implement deterministic compute flow for the first BUB submodule brought online (`bub-road`)
   - [x] Wire `noise run` integration, provenance, result artifacts, and exports
@@ -185,16 +233,17 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ### Research
 
-- [ ] Clarify availability and formats for BUB-related datasets (e.g., BUB-D) and import rights
+- [x] Clarify availability and formats for BUB-related datasets (e.g., BUB-D) and import rights
 - [x] Determine minimum shippable BUB sub-scope for first implementation: road only baseline first
-- [ ] Document required indicators, rounding rules, and validation tolerances for BUB outputs
+- [x] Document required indicators, rounding rules, and validation tolerances for BUB outputs
 
-### Remaining limitations / follow-up
+### Phase closure notes
 
-- [ ] Add BUB rail baseline submodule
-- [ ] Add BUB industry baseline submodule
+- [x] Add BUB rail baseline submodule
+- [x] Add BUB industry baseline submodule
 - [x] Add per-feature BUB attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand BUB road baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Expand BUB road baseline toward standards-faithful normative coverage beyond the current preview approximation
+- [x] Add dedicated phase baseline documentation in `docs/phase14-bub-road-baseline.md`
 
 ---
 
@@ -319,10 +368,10 @@ mixed imported models.
 
 **Goal:** make Phases 10 to 16 defensible with license-safe evidence.
 
-- [ ] Collect license-safe public validation / verification cases for CNOSSOS Road
-- [ ] Collect license-safe public validation / verification cases for CNOSSOS Rail
-- [ ] Collect license-safe public validation / verification cases for CNOSSOS Industry
-- [ ] Collect license-safe public validation / verification cases for CNOSSOS Aircraft
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Road
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Rail
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Industry
+- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Aircraft
 - [x] Identify license-safe validation scenarios or reference totals for BUB Road
 - [x] Identify license-safe validation scenarios or reference totals for BUF Aircraft
 - [x] Identify license-safe validation scenarios or reference totals for BEB Exposure
@@ -723,17 +772,57 @@ mixed imported models.
 
 **Goal:** add professional importers without blocking early delivery.
 
-- [ ] GeoPackage importer (deferred)
+- [x] GeoPackage importer
 - [ ] FlatGeobuf importer (deferred)
-- [ ] CSV traffic/time tables importer (deferred)
+- [x] CSV traffic/time tables importer
 - [ ] Terrain/DTM import (deferred)
 - [ ] Building footprints/import pipelines beyond GeoJSON (deferred)
 
-For each importer:
+For GeoPackage importer:
+
+- [x] Define schema + units
+- [x] Implement import + validation
+- [x] Add roundtrip tests
+
+For CSV traffic/time tables importer:
+
+- [x] Define schema + units
+- [x] Implement import + validation
+- [x] Add roundtrip tests
+
+For each remaining importer (FlatGeobuf, Terrain/DTM, Building footprints):
 
 - [ ] Define schema + units
 - [ ] Implement import + validation
 - [ ] Add roundtrip tests
+
+---
+
+## Phase 24b — OSM/Overpass import (`noise import --from-osm`, deferred, requires internet)
+
+**Goal:** bootstrap scene geometry from OpenStreetMap without manual data preparation.
+
+Use [`go-overpass`](https://github.com/MeKo-Christian/go-overpass) to query the Overpass API by bounding box and convert OSM elements into the project's GeoJSON model input format.
+
+**Note:** this breaks the offline-only constraint and must remain opt-in (explicit `--from-osm` flag, never triggered automatically).
+
+Planned data mappings:
+
+| OSM element          | Noise model feature             | Key tags used                              |
+| -------------------- | ------------------------------- | ------------------------------------------ |
+| `highway=*`          | `source` (line, `cnossos-road`) | `highway`, `maxspeed`, `lanes`, `surface`  |
+| `railway=rail/tram`  | `source` (line, `cnossos-rail`) | `railway`, `maxspeed`                      |
+| `building=*`         | `building`                      | `building:levels`, `height`, `roof:height` |
+| `barrier=wall/fence` | `barrier`                       | `barrier`, `height`                        |
+
+Tasks:
+
+- [x] Add `go-overpass` dependency (`github.com/MeKo-Christian/go-overpass`)
+- [x] Implement `internal/io/osmimport` package: Overpass query by bbox → OSM elements → GeoJSON FeatureCollection
+- [x] Map OSM tags to Aconiq feature properties (source type, height, standard attributes); document unmapped/ambiguous tags
+- [x] Add `--from-osm` flag to `noise import` with `--bbox <south,west,north,east>` and optional `--overpass-endpoint`
+- [x] Write unit tests with mocked Overpass responses; add roundtrip golden fixture
+- [x] Document limitations: OSM data quality varies; heights often missing or inaccurate; no guarantee of completeness
 
 ---
 

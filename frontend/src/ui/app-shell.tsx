@@ -49,7 +49,9 @@ function AppSidebar() {
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
             AQ
           </div>
-          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">AconiQ</span>
+          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            AconiQ
+          </span>
         </div>
       </SidebarHeader>
 
