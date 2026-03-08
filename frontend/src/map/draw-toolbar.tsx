@@ -7,6 +7,7 @@ import {
 } from "@/ui/components/tooltip";
 import type { DrawMode } from "./use-draw";
 import { cn } from "@/ui/lib/utils";
+import { m } from "@/i18n/messages";
 
 interface DrawToolbarProps {
   activeMode: DrawMode;
@@ -14,11 +15,11 @@ interface DrawToolbarProps {
   onCancel: () => void;
 }
 
-const tools: { mode: DrawMode; icon: typeof Circle; label: string }[] = [
-  { mode: "select", icon: MousePointer, label: "Select / Edit" },
-  { mode: "point", icon: Circle, label: "Draw Point" },
-  { mode: "linestring", icon: Minus, label: "Draw Line" },
-  { mode: "polygon", icon: Pentagon, label: "Draw Polygon" },
+const tools: { mode: DrawMode; icon: typeof Circle; label: () => string }[] = [
+  { mode: "select", icon: MousePointer, label: m.tool_select_edit },
+  { mode: "point", icon: Circle, label: m.tool_draw_point },
+  { mode: "linestring", icon: Minus, label: m.tool_draw_line },
+  { mode: "polygon", icon: Pentagon, label: m.tool_draw_polygon },
 ];
 
 export function DrawToolbar({
@@ -40,12 +41,12 @@ export function DrawToolbar({
               onClick={() => {
                 onModeChange(mode);
               }}
-              aria-label={label}
+              aria-label={label()}
             >
               <Icon className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">{label}</TooltipContent>
+          <TooltipContent side="right">{label()}</TooltipContent>
         </Tooltip>
       ))}
       {isDrawing ? (
@@ -58,12 +59,12 @@ export function DrawToolbar({
                 size="icon"
                 className="h-8 w-8 text-destructive"
                 onClick={onCancel}
-                aria-label="Cancel drawing"
+                aria-label={m.action_cancel_drawing()}
               >
                 <X className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right">Cancel</TooltipContent>
+            <TooltipContent side="right">{m.tooltip_cancel()}</TooltipContent>
           </Tooltip>
         </>
       ) : null}

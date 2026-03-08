@@ -22,6 +22,7 @@ type RunConfig struct {
 	Workers          int
 	ChunkSize        int
 	CacheDir         string
+	RunCacheKeepLast int
 	Receivers        []Receiver
 	Sources          []Source
 	DisableCache     bool

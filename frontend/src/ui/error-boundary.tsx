@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
           <div className="text-center">
-            <h2 className="text-lg font-semibold">Something went wrong</h2>
+            <h2 className="text-lg font-semibold">{m.error_heading()}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {this.state.error.message}
             </p>
@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
               this.setState({ error: null });
             }}
           >
-            Try again
+            {m.action_try_again()}
           </Button>
         </div>
       );
