@@ -107,6 +107,6 @@ just test     # run tests
 
 - ISO 9613-2 as an additional industry / engineering method module
 - Additional import/export paths such as GeoPackage, FlatGeobuf, CSV traffic tables, GeoTIFF, and tiled/PMTiles-based delivery
-- Typst-based PDF report export and richer report template/versioning support
+- Richer Typst report template/versioning support beyond the current `noise export --pdf` path
 - Expanded browser workflows around modeling, scenario comparison, result visualization, and large-map tiling
 - Optional desktop packaging via Wails after the local API/web workflow matures

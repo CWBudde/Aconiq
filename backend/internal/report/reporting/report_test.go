@@ -1,13 +1,16 @@
 package reporting
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	typst "github.com/Dadido3/go-typst"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/report/results"
 )
@@ -161,6 +164,15 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("expected QA section in html report")
 	}
 
+	typstSource, err := os.ReadFile(report.TypstPath)
+	if err != nil {
+		t.Fatalf("read typst report: %v", err)
+	}
+
+	if !strings.Contains(string(typstSource), "#show: doc => template(report)") {
+		t.Fatalf("expected typst template entrypoint")
+	}
+
 	payload, err := os.ReadFile(report.ContextPath)
 	if err != nil {
 		t.Fatalf("read report context: %v", err)
@@ -201,6 +213,90 @@ func TestBuildRunReportUsesDefaultQABaseline(t *testing.T) {
 	text := string(markdown)
 	if !strings.Contains(text, "phase20-baseline") {
 		t.Fatalf("expected default QA suite row, got: %s", text)
+	}
+}
+
+func TestBuildRunReportCompilesPDFWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+	compiler := &stubPDFCompiler{}
+	generatedAt := time.Unix(300, 0)
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir:   bundleDir,
+		Project:     project.Project{ProjectID: "proj-3", Name: "PDFDemo", CRS: "EPSG:25832"},
+		Run:         project.Run{ID: "run-3", ScenarioID: "default", Status: "completed"},
+		GeneratedAt: generatedAt,
+		GeneratePDF: true,
+		PDFCompiler: compiler,
+	})
+	if err != nil {
+		t.Fatalf("build pdf report: %v", err)
+	}
+
+	assertFileContents(t, report.PDFPath, "%PDF-stub")
+
+	if compiler.compileCalls != 1 {
+		t.Fatalf("expected one compile call, got %d", compiler.compileCalls)
+	}
+
+	if compiler.options == nil {
+		t.Fatal("expected compile options to be captured")
+	}
+
+	if compiler.options.Format != typst.OutputFormatPDF {
+		t.Fatalf("unexpected format: %v", compiler.options.Format)
+	}
+
+	if !compiler.options.IgnoreSystemFonts {
+		t.Fatal("expected deterministic embedded-font mode")
+	}
+
+	if compiler.options.Jobs != 1 {
+		t.Fatalf("expected single-job compilation, got %d", compiler.options.Jobs)
+	}
+
+	if !compiler.options.CreationTime.Equal(generatedAt.UTC()) {
+		t.Fatalf("unexpected creation time: %s", compiler.options.CreationTime)
+	}
+
+	if !strings.Contains(compiler.input, "\"TemplateVersion\": \"report-pdf-v1\"") {
+		t.Fatalf("expected template version in typst input: %s", compiler.input)
+	}
+}
+
+type stubPDFCompiler struct {
+	compileCalls int
+	input        string
+	options      *typst.OptionsCompile
+}
+
+func (s *stubPDFCompiler) Compile(input io.Reader, output io.Writer, options *typst.OptionsCompile) error {
+	s.compileCalls++
+	s.options = options
+
+	payload, err := io.ReadAll(input)
+	if err != nil {
+		return err
+	}
+
+	s.input = string(payload)
+
+	_, err = bytes.NewBufferString("%PDF-stub").WriteTo(output)
+	return err
+}
+
+func assertFileContents(t *testing.T, path string, expected string) {
+	t.Helper()
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file %s: %v", path, err)
+	}
+
+	if string(payload) != expected {
+		t.Fatalf("unexpected file contents for %s: %q", path, string(payload))
 	}
 }
 

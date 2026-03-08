@@ -36,7 +36,7 @@ export function UndoRedoBar() {
   }, [undo, redo]);
 
   return (
-    <div className="absolute bottom-3 left-3 z-10 flex gap-1 rounded-md border bg-background p-1 shadow-md">
+    <div className="absolute bottom-3 right-3 z-10 flex gap-1 rounded-md border bg-background p-1 shadow-md">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
