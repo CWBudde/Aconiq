@@ -46,7 +46,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         # --base sets the public URL prefix; GitHub Pages serves from /<repo-name>/
-        run: bunx vite build --base=/${{ github.event.repository.name }}/
+        run: VITE_WASM_MODE=true bunx vite build --base=/${{ github.event.repository.name }}/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

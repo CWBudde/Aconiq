@@ -1,5 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { browserBackend, type BrowserRunSpec } from "./browser-backend";
+import { IS_WASM_MODE, apiURL } from "./mode";
 import { queryKeys } from "./query-keys";
+import { queryClient } from "./query-client";
 import type {
   HealthResponse,
   ProjectStatusResponse,
@@ -11,11 +14,8 @@ import type {
 } from "./client";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 
-const API_BASE = "";
-const IS_WASM = import.meta.env.VITE_WASM_MODE === "true";
-
 async function fetchJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(apiURL(path), {
     headers: { Accept: "application/json" },
   });
 
@@ -36,9 +36,8 @@ export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health.all,
     queryFn: async () => {
-      if (IS_WASM) {
-        await ensureKernel();
-        return JSON.parse(window.aconiq!.health()) as HealthResponse;
+      if (IS_WASM_MODE) {
+        return browserBackend.getHealth();
       }
       return fetchJSON<HealthResponse>("/api/v1/health");
     },
@@ -50,11 +49,8 @@ export function useProjectStatus() {
   return useQuery({
     queryKey: queryKeys.project.status(),
     queryFn: async () => {
-      if (IS_WASM) {
-        await ensureKernel();
-        return JSON.parse(
-          window.aconiq!.projectStatus(),
-        ) as ProjectStatusResponse;
+      if (IS_WASM_MODE) {
+        return browserBackend.getProjectStatus();
       }
       return fetchJSON<ProjectStatusResponse>("/api/v1/project/status");
     },
@@ -64,7 +60,10 @@ export function useProjectStatus() {
 export function useStandards() {
   return useQuery({
     queryKey: queryKeys.standards.all,
-    queryFn: () => fetchJSON<StandardDescriptor[]>("/api/v1/standards"),
+    queryFn: () =>
+      IS_WASM_MODE
+        ? browserBackend.getStandards()
+        : fetchJSON<StandardDescriptor[]>("/api/v1/standards"),
     staleTime: 5 * 60_000,
   });
 }
@@ -72,15 +71,27 @@ export function useStandards() {
 export function useRuns(refetchIntervalMs?: number) {
   return useQuery({
     queryKey: queryKeys.runs.list(),
-    queryFn: () => fetchJSON<RunSummary[]>("/api/v1/runs"),
-    refetchInterval: refetchIntervalMs,
+    queryFn: () =>
+      IS_WASM_MODE
+        ? browserBackend.getRuns()
+        : fetchJSON<RunSummary[]>("/api/v1/runs"),
+    ...(IS_WASM_MODE
+      ? {}
+      : refetchIntervalMs !== undefined
+        ? { refetchInterval: refetchIntervalMs }
+        : {}),
   });
 }
 
 export function useRunLog(runId: string | null) {
   return useQuery({
     queryKey: queryKeys.runs.log(runId ?? ""),
-    queryFn: () => fetchJSON<RunLog>(`/api/v1/runs/${runId}/log`),
+    queryFn: () => {
+      if (!runId) throw new Error("Run ID is required");
+      return IS_WASM_MODE
+        ? browserBackend.getRunLog(runId)
+        : fetchJSON<RunLog>(`/api/v1/runs/${runId}/log`);
+    },
     enabled: runId !== null,
     staleTime: 30_000,
   });
@@ -89,7 +100,12 @@ export function useRunLog(runId: string | null) {
 export function useArtifactContent<T>(artifactId: string | null) {
   return useQuery({
     queryKey: queryKeys.artifacts.content(artifactId ?? ""),
-    queryFn: () => fetchJSON<T>(`/api/v1/artifacts/${artifactId}/content`),
+    queryFn: () => {
+      if (!artifactId) throw new Error("Artifact ID is required");
+      return IS_WASM_MODE
+        ? browserBackend.getArtifactContent<T>(artifactId)
+        : fetchJSON<T>(`/api/v1/artifacts/${artifactId}/content`);
+    },
     enabled: artifactId !== null,
     staleTime: 5 * 60_000,
   });
@@ -114,7 +130,10 @@ export interface OsmImportRequest {
 export function useImportFromOSM() {
   return useMutation({
     mutationFn: async (req: OsmImportRequest) => {
-      const response = await fetch("/api/v1/import/osm", {
+      if (IS_WASM_MODE) {
+        return browserBackend.importFromOSM(req);
+      }
+      const response = await fetch(apiURL("/api/v1/import/osm"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -134,4 +153,42 @@ export function useImportFromOSM() {
       return response.json() as Promise<GeoJSONFeatureCollection>;
     },
   });
+}
+
+export function useCreateRun() {
+  return useMutation({
+    mutationFn: async (spec: BrowserRunSpec) => {
+      if (!IS_WASM_MODE) {
+        throw new Error("Run execution from the UI is only available in browser mode");
+      }
+      await ensureKernel();
+      return browserBackend.startRun(spec);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
+    },
+  });
+}
+
+export function useCreateExport() {
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      if (!IS_WASM_MODE) {
+        throw new Error(
+          "Export generation from the UI is only available in browser mode",
+        );
+      }
+      return browserBackend.createExport(runId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
+    },
+  });
+}
+
+export function getArtifactContentURL(artifactId: string): string {
+  return IS_WASM_MODE
+    ? browserBackend.getArtifactURL(artifactId)
+    : apiURL(`/api/v1/artifacts/${artifactId}/content`);
 }
