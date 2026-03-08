@@ -991,7 +991,7 @@ out geom;`;
 function overpassWayToFeature(
   way: OverpassWay,
 ): GeoJSONFeatureCollection["features"][number] | null {
-  const geometry = way.geometry ?? [];
+  const geometry = sanitizeOverpassGeometry(way.geometry);
   if (geometry.length < 2) return null;
   const tags = way.tags ?? {};
   const properties: Record<string, unknown> = {
@@ -1075,4 +1075,17 @@ function parseTagHeight(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value.replace(" m", "").replace("m", "").trim());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sanitizeOverpassGeometry(
+  geometry: OverpassPoint[] | undefined,
+): OverpassPoint[] {
+  if (!geometry) return [];
+  return geometry.filter((point) => {
+    return (
+      point != null &&
+      Number.isFinite(point.lon) &&
+      Number.isFinite(point.lat)
+    );
+  });
 }
