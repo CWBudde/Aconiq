@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryKeys } from "./query-keys";
 import type {
   HealthResponse,
@@ -9,6 +9,7 @@ import type {
   RunSummary,
   StandardDescriptor,
 } from "./client";
+import type { GeoJSONFeatureCollection } from "@/model/types";
 
 const API_BASE = "";
 
@@ -79,4 +80,37 @@ export function useReceiverTable(artifactId: string | null) {
 
 export function useRasterMetadata(artifactId: string | null) {
   return useArtifactContent<RasterMetadata>(artifactId);
+}
+
+export interface OsmImportRequest {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+  overpass_endpoint?: string;
+}
+
+export function useImportFromOSM() {
+  return useMutation({
+    mutationFn: async (req: OsmImportRequest) => {
+      const response = await fetch("/api/v1/import/osm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(req),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(
+          payload?.error?.message ??
+            `Request failed: ${String(response.status)}`,
+        );
+      }
+      return response.json() as Promise<GeoJSONFeatureCollection>;
+    },
+  });
 }

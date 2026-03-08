@@ -28,6 +28,11 @@ type occupancyEstimate struct {
 	Persons   float64
 }
 
+var (
+	defaultLdenBandEdges   = []float64{55, 60, 65, 70, 75}
+	defaultLnightBandEdges = []float64{50, 55, 60, 65, 70}
+)
+
 // ComputeOutputs computes building exposure results and aggregate totals.
 func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg ExposureConfig, propagation road.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
 	if len(buildings) == 0 {
@@ -142,6 +147,8 @@ func finalizeOutputs(prepared []preparedBuilding, levelByID map[string]levelIndi
 		OccupancyMode:           cfg.OccupancyMode,
 		FacadeEvaluationMode:    cfg.FacadeEvaluationMode,
 		UpstreamMappingStandard: cfg.UpstreamMappingStandard,
+		LdenBands:               defaultExposureBands(defaultLdenBandEdges),
+		LnightBands:             defaultExposureBands(defaultLnightBandEdges),
 	}
 
 	sort.Slice(prepared, func(i, j int) bool {
@@ -181,9 +188,49 @@ func finalizeOutputs(prepared []preparedBuilding, levelByID map[string]levelIndi
 		summary.AffectedPersonsLden += affectedPersonsLden
 		summary.AffectedDwellingsLnight += affectedDwellingsLnight
 		summary.AffectedPersonsLnight += affectedPersonsLnight
+		addExposureToBands(summary.LdenBands, levels.Lden, occupancy.Dwellings, occupancy.Persons)
+		addExposureToBands(summary.LnightBands, levels.Lnight, occupancy.Dwellings, occupancy.Persons)
 	}
 
 	return outputs, summary, nil
+}
+
+func defaultExposureBands(edges []float64) []ExposureBandSummary {
+	bands := make([]ExposureBandSummary, 0, len(edges))
+	for i, lower := range edges {
+		band := ExposureBandSummary{
+			Label:   fmt.Sprintf("%.0f-%.0f", lower, lower+4),
+			LowerDB: lower,
+		}
+
+		if i == len(edges)-1 {
+			band.Label = fmt.Sprintf("%.0f+", lower)
+		} else {
+			upper := edges[i+1]
+			band.UpperDBExclusive = &upper
+		}
+
+		bands = append(bands, band)
+	}
+
+	return bands
+}
+
+func addExposureToBands(bands []ExposureBandSummary, levelDB float64, dwellings float64, persons float64) {
+	for i := range bands {
+		band := &bands[i]
+		if levelDB < band.LowerDB {
+			continue
+		}
+
+		if band.UpperDBExclusive != nil && levelDB >= *band.UpperDBExclusive {
+			continue
+		}
+
+		band.EstimatedDwellings += dwellings
+		band.EstimatedPersons += persons
+		return
+	}
 }
 
 func evaluateOccupancy(building BuildingUnit, cfg ExposureConfig) occupancyEstimate {

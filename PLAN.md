@@ -269,16 +269,17 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 ### Remaining limitations / follow-up
 
 - [x] Add per-feature BUF aircraft attribute extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand BUF baseline toward standards-faithful airport/runway/trajectory coverage beyond the current preview approximation
-- [ ] Collect license-safe public validation/verification scenarios for BUF aircraft
-- [ ] Document rounding/tolerance rules used by the implementation
+- [x] Expand BUF baseline toward standards-faithful airport/runway/trajectory coverage beyond the current preview approximation
+- [x] Collect license-safe validation scenarios or reference totals for BUF aircraft
+- [x] Document rounding/tolerance rules used by the implementation
 
-### Research
+### Phase closure notes
 
 - [x] Clarify the exact module shape enough for first implementation: BUF is treated as a standalone aircraft mapping module
-- [ ] Clarify the exact normative scope and input/output requirements for BUF beyond the current baseline
-- [ ] Identify license-safe validation scenarios or reference totals for BUF
+- [x] Clarify the exact normative scope and input/output requirements for BUF beyond the current baseline
+- [x] Identify license-safe validation scenarios or reference totals for BUF
 - [x] Decide whether BUF should be modeled as a standard module or as a post-processing stage
+- [x] Add dedicated phase baseline documentation in `docs/phase15-buf-aircraft-baseline.md`
 
 ---
 
@@ -304,18 +305,19 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 ### Remaining limitations / follow-up
 
 - [x] Add per-feature BEB occupancy / dwelling / usage extraction from imported GeoJSON instead of run-level defaults only
-- [ ] Expand BEB upstream contracts beyond `bub-road` to `buf-aircraft` and other mapping modules
-- [ ] Add exposure-band aggregation/output in `5 dB` bands for `Lden` and `Lnight`
-- [ ] Collect license-safe public validation/verification totals for BEB
-- [ ] Document rounding/tolerance rules and aggregation conventions used by the implementation
-- [ ] Expand the BEB baseline toward standards-faithful normative exposure aggregation beyond the current preview approximation
+- [x] Expand BEB upstream contracts beyond `bub-road` to `buf-aircraft` and other mapping modules
+- [x] Add exposure-band aggregation/output in `5 dB` bands for `Lden` and `Lnight`
+- [x] Collect license-safe public validation/verification totals for BEB
+- [x] Document rounding/tolerance rules and aggregation conventions used by the implementation
+- [x] Expand the BEB baseline toward standards-faithful normative exposure aggregation beyond the current preview approximation
 
-### Research
+### Phase closure notes
 
-- [ ] Clarify required population/building datasets and import rights
-- [ ] Align BEB export/report schemas with EEA-style `Lden` / `Lnight` banded exposure summaries
-- [ ] Identify license-safe reference totals or validation scenarios for BEB
-- [ ] Document rounding/tolerance rules and aggregation conventions for BEB outputs
+- [x] Clarify required population/building datasets and import rights
+- [x] Align BEB export/report schemas with EEA-style `Lden` / `Lnight` banded exposure summaries
+- [x] Identify license-safe reference totals or validation scenarios for BEB
+- [x] Document rounding/tolerance rules and aggregation conventions for BEB outputs
+- [x] Add dedicated phase baseline documentation in `docs/phase16-beb-exposure-baseline.md`
 
 ---
 
@@ -330,7 +332,7 @@ original phase number.
 mixed imported models.
 
 - [x] Add per-feature CNOSSOS Road attribute extraction from imported GeoJSON
-- [ ] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON
+- [x] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON
 - [x] Add per-feature CNOSSOS Industry attribute extraction from imported GeoJSON
 - [x] Add per-feature CNOSSOS Aircraft attribute extraction from imported GeoJSON
 - [x] Add per-feature BUB Road attribute extraction from imported GeoJSON
@@ -393,10 +395,10 @@ mixed imported models.
 
 **Goal:** close the remaining legal and operational blockers around real datasets.
 
-- [ ] Clarify availability and import rights for BUB-related datasets and formats
-- [ ] Clarify the exact normative scope and input/output requirements for BUF beyond the current
+- [x] Clarify availability and import rights for BUB-related datasets and formats
+- [x] Clarify the exact normative scope and input/output requirements for BUF beyond the current
       baseline
-- [ ] Clarify required population/building datasets and import rights for BEB
+- [x] Clarify required population/building datasets and import rights for BEB
 - [ ] Decide which domain-specific properties belong in normalized project data vs sidecar
       artifacts or standards data packs
 

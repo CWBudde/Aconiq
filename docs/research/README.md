@@ -30,6 +30,15 @@ External references:
 - `bub-dataset-availability-and-rights.md`
   - Public-context and import-rights clarification note for the BUB mapping
     track and related German dataset handling.
+- `buf-aircraft-public-reference-totals.md`
+  - Public, attributable aircraft reference totals used as external evidence
+    for the BUF mapping-aircraft baseline.
+- `beb-public-reference-totals.md`
+  - Public, attributable exposed-population totals used as external evidence for
+    the BEB exposure baseline.
+- `beb-dataset-requirements-and-rights.md`
+  - Required dataset categories and rights-handling note for BEB building and
+    population inputs.
 - `milestone-e-rounding-tolerances.md`
   - Current rounding, tolerance, threshold, and reporting-boundary rules for the online standards modules.
 

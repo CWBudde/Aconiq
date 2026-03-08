@@ -67,6 +67,10 @@ func TestComputeOutputsThresholds(t *testing.T) {
 	if summary.AffectedPersonsLden != outputs[0].Indicators.AffectedPersonsLden {
 		t.Fatal("expected summary and output affected persons to match")
 	}
+
+	if len(summary.LdenBands) == 0 || len(summary.LnightBands) == 0 {
+		t.Fatal("expected band summaries to be populated")
+	}
 }
 
 func TestComputeOutputsFromAircraftThresholds(t *testing.T) {
@@ -201,6 +205,30 @@ func TestExportResultBundle(t *testing.T) {
 	}
 }
 
+func TestSummaryBandsAggregateEstimatedCounts(t *testing.T) {
+	t.Parallel()
+
+	outputs, summary, err := ComputeOutputs(
+		[]BuildingUnit{sampleBuilding()},
+		[]road.RoadSource{sampleRoad()},
+		DefaultExposureConfig(),
+		road.DefaultPropagationConfig(),
+		4,
+	)
+	if err != nil {
+		t.Fatalf("compute outputs: %v", err)
+	}
+
+	totalBandPersons := 0.0
+	for _, band := range summary.LdenBands {
+		totalBandPersons += band.EstimatedPersons
+	}
+
+	if math.Abs(totalBandPersons-outputs[0].Indicators.EstimatedPersons) > 1e-9 {
+		t.Fatalf("expected Lden band totals to match estimated persons: got %.6f want %.6f", totalBandPersons, outputs[0].Indicators.EstimatedPersons)
+	}
+}
+
 func TestGoldenScenario(t *testing.T) {
 	t.Parallel()
 
@@ -275,6 +303,23 @@ func roundedOutputs(outputs []BuildingExposureOutput) []map[string]any {
 }
 
 func roundedSummary(summary Summary) map[string]any {
+	roundBands := func(bands []ExposureBandSummary) []map[string]any {
+		out := make([]map[string]any, 0, len(bands))
+		for _, band := range bands {
+			item := map[string]any{
+				"label":               band.Label,
+				"lower_db":            round6(band.LowerDB),
+				"estimated_dwellings": round6(band.EstimatedDwellings),
+				"estimated_persons":   round6(band.EstimatedPersons),
+			}
+			if band.UpperDBExclusive != nil {
+				item["upper_db_exclusive"] = round6(*band.UpperDBExclusive)
+			}
+			out = append(out, item)
+		}
+		return out
+	}
+
 	return map[string]any{
 		"building_count":            summary.BuildingCount,
 		"estimated_dwellings":       round6(summary.EstimatedDwellings),
@@ -288,6 +333,8 @@ func roundedSummary(summary Summary) map[string]any {
 		"occupancy_mode":            summary.OccupancyMode,
 		"facade_evaluation_mode":    summary.FacadeEvaluationMode,
 		"upstream_mapping_standard": summary.UpstreamMappingStandard,
+		"lden_bands":                roundBands(summary.LdenBands),
+		"lnight_bands":              roundBands(summary.LnightBands),
 	}
 }
 
