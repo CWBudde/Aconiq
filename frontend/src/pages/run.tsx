@@ -32,7 +32,8 @@ import {
 } from "@/ui/components/select";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
-import { useStandards, useRuns, useRunLog } from "@/api/hooks";
+import { useCreateRun, useStandards, useRuns, useRunLog } from "@/api/hooks";
+import { IS_WASM_MODE } from "@/api/mode";
 import type {
   ArtifactRef,
   ParameterDefinition,
@@ -734,11 +735,14 @@ function defaultParams(profile: ProfileInfo): Record<string, string> {
 function RunSetupDialog({
   open,
   onClose,
+  onCreated,
 }: {
   open: boolean;
   onClose: () => void;
+  onCreated: (runId: string) => void;
 }) {
   const { data: standards, isLoading, error } = useStandards();
+  const createRun = useCreateRun();
 
   const firstStandard = standards?.[0];
 
@@ -804,6 +808,24 @@ function RunSetupDialog({
   }
 
   function handleSubmit() {
+    if (IS_WASM_MODE) {
+      createRun.mutate(
+        {
+          standardId: effectiveStandardId,
+          version: effectiveVersion,
+          profile: effectiveProfile,
+          params,
+          receiverMode,
+        },
+        {
+          onSuccess: (run) => {
+            onCreated(run.id);
+            handleClose();
+          },
+        },
+      );
+      return;
+    }
     setSubmittedConfig({
       standardId: effectiveStandardId,
       version: effectiveVersion,
@@ -843,6 +865,11 @@ function RunSetupDialog({
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>Could not load standards. Is the API server running?</span>
+          </div>
+        ) : createRun.isError ? (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{createRun.error.message}</span>
           </div>
         ) : submitted && submittedConfig ? (
           <div className="space-y-4">
@@ -1043,9 +1070,12 @@ function RunSetupDialog({
             <Button variant="ghost" onClick={handleClose}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!selectedProfile}>
+            <Button
+              onClick={handleSubmit}
+              disabled={!selectedProfile || createRun.isPending}
+            >
               <Play className="mr-2 h-4 w-4" />
-              Start Run
+              {createRun.isPending ? "Running…" : "Start Run"}
             </Button>
           </DialogFooter>
         ) : null}
@@ -1193,6 +1223,9 @@ export default function RunPage() {
         open={dialogOpen}
         onClose={() => {
           setDialogOpen(false);
+        }}
+        onCreated={(runId) => {
+          setSelectedRunId(runId);
         }}
       />
     </div>

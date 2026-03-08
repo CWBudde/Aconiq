@@ -27,7 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/components/select";
-import { useRuns } from "@/api/hooks";
+import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
+import { IS_WASM_MODE } from "@/api/mode";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 
@@ -108,7 +109,7 @@ function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
   const { label: labelFn, icon: Icon } = kindMeta(artifact.kind);
   const label = labelFn();
   const filename = artifact.path.split("/").pop() ?? artifact.path;
-  const contentURL = `/api/v1/artifacts/${artifact.id}/content`;
+  const contentURL = getArtifactContentURL(artifact.id);
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
@@ -190,7 +191,7 @@ function ExportDetail({ run }: { run: RunSummary }) {
         </h3>
         {htmlArtifact ? (
           <iframe
-            src={`/api/v1/artifacts/${htmlArtifact.id}/content`}
+            src={getArtifactContentURL(htmlArtifact.id)}
             sandbox="allow-scripts"
             width="100%"
             height="400"
@@ -242,12 +243,15 @@ function NewExportDialog({
   open,
   onClose,
   runs,
+  onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   runs: RunSummary[];
+  onCreated: (runId: string) => void;
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string>("");
+  const createExport = useCreateExport();
   const cliCommand = selectedRunId
     ? `noise export --run-id ${selectedRunId}`
     : "noise export --run-id <run-id>";
@@ -263,7 +267,9 @@ function NewExportDialog({
         <DialogHeader>
           <DialogTitle>{m.dialog_title_new_export()}</DialogTitle>
           <DialogDescription>
-            {m.dialog_desc_new_export()}
+            {IS_WASM_MODE
+              ? "Generate an offline export bundle directly in the browser."
+              : m.dialog_desc_new_export()}
           </DialogDescription>
         </DialogHeader>
 
@@ -293,19 +299,40 @@ function NewExportDialog({
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium">{m.label_command()}</p>
-            <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
-              <code className="flex-1 font-mono text-xs">{cliCommand}</code>
-              <CopyButton text={cliCommand} />
+          {IS_WASM_MODE ? null : (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium">{m.label_command()}</p>
+              <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
+                <code className="flex-1 font-mono text-xs">{cliCommand}</code>
+                <CopyButton text={cliCommand} />
+              </div>
             </div>
-          </div>
+          )}
+          {createExport.isError ? (
+            <p className="text-sm text-destructive">{createExport.error.message}</p>
+          ) : null}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             {m.action_close()}
           </Button>
+          {IS_WASM_MODE ? (
+            <Button
+              onClick={() => {
+                if (!selectedRunId) return;
+                createExport.mutate(selectedRunId, {
+                  onSuccess: (run) => {
+                    onCreated(run.id);
+                    onClose();
+                  },
+                });
+              }}
+              disabled={!selectedRunId || createExport.isPending}
+            >
+              {createExport.isPending ? "Generating…" : m.action_new_export()}
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -471,6 +498,9 @@ export default function ExportPage() {
           setDialogOpen(false);
         }}
         runs={runs}
+        onCreated={(runId) => {
+          setSelectedRunId(runId);
+        }}
       />
     </>
   );
