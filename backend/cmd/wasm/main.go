@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"syscall/js"
+	"time"
 
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
@@ -77,6 +78,44 @@ func defaultConfigFunc(_ js.Value, _ []js.Value) any {
 	return js.ValueOf(string(out))
 }
 
+// healthFunc returns a static health response for the WASM demo environment.
+// Signature: () => string (JSON)
+func healthFunc(_ js.Value, _ []js.Value) any {
+	type healthResp struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+		Time    string `json:"time"`
+	}
+	resp := healthResp{
+		Status:  "ok",
+		Version: "wasm",
+		Time:    time.Now().UTC().Format(time.RFC3339),
+	}
+	out, _ := json.Marshal(resp)
+	return js.ValueOf(string(out))
+}
+
+// projectStatusFunc returns a stub project status for the WASM demo environment.
+// Signature: () => string (JSON)
+func projectStatusFunc(_ js.Value, _ []js.Value) any {
+	type projectResp struct {
+		ProjectID       string `json:"project_id"`
+		Name            string `json:"name"`
+		ProjectPath     string `json:"project_path"`
+		ManifestVersion int    `json:"manifest_version"`
+		CRS             string `json:"crs"`
+		ScenarioCount   int    `json:"scenario_count"`
+		RunCount        int    `json:"run_count"`
+	}
+	resp := projectResp{
+		Name:            "(browser demo)",
+		ManifestVersion: 1,
+		CRS:             "—",
+	}
+	out, _ := json.Marshal(resp)
+	return js.ValueOf(string(out))
+}
+
 func jsReject(msg string) js.Value {
 	return js.Global().Get("Promise").Call("reject", js.ValueOf(msg))
 }
@@ -85,6 +124,8 @@ func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
 	aconiq.Set("defaultConfig", js.FuncOf(defaultConfigFunc))
+	aconiq.Set("health", js.FuncOf(healthFunc))
+	aconiq.Set("projectStatus", js.FuncOf(projectStatusFunc))
 	js.Global().Set("aconiq", aconiq)
 
 	// Block forever to keep registered functions alive.

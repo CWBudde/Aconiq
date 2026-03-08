@@ -11,7 +11,13 @@ import type {
   ModelFeature,
   ValidationReport,
 } from "@/model/types";
-import { FileInput, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import {
+  FileInput,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  LocateFixed,
+} from "lucide-react";
 import { useImportFromOSM } from "@/api/hooks";
 
 type ImportStep = "upload" | "preview" | "done";
@@ -35,7 +41,34 @@ export default function ImportPage() {
   const [osmEast, setOsmEast] = useState("");
   const [osmEndpoint, setOsmEndpoint] = useState("");
 
+  const [geolocating, setGeolocating] = useState(false);
+
   const osmMutation = useImportFromOSM();
+
+  const handleUseCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported by your browser");
+      return;
+    }
+    setGeolocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const delta = 0.005; // ~500 m radius
+        setOsmSouth((lat - delta).toFixed(6));
+        setOsmNorth((lat + delta).toFixed(6));
+        setOsmWest((lon - delta).toFixed(6));
+        setOsmEast((lon + delta).toFixed(6));
+        setGeolocating(false);
+      },
+      (err) => {
+        setError(`Could not get location: ${err.message}`);
+        setGeolocating(false);
+      },
+    );
+  }, []);
 
   const handleNormalizeAndPreview = useCallback(
     (collection: GeoJSONFeatureCollection) => {
@@ -204,6 +237,16 @@ export default function ImportPage() {
                     via Overpass API.
                   </p>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUseCurrentLocation}
+                  disabled={geolocating}
+                  className="self-start"
+                >
+                  <LocateFixed className="mr-2 h-4 w-4" />
+                  {geolocating ? "Locating…" : "Use current location"}
+                </Button>
                 <div className="grid grid-cols-4 gap-3">
                   <div className="flex flex-col gap-1">
                     <Input

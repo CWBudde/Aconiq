@@ -129,6 +129,18 @@ Planned package structure:
 - `noise export` now copies run result artifacts into export bundles and generates report files by default.
 - Optional flag: `--skip-report` to export bundle artifacts without report generation.
 
+## Phase 22 Initial Slice
+
+- CLI command: `noise bench`
+  - runs built-in synthetic scenarios: `micro`, `corridor`, `district`
+  - captures:
+    - runtime
+    - Go memory counters
+    - cache/disk footprint (`run_dir_bytes_*`, chunk cache file count, cache reuse)
+    - numeric drift against a single-worker reference run
+  - persists benchmark suite summaries under `.noise/cache/bench/<bench-id>/summary.json`
+  - prunes older benchmark suites with `--keep-last` to keep bench cache growth bounded
+
 ## Phase 23 Initial Slice
 
 - Local API package: `internal/api/httpv1`
