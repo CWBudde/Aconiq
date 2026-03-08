@@ -3,6 +3,7 @@ import { History } from "lucide-react";
 import { useModelStore } from "@/model/model-store";
 import { hasDraft, loadDraft, discardDraft } from "@/model/use-autosave";
 import { Button } from "@/ui/components/button";
+import { m } from "@/i18n/messages";
 
 /**
  * Shows a dismissable banner when a saved draft is found at startup and the
@@ -38,18 +39,18 @@ export function DraftBanner() {
   return (
     <div
       role="status"
-      aria-label="Draft recovery"
+      aria-label={m.banner_draft_recovery()}
       className="flex items-center gap-3 border-b bg-muted/60 px-4 py-2 text-sm"
     >
       <History className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <span className="flex-1 text-muted-foreground">
-        Unsaved draft found. Restore your previous work?
+        {m.msg_unsaved_draft_found()}
       </span>
       <Button size="sm" variant="outline" onClick={handleDiscard}>
-        Discard
+        {m.action_discard()}
       </Button>
       <Button size="sm" onClick={handleRestore}>
-        Restore
+        {m.action_restore()}
       </Button>
     </div>
   );

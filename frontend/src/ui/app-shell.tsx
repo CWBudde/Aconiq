@@ -25,18 +25,19 @@ import {
 } from "@/ui/components/sidebar";
 import { Separator } from "@/ui/components/separator";
 import { ThemeToggle } from "@/ui/theme-toggle";
+import { m } from "@/i18n/messages";
 
 const navMain = [
-  { title: "Map", icon: Map, path: "/map" },
-  { title: "Import", icon: FileInput, path: "/import" },
-  { title: "Run", icon: Play, path: "/run" },
-  { title: "Results", icon: BarChart3, path: "/results" },
-  { title: "Export", icon: FileOutput, path: "/export" },
+  { title: m.nav_map, icon: Map, path: "/map" },
+  { title: m.nav_import, icon: FileInput, path: "/import" },
+  { title: m.nav_run, icon: Play, path: "/run" },
+  { title: m.nav_results, icon: BarChart3, path: "/results" },
+  { title: m.nav_export, icon: FileOutput, path: "/export" },
 ];
 
 const navFooter = [
-  { title: "Status", icon: Activity, path: "/status" },
-  { title: "Settings", icon: Settings, path: "/settings" },
+  { title: m.nav_status, icon: Activity, path: "/status" },
+  { title: m.nav_settings, icon: Settings, path: "/settings" },
 ];
 
 function AppSidebar() {
@@ -57,18 +58,18 @@ function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarGroupLabel>{m.section_workspace()}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navMain.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
                     isActive={location.pathname === item.path}
                   >
                     <Link to={item.path}>
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span>{item.title()}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -83,14 +84,14 @@ function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navFooter.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
                     isActive={location.pathname === item.path}
                   >
                     <Link to={item.path}>
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span>{item.title()}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -109,7 +110,7 @@ function PageTitle() {
   const current = allNav.find((item) => item.path === location.pathname);
   return (
     <h1 className="text-sm font-medium text-muted-foreground">
-      {current?.title ?? "Workspace"}
+      {current ? current.title() : m.nav_workspace()}
     </h1>
   );
 }

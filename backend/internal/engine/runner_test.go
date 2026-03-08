@@ -177,7 +177,7 @@ func TestChunkCacheReuse(t *testing.T) {
 	}
 
 	second, err := runner.Run(context.Background(), RunConfig{
-		RunID:        "cache-run",
+		RunID:        "cache-run-repeat",
 		Workers:      4,
 		ChunkSize:    15,
 		CacheDir:     cacheDir,
@@ -195,6 +195,54 @@ func TestChunkCacheReuse(t *testing.T) {
 
 	if second.UsedCachedChunks == 0 {
 		t.Fatalf("expected cached chunks to be reused")
+	}
+}
+
+func TestChunkCacheInvalidatesWhenSourcesChange(t *testing.T) {
+	t.Parallel()
+
+	receivers := make([]Receiver, 0, 40)
+	for i := range 40 {
+		receivers = append(receivers, Receiver{
+			ID:      "rx-" + padInt(i),
+			Point:   geo.Point2D{X: float64(i), Y: float64(i % 8)},
+			HeightM: 4,
+		})
+	}
+
+	cacheDir := t.TempDir()
+	runner := NewRunner(nil)
+
+	first, err := runner.Run(context.Background(), RunConfig{
+		RunID:     "invalidate-a",
+		Workers:   2,
+		ChunkSize: 10,
+		CacheDir:  cacheDir,
+		Receivers: receivers,
+		Sources:   []Source{{ID: "s1", Point: geo.Point2D{X: 10, Y: 10}, Emission: 91.2}},
+	})
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	second, err := runner.Run(context.Background(), RunConfig{
+		RunID:     "invalidate-b",
+		Workers:   2,
+		ChunkSize: 10,
+		CacheDir:  cacheDir,
+		Receivers: receivers,
+		Sources:   []Source{{ID: "s1", Point: geo.Point2D{X: 10, Y: 10}, Emission: 95.2}},
+	})
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	if second.UsedCachedChunks != 0 {
+		t.Fatalf("expected changed sources to invalidate chunk cache, got %d cached chunks", second.UsedCachedChunks)
+	}
+
+	if first.OutputHash == second.OutputHash {
+		t.Fatalf("expected changed sources to produce a different output hash")
 	}
 }
 

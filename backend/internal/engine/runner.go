@@ -24,6 +24,8 @@ type Runner struct {
 	progress ProgressSink
 }
 
+const chunkCacheFormatVersion = "engine-chunk-v2"
+
 func NewRunner(progress ProgressSink) *Runner {
 	return &Runner{progress: progress}
 }
@@ -38,13 +40,19 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 
 	startedAt := time.Now().UTC()
 	runDir := filepath.Join(cfg.CacheDir, cfg.RunID)
-	chunksDir := filepath.Join(runDir, "chunks")
+	runChunksDir := filepath.Join(runDir, "chunks")
+	sharedChunksDir := filepath.Join(cfg.CacheDir, "shared-chunks")
 	outputPath := filepath.Join(runDir, "run-output.json")
 	statePath := filepath.Join(runDir, "run-state.json")
 
-	err = os.MkdirAll(chunksDir, 0o755)
+	err = os.MkdirAll(runChunksDir, 0o755)
 	if err != nil {
 		return RunOutput{}, fmt.Errorf("create run cache directory: %w", err)
+	}
+
+	err = os.MkdirAll(sharedChunksDir, 0o755)
+	if err != nil {
+		return RunOutput{}, fmt.Errorf("create shared chunk cache directory: %w", err)
 	}
 
 	r.emit(cfg.RunID, "load", "start", -1, 0, 0)
@@ -95,10 +103,10 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	r.emit(cfg.RunID, "compute", "start", -1, 0, totalChunks)
 	ffSources := convertSourcesToFreefield(cfg.Sources)
 
-	received, usedCached, err := r.computeChunks(ctx, cfg, chunks, ffSources, chunksDir, statePath)
+	received, usedCached, err := r.computeChunks(ctx, cfg, chunks, ffSources, runChunksDir, sharedChunksDir, statePath)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			_ = cleanupTmpFiles(chunksDir)
+			_ = cleanupTmpFiles(runChunksDir)
 			_ = writeRunState(statePath, RunState{
 				RunID:           cfg.RunID,
 				Status:          RunStateCanceled,
@@ -112,7 +120,7 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 			return RunOutput{}, context.Canceled
 		}
 
-		_ = cleanupTmpFiles(chunksDir)
+		_ = cleanupTmpFiles(runChunksDir)
 		_ = writeRunState(statePath, RunState{
 			RunID:           cfg.RunID,
 			Status:          RunStateFailed,
@@ -280,7 +288,8 @@ func (r *Runner) computeChunks(
 	cfg RunConfig,
 	chunks []receiverChunk,
 	ffSources []freefield.Source,
-	chunksDir string,
+	runChunksDir string,
+	sharedChunksDir string,
 	statePath string,
 ) (map[int][]ReceiverResult, int, error) {
 	jobs := make(chan receiverChunk)
@@ -292,7 +301,7 @@ func (r *Runner) computeChunks(
 	for range workerCount {
 		wg.Go(func() {
 			for chunk := range jobs {
-				res, fromCache, err := computeOrLoadChunk(ctx, cfg, chunk, ffSources, chunksDir)
+				res, fromCache, err := computeOrLoadChunk(ctx, cfg, chunk, ffSources, runChunksDir, sharedChunksDir)
 				resultsCh <- chunkComputeResult{chunkIndex: chunk.Index, results: res, fromCache: fromCache, err: err}
 
 				if err != nil {
@@ -361,16 +370,36 @@ func computeOrLoadChunk(
 	cfg RunConfig,
 	chunk receiverChunk,
 	ffSources []freefield.Source,
-	chunksDir string,
+	runChunksDir string,
+	sharedChunksDir string,
 ) ([]ReceiverResult, bool, error) {
-	cachePath := filepath.Join(chunksDir, fmt.Sprintf("chunk-%06d.json", chunk.Index))
+	runCachePath := filepath.Join(runChunksDir, fmt.Sprintf("chunk-%06d.json", chunk.Index))
+	sharedCachePath, err := sharedChunkCachePath(sharedChunksDir, cfg, chunk)
+	if err != nil {
+		return nil, false, err
+	}
 
 	if !cfg.DisableCache {
 		{
-			cached, ok, err := readChunk(cachePath)
+			cached, ok, err := readChunk(runCachePath)
 			if err != nil {
 				return nil, false, err
-			} else if ok {
+			}
+
+			if ok {
+				return cached, true, nil
+			}
+		}
+
+		{
+			cached, ok, err := readChunk(sharedCachePath)
+			if err != nil {
+				return nil, false, err
+			}
+
+			if ok {
+				_ = writeChunk(runCachePath, cached)
+
 				return cached, true, nil
 			}
 		}
@@ -397,7 +426,12 @@ func computeOrLoadChunk(
 	}
 
 	if !cfg.DisableCache {
-		err := writeChunk(cachePath, results)
+		err := writeChunk(runCachePath, results)
+		if err != nil {
+			return nil, false, err
+		}
+
+		err = writeChunk(sharedCachePath, results)
 		if err != nil {
 			return nil, false, err
 		}
@@ -446,6 +480,32 @@ func hashResults(results []ReceiverResult) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+type chunkCacheKeyPayload struct {
+	Version          string     `json:"version"`
+	Receivers        []Receiver `json:"receivers"`
+	Sources          []Source   `json:"sources"`
+	SourceIndexCellM float64    `json:"source_index_cell_m"`
+}
+
+func sharedChunkCachePath(sharedChunksDir string, cfg RunConfig, chunk receiverChunk) (string, error) {
+	keyPayload := chunkCacheKeyPayload{
+		Version:          chunkCacheFormatVersion,
+		Receivers:        chunk.Receivers,
+		Sources:          cfg.Sources,
+		SourceIndexCellM: cfg.SourceIndexCellM,
+	}
+
+	encoded, err := json.Marshal(keyPayload)
+	if err != nil {
+		return "", fmt.Errorf("encode chunk cache key: %w", err)
+	}
+
+	sum := sha256.Sum256(encoded)
+	key := hex.EncodeToString(sum[:])
+
+	return filepath.Join(sharedChunksDir, key[:2], key+".json"), nil
+}
+
 func readChunk(path string) ([]ReceiverResult, bool, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
@@ -467,9 +527,14 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 }
 
 func writeChunk(path string, results []ReceiverResult) error {
-	tmpPath := path + ".tmp"
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
+		return fmt.Errorf("create chunk cache directory %s: %w", filepath.Dir(path), err)
+	}
 
-	err := writeJSONFile(tmpPath, results)
+	tmpPath := fmt.Sprintf("%s.%d.tmp", path, time.Now().UnixNano())
+
+	err = writeJSONFile(tmpPath, results)
 	if err != nil {
 		return err
 	}
