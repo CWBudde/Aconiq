@@ -28,11 +28,11 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
     <div className="max-h-64 overflow-y-auto">
       <div className="border-b px-3 py-2 text-xs font-medium">
         {report.errors.length > 0
-          ? `${String(report.errors.length)} error(s)`
+          ? `${String(report.errors.length)} ${m.msg_validation_errors_count()}`
           : ""}
         {report.errors.length > 0 && report.warnings.length > 0 ? ", " : ""}
         {report.warnings.length > 0
-          ? `${String(report.warnings.length)} warning(s)`
+          ? `${String(report.warnings.length)} ${m.msg_validation_warnings_count()}`
           : ""}
       </div>
       <ul className="divide-y">
@@ -58,7 +58,7 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
                   onSelectFeature(issue.featureId);
                 }}
               >
-                Go to
+                {m.action_go_to()}
               </Button>
             ) : null}
           </li>

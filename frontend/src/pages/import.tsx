@@ -19,6 +19,7 @@ import {
   LocateFixed,
 } from "lucide-react";
 import { useImportFromOSM } from "@/api/hooks";
+import { m } from "@/i18n/messages";
 
 type ImportStep = "upload" | "preview" | "done";
 type ImportSource = "file" | "osm";
@@ -47,7 +48,7 @@ export default function ImportPage() {
 
   const handleUseCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setError("Geolocation is not supported by your browser");
+      setError(m.error_geolocation_not_supported());
       return;
     }
     setGeolocating(true);
@@ -64,7 +65,7 @@ export default function ImportPage() {
         setGeolocating(false);
       },
       (err) => {
-        setError(`Could not get location: ${err.message}`);
+        setError(m.error_location_fetch_failed() + `: ${err.message}`);
         setGeolocating(false);
       },
     );
@@ -91,14 +92,14 @@ export default function ImportPage() {
           parsed["type"] !== "FeatureCollection" ||
           !Array.isArray(parsed["features"])
         ) {
-          setError("File must be a GeoJSON FeatureCollection");
+          setError(m.msg_geojson_error_invalid());
           return;
         }
         handleNormalizeAndPreview(
           parsed as unknown as GeoJSONFeatureCollection,
         );
       } catch {
-        setError("Failed to parse file as JSON");
+        setError(m.msg_geojson_error_parse());
       }
     },
     [handleNormalizeAndPreview],
@@ -129,7 +130,7 @@ export default function ImportPage() {
     const east = parseFloat(osmEast);
 
     if (isNaN(south) || isNaN(west) || isNaN(north) || isNaN(east)) {
-      setError("All four bounding box values are required");
+      setError(m.msg_bbox_required());
       return;
     }
 
@@ -206,9 +207,9 @@ export default function ImportPage() {
               >
                 <FileInput className="h-10 w-10 text-muted-foreground" />
                 <div>
-                  <h2 className="text-lg font-semibold">Import GeoJSON</h2>
+                  <h2 className="text-lg font-semibold">{m.heading_import_geojson()}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Drop a GeoJSON file here or click to browse
+                    {m.msg_drag_or_click()}
                   </p>
                 </div>
                 <Button
@@ -216,7 +217,7 @@ export default function ImportPage() {
                     fileRef.current?.click();
                   }}
                 >
-                  Choose File
+                  {m.action_choose_file()}
                 </Button>
                 <input
                   ref={fileRef}
@@ -230,11 +231,10 @@ export default function ImportPage() {
               <div className="flex flex-col gap-4 rounded-lg border p-6">
                 <div>
                   <h2 className="text-lg font-semibold">
-                    Import from OpenStreetMap
+                    {m.heading_import_from_osm()}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Enter a bounding box to fetch roads, buildings, and barriers
-                    via Overpass API.
+                    {m.msg_import_osm_description()}
                   </p>
                 </div>
                 <Button
@@ -245,7 +245,7 @@ export default function ImportPage() {
                   className="self-start"
                 >
                   <LocateFixed className="mr-2 h-4 w-4" />
-                  {geolocating ? "Locating…" : "Use current location"}
+                  {geolocating ? m.status_locating() : m.action_use_current_location()}
                 </Button>
                 <div className="grid grid-cols-4 gap-3">
                   <div className="flex flex-col gap-1">
@@ -259,7 +259,7 @@ export default function ImportPage() {
                       placeholder="52.49"
                     />
                     <Label className="text-center text-xs text-muted-foreground">
-                      South
+                      {m.label_south()}
                     </Label>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -273,7 +273,7 @@ export default function ImportPage() {
                       placeholder="13.35"
                     />
                     <Label className="text-center text-xs text-muted-foreground">
-                      West
+                      {m.label_west()}
                     </Label>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -287,7 +287,7 @@ export default function ImportPage() {
                       placeholder="52.52"
                     />
                     <Label className="text-center text-xs text-muted-foreground">
-                      North
+                      {m.label_north()}
                     </Label>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -301,13 +301,13 @@ export default function ImportPage() {
                       placeholder="13.40"
                     />
                     <Label className="text-center text-xs text-muted-foreground">
-                      East
+                      {m.label_east()}
                     </Label>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label className="text-xs text-muted-foreground">
-                    Overpass Endpoint (optional)
+                    {m.label_overpass_endpoint_optional()}
                   </Label>
                   <Input
                     type="text"
@@ -322,7 +322,7 @@ export default function ImportPage() {
                   onClick={handleOSMFetch}
                   disabled={osmMutation.isPending}
                 >
-                  {osmMutation.isPending ? "Fetching…" : "Fetch from OSM"}
+                  {osmMutation.isPending ? m.status_fetching() : m.action_fetch_from_osm()}
                 </Button>
               </div>
             )}
@@ -333,25 +333,25 @@ export default function ImportPage() {
 
         {step === "preview" && report ? (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Import Preview</h2>
+            <h2 className="text-lg font-semibold">{m.heading_import_preview()}</h2>
             <div className="rounded-md border p-4 text-sm">
-              <p>{String(features.length)} features normalized</p>
+              <p>{String(features.length)} {m.msg_features_normalized()}</p>
               {skippedCount > 0 ? (
                 <p className="text-yellow-600">
-                  {String(skippedCount)} features skipped (unknown kind)
+                  {String(skippedCount)} {m.msg_features_skipped()}
                 </p>
               ) : null}
               <div className="mt-2 space-y-1">
                 <p>
-                  Sources:{" "}
+                  {m.label_sources()}:{" "}
                   {String(features.filter((f) => f.kind === "source").length)}
                 </p>
                 <p>
-                  Buildings:{" "}
+                  {m.label_buildings()}:{" "}
                   {String(features.filter((f) => f.kind === "building").length)}
                 </p>
                 <p>
-                  Barriers:{" "}
+                  {m.label_barriers()}:{" "}
                   {String(features.filter((f) => f.kind === "barrier").length)}
                 </p>
               </div>
@@ -361,7 +361,7 @@ export default function ImportPage() {
               <div className="rounded-md border border-destructive/50 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-destructive">
                   <XCircle className="h-4 w-4" />
-                  {String(report.errors.length)} validation error(s)
+                  {String(report.errors.length)} {m.status_validation_errors()}
                 </div>
                 <ul className="mt-2 space-y-1 text-xs">
                   {report.errors.slice(0, 5).map((e, i) => (
@@ -380,7 +380,7 @@ export default function ImportPage() {
               <div className="rounded-md border border-yellow-500/50 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-yellow-600">
                   <AlertTriangle className="h-4 w-4" />
-                  {String(report.warnings.length)} warning(s)
+                  {String(report.warnings.length)} {m.status_validation_warnings()}
                 </div>
               </div>
             ) : null}

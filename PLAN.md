@@ -323,7 +323,7 @@ Status: complete.
   - [x] Per-run chunk cache persists on disk
   - [x] Shared keyed chunk cache persists on disk across equivalent runs
   - [x] Benchmark suite cache cleanup via `noise bench --keep-last`
-  - [ ] General cache retention/cleanup policy across non-benchmark runs
+  - [x] General cache retention/cleanup policy across non-benchmark runs
   - [x] Stale-cache invalidation strategy for changed inputs/config
 - [x] Implement `noise bench`
   - [x] Standard benchmark scenarios
