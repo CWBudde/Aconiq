@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { IS_WASM_MODE } from "@/api/mode";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
 import { FallbackMap } from "./fallback-map";
@@ -21,6 +22,9 @@ const INTERACTIVE_LAYERS = [
 const WEBGL_DISABLED_KEY = "aconiq.map.webgl_disabled";
 
 function isWebGLDisabled(): boolean {
+  if (IS_WASM_MODE) {
+    return true;
+  }
   try {
     return window.sessionStorage.getItem(WEBGL_DISABLED_KEY) === "true";
   } catch {
