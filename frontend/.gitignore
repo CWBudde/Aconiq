@@ -3,3 +3,5 @@ dist/
 *.local
 .env
 *.tsbuildinfo
+project.inlang/cache/
+src/i18n/

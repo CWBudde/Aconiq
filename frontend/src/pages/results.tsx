@@ -503,29 +503,29 @@ function CompareTab({
         <p className="font-mono text-xs">{r.id}</p>
         <div className="mt-2 space-y-0.5 text-xs">
           <p>
-            <span className="text-muted-foreground">Standard:</span>{" "}
+            <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
             <span className="font-mono">{r.standard_id}</span>
           </p>
           <p>
-            <span className="text-muted-foreground">Version:</span>{" "}
+            <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
             <span className="font-mono">{r.version}</span>
           </p>
           {r.profile ? (
             <p>
-              <span className="text-muted-foreground">Profile:</span>{" "}
+              <span className="text-muted-foreground">{m.label_profile()}:</span>{" "}
               <span className="font-mono">{r.profile}</span>
             </p>
           ) : null}
           <p>
-            <span className="text-muted-foreground">Started:</span>{" "}
+            <span className="text-muted-foreground">{m.label_started()}:</span>{" "}
             {formatTime(r.started_at)}
           </p>
           <p>
-            <span className="text-muted-foreground">Duration:</span>{" "}
+            <span className="text-muted-foreground">{m.label_duration()}:</span>{" "}
             {formatDuration(r.started_at, r.finished_at)}
           </p>
           <p>
-            <span className="text-muted-foreground">Artifacts:</span>{" "}
+            <span className="text-muted-foreground">{m.label_artifacts()}:</span>{" "}
             {String(r.artifacts.length)}
           </p>
         </div>
