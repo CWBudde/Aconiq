@@ -12,6 +12,7 @@ import type {
 import type { GeoJSONFeatureCollection } from "@/model/types";
 
 const API_BASE = "";
+const IS_WASM = import.meta.env.VITE_WASM_MODE === "true";
 
 async function fetchJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -25,10 +26,22 @@ async function fetchJSON<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** Ensure the WASM kernel is loaded (registers window.aconiq). */
+async function ensureKernel(): Promise<void> {
+  const { getKernel } = await import("@/wasm/kernel");
+  await getKernel();
+}
+
 export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health.all,
-    queryFn: () => fetchJSON<HealthResponse>("/api/v1/health"),
+    queryFn: async () => {
+      if (IS_WASM) {
+        await ensureKernel();
+        return JSON.parse(window.aconiq!.health()) as HealthResponse;
+      }
+      return fetchJSON<HealthResponse>("/api/v1/health");
+    },
     staleTime: 60_000,
   });
 }
@@ -36,7 +49,15 @@ export function useHealth() {
 export function useProjectStatus() {
   return useQuery({
     queryKey: queryKeys.project.status(),
-    queryFn: () => fetchJSON<ProjectStatusResponse>("/api/v1/project/status"),
+    queryFn: async () => {
+      if (IS_WASM) {
+        await ensureKernel();
+        return JSON.parse(
+          window.aconiq!.projectStatus(),
+        ) as ProjectStatusResponse;
+      }
+      return fetchJSON<ProjectStatusResponse>("/api/v1/project/status");
+    },
   });
 }
 

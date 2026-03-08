@@ -44,372 +44,78 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ## Phase 10 — CNOSSOS-EU: Road (required, implement earlier)
 
-**Goal:** first real normative module.
+Status: complete.
 
-- [x] Define CNOSSOS Road source schema
-  - [x] Add `cnossos-road` module under `backend/internal/standards/cnossos/road`
-  - [x] Define typed `RoadSource` payload for line sources
-  - [x] Add source attributes for road category, surface, speed, gradient, junction context, temperature, studded tyre share, and per-period traffic splits
-  - [x] Register version/profile metadata, supported source types, indicators, and run parameter schema in the standards framework
-- [x] Implement emission model
-  - [x] Compute deterministic road emissions from table/piecewise road traffic logic
-  - [x] Support period splits for `day`, `evening`, `night`
-  - [x] Add baseline context corrections for junction proximity, temperature, and studded tyres
-- [x] Implement propagation chain needed for Road use-case
-  - [x] Add deterministic line-source to receiver coupling with fixed subsegment discretization
-  - [x] Implement attenuation chain: geometric divergence + air absorption + ground attenuation + barrier term
-  - [x] Wire `noise run --standard cnossos-road` through model extraction, receiver-grid generation, compute, export, and provenance
-- [x] Implement indicators
-  - [x] Lday, Levening, Lnight
-  - [x] Lden aggregation
-  - [x] Lnight output
-- [x] Export: Lden/Lnight rasters + receiver point tables
-
-### QA / Research
-
-- [x] Add module-level unit tests for schema validation, emission, propagation, indicator aggregation, and export
-- [x] Add golden scenario fixture + deterministic regression coverage
-- [x] Add CLI end-to-end test covering `cnossos-road` run output production
-- [x] Add synthetic acceptance fixtures for baseline and contextual road scenarios
-- [x] Collect public CNOSSOS Road method/context sources and candidate validation-source inventory (license-safe)
-- [x] Extract at least one usable public, attributable reference-total source for CNOSSOS Road
-- [x] Document rounding/tolerance rules used by the implementation
-- [x] Add per-feature CNOSSOS Road attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand Road baseline toward standards-faithful normative coverage beyond the current preview approximation
-
-### Yet missing for a fuller baseline definition
-
-- [x] Add dedicated phase baseline documentation in `docs/phase10-cnossos-road-baseline.md`
-- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
-- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
+- Shipped baseline: `cnossos-road` planning-track road module with typed line sources, deterministic emission/propagation, `Lday` / `Levening` / `Lnight` / `Lden`, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, rounding/tolerance note, per-feature import extraction, and public attributable road reference totals.
+- Boundary: shipped as a deterministic preview baseline, not a full public conformance suite.
+- Baseline doc: `docs/phase10-cnossos-road-baseline.md`
 
 ---
 
 ## Phase 11 — CNOSSOS-EU: Rail (required, deferred)
 
-- [x] Define CNOSSOS Rail source schema
-  - [x] Add `cnossos-rail` module under `backend/internal/standards/cnossos/rail`
-  - [x] Define typed `RailSource` payload for line sources
-  - [x] Add source attributes for traction, track type, roughness, speed, braking share, curve radius, bridge flag, and per-period traffic
-  - [x] Register version/profile metadata, supported source types, indicators, and run parameter schema in the standards framework
-- [x] Implement rail emission path
-  - [x] Compute deterministic rail emissions from rolling, traction, braking, and infrastructure terms
-  - [x] Support period splits for `day`, `evening`, `night`
-  - [x] Convert period levels to `Lday`, `Levening`, `Lnight`, `Lden`
-- [x] Implement required propagation adjustments
-  - [x] Add deterministic line-source to receiver coupling with fixed subsegment discretization
-  - [x] Implement attenuation chain: geometric divergence + air absorption + ground attenuation
-  - [x] Add rail-specific adjustments for bridge correction and curve squeal
-  - [x] Wire `noise run --standard cnossos-rail` through model extraction, receiver-grid generation, compute, export, and provenance
-- [x] Add golden projects + regression tests
-  - [x] Add module-level unit tests for schema validation, emission, propagation, indicator aggregation, and export
-  - [x] Add golden scenario fixture + snapshot for deterministic regression coverage
-  - [x] Add CLI end-to-end test covering `cnossos-rail` run output production
-  - [x] Add synthetic acceptance fixtures for baseline and contextual rail scenarios
+Status: complete.
 
-### QA / Research
-
-- [x] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Document rounding/tolerance rules used by the implementation
-- [x] Expand Rail baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Rail
-
-### Phase closure notes
-
-- [x] Add dedicated phase baseline documentation in `docs/phase11-cnossos-rail-baseline.md`
-- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
-- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
+- Shipped baseline: `cnossos-rail` planning-track rail module with typed line sources, deterministic emission/propagation, rail-specific bridge/curve adjustments, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, rounding/tolerance note, per-feature import extraction, and public attributable rail reference totals.
+- Boundary: shipped as a deterministic preview baseline, not a full public conformance suite.
+- Baseline doc: `docs/phase11-cnossos-rail-baseline.md`
 
 ---
 
 ## Phase 12 — CNOSSOS-EU: Industry (required, deferred)
 
-- [x] Define CNOSSOS Industry source schema
-  - [x] Add `cnossos-industry` module under `backend/internal/standards/cnossos/industry`
-  - [x] Define typed `IndustrySource` payload for `point` and `area` sources
-  - [x] Add source attributes: source height, sound power, tonality, impulsivity
-  - [x] Add per-period operating factors for `day`, `evening`, `night`
-  - [x] Register version/profile metadata, supported source types, indicators, and run parameter schema in the standards framework
-- [x] Implement industry emission path
-  - [x] Compute period emissions from sound power plus tonality / impulsivity corrections
-  - [x] Apply operating-factor weighting per period
-  - [x] Add area-source scaling from plan area
-  - [x] Add indicator conversion for `Lday`, `Levening`, `Lnight`, `Lden`
-- [x] Implement required propagation adjustments
-  - [x] Add deterministic point/area source to receiver distance coupling
-  - [x] Implement attenuation chain: geometric divergence + air absorption + ground attenuation + screening term
-  - [x] Add baseline industry adjustments: facade reflection term and area-source near-field boost
-  - [x] Wire `noise run --standard cnossos-industry` through model extraction, receiver-grid generation, compute, export, and provenance
-- [x] Add golden projects + regression tests
-  - [x] Add module-level unit tests for schema validation, emission, propagation, indicator aggregation, and export
-  - [x] Add golden scenario fixture + snapshot for deterministic regression coverage
-  - [x] Add CLI end-to-end test covering `cnossos-industry` run output production
-  - [x] Add baseline phase documentation in `docs/phase12-cnossos-industry-baseline.md`
+Status: complete.
 
-### QA / Research
-
-- [x] Add per-feature CNOSSOS Industry attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand Industry baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Industry
-- [x] Document rounding/tolerance rules used by the implementation
-
-### Phase closure notes
-
-- [x] Add dedicated phase baseline documentation in `docs/phase12-cnossos-industry-baseline.md`
-- [x] Clarify the intended compliance boundary and preview-vs-normative limits in that baseline document
-- [x] Separate synthetic regression coverage from future public/normative validation evidence in the phase write-up
+- Shipped baseline: `cnossos-industry` planning-track industry module with typed point/area sources, sound-power-based emission, deterministic propagation, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, rounding/tolerance note, per-feature import extraction, and public attributable industry reference totals / exposure shares.
+- Boundary: shipped as a deterministic preview baseline, not a full public conformance suite.
+- Baseline doc: `docs/phase12-cnossos-industry-baseline.md`
 
 ---
 
 ## Phase 13 — CNOSSOS-EU: Aircraft (required long-term, deferred)
 
-- [x] Define CNOSSOS Aircraft scope + compliance boundary
-  - [x] Deliver first baseline as an airport-vicinity profile, not national strategic mapping
-  - [x] Scope v1 to movement-based source modeling, period aggregation, receiver indicators, raster/table export
-  - [x] Document baseline-preview compliance boundary in `docs/phase13-cnossos-aircraft-baseline.md`
-- [x] Define aircraft data model and APIs
-  - [x] Add `cnossos-aircraft` module under `backend/internal/standards/cnossos/aircraft`
-  - [x] Define typed aircraft source schema with runway/airport reference, operation type, aircraft class, movement periods, and 3D flight-track geometry
-  - [x] Add supporting airport/runway identifiers needed by the compute path
-  - [x] Add standards-framework descriptor with version/profile metadata, supported source types, indicators, and run parameter schema
-  - [x] Add CLI/model extraction path from normalized GeoJSON + run parameters into typed aircraft sources
-- [x] Implement aircraft emission path
-  - [x] Implement deterministic movement-based emission calculation for aircraft operations
-  - [x] Support period splits for `day`, `evening`, `night`
-  - [x] Handle baseline operation distinctions for departure/arrival, aircraft class, and engine state
-  - [x] Convert period levels to `Lday`, `Levening`, `Lnight`, `Lden`
-- [x] Implement aircraft propagation path
-  - [x] Add source-to-receiver coupling for segmented 3D aircraft trajectories
-  - [x] Implement baseline attenuation chain: geometric divergence + air absorption + ground attenuation
-  - [x] Add aircraft-specific adjustments for climb, approach, and bank-angle directivity
-  - [x] Wire `noise run --standard cnossos-aircraft` through extraction, receiver generation, compute, export, and provenance
-- [x] Add result export + regression coverage
-  - [x] Export receiver tables (`JSON`, `CSV`) and rasters (`Lden`, `Lnight`)
-  - [x] Add module-level unit tests for schema validation, emission, propagation, indicators, and export
-  - [x] Add golden scenario fixtures + deterministic snapshots
-  - [x] Add CLI end-to-end tests for aircraft runs
+Status: complete.
 
-### QA / Research
-
-- [x] Add per-feature CNOSSOS Aircraft attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand Aircraft source modeling beyond the airport-vicinity baseline to richer airport/runway/trajectory inputs
-- [x] Expand Aircraft baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Aircraft
-- [x] Document rounding/tolerance rules used by the implementation
-
-### Phase closure notes
-
-- [x] Identify license-safe public aircraft/airport reference sources
-- [x] Clarify minimum airport/runway/trajectory input set needed for a useful first baseline
-- [x] Add dedicated phase baseline documentation in `docs/phase13-cnossos-aircraft-baseline.md`
+- Shipped baseline: `cnossos-aircraft` planning-track aircraft module with airport-vicinity scope, typed 3D trajectories, movement-based emission/propagation, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, rounding/tolerance note, per-feature import extraction, clarified minimum input contract, and public attributable aircraft reference totals.
+- Boundary: shipped as a deterministic preview baseline, not a full public conformance suite.
+- Baseline doc: `docs/phase13-cnossos-aircraft-baseline.md`
 
 ---
 
 ## Phase 14 — Germany mapping track: BUB (required, deferred)
 
-**Goal:** “mapping context” standard, separate from planning/approval standards.
+Status: complete.
 
-- [x] Define mapping-track scope + context model
-  - [x] Add explicit “context switch” in the domain model (Mapping vs Planning)
-  - [x] Define how mapping-track runs relate to existing CNOSSOS / planning-track runs in provenance and UX
-  - [x] Define compliance boundary for BUB implementation vs external normative data/text
-- [x] Define BUB module structure and data model
-  - [x] Add first BUB submodule under `backend/internal/standards/bub/road`
-  - [x] Split module structure into BUB road / rail / industry submodules where the logic diverges
-  - [x] Define typed source schema, indicators, and mapping-specific metadata for the first BUB road submodule
-  - [x] Add standards-framework descriptor with mapping context metadata and supported source types
-- [x] Add BUB run parameter and import model support
-  - [x] Add BUB road-specific run parameter schema
-  - [x] Define normalized GeoJSON + run parameter mapping for the first BUB road submodule
-  - [x] Identify which inputs can be represented in generic project data vs which require BUB-only parameters or artifacts
-- [x] Implement baseline BUB compute and export flow
-  - [x] Implement deterministic compute flow for the first BUB submodule brought online (`bub-road`)
-  - [x] Wire `noise run` integration, provenance, result artifacts, and exports
-  - [x] Ensure mapping-context outputs stay separated from planning-context outputs via explicit standard context metadata
-- [x] Add verification and acceptance coverage
-  - [x] Add module-level unit tests and golden scenario for `bub-road`
-  - [x] Add acceptance suite integration hooks in `internal/qa/`
-  - [x] Add phase documentation and implementation notes
-
-### Research
-
-- [x] Clarify availability and formats for BUB-related datasets (e.g., BUB-D) and import rights
-- [x] Determine minimum shippable BUB sub-scope for first implementation: road only baseline first
-- [x] Document required indicators, rounding rules, and validation tolerances for BUB outputs
-
-### Phase closure notes
-
-- [x] Add BUB rail baseline submodule
-- [x] Add BUB industry baseline submodule
-- [x] Add per-feature BUB attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand BUB road baseline toward standards-faithful normative coverage beyond the current preview approximation
-- [x] Add dedicated phase baseline documentation in `docs/phase14-bub-road-baseline.md`
+- Shipped baseline: `bub-road` mapping-track road module with explicit mapping context, divergent `bub/road`, `bub/rail`, and `bub/industry` package split, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, per-feature import extraction, documented rounding/tolerances, and documented handling of external BUB datasets / rights.
+- Boundary: shipped as a deterministic mapping preview baseline; official BUB raw datasets remain external unless redistribution rights are clear.
+- Baseline doc: `docs/phase14-bub-road-baseline.md`
 
 ---
 
 ## Phase 15 — Germany mapping track: BUF (required, deferred)
 
-- [x] Define BUF scope + compliance boundary
-  - [x] Clarify BUF purpose within the mapping track and its relationship to BUB/BEB outputs
-  - [x] Treat BUF as a standalone airport-noise mapping module, not a downstream BUB post-processing stage
-  - [x] Define baseline-preview compliance boundary for BUF implementation vs external normative data/text in `docs/phase15-buf-aircraft-baseline.md`
-- [x] Define BUF data model and APIs
-  - [x] Add first `buf/aircraft` module under `backend/internal/standards/`
-  - [x] Define typed input model for line-based flight tracks with airport/runway refs, operation type, aircraft class, and movement periods
-  - [x] Add standards-framework descriptor with mapping context metadata, supported source types, indicators, and run parameter schema
-- [x] Implement BUF compute and export path
-  - [x] Implement deterministic compute flow for the first BUF scope brought online (`buf-aircraft`)
-  - [x] Wire CLI/run integration, provenance, and artifacts
-  - [x] Add report/table exports needed by the baseline (`JSON`, `CSV`, raster sidecar/bin)
-- [x] Add verification coverage
-  - [x] Add module-level tests and golden scenario for `buf-aircraft`
-  - [x] Add acceptance hook entry for `buf-aircraft`
-  - [x] Add implementation notes and compliance notes
+Status: complete.
 
-### Remaining limitations / follow-up
-
-- [x] Add per-feature BUF aircraft attribute extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand BUF baseline toward standards-faithful airport/runway/trajectory coverage beyond the current preview approximation
-- [x] Collect license-safe validation scenarios or reference totals for BUF aircraft
-- [x] Document rounding/tolerance rules used by the implementation
-
-### Phase closure notes
-
-- [x] Clarify the exact module shape enough for first implementation: BUF is treated as a standalone aircraft mapping module
-- [x] Clarify the exact normative scope and input/output requirements for BUF beyond the current baseline
-- [x] Identify license-safe validation scenarios or reference totals for BUF
-- [x] Decide whether BUF should be modeled as a standard module or as a post-processing stage
-- [x] Add dedicated phase baseline documentation in `docs/phase15-buf-aircraft-baseline.md`
+- Shipped baseline: `buf-aircraft` mapping-track aircraft module treated as a standalone module, with typed 3D trajectories, CLI integration, provenance, and raster/table export.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, per-feature import extraction, documented rounding/tolerances, clarified scope/I-O contract, and attributable public aircraft reference totals.
+- Boundary: shipped as a deterministic mapping preview baseline, not a full official BUF conformance suite.
+- Baseline doc: `docs/phase15-buf-aircraft-baseline.md`
 
 ---
 
 ## Phase 16 — Germany mapping track: BEB (required, deferred)
 
-- [x] Define BEB scope + pipeline placement
-  - [x] Confirm `beb/` as an exposure / affected-persons stage downstream of mapping results
-  - [x] Define first upstream contract as `bub-road` levels consumed within the BEB baseline
-  - [x] Define baseline-preview compliance boundary for BEB implementation vs external normative data/text in `docs/phase16-beb-exposure-baseline.md`
-- [x] Define BEB data model and required inputs
-  - [x] Define typed BEB inputs for building footprints, building height, building usage, and occupancy-derived aggregation units
-  - [x] Define required upstream contract for the first baseline (`bub-road` only)
-  - [x] Define output schemas for building-level exposure records plus totals summaries
-- [x] Implement BEB pipeline stage
-  - [x] Implement deterministic exposure aggregation logic
-  - [x] Add report/table outputs for BEB
-  - [x] Wire BEB into run provenance and artifact persistence
-- [x] Add verification coverage
-  - [x] Add known-totals tests
-  - [x] Add golden scenarios and edge-case tests for aggregation logic
-  - [x] Add implementation notes and assumptions
+Status: complete.
 
-### Remaining limitations / follow-up
-
-- [x] Add per-feature BEB occupancy / dwelling / usage extraction from imported GeoJSON instead of run-level defaults only
-- [x] Expand BEB upstream contracts beyond `bub-road` to `buf-aircraft` and other mapping modules
-- [x] Add exposure-band aggregation/output in `5 dB` bands for `Lden` and `Lnight`
-- [x] Collect license-safe public validation/verification totals for BEB
-- [x] Document rounding/tolerance rules and aggregation conventions used by the implementation
-- [x] Expand the BEB baseline toward standards-faithful normative exposure aggregation beyond the current preview approximation
-
-### Phase closure notes
-
-- [x] Clarify required population/building datasets and import rights
-- [x] Align BEB export/report schemas with EEA-style `Lden` / `Lnight` banded exposure summaries
-- [x] Identify license-safe reference totals or validation scenarios for BEB
-- [x] Document rounding/tolerance rules and aggregation conventions for BEB outputs
-- [x] Add dedicated phase baseline documentation in `docs/phase16-beb-exposure-baseline.md`
-
----
-
-## Cross-phase execution sequence — Phases 10 to 16
-
-This sequence orders the remaining work by implementation dependency and product value, not by
-original phase number.
-
-### Milestone A — Real model inputs first
-
-**Goal:** stop depending mainly on run-level defaults and make the shipped baselines usable on
-mixed imported models.
-
-- [x] Add per-feature CNOSSOS Road attribute extraction from imported GeoJSON
-- [x] Add per-feature CNOSSOS Rail attribute extraction from imported GeoJSON
-- [x] Add per-feature CNOSSOS Industry attribute extraction from imported GeoJSON
-- [x] Add per-feature CNOSSOS Aircraft attribute extraction from imported GeoJSON
-- [x] Add per-feature BUB Road attribute extraction from imported GeoJSON
-- [x] Add per-feature BUF Aircraft attribute extraction from imported GeoJSON
-- [x] Add per-feature BEB occupancy / dwelling / usage extraction from imported GeoJSON
-
-### Milestone B — Raise normative fidelity of shipped baselines
-
-**Goal:** close the largest correctness gap in already-online standards modules.
-
-- [x] Expand CNOSSOS Road baseline toward standards-faithful normative coverage beyond the current
-      preview approximation
-- [x] Expand CNOSSOS Rail baseline toward standards-faithful normative coverage beyond the current
-      preview approximation
-- [x] Expand CNOSSOS Industry baseline toward standards-faithful normative coverage beyond the
-      current preview approximation
-- [x] Expand CNOSSOS Aircraft baseline toward standards-faithful airport/runway/trajectory
-      coverage beyond the current preview approximation
-- [x] Expand BUB Road baseline toward standards-faithful normative coverage beyond the current
-      preview approximation
-- [x] Expand BUF Aircraft baseline toward standards-faithful normative coverage beyond the current
-      preview approximation
-- [x] Expand BEB Exposure baseline toward standards-faithful normative aggregation beyond the
-      current preview approximation
-
-### Milestone C — Complete missing Germany mapping modules and contracts
-
-**Goal:** finish the largest remaining structural gaps in the Germany mapping track.
-
-- [x] Add BUB Rail baseline submodule
-- [x] Add BUB Industry baseline submodule
-- [x] Expand BEB upstream contracts beyond `bub-road` to at least `buf-aircraft`
-
-### Milestone D — Verification and acceptance evidence
-
-**Goal:** make Phases 10 to 16 defensible with license-safe evidence.
-
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Road
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Rail
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Industry
-- [x] Collect license-safe public validation / verification cases or attributable reference totals for CNOSSOS Aircraft
-- [x] Identify license-safe validation scenarios or reference totals for BUB Road
-- [x] Identify license-safe validation scenarios or reference totals for BUF Aircraft
-- [x] Identify license-safe validation scenarios or reference totals for BEB Exposure
-- [x] Convert collected scenarios into deterministic acceptance fixtures under `internal/qa/`
-
-### Milestone E — Rounding, tolerances, and reporting contracts
-
-**Goal:** remove ambiguity at output boundaries.
-
-- [x] Document rounding / tolerance rules for CNOSSOS Road
-- [x] Document rounding / tolerance rules for CNOSSOS Rail
-- [x] Document rounding / tolerance rules for CNOSSOS Industry
-- [x] Document rounding / tolerance rules for CNOSSOS Aircraft
-- [x] Document rounding / tolerance rules for BUB Road
-- [x] Document rounding / tolerance rules for BUF Aircraft
-- [x] Document rounding / tolerance rules for BEB Exposure, including aggregation conventions
-
-### Milestone F — Data rights and import packaging
-
-**Goal:** close the remaining legal and operational blockers around real datasets.
-
-- [x] Clarify availability and import rights for BUB-related datasets and formats
-- [x] Clarify the exact normative scope and input/output requirements for BUF beyond the current
-      baseline
-- [x] Clarify required population/building datasets and import rights for BEB
-- [ ] Decide which domain-specific properties belong in normalized project data vs sidecar
-      artifacts or standards data packs
-
-### Recommended implementation order
-
-1. Milestone A for Phases 10, 14, 15, and 16 first.
-2. Milestone B for Phases 10, 14, 15, and 16 in parallel with targeted acceptance fixtures.
-3. Milestone C to add BUB rail and BUB industry, then expand BEB upstream contracts.
-4. Milestones D and E across all online modules as soon as each module stabilizes numerically.
-5. Milestone A and B cleanup for Phases 11, 12, and 13.
-6. Milestone F continuously, but block any dataset-dependent scope expansions on it.
+- Shipped baseline: `beb-exposure` downstream mapping-track exposure module with building inputs, upstream support for `bub-road` and `buf-aircraft`, threshold-based affected totals, and `5 dB` `Lden` / `Lnight` banded summaries.
+- QA / evidence: module tests, golden regression, CLI E2E, synthetic acceptance fixtures, per-feature occupancy extraction, documented dataset/rights handling, documented rounding/aggregation conventions, and attributable public exposed-population reference totals.
+- Boundary: shipped as a deterministic mapping preview baseline, not a full official BEB conformance suite with official building/population data.
+- Baseline doc: `docs/phase16-beb-exposure-baseline.md`
 
 ---
 

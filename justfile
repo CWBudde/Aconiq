@@ -51,6 +51,10 @@ wasm-build:
     cd backend && GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
     cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
 
+# Build the frontend for the WASM browser demo (no HTTP backend)
+fe-build-wasm: wasm-build
+    cd frontend && VITE_WASM_MODE=true bun run build
+
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy fe-ci
 

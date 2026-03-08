@@ -97,7 +97,7 @@ func newRootCommand() *cobra.Command {
 		newExportCommand(),
 		newServeCommand(),
 		newOpenAPICommand(),
-		newPlaceholderCommand("bench", "Run benchmark scenarios"),
+		newBenchCommand(),
 	)
 
 	return rootCmd
