@@ -32,7 +32,7 @@ jobs:
         run: GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
 
       - name: Copy wasm_exec.js
-        run: cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" frontend/public/wasm_exec.js
+        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

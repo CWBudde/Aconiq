@@ -49,7 +49,7 @@ build:
 # Build the WebAssembly computation kernel (outputs to frontend/public/)
 wasm-build:
     cd backend && GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
-    cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" frontend/public/wasm_exec.js
+    cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
 
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy fe-ci
