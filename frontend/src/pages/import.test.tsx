@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import ImportPage from "./import";
 import { useModelStore } from "@/model/model-store";
@@ -36,6 +37,16 @@ function makeFile(content: string, name = "model.geojson"): File {
 }
 
 function renderImportPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  });
   const router = createMemoryRouter(
     [
       { path: "/import", element: <ImportPage /> },
@@ -43,7 +54,11 @@ function renderImportPage() {
     ],
     { initialEntries: ["/import"] },
   );
-  return render(<RouterProvider router={router} />);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
