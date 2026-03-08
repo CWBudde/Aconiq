@@ -42,6 +42,7 @@ func newExportCommand() *cobra.Command {
 	var outDir string
 	var emitSampleResults bool
 	var skipReport bool
+	var generatePDF bool
 
 	cmd := &cobra.Command{
 		Use:   "export",
@@ -50,6 +51,10 @@ func newExportCommand() *cobra.Command {
 			state, ok := stateFromCommand(cmd)
 			if !ok {
 				return domainerrors.New(domainerrors.KindInternal, "cli.export", "command state unavailable", nil)
+			}
+
+			if skipReport && generatePDF {
+				return domainerrors.New(domainerrors.KindUserInput, "cli.export", "--pdf cannot be used together with --skip-report", nil)
 			}
 
 			store, err := projectfs.New(state.Config.ProjectPath)
@@ -153,16 +158,23 @@ func newExportCommand() *cobra.Command {
 					ModelDumpPath:     copiedResults.ModelDump,
 					QASuites:          collectQASuites(proj.Artifacts, run.ID),
 					GeneratedAt:       nowUTC(),
+					GeneratePDF:       generatePDF,
 				})
 				if reportErr != nil {
 					return domainerrors.New(domainerrors.KindInternal, "cli.export", "build report bundle", reportErr)
 				}
 
-				summary.GeneratedReports = dedupeAndSort([]string{
+				generatedReports := []string{
 					relativePath(bundleDir, reportBundle.ContextPath),
 					relativePath(bundleDir, reportBundle.MarkdownPath),
 					relativePath(bundleDir, reportBundle.HTMLPath),
-				})
+					relativePath(bundleDir, reportBundle.TypstPath),
+				}
+				if reportBundle.PDFPath != "" {
+					generatedReports = append(generatedReports, relativePath(bundleDir, reportBundle.PDFPath))
+				}
+
+				summary.GeneratedReports = dedupeAndSort(generatedReports)
 				reportArtifacts = append(
 					reportArtifacts,
 					project.ArtifactRef{
@@ -186,7 +198,23 @@ func newExportCommand() *cobra.Command {
 						Path:      relativePath(store.Root(), reportBundle.HTMLPath),
 						CreatedAt: nowUTC(),
 					},
+					project.ArtifactRef{
+						ID:        fmt.Sprintf("artifact-export-%s-report-typst", exportID),
+						RunID:     run.ID,
+						Kind:      "export.report_typst",
+						Path:      relativePath(store.Root(), reportBundle.TypstPath),
+						CreatedAt: nowUTC(),
+					},
 				)
+				if reportBundle.PDFPath != "" {
+					reportArtifacts = append(reportArtifacts, project.ArtifactRef{
+						ID:        fmt.Sprintf("artifact-export-%s-report-pdf", exportID),
+						RunID:     run.ID,
+						Kind:      "export.report_pdf",
+						Path:      relativePath(store.Root(), reportBundle.PDFPath),
+						CreatedAt: nowUTC(),
+					})
+				}
 			}
 
 			if emitSampleResults {
@@ -247,7 +275,8 @@ func newExportCommand() *cobra.Command {
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to export (defaults to latest run)")
 	cmd.Flags().StringVar(&outDir, "out", filepath.Join(".noise", "exports"), "Output directory for export bundles")
 	cmd.Flags().BoolVar(&emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
-	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html are generated)")
+	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
+	cmd.Flags().BoolVar(&generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
 
 	return cmd
 }

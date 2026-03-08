@@ -40,18 +40,24 @@ type BuildOptions struct {
 	ModelDumpPath     string
 	QASuites          []QASuiteStatus
 	GeneratedAt       time.Time
+	GeneratePDF       bool
+	TypstExecutable   string
+	PDFCompiler       PDFCompiler
 }
 
 type GeneratedReport struct {
 	ContextPath  string
 	MarkdownPath string
 	HTMLPath     string
+	TypstPath    string
+	PDFPath      string
 }
 
 type reportContext struct {
 	Title string `json:"title"`
 
-	GeneratedAt string `json:"generated_at"`
+	TemplateVersion string `json:"template_version"`
+	GeneratedAt     string `json:"generated_at"`
 
 	ProjectID   string `json:"project_id"`
 	ProjectName string `json:"project_name"`
@@ -199,16 +205,36 @@ func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 		return GeneratedReport{}, err
 	}
 
+	typstPath := filepath.Join(opts.BundleDir, "report.typ")
+
+	err = writeTypst(typstPath, ctx)
+	if err != nil {
+		return GeneratedReport{}, err
+	}
+
+	var pdfPath string
+	if opts.GeneratePDF {
+		pdfPath = filepath.Join(opts.BundleDir, "report.pdf")
+
+		err = writePDF(pdfPath, ctx, generatedAt, opts)
+		if err != nil {
+			return GeneratedReport{}, err
+		}
+	}
+
 	return GeneratedReport{
 		ContextPath:  contextPath,
 		MarkdownPath: markdownPath,
 		HTMLPath:     htmlPath,
+		TypstPath:    typstPath,
+		PDFPath:      pdfPath,
 	}, nil
 }
 
 func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, error) {
 	ctx := reportContext{
 		Title:           defaultReportTitle,
+		TemplateVersion: reportTypstTemplateVersion,
 		GeneratedAt:     generatedAt.Format(time.RFC3339),
 		ProjectID:       opts.Project.ProjectID,
 		ProjectName:     opts.Project.Name,

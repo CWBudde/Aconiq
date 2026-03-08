@@ -36,6 +36,7 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	bundleDir := latestExportBundleDir(t, projectDir)
 	assertFileExists(t, filepath.Join(bundleDir, "report.md"))
 	assertFileExists(t, filepath.Join(bundleDir, "report.html"))
+	assertFileExists(t, filepath.Join(bundleDir, "report.typ"))
 	assertFileExists(t, filepath.Join(bundleDir, "report-context.json"))
 	assertFileExists(t, filepath.Join(bundleDir, "results", "receivers.json"))
 	assertFileExists(t, filepath.Join(bundleDir, "results", "run-summary.json"))
@@ -95,16 +96,24 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 	}
 
 	foundHTMLArtifact := false
+	foundTypstArtifact := false
 
 	for _, artifact := range proj.Artifacts {
 		if artifact.Kind == "export.report_html" {
 			foundHTMLArtifact = true
-			break
+		}
+
+		if artifact.Kind == "export.report_typst" {
+			foundTypstArtifact = true
 		}
 	}
 
 	if !foundHTMLArtifact {
 		t.Fatalf("expected export.report_html artifact in project manifest")
+	}
+
+	if !foundTypstArtifact {
+		t.Fatalf("expected export.report_typst artifact in project manifest")
 	}
 }
 
@@ -126,6 +135,11 @@ func TestExportSkipReport(t *testing.T) {
 		t.Fatalf("expected report.html to be skipped")
 	}
 
+	_, err = os.Stat(filepath.Join(bundleDir, "report.typ"))
+	if !os.IsNotExist(err) {
+		t.Fatalf("expected report.typ to be skipped")
+	}
+
 	summaryPayload, err := os.ReadFile(filepath.Join(bundleDir, "export-summary.json"))
 	if err != nil {
 		t.Fatalf("read export summary: %v", err)
@@ -140,6 +154,26 @@ func TestExportSkipReport(t *testing.T) {
 
 	if generated, exists := summary["generated_reports"]; exists && len(anySliceToStrings(generated)) > 0 {
 		t.Fatalf("expected generated_reports to be empty when --skip-report is set, got %#v", generated)
+	}
+}
+
+func TestExportRejectsPDFWithSkipReport(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase20PDFConflict", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield")
+
+	err := runCLI("--project", projectDir, "export", "--skip-report", "--pdf")
+	if err == nil {
+		t.Fatal("expected export command error")
+	}
+
+	if !strings.Contains(err.Error(), "--pdf cannot be used together with --skip-report") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

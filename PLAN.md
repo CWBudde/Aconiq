@@ -26,7 +26,7 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ---
 
-## Phases 0–9 — Completed foundation track
+## Phases 1–9 — Completed foundation track
 
 **Goal:** summarize the completed platform and workflow baseline established before the first real normative standards modules.
 
@@ -524,16 +524,16 @@ mixed imported models.
 
 **Goal:** deterministic, versioned PDF output generated from offline report context.
 
-- [ ] Add Typst template set for report PDF export
-- [ ] Add `noise export --pdf` mode using Typst compilation
-- [ ] Ensure report context (`report-context.json`) is sufficient for PDF rendering without re-reading run artifacts
-- [ ] Define deterministic font and asset strategy for reproducible output hashes
+- [x] Add Typst template set for report PDF export
+- [x] Add `noise export --pdf` mode using Typst compilation
+- [x] Ensure report context (`report-context.json`) is sufficient for PDF rendering without re-reading run artifacts
+- [x] Define deterministic font and asset strategy for reproducible output hashes
 - [ ] Add PDF golden/snapshot checks in CI (metadata and selected page text/image probes)
 - [ ] Decide whether a DOCX report/export path is required after Markdown/HTML/PDF
 
 ### Research
 
-- [ ] Evaluate Typst invocation strategy (embedded binary vs system dependency)
+- [x] Evaluate Typst invocation strategy (embedded binary vs system dependency)
 - [ ] Define template/versioning policy for backward-compatible report styles
 
 ---

@@ -43,13 +43,13 @@ function AppSidebar() {
   const location = useLocation();
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
             AQ
           </div>
-          <span className="text-sm font-semibold tracking-tight">AconiQ</span>
+          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">AconiQ</span>
         </div>
       </SidebarHeader>
 
