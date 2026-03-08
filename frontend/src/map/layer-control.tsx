@@ -7,6 +7,7 @@ import {
 } from "./layers";
 import { useMapStore } from "./map-store";
 import { useMap } from "./use-map";
+import { m } from "@/i18n/messages";
 
 function LayerToggle({ group }: { group: LayerGroup }) {
   const map = useMap();
@@ -52,7 +53,7 @@ export function LayerControl() {
   return (
     <div className="absolute top-2 right-12 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
       <div className="mb-1 text-xs font-medium text-muted-foreground">
-        Model
+        {m.section_model()}
       </div>
       <div className="grid gap-0.5">
         {MODEL_LAYER_GROUPS.map((g) => (
@@ -60,7 +61,7 @@ export function LayerControl() {
         ))}
       </div>
       <div className="mb-1 mt-2 text-xs font-medium text-muted-foreground">
-        Results
+        {m.section_results()}
       </div>
       <div className="grid gap-0.5">
         {RESULT_LAYER_GROUPS.map((g) => (

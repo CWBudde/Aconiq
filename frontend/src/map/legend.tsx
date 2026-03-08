@@ -1,5 +1,6 @@
 import type { ColorStop } from "./color-ramp";
 import { NOISE_LEVEL_RAMP } from "./color-ramp";
+import { m } from "@/i18n/messages";
 
 interface LegendProps {
   title?: string;
@@ -8,14 +9,16 @@ interface LegendProps {
 }
 
 export function Legend({
-  title = "Noise Level",
+  title,
   ramp = NOISE_LEVEL_RAMP,
-  unit = "dB(A)",
+  unit,
 }: LegendProps) {
+  const resolvedTitle = title ?? m.legend_title_noise_level();
+  const resolvedUnit = unit ?? m.legend_unit_db();
   return (
     <div className="absolute bottom-8 right-2 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
       <div className="mb-1 text-xs font-medium text-muted-foreground">
-        {title} ({unit})
+        {resolvedTitle} ({resolvedUnit})
       </div>
       <div className="grid gap-px">
         {ramp.map((stop) => (

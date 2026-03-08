@@ -4,6 +4,7 @@ import { Button } from "@/ui/components/button";
 import { useModelStore } from "@/model/model-store";
 import { validateModel } from "@/model/validate";
 import type { ValidationIssue } from "@/model/types";
+import { m } from "@/i18n/messages";
 
 interface ValidationPanelProps {
   onSelectFeature: (featureId: string) => void;
@@ -16,7 +17,7 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
   if (report.valid && report.warnings.length === 0) {
     return (
       <div className="p-3 text-center text-xs text-muted-foreground">
-        Model is valid — no issues found.
+        {m.msg_model_valid()}
       </div>
     );
   }

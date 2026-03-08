@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/ui/components/tooltip";
 import { useModelStore } from "@/model/model-store";
+import { m } from "@/i18n/messages";
 
 export function UndoRedoBar() {
   const canUndo = useModelStore((s) => s.canUndo);
@@ -45,12 +46,12 @@ export function UndoRedoBar() {
             className="h-8 w-8"
             disabled={!canUndo}
             onClick={undo}
-            aria-label="Undo"
+            aria-label={m.tooltip_undo()}
           >
             <Undo2 className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+        <TooltipContent>{m.tooltip_undo()}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -60,12 +61,12 @@ export function UndoRedoBar() {
             className="h-8 w-8"
             disabled={!canRedo}
             onClick={redo}
-            aria-label="Redo"
+            aria-label={m.tooltip_redo()}
           >
             <Redo2 className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+        <TooltipContent>{m.tooltip_redo()}</TooltipContent>
       </Tooltip>
     </div>
   );

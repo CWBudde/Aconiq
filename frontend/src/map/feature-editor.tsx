@@ -12,6 +12,7 @@ import {
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature, SourceType } from "@/model/types";
 import { Trash2 } from "lucide-react";
+import { m } from "@/i18n/messages";
 
 interface FeatureEditorProps {
   featureId: string | null;
@@ -33,18 +34,18 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
           variant="ghost"
           size="sm"
           onClick={onClose}
-          aria-label="Close editor"
+          aria-label={m.tooltip_close_editor()}
         >
           &times;
         </Button>
       </div>
       <div className="space-y-3">
         <div>
-          <Label className="text-xs text-muted-foreground">ID</Label>
+          <Label className="text-xs text-muted-foreground">{m.label_id()}</Label>
           <p className="font-mono text-xs">{feature.id}</p>
         </div>
         <div>
-          <Label className="text-xs text-muted-foreground">Geometry</Label>
+          <Label className="text-xs text-muted-foreground">{m.label_geometry()}</Label>
           <p className="text-xs">{feature.geometry.type}</p>
         </div>
         <FeatureFields feature={feature} />
@@ -77,16 +78,16 @@ function SourceFields({ feature }: { feature: ModelFeature }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor="source-type" className="text-xs">
-        Source Type
+        {m.label_source_type()}
       </Label>
       <Select value={feature.sourceType ?? ""} onValueChange={handleTypeChange}>
         <SelectTrigger id="source-type" className="h-8 text-xs">
           <SelectValue placeholder="Select type" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="point">Point</SelectItem>
-          <SelectItem value="line">Line</SelectItem>
-          <SelectItem value="area">Area</SelectItem>
+          <SelectItem value="point">{m.option_source_type_point()}</SelectItem>
+          <SelectItem value="line">{m.option_source_type_line()}</SelectItem>
+          <SelectItem value="area">{m.option_source_type_area()}</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -111,7 +112,7 @@ function HeightField({ feature }: { feature: ModelFeature }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor="height" className="text-xs">
-        Height (m)
+        {m.label_height_m()}
       </Label>
       <Input
         id="height"
@@ -151,7 +152,7 @@ function DeleteButton({
       onClick={handleDelete}
     >
       <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-      Delete Feature
+      {m.action_delete_feature()}
     </Button>
   );
 }

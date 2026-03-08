@@ -19,6 +19,7 @@ import {
 import type { FeatureKind, Geometry, SourceType } from "@/model/types";
 import { createFeatureId } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
+import { m } from "@/i18n/messages";
 
 interface NewFeatureDialogProps {
   open: boolean;
@@ -86,11 +87,11 @@ export function NewFeatureDialog({
     >
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>New Feature</DialogTitle>
+          <DialogTitle>{m.dialog_title_new_feature()}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="grid gap-1.5">
-            <Label className="text-xs">Kind</Label>
+            <Label className="text-xs">{m.label_kind()}</Label>
             <Select
               value={kind}
               onValueChange={(v) => {
@@ -101,16 +102,16 @@ export function NewFeatureDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="source">Source</SelectItem>
-                <SelectItem value="building">Building</SelectItem>
-                <SelectItem value="barrier">Barrier</SelectItem>
+                <SelectItem value="source">{m.option_source()}</SelectItem>
+                <SelectItem value="building">{m.option_building()}</SelectItem>
+                <SelectItem value="barrier">{m.option_barrier()}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {kind === "source" ? (
             <div className="grid gap-1.5">
-              <Label className="text-xs">Source Type</Label>
+              <Label className="text-xs">{m.label_source_type()}</Label>
               <Select
                 value={sourceType}
                 onValueChange={(v) => {
@@ -121,9 +122,9 @@ export function NewFeatureDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="point">Point</SelectItem>
-                  <SelectItem value="line">Line</SelectItem>
-                  <SelectItem value="area">Area</SelectItem>
+                  <SelectItem value="point">{m.option_source_type_point()}</SelectItem>
+                  <SelectItem value="line">{m.option_source_type_line()}</SelectItem>
+                  <SelectItem value="area">{m.option_source_type_area()}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -131,7 +132,7 @@ export function NewFeatureDialog({
 
           {kind === "building" || kind === "barrier" ? (
             <div className="grid gap-1.5">
-              <Label className="text-xs">Height (m)</Label>
+              <Label className="text-xs">{m.label_height_m()}</Label>
               <Input
                 type="number"
                 step="0.1"
@@ -147,10 +148,10 @@ export function NewFeatureDialog({
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {m.action_cancel()}
           </Button>
           <Button size="sm" onClick={handleSave}>
-            Add Feature
+            {m.action_add_feature()}
           </Button>
         </DialogFooter>
       </DialogContent>
