@@ -18,6 +18,24 @@ const INTERACTIVE_LAYERS = [
   LAYER_IDS.receiversPoint,
 ];
 
+const WEBGL_DISABLED_KEY = "aconiq.map.webgl_disabled";
+
+function isWebGLDisabled(): boolean {
+  try {
+    return window.sessionStorage.getItem(WEBGL_DISABLED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function disableWebGLForSession(): void {
+  try {
+    window.sessionStorage.setItem(WEBGL_DISABLED_KEY, "true");
+  } catch {
+    // Ignore storage failures; fallbackMode state still prevents reuse locally.
+  }
+}
+
 interface MapViewProps {
   children?: React.ReactNode;
   /** Initial center [lng, lat]. Default: center of Germany. */
@@ -40,7 +58,7 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
-  const [fallbackMode, setFallbackMode] = useState(false);
+  const [fallbackMode, setFallbackMode] = useState(isWebGLDisabled);
   const basemap = useMapStore((s) => s.basemap);
 
   // Initialize map
@@ -48,13 +66,20 @@ export function MapView({
     if (fallbackMode) return;
     if (!containerRef.current) return;
 
-    const m = new maplibregl.Map({
-      container: containerRef.current,
-      style: BASEMAP_STYLES[basemap],
-      center,
-      zoom,
-      attributionControl: {},
-    });
+    let m: Map;
+    try {
+      m = new maplibregl.Map({
+        container: containerRef.current,
+        style: BASEMAP_STYLES[basemap],
+        center,
+        zoom,
+        attributionControl: {},
+      });
+    } catch {
+      disableWebGLForSession();
+      setFallbackMode(true);
+      return;
+    }
 
     m.addControl(new maplibregl.NavigationControl(), "top-right");
     m.addControl(
@@ -65,6 +90,7 @@ export function MapView({
     const canvas = m.getCanvas();
     const handleContextLost = (event: Event) => {
       event.preventDefault();
+      disableWebGLForSession();
       setFallbackMode(true);
     };
     const handleContextRestored = () => {
@@ -80,6 +106,7 @@ export function MapView({
 
     const fallbackTimer = window.setTimeout(() => {
       if (!mapRef.current) {
+        disableWebGLForSession();
         setFallbackMode(true);
       }
     }, 4000);
