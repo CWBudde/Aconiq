@@ -74,6 +74,7 @@
   "label_id": "ID",
   "label_kind": "Kind",
   "label_log": "Log",
+  "label_source_type": "Source type",
   "label_max": "Max:",
   "label_mean": "Mean:",
   "label_min": "Min:",
