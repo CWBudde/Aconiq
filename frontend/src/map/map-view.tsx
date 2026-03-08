@@ -4,6 +4,7 @@ import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
+import { FallbackMap } from "./fallback-map";
 import { useMapStore } from "./map-store";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
@@ -39,10 +40,12 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
+  const [fallbackMode, setFallbackMode] = useState(false);
   const basemap = useMapStore((s) => s.basemap);
 
   // Initialize map
   useEffect(() => {
+    if (fallbackMode) return;
     if (!containerRef.current) return;
 
     const m = new maplibregl.Map({
@@ -62,6 +65,7 @@ export function MapView({
     const canvas = m.getCanvas();
     const handleContextLost = (event: Event) => {
       event.preventDefault();
+      setFallbackMode(true);
     };
     const handleContextRestored = () => {
       m.resize();
@@ -74,7 +78,14 @@ export function MapView({
       setMap(m);
     });
 
+    const fallbackTimer = window.setTimeout(() => {
+      if (!mapRef.current) {
+        setFallbackMode(true);
+      }
+    }, 4000);
+
     return () => {
+      window.clearTimeout(fallbackTimer);
       canvas.removeEventListener("webglcontextlost", handleContextLost);
       canvas.removeEventListener("webglcontextrestored", handleContextRestored);
       mapRef.current = null;
@@ -83,7 +94,7 @@ export function MapView({
     };
     // Only re-create the map on basemap change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basemap]);
+  }, [basemap, fallbackMode, center, zoom]);
 
   // Feature click handler
   useEffect(() => {
@@ -146,8 +157,12 @@ export function MapView({
   return (
     <MapContext value={map}>
       <div className="relative flex flex-1">
-        <div ref={containerRef} className="absolute inset-0" />
-        {map ? children : null}
+        {fallbackMode ? (
+          <FallbackMap center={center} />
+        ) : (
+          <div ref={containerRef} className="absolute inset-0" />
+        )}
+        {!fallbackMode && map ? children : null}
       </div>
     </MapContext>
   );
