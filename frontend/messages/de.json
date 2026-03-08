@@ -74,6 +74,7 @@
   "label_id": "ID",
   "label_kind": "Typ",
   "label_log": "Protokoll",
+  "label_source_type": "Quelltyp",
   "label_max": "Max:",
   "label_mean": "Mittel:",
   "label_min": "Min:",
