@@ -26,183 +26,19 @@ This is a **comprehensive, phased implementation plan** (Go backend + React/Type
 
 ---
 
-## Phase 0 — Preflight (repo, constraints, risks)
+## Phases 0–9 — Completed foundation track
 
-**Goal:** lock down non-negotiables and remove avoidable unknowns.
+**Goal:** summarize the completed platform and workflow baseline established before the first real normative standards modules.
 
-- [x] Initialize repository layout (Go + frontend in one repo, clear folder structure)
-- [x] Clarify licensing/compliance boundaries (code, data sources, test tasks)
-- [x] Define target platforms (Linux/Mac/Windows; CPU arch; future WASM optional)
-- [x] Define a minimal “Definition of Done” for each phase
-- [x] Start and maintain a risk register (e.g., GDAL/cgo portability, paywalled standards, Wails v3 alpha maturity)
-- [x] Decide and document “offline-only for now” constraints (no HTTP server required for MVP)
-
----
-
-## Phase 1 — Foundations (Go architecture + CLI skeleton)
-
-**Goal:** compile, run, and test; no domain logic “guessed” yet.
-
-### Backend (Go)
-
-- [x] Create Go module
-- [x] Create packages: `cmd/`, `internal/app/`, `internal/domain/`, `internal/geo/`, `internal/engine/`, `internal/standards/`, `internal/io/`, `internal/report/`, `internal/qa/`
-- [x] Define configuration layer (project path, logging level, cache dir)
-- [x] Structured logging baseline (run IDs, timings)
-- [x] Error taxonomy (user input errors vs internal errors)
-
-### CLI (Cobra)
-
-- [x] Create `noise` root command
-- [x] Add placeholder subcommands: `init`, `import`, `validate`, `run`, `status`, `export`, `bench`
-- [x] Common flags/config plumbing (`--project`, `--verbose`, `--json`)
-
-### Tests
-
-- [x] Ensure `go test ./...` works locally
-
-### Research (technical choices)
-
-- [x] Evaluate Go geometry/spatial libs (robustness, performance, license)
-- [x] Evaluate CRS/PROJ strategy (pure Go vs cgo/PROJ; accuracy vs portability)
-
----
-
-## Phase 2 — CI + determinism + golden test harness
-
-**Goal:** every change is reproducible and regression-testable.
-
-- [x] CI pipeline: lint + tests for Go
-- [x] Formatting policy (gofmt; optional gofumpt) + enforced in CI
-- [x] Determinism policy document
-  - [x] Floating-point rules (reduction order, rounding, stable summation when needed)
-  - [x] Deterministic parallel reduction strategy
-- [x] Golden-test harness
-  - [x] `testdata/` conventions
-  - [x] snapshot update workflow
-
----
-
-## Phase 3 — Project format v1 (local) + provenance
-
-**Goal:** a stable project folder that can be versioned and migrated.
-
-- [x] Design project manifest v1 (version, CRS, scenarios, standards, artifacts)
-- [x] Domain model: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`
-- [x] Choose storage strategy v1
-  - [ ] Option A: SQLite for metadata + files for geometry/results
-  - [x] Option B: JSON-only initially + introduce SQLite later
-- [x] Implement `noise init`
-- [x] Implement `noise status` (run list, last status, logs)
-
-### Provenance / audit trail
-
-- [x] Each run writes a provenance manifest (standard ID, version/profile, parameters, input file hashes)
-- [x] Define project migrations strategy (v1 → later)
-
----
-
-## Phase 4 — Input/Output v1: GeoJSON-only + validation skeleton
-
-**Goal:** load model data and validate it without running any calculation.
-
-### Import (GeoJSON only)
-
-- [x] Define GeoJSON feature schemas (minimal common set)
-  - [x] Sources: point/line/area
-  - [x] Buildings/barriers: geometry + minimal attributes (e.g., height)
-- [x] Implement `noise import` (GeoJSON)
-
-### Validation
-
-- [x] Implement `noise validate`
-  - [x] Required fields
-  - [x] Geometry sanity (no NaNs, rings, basic self-intersection checks where possible)
-  - [x] CRS plausibility checks
-
-### Export
-
-- [x] Add debug exports (normalized GeoJSON/JSON “model dump”)
-
----
-
-## Phase 5 — Geo core: CRS, spatial index, receiver sets
-
-**Goal:** solid geometry primitives and receiver management.
-
-- [x] CRS model (project CRS, import CRS, transform pipeline)
-- [x] Geometry utilities (point-line distance, point-in-polygon, bboxes)
-- [x] Spatial index (R-tree or equivalent) for candidate queries
-- [x] Receiver set types
-  - [x] Point receivers (list)
-  - [x] Grid receivers (bbox + resolution + height)
-  - [x] Facade receivers (data model + stub; full implementation deferred)
-
-### Tests
-
-- [x] Geo unit tests (edge cases)
-- [x] Fuzz/property tests for geometry primitives
-
----
-
-## Phase 6 — Result containers v1 (rasters + tables)
-
-**Goal:** persist results so they are inspectable and exportable.
-
-- [x] Define raster container API (indexing, bands, NoData, units)
-- [x] Choose v1 persistence format
-  - [x] Option A: custom binary + JSON metadata
-  - [ ] Option B: GeoTIFF early (only if dependency strategy is acceptable)
-- [x] Choose receiver table format (CSV/JSON first; Parquet deferred)
-- [x] Implement `noise export` skeleton
-
-### Research
-
-- [x] Evaluate GeoTIFF writing in Go (pure Go vs GDAL via cgo)
-- [x] Evaluate contours/isoline generation library (Marching Squares)
-
----
-
-## Phase 7 — Compute engine skeleton (jobs, parallelism, cancellation)
-
-**Goal:** a generic compute pipeline without committing to a specific standard yet.
-
-- [x] Define run pipeline (Load → Prepare → Chunk → Compute → Reduce → Persist)
-- [x] Receiver chunking strategy (tiles/chunks)
-- [x] Worker pool
-- [x] Deterministic reduction
-- [x] Progress model for offline logs (structured events)
-- [x] Cancellation (context cancellation) and cleanup rules
-- [x] Disk-backed cache v1 (per run/chunk)
-
-### Tests
-
-- [x] Determinism test: 1 worker vs N workers produce identical output hashes
-- [x] Cancel test: abort leaves a consistent state
-
----
-
-## Phase 8 — End-to-end (offline) with a non-normative dummy standard
-
-**Goal:** complete E2E pipeline with minimal math (explicitly non-normative).
-
-- [x] Implement standards module `dummy/freefield`
-  - [x] Simple geometric distance attenuation (clearly marked as non-normative)
-- [x] Implement `noise run --standard dummy-freefield`
-- [x] Persist results (raster + receiver table)
-- [x] Add a golden project (1–2 sources, small grid) with expected values
-
----
-
-## Phase 9 — Standards framework (plugin API + versioning profiles)
-
-**Goal:** make standards truly modular before implementing multiple complex ones.
-
-- [x] Define standards plugin interface
-  - [x] Standard ID, version/profile, supported source types, supported indicators
-  - [x] Parameter schema definition for runs
-- [x] Implement standard version profiles (e.g., CNOSSOS profiles)
-- [x] Enforce run provenance (standard + profile + parameters are always recorded)
+- [x] Repo and delivery foundations are in place: repository layout, compliance boundaries, target platforms, definition-of-done, risk register, and offline-only MVP constraints are documented.
+- [x] Backend and CLI foundations are complete: Go module/package structure, config/logging/error layers, Cobra command skeleton, shared flags, and baseline testability.
+- [x] Reproducibility foundations are complete: CI lint/test/format checks, determinism policy, and golden-test conventions/workflows are documented and enforced.
+- [x] Project lifecycle foundations are complete: manifest v1, project/run domain model, JSON-first storage, `noise init`, `noise status`, per-run provenance, and migration strategy.
+- [x] Input and validation foundations are complete: GeoJSON-only import, minimal feature schemas, validation, and debug model exports.
+- [x] Geo and result foundations are complete: CRS handling, geometry primitives, spatial indexing, receiver-set models, raster/table result containers, and export skeleton.
+- [x] Compute foundations are complete: generic run pipeline, chunking, worker pool, deterministic reduction, progress events, cancellation/cleanup rules, disk-backed cache, and key determinism/cancel tests.
+- [x] End-to-end and modularity foundations are complete: non-normative `dummy/freefield` E2E runs, golden demo coverage, and the standards plugin/profile/provenance framework.
+- [x] Supporting technical investigations for geometry libraries, CRS/PROJ strategy, GeoTIFF writing, and contour generation were completed and documented.
 
 ---
 
@@ -680,14 +516,7 @@ mixed imported models.
 
 **Goal:** reproducible reports from offline artifacts.
 
-- [x] Report templating v1 (Markdown/HTML)
-- [x] Required report sections
-  - [x] Input overview
-  - [x] Standard ID + version/profile + parameters
-  - [x] Maps/images if available
-  - [x] Tables (receiver stats)
-  - [x] QA status (which suites passed)
-- [x] HTML-only MVP
+- [x] Offline reporting v1 is complete with Markdown/HTML templating, required report sections, and an HTML MVP.
 
 ---
 
@@ -776,16 +605,7 @@ mixed imported models.
 
 **Goal:** establish the frontend workspace and developer workflow.
 
-- [x] Create frontend app scaffold with Bun + Vite + React + TypeScript
-- [x] Define source layout
-  - [x] `frontend/src/` for the main app (flat, no workspaces)
-  - [x] `frontend/src/ui/` for shared UI wrappers/theme primitives
-  - [x] `frontend/src/map/` for map adapters and layer helpers
-  - [x] `frontend/src/api/` for backend API client and types
-- [x] Configure strict TypeScript + ESLint + formatter integration
-- [x] Configure environment handling (`.env`, API base URL, build-time flags)
-- [x] Add frontend CI jobs (`bun install`, typecheck, lint, test, build)
-- [x] Create architecture decision records for frontend conventions
+- [x] The frontend scaffold, source layout, strict TS/lint/format setup, environment handling, CI jobs, and frontend ADRs are in place.
 
 ---
 
@@ -793,27 +613,7 @@ mixed imported models.
 
 **Goal:** build a consistent, accessible UI foundation.
 
-- [x] Initialize shadcn/ui in the Vite app (Tailwind CSS v4 + shadcn CLI)
-- [x] Define design tokens and theme contract
-  - [x] Color scales for maps + UI chrome (OKLCH, muted teal accent, warm slate neutrals)
-  - [x] Typography scale (IBM Plex Sans / IBM Plex Mono)
-  - [x] Spacing/radius/elevation tokens (CSS variables via `@theme inline`)
-- [x] Build reusable app primitives
-  - [x] App shell layout
-  - [x] Sidebar/navigation
-  - [x] Dialog/sheet patterns
-  - [x] Data table wrapper
-  - [x] Form field wrappers
-- [x] Accessibility baseline
-  - [x] Keyboard navigation requirements for all shell components (via Radix UI primitives)
-  - [x] Focus management and visible focus states (outline-ring)
-  - [x] Screen-reader labels for icon-only actions (aria-label on theme toggle)
-- [x] Dark mode support (system preference default, localStorage persistence)
-
-### Research
-
-- [x] Form stack decision: deferred to Phase 23e (React Hook Form + Zod likely; FormField wrapper ready)
-- [x] Notification/toast strategy: deferred to Phase 23f (`sonner` likely; no toast needed yet)
+- [x] The shadcn/ui design baseline is complete: theme tokens, reusable shell/form/table primitives, accessibility defaults, dark mode, and related frontend research decisions are documented.
 
 ---
 
@@ -821,21 +621,7 @@ mixed imported models.
 
 **Goal:** make the SPA structure scalable and type-safe.
 
-- [x] Routing architecture decision and implementation
-  - [x] React Router v7 (data mode) — simple, well-established for ~7 routes
-  - [x] Route-level code splitting via `lazy()` (each page is a separate chunk)
-  - [x] Route guard support via Zustand `runInProgress` flag (enforced in Phase 23f)
-- [x] Server-state strategy
-  - [x] TanStack Query for API data fetching/cache/invalidation
-  - [x] Query key factory in `src/api/query-keys.ts` (hierarchical, invalidation-friendly)
-  - [x] Cache defaults: 30s stale, 5min GC, 1 retry, no refetch-on-focus
-- [x] Client-state strategy
-  - [x] Zustand for UI-only state (active nav, run-in-progress guard)
-  - [x] URL state via React Router search params (shareable state for scenarios/runs)
-- [x] Error boundaries + Suspense/loading architecture per route
-  - [x] `ErrorBoundary` component with retry action
-  - [x] `PageSkeleton` loading fallback
-  - [x] Suspense wraps lazy-loaded route content in `RootLayout`
+- [x] SPA routing, code-splitting, TanStack Query orchestration, Zustand/UI state boundaries, URL state, and route-level error/loading architecture are complete.
 
 ---
 
@@ -898,18 +684,7 @@ mixed imported models.
 
 **Goal:** make run setup and monitoring reliable for long-running jobs.
 
-- [x] Run setup dialog
-  - [x] Standard/version/profile picker
-  - [x] Parameter editor generated from schema
-  - [x] Receiver set selector
-- [x] Run execution monitor
-  - [x] Progress timeline/steps
-  - [x] Live logs
-  - [x] Cancel/retry actions
-- [x] Run history UX
-  - [x] Filter by scenario/status/standard
-  - [x] Artifact links per run
-- [x] Determinism-aware UX hints (same inputs/profile expectation messaging)
+- [x] Run setup, schema-driven parameter editing, receiver selection, live execution monitoring, cancel/retry controls, run history, and determinism-aware UX messaging are complete.
 
 ---
 
@@ -940,20 +715,7 @@ mixed imported models.
 
 **Goal:** make frontend behavior stable, testable, and scalable.
 
-- [x] Testing pyramid for frontend
-  - [x] Unit/component tests (RTL + Vitest + jsdom: ErrorBoundary, ImportPage, DraftBanner, UIStore, autosave utils — 86 tests total)
-  - [x] Route and state integration tests (ImportPage with createMemoryRouter; UIStore isolated)
-  - [x] E2E (Playwright): config + smoke test covering load, sidebar nav, import flow, keyboard focus, axe WCAG2A/AA (`playwright.config.ts`, `e2e/smoke.spec.ts`)
-- [x] Accessibility test automation
-  - [x] Keyboard-only navigation tests (Playwright E2E: Tab focus assertion)
-  - [x] Core screen-reader semantics checks (axe-core in vitest for ErrorBoundary; axe-playwright for full pages)
-- [x] Performance observability
-  - [x] Frame-time and interaction telemetry in dev mode (`PerformanceObserver` longtasks in `main.tsx`)
-  - [x] Large-model synthetic benchmark scenes (`src/model/benchmark.test.ts`: 5k-feature normalize/validate/load/filter within budgets)
-  - [x] Bundle size budgets + CI guard (`frontend/scripts/check-bundle-size.mjs`, `just fe-bundle-check`, `just fe-ci` extended)
-- [x] Reliability features
-  - [x] Autosave + unsaved-change protection (`src/model/use-autosave.ts`: debounced localStorage save, `beforeunload` guard)
-  - [x] Crash-safe local draft recovery (`src/ui/draft-banner.tsx`: restore-on-startup banner, `discardDraft` on confirm)
+- [x] Frontend QA hardening is complete: unit/integration/E2E coverage, automated accessibility checks, performance telemetry and bundle budgets, plus autosave and crash-recovery reliability features.
 
 ---
 
