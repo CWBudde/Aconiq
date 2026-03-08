@@ -318,11 +318,19 @@ Status: complete.
 - [ ] Optimize tiled compute pipeline
   - [ ] Spatial index tuning
   - [ ] Candidate pruning
-  - [ ] Cache keys and reuse
+  - [x] Broader cache keys and reuse for equivalent workloads
 - [ ] Robust disk-backed cache + cleanup strategies
-- [ ] Implement `noise bench`
-  - [ ] Standard benchmark scenarios
-  - [ ] Output: runtime, memory, IO, numeric drift
+  - [x] Per-run chunk cache persists on disk
+  - [x] Shared keyed chunk cache persists on disk across equivalent runs
+  - [x] Benchmark suite cache cleanup via `noise bench --keep-last`
+  - [ ] General cache retention/cleanup policy across non-benchmark runs
+  - [x] Stale-cache invalidation strategy for changed inputs/config
+- [x] Implement `noise bench`
+  - [x] Standard benchmark scenarios
+  - [x] Output: runtime, memory, IO, numeric drift
+  - [x] Persist benchmark suite summary under `.noise/cache/bench/<bench-id>/summary.json`
+  - [x] Warm-cache reuse check against cached chunk artifacts
+  - [ ] Numeric drift comparison across multiple worker/topology variants beyond the single reference-vs-cold run
 
 ### Optional (advanced, non-normative)
 

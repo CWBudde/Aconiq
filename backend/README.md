@@ -140,6 +140,10 @@ Planned package structure:
     - numeric drift against a single-worker reference run
   - persists benchmark suite summaries under `.noise/cache/bench/<bench-id>/summary.json`
   - prunes older benchmark suites with `--keep-last` to keep bench cache growth bounded
+- Engine cache behavior:
+  - per-run chunk cache remains under the run cache directory
+  - shared keyed chunk cache under `.noise/cache/shared-chunks/` enables reuse across equivalent runs
+  - cache keys include input receivers, sources, and cache format version so changed inputs invalidate stale artifacts
 
 ## Phase 23 Initial Slice
 
