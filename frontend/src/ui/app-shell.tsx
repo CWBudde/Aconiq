@@ -25,6 +25,7 @@ import {
 } from "@/ui/components/sidebar";
 import { Separator } from "@/ui/components/separator";
 import { ThemeToggle } from "@/ui/theme-toggle";
+import { LanguageToggle } from "@/ui/language-toggle";
 import { m } from "@/i18n/messages";
 
 const navMain = [
@@ -125,7 +126,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex flex-1 items-center justify-between">
             <PageTitle />
-            <ThemeToggle />
+            <div className="flex items-center gap-1">
+              <LanguageToggle />
+              <ThemeToggle />
+            </div>
           </div>
         </header>
         <main className="flex flex-1 flex-col">{children}</main>
