@@ -21,6 +21,7 @@ export function ModelLayers() {
 
   useEffect(() => {
     if (!map) return;
+    if (!isMapStyleReady(map)) return;
 
     const groups = featuresToSourceGroups(features);
 
@@ -31,24 +32,32 @@ export function ModelLayers() {
     ] as const;
 
     for (const [sourceId, data] of entries) {
-      const existing = map.getSource(sourceId);
-      if (existing && "setData" in existing) {
-        (existing as maplibregl.GeoJSONSource).setData(
-          data as unknown as GeoJSON.GeoJSON,
-        );
-      } else if (!existing) {
-        map.addSource(sourceId, {
-          type: "geojson",
-          data: data as unknown as GeoJSON.GeoJSON,
-        });
+      try {
+        const existing = map.getSource(sourceId);
+        if (existing && "setData" in existing) {
+          (existing as maplibregl.GeoJSONSource).setData(
+            data as unknown as GeoJSON.GeoJSON,
+          );
+        } else if (!existing) {
+          map.addSource(sourceId, {
+            type: "geojson",
+            data: data as unknown as GeoJSON.GeoJSON,
+          });
+        }
+      } catch {
+        return;
       }
     }
 
     // Ensure layers exist (idempotent — skip if already added)
     const allLayers = [...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS];
     for (const layer of allLayers) {
-      if (!map.getLayer(layer.id)) {
-        map.addLayer(layer);
+      try {
+        if (!map.getLayer(layer.id)) {
+          map.addLayer(layer);
+        }
+      } catch {
+        return;
       }
     }
 
@@ -66,6 +75,15 @@ export function ModelLayers() {
   }, [map, features]);
 
   return null;
+}
+
+function isMapStyleReady(map: maplibregl.Map): boolean {
+  try {
+    const style = map.getStyle();
+    return Boolean(style && style.sources);
+  } catch {
+    return false;
+  }
 }
 
 function computeFeatureBounds(
