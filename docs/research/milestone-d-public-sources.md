@@ -185,6 +185,12 @@ Already supportable from current repo evidence:
 - CNOSSOS Aircraft now has a public, attributable aircraft-evidence note at the
   reference-total level:
   - `docs/research/cnossos-aircraft-public-reference-totals.md`
+- BUF Aircraft now has a public, attributable mapping-aircraft evidence note at
+  the reference-total level:
+  - `docs/research/buf-aircraft-public-reference-totals.md`
+- BEB Exposure now has a public, attributable exposure-evidence note at the
+  reference-total level:
+  - `docs/research/beb-public-reference-totals.md`
 - BUB Road, BUF Aircraft, and BEB Exposure have repo-authored synthetic acceptance fixtures
   and source inventories.
 

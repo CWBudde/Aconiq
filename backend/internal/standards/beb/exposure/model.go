@@ -103,18 +103,29 @@ type BuildingExposureOutput struct {
 
 // Summary stores aggregate BEB totals.
 type Summary struct {
-	BuildingCount           int     `json:"building_count"`
-	EstimatedDwellings      float64 `json:"estimated_dwellings"`
-	EstimatedPersons        float64 `json:"estimated_persons"`
-	AffectedDwellingsLden   float64 `json:"affected_dwellings_lden"`
-	AffectedPersonsLden     float64 `json:"affected_persons_lden"`
-	AffectedDwellingsLnight float64 `json:"affected_dwellings_lnight"`
-	AffectedPersonsLnight   float64 `json:"affected_persons_lnight"`
-	ThresholdLdenDB         float64 `json:"threshold_lden_db"`
-	ThresholdLnightDB       float64 `json:"threshold_lnight_db"`
-	OccupancyMode           string  `json:"occupancy_mode"`
-	FacadeEvaluationMode    string  `json:"facade_evaluation_mode"`
-	UpstreamMappingStandard string  `json:"upstream_mapping_standard"`
+	BuildingCount           int                   `json:"building_count"`
+	EstimatedDwellings      float64               `json:"estimated_dwellings"`
+	EstimatedPersons        float64               `json:"estimated_persons"`
+	AffectedDwellingsLden   float64               `json:"affected_dwellings_lden"`
+	AffectedPersonsLden     float64               `json:"affected_persons_lden"`
+	AffectedDwellingsLnight float64               `json:"affected_dwellings_lnight"`
+	AffectedPersonsLnight   float64               `json:"affected_persons_lnight"`
+	ThresholdLdenDB         float64               `json:"threshold_lden_db"`
+	ThresholdLnightDB       float64               `json:"threshold_lnight_db"`
+	OccupancyMode           string                `json:"occupancy_mode"`
+	FacadeEvaluationMode    string                `json:"facade_evaluation_mode"`
+	UpstreamMappingStandard string                `json:"upstream_mapping_standard"`
+	LdenBands               []ExposureBandSummary `json:"lden_bands,omitempty"`
+	LnightBands             []ExposureBandSummary `json:"lnight_bands,omitempty"`
+}
+
+// ExposureBandSummary stores BEB exposure totals in one reporting band.
+type ExposureBandSummary struct {
+	Label              string   `json:"label"`
+	LowerDB            float64  `json:"lower_db"`
+	UpperDBExclusive   *float64 `json:"upper_db_exclusive,omitempty"`
+	EstimatedDwellings float64  `json:"estimated_dwellings"`
+	EstimatedPersons   float64  `json:"estimated_persons"`
 }
 
 // Validate validates one building unit payload.

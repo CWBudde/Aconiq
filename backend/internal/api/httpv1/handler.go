@@ -13,6 +13,7 @@ import (
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
@@ -86,6 +87,14 @@ type standardResponse struct {
 	Description    string            `json:"description"`
 	DefaultVersion string            `json:"default_version"`
 	Versions       []versionResponse `json:"versions"`
+}
+
+type importOSMRequest struct {
+	South            float64 `json:"south"`
+	West             float64 `json:"west"`
+	North            float64 `json:"north"`
+	East             float64 `json:"east"`
+	OverpassEndpoint string  `json:"overpass_endpoint,omitempty"`
 }
 
 type errorResponse struct {
@@ -192,6 +201,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
+	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	if opts.corsDisabled {
@@ -488,6 +498,78 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, standards)
 }
 
+func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req importOSMRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "failed to decode request body: " + err.Error(),
+		})
+
+		return
+	}
+
+	if req.South >= req.North {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "south must be less than north",
+		})
+
+		return
+	}
+
+	if req.West >= req.East {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "west must be less than east",
+		})
+
+		return
+	}
+
+	if req.South < -90 || req.North > 90 || req.West < -180 || req.East > 180 {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "bounding box coordinates out of WGS84 range (lat: -90..90, lon: -180..180)",
+		})
+
+		return
+	}
+
+	fc, err := osmimport.Fetch(r.Context(), osmimport.Config{
+		BBox: osmimport.BBox{
+			South: req.South,
+			West:  req.West,
+			North: req.North,
+			East:  req.East,
+		},
+		OverpassEndpoint: req.OverpassEndpoint,
+	})
+	if err != nil {
+		var appErr *domainerrors.AppError
+		if stderrors.As(err, &appErr) {
+			writeDomainError(w, err)
+
+			return
+		}
+
+		writeAPIError(w, http.StatusBadGateway, apiError{
+			Code:    "upstream_error",
+			Message: "Overpass API request failed",
+		})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fc)
+}
+
 func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeAPIError(w, http.StatusNotFound, apiError{
 		Code:    "not_found",
@@ -496,7 +578,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, or /api/v1/openapi.json.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, or /api/v1/import/osm.",
 	})
 }
 

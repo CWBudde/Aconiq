@@ -36,6 +36,78 @@
     "estimated_dwellings": 8,
     "estimated_persons": 16.1,
     "facade_evaluation_mode": "centroid",
+    "lden_bands": [
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "55-59",
+        "lower_db": 55,
+        "upper_db_exclusive": 60
+      },
+      {
+        "estimated_dwellings": 3,
+        "estimated_persons": 6.6,
+        "label": "60-64",
+        "lower_db": 60,
+        "upper_db_exclusive": 65
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "65-69",
+        "lower_db": 65,
+        "upper_db_exclusive": 70
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "70-74",
+        "lower_db": 70,
+        "upper_db_exclusive": 75
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "75+",
+        "lower_db": 75
+      }
+    ],
+    "lnight_bands": [
+      {
+        "estimated_dwellings": 3,
+        "estimated_persons": 6.6,
+        "label": "50-54",
+        "lower_db": 50,
+        "upper_db_exclusive": 55
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "55-59",
+        "lower_db": 55,
+        "upper_db_exclusive": 60
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "60-64",
+        "lower_db": 60,
+        "upper_db_exclusive": 65
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "65-69",
+        "lower_db": 65,
+        "upper_db_exclusive": 70
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "70+",
+        "lower_db": 70
+      }
+    ],
     "occupancy_mode": "prefer_feature_overrides",
     "threshold_lden_db": 55,
     "threshold_lnight_db": 50,

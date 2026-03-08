@@ -465,6 +465,23 @@ func roundBEBOutputs(outputs []bebexposure.BuildingExposureOutput) []map[string]
 }
 
 func roundBEBSummary(summary bebexposure.Summary) map[string]any {
+	roundBands := func(bands []bebexposure.ExposureBandSummary) []map[string]any {
+		out := make([]map[string]any, 0, len(bands))
+		for _, band := range bands {
+			item := map[string]any{
+				"label":               band.Label,
+				"lower_db":            round6(band.LowerDB),
+				"estimated_dwellings": round6(band.EstimatedDwellings),
+				"estimated_persons":   round6(band.EstimatedPersons),
+			}
+			if band.UpperDBExclusive != nil {
+				item["upper_db_exclusive"] = round6(*band.UpperDBExclusive)
+			}
+			out = append(out, item)
+		}
+		return out
+	}
+
 	return map[string]any{
 		"building_count":            summary.BuildingCount,
 		"estimated_dwellings":       round6(summary.EstimatedDwellings),
@@ -478,6 +495,8 @@ func roundBEBSummary(summary bebexposure.Summary) map[string]any {
 		"occupancy_mode":            summary.OccupancyMode,
 		"facade_evaluation_mode":    summary.FacadeEvaluationMode,
 		"upstream_mapping_standard": summary.UpstreamMappingStandard,
+		"lden_bands":                roundBands(summary.LdenBands),
+		"lnight_bands":              roundBands(summary.LnightBands),
 	}
 }
 

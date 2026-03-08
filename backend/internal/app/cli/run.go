@@ -5408,6 +5408,8 @@ func persistBEBExposureRunOutputs(
 		"occupancy_mode":            summary.OccupancyMode,
 		"facade_evaluation_mode":    summary.FacadeEvaluationMode,
 		"upstream_mapping_standard": summary.UpstreamMappingStandard,
+		"lden_bands":                summary.LdenBands,
+		"lnight_bands":              summary.LnightBands,
 	}
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
