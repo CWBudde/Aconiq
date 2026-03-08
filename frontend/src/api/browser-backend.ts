@@ -1038,6 +1038,9 @@ function overpassWayToFeature(
     }
     properties["kind"] = "building";
     properties["building"] = tags["building"];
+    if (tags["building:levels"]) {
+      properties["building:levels"] = tags["building:levels"];
+    }
     properties["height_m"] = parseTagHeight(tags["height"]) ?? 9;
     return {
       type: "Feature",

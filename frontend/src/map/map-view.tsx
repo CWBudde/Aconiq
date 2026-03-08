@@ -59,12 +59,24 @@ export function MapView({
       "bottom-left",
     );
 
+    const canvas = m.getCanvas();
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+    };
+    const handleContextRestored = () => {
+      m.resize();
+    };
+    canvas.addEventListener("webglcontextlost", handleContextLost);
+    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+
     m.on("load", () => {
       mapRef.current = m;
       setMap(m);
     });
 
     return () => {
+      canvas.removeEventListener("webglcontextlost", handleContextLost);
+      canvas.removeEventListener("webglcontextrestored", handleContextRestored);
       mapRef.current = null;
       setMap(null);
       m.remove();

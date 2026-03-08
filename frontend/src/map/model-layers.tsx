@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import { useMap } from "./use-map";
 import { useModelStore } from "@/model/model-store";
@@ -17,6 +17,7 @@ import {
 export function ModelLayers() {
   const map = useMap();
   const features = useModelStore((s) => s.features);
+  const previousFeatureCountRef = useRef(0);
 
   useEffect(() => {
     if (!map) return;
@@ -50,7 +51,59 @@ export function ModelLayers() {
         map.addLayer(layer);
       }
     }
+
+    // Bring freshly imported data into view once instead of leaving it off-screen.
+    if (previousFeatureCountRef.current === 0 && features.length > 0) {
+      const bounds = computeFeatureBounds(features);
+      if (bounds) {
+        map.fitBounds(bounds, {
+          padding: 48,
+          duration: 0,
+        });
+      }
+    }
+    previousFeatureCountRef.current = features.length;
   }, [map, features]);
 
   return null;
+}
+
+function computeFeatureBounds(
+  features: ReturnType<typeof useModelStore.getState>["features"],
+): maplibregl.LngLatBoundsLike | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  function visit(coords: unknown): void {
+    if (!Array.isArray(coords)) return;
+    if (
+      coords.length >= 2 &&
+      typeof coords[0] === "number" &&
+      typeof coords[1] === "number"
+    ) {
+      minX = Math.min(minX, coords[0]);
+      minY = Math.min(minY, coords[1]);
+      maxX = Math.max(maxX, coords[0]);
+      maxY = Math.max(maxY, coords[1]);
+      return;
+    }
+    for (const value of coords) {
+      visit(value);
+    }
+  }
+
+  for (const feature of features) {
+    visit(feature.geometry.coordinates);
+  }
+
+  if (!Number.isFinite(minX)) {
+    return null;
+  }
+
+  return [
+    [minX, minY],
+    [maxX, maxY],
+  ];
 }
