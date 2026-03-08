@@ -94,30 +94,6 @@ const reportTypstTemplate = `
 
 #let labeled-list(items) = list(..items)
 
-#let kv-table(rows, first, second) = if rows.len() > 0 {
-  table(
-    columns: 2,
-    table.header([#first], [#second]),
-    ..for row in rows {
-      ([#row.at(0)], [#row.at(1)])
-    },
-  )
-} else {
-  [No entries were available.]
-}
-
-#let stat-row(indicator) = [
-  #indicator.Indicator: min #indicator.Min, mean #indicator.Mean, max #indicator.Max
-]
-
-#let qa-row(suite) = [
-  #suite.Name: #suite.Status#if suite.Details != "" { " (" + suite.Details + ")" }
-]
-
-#let map-row(item) = [
-  #item.MetadataPath -> #item.DataPath, #item.Width x #item.Height, #item.Bands band(s)#if item.Unit != "" { ", unit " + item.Unit }#if item.BandNames != "" { ", names " + item.BandNames }
-]
-
 #let template(report) = {
   set page(
     paper: "a4",
@@ -128,22 +104,12 @@ const reportTypstTemplate = `
   set heading(numbering: "1.")
   show heading.where(level: 1): set text(size: 18pt)
   show heading.where(level: 2): set text(size: 12pt)
-  show table.cell.where(y: 0): strong
-  set table(
-    inset: 5pt,
-    stroke: (x, y) => if y == 0 {
-      (bottom: 0.8pt + black)
-    } else {
-      (bottom: 0.25pt + luma(220))
-    },
-  )
-
   [= #report-title(report)]
   [Generated: #report.GeneratedAt]
   [Template version: #report.TemplateVersion]
 
   [== Input overview]
-  #labeled-list((
+  labeled-list((
     [Project: #report.ProjectName],
     [Project ID: #report.ProjectID],
     [CRS: #report.ProjectCRS],
@@ -161,85 +127,63 @@ const reportTypstTemplate = `
     ..if report.ModelSourcePath != "" { ([Model source path: #report.ModelSourcePath],) } else { () },
   ))
 
-  #if report.CountsByKind.len() > 0 [
-    #table(
-      columns: 2,
-      table.header([Model kind], [Count]),
-      ..for entry in report.CountsByKind {
-        ([#entry.Kind], [#entry.Count])
-      },
-    )
+  if report.CountsByKind.len() > 0 [
+    #for entry in report.CountsByKind [
+      - #entry.Kind: #entry.Count
+    ]
   ]
 
-  #if report.InputFiles.len() > 0 [
-    #table(
-      columns: 2,
-      table.header([Input path], [SHA-256]),
-      ..for entry in report.InputFiles {
-        ([#entry.Path], [#entry.SHA256])
-      },
-    )
+  if report.InputFiles.len() > 0 [
+    #for entry in report.InputFiles [
+      - #entry.Path (sha256=#entry.SHA256)
+    ]
   ] else [
     No input hashes were available.
   ]
 
   [== Standard ID + version/profile + parameters]
-  #labeled-list((
+  labeled-list((
     [Standard ID: #report.StandardID],
     [Standard context: #report.StandardContext],
     [Standard version: #report.StandardVersion],
     [Standard profile: #report.StandardProfile],
   ))
 
-  #kv-table(
-    (
-      ..for entry in report.Parameters {
-        ((entry.Key, entry.Value),)
-      },
-    ),
-    "Parameter",
-    "Value",
-  )
+  for entry in report.Parameters [
+    - #entry.Key: #entry.Value
+  ]
 
   [== Maps/images]
-  #if report.Maps.len() > 0 [
-    #labeled-list((
-      ..for item in report.Maps {
-        (map-row(item),)
-      },
-    ))
+  if report.Maps.len() > 0 [
+    #for item in report.Maps [
+      - #item.MetadataPath -> #item.DataPath, #item.Width x #item.Height, #item.Bands band(s)#if item.Unit != "" { ", unit " + item.Unit }#if item.BandNames != "" { ", names " + item.BandNames }
+    ]
   ] else [
     No map/image artifacts were available for this run export.
   ]
 
   [== Tables (receiver stats)]
-  #if report.Indicators.len() > 0 [
+  if report.Indicators.len() > 0 [
     #if report.ReceiverUnit != "" [
       Unit: #report.ReceiverUnit
     ]
-    #labeled-list((
-      ..for indicator in report.Indicators {
-        (stat-row(indicator),)
-      },
-    ))
+    #for indicator in report.Indicators [
+      - #indicator.Indicator: min #indicator.Min, mean #indicator.Mean, max #indicator.Max
+    ]
   ] else [
     No receiver statistics were available.
   ]
 
   [== QA status (which suites passed)]
-  #labeled-list((
-    ..for suite in report.QASuites {
-      (qa-row(suite),)
-    },
-  ))
+  for suite in report.QASuites [
+    - #suite.Name: #suite.Status#if suite.Details != "" { " (" + suite.Details + ")" }
+  ]
 
-  #if report.Notes.len() > 0 [
+  if report.Notes.len() > 0 [
     [== Notes]
-    #labeled-list((
-      ..for note in report.Notes {
-        ([#note],)
-      },
-    ))
+    #for note in report.Notes [
+      - #note
+    ]
   ]
 }
 

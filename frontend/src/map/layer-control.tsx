@@ -50,7 +50,7 @@ function LayerToggle({ group }: { group: LayerGroup }) {
 
 export function LayerControl() {
   return (
-    <div className="absolute top-2 left-2 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
+    <div className="absolute top-2 right-12 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
       <div className="mb-1 text-xs font-medium text-muted-foreground">
         Model
       </div>
