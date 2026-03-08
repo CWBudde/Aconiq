@@ -11,18 +11,21 @@ const SettingsPage = lazy(() => import("@/pages/settings"));
 
 import { RootLayout } from "@/layouts/root-layout";
 
-export const router = createBrowserRouter([
-  {
-    element: <RootLayout />,
-    children: [
-      { index: true, element: <Navigate to="/map" replace /> },
-      { path: "map", element: <MapPage /> },
-      { path: "import", element: <ImportPage /> },
-      { path: "run", element: <RunPage /> },
-      { path: "results", element: <ResultsPage /> },
-      { path: "export", element: <ExportPage /> },
-      { path: "status", element: <StatusPage /> },
-      { path: "settings", element: <SettingsPage /> },
-    ],
-  },
-]);
+export const router = createBrowserRouter(
+  [
+    {
+      element: <RootLayout />,
+      children: [
+        { index: true, element: <Navigate to="/map" replace /> },
+        { path: "map", element: <MapPage /> },
+        { path: "import", element: <ImportPage /> },
+        { path: "run", element: <RunPage /> },
+        { path: "results", element: <ResultsPage /> },
+        { path: "export", element: <ExportPage /> },
+        { path: "status", element: <StatusPage /> },
+        { path: "settings", element: <SettingsPage /> },
+      ],
+    },
+  ],
+  { basename: import.meta.env.BASE_URL },
+);
