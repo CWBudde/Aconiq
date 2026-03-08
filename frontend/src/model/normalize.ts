@@ -25,6 +25,8 @@ interface SkippedFeature {
   reason: string;
 }
 
+const METERS_PER_LEVEL = 3;
+
 export interface NormalizeResult {
   features: ModelFeature[];
   skipped: SkippedFeature[];
@@ -101,11 +103,55 @@ function normalizeFeature(
   }
 
   if (kind === "building" || kind === "barrier") {
-    const h = Number(props["height_m"]);
+    const h = inferHeightMeters(kind, props);
     if (Number.isFinite(h) && h > 0) {
       feature.heightM = h;
     }
   }
 
   return { ok: true, feature };
+}
+
+function inferHeightMeters(
+  kind: FeatureKind,
+  props: Record<string, unknown>,
+): number {
+  const explicit = Number(props["height_m"]);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return explicit;
+  }
+
+  const height = parseHeightLike(props["height"]);
+  if (Number.isFinite(height) && height > 0) {
+    return height;
+  }
+
+  if (kind === "building") {
+    const levels = Number(props["building:levels"]);
+    if (Number.isFinite(levels) && levels > 0) {
+      return levels * METERS_PER_LEVEL;
+    }
+    if (typeof props["building"] === "string" && props["building"] !== "") {
+      return 9;
+    }
+  }
+
+  if (kind === "barrier") {
+    if (typeof props["barrier"] === "string" && props["barrier"] !== "") {
+      return 2;
+    }
+  }
+
+  return Number.NaN;
+}
+
+function parseHeightLike(value: unknown): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return Number.NaN;
+  }
+  const normalized = value.replace(/\s*m$/i, "").trim();
+  return Number(normalized);
 }
