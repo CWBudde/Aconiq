@@ -15,6 +15,21 @@ External references:
 - `milestone-d-public-sources.md`
   - Extracted summary of what the collected public sources are useful for.
   - This is the committed note to rely on without needing local downloads.
+- `cnossos-road-public-reference-totals.md`
+  - Public, attributable CNOSSOS road reference totals used as external
+    Phase 10 evidence at the reference-total level.
+- `cnossos-rail-public-reference-totals.md`
+  - Public, attributable CNOSSOS rail reference totals used as external
+    Phase 11 evidence at the reference-total level.
+- `cnossos-industry-public-reference-totals.md`
+  - Public, attributable CNOSSOS industry reference totals/exposure shares used
+    as external Phase 12 evidence.
+- `cnossos-aircraft-public-reference-totals.md`
+  - Public, attributable CNOSSOS aircraft reference totals used as external
+    Phase 13 evidence.
+- `bub-dataset-availability-and-rights.md`
+  - Public-context and import-rights clarification note for the BUB mapping
+    track and related German dataset handling.
 - `milestone-e-rounding-tolerances.md`
   - Current rounding, tolerance, threshold, and reporting-boundary rules for the online standards modules.
 
