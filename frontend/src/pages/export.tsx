@@ -29,6 +29,7 @@ import {
 } from "@/ui/components/select";
 import { useRuns } from "@/api/hooks";
 import type { ArtifactRef, RunSummary } from "@/api/client";
+import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,19 +51,19 @@ function formatTime(iso: string): string {
 
 const EXPORT_KIND_LABELS: Record<
   string,
-  { label: string; icon: React.ComponentType<{ className?: string }> }
+  { label: () => string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  "export.bundle": { label: "Export Bundle", icon: Package },
-  "export.report_html": { label: "HTML Report", icon: FileText },
-  "export.report_markdown": { label: "Markdown Report", icon: FileCode },
+  "export.bundle": { label: m.export_artifact_label_bundle, icon: Package },
+  "export.report_html": { label: m.export_artifact_label_html_report, icon: FileText },
+  "export.report_markdown": { label: m.export_artifact_label_markdown_report, icon: FileCode },
   "export.report_context_json": {
-    label: "Report Context (JSON)",
+    label: m.export_artifact_label_json_context,
     icon: FileCode,
   },
 };
 
 function kindMeta(kind: string) {
-  return EXPORT_KIND_LABELS[kind] ?? { label: kind, icon: Package };
+  return EXPORT_KIND_LABELS[kind] ?? { label: () => kind, icon: Package };
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ function kindMeta(kind: string) {
 
 function CopyButton({
   text,
-  label = "Copy",
+  label,
 }: {
   text: string;
   label?: string;
@@ -94,7 +95,7 @@ function CopyButton({
       ) : (
         <Copy className="mr-1.5 h-3.5 w-3.5" />
       )}
-      {copied ? "Copied!" : label}
+      {copied ? m.status_copied() : (label ?? m.action_copy())}
     </Button>
   );
 }
@@ -104,7 +105,8 @@ function CopyButton({
 // ---------------------------------------------------------------------------
 
 function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
-  const { label, icon: Icon } = kindMeta(artifact.kind);
+  const { label: labelFn, icon: Icon } = kindMeta(artifact.kind);
+  const label = labelFn();
   const filename = artifact.path.split("/").pop() ?? artifact.path;
   const contentURL = `/api/v1/artifacts/${artifact.id}/content`;
 
@@ -140,7 +142,7 @@ function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
             }}
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            Open in browser
+            {m.action_open_in_browser()}
           </Button>
         ) : null}
       </div>
@@ -166,11 +168,11 @@ function ExportDetail({ run }: { run: RunSummary }) {
       {/* Export artifacts */}
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Export Artifacts
+          {m.section_export_artifacts()}
         </h3>
         {exportArtifacts.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No export artifacts found for this run.
+            {m.msg_no_artifacts_for_run()}
           </p>
         ) : (
           <div className="space-y-2">
@@ -184,7 +186,7 @@ function ExportDetail({ run }: { run: RunSummary }) {
       {/* Report preview */}
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Report Preview
+          {m.section_report_preview()}
         </h3>
         {htmlArtifact ? (
           <iframe
@@ -210,19 +212,18 @@ function ExportDetail({ run }: { run: RunSummary }) {
       {/* Typst PDF placeholder */}
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Typst PDF
+          {m.section_typst_pdf()}
         </h3>
         <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          PDF generation via Typst is planned for Phase 20b. HTML reports are
-          available now.
+          {m.msg_pdf_generation_planned()}
         </div>
       </section>
 
       {/* CLI command */}
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          CLI Command
+          {m.section_cli_command()}
         </h3>
         <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
           <code className="flex-1 font-mono text-xs">{cliCommand}</code>
@@ -260,16 +261,15 @@ function NewExportDialog({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Export</DialogTitle>
+          <DialogTitle>{m.dialog_title_new_export()}</DialogTitle>
           <DialogDescription>
-            Export bundles are created via the CLI. Select a run and copy the
-            command below.
+            {m.dialog_desc_new_export()}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-xs font-medium">Select run</p>
+            <p className="text-xs font-medium">{m.label_select_run()}</p>
             <Select
               value={selectedRunId || "_none"}
               onValueChange={(v) => {
@@ -277,10 +277,10 @@ function NewExportDialog({
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a run…" />
+                <SelectValue placeholder={m.placeholder_select_run()} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_none">— Select a run —</SelectItem>
+                <SelectItem value="_none">{m.option_select_run_placeholder()}</SelectItem>
                 {runs.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     <span className="font-mono">{r.id}</span>{" "}
@@ -294,7 +294,7 @@ function NewExportDialog({
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-xs font-medium">Command</p>
+            <p className="text-xs font-medium">{m.label_command()}</p>
             <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
               <code className="flex-1 font-mono text-xs">{cliCommand}</code>
               <CopyButton text={cliCommand} />
@@ -304,7 +304,7 @@ function NewExportDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Close
+            {m.action_close()}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -399,7 +399,7 @@ export default function ExportPage() {
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" />
-          Could not load runs. Is the API server running?
+          {m.msg_api_error_export()}
         </div>
       </div>
     );
@@ -412,10 +412,12 @@ export default function ExportPage() {
         <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div>
-              <h2 className="text-sm font-semibold">Exports</h2>
+              <h2 className="text-sm font-semibold">{m.page_title_exports()}</h2>
               <p className="text-xs text-muted-foreground">
-                {String(runsWithExports.length)} run
-                {runsWithExports.length !== 1 ? "s" : ""} with exports
+                {String(runsWithExports.length)}{" "}
+                {runsWithExports.length !== 1
+                  ? m.msg_runs_with_exports_plural()
+                  : m.msg_runs_with_exports()}
               </p>
             </div>
             <Button
@@ -425,7 +427,7 @@ export default function ExportPage() {
                 setDialogOpen(true);
               }}
             >
-              New Export
+              {m.action_new_export()}
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -433,9 +435,7 @@ export default function ExportPage() {
               <div className="px-4 py-6 text-center">
                 <Package className="mx-auto h-8 w-8 text-muted-foreground" />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  No exports yet. Use{" "}
-                  <code className="rounded bg-muted px-1">noise export</code>{" "}
-                  from the CLI to create an export bundle.
+                  {m.msg_no_exports_empty_state()}
                 </p>
               </div>
             ) : (
@@ -459,7 +459,7 @@ export default function ExportPage() {
             <ExportDetail run={selectedRun} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Select a run to view its export artifacts.
+              {m.msg_select_run_for_details()}
             </div>
           )}
         </div>

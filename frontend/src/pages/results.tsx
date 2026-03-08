@@ -27,6 +27,7 @@ import {
 } from "@/ui/components/select";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
 import type { ArtifactRef, ReceiverTable, RunSummary } from "@/api/client";
+import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,28 +59,28 @@ type RunStatus = RunSummary["status"];
 const statusConfig: Record<
   RunStatus,
   {
-    label: string;
+    label: () => string;
     icon: React.ComponentType<{ className?: string }>;
     className: string;
   }
 > = {
   pending: {
-    label: "Pending",
+    label: m.status_badge_pending,
     icon: Clock,
     className: "text-muted-foreground bg-muted",
   },
   running: {
-    label: "Running",
+    label: m.status_badge_running,
     icon: Loader2,
     className: "text-blue-600 bg-blue-50 dark:bg-blue-950",
   },
   completed: {
-    label: "Completed",
+    label: m.status_badge_completed,
     icon: CheckCircle2,
     className: "text-green-600 bg-green-50 dark:bg-green-950",
   },
   failed: {
-    label: "Failed",
+    label: m.status_badge_failed,
     icon: XCircle,
     className: "text-destructive bg-destructive/10",
   },
@@ -95,7 +96,7 @@ function StatusBadge({ status }: { status: RunStatus }) {
       <Icon
         className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`}
       />
-      {cfg.label}
+      {cfg.label()}
     </span>
   );
 }
@@ -213,7 +214,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
     return (
       <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        No receiver table artifact for this run.
+        {m.msg_no_raster_artifacts()}
       </div>
     );
   }
@@ -222,7 +223,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading receiver table…
+        {m.status_loading_receiver_table()}
       </div>
     );
   }
@@ -231,7 +232,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
     return (
       <div className="flex items-center gap-2 text-sm text-destructive">
         <AlertCircle className="h-4 w-4" />
-        Failed to load receiver table.
+        {m.error_load_receiver_table()}
       </div>
     );
   }
@@ -251,19 +252,19 @@ function ReceiversTab({ run }: { run: RunSummary }) {
               </p>
               <div className="mt-1 space-y-0.5 text-xs">
                 <p>
-                  <span className="text-muted-foreground">Min:</span>{" "}
+                  <span className="text-muted-foreground">{m.label_min()}:</span>{" "}
                   <span className="font-medium">
                     {min.toFixed(1)} {unit}
                   </span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Max:</span>{" "}
+                  <span className="text-muted-foreground">{m.label_max()}:</span>{" "}
                   <span className="font-medium">
                     {max.toFixed(1)} {unit}
                   </span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Mean:</span>{" "}
+                  <span className="text-muted-foreground">{m.label_mean()}:</span>{" "}
                   <span className="font-medium">
                     {mean.toFixed(1)} {unit}
                   </span>
@@ -278,19 +279,19 @@ function ReceiversTab({ run }: { run: RunSummary }) {
       <div className="flex items-center gap-3">
         <Input
           className="h-8 w-64 text-xs"
-          placeholder="Filter by receiver ID…"
+          placeholder={m.label_filter_receiver_id()}
           value={filter}
           onChange={(e) => {
             setFilter(e.target.value);
           }}
         />
         <span className="text-xs text-muted-foreground">
-          {String(sortedRecords.length)} / {String(data.records.length)} records
+          {String(sortedRecords.length)} / {String(data.records.length)} {m.msg_records_count()}
         </span>
         <div className="ml-auto">
           <Button variant="outline" size="sm" onClick={downloadCSV}>
             <Download className="mr-1.5 h-3.5 w-3.5" />
-            Download CSV
+            {m.action_download_csv()}
           </Button>
         </div>
       </div>
@@ -309,7 +310,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
                   }}
                 >
                   <span className="inline-flex items-center gap-1">
-                    {col === "height_m" ? "Height (m)" : col}
+                    {col === "height_m" ? m.table_header_height_m() : col}
                     <SortIcon col={col} />
                   </span>
                 </th>
@@ -339,7 +340,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
                   colSpan={4 + indicators.length}
                   className="px-3 py-6 text-center text-muted-foreground"
                 >
-                  No records match the filter.
+                  {m.msg_no_records_match_filter()}
                 </td>
               </tr>
             ) : null}
@@ -361,7 +362,7 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading raster metadata…
+        {m.status_loading_raster_metadata()}
       </div>
     );
   }
@@ -370,7 +371,7 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
     return (
       <div className="flex items-center gap-2 text-sm text-destructive">
         <AlertCircle className="h-4 w-4" />
-        Failed to load raster metadata.
+        {m.error_load_raster_metadata()}
       </div>
     );
   }
@@ -384,26 +385,26 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
       {/* Metadata */}
       <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
         <div>
-          <span className="text-muted-foreground">Dimensions:</span>{" "}
+          <span className="text-muted-foreground">{m.label_dimensions()}:</span>{" "}
           <span className="font-medium">
             {String(data.width)} × {String(data.height)}
           </span>
         </div>
         <div>
-          <span className="text-muted-foreground">Bands:</span>{" "}
+          <span className="text-muted-foreground">{m.label_bands()}:</span>{" "}
           <span className="font-medium">{String(data.bands)}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">NoData:</span>{" "}
+          <span className="text-muted-foreground">{m.label_nodata()}:</span>{" "}
           <span className="font-medium">{String(data.nodata)}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">Unit:</span>{" "}
+          <span className="text-muted-foreground">{m.label_unit()}:</span>{" "}
           <span className="font-medium">{data.unit}</span>
         </div>
         {data.band_names && data.band_names.length > 0 ? (
           <div className="col-span-2">
-            <span className="text-muted-foreground">Bands:</span>{" "}
+            <span className="text-muted-foreground">{m.label_bands()}:</span>{" "}
             <span className="font-mono font-medium">
               {data.band_names.join(", ")}
             </span>
@@ -415,11 +416,11 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
       <div className="space-y-3 rounded-md border bg-muted/30 p-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Rendering Controls
+          {m.section_rendering_controls()}
         </div>
         <div className="grid grid-cols-2 gap-3 opacity-50">
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Color ramp</p>
+            <p className="text-xs text-muted-foreground">{m.label_color_ramp()}</p>
             <Select disabled>
               <SelectTrigger className="h-7 text-xs">
                 <SelectValue placeholder="Viridis" />
@@ -434,24 +435,22 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
             </Select>
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Min / Max</p>
+            <p className="text-xs text-muted-foreground">{m.label_min_max()}</p>
             <div className="flex gap-1">
-              <Input disabled className="h-7 text-xs" placeholder="Min" />
-              <Input disabled className="h-7 text-xs" placeholder="Max" />
+              <Input disabled className="h-7 text-xs" placeholder={m.label_min()} />
+              <Input disabled className="h-7 text-xs" placeholder={m.label_max()} />
             </div>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Raster map rendering is not yet implemented. Export the run bundle
-          with <code className="rounded bg-muted px-1">noise export</code> to
-          access raster files.
+          {m.msg_raster_not_implemented()}
         </p>
       </div>
 
       {/* Receiver probe placeholder */}
       <div className="mt-3 flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <Crosshair className="h-3.5 w-3.5 shrink-0" />
-        Receiver value probe tool (deferred)
+        {m.label_receiver_probe_tool()}
       </div>
     </div>
   );
@@ -466,7 +465,7 @@ function RasterTab({ run }: { run: RunSummary }) {
     return (
       <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        No raster artifacts for this run.
+        {m.msg_no_raster_artifacts()}
       </div>
     );
   }
@@ -538,7 +537,7 @@ function CompareTab({
     <div className="flex flex-col gap-4">
       {/* Run B selector */}
       <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground">Compare with:</p>
+        <p className="text-sm text-muted-foreground">{m.label_compare_with()}:</p>
         <Select
           value={compareRunId || "_none"}
           onValueChange={(v) => {
@@ -546,10 +545,10 @@ function CompareTab({
           }}
         >
           <SelectTrigger className="h-8 w-64 text-xs">
-            <SelectValue placeholder="Select a run…" />
+            <SelectValue placeholder={m.placeholder_compare_run()} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="_none">— Select a run —</SelectItem>
+            <SelectItem value="_none">{m.option_select_compare_run()}</SelectItem>
             {otherRuns.map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 <span className="font-mono">{r.id}</span>{" "}
@@ -565,19 +564,18 @@ function CompareTab({
       {compareRun ? (
         <>
           <div className="flex gap-4">
-            <RunColumn r={run} label="Run A (selected)" />
-            <RunColumn r={compareRun} label="Run B" />
+            <RunColumn r={run} label={m.msg_run_column_selected()} />
+            <RunColumn r={compareRun} label={m.msg_run_column_compare()} />
           </div>
           <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Run-to-run raster diff layer is deferred to Phase 23g follow-up.
+            {m.msg_run_to_run_diff_deferred()}
           </div>
         </>
       ) : (
         <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
           <GitCompare className="mt-0.5 h-4 w-4 shrink-0" />
-          Select a second completed run above to compare parameters and metadata
-          side by side.
+          {m.msg_select_run_compare()}
         </div>
       )}
     </div>
@@ -602,17 +600,17 @@ function RunResultDetail({
   const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
     {
       id: "receivers",
-      label: "Receivers",
+      label: m.tab_receivers(),
       icon: <Table2 className="h-3.5 w-3.5" />,
     },
     {
       id: "raster",
-      label: "Raster",
+      label: m.tab_raster(),
       icon: <BarChart3 className="h-3.5 w-3.5" />,
     },
     {
       id: "compare",
-      label: "Compare",
+      label: m.tab_compare(),
       icon: <GitCompare className="h-3.5 w-3.5" />,
     },
   ];

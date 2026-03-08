@@ -392,10 +392,10 @@ export default function ImportPage() {
                   setStep("upload");
                 }}
               >
-                Back
+                {m.action_back()}
               </Button>
               <Button onClick={handleConfirm}>
-                Import {String(features.length)} Features
+                {m.action_import_features({ count: features.length })}
               </Button>
             </div>
           </div>
@@ -404,11 +404,11 @@ export default function ImportPage() {
         {step === "done" ? (
           <div className="flex flex-col items-center gap-4 text-center">
             <CheckCircle2 className="h-10 w-10 text-green-500" />
-            <h2 className="text-lg font-semibold">Import Complete</h2>
+            <h2 className="text-lg font-semibold">{m.status_import_complete()}</h2>
             <p className="text-sm text-muted-foreground">
-              {String(features.length)} features loaded into the model.
+              {String(features.length)} {m.msg_import_complete_description()}
             </p>
-            <Button onClick={handleGoToMap}>Go to Map</Button>
+            <Button onClick={handleGoToMap}>{m.action_go_to_map()}</Button>
           </div>
         ) : null}
       </div>
