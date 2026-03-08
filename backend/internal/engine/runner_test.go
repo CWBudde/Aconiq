@@ -246,6 +246,58 @@ func TestChunkCacheInvalidatesWhenSourcesChange(t *testing.T) {
 	}
 }
 
+func TestRunCacheRetentionPrunesOlderRunDirectories(t *testing.T) {
+	t.Parallel()
+
+	receivers := []Receiver{
+		{ID: "rx-0001", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4},
+		{ID: "rx-0002", Point: geo.Point2D{X: 10, Y: 0}, HeightM: 4},
+	}
+	sources := []Source{{ID: "s1", Point: geo.Point2D{X: 5, Y: 5}, Emission: 90}}
+
+	cacheDir := t.TempDir()
+	runner := NewRunner(nil)
+
+	err := os.MkdirAll(filepath.Join(cacheDir, "bench", "keep"), 0o755)
+	if err != nil {
+		t.Fatalf("create bench cache dir: %v", err)
+	}
+
+	for _, runID := range []string{"run-001", "run-002", "run-003"} {
+		_, err := runner.Run(context.Background(), RunConfig{
+			RunID:            runID,
+			Workers:          1,
+			ChunkSize:        1,
+			CacheDir:         cacheDir,
+			RunCacheKeepLast: 2,
+			Receivers:        receivers,
+			Sources:          sources,
+			DisableCache:     false,
+		})
+		if err != nil {
+			t.Fatalf("run %s: %v", runID, err)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(cacheDir, "run-001")); !os.IsNotExist(err) {
+		t.Fatalf("expected oldest run cache to be pruned, got err=%v", err)
+	}
+
+	for _, runID := range []string{"run-002", "run-003"} {
+		if _, err := os.Stat(filepath.Join(cacheDir, runID)); err != nil {
+			t.Fatalf("expected run cache %s to remain: %v", runID, err)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(cacheDir, "shared-chunks")); err != nil {
+		t.Fatalf("expected shared chunk cache to remain: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(cacheDir, "bench")); err != nil {
+		t.Fatalf("expected bench cache to remain: %v", err)
+	}
+}
+
 func TestProgressEventsIncludePipelineStages(t *testing.T) {
 	t.Parallel()
 

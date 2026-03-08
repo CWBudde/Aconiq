@@ -144,6 +144,7 @@ Planned package structure:
   - per-run chunk cache remains under the run cache directory
   - shared keyed chunk cache under `.noise/cache/shared-chunks/` enables reuse across equivalent runs
   - cache keys include input receivers, sources, and cache format version so changed inputs invalidate stale artifacts
+  - normal engine runs prune older run cache directories automatically (`RunCacheKeepLast`, default `20`) while preserving `bench/` and `shared-chunks/`
 
 ## Phase 23 Initial Slice
 

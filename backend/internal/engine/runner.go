@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -184,6 +185,11 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 
 	r.emit(cfg.RunID, "persist", "done", -1, len(received), totalChunks)
 
+	err = pruneRunCacheDirs(cfg.CacheDir, cfg.RunID, cfg.RunCacheKeepLast)
+	if err != nil {
+		return RunOutput{}, err
+	}
+
 	return output, nil
 }
 
@@ -198,6 +204,10 @@ func normalizeConfig(cfg RunConfig) RunConfig {
 
 	if cfg.SourceIndexCellM <= 0 {
 		cfg.SourceIndexCellM = 100
+	}
+
+	if cfg.RunCacheKeepLast <= 0 {
+		cfg.RunCacheKeepLast = 20
 	}
 
 	return cfg
@@ -593,6 +603,50 @@ func cleanupTmpFiles(root string) error {
 			if err != nil && !os.IsNotExist(err) {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+func pruneRunCacheDirs(cacheRoot string, currentRunID string, keepLast int) error {
+	entries, err := os.ReadDir(cacheRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("read cache root %s: %w", cacheRoot, err)
+	}
+
+	runIDs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if name == "bench" || name == "shared-chunks" {
+			continue
+		}
+
+		runIDs = append(runIDs, name)
+	}
+
+	slices.Sort(runIDs)
+	if len(runIDs) <= keepLast {
+		return nil
+	}
+
+	for _, runID := range runIDs[:len(runIDs)-keepLast] {
+		if runID == currentRunID {
+			continue
+		}
+
+		path := filepath.Join(cacheRoot, runID)
+		err := os.RemoveAll(path)
+		if err != nil {
+			return fmt.Errorf("remove stale run cache %s: %w", path, err)
 		}
 	}
 

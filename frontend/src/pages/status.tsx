@@ -1,14 +1,15 @@
 import { useHealth, useProjectStatus } from "@/api";
 import type { HealthResponse, ProjectStatusResponse } from "@/api";
+import { m } from "@/i18n/messages";
 
 function HealthSection({ data }: { data: HealthResponse }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-      <dt className="text-muted-foreground">Status</dt>
+      <dt className="text-muted-foreground">{m.label_status_field()}</dt>
       <dd>{data.status}</dd>
-      <dt className="text-muted-foreground">Version</dt>
+      <dt className="text-muted-foreground">{m.label_version_field()}</dt>
       <dd className="font-mono">{data.version}</dd>
-      <dt className="text-muted-foreground">Time</dt>
+      <dt className="text-muted-foreground">{m.label_time_field()}</dt>
       <dd className="font-mono">{data.time}</dd>
     </dl>
   );
@@ -17,13 +18,13 @@ function HealthSection({ data }: { data: HealthResponse }) {
 function ProjectSection({ data }: { data: ProjectStatusResponse }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-      <dt className="text-muted-foreground">Name</dt>
+      <dt className="text-muted-foreground">{m.label_name_field()}</dt>
       <dd>{data.name}</dd>
-      <dt className="text-muted-foreground">CRS</dt>
+      <dt className="text-muted-foreground">{m.label_crs_field()}</dt>
       <dd className="font-mono">{data.crs}</dd>
-      <dt className="text-muted-foreground">Scenarios</dt>
+      <dt className="text-muted-foreground">{m.label_scenarios_field()}</dt>
       <dd>{String(data.scenario_count)}</dd>
-      <dt className="text-muted-foreground">Runs</dt>
+      <dt className="text-muted-foreground">{m.label_runs_field()}</dt>
       <dd>{String(data.run_count)}</dd>
     </dl>
   );
@@ -66,20 +67,20 @@ export default function StatusPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
-      <h2 className="text-lg font-semibold">Status</h2>
+      <h2 className="text-lg font-semibold">{m.page_title_status()}</h2>
 
       <section className="grid gap-2">
         <h3 className="text-sm font-medium text-muted-foreground">
-          Backend Health
+          {m.section_backend_health()}
         </h3>
-        <QueryResult {...health} loadingText="Connecting...">
+        <QueryResult {...health} loadingText={m.status_loading_health()}>
           {(data) => <HealthSection data={data} />}
         </QueryResult>
       </section>
 
       <section className="grid gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Project</h3>
-        <QueryResult {...project} loadingText="Loading...">
+        <h3 className="text-sm font-medium text-muted-foreground">{m.section_project()}</h3>
+        <QueryResult {...project} loadingText={m.status_loading_project()}>
           {(data) => <ProjectSection data={data} />}
         </QueryResult>
       </section>
