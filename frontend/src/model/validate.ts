@@ -5,6 +5,15 @@ import type {
   ValidationReport,
 } from "./types";
 import { isGeometryCompatible } from "./types";
+import {
+  getFeatureNumber,
+  getFeatureString,
+  getRLS19ReviewRequired,
+  RLS19_JUNCTION_TYPES,
+  RLS19_SPEED_KEYS,
+  RLS19_SURFACE_TYPES,
+  RLS19_TRAFFIC_KEYS,
+} from "./source-acoustics";
 
 export function validateModel(features: ModelFeature[]): ValidationReport {
   return validateProjectModel(features, []);
@@ -38,7 +47,7 @@ export function validateProjectModel(
     validateUniqueID(feature.id, "feature", ids, errors);
     ids.add(feature.id);
 
-    validateFeature(feature, errors);
+    validateFeature(feature, errors, warnings);
   }
 
   for (const receiver of receivers) {
@@ -58,6 +67,7 @@ export function validateProjectModel(
 function validateFeature(
   feature: ModelFeature,
   errors: ValidationIssue[],
+  warnings: ValidationIssue[],
 ): void {
   const { id, kind } = feature;
 
@@ -80,6 +90,7 @@ function validateFeature(
           message: `Geometry ${feature.geometry.type} incompatible with source_type ${feature.sourceType}`,
         });
       }
+      validateRLS19SourceAcoustics(feature, errors, warnings);
       break;
     }
     case "building": {
@@ -140,6 +151,143 @@ function validateFeature(
       }
       break;
     }
+  }
+}
+
+function validateRLS19SourceAcoustics(
+  feature: ModelFeature,
+  errors: ValidationIssue[],
+  warnings: ValidationIssue[],
+): void {
+  if (feature.sourceType !== "line") {
+    return;
+  }
+
+  const surfaceType = getFeatureString(feature, "surface_type", "road_surface_type");
+  if (
+    surfaceType &&
+    !RLS19_SURFACE_TYPES.includes(
+      surfaceType as (typeof RLS19_SURFACE_TYPES)[number],
+    )
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.surface_type.invalid",
+      featureId: feature.id,
+      message: `RLS-19 surface_type "${surfaceType}" is not supported`,
+    });
+  }
+
+  const junctionType = getFeatureString(
+    feature,
+    "junction_type",
+    "road_junction_type",
+  );
+  if (
+    junctionType &&
+    !RLS19_JUNCTION_TYPES.includes(
+      junctionType as (typeof RLS19_JUNCTION_TYPES)[number],
+    )
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.junction_type.invalid",
+      featureId: feature.id,
+      message: `RLS-19 junction_type "${junctionType}" is not supported`,
+    });
+  }
+
+  const gradient = getFeatureNumber(
+    feature,
+    "gradient_percent",
+    "road_gradient_percent",
+  );
+  if (
+    gradient != null &&
+    (!Number.isFinite(gradient) || gradient < -12 || gradient > 12)
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.gradient.invalid",
+      featureId: feature.id,
+      message: "RLS-19 gradient_percent must be between -12 and 12",
+    });
+  }
+
+  const junctionDistance = getFeatureNumber(
+    feature,
+    "junction_distance_m",
+    "road_junction_distance_m",
+  );
+  if (
+    junctionDistance != null &&
+    (!Number.isFinite(junctionDistance) || junctionDistance < 0)
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.junction_distance.invalid",
+      featureId: feature.id,
+      message: "RLS-19 junction_distance_m must be >= 0",
+    });
+  }
+
+  const reflectionSurcharge = getFeatureNumber(feature, "reflection_surcharge_db");
+  if (
+    reflectionSurcharge != null &&
+    !Number.isFinite(reflectionSurcharge)
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.reflection_surcharge.invalid",
+      featureId: feature.id,
+      message: "RLS-19 reflection_surcharge_db must be finite",
+    });
+  }
+
+  const uniformSpeed = getFeatureNumber(feature, "road_speed_kph");
+  if (
+    uniformSpeed != null &&
+    (!Number.isFinite(uniformSpeed) || uniformSpeed <= 0)
+  ) {
+    errors.push({
+      level: "error",
+      code: "source.rls19.road_speed.invalid",
+      featureId: feature.id,
+      message: "RLS-19 road_speed_kph must be > 0",
+    });
+  }
+
+  for (const key of RLS19_SPEED_KEYS) {
+    const value = getFeatureNumber(feature, key);
+    if (value != null && (!Number.isFinite(value) || value <= 0)) {
+      errors.push({
+        level: "error",
+        code: "source.rls19.speed.invalid",
+        featureId: feature.id,
+        message: `RLS-19 ${key} must be > 0`,
+      });
+    }
+  }
+
+  for (const key of RLS19_TRAFFIC_KEYS) {
+    const value = getFeatureNumber(feature, key);
+    if (value != null && (!Number.isFinite(value) || value < 0)) {
+      errors.push({
+        level: "error",
+        code: "source.rls19.traffic.invalid",
+        featureId: feature.id,
+        message: `RLS-19 ${key} must be >= 0`,
+      });
+    }
+  }
+
+  if (getRLS19ReviewRequired(feature)) {
+    warnings.push({
+      level: "warning",
+      code: "source.rls19.review_required",
+      featureId: feature.id,
+      message: "Review imported source acoustics before running RLS-19",
+    });
   }
 }
 

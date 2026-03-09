@@ -6,6 +6,7 @@ const src: ModelFeature = {
   id: "s1",
   kind: "source",
   sourceType: "point",
+  properties: { surface_type: "SMA", speed_pkw_kph: 60 },
   geometry: { type: "Point", coordinates: [10, 51] },
 };
 const bld: ModelFeature = {
@@ -45,6 +46,7 @@ describe("featuresToGeoJSON", () => {
     expect(fc.features).toHaveLength(2);
     expect(fc.features[0]?.properties["kind"]).toBe("source");
     expect(fc.features[0]?.properties["source_type"]).toBe("point");
+    expect(fc.features[0]?.properties["surface_type"]).toBe("SMA");
     expect(fc.features[1]?.properties["kind"]).toBe("building");
     expect(fc.features[1]?.properties["height_m"]).toBe(10);
   });

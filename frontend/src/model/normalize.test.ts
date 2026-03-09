@@ -46,6 +46,7 @@ describe("normalizeGeoJSON", () => {
     expect(result.features).toHaveLength(3);
     expect(result.features[0]?.kind).toBe("source");
     expect(result.features[0]?.sourceType).toBe("point");
+    expect(result.features[0]?.properties?.["kind"]).toBe("source");
     expect(result.features[1]?.kind).toBe("building");
     expect(result.features[1]?.heightM).toBe(12);
     expect(result.features[2]?.kind).toBe("barrier");
@@ -95,5 +96,35 @@ describe("normalizeGeoJSON", () => {
     const result = normalizeGeoJSON(collection);
     expect(result.features).toEqual([]);
     expect(result.skipped).toHaveLength(1);
+  });
+
+  it("preserves standard-specific source properties", () => {
+    const result = normalizeGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "road-1",
+          properties: {
+            kind: "source",
+            source_type: "line",
+            surface_type: "SMA",
+            speed_pkw_kph: 70,
+            traffic_day_pkw: 900,
+          },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [10, 0],
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(result.features[0]?.properties?.["surface_type"]).toBe("SMA");
+    expect(result.features[0]?.properties?.["speed_pkw_kph"]).toBe(70);
+    expect(result.features[0]?.properties?.["traffic_day_pkw"]).toBe(900);
   });
 });

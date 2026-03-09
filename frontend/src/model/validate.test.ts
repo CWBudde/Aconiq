@@ -225,4 +225,50 @@ describe("validateModel", () => {
       true,
     );
   });
+
+  it("warns when imported source acoustics require review", () => {
+    const report = validateModel([
+      {
+        ...validSource,
+        sourceType: "line",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [0, 0],
+            [1, 0],
+          ],
+        },
+        properties: { source_acoustics_review_required: true },
+      },
+    ]);
+
+    expect(
+      report.warnings.some((issue) => issue.code === "source.rls19.review_required"),
+    ).toBe(true);
+  });
+
+  it("rejects invalid RLS-19 source override values", () => {
+    const report = validateModel([
+      {
+        ...validSource,
+        sourceType: "line",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [0, 0],
+            [1, 0],
+          ],
+        },
+        properties: {
+          speed_pkw_kph: 0,
+          traffic_day_pkw: -1,
+          surface_type: "bogus",
+        },
+      },
+    ]);
+
+    expect(report.errors.some((issue) => issue.code === "source.rls19.speed.invalid")).toBe(true);
+    expect(report.errors.some((issue) => issue.code === "source.rls19.traffic.invalid")).toBe(true);
+    expect(report.errors.some((issue) => issue.code === "source.rls19.surface_type.invalid")).toBe(true);
+  });
 });

@@ -93,10 +93,16 @@ export function setFeatureProperty(
   feature: ModelFeature,
   key: string,
   value: string | number | boolean | undefined,
+  ...aliases: string[]
 ): ModelFeature {
   const nextProperties = { ...(feature.properties ?? {}) };
+  Reflect.deleteProperty(nextProperties, `${key}_inferred`);
+  for (const alias of aliases) {
+    Reflect.deleteProperty(nextProperties, alias);
+    Reflect.deleteProperty(nextProperties, `${alias}_inferred`);
+  }
   if (value == null || value === "") {
-    delete nextProperties[key];
+    Reflect.deleteProperty(nextProperties, key);
   } else {
     nextProperties[key] = value;
   }
