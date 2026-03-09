@@ -88,3 +88,15 @@ export function isGeometryCompatible(
       return geometryType === "Polygon" || geometryType === "MultiPolygon";
   }
 }
+
+/** An explicit receiver point for noise calculation */
+export interface ModelReceiver {
+  id: string;
+  heightM: number;
+  geometry: { type: "Point"; coordinates: Position };
+}
+
+/** Create a new receiver ID */
+export function createReceiverId(): string {
+  return crypto.randomUUID();
+}

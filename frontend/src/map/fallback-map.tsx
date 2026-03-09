@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useModelStore } from "@/model/model-store";
-import type { ModelFeature } from "@/model/types";
+import type { ModelFeature, ModelReceiver } from "@/model/types";
 
 interface FallbackMapProps {
   center: [number, number];
@@ -23,6 +23,7 @@ const WHEEL_ZOOM_STEP = 0.25;
 
 export function FallbackMap({ center }: FallbackMapProps) {
   const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<{
     pointerId: number;
@@ -161,6 +162,16 @@ export function FallbackMap({ center }: FallbackMapProps) {
             viewportHeight={size.height}
           />
         ))}
+        {receivers.map((receiver) => (
+          <ReceiverOverlay
+            key={receiver.id}
+            receiver={receiver}
+            centerWorld={worldCenter}
+            zoom={view.zoom}
+            viewportWidth={size.width}
+            viewportHeight={size.height}
+          />
+        ))}
       </svg>
 
       <div className="absolute left-3 top-3 rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm">
@@ -275,6 +286,38 @@ function FeatureOverlay({
         );
       })}
     </>
+  );
+}
+
+function ReceiverOverlay({
+  receiver,
+  centerWorld,
+  zoom,
+  viewportWidth,
+  viewportHeight,
+}: {
+  receiver: ModelReceiver;
+  centerWorld: Point;
+  zoom: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}) {
+  const projected = projectToViewport(
+    receiver.geometry.coordinates,
+    centerWorld,
+    zoom,
+    viewportWidth,
+    viewportHeight,
+  );
+  return (
+    <circle
+      cx={projected.x}
+      cy={projected.y}
+      r="4"
+      fill="#2196F3"
+      stroke="#ffffff"
+      strokeWidth="1.5"
+    />
   );
 }
 

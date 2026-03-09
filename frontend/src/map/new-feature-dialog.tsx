@@ -16,8 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/components/select";
-import type { FeatureKind, Geometry, SourceType } from "@/model/types";
-import { createFeatureId } from "@/model/types";
+import type { FeatureKind, Geometry, Position, SourceType } from "@/model/types";
+import { createFeatureId, createReceiverId } from "@/model/types";
+import type { ModelReceiver } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 
@@ -47,10 +48,11 @@ export function NewFeatureDialog({
   onClose,
 }: NewFeatureDialogProps) {
   const addFeature = useModelStore((s) => s.addFeature);
+  const addReceiver = useModelStore((s) => s.addReceiver);
   const defaultKind = geometry ? inferKind(geometry.type) : "source";
   const defaultSourceType = geometry ? inferSourceType(geometry.type) : "point";
 
-  const [kind, setKind] = useState<FeatureKind>(defaultKind);
+  const [kind, setKind] = useState<FeatureKind | "receiver">(defaultKind);
   const [sourceType, setSourceType] = useState<SourceType>(defaultSourceType);
   const [height, setHeight] = useState("5");
 
@@ -63,8 +65,23 @@ export function NewFeatureDialog({
     }
   }, [geometry]);
 
+  const isPoint =
+    geometry?.type === "Point" || geometry?.type === "MultiPoint";
+
   const handleSave = useCallback(() => {
     if (!geometry) return;
+
+    if (kind === "receiver") {
+      const receiver: ModelReceiver = {
+        id: createReceiverId(),
+        heightM: Math.max(0.1, parseFloat(height) || 4),
+        geometry: geometry as { type: "Point"; coordinates: Position },
+      };
+      addReceiver(receiver);
+      onClose();
+      return;
+    }
+
     const feature = {
       id: createFeatureId(),
       kind,
@@ -76,7 +93,7 @@ export function NewFeatureDialog({
     };
     addFeature(feature);
     onClose();
-  }, [geometry, kind, sourceType, height, addFeature, onClose]);
+  }, [geometry, kind, sourceType, height, addFeature, addReceiver, onClose]);
 
   return (
     <Dialog
@@ -95,7 +112,12 @@ export function NewFeatureDialog({
             <Select
               value={kind}
               onValueChange={(v) => {
-                setKind(v as FeatureKind);
+                setKind(v as FeatureKind | "receiver");
+                if (v === "receiver") {
+                  setHeight("4");
+                } else if (v === "building" || v === "barrier") {
+                  setHeight("5");
+                }
               }}
             >
               <SelectTrigger className="h-8 text-xs">
@@ -105,6 +127,9 @@ export function NewFeatureDialog({
                 <SelectItem value="source">{m.option_source()}</SelectItem>
                 <SelectItem value="building">{m.option_building()}</SelectItem>
                 <SelectItem value="barrier">{m.option_barrier()}</SelectItem>
+                {isPoint ? (
+                  <SelectItem value="receiver">{m.option_receiver()}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </div>
@@ -130,7 +155,7 @@ export function NewFeatureDialog({
             </div>
           ) : null}
 
-          {kind === "building" || kind === "barrier" ? (
+          {kind === "building" || kind === "barrier" || kind === "receiver" ? (
             <div className="grid gap-1.5">
               <Label className="text-xs">{m.label_height_m()}</Label>
               <Input
