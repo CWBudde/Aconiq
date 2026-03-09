@@ -88,6 +88,7 @@ function normalizeFeature(
   const feature: ModelFeature = {
     id,
     kind,
+    properties: normalizeProperties(props),
     geometry: {
       type: geomType as GeometryType,
       coordinates: raw.geometry.coordinates as Geometry["coordinates"],
@@ -154,4 +155,15 @@ function parseHeightLike(value: unknown): number {
   }
   const normalized = value.replace(/\s*m$/i, "").trim();
   return Number(normalized);
+}
+
+function normalizeProperties(
+  props: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const normalizedEntries = Object.entries(props).filter(([key]) => key.trim() !== "");
+  if (normalizedEntries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(normalizedEntries);
 }
