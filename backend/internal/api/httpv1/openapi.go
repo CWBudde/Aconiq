@@ -113,6 +113,36 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 						"500": openapiErrorResponse("Internal server error"),
 					},
 				},
+				"post": map[string]any{
+					"summary":     "Create and execute a run",
+					"operationId": "createRun",
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/CreateRunRequest",
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Created run summary",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/RunSummary",
+									},
+								},
+							},
+						},
+						"400": openapiErrorResponse("Invalid run request"),
+						"404": openapiErrorResponse("Project not initialized"),
+						"405": methodNotAllowedResponse(),
+						"500": openapiErrorResponse("Run execution failed"),
+					},
+				},
 			},
 			"/api/v1/runs/{id}/log": map[string]any{
 				"get": map[string]any{
@@ -292,6 +322,26 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 					"properties": map[string]any{
 						"run_id": map[string]any{"type": "string"},
 						"lines": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+				},
+				"CreateRunRequest": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties": map[string]any{
+						"scenario_id":      map[string]any{"type": "string"},
+						"standard_id":      map[string]any{"type": "string"},
+						"standard_version": map[string]any{"type": "string"},
+						"standard_profile": map[string]any{"type": "string"},
+						"model_path":       map[string]any{"type": "string"},
+						"receiver_mode":    map[string]any{"type": "string", "enum": []string{"auto-grid", "custom"}},
+						"params": map[string]any{
+							"type":                 "object",
+							"additionalProperties": map[string]any{"type": "string"},
+						},
+						"input_paths": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},

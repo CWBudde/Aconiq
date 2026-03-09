@@ -438,9 +438,9 @@ Status: complete.
   - [x] Upload/select local files (drag-and-drop + file picker)
   - [x] Preview normalized model changes (feature counts, skipped, validation)
   - [x] Confirm-and-apply flow with diff summary
-- [ ] Calculation area workflow
-  - [ ] Define a first-class calculation-area map object
-  - [ ] Use calculation area to constrain receiver-grid/run setup defaults where applicable
+- [x] Calculation area workflow
+  - [x] Define a first-class calculation-area map object
+  - [x] Use calculation area to constrain receiver-grid/run setup defaults where applicable
 - [x] Undo/redo command stack for map edits (CommandStack + Ctrl+Z/Ctrl+Shift+Z)
 
 ---
