@@ -11,6 +11,7 @@ import (
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
@@ -487,6 +488,130 @@ func TestExtractSchall03SourcesUsesFeatureProperties(t *testing.T) {
 
 	if source.TrafficDay.TrainsPerHour != 11 || source.TrafficNight.TrainsPerHour != 5 {
 		t.Fatalf("unexpected traffic overrides: %#v", source)
+	}
+}
+
+func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
+	t.Parallel()
+
+	model := mustNormalizeModel(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rls19-rd-1",
+        "kind": "source",
+        "source_type": "line",
+        "surface_type": "OPA",
+        "speed_pkw_kph": 40,
+        "speed_lkw1_kph": 40,
+        "speed_lkw2_kph": 40,
+        "speed_krad_kph": 40,
+        "gradient_percent": 3,
+        "junction_type": "signalized",
+        "junction_distance_m": 30,
+        "reflection_surcharge_db": 2,
+        "traffic_day_pkw": 500,
+        "traffic_day_lkw1": 20,
+        "traffic_day_lkw2": 30,
+        "traffic_day_krad": 5,
+        "traffic_night_pkw": 100,
+        "traffic_night_lkw1": 5,
+        "traffic_night_lkw2": 10,
+        "traffic_night_krad": 1
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0,0],[100,0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rls19-rd-2",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0,50],[100,50]]}
+    }
+  ]
+}`)
+
+	options := rls19RoadRunOptions{
+		SurfaceType:      string(rls19road.SurfaceSMA),
+		SpeedPkwKPH:      100,
+		SpeedLkw1KPH:     100,
+		SpeedLkw2KPH:     80,
+		SpeedKradKPH:     100,
+		GradientPercent:  0,
+		TrafficDayPkw:    900,
+		TrafficDayLkw1:   40,
+		TrafficDayLkw2:   60,
+		TrafficDayKrad:   10,
+		TrafficNightPkw:  200,
+		TrafficNightLkw1: 10,
+		TrafficNightLkw2: 20,
+		TrafficNightKrad: 2,
+		SegmentLengthM:   1,
+		MinDistanceM:     3,
+	}
+
+	sources, overrideCount, err := extractRLS19RoadSources(model, options, []string{"line"})
+	if err != nil {
+		t.Fatalf("extract rls19 road sources: %v", err)
+	}
+
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(sources))
+	}
+
+	// Only the first feature has per-source acoustic overrides.
+	if overrideCount != 1 {
+		t.Fatalf("expected 1 source with feature overrides, got %d", overrideCount)
+	}
+
+	// Sources must appear in model feature order (deterministic ordering).
+	if sources[0].ID != "rls19-rd-1" || sources[1].ID != "rls19-rd-2" {
+		t.Fatalf("unexpected source order: %v, %v", sources[0].ID, sources[1].ID)
+	}
+
+	s := sources[0]
+
+	// Per-source acoustic overrides must take precedence over run-wide defaults.
+	if s.SurfaceType != rls19road.SurfaceOPA {
+		t.Fatalf("expected OPA surface type, got %q", s.SurfaceType)
+	}
+
+	if s.Speeds.PkwKPH != 40 || s.Speeds.Lkw1KPH != 40 || s.Speeds.Lkw2KPH != 40 || s.Speeds.KradKPH != 40 {
+		t.Fatalf("unexpected per-source speed overrides: %+v", s.Speeds)
+	}
+
+	if s.GradientPercent != 3 {
+		t.Fatalf("expected gradient 3, got %g", s.GradientPercent)
+	}
+
+	if s.JunctionType != rls19road.JunctionSignalized || s.JunctionDistanceM != 30 {
+		t.Fatalf("unexpected junction overrides: type=%v dist=%g", s.JunctionType, s.JunctionDistanceM)
+	}
+
+	if s.ReflectionSurchargeDB != 2 {
+		t.Fatalf("expected reflection surcharge 2, got %g", s.ReflectionSurchargeDB)
+	}
+
+	if s.TrafficDay.PkwPerHour != 500 || s.TrafficDay.Lkw1PerHour != 20 || s.TrafficDay.Lkw2PerHour != 30 || s.TrafficDay.KradPerHour != 5 {
+		t.Fatalf("unexpected day traffic overrides: %+v", s.TrafficDay)
+	}
+
+	if s.TrafficNight.PkwPerHour != 100 || s.TrafficNight.Lkw1PerHour != 5 || s.TrafficNight.Lkw2PerHour != 10 || s.TrafficNight.KradPerHour != 1 {
+		t.Fatalf("unexpected night traffic overrides: %+v", s.TrafficNight)
+	}
+
+	// Second source uses run-wide defaults.
+	s2 := sources[1]
+	if s2.SurfaceType != rls19road.SurfaceSMA {
+		t.Fatalf("expected SMA (run-wide default) for second source, got %q", s2.SurfaceType)
+	}
+
+	if s2.TrafficDay.PkwPerHour != 900 {
+		t.Fatalf("expected run-wide day pkw 900 for second source, got %g", s2.TrafficDay.PkwPerHour)
 	}
 }
 

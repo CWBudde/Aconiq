@@ -1006,6 +1006,87 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	}
 }
 
+func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "rls19_per_source.geojson")
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rd-override",
+        "kind": "source",
+        "source_type": "line",
+        "surface_type": "OPA",
+        "traffic_day_pkw": 300
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rd-default", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0, 50], [120, 50]]}
+    }
+  ]
+}`)
+	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase31", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.Status != project.RunStatusCompleted {
+		t.Fatalf("expected completed run, got %q", run.Status)
+	}
+
+	summaryPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "run-summary.json"))
+	if err != nil {
+		t.Fatalf("read run-summary: %v", err)
+	}
+
+	var summary map[string]any
+	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+		t.Fatalf("decode run-summary: %v", err)
+	}
+
+	// One source had per-source acoustic overrides; the other used run-wide defaults.
+	overrideCount, ok := summary["sources_with_feature_acoustics_overrides"]
+	if !ok {
+		t.Fatalf("expected sources_with_feature_acoustics_overrides in summary, got: %v", summary)
+	}
+
+	// JSON numbers decode as float64.
+	if overrideCount.(float64) != 1 {
+		t.Fatalf("expected sources_with_feature_acoustics_overrides=1, got %v", overrideCount)
+	}
+
+	// The log must also record the override count.
+	logPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "run.log"))
+	if err != nil {
+		t.Fatalf("read run.log: %v", err)
+	}
+
+	if !strings.Contains(string(logPayload), "rls19_sources_with_feature_overrides=1") {
+		t.Fatalf("run.log missing rls19_sources_with_feature_overrides=1:\n%s", logPayload)
+	}
+}
+
 func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	t.Parallel()
 
