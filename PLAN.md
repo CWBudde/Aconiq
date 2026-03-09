@@ -486,20 +486,20 @@ Status: complete.
 **Goal:** let users define where the noise comes from by editing acoustic/emission inputs on each source feature, not only as run-wide defaults.
 
 - [ ] Extend source feature data model for per-source acoustics
-  - [ ] Support per-source traffic/emission attributes required for the first browser-delivered standards
-  - [ ] Support per-source defaults vs run-level defaults with clear precedence rules
-  - [ ] Preserve standard-specific source attributes through import/export/undo/autosave
+  - [x] Support per-source traffic/emission attributes required for the first browser-delivered standards
+  - [x] Support per-source defaults vs run-level defaults with clear precedence rules
+  - [x] Preserve standard-specific source attributes through import/export/undo/autosave
 - [ ] Add source-acoustics editing UI
-  - [ ] Extend the source feature editor beyond `source_type`
-  - [ ] Expose per-source traffic counts, speeds, surface type, gradient, and other RLS-19-relevant inputs
-  - [ ] Add validation/help text so invalid or incomplete source inputs are visible before run start
+  - [x] Extend the source feature editor beyond `source_type`
+  - [x] Expose per-source traffic counts, speeds, surface type, gradient, and other RLS-19-relevant inputs
+  - [x] Add validation/help text so invalid or incomplete source inputs are visible before run start
 - [ ] Update OSM/import mapping to populate source acoustics where possible
-  - [ ] Map OSM attributes into source defaults when reliable
-  - [ ] Mark inferred/missing values clearly so users can review them
+  - [x] Map OSM attributes into source defaults when reliable
+  - [x] Mark inferred/missing values clearly so users can review them
 - [ ] Wire per-source acoustics into browser/WASM execution
-  - [ ] Make `buildRoadSources()` prefer feature-level source parameters over run-wide defaults
-  - [ ] Keep run-level parameter fields as project-wide defaults / fallback values
-  - [ ] Add regression coverage showing two sources with different acoustic inputs produce different results
+  - [x] Make `buildRoadSources()` prefer feature-level source parameters over run-wide defaults
+  - [x] Keep run-level parameter fields as project-wide defaults / fallback values
+  - [x] Add regression coverage showing two sources with different acoustic inputs produce different results
 - [ ] Wire per-source acoustics into backend/CLI/API execution
   - [ ] Align typed extraction from normalized GeoJSON/project model with frontend-authored source parameters
   - [ ] Record per-source acoustic provenance and export/report visibility

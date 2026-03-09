@@ -10,6 +10,11 @@ import type {
 } from "./client";
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
+import {
+  getFeatureNumber,
+  getFeatureString,
+  RLS19_SURFACE_TYPES,
+} from "@/model/source-acoustics";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
@@ -394,31 +399,10 @@ function toLineStrings(coords: unknown): Point2D[][] {
   return lines;
 }
 
-function buildRoadSources(
+export function buildRoadSources(
   features: ModelFeature[],
   params: Record<string, string>,
 ): RoadSource[] {
-  const surfaceType = params["surface_type"] || "SMA";
-  const speeds = {
-    pkw_kph: parseNumber(params, "speed_pkw_kph", 100),
-    lkw1_kph: parseNumber(params, "speed_lkw1_kph", 100),
-    lkw2_kph: parseNumber(params, "speed_lkw2_kph", 80),
-    krad_kph: parseNumber(params, "speed_krad_kph", 100),
-  };
-  const trafficDay = {
-    pkw_per_hour: parseNumber(params, "traffic_day_pkw", 900),
-    lkw1_per_hour: parseNumber(params, "traffic_day_lkw1", 40),
-    lkw2_per_hour: parseNumber(params, "traffic_day_lkw2", 60),
-    krad_per_hour: parseNumber(params, "traffic_day_krad", 10),
-  };
-  const trafficNight = {
-    pkw_per_hour: parseNumber(params, "traffic_night_pkw", 200),
-    lkw1_per_hour: parseNumber(params, "traffic_night_lkw1", 10),
-    lkw2_per_hour: parseNumber(params, "traffic_night_lkw2", 20),
-    krad_per_hour: parseNumber(params, "traffic_night_krad", 2),
-  };
-  const gradientPercent = parseNumber(params, "gradient_percent", 0);
-
   const sources: RoadSource[] = [];
   for (const feature of features) {
     if (feature.kind !== "source" || feature.sourceType !== "line") continue;
@@ -431,15 +415,132 @@ function buildRoadSources(
             ? feature.id
             : `${feature.id}-${String(index + 1)}`,
         centerline,
-        surface_type: surfaceType,
-        speeds,
-        gradient_percent: gradientPercent,
-        traffic_day: trafficDay,
-        traffic_night: trafficNight,
+        surface_type: resolveSurfaceType(feature, params),
+        speeds: {
+          pkw_kph: resolveFeatureNumber(
+            feature,
+            params,
+            ["speed_pkw_kph"],
+            100,
+            "road_speed_kph",
+          ),
+          lkw1_kph: resolveFeatureNumber(
+            feature,
+            params,
+            ["speed_lkw1_kph"],
+            100,
+            "road_speed_kph",
+          ),
+          lkw2_kph: resolveFeatureNumber(
+            feature,
+            params,
+            ["speed_lkw2_kph"],
+            80,
+            "road_speed_kph",
+          ),
+          krad_kph: resolveFeatureNumber(
+            feature,
+            params,
+            ["speed_krad_kph"],
+            100,
+            "road_speed_kph",
+          ),
+        },
+        gradient_percent: resolveFeatureNumber(
+          feature,
+          params,
+          ["gradient_percent"],
+          0,
+          "road_gradient_percent",
+        ),
+        junction_type: resolveJunctionType(feature),
+        junction_distance_m: getFeatureNumber(
+          feature,
+          "junction_distance_m",
+          "road_junction_distance_m",
+        ),
+        reflection_surcharge_db: getFeatureNumber(
+          feature,
+          "reflection_surcharge_db",
+        ),
+        traffic_day: {
+          pkw_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_pkw"], 900),
+          lkw1_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_lkw1"], 40),
+          lkw2_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_lkw2"], 60),
+          krad_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_krad"], 10),
+        },
+        traffic_night: {
+          pkw_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_pkw"], 200),
+          lkw1_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_lkw1"], 10),
+          lkw2_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_lkw2"], 20),
+          krad_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_krad"], 2),
+        },
       });
     });
   }
   return sources;
+}
+
+function resolveFeatureNumber(
+  feature: ModelFeature,
+  params: Record<string, string>,
+  keys: string[],
+  fallback: number,
+  sharedKey?: string,
+): number {
+  const featureValue =
+    sharedKey == null
+      ? getFeatureNumber(feature, ...keys)
+      : getFeatureNumber(feature, ...keys, sharedKey);
+  if (featureValue != null) {
+    return featureValue;
+  }
+  return parseNumber(params, keys[0] ?? "", fallback);
+}
+
+function resolveSurfaceType(
+  feature: ModelFeature,
+  params: Record<string, string>,
+): RoadSource["surface_type"] {
+  const featureValue = getFeatureString(feature, "surface_type", "road_surface_type");
+  if (
+    featureValue &&
+    RLS19_SURFACE_TYPES.includes(
+      featureValue as (typeof RLS19_SURFACE_TYPES)[number],
+    )
+  ) {
+    return featureValue;
+  }
+
+  const paramValue = params["surface_type"];
+  if (
+    paramValue &&
+    RLS19_SURFACE_TYPES.includes(
+      paramValue as (typeof RLS19_SURFACE_TYPES)[number],
+    )
+  ) {
+    return paramValue;
+  }
+
+  return "SMA";
+}
+
+function resolveJunctionType(
+  feature: ModelFeature,
+): RoadSource["junction_type"] | undefined {
+  const value = getFeatureString(feature, "junction_type", "road_junction_type");
+  switch (value) {
+    case "none":
+      return 0;
+    case "signalized":
+      return 1;
+    case "roundabout":
+      return 2;
+    case "other":
+      return 3;
+    default:
+      return undefined;
+  }
 }
 
 function buildBarriers(features: ModelFeature[]): Barrier[] {
@@ -1038,7 +1139,7 @@ out geom;`;
   },
 };
 
-function overpassWayToFeature(
+export function overpassWayToFeature(
   way: OverpassWay,
 ): GeoJSONFeatureCollection["features"][number] | null {
   const geometry = sanitizeOverpassGeometry(way.geometry);
@@ -1052,6 +1153,18 @@ function overpassWayToFeature(
     properties["kind"] = "source";
     properties["source_type"] = "line";
     properties["highway"] = tags["highway"];
+    const speed = parseMaxspeedTag(tags["maxspeed"]);
+    if (speed != null) {
+      properties["road_speed_kph"] = speed;
+      properties["road_speed_kph_inferred"] = true;
+    }
+    const surfaceType = mapOSMSurfaceToRLS19(tags["surface"]);
+    if (surfaceType) {
+      properties["surface_type"] = surfaceType;
+      properties["surface_type_inferred"] = true;
+    }
+    properties["source_acoustics_review_required"] =
+      speed == null || surfaceType == null;
     return {
       type: "Feature",
       id: `osm-way-${way.id}`,
@@ -1125,6 +1238,36 @@ function parseTagHeight(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value.replace(" m", "").replace("m", "").trim());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseMaxspeedTag(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseFloat(value.replace(/km\/h/i, "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mapOSMSurfaceToRLS19(
+  value: string | undefined,
+): RoadSource["surface_type"] | null {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "asphalt":
+    case "paved":
+      return "SMA";
+    case "concrete":
+      return "Beton";
+    case "sett":
+    case "cobblestone":
+    case "paving_stones":
+      return "Pflaster";
+    case "unpaved":
+    case "compacted":
+    case "gravel":
+      return "beschaedigt";
+    default:
+      return null;
+  }
 }
 
 function sanitizeOverpassGeometry(
