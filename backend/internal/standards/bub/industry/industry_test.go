@@ -71,6 +71,8 @@ func samplePointSource() IndustrySource {
 	return IndustrySource{
 		ID:                      "industry-point-1",
 		SourceType:              SourceTypePoint,
+		SourceCategory:          CategoryProcess,
+		EnclosureState:          EnclosureOpen,
 		Point:                   geo.Point2D{X: 0, Y: 0},
 		SourceHeightM:           6,
 		SoundPowerLevelDB:       98,
@@ -86,6 +88,8 @@ func sampleAreaSource() IndustrySource {
 	return IndustrySource{
 		ID:                "industry-area-1",
 		SourceType:        SourceTypeArea,
+		SourceCategory:    CategoryYard,
+		EnclosureState:    EnclosureOpen,
 		AreaPolygon:       [][]geo.Point2D{{{X: 20, Y: -10}, {X: 40, Y: -10}, {X: 40, Y: 10}, {X: 20, Y: 10}, {X: 20, Y: -10}}},
 		SourceHeightM:     5,
 		SoundPowerLevelDB: 95,

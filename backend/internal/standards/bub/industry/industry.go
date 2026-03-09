@@ -22,6 +22,14 @@ const (
 
 	SourceTypePoint = cnossosindustry.SourceTypePoint
 	SourceTypeArea  = cnossosindustry.SourceTypeArea
+
+	CategoryProcess = cnossosindustry.CategoryProcess
+	CategoryStack   = cnossosindustry.CategoryStack
+	CategoryYard    = cnossosindustry.CategoryYard
+
+	EnclosureOpen     = cnossosindustry.EnclosureOpen
+	EnclosurePartial  = cnossosindustry.EnclosurePartial
+	EnclosureEnclosed = cnossosindustry.EnclosureEnclosed
 )
 
 type (

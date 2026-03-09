@@ -72,6 +72,7 @@ func sampleSource() RailSource {
 		ID:                   "rail-1",
 		TrackCenterline:      []geo.Point2D{{X: -100, Y: 0}, {X: 100, Y: 0}},
 		TractionType:         TractionElectric,
+		TrackType:            TrackTypeBallasted,
 		TrackRoughnessClass:  RoughnessStandard,
 		AverageTrainSpeedKPH: 90,
 		BrakingShare:         0.1,
