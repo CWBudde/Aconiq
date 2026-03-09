@@ -1,16 +1,28 @@
-import type { ModelFeature, ValidationIssue, ValidationReport } from "./types";
+import type {
+  ModelFeature,
+  ModelReceiver,
+  ValidationIssue,
+  ValidationReport,
+} from "./types";
 import { isGeometryCompatible } from "./types";
 
 export function validateModel(features: ModelFeature[]): ValidationReport {
+  return validateProjectModel(features, []);
+}
+
+export function validateProjectModel(
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): ValidationReport {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
-  if (features.length === 0) {
+  if (features.length === 0 && receivers.length === 0) {
     errors.push({
       level: "error",
       code: "model.empty",
       featureId: "",
-      message: "Model contains no features",
+      message: "Model contains no features or receivers",
     });
     return {
       valid: false,
@@ -23,17 +35,16 @@ export function validateModel(features: ModelFeature[]): ValidationReport {
   const ids = new Set<string>();
 
   for (const feature of features) {
-    if (ids.has(feature.id)) {
-      errors.push({
-        level: "error",
-        code: "feature.id.duplicate",
-        featureId: feature.id,
-        message: "Duplicate feature ID",
-      });
-    }
+    validateUniqueID(feature.id, "feature", ids, errors);
     ids.add(feature.id);
 
     validateFeature(feature, errors);
+  }
+
+  for (const receiver of receivers) {
+    validateUniqueID(receiver.id, "receiver", ids, errors);
+    ids.add(receiver.id);
+    validateReceiver(receiver, errors);
   }
 
   return {
@@ -129,5 +140,45 @@ function validateFeature(
       }
       break;
     }
+  }
+}
+
+function validateReceiver(
+  receiver: ModelReceiver,
+  errors: ValidationIssue[],
+): void {
+  const [x, y] = receiver.geometry.coordinates;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    errors.push({
+      level: "error",
+      code: "receiver.coordinates.invalid",
+      featureId: receiver.id,
+      message: "Receiver coordinates must be finite",
+    });
+  }
+
+  if (!Number.isFinite(receiver.heightM) || receiver.heightM <= 0) {
+    errors.push({
+      level: "error",
+      code: "receiver.height.invalid",
+      featureId: receiver.id,
+      message: "Receiver height_m must be > 0",
+    });
+  }
+}
+
+function validateUniqueID(
+  id: string,
+  kind: "feature" | "receiver",
+  ids: Set<string>,
+  errors: ValidationIssue[],
+): void {
+  if (ids.has(id)) {
+    errors.push({
+      level: "error",
+      code: `${kind}.id.duplicate`,
+      featureId: id,
+      message: `Duplicate ${kind} ID`,
+    });
   }
 }

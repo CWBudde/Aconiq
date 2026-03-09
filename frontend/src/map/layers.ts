@@ -18,6 +18,7 @@ export const SOURCE_IDS = {
   barriers: "model-barriers",
   sources: "model-sources",
   receivers: "model-receivers",
+  calcArea: "calc-area",
   results: "result-raster",
   contours: "result-contours",
 } as const;
@@ -32,6 +33,8 @@ export const LAYER_IDS = {
   sourcesLine: "sources-line",
   sourcesArea: "sources-area-fill",
   receiversPoint: "receivers-point",
+  calcAreaFill: "calc-area-fill",
+  calcAreaOutline: "calc-area-outline",
   resultRaster: "result-raster-layer",
   contourLine: "contour-line",
   contourLabel: "contour-label",
@@ -122,6 +125,28 @@ export const RECEIVER_LAYERS: LayerSpecification[] = [
   },
 ];
 
+export const CALC_AREA_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.calcAreaFill,
+    type: "fill",
+    source: SOURCE_IDS.calcArea,
+    paint: {
+      "fill-color": "#3b82f6",
+      "fill-opacity": 0.06,
+    },
+  },
+  {
+    id: LAYER_IDS.calcAreaOutline,
+    type: "line",
+    source: SOURCE_IDS.calcArea,
+    paint: {
+      "line-color": "#3b82f6",
+      "line-width": 2,
+      "line-dasharray": [6, 3],
+    },
+  },
+];
+
 export const CONTOUR_LAYERS: LayerSpecification[] = [
   {
     id: LAYER_IDS.contourLine,
@@ -160,6 +185,12 @@ export interface LayerGroup {
 }
 
 export const MODEL_LAYER_GROUPS: LayerGroup[] = [
+  {
+    id: "calc-area",
+    label: "Calculation Area",
+    layerIds: [LAYER_IDS.calcAreaFill, LAYER_IDS.calcAreaOutline],
+    defaultVisible: true,
+  },
   {
     id: "buildings",
     label: "Buildings",

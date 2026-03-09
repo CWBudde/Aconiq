@@ -11,12 +11,14 @@ import { m } from "@/i18n/messages";
  */
 export function DraftBanner() {
   const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
   const loadFeatures = useModelStore((s) => s.loadFeatures);
+  const loadReceivers = useModelStore((s) => s.loadReceivers);
   const [visible, setVisible] = useState(false);
 
   // Check only on first mount — don't re-show after user interaction.
   useEffect(() => {
-    if (features.length === 0 && hasDraft()) {
+    if (features.length === 0 && receivers.length === 0 && hasDraft()) {
       setVisible(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -26,7 +28,10 @@ export function DraftBanner() {
 
   function handleRestore() {
     const draft = loadDraft();
-    if (draft) loadFeatures(draft);
+    if (draft) {
+      loadFeatures(draft.features);
+      loadReceivers(draft.receivers);
+    }
     discardDraft();
     setVisible(false);
   }

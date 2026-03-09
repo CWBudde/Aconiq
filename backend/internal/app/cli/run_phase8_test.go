@@ -897,6 +897,115 @@ func TestRunRLS19RoadProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	}
 }
 
+func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "rls19_custom_receivers.geojson")
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "rls19-rd-1", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-1", "kind": "receiver", "height_m": 4},
+      "geometry": {"type": "Point", "coordinates": [20, 15]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-2", "kind": "receiver", "height_m": 4},
+      "geometry": {"type": "Point", "coordinates": [60, 25]}
+    }
+  ]
+}`)
+	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+		t.Fatalf("write custom model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase30", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road", "--receiver-mode", "custom")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.ReceiverMode != "custom" {
+		t.Fatalf("expected custom receiver mode, got %q", run.ReceiverMode)
+	}
+	if run.ReceiverSetID != "explicit-manual" {
+		t.Fatalf("expected explicit receiver set id, got %q", run.ReceiverSetID)
+	}
+
+	resultsDir := filepath.Join(projectDir, ".noise", "runs", run.ID, "results")
+	assertFileExists(t, filepath.Join(resultsDir, "receivers.json"))
+	assertFileExists(t, filepath.Join(resultsDir, "receivers.csv"))
+	assertFileExists(t, filepath.Join(resultsDir, "run-summary.json"))
+
+	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no raster metadata for custom receiver run, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.bin")); !os.IsNotExist(err) {
+		t.Fatalf("expected no raster data for custom receiver run, got err=%v", err)
+	}
+
+	receiverPayload, err := os.ReadFile(filepath.Join(resultsDir, "receivers.json"))
+	if err != nil {
+		t.Fatalf("read receiver table: %v", err)
+	}
+
+	var table results.ReceiverTable
+	if err := json.Unmarshal(receiverPayload, &table); err != nil {
+		t.Fatalf("decode receiver table: %v", err)
+	}
+	if len(table.Records) != 2 {
+		t.Fatalf("expected 2 explicit receivers, got %d", len(table.Records))
+	}
+	if table.Records[0].ID != "rcv-1" || table.Records[1].ID != "rcv-2" {
+		t.Fatalf("unexpected receiver ordering: %#v", table.Records)
+	}
+
+	summaryPayload, err := os.ReadFile(filepath.Join(resultsDir, "run-summary.json"))
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+
+	var summary map[string]any
+	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary["receiver_mode"] != "custom" {
+		t.Fatalf("unexpected receiver_mode in summary: %#v", summary)
+	}
+	if _, ok := summary["grid_width"]; ok {
+		t.Fatalf("did not expect grid_width in custom receiver summary: %#v", summary)
+	}
+
+	provenancePayload, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance: %v", err)
+	}
+
+	var provenance project.ProvenanceManifest
+	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+	if provenance.ReceiverMode != "custom" {
+		t.Fatalf("expected custom receiver mode in provenance, got %q", provenance.ReceiverMode)
+	}
+}
+
 func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	t.Parallel()
 

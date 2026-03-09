@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hasDraft, loadDraft, discardDraft, DRAFT_KEY } from "./use-autosave";
-import type { ModelFeature } from "./types";
+import type { ModelFeature, ModelReceiver } from "./types";
 
 const sampleFeature: ModelFeature = {
   id: "s1",
   kind: "source",
   sourceType: "point",
   geometry: { type: "Point", coordinates: [10, 51] },
+};
+
+const sampleReceiver: ModelReceiver = {
+  id: "r1",
+  heightM: 4,
+  geometry: { type: "Point", coordinates: [11, 52] },
 };
 
 beforeEach(() => {
@@ -19,7 +25,13 @@ describe("draft utilities", () => {
   });
 
   it("hasDraft returns true after saving a draft", () => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+      }),
+    );
     expect(hasDraft()).toBe(true);
   });
 
@@ -28,10 +40,25 @@ describe("draft utilities", () => {
   });
 
   it("loadDraft returns parsed features", () => {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+      }),
+    );
+    const result = loadDraft();
+    expect(result?.features).toHaveLength(1);
+    expect(result?.features[0]?.id).toBe("s1");
+    expect(result?.receivers).toHaveLength(1);
+    expect(result?.receivers[0]?.id).toBe("r1");
+  });
+
+  it("loadDraft supports legacy feature-only drafts", () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
     const result = loadDraft();
-    expect(result).toHaveLength(1);
-    expect(result![0].id).toBe("s1");
+    expect(result?.features).toHaveLength(1);
+    expect(result?.receivers).toEqual([]);
   });
 
   it("loadDraft returns null on corrupt data", () => {
@@ -40,7 +67,13 @@ describe("draft utilities", () => {
   });
 
   it("discardDraft removes the entry", () => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+      }),
+    );
     discardDraft();
     expect(hasDraft()).toBe(false);
   });

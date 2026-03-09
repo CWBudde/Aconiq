@@ -100,3 +100,8 @@ export interface ModelReceiver {
 export function createReceiverId(): string {
   return crypto.randomUUID();
 }
+
+/** Calculation area polygon that constrains the receiver grid extent */
+export interface CalcArea {
+  geometry: { type: "Polygon"; coordinates: Position[][] };
+}

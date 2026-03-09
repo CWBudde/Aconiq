@@ -261,5 +261,11 @@
 
   "alert_cancel_not_supported": "Abbrechen ist in der Benutzeroberfläche nicht unterstützt. noise run-CLI-Prozess beenden, um abzubrechen.",
 
-  "table_header_height_m": "Höhe (m)"
+  "table_header_height_m": "Höhe (m)",
+
+  "tool_draw_calc_area": "Berechnungsgebiet setzen",
+  "label_calc_area": "Berechnungsgebiet",
+  "action_clear_calc_area": "Berechnungsgebiet löschen",
+  "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung.",
+  "tooltip_set_calc_area": "Berechnungsgebiet setzen"
 }

@@ -261,5 +261,11 @@
 
   "alert_cancel_not_supported": "Cancel is not supported from the UI. Kill the `noise run` CLI process to abort.",
 
-  "table_header_height_m": "Height (m)"
+  "table_header_height_m": "Height (m)",
+
+  "tool_draw_calc_area": "Set Calculation Area",
+  "label_calc_area": "Calculation Area",
+  "action_clear_calc_area": "Clear Calculation Area",
+  "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent.",
+  "tooltip_set_calc_area": "Set Calculation Area"
 }

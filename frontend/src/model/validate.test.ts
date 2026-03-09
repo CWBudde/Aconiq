@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateModel } from "./validate";
-import type { ModelFeature } from "./types";
+import { validateModel, validateProjectModel } from "./validate";
+import type { ModelFeature, ModelReceiver } from "./types";
 
 const validSource: ModelFeature = {
   id: "src-1",
@@ -38,6 +38,12 @@ const validBarrier: ModelFeature = {
       [1, 1],
     ],
   },
+};
+
+const validReceiver: ModelReceiver = {
+  id: "rcv-1",
+  heightM: 4,
+  geometry: { type: "Point", coordinates: [2, 3] },
 };
 
 describe("validateModel", () => {
@@ -171,7 +177,51 @@ describe("validateModel", () => {
     const a = { ...validSource };
     const b = { ...validBuilding, id: "src-1" };
     const report = validateModel([a, b]);
-    expect(report.errors.some((e) => e.code === "feature.id.duplicate")).toBe(
+    expect(
+      report.errors.some(
+        (e) =>
+          e.code === "feature.id.duplicate" ||
+          e.code === "receiver.id.duplicate",
+      ),
+    ).toBe(true);
+  });
+
+  it("receiver validation accepts finite coordinates and positive height", () => {
+    const report = validateProjectModel([validSource], [validReceiver]);
+    expect(report.valid).toBe(true);
+  });
+
+  it("receiver validation rejects invalid height", () => {
+    const report = validateProjectModel(
+      [validSource],
+      [{ ...validReceiver, heightM: 0 }],
+    );
+    expect(
+      report.errors.some((e) => e.code === "receiver.height.invalid"),
+    ).toBe(true);
+  });
+
+  it("receiver validation rejects invalid coordinates", () => {
+    const report = validateProjectModel(
+      [validSource],
+      [
+        {
+          ...validReceiver,
+          geometry: { type: "Point", coordinates: [Number.NaN, 3] },
+        },
+      ],
+    );
+    expect(
+      report.errors.some((e) => e.code === "receiver.coordinates.invalid"),
+    ).toBe(true);
+  });
+
+  it("receiver ids must not collide with feature ids", () => {
+    const report = validateProjectModel(
+      [validSource],
+      [{ ...validReceiver, id: validSource.id }],
+    );
+    expect(report.errors.some((e) => e.featureId === validSource.id)).toBe(
       true,
     );
   });

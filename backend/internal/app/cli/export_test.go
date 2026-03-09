@@ -157,6 +157,54 @@ func TestExportSkipReport(t *testing.T) {
 	}
 }
 
+func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "rls19_custom_receivers.geojson")
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "rls19-rd-1", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-1", "kind": "receiver", "height_m": 4},
+      "geometry": {"type": "Point", "coordinates": [20, 15]}
+    }
+  ]
+}`)
+	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+		t.Fatalf("write custom model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase30Export", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road", "--receiver-mode", "custom")
+	mustRunCLI(t, "--project", projectDir, "export")
+
+	bundleDir := latestExportBundleDir(t, projectDir)
+	assertFileExists(t, filepath.Join(bundleDir, "report.md"))
+	assertFileExists(t, filepath.Join(bundleDir, "results", "receivers.json"))
+	assertFileExists(t, filepath.Join(bundleDir, "results", "run-summary.json"))
+
+	if _, err := os.Stat(filepath.Join(bundleDir, "results", "rls19-road.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no raster metadata in export bundle, got err=%v", err)
+	}
+
+	reportMarkdown, err := os.ReadFile(filepath.Join(bundleDir, "report.md"))
+	if err != nil {
+		t.Fatalf("read report markdown: %v", err)
+	}
+
+	if !strings.Contains(string(reportMarkdown), "No map/image artifacts were available") {
+		t.Fatalf("expected no-map note in report markdown")
+	}
+}
+
 func TestExportRejectsPDFWithSkipReport(t *testing.T) {
 	t.Parallel()
 

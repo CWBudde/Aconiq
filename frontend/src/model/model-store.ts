@@ -1,10 +1,11 @@
 import { create } from "zustand";
-import type { FeatureKind, ModelFeature, ModelReceiver } from "./types";
+import type { CalcArea, FeatureKind, ModelFeature, ModelReceiver } from "./types";
 import { CommandStack } from "./command-stack";
 
 interface ModelState {
   features: ModelFeature[];
   receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -27,6 +28,9 @@ interface ModelState {
   removeReceiver: (id: string) => void;
   loadReceivers: (receivers: ModelReceiver[]) => void;
   getReceiverById: (id: string) => ModelReceiver | undefined;
+
+  setCalcArea: (area: CalcArea) => void;
+  clearCalcArea: () => void;
 }
 
 const commandStack = new CommandStack();
@@ -42,6 +46,7 @@ export const useModelStore = create<ModelState>((set, get) => {
   return {
     features: [],
     receivers: [],
+    calcArea: null,
     dirty: false,
     canUndo: false,
     canRedo: false,
@@ -109,12 +114,12 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     loadFeatures: (features) => {
       commandStack.clear();
-      set({ features, receivers: [], dirty: false, canUndo: false, canRedo: false });
+      set({ features, receivers: [], calcArea: null, dirty: false, canUndo: false, canRedo: false });
     },
 
     reset: () => {
       commandStack.clear();
-      set({ features: [], receivers: [], dirty: false, canUndo: false, canRedo: false });
+      set({ features: [], receivers: [], calcArea: null, dirty: false, canUndo: false, canRedo: false });
     },
 
     markClean: () => {
@@ -204,6 +209,33 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     getReceiverById: (id) => {
       return get().receivers.find((r) => r.id === id);
+    },
+
+    setCalcArea: (area) => {
+      const previous = get().calcArea;
+      commandStack.execute({
+        description: "Set calculation area",
+        execute: () => {
+          set({ calcArea: area, dirty: true });
+        },
+        undo: () => {
+          set({ calcArea: previous, dirty: true });
+        },
+      });
+    },
+
+    clearCalcArea: () => {
+      const previous = get().calcArea;
+      if (!previous) return;
+      commandStack.execute({
+        description: "Clear calculation area",
+        execute: () => {
+          set({ calcArea: null, dirty: true });
+        },
+        undo: () => {
+          set({ calcArea: previous, dirty: true });
+        },
+      });
     },
   };
 });

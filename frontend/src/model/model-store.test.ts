@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useModelStore } from "./model-store";
-import type { ModelFeature } from "./types";
+import type { ModelFeature, ModelReceiver } from "./types";
 
 const pointSource: ModelFeature = {
   id: "src-1",
@@ -25,6 +25,12 @@ const building: ModelFeature = {
       ],
     ],
   },
+};
+
+const receiver: ModelReceiver = {
+  id: "rcv-1",
+  heightM: 4,
+  geometry: { type: "Point", coordinates: [12, 53] },
 };
 
 beforeEach(() => {
@@ -128,5 +134,17 @@ describe("model store", () => {
     useModelStore.getState().addFeature(pointSource);
     useModelStore.getState().markClean();
     expect(useModelStore.getState().dirty).toBe(false);
+  });
+
+  it("addReceiver adds a receiver", () => {
+    useModelStore.getState().addReceiver(receiver);
+    expect(useModelStore.getState().receivers).toEqual([receiver]);
+  });
+
+  it("removeReceiver is undoable", () => {
+    useModelStore.getState().addReceiver(receiver);
+    useModelStore.getState().removeReceiver(receiver.id);
+    useModelStore.getState().undo();
+    expect(useModelStore.getState().receivers).toEqual([receiver]);
   });
 });

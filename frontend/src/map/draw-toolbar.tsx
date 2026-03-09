@@ -1,4 +1,4 @@
-import { MousePointer, Circle, Minus, Pentagon, X } from "lucide-react";
+import { MousePointer, Circle, Minus, Pentagon, Crop, X } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import {
   Tooltip,
@@ -15,7 +15,7 @@ interface DrawToolbarProps {
   onCancel: () => void;
 }
 
-const tools: { mode: DrawMode; icon: typeof Circle; label: () => string }[] = [
+const modelTools: { mode: DrawMode; icon: typeof Circle; label: () => string }[] = [
   { mode: "select", icon: MousePointer, label: m.tool_select_edit },
   { mode: "point", icon: Circle, label: m.tool_draw_point },
   { mode: "linestring", icon: Minus, label: m.tool_draw_line },
@@ -31,7 +31,7 @@ export function DrawToolbar({
 
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-col gap-1 rounded-md border bg-background p-1 shadow-md">
-      {tools.map(({ mode, icon: Icon, label }) => (
+      {modelTools.map(({ mode, icon: Icon, label }) => (
         <Tooltip key={mode}>
           <TooltipTrigger asChild>
             <Button
@@ -49,6 +49,23 @@ export function DrawToolbar({
           <TooltipContent side="right">{label()}</TooltipContent>
         </Tooltip>
       ))}
+      <div className="my-1 border-t" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={activeMode === "calc-area" ? "default" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              onModeChange("calc-area");
+            }}
+            aria-label={m.tool_draw_calc_area()}
+          >
+            <Crop className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{m.tool_draw_calc_area()}</TooltipContent>
+      </Tooltip>
       {isDrawing ? (
         <>
           <div className="my-1 border-t" />

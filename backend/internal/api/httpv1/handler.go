@@ -63,17 +63,19 @@ type artifactRefResponse struct {
 }
 
 type runSummaryResponse struct {
-	ID         string                `json:"id"`
-	ScenarioID string                `json:"scenario_id"`
-	Context    string                `json:"context,omitempty"`
-	StandardID string                `json:"standard_id"`
-	Version    string                `json:"version"`
-	Profile    string                `json:"profile,omitempty"`
-	Status     string                `json:"status"`
-	StartedAt  time.Time             `json:"started_at"`
-	FinishedAt time.Time             `json:"finished_at"`
-	LogPath    string                `json:"log_path"`
-	Artifacts  []artifactRefResponse `json:"artifacts"`
+	ID            string                `json:"id"`
+	ScenarioID    string                `json:"scenario_id"`
+	Context       string                `json:"context,omitempty"`
+	StandardID    string                `json:"standard_id"`
+	Version       string                `json:"version"`
+	Profile       string                `json:"profile,omitempty"`
+	ReceiverMode  string                `json:"receiver_mode,omitempty"`
+	ReceiverSetID string                `json:"receiver_set_id,omitempty"`
+	Status        string                `json:"status"`
+	StartedAt     time.Time             `json:"started_at"`
+	FinishedAt    time.Time             `json:"finished_at"`
+	LogPath       string                `json:"log_path"`
+	Artifacts     []artifactRefResponse `json:"artifacts"`
 }
 
 type runLogResponse struct {
@@ -297,17 +299,19 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		summaries = append(summaries, runSummaryResponse{
-			ID:         run.ID,
-			ScenarioID: run.ScenarioID,
-			Context:    run.Standard.Context,
-			StandardID: run.Standard.ID,
-			Version:    run.Standard.Version,
-			Profile:    run.Standard.Profile,
-			Status:     run.Status,
-			StartedAt:  run.StartedAt,
-			FinishedAt: run.FinishedAt,
-			LogPath:    run.LogPath,
-			Artifacts:  artifacts,
+			ID:            run.ID,
+			ScenarioID:    run.ScenarioID,
+			Context:       run.Standard.Context,
+			StandardID:    run.Standard.ID,
+			Version:       run.Standard.Version,
+			Profile:       run.Standard.Profile,
+			ReceiverMode:  run.ReceiverMode,
+			ReceiverSetID: run.ReceiverSetID,
+			Status:        run.Status,
+			StartedAt:     run.StartedAt,
+			FinishedAt:    run.FinishedAt,
+			LogPath:       run.LogPath,
+			Artifacts:     artifacts,
 		})
 	}
 

@@ -265,11 +265,13 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 					"additionalProperties": false,
 					"required":             []string{"id", "scenario_id", "standard_id", "version", "status", "started_at", "finished_at", "log_path", "artifacts"},
 					"properties": map[string]any{
-						"id":          map[string]any{"type": "string"},
-						"scenario_id": map[string]any{"type": "string"},
-						"standard_id": map[string]any{"type": "string"},
-						"version":     map[string]any{"type": "string"},
-						"profile":     map[string]any{"type": "string"},
+						"id":              map[string]any{"type": "string"},
+						"scenario_id":     map[string]any{"type": "string"},
+						"standard_id":     map[string]any{"type": "string"},
+						"version":         map[string]any{"type": "string"},
+						"profile":         map[string]any{"type": "string"},
+						"receiver_mode":   map[string]any{"type": "string"},
+						"receiver_set_id": map[string]any{"type": "string"},
 						"status": map[string]any{
 							"type": "string",
 							"enum": []string{"pending", "running", "completed", "failed"},
