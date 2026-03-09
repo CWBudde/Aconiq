@@ -19,6 +19,7 @@ type Point = {
 const TILE_SIZE = 256;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 19;
+const WHEEL_ZOOM_STEP = 0.25;
 
 export function FallbackMap({ center }: FallbackMapProps) {
   const features = useModelStore((s) => s.features);
@@ -105,7 +106,7 @@ export function FallbackMap({ center }: FallbackMapProps) {
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
     event.preventDefault();
-    const direction = event.deltaY > 0 ? -1 : 1;
+    const direction = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
     setView((current) => ({
       ...current,
       zoom: clamp(current.zoom + direction, MIN_ZOOM, MAX_ZOOM),

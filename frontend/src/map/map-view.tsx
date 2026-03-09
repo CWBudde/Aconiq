@@ -193,7 +193,7 @@ export function MapView({
         ) : (
           <div ref={containerRef} className="absolute inset-0" />
         )}
-        {!fallbackMode && map ? children : null}
+        {children}
       </div>
     </MapContext>
   );
