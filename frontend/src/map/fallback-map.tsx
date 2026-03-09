@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
 
@@ -6,41 +6,185 @@ interface FallbackMapProps {
   center: [number, number];
 }
 
-type Bounds = {
-  west: number;
-  south: number;
-  east: number;
-  north: number;
+type ViewState = {
+  center: [number, number];
+  zoom: number;
 };
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+const TILE_SIZE = 256;
+const MIN_ZOOM = 2;
+const MAX_ZOOM = 19;
 
 export function FallbackMap({ center }: FallbackMapProps) {
   const features = useModelStore((s) => s.features);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startCenterWorld: Point;
+  } | null>(null);
 
-  const bounds = useMemo(() => computeBounds(features, center), [features, center]);
-  const iframeURL = useMemo(() => buildOSMEmbedURL(bounds), [bounds]);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const initialView = useMemo(() => fitViewToFeatures(features, center), [features, center]);
+  const [view, setView] = useState<ViewState>(initialView);
+
+  useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateSize = () => {
+      setSize({
+        width: node.clientWidth,
+        height: node.clientHeight,
+      });
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const worldCenter = useMemo(
+    () => lngLatToWorld(view.center, view.zoom),
+    [view.center, view.zoom],
+  );
+
+  const tiles = useMemo(() => {
+    if (size.width <= 0 || size.height <= 0) return [];
+    return computeVisibleTiles(worldCenter, view.zoom, size.width, size.height);
+  }, [worldCenter, view.zoom, size.width, size.height]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (size.width <= 0 || size.height <= 0) return;
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startCenterWorld: worldCenter,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - dragState.startX;
+    const dy = event.clientY - dragState.startY;
+    const newCenterWorld = {
+      x: dragState.startCenterWorld.x - dx,
+      y: dragState.startCenterWorld.y - dy,
+    };
+
+    setView((current) => ({
+      ...current,
+      center: worldToLngLat(newCenterWorld, current.zoom),
+    }));
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragStateRef.current?.pointerId === event.pointerId) {
+      dragStateRef.current = null;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? -1 : 1;
+    setView((current) => ({
+      ...current,
+      zoom: clamp(current.zoom + direction, MIN_ZOOM, MAX_ZOOM),
+    }));
+  }
+
+  function zoomBy(delta: number) {
+    setView((current) => ({
+      ...current,
+      zoom: clamp(current.zoom + delta, MIN_ZOOM, MAX_ZOOM),
+    }));
+  }
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-slate-100">
-      <iframe
-        title="OpenStreetMap fallback"
-        src={iframeURL}
-        className="absolute inset-0 h-full w-full border-0"
-      />
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-slate-100"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onWheel={handleWheel}
+    >
+      {tiles.map((tile) => (
+        <img
+          key={`${view.zoom}/${tile.x}/${tile.y}`}
+          src={`https://tile.openstreetmap.org/${view.zoom}/${tile.x}/${tile.y}.png`}
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute max-w-none select-none"
+          style={{
+            left: tile.left,
+            top: tile.top,
+            width: TILE_SIZE,
+            height: TILE_SIZE,
+          }}
+        />
+      ))}
+
       <svg
-        className="absolute inset-0 h-full w-full"
-        viewBox="0 0 1000 1000"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${size.width || 1} ${size.height || 1}`}
         preserveAspectRatio="none"
       >
         {features.map((feature) => (
           <FeatureOverlay
             key={feature.id}
             feature={feature}
-            bounds={bounds}
+            centerWorld={worldCenter}
+            zoom={view.zoom}
+            viewportWidth={size.width}
+            viewportHeight={size.height}
           />
         ))}
       </svg>
+
       <div className="absolute left-3 top-3 rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-950 shadow-sm">
-        WebGL unavailable. Showing OSM fallback map.
+        WebGL unavailable. Showing raster fallback map.
+      </div>
+
+      <div className="absolute right-3 top-3 flex flex-col overflow-hidden rounded-md border bg-background/95 shadow-sm">
+        <button
+          type="button"
+          className="h-9 w-9 border-b text-lg"
+          onClick={() => {
+            zoomBy(1);
+          }}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="h-9 w-9 text-lg"
+          onClick={() => {
+            zoomBy(-1);
+          }}
+        >
+          -
+        </button>
       </div>
     </div>
   );
@@ -48,10 +192,16 @@ export function FallbackMap({ center }: FallbackMapProps) {
 
 function FeatureOverlay({
   feature,
-  bounds,
+  centerWorld,
+  zoom,
+  viewportWidth,
+  viewportHeight,
 }: {
   feature: ModelFeature;
-  bounds: Bounds;
+  centerWorld: Point;
+  zoom: number;
+  viewportWidth: number;
+  viewportHeight: number;
 }) {
   const color =
     feature.kind === "source"
@@ -59,6 +209,9 @@ function FeatureOverlay({
       : feature.kind === "building"
         ? "#475569"
         : "#92400e";
+
+  const project = (point: [number, number]) =>
+    projectToViewport(point, centerWorld, zoom, viewportWidth, viewportHeight);
 
   const polygons = collectPolygons(feature.geometry.coordinates);
   if (polygons.length > 0) {
@@ -68,7 +221,7 @@ function FeatureOverlay({
           <polygon
             key={`${feature.id}-poly-${String(index)}`}
             points={polygon
-              .map((point) => projectPoint(point, bounds))
+              .map(project)
               .map(({ x, y }) => `${x},${y}`)
               .join(" ")}
             fill={feature.kind === "source" ? `${color}33` : `${color}55`}
@@ -88,7 +241,7 @@ function FeatureOverlay({
           <polyline
             key={`${feature.id}-line-${String(index)}`}
             points={line
-              .map((point) => projectPoint(point, bounds))
+              .map(project)
               .map(({ x, y }) => `${x},${y}`)
               .join(" ")}
             fill="none"
@@ -107,7 +260,7 @@ function FeatureOverlay({
   return (
     <>
       {points.map((point, index) => {
-        const projected = projectPoint(point, bounds);
+        const projected = project(point);
         return (
           <circle
             key={`${feature.id}-point-${String(index)}`}
@@ -124,7 +277,38 @@ function FeatureOverlay({
   );
 }
 
-function computeBounds(features: ModelFeature[], center: [number, number]): Bounds {
+function fitViewToFeatures(
+  features: ModelFeature[],
+  center: [number, number],
+): ViewState {
+  const bounds = collectBounds(features);
+  if (!bounds) {
+    return { center, zoom: 6 };
+  }
+
+  const centerLng = (bounds.west + bounds.east) / 2;
+  const centerLat = (bounds.south + bounds.north) / 2;
+
+  const lonSpan = Math.max(0.01, bounds.east - bounds.west);
+  const latSpan = Math.max(0.01, bounds.north - bounds.south);
+  const span = Math.max(lonSpan, latSpan);
+
+  let zoom = 14;
+  if (span > 20) zoom = 4;
+  else if (span > 8) zoom = 6;
+  else if (span > 2) zoom = 8;
+  else if (span > 0.5) zoom = 10;
+  else if (span > 0.1) zoom = 12;
+
+  return {
+    center: [centerLng, centerLat],
+    zoom,
+  };
+}
+
+function collectBounds(
+  features: ModelFeature[],
+): { west: number; south: number; east: number; north: number } | null {
   let west = Number.POSITIVE_INFINITY;
   let south = Number.POSITIVE_INFINITY;
   let east = Number.NEGATIVE_INFINITY;
@@ -150,44 +334,71 @@ function computeBounds(features: ModelFeature[], center: [number, number]): Boun
     visit(feature.geometry.coordinates);
   }
 
-  if (!Number.isFinite(west)) {
-    const [lng, lat] = center;
-    return {
-      west: lng - 0.15,
-      south: lat - 0.1,
-      east: lng + 0.15,
-      north: lat + 0.1,
-    };
-  }
+  if (!Number.isFinite(west)) return null;
+  return { west, south, east, north };
+}
 
-  const dx = Math.max(0.01, (east - west) * 0.15);
-  const dy = Math.max(0.01, (north - south) * 0.15);
+function lngLatToWorld([lng, lat]: [number, number], zoom: number): Point {
+  const scale = TILE_SIZE * 2 ** zoom;
+  const x = ((lng + 180) / 360) * scale;
+  const sinLat = Math.sin((lat * Math.PI) / 180);
+  const y =
+    (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale;
+  return { x, y };
+}
 
+function worldToLngLat(point: Point, zoom: number): [number, number] {
+  const scale = TILE_SIZE * 2 ** zoom;
+  const lng = (point.x / scale) * 360 - 180;
+  const mercatorY = Math.PI * (1 - (2 * point.y) / scale);
+  const lat = (Math.atan(Math.sinh(mercatorY)) * 180) / Math.PI;
+  return [lng, lat];
+}
+
+function projectToViewport(
+  point: [number, number],
+  centerWorld: Point,
+  zoom: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): Point {
+  const world = lngLatToWorld(point, zoom);
   return {
-    west: west - dx,
-    south: south - dy,
-    east: east + dx,
-    north: north + dy,
+    x: world.x - centerWorld.x + viewportWidth / 2,
+    y: world.y - centerWorld.y + viewportHeight / 2,
   };
 }
 
-function buildOSMEmbedURL(bounds: Bounds): string {
-  const query = new URLSearchParams({
-    bbox: `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`,
-    layer: "mapnik",
-  });
-  return `https://www.openstreetmap.org/export/embed.html?${query.toString()}`;
-}
+function computeVisibleTiles(
+  centerWorld: Point,
+  zoom: number,
+  width: number,
+  height: number,
+): Array<{ x: number; y: number; left: number; top: number }> {
+  const worldSize = 2 ** zoom;
+  const topLeft = {
+    x: centerWorld.x - width / 2,
+    y: centerWorld.y - height / 2,
+  };
+  const startX = Math.floor(topLeft.x / TILE_SIZE);
+  const endX = Math.floor((topLeft.x + width) / TILE_SIZE);
+  const startY = Math.floor(topLeft.y / TILE_SIZE);
+  const endY = Math.floor((topLeft.y + height) / TILE_SIZE);
 
-function projectPoint(
-  point: [number, number],
-  bounds: Bounds,
-): { x: number; y: number } {
-  const width = Math.max(0.000001, bounds.east - bounds.west);
-  const height = Math.max(0.000001, bounds.north - bounds.south);
-  const x = ((point[0] - bounds.west) / width) * 1000;
-  const y = (1 - (point[1] - bounds.south) / height) * 1000;
-  return { x, y };
+  const tiles: Array<{ x: number; y: number; left: number; top: number }> = [];
+  for (let x = startX; x <= endX; x++) {
+    for (let y = startY; y <= endY; y++) {
+      if (y < 0 || y >= worldSize) continue;
+      const wrappedX = ((x % worldSize) + worldSize) % worldSize;
+      tiles.push({
+        x: wrappedX,
+        y,
+        left: x * TILE_SIZE - topLeft.x,
+        top: y * TILE_SIZE - topLeft.y,
+      });
+    }
+  }
+  return tiles;
 }
 
 function collectPoints(coords: unknown): [number, number][] {
@@ -227,4 +438,8 @@ function collectPolygons(coords: unknown): [number, number][][] {
     return outer.length >= 3 ? [outer] : [];
   }
   return coords.flatMap((value) => collectPolygons(value));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
