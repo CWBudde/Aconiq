@@ -41,6 +41,7 @@ import type {
   ProfileInfo,
   RunSummary,
 } from "@/api/client";
+import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -754,14 +755,6 @@ function RunSetupDialog({
   const [profile, setProfile] = useState<string>("");
   const [params, setParams] = useState<Record<string, string>>({});
   const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
-  const [submitted, setSubmitted] = useState(false);
-  const [submittedConfig, setSubmittedConfig] = useState<{
-    standardId: string;
-    version: string;
-    profile: string;
-    params: Record<string, string>;
-    receiverMode: ReceiverMode;
-  } | null>(null);
 
   const effectiveStandardId = standardId || firstStandard?.id || "";
   const selectedStandard = useMemo(
@@ -811,37 +804,24 @@ function RunSetupDialog({
   }
 
   function handleSubmit() {
-    if (IS_WASM_MODE) {
-      createRun.mutate(
-        {
-          standardId: effectiveStandardId,
-          version: effectiveVersion,
-          profile: effectiveProfile,
-          params,
-          receiverMode,
+    createRun.mutate(
+      {
+        standardId: effectiveStandardId,
+        version: effectiveVersion,
+        profile: effectiveProfile,
+        params,
+        receiverMode,
+      },
+      {
+        onSuccess: (run) => {
+          onCreated(run.id);
+          handleClose();
         },
-        {
-          onSuccess: (run) => {
-            onCreated(run.id);
-            handleClose();
-          },
-        },
-      );
-      return;
-    }
-    setSubmittedConfig({
-      standardId: effectiveStandardId,
-      version: effectiveVersion,
-      profile: effectiveProfile,
-      params,
-      receiverMode,
-    });
-    setSubmitted(true);
+      },
+    );
   }
 
   function handleClose() {
-    setSubmitted(false);
-    setSubmittedConfig(null);
     onClose();
   }
 
@@ -855,9 +835,7 @@ function RunSetupDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{m.dialog_title_new_run()}</DialogTitle>
-          <DialogDescription>
-            {m.dialog_desc_new_run()}
-          </DialogDescription>
+          <DialogDescription>{m.dialog_desc_new_run()}</DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
@@ -873,31 +851,6 @@ function RunSetupDialog({
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{createRun.error.message}</span>
-          </div>
-        ) : submitted && submittedConfig ? (
-          <div className="space-y-4">
-            <div className="rounded-md border bg-muted/30 p-4 text-sm">
-              <p className="mb-2 font-medium">{m.status_run_queued()}</p>
-              <p className="text-muted-foreground">
-                <span className="font-mono">{submittedConfig.standardId}</span>{" "}
-                / <span className="font-mono">{submittedConfig.version}</span> /{" "}
-                <span className="font-mono">{submittedConfig.profile}</span>
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Receivers: {submittedConfig.receiverMode}
-              </p>
-              <pre className="mt-3 max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
-                {JSON.stringify(submittedConfig.params, null, 2)}
-              </pre>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Run execution via the HTTP API is not yet implemented. Use{" "}
-              <code className="rounded bg-muted px-1">noise run</code> from the
-              CLI to execute this configuration.
-            </p>
-            <DialogFooter>
-              <Button onClick={handleClose}>Close</Button>
-            </DialogFooter>
           </div>
         ) : (
           <div className="space-y-6">
@@ -1057,22 +1010,31 @@ function RunSetupDialog({
               </div>
               {receiverMode === "auto-grid" && calcArea ? (
                 <p className="text-xs text-blue-600 dark:text-blue-400">
-                  Calculation area is set — auto-grid will use this area instead of source extent.
+                  Calculation area is set — auto-grid will use this area instead
+                  of source extent.
                 </p>
               ) : null}
               {receiverMode === "custom" && receiverCount === 0 ? (
-                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    No explicit receivers have been placed. Use the map workspace
-                    to add receiver points before running.
-                  </span>
-                </div>
+                IS_WASM_MODE ? (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      No explicit receivers have been placed. Use the map
+                      workspace to add receiver points before running.
+                    </span>
+                  </div>
+                ) : null
               ) : null}
               {receiverMode === "custom" && receiverCount > 0 ? (
                 <p className="text-xs text-muted-foreground">
                   {String(receiverCount)} receiver
                   {receiverCount !== 1 ? "s" : ""} placed.
+                </p>
+              ) : null}
+              {receiverMode === "custom" && !IS_WASM_MODE ? (
+                <p className="text-xs text-muted-foreground">
+                  API mode reads explicit receivers from the backend project
+                  model, not the browser-only draft state.
                 </p>
               ) : null}
             </section>
@@ -1094,7 +1056,7 @@ function RunSetupDialog({
           </div>
         )}
 
-        {!submitted && !isLoading && !error ? (
+        {!isLoading && !error ? (
           <DialogFooter>
             <Button variant="ghost" onClick={handleClose}>
               Cancel
@@ -1104,7 +1066,9 @@ function RunSetupDialog({
               disabled={
                 !selectedProfile ||
                 createRun.isPending ||
-                (receiverMode === "custom" && receiverCount === 0)
+                (IS_WASM_MODE &&
+                  receiverMode === "custom" &&
+                  receiverCount === 0)
               }
             >
               <Play className="mr-2 h-4 w-4" />

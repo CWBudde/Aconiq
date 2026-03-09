@@ -2,6 +2,7 @@ export { APIClient } from "./client";
 export type {
   APIClientOptions,
   APIError,
+  CreateRunRequest,
   ErrorEnvelope,
   HealthResponse,
   LastRunStatus,

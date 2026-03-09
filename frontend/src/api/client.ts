@@ -49,11 +49,24 @@ export interface RunSummary {
   standard_id: string;
   version: string;
   profile?: string;
+  receiver_mode?: string;
+  receiver_set_id?: string;
   status: "pending" | "running" | "completed" | "failed";
   started_at: string;
   finished_at: string;
   log_path: string;
   artifacts: ArtifactRef[];
+}
+
+export interface CreateRunRequest {
+  scenario_id?: string;
+  standard_id?: string;
+  standard_version?: string;
+  standard_profile?: string;
+  model_path?: string;
+  receiver_mode?: "auto-grid" | "custom";
+  params?: Record<string, string>;
+  input_paths?: string[];
 }
 
 export interface RunLog {
@@ -137,16 +150,28 @@ export class APIClient {
     return this.requestJSON<ProjectStatusResponse>("/api/v1/project/status");
   }
 
+  async createRun(request: CreateRunRequest): Promise<RunSummary> {
+    return this.requestJSON<RunSummary>("/api/v1/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    });
+  }
+
   eventsURL(): string {
     return this.baseURL + "/api/v1/events";
   }
 
-  private async requestJSON<T>(path: string): Promise<T> {
+  private async requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await this.fetchImpl(this.baseURL + path, {
-      method: "GET",
       headers: {
         Accept: "application/json",
+        ...(init?.headers ?? {}),
       },
+      method: "GET",
+      ...init,
     });
 
     if (!response.ok) {

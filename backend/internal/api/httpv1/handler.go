@@ -1,18 +1,23 @@
 package httpv1
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards/framework"
@@ -27,7 +32,10 @@ type Handler struct {
 	now         func() time.Time
 	sseInterval time.Duration
 	registry    *framework.Registry
+	runExecutor runExecutor
 }
+
+type runExecutor func(context.Context, createRunRequest) error
 
 // Standards API response types.
 
@@ -81,6 +89,17 @@ type runSummaryResponse struct {
 type runLogResponse struct {
 	RunID string   `json:"run_id"`
 	Lines []string `json:"lines"`
+}
+
+type createRunRequest struct {
+	ScenarioID      string            `json:"scenario_id,omitempty"`
+	StandardID      string            `json:"standard_id,omitempty"`
+	StandardVersion string            `json:"standard_version,omitempty"`
+	StandardProfile string            `json:"standard_profile,omitempty"`
+	ModelPath       string            `json:"model_path,omitempty"`
+	ReceiverMode    string            `json:"receiver_mode,omitempty"`
+	Params          map[string]string `json:"params,omitempty"`
+	InputPaths      []string          `json:"input_paths,omitempty"`
 }
 
 type standardResponse struct {
@@ -172,6 +191,7 @@ type handlerOptions struct {
 	registry     *framework.Registry
 	corsOrigins  []string // extra allowed origins beyond localhost/127.0.0.1
 	corsDisabled bool     // set true for same-origin deployments (Wails etc.)
+	runExecutor  runExecutor
 }
 
 func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Handler {
@@ -192,13 +212,17 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		now:         now,
 		sseInterval: sseInterval,
 		registry:    opts.registry,
+		runExecutor: opts.runExecutor,
+	}
+	if handler.runExecutor == nil {
+		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", handler.handleHealth)
 	mux.HandleFunc("/api/v1/project/status", handler.handleProjectStatus)
 	mux.HandleFunc("/api/v1/standards", handler.handleStandards)
-	mux.HandleFunc("/api/v1/runs", handler.handleRunsList)
+	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
@@ -263,10 +287,21 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
+func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleRunsList(w, r)
+	case http.MethodPost:
+		h.handleRunCreate(w, r)
+	default:
+		writeAPIError(w, http.StatusMethodNotAllowed, apiError{
+			Code:    "method_not_allowed",
+			Message: fmt.Sprintf("method %s is not allowed for %s", r.Method, r.URL.Path),
+		})
 	}
+}
+
+func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 
 	proj, err := h.store.Load()
 	if err != nil {
@@ -274,14 +309,60 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Index artifacts by run ID.
-	artifactsByRun := make(map[string][]artifactRefResponse, len(proj.Artifacts))
+	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
+	for i := len(proj.Runs) - 1; i >= 0; i-- {
+		summaries = append(summaries, summarizeRun(proj, proj.Runs[i]))
+	}
+
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
+	var req createRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "request body must be valid JSON",
+		})
+		return
+	}
+
+	before, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	if err := h.runExecutor(r.Context(), req); err != nil {
+		writeRunCreateError(w, err)
+		return
+	}
+
+	after, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	if len(after.Runs) <= len(before.Runs) {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "run_failed",
+			Message: "run execution completed without creating a run record",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, summarizeRun(after, after.Runs[len(after.Runs)-1]))
+}
+
+func summarizeRun(proj project.Project, run project.Run) runSummaryResponse {
+	artifacts := make([]artifactRefResponse, 0)
 	for _, a := range proj.Artifacts {
-		if a.RunID == "" {
+		if a.RunID != run.ID {
 			continue
 		}
 
-		artifactsByRun[a.RunID] = append(artifactsByRun[a.RunID], artifactRefResponse{
+		artifacts = append(artifacts, artifactRefResponse{
 			ID:        a.ID,
 			Kind:      a.Kind,
 			Path:      a.Path,
@@ -289,33 +370,95 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
-	for i := len(proj.Runs) - 1; i >= 0; i-- {
-		run := proj.Runs[i]
+	return runSummaryResponse{
+		ID:            run.ID,
+		ScenarioID:    run.ScenarioID,
+		Context:       run.Standard.Context,
+		StandardID:    run.Standard.ID,
+		Version:       run.Standard.Version,
+		Profile:       run.Standard.Profile,
+		ReceiverMode:  run.ReceiverMode,
+		ReceiverSetID: run.ReceiverSetID,
+		Status:        run.Status,
+		StartedAt:     run.StartedAt,
+		FinishedAt:    run.FinishedAt,
+		LogPath:       run.LogPath,
+		Artifacts:     artifacts,
+	}
+}
 
-		artifacts := artifactsByRun[run.ID]
-		if artifacts == nil {
-			artifacts = []artifactRefResponse{}
-		}
-
-		summaries = append(summaries, runSummaryResponse{
-			ID:            run.ID,
-			ScenarioID:    run.ScenarioID,
-			Context:       run.Standard.Context,
-			StandardID:    run.Standard.ID,
-			Version:       run.Standard.Version,
-			Profile:       run.Standard.Profile,
-			ReceiverMode:  run.ReceiverMode,
-			ReceiverSetID: run.ReceiverSetID,
-			Status:        run.Status,
-			StartedAt:     run.StartedAt,
-			FinishedAt:    run.FinishedAt,
-			LogPath:       run.LogPath,
-			Artifacts:     artifacts,
-		})
+func writeRunCreateError(w http.ResponseWriter, err error) {
+	var appErr *domainerrors.AppError
+	if stderrors.As(err, &appErr) {
+		writeDomainError(w, err)
+		return
 	}
 
-	writeJSON(w, http.StatusOK, summaries)
+	writeAPIError(w, http.StatusInternalServerError, apiError{
+		Code:    "run_failed",
+		Message: err.Error(),
+	})
+}
+
+func newCLIProcessRunExecutor(projectRoot string) runExecutor {
+	return func(ctx context.Context, req createRunRequest) error {
+		executable, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve executable: %w", err)
+		}
+
+		args := []string{"--project", projectRoot, "run"}
+		if req.ScenarioID != "" {
+			args = append(args, "--scenario", req.ScenarioID)
+		}
+		if req.StandardID != "" {
+			args = append(args, "--standard", req.StandardID)
+		}
+		if req.StandardVersion != "" {
+			args = append(args, "--standard-version", req.StandardVersion)
+		}
+		if req.StandardProfile != "" {
+			args = append(args, "--standard-profile", req.StandardProfile)
+		}
+		if req.ModelPath != "" {
+			args = append(args, "--model", req.ModelPath)
+		}
+		if req.ReceiverMode != "" {
+			args = append(args, "--receiver-mode", req.ReceiverMode)
+		}
+		paramKeys := make([]string, 0, len(req.Params))
+		for key := range req.Params {
+			paramKeys = append(paramKeys, key)
+		}
+		slices.Sort(paramKeys)
+		for _, key := range paramKeys {
+			value := req.Params[key]
+			args = append(args, "--param", fmt.Sprintf("%s=%s", key, value))
+		}
+		for _, inputPath := range req.InputPaths {
+			args = append(args, "--input", inputPath)
+		}
+
+		cmd := exec.CommandContext(ctx, executable, args...)
+		var stderr bytes.Buffer
+		cmd.Stdout = io.Discard
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			var exitErr *exec.ExitError
+			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", strings.TrimSpace(stderr.String()), err)
+			}
+
+			message := strings.TrimSpace(stderr.String())
+			if message == "" {
+				message = err.Error()
+			}
+			return fmt.Errorf("execute run command: %s", message)
+		}
+
+		return nil
+	}
 }
 
 func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import { IS_WASM_MODE, apiURL } from "./mode";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 import type {
+  CreateRunRequest,
   HealthResponse,
   ProjectStatusResponse,
   RasterMetadata,
@@ -158,11 +159,37 @@ export function useImportFromOSM() {
 export function useCreateRun() {
   return useMutation({
     mutationFn: async (spec: BrowserRunSpec) => {
-      if (!IS_WASM_MODE) {
-        throw new Error("Run execution from the UI is only available in browser mode");
+      if (IS_WASM_MODE) {
+        await ensureKernel();
+        return browserBackend.startRun(spec);
       }
-      await ensureKernel();
-      return browserBackend.startRun(spec);
+
+      const request: CreateRunRequest = {
+        standard_id: spec.standardId,
+        standard_version: spec.version,
+        standard_profile: spec.profile,
+        receiver_mode: spec.receiverMode,
+        params: spec.params,
+      };
+
+      const response = await fetch(apiURL("/api/v1/runs"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(
+          payload?.error?.message ??
+            `Request failed: ${String(response.status)}`,
+        );
+      }
+      return response.json() as Promise<RunSummary>;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });

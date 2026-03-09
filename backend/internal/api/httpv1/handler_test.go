@@ -2,6 +2,7 @@ package httpv1
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
 )
@@ -229,6 +231,61 @@ func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
 
 	if len(response) != 0 {
 		t.Fatalf("expected empty list, got %d runs", len(response))
+	}
+}
+
+func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Runs Create Test", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock: time.Now,
+		runExecutor: func(ctx context.Context, req createRunRequest) error {
+			_, _, err := store.CreateRun(projectfs.CreateRunSpec{
+				ScenarioID:    "default",
+				ReceiverMode:  req.ReceiverMode,
+				ReceiverSetID: "explicit-manual",
+				Standard: project.StandardRef{
+					ID:      "rls19-road",
+					Version: "2019",
+					Profile: "default",
+				},
+				Status: project.RunStatusCompleted,
+			})
+			return err
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
+		"standard_id": "rls19-road",
+		"receiver_mode": "custom"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response runSummaryResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.StandardID != "rls19-road" {
+		t.Fatalf("unexpected standard id: %q", response.StandardID)
+	}
+	if response.ReceiverMode != "custom" {
+		t.Fatalf("unexpected receiver mode: %q", response.ReceiverMode)
 	}
 }
 
