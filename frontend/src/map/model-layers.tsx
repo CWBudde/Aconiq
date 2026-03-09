@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import { useMap } from "./use-map";
 import { useModelStore } from "@/model/model-store";
-import { featuresToSourceGroups } from "@/model/to-geojson";
+import { featuresToSourceGroups, receiversToGeoJSON } from "@/model/to-geojson";
 import {
   SOURCE_IDS,
   BUILDING_LAYERS,
   BARRIER_LAYERS,
   SOURCE_LAYERS,
+  RECEIVER_LAYERS,
 } from "./layers";
 
 /**
@@ -17,6 +18,7 @@ import {
 export function ModelLayers() {
   const map = useMap();
   const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
   const previousFeatureCountRef = useRef(0);
 
   useEffect(() => {
@@ -29,6 +31,7 @@ export function ModelLayers() {
       [SOURCE_IDS.buildings, groups.buildings],
       [SOURCE_IDS.barriers, groups.barriers],
       [SOURCE_IDS.sources, groups.sources],
+      [SOURCE_IDS.receivers, receiversToGeoJSON(receivers)],
     ] as const;
 
     for (const [sourceId, data] of entries) {
@@ -50,7 +53,7 @@ export function ModelLayers() {
     }
 
     // Ensure layers exist (idempotent — skip if already added)
-    const allLayers = [...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS];
+    const allLayers = [...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS, ...RECEIVER_LAYERS];
     for (const layer of allLayers) {
       try {
         if (!map.getLayer(layer.id)) {
@@ -72,7 +75,7 @@ export function ModelLayers() {
       }
     }
     previousFeatureCountRef.current = features.length;
-  }, [map, features]);
+  }, [map, features, receivers]);
 
   return null;
 }

@@ -714,9 +714,6 @@ out geom;`;
     if (spec.standardId !== "rls19-road") {
       throw new Error(`Standard ${spec.standardId} is not available in browser mode`);
     }
-    if (spec.receiverMode !== "auto-grid") {
-      throw new Error("Only auto-grid receivers are supported in browser mode");
-    }
 
     const features = useModelStore.getState().features;
     const sources = buildRoadSources(features, spec.params);
@@ -725,12 +722,37 @@ out geom;`;
     }
 
     const barriers = buildBarriers(features);
-    const bbox = getFeatureBBox(features.filter((feature) => feature.kind === "source"));
-    if (!bbox) {
-      throw new Error("Could not derive source extent from the current model");
+
+    let gridReceivers: PointReceiver[];
+    let rasterWidth: number;
+    let rasterHeight: number;
+
+    if (spec.receiverMode === "custom") {
+      const storeReceivers = useModelStore.getState().receivers;
+      if (storeReceivers.length === 0) {
+        throw new Error("Custom receiver mode requires at least one receiver placed in the map workspace");
+      }
+      const sorted = [...storeReceivers].sort((a, b) =>
+        a.id.localeCompare(b.id),
+      );
+      gridReceivers = sorted.map((r) => ({
+        id: r.id,
+        point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
+        height_m: r.heightM,
+      }));
+      rasterWidth = 1;
+      rasterHeight = sorted.length;
+    } else {
+      const bbox = getFeatureBBox(features.filter((feature) => feature.kind === "source"));
+      if (!bbox) {
+        throw new Error("Could not derive source extent from the current model");
+      }
+      const receiverGrid = buildReceiverGrid(bbox, spec.params);
+      gridReceivers = receiverGrid.receivers;
+      rasterWidth = receiverGrid.width;
+      rasterHeight = receiverGrid.height;
     }
 
-    const receiverGrid = buildReceiverGrid(bbox, spec.params);
     const startedAt = nowISO();
     const stateBefore = readState();
     const runId = `run-${formatRunIndex(stateBefore.runs.length)}`;
@@ -738,7 +760,7 @@ out geom;`;
 
     const kernel = await getKernel();
     const request: ComputeRequest = {
-      receivers: receiverGrid.receivers,
+      receivers: gridReceivers,
       sources,
       barriers,
       config: {
@@ -752,8 +774,8 @@ out geom;`;
     const receiverTable = buildReceiverTable(outputs);
     const receiverCSV = buildReceiverCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
-      width: receiverGrid.width,
-      height: receiverGrid.height,
+      width: rasterWidth,
+      height: rasterHeight,
       bands: 2,
       nodata: -9999,
       unit: "dB(A)",
@@ -762,8 +784,8 @@ out geom;`;
     const summary = {
       run_id: runId,
       status: "completed",
-      grid_width: receiverGrid.width,
-      grid_height: receiverGrid.height,
+      grid_width: rasterWidth,
+      grid_height: rasterHeight,
       source_count: sources.length,
       receiver_count: outputs.length,
       reporting_precision_db: 0.1,
@@ -834,7 +856,7 @@ out geom;`;
         `${startedAt} run started`,
         `${startedAt} model=browser`,
         `${startedAt} rls19_road_sources=${sources.length}`,
-        `${startedAt} receivers=${receiverGrid.receivers.length}`,
+        `${startedAt} receivers=${gridReceivers.length}`,
         `${startedAt} stage=compute`,
         `${finishedAt} output_hash=${outputHash}`,
         `${finishedAt} persisted=browser`,

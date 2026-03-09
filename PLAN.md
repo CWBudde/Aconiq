@@ -366,7 +366,7 @@ Status: complete.
 
 ---
 
-## Phase 23a — Frontend foundation (React/TS + Vite + Bun)
+## Phase 24 — Frontend foundation (React/TS + Vite + Bun)
 
 **Goal:** establish the frontend workspace and developer workflow.
 
@@ -374,7 +374,7 @@ Status: complete.
 
 ---
 
-## Phase 23b — UI system & design baseline (shadcn/ui)
+## Phase 25 — UI system & design baseline (shadcn/ui)
 
 **Goal:** build a consistent, accessible UI foundation.
 
@@ -382,7 +382,7 @@ Status: complete.
 
 ---
 
-## Phase 23c — App shell, routing, and data orchestration
+## Phase 26 — App shell, routing, and data orchestration
 
 **Goal:** make the SPA structure scalable and type-safe.
 
@@ -390,7 +390,7 @@ Status: complete.
 
 ---
 
-## Phase 23d — Map workspace core (MapLibre)
+## Phase 27 — Map workspace core (MapLibre)
 
 **Goal:** ship a robust interactive map workspace for model and result layers.
 
@@ -409,7 +409,7 @@ Status: complete.
 - [x] Map interaction model
   - [x] Identify/select features (click → popup with properties table)
   - [x] Hover cursor change on interactive layers
-  - [ ] Box select and multi-select support (deferred to Phase 23e)
+  - [ ] Box select and multi-select support (deferred to Phase 28)
 - [x] CRS and coordinate display (`CoordinateDisplay` shows lat/lng on mouse move)
 - [ ] Performance guardrails for large feature counts (deferred — clustering/tile fallback when needed)
 - [x] Map state store (Zustand: basemap, layer visibility, selection, hover)
@@ -417,11 +417,11 @@ Status: complete.
 ### Research
 
 - [x] React binding strategy: native `maplibre-gl` with thin ref-based wrapper (no wrapper library)
-- [x] Offline basemap: inline fallback style for air-gapped use; PMTiles deferred to Phase 25
+- [x] Offline basemap: inline fallback style for air-gapped use; PMTiles deferred to Phase 36
 
 ---
 
-## Phase 23e — Model editing workflows
+## Phase 28 — Model editing workflows
 
 **Goal:** enable practical model authoring and correction from the GUI.
 
@@ -445,15 +445,72 @@ Status: complete.
 
 ---
 
-## Phase 23f — Run configuration and execution UX
+## Phase 29 — Run configuration and execution UX
 
 **Goal:** make run setup and monitoring reliable for long-running jobs.
 
-- [x] Run setup, schema-driven parameter editing, receiver selection, live execution monitoring, cancel/retry controls, run history, and determinism-aware UX messaging are complete.
+- [x] Baseline run setup and monitoring are complete: schema-driven parameter editing, auto-grid receiver setup, live execution monitoring, cancel/retry controls, run history, and determinism-aware UX messaging.
 
 ---
 
-## Phase 23g — Results analysis, comparison, and exports UX
+## Phase 30 — Explicit receiver authoring and manual receiver sets
+
+**Goal:** let users place and manage receiver positions directly instead of relying only on auto-grid generation.
+
+- [x] Add a first-class receiver model to the frontend/domain layer
+  - [x] Receiver point entity with stable ID, XY position, and receiver height
+  - [x] Distinguish receiver objects from sources/buildings/barriers in model state and persistence/autosave
+  - [ ] Validation rules for explicit receiver sets (finite coordinates, positive height, duplicate-ID handling)
+- [x] Add receiver authoring to the map workspace
+  - [x] Draw/add receiver points directly on the map
+  - [x] Edit receiver position and height from the feature editor
+  - [x] Support selection, delete, undo/redo, and import-preview counts for receivers
+  - [x] Show receiver layer and visibility controls in both MapLibre and fallback map modes
+- [x] Enable manual receiver-set selection in run setup
+  - [x] Replace the current disabled “Custom receiver set” placeholder with a working mode
+  - [x] Let the run dialog choose between auto-grid and explicit receiver-set execution
+  - [x] Clarify behavior when no explicit receivers exist
+- [x] Wire manual receivers into browser/WASM execution
+  - [x] Pass explicit receivers to RLS-19 runs instead of `buildReceiverGrid()` when custom mode is selected
+  - [x] Export explicit-receiver results to receiver tables and run provenance
+  - [x] Keep deterministic ordering of manually authored receivers
+- [ ] Wire manual receivers into backend/CLI/API execution
+  - [ ] Align receiver-set storage and run contracts with the Go project/run model
+  - [ ] Ensure HTTP/API and CLI runs can execute against explicit receiver sets
+  - [ ] Add run/report/export coverage for explicit receiver sets
+
+---
+
+## Phase 31 — Explicit source acoustics and per-source noise editing
+
+**Goal:** let users define where the noise comes from by editing acoustic/emission inputs on each source feature, not only as run-wide defaults.
+
+- [ ] Extend source feature data model for per-source acoustics
+  - [ ] Support per-source traffic/emission attributes required for the first browser-delivered standards
+  - [ ] Support per-source defaults vs run-level defaults with clear precedence rules
+  - [ ] Preserve standard-specific source attributes through import/export/undo/autosave
+- [ ] Add source-acoustics editing UI
+  - [ ] Extend the source feature editor beyond `source_type`
+  - [ ] Expose per-source traffic counts, speeds, surface type, gradient, and other RLS-19-relevant inputs
+  - [ ] Add validation/help text so invalid or incomplete source inputs are visible before run start
+- [ ] Update OSM/import mapping to populate source acoustics where possible
+  - [ ] Map OSM attributes into source defaults when reliable
+  - [ ] Mark inferred/missing values clearly so users can review them
+- [ ] Wire per-source acoustics into browser/WASM execution
+  - [ ] Make `buildRoadSources()` prefer feature-level source parameters over run-wide defaults
+  - [ ] Keep run-level parameter fields as project-wide defaults / fallback values
+  - [ ] Add regression coverage showing two sources with different acoustic inputs produce different results
+- [ ] Wire per-source acoustics into backend/CLI/API execution
+  - [ ] Align typed extraction from normalized GeoJSON/project model with frontend-authored source parameters
+  - [ ] Record per-source acoustic provenance and export/report visibility
+  - [ ] Keep deterministic extraction and ordering guarantees
+- [ ] Extend standards incrementally
+  - [ ] Start with `rls19-road` line sources
+  - [ ] Define follow-on source-editing scopes for other standards/modules separately once the source schemas are stable
+
+---
+
+## Phase 32 — Results analysis, comparison, and exports UX
 
 **Goal:** visualize outputs and compare scenarios/runs effectively.
 
@@ -476,7 +533,7 @@ Status: complete.
 
 ---
 
-## Phase 23h — Frontend QA, accessibility, and performance hardening
+## Phase 33 — Frontend QA, accessibility, and performance hardening
 
 **Goal:** make frontend behavior stable, testable, and scalable.
 
@@ -484,7 +541,7 @@ Status: complete.
 
 ---
 
-## Phase 24 — Deferred: input formats beyond GeoJSON
+## Phase 34 — Deferred: input formats beyond GeoJSON
 
 **Goal:** add professional importers without blocking early delivery.
 
@@ -514,7 +571,7 @@ For each remaining importer (FlatGeobuf, Terrain/DTM, Building footprints):
 
 ---
 
-## Phase 24b — OSM/Overpass import (`noise import --from-osm`, deferred, requires internet)
+## Phase 35 — OSM/Overpass import (`noise import --from-osm`, deferred, requires internet)
 
 **Goal:** bootstrap scene geometry from OpenStreetMap without manual data preparation.
 
@@ -542,7 +599,7 @@ Tasks:
 
 ---
 
-## Phase 25 — Deferred: tiling/PMTiles
+## Phase 36 — Deferred: tiling/PMTiles
 
 **Goal:** fast map rendering and efficient distribution when GUI exists.
 
@@ -552,7 +609,7 @@ Tasks:
 
 ---
 
-## Phase 26 — Optional: desktop packaging (Wails)
+## Phase 37 — Optional: desktop packaging (Wails)
 
 **Goal:** ship a single-binary desktop option.
 
@@ -567,7 +624,7 @@ Tasks:
 
 ---
 
-## Phase 27 — Optional: project format v2 (multiuser/server)
+## Phase 38 — Optional: project format v2 (multiuser/server)
 
 **Goal:** PostGIS + object storage, versioned scenarios/runs.
 
@@ -578,7 +635,7 @@ Tasks:
 
 ---
 
-## Phase 28 — Release engineering + documentation + conformance artifacts
+## Phase 39 — Release engineering + documentation + conformance artifacts
 
 **Goal:** usable releases with traceable QA.
 
@@ -636,4 +693,4 @@ This list is explicitly focused on “what is missing” and turns it into concr
 - [x] Phase 9 (standards framework)
 - [x] Phase 10 (CNOSSOS Road)
 
-Then: Reporting (Phase 20), deferred standards phases, and when GUI is activated start frontend track with Phase 23 → 23a → 23b → 23c.
+Then: Reporting (Phase 20), deferred standards phases, and when GUI is activated start frontend track with Phase 23 → 24 → 25 → 26.

@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import type { FeatureKind, ModelFeature } from "./types";
+import type { FeatureKind, ModelFeature, ModelReceiver } from "./types";
 import { CommandStack } from "./command-stack";
 
 interface ModelState {
   features: ModelFeature[];
+  receivers: ModelReceiver[];
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -20,6 +21,12 @@ interface ModelState {
 
   getFeatureById: (id: string) => ModelFeature | undefined;
   featuresByKind: (kind: FeatureKind) => ModelFeature[];
+
+  addReceiver: (receiver: ModelReceiver) => void;
+  updateReceiver: (receiver: ModelReceiver) => void;
+  removeReceiver: (id: string) => void;
+  loadReceivers: (receivers: ModelReceiver[]) => void;
+  getReceiverById: (id: string) => ModelReceiver | undefined;
 }
 
 const commandStack = new CommandStack();
@@ -34,6 +41,7 @@ export const useModelStore = create<ModelState>((set, get) => {
 
   return {
     features: [],
+    receivers: [],
     dirty: false,
     canUndo: false,
     canRedo: false,
@@ -101,12 +109,12 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     loadFeatures: (features) => {
       commandStack.clear();
-      set({ features, dirty: false, canUndo: false, canRedo: false });
+      set({ features, receivers: [], dirty: false, canUndo: false, canRedo: false });
     },
 
     reset: () => {
       commandStack.clear();
-      set({ features: [], dirty: false, canUndo: false, canRedo: false });
+      set({ features: [], receivers: [], dirty: false, canUndo: false, canRedo: false });
     },
 
     markClean: () => {
@@ -127,6 +135,75 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     featuresByKind: (kind) => {
       return get().features.filter((f) => f.kind === kind);
+    },
+
+    addReceiver: (receiver) => {
+      commandStack.execute({
+        description: `Add receiver ${receiver.id}`,
+        execute: () => {
+          set((s) => ({ receivers: [...s.receivers, receiver], dirty: true }));
+        },
+        undo: () => {
+          set((s) => ({
+            receivers: s.receivers.filter((r) => r.id !== receiver.id),
+            dirty: true,
+          }));
+        },
+      });
+    },
+
+    updateReceiver: (receiver) => {
+      const previous = get().receivers.find((r) => r.id === receiver.id);
+      if (!previous) return;
+      commandStack.execute({
+        description: `Update receiver ${receiver.id}`,
+        execute: () => {
+          set((s) => ({
+            receivers: s.receivers.map((r) =>
+              r.id === receiver.id ? receiver : r,
+            ),
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => ({
+            receivers: s.receivers.map((r) =>
+              r.id === receiver.id ? previous : r,
+            ),
+            dirty: true,
+          }));
+        },
+      });
+    },
+
+    removeReceiver: (id) => {
+      const receiver = get().receivers.find((r) => r.id === id);
+      if (!receiver) return;
+      const index = get().receivers.indexOf(receiver);
+      commandStack.execute({
+        description: `Remove receiver ${receiver.id}`,
+        execute: () => {
+          set((s) => ({
+            receivers: s.receivers.filter((r) => r.id !== id),
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => {
+            const next = [...s.receivers];
+            next.splice(index, 0, receiver);
+            return { receivers: next, dirty: true };
+          });
+        },
+      });
+    },
+
+    loadReceivers: (receivers) => {
+      set({ receivers });
+    },
+
+    getReceiverById: (id) => {
+      return get().receivers.find((r) => r.id === id);
     },
   };
 });

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useModelStore } from "@/model/model-store";
 import {
   Play,
   Settings2,
@@ -743,6 +744,7 @@ function RunSetupDialog({
 }) {
   const { data: standards, isLoading, error } = useStandards();
   const createRun = useCreateRun();
+  const receiverCount = useModelStore((s) => s.receivers.length);
 
   const firstStandard = standards?.[0];
 
@@ -851,9 +853,9 @@ function RunSetupDialog({
     >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Run</DialogTitle>
+          <DialogTitle>{m.dialog_title_new_run()}</DialogTitle>
           <DialogDescription>
-            Configure standard, parameters, and receivers for this run.
+            {m.dialog_desc_new_run()}
           </DialogDescription>
         </DialogHeader>
 
@@ -864,7 +866,7 @@ function RunSetupDialog({
         ) : error ? (
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>Could not load standards. Is the API server running?</span>
+            <span>{m.msg_api_error_standards()}</span>
           </div>
         ) : createRun.isError ? (
           <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
@@ -874,7 +876,7 @@ function RunSetupDialog({
         ) : submitted && submittedConfig ? (
           <div className="space-y-4">
             <div className="rounded-md border bg-muted/30 p-4 text-sm">
-              <p className="mb-2 font-medium">Run queued</p>
+              <p className="mb-2 font-medium">{m.status_run_queued()}</p>
               <p className="text-muted-foreground">
                 <span className="font-mono">{submittedConfig.standardId}</span>{" "}
                 / <span className="font-mono">{submittedConfig.version}</span> /{" "}
@@ -1034,18 +1036,39 @@ function RunSetupDialog({
 
                 <button
                   type="button"
-                  disabled
-                  className="flex cursor-not-allowed items-start gap-3 rounded-lg border border-border p-4 text-left opacity-50"
+                  onClick={() => {
+                    setReceiverMode("custom");
+                  }}
+                  className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                    receiverMode === "custom"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted/50"
+                  }`}
                 >
                   <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Custom receiver set</p>
                     <p className="text-xs text-muted-foreground">
-                      Explicit point or grid receiver sets (Phase 24+).
+                      Explicit receivers placed in the map workspace.
                     </p>
                   </div>
                 </button>
               </div>
+              {receiverMode === "custom" && receiverCount === 0 ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    No explicit receivers have been placed. Use the map workspace
+                    to add receiver points before running.
+                  </span>
+                </div>
+              ) : null}
+              {receiverMode === "custom" && receiverCount > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {String(receiverCount)} receiver
+                  {receiverCount !== 1 ? "s" : ""} placed.
+                </p>
+              ) : null}
             </section>
 
             {/* Determinism hint */}
@@ -1072,7 +1095,11 @@ function RunSetupDialog({
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedProfile || createRun.isPending}
+              disabled={
+                !selectedProfile ||
+                createRun.isPending ||
+                (receiverMode === "custom" && receiverCount === 0)
+              }
             >
               <Play className="mr-2 h-4 w-4" />
               {createRun.isPending ? "Running…" : "Start Run"}
@@ -1152,7 +1179,7 @@ export default function RunPage() {
           }}
         >
           <Play className="mr-1.5 h-3.5 w-3.5" />
-          New Run
+          {m.action_new_run()}
         </Button>
       </div>
 
@@ -1165,7 +1192,7 @@ export default function RunPage() {
         <div className="flex flex-1 items-center justify-center p-8">
           <div className="flex items-center gap-2 text-sm text-destructive">
             <AlertCircle className="h-4 w-4" />
-            Could not load runs. Is the API server running?
+            {m.msg_api_error_run()}
           </div>
         </div>
       ) : !hasRuns ? (
@@ -1173,7 +1200,7 @@ export default function RunPage() {
           <div className="text-center">
             <Play className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
-              No runs yet. Click <strong>New Run</strong> to get started.
+              {m.msg_no_runs_empty_state()}
             </p>
           </div>
         </div>
@@ -1185,7 +1212,7 @@ export default function RunPage() {
             <div className="overflow-y-auto">
               {filteredRuns.length === 0 ? (
                 <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  No runs match the current filters.
+                  {m.msg_no_runs_match_filters()}
                 </p>
               ) : null}
               {filteredRuns.map((run) => (
