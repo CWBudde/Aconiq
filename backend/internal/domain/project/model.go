@@ -52,6 +52,8 @@ type Run struct {
 	ID             string      `json:"id"`
 	ScenarioID     string      `json:"scenario_id"`
 	Standard       StandardRef `json:"standard"`
+	ReceiverMode   string      `json:"receiver_mode,omitempty"`
+	ReceiverSetID  string      `json:"receiver_set_id,omitempty"`
 	Status         string      `json:"status"`
 	LogPath        string      `json:"log_path"`
 	ProvenancePath string      `json:"provenance_path"`

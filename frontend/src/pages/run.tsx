@@ -745,6 +745,7 @@ function RunSetupDialog({
   const { data: standards, isLoading, error } = useStandards();
   const createRun = useCreateRun();
   const receiverCount = useModelStore((s) => s.receivers.length);
+  const calcArea = useModelStore((s) => s.calcArea);
 
   const firstStandard = standards?.[0];
 
@@ -1054,6 +1055,11 @@ function RunSetupDialog({
                   </div>
                 </button>
               </div>
+              {receiverMode === "auto-grid" && calcArea ? (
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  Calculation area is set — auto-grid will use this area instead of source extent.
+                </p>
+              ) : null}
               {receiverMode === "custom" && receiverCount === 0 ? (
                 <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

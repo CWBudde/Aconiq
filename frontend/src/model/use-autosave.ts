@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useModelStore } from "@/model/model-store";
-import type { ModelFeature } from "@/model/types";
+import type { ModelFeature, ModelReceiver } from "@/model/types";
 
 export const DRAFT_KEY = "aconiq.model.draft";
 const SAVE_DELAY_MS = 2000;
@@ -15,11 +15,23 @@ export function hasDraft(): boolean {
 }
 
 /** Reads and deserializes the saved draft, or returns null on failure. */
-export function loadDraft(): ModelFeature[] | null {
+export interface ModelDraft {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+}
+
+export function loadDraft(): ModelDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as ModelFeature[];
+    const parsed = JSON.parse(raw) as ModelFeature[] | ModelDraft;
+    if (Array.isArray(parsed)) {
+      return { features: parsed, receivers: [] };
+    }
+    return {
+      features: Array.isArray(parsed.features) ? parsed.features : [],
+      receivers: Array.isArray(parsed.receivers) ? parsed.receivers : [],
+    };
   } catch {
     return null;
   }
@@ -42,6 +54,7 @@ export function discardDraft(): void {
 export function useAutosave(): void {
   const dirty = useModelStore((s) => s.dirty);
   const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
   const markClean = useModelStore((s) => s.markClean);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,7 +65,10 @@ export function useAutosave(): void {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(features));
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ features, receivers } satisfies ModelDraft),
+        );
         markClean();
       } catch {
         // Storage full or unavailable — skip silently.
@@ -62,7 +78,7 @@ export function useAutosave(): void {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [dirty, features, markClean]);
+  }, [dirty, features, receivers, markClean]);
 
   // Prevent accidental tab/window close when there are unsaved changes.
   useEffect(() => {

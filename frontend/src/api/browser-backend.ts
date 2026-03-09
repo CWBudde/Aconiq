@@ -348,6 +348,27 @@ function getFeatureBBox(features: ModelFeature[]): {
   return { minX, minY, maxX, maxY };
 }
 
+function getPolygonBBox(
+  rings: number[][][],
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const ring of rings) {
+    for (const pos of ring) {
+      if (pos.length >= 2) {
+        minX = Math.min(minX, pos[0]);
+        minY = Math.min(minY, pos[1]);
+        maxX = Math.max(maxX, pos[0]);
+        maxY = Math.max(maxY, pos[1]);
+      }
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY };
+}
+
 function toPoint2D(position: unknown): Point2D | null {
   if (
     Array.isArray(position) &&
@@ -743,7 +764,14 @@ out geom;`;
       rasterWidth = 1;
       rasterHeight = sorted.length;
     } else {
-      const bbox = getFeatureBBox(features.filter((feature) => feature.kind === "source"));
+      const calcArea = useModelStore.getState().calcArea;
+      let bbox: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+      if (calcArea) {
+        bbox = getPolygonBBox(calcArea.geometry.coordinates);
+      }
+      if (!bbox) {
+        bbox = getFeatureBBox(features.filter((feature) => feature.kind === "source"));
+      }
       if (!bbox) {
         throw new Error("Could not derive source extent from the current model");
       }

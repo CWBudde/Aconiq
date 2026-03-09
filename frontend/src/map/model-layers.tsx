@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import { useMap } from "./use-map";
 import { useModelStore } from "@/model/model-store";
+import type { CalcArea } from "@/model/types";
 import { featuresToSourceGroups, receiversToGeoJSON } from "@/model/to-geojson";
 import {
   SOURCE_IDS,
@@ -9,6 +10,7 @@ import {
   BARRIER_LAYERS,
   SOURCE_LAYERS,
   RECEIVER_LAYERS,
+  CALC_AREA_LAYERS,
 } from "./layers";
 
 /**
@@ -19,6 +21,7 @@ export function ModelLayers() {
   const map = useMap();
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
+  const calcArea = useModelStore((s) => s.calcArea);
   const previousFeatureCountRef = useRef(0);
 
   useEffect(() => {
@@ -26,8 +29,10 @@ export function ModelLayers() {
     if (!isMapStyleReady(map)) return;
 
     const groups = featuresToSourceGroups(features);
+    const calcAreaGeoJSON = calcAreaToGeoJSON(calcArea);
 
     const entries = [
+      [SOURCE_IDS.calcArea, calcAreaGeoJSON],
       [SOURCE_IDS.buildings, groups.buildings],
       [SOURCE_IDS.barriers, groups.barriers],
       [SOURCE_IDS.sources, groups.sources],
@@ -53,7 +58,8 @@ export function ModelLayers() {
     }
 
     // Ensure layers exist (idempotent — skip if already added)
-    const allLayers = [...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS, ...RECEIVER_LAYERS];
+    // Calc area layers go below model feature layers
+    const allLayers = [...CALC_AREA_LAYERS, ...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS, ...RECEIVER_LAYERS];
     for (const layer of allLayers) {
       try {
         if (!map.getLayer(layer.id)) {
@@ -75,7 +81,7 @@ export function ModelLayers() {
       }
     }
     previousFeatureCountRef.current = features.length;
-  }, [map, features, receivers]);
+  }, [map, features, receivers, calcArea]);
 
   return null;
 }
@@ -87,6 +93,22 @@ function isMapStyleReady(map: maplibregl.Map): boolean {
   } catch {
     return false;
   }
+}
+
+function calcAreaToGeoJSON(calcArea: CalcArea | null): GeoJSON.FeatureCollection {
+  if (!calcArea) {
+    return { type: "FeatureCollection", features: [] };
+  }
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: calcArea.geometry,
+      },
+    ],
+  };
 }
 
 function computeFeatureBounds(

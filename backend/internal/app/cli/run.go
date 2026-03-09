@@ -36,9 +36,12 @@ import (
 )
 
 const (
-	dummyResultUnit   = "dB"
-	defaultModelPath  = ".noise/model/model.normalized.geojson"
-	maxDummyReceivers = 250000
+	dummyResultUnit       = "dB"
+	defaultModelPath      = ".noise/model/model.normalized.geojson"
+	maxDummyReceivers     = 250000
+	receiverModeAutoGrid  = "auto-grid"
+	receiverModeCustom    = "custom"
+	explicitReceiverSetID = "explicit-manual"
 )
 
 type dummyRunOptions struct {
@@ -321,6 +324,7 @@ func newRunCommand() *cobra.Command {
 	var standardVersion string
 	var standardProfile string
 	var modelPath string
+	var receiverMode string
 	var rawParams []string
 	var inputPaths []string
 
@@ -335,6 +339,10 @@ func newRunCommand() *cobra.Command {
 
 			params, err := parseKeyValueFlags(rawParams)
 			if err != nil {
+				return err
+			}
+
+			if err := validateReceiverMode(receiverMode); err != nil {
 				return err
 			}
 
@@ -375,10 +383,12 @@ func newRunCommand() *cobra.Command {
 					Version: resolvedStandard.Version,
 					Profile: resolvedStandard.Profile,
 				},
-				Parameters: resolvedParams,
-				Metadata:   buildRunProvenanceMetadata(resolvedStandard.StandardID, resolvedParams),
-				InputPaths: combinedInputs,
-				Status:     project.RunStatusRunning,
+				ReceiverMode:  receiverMode,
+				ReceiverSetID: receiverSetID(receiverMode),
+				Parameters:    resolvedParams,
+				Metadata:      buildRunProvenanceMetadata(resolvedStandard.StandardID, resolvedParams, receiverMode),
+				InputPaths:    combinedInputs,
+				Status:        project.RunStatusRunning,
 				LogLines: []string{
 					nowUTC().Format(time.RFC3339) + " run started",
 				},
@@ -391,6 +401,7 @@ func newRunCommand() *cobra.Command {
 				run.StartedAt.Format(time.RFC3339) + " run started",
 				fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
 				fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
+				fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), receiverMode),
 			}
 
 			model, err := loadValidatedModel(resolvedModelPath, proj.CRS, relModelPath)
@@ -419,7 +430,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildDummyReceivers(sources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildDummyReceivers(sources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -427,11 +440,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(sources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
 					if event.Stage == "compute" && event.Message == "chunk_done" {
@@ -486,7 +500,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildCnossosRoadReceivers(roadSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildCnossosRoadReceivers(roadSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -494,11 +510,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(roadSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := cnossosroad.ComputeReceiverOutputs(receivers, roadSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -506,7 +523,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -523,7 +540,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildCnossosRailReceivers(railSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildCnossosRailReceivers(railSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -531,11 +550,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(railSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s rail_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s rail_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := cnossosrail.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -543,7 +563,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistCnossosRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistCnossosRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -560,7 +580,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildBUBRoadReceivers(roadSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildBUBRoadReceivers(roadSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -568,11 +590,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(roadSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s bub_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s bub_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := bubroad.ComputeReceiverOutputs(receivers, roadSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -580,7 +603,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistBUBRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistBUBRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -609,7 +632,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildRLS19RoadReceivers(roadSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildRLS19RoadReceivers(roadSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -622,8 +647,12 @@ func newRunCommand() *cobra.Command {
 					fmt.Sprintf("%s rls19_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
 					fmt.Sprintf("%s rls19_barriers=%d", nowUTC().Format(time.RFC3339), len(barriers)),
 					fmt.Sprintf("%s rls19_buildings=%d", nowUTC().Format(time.RFC3339), len(buildings)),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
 				)
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				propagationConfig := options.PropagationConfig()
 				propagationConfig.Buildings = buildings
@@ -634,7 +663,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -651,7 +680,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildSchall03Receivers(railSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildSchall03Receivers(railSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -659,11 +690,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(railSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s schall03_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s schall03_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -671,12 +703,16 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistSchall03RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistSchall03RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
 				}
 			case bebexposure.StandardID:
+				if receiverMode == receiverModeCustom {
+					return domainerrors.New(domainerrors.KindUserInput, "cli.run", "custom receiver mode is not supported for building exposure runs", nil)
+				}
+
 				options, parseErr := parseBEBExposureRunOptions(resolvedParams)
 				if parseErr != nil {
 					return parseErr
@@ -768,7 +804,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildBUFAircraftReceivers(aircraftSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildBUFAircraftReceivers(aircraftSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -776,11 +814,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(aircraftSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s buf_aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s buf_aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -788,7 +827,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistBUFAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistBUFAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -805,7 +844,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildCnossosAircraftReceivers(aircraftSources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildCnossosAircraftReceivers(aircraftSources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -813,11 +854,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(aircraftSources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := cnossosaircraft.ComputeReceiverOutputs(receivers, aircraftSources, options.PropagationConfig())
 				if computeErr != nil {
@@ -825,7 +867,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistCnossosAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistCnossosAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -842,7 +884,9 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, extractErr)
 				}
 
-				receivers, gridWidth, gridHeight, receiverErr := buildCnossosIndustryReceivers(industrySources, options)
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildCnossosIndustryReceivers(industrySources, options)
+				})
 				if receiverErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
 					return finalizeRunFailure(store, run, logLines, receiverErr)
@@ -850,11 +894,12 @@ func newRunCommand() *cobra.Command {
 
 				sourceCount = len(industrySources)
 				receiverCount = len(receivers)
-				logLines = append(
-					logLines,
-					fmt.Sprintf("%s industry_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-					fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight),
-				)
+				logLines = append(logLines, fmt.Sprintf("%s industry_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
 
 				receiverOutputs, computeErr := cnossosindustry.ComputeReceiverOutputs(receivers, industrySources, options.PropagationConfig())
 				if computeErr != nil {
@@ -862,7 +907,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistCnossosIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount)
+				persisted, outputHash, finishedAt, err = persistCnossosIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -913,6 +958,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardVersion, "standard-version", "", "Standard version (defaults to standard default)")
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
+	cmd.Flags().StringVar(&receiverMode, "receiver-mode", receiverModeAutoGrid, "Receiver mode: auto-grid or custom")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter key=value (repeatable)")
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
 
@@ -940,29 +986,66 @@ func parseKeyValueFlags(values []string) (map[string]string, error) {
 	return params, nil
 }
 
-func buildRunProvenanceMetadata(standardID string, params map[string]string) map[string]string {
+func buildRunProvenanceMetadata(standardID string, params map[string]string, receiverMode string) map[string]string {
+	metadata := map[string]string{
+		"receiver_mode": receiverMode,
+	}
+
 	switch standardID {
 	case cnossosroad.StandardID:
-		return cnossosroad.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, cnossosroad.ProvenanceMetadata(params))
 	case cnossosrail.StandardID:
-		return cnossosrail.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, cnossosrail.ProvenanceMetadata(params))
 	case cnossosindustry.StandardID:
-		return cnossosindustry.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, cnossosindustry.ProvenanceMetadata(params))
 	case cnossosaircraft.StandardID:
-		return cnossosaircraft.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, cnossosaircraft.ProvenanceMetadata(params))
 	case bubroad.StandardID:
-		return bubroad.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, bubroad.ProvenanceMetadata(params))
 	case bufaircraft.StandardID:
-		return bufaircraft.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, bufaircraft.ProvenanceMetadata(params))
 	case bebexposure.StandardID:
-		return bebexposure.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, bebexposure.ProvenanceMetadata(params))
 	case rls19road.StandardID:
-		return rls19road.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, rls19road.ProvenanceMetadata(params))
 	case schall03.StandardID:
-		return schall03.ProvenanceMetadata(params)
+		return mergeMetadata(metadata, schall03.ProvenanceMetadata(params))
 	default:
+		return metadata
+	}
+}
+
+func mergeMetadata(base map[string]string, extra map[string]string) map[string]string {
+	if len(base) == 0 && len(extra) == 0 {
 		return nil
 	}
+
+	merged := make(map[string]string, len(base)+len(extra))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+
+	return merged
+}
+
+func validateReceiverMode(mode string) error {
+	switch mode {
+	case receiverModeAutoGrid, receiverModeCustom:
+		return nil
+	default:
+		return domainerrors.New(domainerrors.KindUserInput, "cli.run", fmt.Sprintf("invalid receiver mode %q", mode), nil)
+	}
+}
+
+func receiverSetID(mode string) string {
+	if mode == receiverModeCustom {
+		return explicitReceiverSetID
+	}
+
+	return ""
 }
 
 func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
@@ -2160,6 +2243,64 @@ func loadValidatedModel(modelPath string, projectCRS string, sourcePath string) 
 	}
 
 	return model, nil
+}
+
+func extractExplicitReceivers(model modelgeojson.Model) ([]geo.PointReceiver, error) {
+	receivers := make([]geo.PointReceiver, 0)
+	seen := make(map[string]struct{})
+
+	for _, feature := range model.Features {
+		if feature.Kind != "receiver" {
+			continue
+		}
+
+		if feature.GeometryType != "Point" {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractExplicitReceivers", fmt.Sprintf("receiver %q geometry must be Point", feature.ID), nil)
+		}
+
+		if feature.HeightM == nil || *feature.HeightM <= 0 || math.IsNaN(*feature.HeightM) || math.IsInf(*feature.HeightM, 0) {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractExplicitReceivers", fmt.Sprintf("receiver %q height_m must be finite and > 0", feature.ID), nil)
+		}
+
+		if _, exists := seen[feature.ID]; exists {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractExplicitReceivers", fmt.Sprintf("receiver %q is duplicated", feature.ID), nil)
+		}
+
+		point, err := parsePointCoordinate(feature.Coordinates)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractExplicitReceivers", fmt.Sprintf("receiver %q: %v", feature.ID, err), nil)
+		}
+
+		receivers = append(receivers, geo.PointReceiver{
+			ID:      feature.ID,
+			Point:   point,
+			HeightM: *feature.HeightM,
+		})
+		seen[feature.ID] = struct{}{}
+	}
+
+	if len(receivers) == 0 {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.extractExplicitReceivers", "custom receiver mode requires at least one explicit receiver in the model", nil)
+	}
+
+	return receivers, nil
+}
+
+func resolveReceiverSet(
+	mode string,
+	model modelgeojson.Model,
+	buildGrid func() ([]geo.PointReceiver, int, int, error),
+) ([]geo.PointReceiver, int, int, error) {
+	if mode == receiverModeCustom {
+		receivers, err := extractExplicitReceivers(model)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+
+		return receivers, 0, 0, nil
+	}
+
+	return buildGrid()
 }
 
 func featurePropertyString(feature modelgeojson.Feature, keys ...string) (string, bool, error) {
@@ -4943,6 +5084,38 @@ func inferGridShape(receivers []geo.PointReceiver) (int, int, error) {
 	return width, len(receivers) / width, nil
 }
 
+func persistReceiverTableOnly(
+	resultsDir string,
+	table results.ReceiverTable,
+	summary map[string]any,
+) (persistedRunOutputs, error) {
+	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistReceiverTableOnly", "create results directory "+resultsDir, err)
+	}
+
+	receiverJSONPath := filepath.Join(resultsDir, "receivers.json")
+	receiverCSVPath := filepath.Join(resultsDir, "receivers.csv")
+
+	if err := results.SaveReceiverTableJSON(receiverJSONPath, table); err != nil {
+		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistReceiverTableOnly", "save receiver table json", err)
+	}
+
+	if err := results.SaveReceiverTableCSV(receiverCSVPath, table); err != nil {
+		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistReceiverTableOnly", "save receiver table csv", err)
+	}
+
+	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if err := writeJSONFile(summaryPath, summary); err != nil {
+		return persistedRunOutputs{}, err
+	}
+
+	return persistedRunOutputs{
+		ReceiverJSONPath: receiverJSONPath,
+		ReceiverCSVPath:  receiverCSVPath,
+		SummaryPath:      summaryPath,
+	}, nil
+}
+
 func persistDummyRunOutputs(
 	runDir string,
 	runOutput engine.RunOutput,
@@ -4998,6 +5171,31 @@ func persistDummyRunOutputs(
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save receiver table csv", err)
 	}
 
+	summary := map[string]any{
+		"run_id":             runOutput.RunID,
+		"status":             runOutput.Status,
+		"output_hash":        runOutput.OutputHash,
+		"total_chunks":       runOutput.TotalChunks,
+		"used_cached_chunks": runOutput.UsedCachedChunks,
+		"source_count":       runOutput.Metadata["source_count"],
+		"receiver_count":     len(receivers),
+		"receiver_mode":      receiverModeAutoGrid,
+	}
+
+	if gridWidth <= 0 || gridHeight <= 0 {
+		summary["receiver_mode"] = receiverModeCustom
+		summaryPath := filepath.Join(resultsDir, "run-summary.json")
+		if err := writeJSONFile(summaryPath, summary); err != nil {
+			return persistedRunOutputs{}, err
+		}
+
+		return persistedRunOutputs{
+			ReceiverJSONPath: receiverJSONPath,
+			ReceiverCSVPath:  receiverCSVPath,
+			SummaryPath:      summaryPath,
+		}, nil
+	}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     gridWidth,
 		Height:    gridHeight,
@@ -5029,17 +5227,8 @@ func persistDummyRunOutputs(
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save raster", err)
 	}
 
-	summary := map[string]any{
-		"run_id":             runOutput.RunID,
-		"status":             runOutput.Status,
-		"output_hash":        runOutput.OutputHash,
-		"total_chunks":       runOutput.TotalChunks,
-		"used_cached_chunks": runOutput.UsedCachedChunks,
-		"grid_width":         gridWidth,
-		"grid_height":        gridHeight,
-		"source_count":       runOutput.Metadata["source_count"],
-		"receiver_count":     len(receivers),
-	}
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 
@@ -5063,13 +5252,9 @@ func persistCnossosRoadRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := cnossosroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "export cnossos road results", err)
-	}
 
 	outputHash, err := hashCnossosRoadOutputs(outputs)
 	if err != nil {
@@ -5080,28 +5265,35 @@ func persistCnossosRoadRunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          cnossosindustry.BuiltinModelVersion,
 		"reporting_precision_db": cnossosindustry.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
-	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{cnossosroad.IndicatorLden, cnossosroad.IndicatorLnight, cnossosroad.IndicatorLday, cnossosroad.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosroad.IndicatorLden: output.Indicators.Lden, cnossosroad.IndicatorLnight: output.Indicators.Lnight, cnossosroad.IndicatorLday: output.Indicators.Lday, cnossosroad.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
 
-	err = writeJSONFile(summaryPath, summary)
+	exported, err := cnossosroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
 	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "export cnossos road results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
+	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistBUBRoadRunOutputs(
@@ -5110,13 +5302,9 @@ func persistBUBRoadRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := bubroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUBRoadRunOutputs", "export BUB road results", err)
-	}
 
 	outputHash, err := hashBUBRoadOutputs(outputs)
 	if err != nil {
@@ -5127,26 +5315,35 @@ func persistBUBRoadRunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          bubroad.BuiltinModelVersion,
 		"reporting_precision_db": bubroad.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{bubroad.IndicatorLden, bubroad.IndicatorLnight, bubroad.IndicatorLday, bubroad.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{bubroad.IndicatorLden: output.Indicators.Lden, bubroad.IndicatorLnight: output.Indicators.Lnight, bubroad.IndicatorLday: output.Indicators.Lday, bubroad.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := bubroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUBRoadRunOutputs", "export BUB road results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistRLS19RoadRunOutputs(
@@ -5155,13 +5352,9 @@ func persistRLS19RoadRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := rls19road.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistRLS19RoadRunOutputs", "export RLS-19 road results", err)
-	}
 
 	outputHash, err := hashRLS19RoadOutputs(outputs)
 	if err != nil {
@@ -5172,26 +5365,35 @@ func persistRLS19RoadRunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"data_pack_version":      rls19road.BuiltinDataPackVersion,
 		"reporting_precision_db": rls19road.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{rls19road.IndicatorLrDay: output.Indicators.LrDay, rls19road.IndicatorLrNight: output.Indicators.LrNight}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := rls19road.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistRLS19RoadRunOutputs", "export RLS-19 road results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistSchall03RunOutputs(
@@ -5200,13 +5402,9 @@ func persistSchall03RunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := schall03.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistSchall03RunOutputs", "export Schall 03 results", err)
-	}
 
 	outputHash, err := hashSchall03Outputs(outputs)
 	if err != nil {
@@ -5217,27 +5415,36 @@ func persistSchall03RunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          schall03.BuiltinModelVersion,
 		"reporting_precision_db": schall03.ReportingPrecisionDB,
 		"band_model":             "octave-63Hz-8000Hz",
+		"receiver_mode":          receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{schall03.IndicatorLrDay: output.Indicators.LrDay, schall03.IndicatorLrNight: output.Indicators.LrNight}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := schall03.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistSchall03RunOutputs", "export Schall 03 results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistCnossosAircraftRunOutputs(
@@ -5246,13 +5453,9 @@ func persistCnossosAircraftRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := cnossosaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosAircraftRunOutputs", "export cnossos aircraft results", err)
-	}
 
 	outputHash, err := hashCnossosAircraftOutputs(outputs)
 	if err != nil {
@@ -5263,26 +5466,35 @@ func persistCnossosAircraftRunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          cnossosaircraft.BuiltinModelVersion,
 		"reporting_precision_db": cnossosaircraft.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{cnossosaircraft.IndicatorLden, cnossosaircraft.IndicatorLnight, cnossosaircraft.IndicatorLday, cnossosaircraft.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosaircraft.IndicatorLden: output.Indicators.Lden, cnossosaircraft.IndicatorLnight: output.Indicators.Lnight, cnossosaircraft.IndicatorLday: output.Indicators.Lday, cnossosaircraft.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := cnossosaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosAircraftRunOutputs", "export cnossos aircraft results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistCnossosRailRunOutputs(
@@ -5291,13 +5503,9 @@ func persistCnossosRailRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := cnossosrail.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRailRunOutputs", "export cnossos rail results", err)
-	}
 
 	outputHash, err := hashCnossosRailOutputs(outputs)
 	if err != nil {
@@ -5308,26 +5516,35 @@ func persistCnossosRailRunOutputs(
 		"run_id":                 filepath.Base(runDir),
 		"status":                 project.RunStatusCompleted,
 		"output_hash":            outputHash,
-		"grid_width":             gridWidth,
-		"grid_height":            gridHeight,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          cnossosrail.BuiltinModelVersion,
 		"reporting_precision_db": cnossosrail.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{cnossosrail.IndicatorLden, cnossosrail.IndicatorLnight, cnossosrail.IndicatorLday, cnossosrail.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosrail.IndicatorLden: output.Indicators.Lden, cnossosrail.IndicatorLnight: output.Indicators.Lnight, cnossosrail.IndicatorLday: output.Indicators.Lday, cnossosrail.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := cnossosrail.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRailRunOutputs", "export cnossos rail results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistBUFAircraftRunOutputs(
@@ -5336,13 +5553,9 @@ func persistBUFAircraftRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := bufaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUFAircraftRunOutputs", "export buf aircraft results", err)
-	}
 
 	outputHash, err := hashBUFAircraftOutputs(outputs)
 	if err != nil {
@@ -5353,24 +5566,33 @@ func persistBUFAircraftRunOutputs(
 		"run_id":         filepath.Base(runDir),
 		"status":         project.RunStatusCompleted,
 		"output_hash":    outputHash,
-		"grid_width":     gridWidth,
-		"grid_height":    gridHeight,
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
+		"receiver_mode":  receiverMode,
 	}
 
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{bufaircraft.IndicatorLden, bufaircraft.IndicatorLnight, bufaircraft.IndicatorLday, bufaircraft.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{bufaircraft.IndicatorLden: output.Indicators.Lden, bufaircraft.IndicatorLnight: output.Indicators.Lnight, bufaircraft.IndicatorLday: output.Indicators.Lday, bufaircraft.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := bufaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUFAircraftRunOutputs", "export buf aircraft results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func persistBEBExposureRunOutputs(
@@ -5432,13 +5654,9 @@ func persistCnossosIndustryRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
-
-	exported, err := cnossosindustry.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosIndustryRunOutputs", "export cnossos industry results", err)
-	}
 
 	outputHash, err := hashCnossosIndustryOutputs(outputs)
 	if err != nil {
@@ -5449,26 +5667,33 @@ func persistCnossosIndustryRunOutputs(
 		"run_id":         filepath.Base(runDir),
 		"status":         project.RunStatusCompleted,
 		"output_hash":    outputHash,
-		"grid_width":     gridWidth,
-		"grid_height":    gridHeight,
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
+		"receiver_mode":  receiverMode,
 	}
 
-	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{cnossosindustry.IndicatorLden, cnossosindustry.IndicatorLnight, cnossosindustry.IndicatorLday, cnossosindustry.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosindustry.IndicatorLden: output.Indicators.Lden, cnossosindustry.IndicatorLnight: output.Indicators.Lnight, cnossosindustry.IndicatorLday: output.Indicators.Lday, cnossosindustry.IndicatorLevening: output.Indicators.Levening}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
 
-	err = writeJSONFile(summaryPath, summary)
+	exported, err := cnossosindustry.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
 	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosIndustryRunOutputs", "export cnossos industry results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
+	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if err := writeJSONFile(summaryPath, summary); err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{
-		ReceiverJSONPath:   exported.ReceiverJSONPath,
-		ReceiverCSVPath:    exported.ReceiverCSVPath,
-		RasterMetadataPath: exported.RasterMetaPath,
-		RasterDataPath:     exported.RasterDataPath,
-		SummaryPath:        summaryPath,
-	}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 func hashCnossosRoadOutputs(outputs []cnossosroad.ReceiverOutput) (string, error) {
@@ -5695,44 +5920,24 @@ func hashCnossosIndustryOutputs(outputs []cnossosindustry.ReceiverOutput) (strin
 
 func buildRunArtifacts(projectRoot string, runID string, persisted persistedRunOutputs) []project.ArtifactRef {
 	now := nowUTC()
-
-	return []project.ArtifactRef{
-		{
-			ID:        fmt.Sprintf("artifact-run-%s-receivers-json", runID),
-			RunID:     runID,
-			Kind:      "run.result.receiver_table_json",
-			Path:      relativePath(projectRoot, persisted.ReceiverJSONPath),
-			CreatedAt: now,
-		},
-		{
-			ID:        fmt.Sprintf("artifact-run-%s-receivers-csv", runID),
-			RunID:     runID,
-			Kind:      "run.result.receiver_table_csv",
-			Path:      relativePath(projectRoot, persisted.ReceiverCSVPath),
-			CreatedAt: now,
-		},
-		{
-			ID:        fmt.Sprintf("artifact-run-%s-raster-meta", runID),
-			RunID:     runID,
-			Kind:      "run.result.raster_metadata",
-			Path:      relativePath(projectRoot, persisted.RasterMetadataPath),
-			CreatedAt: now,
-		},
-		{
-			ID:        fmt.Sprintf("artifact-run-%s-raster-data", runID),
-			RunID:     runID,
-			Kind:      "run.result.raster_binary",
-			Path:      relativePath(projectRoot, persisted.RasterDataPath),
-			CreatedAt: now,
-		},
-		{
-			ID:        fmt.Sprintf("artifact-run-%s-summary", runID),
-			RunID:     runID,
-			Kind:      "run.result.summary",
-			Path:      relativePath(projectRoot, persisted.SummaryPath),
-			CreatedAt: now,
-		},
+	artifacts := make([]project.ArtifactRef, 0, 5)
+	if persisted.ReceiverJSONPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-json", runID), RunID: runID, Kind: "run.result.receiver_table_json", Path: relativePath(projectRoot, persisted.ReceiverJSONPath), CreatedAt: now})
 	}
+	if persisted.ReceiverCSVPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-csv", runID), RunID: runID, Kind: "run.result.receiver_table_csv", Path: relativePath(projectRoot, persisted.ReceiverCSVPath), CreatedAt: now})
+	}
+	if persisted.RasterMetadataPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-meta", runID), RunID: runID, Kind: "run.result.raster_metadata", Path: relativePath(projectRoot, persisted.RasterMetadataPath), CreatedAt: now})
+	}
+	if persisted.RasterDataPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-data", runID), RunID: runID, Kind: "run.result.raster_binary", Path: relativePath(projectRoot, persisted.RasterDataPath), CreatedAt: now})
+	}
+	if persisted.SummaryPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-summary", runID), RunID: runID, Kind: "run.result.summary", Path: relativePath(projectRoot, persisted.SummaryPath), CreatedAt: now})
+	}
+
+	return artifacts
 }
 
 func finalizeRunFailure(store projectfs.Store, run project.Run, logLines []string, runErr error) error {

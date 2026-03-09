@@ -91,8 +91,18 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		if !isOneOf(geomType, "LineString", "MultiLineString") {
 			addError(report, "barrier.geometry.invalid", id, "barrier geometry must be LineString or MultiLineString")
 		}
+	case "receiver":
+		if feature.HeightM == nil {
+			addError(report, "receiver.height.required", id, "receiver feature requires height_m")
+		} else if *feature.HeightM <= 0 {
+			addError(report, "receiver.height.invalid", id, "receiver height_m must be > 0")
+		}
+
+		if geomType != "Point" {
+			addError(report, "receiver.geometry.invalid", id, "receiver geometry must be Point")
+		}
 	default:
-		addError(report, "feature.kind.invalid", id, "kind must be one of source|building|barrier")
+		addError(report, "feature.kind.invalid", id, "kind must be one of source|building|barrier|receiver")
 	}
 
 	points, ok := validateGeometry(feature, report)

@@ -30,13 +30,15 @@ type Store struct {
 
 // CreateRunSpec describes metadata for appending a run record and provenance file.
 type CreateRunSpec struct {
-	ScenarioID string
-	Standard   project.StandardRef
-	Parameters map[string]string
-	Metadata   map[string]string
-	InputPaths []string
-	Status     string
-	LogLines   []string
+	ScenarioID    string
+	Standard      project.StandardRef
+	ReceiverMode  string
+	ReceiverSetID string
+	Parameters    map[string]string
+	Metadata      map[string]string
+	InputPaths    []string
+	Status        string
+	LogLines      []string
 }
 
 // New returns a store rooted at projectPath.
@@ -295,15 +297,17 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	}
 
 	provenance := project.ProvenanceManifest{
-		RunID:       runID,
-		ScenarioID:  scenarioID,
-		Standard:    std,
-		Parameters:  cloneStringMap(spec.Parameters),
-		Metadata:    cloneStringMap(spec.Metadata),
-		InputHashes: inputHashes,
-		GeneratedAt: now,
-		ToolName:    toolName,
-		ToolVersion: toolVersion,
+		RunID:         runID,
+		ScenarioID:    scenarioID,
+		Standard:      std,
+		ReceiverMode:  spec.ReceiverMode,
+		ReceiverSetID: spec.ReceiverSetID,
+		Parameters:    cloneStringMap(spec.Parameters),
+		Metadata:      cloneStringMap(spec.Metadata),
+		InputHashes:   inputHashes,
+		GeneratedAt:   now,
+		ToolName:      toolName,
+		ToolVersion:   toolVersion,
 	}
 
 	err = writeJSONFile(filepath.Join(s.root, filepath.FromSlash(provRelPath)), provenance)
@@ -315,6 +319,8 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 		ID:             runID,
 		ScenarioID:     scenarioID,
 		Standard:       std,
+		ReceiverMode:   spec.ReceiverMode,
+		ReceiverSetID:  spec.ReceiverSetID,
 		Status:         status,
 		LogPath:        logRelPath,
 		ProvenancePath: provRelPath,

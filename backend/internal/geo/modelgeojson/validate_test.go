@@ -22,6 +22,11 @@ func TestNormalizeAndValidateValidModel(t *testing.T) {
       "type": "Feature",
       "properties": {"id": "bar-1", "kind": "barrier", "height_m": 2.5},
       "geometry": {"type": "LineString", "coordinates": [[1,1],[5,1],[8,2]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-1", "kind": "receiver", "height_m": 4.0},
+      "geometry": {"type": "Point", "coordinates": [20.0, 30.0]}
     }
   ]
 }`)
@@ -44,8 +49,48 @@ func TestNormalizeAndValidateValidModel(t *testing.T) {
 		t.Fatalf("expected 0 warnings, got %d", report.WarningCount())
 	}
 
-	if model.ToDump().FeatureCount != 3 {
-		t.Fatalf("expected 3 features in dump")
+	if model.ToDump().FeatureCount != 4 {
+		t.Fatalf("expected 4 features in dump")
+	}
+}
+
+func TestValidateReceiverRequiresPositiveHeightAndPointGeometry(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-1", "kind": "receiver", "height_m": 0},
+      "geometry": {"type": "LineString", "coordinates": [[0,0],[1,1]]}
+    }
+  ]
+}`)
+
+	model, err := Normalize(payload, "EPSG:25832", "input.geojson")
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	report := Validate(model)
+	if report.Valid {
+		t.Fatal("expected invalid receiver feature")
+	}
+
+	foundHeight := false
+	foundGeometry := false
+	for _, issue := range report.Errors {
+		if issue.Code == "receiver.height.invalid" {
+			foundHeight = true
+		}
+		if issue.Code == "receiver.geometry.invalid" {
+			foundGeometry = true
+		}
+	}
+
+	if !foundHeight || !foundGeometry {
+		t.Fatalf("expected receiver validation errors, got %#v", report.Errors)
 	}
 }
 

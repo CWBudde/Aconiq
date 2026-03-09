@@ -10,7 +10,8 @@ import {
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { useMap } from "./use-map";
 
-export type DrawMode = "point" | "linestring" | "polygon" | "select" | "static";
+/** Drawing modes — "calc-area" maps to polygon internally but signals a different intent */
+export type DrawMode = "point" | "linestring" | "polygon" | "select" | "static" | "calc-area";
 
 interface UseDrawOptions {
   onFinish?: (mode: DrawMode, feature: GeoJSON.Feature) => void;
@@ -26,6 +27,7 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   const map = useMap();
   const drawRef = useRef<TerraDraw | null>(null);
   const [activeMode, setActiveMode] = useState<DrawMode>("static");
+  const activeModeRef = useRef<DrawMode>("static");
   const onFinishRef = useRef(options.onFinish);
   onFinishRef.current = options.onFinish;
 
@@ -74,7 +76,9 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
       const snapshot = draw.getSnapshot();
       const feature = snapshot.find((f) => f.id === id);
       if (feature && onFinishRef.current) {
-        const currentMode = draw.getMode() as DrawMode;
+        const currentMode = activeModeRef.current;
+        activeModeRef.current = "static";
+        setActiveMode("static");
         setTimeout(() => {
           try {
             draw.removeFeatures([id]);
@@ -95,12 +99,16 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   }, [map]);
 
   const setMode = useCallback((mode: DrawMode) => {
-    drawRef.current?.setMode(mode);
+    // "calc-area" reuses terra-draw's polygon mode but is tracked separately
+    const terraMode = mode === "calc-area" ? "polygon" : mode;
+    drawRef.current?.setMode(terraMode);
+    activeModeRef.current = mode;
     setActiveMode(mode);
   }, []);
 
   const cancel = useCallback(() => {
     drawRef.current?.setMode("static");
+    activeModeRef.current = "static";
     setActiveMode("static");
   }, []);
 
