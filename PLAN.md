@@ -485,27 +485,31 @@ Status: complete.
 
 **Goal:** let users define where the noise comes from by editing acoustic/emission inputs on each source feature, not only as run-wide defaults.
 
-- [ ] Extend source feature data model for per-source acoustics
+- [x] Extend source feature data model for per-source acoustics
   - [x] Support per-source traffic/emission attributes required for the first browser-delivered standards
   - [x] Support per-source defaults vs run-level defaults with clear precedence rules
   - [x] Preserve standard-specific source attributes through import/export/undo/autosave
-- [ ] Add source-acoustics editing UI
+- [x] Add source-acoustics editing UI
   - [x] Extend the source feature editor beyond `source_type`
   - [x] Expose per-source traffic counts, speeds, surface type, gradient, and other RLS-19-relevant inputs
   - [x] Add validation/help text so invalid or incomplete source inputs are visible before run start
-- [ ] Update OSM/import mapping to populate source acoustics where possible
+- [x] Update OSM/import mapping to populate source acoustics where possible
   - [x] Map OSM attributes into source defaults when reliable
   - [x] Mark inferred/missing values clearly so users can review them
-- [ ] Wire per-source acoustics into browser/WASM execution
+- [x] Wire per-source acoustics into browser/WASM execution
   - [x] Make `buildRoadSources()` prefer feature-level source parameters over run-wide defaults
   - [x] Keep run-level parameter fields as project-wide defaults / fallback values
   - [x] Add regression coverage showing two sources with different acoustic inputs produce different results
+- [ ] Harden frontend/browser source-acoustics workflow
+  - [ ] Add UI-level interaction coverage for editing, clearing, and restoring per-source acoustic overrides
+  - [ ] Surface per-source acoustic overrides / inferred review flags outside the editor where useful (for example in feature popups or run setup summaries)
+  - [ ] Decide whether additional OSM-derived defaults (for example `lanes` / road-class heuristics) are deterministic enough to enable safely
 - [ ] Wire per-source acoustics into backend/CLI/API execution
-  - [ ] Align typed extraction from normalized GeoJSON/project model with frontend-authored source parameters
-  - [ ] Record per-source acoustic provenance and export/report visibility
-  - [ ] Keep deterministic extraction and ordering guarantees
+  - [x] Align typed extraction from normalized GeoJSON/project model with frontend-authored source parameters
+  - [x] Record per-source acoustic provenance and export/report visibility
+  - [x] Keep deterministic extraction and ordering guarantees
 - [ ] Extend standards incrementally
-  - [ ] Start with `rls19-road` line sources
+  - [x] Start with `rls19-road` line sources
   - [ ] Define follow-on source-editing scopes for other standards/modules separately once the source schemas are stable
 
 ---

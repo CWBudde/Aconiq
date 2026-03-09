@@ -614,7 +614,7 @@ func newRunCommand() *cobra.Command {
 					return parseErr
 				}
 
-				roadSources, extractErr := extractRLS19RoadSources(model, options, resolvedStandard.SupportedSourceTypes)
+				roadSources, sourceOverrideCount, extractErr := extractRLS19RoadSources(model, options, resolvedStandard.SupportedSourceTypes)
 				if extractErr != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to extract RLS-19 road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
 					return finalizeRunFailure(store, run, logLines, extractErr)
@@ -645,6 +645,7 @@ func newRunCommand() *cobra.Command {
 				logLines = append(
 					logLines,
 					fmt.Sprintf("%s rls19_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
+					fmt.Sprintf("%s rls19_sources_with_feature_overrides=%d", nowUTC().Format(time.RFC3339), sourceOverrideCount),
 					fmt.Sprintf("%s rls19_barriers=%d", nowUTC().Format(time.RFC3339), len(barriers)),
 					fmt.Sprintf("%s rls19_buildings=%d", nowUTC().Format(time.RFC3339), len(buildings)),
 				)
@@ -663,7 +664,7 @@ func newRunCommand() *cobra.Command {
 					return finalizeRunFailure(store, run, logLines, computeErr)
 				}
 
-				persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
+				persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, sourceOverrideCount, receiverMode)
 				if err != nil {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
@@ -3106,7 +3107,39 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 	return sources, nil
 }
 
-func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptions, supportedSourceTypes []string) ([]rls19road.RoadSource, error) {
+// rls19AcousticOverrideKeys are the feature property keys that constitute a
+// per-source acoustic override for RLS-19 road. Presence of any one of these
+// keys causes the source to be counted as having feature-level overrides.
+var rls19AcousticOverrideKeys = []string{
+	"surface_type", "road_surface_type",
+	"road_speed_kph", "speed_pkw_kph", "speed_lkw1_kph", "speed_lkw2_kph", "speed_krad_kph",
+	"gradient_percent", "road_gradient_percent",
+	"junction_type", "road_junction_type",
+	"junction_distance_m", "road_junction_distance_m",
+	"reflection_surcharge_db",
+	"traffic_day_pkw", "traffic_day_lkw1", "traffic_day_lkw2", "traffic_day_krad",
+	"traffic_night_pkw", "traffic_night_lkw1", "traffic_night_lkw2", "traffic_night_krad",
+}
+
+// rls19FeatureHasAcousticOverrides reports whether a source feature carries any
+// per-source acoustic property that would override the run-wide defaults.
+func rls19FeatureHasAcousticOverrides(feature modelgeojson.Feature) bool {
+	for _, key := range rls19AcousticOverrideKeys {
+		if v, ok := feature.Properties[key]; ok && v != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractRLS19RoadSources extracts RLS-19 road sources from the normalized
+// model, applying per-source feature properties as overrides over the run-wide
+// defaults in options. Sources are returned in model feature order, preserving
+// deterministic extraction regardless of worker count. The second return value
+// is the count of source features that had at least one per-source acoustic
+// override (any key listed in rls19AcousticOverrideKeys).
+func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptions, supportedSourceTypes []string) ([]rls19road.RoadSource, int, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
 		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
@@ -3118,6 +3151,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	}
 
 	sources := make([]rls19road.RoadSource, 0)
+	overrideCount := 0
 
 	for featureIndex, feature := range model.Features {
 		if feature.Kind != "source" {
@@ -3127,7 +3161,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
 		if normalizedSourceType != "" {
 			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
-				return nil, domainerrors.New(
+				return nil, 0, domainerrors.New(
 					domainerrors.KindValidation,
 					"cli.extractRLS19RoadSources",
 					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
@@ -3138,12 +3172,16 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 		lines, err := lineStringsFromFeature(feature)
 		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 		}
 
 		baseID := strings.TrimSpace(feature.ID)
 		if baseID == "" {
 			baseID = fmt.Sprintf("rls19-road-source-%03d", featureIndex)
+		}
+
+		if rls19FeatureHasAcousticOverrides(feature) {
+			overrideCount++
 		}
 
 		for lineIndex, line := range lines {
@@ -3155,7 +3193,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			surfaceType := options.SurfaceType
 
 			if value, ok, err := featurePropertyString(feature, "surface_type", "road_surface_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				surfaceType = value
 			}
@@ -3166,7 +3204,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			speedKradKPH := options.SpeedKradKPH
 
 			if value, ok, err := featurePropertyFloat(feature, "road_speed_kph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				speedPkwKPH = value
 				speedLkw1KPH = value
@@ -3184,7 +3222,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"speed_krad_kph"}, &speedKradKPH},
 			} {
 				if value, ok, err := featurePropertyFloat(feature, item.keys...); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				} else if ok {
 					*item.target = value
 				}
@@ -3193,7 +3231,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			gradientPercent := options.GradientPercent
 
 			if value, ok, err := featurePropertyFloat(feature, "gradient_percent", "road_gradient_percent"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				gradientPercent = value
 			}
@@ -3201,7 +3239,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			junctionDistanceM := 0.0
 
 			if value, ok, err := featurePropertyFloat(feature, "junction_distance_m", "road_junction_distance_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				junctionDistanceM = value
 			}
@@ -3209,7 +3247,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			reflectionSurchargeDB := 0.0
 
 			if value, ok, err := featurePropertyFloat(feature, "reflection_surcharge_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				reflectionSurchargeDB = value
 			}
@@ -3217,11 +3255,11 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			junctionType := rls19road.JunctionNone
 
 			if value, ok, err := featurePropertyString(feature, "junction_type", "road_junction_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				parsed, err := rls19road.ParseJunctionType(value)
 				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				}
 
 				junctionType = parsed
@@ -3254,7 +3292,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"traffic_night_krad"}, &trafficNight.KradPerHour},
 			} {
 				if value, ok, err := featurePropertyFloat(feature, item.keys...); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				} else if ok {
 					*item.target = value
 				}
@@ -3280,7 +3318,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			err := source.Validate()
 			if err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			}
 
 			sources = append(sources, source)
@@ -3288,10 +3326,10 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	}
 
 	if len(sources) == 0 {
-		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", "model does not contain any supported line source features", nil)
+		return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", "model does not contain any supported line source features", nil)
 	}
 
-	return sources, nil
+	return sources, overrideCount, nil
 }
 
 func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions, supportedSourceTypes []string) ([]schall03.RailSource, error) {
@@ -5352,6 +5390,7 @@ func persistRLS19RoadRunOutputs(
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
+	sourceOverrideCount int,
 	receiverMode string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
@@ -5362,14 +5401,15 @@ func persistRLS19RoadRunOutputs(
 	}
 
 	summary := map[string]any{
-		"run_id":                 filepath.Base(runDir),
-		"status":                 project.RunStatusCompleted,
-		"output_hash":            outputHash,
-		"source_count":           sourceCount,
-		"receiver_count":         len(outputs),
-		"data_pack_version":      rls19road.BuiltinDataPackVersion,
-		"reporting_precision_db": rls19road.ReportingPrecisionDB,
-		"receiver_mode":          receiverMode,
+		"run_id":                               filepath.Base(runDir),
+		"status":                               project.RunStatusCompleted,
+		"output_hash":                          outputHash,
+		"source_count":                         sourceCount,
+		"sources_with_feature_acoustics_overrides": sourceOverrideCount,
+		"receiver_count":                       len(outputs),
+		"data_pack_version":                    rls19road.BuiltinDataPackVersion,
+		"reporting_precision_db":               rls19road.ReportingPrecisionDB,
+		"receiver_mode":                        receiverMode,
 	}
 
 	if receiverMode == receiverModeCustom {
