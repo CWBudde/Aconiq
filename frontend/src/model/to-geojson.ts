@@ -9,6 +9,7 @@ export function featuresToGeoJSON(
       type: "Feature" as const,
       id: f.id,
       properties: {
+        ...(f.properties ?? {}),
         kind: f.kind,
         ...(f.sourceType != null ? { source_type: f.sourceType } : {}),
         ...(f.heightM != null ? { height_m: f.heightM } : {}),

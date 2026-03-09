@@ -28,6 +28,7 @@ export interface ModelFeature {
   kind: FeatureKind;
   sourceType?: SourceType;
   heightM?: number;
+  properties?: Record<string, unknown>;
   geometry: Geometry;
 }
 
