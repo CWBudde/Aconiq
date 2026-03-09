@@ -27,6 +27,9 @@ const (
 	RoughnessSmooth   = cnossosrail.RoughnessSmooth
 	RoughnessStandard = cnossosrail.RoughnessStandard
 	RoughnessRough    = cnossosrail.RoughnessRough
+
+	TrackTypeBallasted = cnossosrail.TrackTypeBallasted
+	TrackTypeSlab      = cnossosrail.TrackTypeSlab
 )
 
 type (

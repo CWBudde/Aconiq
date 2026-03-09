@@ -460,7 +460,7 @@ Status: complete.
 - [x] Add a first-class receiver model to the frontend/domain layer
   - [x] Receiver point entity with stable ID, XY position, and receiver height
   - [x] Distinguish receiver objects from sources/buildings/barriers in model state and persistence/autosave
-  - [ ] Validation rules for explicit receiver sets (finite coordinates, positive height, duplicate-ID handling)
+  - [x] Validation rules for explicit receiver sets (finite coordinates, positive height, duplicate-ID handling)
 - [x] Add receiver authoring to the map workspace
   - [x] Draw/add receiver points directly on the map
   - [x] Edit receiver position and height from the feature editor
@@ -474,10 +474,10 @@ Status: complete.
   - [x] Pass explicit receivers to RLS-19 runs instead of `buildReceiverGrid()` when custom mode is selected
   - [x] Export explicit-receiver results to receiver tables and run provenance
   - [x] Keep deterministic ordering of manually authored receivers
-- [ ] Wire manual receivers into backend/CLI/API execution
-  - [ ] Align receiver-set storage and run contracts with the Go project/run model
-  - [ ] Ensure HTTP/API and CLI runs can execute against explicit receiver sets
-  - [ ] Add run/report/export coverage for explicit receiver sets
+- [x] Wire manual receivers into backend/CLI/API execution
+  - [x] Align receiver-set storage and run contracts with the Go project/run model
+  - [x] Ensure HTTP/API and CLI runs can execute against explicit receiver sets
+  - [x] Add run/report/export coverage for explicit receiver sets
 
 ---
 
