@@ -252,19 +252,25 @@ function ReceiversTab({ run }: { run: RunSummary }) {
               </p>
               <div className="mt-1 space-y-0.5 text-xs">
                 <p>
-                  <span className="text-muted-foreground">{m.label_min()}:</span>{" "}
+                  <span className="text-muted-foreground">
+                    {m.label_min()}:
+                  </span>{" "}
                   <span className="font-medium">
                     {min.toFixed(1)} {unit}
                   </span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">{m.label_max()}:</span>{" "}
+                  <span className="text-muted-foreground">
+                    {m.label_max()}:
+                  </span>{" "}
                   <span className="font-medium">
                     {max.toFixed(1)} {unit}
                   </span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">{m.label_mean()}:</span>{" "}
+                  <span className="text-muted-foreground">
+                    {m.label_mean()}:
+                  </span>{" "}
                   <span className="font-medium">
                     {mean.toFixed(1)} {unit}
                   </span>
@@ -286,7 +292,8 @@ function ReceiversTab({ run }: { run: RunSummary }) {
           }}
         />
         <span className="text-xs text-muted-foreground">
-          {String(sortedRecords.length)} / {String(data.records.length)} {m.msg_records_count()}
+          {String(sortedRecords.length)} / {String(data.records.length)}{" "}
+          {m.msg_records_count()}
         </span>
         <div className="ml-auto">
           <Button variant="outline" size="sm" onClick={downloadCSV}>
@@ -420,7 +427,9 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
         </div>
         <div className="grid grid-cols-2 gap-3 opacity-50">
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">{m.label_color_ramp()}</p>
+            <p className="text-xs text-muted-foreground">
+              {m.label_color_ramp()}
+            </p>
             <Select disabled>
               <SelectTrigger className="h-7 text-xs">
                 <SelectValue placeholder="Viridis" />
@@ -437,8 +446,16 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">{m.label_min_max()}</p>
             <div className="flex gap-1">
-              <Input disabled className="h-7 text-xs" placeholder={m.label_min()} />
-              <Input disabled className="h-7 text-xs" placeholder={m.label_max()} />
+              <Input
+                disabled
+                className="h-7 text-xs"
+                placeholder={m.label_min()}
+              />
+              <Input
+                disabled
+                className="h-7 text-xs"
+                placeholder={m.label_max()}
+              />
             </div>
           </div>
         </div>
@@ -512,7 +529,9 @@ function CompareTab({
           </p>
           {r.profile ? (
             <p>
-              <span className="text-muted-foreground">{m.label_profile()}:</span>{" "}
+              <span className="text-muted-foreground">
+                {m.label_profile()}:
+              </span>{" "}
               <span className="font-mono">{r.profile}</span>
             </p>
           ) : null}
@@ -525,7 +544,9 @@ function CompareTab({
             {formatDuration(r.started_at, r.finished_at)}
           </p>
           <p>
-            <span className="text-muted-foreground">{m.label_artifacts()}:</span>{" "}
+            <span className="text-muted-foreground">
+              {m.label_artifacts()}:
+            </span>{" "}
             {String(r.artifacts.length)}
           </p>
         </div>
@@ -537,7 +558,9 @@ function CompareTab({
     <div className="flex flex-col gap-4">
       {/* Run B selector */}
       <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground">{m.label_compare_with()}:</p>
+        <p className="text-sm text-muted-foreground">
+          {m.label_compare_with()}:
+        </p>
         <Select
           value={compareRunId || "_none"}
           onValueChange={(v) => {
@@ -548,7 +571,9 @@ function CompareTab({
             <SelectValue placeholder={m.placeholder_compare_run()} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="_none">{m.option_select_compare_run()}</SelectItem>
+            <SelectItem value="_none">
+              {m.option_select_compare_run()}
+            </SelectItem>
             {otherRuns.map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 <span className="font-mono">{r.id}</span>{" "}

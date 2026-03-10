@@ -115,7 +115,9 @@ export function setFeatureProperty(
 }
 
 export function getRLS19ReviewRequired(feature: ModelFeature): boolean {
-  return getFeatureBoolean(feature, "source_acoustics_review_required") === true;
+  return (
+    getFeatureBoolean(feature, "source_acoustics_review_required") === true
+  );
 }
 
 export function getInferredFlag(feature: ModelFeature, key: string): boolean {

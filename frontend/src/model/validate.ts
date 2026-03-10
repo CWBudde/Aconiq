@@ -163,7 +163,11 @@ function validateRLS19SourceAcoustics(
     return;
   }
 
-  const surfaceType = getFeatureString(feature, "surface_type", "road_surface_type");
+  const surfaceType = getFeatureString(
+    feature,
+    "surface_type",
+    "road_surface_type",
+  );
   if (
     surfaceType &&
     !RLS19_SURFACE_TYPES.includes(
@@ -231,11 +235,11 @@ function validateRLS19SourceAcoustics(
     });
   }
 
-  const reflectionSurcharge = getFeatureNumber(feature, "reflection_surcharge_db");
-  if (
-    reflectionSurcharge != null &&
-    !Number.isFinite(reflectionSurcharge)
-  ) {
+  const reflectionSurcharge = getFeatureNumber(
+    feature,
+    "reflection_surcharge_db",
+  );
+  if (reflectionSurcharge != null && !Number.isFinite(reflectionSurcharge)) {
     errors.push({
       level: "error",
       code: "source.rls19.reflection_surcharge.invalid",

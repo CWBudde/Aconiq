@@ -554,7 +554,7 @@ Status: complete.
 **Goal:** add professional importers without blocking early delivery.
 
 - [x] GeoPackage importer
-- [ ] FlatGeobuf importer (deferred)
+- [x] FlatGeobuf importer
 - [x] CSV traffic/time tables importer
 - [ ] Terrain/DTM import (deferred)
 - [ ] Building footprints/import pipelines beyond GeoJSON (deferred)
@@ -571,7 +571,13 @@ For CSV traffic/time tables importer:
 - [x] Implement import + validation
 - [x] Add roundtrip tests
 
-For each remaining importer (FlatGeobuf, Terrain/DTM, Building footprints):
+For FlatGeobuf importer:
+
+- [x] Define schema + units
+- [x] Implement import + validation
+- [x] Add roundtrip tests
+
+For each remaining importer (Terrain/DTM, Building footprints):
 
 - [ ] Define schema + units
 - [ ] Implement import + validation

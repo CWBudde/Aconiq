@@ -59,7 +59,13 @@ export function ModelLayers() {
 
     // Ensure layers exist (idempotent — skip if already added)
     // Calc area layers go below model feature layers
-    const allLayers = [...CALC_AREA_LAYERS, ...BUILDING_LAYERS, ...BARRIER_LAYERS, ...SOURCE_LAYERS, ...RECEIVER_LAYERS];
+    const allLayers = [
+      ...CALC_AREA_LAYERS,
+      ...BUILDING_LAYERS,
+      ...BARRIER_LAYERS,
+      ...SOURCE_LAYERS,
+      ...RECEIVER_LAYERS,
+    ];
     for (const layer of allLayers) {
       try {
         if (!map.getLayer(layer.id)) {
@@ -95,7 +101,9 @@ function isMapStyleReady(map: maplibregl.Map): boolean {
   }
 }
 
-function calcAreaToGeoJSON(calcArea: CalcArea | null): GeoJSON.FeatureCollection {
+function calcAreaToGeoJSON(
+  calcArea: CalcArea | null,
+): GeoJSON.FeatureCollection {
   if (!calcArea) {
     return { type: "FeatureCollection", features: [] };
   }
