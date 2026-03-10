@@ -192,3 +192,19 @@ precision such as `0.1 dB` in provenance or run summaries. Their current contrac
 
 If a later reporting phase introduces rounded public display values, that will be a new reporting
 boundary layered on top of the current persisted raw outputs.
+
+### Schall 03
+
+- Module: `backend/internal/standards/schall03`
+- Internal precision:
+  - raw `float64`, no intermediate rounding
+- Export boundary:
+  - raw `float64` values are persisted in receiver tables and rasters
+- Reporting intent:
+  - provenance records `reporting_precision_db = 0.1`
+  - provenance records `reporting_rounding = round-half-away-from-zero at report boundary`
+  - this is an intended public reporting boundary, not a current export-rounding step
+- Regression boundary:
+  - golden snapshots round receiver coordinates, receiver height, `LrDay`, and `LrNight` to 6 decimals
+- Explicit tolerance:
+  - monotonic/behavioral checks currently use strict comparisons without epsilon

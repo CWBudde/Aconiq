@@ -162,8 +162,10 @@ type schall03RunOptions struct {
 	GridResolutionM       float64
 	GridPaddingM          float64
 	ReceiverHeightM       float64
+	TrainClass            string
 	TractionType          string
 	TrackType             string
+	TrackForm             string
 	TrackRoughnessClass   string
 	AverageTrainSpeedKPH  float64
 	CurveRadiusM          float64
@@ -1460,7 +1462,17 @@ func parseSchall03RunOptions(params map[string]string) (schall03RunOptions, erro
 		return schall03RunOptions{}, err
 	}
 
+	options.TrainClass, err = getString("rail_train_class")
+	if err != nil {
+		return schall03RunOptions{}, err
+	}
+
 	options.TrackType, err = getString("rail_track_type")
+	if err != nil {
+		return schall03RunOptions{}, err
+	}
+
+	options.TrackForm, err = getString("rail_track_form")
 	if err != nil {
 		return schall03RunOptions{}, err
 	}
@@ -2305,8 +2317,12 @@ func resolveReceiverSet(
 }
 
 func featurePropertyString(feature modelgeojson.Feature, keys ...string) (string, bool, error) {
+	return propertyString(feature.Properties, keys...)
+}
+
+func propertyString(properties map[string]any, keys ...string) (string, bool, error) {
 	for _, key := range keys {
-		raw, ok := feature.Properties[key]
+		raw, ok := properties[key]
 		if !ok || raw == nil {
 			continue
 		}
@@ -2328,8 +2344,12 @@ func featurePropertyString(feature modelgeojson.Feature, keys ...string) (string
 }
 
 func featurePropertyFloat(feature modelgeojson.Feature, keys ...string) (float64, bool, error) {
+	return propertyFloat(feature.Properties, keys...)
+}
+
+func propertyFloat(properties map[string]any, keys ...string) (float64, bool, error) {
 	for _, key := range keys {
-		raw, ok := feature.Properties[key]
+		raw, ok := properties[key]
 		if !ok || raw == nil {
 			continue
 		}
@@ -2350,8 +2370,12 @@ func featurePropertyFloat(feature modelgeojson.Feature, keys ...string) (float64
 }
 
 func featurePropertyBool(feature modelgeojson.Feature, keys ...string) (bool, bool, error) {
+	return propertyBool(feature.Properties, keys...)
+}
+
+func propertyBool(properties map[string]any, keys ...string) (bool, bool, error) {
 	for _, key := range keys {
-		raw, ok := feature.Properties[key]
+		raw, ok := properties[key]
 		if !ok || raw == nil {
 			continue
 		}
@@ -2379,6 +2403,55 @@ func featurePropertyBool(feature modelgeojson.Feature, keys ...string) (bool, bo
 	return false, false, nil
 }
 
+func propertyFloatSlice(properties map[string]any, keys ...string) ([]float64, bool, error) {
+	for _, key := range keys {
+		raw, ok := properties[key]
+		if !ok || raw == nil {
+			continue
+		}
+
+		items, ok := raw.([]any)
+		if !ok {
+			return nil, false, fmt.Errorf("property %q must be an array of finite numbers", key)
+		}
+
+		values := make([]float64, 0, len(items))
+		for idx, item := range items {
+			value, hasValue, err := readFeatureFloat(item)
+			if err != nil {
+				return nil, false, fmt.Errorf("property %q[%d]: %w", key, idx, err)
+			}
+
+			if !hasValue {
+				return nil, false, fmt.Errorf("property %q[%d] must not be empty", key, idx)
+			}
+
+			values = append(values, value)
+		}
+
+		return values, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func mergedProperties(base map[string]any, override map[string]any) map[string]any {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+
+	merged := make(map[string]any, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+
+	for key, value := range override {
+		merged[key] = value
+	}
+
+	return merged
+}
+
 func readFeatureFloat(raw any) (float64, bool, error) {
 	switch value := raw.(type) {
 	case float64:
@@ -2402,6 +2475,17 @@ func readFeatureFloat(raw any) (float64, bool, error) {
 	default:
 		return 0, false, fmt.Errorf("unsupported type %T", raw)
 	}
+}
+
+type rls19LineGeometry struct {
+	Centerline           []geo.Point2D
+	CenterlineElevations []float64
+}
+
+type rls19DirectionalSourceSpec struct {
+	IDHint    string
+	Geometry  rls19LineGeometry
+	Overrides map[string]any
 }
 
 func extractDummySources(model modelgeojson.Model, emissionDB float64, supportedSourceTypes []string) ([]freefield.Source, error) {
@@ -3124,8 +3208,12 @@ var rls19AcousticOverrideKeys = []string{
 // rls19FeatureHasAcousticOverrides reports whether a source feature carries any
 // per-source acoustic property that would override the run-wide defaults.
 func rls19FeatureHasAcousticOverrides(feature modelgeojson.Feature) bool {
+	return rls19PropertiesHaveAcousticOverrides(feature.Properties)
+}
+
+func rls19PropertiesHaveAcousticOverrides(properties map[string]any) bool {
 	for _, key := range rls19AcousticOverrideKeys {
-		if v, ok := feature.Properties[key]; ok && v != nil {
+		if v, ok := properties[key]; ok && v != nil {
 			return true
 		}
 	}
@@ -3170,7 +3258,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			}
 		}
 
-		lines, err := lineStringsFromFeature(feature)
+		directionalSources, err := extractRLS19DirectionalSourceSpecs(feature)
 		if err != nil {
 			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 		}
@@ -3182,17 +3270,40 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 		if rls19FeatureHasAcousticOverrides(feature) {
 			overrideCount++
+		} else {
+			for _, spec := range directionalSources {
+				if rls19PropertiesHaveAcousticOverrides(spec.Overrides) {
+					overrideCount++
+					break
+				}
+			}
 		}
 
-		for lineIndex, line := range lines {
+		seenSourceIDs := make(map[string]struct{}, len(directionalSources))
+
+		for lineIndex, directional := range directionalSources {
 			sourceID := baseID
-			if len(lines) > 1 {
+			if directional.IDHint != "" {
+				sourceID = fmt.Sprintf("%s-%s", baseID, normalizeDirectionalSourceID(directional.IDHint, lineIndex))
+			} else if len(directionalSources) > 1 {
 				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
 			}
 
+			if _, exists := seenSourceIDs[sourceID]; exists {
+				return nil, 0, domainerrors.New(
+					domainerrors.KindValidation,
+					"cli.extractRLS19RoadSources",
+					fmt.Sprintf("feature %q contains duplicate directional source id %q", feature.ID, sourceID),
+					nil,
+				)
+			}
+
+			seenSourceIDs[sourceID] = struct{}{}
+
+			properties := mergedProperties(feature.Properties, directional.Overrides)
 			surfaceType := options.SurfaceType
 
-			if value, ok, err := featurePropertyString(feature, "surface_type", "road_surface_type"); err != nil {
+			if value, ok, err := propertyString(properties, "surface_type", "road_surface_type"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				surfaceType = value
@@ -3203,7 +3314,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			speedLkw2KPH := options.SpeedLkw2KPH
 			speedKradKPH := options.SpeedKradKPH
 
-			if value, ok, err := featurePropertyFloat(feature, "road_speed_kph"); err != nil {
+			if value, ok, err := propertyFloat(properties, "road_speed_kph"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				speedPkwKPH = value
@@ -3221,7 +3332,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"speed_lkw2_kph"}, &speedLkw2KPH},
 				{[]string{"speed_krad_kph"}, &speedKradKPH},
 			} {
-				if value, ok, err := featurePropertyFloat(feature, item.keys...); err != nil {
+				if value, ok, err := propertyFloat(properties, item.keys...); err != nil {
 					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				} else if ok {
 					*item.target = value
@@ -3230,7 +3341,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			gradientPercent := options.GradientPercent
 
-			if value, ok, err := featurePropertyFloat(feature, "gradient_percent", "road_gradient_percent"); err != nil {
+			if value, ok, err := propertyFloat(properties, "gradient_percent", "road_gradient_percent"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				gradientPercent = value
@@ -3238,7 +3349,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			junctionDistanceM := 0.0
 
-			if value, ok, err := featurePropertyFloat(feature, "junction_distance_m", "road_junction_distance_m"); err != nil {
+			if value, ok, err := propertyFloat(properties, "junction_distance_m", "road_junction_distance_m"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				junctionDistanceM = value
@@ -3246,7 +3357,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			reflectionSurchargeDB := 0.0
 
-			if value, ok, err := featurePropertyFloat(feature, "reflection_surcharge_db"); err != nil {
+			if value, ok, err := propertyFloat(properties, "reflection_surcharge_db"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				reflectionSurchargeDB = value
@@ -3254,7 +3365,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			junctionType := rls19road.JunctionNone
 
-			if value, ok, err := featurePropertyString(feature, "junction_type", "road_junction_type"); err != nil {
+			if value, ok, err := propertyString(properties, "junction_type", "road_junction_type"); err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				parsed, err := rls19road.ParseJunctionType(value)
@@ -3291,7 +3402,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"traffic_night_lkw2"}, &trafficNight.Lkw2PerHour},
 				{[]string{"traffic_night_krad"}, &trafficNight.KradPerHour},
 			} {
-				if value, ok, err := featurePropertyFloat(feature, item.keys...); err != nil {
+				if value, ok, err := propertyFloat(properties, item.keys...); err != nil {
 					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				} else if ok {
 					*item.target = value
@@ -3299,9 +3410,10 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			}
 
 			source := rls19road.RoadSource{
-				ID:          sourceID,
-				Centerline:  line,
-				SurfaceType: rls19road.SurfaceType(surfaceType),
+				ID:                   sourceID,
+				Centerline:           directional.Geometry.Centerline,
+				CenterlineElevations: directional.Geometry.CenterlineElevations,
+				SurfaceType:          rls19road.SurfaceType(surfaceType),
 				Speeds: rls19road.SpeedInput{
 					PkwKPH:  speedPkwKPH,
 					Lkw1KPH: speedLkw1KPH,
@@ -3330,6 +3442,163 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	}
 
 	return sources, overrideCount, nil
+}
+
+func extractRLS19DirectionalSourceSpecs(feature modelgeojson.Feature) ([]rls19DirectionalSourceSpec, error) {
+	rawDirectionalSources, ok := feature.Properties["rls19_directional_sources"]
+	if ok && rawDirectionalSources != nil {
+		items, ok := rawDirectionalSources.([]any)
+		if !ok || len(items) == 0 {
+			return nil, fmt.Errorf("property %q must be a non-empty array", "rls19_directional_sources")
+		}
+
+		specs := make([]rls19DirectionalSourceSpec, 0, len(items))
+		for idx, item := range items {
+			properties, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("property %q[%d] must be an object", "rls19_directional_sources", idx)
+			}
+
+			geometryValue, ok := properties["centerline"]
+			if !ok || geometryValue == nil {
+				if fallback, exists := properties["coordinates"]; exists && fallback != nil {
+					geometryValue = fallback
+				} else {
+					return nil, fmt.Errorf("property %q[%d] requires centerline or coordinates", "rls19_directional_sources", idx)
+				}
+			}
+
+			geometry, err := parseRLS19LineGeometry(geometryValue, properties)
+			if err != nil {
+				return nil, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
+			}
+
+			idHint, _, err := propertyString(properties, "id", "direction_id", "direction")
+			if err != nil {
+				return nil, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
+			}
+
+			specs = append(specs, rls19DirectionalSourceSpec{
+				IDHint:    idHint,
+				Geometry:  geometry,
+				Overrides: properties,
+			})
+		}
+
+		return specs, nil
+	}
+
+	geometries, err := rls19LineGeometriesFromFeature(feature)
+	if err != nil {
+		return nil, err
+	}
+
+	specs := make([]rls19DirectionalSourceSpec, 0, len(geometries))
+	for _, geometry := range geometries {
+		specs = append(specs, rls19DirectionalSourceSpec{Geometry: geometry})
+	}
+
+	return specs, nil
+}
+
+func rls19LineGeometriesFromFeature(feature modelgeojson.Feature) ([]rls19LineGeometry, error) {
+	switch feature.GeometryType {
+	case "LineString":
+		line, err := parseRLS19LineGeometry(feature.Coordinates, feature.Properties)
+		if err != nil {
+			return nil, err
+		}
+
+		return []rls19LineGeometry{line}, nil
+	case "MultiLineString":
+		rawLines, ok := feature.Coordinates.([]any)
+		if !ok {
+			return nil, errors.New("geometry MultiLineString coordinates must be an array")
+		}
+
+		lines := make([]rls19LineGeometry, 0, len(rawLines))
+		for _, rawLine := range rawLines {
+			line, err := parseRLS19LineGeometry(rawLine, feature.Properties)
+			if err != nil {
+				return nil, err
+			}
+
+			lines = append(lines, line)
+		}
+
+		return lines, nil
+	default:
+		return nil, fmt.Errorf("unsupported source geometry type %q (rls19-road supports LineString/MultiLineString only)", feature.GeometryType)
+	}
+}
+
+func parseRLS19LineGeometry(value any, properties map[string]any) (rls19LineGeometry, error) {
+	centerline, elevations, hasZ, err := parseLineStringCoordinates3D(value)
+	if err != nil {
+		return rls19LineGeometry{}, err
+	}
+
+	if propertyElevations, ok, err := propertyFloatSlice(properties, "centerline_elevations"); err != nil {
+		return rls19LineGeometry{}, err
+	} else if ok {
+		if len(propertyElevations) != len(centerline) {
+			return rls19LineGeometry{}, fmt.Errorf("centerline_elevations length %d must match centerline length %d", len(propertyElevations), len(centerline))
+		}
+
+		elevations = propertyElevations
+		hasZ = true
+	}
+
+	if !hasZ {
+		if elevationM, ok, err := propertyFloat(properties, "elevation_m"); err != nil {
+			return rls19LineGeometry{}, err
+		} else if ok {
+			elevations = make([]float64, len(centerline))
+			for i := range elevations {
+				elevations[i] = elevationM
+			}
+
+			hasZ = true
+		}
+	}
+
+	geometry := rls19LineGeometry{Centerline: centerline}
+	if hasZ {
+		geometry.CenterlineElevations = elevations
+	}
+
+	return geometry, nil
+}
+
+func normalizeDirectionalSourceID(raw string, fallbackIndex int) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fmt.Sprintf("%02d", fallbackIndex+1)
+	}
+
+	var builder strings.Builder
+
+	for _, r := range trimmed {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			builder.WriteRune(r + ('a' - 'A'))
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		case r == '-' || r == '_' || r == '.':
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('-')
+		}
+	}
+
+	normalized := strings.Trim(builder.String(), "-_.")
+	if normalized == "" {
+		return fmt.Sprintf("%02d", fallbackIndex+1)
+	}
+
+	return normalized
 }
 
 func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions, supportedSourceTypes []string) ([]schall03.RailSource, error) {
@@ -3378,6 +3647,14 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
 			}
 
+			trainClass := options.TrainClass
+
+			if value, ok, err := featurePropertyString(feature, "rail_train_class"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trainClass = value
+			}
+
 			tractionType := options.TractionType
 
 			if value, ok, err := featurePropertyString(feature, "rail_traction_type"); err != nil {
@@ -3392,6 +3669,14 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				trackType = value
+			}
+
+			trackForm := options.TrackForm
+
+			if value, ok, err := featurePropertyString(feature, "rail_track_form"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trackForm = value
 			}
 
 			roughnessClass := options.TrackRoughnessClass
@@ -3454,10 +3739,12 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 				ID:              sourceID,
 				TrackCenterline: line,
 				ElevationM:      elevationM,
+				TrainClass:      trainClass,
 				AverageSpeedKPH: averageSpeedKPH,
 				Infrastructure: schall03.RailInfrastructure{
 					TractionType:        tractionType,
 					TrackType:           trackType,
+					TrackForm:           trackForm,
 					TrackRoughnessClass: roughnessClass,
 					OnBridge:            onBridge,
 					CurveRadiusM:        curveRadiusM,
@@ -4637,6 +4924,48 @@ func parseLineStringCoordinates(value any) ([]geo.Point2D, error) {
 	return points, nil
 }
 
+func parseLineStringCoordinates3D(value any) ([]geo.Point2D, []float64, bool, error) {
+	rawPoints, ok := value.([]any)
+	if !ok {
+		return nil, nil, false, errors.New("line coordinates must be an array")
+	}
+
+	if len(rawPoints) < 2 {
+		return nil, nil, false, errors.New("line coordinates must contain at least 2 points")
+	}
+
+	points := make([]geo.Point2D, 0, len(rawPoints))
+	elevations := make([]float64, 0, len(rawPoints))
+	hasAnyZ := false
+	hasMissingZ := false
+
+	for _, rawPoint := range rawPoints {
+		point, z, hasZ, err := parsePointCoordinate3D(rawPoint)
+		if err != nil {
+			return nil, nil, false, err
+		}
+
+		points = append(points, point)
+		elevations = append(elevations, z)
+
+		if hasZ {
+			hasAnyZ = true
+		} else {
+			hasMissingZ = true
+		}
+	}
+
+	if hasAnyZ && hasMissingZ {
+		return nil, nil, false, errors.New("line coordinates must use either 2D points only or 3D points for every vertex")
+	}
+
+	if !hasAnyZ {
+		return points, nil, false, nil
+	}
+
+	return points, elevations, true, nil
+}
+
 func parsePointCoordinate(value any) (geo.Point2D, error) {
 	raw, ok := value.([]any)
 	if !ok {
@@ -5401,15 +5730,15 @@ func persistRLS19RoadRunOutputs(
 	}
 
 	summary := map[string]any{
-		"run_id":                               filepath.Base(runDir),
-		"status":                               project.RunStatusCompleted,
-		"output_hash":                          outputHash,
-		"source_count":                         sourceCount,
+		"run_id":       filepath.Base(runDir),
+		"status":       project.RunStatusCompleted,
+		"output_hash":  outputHash,
+		"source_count": sourceCount,
 		"sources_with_feature_acoustics_overrides": sourceOverrideCount,
-		"receiver_count":                       len(outputs),
-		"data_pack_version":                    rls19road.BuiltinDataPackVersion,
-		"reporting_precision_db":               rls19road.ReportingPrecisionDB,
-		"receiver_mode":                        receiverMode,
+		"receiver_count":         len(outputs),
+		"data_pack_version":      rls19road.BuiltinDataPackVersion,
+		"reporting_precision_db": rls19road.ReportingPrecisionDB,
+		"receiver_mode":          receiverMode,
 	}
 
 	if receiverMode == receiverModeCustom {
@@ -5458,6 +5787,7 @@ func persistSchall03RunOutputs(
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
 		"model_version":          schall03.BuiltinModelVersion,
+		"data_pack_version":      schall03.BuiltinDataPackVersion,
 		"reporting_precision_db": schall03.ReportingPrecisionDB,
 		"band_model":             "octave-63Hz-8000Hz",
 		"receiver_mode":          receiverMode,

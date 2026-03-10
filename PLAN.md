@@ -134,7 +134,11 @@ Status: complete.
   - [x] Vehicle groups: Pkw, Lkw1, Lkw2, Krad (and how buses are mapped/handled)
   - [x] Time periods: day/night traffic inputs (support both direct hourly inputs and optional DTV→hourly conversion helpers)
   - [x] Road: surface/cover type, speeds per vehicle group, gradient/sign, junction type + distance, lane/direction layout
-  - [ ] Geometry: source line(s) per direction, receivers (height), buildings/barriers for reflection/shielding scenarios
+  - [x] Geometry: source line(s) per direction, receivers (height), buildings/barriers for reflection/shielding scenarios
+    - [x] RLS-19 extraction accepts explicit per-direction line-source definitions via model geometry and `rls19_directional_sources`
+    - [x] RLS-19 line sources accept 3D / per-vertex elevation geometry for rising and descending roads
+    - [x] RLS-19 custom/manual receiver runs honor each receiver's authored `height_m`
+    - [x] Building and barrier model geometry is wired through CLI extraction into shielding / reflection scenarios end to end
 
 - [x] Emission (align with TEST‑20 “E\*” coverage)
   - [x] E1: Base (speed-dependent) “Grundwert” per vehicle group
@@ -212,12 +216,12 @@ Status: complete.
   - [x] Add a license-safe synthetic acceptance fixture to the shared acceptance catalog
   - [x] Add implementation notes and legal/compliance notes
 - [ ] Replace the preview baseline with a standards-faithful Schall 03 implementation
-  - [ ] Define the exact minimum normative delivery scope for Phase 18 completion
-  - [ ] Move restricted coefficients/tables behind an external data-pack or other legally safe boundary
+  - [x] Define the exact minimum normative delivery scope for Phase 18 completion
+  - [x] Move restricted coefficients/tables behind an external data-pack or other legally safe boundary
   - [ ] Replace the preview source-emission spectra with the standards-faithful Schall 03 emission chain for the chosen scope
   - [ ] Replace the preview propagation adjustments with the standards-faithful propagation/correction sequence for the chosen scope
-  - [ ] Clarify and document authoritative output rounding and reporting rules separately from internal `float64` computation
-  - [ ] Expand the typed source model where needed for normative inputs (for example train classes, track forms, and additional infrastructure detail)
+  - [x] Clarify and document authoritative output rounding and reporting rules separately from internal `float64` computation
+  - [x] Expand the typed source model where needed for normative inputs (for example train classes, track forms, and additional infrastructure detail)
 - [ ] Strengthen Schall 03 conformance and acceptance coverage
   - [ ] Acquire or derive additional license-safe verification cases beyond the current synthetic preview fixture
   - [ ] Add a dedicated Schall 03 acceptance/conformance runner if the future fixture set needs tolerances, modes, or reporting beyond the shared catalog
@@ -226,10 +230,10 @@ Status: complete.
 
 ### Research
 
-- [ ] Clarify Schall 03 rounding rules and octave-band handling details
+- [x] Clarify Schall 03 rounding rules and octave-band handling details
 - [ ] Acquire license-safe verification or acceptance cases for Schall 03
-- [ ] Define minimum shippable Schall 03 scope for first delivery
-- [ ] Identify which normative coefficients/tables can be represented via an external data pack
+- [x] Define minimum shippable Schall 03 scope for first delivery
+- [x] Identify which normative coefficients/tables can be represented via an external data pack
 
 ---
 

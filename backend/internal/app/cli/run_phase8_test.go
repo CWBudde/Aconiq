@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/qa/golden"
 	"github.com/aconiq/backend/internal/report/results"
@@ -1006,6 +1007,170 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	}
 }
 
+func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "rls19_receiver_heights.geojson")
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "rls19-rd-1", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "bar-1", "kind": "barrier", "height_m": 4},
+      "geometry": {"type": "LineString", "coordinates": [[-20, 10], [140, 10]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-low", "kind": "receiver", "height_m": 2},
+      "geometry": {"type": "Point", "coordinates": [60, 50]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rcv-high", "kind": "receiver", "height_m": 15},
+      "geometry": {"type": "Point", "coordinates": [60, 50]}
+    }
+  ]
+}`)
+	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+		t.Fatalf("write custom model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase17ReceiverHeight", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road", "--receiver-mode", "custom")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	receiverPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "receivers.json"))
+	if err != nil {
+		t.Fatalf("read receiver table: %v", err)
+	}
+
+	var table results.ReceiverTable
+	if err := json.Unmarshal(receiverPayload, &table); err != nil {
+		t.Fatalf("decode receiver table: %v", err)
+	}
+
+	if len(table.Records) != 2 {
+		t.Fatalf("expected 2 explicit receivers, got %d", len(table.Records))
+	}
+
+	if table.Records[0].Values[rls19road.IndicatorLrDay] >= table.Records[1].Values[rls19road.IndicatorLrDay] {
+		t.Fatalf(
+			"expected higher receiver to be louder in barrier scenario: low=%.4f high=%.4f",
+			table.Records[0].Values[rls19road.IndicatorLrDay],
+			table.Records[1].Values[rls19road.IndicatorLrDay],
+		)
+	}
+}
+
+func TestExtractRLS19RoadSourcesDirectionalGeometry(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rd-main",
+        "kind": "source",
+        "source_type": "line",
+        "rls19_directional_sources": [
+          {
+            "id": "northbound",
+            "centerline": [[0, -2, 101], [120, -2, 103]],
+            "traffic_day_pkw": 650,
+            "traffic_night_pkw": 180,
+            "speed_pkw_kph": 90
+          },
+          {
+            "id": "southbound",
+            "centerline": [[0, 2], [120, 2]],
+            "centerline_elevations": [100, 102],
+            "traffic_day_pkw": 350,
+            "traffic_night_pkw": 70,
+            "speed_pkw_kph": 70
+          }
+        ]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    }
+  ]
+}`)
+
+	model, err := modelgeojson.Normalize(payload, "EPSG:25832", "directional.geojson")
+	if err != nil {
+		t.Fatalf("normalize model: %v", err)
+	}
+
+	sources, overrideCount, err := extractRLS19RoadSources(model, rls19RoadRunOptions{
+		SurfaceType:      string(rls19road.SurfaceSMA),
+		SpeedPkwKPH:      100,
+		SpeedLkw1KPH:     80,
+		SpeedLkw2KPH:     70,
+		SpeedKradKPH:     100,
+		TrafficDayPkw:    900,
+		TrafficDayLkw1:   40,
+		TrafficDayLkw2:   60,
+		TrafficDayKrad:   10,
+		TrafficNightPkw:  200,
+		TrafficNightLkw1: 10,
+		TrafficNightLkw2: 20,
+		TrafficNightKrad: 2,
+	}, []string{"line"})
+	if err != nil {
+		t.Fatalf("extract sources: %v", err)
+	}
+
+	if overrideCount != 1 {
+		t.Fatalf("expected one override-bearing source feature, got %d", overrideCount)
+	}
+
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 directional sources, got %d", len(sources))
+	}
+
+	if sources[0].ID != "rd-main-northbound" || sources[1].ID != "rd-main-southbound" {
+		t.Fatalf("unexpected source ids: %#v", []string{sources[0].ID, sources[1].ID})
+	}
+
+	if len(sources[0].CenterlineElevations) != 2 || len(sources[1].CenterlineElevations) != 2 {
+		t.Fatalf("expected per-vertex elevations for both directional sources: %#v", sources)
+	}
+
+	if sources[0].CenterlineElevations[0] != 101 || sources[0].CenterlineElevations[1] != 103 {
+		t.Fatalf("expected 3D geometry elevations on first direction, got %#v", sources[0].CenterlineElevations)
+	}
+
+	if sources[1].CenterlineElevations[0] != 100 || sources[1].CenterlineElevations[1] != 102 {
+		t.Fatalf("expected centerline_elevations override on second direction, got %#v", sources[1].CenterlineElevations)
+	}
+
+	if sources[0].TrafficDay.PkwPerHour != 650 || sources[1].TrafficDay.PkwPerHour != 350 {
+		t.Fatalf("expected direction-specific traffic split, got %#v", []float64{sources[0].TrafficDay.PkwPerHour, sources[1].TrafficDay.PkwPerHour})
+	}
+
+	if sources[0].Speeds.PkwKPH != 90 || sources[1].Speeds.PkwKPH != 70 {
+		t.Fatalf("expected direction-specific speeds, got %#v", []float64{sources[0].Speeds.PkwKPH, sources[1].Speeds.PkwKPH})
+	}
+}
+
 func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
 	t.Parallel()
 
@@ -1169,6 +1334,10 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 
 	if provenance.Metadata["model_version"] != schall03.BuiltinModelVersion {
 		t.Fatalf("unexpected model_version: %#v", provenance.Metadata)
+	}
+
+	if provenance.Metadata["data_pack_version"] != schall03.BuiltinDataPackVersion {
+		t.Fatalf("unexpected data_pack_version: %#v", provenance.Metadata)
 	}
 
 	if provenance.Metadata["compliance_boundary"] != "baseline-preview-no-normative-tables" {

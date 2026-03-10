@@ -15,6 +15,12 @@ type ReceiverOutput struct {
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RailSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsWithDataPack(receivers, sources, cfg, BuiltinDataPack())
+}
+
+// ComputeReceiverOutputsWithDataPack computes indicators using an explicit
+// preview or external Schall 03 data pack.
+func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources []RailSource, cfg PropagationConfig, pack DataPack) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -29,7 +35,7 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RailSource,
 			return nil, fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
 		}
 
-		levels, err := ComputeReceiverPeriodLevels(receiver.Point, sources, cfg)
+		levels, err := ComputeReceiverPeriodLevelsWithDataPack(receiver.Point, sources, cfg, pack)
 		if err != nil {
 			return nil, err
 		}

@@ -7,10 +7,12 @@
         {"x": 100, "y": 0}
       ],
       "elevation_m": 0,
+      "train_class": "passenger",
       "average_speed_kph": 110,
       "infrastructure": {
         "traction_type": "electric",
         "track_type": "slab",
+        "track_form": "mainline",
         "track_roughness_class": "standard",
         "on_bridge": true,
         "curve_radius_m": 320
@@ -25,10 +27,12 @@
         {"x": 100, "y": 80}
       ],
       "elevation_m": 0,
+      "train_class": "freight",
       "average_speed_kph": 85,
       "infrastructure": {
         "traction_type": "diesel",
         "track_type": "ballasted",
+        "track_form": "switches",
         "track_roughness_class": "rough",
         "on_bridge": false,
         "curve_radius_m": 700

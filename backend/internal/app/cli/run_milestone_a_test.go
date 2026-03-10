@@ -442,8 +442,10 @@ func TestExtractSchall03SourcesUsesFeatureProperties(t *testing.T) {
         "id": "rail-1",
         "kind": "source",
         "source_type": "line",
+        "rail_train_class": "freight",
         "rail_traction_type": "diesel",
         "rail_track_type": "slab",
+        "rail_track_form": "switches",
         "rail_track_roughness_class": "rough",
         "rail_average_train_speed_kph": 90,
         "rail_curve_radius_m": 280,
@@ -458,8 +460,10 @@ func TestExtractSchall03SourcesUsesFeatureProperties(t *testing.T) {
 }`)
 
 	options := schall03RunOptions{
+		TrainClass:           schall03.TrainClassMixed,
 		TractionType:         schall03.TractionElectric,
 		TrackType:            schall03.TrackTypeBallasted,
+		TrackForm:            schall03.TrackFormMainline,
 		TrackRoughnessClass:  schall03.RoughnessStandard,
 		AverageTrainSpeedKPH: 120,
 		CurveRadiusM:         500,
@@ -480,6 +484,10 @@ func TestExtractSchall03SourcesUsesFeatureProperties(t *testing.T) {
 	source := sources[0]
 	if source.Infrastructure.TractionType != schall03.TractionDiesel || source.Infrastructure.TrackType != schall03.TrackTypeSlab || source.Infrastructure.TrackRoughnessClass != schall03.RoughnessRough {
 		t.Fatalf("unexpected source infrastructure: %#v", source.Infrastructure)
+	}
+
+	if source.TrainClass != schall03.TrainClassFreight || source.Infrastructure.TrackForm != schall03.TrackFormSwitches {
+		t.Fatalf("unexpected source classification: %#v", source)
 	}
 
 	if source.AverageSpeedKPH != 90 || source.Infrastructure.CurveRadiusM != 280 || !source.Infrastructure.OnBridge || source.ElevationM != 2 {

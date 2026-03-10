@@ -16,6 +16,7 @@ This schema is the minimal common input for `noise import` / `noise validate`.
   - `source`
   - `building`
   - `barrier`
+  - `receiver`
 
 ### `source` Features
 
@@ -34,6 +35,35 @@ This schema is the minimal common input for `noise import` / `noise validate`.
 
 - `height_m` required and `> 0`
 - Geometry must be `LineString` or `MultiLineString`
+
+### `receiver` Features
+
+- `height_m` required and `> 0`
+- Geometry must be `Point`
+
+## Standard-Specific Geometry Conventions
+
+The normalized model stays standard-agnostic, but some standards consume extra
+geometry conventions from feature properties.
+
+### RLS-19 Road
+
+- Line sources may use `LineString` / `MultiLineString` coordinates in either
+  `2D` (`[x, y]`) or `3D` (`[x, y, z]`) form.
+- When `3D` coordinates are present, the vertex `z` values are mapped to
+  per-vertex road elevations for rising / descending roads.
+- Alternatively, a source feature may provide:
+  - `elevation_m`: one uniform elevation for the whole line, or
+  - `centerline_elevations`: one elevation value per line vertex.
+- For explicit per-direction modeling inside one source feature, RLS-19 also
+  accepts `properties.rls19_directional_sources`, an array of objects where
+  each entry defines one directional line source with:
+  - `centerline` or `coordinates`
+  - optional `id` / `direction_id` / `direction`
+  - optional per-direction acoustic overrides such as `traffic_day_*`,
+    `traffic_night_*`, `speed_*_kph`, `surface_type`, `gradient_percent`,
+    `junction_type`, `junction_distance_m`, `reflection_surcharge_db`,
+    `elevation_m`, and `centerline_elevations`
 
 ## Geometry Sanity Checks
 
