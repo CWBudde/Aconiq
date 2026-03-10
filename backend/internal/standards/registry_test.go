@@ -120,6 +120,19 @@ func TestRegistryResolvesDummyFreefield(t *testing.T) {
 		t.Fatalf("unexpected industry standard id: %s", industry.StandardID)
 	}
 
+	iso9613, err := registry.Resolve("iso9613", "", "")
+	if err != nil {
+		t.Fatalf("resolve iso9613: %v", err)
+	}
+
+	if iso9613.StandardID != "iso9613" {
+		t.Fatalf("unexpected iso9613 standard id: %s", iso9613.StandardID)
+	}
+
+	if iso9613.Context != "planning" {
+		t.Fatalf("expected planning context for iso9613, got %q", iso9613.Context)
+	}
+
 	rls19, err := registry.Resolve("rls19-road", "", "")
 	if err != nil {
 		t.Fatalf("resolve rls19-road: %v", err)

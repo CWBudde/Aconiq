@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "stack-a",
+        "kind": "source",
+        "source_type": "point",
+        "iso9613_source_height_m": 12,
+        "iso9613_sound_power_level_db": 102,
+        "iso9613_directivity_correction_db": 1
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0, 0]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "stack-b",
+        "kind": "source",
+        "source_type": "point",
+        "iso9613_source_height_m": 6,
+        "iso9613_sound_power_level_db": 96,
+        "iso9613_tonality_correction_db": 2
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [40, 20]
+      }
+    }
+  ]
+}

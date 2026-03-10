@@ -30,6 +30,7 @@ import (
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 	"github.com/spf13/cobra"
@@ -251,6 +252,23 @@ type cnossosIndustryRunOptions struct {
 	GroundAttenuationDB     float64
 	ScreeningAttenuationDB  float64
 	FacadeReflectionDB      float64
+	MinDistanceM            float64
+}
+
+type iso9613RunOptions struct {
+	GridResolutionM         float64
+	GridPaddingM            float64
+	ReceiverHeightM         float64
+	SourceHeightM           float64
+	SoundPowerLevelDB       float64
+	DirectivityCorrectionDB float64
+	TonalityCorrectionDB    float64
+	ImpulsivityCorrectionDB float64
+	GroundFactor            float64
+	AirTemperatureC         float64
+	RelativeHumidityPercent float64
+	MeteorologyAssumption   string
+	BarrierAttenuationDB    float64
 	MinDistanceM            float64
 }
 
@@ -915,13 +933,56 @@ func newRunCommand() *cobra.Command {
 					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 					return finalizeRunFailure(store, run, logLines, err)
 				}
+			case iso9613.StandardID:
+				options, parseErr := parseISO9613RunOptions(resolvedParams)
+				if parseErr != nil {
+					return parseErr
+				}
+
+				pointSources, extractErr := extractISO9613Sources(model, options, resolvedStandard.SupportedSourceTypes)
+				if extractErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to extract ISO 9613 point sources: %v", nowUTC().Format(time.RFC3339), extractErr))
+					return finalizeRunFailure(store, run, logLines, extractErr)
+				}
+
+				receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+					return buildISO9613Receivers(pointSources, options)
+				})
+				if receiverErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
+					return finalizeRunFailure(store, run, logLines, receiverErr)
+				}
+
+				sourceCount = len(pointSources)
+				receiverCount = len(receivers)
+				logLines = append(logLines, fmt.Sprintf("%s iso9613_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+				if receiverMode == receiverModeCustom {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+				} else {
+					logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+				}
+
+				receiverOutputs, computeErr := iso9613.ComputeReceiverOutputs(receivers, pointSources, options.PropagationConfig())
+				if computeErr != nil {
+					logLines = append(logLines, fmt.Sprintf("%s iso9613 compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
+					return finalizeRunFailure(store, run, logLines, computeErr)
+				}
+
+				persisted, outputHash, finishedAt, err = persistISO9613RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, receiverMode)
+				if err != nil {
+					logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
+					return finalizeRunFailure(store, run, logLines, err)
+				}
 			default:
-				return domainerrors.New(
+				runErr := domainerrors.New(
 					domainerrors.KindUserInput,
 					"cli.run",
 					fmt.Sprintf("standard %q is registered but not wired in run pipeline yet", resolvedStandard.StandardID),
 					nil,
 				)
+
+				logLines = append(logLines, fmt.Sprintf("%s run wiring missing: %v", nowUTC().Format(time.RFC3339), runErr))
+				return finalizeRunFailure(store, run, logLines, runErr)
 			}
 
 			artifacts := buildRunArtifacts(store.Root(), run.ID, persisted)
@@ -1005,6 +1066,8 @@ func buildRunProvenanceMetadata(standardID string, params map[string]string, rec
 		return mergeMetadata(metadata, cnossosaircraft.ProvenanceMetadata(params))
 	case bubroad.StandardID:
 		return mergeMetadata(metadata, bubroad.ProvenanceMetadata(params))
+	case iso9613.StandardID:
+		return mergeMetadata(metadata, iso9613.ProvenanceMetadata(params))
 	case bufaircraft.StandardID:
 		return mergeMetadata(metadata, bufaircraft.ProvenanceMetadata(params))
 	case bebexposure.StandardID:
@@ -1975,6 +2038,78 @@ func (o cnossosIndustryRunOptions) PropagationConfig() cnossosindustry.Propagati
 		ScreeningAttenuationDB: o.ScreeningAttenuationDB,
 		FacadeReflectionDB:     o.FacadeReflectionDB,
 		MinDistanceM:           o.MinDistanceM,
+	}
+}
+
+func parseISO9613RunOptions(params map[string]string) (iso9613RunOptions, error) {
+	options := iso9613RunOptions{}
+
+	parseFloat := func(key string, target *float64) error {
+		value, ok := params[key]
+		if !ok {
+			return domainerrors.New(domainerrors.KindInternal, "cli.parseISO9613RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+		}
+
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.parseISO9613RunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
+		}
+
+		*target = parsed
+
+		return nil
+	}
+
+	getString := func(key string) (string, error) {
+		value, ok := params[key]
+		if !ok {
+			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseISO9613RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+		}
+
+		return strings.TrimSpace(value), nil
+	}
+
+	var err error
+
+	options.MeteorologyAssumption, err = getString("meteorology_assumption")
+	if err != nil {
+		return iso9613RunOptions{}, err
+	}
+
+	for _, item := range []struct {
+		key    string
+		target *float64
+	}{
+		{"grid_resolution_m", &options.GridResolutionM},
+		{"grid_padding_m", &options.GridPaddingM},
+		{"receiver_height_m", &options.ReceiverHeightM},
+		{"iso9613_source_height_m", &options.SourceHeightM},
+		{"iso9613_sound_power_level_db", &options.SoundPowerLevelDB},
+		{"iso9613_directivity_correction_db", &options.DirectivityCorrectionDB},
+		{"iso9613_tonality_correction_db", &options.TonalityCorrectionDB},
+		{"iso9613_impulsivity_correction_db", &options.ImpulsivityCorrectionDB},
+		{"ground_factor", &options.GroundFactor},
+		{"air_temperature_c", &options.AirTemperatureC},
+		{"relative_humidity_percent", &options.RelativeHumidityPercent},
+		{"barrier_attenuation_db", &options.BarrierAttenuationDB},
+		{"min_distance_m", &options.MinDistanceM},
+	} {
+		if err := parseFloat(item.key, item.target); err != nil {
+			return iso9613RunOptions{}, err
+		}
+	}
+
+	return options, nil
+}
+
+func (o iso9613RunOptions) PropagationConfig() iso9613.PropagationConfig {
+	return iso9613.PropagationConfig{
+		GroundFactor:            o.GroundFactor,
+		AirTemperatureC:         o.AirTemperatureC,
+		RelativeHumidityPercent: o.RelativeHumidityPercent,
+		MeteorologyAssumption:   o.MeteorologyAssumption,
+		BarrierAttenuationDB:    o.BarrierAttenuationDB,
+		MinDistanceM:            o.MinDistanceM,
 	}
 }
 
@@ -4599,6 +4734,108 @@ func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndu
 	return sources, nil
 }
 
+func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, supportedSourceTypes []string) ([]iso9613.PointSource, error) {
+	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
+	for _, sourceType := range supportedSourceTypes {
+		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
+		if trimmed == "" {
+			continue
+		}
+
+		allowedSourceType[trimmed] = struct{}{}
+	}
+
+	sources := make([]iso9613.PointSource, 0)
+
+	for featureIndex, feature := range model.Features {
+		if feature.Kind != "source" {
+			continue
+		}
+
+		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
+		if normalizedSourceType == "" {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q source_type is required for iso9613", feature.ID), nil)
+		}
+
+		if _, ok := allowedSourceType[normalizedSourceType]; !ok {
+			return nil, domainerrors.New(
+				domainerrors.KindValidation,
+				"cli.extractISO9613Sources",
+				fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
+				nil,
+			)
+		}
+
+		points, err := sourcePointsFromFeature(feature)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		baseID := strings.TrimSpace(feature.ID)
+		if baseID == "" {
+			baseID = fmt.Sprintf("iso9613-source-%03d", featureIndex)
+		}
+
+		for pointIndex, point := range points {
+			sourceID := baseID
+			if len(points) > 1 {
+				sourceID = fmt.Sprintf("%s-%02d", baseID, pointIndex+1)
+			}
+
+			sourceHeightM := options.SourceHeightM
+			if value, ok, err := featurePropertyFloat(feature, "iso9613_source_height_m"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				sourceHeightM = value
+			}
+
+			soundPowerLevelDB := options.SoundPowerLevelDB
+			if value, ok, err := featurePropertyFloat(feature, "iso9613_sound_power_level_db"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				soundPowerLevelDB = value
+			}
+
+			directivityCorrectionDB := options.DirectivityCorrectionDB
+			if value, ok, err := featurePropertyFloat(feature, "iso9613_directivity_correction_db"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				directivityCorrectionDB = value
+			}
+
+			tonalityCorrectionDB := options.TonalityCorrectionDB
+			if value, ok, err := featurePropertyFloat(feature, "iso9613_tonality_correction_db"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				tonalityCorrectionDB = value
+			}
+
+			impulsivityCorrectionDB := options.ImpulsivityCorrectionDB
+			if value, ok, err := featurePropertyFloat(feature, "iso9613_impulsivity_correction_db"); err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				impulsivityCorrectionDB = value
+			}
+
+			sources = append(sources, iso9613.PointSource{
+				ID:                      sourceID,
+				Point:                   point,
+				SourceHeightM:           sourceHeightM,
+				SoundPowerLevelDB:       soundPowerLevelDB,
+				DirectivityCorrectionDB: directivityCorrectionDB,
+				TonalityCorrectionDB:    tonalityCorrectionDB,
+				ImpulsivityCorrectionDB: impulsivityCorrectionDB,
+			})
+		}
+	}
+
+	if len(sources) == 0 {
+		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", "model does not contain any supported point source features", nil)
+	}
+
+	return sources, nil
+}
+
 func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error) {
 	switch feature.GeometryType {
 	case "Point":
@@ -5424,6 +5661,50 @@ func buildCnossosIndustryReceivers(sources []cnossosindustry.IndustrySource, opt
 	return receivers, width, height, nil
 }
 
+func buildISO9613Receivers(sources []iso9613.PointSource, options iso9613RunOptions) ([]geo.PointReceiver, int, int, error) {
+	sourcePoints := make([]geo.Point2D, 0, len(sources))
+	for _, source := range sources {
+		sourcePoints = append(sourcePoints, source.Point)
+	}
+
+	bbox, ok := geo.BBoxFromPoints(sourcePoints)
+	if !ok {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildISO9613Receivers", "failed to derive source extent", nil)
+	}
+
+	grid := geo.GridReceiverSet{
+		ID: "grid",
+		Extent: geo.BBox{
+			MinX: bbox.MinX - options.GridPaddingM,
+			MinY: bbox.MinY - options.GridPaddingM,
+			MaxX: bbox.MaxX + options.GridPaddingM,
+			MaxY: bbox.MaxY + options.GridPaddingM,
+		},
+		Resolution: options.GridResolutionM,
+		HeightM:    options.ReceiverHeightM,
+	}
+
+	receivers, err := grid.Generate()
+	if err != nil {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildISO9613Receivers", "generate receiver grid", err)
+	}
+
+	if len(receivers) == 0 {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, "cli.buildISO9613Receivers", "receiver grid is empty", nil)
+	}
+
+	if len(receivers) > maxDummyReceivers {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindUserInput, "cli.buildISO9613Receivers", fmt.Sprintf("receiver grid too large (%d > %d)", len(receivers), maxDummyReceivers), nil)
+	}
+
+	width, height, err := inferGridShape(receivers)
+	if err != nil {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindInternal, "cli.buildISO9613Receivers", "infer receiver grid dimensions", err)
+	}
+
+	return receivers, width, height, nil
+}
+
 func inferGridShape(receivers []geo.PointReceiver) (int, int, error) {
 	if len(receivers) == 0 {
 		return 0, 0, errors.New("receivers are empty")
@@ -6066,10 +6347,83 @@ func persistCnossosIndustryRunOutputs(
 	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
+func persistISO9613RunOutputs(
+	runDir string,
+	outputs []iso9613.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+) (persistedRunOutputs, string, time.Time, error) {
+	resultsDir := filepath.Join(runDir, "results")
+
+	outputHash, err := hashISO9613Outputs(outputs)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistISO9613RunOutputs", "hash iso9613 outputs", err)
+	}
+
+	summary := map[string]any{
+		"run_id":         filepath.Base(runDir),
+		"status":         project.RunStatusCompleted,
+		"output_hash":    outputHash,
+		"source_count":   sourceCount,
+		"receiver_count": len(outputs),
+		"receiver_mode":  receiverMode,
+		"indicator":      iso9613.IndicatorLpAeq,
+	}
+
+	if receiverMode == receiverModeCustom {
+		table := results.ReceiverTable{IndicatorOrder: []string{iso9613.IndicatorLpAeq}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		for _, output := range outputs {
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{iso9613.IndicatorLpAeq: output.Indicators.LpAeq}})
+		}
+		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
+		return persisted, outputHash, nowUTC(), err
+	}
+
+	exported, err := iso9613.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
+	if err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistISO9613RunOutputs", "export iso9613 results", err)
+	}
+
+	summary["grid_width"] = gridWidth
+	summary["grid_height"] = gridHeight
+	summaryPath := filepath.Join(resultsDir, "run-summary.json")
+	if err := writeJSONFile(summaryPath, summary); err != nil {
+		return persistedRunOutputs{}, "", time.Time{}, err
+	}
+
+	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
+}
+
 func hashCnossosRoadOutputs(outputs []cnossosroad.ReceiverOutput) (string, error) {
 	type record struct {
 		ReceiverID string                         `json:"receiver_id"`
 		Indicators cnossosroad.ReceiverIndicators `json:"indicators"`
+	}
+
+	records := make([]record, 0, len(outputs))
+	for _, output := range outputs {
+		records = append(records, record{
+			ReceiverID: output.Receiver.ID,
+			Indicators: output.Indicators,
+		})
+	}
+
+	payload, err := json.Marshal(records)
+	if err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256(payload)
+
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func hashISO9613Outputs(outputs []iso9613.ReceiverOutput) (string, error) {
+	type record struct {
+		ReceiverID string                     `json:"receiver_id"`
+		Indicators iso9613.ReceiverIndicators `json:"indicators"`
 	}
 
 	records := make([]record, 0, len(outputs))

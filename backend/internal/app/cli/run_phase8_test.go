@@ -23,6 +23,7 @@ import (
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
@@ -140,6 +141,77 @@ func TestRunRejectsUnknownRunParameter(t *testing.T) {
 
 	if !strings.Contains(err.Error(), `unknown run parameter "not_allowed"`) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunISO9613ProducesOutputsAndProvenanceMetadata(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase19", "iso9613_industry_model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase19", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", iso9613.StandardID)
+
+	store, storeErr := projectfs.New(projectDir)
+	if storeErr != nil {
+		t.Fatalf("new project store: %v", storeErr)
+	}
+
+	proj, loadErr := store.Load()
+	if loadErr != nil {
+		t.Fatalf("load project: %v", loadErr)
+	}
+
+	if len(proj.Runs) == 0 {
+		t.Fatal("expected failed iso9613 run to be recorded")
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.Standard.ID != iso9613.StandardID {
+		t.Fatalf("unexpected standard id: %s", run.Standard.ID)
+	}
+
+	if run.Status != project.RunStatusCompleted {
+		t.Fatalf("expected completed run status, got %q", run.Status)
+	}
+
+	resultsDir := filepath.Join(projectDir, ".noise", "runs", run.ID, "results")
+	for _, path := range []string{
+		filepath.Join(resultsDir, "receivers.json"),
+		filepath.Join(resultsDir, "receivers.csv"),
+		filepath.Join(resultsDir, "iso9613.json"),
+		filepath.Join(resultsDir, "iso9613.bin"),
+		filepath.Join(resultsDir, "run-summary.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected result file %s: %v", path, err)
+		}
+	}
+
+	provenancePayload, readErr := os.ReadFile(filepath.Join(projectDir, run.ProvenancePath))
+	if readErr != nil {
+		t.Fatalf("read provenance: %v", readErr)
+	}
+
+	var provenance project.ProvenanceManifest
+
+	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+
+	if provenance.Metadata["model_version"] != iso9613.BuiltinModelVersion {
+		t.Fatalf("unexpected model_version: %#v", provenance.Metadata)
+	}
+
+	if got := provenance.Metadata["compliance_boundary"]; got != "phase19-iso9613-point-source-preview" {
+		t.Fatalf("unexpected compliance boundary metadata: %q", got)
+	}
+
+	if got := provenance.Metadata["implementation_status"]; got != "preview-point-source-run-wired" {
+		t.Fatalf("unexpected implementation_status metadata: %q", got)
 	}
 }
 
