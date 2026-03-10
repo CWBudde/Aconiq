@@ -302,7 +302,6 @@ func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
-
 	proj, err := h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)

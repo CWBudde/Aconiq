@@ -243,7 +243,9 @@ describe("validateModel", () => {
     ]);
 
     expect(
-      report.warnings.some((issue) => issue.code === "source.rls19.review_required"),
+      report.warnings.some(
+        (issue) => issue.code === "source.rls19.review_required",
+      ),
     ).toBe(true);
   });
 
@@ -267,8 +269,20 @@ describe("validateModel", () => {
       },
     ]);
 
-    expect(report.errors.some((issue) => issue.code === "source.rls19.speed.invalid")).toBe(true);
-    expect(report.errors.some((issue) => issue.code === "source.rls19.traffic.invalid")).toBe(true);
-    expect(report.errors.some((issue) => issue.code === "source.rls19.surface_type.invalid")).toBe(true);
+    expect(
+      report.errors.some(
+        (issue) => issue.code === "source.rls19.speed.invalid",
+      ),
+    ).toBe(true);
+    expect(
+      report.errors.some(
+        (issue) => issue.code === "source.rls19.traffic.invalid",
+      ),
+    ).toBe(true);
+    expect(
+      report.errors.some(
+        (issue) => issue.code === "source.rls19.surface_type.invalid",
+      ),
+    ).toBe(true);
   });
 });

@@ -1,4 +1,8 @@
-import type { GeoJSONFeatureCollection, ModelFeature, ModelReceiver } from "./types";
+import type {
+  GeoJSONFeatureCollection,
+  ModelFeature,
+  ModelReceiver,
+} from "./types";
 
 export function featuresToGeoJSON(
   features: ModelFeature[],

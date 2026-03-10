@@ -15,7 +15,11 @@ interface DrawToolbarProps {
   onCancel: () => void;
 }
 
-const modelTools: { mode: DrawMode; icon: typeof Circle; label: () => string }[] = [
+const modelTools: {
+  mode: DrawMode;
+  icon: typeof Circle;
+  label: () => string;
+}[] = [
   { mode: "select", icon: MousePointer, label: m.tool_select_edit },
   { mode: "point", icon: Circle, label: m.tool_draw_point },
   { mode: "linestring", icon: Minus, label: m.tool_draw_line },

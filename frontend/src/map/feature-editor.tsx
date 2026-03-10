@@ -57,11 +57,15 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
       </div>
       <div className="space-y-3">
         <div>
-          <Label className="text-xs text-muted-foreground">{m.label_id()}</Label>
+          <Label className="text-xs text-muted-foreground">
+            {m.label_id()}
+          </Label>
           <p className="font-mono text-xs">{feature.id}</p>
         </div>
         <div>
-          <Label className="text-xs text-muted-foreground">{m.label_geometry()}</Label>
+          <Label className="text-xs text-muted-foreground">
+            {m.label_geometry()}
+          </Label>
           <p className="text-xs">{feature.geometry.type}</p>
         </div>
         <FeatureFields feature={feature} />
@@ -122,11 +126,15 @@ function ReceiverEditor({
       </div>
       <div className="space-y-3">
         <div>
-          <Label className="text-xs text-muted-foreground">{m.label_id()}</Label>
+          <Label className="text-xs text-muted-foreground">
+            {m.label_id()}
+          </Label>
           <p className="font-mono text-xs">{receiver.id}</p>
         </div>
         <div>
-          <Label className="text-xs text-muted-foreground">{m.label_geometry()}</Label>
+          <Label className="text-xs text-muted-foreground">
+            {m.label_geometry()}
+          </Label>
           <p className="text-xs">{receiver.geometry.type}</p>
         </div>
         <div className="grid gap-1.5">
@@ -186,18 +194,25 @@ function SourceFields({ feature }: { feature: ModelFeature }) {
         <Label htmlFor="source-type" className="text-xs">
           {m.label_source_type()}
         </Label>
-        <Select value={feature.sourceType ?? ""} onValueChange={handleTypeChange}>
+        <Select
+          value={feature.sourceType ?? ""}
+          onValueChange={handleTypeChange}
+        >
           <SelectTrigger id="source-type" className="h-8 text-xs">
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="point">{m.option_source_type_point()}</SelectItem>
+            <SelectItem value="point">
+              {m.option_source_type_point()}
+            </SelectItem>
             <SelectItem value="line">{m.option_source_type_line()}</SelectItem>
             <SelectItem value="area">{m.option_source_type_area()}</SelectItem>
           </SelectContent>
         </Select>
       </div>
-      {feature.sourceType === "line" ? <RLS19RoadFields feature={feature} /> : null}
+      {feature.sourceType === "line" ? (
+        <RLS19RoadFields feature={feature} />
+      ) : null}
     </div>
   );
 }
@@ -206,7 +221,9 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
       <div className="space-y-1">
-        <p className="text-xs font-medium">{m.label_section_source_acoustics()}</p>
+        <p className="text-xs font-medium">
+          {m.label_section_source_acoustics()}
+        </p>
         <p className="text-[11px] leading-relaxed text-muted-foreground">
           {m.msg_source_acoustics_defaults()}
         </p>
@@ -231,10 +248,34 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         step={1}
       />
       <div className="grid grid-cols-2 gap-2">
-        <PropertyNumberField feature={feature} propertyKey="speed_pkw_kph" label="PKW" min={0.1} step={1} />
-        <PropertyNumberField feature={feature} propertyKey="speed_lkw1_kph" label="LKW1" min={0.1} step={1} />
-        <PropertyNumberField feature={feature} propertyKey="speed_lkw2_kph" label="LKW2" min={0.1} step={1} />
-        <PropertyNumberField feature={feature} propertyKey="speed_krad_kph" label="KRAD" min={0.1} step={1} />
+        <PropertyNumberField
+          feature={feature}
+          propertyKey="speed_pkw_kph"
+          label="PKW"
+          min={0.1}
+          step={1}
+        />
+        <PropertyNumberField
+          feature={feature}
+          propertyKey="speed_lkw1_kph"
+          label="LKW1"
+          min={0.1}
+          step={1}
+        />
+        <PropertyNumberField
+          feature={feature}
+          propertyKey="speed_lkw2_kph"
+          label="LKW2"
+          min={0.1}
+          step={1}
+        />
+        <PropertyNumberField
+          feature={feature}
+          propertyKey="speed_krad_kph"
+          label="KRAD"
+          min={0.1}
+          step={1}
+        />
       </div>
       <PropertyNumberField
         feature={feature}
@@ -273,10 +314,34 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
           {m.label_traffic_day()}
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <PropertyNumberField feature={feature} propertyKey="traffic_day_pkw" label="PKW" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_day_lkw1" label="LKW1" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_day_lkw2" label="LKW2" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_day_krad" label="KRAD" min={0} step={1} />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_day_pkw"
+            label="PKW"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_day_lkw1"
+            label="LKW1"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_day_lkw2"
+            label="LKW2"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_day_krad"
+            label="KRAD"
+            min={0}
+            step={1}
+          />
         </div>
       </div>
       <div className="space-y-2">
@@ -284,10 +349,34 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
           {m.label_traffic_night()}
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <PropertyNumberField feature={feature} propertyKey="traffic_night_pkw" label="PKW" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_night_lkw1" label="LKW1" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_night_lkw2" label="LKW2" min={0} step={1} />
-          <PropertyNumberField feature={feature} propertyKey="traffic_night_krad" label="KRAD" min={0} step={1} />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_night_pkw"
+            label="PKW"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_night_lkw1"
+            label="LKW1"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_night_lkw2"
+            label="LKW2"
+            min={0}
+            step={1}
+          />
+          <PropertyNumberField
+            feature={feature}
+            propertyKey="traffic_night_krad"
+            label="KRAD"
+            min={0}
+            step={1}
+          />
         </div>
       </div>
     </div>
@@ -333,7 +422,9 @@ function PropertyNumberField({
       return;
     }
 
-    updateFeature(setFeatureProperty(feature, propertyKey, numeric, ...aliases));
+    updateFeature(
+      setFeatureProperty(feature, propertyKey, numeric, ...aliases),
+    );
   }, [aliases, feature, propertyKey, updateFeature, value]);
 
   const helper = getInferredFlag(feature, propertyKey)

@@ -8,11 +8,7 @@ interface LegendProps {
   unit?: string;
 }
 
-export function Legend({
-  title,
-  ramp = NOISE_LEVEL_RAMP,
-  unit,
-}: LegendProps) {
+export function Legend({ title, ramp = NOISE_LEVEL_RAMP, unit }: LegendProps) {
   const resolvedTitle = title ?? m.legend_title_noise_level();
   const resolvedUnit = unit ?? m.legend_unit_db();
   return (

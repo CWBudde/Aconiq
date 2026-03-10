@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { CalcArea, FeatureKind, ModelFeature, ModelReceiver } from "./types";
+import type {
+  CalcArea,
+  FeatureKind,
+  ModelFeature,
+  ModelReceiver,
+} from "./types";
 import { CommandStack } from "./command-stack";
 
 interface ModelState {
@@ -114,12 +119,26 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     loadFeatures: (features) => {
       commandStack.clear();
-      set({ features, receivers: [], calcArea: null, dirty: false, canUndo: false, canRedo: false });
+      set({
+        features,
+        receivers: [],
+        calcArea: null,
+        dirty: false,
+        canUndo: false,
+        canRedo: false,
+      });
     },
 
     reset: () => {
       commandStack.clear();
-      set({ features: [], receivers: [], calcArea: null, dirty: false, canUndo: false, canRedo: false });
+      set({
+        features: [],
+        receivers: [],
+        calcArea: null,
+        dirty: false,
+        canUndo: false,
+        canRedo: false,
+      });
     },
 
     markClean: () => {

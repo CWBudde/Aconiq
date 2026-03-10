@@ -160,7 +160,9 @@ function parseHeightLike(value: unknown): number {
 function normalizeProperties(
   props: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  const normalizedEntries = Object.entries(props).filter(([key]) => key.trim() !== "");
+  const normalizedEntries = Object.entries(props).filter(
+    ([key]) => key.trim() !== "",
+  );
   if (normalizedEntries.length === 0) {
     return undefined;
   }

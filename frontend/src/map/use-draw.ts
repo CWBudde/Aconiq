@@ -11,7 +11,13 @@ import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { useMap } from "./use-map";
 
 /** Drawing modes — "calc-area" maps to polygon internally but signals a different intent */
-export type DrawMode = "point" | "linestring" | "polygon" | "select" | "static" | "calc-area";
+export type DrawMode =
+  | "point"
+  | "linestring"
+  | "polygon"
+  | "select"
+  | "static"
+  | "calc-area";
 
 interface UseDrawOptions {
   onFinish?: (mode: DrawMode, feature: GeoJSON.Feature) => void;

@@ -13,6 +13,7 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/csvimport"
+	"github.com/aconiq/backend/internal/io/fgbimport"
 	"github.com/aconiq/backend/internal/io/gpkgimport"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
@@ -28,13 +29,13 @@ func newImportCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "import",
-		Short: "Import GeoJSON or GeoPackage model data into the project",
+		Short: "Import GeoJSON, GeoPackage, or FlatGeobuf model data into the project",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runImport(cmd, inputPath, layerName, trafficPath, osmBBox, osmEndpoint)
 		},
 	}
 
-	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON or GeoPackage (.gpkg) input file")
+	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON, GeoPackage (.gpkg), or FlatGeobuf (.fgb) input file")
 	cmd.Flags().StringVar(&layerName, "layer", "", "Layer name to import from a GeoPackage file (required for .gpkg)")
 	cmd.Flags().StringVar(&trafficPath, "traffic", "", "Path to CSV attribute table for merging into the model")
 	cmd.Flags().StringVar(&osmBBox, "from-osm", "", "Bounding box for OSM import: \"south,west,north,east\" in WGS84 degrees")
@@ -351,9 +352,17 @@ func runGeometryImport(
 }
 
 // loadInputPayload reads the input file as GeoJSON bytes.
-// For .gpkg files it uses gpkgimport; for all others it reads the file directly.
+// For .gpkg files it uses gpkgimport; for .fgb files it uses fgbimport;
+// for all others it reads the file directly as GeoJSON.
 func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
-	if !strings.EqualFold(filepath.Ext(absoluteInput), ".gpkg") {
+	ext := strings.ToLower(filepath.Ext(absoluteInput))
+
+	switch ext {
+	case ".gpkg":
+		return readGPKGAsGeoJSON(absoluteInput, layerName)
+	case ".fgb":
+		return readFGBAsGeoJSON(absoluteInput, layerName)
+	default:
 		if layerName != "" {
 			return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is only valid for GeoPackage (.gpkg) files", nil)
 		}
@@ -365,8 +374,6 @@ func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
 
 		return payload, nil
 	}
-
-	return readGPKGAsGeoJSON(absoluteInput, layerName)
 }
 
 // readGPKGAsGeoJSON opens a GeoPackage file and returns its layer as marshalled GeoJSON bytes.
@@ -395,6 +402,25 @@ func readGPKGAsGeoJSON(path string, layerName string) ([]byte, error) {
 	payload, err := json.Marshal(fc)
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal GeoPackage layer to GeoJSON", err)
+	}
+
+	return payload, nil
+}
+
+// readFGBAsGeoJSON opens a FlatGeobuf file and returns its features as marshalled GeoJSON bytes.
+func readFGBAsGeoJSON(path string, layerName string) ([]byte, error) {
+	if layerName != "" {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for FlatGeobuf (.fgb) files", nil)
+	}
+
+	fc, err := fgbimport.Read(path)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read FlatGeobuf file", err)
+	}
+
+	payload, err := json.Marshal(fc)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal FlatGeobuf to GeoJSON", err)
 	}
 
 	return payload, nil

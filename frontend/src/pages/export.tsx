@@ -55,8 +55,14 @@ const EXPORT_KIND_LABELS: Record<
   { label: () => string; icon: React.ComponentType<{ className?: string }> }
 > = {
   "export.bundle": { label: m.export_artifact_label_bundle, icon: Package },
-  "export.report_html": { label: m.export_artifact_label_html_report, icon: FileText },
-  "export.report_markdown": { label: m.export_artifact_label_markdown_report, icon: FileCode },
+  "export.report_html": {
+    label: m.export_artifact_label_html_report,
+    icon: FileText,
+  },
+  "export.report_markdown": {
+    label: m.export_artifact_label_markdown_report,
+    icon: FileCode,
+  },
   "export.report_context_json": {
     label: m.export_artifact_label_json_context,
     icon: FileCode,
@@ -71,13 +77,7 @@ function kindMeta(kind: string) {
 // Copy button (with confirmation flash)
 // ---------------------------------------------------------------------------
 
-function CopyButton({
-  text,
-  label,
-}: {
-  text: string;
-  label?: string;
-}) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
@@ -286,7 +286,9 @@ function NewExportDialog({
                 <SelectValue placeholder={m.placeholder_select_run()} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_none">{m.option_select_run_placeholder()}</SelectItem>
+                <SelectItem value="_none">
+                  {m.option_select_run_placeholder()}
+                </SelectItem>
                 {runs.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     <span className="font-mono">{r.id}</span>{" "}
@@ -309,7 +311,9 @@ function NewExportDialog({
             </div>
           )}
           {createExport.isError ? (
-            <p className="text-sm text-destructive">{createExport.error.message}</p>
+            <p className="text-sm text-destructive">
+              {createExport.error.message}
+            </p>
           ) : null}
         </div>
 
@@ -439,7 +443,9 @@ export default function ExportPage() {
         <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div>
-              <h2 className="text-sm font-semibold">{m.page_title_exports()}</h2>
+              <h2 className="text-sm font-semibold">
+                {m.page_title_exports()}
+              </h2>
               <p className="text-xs text-muted-foreground">
                 {String(runsWithExports.length)}{" "}
                 {runsWithExports.length !== 1

@@ -311,8 +311,13 @@ function readArtifact<T>(artifactId: string): T {
   throw new Error(`Artifact ${artifactId} not found`);
 }
 
-function setRun(state: BrowserBackendState, storedRun: StoredRun): BrowserBackendState {
-  const nextRuns = state.runs.filter((entry) => entry.run.id !== storedRun.run.id);
+function setRun(
+  state: BrowserBackendState,
+  storedRun: StoredRun,
+): BrowserBackendState {
+  const nextRuns = state.runs.filter(
+    (entry) => entry.run.id !== storedRun.run.id,
+  );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
   return { ...state, runs: nextRuns };
@@ -464,16 +469,56 @@ export function buildRoadSources(
           "reflection_surcharge_db",
         ),
         traffic_day: {
-          pkw_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_pkw"], 900),
-          lkw1_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_lkw1"], 40),
-          lkw2_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_lkw2"], 60),
-          krad_per_hour: resolveFeatureNumber(feature, params, ["traffic_day_krad"], 10),
+          pkw_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_day_pkw"],
+            900,
+          ),
+          lkw1_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_day_lkw1"],
+            40,
+          ),
+          lkw2_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_day_lkw2"],
+            60,
+          ),
+          krad_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_day_krad"],
+            10,
+          ),
         },
         traffic_night: {
-          pkw_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_pkw"], 200),
-          lkw1_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_lkw1"], 10),
-          lkw2_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_lkw2"], 20),
-          krad_per_hour: resolveFeatureNumber(feature, params, ["traffic_night_krad"], 2),
+          pkw_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_night_pkw"],
+            200,
+          ),
+          lkw1_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_night_lkw1"],
+            10,
+          ),
+          lkw2_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_night_lkw2"],
+            20,
+          ),
+          krad_per_hour: resolveFeatureNumber(
+            feature,
+            params,
+            ["traffic_night_krad"],
+            2,
+          ),
         },
       });
     });
@@ -502,7 +547,11 @@ function resolveSurfaceType(
   feature: ModelFeature,
   params: Record<string, string>,
 ): RoadSource["surface_type"] {
-  const featureValue = getFeatureString(feature, "surface_type", "road_surface_type");
+  const featureValue = getFeatureString(
+    feature,
+    "surface_type",
+    "road_surface_type",
+  );
   if (
     featureValue &&
     RLS19_SURFACE_TYPES.includes(
@@ -528,7 +577,11 @@ function resolveSurfaceType(
 function resolveJunctionType(
   feature: ModelFeature,
 ): RoadSource["junction_type"] | undefined {
-  const value = getFeatureString(feature, "junction_type", "road_junction_type");
+  const value = getFeatureString(
+    feature,
+    "junction_type",
+    "road_junction_type",
+  );
   switch (value) {
     case "none":
       return 0;
@@ -551,7 +604,10 @@ function buildBarriers(features: ModelFeature[]): Barrier[] {
     lines.forEach((geometry, index) => {
       if (geometry.length < 2) return;
       barriers.push({
-        id: lines.length === 1 ? feature.id : `${feature.id}-${String(index + 1)}`,
+        id:
+          lines.length === 1
+            ? feature.id
+            : `${feature.id}-${String(index + 1)}`,
         geometry,
         height_m: feature.heightM ?? 2,
       });
@@ -626,10 +682,14 @@ function buildReceiverCSV(table: ReceiverTable): string {
     String(record.x),
     String(record.y),
     String(record.height_m),
-    ...table.indicator_order.map((indicator) => String(record.values[indicator] ?? "")),
+    ...table.indicator_order.map((indicator) =>
+      String(record.values[indicator] ?? ""),
+    ),
   ]);
   return [headers, ...rows]
-    .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","))
+    .map((row) =>
+      row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","),
+    )
     .join("\n");
 }
 
@@ -734,7 +794,9 @@ export const browserBackend = {
     return {
       project_id: state.projectId,
       name:
-        features.length > 0 ? `${state.projectName} (${features.length} features)` : state.projectName,
+        features.length > 0
+          ? `${state.projectName} (${features.length} features)`
+          : state.projectName,
       project_path: state.projectPath,
       manifest_version: 1,
       crs: state.crs,
@@ -761,8 +823,8 @@ export const browserBackend = {
   },
 
   async getRuns(): Promise<RunSummary[]> {
-    return readState().runs
-      .map((entry) => entry.run)
+    return readState()
+      .runs.map((entry) => entry.run)
       .sort((a, b) => b.started_at.localeCompare(a.started_at));
   },
 
@@ -785,7 +847,9 @@ export const browserBackend = {
         content.encoding === "json"
           ? JSON.stringify(content.value, null, 2)
           : String(content.value);
-      const url = URL.createObjectURL(new Blob([body], { type: content.mimeType }));
+      const url = URL.createObjectURL(
+        new Blob([body], { type: content.mimeType }),
+      );
       urlCache.set(artifactId, url);
       return url;
     }
@@ -826,21 +890,27 @@ out geom;`;
         return element["type"] === "way";
       })
       .map((way) => overpassWayToFeature(way))
-      .filter((feature): feature is GeoJSONFeatureCollection["features"][number] => {
-        return feature !== null;
-      });
+      .filter(
+        (feature): feature is GeoJSONFeatureCollection["features"][number] => {
+          return feature !== null;
+        },
+      );
     return { type: "FeatureCollection", features };
   },
 
   async startRun(spec: BrowserRunSpec): Promise<RunSummary> {
     if (spec.standardId !== "rls19-road") {
-      throw new Error(`Standard ${spec.standardId} is not available in browser mode`);
+      throw new Error(
+        `Standard ${spec.standardId} is not available in browser mode`,
+      );
     }
 
     const features = useModelStore.getState().features;
     const sources = buildRoadSources(features, spec.params);
     if (sources.length === 0) {
-      throw new Error("Browser mode currently requires at least one line source");
+      throw new Error(
+        "Browser mode currently requires at least one line source",
+      );
     }
 
     const barriers = buildBarriers(features);
@@ -852,7 +922,9 @@ out geom;`;
     if (spec.receiverMode === "custom") {
       const storeReceivers = useModelStore.getState().receivers;
       if (storeReceivers.length === 0) {
-        throw new Error("Custom receiver mode requires at least one receiver placed in the map workspace");
+        throw new Error(
+          "Custom receiver mode requires at least one receiver placed in the map workspace",
+        );
       }
       const sorted = [...storeReceivers].sort((a, b) =>
         a.id.localeCompare(b.id),
@@ -866,15 +938,24 @@ out geom;`;
       rasterHeight = sorted.length;
     } else {
       const calcArea = useModelStore.getState().calcArea;
-      let bbox: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+      let bbox: {
+        minX: number;
+        minY: number;
+        maxX: number;
+        maxY: number;
+      } | null = null;
       if (calcArea) {
         bbox = getPolygonBBox(calcArea.geometry.coordinates);
       }
       if (!bbox) {
-        bbox = getFeatureBBox(features.filter((feature) => feature.kind === "source"));
+        bbox = getFeatureBBox(
+          features.filter((feature) => feature.kind === "source"),
+        );
       }
       if (!bbox) {
-        throw new Error("Could not derive source extent from the current model");
+        throw new Error(
+          "Could not derive source extent from the current model",
+        );
       }
       const receiverGrid = buildReceiverGrid(bbox, spec.params);
       gridReceivers = receiverGrid.receivers;
@@ -1040,7 +1121,8 @@ out geom;`;
     if (!tableArtifact) {
       throw new Error("Run has no receiver table artifact");
     }
-    const receiverTable = storedRun.artifacts[tableArtifact.id]?.value as ReceiverTable;
+    const receiverTable = storedRun.artifacts[tableArtifact.id]
+      ?.value as ReceiverTable;
     const exportedAt = nowISO();
     const exportBase = `${DEFAULT_PROJECT_PATH}/exports/${runId}-${exportedAt.replaceAll(":", "").replaceAll(".", "")}`;
 
@@ -1236,7 +1318,9 @@ export function overpassWayToFeature(
 
 function parseTagHeight(value: string | undefined): number | null {
   if (!value) return null;
-  const parsed = Number.parseFloat(value.replace(" m", "").replace("m", "").trim());
+  const parsed = Number.parseFloat(
+    value.replace(" m", "").replace("m", "").trim(),
+  );
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -1276,9 +1360,7 @@ function sanitizeOverpassGeometry(
   if (!geometry) return [];
   return geometry.filter((point) => {
     return (
-      point != null &&
-      Number.isFinite(point.lon) &&
-      Number.isFinite(point.lat)
+      point != null && Number.isFinite(point.lon) && Number.isFinite(point.lat)
     );
   });
 }

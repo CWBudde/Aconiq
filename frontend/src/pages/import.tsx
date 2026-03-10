@@ -207,7 +207,9 @@ export default function ImportPage() {
               >
                 <FileInput className="h-10 w-10 text-muted-foreground" />
                 <div>
-                  <h2 className="text-lg font-semibold">{m.heading_import_geojson()}</h2>
+                  <h2 className="text-lg font-semibold">
+                    {m.heading_import_geojson()}
+                  </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {m.msg_drag_or_click()}
                   </p>
@@ -245,7 +247,9 @@ export default function ImportPage() {
                   className="self-start"
                 >
                   <LocateFixed className="mr-2 h-4 w-4" />
-                  {geolocating ? m.status_locating() : m.action_use_current_location()}
+                  {geolocating
+                    ? m.status_locating()
+                    : m.action_use_current_location()}
                 </Button>
                 <div className="grid grid-cols-4 gap-3">
                   <div className="flex flex-col gap-1">
@@ -322,7 +326,9 @@ export default function ImportPage() {
                   onClick={handleOSMFetch}
                   disabled={osmMutation.isPending}
                 >
-                  {osmMutation.isPending ? m.status_fetching() : m.action_fetch_from_osm()}
+                  {osmMutation.isPending
+                    ? m.status_fetching()
+                    : m.action_fetch_from_osm()}
                 </Button>
               </div>
             )}
@@ -333,9 +339,13 @@ export default function ImportPage() {
 
         {step === "preview" && report ? (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">{m.heading_import_preview()}</h2>
+            <h2 className="text-lg font-semibold">
+              {m.heading_import_preview()}
+            </h2>
             <div className="rounded-md border p-4 text-sm">
-              <p>{String(features.length)} {m.msg_features_normalized()}</p>
+              <p>
+                {String(features.length)} {m.msg_features_normalized()}
+              </p>
               {skippedCount > 0 ? (
                 <p className="text-yellow-600">
                   {String(skippedCount)} {m.msg_features_skipped()}
@@ -380,7 +390,8 @@ export default function ImportPage() {
               <div className="rounded-md border border-yellow-500/50 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-yellow-600">
                   <AlertTriangle className="h-4 w-4" />
-                  {String(report.warnings.length)} {m.status_validation_warnings()}
+                  {String(report.warnings.length)}{" "}
+                  {m.status_validation_warnings()}
                 </div>
               </div>
             ) : null}
@@ -404,7 +415,9 @@ export default function ImportPage() {
         {step === "done" ? (
           <div className="flex flex-col items-center gap-4 text-center">
             <CheckCircle2 className="h-10 w-10 text-green-500" />
-            <h2 className="text-lg font-semibold">{m.status_import_complete()}</h2>
+            <h2 className="text-lg font-semibold">
+              {m.status_import_complete()}
+            </h2>
             <p className="text-sm text-muted-foreground">
               {String(features.length)} {m.msg_import_complete_description()}
             </p>

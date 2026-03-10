@@ -16,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/components/select";
-import type { FeatureKind, Geometry, Position, SourceType } from "@/model/types";
+import type {
+  FeatureKind,
+  Geometry,
+  Position,
+  SourceType,
+} from "@/model/types";
 import { createFeatureId, createReceiverId } from "@/model/types";
 import type { ModelReceiver } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
@@ -65,8 +70,7 @@ export function NewFeatureDialog({
     }
   }, [geometry]);
 
-  const isPoint =
-    geometry?.type === "Point" || geometry?.type === "MultiPoint";
+  const isPoint = geometry?.type === "Point" || geometry?.type === "MultiPoint";
 
   const handleSave = useCallback(() => {
     if (!geometry) return;
@@ -128,7 +132,9 @@ export function NewFeatureDialog({
                 <SelectItem value="building">{m.option_building()}</SelectItem>
                 <SelectItem value="barrier">{m.option_barrier()}</SelectItem>
                 {isPoint ? (
-                  <SelectItem value="receiver">{m.option_receiver()}</SelectItem>
+                  <SelectItem value="receiver">
+                    {m.option_receiver()}
+                  </SelectItem>
                 ) : null}
               </SelectContent>
             </Select>
@@ -147,9 +153,15 @@ export function NewFeatureDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="point">{m.option_source_type_point()}</SelectItem>
-                  <SelectItem value="line">{m.option_source_type_line()}</SelectItem>
-                  <SelectItem value="area">{m.option_source_type_area()}</SelectItem>
+                  <SelectItem value="point">
+                    {m.option_source_type_point()}
+                  </SelectItem>
+                  <SelectItem value="line">
+                    {m.option_source_type_line()}
+                  </SelectItem>
+                  <SelectItem value="area">
+                    {m.option_source_type_area()}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

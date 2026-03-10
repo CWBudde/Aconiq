@@ -79,7 +79,9 @@ export default function StatusPage() {
       </section>
 
       <section className="grid gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">{m.section_project()}</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">
+          {m.section_project()}
+        </h3>
         <QueryResult {...project} loadingText={m.status_loading_project()}>
           {(data) => <ProjectSection data={data} />}
         </QueryResult>

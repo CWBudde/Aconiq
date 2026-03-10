@@ -33,7 +33,10 @@ export function FallbackMap({ center }: FallbackMapProps) {
   } | null>(null);
 
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const initialView = useMemo(() => fitViewToFeatures(features, center), [features, center]);
+  const initialView = useMemo(
+    () => fitViewToFeatures(features, center),
+    [features, center],
+  );
   const [view, setView] = useState<ViewState>(initialView);
 
   useEffect(() => {
