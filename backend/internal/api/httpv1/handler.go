@@ -18,6 +18,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards/framework"
@@ -228,6 +229,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
+	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	if opts.corsDisabled {
@@ -727,6 +729,122 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, fc)
+}
+
+const maxTerrainUploadBytes = 50 << 20 // 50 MB
+
+func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	err := r.ParseMultipartForm(maxTerrainUploadBytes)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "failed to parse multipart form: " + err.Error(),
+		})
+
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "missing 'file' field in multipart form",
+		})
+
+		return
+	}
+
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".tif" && ext != ".tiff" {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "file must have .tif or .tiff extension",
+		})
+
+		return
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "failed to read uploaded file: " + err.Error(),
+		})
+
+		return
+	}
+
+	model, err := terrain.LoadFromBytes(data)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: "invalid GeoTIFF terrain file: " + err.Error(),
+		})
+
+		return
+	}
+
+	err = h.storeTerrainArtifact(data)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "internal_error",
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, model.Info())
+}
+
+func (h Handler) storeTerrainArtifact(data []byte) error {
+	terrainDir := filepath.Join(h.store.Root(), ".noise", "model")
+
+	err := os.MkdirAll(terrainDir, 0o750)
+	if err != nil {
+		return fmt.Errorf("failed to create model directory: %w", err)
+	}
+
+	err = os.WriteFile(filepath.Join(terrainDir, "terrain.tif"), data, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to write terrain file: %w", err)
+	}
+
+	proj, err := h.store.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load project: %w", err)
+	}
+
+	proj.Artifacts = updateOrAppendArtifact(proj.Artifacts, project.ArtifactRef{
+		ID:        "artifact-terrain",
+		Kind:      "model.terrain_geotiff",
+		Path:      ".noise/model/terrain.tif",
+		CreatedAt: h.now(),
+	})
+
+	err = h.store.Save(proj)
+	if err != nil {
+		return fmt.Errorf("failed to save project manifest: %w", err)
+	}
+
+	return nil
+}
+
+func updateOrAppendArtifact(artifacts []project.ArtifactRef, ref project.ArtifactRef) []project.ArtifactRef {
+	for i, a := range artifacts {
+		if a.ID == ref.ID {
+			artifacts[i] = ref
+			return artifacts
+		}
+	}
+
+	return append(artifacts, ref)
 }
 
 func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
