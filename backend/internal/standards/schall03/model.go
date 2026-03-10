@@ -25,8 +25,20 @@ const (
 )
 
 const (
+	TrainClassPassenger = "passenger"
+	TrainClassFreight   = "freight"
+	TrainClassMixed     = "mixed"
+)
+
+const (
 	TrackTypeBallasted = "ballasted"
 	TrackTypeSlab      = "slab"
+)
+
+const (
+	TrackFormMainline = "mainline"
+	TrackFormStation  = "station"
+	TrackFormSwitches = "switches"
 )
 
 const (
@@ -41,9 +53,21 @@ var allowedTractionTypes = map[string]struct{}{
 	TractionMixed:    {},
 }
 
+var allowedTrainClasses = map[string]struct{}{
+	TrainClassPassenger: {},
+	TrainClassFreight:   {},
+	TrainClassMixed:     {},
+}
+
 var allowedTrackTypes = map[string]struct{}{
 	TrackTypeBallasted: {},
 	TrackTypeSlab:      {},
+}
+
+var allowedTrackForms = map[string]struct{}{
+	TrackFormMainline: {},
+	TrackFormStation:  {},
+	TrackFormSwitches: {},
 }
 
 var allowedRoughnessClasses = map[string]struct{}{
@@ -155,6 +179,7 @@ type TrafficPeriod struct {
 type RailInfrastructure struct {
 	TractionType        string  `json:"traction_type"`
 	TrackType           string  `json:"track_type"`
+	TrackForm           string  `json:"track_form"`
 	TrackRoughnessClass string  `json:"track_roughness_class"`
 	OnBridge            bool    `json:"on_bridge,omitempty"`
 	CurveRadiusM        float64 `json:"curve_radius_m,omitempty"`
@@ -168,6 +193,10 @@ func (i RailInfrastructure) Validate(sourceID string) error {
 
 	if _, ok := allowedTrackTypes[strings.TrimSpace(i.TrackType)]; !ok {
 		return fmt.Errorf("rail source %q has unsupported track_type %q", sourceID, i.TrackType)
+	}
+
+	if _, ok := allowedTrackForms[strings.TrimSpace(i.TrackForm)]; !ok {
+		return fmt.Errorf("rail source %q has unsupported track_form %q", sourceID, i.TrackForm)
 	}
 
 	if _, ok := allowedRoughnessClasses[strings.TrimSpace(i.TrackRoughnessClass)]; !ok {
@@ -186,6 +215,7 @@ type RailSource struct {
 	ID              string             `json:"id"`
 	TrackCenterline []geo.Point2D      `json:"track_centerline"`
 	ElevationM      float64            `json:"elevation_m,omitempty"`
+	TrainClass      string             `json:"train_class"`
 	AverageSpeedKPH float64            `json:"average_speed_kph"`
 	Infrastructure  RailInfrastructure `json:"infrastructure"`
 	TrafficDay      TrafficPeriod      `json:"traffic_day"`
@@ -210,6 +240,10 @@ func (s RailSource) Validate() error {
 
 	if math.IsNaN(s.ElevationM) || math.IsInf(s.ElevationM, 0) {
 		return fmt.Errorf("rail source %q elevation_m must be finite", s.ID)
+	}
+
+	if _, ok := allowedTrainClasses[strings.TrimSpace(s.TrainClass)]; !ok {
+		return fmt.Errorf("rail source %q has unsupported train_class %q", s.ID, s.TrainClass)
 	}
 
 	if math.IsNaN(s.AverageSpeedKPH) || math.IsInf(s.AverageSpeedKPH, 0) || s.AverageSpeedKPH <= 0 {
@@ -276,7 +310,8 @@ func (r ReceiverInput) Validate() error {
 }
 
 // Descriptor returns the standards-framework descriptor for the Schall 03
-// planning-track baseline preview.
+// planning-track baseline with preview coefficients routed through a data-pack
+// shaped boundary.
 func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
 	minPositive := 0.001
@@ -284,7 +319,7 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
-		Description:    "Schall 03 planning-track rail baseline preview with typed inputs, octave-band handling, deterministic line integration, and explicit compliance-boundary metadata.",
+		Description:    "Schall 03 planning-track rail baseline with typed inputs, octave-band handling, deterministic line integration, explicit compliance-boundary metadata, and a data-pack shaped coefficient boundary.",
 		DefaultVersion: "phase18-baseline-preview",
 		Versions: []framework.Version{
 			{
@@ -300,8 +335,10 @@ func Descriptor() framework.StandardDescriptor {
 								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "10", Min: &minPositive, Description: "Receiver grid spacing in meters for the future Schall 03 run/export path"},
 								{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "30", Min: &minZero, Description: "Padding around source extent in meters"},
 								{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Receiver height in meters"},
+								{Name: "rail_train_class", Kind: framework.ParameterKindString, DefaultValue: TrainClassMixed, Enum: []string{TrainClassPassenger, TrainClassFreight, TrainClassMixed}, Description: "Default train class placeholder for Schall 03 source mapping"},
 								{Name: "rail_traction_type", Kind: framework.ParameterKindString, DefaultValue: TractionElectric, Enum: []string{TractionElectric, TractionDiesel, TractionMixed}, Description: "Default traction type for imported Schall 03 rail sources"},
 								{Name: "rail_track_type", Kind: framework.ParameterKindString, DefaultValue: TrackTypeBallasted, Enum: []string{TrackTypeBallasted, TrackTypeSlab}, Description: "Default track construction type for imported rail sources"},
+								{Name: "rail_track_form", Kind: framework.ParameterKindString, DefaultValue: TrackFormMainline, Enum: []string{TrackFormMainline, TrackFormStation, TrackFormSwitches}, Description: "Default track-form placeholder for future Schall 03 source mapping"},
 								{Name: "rail_track_roughness_class", Kind: framework.ParameterKindString, DefaultValue: RoughnessStandard, Enum: []string{RoughnessStandard, RoughnessLowNoise, RoughnessRough}, Description: "Default roughness class for imported rail sources"},
 								{Name: "rail_average_train_speed_kph", Kind: framework.ParameterKindFloat, DefaultValue: "100", Min: &minPositive, Description: "Default train speed for imported rail sources"},
 								{Name: "rail_curve_radius_m", Kind: framework.ParameterKindFloat, DefaultValue: "500", Min: &minZero, Description: "Default curve radius for imported rail sources"},

@@ -23,10 +23,12 @@ func TestRailSourceValidate(t *testing.T) {
 			{X: 100, Y: 0},
 		},
 		ElevationM:      1.5,
+		TrainClass:      TrainClassMixed,
 		AverageSpeedKPH: 120,
 		Infrastructure: RailInfrastructure{
 			TractionType:        TractionElectric,
 			TrackType:           TrackTypeBallasted,
+			TrackForm:           TrackFormMainline,
 			TrackRoughnessClass: RoughnessStandard,
 			CurveRadiusM:        400,
 		},
@@ -49,10 +51,12 @@ func TestRailSourceRejectsUnknownInfrastructureValue(t *testing.T) {
 			{X: 0, Y: 0},
 			{X: 100, Y: 0},
 		},
+		TrainClass:      TrainClassMixed,
 		AverageSpeedKPH: 120,
 		Infrastructure: RailInfrastructure{
 			TractionType:        "steam",
 			TrackType:           TrackTypeBallasted,
+			TrackForm:           TrackFormMainline,
 			TrackRoughnessClass: RoughnessStandard,
 		},
 		TrafficDay:   TrafficPeriod{TrainsPerHour: 8},
@@ -129,10 +133,12 @@ func TestComputeReceiverOutputs(t *testing.T) {
 				{X: 0, Y: 0},
 				{X: 100, Y: 0},
 			},
+			TrainClass:      TrainClassPassenger,
 			AverageSpeedKPH: 100,
 			Infrastructure: RailInfrastructure{
 				TractionType:        TractionElectric,
 				TrackType:           TrackTypeSlab,
+				TrackForm:           TrackFormSwitches,
 				TrackRoughnessClass: RoughnessStandard,
 				OnBridge:            true,
 				CurveRadiusM:        300,
@@ -163,10 +169,12 @@ func TestComputeEmissionAndPropagation(t *testing.T) {
 			{X: -50, Y: 0},
 			{X: 50, Y: 0},
 		},
+		TrainClass:      TrainClassFreight,
 		AverageSpeedKPH: 100,
 		Infrastructure: RailInfrastructure{
 			TractionType:        TractionElectric,
 			TrackType:           TrackTypeSlab,
+			TrackForm:           TrackFormMainline,
 			TrackRoughnessClass: RoughnessStandard,
 			OnBridge:            false,
 			CurveRadiusM:        400,
@@ -271,6 +279,39 @@ func TestExportResultBundle(t *testing.T) {
 
 	if filepath.Base(exported.RasterMetaPath) != StandardID+".json" {
 		t.Fatalf("unexpected raster meta path: %s", exported.RasterMetaPath)
+	}
+}
+
+func TestBuiltinDataPackValidates(t *testing.T) {
+	t.Parallel()
+
+	if err := BuiltinDataPack().Validate(); err != nil {
+		t.Fatalf("validate builtin data pack: %v", err)
+	}
+}
+
+func TestLoadDataPack(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	path := filepath.Join(baseDir, "schall03-pack.json")
+
+	payload, err := json.Marshal(BuiltinDataPack())
+	if err != nil {
+		t.Fatalf("marshal data pack: %v", err)
+	}
+
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatalf("write data pack: %v", err)
+	}
+
+	pack, err := LoadDataPack(path)
+	if err != nil {
+		t.Fatalf("load data pack: %v", err)
+	}
+
+	if pack.Version != BuiltinDataPackVersion {
+		t.Fatalf("unexpected data pack version: %q", pack.Version)
 	}
 }
 

@@ -21,14 +21,7 @@ type PropagationConfig struct {
 
 // DefaultPropagationConfig returns default baseline propagation terms.
 func DefaultPropagationConfig() PropagationConfig {
-	return PropagationConfig{
-		AirAbsorptionDBPerKM:  0.7,
-		GroundAttenuationDB:   1.2,
-		SlabTrackCorrectionDB: 1.5,
-		BridgeCorrectionDB:    2.0,
-		CurveCorrectionDB:     4.0,
-		MinDistanceM:          3.0,
-	}
+	return BuiltinDataPack().Propagation.DefaultConfig
 }
 
 func (cfg PropagationConfig) Validate() error {
@@ -52,16 +45,14 @@ func (cfg PropagationConfig) Validate() error {
 	return nil
 }
 
-var airAbsorptionBandFactor = OctaveSpectrum{0.3, 0.4, 0.55, 0.75, 1.0, 1.35, 1.8, 2.4}
-
-func attenuation(distanceM float64, bandIdx int, cfg PropagationConfig) float64 {
+func attenuation(distanceM float64, bandIdx int, cfg PropagationConfig, pack DataPack) float64 {
 	d := distanceM
 	if d < cfg.MinDistanceM {
 		d = cfg.MinDistanceM
 	}
 
 	geometric := 20*math.Log10(d) + 11.0
-	air := cfg.AirAbsorptionDBPerKM * airAbsorptionBandFactor[bandIdx] * (d / 1000.0)
+	air := cfg.AirAbsorptionDBPerKM * pack.Propagation.AirAbsorptionBandFactor[bandIdx] * (d / 1000.0)
 
 	return geometric + air + cfg.GroundAttenuationDB
 }
@@ -84,7 +75,7 @@ func sourceAdjustment(source RailSource, cfg PropagationConfig) float64 {
 	return adjustment
 }
 
-func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Point2D, source RailSource, cfg PropagationConfig) OctaveSpectrum {
+func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Point2D, source RailSource, cfg PropagationConfig, pack DataPack) OctaveSpectrum {
 	var bandContribs [8][]float64
 	adjustment := sourceAdjustment(source, cfg)
 
@@ -109,7 +100,7 @@ func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Po
 			distance := geo.Distance(receiver, point)
 
 			for bandIdx := range sourceSpectrum {
-				a := attenuation(distance, bandIdx, cfg)
+				a := attenuation(distance, bandIdx, cfg, pack)
 				level := sourceSpectrum[bandIdx] + 10*math.Log10(stepLength) - a + adjustment
 				bandContribs[bandIdx] = append(bandContribs[bandIdx], level)
 			}
@@ -126,8 +117,18 @@ func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Po
 
 // ComputeReceiverPeriodLevels computes day/night levels at one receiver.
 func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RailSource, cfg PropagationConfig) (PeriodLevels, error) {
+	return ComputeReceiverPeriodLevelsWithDataPack(receiver, sources, cfg, BuiltinDataPack())
+}
+
+// ComputeReceiverPeriodLevelsWithDataPack computes day/night levels using an
+// explicit preview or external Schall 03 data pack.
+func ComputeReceiverPeriodLevelsWithDataPack(receiver geo.Point2D, sources []RailSource, cfg PropagationConfig, pack DataPack) (PeriodLevels, error) {
 	err := cfg.Validate()
 	if err != nil {
+		return PeriodLevels{}, err
+	}
+
+	if err := pack.Validate(); err != nil {
 		return PeriodLevels{}, err
 	}
 
@@ -143,13 +144,13 @@ func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RailSource, cfg
 	nightSpectra := make([]OctaveSpectrum, 0, len(sources))
 
 	for _, source := range sources {
-		emission, err := ComputeEmission(source)
+		emission, err := ComputeEmissionWithDataPack(source, pack)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
 
-		daySpectra = append(daySpectra, lineSourceSpectrumAtReceiver(emission.DaySpectrum, receiver, source, cfg))
-		nightSpectra = append(nightSpectra, lineSourceSpectrumAtReceiver(emission.NightSpectrum, receiver, source, cfg))
+		daySpectra = append(daySpectra, lineSourceSpectrumAtReceiver(emission.DaySpectrum, receiver, source, cfg, pack))
+		nightSpectra = append(nightSpectra, lineSourceSpectrumAtReceiver(emission.NightSpectrum, receiver, source, cfg, pack))
 	}
 
 	day := SumSpectra(daySpectra).EnergeticTotal()

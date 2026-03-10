@@ -31,7 +31,10 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource,
 			return nil, fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
 		}
 
-		periodLevels, err := ComputeReceiverLevels(receiver.Point, sources, barriers, cfg)
+		receiverCfg := cfg
+		receiverCfg.ReceiverHeightM = receiver.HeightM
+
+		periodLevels, err := ComputeReceiverLevels(receiver.Point, sources, barriers, receiverCfg)
 		if err != nil {
 			return nil, err
 		}

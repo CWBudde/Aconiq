@@ -3,7 +3,7 @@ package schall03
 const (
 	// BuiltinModelVersion identifies the bundled preview coefficient set used by
 	// the current baseline implementation.
-	BuiltinModelVersion = "phase18-preview-v1"
+	BuiltinModelVersion = "phase18-preview-v2"
 
 	// ReportingPrecisionDB documents the intended reporting boundary for this
 	// baseline. Internal computation remains float64 without intermediate rounding.
@@ -31,7 +31,9 @@ func (levels PeriodLevels) ToReceiverIndicators() ReceiverIndicators {
 func ProvenanceMetadata(params map[string]string) map[string]string {
 	metadata := map[string]string{
 		"model_version":          BuiltinModelVersion,
+		"data_pack_version":      BuiltinDataPackVersion,
 		"reporting_precision_db": "0.1",
+		"reporting_rounding":     "round-half-away-from-zero at report boundary",
 		"indicator_order":        IndicatorLrDay + "," + IndicatorLrNight,
 		"compliance_boundary":    "baseline-preview-no-normative-tables",
 		"band_model":             "octave-63Hz-8000Hz",
@@ -39,8 +41,10 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 
 	for _, key := range []string{
 		"receiver_height_m",
+		"rail_train_class",
 		"rail_traction_type",
 		"rail_track_type",
+		"rail_track_form",
 		"rail_track_roughness_class",
 		"rail_average_train_speed_kph",
 		"traffic_day_trains_per_hour",

@@ -7,91 +7,67 @@ type periodEmission struct {
 	NightSpectrum OctaveSpectrum
 }
 
-var (
-	baseRollingSpectrum       = OctaveSpectrum{73, 76, 80, 84, 87, 85, 81, 76}
-	tractionElectricSpectrum  = OctaveSpectrum{3, 3, 2, 1, 0, -1, -2, -3}
-	tractionDieselSpectrum    = OctaveSpectrum{5, 5, 4, 3, 1, 0, -1, -2}
-	tractionMixedSpectrum     = OctaveSpectrum{4, 4, 3, 2, 1, -0.5, -1.5, -2.5}
-	roughnessLowNoiseSpectrum = OctaveSpectrum{0, -0.5, -1, -1.5, -2, -2, -2, -2}
-	roughnessStandardSpectrum = OctaveSpectrum{0, 0, 0, 0, 0, 0, 0, 0}
-	roughnessRoughSpectrum    = OctaveSpectrum{0.5, 1, 1.5, 2, 2.5, 2.5, 2, 1.5}
-)
-
 // ComputeEmission computes day/night source spectra for one rail source.
 func ComputeEmission(source RailSource) (periodEmission, error) {
+	return ComputeEmissionWithDataPack(source, BuiltinDataPack())
+}
+
+// ComputeEmissionWithDataPack computes day/night spectra using an explicit
+// preview or external Schall 03 data pack.
+func ComputeEmissionWithDataPack(source RailSource, pack DataPack) (periodEmission, error) {
 	err := source.Validate()
 	if err != nil {
 		return periodEmission{}, err
 	}
 
+	if err := pack.Validate(); err != nil {
+		return periodEmission{}, err
+	}
+
 	return periodEmission{
-		DaySpectrum:   emissionSpectrumForPeriod(source, source.TrafficDay),
-		NightSpectrum: emissionSpectrumForPeriod(source, source.TrafficNight),
+		DaySpectrum:   emissionSpectrumForPeriod(source, source.TrafficDay, pack),
+		NightSpectrum: emissionSpectrumForPeriod(source, source.TrafficNight, pack),
 	}, nil
 }
 
-func emissionSpectrumForPeriod(source RailSource, traffic TrafficPeriod) OctaveSpectrum {
+func emissionSpectrumForPeriod(source RailSource, traffic TrafficPeriod, pack DataPack) OctaveSpectrum {
 	flowCorrection := 10 * math.Log10(traffic.TrainsPerHour+1)
-	speedCorrection := rollingSpeedCorrection(source.AverageSpeedKPH)
+	speedCorrection := rollingSpeedCorrection(source.AverageSpeedKPH, pack.Emission.SpeedModel)
 
 	lengthCorrection := 0.0
 	if length := sourceSegmentLengthM(source.TrackCenterline); length > 0 {
 		lengthCorrection = 10 * math.Log10(length/100.0)
 	}
 
-	traction := tractionSpectrum(source.Infrastructure.TractionType)
-	roughness := roughnessSpectrum(source.Infrastructure.TrackRoughnessClass)
+	traction := pack.Emission.TractionSpectra[source.Infrastructure.TractionType]
+	roughness := pack.Emission.RoughnessSpectra[source.Infrastructure.TrackRoughnessClass]
+	trainClass := pack.Emission.TrainClassSpectra[source.TrainClass]
+	trackForm := pack.Emission.TrackFormSpectra[source.Infrastructure.TrackForm]
 
 	var spectrum OctaveSpectrum
 	for i := range spectrum {
-		spectrum[i] = baseRollingSpectrum[i] + traction[i] + roughness[i] + flowCorrection + speedCorrection + lengthCorrection
+		spectrum[i] = pack.Emission.BaseRollingSpectrum[i] + traction[i] + roughness[i] + trainClass[i] + trackForm[i] + flowCorrection + speedCorrection + lengthCorrection
 	}
 
 	return spectrum
 }
 
-func rollingSpeedCorrection(speedKPH float64) float64 {
+func rollingSpeedCorrection(speedKPH float64, model SpeedModel) float64 {
 	clamped := speedKPH
-	if clamped < 30 {
-		clamped = 30
+	if clamped < model.MinSpeedKPH {
+		clamped = model.MinSpeedKPH
 	}
 
-	if clamped > 250 {
-		clamped = 250
+	if clamped > model.MaxSpeedKPH {
+		clamped = model.MaxSpeedKPH
 	}
 
 	switch {
-	case clamped < 80:
-		return -1.5 + 8*math.Log10(clamped/80.0)
-	case clamped <= 160:
-		return 9 * math.Log10(clamped/100.0)
+	case clamped < model.LowSpeedThresholdKPH:
+		return model.LowOffsetDB + model.LowSlope*math.Log10(clamped/model.LowSpeedThresholdKPH)
+	case clamped <= model.HighSpeedThresholdKPH:
+		return model.MidSlope * math.Log10(clamped/model.MidReferenceKPH)
 	default:
-		return 1.8 + 6*math.Log10(clamped/160.0)
-	}
-}
-
-func tractionSpectrum(kind string) OctaveSpectrum {
-	switch kind {
-	case TractionElectric:
-		return tractionElectricSpectrum
-	case TractionDiesel:
-		return tractionDieselSpectrum
-	case TractionMixed:
-		return tractionMixedSpectrum
-	default:
-		return tractionMixedSpectrum
-	}
-}
-
-func roughnessSpectrum(class string) OctaveSpectrum {
-	switch class {
-	case RoughnessLowNoise:
-		return roughnessLowNoiseSpectrum
-	case RoughnessRough:
-		return roughnessRoughSpectrum
-	case RoughnessStandard:
-		return roughnessStandardSpectrum
-	default:
-		return roughnessStandardSpectrum
+		return model.HighOffsetDB + model.HighSlope*math.Log10(clamped/model.HighSpeedThresholdKPH)
 	}
 }

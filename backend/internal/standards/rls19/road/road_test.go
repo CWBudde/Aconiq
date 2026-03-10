@@ -655,6 +655,35 @@ func TestComputeReceiverOutputs(t *testing.T) {
 	}
 }
 
+func TestComputeReceiverOutputs_UsesPerReceiverHeight(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	cfg := DefaultPropagationConfig()
+	barrier := sampleBarrier()
+	receivers := []geo.PointReceiver{
+		{ID: "low", Point: geo.Point2D{X: 0, Y: 50}, HeightM: 2.0},
+		{ID: "high", Point: geo.Point2D{X: 0, Y: 50}, HeightM: 15.0},
+	}
+
+	outputs, err := ComputeReceiverOutputs(receivers, []RoadSource{source}, []Barrier{barrier}, cfg)
+	if err != nil {
+		t.Fatalf("compute outputs: %v", err)
+	}
+
+	if len(outputs) != 2 {
+		t.Fatalf("expected 2 outputs, got %d", len(outputs))
+	}
+
+	if outputs[0].Indicators.LrDay >= outputs[1].Indicators.LrDay {
+		t.Fatalf(
+			"expected higher receiver to reduce shielding and increase level: low=%.4f high=%.4f",
+			outputs[0].Indicators.LrDay,
+			outputs[1].Indicators.LrDay,
+		)
+	}
+}
+
 func TestComputeReceiverOutputs_EmptyReceivers(t *testing.T) {
 	t.Parallel()
 
