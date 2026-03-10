@@ -16,6 +16,7 @@ import (
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
@@ -133,6 +134,43 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			"grid_width":     scenario.GridWidth,
 			"grid_height":    scenario.GridHeight,
 			"receivers":      roundIndustryOutputs(outputs),
+		}, nil
+	case iso9613.StandardID:
+		var scenario struct {
+			Sources           []iso9613.PointSource `json:"sources"`
+			Receivers         []geo.PointReceiver   `json:"receivers"`
+			GridWidth         int                   `json:"grid_width"`
+			GridHeight        int                   `json:"grid_height"`
+			PropagationConfig struct {
+				GroundFactor            float64 `json:"ground_factor"`
+				AirTemperatureC         float64 `json:"air_temperature_c"`
+				RelativeHumidityPercent float64 `json:"relative_humidity_percent"`
+				MeteorologyAssumption   string  `json:"meteorology_assumption"`
+				BarrierAttenuationDB    float64 `json:"barrier_attenuation_db"`
+				MinDistanceM            float64 `json:"min_distance_m"`
+			} `json:"propagation_config"`
+		}
+		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+			return nil, err
+		}
+
+		outputs, err := iso9613.ComputeReceiverOutputs(scenario.Receivers, scenario.Sources, iso9613.PropagationConfig{
+			GroundFactor:            scenario.PropagationConfig.GroundFactor,
+			AirTemperatureC:         scenario.PropagationConfig.AirTemperatureC,
+			RelativeHumidityPercent: scenario.PropagationConfig.RelativeHumidityPercent,
+			MeteorologyAssumption:   scenario.PropagationConfig.MeteorologyAssumption,
+			BarrierAttenuationDB:    scenario.PropagationConfig.BarrierAttenuationDB,
+			MinDistanceM:            scenario.PropagationConfig.MinDistanceM,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]any{
+			"receiver_count": len(outputs),
+			"grid_width":     scenario.GridWidth,
+			"grid_height":    scenario.GridHeight,
+			"receivers":      roundISO9613Outputs(outputs),
 		}, nil
 	case cnossosaircraft.StandardID:
 		var scenario struct {
@@ -351,6 +389,21 @@ func roundIndustryOutputs(outputs []cnossosindustry.ReceiverOutput) []map[string
 			"Levening": round6(output.Indicators.Levening),
 			"Lnight":   round6(output.Indicators.Lnight),
 			"Lden":     round6(output.Indicators.Lden),
+		})
+	}
+
+	return out
+}
+
+func roundISO9613Outputs(outputs []iso9613.ReceiverOutput) []map[string]any {
+	out := make([]map[string]any, 0, len(outputs))
+	for _, output := range outputs {
+		out = append(out, map[string]any{
+			"id":       output.Receiver.ID,
+			"x":        round6(output.Receiver.Point.X),
+			"y":        round6(output.Receiver.Point.Y),
+			"height_m": round6(output.Receiver.HeightM),
+			"LpAeq":    round6(output.Indicators.LpAeq),
 		})
 	}
 

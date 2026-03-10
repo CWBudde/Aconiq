@@ -24,6 +24,7 @@ func TestRegistryIncludesAcceptanceHooks(t *testing.T) {
 		"cnossos-road",
 		"cnossos-rail",
 		"cnossos-industry",
+		"iso9613",
 		"cnossos-aircraft",
 		"bub-road",
 		"buf-aircraft",

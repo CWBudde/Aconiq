@@ -259,9 +259,9 @@ Status: complete.
   - [x] Export receiver tables and rasters with consistent metadata
   - [ ] Ensure results remain clearly separated from CNOSSOS / national-track outputs
 - [ ] Add verification coverage
-  - [ ] Add module-level unit tests for schema validation, emission, propagation, and export
-  - [ ] Add validation projects (license-safe)
-  - [ ] Add golden scenarios and deterministic snapshots
+  - [x] Add module-level unit tests for schema validation, emission, propagation, and export
+  - [x] Add validation projects (license-safe)
+  - [x] Add golden scenarios and deterministic snapshots
   - [ ] Add implementation notes and legal/compliance notes
 
 ### Research

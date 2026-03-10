@@ -19,12 +19,14 @@ What is implemented now:
 - receiver-table and raster export for `LpAeq`
 - provenance metadata that records the current preview boundary and intended reporting precision
 - API visibility via `/api/v1/standards`
+- one repo-authored acceptance fixture with deterministic golden coverage for the point-source preview scope
 
 What is not claimed yet:
 
 - normative conformance against ISO reference examples
 - redistribution of restricted normative material beyond repo-safe metadata and boundary notes
 - point/line/area parity, terrain-aware diffraction details, or a standards-faithful attenuation chain
+- tolerance rules and versioned comparison policy for external validation assets
 
 ## First Delivery Scope
 
