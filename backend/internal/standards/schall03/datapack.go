@@ -2,6 +2,7 @@ package schall03
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -122,38 +123,45 @@ func LoadDataPack(path string) (DataPack, error) {
 // Validate checks that a data pack is structurally usable.
 func (p DataPack) Validate() error {
 	if p.Version == "" {
-		return fmt.Errorf("schall03 data pack version is required")
+		return errors.New("schall03 data pack version is required")
 	}
 
 	if p.ComplianceBoundary == "" {
-		return fmt.Errorf("schall03 data pack compliance_boundary is required")
+		return errors.New("schall03 data pack compliance_boundary is required")
 	}
 
-	if err := p.Emission.BaseRollingSpectrum.Validate("base_rolling_spectrum"); err != nil {
+	err := p.Emission.BaseRollingSpectrum.Validate("base_rolling_spectrum")
+	if err != nil {
 		return err
 	}
 
-	if err := validateSpectrumMap("traction_spectra", p.Emission.TractionSpectra, allowedTractionTypes); err != nil {
+	err = validateSpectrumMap("traction_spectra", p.Emission.TractionSpectra, allowedTractionTypes)
+	if err != nil {
 		return err
 	}
 
-	if err := validateSpectrumMap("roughness_spectra", p.Emission.RoughnessSpectra, allowedRoughnessClasses); err != nil {
+	err = validateSpectrumMap("roughness_spectra", p.Emission.RoughnessSpectra, allowedRoughnessClasses)
+	if err != nil {
 		return err
 	}
 
-	if err := validateSpectrumMap("train_class_spectra", p.Emission.TrainClassSpectra, allowedTrainClasses); err != nil {
+	err = validateSpectrumMap("train_class_spectra", p.Emission.TrainClassSpectra, allowedTrainClasses)
+	if err != nil {
 		return err
 	}
 
-	if err := validateSpectrumMap("track_form_spectra", p.Emission.TrackFormSpectra, allowedTrackForms); err != nil {
+	err = validateSpectrumMap("track_form_spectra", p.Emission.TrackFormSpectra, allowedTrackForms)
+	if err != nil {
 		return err
 	}
 
-	if err := p.Propagation.AirAbsorptionBandFactor.Validate("air_absorption_band_factor"); err != nil {
+	err = p.Propagation.AirAbsorptionBandFactor.Validate("air_absorption_band_factor")
+	if err != nil {
 		return err
 	}
 
-	if err := p.Propagation.DefaultConfig.Validate(); err != nil {
+	err = p.Propagation.DefaultConfig.Validate()
+	if err != nil {
 		return err
 	}
 
@@ -179,11 +187,11 @@ func (p DataPack) Validate() error {
 	}
 
 	if p.Emission.SpeedModel.MinSpeedKPH > p.Emission.SpeedModel.MaxSpeedKPH {
-		return fmt.Errorf("speed_model min_speed_kph must be <= max_speed_kph")
+		return errors.New("speed_model min_speed_kph must be <= max_speed_kph")
 	}
 
 	if p.Emission.SpeedModel.LowSpeedThresholdKPH >= p.Emission.SpeedModel.HighSpeedThresholdKPH {
-		return fmt.Errorf("speed_model low_speed_threshold_kph must be < high_speed_threshold_kph")
+		return errors.New("speed_model low_speed_threshold_kph must be < high_speed_threshold_kph")
 	}
 
 	return nil
@@ -200,7 +208,8 @@ func validateSpectrumMap(name string, values map[string]OctaveSpectrum, allowed 
 			return fmt.Errorf("%s missing %q", name, key)
 		}
 
-		if err := spectrum.Validate(name + "." + key); err != nil {
+		err := spectrum.Validate(name + "." + key)
+		if err != nil {
 			return err
 		}
 	}

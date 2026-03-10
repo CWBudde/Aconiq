@@ -171,6 +171,7 @@ func newBenchCommand() *cobra.Command {
 			summary.PrunedSuites = prunedSuites
 
 			summaryPath := filepath.Join(suiteDir, "summary.json")
+
 			err = writeJSONFile(summaryPath, summary)
 			if err != nil {
 				return err
@@ -190,6 +191,7 @@ func newBenchCommand() *cobra.Command {
 					scenario.NumericDrift.MaxAbsLevelDeltaDB,
 				)
 			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)
 			if len(summary.PrunedSuites) > 0 {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Pruned suites: %d\n", len(summary.PrunedSuites))
@@ -219,6 +221,7 @@ func resolveBenchScenarios(names []string) ([]benchScenarioSpec, error) {
 	}
 
 	out := make([]benchScenarioSpec, 0, len(names))
+
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		scenario, ok := index[name]
@@ -231,6 +234,7 @@ func resolveBenchScenarios(names []string) ([]benchScenarioSpec, error) {
 		}
 
 		seen[name] = struct{}{}
+
 		out = append(out, scenario)
 	}
 
@@ -334,6 +338,7 @@ func buildBenchScenario(spec benchScenarioSpec) ([]engine.Receiver, []engine.Sou
 	for row := range spec.SourceRows {
 		for col := range spec.SourceColumns {
 			index := row*spec.SourceColumns + col
+
 			x := xOffset
 			if spec.SourceColumns > 1 {
 				x += float64(col) * ((receiverWidthM + 2*spec.SourceSpacingM) / float64(spec.SourceColumns-1))
@@ -362,6 +367,7 @@ func measureBenchRun(
 	cfg engine.RunConfig,
 ) (benchRunMetrics, engine.RunOutput, error) {
 	runDir := filepath.Join(scenarioDir, runID)
+
 	beforeBytes, err := directorySize(runDir)
 	if err != nil {
 		return benchRunMetrics{}, engine.RunOutput{}, err
@@ -375,6 +381,7 @@ func measureBenchRun(
 	startedAt := time.Now()
 	out, err := runner.Run(context.Background(), cfg)
 	duration := time.Since(startedAt)
+
 	if err != nil {
 		return benchRunMetrics{}, engine.RunOutput{}, err
 	}
@@ -469,6 +476,7 @@ func pruneBenchSuites(root string, keepLast int) ([]string, error) {
 	}
 
 	slices.Sort(suites)
+
 	if len(suites) <= keepLast {
 		return nil, nil
 	}
@@ -476,6 +484,7 @@ func pruneBenchSuites(root string, keepLast int) ([]string, error) {
 	pruned := make([]string, 0, len(suites)-keepLast)
 	for _, suite := range suites[:len(suites)-keepLast] {
 		path := filepath.Join(root, suite)
+
 		err := os.RemoveAll(path)
 		if err != nil {
 			return pruned, err
@@ -502,6 +511,7 @@ func directorySize(root string) (int64, error) {
 	}
 
 	var total int64
+
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -538,6 +548,7 @@ func countChunkCacheFiles(root string) (int, error) {
 	}
 
 	total := 0
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue

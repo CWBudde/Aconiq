@@ -12,6 +12,8 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/geo/terrain"
+	"github.com/aconiq/backend/internal/io/citygmlimport"
 	"github.com/aconiq/backend/internal/io/csvimport"
 	"github.com/aconiq/backend/internal/io/fgbimport"
 	"github.com/aconiq/backend/internal/io/gpkgimport"
@@ -24,27 +26,29 @@ func newImportCommand() *cobra.Command {
 	var inputPath string
 	var layerName string
 	var trafficPath string
+	var terrainPath string
 	var osmBBox string
 	var osmEndpoint string
 
 	cmd := &cobra.Command{
 		Use:   "import",
-		Short: "Import GeoJSON, GeoPackage, or FlatGeobuf model data into the project",
+		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, or CityGML model data into the project",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runImport(cmd, inputPath, layerName, trafficPath, osmBBox, osmEndpoint)
+			return runImport(cmd, inputPath, layerName, trafficPath, terrainPath, osmBBox, osmEndpoint)
 		},
 	}
 
-	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON, GeoPackage (.gpkg), or FlatGeobuf (.fgb) input file")
+	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON, GeoPackage (.gpkg), FlatGeobuf (.fgb), or CityGML (.gml/.citygml) input file")
 	cmd.Flags().StringVar(&layerName, "layer", "", "Layer name to import from a GeoPackage file (required for .gpkg)")
 	cmd.Flags().StringVar(&trafficPath, "traffic", "", "Path to CSV attribute table for merging into the model")
+	cmd.Flags().StringVar(&terrainPath, "terrain", "", "Path to GeoTIFF DTM file for terrain elevation data")
 	cmd.Flags().StringVar(&osmBBox, "from-osm", "", "Bounding box for OSM import: \"south,west,north,east\" in WGS84 degrees")
 	cmd.Flags().StringVar(&osmEndpoint, "overpass-endpoint", "", "Overpass API endpoint (optional, defaults to overpass-api.de)")
 
 	return cmd
 }
 
-func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, osmBBox, osmEndpoint string) error {
+func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "command state unavailable", nil)
@@ -54,8 +58,8 @@ func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, osmBBox, o
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --input", nil)
 	}
 
-	if inputPath == "" && trafficPath == "" && osmBBox == "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-osm, or --traffic is required", nil)
+	if inputPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-osm, --terrain, or --traffic is required", nil)
 	}
 
 	store, err := projectfs.New(state.Config.ProjectPath)
@@ -87,6 +91,13 @@ func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, osmBBox, o
 
 	if trafficPath != "" {
 		err = mergeTrafficCSV(cmd, state, trafficPath, normalizedPath, dumpPath, store.Root())
+		if err != nil {
+			return err
+		}
+	}
+
+	if terrainPath != "" {
+		err = runTerrainImport(cmd, state, store, &proj, terrainPath)
 		if err != nil {
 			return err
 		}
@@ -353,7 +364,7 @@ func runGeometryImport(
 
 // loadInputPayload reads the input file as GeoJSON bytes.
 // For .gpkg files it uses gpkgimport; for .fgb files it uses fgbimport;
-// for all others it reads the file directly as GeoJSON.
+// for .gml/.citygml files it uses citygmlimport; for all others it reads the file directly as GeoJSON.
 func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
 	ext := strings.ToLower(filepath.Ext(absoluteInput))
 
@@ -362,6 +373,8 @@ func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
 		return readGPKGAsGeoJSON(absoluteInput, layerName)
 	case ".fgb":
 		return readFGBAsGeoJSON(absoluteInput, layerName)
+	case ".gml", ".citygml", ".xml":
+		return readCityGMLAsGeoJSON(absoluteInput, layerName)
 	default:
 		if layerName != "" {
 			return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is only valid for GeoPackage (.gpkg) files", nil)
@@ -424,6 +437,101 @@ func readFGBAsGeoJSON(path string, layerName string) ([]byte, error) {
 	}
 
 	return payload, nil
+}
+
+// readCityGMLAsGeoJSON opens a CityGML file and returns supported features as marshalled GeoJSON bytes.
+func readCityGMLAsGeoJSON(path string, layerName string) ([]byte, error) {
+	if layerName != "" {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for CityGML files", nil)
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file: "+path, err)
+	}
+
+	fc, err := citygmlimport.Read(payload)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file", err)
+	}
+
+	encoded, err := json.Marshal(fc)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal CityGML to GeoJSON", err)
+	}
+
+	return encoded, nil
+}
+
+const defaultTerrainPath = ".noise/model/terrain.tif"
+
+// runTerrainImport validates a GeoTIFF DTM, copies it into the project, and registers it as an artifact.
+func runTerrainImport(
+	cmd *cobra.Command,
+	state commandState,
+	store projectfs.Store,
+	proj *project.Project,
+	terrainPath string,
+) error {
+	absoluteTerrain := resolvePath(store.Root(), terrainPath)
+
+	ext := strings.ToLower(filepath.Ext(absoluteTerrain))
+	if ext != ".tif" && ext != ".tiff" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--terrain requires a GeoTIFF (.tif/.tiff) file", nil)
+	}
+
+	// Validate: load to check it's a readable elevation raster.
+	tm, err := terrain.Load(absoluteTerrain)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "invalid terrain GeoTIFF", err)
+	}
+
+	bounds := tm.Bounds()
+
+	// Copy to project model directory.
+	destPath := filepath.Join(store.Root(), defaultTerrainPath)
+
+	srcData, err := os.ReadFile(absoluteTerrain)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "read terrain file", err)
+	}
+
+	err = os.MkdirAll(filepath.Dir(destPath), 0o755)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.import", "create model directory", err)
+	}
+
+	err = os.WriteFile(destPath, srcData, 0o644)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.import", "write terrain file", err)
+	}
+
+	// Register artifact.
+	now := nowUTC()
+	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
+		ID:        "artifact-terrain",
+		Kind:      "model.terrain_geotiff",
+		Path:      defaultTerrainPath,
+		CreatedAt: now,
+	})
+
+	err = store.Save(*proj)
+	if err != nil {
+		return err
+	}
+
+	state.Logger.Info(
+		"terrain import completed",
+		"input", relativePath(store.Root(), absoluteTerrain),
+		"bounds", fmt.Sprintf("[%.2f, %.2f, %.2f, %.2f]", bounds[0], bounds[1], bounds[2], bounds[3]),
+		"dest", defaultTerrainPath,
+	)
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Imported terrain DTM from %s\n", relativePath(store.Root(), absoluteTerrain))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Bounds: [%.2f, %.2f, %.2f, %.2f]\n", bounds[0], bounds[1], bounds[2], bounds[3])
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Stored: %s\n", defaultTerrainPath)
+
+	return nil
 }
 
 // mergeTrafficCSV reads a CSV file and merges its properties into the normalized model.

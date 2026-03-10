@@ -80,10 +80,12 @@ func TestValidateReceiverRequiresPositiveHeightAndPointGeometry(t *testing.T) {
 
 	foundHeight := false
 	foundGeometry := false
+
 	for _, issue := range report.Errors {
 		if issue.Code == "receiver.height.invalid" {
 			foundHeight = true
 		}
+
 		if issue.Code == "receiver.geometry.invalid" {
 			foundGeometry = true
 		}

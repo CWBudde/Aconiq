@@ -38,6 +38,7 @@ func TestBenchGeneratesSummaryAndReusesCache(t *testing.T) {
 	}
 
 	summaryPath := latestBenchSummaryPath(t, cacheDir)
+
 	payload, err := os.ReadFile(summaryPath)
 	if err != nil {
 		t.Fatalf("read summary: %v", err)
@@ -82,7 +83,8 @@ func TestBenchPrunesOlderSuites(t *testing.T) {
 		"20260308T000000.000000002Z",
 		"20260308T000000.000000003Z",
 	} {
-		if err := os.MkdirAll(filepath.Join(benchRoot, suiteID), 0o755); err != nil {
+		err := os.MkdirAll(filepath.Join(benchRoot, suiteID), 0o755)
+		if err != nil {
 			t.Fatalf("create suite %s: %v", suiteID, err)
 		}
 	}
@@ -110,12 +112,14 @@ func latestBenchSummaryPath(t *testing.T, cacheDir string) string {
 	t.Helper()
 
 	benchRoot := filepath.Join(cacheDir, "bench")
+
 	entries, err := os.ReadDir(benchRoot)
 	if err != nil {
 		t.Fatalf("read bench root: %v", err)
 	}
 
 	latest := ""
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue

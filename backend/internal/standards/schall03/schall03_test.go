@@ -285,7 +285,8 @@ func TestExportResultBundle(t *testing.T) {
 func TestBuiltinDataPackValidates(t *testing.T) {
 	t.Parallel()
 
-	if err := BuiltinDataPack().Validate(); err != nil {
+	err := BuiltinDataPack().Validate()
+	if err != nil {
 		t.Fatalf("validate builtin data pack: %v", err)
 	}
 }

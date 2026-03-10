@@ -323,6 +323,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 			Code:    "bad_request",
 			Message: "request body must be valid JSON",
 		})
+
 		return
 	}
 
@@ -348,6 +349,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 			Code:    "run_failed",
 			Message: "run execution completed without creating a run record",
 		})
+
 		return
 	}
 
@@ -356,6 +358,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 
 func summarizeRun(proj project.Project, run project.Run) runSummaryResponse {
 	artifacts := make([]artifactRefResponse, 0)
+
 	for _, a := range proj.Artifacts {
 		if a.RunID != run.ID {
 			continue
@@ -410,30 +413,39 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 		if req.ScenarioID != "" {
 			args = append(args, "--scenario", req.ScenarioID)
 		}
+
 		if req.StandardID != "" {
 			args = append(args, "--standard", req.StandardID)
 		}
+
 		if req.StandardVersion != "" {
 			args = append(args, "--standard-version", req.StandardVersion)
 		}
+
 		if req.StandardProfile != "" {
 			args = append(args, "--standard-profile", req.StandardProfile)
 		}
+
 		if req.ModelPath != "" {
 			args = append(args, "--model", req.ModelPath)
 		}
+
 		if req.ReceiverMode != "" {
 			args = append(args, "--receiver-mode", req.ReceiverMode)
 		}
+
 		paramKeys := make([]string, 0, len(req.Params))
 		for key := range req.Params {
 			paramKeys = append(paramKeys, key)
 		}
+
 		slices.Sort(paramKeys)
+
 		for _, key := range paramKeys {
 			value := req.Params[key]
 			args = append(args, "--param", fmt.Sprintf("%s=%s", key, value))
 		}
+
 		for _, inputPath := range req.InputPaths {
 			args = append(args, "--input", inputPath)
 		}
@@ -453,6 +465,7 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			if message == "" {
 				message = err.Error()
 			}
+
 			return fmt.Errorf("execute run command: %s", message)
 		}
 

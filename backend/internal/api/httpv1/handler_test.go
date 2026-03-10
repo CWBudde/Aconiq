@@ -238,6 +238,7 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
+
 	store, err := projectfs.New(projectDir)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -262,6 +263,7 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 				},
 				Status: project.RunStatusCompleted,
 			})
+
 			return err
 		},
 	})
@@ -271,6 +273,7 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 		"receiver_mode": "custom"
 	}`))
 	req.Header.Set("Content-Type", "application/json")
+
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -284,6 +287,7 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 	if response.StandardID != "rls19-road" {
 		t.Fatalf("unexpected standard id: %q", response.StandardID)
 	}
+
 	if response.ReceiverMode != "custom" {
 		t.Fatalf("unexpected receiver mode: %q", response.ReceiverMode)
 	}

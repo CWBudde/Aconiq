@@ -315,8 +315,10 @@ func roundedSummary(summary Summary) map[string]any {
 			if band.UpperDBExclusive != nil {
 				item["upper_db_exclusive"] = round6(*band.UpperDBExclusive)
 			}
+
 			out = append(out, item)
 		}
+
 		return out
 	}
 

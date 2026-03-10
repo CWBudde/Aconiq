@@ -229,6 +229,7 @@ func addExposureToBands(bands []ExposureBandSummary, levelDB float64, dwellings 
 
 		band.EstimatedDwellings += dwellings
 		band.EstimatedPersons += persons
+
 		return
 	}
 }

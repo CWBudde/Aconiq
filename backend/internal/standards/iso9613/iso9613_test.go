@@ -115,23 +115,28 @@ func TestDescriptorRejectsInvalidParameterValues(t *testing.T) {
 func TestValidationRejectsInvalidTypedInputs(t *testing.T) {
 	t.Parallel()
 
-	if err := (PointSource{}).Validate(); err == nil {
+	err := (PointSource{}).Validate()
+	if err == nil {
 		t.Fatal("expected empty point source to fail validation")
 	}
 
-	if err := (Receiver{}).Validate(); err == nil {
+	err = (Receiver{}).Validate()
+	if err == nil {
 		t.Fatal("expected empty receiver to fail validation")
 	}
 
-	if err := (GroundZone{ID: "g1", Polygon: [][]geo.Point2D{{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 1, Y: 1}, {X: 0, Y: 0}}}, GroundFactor: 2}).Validate(); err == nil {
+	err = (GroundZone{ID: "g1", Polygon: [][]geo.Point2D{{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 1, Y: 1}, {X: 0, Y: 0}}}, GroundFactor: 2}).Validate()
+	if err == nil {
 		t.Fatal("expected invalid ground zone to fail validation")
 	}
 
-	if err := (Meteorology{Assumption: "bad", TemperatureC: 10, RelativeHumidityPercent: 70}).Validate(); err == nil {
+	err = (Meteorology{Assumption: "bad", TemperatureC: 10, RelativeHumidityPercent: 70}).Validate()
+	if err == nil {
 		t.Fatal("expected invalid meteorology to fail validation")
 	}
 
-	if err := (PropagationConfig{GroundFactor: -1, AirTemperatureC: 10, RelativeHumidityPercent: 70, MeteorologyAssumption: MeteorologyDownwind, MinDistanceM: 1}).Validate(); err == nil {
+	err = (PropagationConfig{GroundFactor: -1, AirTemperatureC: 10, RelativeHumidityPercent: 70, MeteorologyAssumption: MeteorologyDownwind, MinDistanceM: 1}).Validate()
+	if err == nil {
 		t.Fatal("expected invalid propagation config to fail validation")
 	}
 }
@@ -157,6 +162,7 @@ func TestComputeReceiverLevelRejectsInvalidInputs(t *testing.T) {
 	}
 
 	badSource := source
+
 	badSource.ID = ""
 	if _, err := ComputeReceiverLevel(receiver, []PointSource{badSource}, DefaultPropagationConfig()); err == nil {
 		t.Fatal("expected invalid source to fail")
