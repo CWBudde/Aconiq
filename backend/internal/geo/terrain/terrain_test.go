@@ -214,6 +214,42 @@ func TestElevationAt_OutsideBounds(t *testing.T) {
 	}
 }
 
+func TestLoadFromBytes(t *testing.T) {
+	pixels := []float32{10, 20, 30, 40}
+	data := buildMinimalGeoTIFF(2, 2, pixels, 100, 200, 10, 10)
+
+	m, err := LoadFromBytes(data)
+	if err != nil {
+		t.Fatalf("LoadFromBytes: %v", err)
+	}
+
+	info := m.Info()
+
+	if info.GridSize != [2]int{2, 2} {
+		t.Errorf("expected grid [2, 2], got %v", info.GridSize)
+	}
+
+	if info.PixelSize != [2]float64{10, 10} {
+		t.Errorf("expected pixel size [10, 10], got %v", info.PixelSize)
+	}
+
+	elev, ok := m.ElevationAt(100, 200)
+	if !ok {
+		t.Fatal("expected point inside bounds")
+	}
+
+	if elev != 10 {
+		t.Errorf("expected 10.0 at origin, got %f", elev)
+	}
+}
+
+func TestLoadFromBytes_InvalidData(t *testing.T) {
+	_, err := LoadFromBytes([]byte("not a tiff"))
+	if err == nil {
+		t.Fatal("expected error for invalid data")
+	}
+}
+
 func TestLoad_InvalidFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.tif")
 

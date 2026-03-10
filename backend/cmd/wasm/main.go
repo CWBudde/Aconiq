@@ -21,8 +21,13 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
 )
+
+// currentTerrain holds the terrain model loaded via loadTerrain().
+// It is automatically used by compute functions when non-nil.
+var currentTerrain terrain.Model
 
 type computeRequest struct {
 	Receivers []geo.PointReceiver    `json:"receivers"`
@@ -54,6 +59,11 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 			req.Config = road.DefaultPropagationConfig()
 		}
 
+		// Apply terrain elevation if a terrain model is loaded.
+		if currentTerrain != nil && len(req.Receivers) > 0 {
+			req.Config.ReceiverTerrainZ = terrainAtGridCenter(currentTerrain, req.Receivers)
+		}
+
 		outputs, err := road.ComputeReceiverOutputs(req.Receivers, req.Sources, req.Barriers, req.Config)
 		if err != nil {
 			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: computation error: %v", err)))
@@ -69,6 +79,54 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 		resolve.Invoke(js.ValueOf(string(out)))
 		return nil
 	}))
+}
+
+// loadTerrainFunc loads a GeoTIFF terrain model from a Uint8Array.
+// Returns a JSON string with terrain metadata (bounds, pixelSize, gridSize).
+func loadTerrainFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("loadTerrain: expected exactly 1 Uint8Array argument")
+	}
+
+	jsArr := args[0]
+	length := jsArr.Get("byteLength").Int()
+	buf := make([]byte, length)
+	js.CopyBytesToGo(buf, jsArr)
+
+	model, err := terrain.LoadFromBytes(buf)
+	if err != nil {
+		return jsReject(fmt.Sprintf("loadTerrain: %v", err))
+	}
+
+	currentTerrain = model
+
+	info, _ := json.Marshal(model.Info())
+
+	return js.ValueOf(string(info))
+}
+
+// clearTerrainFunc removes the currently loaded terrain model.
+func clearTerrainFunc(_ js.Value, _ []js.Value) any {
+	currentTerrain = nil
+	return js.Undefined()
+}
+
+// terrainAtGridCenter queries terrain elevation at the centroid of receivers.
+func terrainAtGridCenter(tm terrain.Model, receivers []geo.PointReceiver) float64 {
+	var sumX, sumY float64
+
+	for _, r := range receivers {
+		sumX += r.Point.X
+		sumY += r.Point.Y
+	}
+
+	n := float64(len(receivers))
+	elev, ok := tm.ElevationAt(sumX/n, sumY/n)
+	if !ok {
+		return 0
+	}
+
+	return elev
 }
 
 // defaultConfigFunc returns the default PropagationConfig as a JSON string.
@@ -123,6 +181,8 @@ func jsReject(msg string) js.Value {
 func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
+	aconiq.Set("loadTerrain", js.FuncOf(loadTerrainFunc))
+	aconiq.Set("clearTerrain", js.FuncOf(clearTerrainFunc))
 	aconiq.Set("defaultConfig", js.FuncOf(defaultConfigFunc))
 	aconiq.Set("health", js.FuncOf(healthFunc))
 	aconiq.Set("projectStatus", js.FuncOf(projectStatusFunc))

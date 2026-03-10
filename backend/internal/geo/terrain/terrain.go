@@ -16,6 +16,16 @@ type Model interface {
 
 	// Bounds returns [minX, minY, maxX, maxY] in the terrain's native CRS.
 	Bounds() [4]float64
+
+	// Info returns metadata about the terrain grid.
+	Info() Info
+}
+
+// Info describes the dimensions and geospatial extent of a terrain model.
+type Info struct {
+	Bounds    [4]float64 `json:"bounds"`     // [minX, minY, maxX, maxY]
+	PixelSize [2]float64 `json:"pixel_size"` // [sizeX, sizeY]
+	GridSize  [2]int     `json:"grid_size"`  // [width, height]
 }
 
 // Load reads a GeoTIFF elevation raster and returns a Model for querying elevations.
@@ -25,6 +35,16 @@ func Load(path string) (Model, error) {
 	grid, err := readGeoTIFF(path)
 	if err != nil {
 		return nil, fmt.Errorf("terrain: load %q: %w", path, err)
+	}
+
+	return grid, nil
+}
+
+// LoadFromBytes parses a GeoTIFF from raw bytes and returns a Model.
+func LoadFromBytes(data []byte) (Model, error) {
+	grid, err := parseGeoTIFF(data)
+	if err != nil {
+		return nil, fmt.Errorf("terrain: parse: %w", err)
 	}
 
 	return grid, nil
@@ -50,6 +70,14 @@ func (g *gridModel) Bounds() [4]float64 {
 	minY := g.originY - float64(g.height-1)*g.pixelSizeY - g.pixelSizeY/2
 
 	return [4]float64{minX, minY, maxX, maxY}
+}
+
+func (g *gridModel) Info() Info {
+	return Info{
+		Bounds:    g.Bounds(),
+		PixelSize: [2]float64{g.pixelSizeX, g.pixelSizeY},
+		GridSize:  [2]int{g.width, g.height},
+	}
 }
 
 func (g *gridModel) ElevationAt(x, y float64) (float64, bool) {

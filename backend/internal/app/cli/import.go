@@ -49,17 +49,14 @@ func newImportCommand() *cobra.Command {
 }
 
 func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
+	err := validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox)
+	if err != nil {
+		return err
+	}
+
 	state, ok := stateFromCommand(cmd)
 	if !ok {
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "command state unavailable", nil)
-	}
-
-	if osmBBox != "" && inputPath != "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --input", nil)
-	}
-
-	if inputPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-osm, --terrain, or --traffic is required", nil)
 	}
 
 	store, err := projectfs.New(state.Config.ProjectPath)
@@ -77,30 +74,31 @@ func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, terrainPat
 	dumpPath := filepath.Join(modelDir, "model.dump.json")
 	reportPath := filepath.Join(modelDir, "validation-report.json")
 
-	if osmBBox != "" {
+	switch {
+	case osmBBox != "":
 		err = runOSMImport(cmd, state, store, &proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
-		if err != nil {
-			return err
-		}
-	} else if inputPath != "" {
+	case inputPath != "":
 		err = runGeometryImport(cmd, state, store, &proj, inputPath, layerName, normalizedPath, dumpPath, reportPath)
-		if err != nil {
-			return err
-		}
 	}
 
-	if trafficPath != "" {
+	if err == nil && trafficPath != "" {
 		err = mergeTrafficCSV(cmd, state, trafficPath, normalizedPath, dumpPath, store.Root())
-		if err != nil {
-			return err
-		}
 	}
 
-	if terrainPath != "" {
+	if err == nil && terrainPath != "" {
 		err = runTerrainImport(cmd, state, store, &proj, terrainPath)
-		if err != nil {
-			return err
-		}
+	}
+
+	return err
+}
+
+func validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox string) error {
+	if osmBBox != "" && inputPath != "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --input", nil)
+	}
+
+	if inputPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-osm, --terrain, or --traffic is required", nil)
 	}
 
 	return nil

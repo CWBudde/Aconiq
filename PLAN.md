@@ -556,7 +556,7 @@ Status: complete.
 - [x] GeoPackage importer
 - [x] FlatGeobuf importer
 - [x] CSV traffic/time tables importer
-- [ ] Terrain/DTM import (deferred)
+- [x] Terrain/DTM import (GeoTIFF elevation data)
 - [ ] Building footprints/import pipelines beyond GeoJSON (deferred)
 
 For GeoPackage importer:
@@ -577,7 +577,15 @@ For FlatGeobuf importer:
 - [x] Implement import + validation
 - [x] Add roundtrip tests
 
-For each remaining importer (Terrain/DTM, Building footprints):
+For Terrain/DTM import:
+
+- [x] Custom GeoTIFF reader (no cgo, supports strip/tile, float/int, deflate)
+- [x] terrain.Model interface with bilinear-interpolated elevation queries
+- [x] CLI `--terrain` flag on `noise import`
+- [x] Run-time terrain loading from project artifacts
+- [x] Wire terrain elevation into RLS-19 PropagationConfig.ReceiverTerrainZ
+
+For each remaining importer (Building footprints):
 
 - [ ] Define schema + units
 - [ ] Implement import + validation
