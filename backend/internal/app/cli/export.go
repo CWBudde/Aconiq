@@ -175,6 +175,7 @@ func newExportCommand() *cobra.Command {
 				}
 
 				summary.GeneratedReports = dedupeAndSort(generatedReports)
+
 				reportArtifacts = append(
 					reportArtifacts,
 					project.ArtifactRef{

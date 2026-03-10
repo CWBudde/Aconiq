@@ -84,7 +84,8 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		x := index % gridWidth
 		y := index / gridWidth
 
-		if err := raster.Set(x, y, 0, output.Indicators.LpAeq); err != nil {
+		err := raster.Set(x, y, 0, output.Indicators.LpAeq)
+		if err != nil {
 			return ExportOutputs{}, err
 		}
 	}

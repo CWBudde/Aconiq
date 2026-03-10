@@ -384,6 +384,7 @@ func computeOrLoadChunk(
 	sharedChunksDir string,
 ) ([]ReceiverResult, bool, error) {
 	runCachePath := filepath.Join(runChunksDir, fmt.Sprintf("chunk-%06d.json", chunk.Index))
+
 	sharedCachePath, err := sharedChunkCachePath(sharedChunksDir, cfg, chunk)
 	if err != nil {
 		return nil, false, err
@@ -634,6 +635,7 @@ func pruneRunCacheDirs(cacheRoot string, currentRunID string, keepLast int) erro
 	}
 
 	slices.Sort(runIDs)
+
 	if len(runIDs) <= keepLast {
 		return nil
 	}
@@ -644,6 +646,7 @@ func pruneRunCacheDirs(cacheRoot string, currentRunID string, keepLast int) erro
 		}
 
 		path := filepath.Join(cacheRoot, runID)
+
 		err := os.RemoveAll(path)
 		if err != nil {
 			return fmt.Errorf("remove stale run cache %s: %w", path, err)

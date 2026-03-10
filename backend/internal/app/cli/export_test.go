@@ -162,6 +162,7 @@ func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
 
 	projectDir := t.TempDir()
 	modelPath := filepath.Join(projectDir, "rls19_custom_receivers.geojson")
+
 	payload := []byte(`{
   "type": "FeatureCollection",
   "features": [

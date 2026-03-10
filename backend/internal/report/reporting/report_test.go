@@ -284,6 +284,7 @@ func (s *stubPDFCompiler) Compile(input io.Reader, output io.Writer, options *ty
 	s.input = string(payload)
 
 	_, err = bytes.NewBufferString("%PDF-stub").WriteTo(output)
+
 	return err
 }
 

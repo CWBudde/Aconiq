@@ -20,7 +20,8 @@ type ReceiverOutput struct {
 
 // ComputeReceiverLevel computes the combined receiver level for one receiver.
 func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, error) {
-	if err := cfg.Validate(); err != nil {
+	err := cfg.Validate()
+	if err != nil {
 		return 0, err
 	}
 

@@ -198,7 +198,8 @@ func TestRunISO9613ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 
 	var provenance project.ProvenanceManifest
 
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+	err := json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -975,6 +976,7 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 
 	projectDir := t.TempDir()
 	modelPath := filepath.Join(projectDir, "rls19_custom_receivers.geojson")
+
 	payload := []byte(`{
   "type": "FeatureCollection",
   "features": [
@@ -1017,6 +1019,7 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	if run.ReceiverMode != "custom" {
 		t.Fatalf("expected custom receiver mode, got %q", run.ReceiverMode)
 	}
+
 	if run.ReceiverSetID != "explicit-manual" {
 		t.Fatalf("expected explicit receiver set id, got %q", run.ReceiverSetID)
 	}
@@ -1029,6 +1032,7 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected no raster metadata for custom receiver run, got err=%v", err)
 	}
+
 	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.bin")); !os.IsNotExist(err) {
 		t.Fatalf("expected no raster data for custom receiver run, got err=%v", err)
 	}
@@ -1042,9 +1046,11 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	if err := json.Unmarshal(receiverPayload, &table); err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
+
 	if len(table.Records) != 2 {
 		t.Fatalf("expected 2 explicit receivers, got %d", len(table.Records))
 	}
+
 	if table.Records[0].ID != "rcv-1" || table.Records[1].ID != "rcv-2" {
 		t.Fatalf("unexpected receiver ordering: %#v", table.Records)
 	}
@@ -1058,9 +1064,11 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
 		t.Fatalf("decode summary: %v", err)
 	}
+
 	if summary["receiver_mode"] != "custom" {
 		t.Fatalf("unexpected receiver_mode in summary: %#v", summary)
 	}
+
 	if _, ok := summary["grid_width"]; ok {
 		t.Fatalf("did not expect grid_width in custom receiver summary: %#v", summary)
 	}
@@ -1074,6 +1082,7 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
+
 	if provenance.ReceiverMode != "custom" {
 		t.Fatalf("expected custom receiver mode in provenance, got %q", provenance.ReceiverMode)
 	}
@@ -1084,6 +1093,7 @@ func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
 
 	projectDir := t.TempDir()
 	modelPath := filepath.Join(projectDir, "rls19_receiver_heights.geojson")
+
 	payload := []byte(`{
   "type": "FeatureCollection",
   "features": [
@@ -1128,6 +1138,7 @@ func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
 	}
 
 	run := proj.Runs[len(proj.Runs)-1]
+
 	receiverPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "receivers.json"))
 	if err != nil {
 		t.Fatalf("read receiver table: %v", err)
@@ -1248,6 +1259,7 @@ func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
 
 	projectDir := t.TempDir()
 	modelPath := filepath.Join(projectDir, "rls19_per_source.geojson")
+
 	payload := []byte(`{
   "type": "FeatureCollection",
   "features": [

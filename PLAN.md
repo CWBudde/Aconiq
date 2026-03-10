@@ -585,6 +585,34 @@ For each remaining importer (Terrain/DTM, Building footprints):
 
 ---
 
+## Phase 34b — Deferred: CityGML import
+
+**Goal:** ingest CityGML building and terrain context into the normalized project model without blocking the GeoJSON-first workflow.
+
+- [ ] Define the first supported CityGML scope
+  - [ ] Decide which CityGML versions/profiles are accepted first (`2.0`, `3.0`, or both)
+  - [x] Limit the first delivery to the minimum useful feature set (for example buildings only, or buildings + terrain)
+  - [ ] Define the CRS / axis-order normalization rules and how unsupported SRS declarations fail
+- [ ] Define CityGML → Aconiq mapping rules
+  - [x] Map building solids / surfaces into normalized building footprints and `height_m`
+  - [ ] Decide how terrain surfaces, barriers, bridges, and tunnels are handled or explicitly deferred
+  - [ ] Document attribute extraction rules for IDs, heights, usage classes, and missing-value fallbacks
+- [ ] Implement importer package
+  - [x] Add `backend/internal/io/citygmlimport`
+  - [x] Parse CityGML XML safely with deterministic feature ordering
+  - [x] Convert supported features into the normalized GeoJSON model contract used by `noise import`
+  - [ ] Emit actionable validation errors for unsupported geometries, CRS issues, and malformed input
+- [ ] Wire CityGML into the CLI import flow
+  - [x] Add format detection for CityGML inputs
+  - [x] Persist normalized-model debug exports and validation reports the same way as other importers
+  - [ ] Ensure imported features remain compatible with standards-specific extraction already used by runs
+- [ ] Add verification coverage
+  - [x] Add repo-safe CityGML fixtures
+  - [x] Add importer unit tests and roundtrip/normalization snapshots
+  - [x] Add at least one E2E CLI import test
+
+---
+
 ## Phase 35 — OSM/Overpass import (`noise import --from-osm`, deferred, requires internet)
 
 **Goal:** bootstrap scene geometry from OpenStreetMap without manual data preparation.

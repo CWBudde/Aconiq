@@ -4,7 +4,8 @@ import "math"
 
 // ComputeEmission returns the A-weighted source emission level for one point source.
 func ComputeEmission(source PointSource) (float64, error) {
-	if err := source.Validate(); err != nil {
+	err := source.Validate()
+	if err != nil {
 		return 0, err
 	}
 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0"
+                xmlns:bldg="http://www.opengis.net/citygml/building/2.0"
+                xmlns:gml="http://www.opengis.net/gml">
+  <core:cityObjectMember>
+    <bldg:Building gml:id="bldg-1">
+      <bldg:measuredHeight>12</bldg:measuredHeight>
+      <bldg:lod1Solid>
+        <gml:Solid>
+          <gml:exterior>
+            <gml:CompositeSurface>
+              <gml:surfaceMember>
+                <gml:Polygon gml:id="ground">
+                  <gml:exterior>
+                    <gml:LinearRing>
+                      <gml:posList>
+                        350000 5800000 100 350010 5800000 100 350010 5800010 100 350000 5800010 100 350000 5800000 100
+                      </gml:posList>
+                    </gml:LinearRing>
+                  </gml:exterior>
+                </gml:Polygon>
+              </gml:surfaceMember>
+              <gml:surfaceMember>
+                <gml:Polygon gml:id="roof">
+                  <gml:exterior>
+                    <gml:LinearRing>
+                      <gml:posList>
+                        350000 5800000 112 350010 5800000 112 350010 5800010 112 350000 5800010 112 350000 5800000 112
+                      </gml:posList>
+                    </gml:LinearRing>
+                  </gml:exterior>
+                </gml:Polygon>
+              </gml:surfaceMember>
+            </gml:CompositeSurface>
+          </gml:exterior>
+        </gml:Solid>
+      </bldg:lod1Solid>
+    </bldg:Building>
+  </core:cityObjectMember>
+</core:CityModel>
