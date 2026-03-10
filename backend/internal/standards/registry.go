@@ -12,6 +12,7 @@ import (
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 	"github.com/aconiq/backend/internal/standards/framework"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
@@ -29,6 +30,7 @@ func NewRegistry() (framework.Registry, error) {
 		cnossosroad.Descriptor(),
 		rail.Descriptor(),
 		industry.Descriptor(),
+		iso9613.Descriptor(),
 		rls19road.Descriptor(),
 		schall03.Descriptor(),
 	)

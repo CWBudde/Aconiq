@@ -352,6 +352,7 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 
 	found := false
 	foundSchall03 := false
+	foundISO9613 := false
 
 	for _, s := range response {
 		if s.ID == "rls19-road" {
@@ -381,6 +382,18 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 				t.Fatalf("schall03: unexpected context %q", s.Context)
 			}
 		}
+
+		if s.ID == "iso9613" {
+			foundISO9613 = true
+
+			if len(s.Versions) == 0 {
+				t.Fatal("iso9613: expected at least one version")
+			}
+
+			if s.Context != "planning" {
+				t.Fatalf("iso9613: unexpected context %q", s.Context)
+			}
+		}
 	}
 
 	if !found {
@@ -389,6 +402,10 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 
 	if !foundSchall03 {
 		t.Fatal("expected schall03 in standards list")
+	}
+
+	if !foundISO9613 {
+		t.Fatal("expected iso9613 in standards list")
 	}
 }
 

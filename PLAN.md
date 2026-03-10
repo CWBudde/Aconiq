@@ -240,23 +240,23 @@ Status: complete.
 ## Phase 19 — Industry (international): ISO 9613‑2 (required, deferred)
 
 - [ ] Define ISO 9613‑2 scope + compliance boundary
-  - [ ] Define first supported engineering use-case for international industry calculations
-  - [ ] Clarify whether the first delivery targets point sources only or point/line/area support
+  - [x] Define first supported engineering use-case for international industry calculations
+  - [x] Clarify whether the first delivery targets point sources only or point/line/area support
   - [ ] Ensure module separation so normative outputs stay normative and standard-specific
-  - [ ] Document compliance boundary, source material used, and what must stay external
+  - [x] Document compliance boundary, source material used, and what must stay external
 - [ ] Define ISO 9613‑2 data model and module structure
-  - [ ] Add `iso9613/` module under `backend/internal/standards/`
+  - [x] Add `iso9613/` module under `backend/internal/standards/`
   - [ ] Define typed source schemas, receiver inputs, ground/terrain inputs, and meteorological assumptions needed by the engineering method
-  - [ ] Add standards-framework descriptor with version/profile metadata, supported source types, indicators, and run parameter schema
+  - [x] Add standards-framework descriptor with version/profile metadata, supported source types, indicators, and run parameter schema
   - [ ] Define import/run mapping from normalized GeoJSON + run parameters into typed ISO 9613‑2 inputs
 - [ ] Implement ISO 9613‑2 compute chain
-  - [ ] Implement source emission interface for engineering-method sources
-  - [ ] Implement the ISO 9613‑2 propagation chain needed for the first supported scope
+  - [x] Implement source emission interface for engineering-method sources
+  - [x] Implement the ISO 9613‑2 propagation chain needed for the first supported scope
   - [ ] Keep deterministic behavior for segmenting, attenuation ordering, and energetic summation
-  - [ ] Document output rounding/reporting rules separately from internal float64 computation
+  - [x] Document output rounding/reporting rules separately from internal float64 computation
 - [ ] Wire ISO 9613‑2 into runs and exports
-  - [ ] Wire `noise run --standard iso9613` through extraction, compute, provenance, and artifact persistence
-  - [ ] Export receiver tables and rasters with consistent metadata
+  - [x] Wire `noise run --standard iso9613` through extraction, compute, provenance, and artifact persistence
+  - [x] Export receiver tables and rasters with consistent metadata
   - [ ] Ensure results remain clearly separated from CNOSSOS / national-track outputs
 - [ ] Add verification coverage
   - [ ] Add module-level unit tests for schema validation, emission, propagation, and export
