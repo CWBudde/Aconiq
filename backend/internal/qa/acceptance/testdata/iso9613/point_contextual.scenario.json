@@ -1,0 +1,49 @@
+{
+  "sources": [
+    {
+      "id": "fan-east",
+      "point": { "x": 15, "y": 5 },
+      "source_height_m": 9,
+      "sound_power_level_db": 99,
+      "directivity_correction_db": 2,
+      "tonality_correction_db": 1,
+      "impulsivity_correction_db": 0
+    },
+    {
+      "id": "stack-west",
+      "point": { "x": -20, "y": 25 },
+      "source_height_m": 18,
+      "sound_power_level_db": 104,
+      "directivity_correction_db": 0,
+      "tonality_correction_db": 0,
+      "impulsivity_correction_db": 1
+    },
+    {
+      "id": "vent-south",
+      "point": { "x": 30, "y": -25 },
+      "source_height_m": 4,
+      "sound_power_level_db": 92,
+      "directivity_correction_db": -1,
+      "tonality_correction_db": 0,
+      "impulsivity_correction_db": 0
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": -30, "y": -20 }, "height_m": 4 },
+    { "id": "r2", "point": { "x": 0, "y": -20 }, "height_m": 4 },
+    { "id": "r3", "point": { "x": 30, "y": -20 }, "height_m": 4 },
+    { "id": "r4", "point": { "x": -30, "y": 15 }, "height_m": 4 },
+    { "id": "r5", "point": { "x": 0, "y": 15 }, "height_m": 4 },
+    { "id": "r6", "point": { "x": 30, "y": 15 }, "height_m": 4 }
+  ],
+  "grid_width": 3,
+  "grid_height": 2,
+  "propagation_config": {
+    "ground_factor": 0.85,
+    "air_temperature_c": 18,
+    "relative_humidity_percent": 55,
+    "meteorology_assumption": "downwind-or-moderate-inversion",
+    "barrier_attenuation_db": 3.5,
+    "min_distance_m": 2
+  }
+}

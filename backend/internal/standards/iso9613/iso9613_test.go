@@ -3,6 +3,7 @@ package iso9613
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -85,5 +86,143 @@ func TestExportResultBundleWritesExpectedFiles(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected output file %s: %v", filepath.Base(path), err)
 		}
+	}
+}
+
+func TestDescriptorRejectsInvalidParameterValues(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := Descriptor().ResolveVersionProfile("", "")
+	if err != nil {
+		t.Fatalf("resolve descriptor: %v", err)
+	}
+
+	_, err = resolved.RunParameterSchema.NormalizeAndValidate(map[string]string{
+		"ground_factor": "1.5",
+	})
+	if err == nil || !strings.Contains(err.Error(), "ground_factor") {
+		t.Fatalf("expected ground_factor validation error, got %v", err)
+	}
+
+	_, err = resolved.RunParameterSchema.NormalizeAndValidate(map[string]string{
+		"meteorology_assumption": "unsupported",
+	})
+	if err == nil || !strings.Contains(err.Error(), "meteorology_assumption") {
+		t.Fatalf("expected meteorology_assumption validation error, got %v", err)
+	}
+}
+
+func TestValidationRejectsInvalidTypedInputs(t *testing.T) {
+	t.Parallel()
+
+	if err := (PointSource{}).Validate(); err == nil {
+		t.Fatal("expected empty point source to fail validation")
+	}
+
+	if err := (Receiver{}).Validate(); err == nil {
+		t.Fatal("expected empty receiver to fail validation")
+	}
+
+	if err := (GroundZone{ID: "g1", Polygon: [][]geo.Point2D{{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 1, Y: 1}, {X: 0, Y: 0}}}, GroundFactor: 2}).Validate(); err == nil {
+		t.Fatal("expected invalid ground zone to fail validation")
+	}
+
+	if err := (Meteorology{Assumption: "bad", TemperatureC: 10, RelativeHumidityPercent: 70}).Validate(); err == nil {
+		t.Fatal("expected invalid meteorology to fail validation")
+	}
+
+	if err := (PropagationConfig{GroundFactor: -1, AirTemperatureC: 10, RelativeHumidityPercent: 70, MeteorologyAssumption: MeteorologyDownwind, MinDistanceM: 1}).Validate(); err == nil {
+		t.Fatal("expected invalid propagation config to fail validation")
+	}
+}
+
+func TestComputeReceiverLevelRejectsInvalidInputs(t *testing.T) {
+	t.Parallel()
+
+	source := PointSource{
+		ID:                "s1",
+		Point:             geo.Point2D{X: 0, Y: 0},
+		SourceHeightM:     5,
+		SoundPowerLevelDB: 100,
+	}
+
+	receiver := geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4}
+
+	if _, err := ComputeReceiverLevel(receiver, nil, DefaultPropagationConfig()); err == nil {
+		t.Fatal("expected no-source compute to fail")
+	}
+
+	if _, err := ComputeReceiverLevel(geo.PointReceiver{}, []PointSource{source}, DefaultPropagationConfig()); err == nil {
+		t.Fatal("expected invalid receiver to fail")
+	}
+
+	badSource := source
+	badSource.ID = ""
+	if _, err := ComputeReceiverLevel(receiver, []PointSource{badSource}, DefaultPropagationConfig()); err == nil {
+		t.Fatal("expected invalid source to fail")
+	}
+}
+
+func TestBarrierAttenuationLowersLevel(t *testing.T) {
+	t.Parallel()
+
+	source := PointSource{
+		ID:                "s1",
+		Point:             geo.Point2D{X: 0, Y: 0},
+		SourceHeightM:     10,
+		SoundPowerLevelDB: 100,
+	}
+	receiver := geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 50, Y: 0}, HeightM: 4}
+
+	baseLevel, err := ComputeReceiverLevel(receiver, []PointSource{source}, DefaultPropagationConfig())
+	if err != nil {
+		t.Fatalf("compute base level: %v", err)
+	}
+
+	cfg := DefaultPropagationConfig()
+	cfg.BarrierAttenuationDB = 5
+
+	barrierLevel, err := ComputeReceiverLevel(receiver, []PointSource{source}, cfg)
+	if err != nil {
+		t.Fatalf("compute barrier level: %v", err)
+	}
+
+	if barrierLevel >= baseLevel {
+		t.Fatalf("expected barrier attenuation to reduce level: base=%v barrier=%v", baseLevel, barrierLevel)
+	}
+}
+
+func TestMinDistanceClampKeepsCloseReceiverFinite(t *testing.T) {
+	t.Parallel()
+
+	source := PointSource{
+		ID:                "s1",
+		Point:             geo.Point2D{X: 0, Y: 0},
+		SourceHeightM:     4,
+		SoundPowerLevelDB: 95,
+	}
+	receiver := geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4}
+
+	level, err := ComputeReceiverLevel(receiver, []PointSource{source}, DefaultPropagationConfig())
+	if err != nil {
+		t.Fatalf("compute level: %v", err)
+	}
+
+	if level <= -900 {
+		t.Fatalf("expected finite near-field level, got %v", level)
+	}
+}
+
+func TestExportResultBundleRejectsShapeMismatch(t *testing.T) {
+	t.Parallel()
+
+	_, err := ExportResultBundle(t.TempDir(), []ReceiverOutput{
+		{
+			Receiver:   geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4},
+			Indicators: ReceiverIndicators{LpAeq: 55},
+		},
+	}, 2, 1)
+	if err == nil || !strings.Contains(err.Error(), "do not match") {
+		t.Fatalf("expected grid shape error, got %v", err)
 	}
 }
