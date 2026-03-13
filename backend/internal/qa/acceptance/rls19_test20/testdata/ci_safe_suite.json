@@ -18,6 +18,78 @@
       }
     },
     {
+      "name": "E2-derived-surface-correction",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived surface correction scenario using OPA surface type.",
+      "scenario_path": "ci_safe/e2_surface_correction.scenario.json",
+      "expected_path": "ci_safe/e2_surface_correction.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "E3-derived-gradient-correction",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived gradient correction scenario with 5% road gradient.",
+      "scenario_path": "ci_safe/e3_gradient_correction.scenario.json",
+      "expected_path": "ci_safe/e3_gradient_correction.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "E4-derived-junction-correction",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived junction correction scenario with signalized intersection at 50m.",
+      "scenario_path": "ci_safe/e4_junction_correction.scenario.json",
+      "expected_path": "ci_safe/e4_junction_correction.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "E5-derived-reflection-surcharge",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived reflection surcharge scenario with 2.0 dB street canyon correction.",
+      "scenario_path": "ci_safe/e5_reflection_surcharge.scenario.json",
+      "expected_path": "ci_safe/e5_reflection_surcharge.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "E6-derived-vehicle-sound-power",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived single-vehicle sound power scenario with short road segment and minimal traffic.",
+      "scenario_path": "ci_safe/e6_vehicle_sound_power.scenario.json",
+      "expected_path": "ci_safe/e6_vehicle_sound_power.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "E7-derived-length-related-power",
+      "category": "emission",
+      "setting": "strict",
+      "description": "Derived length-related sound power scenario with longer road and distant receiver.",
+      "scenario_path": "ci_safe/e7_length_related_power.scenario.json",
+      "expected_path": "ci_safe/e7_length_related_power.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
       "name": "I1-derived-immission-reference",
       "category": "immission",
       "setting": "reference",

@@ -1,0 +1,38 @@
+{
+  "sources": [
+    {
+      "id": "road-e6",
+      "centerline": [
+        { "x": -1, "y": 0 },
+        { "x": 1, "y": 0 }
+      ],
+      "surface_type": "SMA",
+      "speeds": {
+        "pkw_kph": 50,
+        "lkw1_kph": 50,
+        "lkw2_kph": 50,
+        "krad_kph": 50
+      },
+      "traffic_day": {
+        "pkw_per_hour": 1,
+        "lkw1_per_hour": 0,
+        "lkw2_per_hour": 0,
+        "krad_per_hour": 0
+      },
+      "traffic_night": {
+        "pkw_per_hour": 1,
+        "lkw1_per_hour": 0,
+        "lkw2_per_hour": 0,
+        "krad_per_hour": 0
+      }
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": 0, "y": 10 }, "height_m": 4 }
+  ],
+  "propagation_config": {
+    "segment_length_m": 1,
+    "min_distance_m": 3,
+    "receiver_height_m": 4
+  }
+}
