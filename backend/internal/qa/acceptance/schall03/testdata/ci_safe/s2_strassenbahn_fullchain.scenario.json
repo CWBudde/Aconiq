@@ -1,0 +1,41 @@
+{
+  "segments": [
+    {
+      "id": "strassenbahn_track",
+      "track_centerline": [
+        {"x": 0, "y": 0},
+        {"x": 300, "y": 0}
+      ],
+      "elevation_m": 0,
+      "fahrbahn": -1,
+      "s_fahrbahn": -1,
+      "surface": 0,
+      "bridge_type": 0,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 80,
+      "operations": [
+        {
+          "train_type": "Niederflur-ET",
+          "fz_composition": [
+            {"fz": 21, "count": 1}
+          ],
+          "speed_kph": 60,
+          "trains_per_hour_day": 10,
+          "trains_per_hour_night": 5
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_25m",
+      "point": {"x": 150, "y": 25},
+      "height_m": 3.5
+    },
+    {
+      "id": "r_75m",
+      "point": {"x": 150, "y": 75},
+      "height_m": 3.5
+    }
+  ]
+}

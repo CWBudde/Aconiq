@@ -342,9 +342,11 @@ func (op TrainOperation) Validate() error {
 		return errors.New("TrainOperation: at least one FzCount entry required")
 	}
 
+	fzMap := buildFzMap()
+
 	for i, fc := range op.FzComposition {
-		if fc.Fz < 1 || fc.Fz > 10 {
-			return fmt.Errorf("TrainOperation: FzComposition[%d].Fz=%d is out of range 1-10", i, fc.Fz)
+		if _, ok := fzMap[fc.Fz]; !ok {
+			return fmt.Errorf("TrainOperation: FzComposition[%d].Fz=%d is not a valid Fz-Kategorie", i, fc.Fz)
 		}
 
 		if fc.Count < 0 {
@@ -383,9 +385,10 @@ type TrackSegment struct {
 	ID                 string           `json:"id"`
 	TrackCenterline    []geo.Point2D    `json:"track_centerline"`
 	ElevationM         float64          `json:"elevation_m"`
-	Fahrbahn           FahrbahnartType  `json:"fahrbahn"`                        // from tables.go constants
+	Fahrbahn           FahrbahnartType  `json:"fahrbahn"`                        // from tables.go constants; Eisenbahn only
+	SFahrbahn          SFahrbahnartType `json:"s_fahrbahn"`                      // from tables_strassenbahn.go constants; Strassenbahn only
 	Surface            SurfaceCondType  `json:"surface"`                         // from emission_v2.go constants
-	BridgeType         int              `json:"bridge_type"`                     // 0=none, 1-4 per Table 9
+	BridgeType         int              `json:"bridge_type"`                     // 0=none, 1-4 per Table 9 (Eisenbahn) or Table 16 (Strassenbahn)
 	BridgeMitig        bool             `json:"bridge_mitig,omitempty"`          // K_LM noise reduction
 	CurveRadiusM       float64          `json:"curve_radius_m"`                  // 0 = straight
 	IsStation          bool             `json:"is_station,omitempty"`            // speed min 70 km/h rule

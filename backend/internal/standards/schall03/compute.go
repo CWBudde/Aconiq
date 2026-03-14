@@ -29,6 +29,7 @@ func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float
 		Vehicles:     vehicles,
 		SpeedKPH:     effectiveSpeed,
 		Fahrbahn:     seg.Fahrbahn,
+		SFahrbahn:    seg.SFahrbahn,
 		Surface:      seg.Surface,
 		BridgeType:   seg.BridgeType,
 		BridgeMitig:  seg.BridgeMitig,
