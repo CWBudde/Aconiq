@@ -25,6 +25,9 @@ type Teilquelle struct {
 	HeightM    float64          // actual height above SO in meters
 	DeltaA     BeiblattSpectrum // Delta a_f octave-band difference in dB
 	AA         float64          // a_A total A-weighted level in dB
+	// B overrides the global speed-factor table lookup (Table 6) when non-nil.
+	// Strassenbahn Teilquellen set this to the Table 14 value for their Fz class.
+	B *BeiblattSpectrum
 }
 
 // FzKategorie describes one Fahrzeug-Kategorie from Beiblatt 1.
