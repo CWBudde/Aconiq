@@ -169,7 +169,7 @@ Status: **complete** (Eisenbahn Strecke scope).
 - [x] Encode Beiblatt 1 normative data: Fz-Kategorien 1–10, all Teilquellen, Table 4 Zugarten, Tables 6–9/11/17
 - [x] Normative emission chain (Gl. 1–2): multi-Teilquelle per Fz, speed factors, c1/c2/K_Br/K_L corrections
 - [x] Expand typed source model: TrainOperation with FzComposition, JSON schema for scenario files
-- [x] Normative propagation chain (Gl. 8–16): A_div, A_atm, A_gr, D_I, D_Ω, line source integration
+- [x] Normative propagation chain (Gl. 8–16): A*div, A_atm, A_gr, D_I, D*Ω, line source integration
 - [x] Barrier diffraction (Gl. 18–26): A_bar, D_z, C₂/C₃, K_met, D_refl, single/double caps
 - [x] Assessment and indicators (Gl. 29–34): Beurteilungspegel, K_S=0, L_r,Tag/L_r,Nacht
 - [x] Dedicated Schall 03 conformance runner with CI-safe synthetic test suite (4 scenarios)

@@ -35,7 +35,8 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", gridWidth, gridHeight, len(outputs))
 	}
 
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	err := os.MkdirAll(baseDir, 0o755)
+	if err != nil {
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
 
@@ -63,11 +64,13 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 	receiverJSONPath := filepath.Join(baseDir, "receivers.json")
 	receiverCSVPath := filepath.Join(baseDir, "receivers.csv")
 
-	if err := results.SaveReceiverTableJSON(receiverJSONPath, table); err != nil {
+	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
-	if err := results.SaveReceiverTableCSV(receiverCSVPath, table); err != nil {
+	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 

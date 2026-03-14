@@ -279,21 +279,25 @@ func TestRunCacheRetentionPrunesOlderRunDirectories(t *testing.T) {
 		}
 	}
 
-	if _, err := os.Stat(filepath.Join(cacheDir, "run-001")); !os.IsNotExist(err) {
+	_, err = os.Stat(filepath.Join(cacheDir, "run-001"))
+	if !os.IsNotExist(err) {
 		t.Fatalf("expected oldest run cache to be pruned, got err=%v", err)
 	}
 
 	for _, runID := range []string{"run-002", "run-003"} {
-		if _, err := os.Stat(filepath.Join(cacheDir, runID)); err != nil {
+		_, err = os.Stat(filepath.Join(cacheDir, runID))
+		if err != nil {
 			t.Fatalf("expected run cache %s to remain: %v", runID, err)
 		}
 	}
 
-	if _, err := os.Stat(filepath.Join(cacheDir, "shared-chunks")); err != nil {
+	_, err = os.Stat(filepath.Join(cacheDir, "shared-chunks"))
+	if err != nil {
 		t.Fatalf("expected shared chunk cache to remain: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(cacheDir, "bench")); err != nil {
+	_, err = os.Stat(filepath.Join(cacheDir, "bench"))
+	if err != nil {
 		t.Fatalf("expected bench cache to remain: %v", err)
 	}
 }

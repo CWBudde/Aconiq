@@ -35,7 +35,8 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 		t.Fatal("expected report path")
 	}
 
-	if _, err := os.Stat(report.ReportPath); err != nil {
+	_, err = os.Stat(report.ReportPath)
+	if err != nil {
 		t.Fatalf("expected report artifact: %v", err)
 	}
 }
@@ -114,7 +115,9 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 	}
 
 	var parsed Report
-	if err := json.Unmarshal(data, &parsed); err != nil {
+
+	err = json.Unmarshal(data, &parsed)
+	if err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
 
@@ -141,7 +144,9 @@ func TestUpdateCISafeExpectedSnapshots(t *testing.T) {
 		var scenario scenarioFile
 
 		scenarioPath := filepath.Join(suiteDir, filepath.FromSlash(task.ScenarioPath))
-		if err := decodeJSONFile(scenarioPath, &scenario); err != nil {
+
+		err := decodeJSONFile(scenarioPath, &scenario)
+		if err != nil {
 			t.Fatalf("decode scenario %s: %v", task.Name, err)
 		}
 
@@ -156,9 +161,11 @@ func TestUpdateCISafeExpectedSnapshots(t *testing.T) {
 		}
 
 		expectedPath := filepath.Join(suiteDir, filepath.FromSlash(task.ExpectedPath))
-		if err := writeJSONFile(expectedPath, expectedSnapshotFile{
+
+		err = writeJSONFile(expectedPath, expectedSnapshotFile{
 			Receivers: snapshotsFromOutputs(outputs),
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatalf("write expected snapshot %s: %v", task.Name, err)
 		}
 	}

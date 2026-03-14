@@ -153,18 +153,22 @@ func TestComputeReceiverLevelRejectsInvalidInputs(t *testing.T) {
 
 	receiver := geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4}
 
-	if _, err := ComputeReceiverLevel(receiver, nil, DefaultPropagationConfig()); err == nil {
+	_, err := ComputeReceiverLevel(receiver, nil, DefaultPropagationConfig())
+	if err == nil {
 		t.Fatal("expected no-source compute to fail")
 	}
 
-	if _, err := ComputeReceiverLevel(geo.PointReceiver{}, []PointSource{source}, DefaultPropagationConfig()); err == nil {
+	_, err = ComputeReceiverLevel(geo.PointReceiver{}, []PointSource{source}, DefaultPropagationConfig())
+	if err == nil {
 		t.Fatal("expected invalid receiver to fail")
 	}
 
 	badSource := source
 
 	badSource.ID = ""
-	if _, err := ComputeReceiverLevel(receiver, []PointSource{badSource}, DefaultPropagationConfig()); err == nil {
+
+	_, err = ComputeReceiverLevel(receiver, []PointSource{badSource}, DefaultPropagationConfig())
+	if err == nil {
 		t.Fatal("expected invalid source to fail")
 	}
 }

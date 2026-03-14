@@ -248,7 +248,9 @@ func resolveManifestPath(mode string, localSuiteDir string) (string, string, err
 		}
 
 		manifestPath := filepath.Join(trimmed, localSuiteManifestName)
-		if _, err := os.Stat(manifestPath); err != nil {
+
+		_, err := os.Stat(manifestPath)
+		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return "", "local suite mode requested but suite manifest was not found: " + manifestPath, nil
 			}
@@ -289,7 +291,9 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 	scenarioPath := filepath.Join(suiteDir, filepath.FromSlash(task.ScenarioPath))
 
 	var scenario scenarioFile
-	if err := decodeJSONFile(scenarioPath, &scenario); err != nil {
+
+	err := decodeJSONFile(scenarioPath, &scenario)
+	if err != nil {
 		return TaskResult{}, err
 	}
 
@@ -316,7 +320,9 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 	expectedPath := filepath.Join(suiteDir, filepath.FromSlash(task.ExpectedPath))
 
 	var expected expectedSnapshotFile
-	if err := decodeJSONFile(expectedPath, &expected); err != nil {
+
+	err = decodeJSONFile(expectedPath, &expected)
+	if err != nil {
 		return TaskResult{}, err
 	}
 
@@ -427,7 +433,8 @@ func decodeJSONFile(path string, target any) error {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 
-	if err := json.Unmarshal(payload, target); err != nil {
+	err = json.Unmarshal(payload, target)
+	if err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 
@@ -442,11 +449,13 @@ func writeJSONFile(path string, value any) error {
 
 	payload = append(payload, '\n')
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	err = os.WriteFile(path, payload, 0o644)
+	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 

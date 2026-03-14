@@ -58,13 +58,13 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 
 ### Not yet supported (deferred)
 
-| Feature | Reason deferred |
-|---------|----------------|
-| Straßenbahnen (Fz 21–23, Beiblatt 2) | Phase 20a |
-| Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3) | Phase 20b |
-| Image-source reflections (Gl. 27–28, Table 18) | Phase 20c |
-| Ground correction for water bodies A_gr,W (Gl. 16) | **Implemented** (see Propagation chain above) |
-| Section 9 measurement-based vehicle data | Out of scope |
+| Feature                                              | Reason deferred                               |
+| ---------------------------------------------------- | --------------------------------------------- |
+| Straßenbahnen (Fz 21–23, Beiblatt 2)                 | Phase 20a                                     |
+| Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3) | Phase 20b                                     |
+| Image-source reflections (Gl. 27–28, Table 18)       | Phase 20c                                     |
+| Ground correction for water bodies A_gr,W (Gl. 16)   | **Implemented** (see Propagation chain above) |
+| Section 9 measurement-based vehicle data             | Out of scope                                  |
 
 ## Evidence
 

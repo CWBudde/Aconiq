@@ -51,11 +51,13 @@ func TestBBoxUtilities(t *testing.T) {
 func TestNewBBoxErrors(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NewBBox(math.NaN(), 0, 1, 1); err == nil {
+	_, err := NewBBox(math.NaN(), 0, 1, 1)
+	if err == nil {
 		t.Fatal("expected non-finite bbox error")
 	}
 
-	if _, err := NewBBox(2, 0, 1, 1); err == nil {
+	_, err = NewBBox(2, 0, 1, 1)
+	if err == nil {
 		t.Fatal("expected invalid bbox error")
 	}
 }

@@ -157,7 +157,8 @@ func ComputeReceiverPeriodLevels(receiver geo.PointReceiver, sources []AircraftS
 	nightContrib := make([]float64, 0, len(sources))
 
 	for _, source := range sources {
-		if err := source.Validate(); err != nil {
+		err := source.Validate()
+		if err != nil {
 			return PeriodLevels{}, err
 		}
 

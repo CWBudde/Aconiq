@@ -294,7 +294,8 @@ func TestGoldenScenario(t *testing.T) {
 		t.Fatalf("read scenario: %v", err)
 	}
 
-	if err := json.Unmarshal(payload, &scenario); err != nil {
+	err = json.Unmarshal(payload, &scenario)
+	if err != nil {
 		t.Fatalf("decode scenario: %v", err)
 	}
 

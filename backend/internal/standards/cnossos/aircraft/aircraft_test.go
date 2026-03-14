@@ -197,7 +197,8 @@ func TestAircraftExportResultBundle(t *testing.T) {
 	}
 
 	for _, path := range []string{exported.ReceiverJSONPath, exported.ReceiverCSVPath, exported.RasterMetaPath, exported.RasterDataPath} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected exported file %s: %v", path, err)
 		}
 	}
@@ -227,7 +228,8 @@ func TestAircraftGoldenScenario(t *testing.T) {
 		t.Fatalf("read aircraft scenario: %v", err)
 	}
 
-	if err := json.Unmarshal(payload, &scenario); err != nil {
+	err = json.Unmarshal(payload, &scenario)
+	if err != nil {
 		t.Fatalf("decode aircraft scenario: %v", err)
 	}
 

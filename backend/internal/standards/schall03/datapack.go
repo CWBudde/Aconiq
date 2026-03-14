@@ -109,11 +109,14 @@ func LoadDataPack(path string) (DataPack, error) {
 	}
 
 	var pack DataPack
-	if err := json.Unmarshal(payload, &pack); err != nil {
+
+	err = json.Unmarshal(payload, &pack)
+	if err != nil {
 		return DataPack{}, fmt.Errorf("decode Schall 03 data pack: %w", err)
 	}
 
-	if err := pack.Validate(); err != nil {
+	err = pack.Validate()
+	if err != nil {
 		return DataPack{}, err
 	}
 

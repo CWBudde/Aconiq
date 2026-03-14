@@ -20,7 +20,8 @@ func ComputeEmissionWithDataPack(source RailSource, pack DataPack) (periodEmissi
 		return periodEmission{}, err
 	}
 
-	if err := pack.Validate(); err != nil {
+	err = pack.Validate()
+	if err != nil {
 		return periodEmission{}, err
 	}
 

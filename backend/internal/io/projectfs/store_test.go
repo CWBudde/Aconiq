@@ -81,7 +81,8 @@ func TestStoreAccessorsAndExists(t *testing.T) {
 		t.Fatal("expected manifest to be absent before init")
 	}
 
-	if _, err := store.Init("", ""); err != nil {
+	_, err = store.Init("", "")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
@@ -98,7 +99,8 @@ func TestStoreAccessorsAndExists(t *testing.T) {
 func TestNewRequiresProjectPath(t *testing.T) {
 	t.Parallel()
 
-	if _, err := New(""); err == nil {
+	_, err := New("")
+	if err == nil {
 		t.Fatal("expected missing path error")
 	}
 }
@@ -113,11 +115,13 @@ func TestInitRejectsAlreadyInitializedProject(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("Demo", "EPSG:25832"); err != nil {
+	_, err = store.Init("Demo", "EPSG:25832")
+	if err != nil {
 		t.Fatalf("initial init: %v", err)
 	}
 
-	if _, err := store.Init("Again", "EPSG:25832"); err == nil {
+	_, err = store.Init("Again", "EPSG:25832")
+	if err == nil {
 		t.Fatal("expected already initialized error")
 	}
 }
@@ -132,7 +136,8 @@ func TestLoadErrors(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Load(); err == nil {
+	_, err = store.Load()
+	if err == nil {
 		t.Fatal("expected missing manifest error")
 	} else {
 		var appErr *domainerrors.AppError
@@ -141,15 +146,18 @@ func TestLoadErrors(t *testing.T) {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(store.ManifestPath()), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(store.ManifestPath()), 0o755)
+	if err != nil {
 		t.Fatalf("mkdir manifest dir: %v", err)
 	}
 
-	if err := os.WriteFile(store.ManifestPath(), []byte("{not-json"), 0o644); err != nil {
+	err = os.WriteFile(store.ManifestPath(), []byte("{not-json"), 0o644)
+	if err != nil {
 		t.Fatalf("write invalid manifest: %v", err)
 	}
 
-	if _, err := store.Load(); err == nil {
+	_, err = store.Load()
+	if err == nil {
 		t.Fatal("expected decode error")
 	} else {
 		var appErr *domainerrors.AppError
@@ -165,11 +173,13 @@ func TestLoadErrors(t *testing.T) {
 		t.Fatalf("marshal invalid manifest: %v", err)
 	}
 
-	if err := os.WriteFile(store.ManifestPath(), payload, 0o644); err != nil {
+	err = os.WriteFile(store.ManifestPath(), payload, 0o644)
+	if err != nil {
 		t.Fatalf("write invalid-version manifest: %v", err)
 	}
 
-	if _, err := store.Load(); err == nil {
+	_, err = store.Load()
+	if err == nil {
 		t.Fatal("expected manifest version error")
 	}
 }
@@ -194,7 +204,8 @@ func TestSaveCreatesManifestDirectory(t *testing.T) {
 		t.Fatalf("save project: %v", err)
 	}
 
-	if _, err := os.Stat(store.ManifestPath()); err != nil {
+	_, err = os.Stat(store.ManifestPath())
+	if err != nil {
 		t.Fatalf("expected manifest file: %v", err)
 	}
 }
@@ -294,7 +305,8 @@ func TestCreateRunDefaultsAndErrors(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, _, err := store.CreateRun(CreateRunSpec{}); err == nil {
+	_, _, err = store.CreateRun(CreateRunSpec{})
+	if err == nil {
 		t.Fatal("expected create run to fail before init")
 	}
 
@@ -340,22 +352,28 @@ func TestCreateRunDefaultsAndErrors(t *testing.T) {
 	missingScenarioProj := proj
 
 	missingScenarioProj.Scenarios = nil
-	if err := store.Save(missingScenarioProj); err != nil {
+
+	err = store.Save(missingScenarioProj)
+	if err != nil {
 		t.Fatalf("save missing-scenario manifest: %v", err)
 	}
 
-	if _, _, err := store.CreateRun(CreateRunSpec{ScenarioID: "missing"}); err == nil {
+	_, _, err = store.CreateRun(CreateRunSpec{ScenarioID: "missing"})
+	if err == nil {
 		t.Fatal("expected missing scenario error")
 	}
 
 	unassignedProj := proj
 
 	unassignedProj.Scenarios[0].Standard = project.StandardRef{}
-	if err := store.Save(unassignedProj); err != nil {
+
+	err = store.Save(unassignedProj)
+	if err != nil {
 		t.Fatalf("save unassigned manifest: %v", err)
 	}
 
-	if _, _, err := store.CreateRun(CreateRunSpec{}); err == nil {
+	_, _, err = store.CreateRun(CreateRunSpec{})
+	if err == nil {
 		t.Fatal("expected missing standard error")
 	}
 }
@@ -370,7 +388,8 @@ func TestCreateRunInputHashErrors(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 
-	if _, err := store.Init("", ""); err != nil {
+	_, err = store.Init("", "")
+	if err != nil {
 		t.Fatalf("init project: %v", err)
 	}
 
