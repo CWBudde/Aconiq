@@ -1,0 +1,59 @@
+{
+  "sources": [
+    {
+      "id": "road-i4",
+      "centerline": [
+        { "x": -50, "y": 0 },
+        { "x": 50, "y": 0 }
+      ],
+      "surface_type": "SMA",
+      "speeds": {
+        "pkw_kph": 100,
+        "lkw1_kph": 80,
+        "lkw2_kph": 70,
+        "krad_kph": 100
+      },
+      "traffic_day": {
+        "pkw_per_hour": 900,
+        "lkw1_per_hour": 40,
+        "lkw2_per_hour": 60,
+        "krad_per_hour": 10
+      },
+      "traffic_night": {
+        "pkw_per_hour": 200,
+        "lkw1_per_hour": 10,
+        "lkw2_per_hour": 20,
+        "krad_per_hour": 2
+      }
+    }
+  ],
+  "barriers": [
+    {
+      "id": "barrier-1",
+      "geometry": [
+        { "x": -60, "y": 15 },
+        { "x": 60, "y": 15 }
+      ],
+      "height_m": 4
+    }
+  ],
+  "receivers": [
+    { "id": "r1", "point": { "x": 0, "y": 40 }, "height_m": 4 }
+  ],
+  "propagation_config": {
+    "segment_length_m": 1,
+    "min_distance_m": 3,
+    "receiver_height_m": 4,
+    "reflectors": [
+      {
+        "id": "wall-1",
+        "geometry": [
+          { "x": -60, "y": -10 },
+          { "x": 60, "y": -10 }
+        ],
+        "height_m": 8,
+        "reflection_loss_db": 1
+      }
+    ]
+  }
+}
