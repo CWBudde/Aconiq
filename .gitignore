@@ -31,3 +31,5 @@ tmp/
 docs/research/external/**
 !docs/research/external/
 !docs/research/external/README.md
+
+docs/*.pdf
