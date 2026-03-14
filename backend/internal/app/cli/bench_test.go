@@ -46,6 +46,7 @@ func TestBenchGeneratesSummaryAndReusesCache(t *testing.T) {
 	}
 
 	var summary benchSummary
+
 	err = json.Unmarshal(payload, &summary)
 	if err != nil {
 		t.Fatalf("decode summary: %v", err)

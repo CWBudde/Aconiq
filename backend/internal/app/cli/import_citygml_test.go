@@ -24,6 +24,7 @@ func TestImportCityGMLWritesNormalizedBuildingModel(t *testing.T) {
 	}
 
 	var fc modelgeojson.FeatureCollection
+
 	err = json.Unmarshal(payload, &fc)
 	if err != nil {
 		t.Fatalf("decode normalized model: %v", err)
