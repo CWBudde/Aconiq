@@ -18,11 +18,11 @@ Full title:
 
 The suite is structured into three categories:
 
-| Category | Tasks | Scope |
-|----------|-------|-------|
-| Emission (E) | E1 -- E7 | Emission level calculations in isolation |
-| Immission (I) | I1 -- I9 | Propagation in reference and check settings |
-| Complex (K) | K1 -- K4 | Full urban scenarios with multiple sources and obstacles |
+| Category      | Tasks    | Scope                                                    |
+| ------------- | -------- | -------------------------------------------------------- |
+| Emission (E)  | E1 -- E7 | Emission level calculations in isolation                 |
+| Immission (I) | I1 -- I9 | Propagation in reference and check settings              |
+| Complex (K)   | K1 -- K4 | Full urban scenarios with multiple sources and obstacles |
 
 Each task defines input geometry, source parameters, and expected output levels.
 A conformance declaration form is provided alongside the tasks PDF for vendors to
@@ -140,10 +140,10 @@ The reasons are:
 We adopt a two-tier validation approach that achieves full coverage without
 redistributing any copyrighted material:
 
-| Tier | Location | Content | CI-safe? |
-|------|----------|---------|----------|
-| CI-safe suite | In-repo (`testdata/ci_safe/`) | Repo-authored scenarios covering every TEST-20 category with independent geometry | Yes |
-| Local suite | Outside repo | Extracted TEST-20 tasks from lawfully obtained PDF | No (opt-in) |
+| Tier          | Location                      | Content                                                                           | CI-safe?    |
+| ------------- | ----------------------------- | --------------------------------------------------------------------------------- | ----------- |
+| CI-safe suite | In-repo (`testdata/ci_safe/`) | Repo-authored scenarios covering every TEST-20 category with independent geometry | Yes         |
+| Local suite   | Outside repo                  | Extracted TEST-20 tasks from lawfully obtained PDF                                | No (opt-in) |
 
 ### CI-Safe Suite (Tier 1)
 

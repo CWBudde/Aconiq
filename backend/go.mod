@@ -11,6 +11,8 @@ require (
 	modernc.org/sqlite v1.46.1
 )
 
+require github.com/wroge/wgs84 v1.1.7
+
 require (
 	github.com/cwbudde/go-citygml v0.1.0
 	github.com/dustin/go-humanize v1.0.1 // indirect

@@ -15,12 +15,28 @@ import (
 	"github.com/cwbudde/go-citygml/types"
 )
 
+// ReadResult holds the result of reading a CityGML document.
+type ReadResult struct {
+	Collection modelgeojson.FeatureCollection
+	EPSGCode   int // 0 if CRS could not be determined
+}
+
 // Read reads a CityGML document and returns a GeoJSON-compatible
 // FeatureCollection ready for Normalize.
 func Read(data []byte) (modelgeojson.FeatureCollection, error) {
+	result, err := ReadWithCRS(data)
+	if err != nil {
+		return modelgeojson.FeatureCollection{}, err
+	}
+
+	return result.Collection, nil
+}
+
+// ReadWithCRS reads a CityGML document and also extracts the CRS from the document's srsName.
+func ReadWithCRS(data []byte) (ReadResult, error) {
 	doc, err := citygml.Read(bytes.NewReader(data), citygml.Options{})
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, fmt.Errorf("citygml: %w", err)
+		return ReadResult{}, fmt.Errorf("citygml: %w", err)
 	}
 
 	features := make([]modelgeojson.GeoJSONFeature, 0, len(doc.Buildings))
@@ -35,12 +51,15 @@ func Read(data []byte) (modelgeojson.FeatureCollection, error) {
 	}
 
 	if len(features) == 0 {
-		return modelgeojson.FeatureCollection{}, errors.New("citygml: no supported building features found")
+		return ReadResult{}, errors.New("citygml: no supported building features found")
 	}
 
-	return modelgeojson.FeatureCollection{
-		Type:     "FeatureCollection",
-		Features: features,
+	return ReadResult{
+		Collection: modelgeojson.FeatureCollection{
+			Type:     "FeatureCollection",
+			Features: features,
+		},
+		EPSGCode: doc.CRS.Code,
 	}, nil
 }
 

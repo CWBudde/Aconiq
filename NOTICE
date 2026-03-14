@@ -1,0 +1,64 @@
+Aconiq — Environmental Noise Modeling System
+Copyright (c) 2026 Aconiq Contributors
+
+This product is licensed under the MIT License. See LICENSE for the full text.
+
+This product includes third-party software with the following licenses:
+
+────────────────────────────────────────────────────────────────────────────────
+MPL-2.0 (Mozilla Public License 2.0)
+────────────────────────────────────────────────────────────────────────────────
+
+github.com/hashicorp/golang-lru/v2
+  Copyright (c) HashiCorp, Inc.
+  Licensed under the Mozilla Public License 2.0.
+  https://github.com/hashicorp/golang-lru/blob/main/LICENSE
+
+────────────────────────────────────────────────────────────────────────────────
+MIT License
+────────────────────────────────────────────────────────────────────────────────
+
+github.com/Dadido3/go-typst          — MIT
+github.com/MeKo-Christian/go-overpass — MIT
+github.com/cwbudde/go-citygml        — MIT
+github.com/gogama/flatgeobuf         — MIT
+github.com/smasher164/xid            — MIT
+github.com/wroge/wgs84               — MIT
+github.com/inconshreveable/mousetrap — Apache-2.0
+github.com/mattn/go-isatty           — MIT
+github.com/spf13/cobra               — Apache-2.0
+github.com/spf13/pflag               — BSD-3-Clause
+
+────────────────────────────────────────────────────────────────────────────────
+BSD-3-Clause / BSD-2-Clause
+────────────────────────────────────────────────────────────────────────────────
+
+modernc.org/sqlite                    — BSD-3-Clause
+modernc.org/libc                      — BSD-3-Clause
+modernc.org/cc/v4                     — BSD-3-Clause
+modernc.org/memory                    — BSD-3-Clause
+github.com/google/flatbuffers        — Apache-2.0
+github.com/google/go-cmp             — BSD-3-Clause
+github.com/google/uuid               — BSD-3-Clause
+github.com/dustin/go-humanize        — MIT
+github.com/russross/blackfriday/v2   — BSD-2-Clause
+github.com/pmezard/go-difflib        — BSD-3-Clause
+github.com/davecgh/go-spew           — ISC
+
+────────────────────────────────────────────────────────────────────────────────
+golang.org/x/* and standard library extensions
+────────────────────────────────────────────────────────────────────────────────
+
+golang.org/x/exp                      — BSD-3-Clause
+golang.org/x/mod                      — BSD-3-Clause
+golang.org/x/sync                     — BSD-3-Clause
+golang.org/x/sys                      — BSD-3-Clause
+golang.org/x/text                     — BSD-3-Clause
+golang.org/x/tools                    — BSD-3-Clause
+
+────────────────────────────────────────────────────────────────────────────────
+Test-only dependencies
+────────────────────────────────────────────────────────────────────────────────
+
+github.com/stretchr/testify           — MIT
+gopkg.in/yaml.v3                      — MIT + Apache-2.0

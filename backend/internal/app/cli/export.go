@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/report/reporting"
 	"github.com/aconiq/backend/internal/report/results"
@@ -21,6 +23,7 @@ import (
 type exportSummary struct {
 	ExportID            string    `json:"export_id"`
 	ProjectID           string    `json:"project_id"`
+	ProjectCRS          string    `json:"project_crs,omitempty"`
 	RunID               string    `json:"run_id"`
 	ExportedAt          time.Time `json:"exported_at"`
 	OutputDirectory     string    `json:"output_directory"`
@@ -40,6 +43,7 @@ type copiedRunResults struct {
 func newExportCommand() *cobra.Command {
 	var runID string
 	var outDir string
+	var targetCRS string
 	var emitSampleResults bool
 	var skipReport bool
 	var generatePDF bool
@@ -135,9 +139,26 @@ func newExportCommand() *cobra.Command {
 				copiedResults.ModelDump = modelDumpPath
 			}
 
+			modelGeoJSONPath, modelGeoJSONRel, err := copyModelGeoJSONToBundle(store.Root(), bundleDir, proj.Artifacts)
+			if err != nil {
+				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model geojson artifact", err)
+			}
+
+			if modelGeoJSONPath != "" {
+				copiedFiles = append(copiedFiles, modelGeoJSONRel)
+			}
+
+			if targetCRS != "" && modelGeoJSONPath != "" {
+				err = reprojectModelGeoJSON(modelGeoJSONPath, proj.CRS, targetCRS)
+				if err != nil {
+					return domainerrors.New(domainerrors.KindUserInput, "cli.export", "re-project model GeoJSON", err)
+				}
+			}
+
 			summary := exportSummary{
 				ExportID:        exportID,
 				ProjectID:       proj.ProjectID,
+				ProjectCRS:      proj.CRS,
 				RunID:           run.ID,
 				ExportedAt:      nowUTC(),
 				OutputDirectory: bundleDir,
@@ -275,6 +296,7 @@ func newExportCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to export (defaults to latest run)")
 	cmd.Flags().StringVar(&outDir, "out", filepath.Join(".noise", "exports"), "Output directory for export bundles")
+	cmd.Flags().StringVar(&targetCRS, "target-crs", "", "Re-project exported model GeoJSON to target CRS (e.g. EPSG:4326)")
 	cmd.Flags().BoolVar(&emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
 	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
 	cmd.Flags().BoolVar(&generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
@@ -419,6 +441,68 @@ func copyModelDumpToBundle(projectRoot string, bundleDir string, artifacts []pro
 
 	srcPath := filepath.Join(projectRoot, filepath.FromSlash(modelDumpPath))
 	destRel := filepath.ToSlash(filepath.Join("model", "model.dump.json"))
+	dstPath := filepath.Join(bundleDir, filepath.FromSlash(destRel))
+
+	copied, err := copyFileIfExists(srcPath, dstPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	if !copied {
+		return "", "", nil
+	}
+
+	return dstPath, destRel, nil
+}
+
+// reprojectModelGeoJSON reads a normalized GeoJSON file, re-normalizes it from
+// the project CRS into a target CRS, and overwrites the file in place.
+func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS string) error {
+	data, err := os.ReadFile(geojsonPath)
+	if err != nil {
+		return fmt.Errorf("read model GeoJSON: %w", err)
+	}
+
+	// Re-normalize: the file is in projectCRS, and we want targetCRS.
+	// NormalizeWithCRS(data, targetCRS, projectCRS, ...) will transform from projectCRS → targetCRS.
+	model, err := modelgeojson.NormalizeWithCRS(data, targetCRS, projectCRS, "export")
+	if err != nil {
+		return fmt.Errorf("re-project %s -> %s: %w", projectCRS, targetCRS, err)
+	}
+
+	fc := model.ToFeatureCollection()
+
+	out, err := json.MarshalIndent(fc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal re-projected GeoJSON: %w", err)
+	}
+
+	out = append(out, '\n')
+
+	return os.WriteFile(geojsonPath, out, 0o644)
+}
+
+func copyModelGeoJSONToBundle(projectRoot string, bundleDir string, artifacts []project.ArtifactRef) (string, string, error) {
+	modelGeoJSONPath := ""
+	var latestAt time.Time
+
+	for _, artifact := range artifacts {
+		if artifact.Kind != "model.normalized_geojson" {
+			continue
+		}
+
+		if modelGeoJSONPath == "" || artifact.CreatedAt.After(latestAt) {
+			modelGeoJSONPath = artifact.Path
+			latestAt = artifact.CreatedAt
+		}
+	}
+
+	if modelGeoJSONPath == "" {
+		return "", "", nil
+	}
+
+	srcPath := filepath.Join(projectRoot, filepath.FromSlash(modelGeoJSONPath))
+	destRel := filepath.ToSlash(filepath.Join("model", "model.normalized.geojson"))
 	dstPath := filepath.Join(bundleDir, filepath.FromSlash(destRel))
 
 	copied, err := copyFileIfExists(srcPath, dstPath)
