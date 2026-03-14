@@ -125,8 +125,6 @@ var BridgeCorrectionStrassenbahnTable = [5]BridgeCorrectionEntry{
 // bridgeCorrectionStrassenbahnForTeilquelle returns the K_Br (+K_LM) bridge
 // correction from Table 16 for a given bridge type index (1-5) and Teilquelle m.
 // Only applies to Fahrgeraeusche (m=1, m=2).
-//
-
 func bridgeCorrectionStrassenbahnForTeilquelle(bridgeType int, bridgeMitig bool, m int) float64 {
 	if m != 1 && m != 2 {
 		return 0

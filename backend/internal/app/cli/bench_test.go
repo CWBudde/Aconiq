@@ -29,7 +29,8 @@ func TestBenchGeneratesSummaryAndReusesCache(t *testing.T) {
 		"--keep-last", "2",
 	})
 
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatalf("run bench command: %v", err)
 	}
 
@@ -45,7 +46,8 @@ func TestBenchGeneratesSummaryAndReusesCache(t *testing.T) {
 	}
 
 	var summary benchSummary
-	if err := json.Unmarshal(payload, &summary); err != nil {
+	err = json.Unmarshal(payload, &summary)
+	if err != nil {
 		t.Fatalf("decode summary: %v", err)
 	}
 

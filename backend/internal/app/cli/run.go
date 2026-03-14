@@ -364,7 +364,8 @@ func newRunCommand() *cobra.Command {
 				return err
 			}
 
-			if err := validateReceiverMode(receiverMode); err != nil {
+			err = validateReceiverMode(receiverMode)
+			if err != nil {
 				return err
 			}
 
@@ -1628,19 +1629,20 @@ func parseBUBRoadRunOptions(params map[string]string) (bubRoadRunOptions, error)
 		return strings.TrimSpace(value), nil
 	}
 
-	if err := parseFloat("grid_resolution_m", &options.GridResolutionM); err != nil {
+	err := parseFloat("grid_resolution_m", &options.GridResolutionM)
+	if err != nil {
 		return bubRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("grid_padding_m", &options.GridPaddingM); err != nil {
+	err = parseFloat("grid_padding_m", &options.GridPaddingM)
+	if err != nil {
 		return bubRoadRunOptions{}, err
 	}
 
-	if err := parseFloat("receiver_height_m", &options.ReceiverHeightM); err != nil {
+	err = parseFloat("receiver_height_m", &options.ReceiverHeightM)
+	if err != nil {
 		return bubRoadRunOptions{}, err
 	}
-
-	var err error
 
 	options.SurfaceType, err = getString("road_surface_type")
 	if err != nil {
@@ -2760,7 +2762,8 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 
 			surfaceType := options.SurfaceType
 
-			if value, ok, err := featurePropertyString(feature, "road_surface_type"); err != nil {
+			value, ok, err := featurePropertyString(feature, "road_surface_type")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				surfaceType = value
@@ -2768,7 +2771,8 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 
 			roadCategory := options.RoadCategory
 
-			if value, ok, err := featurePropertyString(feature, "road_category"); err != nil {
+			value, ok, err = featurePropertyString(feature, "road_category")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				roadCategory = value
@@ -2776,23 +2780,26 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 
 			speedKPH := options.SpeedKPH
 
-			if value, ok, err := featurePropertyFloat(feature, "road_speed_kph"); err != nil {
+			valueFloat, ok, err := featurePropertyFloat(feature, "road_speed_kph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				speedKPH = value
+				speedKPH = valueFloat
 			}
 
 			gradientPercent := options.GradientPercent
 
-			if value, ok, err := featurePropertyFloat(feature, "road_gradient_percent"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "road_gradient_percent")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				gradientPercent = value
+				gradientPercent = valueFloat
 			}
 
 			junctionType := options.JunctionType
 
-			if value, ok, err := featurePropertyString(feature, "road_junction_type"); err != nil {
+			value, ok, err = featurePropertyString(feature, "road_junction_type")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				junctionType = value
@@ -2800,122 +2807,137 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 
 			junctionDistanceM := options.JunctionDistanceM
 
-			if value, ok, err := featurePropertyFloat(feature, "road_junction_distance_m"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "road_junction_distance_m")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				junctionDistanceM = value
+				junctionDistanceM = valueFloat
 			}
 
 			temperatureC := options.TemperatureC
 
-			if value, ok, err := featurePropertyFloat(feature, "road_temperature_c"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "road_temperature_c")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				temperatureC = value
+				temperatureC = valueFloat
 			}
 
 			studdedTyreShare := options.StuddedTyreShare
 
-			if value, ok, err := featurePropertyFloat(feature, "road_studded_tyre_share"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "road_studded_tyre_share")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				studdedTyreShare = value
+				studdedTyreShare = valueFloat
 			}
 
 			trafficDayLightVPH := options.TrafficDayLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_light_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_day_light_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficDayLightVPH = value
+				trafficDayLightVPH = valueFloat
 			}
 
 			trafficDayMediumVPH := options.TrafficDayMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_medium_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_day_medium_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficDayMediumVPH = value
+				trafficDayMediumVPH = valueFloat
 			}
 
 			trafficDayHeavyVPH := options.TrafficDayHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_heavy_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_day_heavy_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficDayHeavyVPH = value
+				trafficDayHeavyVPH = valueFloat
 			}
 
 			trafficEveningLightVPH := options.TrafficEveningLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_light_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_evening_light_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficEveningLightVPH = value
+				trafficEveningLightVPH = valueFloat
 			}
 
 			trafficEveningMediumVPH := options.TrafficEveningMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_medium_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_evening_medium_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficEveningMediumVPH = value
+				trafficEveningMediumVPH = valueFloat
 			}
 
 			trafficEveningHeavyVPH := options.TrafficEveningHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_heavy_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_evening_heavy_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficEveningHeavyVPH = value
+				trafficEveningHeavyVPH = valueFloat
 			}
 
 			trafficNightLightVPH := options.TrafficNightLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_light_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_night_light_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficNightLightVPH = value
+				trafficNightLightVPH = valueFloat
 			}
 
 			trafficNightMediumVPH := options.TrafficNightMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_medium_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_night_medium_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficNightMediumVPH = value
+				trafficNightMediumVPH = valueFloat
 			}
 
 			trafficNightHeavyVPH := options.TrafficNightHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_heavy_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_night_heavy_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficNightHeavyVPH = value
+				trafficNightHeavyVPH = valueFloat
 			}
 
 			trafficDayPTWVPH := options.TrafficDayPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_ptw_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_day_ptw_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficDayPTWVPH = value
+				trafficDayPTWVPH = valueFloat
 			}
 
 			trafficEveningPTWVPH := options.TrafficEveningPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_ptw_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_evening_ptw_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficEveningPTWVPH = value
+				trafficEveningPTWVPH = valueFloat
 			}
 
 			trafficNightPTWVPH := options.TrafficNightPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_ptw_vph"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "traffic_night_ptw_vph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				trafficNightPTWVPH = value
+				trafficNightPTWVPH = valueFloat
 			}
 
 			sources = append(sources, cnossosroad.RoadSource{
@@ -3006,82 +3028,112 @@ func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunO
 
 			tractionType := options.TractionType
 
-			if value, ok, err := featurePropertyString(feature, "rail_traction_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				tractionType = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_traction_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					tractionType = value
+				}
 			}
 
 			trackType := options.TrackType
 
-			if value, ok, err := featurePropertyString(feature, "rail_track_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trackType = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_track_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trackType = value
+				}
 			}
 
 			roughnessClass := options.TrackRoughnessClass
 
-			if value, ok, err := featurePropertyString(feature, "rail_track_roughness_class"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				roughnessClass = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_track_roughness_class")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					roughnessClass = value
+				}
 			}
 
 			averageSpeedKPH := options.AverageTrainSpeedKPH
 
-			if value, ok, err := featurePropertyFloat(feature, "rail_average_train_speed_kph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				averageSpeedKPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "rail_average_train_speed_kph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					averageSpeedKPH = value
+				}
 			}
 
 			brakingShare := options.BrakingShare
 
-			if value, ok, err := featurePropertyFloat(feature, "rail_braking_share"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				brakingShare = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "rail_braking_share")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					brakingShare = value
+				}
 			}
 
 			curveRadiusM := options.CurveRadiusM
 
-			if value, ok, err := featurePropertyFloat(feature, "rail_curve_radius_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				curveRadiusM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "rail_curve_radius_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					curveRadiusM = value
+				}
 			}
 
 			onBridge := options.OnBridge
 
-			if value, ok, err := featurePropertyBool(feature, "rail_on_bridge"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				onBridge = value
+			{
+				value, ok, err := featurePropertyBool(feature, "rail_on_bridge")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					onBridge = value
+				}
 			}
 
 			trafficDay := options.TrafficDayTrainsPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_trains_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDay = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_trains_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDay = value
+				}
 			}
 
 			trafficEvening := options.TrafficEveningTrainsPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_trains_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficEvening = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_evening_trains_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficEvening = value
+				}
 			}
 
 			trafficNight := options.TrafficNightTrainsPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_trains_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNight = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_trains_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNight = value
+				}
 			}
 
 			sources = append(sources, cnossosrail.RailSource{
@@ -3156,7 +3208,8 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 
 			surfaceType := options.SurfaceType
 
-			if value, ok, err := featurePropertyString(feature, "road_surface_type"); err != nil {
+			value, ok, err := featurePropertyString(feature, "road_surface_type")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				surfaceType = value
@@ -3164,7 +3217,8 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 
 			roadFunctionClass := options.RoadFunctionClass
 
-			if value, ok, err := featurePropertyString(feature, "road_function_class"); err != nil {
+			value, ok, err = featurePropertyString(feature, "road_function_class")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				roadFunctionClass = value
@@ -3172,7 +3226,8 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 
 			junctionType := options.JunctionType
 
-			if value, ok, err := featurePropertyString(feature, "road_junction_type"); err != nil {
+			value, ok, err = featurePropertyString(feature, "road_junction_type")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
 				junctionType = value
@@ -3180,138 +3235,185 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 
 			speedKPH := options.SpeedKPH
 
-			if value, ok, err := featurePropertyFloat(feature, "road_speed_kph"); err != nil {
+			valueFloat, ok, err := featurePropertyFloat(feature, "road_speed_kph")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				speedKPH = value
+				speedKPH = valueFloat
 			}
 
 			gradientPercent := options.GradientPercent
 
-			if value, ok, err := featurePropertyFloat(feature, "road_gradient_percent"); err != nil {
+			valueFloat, ok, err = featurePropertyFloat(feature, "road_gradient_percent")
+			if err != nil {
 				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			} else if ok {
-				gradientPercent = value
+				gradientPercent = valueFloat
 			}
 
 			junctionDistanceM := options.JunctionDistanceM
 
-			if value, ok, err := featurePropertyFloat(feature, "road_junction_distance_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				junctionDistanceM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "road_junction_distance_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					junctionDistanceM = value
+				}
 			}
 
 			temperatureC := options.TemperatureC
 
-			if value, ok, err := featurePropertyFloat(feature, "road_temperature_c"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				temperatureC = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "road_temperature_c")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					temperatureC = value
+				}
 			}
 
 			studdedTyreShare := options.StuddedTyreShare
 
-			if value, ok, err := featurePropertyFloat(feature, "road_studded_tyre_share"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				studdedTyreShare = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "road_studded_tyre_share")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					studdedTyreShare = value
+				}
 			}
 
 			trafficDayLightVPH := options.TrafficDayLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_light_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDayLightVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_light_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDayLightVPH = value
+				}
 			}
 
 			trafficDayMediumVPH := options.TrafficDayMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_medium_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDayMediumVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_medium_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDayMediumVPH = value
+				}
 			}
 
 			trafficDayHeavyVPH := options.TrafficDayHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_heavy_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDayHeavyVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_heavy_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDayHeavyVPH = value
+				}
 			}
 
 			trafficDayPTWVPH := options.TrafficDayPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_ptw_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDayPTWVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_ptw_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDayPTWVPH = value
+				}
 			}
 
 			trafficEveningLightVPH := options.TrafficEveningLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_light_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficEveningLightVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_evening_light_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficEveningLightVPH = value
+				}
 			}
 
 			trafficEveningMediumVPH := options.TrafficEveningMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_medium_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficEveningMediumVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_evening_medium_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficEveningMediumVPH = value
+				}
 			}
 
 			trafficEveningHeavyVPH := options.TrafficEveningHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_heavy_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficEveningHeavyVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_evening_heavy_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficEveningHeavyVPH = value
+				}
 			}
 
 			trafficEveningPTWVPH := options.TrafficEveningPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_evening_ptw_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficEveningPTWVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_evening_ptw_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficEveningPTWVPH = value
+				}
 			}
 
 			trafficNightLightVPH := options.TrafficNightLightVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_light_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNightLightVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_light_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNightLightVPH = value
+				}
 			}
 
 			trafficNightMediumVPH := options.TrafficNightMediumVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_medium_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNightMediumVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_medium_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNightMediumVPH = value
+				}
 			}
 
 			trafficNightHeavyVPH := options.TrafficNightHeavyVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_heavy_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNightHeavyVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_heavy_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNightHeavyVPH = value
+				}
 			}
 
 			trafficNightPTWVPH := options.TrafficNightPTWVPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_ptw_vph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNightPTWVPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_ptw_vph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUBRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNightPTWVPH = value
+				}
 			}
 
 			sources = append(sources, bubroad.RoadSource{
@@ -3466,10 +3568,13 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			properties := mergedProperties(feature.Properties, directional.Overrides)
 			surfaceType := options.SurfaceType
 
-			if value, ok, err := propertyString(properties, "surface_type", "road_surface_type"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				surfaceType = value
+			{
+				value, ok, err := propertyString(properties, "surface_type", "road_surface_type")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					surfaceType = value
+				}
 			}
 
 			speedPkwKPH := options.SpeedPkwKPH
@@ -3477,13 +3582,16 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			speedLkw2KPH := options.SpeedLkw2KPH
 			speedKradKPH := options.SpeedKradKPH
 
-			if value, ok, err := propertyFloat(properties, "road_speed_kph"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				speedPkwKPH = value
-				speedLkw1KPH = value
-				speedLkw2KPH = value
-				speedKradKPH = value
+			{
+				value, ok, err := propertyFloat(properties, "road_speed_kph")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					speedPkwKPH = value
+					speedLkw1KPH = value
+					speedLkw2KPH = value
+					speedKradKPH = value
+				}
 			}
 
 			for _, item := range []struct {
@@ -3495,48 +3603,63 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"speed_lkw2_kph"}, &speedLkw2KPH},
 				{[]string{"speed_krad_kph"}, &speedKradKPH},
 			} {
-				if value, ok, err := propertyFloat(properties, item.keys...); err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					*item.target = value
+				{
+					value, ok, err := propertyFloat(properties, item.keys...)
+					if err != nil {
+						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						*item.target = value
+					}
 				}
 			}
 
 			gradientPercent := options.GradientPercent
 
-			if value, ok, err := propertyFloat(properties, "gradient_percent", "road_gradient_percent"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				gradientPercent = value
+			{
+				value, ok, err := propertyFloat(properties, "gradient_percent", "road_gradient_percent")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					gradientPercent = value
+				}
 			}
 
 			junctionDistanceM := 0.0
 
-			if value, ok, err := propertyFloat(properties, "junction_distance_m", "road_junction_distance_m"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				junctionDistanceM = value
+			{
+				value, ok, err := propertyFloat(properties, "junction_distance_m", "road_junction_distance_m")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					junctionDistanceM = value
+				}
 			}
 
 			reflectionSurchargeDB := 0.0
 
-			if value, ok, err := propertyFloat(properties, "reflection_surcharge_db"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				reflectionSurchargeDB = value
+			{
+				value, ok, err := propertyFloat(properties, "reflection_surcharge_db")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					reflectionSurchargeDB = value
+				}
 			}
 
 			junctionType := rls19road.JunctionNone
 
-			if value, ok, err := propertyString(properties, "junction_type", "road_junction_type"); err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				parsed, err := rls19road.ParseJunctionType(value)
+			{
+				value, ok, err := propertyString(properties, "junction_type", "road_junction_type")
 				if err != nil {
 					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				}
+				} else if ok {
+					parsed, err := rls19road.ParseJunctionType(value)
+					if err != nil {
+						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					}
 
-				junctionType = parsed
+					junctionType = parsed
+				}
 			}
 
 			trafficDay := rls19road.TrafficInput{
@@ -3565,10 +3688,13 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				{[]string{"traffic_night_lkw2"}, &trafficNight.Lkw2PerHour},
 				{[]string{"traffic_night_krad"}, &trafficNight.KradPerHour},
 			} {
-				if value, ok, err := propertyFloat(properties, item.keys...); err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					*item.target = value
+				{
+					value, ok, err := propertyFloat(properties, item.keys...)
+					if err != nil {
+						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						*item.target = value
+					}
 				}
 			}
 
@@ -3701,27 +3827,33 @@ func parseRLS19LineGeometry(value any, properties map[string]any) (rls19LineGeom
 		return rls19LineGeometry{}, err
 	}
 
-	if propertyElevations, ok, err := propertyFloatSlice(properties, "centerline_elevations"); err != nil {
-		return rls19LineGeometry{}, err
-	} else if ok {
-		if len(propertyElevations) != len(centerline) {
-			return rls19LineGeometry{}, fmt.Errorf("centerline_elevations length %d must match centerline length %d", len(propertyElevations), len(centerline))
-		}
+	{
+		propertyElevations, ok, err := propertyFloatSlice(properties, "centerline_elevations")
+		if err != nil {
+			return rls19LineGeometry{}, err
+		} else if ok {
+			if len(propertyElevations) != len(centerline) {
+				return rls19LineGeometry{}, fmt.Errorf("centerline_elevations length %d must match centerline length %d", len(propertyElevations), len(centerline))
+			}
 
-		elevations = propertyElevations
-		hasZ = true
+			elevations = propertyElevations
+			hasZ = true
+		}
 	}
 
 	if !hasZ {
-		if elevationM, ok, err := propertyFloat(properties, "elevation_m"); err != nil {
-			return rls19LineGeometry{}, err
-		} else if ok {
-			elevations = make([]float64, len(centerline))
-			for i := range elevations {
-				elevations[i] = elevationM
-			}
+		{
+			elevationM, ok, err := propertyFloat(properties, "elevation_m")
+			if err != nil {
+				return rls19LineGeometry{}, err
+			} else if ok {
+				elevations = make([]float64, len(centerline))
+				for i := range elevations {
+					elevations[i] = elevationM
+				}
 
-			hasZ = true
+				hasZ = true
+			}
 		}
 	}
 
@@ -3812,90 +3944,123 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 
 			trainClass := options.TrainClass
 
-			if value, ok, err := featurePropertyString(feature, "rail_train_class"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trainClass = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_train_class")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trainClass = value
+				}
 			}
 
 			tractionType := options.TractionType
 
-			if value, ok, err := featurePropertyString(feature, "rail_traction_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				tractionType = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_traction_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					tractionType = value
+				}
 			}
 
 			trackType := options.TrackType
 
-			if value, ok, err := featurePropertyString(feature, "rail_track_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trackType = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_track_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trackType = value
+				}
 			}
 
 			trackForm := options.TrackForm
 
-			if value, ok, err := featurePropertyString(feature, "rail_track_form"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trackForm = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_track_form")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trackForm = value
+				}
 			}
 
 			roughnessClass := options.TrackRoughnessClass
 
-			if value, ok, err := featurePropertyString(feature, "rail_track_roughness_class"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				roughnessClass = value
+			{
+				value, ok, err := featurePropertyString(feature, "rail_track_roughness_class")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					roughnessClass = value
+				}
 			}
 
 			averageSpeedKPH := options.AverageTrainSpeedKPH
 
-			if value, ok, err := featurePropertyFloat(feature, "rail_average_train_speed_kph"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				averageSpeedKPH = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "rail_average_train_speed_kph")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					averageSpeedKPH = value
+				}
 			}
 
 			curveRadiusM := options.CurveRadiusM
 
-			if value, ok, err := featurePropertyFloat(feature, "rail_curve_radius_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				curveRadiusM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "rail_curve_radius_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					curveRadiusM = value
+				}
 			}
 
 			onBridge := options.OnBridge
 
-			if value, ok, err := featurePropertyBool(feature, "rail_on_bridge"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				onBridge = value
+			{
+				value, ok, err := featurePropertyBool(feature, "rail_on_bridge")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					onBridge = value
+				}
 			}
 
 			elevationM := 0.0
 
-			if value, ok, err := featurePropertyFloat(feature, "elevation_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				elevationM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "elevation_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					elevationM = value
+				}
 			}
 
 			trafficDay := options.TrafficDayTrainsPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_day_trains_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficDay = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_day_trains_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficDay = value
+				}
 			}
 
 			trafficNight := options.TrafficNightTrainsPH
 
-			if value, ok, err := featurePropertyFloat(feature, "traffic_night_trains_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				trafficNight = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "traffic_night_trains_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractSchall03Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					trafficNight = value
+				}
 			}
 
 			sources = append(sources, schall03.RailSource{
@@ -4000,10 +4165,13 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 
 		reflectionLossDB := 1.0
 
-		if value, ok, err := featurePropertyFloat(feature, "reflection_loss_db"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Buildings", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			reflectionLossDB = value
+		{
+			value, ok, err := featurePropertyFloat(feature, "reflection_loss_db")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Buildings", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				reflectionLossDB = value
+			}
 		}
 
 		baseID := strings.TrimSpace(feature.ID)
@@ -4068,16 +4236,22 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 
 		trackOptions := options
 
-		if value, ok, err := featurePropertyFloat(feature, "track_start_height_m"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			trackOptions.TrackStartHeightM = value
+		{
+			value, ok, err := featurePropertyFloat(feature, "track_start_height_m")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trackOptions.TrackStartHeightM = value
+			}
 		}
 
-		if value, ok, err := featurePropertyFloat(feature, "track_end_height_m"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			trackOptions.TrackEndHeightM = value
+		{
+			value, ok, err := featurePropertyFloat(feature, "track_end_height_m")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trackOptions.TrackEndHeightM = value
+			}
 		}
 
 		tracks, err := flightTracksFromFeature(feature, trackOptions)
@@ -4098,106 +4272,145 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 
 			airportID := options.AirportID
 
-			if value, ok, err := featurePropertyString(feature, "airport_id"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				airportID = value
+			{
+				value, ok, err := featurePropertyString(feature, "airport_id")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					airportID = value
+				}
 			}
 
 			runwayID := options.RunwayID
 
-			if value, ok, err := featurePropertyString(feature, "runway_id"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				runwayID = value
+			{
+				value, ok, err := featurePropertyString(feature, "runway_id")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					runwayID = value
+				}
 			}
 
 			operationType := options.OperationType
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_operation_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				operationType = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_operation_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					operationType = value
+				}
 			}
 
 			aircraftClass := options.AircraftClass
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_class"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				aircraftClass = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_class")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					aircraftClass = value
+				}
 			}
 
 			procedureType := options.ProcedureType
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_procedure_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				procedureType = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_procedure_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					procedureType = value
+				}
 			}
 
 			thrustMode := options.ThrustMode
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_thrust_mode"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				thrustMode = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_thrust_mode")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					thrustMode = value
+				}
 			}
 
 			referencePowerLevelDB := options.ReferencePowerLevelDB
 
-			if value, ok, err := featurePropertyFloat(feature, "reference_power_level_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				referencePowerLevelDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "reference_power_level_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					referencePowerLevelDB = value
+				}
 			}
 
 			engineStateFactor := options.EngineStateFactor
 
-			if value, ok, err := featurePropertyFloat(feature, "engine_state_factor"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				engineStateFactor = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "engine_state_factor")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					engineStateFactor = value
+				}
 			}
 
 			bankAngleDeg := options.BankAngleDeg
 
-			if value, ok, err := featurePropertyFloat(feature, "bank_angle_deg"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				bankAngleDeg = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "bank_angle_deg")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					bankAngleDeg = value
+				}
 			}
 
 			lateralOffsetM := options.LateralOffsetM
 
-			if value, ok, err := featurePropertyFloat(feature, "lateral_offset_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				lateralOffsetM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "lateral_offset_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					lateralOffsetM = value
+				}
 			}
 
 			movementDayPerHour := options.MovementDayPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_day_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementDayPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_day_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementDayPerHour = value
+				}
 			}
 
 			movementEveningPerHour := options.MovementEveningPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_evening_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementEveningPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_evening_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementEveningPerHour = value
+				}
 			}
 
 			movementNightPerHour := options.MovementNightPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_night_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementNightPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_night_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementNightPerHour = value
+				}
 			}
 
 			sources = append(sources, cnossosaircraft.AircraftSource{
@@ -4262,16 +4475,22 @@ func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunO
 
 		trackOptions := options
 
-		if value, ok, err := featurePropertyFloat(feature, "track_start_height_m"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			trackOptions.TrackStartHeightM = value
+		{
+			value, ok, err := featurePropertyFloat(feature, "track_start_height_m")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trackOptions.TrackStartHeightM = value
+			}
 		}
 
-		if value, ok, err := featurePropertyFloat(feature, "track_end_height_m"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			trackOptions.TrackEndHeightM = value
+		{
+			value, ok, err := featurePropertyFloat(feature, "track_end_height_m")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				trackOptions.TrackEndHeightM = value
+			}
 		}
 
 		tracks, err := flightTracksFromFeatureBUF(feature, trackOptions)
@@ -4292,106 +4511,145 @@ func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunO
 
 			airportID := options.AirportID
 
-			if value, ok, err := featurePropertyString(feature, "airport_id"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				airportID = value
+			{
+				value, ok, err := featurePropertyString(feature, "airport_id")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					airportID = value
+				}
 			}
 
 			runwayID := options.RunwayID
 
-			if value, ok, err := featurePropertyString(feature, "runway_id"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				runwayID = value
+			{
+				value, ok, err := featurePropertyString(feature, "runway_id")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					runwayID = value
+				}
 			}
 
 			operationType := options.OperationType
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_operation_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				operationType = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_operation_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					operationType = value
+				}
 			}
 
 			aircraftClass := options.AircraftClass
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_class"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				aircraftClass = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_class")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					aircraftClass = value
+				}
 			}
 
 			procedureType := options.ProcedureType
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_procedure_type"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				procedureType = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_procedure_type")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					procedureType = value
+				}
 			}
 
 			thrustMode := options.ThrustMode
 
-			if value, ok, err := featurePropertyString(feature, "aircraft_thrust_mode"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				thrustMode = value
+			{
+				value, ok, err := featurePropertyString(feature, "aircraft_thrust_mode")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					thrustMode = value
+				}
 			}
 
 			referencePowerLevelDB := options.ReferencePowerLevelDB
 
-			if value, ok, err := featurePropertyFloat(feature, "reference_power_level_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				referencePowerLevelDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "reference_power_level_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					referencePowerLevelDB = value
+				}
 			}
 
 			engineStateFactor := options.EngineStateFactor
 
-			if value, ok, err := featurePropertyFloat(feature, "engine_state_factor"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				engineStateFactor = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "engine_state_factor")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					engineStateFactor = value
+				}
 			}
 
 			bankAngleDeg := options.BankAngleDeg
 
-			if value, ok, err := featurePropertyFloat(feature, "bank_angle_deg"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				bankAngleDeg = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "bank_angle_deg")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					bankAngleDeg = value
+				}
 			}
 
 			lateralOffsetM := options.LateralOffsetM
 
-			if value, ok, err := featurePropertyFloat(feature, "lateral_offset_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				lateralOffsetM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "lateral_offset_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					lateralOffsetM = value
+				}
 			}
 
 			movementDayPerHour := options.MovementDayPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_day_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementDayPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_day_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementDayPerHour = value
+				}
 			}
 
 			movementEveningPerHour := options.MovementEveningPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_evening_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementEveningPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_evening_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementEveningPerHour = value
+				}
 			}
 
 			movementNightPerHour := options.MovementNightPerHour
 
-			if value, ok, err := featurePropertyFloat(feature, "movement_night_per_hour"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				movementNightPerHour = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "movement_night_per_hour")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					movementNightPerHour = value
+				}
 			}
 
 			sources = append(sources, bufaircraft.AircraftSource{
@@ -4449,10 +4707,13 @@ func extractBEBBuildings(model modelgeojson.Model, options bebExposureRunOptions
 
 		usageType := options.BuildingUsageType
 
-		if value, ok, err := featurePropertyString(feature, "building_usage_type", "usage_type"); err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBEBBuildings", fmt.Sprintf("feature %q", feature.ID), err)
-		} else if ok {
-			usageType = value
+		{
+			value, ok, err := featurePropertyString(feature, "building_usage_type", "usage_type")
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBEBBuildings", fmt.Sprintf("feature %q", feature.ID), err)
+			} else if ok {
+				usageType = value
+			}
 		}
 
 		estimatedDwellings, hasEstimatedDwellings, err := featurePropertyFloat(feature, "estimated_dwellings")
@@ -4568,74 +4829,101 @@ func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndu
 
 				sourceHeightM := options.SourceHeightM
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_source_height_m"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					sourceHeightM = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_source_height_m")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						sourceHeightM = value
+					}
 				}
 
 				soundPowerLevelDB := options.SoundPowerLevelDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_sound_power_level_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					soundPowerLevelDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_sound_power_level_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						soundPowerLevelDB = value
+					}
 				}
 
 				sourceCategory := options.SourceCategory
 
-				if value, ok, err := featurePropertyString(feature, "industry_source_category"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					sourceCategory = value
+				{
+					value, ok, err := featurePropertyString(feature, "industry_source_category")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						sourceCategory = value
+					}
 				}
 
 				enclosureState := options.EnclosureState
 
-				if value, ok, err := featurePropertyString(feature, "industry_enclosure_state"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					enclosureState = value
+				{
+					value, ok, err := featurePropertyString(feature, "industry_enclosure_state")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						enclosureState = value
+					}
 				}
 
 				tonalityCorrectionDB := options.TonalityCorrectionDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_tonality_correction_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					tonalityCorrectionDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_tonality_correction_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						tonalityCorrectionDB = value
+					}
 				}
 
 				impulsivityCorrectionDB := options.ImpulsivityCorrectionDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_impulsivity_correction_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					impulsivityCorrectionDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_impulsivity_correction_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						impulsivityCorrectionDB = value
+					}
 				}
 
 				operationDayFactor := options.OperationDayFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_day_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationDayFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_day_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationDayFactor = value
+					}
 				}
 
 				operationEveningFactor := options.OperationEveningFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_evening_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationEveningFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_evening_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationEveningFactor = value
+					}
 				}
 
 				operationNightFactor := options.OperationNightFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_night_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationNightFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_night_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationNightFactor = value
+					}
 				}
 
 				sources = append(sources, cnossosindustry.IndustrySource{
@@ -4667,74 +4955,101 @@ func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndu
 
 				sourceHeightM := options.SourceHeightM
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_source_height_m"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					sourceHeightM = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_source_height_m")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						sourceHeightM = value
+					}
 				}
 
 				soundPowerLevelDB := options.SoundPowerLevelDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_sound_power_level_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					soundPowerLevelDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_sound_power_level_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						soundPowerLevelDB = value
+					}
 				}
 
 				sourceCategory := options.SourceCategory
 
-				if value, ok, err := featurePropertyString(feature, "industry_source_category"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					sourceCategory = value
+				{
+					value, ok, err := featurePropertyString(feature, "industry_source_category")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						sourceCategory = value
+					}
 				}
 
 				enclosureState := options.EnclosureState
 
-				if value, ok, err := featurePropertyString(feature, "industry_enclosure_state"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					enclosureState = value
+				{
+					value, ok, err := featurePropertyString(feature, "industry_enclosure_state")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						enclosureState = value
+					}
 				}
 
 				tonalityCorrectionDB := options.TonalityCorrectionDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_tonality_correction_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					tonalityCorrectionDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_tonality_correction_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						tonalityCorrectionDB = value
+					}
 				}
 
 				impulsivityCorrectionDB := options.ImpulsivityCorrectionDB
 
-				if value, ok, err := featurePropertyFloat(feature, "industry_impulsivity_correction_db"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					impulsivityCorrectionDB = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "industry_impulsivity_correction_db")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						impulsivityCorrectionDB = value
+					}
 				}
 
 				operationDayFactor := options.OperationDayFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_day_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationDayFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_day_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationDayFactor = value
+					}
 				}
 
 				operationEveningFactor := options.OperationEveningFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_evening_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationEveningFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_evening_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationEveningFactor = value
+					}
 				}
 
 				operationNightFactor := options.OperationNightFactor
 
-				if value, ok, err := featurePropertyFloat(feature, "operation_night_factor"); err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					operationNightFactor = value
+				{
+					value, ok, err := featurePropertyFloat(feature, "operation_night_factor")
+					if err != nil {
+						return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosIndustrySources", fmt.Sprintf("feature %q", feature.ID), err)
+					} else if ok {
+						operationNightFactor = value
+					}
 				}
 
 				sources = append(sources, cnossosindustry.IndustrySource{
@@ -4812,42 +5127,57 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 
 			sourceHeightM := options.SourceHeightM
 
-			if value, ok, err := featurePropertyFloat(feature, "iso9613_source_height_m"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				sourceHeightM = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "iso9613_source_height_m")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					sourceHeightM = value
+				}
 			}
 
 			soundPowerLevelDB := options.SoundPowerLevelDB
 
-			if value, ok, err := featurePropertyFloat(feature, "iso9613_sound_power_level_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				soundPowerLevelDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "iso9613_sound_power_level_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					soundPowerLevelDB = value
+				}
 			}
 
 			directivityCorrectionDB := options.DirectivityCorrectionDB
 
-			if value, ok, err := featurePropertyFloat(feature, "iso9613_directivity_correction_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				directivityCorrectionDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "iso9613_directivity_correction_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					directivityCorrectionDB = value
+				}
 			}
 
 			tonalityCorrectionDB := options.TonalityCorrectionDB
 
-			if value, ok, err := featurePropertyFloat(feature, "iso9613_tonality_correction_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				tonalityCorrectionDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "iso9613_tonality_correction_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					tonalityCorrectionDB = value
+				}
 			}
 
 			impulsivityCorrectionDB := options.ImpulsivityCorrectionDB
 
-			if value, ok, err := featurePropertyFloat(feature, "iso9613_impulsivity_correction_db"); err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-			} else if ok {
-				impulsivityCorrectionDB = value
+			{
+				value, ok, err := featurePropertyFloat(feature, "iso9613_impulsivity_correction_db")
+				if err != nil {
+					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					impulsivityCorrectionDB = value
+				}
 			}
 
 			sources = append(sources, iso9613.PointSource{
@@ -5981,7 +6311,8 @@ func persistCnossosRoadRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6034,7 +6365,8 @@ func persistBUBRoadRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6089,7 +6421,8 @@ func persistRLS19RoadRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6144,7 +6477,8 @@ func persistSchall03RunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6197,7 +6531,8 @@ func persistCnossosAircraftRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6250,7 +6585,8 @@ func persistCnossosRailRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6301,7 +6637,8 @@ func persistBUFAircraftRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6348,7 +6685,8 @@ func persistBEBExposureRunOutputs(
 	}
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, runSummary); err != nil {
+	err = writeJSONFile(summaryPath, runSummary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6405,7 +6743,8 @@ func persistCnossosIndustryRunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
@@ -6457,7 +6796,8 @@ func persistISO9613RunOutputs(
 	summary["grid_height"] = gridHeight
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
-	if err := writeJSONFile(summaryPath, summary); err != nil {
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
