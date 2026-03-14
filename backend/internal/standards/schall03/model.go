@@ -285,6 +285,167 @@ func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod
 	return nil
 }
 
+// TrainOperation describes one train type operating on a track segment.
+type TrainOperation struct {
+	TrainType          string    // Zugart name (e.g. "ICE-1-Zug") or "custom"
+	FzComposition      []FzCount // vehicle category composition
+	SpeedKPH           float64   // operating speed in km/h
+	TrainsPerHourDay   float64   // trains per hour, day period
+	TrainsPerHourNight float64   // trains per hour, night period
+}
+
+// NewTrainOperationFromZugart creates a TrainOperation from a Zugart name
+// (Table 4 in Beiblatt 1) with day/night trains per hour.
+// It looks up the Zugart in the Zugarten slice from beiblatt1.go,
+// decomposes it into FzComposition, and sets the default speed from the Zugart.
+func NewTrainOperationFromZugart(zugartName string, trainsPerHourDay, trainsPerHourNight float64) (*TrainOperation, error) {
+	for _, z := range Zugarten {
+		if z.Name == zugartName {
+			comp := make([]FzCount, len(z.Composition))
+			copy(comp, z.Composition)
+
+			return &TrainOperation{
+				TrainType:          z.Name,
+				FzComposition:      comp,
+				SpeedKPH:           z.MaxSpeedKPH,
+				TrainsPerHourDay:   trainsPerHourDay,
+				TrainsPerHourNight: trainsPerHourNight,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unknown Zugart %q", zugartName)
+}
+
+// Validate checks a TrainOperation for consistency.
+func (op TrainOperation) Validate() error {
+	if math.IsNaN(op.SpeedKPH) || math.IsInf(op.SpeedKPH, 0) || op.SpeedKPH <= 0 {
+		return errors.New("TrainOperation: SpeedKPH must be finite and > 0")
+	}
+
+	if len(op.FzComposition) == 0 {
+		return errors.New("TrainOperation: at least one FzCount entry required")
+	}
+
+	for i, fc := range op.FzComposition {
+		if fc.Fz < 1 || fc.Fz > 10 {
+			return fmt.Errorf("TrainOperation: FzComposition[%d].Fz=%d is out of range 1-10", i, fc.Fz)
+		}
+
+		if fc.Count < 0 {
+			return fmt.Errorf("TrainOperation: FzComposition[%d].Count must be >= 0", i)
+		}
+	}
+
+	if math.IsNaN(op.TrainsPerHourDay) || math.IsInf(op.TrainsPerHourDay, 0) || op.TrainsPerHourDay < 0 {
+		return errors.New("TrainOperation: TrainsPerHourDay must be finite and >= 0")
+	}
+
+	if math.IsNaN(op.TrainsPerHourNight) || math.IsInf(op.TrainsPerHourNight, 0) || op.TrainsPerHourNight < 0 {
+		return errors.New("TrainOperation: TrainsPerHourNight must be finite and >= 0")
+	}
+
+	return nil
+}
+
+// resolveEffectiveSpeed determines the effective speed per Nr. 4.3:
+//   - v = min(streckeMax, fahrzeugMax)
+//   - v >= 50 km/h (minimum for free-field Eisenbahn Strecke)
+//   - v >= 70 km/h if isStation (Haltestelle minimum)
+func resolveEffectiveSpeed(streckeMax, fahrzeugMax float64, isStation bool) float64 {
+	v := math.Min(streckeMax, fahrzeugMax)
+
+	minSpeed := 50.0
+	if isStation {
+		minSpeed = 70.0
+	}
+
+	return math.Max(v, minSpeed)
+}
+
+// TrackSegment describes one normative track segment for emission computation.
+type TrackSegment struct {
+	ID              string
+	TrackCenterline []geo.Point2D
+	ElevationM      float64
+	Fahrbahn        FahrbahnartType // from tables.go constants
+	Surface         SurfaceCondType // from emission_v2.go constants
+	BridgeType      int             // 0=none, 1-4 per Table 9
+	BridgeMitig     bool            // K_LM noise reduction measures
+	CurveRadiusM    float64         // 0 = straight
+	IsStation       bool            // for speed min 70 km/h rule
+	StreckeMaxKPH   float64         // track speed limit
+	Operations      []TrainOperation
+}
+
+// Validate checks a TrackSegment for consistency.
+func (seg TrackSegment) Validate() error {
+	if strings.TrimSpace(seg.ID) == "" {
+		return errors.New("TrackSegment: ID is required")
+	}
+
+	err := seg.validateGeometry()
+	if err != nil {
+		return err
+	}
+
+	err = seg.validateInfrastructure()
+	if err != nil {
+		return err
+	}
+
+	return seg.validateOperations()
+}
+
+func (seg TrackSegment) validateGeometry() error {
+	if len(seg.TrackCenterline) < 2 {
+		return fmt.Errorf("TrackSegment %q: track_centerline must contain at least 2 points", seg.ID)
+	}
+
+	for i, pt := range seg.TrackCenterline {
+		if !pt.IsFinite() {
+			return fmt.Errorf("TrackSegment %q: track_centerline point[%d] is not finite", seg.ID, i)
+		}
+	}
+
+	if math.IsNaN(seg.ElevationM) || math.IsInf(seg.ElevationM, 0) {
+		return fmt.Errorf("TrackSegment %q: ElevationM must be finite", seg.ID)
+	}
+
+	return nil
+}
+
+func (seg TrackSegment) validateInfrastructure() error {
+	if seg.BridgeType < 0 || seg.BridgeType > 4 {
+		return fmt.Errorf("TrackSegment %q: BridgeType must be 0-4", seg.ID)
+	}
+
+	if math.IsNaN(seg.CurveRadiusM) || math.IsInf(seg.CurveRadiusM, 0) || seg.CurveRadiusM < 0 {
+		return fmt.Errorf("TrackSegment %q: CurveRadiusM must be finite and >= 0", seg.ID)
+	}
+
+	if math.IsNaN(seg.StreckeMaxKPH) || math.IsInf(seg.StreckeMaxKPH, 0) || seg.StreckeMaxKPH <= 0 {
+		return fmt.Errorf("TrackSegment %q: StreckeMaxKPH must be finite and > 0", seg.ID)
+	}
+
+	return nil
+}
+
+func (seg TrackSegment) validateOperations() error {
+	if len(seg.Operations) == 0 {
+		return fmt.Errorf("TrackSegment %q: at least one TrainOperation required", seg.ID)
+	}
+
+	for i, op := range seg.Operations {
+		err := op.Validate()
+		if err != nil {
+			return fmt.Errorf("TrackSegment %q: Operations[%d]: %w", seg.ID, i, err)
+		}
+	}
+
+	return nil
+}
+
 // ReceiverInput describes one planning receiver location.
 type ReceiverInput struct {
 	ID      string      `json:"id"`
