@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_side",
+      "x": 50,
+      "y": 40,
+      "height_m": 4,
+      "LpAeqDay": 71.179907,
+      "LpAeqNight": 69.418995,
+      "LrDay": 71.179907,
+      "LrNight": 69.418995
+    }
+  ]
+}

@@ -17,6 +17,9 @@ import (
 const (
 	// ModeCISafe runs the repo-authored synthetic suite that ships in testdata/.
 	ModeCISafe = "ci-safe"
+
+	statusPassed = "passed"
+	statusFailed = "failed"
 )
 
 // Options controls a Run invocation.
@@ -68,6 +71,8 @@ type CategoryStatus struct {
 }
 
 // ReceiverSnapshot is one row in an expected or actual output file.
+//
+//nolint:tagliatelle // level indicator names (LpAeqDay etc.) follow Schall 03 notation, not generic snake_case
 type ReceiverSnapshot struct {
 	ID         string  `json:"id"`
 	X          float64 `json:"x"`
@@ -134,57 +139,12 @@ func Run(opts Options) (Report, error) {
 
 	sort.SliceStable(suite.Tasks, func(i, j int) bool { return suite.Tasks[i].Name < suite.Tasks[j].Name })
 
-	suiteDir := filepath.Dir(manifestPath)
-
-	report := Report{
-		SuiteName:     suite.Name,
-		StandardID:    suite.StandardID,
-		Mode:          mode,
-		SuiteVersion:  suite.SuiteVersion,
-		EvidenceClass: suite.EvidenceClass,
-		Provenance:    suite.Provenance,
-		GeneratedAt:   generatedAt,
-		Tasks:         make([]TaskResult, 0, len(suite.Tasks)),
+	tasks, runErr := runAllTasks(suite.Tasks, filepath.Dir(manifestPath))
+	if runErr != nil {
+		return Report{}, runErr
 	}
 
-	for _, task := range suite.Tasks {
-		result, runErr := runTask(task, suiteDir)
-		if runErr != nil {
-			return Report{}, runErr
-		}
-
-		report.Tasks = append(report.Tasks, result)
-	}
-
-	report.TaskCount = len(report.Tasks)
-	report.Status = "passed"
-
-	for _, task := range report.Tasks {
-		switch task.Status {
-		case "passed":
-			report.PassedCount++
-		case "failed":
-			report.FailedCount++
-			report.Status = "failed"
-		}
-	}
-
-	coverage := make(map[string]CategoryStatus)
-	for _, task := range report.Tasks {
-		cs := coverage[task.Category]
-		cs.TaskCount++
-
-		switch task.Status {
-		case "passed":
-			cs.PassCount++
-		case "failed":
-			cs.FailCount++
-		}
-
-		coverage[task.Category] = cs
-	}
-
-	report.CategoryCoverage = coverage
+	report := buildReport(suite, mode, generatedAt, tasks)
 
 	if opts.OutputDir != "" {
 		reportPath, writeErr := writeReportArtifact(opts.OutputDir, report)
@@ -196,6 +156,70 @@ func Run(opts Options) (Report, error) {
 	}
 
 	return report, nil
+}
+
+func runAllTasks(tasks []taskManifest, suiteDir string) ([]TaskResult, error) {
+	results := make([]TaskResult, 0, len(tasks))
+
+	for _, task := range tasks {
+		result, err := runTask(task, suiteDir)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+func buildReport(suite suiteManifest, mode string, generatedAt time.Time, tasks []TaskResult) Report {
+	report := Report{
+		SuiteName:     suite.Name,
+		StandardID:    suite.StandardID,
+		Mode:          mode,
+		SuiteVersion:  suite.SuiteVersion,
+		EvidenceClass: suite.EvidenceClass,
+		Provenance:    suite.Provenance,
+		GeneratedAt:   generatedAt,
+		Tasks:         tasks,
+		TaskCount:     len(tasks),
+		Status:        statusPassed,
+	}
+
+	for _, task := range tasks {
+		switch task.Status {
+		case statusPassed:
+			report.PassedCount++
+		case statusFailed:
+			report.FailedCount++
+			report.Status = statusFailed
+		}
+	}
+
+	report.CategoryCoverage = buildCategoryCoverage(tasks)
+
+	return report
+}
+
+func buildCategoryCoverage(tasks []TaskResult) map[string]CategoryStatus {
+	coverage := make(map[string]CategoryStatus)
+
+	for _, task := range tasks {
+		cs := coverage[task.Category]
+		cs.TaskCount++
+
+		switch task.Status {
+		case statusPassed:
+			cs.PassCount++
+		case statusFailed:
+			cs.FailCount++
+		}
+
+		coverage[task.Category] = cs
+	}
+
+	return coverage
 }
 
 func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
@@ -243,13 +267,13 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 	result.MaxAbsDeltaDB = round6(maxDelta)
 
 	if compareErr != nil {
-		result.Status = "failed"
+		result.Status = statusFailed
 		result.Details = compareErr.Error()
 
-		return result, nil
+		return result, nil //nolint:nilerr // compareErr is intentionally encoded in result.Status, not surfaced as a Go error
 	}
 
-	result.Status = "passed"
+	result.Status = statusPassed
 
 	return result, nil
 }
@@ -387,7 +411,8 @@ func decodeJSONFile(path string, target any) error {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 
-	if err = json.Unmarshal(payload, target); err != nil {
+	err = json.Unmarshal(payload, target)
+	if err != nil {
 		return fmt.Errorf("decode %s: %w", path, err)
 	}
 
@@ -402,11 +427,13 @@ func writeJSONFile(path string, value any) error {
 
 	payload = append(payload, '\n')
 
-	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 
-	if err = os.WriteFile(path, payload, 0o644); err != nil {
+	err = os.WriteFile(path, payload, 0o600)
+	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 
