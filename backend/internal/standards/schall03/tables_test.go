@@ -193,12 +193,14 @@ func TestC1FesteFahrbahnValues(t *testing.T) {
 	}
 
 	schiene := ff.Corrections[0]
+
 	expectedSchiene := BeiblattSpectrum{0, 0, 0, 7, 3, 0, 0, 0}
 	if schiene.C1 != expectedSchiene {
 		t.Errorf("Feste Fahrbahn schiene: expected %v, got %v", expectedSchiene, schiene.C1)
 	}
 
 	reflexion := ff.Corrections[1]
+
 	expectedReflexion := BeiblattSpectrum{1, 1, 1, 1, 1, 1, 1, 1}
 	if reflexion.C1 != expectedReflexion {
 		t.Errorf("Feste Fahrbahn reflexion: expected %v, got %v", expectedReflexion, reflexion.C1)
@@ -217,6 +219,7 @@ func TestC2BuGValues(t *testing.T) {
 	t.Parallel()
 
 	bug := C2SurfaceConditionTable[0]
+
 	expected := BeiblattSpectrum{0, 0, 0, -4, -5, -5, -4, 0}
 	if bug.C2 != expected {
 		t.Errorf("bueG: expected %v, got %v", expected, bug.C2)
