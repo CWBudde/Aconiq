@@ -35,7 +35,7 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 
 - Geometrical divergence A_div (Gl. 11)
 - Atmospheric absorption A_atm (Gl. 12, octave-band α — Table 17)
-- Ground attenuation A_gr,B over land (Gl. 14)
+- Ground attenuation A_gr = A_gr,B + A_gr,W (Gl. 13): land absorption (Gl. 14) and water body correction (Gl. 16)
 - Solid angle correction D_Ω (Gl. 9)
 - Directivity D_I (Gl. 8)
 - Line source integration: track subdivided into Teilstücke; energetic summation over subsegments
@@ -63,7 +63,7 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 | Straßenbahnen (Fz 21–23, Beiblatt 2) | Phase 20a |
 | Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3) | Phase 20b |
 | Image-source reflections (Gl. 27–28, Table 18) | Phase 20c |
-| Ground correction for water bodies A_gr,W (Gl. 16) | Phase 20 deferred |
+| Ground correction for water bodies A_gr,W (Gl. 16) | **Implemented** (see Propagation chain above) |
 | Section 9 measurement-based vehicle data | Out of scope |
 
 ## Evidence
@@ -80,5 +80,5 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 ## Known limitations and deviations
 
 1. **Line source integration step**: Subsegment length is variable (auto-computed from track geometry); this may introduce minor numerical differences vs. implementations using a fixed step. Results converge to the same value as step length decreases.
-2. **Ground absorption**: Only A_gr,B (land) is implemented; A_gr,W (water body correction, Gl. 16) is not yet applied.
+2. **Ground absorption**: Both A_gr,B (land, Gl. 14) and A_gr,W (water body, Gl. 16) are implemented. The water body fraction is specified per `TrackSegment` via `water_body_fraction_w` (0–1), which is a simplification: in a full terrain model, water fractions would be computed per propagation path.
 3. **Reflection paths**: Image-source reflections per Gl. 27–28 are not applied. Only direct propagation paths are computed.

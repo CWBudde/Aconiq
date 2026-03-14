@@ -52,14 +52,25 @@ func normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen float64) float64 {
 // normativeSubsegmentContrib returns the total linear acoustic power
 // contribution from one track subsegment step to a receiver, summed over all
 // height levels h and octave bands f (Gl. 6, 8-16).
+//
+// waterFractionW is the fraction [0, 1] of the horizontal source–receiver path
+// that crosses water bodies (Wasserflächen). It splits dp into a land portion
+// and a water portion to compute Gl. 13: A_gr = A_gr,B + A_gr,W.
 func normativeSubsegmentContrib(
 	emission *StreckeEmissionResult,
 	elevationM float64,
 	receiver ReceiverInput,
-	dp, stepLen, sinDelta2 float64,
+	dp, stepLen, sinDelta2, waterFractionW float64,
 ) float64 {
 	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
 	log10Step := math.Log10(stepLen)
+
+	// Gl. 13: A_gr = A_gr,B + A_gr,W
+	// A_gr,B uses only the land portion of the path (Gl. 14: d_p = land path length).
+	// A_gr,W uses the water portion and total path (Gl. 16).
+	dLand := (1.0 - waterFractionW) * dp
+	dWater := waterFractionW * dp
+
 	var contrib float64
 
 	for h, spectrum := range emission.PerHeight {
@@ -78,7 +89,14 @@ func normativeSubsegmentContrib(
 
 		dOmega := solidAngleDOmega(dp, hg, hr)
 		adivVal := adiv(dSlant)
-		agrVal := agrB(hm, dSlant, dp)
+
+		// Gl. 13: A_gr = A_gr,B + A_gr,W.
+		// A_gr,B applies only when there is a land path (d_land > 0).
+		// A_gr,W is negative and applies only when there is a water path.
+		agrVal := agrW(dWater, dp)
+		if dLand > 0 {
+			agrVal += agrB(hm, dSlant, dLand)
+		}
 
 		for f := range NumBeiblattOctaveBands {
 			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
@@ -94,11 +112,14 @@ func normativeSubsegmentContrib(
 // normativeLineSourceLpAeq integrates the emission spectrum along a track
 // centerline and returns the A-weighted equivalent continuous level L_pAeq at
 // the receiver per the normative propagation chain (Gl. 6, 8-16).
+//
+// waterFractionW is forwarded to normativeSubsegmentContrib for Gl. 13.
 func normativeLineSourceLpAeq(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
 	elevationM float64,
 	receiver ReceiverInput,
+	waterFractionW float64,
 ) float64 {
 	var total float64
 
@@ -131,7 +152,7 @@ func normativeLineSourceLpAeq(
 			}
 
 			sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
-			total += normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2)
+			total += normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW)
 		}
 	}
 
@@ -172,7 +193,7 @@ func ComputeNormativeReceiverLevels(
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
 
-			dayLp := normativeLineSourceLpAeq(dayEmission, seg.TrackCenterline, seg.ElevationM, receiver)
+			dayLp := normativeLineSourceLpAeq(dayEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
 
 			if !math.IsInf(dayLp, -1) {
 				daySum += math.Pow(10, 0.1*dayLp)
@@ -183,7 +204,7 @@ func ComputeNormativeReceiverLevels(
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}
 
-			nightLp := normativeLineSourceLpAeq(nightEmission, seg.TrackCenterline, seg.ElevationM, receiver)
+			nightLp := normativeLineSourceLpAeq(nightEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
 
 			if !math.IsInf(nightLp, -1) {
 				nightSum += math.Pow(10, 0.1*nightLp)

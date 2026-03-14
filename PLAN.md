@@ -177,14 +177,8 @@ Status: **complete** (Eisenbahn Strecke scope).
 
 ### Open items
 
-- [ ] Ground correction for water bodies A_gr,W (Gl. 16) — minor propagation addition
+- [x] Ground correction for water bodies A_gr,W (Gl. 16) — `WaterBodyFractionW` on `TrackSegment`, CI-safe scenario p2_water_body
 - [ ] End-to-end report/export checks (defer until beyond Eisenbahn Strecke scope)
-
-### Deferred to sub-phases
-
-- [ ] **Phase 20a**: Straßenbahnen (Fz 21–23, Beiblatt 2, Tables 12–16)
-- [ ] **Phase 20b**: Rangier- und Umschlagbahnhöfe (Beiblatt 3, Table 10, Gl. 35–36)
-- [ ] **Phase 20c**: Image-source reflections (Gl. 27–28, Table 18, up to 3rd order)
 
 ---
 
