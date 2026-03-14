@@ -320,6 +320,7 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	var req createRunRequest
+
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{

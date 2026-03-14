@@ -184,6 +184,7 @@ func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
     }
   ]
 }`)
+
 	err := os.WriteFile(modelPath, payload, 0o644)
 	if err != nil {
 		t.Fatalf("write custom model: %v", err)
