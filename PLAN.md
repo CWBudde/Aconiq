@@ -184,27 +184,28 @@ Status: **complete** (Eisenbahn Strecke scope).
 
 ## Phase 20a — Schall 03: Straßenbahnen
 
-Status: not started.
+Status: complete (open item: Nr. 5.3.2 permanently slow section exception, ≤ 30 km/h).
 
 **Goal:** extend the schall03 module to cover Straßenbahn (tram) vehicles — Fz-Kategorien 21–23, Beiblatt 2, and the Straßenbahn-specific correction tables (Tables 12–16).
 
 ### Implementation
 
-- [ ] Encode Beiblatt 2 normative data: Fz-Kategorien 21–23 with all Teilquellen, a_A and Δa_f values
-- [ ] Encode Table 12: Geschwindigkeitsfaktoren b for Straßenbahnen (Rollgeräusch, aerodynamisch, Aggregat, Antrieb)
-- [ ] Encode Table 13: Pegelkorrekturen c1 for Straßenbahn Fahrbahnarten (Betonschwelle, Holzschwelle, Rasengleis, feste Fahrbahn, Pflaster, Rinnen-/Rillenschiene)
-- [ ] Encode Table 14: Pegelkorrekturen c2 for Straßenbahn surface conditions (büG, Schienenstegdämpfer)
-- [ ] Encode Table 15: Straßenbahn Auffälligkeitskorrektur K_L (curve radii thresholds differ from Eisenbahn)
-- [ ] Encode Table 16: Straßenbahn bridge corrections K_Br (types 1–3, different values than Table 9)
-- [ ] Expand `TrainOperation`/`FzComposition` to accept Fz 21–23 without breaking Fz 1–10 paths
-- [ ] Add `ZugartStraßenbahn` entries (Niederflur-ET, Hochflur-ET, Gelenktriebwagen) to Zugarten list
-- [ ] Implement Straßenbahn speed rules (Nr. 5.3): minimum effective speed 20 km/h, station rule differs from Eisenbahn
+- [x] Encode Beiblatt 2 normative data: Fz-Kategorien 21–23 with all Teilquellen, a_A and Δa_f values
+- [x] Encode Table 12: Geschwindigkeitsfaktoren b for Straßenbahnen (Rollgeräusch, aerodynamisch, Aggregat, Antrieb) — embedded per Teilquelle via `B *BeiblattSpectrum`
+- [x] Encode Table 13: Pegelkorrekturen c1 for Straßenbahn Fahrbahnarten (Betonschwelle, Holzschwelle, Rasengleis, feste Fahrbahn, Pflaster, Rinnen-/Rillenschiene)
+- [x] Encode Table 14: Pegelkorrekturen c2 for Straßenbahn surface conditions (büG, Schienenstegdämpfer) — track type c1 corrections (3 types, Table 15)
+- [x] Encode Table 15: Straßenbahn Auffälligkeitskorrektur K_L — speed clamp ≥ 50 km/h, curve penalty r < 200 m → +4 dB (Nr. 5.3.2)
+- [x] Encode Table 16: Straßenbahn bridge corrections K_Br (5 types)
+- [x] Expand `TrainOperation`/`FzComposition` to accept Fz 21–23 without breaking Fz 1–10 paths
+- [x] Add `ZugartStraßenbahn` entries (Niederflur-ET, Hochflur-ET, Gelenktriebwagen) to Zugarten list
+- [x] Implement Straßenbahn speed rules (Nr. 5.3): speed clamp ≥ 50 km/h implemented; permanently slow section exception (≤ 30 km/h) not yet implemented
+- [ ] Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) — deferred
 
 ### Conformance
 
-- [ ] Add CI-safe scenarios: at least one Straßenbahn emission scenario and one full-chain scenario
-- [ ] Generate golden snapshots for new scenarios
-- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Straßenbahnen as supported
+- [x] Add CI-safe scenarios: at least one Straßenbahn emission scenario and one full-chain scenario
+- [x] Generate golden snapshots for new scenarios
+- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Straßenbahnen as supported
 
 ---
 
