@@ -186,7 +186,8 @@ func TestRunISO9613ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 		filepath.Join(resultsDir, "iso9613.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -299,7 +300,9 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -349,7 +352,8 @@ func TestRunCnossosRailProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "cnossos-rail.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -360,7 +364,9 @@ func TestRunCnossosRailProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -388,7 +394,9 @@ func TestRunCnossosRailProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -442,7 +450,8 @@ func TestRunBUBRoadProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "bub-road.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -453,7 +462,9 @@ func TestRunBUBRoadProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -481,7 +492,9 @@ func TestRunBUBRoadProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -531,7 +544,8 @@ func TestRunCnossosAircraftProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "cnossos-aircraft.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -542,7 +556,9 @@ func TestRunCnossosAircraftProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -570,7 +586,9 @@ func TestRunCnossosAircraftProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -624,7 +642,8 @@ func TestRunBUFAircraftProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "buf-aircraft.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -635,7 +654,9 @@ func TestRunBUFAircraftProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -663,7 +684,9 @@ func TestRunBUFAircraftProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -718,7 +741,8 @@ func TestRunBEBExposureProducesOutputs(t *testing.T) {
 		filepath.Join(resultsDir, "beb-summary.json"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -729,7 +753,9 @@ func TestRunBEBExposureProducesOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode building table: %v", err)
 	}
 
@@ -757,7 +783,9 @@ func TestRunBEBExposureProducesOutputs(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -873,7 +901,9 @@ func TestRunBEBExposureWithBUFAircraftUpstreamProducesOutputs(t *testing.T) {
 	var summary struct {
 		UpstreamMappingStandard string `json:"upstream_mapping_standard"`
 	}
-	if err := json.Unmarshal(payload, &summary); err != nil {
+
+	err = json.Unmarshal(payload, &summary)
+	if err != nil {
 		t.Fatalf("decode beb summary: %v", err)
 	}
 
@@ -919,7 +949,8 @@ func TestRunRLS19RoadProducesOutputsAndProvenanceMetadata(t *testing.T) {
 		filepath.Join(resultsDir, "rls19-road.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -930,7 +961,9 @@ func TestRunRLS19RoadProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -958,7 +991,9 @@ func TestRunRLS19RoadProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -997,7 +1032,9 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
     }
   ]
 }`)
-	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+
+	err := os.WriteFile(modelPath, payload, 0o644)
+	if err != nil {
 		t.Fatalf("write custom model: %v", err)
 	}
 
@@ -1029,11 +1066,13 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	assertFileExists(t, filepath.Join(resultsDir, "receivers.csv"))
 	assertFileExists(t, filepath.Join(resultsDir, "run-summary.json"))
 
-	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.json")); !os.IsNotExist(err) {
+	_, err = os.Stat(filepath.Join(resultsDir, "rls19-road.json"))
+	if !os.IsNotExist(err) {
 		t.Fatalf("expected no raster metadata for custom receiver run, got err=%v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(resultsDir, "rls19-road.bin")); !os.IsNotExist(err) {
+	_, err = os.Stat(filepath.Join(resultsDir, "rls19-road.bin"))
+	if !os.IsNotExist(err) {
 		t.Fatalf("expected no raster data for custom receiver run, got err=%v", err)
 	}
 
@@ -1043,7 +1082,9 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(receiverPayload, &table); err != nil {
+
+	err = json.Unmarshal(receiverPayload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -1061,7 +1102,9 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	}
 
 	var summary map[string]any
-	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
 		t.Fatalf("decode summary: %v", err)
 	}
 
@@ -1079,7 +1122,9 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
 	}
 
 	var provenance project.ProvenanceManifest
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
@@ -1119,7 +1164,9 @@ func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
     }
   ]
 }`)
-	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+
+	err := os.WriteFile(modelPath, payload, 0o644)
+	if err != nil {
 		t.Fatalf("write custom model: %v", err)
 	}
 
@@ -1145,7 +1192,9 @@ func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(receiverPayload, &table); err != nil {
+
+	err = json.Unmarshal(receiverPayload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -1281,7 +1330,9 @@ func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
     }
   ]
 }`)
-	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+
+	err := os.WriteFile(modelPath, payload, 0o644)
+	if err != nil {
 		t.Fatalf("write model: %v", err)
 	}
 
@@ -1310,7 +1361,9 @@ func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
 	}
 
 	var summary map[string]any
-	if err := json.Unmarshal(summaryPayload, &summary); err != nil {
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
 		t.Fatalf("decode run-summary: %v", err)
 	}
 
@@ -1373,7 +1426,8 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 		filepath.Join(resultsDir, "schall03.bin"),
 		filepath.Join(resultsDir, "run-summary.json"),
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected result file %s: %v", path, err)
 		}
 	}
@@ -1384,7 +1438,9 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -1412,7 +1468,9 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	var provenance struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	if err := json.Unmarshal(provenancePayload, &provenance); err != nil {
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
 		t.Fatalf("decode provenance: %v", err)
 	}
 

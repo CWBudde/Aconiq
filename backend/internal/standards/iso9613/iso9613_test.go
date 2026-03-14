@@ -83,7 +83,8 @@ func TestExportResultBundleWritesExpectedFiles(t *testing.T) {
 		exported.RasterMetaPath,
 		exported.RasterDataPath,
 	} {
-		if _, err := os.Stat(path); err != nil {
+		_, err := os.Stat(path)
+		if err != nil {
 			t.Fatalf("expected output file %s: %v", filepath.Base(path), err)
 		}
 	}

@@ -184,7 +184,8 @@ func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
     }
   ]
 }`)
-	if err := os.WriteFile(modelPath, payload, 0o644); err != nil {
+	err := os.WriteFile(modelPath, payload, 0o644)
+	if err != nil {
 		t.Fatalf("write custom model: %v", err)
 	}
 
@@ -198,7 +199,8 @@ func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
 	assertFileExists(t, filepath.Join(bundleDir, "results", "receivers.json"))
 	assertFileExists(t, filepath.Join(bundleDir, "results", "run-summary.json"))
 
-	if _, err := os.Stat(filepath.Join(bundleDir, "results", "rls19-road.json")); !os.IsNotExist(err) {
+	_, err = os.Stat(filepath.Join(bundleDir, "results", "rls19-road.json"))
+	if !os.IsNotExist(err) {
 		t.Fatalf("expected no raster metadata in export bundle, got err=%v", err)
 	}
 

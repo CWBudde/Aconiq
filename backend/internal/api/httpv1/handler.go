@@ -320,7 +320,8 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	var req createRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    "bad_request",
 			Message: "request body must be valid JSON",
@@ -335,7 +336,8 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.runExecutor(r.Context(), req); err != nil {
+	err = h.runExecutor(r.Context(), req)
+	if err != nil {
 		writeRunCreateError(w, err)
 		return
 	}
@@ -457,7 +459,8 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 		cmd.Stdout = io.Discard
 		cmd.Stderr = &stderr
 
-		if err := cmd.Run(); err != nil {
+		err = cmd.Run()
+		if err != nil {
 			var exitErr *exec.ExitError
 			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
 				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", strings.TrimSpace(stderr.String()), err)
