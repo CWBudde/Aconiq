@@ -163,28 +163,25 @@ Status: implementation and conformance tracking complete.
 
 ## Phase 20 — Schall 03: standards-faithful completion & conformance
 
-Status: preview baseline shipped, standards-faithful replacement in progress.
+Status: **complete** (Eisenbahn Strecke scope).
 
 - [x] Module structure, typed rail/planning source schema, octave-band data model, framework descriptor, preview emission/propagation, CLI wiring, receiver tables, rasters, provenance, golden scenarios, acceptance fixtures.
+- [x] Encode Beiblatt 1 normative data: Fz-Kategorien 1–10, all Teilquellen, Table 4 Zugarten, Tables 6–9/11/17
+- [x] Normative emission chain (Gl. 1–2): multi-Teilquelle per Fz, speed factors, c1/c2/K_Br/K_L corrections
+- [x] Expand typed source model: TrainOperation with FzComposition, JSON schema for scenario files
+- [x] Normative propagation chain (Gl. 8–16): A_div, A_atm, A_gr, D_I, D_Ω, line source integration
+- [x] Barrier diffraction (Gl. 18–26): A_bar, D_z, C₂/C₃, K_met, D_refl, single/double caps
+- [x] Assessment and indicators (Gl. 29–34): Beurteilungspegel, K_S=0, L_r,Tag/L_r,Nacht
+- [x] Dedicated Schall 03 conformance runner with CI-safe synthetic test suite (4 scenarios)
+- [x] Publish Schall 03 conformance boundary document (`docs/conformance/schall03-konformitaetserklaerung.md`)
 
-### Open items — implementation
+### Deferred to sub-phases
 
-- [ ] Replace preview source-emission spectra with standards-faithful Schall 03 emission chain
-- [ ] Replace preview propagation adjustments with standards-faithful propagation/correction sequence
-- [ ] Expand typed source model for normative inputs (train classes, track forms, additional infrastructure detail)
-
-### Open items — conformance
-
-- [ ] Acquire or derive license-safe verification cases beyond the current synthetic preview fixture
-- [ ] Add a dedicated Schall 03 acceptance/conformance runner with tolerances, modes, and reporting
-- [ ] Add comparison tolerances and fixture-version tracking rules
-- [ ] Add end-to-end report/export checks once beyond preview status
-- [ ] Publish Schall 03 conformance boundary document (scope, tolerances, known deviations)
-
-### Research
-
-- [ ] Acquire license-safe verification or acceptance cases for Schall 03
-- [ ] Clarify redistribution rights for normative coefficients/tables (Datenpack strategy)
+- [ ] **Phase 20a**: Straßenbahnen (Fz 21–23, Beiblatt 2, Tables 12–16)
+- [ ] **Phase 20b**: Rangier- und Umschlagbahnhöfe (Beiblatt 3, Table 10, Gl. 35–36)
+- [ ] **Phase 20c**: Image-source reflections (Gl. 27–28, Table 18, up to 3rd order)
+- [ ] Ground correction for water bodies A_gr,W (Gl. 16)
+- [ ] End-to-end report/export checks (defer until beyond Eisenbahn Strecke scope)
 
 ---
 

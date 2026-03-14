@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_near",
+      "x": 100,
+      "y": 25,
+      "height_m": 4,
+      "LpAeqDay": 74.366391,
+      "LpAeqNight": 68.345791,
+      "LrDay": 74.366391,
+      "LrNight": 68.345791
+    }
+  ]
+}
