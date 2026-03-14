@@ -175,13 +175,90 @@ Status: **complete** (Eisenbahn Strecke scope).
 - [x] Dedicated Schall 03 conformance runner with CI-safe synthetic test suite (4 scenarios)
 - [x] Publish Schall 03 conformance boundary document (`docs/conformance/schall03-konformitaetserklaerung.md`)
 
+### Open items
+
+- [ ] Ground correction for water bodies A_gr,W (Gl. 16) — minor propagation addition
+- [ ] End-to-end report/export checks (defer until beyond Eisenbahn Strecke scope)
+
 ### Deferred to sub-phases
 
 - [ ] **Phase 20a**: Straßenbahnen (Fz 21–23, Beiblatt 2, Tables 12–16)
 - [ ] **Phase 20b**: Rangier- und Umschlagbahnhöfe (Beiblatt 3, Table 10, Gl. 35–36)
 - [ ] **Phase 20c**: Image-source reflections (Gl. 27–28, Table 18, up to 3rd order)
-- [ ] Ground correction for water bodies A_gr,W (Gl. 16)
-- [ ] End-to-end report/export checks (defer until beyond Eisenbahn Strecke scope)
+
+---
+
+## Phase 20a — Schall 03: Straßenbahnen
+
+Status: not started.
+
+**Goal:** extend the schall03 module to cover Straßenbahn (tram) vehicles — Fz-Kategorien 21–23, Beiblatt 2, and the Straßenbahn-specific correction tables (Tables 12–16).
+
+### Implementation
+
+- [ ] Encode Beiblatt 2 normative data: Fz-Kategorien 21–23 with all Teilquellen, a_A and Δa_f values
+- [ ] Encode Table 12: Geschwindigkeitsfaktoren b for Straßenbahnen (Rollgeräusch, aerodynamisch, Aggregat, Antrieb)
+- [ ] Encode Table 13: Pegelkorrekturen c1 for Straßenbahn Fahrbahnarten (Betonschwelle, Holzschwelle, Rasengleis, feste Fahrbahn, Pflaster, Rinnen-/Rillenschiene)
+- [ ] Encode Table 14: Pegelkorrekturen c2 for Straßenbahn surface conditions (büG, Schienenstegdämpfer)
+- [ ] Encode Table 15: Straßenbahn Auffälligkeitskorrektur K_L (curve radii thresholds differ from Eisenbahn)
+- [ ] Encode Table 16: Straßenbahn bridge corrections K_Br (types 1–3, different values than Table 9)
+- [ ] Expand `TrainOperation`/`FzComposition` to accept Fz 21–23 without breaking Fz 1–10 paths
+- [ ] Add `ZugartStraßenbahn` entries (Niederflur-ET, Hochflur-ET, Gelenktriebwagen) to Zugarten list
+- [ ] Implement Straßenbahn speed rules (Nr. 5.3): minimum effective speed 20 km/h, station rule differs from Eisenbahn
+
+### Conformance
+
+- [ ] Add CI-safe scenarios: at least one Straßenbahn emission scenario and one full-chain scenario
+- [ ] Generate golden snapshots for new scenarios
+- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Straßenbahnen as supported
+
+---
+
+## Phase 20b — Schall 03: Rangier- und Umschlagbahnhöfe
+
+Status: not started.
+
+**Goal:** extend the schall03 module to cover freight yard and transshipment terminal noise sources — Beiblatt 3, Table 10, and the Rangierbahnhof assessment equations (Gl. 35–36).
+
+### Implementation
+
+- [ ] Encode Beiblatt 3 normative data: Rangierbahnhof sound source table (shunting, coupling impacts, brake squeal, loading noise, stationary equipment)
+- [ ] Encode Table 10: Schallquellen in Rangierbahnhöfen und Umschlagbahnhöfen — source types, A-weighted levels, spectral corrections
+- [ ] Add `RangierbahnhofSource` type to the source model: point source, line source, area source (Flächenschallquelle)
+- [ ] Implement point and line source emission per Gl. 3–4
+- [ ] Implement area source aggregation per Gl. 5 (Flächenschallquelle with spatial integration)
+- [ ] Implement Rangierbahnhof assessment (Gl. 35–36): L_r,Rangierbahnhof with K_E impulse surcharge
+- [ ] Wire Rangierbahnhof sources through the existing propagation chain (A_div, A_atm, A_gr, A_bar)
+
+### Conformance
+
+- [ ] Add CI-safe scenarios: point source, area source, and full Rangierbahnhof assessment
+- [ ] Generate golden snapshots
+- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Rangierbahnhöfe as supported
+
+---
+
+## Phase 20c — Schall 03: Image-source reflections
+
+Status: not started.
+
+**Goal:** implement image-source reflections per Gl. 27–28, enabling multi-path propagation for façade-reflected sound.
+
+### Implementation
+
+- [ ] Encode Table 18: Absorptionsverlust an Wänden — octave-band absorption loss per wall material
+- [ ] Implement Fresnel zone validity check (Gl. 27): minimum reflecting surface area as function of wavelength and geometry
+- [ ] Implement 1st-order image source: mirror source position, reflected path geometry, reflection loss per Table 18
+- [ ] Implement 2nd-order and 3rd-order reflections (up to 3 bounces per Schall 03 scope)
+- [ ] Integrate reflected paths into the propagation chain: add reflected path contributions energetically to the direct path result
+- [ ] Handle reflection + barrier diffraction combined paths (Gl. 28)
+- [ ] Extend `TrackSegment` / scene geometry to accept reflecting wall definitions
+
+### Conformance
+
+- [ ] Add CI-safe scenarios: single reflecting wall, double reflection (canyon geometry), reflection + barrier interaction
+- [ ] Generate golden snapshots
+- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark reflections as supported
 
 ---
 
