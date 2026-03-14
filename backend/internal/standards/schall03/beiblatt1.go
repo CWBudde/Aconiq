@@ -499,8 +499,8 @@ type ZugartEntry struct {
 
 // FzCount pairs a Fahrzeug-Kategorie number with a unit count.
 type FzCount struct {
-	Fz    int
-	Count int
+	Fz    int `json:"fz"`
+	Count int `json:"count"`
 }
 
 // Zugarten contains all 19 Eisenbahn Zugarten from Table 4.

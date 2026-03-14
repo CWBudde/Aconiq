@@ -1,0 +1,41 @@
+{
+  "name": "schall03-ci-safe",
+  "standard_id": "schall03",
+  "suite_version": "phase20-v1",
+  "evidence_class": "license-safe synthetic acceptance fixture",
+  "provenance": "repo-authored synthetic scenarios",
+  "tasks": [
+    {
+      "name": "e1_ice1_straight",
+      "category": "emission",
+      "description": "ICE-1-Zug at 250 km/h on straight Schwellengleis, multi-Fz multi-Teilquelle normative emission",
+      "scenario_path": "ci_safe/e1_ice1_straight.scenario.json",
+      "expected_path": "ci_safe/e1_ice1_straight.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "e2_gueterzug_bridge",
+      "category": "emission",
+      "description": "Güterzug-E-Lok at 100 km/h on bridge type 2 (K_Br=6 dB)",
+      "scenario_path": "ci_safe/e2_gueterzug_bridge.scenario.json",
+      "expected_path": "ci_safe/e2_gueterzug_bridge.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "p1_free_field_two_receivers",
+      "category": "propagation",
+      "description": "IC-Zug-E-Lok, two receivers at 10m and 100m, verifying distance attenuation",
+      "scenario_path": "ci_safe/p1_free_field.scenario.json",
+      "expected_path": "ci_safe/p1_free_field.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "a1_full_chain_nahverkehr",
+      "category": "assessment",
+      "description": "Full emission+propagation+assessment: Nahverkehrszug-ET on feste Fahrbahn, L_r,Tag and L_r,Nacht",
+      "scenario_path": "ci_safe/a1_full_chain.scenario.json",
+      "expected_path": "ci_safe/a1_full_chain.expected.json",
+      "tolerance_db": 0.0001
+    }
+  ]
+}

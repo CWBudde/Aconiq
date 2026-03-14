@@ -1,0 +1,37 @@
+{
+  "segments": [
+    {
+      "id": "gueterzug_bridge",
+      "track_centerline": [
+        {"x": 0, "y": 0},
+        {"x": 100, "y": 0}
+      ],
+      "elevation_m": 3,
+      "fahrbahn": -1,
+      "surface": 0,
+      "bridge_type": 2,
+      "bridge_mitig": false,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 100,
+      "operations": [
+        {
+          "train_type": "Gueterzug-E-Lok",
+          "fz_composition": [
+            {"fz": 7, "count": 1},
+            {"fz": 10, "count": 24}
+          ],
+          "speed_kph": 100,
+          "trains_per_hour_day": 3,
+          "trains_per_hour_night": 2
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_side",
+      "point": {"x": 50, "y": 40},
+      "height_m": 4.0
+    }
+  ]
+}

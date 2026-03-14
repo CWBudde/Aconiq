@@ -1,0 +1,40 @@
+{
+  "segments": [
+    {
+      "id": "nahverkehr_track",
+      "track_centerline": [
+        {"x": 0, "y": 0},
+        {"x": 300, "y": 0}
+      ],
+      "elevation_m": 0,
+      "fahrbahn": 0,
+      "surface": 0,
+      "bridge_type": 0,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 140,
+      "operations": [
+        {
+          "train_type": "Nahverkehrszug-ET",
+          "fz_composition": [
+            {"fz": 5, "count": 1}
+          ],
+          "speed_kph": 140,
+          "trains_per_hour_day": 6,
+          "trains_per_hour_night": 2
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_25m",
+      "point": {"x": 150, "y": 25},
+      "height_m": 3.5
+    },
+    {
+      "id": "r_75m",
+      "point": {"x": 150, "y": 75},
+      "height_m": 3.5
+    }
+  ]
+}
