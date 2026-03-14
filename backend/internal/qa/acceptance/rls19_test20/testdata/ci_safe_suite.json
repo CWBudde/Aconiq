@@ -114,6 +114,198 @@
       }
     },
     {
+      "name": "I2-derived-barrier-parallel-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived single parallel barrier scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i2_barrier_parallel_reference.scenario.json",
+      "expected_path": "ci_safe/i2_barrier_parallel_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I2-derived-barrier-parallel-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived single parallel barrier scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i2_barrier_parallel_check.scenario.json",
+      "expected_path": "ci_safe/i2_barrier_parallel_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I3-derived-reflector-parallel-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived single parallel reflecting surface scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i3_reflector_parallel_reference.scenario.json",
+      "expected_path": "ci_safe/i3_reflector_parallel_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I3-derived-reflector-parallel-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived single parallel reflecting surface scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i3_reflector_parallel_check.scenario.json",
+      "expected_path": "ci_safe/i3_reflector_parallel_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I4-derived-barrier-reflector-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived combined barrier and reflector scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i4_barrier_reflector_reference.scenario.json",
+      "expected_path": "ci_safe/i4_barrier_reflector_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I4-derived-barrier-reflector-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived combined barrier and reflector scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i4_barrier_reflector_check.scenario.json",
+      "expected_path": "ci_safe/i4_barrier_reflector_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I5-derived-double-barrier-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived double parallel barrier scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i5_double_barrier_reference.scenario.json",
+      "expected_path": "ci_safe/i5_double_barrier_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I5-derived-double-barrier-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived double parallel barrier scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i5_double_barrier_check.scenario.json",
+      "expected_path": "ci_safe/i5_double_barrier_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I6-derived-cutting-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived road-in-cutting (Tieflage) scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i6_cutting_reference.scenario.json",
+      "expected_path": "ci_safe/i6_cutting_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I6-derived-cutting-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived road-in-cutting (Tieflage) scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i6_cutting_check.scenario.json",
+      "expected_path": "ci_safe/i6_cutting_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I7-derived-elevated-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived elevated road (Hochlage) scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i7_elevated_reference.scenario.json",
+      "expected_path": "ci_safe/i7_elevated_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I7-derived-elevated-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived elevated road (Hochlage) scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i7_elevated_check.scenario.json",
+      "expected_path": "ci_safe/i7_elevated_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I8-derived-ascending-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived ascending road scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i8_ascending_reference.scenario.json",
+      "expected_path": "ci_safe/i8_ascending_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I8-derived-ascending-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived ascending road scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i8_ascending_check.scenario.json",
+      "expected_path": "ci_safe/i8_ascending_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I9-derived-receding-reference",
+      "category": "immission",
+      "setting": "reference",
+      "description": "Derived receding road scenario with coarser segmentation.",
+      "scenario_path": "ci_safe/i9_receding_reference.scenario.json",
+      "expected_path": "ci_safe/i9_receding_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "I9-derived-receding-check",
+      "category": "immission",
+      "setting": "check",
+      "description": "Derived receding road scenario with finer segmentation.",
+      "scenario_path": "ci_safe/i9_receding_check.scenario.json",
+      "expected_path": "ci_safe/i9_receding_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
       "name": "K5-derived-reflection-conditions",
       "category": "reflection",
       "setting": "check",
