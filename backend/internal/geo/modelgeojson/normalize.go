@@ -8,10 +8,44 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aconiq/backend/internal/geo"
 )
 
 // Normalize decodes raw GeoJSON and maps it into the normalized project model.
+// If importCRS is non-empty and differs from projectCRS, coordinates are transformed.
 func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error) {
+	return NormalizeWithCRS(data, projectCRS, "", sourcePath)
+}
+
+// buildCRSPipeline builds a transform pipeline if import and project CRS differ.
+// Returns nil pipeline when no transform is needed.
+func buildCRSPipeline(projCRS, impCRS string) (*geo.TransformPipeline, error) {
+	if impCRS == "" || projCRS == "" || strings.EqualFold(impCRS, projCRS) {
+		return nil, nil //nolint:nilnil // nil pipeline means no transform needed
+	}
+
+	from, err := geo.ParseCRS(impCRS)
+	if err != nil {
+		return nil, fmt.Errorf("parse import CRS %q: %w", impCRS, err)
+	}
+
+	to, err := geo.ParseCRS(projCRS)
+	if err != nil {
+		return nil, fmt.Errorf("parse project CRS %q: %w", projCRS, err)
+	}
+
+	p, err := geo.BuildTransformPipeline(to, from)
+	if err != nil {
+		return nil, fmt.Errorf("build CRS transform %s -> %s: %w", impCRS, projCRS, err)
+	}
+
+	return &p, nil
+}
+
+// NormalizeWithCRS decodes raw GeoJSON and maps it into the normalized project model.
+// When importCRS differs from projectCRS, all coordinates are reprojected into the project CRS.
+func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePath string) (Model, error) {
 	var collection FeatureCollection
 
 	err := json.Unmarshal(data, &collection)
@@ -22,6 +56,16 @@ func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error)
 	if collection.Type != "FeatureCollection" {
 		return Model{}, fmt.Errorf("expected GeoJSON FeatureCollection, got %q", collection.Type)
 	}
+
+	projCRS := strings.TrimSpace(projectCRS)
+	impCRS := strings.TrimSpace(importCRS)
+
+	pipeline, err := buildCRSPipeline(projCRS, impCRS)
+	if err != nil {
+		return Model{}, err
+	}
+
+	transformApplied := pipeline != nil
 
 	features := make([]Feature, 0, len(collection.Features))
 	for idx, raw := range collection.Features {
@@ -56,6 +100,14 @@ func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error)
 			featureHeight = &heightM
 		}
 
+		coords := raw.Geometry.Coordinates
+		if pipeline != nil {
+			coords, err = transformCoordinates(coords, pipeline)
+			if err != nil {
+				return Model{}, fmt.Errorf("feature[%d] (%s): CRS transform: %w", idx, id, err)
+			}
+		}
+
 		features = append(features, Feature{
 			ID:           id,
 			Kind:         kind,
@@ -63,17 +115,84 @@ func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error)
 			HeightM:      featureHeight,
 			Properties:   normalizeProperties(raw.Properties),
 			GeometryType: geometryType,
-			Coordinates:  raw.Geometry.Coordinates,
+			Coordinates:  coords,
 		})
 	}
 
 	return Model{
-		SchemaVersion: 1,
-		ProjectCRS:    strings.TrimSpace(projectCRS),
-		ImportedAt:    time.Now().UTC(),
-		SourcePath:    filepath.ToSlash(strings.TrimSpace(sourcePath)),
-		Features:      features,
+		SchemaVersion:    1,
+		ProjectCRS:       projCRS,
+		ImportCRS:        impCRS,
+		TransformApplied: transformApplied,
+		ImportedAt:       time.Now().UTC(),
+		SourcePath:       filepath.ToSlash(strings.TrimSpace(sourcePath)),
+		Features:         features,
 	}, nil
+}
+
+// transformCoordinates recursively walks GeoJSON coordinate structures and
+// applies the CRS transform to each [x, y] pair. Supports all GeoJSON geometry types.
+func transformCoordinates(coords any, pipeline *geo.TransformPipeline) (any, error) {
+	switch v := coords.(type) {
+	case []any:
+		if len(v) == 0 {
+			return v, nil
+		}
+
+		// Check if this is a coordinate pair [x, y] or [x, y, z].
+		if isCoordinatePair(v) {
+			return transformPoint(v, pipeline)
+		}
+
+		// Otherwise it's an array of sub-arrays — recurse.
+		result := make([]any, len(v))
+		for i, elem := range v {
+			transformed, err := transformCoordinates(elem, pipeline)
+			if err != nil {
+				return nil, err
+			}
+
+			result[i] = transformed
+		}
+
+		return result, nil
+	default:
+		return coords, nil
+	}
+}
+
+// isCoordinatePair checks if a []any looks like a GeoJSON coordinate [number, number, ...].
+func isCoordinatePair(v []any) bool {
+	if len(v) < 2 {
+		return false
+	}
+
+	_, xOK := v[0].(float64)
+	_, yOK := v[1].(float64)
+
+	return xOK && yOK
+}
+
+// transformPoint transforms a single [x, y] or [x, y, z] coordinate.
+func transformPoint(v []any, pipeline *geo.TransformPipeline) ([]any, error) {
+	x, _ := v[0].(float64)
+	y, _ := v[1].(float64)
+
+	out, err := pipeline.ApplyPoint(geo.Point2D{X: x, Y: y})
+	if err != nil {
+		return nil, fmt.Errorf("point (%.6f, %.6f): %w", x, y, err)
+	}
+
+	result := make([]any, len(v))
+	result[0] = out.X
+	result[1] = out.Y
+
+	// Preserve Z and any additional ordinates unchanged.
+	for i := 2; i < len(v); i++ {
+		result[i] = v[i]
+	}
+
+	return result, nil
 }
 
 // ToFeatureCollection serializes the normalized model back into canonical GeoJSON.
@@ -136,13 +255,15 @@ func (m Model) ToDump() ModelDump {
 	}
 
 	return ModelDump{
-		SchemaVersion: m.SchemaVersion,
-		ProjectCRS:    m.ProjectCRS,
-		ImportedAt:    m.ImportedAt,
-		SourcePath:    m.SourcePath,
-		FeatureCount:  len(m.Features),
-		CountsByKind:  counts,
-		Features:      dumpFeatures,
+		SchemaVersion:    m.SchemaVersion,
+		ProjectCRS:       m.ProjectCRS,
+		ImportCRS:        m.ImportCRS,
+		TransformApplied: m.TransformApplied,
+		ImportedAt:       m.ImportedAt,
+		SourcePath:       m.SourcePath,
+		FeatureCount:     len(m.Features),
+		CountsByKind:     counts,
+		Features:         dumpFeatures,
 	}
 }
 

@@ -47,17 +47,31 @@ func TestBuildTransformPipelineIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildTransformPipelineSupported(t *testing.T) {
+	t.Parallel()
+
+	projectCRS, _ := ParseCRS("EPSG:25832")
+	importCRS, _ := ParseCRS("EPSG:4326")
+
+	pipeline, err := BuildTransformPipeline(projectCRS, importCRS)
+	if err != nil {
+		t.Fatalf("expected supported transform, got error: %v", err)
+	}
+
+	if len(pipeline.Steps) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(pipeline.Steps))
+	}
+}
+
 func TestBuildTransformPipelineUnsupported(t *testing.T) {
 	t.Parallel()
 
 	projectCRS, _ := ParseCRS("EPSG:25832")
+	importCRS, _ := ParseCRS("EPSG:99999")
 
-	importCRS, _ := ParseCRS("EPSG:4326")
-	{
-		_, err := BuildTransformPipeline(projectCRS, importCRS)
-		if err == nil {
-			t.Fatal("expected unsupported transform error")
-		}
+	_, err := BuildTransformPipeline(projectCRS, importCRS)
+	if err == nil {
+		t.Fatal("expected unsupported transform error")
 	}
 }
 

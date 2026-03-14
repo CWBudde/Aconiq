@@ -14,6 +14,7 @@ type RasterMetadata struct {
 	NoData    float64  `json:"nodata"`
 	Unit      string   `json:"unit"`
 	BandNames []string `json:"band_names,omitempty"`
+	CRS       string   `json:"crs,omitempty"`
 }
 
 // Raster stores banded grid values in row-major order.

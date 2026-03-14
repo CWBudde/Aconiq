@@ -15,12 +15,29 @@ import (
 	"github.com/gogama/flatgeobuf/flatgeobuf/flat"
 )
 
+// ReadResult holds the result of reading a FlatGeobuf file.
+type ReadResult struct {
+	Collection modelgeojson.FeatureCollection
+	EPSGCode   int // 0 if CRS could not be determined
+}
+
 // Read reads all features from a FlatGeobuf file and returns a GeoJSON-compatible
 // FeatureCollection ready for Normalize.
 func Read(path string) (modelgeojson.FeatureCollection, error) {
+	result, err := ReadWithCRS(path)
+	if err != nil {
+		return modelgeojson.FeatureCollection{}, err
+	}
+
+	return result.Collection, nil
+}
+
+// ReadWithCRS reads all features from a FlatGeobuf file and also extracts the CRS
+// from the file header.
+func ReadWithCRS(path string) (ReadResult, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, fmt.Errorf("fgb: open %q: %w", path, err)
+		return ReadResult{}, fmt.Errorf("fgb: open %q: %w", path, err)
 	}
 
 	defer f.Close()
@@ -29,22 +46,23 @@ func Read(path string) (modelgeojson.FeatureCollection, error) {
 
 	hdr, err := r.Header()
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, fmt.Errorf("fgb: read header: %w", err)
+		return ReadResult{}, fmt.Errorf("fgb: read header: %w", err)
 	}
 
 	flatFeatures, err := r.DataRem()
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, fmt.Errorf("fgb: read features: %w", err)
+		return ReadResult{}, fmt.Errorf("fgb: read features: %w", err)
 	}
 
 	headerGeomType := hdr.GeometryType()
+	epsg := extractHeaderCRS(hdr)
 
 	features := make([]modelgeojson.GeoJSONFeature, 0, len(flatFeatures))
 
 	for i := range flatFeatures {
 		feat, convertErr := convertFeature(&flatFeatures[i], hdr, headerGeomType, i)
 		if convertErr != nil {
-			return modelgeojson.FeatureCollection{}, fmt.Errorf("fgb: feature %d: %w", i, convertErr)
+			return ReadResult{}, fmt.Errorf("fgb: feature %d: %w", i, convertErr)
 		}
 
 		if feat != nil {
@@ -52,10 +70,30 @@ func Read(path string) (modelgeojson.FeatureCollection, error) {
 		}
 	}
 
-	return modelgeojson.FeatureCollection{
-		Type:     "FeatureCollection",
-		Features: features,
+	return ReadResult{
+		Collection: modelgeojson.FeatureCollection{
+			Type:     "FeatureCollection",
+			Features: features,
+		},
+		EPSGCode: epsg,
 	}, nil
+}
+
+// extractHeaderCRS reads the CRS from a FlatGeobuf header. Returns the EPSG code, or 0.
+func extractHeaderCRS(hdr *flat.Header) int {
+	crs := new(flat.Crs)
+
+	crs = hdr.Crs(crs)
+	if crs == nil {
+		return 0
+	}
+
+	code := int(crs.Code())
+	if code > 0 {
+		return code
+	}
+
+	return 0
 }
 
 func convertFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.GeometryType, index int) (*modelgeojson.GeoJSONFeature, error) {

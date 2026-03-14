@@ -78,12 +78,18 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 		t.Fatalf("expected generated report files in summary, got %#v", summary["generated_reports"])
 	}
 
+	if projectCRS, ok := summary["project_crs"].(string); !ok || projectCRS != "EPSG:25832" {
+		t.Fatalf("expected project_crs=EPSG:25832, got %v", summary["project_crs"])
+	}
+
 	copiedFiles := anySliceToStrings(summary["copied_files"])
-	for _, expected := range []string{"results/receivers.json", "results/run-summary.json", "provenance.json"} {
+	for _, expected := range []string{"results/receivers.json", "results/run-summary.json", "provenance.json", "model/model.normalized.geojson"} {
 		if !slices.Contains(copiedFiles, expected) {
 			t.Fatalf("expected copied file %q in export summary", expected)
 		}
 	}
+
+	assertFileExists(t, filepath.Join(bundleDir, "model", "model.normalized.geojson"))
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -203,6 +209,49 @@ func TestExportHandlesCustomReceiverRunsWithoutRasterArtifacts(t *testing.T) {
 
 	if !strings.Contains(string(reportMarkdown), "No map/image artifacts were available") {
 		t.Fatalf("expected no-map note in report markdown")
+	}
+}
+
+func TestExportTargetCRSReprojectsModelGeoJSON(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "CRSExport", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield")
+	mustRunCLI(t, "--project", projectDir, "export", "--target-crs", "EPSG:4326")
+
+	bundleDir := latestExportBundleDir(t, projectDir)
+	geojsonPath := filepath.Join(bundleDir, "model", "model.normalized.geojson")
+	assertFileExists(t, geojsonPath)
+
+	data, err := os.ReadFile(geojsonPath)
+	if err != nil {
+		t.Fatalf("read exported geojson: %v", err)
+	}
+
+	var fc map[string]any
+
+	err = json.Unmarshal(data, &fc)
+	if err != nil {
+		t.Fatalf("decode exported geojson: %v", err)
+	}
+
+	// Check that CRS metadata reflects the target CRS.
+	crs, ok := fc["crs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected crs metadata in exported geojson")
+	}
+
+	crsProps, ok := crs["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected crs properties")
+	}
+
+	if crsProps["name"] != "EPSG:4326" {
+		t.Fatalf("expected CRS name=EPSG:4326, got %v", crsProps["name"])
 	}
 }
 

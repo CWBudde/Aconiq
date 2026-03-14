@@ -75,14 +75,14 @@ See:
 
 ## TEST-20 version tracking
 
-| Version | Date | Source | Notes |
-|---------|------|--------|-------|
-| 2.1 | July 2025 | BASt download page | Added K5 reflection-conditions task |
-| 2.0 | March 2021 | BASt download page | Initial release with RLS-19 |
+| Version | Date       | Source             | Notes                               |
+| ------- | ---------- | ------------------ | ----------------------------------- |
+| 2.1     | July 2025  | BASt download page | Added K5 reflection-conditions task |
+| 2.0     | March 2021 | BASt download page | Initial release with RLS-19         |
 
 ### Authoritative version for CI gating
 
-The CI-safe suite is derived from public TEST-20 v2.1 task *categories* (not task data).
+The CI-safe suite is derived from public TEST-20 v2.1 task _categories_ (not task data).
 The `ci_safe_suite.json` manifest records `suite_version: derived-ci-safe-v1` and
 `evidence_class: license-safe derived fixture suite`.
 
@@ -92,8 +92,9 @@ must record the exact TEST-20 version used.
 ### Update handling
 
 When a new TEST-20 version is published:
+
 1. Check BASt download page for updated PDF
-2. Compare task inventory (any new E*/I*/K* tasks?)
+2. Compare task inventory (any new E*/I*/K\* tasks?)
 3. Add corresponding CI-safe derived scenarios for new categories
 4. Update `ci_safe_suite.json` manifest `suite_version` field
 5. If a developer has the new TEST-20, update local-suite extractions and re-run

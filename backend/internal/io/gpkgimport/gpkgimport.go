@@ -62,12 +62,29 @@ func ListLayers(path string) ([]LayerInfo, error) {
 	return layers, nil
 }
 
+// ReadResult holds the result of reading a GeoPackage layer.
+type ReadResult struct {
+	Collection modelgeojson.FeatureCollection
+	EPSGCode   int // 0 if CRS could not be determined
+}
+
 // ReadLayer reads features from a named layer and returns a GeoJSON-compatible
 // FeatureCollection ready for Normalize.
 func ReadLayer(path string, layerName string) (modelgeojson.FeatureCollection, error) {
+	result, err := ReadLayerWithCRS(path, layerName)
+	if err != nil {
+		return modelgeojson.FeatureCollection{}, err
+	}
+
+	return result.Collection, nil
+}
+
+// ReadLayerWithCRS reads features from a named layer and also extracts the CRS
+// from the GeoPackage spatial_ref_sys table.
+func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, fmt.Errorf("gpkg: open %q: %w", path, err)
+		return ReadResult{}, fmt.Errorf("gpkg: open %q: %w", path, err)
 	}
 
 	defer db.Close()
@@ -76,23 +93,45 @@ func ReadLayer(path string, layerName string) (modelgeojson.FeatureCollection, e
 
 	geomCol, err := queryGeomColumn(ctx, db, layerName)
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, err
+		return ReadResult{}, err
 	}
+
+	epsg := querySRSID(ctx, db, layerName)
 
 	colNames, err := queryColumnNames(ctx, db, layerName)
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, err
+		return ReadResult{}, err
 	}
 
 	features, err := queryFeatures(ctx, db, layerName, colNames, geomCol)
 	if err != nil {
-		return modelgeojson.FeatureCollection{}, err
+		return ReadResult{}, err
 	}
 
-	return modelgeojson.FeatureCollection{
-		Type:     "FeatureCollection",
-		Features: features,
+	return ReadResult{
+		Collection: modelgeojson.FeatureCollection{
+			Type:     "FeatureCollection",
+			Features: features,
+		},
+		EPSGCode: epsg,
 	}, nil
+}
+
+// querySRSID extracts the EPSG code for a layer from gpkg_geometry_columns.
+// Returns 0 if the SRS cannot be determined.
+func querySRSID(ctx context.Context, db *sql.DB, tableName string) int {
+	var srsID int
+
+	err := db.QueryRowContext(
+		ctx,
+		`SELECT srs_id FROM gpkg_geometry_columns WHERE table_name = ?`,
+		tableName,
+	).Scan(&srsID)
+	if err != nil {
+		return 0
+	}
+
+	return srsID
 }
 
 func queryGeomColumn(ctx context.Context, db *sql.DB, tableName string) (string, error) {

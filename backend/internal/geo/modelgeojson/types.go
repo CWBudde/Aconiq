@@ -4,11 +4,13 @@ import "time"
 
 // Model contains normalized GeoJSON features for the project model layer.
 type Model struct {
-	SchemaVersion int       `json:"schema_version"`
-	ProjectCRS    string    `json:"project_crs"`
-	ImportedAt    time.Time `json:"imported_at"`
-	SourcePath    string    `json:"source_path,omitempty"`
-	Features      []Feature `json:"features"`
+	SchemaVersion    int       `json:"schema_version"`
+	ProjectCRS       string    `json:"project_crs"`
+	ImportCRS        string    `json:"import_crs,omitempty"`
+	TransformApplied bool      `json:"transform_applied,omitempty"`
+	ImportedAt       time.Time `json:"imported_at"`
+	SourcePath       string    `json:"source_path,omitempty"`
+	Features         []Feature `json:"features"`
 }
 
 // Feature is a normalized model feature derived from raw GeoJSON.
@@ -48,13 +50,15 @@ func (r ValidationReport) WarningCount() int {
 
 // ModelDump is a compact, debug-friendly projection of the normalized model.
 type ModelDump struct {
-	SchemaVersion int            `json:"schema_version"`
-	ProjectCRS    string         `json:"project_crs"`
-	ImportedAt    time.Time      `json:"imported_at"`
-	SourcePath    string         `json:"source_path,omitempty"`
-	FeatureCount  int            `json:"feature_count"`
-	CountsByKind  map[string]int `json:"counts_by_kind"`
-	Features      []FeatureDump  `json:"features"`
+	SchemaVersion    int            `json:"schema_version"`
+	ProjectCRS       string         `json:"project_crs"`
+	ImportCRS        string         `json:"import_crs,omitempty"`
+	TransformApplied bool           `json:"transform_applied,omitempty"`
+	ImportedAt       time.Time      `json:"imported_at"`
+	SourcePath       string         `json:"source_path,omitempty"`
+	FeatureCount     int            `json:"feature_count"`
+	CountsByKind     map[string]int `json:"counts_by_kind"`
+	Features         []FeatureDump  `json:"features"`
 }
 
 // FeatureDump summarizes one normalized feature.

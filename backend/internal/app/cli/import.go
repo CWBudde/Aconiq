@@ -25,6 +25,7 @@ import (
 func newImportCommand() *cobra.Command {
 	var inputPath string
 	var layerName string
+	var inputCRS string
 	var trafficPath string
 	var terrainPath string
 	var osmBBox string
@@ -34,12 +35,13 @@ func newImportCommand() *cobra.Command {
 		Use:   "import",
 		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, or CityGML model data into the project",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runImport(cmd, inputPath, layerName, trafficPath, terrainPath, osmBBox, osmEndpoint)
+			return runImport(cmd, inputPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint)
 		},
 	}
 
 	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON, GeoPackage (.gpkg), FlatGeobuf (.fgb), or CityGML (.gml/.citygml) input file")
 	cmd.Flags().StringVar(&layerName, "layer", "", "Layer name to import from a GeoPackage file (required for .gpkg)")
+	cmd.Flags().StringVar(&inputCRS, "input-crs", "", "CRS of the input data (e.g. EPSG:25832); auto-detected from GeoPackage/FlatGeobuf/CityGML if omitted")
 	cmd.Flags().StringVar(&trafficPath, "traffic", "", "Path to CSV attribute table for merging into the model")
 	cmd.Flags().StringVar(&terrainPath, "terrain", "", "Path to GeoTIFF DTM file for terrain elevation data")
 	cmd.Flags().StringVar(&osmBBox, "from-osm", "", "Bounding box for OSM import: \"south,west,north,east\" in WGS84 degrees")
@@ -48,7 +50,7 @@ func newImportCommand() *cobra.Command {
 	return cmd
 }
 
-func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
+func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
 	err := validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox)
 	if err != nil {
 		return err
@@ -78,7 +80,7 @@ func runImport(cmd *cobra.Command, inputPath, layerName, trafficPath, terrainPat
 	case osmBBox != "":
 		err = runOSMImport(cmd, state, store, &proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
 	case inputPath != "":
-		err = runGeometryImport(cmd, state, store, &proj, inputPath, layerName, normalizedPath, dumpPath, reportPath)
+		err = runGeometryImport(cmd, state, store, &proj, inputPath, layerName, inputCRS, normalizedPath, dumpPath, reportPath)
 	}
 
 	if err == nil && trafficPath != "" {
@@ -174,7 +176,7 @@ func fetchAndNormalizeOSM(
 		return modelgeojson.Model{}, modelgeojson.ValidationReport{}, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal OSM FeatureCollection", err)
 	}
 
-	model, err := modelgeojson.Normalize(payload, proj.CRS, "osm:"+osmBBox)
+	model, err := modelgeojson.NormalizeWithCRS(payload, proj.CRS, "EPSG:4326", "osm:"+osmBBox)
 	if err != nil {
 		return modelgeojson.Model{}, modelgeojson.ValidationReport{}, domainerrors.New(domainerrors.KindValidation, "cli.import", "invalid geojson from OSM import", err)
 	}
@@ -273,6 +275,7 @@ func runGeometryImport(
 	proj *project.Project,
 	inputPath string,
 	layerName string,
+	inputCRS string,
 	normalizedPath string,
 	dumpPath string,
 	reportPath string,
@@ -280,12 +283,18 @@ func runGeometryImport(
 	absoluteInput := resolvePath(store.Root(), inputPath)
 	relInput := relativePath(store.Root(), absoluteInput)
 
-	payload, err := loadInputPayload(absoluteInput, layerName)
+	result, err := loadInputPayload(absoluteInput, layerName)
 	if err != nil {
 		return err
 	}
 
-	model, err := modelgeojson.Normalize(payload, proj.CRS, relInput)
+	// Determine effective import CRS: explicit flag > auto-detected > empty.
+	effectiveCRS := inputCRS
+	if effectiveCRS == "" && result.detectedCRS != "" {
+		effectiveCRS = result.detectedCRS
+	}
+
+	model, err := modelgeojson.NormalizeWithCRS(result.payload, proj.CRS, effectiveCRS, relInput)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindValidation, "cli.import", "invalid geojson input", err)
 	}
@@ -300,70 +309,98 @@ func runGeometryImport(
 		return domainerrors.New(domainerrors.KindValidation, "cli.import", summarizeValidationErrors(messages, 3), nil)
 	}
 
-	err = writeJSONFile(normalizedPath, model.ToFeatureCollection())
+	err = persistModelArtifacts(store, proj, model, report, normalizedPath, dumpPath, reportPath)
 	if err != nil {
 		return err
 	}
 
-	err = writeJSONFile(dumpPath, model.ToDump())
-	if err != nil {
-		return err
-	}
-
-	err = writeJSONFile(reportPath, report)
-	if err != nil {
-		return err
-	}
-
-	now := nowUTC()
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-normalized",
-		Kind:      "model.normalized_geojson",
-		Path:      relativePath(store.Root(), normalizedPath),
-		CreatedAt: now,
-	})
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-dump",
-		Kind:      "model.dump_json",
-		Path:      relativePath(store.Root(), dumpPath),
-		CreatedAt: now,
-	})
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-validation",
-		Kind:      "model.validation_report",
-		Path:      relativePath(store.Root(), reportPath),
-		CreatedAt: now,
-	})
-
-	err = store.Save(*proj)
-	if err != nil {
-		return err
-	}
-
-	state.Logger.Info(
-		"import completed",
-		"input", relInput,
-		"feature_count", len(model.Features),
-		"warnings", report.WarningCount(),
-		"normalized", relativePath(store.Root(), normalizedPath),
-	)
-
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d features from %s\n", len(model.Features), relInput)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Normalized GeoJSON: %s\n", relativePath(store.Root(), normalizedPath))
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Model dump: %s\n", relativePath(store.Root(), dumpPath))
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation report: %s\n", relativePath(store.Root(), reportPath))
-
-	if report.WarningCount() > 0 {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation warnings: %d\n", report.WarningCount())
-	}
+	printImportSummary(cmd, state, model, report, relInput, effectiveCRS, store.Root(), normalizedPath, dumpPath, reportPath)
 
 	return nil
 }
 
-// loadInputPayload reads the input file as GeoJSON bytes.
+func persistModelArtifacts(
+	store projectfs.Store, proj *project.Project,
+	model modelgeojson.Model, report modelgeojson.ValidationReport,
+	normalizedPath, dumpPath, reportPath string,
+) error {
+	if err := writeJSONFile(normalizedPath, model.ToFeatureCollection()); err != nil {
+		return err
+	}
+
+	if err := writeJSONFile(dumpPath, model.ToDump()); err != nil {
+		return err
+	}
+
+	if err := writeJSONFile(reportPath, report); err != nil {
+		return err
+	}
+
+	now := nowUTC()
+	for _, ref := range []project.ArtifactRef{
+		{ID: "artifact-model-normalized", Kind: "model.normalized_geojson", Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
+		{ID: "artifact-model-dump", Kind: "model.dump_json", Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
+		{ID: "artifact-model-validation", Kind: "model.validation_report", Path: relativePath(store.Root(), reportPath), CreatedAt: now},
+	} {
+		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
+	}
+
+	return store.Save(*proj)
+}
+
+func printImportSummary(
+	cmd *cobra.Command, state commandState,
+	model modelgeojson.Model, report modelgeojson.ValidationReport,
+	relInput, effectiveCRS, root, normalizedPath, dumpPath, reportPath string,
+) {
+	logFields := []any{
+		"input", relInput,
+		"feature_count", len(model.Features),
+		"warnings", report.WarningCount(),
+		"normalized", relativePath(root, normalizedPath),
+	}
+
+	if model.TransformApplied {
+		logFields = append(logFields, "import_crs", model.ImportCRS, "project_crs", model.ProjectCRS)
+	}
+
+	state.Logger.Info("import completed", logFields...)
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d features from %s\n", len(model.Features), relInput)
+
+	if model.TransformApplied {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "CRS transform: %s -> %s\n", model.ImportCRS, model.ProjectCRS)
+	} else if effectiveCRS != "" {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Input CRS: %s (matches project CRS, no transform needed)\n", effectiveCRS)
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Normalized GeoJSON: %s\n", relativePath(root, normalizedPath))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Model dump: %s\n", relativePath(root, dumpPath))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation report: %s\n", relativePath(root, reportPath))
+
+	if report.WarningCount() > 0 {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validation warnings: %d\n", report.WarningCount())
+	}
+}
+
+// inputPayload holds the raw GeoJSON bytes and optional auto-detected CRS.
+type inputPayload struct {
+	payload     []byte
+	detectedCRS string // e.g. "EPSG:25832", empty if not detected
+}
+
+func epsgToString(code int) string {
+	if code <= 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("EPSG:%d", code)
+}
+
+// loadInputPayload reads the input file as GeoJSON bytes with optional CRS auto-detection.
 // For .gpkg files it uses gpkgimport; for .fgb files it uses fgbimport;
 // for .gml/.citygml files it uses citygmlimport; for all others it reads the file directly as GeoJSON.
-func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
+func loadInputPayload(absoluteInput string, layerName string) (inputPayload, error) {
 	ext := strings.ToLower(filepath.Ext(absoluteInput))
 
 	switch ext {
@@ -375,24 +412,24 @@ func loadInputPayload(absoluteInput string, layerName string) ([]byte, error) {
 		return readCityGMLAsGeoJSON(absoluteInput, layerName)
 	default:
 		if layerName != "" {
-			return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is only valid for GeoPackage (.gpkg) files", nil)
+			return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is only valid for GeoPackage (.gpkg) files", nil)
 		}
 
 		payload, err := os.ReadFile(absoluteInput)
 		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read input file: "+absoluteInput, err)
+			return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read input file: "+absoluteInput, err)
 		}
 
-		return payload, nil
+		return inputPayload{payload: payload}, nil
 	}
 }
 
 // readGPKGAsGeoJSON opens a GeoPackage file and returns its layer as marshalled GeoJSON bytes.
-func readGPKGAsGeoJSON(path string, layerName string) ([]byte, error) {
+func readGPKGAsGeoJSON(path string, layerName string) (inputPayload, error) {
 	if layerName == "" {
 		layers, err := gpkgimport.ListLayers(path)
 		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "list GeoPackage layers", err)
+			return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "list GeoPackage layers", err)
 		}
 
 		names := make([]string, 0, len(layers))
@@ -402,63 +439,63 @@ func readGPKGAsGeoJSON(path string, layerName string) ([]byte, error) {
 
 		msg := "--layer is required for GeoPackage files; available layers: " + strings.Join(names, ", ")
 
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", msg, nil)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", msg, nil)
 	}
 
-	fc, err := gpkgimport.ReadLayer(path, layerName)
+	result, err := gpkgimport.ReadLayerWithCRS(path, layerName)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read GeoPackage layer "+layerName, err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read GeoPackage layer "+layerName, err)
 	}
 
-	payload, err := json.Marshal(fc)
+	payload, err := json.Marshal(result.Collection)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal GeoPackage layer to GeoJSON", err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal GeoPackage layer to GeoJSON", err)
 	}
 
-	return payload, nil
+	return inputPayload{payload: payload, detectedCRS: epsgToString(result.EPSGCode)}, nil
 }
 
 // readFGBAsGeoJSON opens a FlatGeobuf file and returns its features as marshalled GeoJSON bytes.
-func readFGBAsGeoJSON(path string, layerName string) ([]byte, error) {
+func readFGBAsGeoJSON(path string, layerName string) (inputPayload, error) {
 	if layerName != "" {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for FlatGeobuf (.fgb) files", nil)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for FlatGeobuf (.fgb) files", nil)
 	}
 
-	fc, err := fgbimport.Read(path)
+	result, err := fgbimport.ReadWithCRS(path)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read FlatGeobuf file", err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read FlatGeobuf file", err)
 	}
 
-	payload, err := json.Marshal(fc)
+	payload, err := json.Marshal(result.Collection)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal FlatGeobuf to GeoJSON", err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal FlatGeobuf to GeoJSON", err)
 	}
 
-	return payload, nil
+	return inputPayload{payload: payload, detectedCRS: epsgToString(result.EPSGCode)}, nil
 }
 
 // readCityGMLAsGeoJSON opens a CityGML file and returns supported features as marshalled GeoJSON bytes.
-func readCityGMLAsGeoJSON(path string, layerName string) ([]byte, error) {
+func readCityGMLAsGeoJSON(path string, layerName string) (inputPayload, error) {
 	if layerName != "" {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for CityGML files", nil)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported for CityGML files", nil)
 	}
 
-	payload, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file: "+path, err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file: "+path, err)
 	}
 
-	fc, err := citygmlimport.Read(payload)
+	result, err := citygmlimport.ReadWithCRS(raw)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file", err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read CityGML file", err)
 	}
 
-	encoded, err := json.Marshal(fc)
+	encoded, err := json.Marshal(result.Collection)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal CityGML to GeoJSON", err)
+		return inputPayload{}, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal CityGML to GeoJSON", err)
 	}
 
-	return encoded, nil
+	return inputPayload{payload: encoded, detectedCRS: epsgToString(result.EPSGCode)}, nil
 }
 
 const defaultTerrainPath = ".noise/model/terrain.tif"
