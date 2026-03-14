@@ -287,11 +287,11 @@ func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod
 
 // TrainOperation describes one train type operating on a track segment.
 type TrainOperation struct {
-	TrainType          string    // Zugart name (e.g. "ICE-1-Zug") or "custom"
-	FzComposition      []FzCount // vehicle category composition
-	SpeedKPH           float64   // operating speed in km/h
-	TrainsPerHourDay   float64   // trains per hour, day period
-	TrainsPerHourNight float64   // trains per hour, night period
+	TrainType          string    `json:"train_type"`           // Zugart name or "custom"
+	FzComposition      []FzCount `json:"fz_composition"`       // vehicle category composition
+	SpeedKPH           float64   `json:"speed_kph"`            // operating speed in km/h
+	TrainsPerHourDay   float64   `json:"trains_per_hour_day"`  // trains per hour, day period
+	TrainsPerHourNight float64   `json:"trains_per_hour_night"` // trains per hour, night period
 }
 
 // NewTrainOperationFromZugart creates a TrainOperation from a Zugart name
@@ -365,17 +365,17 @@ func resolveEffectiveSpeed(streckeMax, fahrzeugMax float64, isStation bool) floa
 
 // TrackSegment describes one normative track segment for emission computation.
 type TrackSegment struct {
-	ID              string
-	TrackCenterline []geo.Point2D
-	ElevationM      float64
-	Fahrbahn        FahrbahnartType // from tables.go constants
-	Surface         SurfaceCondType // from emission_v2.go constants
-	BridgeType      int             // 0=none, 1-4 per Table 9
-	BridgeMitig     bool            // K_LM noise reduction measures
-	CurveRadiusM    float64         // 0 = straight
-	IsStation       bool            // for speed min 70 km/h rule
-	StreckeMaxKPH   float64         // track speed limit
-	Operations      []TrainOperation
+	ID              string           `json:"id"`
+	TrackCenterline []geo.Point2D    `json:"track_centerline"`
+	ElevationM      float64          `json:"elevation_m"`
+	Fahrbahn        FahrbahnartType  `json:"fahrbahn"`          // from tables.go constants
+	Surface         SurfaceCondType  `json:"surface"`           // from emission_v2.go constants
+	BridgeType      int              `json:"bridge_type"`       // 0=none, 1-4 per Table 9
+	BridgeMitig     bool             `json:"bridge_mitig,omitempty"` // K_LM noise reduction
+	CurveRadiusM    float64          `json:"curve_radius_m"`    // 0 = straight
+	IsStation       bool             `json:"is_station,omitempty"` // speed min 70 km/h rule
+	StreckeMaxKPH   float64          `json:"strecke_max_kph"`   // track speed limit
+	Operations      []TrainOperation `json:"operations"`
 }
 
 // Validate checks a TrackSegment for consistency.

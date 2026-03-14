@@ -1,0 +1,41 @@
+{
+  "segments": [
+    {
+      "id": "ic_track",
+      "track_centerline": [
+        {"x": 0, "y": 0},
+        {"x": 100, "y": 0}
+      ],
+      "elevation_m": 0,
+      "fahrbahn": -1,
+      "surface": 0,
+      "bridge_type": 0,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 200,
+      "operations": [
+        {
+          "train_type": "IC-Zug-E-Lok",
+          "fz_composition": [
+            {"fz": 7, "count": 1},
+            {"fz": 9, "count": 12}
+          ],
+          "speed_kph": 200,
+          "trains_per_hour_day": 4,
+          "trains_per_hour_night": 1
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_10m",
+      "point": {"x": 50, "y": 10},
+      "height_m": 4.0
+    },
+    {
+      "id": "r_100m",
+      "point": {"x": 50, "y": 100},
+      "height_m": 4.0
+    }
+  ]
+}
