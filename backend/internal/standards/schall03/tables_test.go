@@ -225,3 +225,106 @@ func TestC2BuGValues(t *testing.T) {
 		t.Errorf("bueG: expected %v, got %v", expected, bug.C2)
 	}
 }
+
+func TestC1StrassenbahnStrassenbuendig(t *testing.T) {
+	entry, ok := C1StrassenbahnForType(SFahrbahnStrassenbuendig)
+	if !ok {
+		t.Fatal("SFahrbahnStrassenbuendig not found in table")
+	}
+
+	want := BeiblattSpectrum{2, 3, 2, 5, 8, 4, 2, 1}
+	if entry.C1 != want {
+		t.Errorf("got %v, want %v", entry.C1, want)
+	}
+}
+
+func TestC1StrassenbahnGruenTief(t *testing.T) {
+	entry, ok := C1StrassenbahnForType(SFahrbahnGruenTief)
+	if !ok {
+		t.Fatal("SFahrbahnGruenTief not found")
+	}
+
+	want := BeiblattSpectrum{-2, -4, -3, -1, -1, -1, -1, -3}
+	if entry.C1 != want {
+		t.Errorf("got %v, want %v", entry.C1, want)
+	}
+}
+
+func TestC1StrassenbahnGruenHoch(t *testing.T) {
+	entry, ok := C1StrassenbahnForType(SFahrbahnGruenHoch)
+	if !ok {
+		t.Fatal("SFahrbahnGruenHoch not found")
+	}
+
+	want := BeiblattSpectrum{1, -1, -3, -4, -4, -7, -7, -5}
+	if entry.C1 != want {
+		t.Errorf("got %v, want %v", entry.C1, want)
+	}
+}
+
+func TestC1StrassenbahnSchwellengleis(t *testing.T) {
+	// Reference type should NOT be in the table (zero correction, no lookup needed).
+	_, ok := C1StrassenbahnForType(SFahrbahnSchwellengleis)
+	if ok {
+		t.Error("SFahrbahnSchwellengleis should return not-found (it is the reference)")
+	}
+}
+
+func TestC1StrassenbahnOnlyM1M2(t *testing.T) {
+	// c1 corrections only apply to Fahrgeraeusche m=1 and m=2.
+	for m := 3; m <= 11; m++ {
+		if got := sumC1StrassenbahnForTeilquelle(SFahrbahnStrassenbuendig, m, 0); got != 0 {
+			t.Errorf("m=%d: expected 0, got %g", m, got)
+		}
+	}
+}
+
+func TestBridgeStrassenbahnTableHas5Types(t *testing.T) {
+	if len(BridgeCorrectionStrassenbahnTable) != 5 {
+		t.Errorf("expected 5 Strassenbahn bridge types, got %d", len(BridgeCorrectionStrassenbahnTable))
+	}
+}
+
+func TestBridgeStrassenbahnSteelDirect(t *testing.T) {
+	entry := BridgeCorrectionStrassenbahnTable[0]
+	if entry.KBr != 12 || entry.KLM != -6 {
+		t.Errorf("expected KBr=12 KLM=-6, got KBr=%g KLM=%g", entry.KBr, entry.KLM)
+	}
+}
+
+func TestBridgeStrassenbahnRillenschiene(t *testing.T) {
+	entry := BridgeCorrectionStrassenbahnTable[2]
+	if entry.KBr != 4 || !math.IsNaN(entry.KLM) {
+		t.Errorf("Rillenschiene: expected KBr=4 KLM=NaN, got KBr=%g KLM=%g", entry.KBr, entry.KLM)
+	}
+}
+
+func TestBridgeStrassenbahnMassiveBallast(t *testing.T) {
+	entry := BridgeCorrectionStrassenbahnTable[3]
+	if entry.KBr != 3 || entry.KLM != -3 {
+		t.Errorf("expected KBr=3 KLM=-3, got KBr=%g KLM=%g", entry.KBr, entry.KLM)
+	}
+}
+
+func TestCurveCorrectionStrassenbahnBelow200(t *testing.T) {
+	// r < 200 m → K_L = +4 dB on m=1 or m=2.
+	if got := curveCorrectionStrassenbahnForTeilquelle(150, 1); got != 4 {
+		t.Errorf("r=150 m=1: expected 4, got %g", got)
+	}
+}
+
+func TestCurveCorrectionStrassenbahnAt200(t *testing.T) {
+	// r >= 200 m → no correction.
+	if got := curveCorrectionStrassenbahnForTeilquelle(200, 1); got != 0 {
+		t.Errorf("r=200 m=1: expected 0, got %g", got)
+	}
+}
+
+func TestCurveCorrectionStrassenbahnNonRolling(t *testing.T) {
+	// m=3,4 never get curve correction.
+	for _, m := range []int{3, 4, 5} {
+		if got := curveCorrectionStrassenbahnForTeilquelle(100, m); got != 0 {
+			t.Errorf("m=%d: expected 0, got %g", m, got)
+		}
+	}
+}
