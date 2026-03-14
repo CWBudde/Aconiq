@@ -247,3 +247,119 @@ func TestFz10DefaultVKBremse(t *testing.T) {
 
 	t.Error("Fz 10 missing Teilquelle m=2")
 }
+
+func TestFzKategorienStrassenbahnCount(t *testing.T) {
+	if got := len(FzKategorienStrassenbahn); got != 3 {
+		t.Fatalf("expected 3 Strassenbahn FzKategorien, got %d", got)
+	}
+}
+
+func TestFzKat21Niederflur(t *testing.T) {
+	fz21 := FzKategorienStrassenbahn[0]
+
+	if fz21.Fz != 21 {
+		t.Errorf("expected Fz=21, got %d", fz21.Fz)
+	}
+
+	if fz21.NAchs0 != 8 {
+		t.Errorf("expected NAchs0=8, got %d", fz21.NAchs0)
+	}
+
+	if len(fz21.Teilquellen) != 3 {
+		t.Errorf("expected 3 Teilquellen for Fz 21 (m=1,2,4), got %d", len(fz21.Teilquellen))
+	}
+}
+
+func TestFzKat21SpeedFactorEmbedded(t *testing.T) {
+	fz21 := FzKategorienStrassenbahn[0]
+
+	for _, tq := range fz21.Teilquellen {
+		if tq.B == nil {
+			t.Errorf("Fz 21 Teilquelle m=%d has nil B; all Strassenbahn Teilquellen must embed B", tq.M)
+		}
+	}
+}
+
+func TestFzKat22HasAggregateAtFloor(t *testing.T) {
+	fz22 := FzKategorienStrassenbahn[1]
+	found := false
+
+	for _, tq := range fz22.Teilquellen {
+		if tq.M == 3 && tq.HeightH == 1 && tq.HeightM == 0 {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Error("Fz 22 should have m=3 Aggregat at h=1 (0m)")
+	}
+}
+
+func TestFzKat23UBahnSpeedFactor(t *testing.T) {
+	fz23 := FzKategorienStrassenbahn[2]
+
+	for _, tq := range fz23.Teilquellen {
+		if tq.M == 1 || tq.M == 2 {
+			want := BeiblattSpectrum{15, 10, 20, 20, 30, 25, 25, 20}
+
+			if tq.B == nil || *tq.B != want {
+				t.Errorf("Fz 23 m=%d: wrong speed factor B, got %v", tq.M, tq.B)
+			}
+		}
+	}
+}
+
+func TestLookupFzKategorieEisenbahn(t *testing.T) {
+	fz, ok := LookupFzKategorie(7)
+
+	if !ok {
+		t.Fatal("LookupFzKategorie(7) returned not found")
+	}
+
+	if fz.Name != "E-Lok" {
+		t.Errorf("expected E-Lok, got %q", fz.Name)
+	}
+}
+
+func TestLookupFzKategorieStrassenbahn(t *testing.T) {
+	fz, ok := LookupFzKategorie(21)
+
+	if !ok {
+		t.Fatal("LookupFzKategorie(21) returned not found")
+	}
+
+	if fz.Fz != 21 {
+		t.Errorf("expected Fz=21, got %d", fz.Fz)
+	}
+}
+
+func TestLookupFzKategorieUnknown(t *testing.T) {
+	_, ok := LookupFzKategorie(99)
+	if ok {
+		t.Error("LookupFzKategorie(99) should return not found")
+	}
+}
+
+func TestZugartStrassenbahnCount(t *testing.T) {
+	if got := len(ZugartStrassenbahn); got != 3 {
+		t.Fatalf("expected 3 ZugartStrassenbahn entries, got %d", got)
+	}
+}
+
+func TestZugartNiederflurETComposition(t *testing.T) {
+	found := false
+
+	for _, za := range ZugartStrassenbahn {
+		if za.Name == "Niederflur-ET" {
+			found = true
+
+			if len(za.Composition) != 1 || za.Composition[0].Fz != 21 {
+				t.Errorf("Niederflur-ET should have 1 Fz=21 entry, got %v", za.Composition)
+			}
+		}
+	}
+
+	if !found {
+		t.Error("ZugartStrassenbahn missing Niederflur-ET")
+	}
+}
