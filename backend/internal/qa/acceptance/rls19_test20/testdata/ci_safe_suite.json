@@ -306,6 +306,102 @@
       }
     },
     {
+      "name": "K1-derived-intersection-reference",
+      "category": "complex",
+      "setting": "reference",
+      "description": "Derived intersection scenario with two crossing roads and junction correction.",
+      "scenario_path": "ci_safe/k1_intersection_reference.scenario.json",
+      "expected_path": "ci_safe/k1_intersection_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K1-derived-intersection-check",
+      "category": "complex",
+      "setting": "check",
+      "description": "Derived intersection scenario with two crossing roads and junction correction.",
+      "scenario_path": "ci_safe/k1_intersection_check.scenario.json",
+      "expected_path": "ci_safe/k1_intersection_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K2-derived-building-fronts-reference",
+      "category": "complex",
+      "setting": "reference",
+      "description": "Derived parallel building fronts scenario testing building-front reflections.",
+      "scenario_path": "ci_safe/k2_building_fronts_reference.scenario.json",
+      "expected_path": "ci_safe/k2_building_fronts_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K2-derived-building-fronts-check",
+      "category": "complex",
+      "setting": "check",
+      "description": "Derived parallel building fronts scenario testing building-front reflections.",
+      "scenario_path": "ci_safe/k2_building_fronts_check.scenario.json",
+      "expected_path": "ci_safe/k2_building_fronts_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K3-derived-perpendicular-buildings-reference",
+      "category": "complex",
+      "setting": "reference",
+      "description": "Derived perpendicular buildings scenario testing perpendicular reflection geometry.",
+      "scenario_path": "ci_safe/k3_perpendicular_buildings_reference.scenario.json",
+      "expected_path": "ci_safe/k3_perpendicular_buildings_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K3-derived-perpendicular-buildings-check",
+      "category": "complex",
+      "setting": "check",
+      "description": "Derived perpendicular buildings scenario testing perpendicular reflection geometry.",
+      "scenario_path": "ci_safe/k3_perpendicular_buildings_check.scenario.json",
+      "expected_path": "ci_safe/k3_perpendicular_buildings_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K4-derived-courtyard-reference",
+      "category": "complex",
+      "setting": "reference",
+      "description": "Derived U-shaped courtyard scenario testing multiple reflection paths.",
+      "scenario_path": "ci_safe/k4_courtyard_reference.scenario.json",
+      "expected_path": "ci_safe/k4_courtyard_reference.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "reference setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "K4-derived-courtyard-check",
+      "category": "complex",
+      "setting": "check",
+      "description": "Derived U-shaped courtyard scenario testing multiple reflection paths.",
+      "scenario_path": "ci_safe/k4_courtyard_check.scenario.json",
+      "expected_path": "ci_safe/k4_courtyard_check.golden.json",
+      "tolerance": {
+        "absolute_db": 0.000001,
+        "rule": "check setting absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
       "name": "K5-derived-reflection-conditions",
       "category": "reflection",
       "setting": "check",
