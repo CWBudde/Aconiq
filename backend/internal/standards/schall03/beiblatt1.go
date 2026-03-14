@@ -32,7 +32,7 @@ type Teilquelle struct {
 
 // FzKategorie describes one Fahrzeug-Kategorie from Beiblatt 1.
 type FzKategorie struct {
-	Fz          int          // 1-10
+	Fz          int          // Fahrzeug-Kategorie number (1-10 Eisenbahn, 21-23 Strassenbahn)
 	Name        string       // e.g., "HGV-Triebkopf"
 	NAchs0      int          // reference axle count n_Achs,0
 	Teilquellen []Teilquelle // sub-sources
