@@ -115,6 +115,86 @@ func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Po
 	return result
 }
 
+// BeiblattOctaveBandFrequencies are the octave-band centre frequencies (Hz)
+// in the canonical order 63, 125, 250, 500, 1000, 2000, 4000, 8000 Hz.
+// Used by the barrier diffraction module.
+var BeiblattOctaveBandFrequencies = [NumBeiblattOctaveBands]float64{
+	63, 125, 250, 500, 1000, 2000, 4000, 8000,
+}
+
+// ---------------------------------------------------------------------------
+// Normative propagation functions (Anlage 2 zu §4 der 16. BImSchV)
+// ---------------------------------------------------------------------------
+
+// adiv computes geometric divergence per Gl. 11.
+//
+//	A_div = 10·lg(4π·d²/d₀²) with d₀ = 1 m.
+func adiv(d float64) float64 {
+	return 10.0 * math.Log10(4.0*math.Pi*d*d)
+}
+
+// aatm computes air absorption per Gl. 12 for a single octave band.
+//
+//	A_atm = α·d/1000
+func aatm(alpha, d float64) float64 {
+	return alpha * d / 1000.0
+}
+
+// agrB computes ground absorption over land per Gl. 14.
+//
+//	A_gr,B = [4.8 - (2·h_m/d)·(17 + 300·d_p/d)] ≥ 0 dB
+//
+// h_m: mean height of propagation path above ground [m],
+// d:   source–receiver distance [m],
+// d_p: length of propagation path over land [m].
+func agrB(hm, d, dp float64) float64 {
+	val := 4.8 - (2.0*hm/d)*(17.0+300.0*dp/d)
+	return math.Max(val, 0.0)
+}
+
+// agrW computes the water-body ground correction per Gl. 16.
+//
+//	A_gr,W = -3·d_w/d_p
+//
+// d_w: length of propagation path over water [m],
+// d_p: total horizontal source–receiver distance [m].
+func agrW(dw, dp float64) float64 {
+	if dp == 0 {
+		return 0
+	}
+
+	return -3.0 * dw / dp
+}
+
+// directivityDI computes the directivity correction per Gl. 8.
+//
+//	D_I = 10·lg(0.22 + 1.27·sin²(δ))
+//
+// δ is the angle between the perpendicular to the track axis and the
+// source-to-receiver direction.
+func directivityDI(delta float64) float64 {
+	sinD := math.Sin(delta)
+	return 10.0 * math.Log10(0.22+1.27*sinD*sinD)
+}
+
+// solidAngleDOmega computes the solid-angle correction per Gl. 9.
+//
+//	D_Ω = 10·lg(1 + (d_p² + (h_g-h_r)²) / (d_p² + (h_g+h_r)²))
+//
+// d_p: horizontal source–receiver distance [m],
+// h_g: source height above ground [m],
+// h_r: receiver height above ground [m].
+func solidAngleDOmega(dp, hg, hr float64) float64 {
+	num := dp*dp + (hg-hr)*(hg-hr)
+	den := dp*dp + (hg+hr)*(hg+hr)
+
+	if den == 0 {
+		return 0
+	}
+
+	return 10.0 * math.Log10(1.0+num/den)
+}
+
 // ComputeReceiverPeriodLevels computes day/night levels at one receiver.
 func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RailSource, cfg PropagationConfig) (PeriodLevels, error) {
 	return ComputeReceiverPeriodLevelsWithDataPack(receiver, sources, cfg, BuiltinDataPack())
@@ -128,7 +208,8 @@ func ComputeReceiverPeriodLevelsWithDataPack(receiver geo.Point2D, sources []Rai
 		return PeriodLevels{}, err
 	}
 
-	if err := pack.Validate(); err != nil {
+	err = pack.Validate()
+	if err != nil {
 		return PeriodLevels{}, err
 	}
 
