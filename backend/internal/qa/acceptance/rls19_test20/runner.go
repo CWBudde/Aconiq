@@ -42,8 +42,9 @@ type Report struct {
 	PassedCount   int          `json:"passed_count"`
 	FailedCount   int          `json:"failed_count"`
 	SkippedCount  int          `json:"skipped_count"`
-	Tasks         []TaskResult `json:"tasks"`
-	ReportPath    string       `json:"report_path,omitempty"`
+	Tasks            []TaskResult              `json:"tasks"`
+	CategoryCoverage map[string]CategoryStatus `json:"category_coverage,omitempty"`
+	ReportPath       string                    `json:"report_path,omitempty"`
 	SkipReason    string       `json:"skip_reason,omitempty"`
 }
 
@@ -66,6 +67,14 @@ type TaskResult struct {
 type Tolerance struct {
 	AbsoluteDB float64 `json:"absolute_db"`
 	Rule       string  `json:"rule"`
+}
+
+// CategoryStatus summarizes pass/fail/skip counts for one task category.
+type CategoryStatus struct {
+	TaskCount int `json:"task_count"`
+	PassCount int `json:"pass_count"`
+	FailCount int `json:"fail_count"`
+	SkipCount int `json:"skip_count"`
 }
 
 type suiteManifest struct {
@@ -196,6 +205,22 @@ func Run(opts Options) (Report, error) {
 			}
 		}
 	}
+
+	coverage := make(map[string]CategoryStatus)
+	for _, task := range report.Tasks {
+		cs := coverage[task.Category]
+		cs.TaskCount++
+		switch task.Status {
+		case "passed":
+			cs.PassCount++
+		case "failed":
+			cs.FailCount++
+		case "skipped":
+			cs.SkipCount++
+		}
+		coverage[task.Category] = cs
+	}
+	report.CategoryCoverage = coverage
 
 	if opts.OutputDir != "" {
 		reportPath, err := writeReportArtifact(opts.OutputDir, mode, report)

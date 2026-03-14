@@ -1,6 +1,7 @@
 package rls19_test20
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,6 +58,64 @@ func TestRunLocalSuiteModeSkipsWithExplicitReason(t *testing.T) {
 
 	if report.SkipReason == "" {
 		t.Fatalf("expected explicit skip reason, got %#v", report)
+	}
+}
+
+func TestConformanceReportContainsRequiredFields(t *testing.T) {
+	t.Parallel()
+
+	outputDir := t.TempDir()
+
+	report, err := Run(Options{
+		Mode:      ModeCISafe,
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		t.Fatalf("run ci-safe suite: %v", err)
+	}
+
+	if report.StandardID == "" {
+		t.Fatal("expected standard_id")
+	}
+	if report.SuiteVersion == "" {
+		t.Fatal("expected suite_version")
+	}
+	if report.EvidenceClass == "" {
+		t.Fatal("expected evidence_class")
+	}
+	if report.Provenance == "" {
+		t.Fatal("expected provenance")
+	}
+
+	// Category coverage summary.
+	if report.CategoryCoverage == nil {
+		t.Fatal("expected category_coverage")
+	}
+
+	categories := []string{"emission", "immission", "complex"}
+	for _, cat := range categories {
+		cs, ok := report.CategoryCoverage[cat]
+		if !ok {
+			t.Fatalf("expected category_coverage to include %q", cat)
+		}
+		if cs.TaskCount == 0 {
+			t.Fatalf("expected non-zero task count for category %q", cat)
+		}
+	}
+
+	// Verify report artifact roundtrips.
+	data, err := os.ReadFile(report.ReportPath)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+
+	var parsed Report
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+
+	if parsed.CategoryCoverage == nil {
+		t.Fatal("expected category_coverage in persisted report")
 	}
 }
 
