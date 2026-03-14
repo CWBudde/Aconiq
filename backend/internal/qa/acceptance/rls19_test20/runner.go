@@ -30,22 +30,22 @@ type Options struct {
 }
 
 type Report struct {
-	SuiteName     string       `json:"suite_name"`
-	StandardID    string       `json:"standard_id"`
-	Mode          string       `json:"mode"`
-	Status        string       `json:"status"`
-	SuiteVersion  string       `json:"suite_version,omitempty"`
-	EvidenceClass string       `json:"evidence_class,omitempty"`
-	Provenance    string       `json:"provenance,omitempty"`
-	GeneratedAt   time.Time    `json:"generated_at"`
-	TaskCount     int          `json:"task_count"`
-	PassedCount   int          `json:"passed_count"`
-	FailedCount   int          `json:"failed_count"`
-	SkippedCount  int          `json:"skipped_count"`
+	SuiteName        string                    `json:"suite_name"`
+	StandardID       string                    `json:"standard_id"`
+	Mode             string                    `json:"mode"`
+	Status           string                    `json:"status"`
+	SuiteVersion     string                    `json:"suite_version,omitempty"`
+	EvidenceClass    string                    `json:"evidence_class,omitempty"`
+	Provenance       string                    `json:"provenance,omitempty"`
+	GeneratedAt      time.Time                 `json:"generated_at"`
+	TaskCount        int                       `json:"task_count"`
+	PassedCount      int                       `json:"passed_count"`
+	FailedCount      int                       `json:"failed_count"`
+	SkippedCount     int                       `json:"skipped_count"`
 	Tasks            []TaskResult              `json:"tasks"`
 	CategoryCoverage map[string]CategoryStatus `json:"category_coverage,omitempty"`
 	ReportPath       string                    `json:"report_path,omitempty"`
-	SkipReason    string       `json:"skip_reason,omitempty"`
+	SkipReason       string                    `json:"skip_reason,omitempty"`
 }
 
 type TaskResult struct {
@@ -210,6 +210,7 @@ func Run(opts Options) (Report, error) {
 	for _, task := range report.Tasks {
 		cs := coverage[task.Category]
 		cs.TaskCount++
+
 		switch task.Status {
 		case "passed":
 			cs.PassCount++
@@ -218,8 +219,10 @@ func Run(opts Options) (Report, error) {
 		case "skipped":
 			cs.SkipCount++
 		}
+
 		coverage[task.Category] = cs
 	}
+
 	report.CategoryCoverage = coverage
 
 	if opts.OutputDir != "" {

@@ -324,15 +324,18 @@ func persistModelArtifacts(
 	model modelgeojson.Model, report modelgeojson.ValidationReport,
 	normalizedPath, dumpPath, reportPath string,
 ) error {
-	if err := writeJSONFile(normalizedPath, model.ToFeatureCollection()); err != nil {
+	err := writeJSONFile(normalizedPath, model.ToFeatureCollection())
+	if err != nil {
 		return err
 	}
 
-	if err := writeJSONFile(dumpPath, model.ToDump()); err != nil {
+	err = writeJSONFile(dumpPath, model.ToDump())
+	if err != nil {
 		return err
 	}
 
-	if err := writeJSONFile(reportPath, report); err != nil {
+	err = writeJSONFile(reportPath, report)
+	if err != nil {
 		return err
 	}
 

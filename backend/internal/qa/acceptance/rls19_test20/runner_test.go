@@ -77,12 +77,15 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 	if report.StandardID == "" {
 		t.Fatal("expected standard_id")
 	}
+
 	if report.SuiteVersion == "" {
 		t.Fatal("expected suite_version")
 	}
+
 	if report.EvidenceClass == "" {
 		t.Fatal("expected evidence_class")
 	}
+
 	if report.Provenance == "" {
 		t.Fatal("expected provenance")
 	}
@@ -98,6 +101,7 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected category_coverage to include %q", cat)
 		}
+
 		if cs.TaskCount == 0 {
 			t.Fatalf("expected non-zero task count for category %q", cat)
 		}
