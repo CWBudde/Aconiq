@@ -43,7 +43,8 @@ func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg Expos
 		return nil, Summary{}, errors.New("at least one road source is required")
 	}
 
-	if err := cfg.Validate(); err != nil {
+	err := cfg.Validate()
+	if err != nil {
 		return nil, Summary{}, err
 	}
 
@@ -78,7 +79,8 @@ func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufa
 		return nil, Summary{}, errors.New("at least one aircraft source is required")
 	}
 
-	if err := cfg.Validate(); err != nil {
+	err := cfg.Validate()
+	if err != nil {
 		return nil, Summary{}, err
 	}
 
@@ -108,7 +110,8 @@ func prepareBuildings(buildings []BuildingUnit, receiverHeightM float64, facadeE
 	prepared := make([]preparedBuilding, 0, len(buildings))
 
 	for _, building := range buildings {
-		if err := building.Validate(); err != nil {
+		err := building.Validate()
+		if err != nil {
 			return nil, nil, err
 		}
 

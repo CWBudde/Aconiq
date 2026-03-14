@@ -40,7 +40,8 @@ func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg
 	contributions := make([]float64, 0, len(sources))
 
 	for _, source := range sources {
-		if err := source.Validate(); err != nil {
+		err := source.Validate()
+		if err != nil {
 			return 0, err
 		}
 

@@ -78,15 +78,18 @@ func TestBuildTransformPipelineUnsupported(t *testing.T) {
 func TestCRSHelpersAndIdentityTransform(t *testing.T) {
 	t.Parallel()
 
-	if _, err := ParseCRS(""); err == nil {
+	_, err := ParseCRS("")
+	if err == nil {
 		t.Fatal("expected missing CRS error")
 	}
 
-	if _, err := ParseCRS("EPSG:abc"); err == nil {
+	_, err = ParseCRS("EPSG:abc")
+	if err == nil {
 		t.Fatal("expected invalid EPSG error")
 	}
 
-	if _, err := ParseCRS("proj4:+init=epsg:4326"); err == nil {
+	_, err = ParseCRS("proj4:+init=epsg:4326")
+	if err == nil {
 		t.Fatal("expected unsupported format error")
 	}
 
@@ -108,11 +111,13 @@ func TestCRSHelpersAndIdentityTransform(t *testing.T) {
 		t.Fatalf("unexpected transform name %q", identity.Name())
 	}
 
-	if _, err := identity.TransformPoint(Point2D{X: math.NaN(), Y: 0}); err == nil {
+	_, err = identity.TransformPoint(Point2D{X: math.NaN(), Y: 0})
+	if err == nil {
 		t.Fatal("expected invalid identity transform point error")
 	}
 
-	if _, err := (TransformPipeline{}).ApplyPoint(Point2D{X: math.NaN(), Y: 0}); err == nil {
+	_, err = (TransformPipeline{}).ApplyPoint(Point2D{X: math.NaN(), Y: 0})
+	if err == nil {
 		t.Fatal("expected invalid pipeline point error")
 	}
 }

@@ -30,9 +30,12 @@ type StreckeEmissionInput struct {
 	// Operating speed in km/h.
 	SpeedKPH float64
 	// Track infrastructure.
-	Fahrbahn     FahrbahnartType // from tables.go
+	// Eisenbahn track type (Table 7). Ignored for Strassenbahn vehicles.
+	Fahrbahn FahrbahnartType // from tables.go
+	// Strassenbahn track type (Table 15). Ignored for Eisenbahn vehicles.
+	SFahrbahn    SFahrbahnartType
 	Surface      SurfaceCondType // from this file
-	BridgeType   int             // 0=none, 1-4 per Table 9
+	BridgeType   int             // 0=none, 1-4 per Table 9 (Eisenbahn) or Table 16 (Strassenbahn)
 	BridgeMitig  bool            // K_LM applies
 	CurveRadiusM float64         // 0 = straight, >0 = curved
 }
@@ -63,6 +66,15 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 		return nil, err
 	}
 
+	// Detect mode from first vehicle.
+	isStrassenbahn := len(input.Vehicles) > 0 && IsStrassenbahnFz(input.Vehicles[0].Fz)
+
+	// Apply speed clamp: Strassenbahn minimum speed is 50 km/h (Nr. 5.3.2).
+	effectiveSpeed := input.SpeedKPH
+	if isStrassenbahn && effectiveSpeed < 50 {
+		effectiveSpeed = 50
+	}
+
 	fzMap := buildFzMap()
 
 	// Collect per-band linear power contributions per height.
@@ -86,9 +98,10 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 			}
 
 			level := computeTeilquelleLevel(
-				tq, nQ, nQ0, input.SpeedKPH,
-				input.Fahrbahn, input.Surface,
+				tq, nQ, nQ0, effectiveSpeed,
+				input.Fahrbahn, input.SFahrbahn, input.Surface,
 				input.BridgeType, input.BridgeMitig, input.CurveRadiusM,
+				isStrassenbahn,
 			)
 
 			h := tq.HeightH
@@ -130,47 +143,52 @@ func computeTeilquelleLevel(
 	nQ, nQ0 int,
 	speedKPH float64,
 	fahrbahn FahrbahnartType,
+	sFahrbahn SFahrbahnartType,
 	surface SurfaceCondType,
 	bridgeType int,
 	bridgeMitig bool,
 	curveRadiusM float64,
+	isStrassenbahn bool,
 ) BeiblattSpectrum {
-	b := SpeedFactorBForTeilquelle(tq.M)
+	// Speed factor b: use per-vehicle override (Strassenbahn Table 14) when set,
+	// otherwise look up from the Eisenbahn speed-factor table (Table 6).
+	var b BeiblattSpectrum
+	if tq.B != nil {
+		b = *tq.B
+	} else {
+		b = SpeedFactorBForTeilquelle(tq.M)
+	}
 
 	var result BeiblattSpectrum
 
 	for f := range NumBeiblattOctaveBands {
 		L := tq.AA + tq.DeltaA[f] // a_A + Δa_f
 
-		// Axle correction: only for rolling noise (m=1,2,3,4).
-		if isRollingNoise(tq.M) && nQ > 0 && nQ0 > 0 {
+		// Axle correction: only for rolling noise (SourceTypeRolling).
+		if tq.SourceType == SourceTypeRolling && nQ > 0 && nQ0 > 0 {
 			L += 10.0 * math.Log10(float64(nQ)/float64(nQ0))
 		}
 
 		// Speed correction: b_f * lg(v/v0).
 		L += b[f] * math.Log10(speedKPH/v0)
 
-		// Fahrbahn correction c1.
-		L += sumC1ForTeilquelle(fahrbahn, tq.M, f)
-
-		// Surface condition correction c2.
-		L += sumC2ForTeilquelle(surface, tq.M, f)
-
-		// Bridge correction K_Br (+ K_LM).
-		L += bridgeCorrectionForTeilquelle(bridgeType, bridgeMitig, tq.M)
-
-		// Curve correction K_L.
-		L += curveCorrectionForTeilquelle(curveRadiusM, tq.M)
+		if isStrassenbahn {
+			// Strassenbahn: c1 from Table 15, bridge from Table 16, curve per Nr. 5.3.2.
+			L += sumC1StrassenbahnForTeilquelle(sFahrbahn, tq.M, f)
+			L += bridgeCorrectionStrassenbahnForTeilquelle(bridgeType, bridgeMitig, tq.M)
+			L += curveCorrectionStrassenbahnForTeilquelle(curveRadiusM, tq.M)
+		} else {
+			// Eisenbahn: c1 from Table 7, c2 from Table 8, bridge from Table 9, curve per Nr. 4.3.
+			L += sumC1ForTeilquelle(fahrbahn, tq.M, f)
+			L += sumC2ForTeilquelle(surface, tq.M, f)
+			L += bridgeCorrectionForTeilquelle(bridgeType, bridgeMitig, tq.M)
+			L += curveCorrectionForTeilquelle(curveRadiusM, tq.M)
+		}
 
 		result[f] = L
 	}
 
 	return result
-}
-
-// isRollingNoise returns true for Teilquellen m=1,2,3,4.
-func isRollingNoise(m int) bool {
-	return m >= 1 && m <= 4
 }
 
 // sumC1ForTeilquelle returns the total c1 correction from Table 7 for a given
@@ -266,10 +284,15 @@ func curveCorrectionForTeilquelle(curveRadiusM float64, m int) float64 {
 }
 
 // buildFzMap builds a lookup map from Fz number to *FzKategorie.
+// Includes both Eisenbahn (Fz 1-10) and Strassenbahn (Fz 21-23).
 func buildFzMap() map[int]*FzKategorie {
-	m := make(map[int]*FzKategorie, len(FzKategorien))
+	m := make(map[int]*FzKategorie, len(FzKategorien)+len(FzKategorienStrassenbahn))
 	for i := range FzKategorien {
 		m[FzKategorien[i].Fz] = &FzKategorien[i]
+	}
+
+	for i := range FzKategorienStrassenbahn {
+		m[FzKategorienStrassenbahn[i].Fz] = &FzKategorienStrassenbahn[i]
 	}
 
 	return m
@@ -290,6 +313,8 @@ func validateEmissionInput(input StreckeEmissionInput) error {
 	}
 
 	fzMap := buildFzMap()
+	hasEisenbahn := false
+	hasStrassenbahn := false
 
 	for i, vi := range input.Vehicles {
 		if _, ok := fzMap[vi.Fz]; !ok {
@@ -299,6 +324,16 @@ func validateEmissionInput(input StreckeEmissionInput) error {
 		if vi.NPerHour < 0 || math.IsNaN(vi.NPerHour) || math.IsInf(vi.NPerHour, 0) {
 			return fmt.Errorf("vehicle[%d]: NPerHour must be finite and >= 0, got %g", i, vi.NPerHour)
 		}
+
+		if IsStrassenbahnFz(vi.Fz) {
+			hasStrassenbahn = true
+		} else {
+			hasEisenbahn = true
+		}
+	}
+
+	if hasEisenbahn && hasStrassenbahn {
+		return errors.New("cannot mix Eisenbahn (Fz 1-10) and Strassenbahn (Fz 21-23) in one segment")
 	}
 
 	return nil

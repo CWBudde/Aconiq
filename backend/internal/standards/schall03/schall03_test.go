@@ -222,7 +222,8 @@ func TestGoldenScenario(t *testing.T) {
 		t.Fatalf("read scenario: %v", err)
 	}
 
-	if err := json.Unmarshal(payload, &scenario); err != nil {
+	err = json.Unmarshal(payload, &scenario)
+	if err != nil {
 		t.Fatalf("decode scenario: %v", err)
 	}
 
@@ -259,7 +260,8 @@ func TestExportResultBundle(t *testing.T) {
 		t.Fatalf("export result bundle: %v", err)
 	}
 
-	if _, err := os.Stat(exported.ReceiverJSONPath); err != nil {
+	_, err = os.Stat(exported.ReceiverJSONPath)
+	if err != nil {
 		t.Fatalf("receiver json missing: %v", err)
 	}
 
@@ -269,7 +271,9 @@ func TestExportResultBundle(t *testing.T) {
 	}
 
 	var table results.ReceiverTable
-	if err := json.Unmarshal(payload, &table); err != nil {
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
 		t.Fatalf("decode receiver table: %v", err)
 	}
 
@@ -302,7 +306,8 @@ func TestLoadDataPack(t *testing.T) {
 		t.Fatalf("marshal data pack: %v", err)
 	}
 
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	err = os.WriteFile(path, payload, 0o644)
+	if err != nil {
 		t.Fatalf("write data pack: %v", err)
 	}
 

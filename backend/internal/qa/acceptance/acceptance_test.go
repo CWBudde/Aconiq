@@ -37,12 +37,14 @@ func TestCatalogProvidesDeterministicFixtures(t *testing.T) {
 				t.Fatalf("fixture is incomplete: %#v", fixture)
 			}
 
-			if _, err := os.Stat(filepath.Join(".", fixture.ScenarioPath)); err != nil {
+			_, err := os.Stat(filepath.Join(".", fixture.ScenarioPath))
+			if err != nil {
 				t.Fatalf("expected fixture file %s: %v", fixture.ScenarioPath, err)
 			}
 
 			if !golden.UpdateEnabled() {
-				if _, err := os.Stat(filepath.Join(".", fixture.ExpectedJSONPath)); err != nil {
+				_, err = os.Stat(filepath.Join(".", fixture.ExpectedJSONPath))
+				if err != nil {
 					t.Fatalf("expected fixture file %s: %v", fixture.ExpectedJSONPath, err)
 				}
 			}
@@ -76,7 +78,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                      `json:"grid_width"`
 			GridHeight int                      `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -98,7 +102,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                      `json:"grid_width"`
 			GridHeight int                      `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -120,7 +126,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                              `json:"grid_width"`
 			GridHeight int                              `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -150,7 +158,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 				MinDistanceM            float64 `json:"min_distance_m"`
 			} `json:"propagation_config"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -179,7 +189,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                              `json:"grid_width"`
 			GridHeight int                              `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -201,7 +213,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                  `json:"grid_width"`
 			GridHeight int                  `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -223,7 +237,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                          `json:"grid_width"`
 			GridHeight int                          `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -252,7 +268,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 				FacadeEvaluationMode string  `json:"facade_evaluation_mode"`
 			} `json:"config"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -282,7 +300,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 				Reflectors       []rls19road.Reflector      `json:"reflectors"`
 			} `json:"propagation_config"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 
@@ -312,7 +332,9 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			GridWidth  int                   `json:"grid_width"`
 			GridHeight int                   `json:"grid_height"`
 		}
-		if err := decodeFixtureJSON(fixture.ScenarioPath, &scenario); err != nil {
+
+		err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+		if err != nil {
 			return nil, err
 		}
 

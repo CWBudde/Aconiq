@@ -29,8 +29,9 @@ func TestTeilquelleGl1Basic(t *testing.T) {
 
 	level := computeTeilquelleLevel(
 		tq, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	// 1000 Hz is band index 4.
@@ -60,8 +61,9 @@ func TestTeilquelleWithFesteFahrbahn(t *testing.T) {
 
 	level := computeTeilquelleLevel(
 		tq, 4, 4, 250,
-		FahrbahnartFesteFahrbahn, SurfaceCondNone,
+		FahrbahnartFesteFahrbahn, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	baseAt1000 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0) // 68.949
@@ -82,8 +84,8 @@ func TestTeilquelleWithBridge(t *testing.T) {
 	tqM1 := fz1.Teilquellen[0] // m=1
 	levelM1 := computeTeilquelleLevel(
 		tqM1, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
-		2, false, 0,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		2, false, 0, false,
 	)
 
 	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
@@ -101,8 +103,8 @@ func TestTeilquelleWithBridge(t *testing.T) {
 
 	levelM5 := computeTeilquelleLevel(
 		tqM5, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
-		2, false, 0,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		2, false, 0, false,
 	)
 
 	// m=5: a_A=43, Δa[4]=-6, b[4]=50 (aerodynamic), no bridge
@@ -123,8 +125,8 @@ func TestTeilquelleWithBridgeMitigation(t *testing.T) {
 	// Bridge type 2 (K_Br=6, K_LM=-3) with mitigation.
 	level := computeTeilquelleLevel(
 		tqM1, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
-		2, true, 0,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		2, true, 0, false,
 	)
 
 	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
@@ -145,8 +147,8 @@ func TestTeilquelleWithCurve(t *testing.T) {
 
 	level := computeTeilquelleLevel(
 		tqM1, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
-		0, false, 200,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		0, false, 200, false,
 	)
 
 	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
@@ -164,8 +166,8 @@ func TestTeilquelleWithCurve(t *testing.T) {
 
 	levelM8 := computeTeilquelleLevel(
 		tqM8, 4, 4, 250,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
-		0, false, 200,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		0, false, 200, false,
 	)
 
 	baseM8 := 62.0 + (-5.0) + (-10.0)*math.Log10(250.0/100.0)
@@ -346,14 +348,16 @@ func TestAxleCorrectionNotAppliedToNonRolling(t *testing.T) {
 	// if it were applied.
 	levelWith8 := computeTeilquelleLevel(
 		tqM8, 8, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	levelWith4 := computeTeilquelleLevel(
 		tqM8, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	// For non-rolling noise, axle count should not matter.
@@ -374,14 +378,16 @@ func TestSurfaceCondBuG(t *testing.T) {
 
 	levelNone := computeTeilquelleLevel(
 		tqM1, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	levelBuG := computeTeilquelleLevel(
 		tqM1, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondBuG,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondBuG,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	// büG at 1000 Hz (band 4): c2=-5 for m=1.
@@ -394,20 +400,109 @@ func TestSurfaceCondBuG(t *testing.T) {
 	tqM2 := fz1.Teilquellen[1] // m=2
 	levelM2None := computeTeilquelleLevel(
 		tqM2, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	levelM2BuG := computeTeilquelleLevel(
 		tqM2, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondBuG,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondBuG,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	for f := range NumBeiblattOctaveBands {
 		if !almostEqual(levelM2BuG[f], levelM2None[f]) {
 			t.Errorf("büG should not affect m=2, band %d: got diff %.3f", f, levelM2BuG[f]-levelM2None[f])
 		}
+	}
+}
+
+func TestStrassenbahnEmissionFz21Basic(t *testing.T) {
+	// Fz 21 Niederflur at 60 km/h, reference track (Schwellengleis).
+	// Checks that the pipeline accepts Fz 21 and returns a non-nil result.
+	input := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 21, NPerHour: 10}},
+		SpeedKPH:  60,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+
+	result, err := ComputeStreckeEmission(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result == nil || len(result.PerHeight) == 0 {
+		t.Fatal("expected non-empty result")
+	}
+}
+
+func TestStrassenbahnSpeedClamp50(t *testing.T) {
+	// Speeds below 50 km/h must be clamped to 50 for Strassenbahn (Nr. 5.3.2).
+	// Same vehicle at 30 and 50 must produce the same result.
+	base := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 21, NPerHour: 10}},
+		SpeedKPH:  50,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+	clamped := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 21, NPerHour: 10}},
+		SpeedKPH:  30,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+	r1, _ := ComputeStreckeEmission(base)
+	r2, _ := ComputeStreckeEmission(clamped)
+
+	for h, sp1 := range r1.PerHeight {
+		sp2 := r2.PerHeight[h]
+		for f := range NumBeiblattOctaveBands {
+			if sp1[f] != sp2[f] {
+				t.Errorf("h=%d f=%d: v=50 gave %g, v=30 gave %g (should be equal after clamp)", h, f, sp1[f], sp2[f])
+			}
+		}
+	}
+}
+
+func TestStrassenbahnC1Correction(t *testing.T) {
+	// Result with Strassenbuendiger Bahnkoerper must differ from Schwellengleis.
+	ref := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 22, NPerHour: 10}},
+		SpeedKPH:  60,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+	corr := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 22, NPerHour: 10}},
+		SpeedKPH:  60,
+		SFahrbahn: SFahrbahnStrassenbuendig,
+	}
+	r1, _ := ComputeStreckeEmission(ref)
+	r2, _ := ComputeStreckeEmission(corr)
+	// At least one band should differ.
+	h := 1
+	for f := range NumBeiblattOctaveBands {
+		if r1.PerHeight[h][f] != r2.PerHeight[h][f] {
+			return // found a difference — pass
+		}
+	}
+
+	t.Error("c1 correction had no effect; reference and corrected results are identical")
+}
+
+func TestMixedEisenbahnAndStrassenbahnRejected(t *testing.T) {
+	// A segment must not mix Eisenbahn (Fz 1-10) and Strassenbahn (Fz 21-23).
+	input := StreckeEmissionInput{
+		Vehicles: []VehicleInput{
+			{Fz: 7, NPerHour: 5},  // E-Lok (Eisenbahn)
+			{Fz: 21, NPerHour: 5}, // Niederflur (Strassenbahn)
+		},
+		SpeedKPH:  80,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+
+	_, err := ComputeStreckeEmission(input)
+	if err == nil {
+		t.Error("expected error when mixing Eisenbahn and Strassenbahn vehicles")
 	}
 }
 
@@ -422,14 +517,16 @@ func TestCustomAxleCount(t *testing.T) {
 	// nQ=8 vs nQ0=4: correction = 10*lg(8/4) = 10*lg(2) ≈ 3.01 dB.
 	levelDefault := computeTeilquelleLevel(
 		tqM1, 4, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	levelDouble := computeTeilquelleLevel(
 		tqM1, 8, 4, 100,
-		FahrbahnartSchwellengleis, SurfaceCondNone,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
 		0, false, 0, // bridgeType=0, bridgeMitig=false, curveRadiusM=0
+		false,
 	)
 
 	for f := range NumBeiblattOctaveBands {

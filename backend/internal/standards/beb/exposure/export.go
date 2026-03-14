@@ -29,7 +29,8 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, errors.New("at least one building exposure output is required")
 	}
 
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	err := os.MkdirAll(baseDir, 0o755)
+	if err != nil {
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
 
@@ -70,11 +71,13 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 	receiverJSONPath := filepath.Join(baseDir, "buildings.json")
 	receiverCSVPath := filepath.Join(baseDir, "buildings.csv")
 
-	if err := results.SaveReceiverTableJSON(receiverJSONPath, table); err != nil {
+	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
-	if err := results.SaveReceiverTableCSV(receiverCSVPath, table); err != nil {
+	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
@@ -90,19 +93,23 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, err
 	}
 
-	if err := raster.Set(0, 0, 0, summary.AffectedPersonsLden); err != nil {
+	err = raster.Set(0, 0, 0, summary.AffectedPersonsLden)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
-	if err := raster.Set(0, 0, 1, summary.AffectedPersonsLnight); err != nil {
+	err = raster.Set(0, 0, 1, summary.AffectedPersonsLnight)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
-	if err := raster.Set(0, 0, 2, summary.AffectedDwellingsLden); err != nil {
+	err = raster.Set(0, 0, 2, summary.AffectedDwellingsLden)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
-	if err := raster.Set(0, 0, 3, summary.AffectedDwellingsLnight); err != nil {
+	err = raster.Set(0, 0, 3, summary.AffectedDwellingsLnight)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 
@@ -118,7 +125,8 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, err
 	}
 
-	if err := os.WriteFile(summaryPath, append(payload, '\n'), 0o644); err != nil {
+	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o644)
+	if err != nil {
 		return ExportOutputs{}, err
 	}
 

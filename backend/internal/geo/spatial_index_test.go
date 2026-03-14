@@ -10,11 +10,13 @@ func TestGridSpatialIndexQuery(t *testing.T) {
 		t.Fatalf("create index: %v", err)
 	}
 
-	if err := index.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 5, MaxY: 5}}); err != nil {
+	err = index.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 5, MaxY: 5}})
+	if err != nil {
 		t.Fatalf("insert a: %v", err)
 	}
 
-	if err := index.Insert(IndexedItem{ID: "b", BBox: BBox{MinX: 20, MinY: 20, MaxX: 25, MaxY: 25}}); err != nil {
+	err = index.Insert(IndexedItem{ID: "b", BBox: BBox{MinX: 20, MinY: 20, MaxX: 25, MaxY: 25}})
+	if err != nil {
 		t.Fatalf("insert b: %v", err)
 	}
 
@@ -31,7 +33,8 @@ func TestGridSpatialIndexQuery(t *testing.T) {
 func TestGridSpatialIndexValidationAndHelpers(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NewGridSpatialIndex(0); err == nil {
+	_, err := NewGridSpatialIndex(0)
+	if err == nil {
 		t.Fatal("expected invalid cell size error")
 	}
 
@@ -40,11 +43,13 @@ func TestGridSpatialIndexValidationAndHelpers(t *testing.T) {
 		t.Fatalf("expected nil index len 0, got %d", got)
 	}
 
-	if err := nilIndex.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}}); err == nil {
+	err = nilIndex.Insert(IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}})
+	if err == nil {
 		t.Fatal("expected nil index insert error")
 	}
 
-	if _, err := nilIndex.Query(BBox{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1}); err == nil {
+	_, err = nilIndex.Query(BBox{MinX: 0, MinY: 0, MaxX: 1, MaxY: 1})
+	if err == nil {
 		t.Fatal("expected nil index query error")
 	}
 
@@ -57,16 +62,20 @@ func TestGridSpatialIndexValidationAndHelpers(t *testing.T) {
 		t.Fatalf("expected empty index, got %d", index.Len())
 	}
 
-	if err := index.Insert(IndexedItem{}); err == nil {
+	err = index.Insert(IndexedItem{})
+	if err == nil {
 		t.Fatal("expected missing id error")
 	}
 
-	if err := index.Insert(IndexedItem{ID: "bad", BBox: BBox{MinX: 2, MinY: 0, MaxX: 1, MaxY: 1}}); err == nil {
+	err = index.Insert(IndexedItem{ID: "bad", BBox: BBox{MinX: 2, MinY: 0, MaxX: 1, MaxY: 1}})
+	if err == nil {
 		t.Fatal("expected invalid bbox error")
 	}
 
 	item := IndexedItem{ID: "a", BBox: BBox{MinX: 0, MinY: 0, MaxX: 15, MaxY: 15}}
-	if err := index.Insert(item); err != nil {
+
+	err = index.Insert(item)
+	if err != nil {
 		t.Fatalf("insert item: %v", err)
 	}
 
@@ -74,7 +83,8 @@ func TestGridSpatialIndexValidationAndHelpers(t *testing.T) {
 		t.Fatalf("expected len 1, got %d", index.Len())
 	}
 
-	if err := index.Insert(item); err == nil {
+	err = index.Insert(item)
+	if err == nil {
 		t.Fatal("expected duplicate insert error")
 	}
 
@@ -87,7 +97,8 @@ func TestGridSpatialIndexValidationAndHelpers(t *testing.T) {
 		t.Fatalf("unexpected deduplicated results %#v", results)
 	}
 
-	if _, err := index.Query(BBox{MinX: 3, MinY: 0, MaxX: 2, MaxY: 1}); err == nil {
+	_, err = index.Query(BBox{MinX: 3, MinY: 0, MaxX: 2, MaxY: 1})
+	if err == nil {
 		t.Fatal("expected invalid query bbox error")
 	}
 }
