@@ -1,12 +1,12 @@
 # Schall 03 Konformitätserklärung — Aconiq
 
-Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
+Status: DRAFT — Eisenbahn Strecke + Straßenbahnen scope (Phase 20 + 20a)
 
 ## Software
 
 - Name: Aconiq
 - Module: `schall03`
-- Version: `phase20-normative-eisenbahn-strecke-v1`
+- Version: `phase20a-normative-strassenbahn-v1`
 - License: MIT
 
 ## Standard
@@ -18,7 +18,7 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 
 ## Scope
 
-### Supported (Phase 20)
+### Supported (Phase 20 — Eisenbahn Strecke)
 
 **Emission chain (Gl. 1–2)**
 
@@ -56,19 +56,38 @@ Status: DRAFT — Eisenbahn Strecke scope (Phase 20)
 - K_S = 0 dB (Schienenbonus abolished for Eisenbahnen since 2015 amendment)
 - Indicators: L_p,Aeq,Tag, L_p,Aeq,Nacht (unrounded), L_r,Tag, L_r,Nacht
 
+### Supported (Phase 20a — Nr. 5 Schallemissionen von Straßenbahnen)
+
+**Emission chain — Straßenbahnen (Nr. 5.1–5.3)**
+
+- Fz-Kategorien 21–23 (Beiblatt 2): Fz 21 Niederflurfahrzeuge, Fz 22 Hochflurfahrzeuge, Fz 23 U-Bahn-Fahrzeuge — full normative a_A and Δa_f per Teilquelle
+- Speed factors embedded per Teilquelle via `B *BeiblattSpectrum` — Table 14 (Straßenbahn-specific b-values for Rollgeräusch, aerodynamisch, Aggregat, Antrieb)
+- Track type corrections c1 for Straßenbahn Fahrbahnarten (3 types) — Table 15
+- Bridge corrections K_Br for Straßenbahn bridge types (5 types) — Table 16
+- Speed clamp (Nr. 5.3.2): effective speed floor of 50 km/h applied when operating speed exceeds 50 km/h
+- Curve noise penalty (Nr. 5.3.2): K_L = +4 dB for curve radii r < 200 m
+
+**Assessment (Gl. 37–38)**
+
+- Gl. 37–38 for Straßenbahnen use the same formula structure as Gl. 33–34; supported via the existing Beurteilungspegel pipeline
+- K_S = +5 dB (Schienenbonus retained for Straßenbahnen per current 16. BImSchV)
+
+**Open items (Phase 20a)**
+
+- Permanently slow section exception (Nr. 5.3.2, ≤ 30 km/h): speed clamp not applied for sections operated permanently at ≤ 30 km/h — **not yet implemented** (deferred to Phase 20a follow-up)
+
 ### Not yet supported (deferred)
 
-| Feature                                              | Reason deferred                               |
-| ---------------------------------------------------- | --------------------------------------------- |
-| Straßenbahnen (Fz 21–23, Beiblatt 2)                 | Phase 20a                                     |
-| Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3) | Phase 20b                                     |
-| Image-source reflections (Gl. 27–28, Table 18)       | Phase 20c                                     |
-| Ground correction for water bodies A_gr,W (Gl. 16)   | **Implemented** (see Propagation chain above) |
-| Section 9 measurement-based vehicle data             | Out of scope                                  |
+| Feature                                                              | Reason deferred  |
+| -------------------------------------------------------------------- | ---------------- |
+| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)            | Phase 20a follow-up |
+| Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3)                 | Phase 20b        |
+| Image-source reflections (Gl. 27–28, Table 18)                       | Phase 20c        |
+| Section 9 measurement-based vehicle data                             | Out of scope     |
 
 ## Evidence
 
-- CI-safe test suite: 4 repo-authored synthetic scenarios covering emission (straight track, bridge), propagation (free field, two-receiver distance check), and full assessment
+- CI-safe test suite: repo-authored synthetic scenarios covering emission (straight track, bridge, Straßenbahn), propagation (free field, two-receiver distance check), and full assessment including Straßenbahn full-chain
 - Suite location: `backend/internal/qa/acceptance/schall03/testdata/ci_safe_suite.json`
 - No official conformance test suite exists for Schall 03; comparison with hand-calculated reference values used for unit tests
 
