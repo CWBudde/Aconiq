@@ -44,6 +44,22 @@
       "scenario_path": "ci_safe/a1_full_chain.scenario.json",
       "expected_path": "ci_safe/a1_full_chain.expected.json",
       "tolerance_db": 0.0001
+    },
+    {
+      "name": "s1_niederflur_emission",
+      "category": "emission",
+      "description": "Fz 21 Niederflur-ET at 60 km/h on Schwellengleis reference track, 10 trains/hour day, 5 night, straight track, no bridge",
+      "scenario_path": "ci_safe/s1_niederflur_emission.scenario.json",
+      "expected_path": "ci_safe/s1_niederflur_emission.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "s2_strassenbahn_fullchain",
+      "category": "assessment",
+      "description": "Full chain: Fz 21 Niederflur-ET at 60 km/h, free-field propagation to two receivers at 25 m and 75 m",
+      "scenario_path": "ci_safe/s2_strassenbahn_fullchain.scenario.json",
+      "expected_path": "ci_safe/s2_strassenbahn_fullchain.expected.json",
+      "tolerance_db": 0.0001
     }
   ]
 }
