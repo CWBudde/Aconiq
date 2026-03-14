@@ -1,14 +1,42 @@
 package schall03
 
+import "math"
+
 const (
-	// BuiltinModelVersion identifies the bundled preview coefficient set used by
-	// the current baseline implementation.
-	BuiltinModelVersion = "phase18-preview-v2"
+	// BuiltinModelVersion identifies the bundled normative coefficient set for
+	// the phase20 Eisenbahn Strecke implementation.
+	BuiltinModelVersion = "phase20-normative-eisenbahn-strecke-v1"
 
 	// ReportingPrecisionDB documents the intended reporting boundary for this
-	// baseline. Internal computation remains float64 without intermediate rounding.
+	// module. Internal computation remains float64 without intermediate rounding.
 	ReportingPrecisionDB = 0.1
 )
+
+// NormativeReceiverLevels holds the unrounded L_pAeq and L_r planning period
+// levels computed via the normative Gl. 1-2 (emission) + Gl. 8-16 (propagation)
+// + Gl. 33-34 (assessment) chain.
+type NormativeReceiverLevels struct {
+	LpAeqDay   float64 // unrounded L_pAeq,Tag
+	LpAeqNight float64 // unrounded L_pAeq,Nacht
+	LrDay      float64 // L_r,Tag = LpAeqDay + K_S (K_S = 0 for Eisenbahnen)
+	LrNight    float64 // L_r,Nacht = LpAeqNight + K_S
+}
+
+// beurteilungspegel computes the Beurteilungspegel per Gl. 33.
+//
+//	L_r = L_pAeq + K_S
+//
+// K_S is the Schienenbonus; for Eisenbahnen it is 0 dB since the 2015
+// amendment to 16. BImSchV.
+func beurteilungspegel(lpAeq, ks float64) float64 {
+	return lpAeq + ks
+}
+
+// roundToWholeDB rounds a level to the nearest whole dB using round-half-away
+// from zero (standard German engineering rounding for Schall 03 outputs).
+func roundToWholeDB(l float64) float64 {
+	return math.Round(l)
+}
 
 // PeriodLevels stores receiver levels per Schall 03 planning period.
 type PeriodLevels struct {
