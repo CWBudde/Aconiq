@@ -141,7 +141,88 @@ func TestNormativePipelineRequiresSegments(t *testing.T) {
 	}
 }
 
-func TestNormativePipelineCloserReceiverLouder(t *testing.T) {
+// ---------------------------------------------------------------------------
+// Gl. 13: A_gr = A_gr,B + A_gr,W — water body ground correction wired in
+// ---------------------------------------------------------------------------
+
+func TestNormativePipelineWaterBodyRaisesLevels(t *testing.T) {
+	t.Parallel()
+
+	// A_gr,W = -3·d_w/d_p is negative → subtracting a negative from the
+	// attenuation chain means less total attenuation → higher levels.
+	// A receiver over fully over water (fraction=1.0) must produce a higher
+	// level than the same geometry over pure land (fraction=0.0).
+	op, err := NewTrainOperationFromZugart("IC-Zug-E-Lok", 4.0, 1.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	makeSeg := func(waterFrac float64) TrackSegment {
+		return TrackSegment{
+			ID: "seg",
+			TrackCenterline: []geo.Point2D{
+				{X: 0, Y: 0},
+				{X: 200, Y: 0},
+			},
+			ElevationM:         0,
+			Fahrbahn:           FahrbahnartSchwellengleis,
+			Surface:            SurfaceCondNone,
+			BridgeType:         0,
+			CurveRadiusM:       0,
+			StreckeMaxKPH:      200,
+			WaterBodyFractionW: waterFrac,
+			Operations:         []TrainOperation{*op},
+		}
+	}
+
+	receiver := ReceiverInput{ID: "r", Point: geo.Point2D{X: 100, Y: 50}, HeightM: 4.0}
+
+	lvlLand, err := ComputeNormativeReceiverLevels(receiver, []TrackSegment{makeSeg(0.0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lvlWater, err := ComputeNormativeReceiverLevels(receiver, []TrackSegment{makeSeg(1.0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Full water path: A_gr,W = -3 dB, A_gr,B = 0 (land fraction=0).
+	// A_gr = -3 dB means less attenuation → higher level.
+	if lvlWater.LpAeqDay <= lvlLand.LpAeqDay {
+		t.Errorf("full-water path (%v dB) should be louder than pure-land path (%v dB)",
+			lvlWater.LpAeqDay, lvlLand.LpAeqDay)
+	}
+}
+
+func TestNormativePipelineWaterBodyValidation(t *testing.T) {
+	t.Parallel()
+
+	op, err := NewTrainOperationFromZugart("IC-Zug-E-Lok", 4.0, 1.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seg := TrackSegment{
+		ID:                 "seg",
+		TrackCenterline:    []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}},
+		ElevationM:         0,
+		Fahrbahn:           FahrbahnartSchwellengleis,
+		Surface:            SurfaceCondNone,
+		StreckeMaxKPH:      100,
+		WaterBodyFractionW: 1.5, // out of range
+		Operations:         []TrainOperation{*op},
+	}
+
+	receiver := ReceiverInput{ID: "r", Point: geo.Point2D{X: 50, Y: 25}, HeightM: 4.0}
+
+	_, err = ComputeNormativeReceiverLevels(receiver, []TrackSegment{seg})
+	if err == nil {
+		t.Error("expected validation error for WaterBodyFractionW > 1")
+	}
+}
+
+func TestNormativePipelineWaterBodyCloserReceiverLouder(t *testing.T) {
 	t.Parallel()
 
 	op, err := NewTrainOperationFromZugart("Gueterzug-E-Lok", 4.0, 2.0)

@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "phase20-v1",
+  "suite_version": "phase20-v2",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -27,6 +27,14 @@
       "description": "IC-Zug-E-Lok, two receivers at 10m and 100m, verifying distance attenuation",
       "scenario_path": "ci_safe/p1_free_field.scenario.json",
       "expected_path": "ci_safe/p1_free_field.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "p2_water_body",
+      "category": "propagation",
+      "description": "IC-Zug-E-Lok at 200 km/h, full water body path (fraction=1.0), verifying A_gr,W = -3 dB correction (Gl. 16)",
+      "scenario_path": "ci_safe/p2_water_body.scenario.json",
+      "expected_path": "ci_safe/p2_water_body.expected.json",
       "tolerance_db": 0.0001
     },
     {
