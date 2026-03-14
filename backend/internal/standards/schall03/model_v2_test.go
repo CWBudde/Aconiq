@@ -52,6 +52,43 @@ func TestTrainOperationFromZugartUnknown(t *testing.T) {
 	}
 }
 
+func TestNewTrainOperationFromZugartNiederflurET(t *testing.T) {
+	t.Parallel()
+
+	op, err := NewTrainOperationFromZugart("Niederflur-ET", 10.0, 5.0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if op == nil {
+		t.Fatal("expected non-nil operation")
+	}
+
+	if op.TrainType != "Niederflur-ET" {
+		t.Errorf("TrainType = %q, want %q", op.TrainType, "Niederflur-ET")
+	}
+
+	if op.SpeedKPH != 80 {
+		t.Errorf("SpeedKPH = %v, want 80", op.SpeedKPH)
+	}
+
+	if len(op.FzComposition) != 1 {
+		t.Fatalf("FzComposition length = %d, want 1", len(op.FzComposition))
+	}
+
+	if op.FzComposition[0].Fz != 21 || op.FzComposition[0].Count != 1 {
+		t.Errorf("FzComposition[0] = {%d, %d}, want {21, 1}", op.FzComposition[0].Fz, op.FzComposition[0].Count)
+	}
+
+	if op.TrainsPerHourDay != 10.0 {
+		t.Errorf("TrainsPerHourDay = %v, want 10.0", op.TrainsPerHourDay)
+	}
+
+	if op.TrainsPerHourNight != 5.0 {
+		t.Errorf("TrainsPerHourNight = %v, want 5.0", op.TrainsPerHourNight)
+	}
+}
+
 func TestTrainOperationCustomComposition(t *testing.T) {
 	t.Parallel()
 

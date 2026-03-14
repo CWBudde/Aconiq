@@ -294,12 +294,27 @@ type TrainOperation struct {
 	TrainsPerHourNight float64   `json:"trains_per_hour_night"` // trains per hour, night period
 }
 
-// NewTrainOperationFromZugart creates a TrainOperation from a Zugart name
-// (Table 4 in Beiblatt 1) with day/night trains per hour.
-// It looks up the Zugart in the Zugarten slice from beiblatt1.go,
-// decomposes it into FzComposition, and sets the default speed from the Zugart.
+// NewTrainOperationFromZugart creates a TrainOperation from a Zugart name.
+// It searches first the Eisenbahn Zugarten (Table 4 in Beiblatt 1) and then
+// the Straßenbahn Zugarten (Beiblatt 2), decomposes the entry into
+// FzComposition, and sets the default speed from the Zugart.
 func NewTrainOperationFromZugart(zugartName string, trainsPerHourDay, trainsPerHourNight float64) (*TrainOperation, error) {
 	for _, z := range Zugarten {
+		if z.Name == zugartName {
+			comp := make([]FzCount, len(z.Composition))
+			copy(comp, z.Composition)
+
+			return &TrainOperation{
+				TrainType:          z.Name,
+				FzComposition:      comp,
+				SpeedKPH:           z.MaxSpeedKPH,
+				TrainsPerHourDay:   trainsPerHourDay,
+				TrainsPerHourNight: trainsPerHourNight,
+			}, nil
+		}
+	}
+
+	for _, z := range ZugartStrassenbahn {
 		if z.Name == zugartName {
 			comp := make([]FzCount, len(z.Composition))
 			copy(comp, z.Composition)
