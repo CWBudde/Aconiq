@@ -1,0 +1,7 @@
+{
+  "description": "Tiny wall fails Fresnel check — no level change",
+  "diff_db": 0,
+  "lp_aeq_day_no_wall": 70.627226,
+  "lp_aeq_day_with_wall": 70.627226,
+  "scenario": "refl2_fresnel_rejection"
+}

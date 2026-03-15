@@ -1,0 +1,7 @@
+{
+  "description": "Canyon geometry — 2nd-order reflections between parallel walls",
+  "increase_db": 1.653458,
+  "lp_aeq_day_canyon": 76.390422,
+  "lp_aeq_day_single": 74.736964,
+  "scenario": "refl3_canyon_double_reflection"
+}
