@@ -246,7 +246,7 @@ Status: done.
 - [x] Implement 1st-order image source: mirror source position, reflected path geometry, reflection loss per Table 18
 - [x] Implement 2nd-order and 3rd-order reflections (up to 3 bounces per Schall 03 scope)
 - [x] Integrate reflected paths into the propagation chain: add reflected path contributions energetically to the direct path result
-- [ ] Handle reflection + barrier diffraction combined paths (Gl. 28) — deferred
+- [ ] Handle reflection + barrier diffraction combined paths (Gl. 28) — deferred to Phase 20d
 - [x] Extend scene geometry to accept reflecting wall definitions (`ReflectingWall` type)
 
 ### Conformance
@@ -254,6 +254,121 @@ Status: done.
 - [x] Add CI-safe scenarios: single reflecting wall, double reflection (canyon geometry), Fresnel rejection
 - [x] Generate golden snapshots
 - [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark reflections as supported
+
+---
+
+## Phase 20d — Schall 03: Barrier diffraction in propagation pipeline (direct + reflected paths)
+
+Status: not started.
+
+**Goal:** Wire barrier diffraction (Gl. 17–26) into the normative propagation pipeline for both direct and reflected paths. Currently `normativeSubsegmentContrib` computes A_div + A_atm + A_gr but never applies A_bar. This phase adds a `BarrierSegment` scene type, implements the Gummibandmethode (rubber band / upper convex hull) for selecting significant diffraction edges, and integrates barrier attenuation into both the Strecke direct-path pipeline and the reflected-path pipeline from Phase 20c.
+
+**Architecture:** New `BarrierSegment` type (2D line segment + height + thickness + absorption properties) parallel to `ReflectingWall`. New `barrier_scene.go` implements ray–barrier intersection testing and the rubber band method for edge selection. Both `normativeSubsegmentContrib` and `ReflectedSubsegmentContrib` gain barrier geometry as an input; the existing `ComputeAbar` function (already implemented in `barrier.go`) is called with the computed `BarrierGeometry`. `ComputeNormativeReceiverLevels` and `ComputeNormativeReceiverLevelsWithWalls` accept an optional `[]BarrierSegment` parameter.
+
+**Key references:**
+
+- Schall 03 (Anlage 2 zu §4 der 16. BImSchV), Section 6.5 (Gl. 17–26), Bild 5–7
+- ISO 9613-2:1996, Section 7.4 — identical barrier screening model; Schall 03 Gl. 21 derives from this
+- CNOSSOS-EU (JRC Reference Report, 2012), Section 2.5.5 — rubber band / convex hull pseudocode for edge selection; same barrier model
+- Maekawa, Z. (1968), "Noise reduction by screens", Applied Acoustics 1, pp. 157–173 — empirical basis for D_z = 10·lg(3 + C₂·z/λ)
+- Pierce, A.D. (1974), "Diffraction of sound around corners and over wide barriers", JASA 55 — theoretical basis for Kurze-Anderson C₃ double-diffraction factor
+- DIN 45642 / VDI 2720 — German noise barrier design standards referencing the same computational method
+
+**Potential dependency:** `github.com/cwbudde/go-clipper2` (at `/mnt/projekte/Code/Go-Clipper2`) provides robust polygon clipping with integer precision. May be useful if barrier–path intersection testing needs robust geometric operations beyond simple segment intersection. Evaluate during implementation; prefer the simpler `geo.SegmentIntersection` if sufficient.
+
+### Implementation
+
+#### Step 1 — BarrierSegment type and validation
+
+- [ ] Define `BarrierSegment` struct: 2D line segment (A, B `geo.Point2D`), `TopHeightM float64` (barrier top above ground), `BaseHeightM float64` (absorbing base height for D_refl, Gl. 20), `ThicknessM float64` (barrier thickness `e` for double diffraction, 0 = thin), `IsParallel bool` (edges parallel for Gl. 25 vs. Gl. 26)
+- [ ] `Validate()` method with geometry and physics checks
+- [ ] Tests for valid/invalid barrier segments
+
+#### Step 2 — Ray–barrier intersection (2D plan view)
+
+- [ ] `FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing` — find all barrier segments that the source→receiver line crosses in plan view, returning intersection point, barrier index, and parameter t along the path
+- [ ] `BarrierCrossing` struct: intersection point, barrier index, distance from source, barrier reference
+- [ ] Sort crossings by distance from source
+- [ ] Tests: no crossing, single crossing, multiple crossings, barrier behind receiver
+
+#### Step 3 — Line-of-sight height check (vertical plane)
+
+- [ ] For each barrier crossing, compute the line-of-sight height at the intersection point (linear interpolation between source height and receiver height)
+- [ ] Compare against barrier top height — if barrier top ≤ line-of-sight, no obstruction (skip)
+- [ ] `IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM float64) bool`
+- [ ] Tests: barrier below line-of-sight (no obstruction), barrier above (obstruction), exact height match
+
+#### Step 4 — Rubber band method (Gummibandmethode) for edge selection
+
+- [ ] Project obstructing barrier tops onto the vertical source→receiver cross-section plane
+- [ ] Compute the **upper convex hull** of the barrier top points plus source and receiver endpoints — this is the "rubber band" stretched from source over the barriers to receiver
+- [ ] The hull vertices (excluding source and receiver) are the **maßgebliche Beugungskanten** (significant diffraction edges)
+- [ ] Return selected edges in order from source to receiver
+- [ ] `SelectDiffractionEdges(source, receiver geo.Point2D, sourceH, receiverH float64, crossings []BarrierCrossing) []DiffractionEdge`
+- [ ] `DiffractionEdge` struct: position, barrier height, ds (source→edge), dr (edge→receiver), edge index
+- [ ] Tests: single barrier (1 edge), two barriers with inner one hidden (1 edge), two barriers both visible (2 edges), barrier exactly at source/receiver height
+
+#### Step 5 — Compute BarrierGeometry from selected edges
+
+- [ ] For 1 selected edge: single diffraction. Compute ds, dr, d, z per Gl. 25 or 26. Set `IsDouble = false`, `E = 0`.
+- [ ] For 2 selected edges: double diffraction. Compute ds (source→first edge), dr (last edge→receiver), e (distance between edges), z per Gl. 25/26. Set `IsDouble = true`, `E = edge distance`.
+- [ ] For >2 edges: use outermost two edges as the double-diffraction pair (the standard caps at 25 dB for double diffraction; intermediate edges are subsumed by the rubber band hull)
+- [ ] `ComputeBarrierGeometryFromEdges(edges []DiffractionEdge, sourceH, receiverH, directDist float64) BarrierGeometry`
+- [ ] Include D_refl computation using `BaseHeightM` from the barrier
+- [ ] Tests: single thin barrier, thick barrier (e > 0), two separate barriers, verify z and distances against hand calculations
+
+#### Step 6 — Lateral diffraction (around barrier ends)
+
+- [ ] For each barrier segment, compute diffraction paths around both endpoints (left and right lateral paths)
+- [ ] Lateral path: source → barrier endpoint → receiver, with z computed as path length difference
+- [ ] The standard says lateral edges are modeled as straight lines (Geradenstücke)
+- [ ] Lateral diffraction uses Gl. 18 (A_bar = D_z ≥ 0, no D_refl or A_gr subtraction)
+- [ ] Select the minimum A_bar across top diffraction and both lateral diffractions — the path with least attenuation dominates
+- [ ] `ComputeLateralDiffraction(source, receiver geo.Point2D, sourceH, receiverH float64, barrier BarrierSegment) (BeiblattSpectrum, bool)` — returns lateral A_bar if lateral path exists
+- [ ] Tests: short barrier where lateral path is shorter than top path, long barrier where top path dominates
+
+#### Step 7 — Integrate barriers into direct-path pipeline
+
+- [ ] Extend `normativeSubsegmentContrib` (or create a wrapper) to accept `[]BarrierSegment`
+- [ ] For each subsegment: find barrier crossings, check obstruction, select edges via rubber band, compute BarrierGeometry, call `ComputeAbar`, subtract A_bar per band
+- [ ] Also compute lateral diffraction for each crossing barrier; use minimum of top and lateral A_bar
+- [ ] Extend `ComputeNormativeReceiverLevels` signature: add optional `barriers []BarrierSegment` parameter (new function `ComputeNormativeReceiverLevelsWithBarriers` or extend `WithWalls` to `WithScene`)
+- [ ] Tests: track with single barrier (level must be lower than free field), barrier too low to obstruct (no change), barrier with absorbing base (D_refl reduction)
+
+#### Step 8 — Integrate barriers into reflected-path pipeline
+
+- [ ] Extend `ReflectedSubsegmentContrib` to accept `[]BarrierSegment`
+- [ ] For each reflected path: the "source" for barrier checking is the **image source position**, and the path to check is image source → receiver
+- [ ] Find barrier crossings along the reflected path, apply the same rubber band + ComputeAbar chain
+- [ ] Extend `ComputeReflectedLineSourceLpAeq` and `ComputeNormativeReceiverLevelsWithWalls` to pass barriers through
+- [ ] Tests: reflected path obstructed by barrier (lower than unobstructed reflection), reflected path not obstructed (unchanged)
+
+#### Step 9 — Unified scene API
+
+- [ ] Consider unifying the API: `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` or a `Scene` struct containing walls + barriers
+- [ ] Ensure backward compatibility: existing `ComputeNormativeReceiverLevels` (no walls, no barriers) and `ComputeNormativeReceiverLevelsWithWalls` (walls, no barriers) continue to work
+- [ ] Update conformance doc Phase 20c to remove "not yet supported" for reflection + barrier combined paths
+
+### Conformance
+
+- [ ] Add CI-safe scenarios:
+  - [ ] Direct path with single barrier (compare against hand-calculated D_z)
+  - [ ] Direct path with double barrier (verify C₃ factor and 25 dB cap)
+  - [ ] Reflected path obstructed by barrier (verify combined reflection + diffraction)
+  - [ ] Lateral diffraction around short barrier (verify minimum of top/lateral)
+  - [ ] Rubber band edge selection with 3+ barriers (verify correct edge selection)
+- [ ] Generate golden snapshots
+- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark barrier diffraction as supported
+
+### Known complexity and risks
+
+1. **Rubber band method is a 2D upper convex hull** in the vertical cross-section. Algorithmically O(n log n) but n is small (rarely more than 3–4 barriers on one path). A simple incremental scan suffices — no need for a full convex hull library.
+
+2. **Lateral diffraction geometry** requires 3D path computation around barrier endpoints. The standard models lateral edges as straight lines (Geradenstücke), which simplifies the geometry to segment-endpoint-to-segment-endpoint paths.
+
+3. **Per-subsegment barrier checking** is O(subsegments × barriers). For typical scenes (10–50 barriers, 100–500 subsegments), this is manageable. If performance becomes an issue, a spatial index (R-tree) on barrier bounding boxes can prune candidates.
+
+4. **Go-Clipper2 evaluation**: The rubber band method and ray–segment intersection are simple enough that `geo.SegmentIntersection` should suffice. Clipper2 would only be needed if we later need to clip barrier polygons or compute visibility polygons, which is not in scope here.
 
 ---
 
@@ -580,22 +695,22 @@ A SoundPlan project is a directory containing:
 
 ### Step 2 — Reverse-engineer and parse binary geometry files
 
-- [ ] Investigate `.geo` binary format in detail
-  - [ ] Document the tagged record structure (`:HZ` header, `:G ` geometry points, `:D1` descriptors, `:DL` data links, `:O&` object groups, etc.)
-  - [ ] Determine coordinate encoding (float64 LE confirmed for rail), bounding box structure, record length fields
-  - [ ] Identify how object type (building, barrier, rail, terrain) is encoded vs. inferred from filename
-  - [ ] Handle embedded BMP thumbnails (skip or extract)
-- [ ] Implement `GeoRail.geo` parser
-  - [ ] Extract rail track polylines with coordinates and elevations
-  - [ ] Extract track names and identifiers (e.g., "Hauptstrecke Gleis 1")
-  - [ ] Extract per-track emission parameters (speed, corrections, bridge surcharges)
-- [ ] Implement `GeoObjs.geo` parser
-  - [ ] Extract building footprints/polygons with heights
-  - [ ] Extract building addresses and attributes
-  - [ ] Extract receiver/immission point positions
-- [ ] Implement `GeoWand.geo` parser
-  - [ ] Extract barrier/wall polylines with heights and top geometry
-  - [ ] Extract barrier material/absorption properties
+- [x] Investigate `.geo` binary format in detail
+  - [x] Document the tagged record structure (`:HZ` header, `:G ` geometry points, `:D1` descriptors, `:DL` data links, `:O&` object groups, etc.)
+  - [x] Determine coordinate encoding (float64 LE confirmed for rail), bounding box structure, record length fields
+  - [x] Identify how object type (building, barrier, rail, terrain) is encoded vs. inferred from filename
+  - [x] Handle embedded BMP thumbnails (skip or extract)
+- [x] Implement `GeoRail.geo` parser
+  - [x] Extract rail track polylines with coordinates and elevations
+  - [x] Extract track names and identifiers (e.g., "Hauptstrecke Gleis 1")
+  - [x] Extract per-track emission parameters (speed, corrections, bridge surcharges)
+- [x] Implement `GeoObjs.geo` parser
+  - [x] Extract building footprints/polygons (315 closed polygons, type 0x03ec)
+  - [ ] Extract building addresses and attributes (type 0x03e9 with :D1 name records — deferred)
+  - [x] Extract receiver/immission point positions (77 points, type 0x0028)
+- [x] Implement `GeoWand.geo` parser
+  - [x] Extract barrier/wall polylines with heights and top geometry (type 0x03eb, per-point height in z2 field)
+  - [ ] Extract barrier material/absorption properties (:D! records with dB values — deferred)
 - [ ] Implement `GeoTmp.geo` / `*.dgm` parser (terrain)
   - [ ] Extract elevation contours or TIN from geometry file
   - [ ] Extract digital ground model from `.dgm` binary
