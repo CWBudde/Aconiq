@@ -1,0 +1,16 @@
+{
+  "gleisbremse": "GleisbremsZulaufOhneSegmente",
+  "k_k_db": 0,
+  "level_bands": {
+    "1000Hz": 106,
+    "125Hz": 80,
+    "2000Hz": 117,
+    "250Hz": 88,
+    "4000Hz": 129,
+    "500Hz": 98,
+    "63Hz": 74,
+    "8000Hz": 118
+  },
+  "n_per_hour": 100,
+  "scenario": "r1_gleisbremse_zulauf_emission"
+}

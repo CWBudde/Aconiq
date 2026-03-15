@@ -1,0 +1,12 @@
+{
+  "barrier": null,
+  "k_k_db": 0,
+  "lp_aeq_db": 69.395896,
+  "lp_aeq_fmt": "69.3959 dB(A)",
+  "n_per_hour": 200,
+  "receiver_dist_m": 50,
+  "receiver_height_m": 3.5,
+  "scenario": "r2_retarder_verzoegerungsstrecke_immission",
+  "source": "Beiblatt3RetarderVerzoegerungsstrecke",
+  "source_height_m": 0
+}
