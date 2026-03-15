@@ -9,6 +9,23 @@ import (
 	"strconv"
 )
 
+// LoadReceiverTableJSON reads a receiver table from a JSON file.
+func LoadReceiverTableJSON(path string) (ReceiverTable, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ReceiverTable{}, fmt.Errorf("read receiver table json %s: %w", path, err)
+	}
+
+	var table ReceiverTable
+
+	err = json.Unmarshal(data, &table)
+	if err != nil {
+		return ReceiverTable{}, fmt.Errorf("decode receiver table json %s: %w", path, err)
+	}
+
+	return table, nil
+}
+
 // SaveReceiverTableJSON writes receiver table as JSON.
 func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 	err := table.Validate()
