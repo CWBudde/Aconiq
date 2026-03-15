@@ -176,6 +176,68 @@ func TestFresnelCheckLargeDistance(t *testing.T) {
 	}
 }
 
+func TestReflectionGeometrySimple(t *testing.T) {
+	t.Parallel()
+	// Source at (0, 0), receiver at (10, 0).
+	// Wall from (3, 3) to (7, 3) — parallel to x-axis, above source-receiver line.
+	// Image of source across wall: (0, 6).
+	// Line from image (0,6) to receiver (10,0): parametric intersection with y=3.
+	// t = (6-3)/(6-0) = 0.5 → x = 0 + 0.5·10 = 5.0
+	// Reflection point: (5, 3). Within wall segment [3,7] → valid.
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 10, Y: 0}
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 3, Y: 3}, B: geo.Point2D{X: 7, Y: 3},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+
+	rg, ok := schall03.ComputeReflectionGeometry(source, receiver, wall)
+	if !ok {
+		t.Fatal("should find valid reflection point")
+	}
+	assertApproxRefl(t, rg.ReflectionPoint.X, 5.0, 0.01, "reflection X")
+	assertApproxRefl(t, rg.ReflectionPoint.Y, 3.0, 0.01, "reflection Y")
+	assertApproxRefl(t, rg.DSO, math.Sqrt(34), 0.01, "d_so")
+	assertApproxRefl(t, rg.DOR, math.Sqrt(34), 0.01, "d_or")
+}
+
+func TestReflectionGeometryMissesWall(t *testing.T) {
+	t.Parallel()
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 10, Y: 0}
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 20, Y: 3}, B: geo.Point2D{X: 25, Y: 3},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+
+	_, ok := schall03.ComputeReflectionGeometry(source, receiver, wall)
+	if ok {
+		t.Error("reflection point should miss the wall segment")
+	}
+}
+
+func TestReflectionGeometrySourceBehindWall(t *testing.T) {
+	t.Parallel()
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 10, Y: 0}
+	// Wall above both → same side → valid.
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 0, Y: 3}, B: geo.Point2D{X: 10, Y: 3},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+	_, ok := schall03.ComputeReflectionGeometry(source, receiver, wall)
+	if !ok {
+		t.Error("same-side reflection should be valid")
+	}
+
+	// Receiver on the other side (y=5) → opposite sides → no reflection.
+	receiverOther := geo.Point2D{X: 10, Y: 5}
+	_, ok = schall03.ComputeReflectionGeometry(source, receiverOther, wall)
+	if ok {
+		t.Error("opposite-side should not produce a reflection")
+	}
+}
+
 func TestMirrorSourceOnWall(t *testing.T) {
 	t.Parallel()
 

@@ -98,6 +98,114 @@ func MirrorSource(source geo.Point2D, wall ReflectingWall) (geo.Point2D, bool) {
 	}, true
 }
 
+// ReflectionGeometry holds the computed geometry for one specular reflection.
+type ReflectionGeometry struct {
+	ReflectionPoint geo.Point2D // point on wall where reflection occurs
+	ImageSource     geo.Point2D // mirror source position
+	DSO             float64     // source-to-reflection-point distance [m]
+	DOR             float64     // reflection-point-to-receiver distance [m]
+	Beta            float64     // angle between reflected path and wall normal [rad]
+	LMin            float64     // smallest wall dimension (min of length, height) [m]
+}
+
+// ComputeReflectionGeometry determines the specular reflection geometry for a
+// source, receiver, and wall.  Returns (geometry, true) if a valid reflection
+// point exists on the wall segment and both source and receiver are on the same
+// side of the wall.  Returns (zero, false) otherwise.
+func ComputeReflectionGeometry(source, receiver geo.Point2D, wall ReflectingWall) (ReflectionGeometry, bool) {
+	// 1. Mirror the source across the wall line.
+	imageSource, ok := MirrorSource(source, wall)
+	if !ok {
+		return ReflectionGeometry{}, false
+	}
+
+	// 2. Check source and receiver are on the same side of the wall.
+	if !sameSide(source, receiver, wall) {
+		return ReflectionGeometry{}, false
+	}
+
+	// 3. Find where the line from imageSource to receiver intersects the wall
+	//    segment.  This is the reflection point.
+	reflPoint, ok := segmentLineIntersection(imageSource, receiver, wall.A, wall.B)
+	if !ok {
+		return ReflectionGeometry{}, false
+	}
+
+	// 4. Compute distances and angle.
+	dSO := geo.Distance(source, reflPoint)
+	dOR := geo.Distance(reflPoint, receiver)
+
+	// Wall normal (perpendicular to wall direction, either orientation).
+	dx := wall.B.X - wall.A.X
+	dy := wall.B.Y - wall.A.Y
+	wallLen := math.Sqrt(dx*dx + dy*dy)
+	// Normal: (-dy, dx) normalized.
+	nx := -dy / wallLen
+	ny := dx / wallLen
+
+	// β = angle between the reflected path direction at the reflection point
+	// and the wall normal.
+	toRecvX := receiver.X - reflPoint.X
+	toRecvY := receiver.Y - reflPoint.Y
+	toRecvLen := math.Sqrt(toRecvX*toRecvX + toRecvY*toRecvY)
+
+	beta := 0.0
+	if toRecvLen > 1e-9 {
+		cosB := math.Abs(toRecvX*nx+toRecvY*ny) / toRecvLen
+		cosB = math.Min(cosB, 1.0)
+		beta = math.Acos(cosB)
+	}
+
+	lMin := math.Min(wallLen, wall.HeightM)
+
+	return ReflectionGeometry{
+		ReflectionPoint: reflPoint,
+		ImageSource:     imageSource,
+		DSO:             dSO,
+		DOR:             dOR,
+		Beta:            beta,
+		LMin:            lMin,
+	}, true
+}
+
+// sameSide returns true if points p and q are on the same side of the line
+// defined by the wall segment (or if either is exactly on the line).
+func sameSide(p, q geo.Point2D, wall ReflectingWall) bool {
+	dx := wall.B.X - wall.A.X
+	dy := wall.B.Y - wall.A.Y
+	crossP := dx*(p.Y-wall.A.Y) - dy*(p.X-wall.A.X)
+	crossQ := dx*(q.Y-wall.A.Y) - dy*(q.X-wall.A.X)
+
+	return crossP*crossQ >= 0
+}
+
+// segmentLineIntersection finds the point where the line through p1→p2
+// intersects the segment s1→s2.  Returns (point, true) if the intersection
+// lies within the segment (0 ≤ t ≤ 1).
+func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
+	dx := p2.X - p1.X
+	dy := p2.Y - p1.Y
+	sx := s2.X - s1.X
+	sy := s2.Y - s1.Y
+
+	denom := sx*dy - sy*dx
+	if math.Abs(denom) < 1e-12 {
+		return geo.Point2D{}, false // parallel
+	}
+
+	// Parameter along the segment s1→s2.
+	t := ((p1.X-s1.X)*dy - (p1.Y-s1.Y)*dx) / denom
+
+	if t < 0 || t > 1 {
+		return geo.Point2D{}, false // outside segment
+	}
+
+	return geo.Point2D{
+		X: s1.X + t*sx,
+		Y: s1.Y + t*sy,
+	}, true
+}
+
 // FresnelCheck implements Gl. 27 to determine whether a reflecting surface is
 // large enough for a valid specular reflection.  The check uses the lowest
 // octave band frequency (63 Hz, λ ≈ 5.397 m) as the most restrictive case.
