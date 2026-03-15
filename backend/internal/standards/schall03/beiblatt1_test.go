@@ -1,6 +1,7 @@
 package schall03
 
 import (
+	"math"
 	"testing"
 )
 
@@ -361,5 +362,111 @@ func TestZugartNiederflurETComposition(t *testing.T) {
 
 	if !found {
 		t.Error("ZugartStrassenbahn missing Niederflur-ET")
+	}
+}
+
+func TestBeiblatt3KurvenfahrgeraeuschData(t *testing.T) {
+	t.Parallel()
+
+	q := Beiblatt3Kurvenfahrgeraeusch
+	if q.LWA != 69 {
+		t.Errorf("expected L_WA=69, got %g", q.LWA)
+	}
+
+	// 1000 Hz band (index 4) should be -8
+	if q.DeltaLW[4] != -8 {
+		t.Errorf("Kurvenfahrgeräusch 1000Hz: expected -8, got %g", q.DeltaLW[4])
+	}
+
+	if q.SourceShape != YardSourceLine {
+		t.Error("Kurvenfahrgeräusch must be a Linienschallquelle")
+	}
+}
+
+func TestBeiblatt3GleisbremseZulaufData(t *testing.T) {
+	t.Parallel()
+
+	g := Beiblatt3GleisbremsenByType(GleisbremsZulaufOhneSegmente)
+	if g.LWA != 110 {
+		t.Errorf("expected L_WA=110, got %g", g.LWA)
+	}
+
+	// 500 Hz band (index 3) should be -32
+	if g.DeltaLW[3] != -32 {
+		t.Errorf("Zulaufbremse 500Hz: expected -32, got %g", g.DeltaLW[3])
+	}
+
+	if g.SourceShape != YardSourcePoint {
+		t.Error("Gleisbremsengeräusch must be a Punktschallquelle")
+	}
+}
+
+func TestBeiblatt3RetarderVerzoegeData(t *testing.T) {
+	t.Parallel()
+
+	r := Beiblatt3RetarderVerzoegerungsstrecke
+	if r.LWA != 90 {
+		t.Errorf("expected L_WA=90, got %g", r.LWA)
+	}
+
+	// 63 Hz (index 0) should be -11
+	if r.DeltaLW[0] != -11 {
+		t.Errorf("63Hz: expected -11, got %g", r.DeltaLW[0])
+	}
+}
+
+func TestBeiblatt3RetarderBeharrunglBaseLevel(t *testing.T) {
+	t.Parallel()
+
+	// L_WA = 62 + 10·lg(n_ret); for n_ret=1: L_WA = 62
+	lwa := Beiblatt3RetarderBeharrungsstreckeLevel(1.0)
+	if lwa != 62 {
+		t.Errorf("n_ret=1: expected 62, got %g", lwa)
+	}
+
+	// n_ret=4: L_WA = 62 + 10·lg(4) = 62 + 6.02 = 68.02
+	lwa4 := Beiblatt3RetarderBeharrungsstreckeLevel(4.0)
+	if math.Abs(lwa4-68.021) > 0.01 {
+		t.Errorf("n_ret=4: expected ~68.02, got %g", lwa4)
+	}
+}
+
+func TestBeiblatt3AuflaufstossModern(t *testing.T) {
+	t.Parallel()
+
+	a := Beiblatt3AuflaufstossByTech(true) // modern
+	if a.LWA != 78 {
+		t.Errorf("modern: expected L_WA=78, got %g", a.LWA)
+	}
+}
+
+func TestBeiblatt3AuflaufstossOld(t *testing.T) {
+	t.Parallel()
+
+	a := Beiblatt3AuflaufstossByTech(false) // old
+	if a.LWA != 91 {
+		t.Errorf("old: expected L_WA=91, got %g", a.LWA)
+	}
+}
+
+func TestBeiblatt3GleisbremseAllTypesPresent(t *testing.T) {
+	t.Parallel()
+
+	types := []GleisbremseType{
+		GleisbremsZulaufOhneSegmente,
+		GleisvremsTalbremseOhneSegmente,
+		GleisbremsTalbremseMitGG,
+		GleisbremseSchalloptimiert,
+		GleisbremsTalbremsMitSegmenten,
+		GleisbremsRichtungEinseitigSegmente,
+		GleisbremsGummiwalk,
+		GleisvremsFEWTalbremse,
+		GleisbremsSchraubenbremse,
+	}
+	for _, typ := range types {
+		g := Beiblatt3GleisbremsenByType(typ)
+		if g.LWA <= 0 {
+			t.Errorf("GleisbremseType %d: L_WA must be positive", typ)
+		}
 	}
 }
