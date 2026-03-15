@@ -213,7 +213,7 @@ func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
 // This mirrors normativeSubsegmentContrib (compute.go) but:
 //   - Uses the reflected path distance instead of the direct distance
 //   - Applies the cumulative absorption loss D_ρ from wall reflections (Gl. 28)
-//   - No barrier diffraction on reflected paths (deferred)
+//   - No barrier diffraction (use ReflectedSubsegmentContribWithBarriers for barrier support)
 //
 // dp:              horizontal reflected path distance [m]
 // stepLen:         subsegment length [m]

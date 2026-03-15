@@ -22,15 +22,15 @@ import (
 )
 
 type exportSummary struct {
-	ExportID            string            `json:"export_id"`
-	ProjectID           string            `json:"project_id"`
-	ProjectCRS          string            `json:"project_crs,omitempty"`
-	RunID               string            `json:"run_id"`
-	ExportedAt          time.Time         `json:"exported_at"`
-	OutputDirectory     string            `json:"output_directory"`
-	CopiedFiles         []string          `json:"copied_files"`
-	GeneratedSampleData []string          `json:"generated_sample_data,omitempty"`
-	GeneratedReports    []string          `json:"generated_reports,omitempty"`
+	ExportID            string              `json:"export_id"`
+	ProjectID           string              `json:"project_id"`
+	ProjectCRS          string              `json:"project_crs,omitempty"`
+	RunID               string              `json:"run_id"`
+	ExportedAt          time.Time           `json:"exported_at"`
+	OutputDirectory     string              `json:"output_directory"`
+	CopiedFiles         []string            `json:"copied_files"`
+	GeneratedSampleData []string            `json:"generated_sample_data,omitempty"`
+	GeneratedReports    []string            `json:"generated_reports,omitempty"`
 	ExportedFormats     map[string][]string `json:"exported_formats,omitempty"`
 }
 
@@ -715,7 +715,6 @@ func executeFormatExports(
 
 			basePath := filepath.Join(formatsDir, "raster")
 			paths, err := exportfmt.ExportGeoTIFF(basePath, raster, gt, projectCRS)
-
 			if err != nil {
 				return nil, fmt.Errorf("geotiff export: %w", err)
 			}

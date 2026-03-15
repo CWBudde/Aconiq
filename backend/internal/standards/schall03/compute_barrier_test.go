@@ -160,3 +160,64 @@ func TestNormativeReceiverSceneWallAndBarrier(t *testing.T) {
 			resultBarrierOnly.LpAeqDay, resultBoth.LpAeqDay)
 	}
 }
+
+func TestReflectedPathObstructedByBarrier(t *testing.T) {
+	t.Parallel()
+
+	op, err := schall03.NewTrainOperationFromZugart("ICE-1-Zug", 4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seg := schall03.TrackSegment{
+		ID:              "seg1",
+		TrackCenterline: []geo.Point2D{{X: -100, Y: 0}, {X: 100, Y: 0}},
+		ElevationM:      0,
+		Fahrbahn:        schall03.FahrbahnartSchwellengleis,
+		Surface:         schall03.SurfaceCondNone,
+		StreckeMaxKPH:   250,
+		Operations:      []schall03.TrainOperation{*op},
+	}
+
+	receiver := schall03.ReceiverInput{
+		ID: "r1", Point: geo.Point2D{X: 0, Y: 30}, HeightM: 3.5,
+	}
+
+	// Wall behind receiver reflects sound back.
+	walls := []schall03.ReflectingWall{
+		{
+			A: geo.Point2D{X: -100, Y: 40}, B: geo.Point2D{X: 100, Y: 40},
+			HeightM: 15, Surface: schall03.WallSurfaceHard,
+		},
+	}
+
+	// Barrier between track and receiver obstructs both direct and reflected paths.
+	barriers := []schall03.BarrierSegment{
+		{
+			A: geo.Point2D{X: -100, Y: 15}, B: geo.Point2D{X: 100, Y: 15},
+			TopHeightM: 6, BaseHeightM: 0,
+		},
+	}
+
+	// Walls only (no barriers) — reflected path is unobstructed.
+	resultWallOnly, err := schall03.ComputeNormativeReceiverLevelsWithScene(
+		receiver, []schall03.TrackSegment{seg}, walls, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Walls + barriers — reflected path is obstructed by the barrier.
+	resultBoth, err := schall03.ComputeNormativeReceiverLevelsWithScene(
+		receiver, []schall03.TrackSegment{seg}, walls, barriers,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The barrier should reduce the total level (affects both direct and reflected).
+	if resultBoth.LpAeqDay >= resultWallOnly.LpAeqDay {
+		t.Errorf("barrier should reduce level even with wall: wall=%g, both=%g",
+			resultWallOnly.LpAeqDay, resultBoth.LpAeqDay)
+	}
+}

@@ -25,12 +25,12 @@ const (
 	tiffTagSampleFormat    = 339
 
 	// GeoTIFF extension tags.
-	tiffTagModelTiepoint    = 33922
-	tiffTagModelPixelScale  = 33550
-	tiffTagGeoKeyDirectory  = 34735
-	tiffTagGeoDoubleParams  = 34736
-	tiffTagGeoASCIIParams   = 34737
-	tiffTagGDALNoData       = 42113
+	tiffTagModelTiepoint   = 33922
+	tiffTagModelPixelScale = 33550
+	tiffTagGeoKeyDirectory = 34735
+	tiffTagGeoDoubleParams = 34736
+	tiffTagGeoASCIIParams  = 34737
+	tiffTagGDALNoData      = 42113
 
 	// TIFF type IDs.
 	tiffTypeShort  = 3
@@ -52,10 +52,10 @@ const (
 	geoKeyRevisionMajor    = 1
 	geoKeyRevisionMinor    = 0
 
-	geoKeyGTModelType      = 1024
-	geoKeyGTRasterType     = 1025
-	geoKeyGeographicType   = 2048
-	geoKeyProjectedCSType  = 3072
+	geoKeyGTModelType     = 1024
+	geoKeyGTRasterType    = 1025
+	geoKeyGeographicType  = 2048
+	geoKeyProjectedCSType = 3072
 
 	// Model types.
 	modelTypeProjected  = 1
