@@ -116,7 +116,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 - Table 18: Absorptionsverlust an Wänden (4 Wandoberflächentypen: hart, Gebäude, absorbierend, hoch absorbierend) ✓
 - Gl. 27: Fresnel-Zonenprüfung der Mindestabmessung des Reflektors (bei 63 Hz) ✓
-- Gl. 28: Schallleistungspegel der Spiegelschallquelle (L_WA + D_ρ + D_Ir) ✓
+- Gl. 28: Schallleistungspegel der Spiegelschallquelle (L*WA + D*ρ + D_Ir) ✓
 - Reflexionen bis einschließlich 3. Ordnung ✓
 - Spiegelpunktgeometrie mit Prüfung gleiche Seite von Quelle und Empfänger ✓
 - Ausbreitungsberechnung entlang des Reflexionsweges (Gl. 8–16) ✓
@@ -128,11 +128,11 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 ### Not yet supported (deferred)
 
-| Feature                                                           | Reason deferred     |
-| ----------------------------------------------------------------- | ------------------- |
-| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)          | Phase 20a follow-up |
-| Reflection + barrier diffraction combined paths (Gl. 28 note)      | Phase 20c follow-up |
-| Section 9 measurement-based vehicle data                          | Out of scope        |
+| Feature                                                       | Reason deferred     |
+| ------------------------------------------------------------- | ------------------- |
+| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)      | Phase 20a follow-up |
+| Reflection + barrier diffraction combined paths (Gl. 28 note) | Phase 20c follow-up |
+| Section 9 measurement-based vehicle data                      | Out of scope        |
 
 ## Evidence
 
