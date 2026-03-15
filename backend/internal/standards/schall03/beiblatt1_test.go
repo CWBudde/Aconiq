@@ -386,7 +386,11 @@ func TestBeiblatt3KurvenfahrgeraeuschData(t *testing.T) {
 func TestBeiblatt3GleisbremseZulaufData(t *testing.T) {
 	t.Parallel()
 
-	g := Beiblatt3GleisbremsenByType(GleisbremsZulaufOhneSegmente)
+	g, ok := Beiblatt3GleisbremsenByType(GleisbremsZulaufOhneSegmente)
+	if !ok {
+		t.Fatal("unexpected: GleisbremsZulaufOhneSegmente not found")
+	}
+
 	if g.LWA != 110 {
 		t.Errorf("expected L_WA=110, got %g", g.LWA)
 	}
@@ -454,17 +458,22 @@ func TestBeiblatt3GleisbremseAllTypesPresent(t *testing.T) {
 
 	types := []GleisbremseType{
 		GleisbremsZulaufOhneSegmente,
-		GleisvremsTalbremseOhneSegmente,
+		GleisbremsTalbremseOhneSegmente,
 		GleisbremsTalbremseMitGG,
 		GleisbremseSchalloptimiert,
 		GleisbremsTalbremsMitSegmenten,
 		GleisbremsRichtungEinseitigSegmente,
 		GleisbremsGummiwalk,
-		GleisvremsFEWTalbremse,
+		GleisbremsFEWTalbremse,
 		GleisbremsSchraubenbremse,
 	}
 	for _, typ := range types {
-		g := Beiblatt3GleisbremsenByType(typ)
+		g, ok := Beiblatt3GleisbremsenByType(typ)
+		if !ok {
+			t.Errorf("GleisbremseType %d: not found in table", typ)
+			continue
+		}
+
 		if g.LWA <= 0 {
 			t.Errorf("GleisbremseType %d: L_WA must be positive", typ)
 		}

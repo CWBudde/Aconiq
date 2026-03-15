@@ -39,21 +39,26 @@ type GleisbremseType int
 
 const (
 	GleisbremsZulaufOhneSegmente        GleisbremseType = iota // i=2
-	GleisvremsTalbremseOhneSegmente                            // i=3
+	GleisbremsTalbremseOhneSegmente                            // i=3
 	GleisbremsTalbremseMitGG                                   // i=4
 	GleisbremseSchalloptimiert                                 // i=5
 	GleisbremsTalbremsMitSegmenten                             // i=6
 	GleisbremsRichtungEinseitigSegmente                        // i=7
 	GleisbremsGummiwalk                                        // i=8
-	GleisvremsFEWTalbremse                                     // i=9
+	GleisbremsFEWTalbremse                                     // i=9
 	GleisbremsSchraubenbremse                                  // i=10
 )
 
 // Beiblatt3GleisbremsenByType returns the normative data for the requested
 // Gleisbremse variant.  All Gleisbremsengeräusche are Punktschallquellen at
-// Quellhöhe 0 m (h=1).
-func Beiblatt3GleisbremsenByType(t GleisbremseType) YardSourceData {
-	return gleisbremsTable[t]
+// Quellhöhe 0 m (h=1).  The second return value is false if t is not a valid
+// GleisbremseType constant.
+func Beiblatt3GleisbremsenByType(t GleisbremseType) (YardSourceData, bool) {
+	if t < 0 || int(t) >= len(gleisbremsTable) {
+		return YardSourceData{}, false
+	}
+
+	return gleisbremsTable[t], true
 }
 
 var gleisbremsTable = [9]YardSourceData{
