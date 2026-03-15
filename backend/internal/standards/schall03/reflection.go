@@ -206,6 +206,132 @@ func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
 	}, true
 }
 
+// MaxReflectionOrder is the maximum number of bounces per Schall 03.
+const MaxReflectionOrder = 3
+
+// ReflectionPath describes one validated multi-order reflection path.
+type ReflectionPath struct {
+	Order      int                  // reflection order (1 = single bounce, 2 = double, etc.)
+	Walls      []int                // indices into the walls slice, one per bounce
+	Geometries []ReflectionGeometry // geometry per bounce
+	TotalDist  float64              // total reflected path length [m]
+	DRho       float64              // cumulative absorption loss D_ρ [dB]
+}
+
+// EnumerateReflectionPaths finds all valid reflection paths from source to
+// receiver via the given walls, up to maxOrder bounces.  Paths that fail the
+// Fresnel check (Gl. 27) are excluded.  Consecutive bounces off the same wall
+// are excluded.
+func EnumerateReflectionPaths(source, receiver geo.Point2D, walls []ReflectingWall, maxOrder int) []ReflectionPath {
+	if maxOrder > MaxReflectionOrder {
+		maxOrder = MaxReflectionOrder
+	}
+
+	var result []ReflectionPath
+
+	// 1st order: source → wall[i] → receiver.
+	type candidate struct {
+		imageSource geo.Point2D
+		walls       []int
+		geometries  []ReflectionGeometry
+		totalDist   float64
+		dRho        float64
+	}
+
+	var current []candidate
+
+	for i, w := range walls {
+		rg, ok := ComputeReflectionGeometry(source, receiver, w)
+		if !ok {
+			continue
+		}
+
+		if !FresnelCheck(rg.LMin, rg.Beta, rg.DSO, rg.DOR) {
+			continue
+		}
+
+		path := ReflectionPath{
+			Order:      1,
+			Walls:      []int{i},
+			Geometries: []ReflectionGeometry{rg},
+			TotalDist:  rg.DSO + rg.DOR,
+			DRho:       Table18AbsorptionLoss(w.Surface),
+		}
+		result = append(result, path)
+
+		current = append(current, candidate{
+			imageSource: rg.ImageSource,
+			walls:       []int{i},
+			geometries:  []ReflectionGeometry{rg},
+			totalDist:   rg.DSO + rg.DOR,
+			dRho:        Table18AbsorptionLoss(w.Surface),
+		})
+	}
+
+	// Higher orders: iteratively extend paths.
+	for order := 2; order <= maxOrder; order++ {
+		var next []candidate
+
+		for _, c := range current {
+			lastWallIdx := c.walls[len(c.walls)-1]
+
+			for j, w := range walls {
+				if j == lastWallIdx {
+					continue // no consecutive same-wall bounces
+				}
+
+				// Check if the previous image source can see the receiver via wall j.
+				rg, ok := ComputeReflectionGeometry(c.imageSource, receiver, w)
+				if !ok {
+					continue
+				}
+
+				if !FresnelCheck(rg.LMin, rg.Beta, rg.DSO, rg.DOR) {
+					continue
+				}
+
+				// Mirror the previous image source across wall j for next order.
+				newImage, ok := MirrorSource(c.imageSource, w)
+				if !ok {
+					continue
+				}
+
+				newWalls := make([]int, len(c.walls)+1)
+				copy(newWalls, c.walls)
+				newWalls[len(c.walls)] = j
+
+				newGeoms := make([]ReflectionGeometry, len(c.geometries)+1)
+				copy(newGeoms, c.geometries)
+				newGeoms[len(c.geometries)] = rg
+
+				dRho := c.dRho + Table18AbsorptionLoss(w.Surface)
+				totalDist := rg.DSO + rg.DOR
+
+				path := ReflectionPath{
+					Order:      order,
+					Walls:      newWalls,
+					Geometries: newGeoms,
+					TotalDist:  totalDist,
+					DRho:       dRho,
+				}
+				result = append(result, path)
+
+				next = append(next, candidate{
+					imageSource: newImage,
+					walls:       newWalls,
+					geometries:  newGeoms,
+					totalDist:   totalDist,
+					dRho:        dRho,
+				})
+			}
+		}
+
+		current = next
+	}
+
+	return result
+}
+
 // FresnelCheck implements Gl. 27 to determine whether a reflecting surface is
 // large enough for a valid specular reflection.  The check uses the lowest
 // octave band frequency (63 Hz, λ ≈ 5.397 m) as the most restrictive case.

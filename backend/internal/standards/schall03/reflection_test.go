@@ -255,3 +255,88 @@ func TestMirrorSourceOnWall(t *testing.T) {
 	assertApproxRefl(t, image.X, 5.0, 0.001, "image X")
 	assertApproxRefl(t, image.Y, 0.0, 0.001, "image Y")
 }
+
+func TestEnumerateReflectionPaths1stOrder(t *testing.T) {
+	t.Parallel()
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 10, Y: 0}
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: -5, Y: 3}, B: geo.Point2D{X: 15, Y: 3}, HeightM: 20, Surface: schall03.WallSurfaceHard},
+	}
+
+	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, 1)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(paths))
+	}
+	if paths[0].Order != 1 {
+		t.Errorf("expected order 1, got %d", paths[0].Order)
+	}
+	if len(paths[0].Walls) != 1 {
+		t.Errorf("expected 1 wall in path, got %d", len(paths[0].Walls))
+	}
+}
+
+func TestEnumerateReflectionPaths2ndOrder(t *testing.T) {
+	t.Parallel()
+	// Two parallel walls forming a canyon.
+	source := geo.Point2D{X: 5, Y: 0}
+	receiver := geo.Point2D{X: 15, Y: 0}
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: 0, Y: 5}, B: geo.Point2D{X: 20, Y: 5}, HeightM: 10, Surface: schall03.WallSurfaceHard},
+		{A: geo.Point2D{X: 0, Y: -5}, B: geo.Point2D{X: 20, Y: -5}, HeightM: 10, Surface: schall03.WallSurfaceHard},
+	}
+
+	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, 2)
+
+	has1st := 0
+	has2nd := 0
+	for _, p := range paths {
+		switch p.Order {
+		case 1:
+			has1st++
+		case 2:
+			has2nd++
+		}
+	}
+	if has1st < 2 {
+		t.Errorf("expected at least 2 first-order paths, got %d", has1st)
+	}
+	if has2nd < 1 {
+		t.Errorf("expected at least 1 second-order path, got %d", has2nd)
+	}
+}
+
+func TestEnumerateReflectionPathsNoDoubleWall(t *testing.T) {
+	t.Parallel()
+	source := geo.Point2D{X: 5, Y: 0}
+	receiver := geo.Point2D{X: 15, Y: 0}
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: 0, Y: 5}, B: geo.Point2D{X: 20, Y: 5}, HeightM: 10, Surface: schall03.WallSurfaceHard},
+	}
+
+	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, 3)
+	for _, p := range paths {
+		for i := 1; i < len(p.Walls); i++ {
+			if p.Walls[i] == p.Walls[i-1] {
+				t.Errorf("path has consecutive bounces off same wall index %d", p.Walls[i])
+			}
+		}
+	}
+}
+
+func TestEnumerateReflectionPathsMaxOrder3(t *testing.T) {
+	t.Parallel()
+	source := geo.Point2D{X: 5, Y: 0}
+	receiver := geo.Point2D{X: 15, Y: 0}
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: 0, Y: 5}, B: geo.Point2D{X: 20, Y: 5}, HeightM: 10, Surface: schall03.WallSurfaceHard},
+		{A: geo.Point2D{X: 0, Y: -5}, B: geo.Point2D{X: 20, Y: -5}, HeightM: 10, Surface: schall03.WallSurfaceHard},
+	}
+
+	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, 3)
+	for _, p := range paths {
+		if p.Order > 3 {
+			t.Errorf("path has order %d, max is 3", p.Order)
+		}
+	}
+}
