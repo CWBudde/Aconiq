@@ -211,25 +211,25 @@ Status: complete (open item: Nr. 5.3.2 permanently slow section exception, ≤ 3
 
 ## Phase 20b — Schall 03: Rangier- und Umschlagbahnhöfe
 
-Status: not started.
+Status: complete.
 
 **Goal:** extend the schall03 module to cover freight yard and transshipment terminal noise sources — Beiblatt 3, Table 10, and the Rangierbahnhof assessment equations (Gl. 35–36).
 
 ### Implementation
 
-- [ ] Encode Beiblatt 3 normative data: Rangierbahnhof sound source table (shunting, coupling impacts, brake squeal, loading noise, stationary equipment)
-- [ ] Encode Table 10: Schallquellen in Rangierbahnhöfen und Umschlagbahnhöfen — source types, A-weighted levels, spectral corrections
-- [ ] Add `RangierbahnhofSource` type to the source model: point source, line source, area source (Flächenschallquelle)
-- [ ] Implement point and line source emission per Gl. 3–4
-- [ ] Implement area source aggregation per Gl. 5 (Flächenschallquelle with spatial integration)
-- [ ] Implement Rangierbahnhof assessment (Gl. 35–36): L_r,Rangierbahnhof with K_E impulse surcharge
-- [ ] Wire Rangierbahnhof sources through the existing propagation chain (A_div, A_atm, A_gr, A_bar)
+- [x] Encode Beiblatt 3 normative data: Rangierbahnhof sound source table (shunting, coupling impacts, brake squeal, loading noise, stationary equipment)
+- [x] Encode Table 10: Schallquellen in Rangierbahnhöfen und Umschlagbahnhöfen — source types, A-weighted levels, spectral corrections
+- [x] Add `RangierbahnhofSource` type to the source model: point source, line source, area source (Flächenschallquelle)
+- [x] Implement point and line source emission per Gl. 3–4
+- [x] Implement area source aggregation per Gl. 5 (Flächenschallquelle with spatial integration)
+- [x] Implement Rangierbahnhof assessment (Gl. 35–36): L_r,Rangierbahnhof with K_E impulse surcharge
+- [x] Wire Rangierbahnhof sources through the existing propagation chain (A_div, A_atm, A_gr, A_bar)
 
 ### Conformance
 
-- [ ] Add CI-safe scenarios: point source, area source, and full Rangierbahnhof assessment
-- [ ] Generate golden snapshots
-- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Rangierbahnhöfe as supported
+- [x] Add CI-safe scenarios: point source, area source, and full Rangierbahnhof assessment
+- [x] Generate golden snapshots
+- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Rangierbahnhöfe as supported
 
 ---
 
