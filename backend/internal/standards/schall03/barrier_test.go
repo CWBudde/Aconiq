@@ -241,10 +241,13 @@ func TestBarrierDzC2Yard(t *testing.T) {
 	// C₂=40: D_z = 10·lg(3 + 40/0.34·1·0.5·1) = 10·lg(3+58.82) = 10·lg(61.82) ≈ 17.91
 	// C₂=20: D_z = 10·lg(3 + 20/0.34·1·0.5·1) = 10·lg(3+29.41) = 10·lg(32.41) ≈ 15.11
 	dzStrecke := barrierDzWithC2(c2Strecke, 0.34, 1.0, 0.5, 1.0)
+
 	dzYard := barrierDzWithC2(c2Rangierbahnhof, 0.34, 1.0, 0.5, 1.0)
+
 	if dzYard >= dzStrecke {
 		t.Errorf("C₂=20 should give lower D_z than C₂=40: got %g vs %g", dzYard, dzStrecke)
 	}
+
 	if math.Abs(dzYard-15.11) > 0.1 {
 		t.Errorf("C₂=20 D_z: expected ~15.11, got %g", dzYard)
 	}
