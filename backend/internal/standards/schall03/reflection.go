@@ -394,6 +394,79 @@ func EnumerateReflectionPaths(source, receiver geo.Point2D, walls []ReflectingWa
 	return result
 }
 
+// ComputeReflectedLineSourceLpAeq integrates reflected path contributions along
+// a track centerline for one emission result, returning the total reflected
+// contribution in dB.
+func ComputeReflectedLineSourceLpAeq(
+	emission *StreckeEmissionResult,
+	centerline []geo.Point2D,
+	elevationM float64,
+	receiver ReceiverInput,
+	waterFractionW float64,
+	walls []ReflectingWall,
+) float64 {
+	if len(walls) == 0 {
+		return math.Inf(-1)
+	}
+
+	var total float64
+
+	for i := range len(centerline) - 1 {
+		a := centerline[i]
+		b := centerline[i+1]
+
+		segLen := geo.Distance(a, b)
+		if math.IsNaN(segLen) || math.IsInf(segLen, 0) || segLen <= 0 {
+			continue
+		}
+
+		nsubs := max(int(math.Ceil(segLen/maxIntegrationStepM)), 1)
+		stepLen := segLen / float64(nsubs)
+
+		tvX := b.X - a.X
+		tvY := b.Y - a.Y
+		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
+
+		for j := range nsubs {
+			frac := (float64(j) + 0.5) / float64(nsubs)
+			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
+
+			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
+
+			for _, rp := range paths {
+				// Use the first geometry's image source for directivity angle.
+				firstGeom := rp.Geometries[0]
+				rvX := firstGeom.ImageSource.X - pt.X
+				rvY := firstGeom.ImageSource.Y - pt.Y
+				dp := math.Sqrt(rvX*rvX + rvY*rvY)
+
+				if dp < 1 {
+					dp = 1
+				}
+
+				sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
+
+				// Use total reflected path distance for propagation.
+				reflDist := rp.TotalDist
+				if reflDist < 1 {
+					reflDist = 1
+				}
+
+				total += ReflectedSubsegmentContrib(
+					emission, elevationM, receiver,
+					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+				)
+			}
+		}
+	}
+
+	if total <= 0 {
+		return math.Inf(-1)
+	}
+
+	return 10 * math.Log10(total)
+}
+
 // FresnelCheck implements Gl. 27 to determine whether a reflecting surface is
 // large enough for a valid specular reflection.  The check uses the lowest
 // octave band frequency (63 Hz, λ ≈ 5.397 m) as the most restrictive case.
