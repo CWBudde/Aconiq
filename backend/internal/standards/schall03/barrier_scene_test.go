@@ -283,3 +283,111 @@ func TestIsObstructingNearSource(t *testing.T) {
 		t.Error("barrier near source should obstruct when LOS is at ground level")
 	}
 }
+
+// helper to build a BarrierCrossing for SelectDiffractionEdges tests.
+func makeCrossing(x, topH, distFromSrc float64, idx int) schall03.BarrierCrossing {
+	return schall03.BarrierCrossing{
+		Point:          geo.Point2D{X: x, Y: 0},
+		BarrierIdx:     idx,
+		DistFromSource: distFromSrc,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: x, Y: -10}, B: geo.Point2D{X: x, Y: 10},
+			TopHeightM: topH, BaseHeightM: 0,
+		},
+	}
+}
+
+func TestSelectDiffractionEdgesSingleBarrier(t *testing.T) {
+	t.Parallel()
+
+	// Source h=0, receiver h=0, total dist=100.
+	// One barrier at dist=50 with top at 4 m → selected as the only edge.
+	crossings := []schall03.BarrierCrossing{
+		makeCrossing(50, 4, 50, 0),
+	}
+
+	edges := schall03.SelectDiffractionEdges(0, 0, 100, crossings)
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(edges))
+	}
+
+	assertApproxRefl(t, edges[0].DistFromSource, 50, 0.01, "edge dist")
+	assertApproxRefl(t, edges[0].HeightM, 4, 0.01, "edge height")
+}
+
+func TestSelectDiffractionEdgesTwoBarriersBothVisible(t *testing.T) {
+	t.Parallel()
+
+	// Source h=0, receiver h=0, total dist=100.
+	// Barrier 1 at dist=30, top=5 m.
+	// Barrier 2 at dist=70, top=5 m.
+	// Both are above the rubber band from source→receiver → both selected.
+	crossings := []schall03.BarrierCrossing{
+		makeCrossing(30, 5, 30, 0),
+		makeCrossing(70, 5, 70, 1),
+	}
+
+	edges := schall03.SelectDiffractionEdges(0, 0, 100, crossings)
+	if len(edges) != 2 {
+		t.Fatalf("expected 2 edges, got %d", len(edges))
+	}
+
+	assertApproxRefl(t, edges[0].DistFromSource, 30, 0.01, "first edge dist")
+	assertApproxRefl(t, edges[1].DistFromSource, 70, 0.01, "second edge dist")
+}
+
+func TestSelectDiffractionEdgesInnerBarrierHidden(t *testing.T) {
+	t.Parallel()
+
+	// Source h=0, receiver h=0, total dist=100.
+	// Barrier 1 at dist=30, top=6 m (tall).
+	// Barrier 2 at dist=50, top=3 m (short — hidden below rubber band from barrier 1 to receiver).
+	// Barrier 3 at dist=70, top=6 m (tall).
+	// The rubber band from source(0,0) → barrier1(30,6) → barrier3(70,6) → receiver(100,0)
+	// passes above barrier2(50,3). So only barriers 1 and 3 are selected.
+	//
+	// Check: line from (30,6) to (70,6) is flat at h=6. Barrier2 at h=3 is below → hidden.
+	crossings := []schall03.BarrierCrossing{
+		makeCrossing(30, 6, 30, 0),
+		makeCrossing(50, 3, 50, 1),
+		makeCrossing(70, 6, 70, 2),
+	}
+
+	edges := schall03.SelectDiffractionEdges(0, 0, 100, crossings)
+	if len(edges) != 2 {
+		t.Fatalf("expected 2 edges (inner hidden), got %d", len(edges))
+	}
+
+	if edges[0].BarrierIdx != 0 {
+		t.Errorf("first edge: expected barrier 0, got %d", edges[0].BarrierIdx)
+	}
+
+	if edges[1].BarrierIdx != 2 {
+		t.Errorf("second edge: expected barrier 2, got %d", edges[1].BarrierIdx)
+	}
+}
+
+func TestSelectDiffractionEdgesBarrierAtSourceHeight(t *testing.T) {
+	t.Parallel()
+
+	// Source h=5, receiver h=5, total dist=100.
+	// Barrier at dist=50, top=5 m → exactly at LOS → not part of upper hull.
+	// (It wouldn't be obstructing either, but if passed in, the hull should exclude it.)
+	crossings := []schall03.BarrierCrossing{
+		makeCrossing(50, 5, 50, 0),
+	}
+
+	edges := schall03.SelectDiffractionEdges(5, 5, 100, crossings)
+	if len(edges) != 0 {
+		t.Errorf("barrier at LOS height should not be selected, got %d edges", len(edges))
+	}
+}
+
+func TestSelectDiffractionEdgesNoCrossings(t *testing.T) {
+	t.Parallel()
+
+	edges := schall03.SelectDiffractionEdges(0, 0, 100, nil)
+	if len(edges) != 0 {
+		t.Errorf("no crossings should return no edges, got %d", len(edges))
+	}
+}
