@@ -256,6 +256,57 @@ func TestMirrorSourceOnWall(t *testing.T) {
 	assertApproxRefl(t, image.Y, 0.0, 0.001, "image Y")
 }
 
+func TestReflectedContribIsLowerThanDirect(t *testing.T) {
+	t.Parallel()
+	// A reflected path with absorption loss should produce less energy than
+	// the same geometry without loss.
+	emission := &schall03.StreckeEmissionResult{
+		PerHeight: map[int]schall03.BeiblattSpectrum{
+			1: {80, 80, 80, 80, 80, 80, 80, 80},
+		},
+	}
+
+	receiver := schall03.ReceiverInput{
+		ID: "r1", Point: geo.Point2D{X: 50, Y: 0}, HeightM: 3.5,
+	}
+
+	noLoss := schall03.ReflectedSubsegmentContrib(
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+	)
+
+	withLoss := schall03.ReflectedSubsegmentContrib(
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, -1,
+	)
+
+	if withLoss >= noLoss {
+		t.Errorf("with D_ρ=-1 (%g) should be less than D_ρ=0 (%g)", withLoss, noLoss)
+	}
+}
+
+func TestReflectedContribHardWallNoLoss(t *testing.T) {
+	t.Parallel()
+	// With D_ρ = 0 and same distance, reflected = direct (same propagation).
+	emission := &schall03.StreckeEmissionResult{
+		PerHeight: map[int]schall03.BeiblattSpectrum{
+			1: {80, 80, 80, 80, 80, 80, 80, 80},
+		},
+	}
+
+	receiver := schall03.ReceiverInput{
+		ID: "r1", Point: geo.Point2D{X: 50, Y: 0}, HeightM: 3.5,
+	}
+
+	a := schall03.ReflectedSubsegmentContrib(
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+	)
+
+	b := schall03.ReflectedSubsegmentContrib(
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+	)
+
+	assertApproxRefl(t, a, b, 0.001, "hard wall same dist")
+}
+
 func TestEnumerateReflectionPaths1stOrder(t *testing.T) {
 	t.Parallel()
 	source := geo.Point2D{X: 0, Y: 0}

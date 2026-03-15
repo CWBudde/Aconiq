@@ -206,6 +206,68 @@ func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
 	}, true
 }
 
+// ReflectedSubsegmentContrib computes the linear acoustic power contribution
+// from one track subsegment to a receiver along a reflected path.
+//
+// This mirrors normativeSubsegmentContrib (compute.go) but:
+//   - Uses the reflected path distance instead of the direct distance
+//   - Applies the cumulative absorption loss D_ρ from wall reflections (Gl. 28)
+//   - No barrier diffraction on reflected paths (deferred)
+//
+// dp:              horizontal reflected path distance [m]
+// stepLen:         subsegment length [m]
+// sinDelta2:       sin²(δ) directivity for the reflected path direction
+// waterFractionW:  fraction of reflected path over water [0, 1]
+// dRho:            cumulative absorption loss from reflections [dB] (negative or zero)
+func ReflectedSubsegmentContrib(
+	emission *StreckeEmissionResult,
+	elevationM float64,
+	receiver ReceiverInput,
+	dp, stepLen, sinDelta2, waterFractionW float64,
+	dRho float64,
+) float64 {
+	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	log10Step := math.Log10(stepLen)
+
+	dLand := (1.0 - waterFractionW) * dp
+	dWater := waterFractionW * dp
+
+	var contrib float64
+
+	for h, spectrum := range emission.PerHeight {
+		hg := elevationM + heightAboveSO[h]
+		hr := receiver.HeightM
+
+		hm := (hg + hr) / 2
+		if hm < 0 {
+			hm = 0
+		}
+
+		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
+		if dSlant < 1 {
+			dSlant = 1
+		}
+
+		dOmega := solidAngleDOmega(dp, hg, hr)
+		adivVal := adiv(dSlant)
+
+		agrVal := agrW(dWater, dp)
+		if dLand > 0 {
+			agrVal += agrB(hm, dSlant, dLand)
+		}
+
+		for f := range NumBeiblattOctaveBands {
+			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			lW := spectrum[f] + 10*log10Step
+			// Gl. 28: image source level includes D_ρ.
+			lpF := lW + dRho + dI + dOmega - adivVal - aatmVal - agrVal
+			contrib += math.Pow(10, 0.1*lpF)
+		}
+	}
+
+	return contrib
+}
+
 // MaxReflectionOrder is the maximum number of bounces per Schall 03.
 const MaxReflectionOrder = 3
 
