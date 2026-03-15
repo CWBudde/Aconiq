@@ -91,7 +91,7 @@ func TestInferGeoTransformFromReceivers(t *testing.T) {
 	}
 
 	// Origin should be at top-left corner (half pixel offset).
-	expectedOriginX := 10.0 - 10.0/2 // 5.0
+	expectedOriginX := 10.0 - 10.0/2   // 5.0
 	expectedOriginY := 200.0 + 100.0/2 // 250.0
 
 	if gt.OriginX != expectedOriginX {

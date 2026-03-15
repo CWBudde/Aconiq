@@ -375,13 +375,13 @@ func addDirectWithBarriersAndReflected(
 		*sum += math.Pow(10, 0.1*lp)
 	}
 
-	// Reflected paths (walls) — barriers on reflected paths deferred to Step 8.
+	// Reflected paths (walls) with barrier attenuation on reflected paths.
 	if len(walls) == 0 {
 		return
 	}
 
-	reflLp := ComputeReflectedLineSourceLpAeq(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls,
+	reflLp := ComputeReflectedLineSourceLpAeqWithBarriers(
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers,
 	)
 	if !math.IsInf(reflLp, -1) {
 		*sum += math.Pow(10, 0.1*reflLp)

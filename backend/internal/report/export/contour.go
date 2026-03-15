@@ -13,8 +13,8 @@ import (
 
 // ContourLine represents a single contour at a given dB level.
 type ContourLine struct {
-	Level    float64    `json:"level"`
-	BandName string     `json:"band_name"`
+	Level    float64      `json:"level"`
+	BandName string       `json:"band_name"`
 	Points   [][2]float64 `json:"points"`
 }
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/report/results"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -136,11 +135,11 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 
 	// Insert default SRS entries required by GeoPackage spec.
 	defaultSRS := []struct {
-		name   string
-		id     int
-		org    string
-		orgID  int
-		def    string
+		name  string
+		id    int
+		org   string
+		orgID int
+		def   string
 	}{
 		{"Undefined cartesian SRS", -1, "NONE", -1, "undefined"},
 		{"Undefined geographic SRS", 0, "NONE", 0, "undefined"},
@@ -458,4 +457,3 @@ func sanitizeColumnName(name string) string {
 
 	return result
 }
-
