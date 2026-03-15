@@ -1,12 +1,12 @@
 # Schall 03 Konformitätserklärung — Aconiq
 
-Status: DRAFT — Eisenbahn Strecke + Straßenbahnen scope (Phase 20 + 20a)
+Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahnhöfe scope (Phase 20 + 20a + 20b)
 
 ## Software
 
 - Name: Aconiq
 - Module: `schall03`
-- Version: `phase20a-normative-strassenbahn-v1`
+- Version: `phase20b-normative-rangierbahnhof-v1`
 - License: MIT
 
 ## Standard
@@ -76,14 +76,49 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen scope (Phase 20 + 20a)
 
 - Permanently slow section exception (Nr. 5.3.2, ≤ 30 km/h): speed clamp not applied for sections operated permanently at ≤ 30 km/h — **not yet implemented** (deferred to Phase 20a follow-up)
 
+### Unterstützt (Phase 20b — Nr. 4.8 Rangier- und Umschlagbahnhöfe)
+
+#### Beiblatt 3 — Schallquellen
+
+- Kurvenfahrgeräusch (Linienschallquelle j=1, r ≤ 300 m) ✓
+- Gleisbremsengeräusch — 9 Varianten (i=2 bis i=10, L_WA 72–110 dB) ✓
+- Retardergeräusch Verzögerungsstrecke (Punktschallquelle i=11, L_WA=90 dB) ✓
+- Retardergeräusch Beharrungsstrecke (Linienschallquelle j=2, L_WA=62+10·lg(n_ret)) ✓
+- Retardergeräusch Rangieren auf Beharrungsstrecke (Linienschallquelle j=3, L_WA=72+10·lg(n_ret)) ✓
+- Hemmschuhauflaufgeräusch (Punktschallquelle i=12, L_WA=95 dB) ✓
+- Auflaufstoßgeräusch — modern (i=13, L_WA=78 dB) und klassisch (i=14, L_WA=91 dB) ✓
+- Anreißen/Abbremsen loser Wagen (Linienschallquelle j=4, L_WA=75 dB) ✓
+
+#### Emissionsberechnung
+
+- Gl. 3: Einzelschallquelle (Punktschallquelle) ✓
+- Gl. 4: Linienschallquelle ✓
+- Gl. 5: Flächenschallquelle (Aggregation) ✓
+- Gl. 6: Teilstück einer Linienschallquelle → Punktpegel ✓
+- Gl. 7: Teilfläche einer Flächenschallquelle → Punktpegel ✓
+
+#### Ausbreitungsberechnung
+
+- Keine Richtwirkung D_I für Quellen in Rangier- und Umschlagbahnhöfen ✓
+- Schirmmaß mit C₂=20 (statt C₂=40 für Strecken) ✓
+- Gl. 30: Immissionspegelberechnung (Summation aller Quellbeiträge) ✓
+
+#### Beurteilung
+
+- Gl. 35–36: Kombinierter Beurteilungspegel (Rangierbahnhof + Strecke) ✓
+- Schienenbonus K_S = −5 dB nur für den Streckenanteil (nicht für Rangierbahnhofanteil) ✓
+
+#### Software-Version
+
+`phase20b-normative-rangierbahnhof-v1`
+
 ### Not yet supported (deferred)
 
-| Feature                                                              | Reason deferred  |
-| -------------------------------------------------------------------- | ---------------- |
-| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)            | Phase 20a follow-up |
-| Rangier- und Umschlagbahnhöfe (Table 10, Beiblatt 3)                 | Phase 20b        |
-| Image-source reflections (Gl. 27–28, Table 18)                       | Phase 20c        |
-| Section 9 measurement-based vehicle data                             | Out of scope     |
+| Feature                                                  | Reason deferred     |
+| -------------------------------------------------------- | ------------------- |
+| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) | Phase 20a follow-up |
+| Image-source reflections (Gl. 27–28, Table 18)           | Phase 20c           |
+| Section 9 measurement-based vehicle data                 | Out of scope        |
 
 ## Evidence
 
