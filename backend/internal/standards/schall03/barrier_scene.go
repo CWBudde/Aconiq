@@ -66,3 +66,52 @@ func (b BarrierSegment) Validate() error {
 func (b BarrierSegment) Length() float64 {
 	return geo.Distance(b.A, b.B)
 }
+
+// BarrierCrossing records where a source→receiver ray crosses a barrier
+// segment in plan view.
+type BarrierCrossing struct {
+	// Point is the intersection point in plan view.
+	Point geo.Point2D
+	// BarrierIdx is the index into the barriers slice.
+	BarrierIdx int
+	// DistFromSource is the 2D distance from the source to the crossing point.
+	DistFromSource float64
+	// Barrier is a reference to the crossed barrier.
+	Barrier BarrierSegment
+}
+
+// FindBarrierCrossings returns all barrier segments that the line from source
+// to receiver crosses in plan view, sorted by distance from source (nearest
+// first).
+func FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing {
+	var crossings []BarrierCrossing
+
+	for i, b := range barriers {
+		pt, _, ok := geo.SegmentIntersection(source, receiver, b.A, b.B)
+		if !ok {
+			continue
+		}
+
+		crossings = append(crossings, BarrierCrossing{
+			Point:          pt,
+			BarrierIdx:     i,
+			DistFromSource: geo.Distance(source, pt),
+			Barrier:        b,
+		})
+	}
+
+	// Sort by distance from source (insertion sort — n is small).
+	for i := 1; i < len(crossings); i++ {
+		key := crossings[i]
+		j := i - 1
+
+		for j >= 0 && crossings[j].DistFromSource > key.DistFromSource {
+			crossings[j+1] = crossings[j]
+			j--
+		}
+
+		crossings[j+1] = key
+	}
+
+	return crossings
+}
