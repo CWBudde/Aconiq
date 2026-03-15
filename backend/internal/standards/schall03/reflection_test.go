@@ -195,6 +195,7 @@ func TestReflectionGeometrySimple(t *testing.T) {
 	if !ok {
 		t.Fatal("should find valid reflection point")
 	}
+
 	assertApproxRefl(t, rg.ReflectionPoint.X, 5.0, 0.01, "reflection X")
 	assertApproxRefl(t, rg.ReflectionPoint.Y, 3.0, 0.01, "reflection Y")
 	assertApproxRefl(t, rg.DSO, math.Sqrt(34), 0.01, "d_so")
@@ -203,6 +204,7 @@ func TestReflectionGeometrySimple(t *testing.T) {
 
 func TestReflectionGeometryMissesWall(t *testing.T) {
 	t.Parallel()
+
 	source := geo.Point2D{X: 0, Y: 0}
 	receiver := geo.Point2D{X: 10, Y: 0}
 	wall := schall03.ReflectingWall{
@@ -218,6 +220,7 @@ func TestReflectionGeometryMissesWall(t *testing.T) {
 
 func TestReflectionGeometrySourceBehindWall(t *testing.T) {
 	t.Parallel()
+
 	source := geo.Point2D{X: 0, Y: 0}
 	receiver := geo.Point2D{X: 10, Y: 0}
 	// Wall above both → same side → valid.
@@ -225,6 +228,7 @@ func TestReflectionGeometrySourceBehindWall(t *testing.T) {
 		A: geo.Point2D{X: 0, Y: 3}, B: geo.Point2D{X: 10, Y: 3},
 		HeightM: 5, Surface: schall03.WallSurfaceHard,
 	}
+
 	_, ok := schall03.ComputeReflectionGeometry(source, receiver, wall)
 	if !ok {
 		t.Error("same-side reflection should be valid")
@@ -232,6 +236,7 @@ func TestReflectionGeometrySourceBehindWall(t *testing.T) {
 
 	// Receiver on the other side (y=5) → opposite sides → no reflection.
 	receiverOther := geo.Point2D{X: 10, Y: 5}
+
 	_, ok = schall03.ComputeReflectionGeometry(source, receiverOther, wall)
 	if ok {
 		t.Error("opposite-side should not produce a reflection")
@@ -309,6 +314,7 @@ func TestReflectedContribHardWallNoLoss(t *testing.T) {
 
 func TestEnumerateReflectionPaths1stOrder(t *testing.T) {
 	t.Parallel()
+
 	source := geo.Point2D{X: 0, Y: 0}
 	receiver := geo.Point2D{X: 10, Y: 0}
 	walls := []schall03.ReflectingWall{
@@ -316,12 +322,15 @@ func TestEnumerateReflectionPaths1stOrder(t *testing.T) {
 	}
 
 	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, 1)
+
 	if len(paths) != 1 {
 		t.Fatalf("expected 1 path, got %d", len(paths))
 	}
+
 	if paths[0].Order != 1 {
 		t.Errorf("expected order 1, got %d", paths[0].Order)
 	}
+
 	if len(paths[0].Walls) != 1 {
 		t.Errorf("expected 1 wall in path, got %d", len(paths[0].Walls))
 	}
@@ -329,6 +338,7 @@ func TestEnumerateReflectionPaths1stOrder(t *testing.T) {
 
 func TestEnumerateReflectionPaths2ndOrder(t *testing.T) {
 	t.Parallel()
+
 	// Two parallel walls forming a canyon.
 	source := geo.Point2D{X: 5, Y: 0}
 	receiver := geo.Point2D{X: 15, Y: 0}
@@ -341,6 +351,7 @@ func TestEnumerateReflectionPaths2ndOrder(t *testing.T) {
 
 	has1st := 0
 	has2nd := 0
+
 	for _, p := range paths {
 		switch p.Order {
 		case 1:
@@ -349,9 +360,11 @@ func TestEnumerateReflectionPaths2ndOrder(t *testing.T) {
 			has2nd++
 		}
 	}
+
 	if has1st < 2 {
 		t.Errorf("expected at least 2 first-order paths, got %d", has1st)
 	}
+
 	if has2nd < 1 {
 		t.Errorf("expected at least 1 second-order path, got %d", has2nd)
 	}
@@ -359,6 +372,7 @@ func TestEnumerateReflectionPaths2ndOrder(t *testing.T) {
 
 func TestEnumerateReflectionPathsNoDoubleWall(t *testing.T) {
 	t.Parallel()
+
 	source := geo.Point2D{X: 5, Y: 0}
 	receiver := geo.Point2D{X: 15, Y: 0}
 	walls := []schall03.ReflectingWall{
@@ -377,6 +391,7 @@ func TestEnumerateReflectionPathsNoDoubleWall(t *testing.T) {
 
 func TestEnumerateReflectionPathsMaxOrder3(t *testing.T) {
 	t.Parallel()
+
 	source := geo.Point2D{X: 5, Y: 0}
 	receiver := geo.Point2D{X: 15, Y: 0}
 	walls := []schall03.ReflectingWall{
