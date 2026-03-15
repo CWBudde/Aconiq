@@ -1,6 +1,7 @@
 package schall03_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -59,4 +60,84 @@ func TestReflectingWallValidate(t *testing.T) {
 	if err == nil {
 		t.Error("negative height should fail validation")
 	}
+}
+
+func assertApproxRefl(t *testing.T, got, want, tol float64, label string) {
+	t.Helper()
+
+	if math.Abs(got-want) > tol {
+		t.Errorf("%s: want %g, got %g (tol %g)", label, want, got, tol)
+	}
+}
+
+func TestMirrorSourceAcrossHorizontalWall(t *testing.T) {
+	t.Parallel()
+
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 0, Y: 5}, B: geo.Point2D{X: 10, Y: 5},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+	source := geo.Point2D{X: 3, Y: 2}
+
+	image, ok := schall03.MirrorSource(source, wall)
+	if !ok {
+		t.Fatal("mirror should succeed")
+	}
+
+	assertApproxRefl(t, image.X, 3.0, 0.001, "image X")
+	assertApproxRefl(t, image.Y, 8.0, 0.001, "image Y")
+}
+
+func TestMirrorSourceAcrossVerticalWall(t *testing.T) {
+	t.Parallel()
+
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 0, Y: 0}, B: geo.Point2D{X: 0, Y: 10},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+	source := geo.Point2D{X: 4, Y: 3}
+
+	image, ok := schall03.MirrorSource(source, wall)
+	if !ok {
+		t.Fatal("mirror should succeed")
+	}
+
+	assertApproxRefl(t, image.X, -4.0, 0.001, "image X")
+	assertApproxRefl(t, image.Y, 3.0, 0.001, "image Y")
+}
+
+func TestMirrorSourceAcrossDiagonalWall(t *testing.T) {
+	t.Parallel()
+
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 0, Y: 0}, B: geo.Point2D{X: 10, Y: 10},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+	source := geo.Point2D{X: 0, Y: 4}
+
+	image, ok := schall03.MirrorSource(source, wall)
+	if !ok {
+		t.Fatal("mirror should succeed")
+	}
+
+	assertApproxRefl(t, image.X, 4.0, 0.001, "image X")
+	assertApproxRefl(t, image.Y, 0.0, 0.001, "image Y")
+}
+
+func TestMirrorSourceOnWall(t *testing.T) {
+	t.Parallel()
+
+	wall := schall03.ReflectingWall{
+		A: geo.Point2D{X: 0, Y: 0}, B: geo.Point2D{X: 10, Y: 0},
+		HeightM: 5, Surface: schall03.WallSurfaceHard,
+	}
+	source := geo.Point2D{X: 5, Y: 0}
+
+	image, ok := schall03.MirrorSource(source, wall)
+	if !ok {
+		t.Fatal("mirror should succeed for point on wall")
+	}
+
+	assertApproxRefl(t, image.X, 5.0, 0.001, "image X")
+	assertApproxRefl(t, image.Y, 0.0, 0.001, "image Y")
 }
