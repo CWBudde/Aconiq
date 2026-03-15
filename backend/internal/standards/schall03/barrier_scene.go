@@ -236,6 +236,115 @@ func upperConvexHull(points []hullPoint) []hullPoint {
 	return hull
 }
 
+// ComputeBarrierGeometryFromEdges builds a BarrierGeometry from the diffraction
+// edges selected by the rubber band method.
+//
+// For 1 edge: single diffraction (IsDouble=false, E=0).
+// For 2 edges: double diffraction (IsDouble=true, E=distance between edges).
+// For >2 edges: uses the outermost two edges (the standard caps D_z at 25 dB
+// for double diffraction; intermediate edges are subsumed by the hull).
+//
+// sourceHeightM and receiverHeightM are heights above ground [m].
+// totalHorizDistM is the horizontal source→receiver distance [m].
+func ComputeBarrierGeometryFromEdges(
+	edges []DiffractionEdge,
+	sourceHeightM, receiverHeightM, totalHorizDistM float64,
+) BarrierGeometry {
+	if len(edges) == 0 {
+		return BarrierGeometry{}
+	}
+
+	// Direct 3D distance source→receiver.
+	dh := receiverHeightM - sourceHeightM
+	d := math.Sqrt(totalHorizDistM*totalHorizDistM + dh*dh)
+
+	if len(edges) == 1 {
+		return singleEdgeGeometry(edges[0], sourceHeightM, receiverHeightM, totalHorizDistM, d)
+	}
+
+	// Double diffraction: use first and last edge.
+	first := edges[0]
+	last := edges[len(edges)-1]
+
+	return doubleEdgeGeometry(first, last, sourceHeightM, receiverHeightM, totalHorizDistM, d)
+}
+
+// singleEdgeGeometry computes BarrierGeometry for a single diffraction edge.
+func singleEdgeGeometry(
+	edge DiffractionEdge,
+	sourceH, receiverH, totalHorizDist, directDist float64,
+) BarrierGeometry {
+	// 3D distance source→edge top.
+	dhS := edge.HeightM - sourceH
+	ds := math.Sqrt(edge.DistFromSource*edge.DistFromSource + dhS*dhS)
+
+	// 3D distance edge top→receiver.
+	horizDR := totalHorizDist - edge.DistFromSource
+	dhR := receiverH - edge.HeightM
+	dr := math.Sqrt(horizDR*horizDR + dhR*dhR)
+
+	// Path difference z per Gl. 26 (non-parallel, no lateral offset for top diffraction).
+	z := ds + dr - directDist
+
+	return BarrierGeometry{
+		Ds:             ds,
+		Dr:             dr,
+		D:              directDist,
+		Z:              z,
+		E:              0,
+		Habs:           edge.Barrier.BaseHeightM,
+		IsDouble:       false,
+		TopDiffraction: true,
+	}
+}
+
+// doubleEdgeGeometry computes BarrierGeometry for double diffraction using the
+// first and last selected edges.
+func doubleEdgeGeometry(
+	first, last DiffractionEdge,
+	sourceH, receiverH, totalHorizDist, directDist float64,
+) BarrierGeometry {
+	// 3D distance source→first edge top.
+	dhS := first.HeightM - sourceH
+	ds := math.Sqrt(first.DistFromSource*first.DistFromSource + dhS*dhS)
+
+	// 3D distance last edge top→receiver.
+	horizDR := totalHorizDist - last.DistFromSource
+	dhR := receiverH - last.HeightM
+	dr := math.Sqrt(horizDR*horizDR + dhR*dhR)
+
+	// Distance between the two edges (barrier "thickness" e).
+	horizE := last.DistFromSource - first.DistFromSource
+	dhE := last.HeightM - first.HeightM
+	e := math.Sqrt(horizE*horizE + dhE*dhE)
+
+	// Path difference z per Gl. 26 (non-parallel top diffraction).
+	z := ds + dr + e - directDist
+
+	// Use the larger BaseHeightM for D_refl (conservative: less correction).
+	habs := math.Max(first.Barrier.BaseHeightM, last.Barrier.BaseHeightM)
+
+	// Check if the two barriers have parallel edges.
+	isParallel := first.Barrier.IsParallel && last.Barrier.IsParallel
+
+	if isParallel {
+		// Gl. 25: z = sqrt((ds+dr+e)² + dPar²) - d.
+		// For top diffraction between two parallel barriers, dPar = 0.
+		z = pathDifferenceParallel(ds, dr, e, 0, directDist)
+	}
+
+	return BarrierGeometry{
+		Ds:             ds,
+		Dr:             dr,
+		D:              directDist,
+		Z:              z,
+		E:              e,
+		Habs:           habs,
+		IsDouble:       true,
+		TopDiffraction: true,
+	}
+}
+
 // IsObstructing reports whether a barrier crossing actually obstructs the
 // line of sight between source and receiver.  The barrier obstructs when its
 // top height exceeds the line-of-sight height at the crossing point.

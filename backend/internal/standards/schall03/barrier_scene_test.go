@@ -1,6 +1,7 @@
 package schall03_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -389,5 +390,123 @@ func TestSelectDiffractionEdgesNoCrossings(t *testing.T) {
 	edges := schall03.SelectDiffractionEdges(0, 0, 100, nil)
 	if len(edges) != 0 {
 		t.Errorf("no crossings should return no edges, got %d", len(edges))
+	}
+}
+
+// makeEdge builds a DiffractionEdge for ComputeBarrierGeometryFromEdges tests.
+func makeEdge(dist, topH, baseH float64, idx int) schall03.DiffractionEdge {
+	return schall03.DiffractionEdge{
+		Point:          geo.Point2D{X: dist, Y: 0},
+		HeightM:        topH,
+		DistFromSource: dist,
+		BarrierIdx:     idx,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: dist, Y: -10}, B: geo.Point2D{X: dist, Y: 10},
+			TopHeightM: topH, BaseHeightM: baseH,
+		},
+	}
+}
+
+func TestBarrierGeometrySingleThinBarrier(t *testing.T) {
+	t.Parallel()
+
+	// Source h=0, receiver h=0, horiz dist=100.
+	// Barrier at dist=50, top=4 m, base=0.
+	//
+	// ds = sqrt(50² + 4²) = sqrt(2516) ≈ 50.16
+	// dr = sqrt(50² + 4²) = sqrt(2516) ≈ 50.16
+	// d  = 100 (flat)
+	// z  = ds + dr - d ≈ 100.32 - 100 = 0.32
+	edges := []schall03.DiffractionEdge{makeEdge(50, 4, 0, 0)}
+	bg := schall03.ComputeBarrierGeometryFromEdges(edges, 0, 0, 100)
+
+	assertApproxRefl(t, bg.Ds, 50.16, 0.01, "ds")
+	assertApproxRefl(t, bg.Dr, 50.16, 0.01, "dr")
+	assertApproxRefl(t, bg.D, 100.0, 0.01, "d")
+	assertApproxRefl(t, bg.Z, 0.32, 0.01, "z")
+	assertApproxRefl(t, bg.E, 0.0, 0.001, "e")
+	assertApproxRefl(t, bg.Habs, 0.0, 0.001, "habs")
+
+	if bg.IsDouble {
+		t.Error("single barrier should not be double")
+	}
+
+	if !bg.TopDiffraction {
+		t.Error("should be top diffraction")
+	}
+}
+
+func TestBarrierGeometryDoubleBarrier(t *testing.T) {
+	t.Parallel()
+
+	// Source h=0, receiver h=0, horiz dist=100.
+	// Barrier 1 at dist=30, top=5 m, base=0.5.
+	// Barrier 2 at dist=70, top=5 m, base=1.0.
+	//
+	// ds = sqrt(30² + 5²) = sqrt(925) ≈ 30.41
+	// dr = sqrt(30² + 5²) = sqrt(925) ≈ 30.41
+	// e  = sqrt(40² + 0²) = 40.0 (same height, horiz only)
+	// d  = 100
+	// z  = ds + dr + e - d ≈ 30.41 + 30.41 + 40 - 100 = 0.82
+	// habs = max(0.5, 1.0) = 1.0
+	edges := []schall03.DiffractionEdge{
+		makeEdge(30, 5, 0.5, 0),
+		makeEdge(70, 5, 1.0, 1),
+	}
+
+	bg := schall03.ComputeBarrierGeometryFromEdges(edges, 0, 0, 100)
+
+	assertApproxRefl(t, bg.Ds, 30.41, 0.01, "ds")
+	assertApproxRefl(t, bg.Dr, 30.41, 0.01, "dr")
+	assertApproxRefl(t, bg.D, 100.0, 0.01, "d")
+	assertApproxRefl(t, bg.E, 40.0, 0.01, "e")
+	assertApproxRefl(t, bg.Z, 0.82, 0.02, "z")
+	assertApproxRefl(t, bg.Habs, 1.0, 0.001, "habs (max of two)")
+
+	if !bg.IsDouble {
+		t.Error("two barriers should be double diffraction")
+	}
+}
+
+func TestBarrierGeometryThreeEdgesUsesOutermost(t *testing.T) {
+	t.Parallel()
+
+	// Three edges → should use first and last (outermost pair).
+	edges := []schall03.DiffractionEdge{
+		makeEdge(25, 6, 0, 0),
+		makeEdge(50, 8, 0, 1), // middle — ignored for geometry
+		makeEdge(75, 6, 0, 2),
+	}
+
+	bg := schall03.ComputeBarrierGeometryFromEdges(edges, 0, 0, 100)
+
+	// ds should be source→first edge (dist=25, h=6).
+	assertApproxRefl(t, bg.Ds, math.Sqrt(25*25+6*6), 0.01, "ds uses first edge")
+
+	// dr should be last edge→receiver (horiz=25, dh=6).
+	assertApproxRefl(t, bg.Dr, math.Sqrt(25*25+6*6), 0.01, "dr uses last edge")
+
+	if !bg.IsDouble {
+		t.Error("three edges should produce double diffraction")
+	}
+}
+
+func TestBarrierGeometryWithAbsorbingBase(t *testing.T) {
+	t.Parallel()
+
+	// Single barrier with absorbing base at 2 m.
+	edges := []schall03.DiffractionEdge{makeEdge(50, 4, 2.0, 0)}
+	bg := schall03.ComputeBarrierGeometryFromEdges(edges, 0, 0, 100)
+
+	assertApproxRefl(t, bg.Habs, 2.0, 0.001, "habs from absorbing base")
+}
+
+func TestBarrierGeometryNoEdges(t *testing.T) {
+	t.Parallel()
+
+	bg := schall03.ComputeBarrierGeometryFromEdges(nil, 0, 0, 100)
+
+	if bg.Z != 0 {
+		t.Errorf("no edges should produce zero geometry, got Z=%g", bg.Z)
 	}
 }
