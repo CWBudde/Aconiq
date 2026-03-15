@@ -1,6 +1,9 @@
 package schall03
 
-import "math"
+import (
+	"errors"
+	"math"
+)
 
 // AreaPointContrib is a (octave-band level, count) pair for area aggregation
 // (Gl. 5), representing q_i,h point sources of the same type.
@@ -128,4 +131,79 @@ func AreaToPointTeilflaeche(areaSpectrum BeiblattSpectrum, sKF float64) Beiblatt
 	}
 
 	return result
+}
+
+// YardPointImmissionInput describes the geometry for a single point source
+// to a single receiver in a Rangierbahnhof (no directivity, C₂=20).
+type YardPointImmissionInput struct {
+	SourceLevel     BeiblattSpectrum // L_WA,f,h,i from Gl. 3 or Gl. 6/7
+	SourceHeightM   float64          // h_g over ground level
+	ReceiverDistM   float64          // horizontal distance source → receiver
+	ReceiverHeightM float64          // h_r over ground
+	WaterFractionW  float64          // fraction of path over water (0–1)
+	BarrierGeom     *BarrierGeometry // nil = no barrier
+}
+
+// ComputeYardPointSourceImmission computes the L_p,Aeq contribution from a
+// single Rangierbahnhof point source to one receiver (Gl. 30, one term).
+//
+// Key differences vs. Strecken propagation:
+//   - No directivity D_I (yard sources radiate omnidirectionally)
+//   - Barrier diffraction uses C₂=20 via ComputeAbarYard
+func ComputeYardPointSourceImmission(inp YardPointImmissionInput) (float64, error) {
+	if inp.ReceiverDistM <= 0 {
+		return 0, errors.New("receiver distance must be > 0")
+	}
+
+	dp := inp.ReceiverDistM
+	dSlant := math.Sqrt(dp*dp + (inp.SourceHeightM-inp.ReceiverHeightM)*(inp.SourceHeightM-inp.ReceiverHeightM))
+
+	if dSlant < 1 {
+		dSlant = 1
+	}
+
+	dOmega := solidAngleDOmega(dp, inp.SourceHeightM, inp.ReceiverHeightM)
+	adivVal := adiv(dSlant)
+
+	hm := (inp.SourceHeightM + inp.ReceiverHeightM) / 2
+	if hm < 0 {
+		hm = 0
+	}
+
+	dLand := dp * (1 - inp.WaterFractionW)
+	dWater := dp * inp.WaterFractionW
+
+	// Compute A_gr once (frequency-independent per Gl. 13–16).
+	agrVal := agrW(dWater, dp)
+	if dLand > 0 {
+		agrVal += agrB(hm, dSlant, dLand)
+	}
+
+	// Compute A_bar per band if barrier present.
+	var aBarBands BeiblattSpectrum
+
+	if inp.BarrierGeom != nil {
+		var agrBandValues BeiblattSpectrum
+		for f := range NumBeiblattOctaveBands {
+			agrBandValues[f] = agrVal
+		}
+
+		aBarBands = ComputeAbarYard(*inp.BarrierGeom, agrBandValues)
+	}
+
+	var sum float64
+
+	for f := range NumBeiblattOctaveBands {
+		aAtmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+		atot := adivVal + aAtmVal + agrVal + aBarBands[f]
+		// No D_I for yard sources (omnidirectional radiation).
+		contrib := inp.SourceLevel[f] + dOmega - atot
+		sum += math.Pow(10, 0.1*contrib)
+	}
+
+	if sum <= 0 {
+		return math.Inf(-1), nil
+	}
+
+	return 10 * math.Log10(sum), nil
 }

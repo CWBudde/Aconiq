@@ -81,6 +81,35 @@ func TestAreaToPointTeilflaecheGl7(t *testing.T) {
 	}
 }
 
+func TestYardPointSourceImmissionFreeField(t *testing.T) {
+	t.Parallel()
+	// Gleisbremse Zulaufbremse at 50 m distance, h_g=0, h_r=3.5m
+	// n_i=100/h, no barriers.
+	// Expected: a plausible L_p,Aeq,R value, roughly in the 40-70 dB range.
+	data, ok := schall03.Beiblatt3GleisbremsenByType(schall03.GleisbremsZulaufOhneSegmente)
+	if !ok {
+		t.Fatal("not found")
+	}
+
+	level := schall03.ComputePointSourceLevel(data, 100.0, 0)
+
+	result, err := schall03.ComputeYardPointSourceImmission(
+		schall03.YardPointImmissionInput{
+			SourceLevel:     level,
+			SourceHeightM:   data.HeightM,
+			ReceiverDistM:   50.0,
+			ReceiverHeightM: 3.5,
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result < 30 || result > 90 {
+		t.Errorf("implausible result %g dB", result)
+	}
+}
+
 func TestAreaSourceAggregationGl5(t *testing.T) {
 	t.Parallel()
 	// Simple case: two identical point sources (L_WA=90, all bands flat)

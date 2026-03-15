@@ -135,6 +135,50 @@ func drefl(habs float64) float64 {
 	return math.Max(3.0-habs, 0.0)
 }
 
+// ComputeAbarYard computes barrier attenuation for a Rangierbahnhof path
+// using C₂=20 (Gl. 21 note for flächenhafte Bahnanlagen).
+// Signature matches ComputeAbar.
+func ComputeAbarYard(geom BarrierGeometry, agrBandValues BeiblattSpectrum) BeiblattSpectrum {
+	dzCap := DzCapSingle
+	if geom.IsDouble {
+		dzCap = DzCapDouble
+	}
+
+	var result BeiblattSpectrum
+
+	for f := range NumBeiblattOctaveBands {
+		fm := BeiblattOctaveBandFrequencies[f]
+		lam := wavelength(fm)
+
+		c3 := 1.0
+		if geom.IsDouble && geom.E > 0 {
+			c3 = c3Multiple(lam, geom.E)
+		}
+
+		km := kmet(geom.Ds, geom.Dr, geom.D, geom.Z)
+		dz := barrierDzWithC2(c2Rangierbahnhof, lam, c3, geom.Z, km)
+
+		if dz > dzCap {
+			dz = dzCap
+		}
+
+		var abar float64
+
+		if geom.TopDiffraction {
+			// Gl. 19: A_bar = D_z - D_refl - A_gr ≥ 0
+			dr := drefl(geom.Habs)
+			abar = math.Max(dz-dr-agrBandValues[f], 0)
+		} else {
+			// Gl. 18: A_bar = D_z ≥ 0
+			abar = math.Max(dz, 0)
+		}
+
+		result[f] = abar
+	}
+
+	return result
+}
+
 // ComputeAbar computes the barrier attenuation A_bar for a single propagation
 // path per Gl. 18-19, returning frequency-dependent values across all 8
 // Beiblatt octave bands.
