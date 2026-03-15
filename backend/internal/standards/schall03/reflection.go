@@ -69,3 +69,31 @@ func (w ReflectingWall) Validate() error {
 func (w ReflectingWall) Length() float64 {
 	return geo.Distance(w.A, w.B)
 }
+
+// MirrorSource computes the image (mirror) source position by reflecting
+// the source point across the infinite line defined by the wall segment.
+// Returns (imagePoint, true) on success.
+// Returns (zero, false) if the wall is degenerate (zero length).
+func MirrorSource(source geo.Point2D, wall ReflectingWall) (geo.Point2D, bool) {
+	// Wall direction vector.
+	dx := wall.B.X - wall.A.X
+	dy := wall.B.Y - wall.A.Y
+	lenSq := dx*dx + dy*dy
+
+	if lenSq < 1e-18 {
+		return geo.Point2D{}, false
+	}
+
+	// Project source onto the wall line: parameter t along A→B.
+	t := ((source.X-wall.A.X)*dx + (source.Y-wall.A.Y)*dy) / lenSq
+
+	// Foot of perpendicular from source onto the wall line.
+	footX := wall.A.X + t*dx
+	footY := wall.A.Y + t*dy
+
+	// Mirror = source + 2*(foot - source) = 2*foot - source.
+	return geo.Point2D{
+		X: 2*footX - source.X,
+		Y: 2*footY - source.Y,
+	}, true
+}
