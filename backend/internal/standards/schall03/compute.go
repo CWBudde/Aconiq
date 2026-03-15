@@ -233,6 +233,237 @@ func ComputeNormativeReceiverLevels(
 	}, nil
 }
 
+// normativeSubsegmentContribWithBarriers is like normativeSubsegmentContrib but
+// includes barrier attenuation.  The barriers slice and subsegment source point
+// are needed to compute the path-specific barrier geometry.
+func normativeSubsegmentContribWithBarriers(
+	emission *StreckeEmissionResult,
+	elevationM float64,
+	receiver ReceiverInput,
+	sourcePoint geo.Point2D,
+	dp, stepLen, sinDelta2, waterFractionW float64,
+	barriers []BarrierSegment,
+) float64 {
+	if len(barriers) == 0 {
+		return normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW)
+	}
+
+	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	log10Step := math.Log10(stepLen)
+
+	dLand := (1.0 - waterFractionW) * dp
+	dWater := waterFractionW * dp
+
+	var contrib float64
+
+	for h, spectrum := range emission.PerHeight {
+		hg := elevationM + heightAboveSO[h]
+		hr := receiver.HeightM
+
+		hm := (hg + hr) / 2
+		if hm < 0 {
+			hm = 0
+		}
+
+		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
+		if dSlant < 1 {
+			dSlant = 1
+		}
+
+		dOmega := solidAngleDOmega(dp, hg, hr)
+		adivVal := adiv(dSlant)
+
+		agrVal := agrW(dWater, dp)
+		if dLand > 0 {
+			agrVal += agrB(hm, dSlant, dLand)
+		}
+
+		// Compute barrier attenuation for this height level.
+		var agrBands BeiblattSpectrum
+		for f := range NumBeiblattOctaveBands {
+			agrBands[f] = agrVal
+		}
+
+		abarBands := ComputePathBarrierAttenuation(
+			sourcePoint, receiver.Point, hg, hr, barriers, agrBands,
+		)
+
+		for f := range NumBeiblattOctaveBands {
+			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			lW := spectrum[f] + 10*log10Step
+			lpF := lW + dI + dOmega - adivVal - aatmVal - agrVal - abarBands[f]
+			contrib += math.Pow(10, 0.1*lpF)
+		}
+	}
+
+	return contrib
+}
+
+// normativeLineSourceLpAeqWithBarriers integrates emission along a track
+// centerline with barrier attenuation on each subsegment's direct path.
+func normativeLineSourceLpAeqWithBarriers(
+	emission *StreckeEmissionResult,
+	centerline []geo.Point2D,
+	elevationM float64,
+	receiver ReceiverInput,
+	waterFractionW float64,
+	barriers []BarrierSegment,
+) float64 {
+	if len(barriers) == 0 {
+		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW)
+	}
+
+	var total float64
+
+	for i := range len(centerline) - 1 {
+		a := centerline[i]
+		b := centerline[i+1]
+
+		segLen := geo.Distance(a, b)
+		if math.IsNaN(segLen) || math.IsInf(segLen, 0) || segLen <= 0 {
+			continue
+		}
+
+		nsubs := max(int(math.Ceil(segLen/maxIntegrationStepM)), 1)
+		stepLen := segLen / float64(nsubs)
+
+		tvX := b.X - a.X
+		tvY := b.Y - a.Y
+		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
+
+		for j := range nsubs {
+			frac := (float64(j) + 0.5) / float64(nsubs)
+			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
+
+			rvX := receiver.Point.X - pt.X
+			rvY := receiver.Point.Y - pt.Y
+			dp := math.Sqrt(rvX*rvX + rvY*rvY)
+
+			if dp < 1 {
+				dp = 1
+			}
+
+			sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
+			total += normativeSubsegmentContribWithBarriers(
+				emission, elevationM, receiver, pt, dp, stepLen, sd2, waterFractionW, barriers,
+			)
+		}
+	}
+
+	if total <= 0 {
+		return math.Inf(-1)
+	}
+
+	return 10 * math.Log10(total)
+}
+
+// addDirectWithBarriersAndReflected computes the direct line-source contribution
+// with barrier attenuation plus reflected contributions, and adds the linear
+// power to *sum.
+func addDirectWithBarriersAndReflected(
+	emission *StreckeEmissionResult,
+	seg TrackSegment,
+	receiver ReceiverInput,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+	sum *float64,
+) {
+	lp := normativeLineSourceLpAeqWithBarriers(
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers,
+	)
+	if !math.IsInf(lp, -1) {
+		*sum += math.Pow(10, 0.1*lp)
+	}
+
+	// Reflected paths (walls) — barriers on reflected paths deferred to Step 8.
+	if len(walls) == 0 {
+		return
+	}
+
+	reflLp := ComputeReflectedLineSourceLpAeq(
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls,
+	)
+	if !math.IsInf(reflLp, -1) {
+		*sum += math.Pow(10, 0.1*reflLp)
+	}
+}
+
+// ComputeNormativeReceiverLevelsWithScene computes L_pAeq and L_r including
+// both reflected paths (walls) and barrier diffraction (barriers).
+func ComputeNormativeReceiverLevelsWithScene(
+	receiver ReceiverInput,
+	segments []TrackSegment,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+) (NormativeReceiverLevels, error) {
+	if len(segments) == 0 {
+		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
+	}
+
+	err := receiver.Validate()
+	if err != nil {
+		return NormativeReceiverLevels{}, err
+	}
+
+	for i, w := range walls {
+		wallErr := w.Validate()
+		if wallErr != nil {
+			return NormativeReceiverLevels{}, fmt.Errorf("wall[%d]: %w", i, wallErr)
+		}
+	}
+
+	for i, b := range barriers {
+		barrierErr := b.Validate()
+		if barrierErr != nil {
+			return NormativeReceiverLevels{}, fmt.Errorf("barrier[%d]: %w", i, barrierErr)
+		}
+	}
+
+	var daySum, nightSum float64
+
+	for si, seg := range segments {
+		err = seg.Validate()
+		if err != nil {
+			return NormativeReceiverLevels{}, fmt.Errorf("segment[%d]: %w", si, err)
+		}
+
+		for _, op := range seg.Operations {
+			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourDay))
+			if emitErr != nil {
+				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
+			}
+
+			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, &daySum)
+
+			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
+			if emitErr != nil {
+				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
+			}
+
+			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, &nightSum)
+		}
+	}
+
+	lpAeqDay := math.Inf(-1)
+	if daySum > 0 {
+		lpAeqDay = 10 * math.Log10(daySum)
+	}
+
+	lpAeqNight := math.Inf(-1)
+	if nightSum > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum)
+	}
+
+	const ks = 0.0
+
+	return NormativeReceiverLevels{
+		LpAeqDay:   lpAeqDay,
+		LpAeqNight: lpAeqNight,
+		LrDay:      beurteilungspegel(lpAeqDay, ks),
+		LrNight:    beurteilungspegel(lpAeqNight, ks),
+	}, nil
+}
+
 // addDirectAndReflected computes the direct and reflected line-source
 // contributions for one emission result and adds the linear power to *sum.
 func addDirectAndReflected(

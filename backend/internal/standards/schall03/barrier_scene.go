@@ -445,6 +445,75 @@ func energeticTotalSpectrum(s BeiblattSpectrum) float64 {
 	return sum
 }
 
+// ComputePathBarrierAttenuation computes the barrier attenuation A_bar for a
+// single source→receiver propagation path, considering all barriers in the scene.
+// Returns a per-band BeiblattSpectrum of attenuation values (dB, ≥ 0).
+// Returns a zero spectrum if no barriers obstruct the path.
+func ComputePathBarrierAttenuation(
+	source, receiver geo.Point2D,
+	sourceHeightM, receiverHeightM float64,
+	barriers []BarrierSegment,
+	agrBandValues BeiblattSpectrum,
+) BeiblattSpectrum {
+	if len(barriers) == 0 {
+		return BeiblattSpectrum{}
+	}
+
+	totalHorizDist := geo.Distance(source, receiver)
+	if totalHorizDist <= 0 {
+		return BeiblattSpectrum{}
+	}
+
+	// 1. Find all crossings in plan view.
+	crossings := FindBarrierCrossings(source, receiver, barriers)
+	if len(crossings) == 0 {
+		return BeiblattSpectrum{}
+	}
+
+	// 2. Filter to only obstructing crossings.
+	var obstructing []BarrierCrossing
+
+	for _, c := range crossings {
+		if IsObstructing(c, sourceHeightM, receiverHeightM, totalHorizDist) {
+			obstructing = append(obstructing, c)
+		}
+	}
+
+	if len(obstructing) == 0 {
+		return BeiblattSpectrum{}
+	}
+
+	// 3. Select significant diffraction edges via rubber band.
+	edges := SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalHorizDist, obstructing)
+	if len(edges) == 0 {
+		return BeiblattSpectrum{}
+	}
+
+	// 4. Compute top-diffraction BarrierGeometry and A_bar.
+	geom := ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalHorizDist)
+	topAbar := ComputeAbar(geom, agrBandValues)
+
+	// 5. Compute lateral diffraction for each obstructing barrier.
+	// Use the minimum A_bar per band across top and all lateral paths.
+	bestAbar := topAbar
+
+	for _, c := range obstructing {
+		latAbar, ok := ComputeLateralDiffraction(source, receiver, sourceHeightM, receiverHeightM, c.Barrier)
+		if !ok {
+			continue
+		}
+
+		// Per-band minimum.
+		for f := range NumBeiblattOctaveBands {
+			if latAbar[f] < bestAbar[f] {
+				bestAbar[f] = latAbar[f]
+			}
+		}
+	}
+
+	return bestAbar
+}
+
 // IsObstructing reports whether a barrier crossing actually obstructs the
 // line of sight between source and receiver.  The barrier obstructs when its
 // top height exceeds the line-of-sight height at the crossing point.
