@@ -269,6 +269,74 @@ func ReflectedSubsegmentContrib(
 	return contrib
 }
 
+// ReflectedSubsegmentContribWithBarriers is like ReflectedSubsegmentContrib but
+// includes barrier attenuation along the reflected path.  The barrier check uses
+// the image source position as the effective source for the propagation path.
+func ReflectedSubsegmentContribWithBarriers(
+	emission *StreckeEmissionResult,
+	elevationM float64,
+	receiver ReceiverInput,
+	imageSource geo.Point2D,
+	dp, stepLen, sinDelta2, waterFractionW float64,
+	dRho float64,
+	barriers []BarrierSegment,
+) float64 {
+	if len(barriers) == 0 {
+		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho)
+	}
+
+	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	log10Step := math.Log10(stepLen)
+
+	dLand := (1.0 - waterFractionW) * dp
+	dWater := waterFractionW * dp
+
+	var contrib float64
+
+	for h, spectrum := range emission.PerHeight {
+		hg := elevationM + heightAboveSO[h]
+		hr := receiver.HeightM
+
+		hm := (hg + hr) / 2
+		if hm < 0 {
+			hm = 0
+		}
+
+		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
+		if dSlant < 1 {
+			dSlant = 1
+		}
+
+		dOmega := solidAngleDOmega(dp, hg, hr)
+		adivVal := adiv(dSlant)
+
+		agrVal := agrW(dWater, dp)
+		if dLand > 0 {
+			agrVal += agrB(hm, dSlant, dLand)
+		}
+
+		// Barrier attenuation along the reflected path (image source → receiver).
+		var agrBands BeiblattSpectrum
+
+		for f := range NumBeiblattOctaveBands {
+			agrBands[f] = agrVal
+		}
+
+		abarBands := ComputePathBarrierAttenuation(
+			imageSource, receiver.Point, hg, hr, barriers, agrBands,
+		)
+
+		for f := range NumBeiblattOctaveBands {
+			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			lW := spectrum[f] + 10*log10Step
+			lpF := lW + dRho + dI + dOmega - adivVal - aatmVal - agrVal - abarBands[f]
+			contrib += math.Pow(10, 0.1*lpF)
+		}
+	}
+
+	return contrib
+}
+
 // MaxReflectionOrder is the maximum number of bounces per Schall 03.
 const MaxReflectionOrder = 3
 
@@ -460,6 +528,85 @@ func ComputeReflectedLineSourceLpAeq(
 				total += ReflectedSubsegmentContrib(
 					emission, elevationM, receiver,
 					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+				)
+			}
+		}
+	}
+
+	if total <= 0 {
+		return math.Inf(-1)
+	}
+
+	return 10 * math.Log10(total)
+}
+
+// ComputeReflectedLineSourceLpAeqWithBarriers is like
+// ComputeReflectedLineSourceLpAeq but includes barrier attenuation on reflected
+// paths.  For each reflected path, the barrier check uses the image source
+// position as the effective source.
+func ComputeReflectedLineSourceLpAeqWithBarriers(
+	emission *StreckeEmissionResult,
+	centerline []geo.Point2D,
+	elevationM float64,
+	receiver ReceiverInput,
+	waterFractionW float64,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+) float64 {
+	if len(walls) == 0 {
+		return math.Inf(-1)
+	}
+
+	if len(barriers) == 0 {
+		return ComputeReflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls)
+	}
+
+	var total float64
+
+	for i := range len(centerline) - 1 {
+		a := centerline[i]
+		b := centerline[i+1]
+
+		segLen := geo.Distance(a, b)
+		if math.IsNaN(segLen) || math.IsInf(segLen, 0) || segLen <= 0 {
+			continue
+		}
+
+		nsubs := max(int(math.Ceil(segLen/maxIntegrationStepM)), 1)
+		stepLen := segLen / float64(nsubs)
+
+		tvX := b.X - a.X
+		tvY := b.Y - a.Y
+		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
+
+		for j := range nsubs {
+			frac := (float64(j) + 0.5) / float64(nsubs)
+			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
+
+			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
+
+			for _, rp := range paths {
+				firstGeom := rp.Geometries[0]
+				rvX := firstGeom.ImageSource.X - pt.X
+				rvY := firstGeom.ImageSource.Y - pt.Y
+				dp := math.Sqrt(rvX*rvX + rvY*rvY)
+
+				if dp < 1 {
+					dp = 1
+				}
+
+				sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
+
+				reflDist := rp.TotalDist
+				if reflDist < 1 {
+					reflDist = 1
+				}
+
+				total += ReflectedSubsegmentContribWithBarriers(
+					emission, elevationM, receiver,
+					firstGeom.ImageSource,
+					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+					barriers,
 				)
 			}
 		}
