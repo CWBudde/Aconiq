@@ -15,21 +15,23 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	exportfmt "github.com/aconiq/backend/internal/report/export"
 	"github.com/aconiq/backend/internal/report/reporting"
 	"github.com/aconiq/backend/internal/report/results"
 	"github.com/spf13/cobra"
 )
 
 type exportSummary struct {
-	ExportID            string    `json:"export_id"`
-	ProjectID           string    `json:"project_id"`
-	ProjectCRS          string    `json:"project_crs,omitempty"`
-	RunID               string    `json:"run_id"`
-	ExportedAt          time.Time `json:"exported_at"`
-	OutputDirectory     string    `json:"output_directory"`
-	CopiedFiles         []string  `json:"copied_files"`
-	GeneratedSampleData []string  `json:"generated_sample_data,omitempty"`
-	GeneratedReports    []string  `json:"generated_reports,omitempty"`
+	ExportID            string            `json:"export_id"`
+	ProjectID           string            `json:"project_id"`
+	ProjectCRS          string            `json:"project_crs,omitempty"`
+	RunID               string            `json:"run_id"`
+	ExportedAt          time.Time         `json:"exported_at"`
+	OutputDirectory     string            `json:"output_directory"`
+	CopiedFiles         []string          `json:"copied_files"`
+	GeneratedSampleData []string          `json:"generated_sample_data,omitempty"`
+	GeneratedReports    []string          `json:"generated_reports,omitempty"`
+	ExportedFormats     map[string][]string `json:"exported_formats,omitempty"`
 }
 
 type copiedRunResults struct {
@@ -47,6 +49,8 @@ func newExportCommand() *cobra.Command {
 	var emitSampleResults bool
 	var skipReport bool
 	var generatePDF bool
+	var formatList string
+	var contourInterval float64
 
 	cmd := &cobra.Command{
 		Use:   "export",
@@ -248,6 +252,24 @@ func newExportCommand() *cobra.Command {
 				summary.GeneratedSampleData = generated
 			}
 
+			// Process additional export formats (GeoTIFF, GeoPackage, contours).
+			if formatList != "" {
+				formats, parseErr := exportfmt.ParseFormats(formatList)
+				if parseErr != nil {
+					return domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
+				}
+
+				exportedPaths, fmtErr := executeFormatExports(
+					formats, bundleDir, proj.CRS,
+					copiedResults, contourInterval,
+				)
+				if fmtErr != nil {
+					return domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
+				}
+
+				summary.ExportedFormats = exportedPaths
+			}
+
 			summaryPath := filepath.Join(bundleDir, "export-summary.json")
 
 			err = writeJSONFile(summaryPath, summary)
@@ -290,6 +312,12 @@ func newExportCommand() *cobra.Command {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Report files generated: %d\n", len(summary.GeneratedReports))
 			}
 
+			if len(summary.ExportedFormats) > 0 {
+				for fmtName, paths := range summary.ExportedFormats {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Format %s: %d files\n", fmtName, len(paths))
+				}
+			}
+
 			return nil
 		},
 	}
@@ -300,6 +328,8 @@ func newExportCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
 	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
 	cmd.Flags().BoolVar(&generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
+	cmd.Flags().StringVar(&formatList, "format", "", "Comma-separated export formats: geotiff, gpkg, contour-geojson, contour-gpkg")
+	cmd.Flags().Float64Var(&contourInterval, "contour-interval", exportfmt.DefaultContourInterval, "Contour line interval in dB (default 5)")
 
 	return cmd
 }
@@ -609,6 +639,167 @@ func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.
 	})
 
 	return suites
+}
+
+func executeFormatExports(
+	formats []exportfmt.Format,
+	bundleDir string,
+	projectCRS string,
+	copiedResults copiedRunResults,
+	contourInterval float64,
+) (map[string][]string, error) {
+	out := make(map[string][]string)
+	epsgCode := 0
+
+	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &epsgCode)
+
+	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
+	var receiverTable *results.ReceiverTable
+
+	if copiedResults.ReceiverTableJSON != "" {
+		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
+		if err == nil {
+			receiverTable = &table
+		}
+	}
+
+	// Load raster if available (needed for GeoTIFF + contours).
+	var raster *results.Raster
+
+	if len(copiedResults.RasterMetadataList) > 0 {
+		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
+		if err == nil {
+			raster = r
+		}
+	}
+
+	// Infer geo-transform from receiver coordinates if we have both receiver table and raster.
+	var gt exportfmt.GeoTransform
+	var hasGT bool
+
+	if receiverTable != nil && raster != nil {
+		meta := raster.Metadata()
+		xs := make([]float64, 0, len(receiverTable.Records))
+		ys := make([]float64, 0, len(receiverTable.Records))
+
+		for _, r := range receiverTable.Records {
+			xs = append(xs, r.X)
+			ys = append(ys, r.Y)
+		}
+
+		if len(xs) == meta.Width*meta.Height {
+			inferred, err := exportfmt.InferGeoTransformFromReceivers(xs, ys, meta.Width, meta.Height)
+			if err == nil {
+				gt = inferred
+				hasGT = true
+			}
+		}
+	}
+
+	formatsDir := filepath.Join(bundleDir, "formats")
+
+	for _, f := range formats {
+		switch f {
+		case exportfmt.FormatGeoTIFF:
+			if raster == nil {
+				continue // skip if no raster available
+			}
+
+			if !hasGT {
+				// Use a default identity transform if we can't infer.
+				gt = exportfmt.GeoTransform{
+					OriginX: 0, OriginY: float64(raster.Metadata().Height),
+					PixelSizeX: 1, PixelSizeY: -1,
+				}
+			}
+
+			basePath := filepath.Join(formatsDir, "raster")
+			paths, err := exportfmt.ExportGeoTIFF(basePath, raster, gt, projectCRS)
+
+			if err != nil {
+				return nil, fmt.Errorf("geotiff export: %w", err)
+			}
+
+			relPaths := make([]string, len(paths))
+			for i, p := range paths {
+				relPaths[i] = relativePath(bundleDir, p)
+			}
+
+			out[string(exportfmt.FormatGeoTIFF)] = relPaths
+
+		case exportfmt.FormatGeoPackage:
+			if receiverTable == nil {
+				continue
+			}
+
+			gpkgPath := filepath.Join(formatsDir, "receivers.gpkg")
+
+			err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, projectCRS, epsgCode)
+			if err != nil {
+				return nil, fmt.Errorf("geopackage export: %w", err)
+			}
+
+			out[string(exportfmt.FormatGeoPackage)] = []string{relativePath(bundleDir, gpkgPath)}
+
+		case exportfmt.FormatContourGeoJSON:
+			if raster == nil {
+				continue
+			}
+
+			if !hasGT {
+				gt = exportfmt.GeoTransform{
+					OriginX: 0, OriginY: float64(raster.Metadata().Height),
+					PixelSizeX: 1, PixelSizeY: -1,
+				}
+			}
+
+			contours, err := exportfmt.GenerateContours(raster, gt, exportfmt.ContourOptions{
+				Interval: contourInterval,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("contour generation: %w", err)
+			}
+
+			contourPath := filepath.Join(formatsDir, "contours.geojson")
+
+			err = exportfmt.ExportContourGeoJSON(contourPath, contours)
+			if err != nil {
+				return nil, fmt.Errorf("contour geojson export: %w", err)
+			}
+
+			out[string(exportfmt.FormatContourGeoJSON)] = []string{relativePath(bundleDir, contourPath)}
+
+		case exportfmt.FormatContourGeoPackage:
+			if raster == nil {
+				continue
+			}
+
+			if !hasGT {
+				gt = exportfmt.GeoTransform{
+					OriginX: 0, OriginY: float64(raster.Metadata().Height),
+					PixelSizeX: 1, PixelSizeY: -1,
+				}
+			}
+
+			contours, err := exportfmt.GenerateContours(raster, gt, exportfmt.ContourOptions{
+				Interval: contourInterval,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("contour generation: %w", err)
+			}
+
+			contourGpkgPath := filepath.Join(formatsDir, "contours.gpkg")
+
+			err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, projectCRS, epsgCode)
+			if err != nil {
+				return nil, fmt.Errorf("contour geopackage export: %w", err)
+			}
+
+			out[string(exportfmt.FormatContourGeoPackage)] = []string{relativePath(bundleDir, contourGpkgPath)}
+		}
+	}
+
+	return out, nil
 }
 
 func emitSampleResultBundle(bundleDir string) ([]string, error) {
