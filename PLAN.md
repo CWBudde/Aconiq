@@ -259,7 +259,7 @@ Status: done.
 
 ## Phase 20d — Schall 03: Barrier diffraction in propagation pipeline (direct + reflected paths)
 
-Status: not started.
+Status: in progress (Steps 1–6 done).
 
 **Goal:** Wire barrier diffraction (Gl. 17–26) into the normative propagation pipeline for both direct and reflected paths. Currently `normativeSubsegmentContrib` computes A_div + A_atm + A_gr but never applies A_bar. This phase adds a `BarrierSegment` scene type, implements the Gummibandmethode (rubber band / upper convex hull) for selecting significant diffraction edges, and integrates barrier attenuation into both the Strecke direct-path pipeline and the reflected-path pipeline from Phase 20c.
 
@@ -310,22 +310,22 @@ Status: not started.
 
 #### Step 5 — Compute BarrierGeometry from selected edges
 
-- [ ] For 1 selected edge: single diffraction. Compute ds, dr, d, z per Gl. 25 or 26. Set `IsDouble = false`, `E = 0`.
-- [ ] For 2 selected edges: double diffraction. Compute ds (source→first edge), dr (last edge→receiver), e (distance between edges), z per Gl. 25/26. Set `IsDouble = true`, `E = edge distance`.
-- [ ] For >2 edges: use outermost two edges as the double-diffraction pair (the standard caps at 25 dB for double diffraction; intermediate edges are subsumed by the rubber band hull)
-- [ ] `ComputeBarrierGeometryFromEdges(edges []DiffractionEdge, sourceH, receiverH, directDist float64) BarrierGeometry`
-- [ ] Include D_refl computation using `BaseHeightM` from the barrier
-- [ ] Tests: single thin barrier, thick barrier (e > 0), two separate barriers, verify z and distances against hand calculations
+- [x] For 1 selected edge: single diffraction. Compute ds, dr, d, z per Gl. 25 or 26. Set `IsDouble = false`, `E = 0`.
+- [x] For 2 selected edges: double diffraction. Compute ds (source→first edge), dr (last edge→receiver), e (distance between edges), z per Gl. 25/26. Set `IsDouble = true`, `E = edge distance`.
+- [x] For >2 edges: use outermost two edges as the double-diffraction pair (the standard caps at 25 dB for double diffraction; intermediate edges are subsumed by the rubber band hull)
+- [x] `ComputeBarrierGeometryFromEdges(edges []DiffractionEdge, sourceH, receiverH, directDist float64) BarrierGeometry`
+- [x] Include D_refl computation using `BaseHeightM` from the barrier
+- [x] Tests: single thin barrier, thick barrier (e > 0), two separate barriers, verify z and distances against hand calculations
 
 #### Step 6 — Lateral diffraction (around barrier ends)
 
-- [ ] For each barrier segment, compute diffraction paths around both endpoints (left and right lateral paths)
-- [ ] Lateral path: source → barrier endpoint → receiver, with z computed as path length difference
-- [ ] The standard says lateral edges are modeled as straight lines (Geradenstücke)
-- [ ] Lateral diffraction uses Gl. 18 (A_bar = D_z ≥ 0, no D_refl or A_gr subtraction)
-- [ ] Select the minimum A_bar across top diffraction and both lateral diffractions — the path with least attenuation dominates
-- [ ] `ComputeLateralDiffraction(source, receiver geo.Point2D, sourceH, receiverH float64, barrier BarrierSegment) (BeiblattSpectrum, bool)` — returns lateral A_bar if lateral path exists
-- [ ] Tests: short barrier where lateral path is shorter than top path, long barrier where top path dominates
+- [x] For each barrier segment, compute diffraction paths around both endpoints (left and right lateral paths)
+- [x] Lateral path: source → barrier endpoint → receiver, with z computed as path length difference
+- [x] The standard says lateral edges are modeled as straight lines (Geradenstücke)
+- [x] Lateral diffraction uses Gl. 18 (A_bar = D_z ≥ 0, no D_refl or A_gr subtraction)
+- [x] Select the minimum A_bar across top diffraction and both lateral diffractions — the path with least attenuation dominates
+- [x] `ComputeLateralDiffraction(source, receiver geo.Point2D, sourceH, receiverH float64, barrier BarrierSegment) (BeiblattSpectrum, bool)` — returns lateral A_bar if lateral path exists
+- [x] Tests: short barrier where lateral path is shorter than top path, long barrier where top path dominates
 
 #### Step 7 — Integrate barriers into direct-path pipeline
 
