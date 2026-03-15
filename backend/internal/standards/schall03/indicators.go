@@ -38,6 +38,34 @@ func roundToWholeDB(l float64) float64 {
 	return math.Round(l)
 }
 
+// kSStrecke is the Schienenbonus applied to Eisenbahn/Strassenbahn Strecken
+// in Gl. 35-36.  Note: K_S does NOT apply to the Rangierbahnhof contribution.
+const kSStrecke = -5.0
+
+// ComputeCombinedBeurteilungspegel implements Gl. 35-36 for a location
+// affected by both a Rangierbahnhof and passing trains (Strecke).
+//
+//	L_r,Tag   = 10·lg[ 10^(0.1·lpAeqTagR)   + 10^(0.1·(lpAeqTagStrecke   + K_S)) ]
+//	L_r,Nacht = 10·lg[ 10^(0.1·lpAeqNachtR) + 10^(0.1·(lpAeqNachtStrecke + K_S)) ]
+//
+// lpAeqTagR and lpAeqNachtR are yard contributions from Gl. 30.
+// lpAeqTagStrecke and lpAeqNachtStrecke are Strecken contributions from Gl. 29.
+func ComputeCombinedBeurteilungspegel(
+	lpAeqTagR, lpAeqNachtR float64,
+	lpAeqTagStrecke, lpAeqNachtStrecke float64,
+) (lrTag, lrNacht float64) {
+	lrTag = 10 * math.Log10(
+		math.Pow(10, 0.1*lpAeqTagR)+
+			math.Pow(10, 0.1*(lpAeqTagStrecke+kSStrecke)),
+	)
+	lrNacht = 10 * math.Log10(
+		math.Pow(10, 0.1*lpAeqNachtR)+
+			math.Pow(10, 0.1*(lpAeqNachtStrecke+kSStrecke)),
+	)
+
+	return
+}
+
 // PeriodLevels stores receiver levels per Schall 03 planning period.
 type PeriodLevels struct {
 	LrDay   float64 `json:"lr_day"`

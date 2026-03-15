@@ -263,3 +263,44 @@ func TestNormativePipelineWaterBodyCloserReceiverLouder(t *testing.T) {
 		t.Errorf("near receiver (%v dB) should be louder than far (%v dB)", lvlNear.LpAeqDay, lvlFar.LpAeqDay)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Gl. 35-36: ComputeCombinedBeurteilungspegel — Rangierbahnhof + Strecken
+// ---------------------------------------------------------------------------
+
+func TestCombinedAssessmentGl35YardDominant(t *testing.T) {
+	t.Parallel()
+
+	// When yard contribution dominates, result ≈ yard level.
+	// Yard day=80 dB, Strecke day=-100 dB (negligible after K_S=-5)
+	lrTag, lrNacht := ComputeCombinedBeurteilungspegel(80, 10, -100, -100)
+	if math.Abs(lrTag-80) > 0.1 {
+		t.Errorf("yard-dominant day: expected ~80, got %g", lrTag)
+	}
+
+	if math.Abs(lrNacht-10) > 0.1 {
+		t.Errorf("yard-dominant night: expected ~10, got %g", lrNacht)
+	}
+}
+
+func TestCombinedAssessmentGl35EqualContributions(t *testing.T) {
+	t.Parallel()
+
+	// Yard=70, Strecke=75 (after K_S=-5 → 70). Equal contributions sum to 73.01 dB.
+	// L_r = 10·lg(10^7 + 10^7) = 10·lg(2·10^7) = 73.01
+	lrTag, _ := ComputeCombinedBeurteilungspegel(70, 0, 75, 0)
+	if math.Abs(lrTag-73.01) > 0.1 {
+		t.Errorf("equal contributions: expected ~73.01, got %g", lrTag)
+	}
+}
+
+func TestCombinedAssessmentGl35KSAppliedOnlyToStrecken(t *testing.T) {
+	t.Parallel()
+
+	// Verify K_S=-5 applies to Strecke but NOT to yard.
+	// Yard negligible (-200), Strecke=55 → Strecke term = 55-5=50 dB result.
+	lrTag, _ := ComputeCombinedBeurteilungspegel(-200, -200, 55, -200)
+	if math.Abs(lrTag-50) > 0.2 {
+		t.Errorf("K_S on Strecke only: expected ~50, got %g", lrTag)
+	}
+}
