@@ -150,6 +150,7 @@ func ComputeReflectionGeometry(source, receiver geo.Point2D, wall ReflectingWall
 	toRecvLen := math.Sqrt(toRecvX*toRecvX + toRecvY*toRecvY)
 
 	beta := 0.0
+
 	if toRecvLen > 1e-9 {
 		cosB := math.Abs(toRecvX*nx+toRecvY*ny) / toRecvLen
 		cosB = math.Min(cosB, 1.0)
@@ -218,7 +219,7 @@ func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
 // stepLen:         subsegment length [m]
 // sinDelta2:       sin²(δ) directivity for the reflected path direction
 // waterFractionW:  fraction of reflected path over water [0, 1]
-// dRho:            cumulative absorption loss from reflections [dB] (negative or zero)
+// dRho:            cumulative absorption loss from reflections [dB] (negative or zero).
 func ReflectedSubsegmentContrib(
 	emission *StreckeEmissionResult,
 	elevationM float64,
@@ -280,6 +281,15 @@ type ReflectionPath struct {
 	DRho       float64              // cumulative absorption loss D_ρ [dB]
 }
 
+// candidate holds in-progress state for multi-order reflection path enumeration.
+type candidate struct {
+	imageSource geo.Point2D
+	walls       []int
+	geometries  []ReflectionGeometry
+	totalDist   float64
+	dRho        float64
+}
+
 // EnumerateReflectionPaths finds all valid reflection paths from source to
 // receiver via the given walls, up to maxOrder bounces.  Paths that fail the
 // Fresnel check (Gl. 27) are excluded.  Consecutive bounces off the same wall
@@ -290,16 +300,6 @@ func EnumerateReflectionPaths(source, receiver geo.Point2D, walls []ReflectingWa
 	}
 
 	var result []ReflectionPath
-
-	// 1st order: source → wall[i] → receiver.
-	type candidate struct {
-		imageSource geo.Point2D
-		walls       []int
-		geometries  []ReflectionGeometry
-		totalDist   float64
-		dRho        float64
-	}
-
 	var current []candidate
 
 	for i, w := range walls {
@@ -335,63 +335,68 @@ func EnumerateReflectionPaths(source, receiver geo.Point2D, walls []ReflectingWa
 		var next []candidate
 
 		for _, c := range current {
-			lastWallIdx := c.walls[len(c.walls)-1]
-
-			for j, w := range walls {
-				if j == lastWallIdx {
-					continue // no consecutive same-wall bounces
-				}
-
-				// Check if the previous image source can see the receiver via wall j.
-				rg, ok := ComputeReflectionGeometry(c.imageSource, receiver, w)
-				if !ok {
-					continue
-				}
-
-				if !FresnelCheck(rg.LMin, rg.Beta, rg.DSO, rg.DOR) {
-					continue
-				}
-
-				// Mirror the previous image source across wall j for next order.
-				newImage, ok := MirrorSource(c.imageSource, w)
-				if !ok {
-					continue
-				}
-
-				newWalls := make([]int, len(c.walls)+1)
-				copy(newWalls, c.walls)
-				newWalls[len(c.walls)] = j
-
-				newGeoms := make([]ReflectionGeometry, len(c.geometries)+1)
-				copy(newGeoms, c.geometries)
-				newGeoms[len(c.geometries)] = rg
-
-				dRho := c.dRho + Table18AbsorptionLoss(w.Surface)
-				totalDist := rg.DSO + rg.DOR
-
-				path := ReflectionPath{
-					Order:      order,
-					Walls:      newWalls,
-					Geometries: newGeoms,
-					TotalDist:  totalDist,
-					DRho:       dRho,
-				}
-				result = append(result, path)
-
-				next = append(next, candidate{
-					imageSource: newImage,
-					walls:       newWalls,
-					geometries:  newGeoms,
-					totalDist:   totalDist,
-					dRho:        dRho,
-				})
-			}
+			extendReflectionCandidates(c, receiver, walls, order, &result, &next)
 		}
 
 		current = next
 	}
 
 	return result
+}
+
+// extendReflectionCandidates extends a single candidate by one additional bounce
+// off each eligible wall, appending valid paths to result and new candidates to next.
+func extendReflectionCandidates(c candidate, receiver geo.Point2D, walls []ReflectingWall, order int, result *[]ReflectionPath, next *[]candidate) {
+	lastWallIdx := c.walls[len(c.walls)-1]
+
+	for j, w := range walls {
+		if j == lastWallIdx {
+			continue // no consecutive same-wall bounces
+		}
+
+		// Check if the previous image source can see the receiver via wall j.
+		rg, ok := ComputeReflectionGeometry(c.imageSource, receiver, w)
+		if !ok {
+			continue
+		}
+
+		if !FresnelCheck(rg.LMin, rg.Beta, rg.DSO, rg.DOR) {
+			continue
+		}
+
+		// Mirror the previous image source across wall j for next order.
+		newImage, ok := MirrorSource(c.imageSource, w)
+		if !ok {
+			continue
+		}
+
+		newWalls := make([]int, len(c.walls)+1)
+		copy(newWalls, c.walls)
+		newWalls[len(c.walls)] = j
+
+		newGeoms := make([]ReflectionGeometry, len(c.geometries)+1)
+		copy(newGeoms, c.geometries)
+		newGeoms[len(c.geometries)] = rg
+
+		dRho := c.dRho + Table18AbsorptionLoss(w.Surface)
+		totalDist := rg.DSO + rg.DOR
+
+		*result = append(*result, ReflectionPath{
+			Order:      order,
+			Walls:      newWalls,
+			Geometries: newGeoms,
+			TotalDist:  totalDist,
+			DRho:       dRho,
+		})
+
+		*next = append(*next, candidate{
+			imageSource: newImage,
+			walls:       newWalls,
+			geometries:  newGeoms,
+			totalDist:   totalDist,
+			dRho:        dRho,
+		})
+	}
 }
 
 // ComputeReflectedLineSourceLpAeq integrates reflected path contributions along
@@ -477,7 +482,7 @@ func ComputeReflectedLineSourceLpAeq(
 // lMin:  smallest dimension of the reflector [m] (typically wall length or height)
 // beta:  angle between source→receiver line and reflector normal [rad]
 // dSO:   source-to-reflector distance [m]
-// dOR:   reflector-to-receiver distance [m]
+// dOR:   reflector-to-receiver distance [m].
 func FresnelCheck(lMin, beta, dSO, dOR float64) bool {
 	const lambda63 = speedOfSound / 63.0 // ≈ 5.397 m
 

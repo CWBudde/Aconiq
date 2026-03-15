@@ -235,25 +235,25 @@ Status: complete.
 
 ## Phase 20c — Schall 03: Image-source reflections
 
-Status: not started.
+Status: done.
 
 **Goal:** implement image-source reflections per Gl. 27–28, enabling multi-path propagation for façade-reflected sound.
 
 ### Implementation
 
-- [ ] Encode Table 18: Absorptionsverlust an Wänden — octave-band absorption loss per wall material
-- [ ] Implement Fresnel zone validity check (Gl. 27): minimum reflecting surface area as function of wavelength and geometry
-- [ ] Implement 1st-order image source: mirror source position, reflected path geometry, reflection loss per Table 18
-- [ ] Implement 2nd-order and 3rd-order reflections (up to 3 bounces per Schall 03 scope)
-- [ ] Integrate reflected paths into the propagation chain: add reflected path contributions energetically to the direct path result
-- [ ] Handle reflection + barrier diffraction combined paths (Gl. 28)
-- [ ] Extend `TrackSegment` / scene geometry to accept reflecting wall definitions
+- [x] Encode Table 18: Absorptionsverlust an Wänden — octave-band absorption loss per wall material
+- [x] Implement Fresnel zone validity check (Gl. 27): minimum reflecting surface area as function of wavelength and geometry
+- [x] Implement 1st-order image source: mirror source position, reflected path geometry, reflection loss per Table 18
+- [x] Implement 2nd-order and 3rd-order reflections (up to 3 bounces per Schall 03 scope)
+- [x] Integrate reflected paths into the propagation chain: add reflected path contributions energetically to the direct path result
+- [ ] Handle reflection + barrier diffraction combined paths (Gl. 28) — deferred
+- [x] Extend scene geometry to accept reflecting wall definitions (`ReflectingWall` type)
 
 ### Conformance
 
-- [ ] Add CI-safe scenarios: single reflecting wall, double reflection (canyon geometry), reflection + barrier interaction
-- [ ] Generate golden snapshots
-- [ ] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark reflections as supported
+- [x] Add CI-safe scenarios: single reflecting wall, double reflection (canyon geometry), Fresnel rejection
+- [x] Generate golden snapshots
+- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark reflections as supported
 
 ---
 
@@ -539,6 +539,136 @@ Status: basic import working (building solids → footprints + height).
 - [ ] Store artifacts in object storage (rasters/tiles/reports)
 - [ ] Minimal auth/users (only if required)
 - [ ] Migration tool: v1 project → v2
+
+---
+
+## Phase 36 — Interoperability: SoundPlan project import & cross-validation
+
+Status: Step 1 complete (Project.sp and .res parsing).
+
+**Goal:** import SoundPlan projects (`.sp` + associated geometry/data files) into Aconiq's internal model, run the same calculations, and compare results against SoundPlan's computed outputs. This enables cross-tool validation and provides a migration path for practitioners switching from SoundPlan.
+
+**Why:** SoundPlan is the dominant DACH noise calculation tool. Many practitioners have existing project archives in SoundPlan format. Being able to (a) load their geometry and emission data, (b) re-calculate in Aconiq, and (c) compare results against SoundPlan's outputs builds trust in Aconiq's conformance and lowers the adoption barrier. It also provides a rich source of real-world validation scenarios beyond synthetic test cases.
+
+### SoundPlan format overview
+
+A SoundPlan project is a directory containing:
+
+- `Project.sp` — INI-style text file (Windows-1252 encoding). Contains project metadata, enabled standards, calculation parameters, assessment periods, land use categories, and geometric defaults.
+- `*.geo` — Custom binary geometry files with tagged records (markers `:HZ`, `:G `, `:D1`, `:DL`, `:O&`, etc.). Contain coordinates as float64 LE pairs, object names, emission parameters, and embedded BMP preview thumbnails. Key files: `GeoRail.geo` (rail tracks), `GeoObjs.geo` (buildings/objects), `GeoWand.geo` (noise barriers), `GeoTmp.geo` (terrain contours), `CalcArea.geo` (calculation area).
+- `*.res` — INI-style result metadata per calculation run. Contains SoundPlan version, run type, timestamps, referenced geometry files, calculation parameters, assessment definitions (time periods, limit values).
+- `*.abs` — Binary data tables (fixed-size records). Used for addresses, emission attributes, and result data (immission levels, partial levels, frequency spectra).
+- `*.dgm` — Binary digital ground model.
+- `*.ntd` — Immission point tables.
+- `*.ets` — Report/print templates.
+- `*.esn` — Noise type definitions.
+- `Höhen.txt` — ASCII elevation data (semicolon-separated, German decimal commas: `x; y; z; code`).
+
+### Step 1 — Parse Project.sp and result metadata
+
+- [x] Implement `Project.sp` parser (INI with Windows-1252 encoding)
+  - [x] Extract project metadata: title, version, description
+  - [x] Extract enabled standards and calculation type selectors (`[ENABLEDSTANDARDS]`, `[RAIL]`, `[ROAD]`, `[INDU]`)
+  - [x] Parse calculation parameter strings (e.g., `@2:20490 AIR0 BME1000 BMM1000 MP1013 MF70 MT10 ML0:1 ...`)
+  - [x] Extract assessment periods (`[TIME SLICES DEN]`: Tag/Nacht hours, limit values)
+  - [x] Extract geometric defaults (`[GEODB]`, `[SIMPLESETTINGS]`: receiver height, floor height, reflection order, rail bonus)
+- [x] Implement `.res` file parser (INI format)
+  - [x] Extract run metadata: run type, timestamps, SoundPlan version, thread count
+  - [x] Extract referenced geometry files and their modification timestamps
+  - [x] Extract assessment definitions (ZB1/ZB2: time periods, hourly masks, limit arrays)
+  - [x] Extract calculation command strings for standard/parameter reconstruction
+
+### Step 2 — Reverse-engineer and parse binary geometry files
+
+- [ ] Investigate `.geo` binary format in detail
+  - [ ] Document the tagged record structure (`:HZ` header, `:G ` geometry points, `:D1` descriptors, `:DL` data links, `:O&` object groups, etc.)
+  - [ ] Determine coordinate encoding (float64 LE confirmed for rail), bounding box structure, record length fields
+  - [ ] Identify how object type (building, barrier, rail, terrain) is encoded vs. inferred from filename
+  - [ ] Handle embedded BMP thumbnails (skip or extract)
+- [ ] Implement `GeoRail.geo` parser
+  - [ ] Extract rail track polylines with coordinates and elevations
+  - [ ] Extract track names and identifiers (e.g., "Hauptstrecke Gleis 1")
+  - [ ] Extract per-track emission parameters (speed, corrections, bridge surcharges)
+- [ ] Implement `GeoObjs.geo` parser
+  - [ ] Extract building footprints/polygons with heights
+  - [ ] Extract building addresses and attributes
+  - [ ] Extract receiver/immission point positions
+- [ ] Implement `GeoWand.geo` parser
+  - [ ] Extract barrier/wall polylines with heights and top geometry
+  - [ ] Extract barrier material/absorption properties
+- [ ] Implement `GeoTmp.geo` / `*.dgm` parser (terrain)
+  - [ ] Extract elevation contours or TIN from geometry file
+  - [ ] Extract digital ground model from `.dgm` binary
+  - [ ] Fallback: import `Höhen.txt` ASCII elevation points (semicolon-separated, German decimals)
+- [ ] Implement `CalcArea.geo` parser
+  - [ ] Extract calculation area rectangle/polygon
+
+### Step 3 — Parse binary result/data tables
+
+- [ ] Investigate `.abs` binary format
+  - [ ] Document record structure, header format, field layout
+  - [ ] Identify how result columns map to indicators (Lr,Tag, Lr,Nacht, partial levels, frequency spectra)
+- [ ] Implement result `.abs` parser for single-point results (`RSPS*/RREC*.abs`, `RRAD*.abs`, `RRAI*.abs`)
+  - [ ] Extract per-receiver immission levels (day/night)
+  - [ ] Extract per-receiver partial levels and source contributions
+- [ ] Implement result `.abs` parser for grid map results (`RRLK*/RRLK*.GM`)
+  - [ ] Extract raster metadata (grid origin, spacing, dimensions)
+  - [ ] Extract raster level values
+- [ ] Implement `.ntd` parser (immission point table)
+
+### Step 4 — Map to Aconiq internal model
+
+- [ ] Define mapping from SoundPlan standard IDs to Aconiq standards modules
+  - [ ] Map `20490` (Schall 03 rail) → `schall03` module
+  - [ ] Map `10490` (RLS-19 road) → `rls19` module
+  - [ ] Map `30000` (ISO 9613-2 industry) → `iso9613` module
+  - [ ] Identify unsupported standards and emit clear warnings
+- [ ] Convert SoundPlan rail geometry → Aconiq `TrackSegment` + `TrainOperation`
+  - [ ] Map SoundPlan track parameters to Aconiq emission model fields
+  - [ ] Map SoundPlan Zugarten/train types to Aconiq Fz-Kategorien
+- [ ] Convert SoundPlan buildings → Aconiq building features
+- [ ] Convert SoundPlan barriers → Aconiq barrier features (including reflecting walls where applicable)
+- [ ] Convert SoundPlan terrain → Aconiq terrain model
+- [ ] Convert SoundPlan receivers → Aconiq receiver set
+- [ ] Convert SoundPlan calculation area → Aconiq grid configuration
+- [ ] Handle CRS: determine SoundPlan project coordinate system (likely local or Gauss-Krüger) and transform via Phase 18 pipeline
+
+### Step 5 — Cross-validation workflow
+
+- [ ] Implement `noise import --from-soundplan <project-dir>` CLI command
+  - [ ] Load and parse SoundPlan project
+  - [ ] Create Aconiq project with mapped model, scenarios, and parameters
+  - [ ] Emit import report: what was imported, what was skipped, warnings
+- [ ] Implement `noise compare` or comparison mode
+  - [ ] Load SoundPlan result data alongside Aconiq run results
+  - [ ] Per-receiver level comparison (absolute difference, relative difference)
+  - [ ] Raster difference map (Aconiq result minus SoundPlan result)
+  - [ ] Summary statistics: mean/max/P95 deviation, number of receivers exceeding tolerance
+  - [ ] Configurable tolerance threshold (e.g., ±0.5 dB for conformance, ±1.0 dB for info)
+- [ ] Generate cross-validation report artifact
+  - [ ] Tabular comparison per receiver point
+  - [ ] Deviation histogram / distribution
+  - [ ] Map overlay showing spatial deviation pattern
+  - [ ] Provenance: SoundPlan version, Aconiq version, standard, parameters
+
+### Step 6 — Test coverage and conformance
+
+- [ ] Add unit tests for each parser (Project.sp, .geo, .abs, .res)
+- [ ] Add integration test with the included sample project (`interoperability/Schienenprojekt - Schall 03/`)
+  - [ ] Verify geometry extraction matches expected track/building/barrier counts and positions
+  - [ ] Verify parameter mapping produces correct Aconiq scenario configuration
+- [ ] Add cross-validation acceptance test
+  - [ ] Import sample project → run Aconiq calculation → compare against SoundPlan results
+  - [ ] Define acceptable tolerance for the sample project (document any known deviations)
+- [ ] Document SoundPlan format findings in `docs/research/soundplan-format.md`
+
+### Research / open questions
+
+- [ ] SoundPlan format versioning: how stable is the binary `.geo` format across SoundPlan versions? (sample is v4.1 / VERSION=41080)
+- [ ] Are there SoundPlan XML or text export options that could be easier to parse than the binary `.geo` format?
+- [ ] Can SoundPlan export to CadnaA or other intermediate formats that are better documented?
+- [ ] Investigate whether SoundPlan's "ASCII export" or "data exchange" features produce parseable intermediate files
+- [ ] Legal: confirm that parsing a proprietary file format for interoperability is permitted (likely yes under EU interoperability directives, but document the position)
 
 ---
 

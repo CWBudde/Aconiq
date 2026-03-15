@@ -1,12 +1,12 @@
 # Schall 03 Konformitätserklärung — Aconiq
 
-Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahnhöfe scope (Phase 20 + 20a + 20b)
+Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahnhöfe + Reflexionen scope (Phase 20 + 20a + 20b + 20c)
 
 ## Software
 
 - Name: Aconiq
 - Module: `schall03`
-- Version: `phase20b-normative-rangierbahnhof-v1`
+- Version: `phase20c-normative-reflections-v1`
 - License: MIT
 
 ## Standard
@@ -112,13 +112,27 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 `phase20b-normative-rangierbahnhof-v1`
 
+### Unterstützt (Phase 20c — Nr. 6.6 Pegelerhöhung durch Reflexionen)
+
+- Table 18: Absorptionsverlust an Wänden (4 Wandoberflächentypen: hart, Gebäude, absorbierend, hoch absorbierend) ✓
+- Gl. 27: Fresnel-Zonenprüfung der Mindestabmessung des Reflektors (bei 63 Hz) ✓
+- Gl. 28: Schallleistungspegel der Spiegelschallquelle (L_WA + D_ρ + D_Ir) ✓
+- Reflexionen bis einschließlich 3. Ordnung ✓
+- Spiegelpunktgeometrie mit Prüfung gleiche Seite von Quelle und Empfänger ✓
+- Ausbreitungsberechnung entlang des Reflexionsweges (Gl. 8–16) ✓
+- Energetische Summation von direktem und reflektiertem Beitrag (Gl. 29) ✓
+
+#### Software-Version
+
+`phase20c-normative-reflections-v1`
+
 ### Not yet supported (deferred)
 
-| Feature                                                  | Reason deferred     |
-| -------------------------------------------------------- | ------------------- |
-| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) | Phase 20a follow-up |
-| Image-source reflections (Gl. 27–28, Table 18)           | Phase 20c           |
-| Section 9 measurement-based vehicle data                 | Out of scope        |
+| Feature                                                           | Reason deferred     |
+| ----------------------------------------------------------------- | ------------------- |
+| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)          | Phase 20a follow-up |
+| Reflection + barrier diffraction combined paths (Gl. 28 note)      | Phase 20c follow-up |
+| Section 9 measurement-based vehicle data                          | Out of scope        |
 
 ## Evidence
 
@@ -135,4 +149,4 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 1. **Line source integration step**: Subsegment length is variable (auto-computed from track geometry); this may introduce minor numerical differences vs. implementations using a fixed step. Results converge to the same value as step length decreases.
 2. **Ground absorption**: Both A_gr,B (land, Gl. 14) and A_gr,W (water body, Gl. 16) are implemented. The water body fraction is specified per `TrackSegment` via `water_body_fraction_w` (0–1), which is a simplification: in a full terrain model, water fractions would be computed per propagation path.
-3. **Reflection paths**: Image-source reflections per Gl. 27–28 are not applied. Only direct propagation paths are computed.
+3. **Reflection paths**: Image-source reflections per Gl. 27–28 are supported up to 3rd order. Combined reflection + barrier diffraction paths are not yet implemented; reflected paths use free-field propagation only.
