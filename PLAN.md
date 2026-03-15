@@ -711,12 +711,12 @@ A SoundPlan project is a directory containing:
 - [x] Implement `GeoWand.geo` parser
   - [x] Extract barrier/wall polylines with heights and top geometry (type 0x03eb, per-point height in z2 field)
   - [ ] Extract barrier material/absorption properties (:D! records with dB values — deferred)
-- [ ] Implement `GeoTmp.geo` / `*.dgm` parser (terrain)
-  - [ ] Extract elevation contours or TIN from geometry file
-  - [ ] Extract digital ground model from `.dgm` binary
-  - [ ] Fallback: import `Höhen.txt` ASCII elevation points (semicolon-separated, German decimals)
-- [ ] Implement `CalcArea.geo` parser
-  - [ ] Extract calculation area rectangle/polygon
+- [x] Implement `GeoTmp.geo` parser (terrain)
+  - [x] Extract 26603 elevation points (type 0x040b) and 7 contour/terrain lines (types 0x040a, 0x046e)
+  - [ ] Extract digital ground model from `.dgm` binary — deferred
+  - [ ] Fallback: import `Höhen.txt` ASCII elevation points (semicolon-separated, German decimals) — deferred
+- [x] Implement `CalcArea.geo` parser
+  - [x] Extract calculation area rectangle/polygon (type 0x03ff, closed 5-point rectangle)
 
 ### Step 3 — Parse binary result/data tables
 
