@@ -116,11 +116,7 @@ func parseGeoRailData(data []byte) ([]RailTrack, error) {
 
 		case data[i+1] == 'D' && data[i+2] == '=':
 			// Rail parameter block: 3 marker + 4 + 4 hash + 4 + N×float64.
-			// Before reading params, flush the previous segment's points.
-			if current != nil && len(currentPoints) > 0 {
-				flushSegment(current, &currentPoints, currentParams)
-			}
-
+			// Parameters apply to the preceding coordinate points.
 			off := i + 3 + 12 // skip marker + u32 + hash + u32
 			if off+20*8 > len(data) {
 				i += 3
@@ -133,6 +129,12 @@ func parseGeoRailData(data []byte) ([]RailTrack, error) {
 				BridgeCorrection: readF64(data, off+9*8),
 				TrackHeight:      readF64(data, off+18*8),
 			}
+
+			// Flush current points with these params.
+			if current != nil {
+				flushSegment(current, &currentPoints, currentParams)
+			}
+
 			i = off + 20*8
 
 		case tag == "DL":
