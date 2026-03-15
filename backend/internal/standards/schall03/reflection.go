@@ -97,3 +97,27 @@ func MirrorSource(source geo.Point2D, wall ReflectingWall) (geo.Point2D, bool) {
 		Y: 2*footY - source.Y,
 	}, true
 }
+
+// FresnelCheck implements Gl. 27 to determine whether a reflecting surface is
+// large enough for a valid specular reflection.  The check uses the lowest
+// octave band frequency (63 Hz, λ ≈ 5.397 m) as the most restrictive case.
+// If the wall passes at 63 Hz it passes for all higher-frequency bands.
+//
+//	l_min · cos(β) > √(2λ / (1/d_so + 1/d_or))
+//
+// lMin:  smallest dimension of the reflector [m] (typically wall length or height)
+// beta:  angle between source→receiver line and reflector normal [rad]
+// dSO:   source-to-reflector distance [m]
+// dOR:   reflector-to-receiver distance [m]
+func FresnelCheck(lMin, beta, dSO, dOR float64) bool {
+	const lambda63 = speedOfSound / 63.0 // ≈ 5.397 m
+
+	if dSO <= 0 || dOR <= 0 {
+		return false
+	}
+
+	lhs := lMin * math.Cos(beta)
+	rhs := math.Sqrt(2.0 * lambda63 / (1.0/dSO + 1.0/dOR))
+
+	return lhs > rhs
+}
