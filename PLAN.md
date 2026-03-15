@@ -280,33 +280,33 @@ Status: not started.
 
 #### Step 1 — BarrierSegment type and validation
 
-- [ ] Define `BarrierSegment` struct: 2D line segment (A, B `geo.Point2D`), `TopHeightM float64` (barrier top above ground), `BaseHeightM float64` (absorbing base height for D_refl, Gl. 20), `ThicknessM float64` (barrier thickness `e` for double diffraction, 0 = thin), `IsParallel bool` (edges parallel for Gl. 25 vs. Gl. 26)
-- [ ] `Validate()` method with geometry and physics checks
-- [ ] Tests for valid/invalid barrier segments
+- [x] Define `BarrierSegment` struct: 2D line segment (A, B `geo.Point2D`), `TopHeightM float64` (barrier top above ground), `BaseHeightM float64` (absorbing base height for D_refl, Gl. 20), `ThicknessM float64` (barrier thickness `e` for double diffraction, 0 = thin), `IsParallel bool` (edges parallel for Gl. 25 vs. Gl. 26)
+- [x] `Validate()` method with geometry and physics checks
+- [x] Tests for valid/invalid barrier segments
 
 #### Step 2 — Ray–barrier intersection (2D plan view)
 
-- [ ] `FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing` — find all barrier segments that the source→receiver line crosses in plan view, returning intersection point, barrier index, and parameter t along the path
-- [ ] `BarrierCrossing` struct: intersection point, barrier index, distance from source, barrier reference
-- [ ] Sort crossings by distance from source
-- [ ] Tests: no crossing, single crossing, multiple crossings, barrier behind receiver
+- [x] `FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing` — find all barrier segments that the source→receiver line crosses in plan view, returning intersection point, barrier index, and parameter t along the path
+- [x] `BarrierCrossing` struct: intersection point, barrier index, distance from source, barrier reference
+- [x] Sort crossings by distance from source
+- [x] Tests: no crossing, single crossing, multiple crossings, barrier behind receiver
 
 #### Step 3 — Line-of-sight height check (vertical plane)
 
-- [ ] For each barrier crossing, compute the line-of-sight height at the intersection point (linear interpolation between source height and receiver height)
-- [ ] Compare against barrier top height — if barrier top ≤ line-of-sight, no obstruction (skip)
-- [ ] `IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM float64) bool`
-- [ ] Tests: barrier below line-of-sight (no obstruction), barrier above (obstruction), exact height match
+- [x] For each barrier crossing, compute the line-of-sight height at the intersection point (linear interpolation between source height and receiver height)
+- [x] Compare against barrier top height — if barrier top ≤ line-of-sight, no obstruction (skip)
+- [x] `IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM float64) bool`
+- [x] Tests: barrier below line-of-sight (no obstruction), barrier above (obstruction), exact height match
 
 #### Step 4 — Rubber band method (Gummibandmethode) for edge selection
 
-- [ ] Project obstructing barrier tops onto the vertical source→receiver cross-section plane
-- [ ] Compute the **upper convex hull** of the barrier top points plus source and receiver endpoints — this is the "rubber band" stretched from source over the barriers to receiver
-- [ ] The hull vertices (excluding source and receiver) are the **maßgebliche Beugungskanten** (significant diffraction edges)
-- [ ] Return selected edges in order from source to receiver
-- [ ] `SelectDiffractionEdges(source, receiver geo.Point2D, sourceH, receiverH float64, crossings []BarrierCrossing) []DiffractionEdge`
-- [ ] `DiffractionEdge` struct: position, barrier height, ds (source→edge), dr (edge→receiver), edge index
-- [ ] Tests: single barrier (1 edge), two barriers with inner one hidden (1 edge), two barriers both visible (2 edges), barrier exactly at source/receiver height
+- [x] Project obstructing barrier tops onto the vertical source→receiver cross-section plane
+- [x] Compute the **upper convex hull** of the barrier top points plus source and receiver endpoints — this is the "rubber band" stretched from source over the barriers to receiver
+- [x] The hull vertices (excluding source and receiver) are the **maßgebliche Beugungskanten** (significant diffraction edges)
+- [x] Return selected edges in order from source to receiver
+- [x] `SelectDiffractionEdges(sourceH, receiverH, totalDistM float64, crossings []BarrierCrossing) []DiffractionEdge`
+- [x] `DiffractionEdge` struct: position, barrier height, ds (source→edge), dr (edge→receiver), edge index
+- [x] Tests: single barrier (1 edge), two barriers with inner one hidden (2 outer edges selected), two barriers both visible (2 edges), barrier exactly at source/receiver height
 
 #### Step 5 — Compute BarrierGeometry from selected edges
 
