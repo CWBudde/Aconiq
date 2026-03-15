@@ -1,0 +1,7 @@
+{
+  "description": "1st-order reflection off hard wall at 40m from track",
+  "increase_db": 1.837841,
+  "lp_aeq_day_no_wall": 70.627226,
+  "lp_aeq_day_with_wall": 72.465068,
+  "scenario": "refl1_single_wall_reflection"
+}
