@@ -233,6 +233,100 @@ func ComputeNormativeReceiverLevels(
 	}, nil
 }
 
+// addDirectAndReflected computes the direct and reflected line-source
+// contributions for one emission result and adds the linear power to *sum.
+func addDirectAndReflected(
+	emission *StreckeEmissionResult,
+	seg TrackSegment,
+	receiver ReceiverInput,
+	walls []ReflectingWall,
+	sum *float64,
+) {
+	lp := normativeLineSourceLpAeq(emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
+	if !math.IsInf(lp, -1) {
+		*sum += math.Pow(10, 0.1*lp)
+	}
+
+	if len(walls) == 0 {
+		return
+	}
+
+	reflLp := ComputeReflectedLineSourceLpAeq(
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls,
+	)
+	if !math.IsInf(reflLp, -1) {
+		*sum += math.Pow(10, 0.1*reflLp)
+	}
+}
+
+// ComputeNormativeReceiverLevelsWithWalls computes L_pAeq and L_r including
+// reflected path contributions from the given walls.
+func ComputeNormativeReceiverLevelsWithWalls(
+	receiver ReceiverInput,
+	segments []TrackSegment,
+	walls []ReflectingWall,
+) (NormativeReceiverLevels, error) {
+	if len(segments) == 0 {
+		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
+	}
+
+	err := receiver.Validate()
+	if err != nil {
+		return NormativeReceiverLevels{}, err
+	}
+
+	for i, w := range walls {
+		wallErr := w.Validate()
+		if wallErr != nil {
+			return NormativeReceiverLevels{}, fmt.Errorf("wall[%d]: %w", i, wallErr)
+		}
+	}
+
+	var daySum, nightSum float64
+
+	for si, seg := range segments {
+		err = seg.Validate()
+		if err != nil {
+			return NormativeReceiverLevels{}, fmt.Errorf("segment[%d]: %w", si, err)
+		}
+
+		for _, op := range seg.Operations {
+			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourDay))
+			if emitErr != nil {
+				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
+			}
+
+			addDirectAndReflected(dayEmission, seg, receiver, walls, &daySum)
+
+			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
+			if emitErr != nil {
+				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
+			}
+
+			addDirectAndReflected(nightEmission, seg, receiver, walls, &nightSum)
+		}
+	}
+
+	lpAeqDay := math.Inf(-1)
+	if daySum > 0 {
+		lpAeqDay = 10 * math.Log10(daySum)
+	}
+
+	lpAeqNight := math.Inf(-1)
+	if nightSum > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum)
+	}
+
+	const ks = 0.0
+
+	return NormativeReceiverLevels{
+		LpAeqDay:   lpAeqDay,
+		LpAeqNight: lpAeqNight,
+		LrDay:      beurteilungspegel(lpAeqDay, ks),
+		LrNight:    beurteilungspegel(lpAeqNight, ks),
+	}, nil
+}
+
 // ReceiverOutput stores one computed receiver record.
 type ReceiverOutput struct {
 	Receiver   geo.PointReceiver
