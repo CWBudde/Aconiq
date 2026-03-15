@@ -345,6 +345,106 @@ func doubleEdgeGeometry(
 	}
 }
 
+// ComputeLateralDiffraction computes the barrier attenuation for lateral
+// diffraction around the endpoints of a barrier segment.  It evaluates
+// diffraction paths around both ends (A and B) and returns the one with
+// the least attenuation (the dominant path).
+//
+// Lateral diffraction uses Gl. 18: A_bar = D_z ≥ 0 (no D_refl or A_gr
+// subtraction).  The path difference z is computed per Gl. 26 as the detour
+// source → barrier endpoint → receiver minus the direct distance.
+//
+// Returns (abar, true) if at least one lateral path exists, or (zero, false)
+// if neither endpoint provides a valid lateral path.
+func ComputeLateralDiffraction(
+	source, receiver geo.Point2D,
+	sourceHeightM, receiverHeightM float64,
+	barrier BarrierSegment,
+) (BeiblattSpectrum, bool) {
+	dh := receiverHeightM - sourceHeightM
+	directDist := math.Sqrt(
+		geo.Distance(source, receiver)*geo.Distance(source, receiver) + dh*dh,
+	)
+
+	if directDist <= 0 {
+		return BeiblattSpectrum{}, false
+	}
+
+	var bestAbar BeiblattSpectrum
+	found := false
+
+	for _, endpoint := range [2]geo.Point2D{barrier.A, barrier.B} {
+		abar, ok := lateralPathAbar(source, receiver, endpoint, sourceHeightM, receiverHeightM, barrier.TopHeightM, directDist)
+		if !ok {
+			continue
+		}
+
+		if !found || energeticTotalSpectrum(abar) < energeticTotalSpectrum(bestAbar) {
+			bestAbar = abar
+			found = true
+		}
+	}
+
+	return bestAbar, found
+}
+
+// lateralPathAbar computes A_bar for one lateral diffraction path around a
+// barrier endpoint.
+func lateralPathAbar(
+	source, receiver, endpoint geo.Point2D,
+	sourceH, receiverH, barrierTopH, directDist float64,
+) (BeiblattSpectrum, bool) {
+	// Horizontal distances.
+	horizSE := geo.Distance(source, endpoint)
+	horizER := geo.Distance(endpoint, receiver)
+
+	// 3D distances: use barrier top height at the endpoint.
+	dhS := barrierTopH - sourceH
+	ds := math.Sqrt(horizSE*horizSE + dhS*dhS)
+
+	dhR := receiverH - barrierTopH
+	dr := math.Sqrt(horizER*horizER + dhR*dhR)
+
+	// Path difference z per Gl. 26.
+	z := ds + dr - directDist
+
+	if z <= 0 {
+		return BeiblattSpectrum{}, false // no screening effect
+	}
+
+	// Compute D_z per band using Gl. 21 with C₂=40 (Strecke), C₃=1 (single edge).
+	// Lateral diffraction: A_bar = D_z ≥ 0 (Gl. 18, no D_refl, no A_gr).
+	km := kmet(ds, dr, directDist, z)
+
+	var abar BeiblattSpectrum
+
+	for f := range NumBeiblattOctaveBands {
+		fm := BeiblattOctaveBandFrequencies[f]
+		lam := wavelength(fm)
+		dz := barrierDz(lam, 1.0, z, km)
+
+		if dz > DzCapSingle {
+			dz = DzCapSingle
+		}
+
+		abar[f] = math.Max(dz, 0)
+	}
+
+	return abar, true
+}
+
+// energeticTotalSpectrum returns the A-weighted energetic sum of a BeiblattSpectrum
+// for comparison purposes (lower = less attenuation = dominant path).
+func energeticTotalSpectrum(s BeiblattSpectrum) float64 {
+	sum := 0.0
+
+	for f := range NumBeiblattOctaveBands {
+		sum += s[f]
+	}
+
+	return sum
+}
+
 // IsObstructing reports whether a barrier crossing actually obstructs the
 // line of sight between source and receiver.  The barrier obstructs when its
 // top height exceeds the line-of-sight height at the crossing point.
