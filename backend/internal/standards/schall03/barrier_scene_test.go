@@ -205,3 +205,81 @@ func TestFindBarrierCrossingsBehindReceiver(t *testing.T) {
 		t.Errorf("barrier behind receiver should not be crossed, got %d crossings", len(crossings))
 	}
 }
+
+func TestIsObstructingAboveLOS(t *testing.T) {
+	t.Parallel()
+
+	// Source at height 0, receiver at height 0, barrier top at 4 m.
+	// Line-of-sight at crossing = 0 m → barrier (4 m) is above → obstructing.
+	crossing := schall03.BarrierCrossing{
+		Point:          geo.Point2D{X: 50, Y: 0},
+		DistFromSource: 50,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: 50, Y: -10}, B: geo.Point2D{X: 50, Y: 10},
+			TopHeightM: 4, BaseHeightM: 0,
+		},
+	}
+
+	if !schall03.IsObstructing(crossing, 0, 0, 100) {
+		t.Error("barrier above line-of-sight should obstruct")
+	}
+}
+
+func TestIsObstructingBelowLOS(t *testing.T) {
+	t.Parallel()
+
+	// Source at height 0, receiver at height 10.
+	// At midpoint (frac=0.5): LOS height = 5 m.
+	// Barrier top at 3 m → below LOS → not obstructing.
+	crossing := schall03.BarrierCrossing{
+		Point:          geo.Point2D{X: 50, Y: 0},
+		DistFromSource: 50,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: 50, Y: -10}, B: geo.Point2D{X: 50, Y: 10},
+			TopHeightM: 3, BaseHeightM: 0,
+		},
+	}
+
+	if schall03.IsObstructing(crossing, 0, 10, 100) {
+		t.Error("barrier below line-of-sight should not obstruct")
+	}
+}
+
+func TestIsObstructingExactlyAtLOS(t *testing.T) {
+	t.Parallel()
+
+	// Source at height 2, receiver at height 6.
+	// At frac=0.5: LOS = 2 + 0.5*4 = 4 m.
+	// Barrier top exactly at 4 m → not obstructing (must be strictly above).
+	crossing := schall03.BarrierCrossing{
+		Point:          geo.Point2D{X: 50, Y: 0},
+		DistFromSource: 50,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: 50, Y: -10}, B: geo.Point2D{X: 50, Y: 10},
+			TopHeightM: 4, BaseHeightM: 0,
+		},
+	}
+
+	if schall03.IsObstructing(crossing, 2, 6, 100) {
+		t.Error("barrier exactly at line-of-sight should not obstruct (must be strictly above)")
+	}
+}
+
+func TestIsObstructingNearSource(t *testing.T) {
+	t.Parallel()
+
+	// Source at height 0, receiver at height 0, barrier close to source at 10 m.
+	// LOS = 0 everywhere → any positive barrier height obstructs.
+	crossing := schall03.BarrierCrossing{
+		Point:          geo.Point2D{X: 10, Y: 0},
+		DistFromSource: 10,
+		Barrier: schall03.BarrierSegment{
+			A: geo.Point2D{X: 10, Y: -5}, B: geo.Point2D{X: 10, Y: 5},
+			TopHeightM: 2, BaseHeightM: 0,
+		},
+	}
+
+	if !schall03.IsObstructing(crossing, 0, 0, 100) {
+		t.Error("barrier near source should obstruct when LOS is at ground level")
+	}
+}

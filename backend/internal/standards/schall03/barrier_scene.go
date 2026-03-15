@@ -115,3 +115,20 @@ func FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegmen
 
 	return crossings
 }
+
+// IsObstructing reports whether a barrier crossing actually obstructs the
+// line of sight between source and receiver.  The barrier obstructs when its
+// top height exceeds the line-of-sight height at the crossing point.
+//
+// The line-of-sight height is linearly interpolated between sourceHeightM and
+// receiverHeightM based on the crossing's fractional position along the path.
+func IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM, totalDistM float64) bool {
+	if totalDistM <= 0 {
+		return false
+	}
+
+	frac := crossing.DistFromSource / totalDistM
+	losHeight := sourceHeightM + frac*(receiverHeightM-sourceHeightM)
+
+	return crossing.Barrier.TopHeightM > losHeight
+}
