@@ -63,8 +63,8 @@ func ComputeLineSourceLevel(data YardSourceData, nPerHour float64, kK float64) B
 // by aggregating point and line sources over a Teilfläche of area areaM2.
 //
 // pointSources contains the grouped point source contributions; lineSources
-// the line source contributions.  areaM2 is S_F (m²) of the Teilfläche.
-// Either slice may be nil or empty.
+// the line source contributions.  areaM2 is S_F (m²) of the Teilfläche and
+// must be > 0.  Either slice may be nil or empty.
 func ComputeAreaSourceLevel(
 	pointSources []AreaPointContrib,
 	lineSources []AreaLineContrib,
@@ -149,6 +149,8 @@ type YardPointImmissionInput struct {
 //
 // Key differences vs. Strecken propagation:
 //   - No directivity D_I (yard sources radiate omnidirectionally)
+//   - D_Ω (solid-angle ground reflection, Gl. 9) is retained — it applies to
+//     all point sources near a reflective ground plane, independent of D_I
 //   - Barrier diffraction uses C₂=20 via ComputeAbarYard
 func ComputeYardPointSourceImmission(inp YardPointImmissionInput) (float64, error) {
 	if inp.ReceiverDistM <= 0 {
