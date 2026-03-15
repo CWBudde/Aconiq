@@ -9,6 +9,10 @@ const speedOfSound = 340.0
 // c2Strecke is the constant C₂ = 40 for Eisenbahn Strecke (Gl. 21).
 const c2Strecke = 40.0
 
+// c2Rangierbahnhof is C₂=20 for flächenhafte Bahnanlagen (Rangier- und
+// Umschlagbahnhöfe) per Gl. 21 note.
+const c2Rangierbahnhof = 20.0
+
 // DzCapSingle is the maximum allowed D_z for a single diffraction edge (dB).
 const DzCapSingle = 20.0
 
@@ -49,6 +53,17 @@ func wavelength(fm float64) float64 {
 	return speedOfSound / fm
 }
 
+// barrierDzWithC2 computes the screening attenuation per Gl. 21.
+// Use c2=c2Strecke (40) for Eisenbahn/Strassenbahn Strecken or
+// c2=c2Rangierbahnhof (20) for Rangier- und Umschlagbahnhöfe.
+func barrierDzWithC2(c2, lambda, c3, z, kmet float64) float64 {
+	if z <= 0 {
+		return 0
+	}
+
+	return 10.0 * math.Log10(3.0+c2/lambda*c3*z*kmet)
+}
+
 // barrierDz computes the screening attenuation per Gl. 21 using C₂=40
 // (Eisenbahn Strecke).
 //
@@ -61,11 +76,7 @@ func wavelength(fm float64) float64 {
 //
 // Returns 0 when z ≤ 0.
 func barrierDz(lambda, c3, z, kmet float64) float64 {
-	if z <= 0 {
-		return 0
-	}
-
-	return 10.0 * math.Log10(3.0+c2Strecke/lambda*c3*z*kmet)
+	return barrierDzWithC2(c2Strecke, lambda, c3, z, kmet)
 }
 
 // kmet computes the meteorological correction factor per Gl. 23-24.
