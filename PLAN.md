@@ -259,7 +259,7 @@ Status: done.
 
 ## Phase 20d — Schall 03: Barrier diffraction in propagation pipeline (direct + reflected paths)
 
-Status: in progress (Steps 1–6 done).
+Status: in progress (Steps 1–8 done).
 
 **Goal:** Wire barrier diffraction (Gl. 17–26) into the normative propagation pipeline for both direct and reflected paths. Currently `normativeSubsegmentContrib` computes A_div + A_atm + A_gr but never applies A_bar. This phase adds a `BarrierSegment` scene type, implements the Gummibandmethode (rubber band / upper convex hull) for selecting significant diffraction edges, and integrates barrier attenuation into both the Strecke direct-path pipeline and the reflected-path pipeline from Phase 20c.
 
@@ -329,19 +329,19 @@ Status: in progress (Steps 1–6 done).
 
 #### Step 7 — Integrate barriers into direct-path pipeline
 
-- [ ] Extend `normativeSubsegmentContrib` (or create a wrapper) to accept `[]BarrierSegment`
-- [ ] For each subsegment: find barrier crossings, check obstruction, select edges via rubber band, compute BarrierGeometry, call `ComputeAbar`, subtract A_bar per band
-- [ ] Also compute lateral diffraction for each crossing barrier; use minimum of top and lateral A_bar
-- [ ] Extend `ComputeNormativeReceiverLevels` signature: add optional `barriers []BarrierSegment` parameter (new function `ComputeNormativeReceiverLevelsWithBarriers` or extend `WithWalls` to `WithScene`)
-- [ ] Tests: track with single barrier (level must be lower than free field), barrier too low to obstruct (no change), barrier with absorbing base (D_refl reduction)
+- [x] `normativeSubsegmentContribWithBarriers` wrapper accepting `[]BarrierSegment`
+- [x] For each subsegment: find barrier crossings, check obstruction, select edges via rubber band, compute BarrierGeometry, call `ComputeAbar`, subtract A_bar per band
+- [x] Also compute lateral diffraction for each crossing barrier; use minimum of top and lateral A_bar
+- [x] `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` unified entry point
+- [x] Tests: track with single barrier (level must be lower than free field), barrier too low to obstruct (no change), wall + barrier combined
 
 #### Step 8 — Integrate barriers into reflected-path pipeline
 
-- [ ] Extend `ReflectedSubsegmentContrib` to accept `[]BarrierSegment`
-- [ ] For each reflected path: the "source" for barrier checking is the **image source position**, and the path to check is image source → receiver
-- [ ] Find barrier crossings along the reflected path, apply the same rubber band + ComputeAbar chain
-- [ ] Extend `ComputeReflectedLineSourceLpAeq` and `ComputeNormativeReceiverLevelsWithWalls` to pass barriers through
-- [ ] Tests: reflected path obstructed by barrier (lower than unobstructed reflection), reflected path not obstructed (unchanged)
+- [x] Extend `ReflectedSubsegmentContrib` to accept `[]BarrierSegment` → `ReflectedSubsegmentContribWithBarriers`
+- [x] For each reflected path: the "source" for barrier checking is the **image source position**, and the path to check is image source → receiver
+- [x] Find barrier crossings along the reflected path, apply the same rubber band + ComputeAbar chain
+- [x] `ComputeReflectedLineSourceLpAeqWithBarriers` and `ComputeNormativeReceiverLevelsWithScene` updated to pass barriers through
+- [x] Tests: reflected path obstructed by barrier (lower than unobstructed reflection)
 
 #### Step 9 — Unified scene API
 
