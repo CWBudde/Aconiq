@@ -319,16 +319,22 @@ Status: preview baseline shipped (industry point sources, LpAeq, favorable meteo
 
 ## Phase 26 — CityGML import completion
 
-Status: basic import working (building solids → footprints + height).
+Status: **complete** — building import hardened with attribute preservation, structured import report, and documented decisions.
 
-### Open items
+### Decisions
 
-- [ ] Decide which CityGML versions/profiles are accepted first (2.0, 3.0, or both)
-- [ ] Define CRS / axis-order normalization rules for CityGML inputs (depends on Phase 18)
-- [ ] Decide how terrain surfaces, barriers, bridges, and tunnels are handled or deferred
-- [ ] Document attribute extraction rules for IDs, heights, usage classes, and missing-value fallbacks
-- [ ] Emit actionable validation errors for unsupported geometries, CRS issues, and malformed input
-- [ ] Ensure imported features remain compatible with standards-specific extraction
+- [x] CityGML versions: both 2.0 and 3.0 accepted (namespace-based auto-detection in go-citygml)
+- [x] CRS / axis-order: handled by Phase 18 pipeline (auto-detect from srsName, transform via wroge/wgs84)
+- [x] Terrain, barriers, bridges, tunnels: deferred — terrain comes from DTM files; others rarely appear in noise-relevant CityGML
+- [x] BuildingPart: deferred (needs upstream go-citygml library work)
+
+### Completed items
+
+- [x] Preserve CityGML attributes (`citygml_class`, `citygml_function`, `citygml_usage`, `citygml_lod`) as informational properties
+- [x] Structured import report: total/imported/skipped counts with per-building skip reasons
+- [x] Import report written to `.noise/model/citygml-import-report.json` and printed to CLI
+- [x] Skip reasons: no height, invalid height, no footprint, degenerate polygon
+- [x] Imported features remain compatible with standards-specific extraction (via modelgeojson normalization)
 
 ---
 
