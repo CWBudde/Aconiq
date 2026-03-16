@@ -800,6 +800,7 @@ func collectFromCoords(coords any, collect func(x, y float64), found *bool) {
 
 		if xerr == nil && yerr == nil {
 			collect(x, y)
+
 			*found = true
 
 			return
