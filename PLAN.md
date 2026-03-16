@@ -161,210 +161,38 @@ Status: implementation and conformance tracking complete.
 
 ---
 
-## Phase 20 — Schall 03: standards-faithful completion & conformance
+## Phase 20 — Schall 03: standards-faithful implementation
 
-Status: **complete** (Eisenbahn Strecke scope).
+Status: **complete** — all normative formulas (Gl. 1–36), all tables (1–18), all source types implemented.
 
-- [x] Module structure, typed rail/planning source schema, octave-band data model, framework descriptor, preview emission/propagation, CLI wiring, receiver tables, rasters, provenance, golden scenarios, acceptance fixtures.
-- [x] Encode Beiblatt 1 normative data: Fz-Kategorien 1–10, all Teilquellen, Table 4 Zugarten, Tables 6–9/11/17
-- [x] Normative emission chain (Gl. 1–2): multi-Teilquelle per Fz, speed factors, c1/c2/K_Br/K_L corrections
-- [x] Expand typed source model: TrainOperation with FzComposition, JSON schema for scenario files
-- [x] Normative propagation chain (Gl. 8–16): A*div, A_atm, A_gr, D_I, D*Ω, line source integration
-- [x] Barrier diffraction (Gl. 18–26): A_bar, D_z, C₂/C₃, K_met, D_refl, single/double caps
-- [x] Assessment and indicators (Gl. 29–34): Beurteilungspegel, K_S=0, L_r,Tag/L_r,Nacht
-- [x] Dedicated Schall 03 conformance runner with CI-safe synthetic test suite (4 scenarios)
-- [x] Publish Schall 03 conformance boundary document (`docs/conformance/schall03-konformitaetserklaerung.md`)
+### Completed scope (Phases 20–20d)
 
-### Open items
+| Sub-phase | Scope               | Key deliverables                                                                                                         |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **20**    | Eisenbahn Strecke   | Beiblatt 1 (Fz 1–10), Tables 4–9/11/17, emission Gl. 1–2, propagation Gl. 8–16, assessment Gl. 29–34                     |
+| **20a**   | Straßenbahnen       | Beiblatt 2 (Fz 21–23), Tables 12–16, Gl. 37–38, K_S=+5 dB                                                                |
+| **20b**   | Rangierbahnhöfe     | Beiblatt 3, Table 10, Gl. 3–7 (point/line/area sources), Gl. 30 (yard immission), Gl. 35–36 (combined assessment), C₂=20 |
+| **20c**   | Reflections         | Table 18 (wall absorption), Gl. 27 (Fresnel), Gl. 28 (image sources), up to 3rd order                                    |
+| **20d**   | Barrier diffraction | Gl. 17–26 in pipeline, Gummibandmethode, lateral diffraction, barriers on direct + reflected paths, unified scene API    |
 
-- [x] Ground correction for water bodies A_gr,W (Gl. 16) — `WaterBodyFractionW` on `TrackSegment`, CI-safe scenario p2_water_body
-- [ ] End-to-end report/export checks (defer until beyond Eisenbahn Strecke scope)
+**Entry point:** `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` — full normative pipeline with reflections and barriers.
 
----
+### Remaining items
 
-## Phase 20a — Schall 03: Straßenbahnen
-
-Status: complete (open item: Nr. 5.3.2 permanently slow section exception, ≤ 30 km/h).
-
-**Goal:** extend the schall03 module to cover Straßenbahn (tram) vehicles — Fz-Kategorien 21–23, Beiblatt 2, and the Straßenbahn-specific correction tables (Tables 12–16).
-
-### Implementation
-
-- [x] Encode Beiblatt 2 normative data: Fz-Kategorien 21–23 with all Teilquellen, a_A and Δa_f values
-- [x] Encode Table 12: Geschwindigkeitsfaktoren b for Straßenbahnen (Rollgeräusch, aerodynamisch, Aggregat, Antrieb) — embedded per Teilquelle via `B *BeiblattSpectrum`
-- [x] Encode Table 13: Pegelkorrekturen c1 for Straßenbahn Fahrbahnarten (Betonschwelle, Holzschwelle, Rasengleis, feste Fahrbahn, Pflaster, Rinnen-/Rillenschiene)
-- [x] Encode Table 14: Pegelkorrekturen c2 for Straßenbahn surface conditions (büG, Schienenstegdämpfer) — track type c1 corrections (3 types, Table 15)
-- [x] Encode Table 15: Straßenbahn Auffälligkeitskorrektur K_L — speed clamp ≥ 50 km/h, curve penalty r < 200 m → +4 dB (Nr. 5.3.2)
-- [x] Encode Table 16: Straßenbahn bridge corrections K_Br (5 types)
-- [x] Expand `TrainOperation`/`FzComposition` to accept Fz 21–23 without breaking Fz 1–10 paths
-- [x] Add `ZugartStraßenbahn` entries (Niederflur-ET, Hochflur-ET, Gelenktriebwagen) to Zugarten list
-- [x] Implement Straßenbahn speed rules (Nr. 5.3): speed clamp ≥ 50 km/h implemented; permanently slow section exception (≤ 30 km/h) not yet implemented
-- [ ] Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) — deferred
+- [x] Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) — `PermanentlySlow` flag on TrackSegment/StreckeEmissionInput
+- [ ] Section 9 measurement-based vehicle data — custom vehicle acoustics from measurements (input pathway, not computation gap; out of scope)
+- [ ] End-to-end report/export checks
+- [ ] Golden snapshot conformance scenarios for Phase 20d barrier diffraction
 
 ### Conformance
 
-- [x] Add CI-safe scenarios: at least one Straßenbahn emission scenario and one full-chain scenario
-- [x] Generate golden snapshots for new scenarios
-- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Straßenbahnen as supported
+Conformance declaration: `docs/conformance/schall03-konformitaetserklaerung.md`
+CI-safe test suite: `backend/internal/qa/acceptance/schall03/testdata/ci_safe_suite.json`
 
----
+### References (Phase 20d barrier diffraction)
 
-## Phase 20b — Schall 03: Rangier- und Umschlagbahnhöfe
-
-Status: complete.
-
-**Goal:** extend the schall03 module to cover freight yard and transshipment terminal noise sources — Beiblatt 3, Table 10, and the Rangierbahnhof assessment equations (Gl. 35–36).
-
-### Implementation
-
-- [x] Encode Beiblatt 3 normative data: Rangierbahnhof sound source table (shunting, coupling impacts, brake squeal, loading noise, stationary equipment)
-- [x] Encode Table 10: Schallquellen in Rangierbahnhöfen und Umschlagbahnhöfen — source types, A-weighted levels, spectral corrections
-- [x] Add `RangierbahnhofSource` type to the source model: point source, line source, area source (Flächenschallquelle)
-- [x] Implement point and line source emission per Gl. 3–4
-- [x] Implement area source aggregation per Gl. 5 (Flächenschallquelle with spatial integration)
-- [x] Implement Rangierbahnhof assessment (Gl. 35–36): L_r,Rangierbahnhof with K_E impulse surcharge
-- [x] Wire Rangierbahnhof sources through the existing propagation chain (A_div, A_atm, A_gr, A_bar)
-
-### Conformance
-
-- [x] Add CI-safe scenarios: point source, area source, and full Rangierbahnhof assessment
-- [x] Generate golden snapshots
-- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark Rangierbahnhöfe as supported
-
----
-
-## Phase 20c — Schall 03: Image-source reflections
-
-Status: done.
-
-**Goal:** implement image-source reflections per Gl. 27–28, enabling multi-path propagation for façade-reflected sound.
-
-### Implementation
-
-- [x] Encode Table 18: Absorptionsverlust an Wänden — octave-band absorption loss per wall material
-- [x] Implement Fresnel zone validity check (Gl. 27): minimum reflecting surface area as function of wavelength and geometry
-- [x] Implement 1st-order image source: mirror source position, reflected path geometry, reflection loss per Table 18
-- [x] Implement 2nd-order and 3rd-order reflections (up to 3 bounces per Schall 03 scope)
-- [x] Integrate reflected paths into the propagation chain: add reflected path contributions energetically to the direct path result
-- [x] Handle reflection + barrier diffraction combined paths (Gl. 28) — done in Phase 20d
-- [x] Extend scene geometry to accept reflecting wall definitions (`ReflectingWall` type)
-
-### Conformance
-
-- [x] Add CI-safe scenarios: single reflecting wall, double reflection (canyon geometry), Fresnel rejection
-- [x] Generate golden snapshots
-- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark reflections as supported
-
----
-
-## Phase 20d — Schall 03: Barrier diffraction in propagation pipeline (direct + reflected paths)
-
-Status: done (golden snapshot conformance scenarios deferred).
-
-**Goal:** Wire barrier diffraction (Gl. 17–26) into the normative propagation pipeline for both direct and reflected paths. Currently `normativeSubsegmentContrib` computes A_div + A_atm + A_gr but never applies A_bar. This phase adds a `BarrierSegment` scene type, implements the Gummibandmethode (rubber band / upper convex hull) for selecting significant diffraction edges, and integrates barrier attenuation into both the Strecke direct-path pipeline and the reflected-path pipeline from Phase 20c.
-
-**Architecture:** New `BarrierSegment` type (2D line segment + height + thickness + absorption properties) parallel to `ReflectingWall`. New `barrier_scene.go` implements ray–barrier intersection testing and the rubber band method for edge selection. Both `normativeSubsegmentContrib` and `ReflectedSubsegmentContrib` gain barrier geometry as an input; the existing `ComputeAbar` function (already implemented in `barrier.go`) is called with the computed `BarrierGeometry`. `ComputeNormativeReceiverLevels` and `ComputeNormativeReceiverLevelsWithWalls` accept an optional `[]BarrierSegment` parameter.
-
-**Key references:**
-
-- Schall 03 (Anlage 2 zu §4 der 16. BImSchV), Section 6.5 (Gl. 17–26), Bild 5–7
-- ISO 9613-2:1996, Section 7.4 — identical barrier screening model; Schall 03 Gl. 21 derives from this
-- CNOSSOS-EU (JRC Reference Report, 2012), Section 2.5.5 — rubber band / convex hull pseudocode for edge selection; same barrier model
-- Maekawa, Z. (1968), "Noise reduction by screens", Applied Acoustics 1, pp. 157–173 — empirical basis for D_z = 10·lg(3 + C₂·z/λ)
-- Pierce, A.D. (1974), "Diffraction of sound around corners and over wide barriers", JASA 55 — theoretical basis for Kurze-Anderson C₃ double-diffraction factor
-- DIN 45642 / VDI 2720 — German noise barrier design standards referencing the same computational method
-
-**Potential dependency:** `github.com/cwbudde/go-clipper2` (at `/mnt/projekte/Code/Go-Clipper2`) provides robust polygon clipping with integer precision. May be useful if barrier–path intersection testing needs robust geometric operations beyond simple segment intersection. Evaluate during implementation; prefer the simpler `geo.SegmentIntersection` if sufficient.
-
-### Implementation
-
-#### Step 1 — BarrierSegment type and validation
-
-- [x] Define `BarrierSegment` struct: 2D line segment (A, B `geo.Point2D`), `TopHeightM float64` (barrier top above ground), `BaseHeightM float64` (absorbing base height for D_refl, Gl. 20), `ThicknessM float64` (barrier thickness `e` for double diffraction, 0 = thin), `IsParallel bool` (edges parallel for Gl. 25 vs. Gl. 26)
-- [x] `Validate()` method with geometry and physics checks
-- [x] Tests for valid/invalid barrier segments
-
-#### Step 2 — Ray–barrier intersection (2D plan view)
-
-- [x] `FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing` — find all barrier segments that the source→receiver line crosses in plan view, returning intersection point, barrier index, and parameter t along the path
-- [x] `BarrierCrossing` struct: intersection point, barrier index, distance from source, barrier reference
-- [x] Sort crossings by distance from source
-- [x] Tests: no crossing, single crossing, multiple crossings, barrier behind receiver
-
-#### Step 3 — Line-of-sight height check (vertical plane)
-
-- [x] For each barrier crossing, compute the line-of-sight height at the intersection point (linear interpolation between source height and receiver height)
-- [x] Compare against barrier top height — if barrier top ≤ line-of-sight, no obstruction (skip)
-- [x] `IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM float64) bool`
-- [x] Tests: barrier below line-of-sight (no obstruction), barrier above (obstruction), exact height match
-
-#### Step 4 — Rubber band method (Gummibandmethode) for edge selection
-
-- [x] Project obstructing barrier tops onto the vertical source→receiver cross-section plane
-- [x] Compute the **upper convex hull** of the barrier top points plus source and receiver endpoints — this is the "rubber band" stretched from source over the barriers to receiver
-- [x] The hull vertices (excluding source and receiver) are the **maßgebliche Beugungskanten** (significant diffraction edges)
-- [x] Return selected edges in order from source to receiver
-- [x] `SelectDiffractionEdges(sourceH, receiverH, totalDistM float64, crossings []BarrierCrossing) []DiffractionEdge`
-- [x] `DiffractionEdge` struct: position, barrier height, ds (source→edge), dr (edge→receiver), edge index
-- [x] Tests: single barrier (1 edge), two barriers with inner one hidden (2 outer edges selected), two barriers both visible (2 edges), barrier exactly at source/receiver height
-
-#### Step 5 — Compute BarrierGeometry from selected edges
-
-- [x] For 1 selected edge: single diffraction. Compute ds, dr, d, z per Gl. 25 or 26. Set `IsDouble = false`, `E = 0`.
-- [x] For 2 selected edges: double diffraction. Compute ds (source→first edge), dr (last edge→receiver), e (distance between edges), z per Gl. 25/26. Set `IsDouble = true`, `E = edge distance`.
-- [x] For >2 edges: use outermost two edges as the double-diffraction pair (the standard caps at 25 dB for double diffraction; intermediate edges are subsumed by the rubber band hull)
-- [x] `ComputeBarrierGeometryFromEdges(edges []DiffractionEdge, sourceH, receiverH, directDist float64) BarrierGeometry`
-- [x] Include D_refl computation using `BaseHeightM` from the barrier
-- [x] Tests: single thin barrier, thick barrier (e > 0), two separate barriers, verify z and distances against hand calculations
-
-#### Step 6 — Lateral diffraction (around barrier ends)
-
-- [x] For each barrier segment, compute diffraction paths around both endpoints (left and right lateral paths)
-- [x] Lateral path: source → barrier endpoint → receiver, with z computed as path length difference
-- [x] The standard says lateral edges are modeled as straight lines (Geradenstücke)
-- [x] Lateral diffraction uses Gl. 18 (A_bar = D_z ≥ 0, no D_refl or A_gr subtraction)
-- [x] Select the minimum A_bar across top diffraction and both lateral diffractions — the path with least attenuation dominates
-- [x] `ComputeLateralDiffraction(source, receiver geo.Point2D, sourceH, receiverH float64, barrier BarrierSegment) (BeiblattSpectrum, bool)` — returns lateral A_bar if lateral path exists
-- [x] Tests: short barrier where lateral path is shorter than top path, long barrier where top path dominates
-
-#### Step 7 — Integrate barriers into direct-path pipeline
-
-- [x] `normativeSubsegmentContribWithBarriers` wrapper accepting `[]BarrierSegment`
-- [x] For each subsegment: find barrier crossings, check obstruction, select edges via rubber band, compute BarrierGeometry, call `ComputeAbar`, subtract A_bar per band
-- [x] Also compute lateral diffraction for each crossing barrier; use minimum of top and lateral A_bar
-- [x] `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` unified entry point
-- [x] Tests: track with single barrier (level must be lower than free field), barrier too low to obstruct (no change), wall + barrier combined
-
-#### Step 8 — Integrate barriers into reflected-path pipeline
-
-- [x] Extend `ReflectedSubsegmentContrib` to accept `[]BarrierSegment` → `ReflectedSubsegmentContribWithBarriers`
-- [x] For each reflected path: the "source" for barrier checking is the **image source position**, and the path to check is image source → receiver
-- [x] Find barrier crossings along the reflected path, apply the same rubber band + ComputeAbar chain
-- [x] `ComputeReflectedLineSourceLpAeqWithBarriers` and `ComputeNormativeReceiverLevelsWithScene` updated to pass barriers through
-- [x] Tests: reflected path obstructed by barrier (lower than unobstructed reflection)
-
-#### Step 9 — Unified scene API
-
-- [x] `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` — unified entry point
-- [x] Backward compatible: existing `ComputeNormativeReceiverLevels` and `ComputeNormativeReceiverLevelsWithWalls` unchanged
-- [x] Conformance doc updated: reflection + barrier combined paths removed from "not yet supported"
-
-### Conformance
-
-- [x] Integration tests: barrier reduces direct-path level, low barrier has no effect, wall+barrier combined, reflected path obstructed by barrier
-- [x] Unit tests: rubber band edge selection (single, double, hidden inner), lateral diffraction, barrier geometry from edges
-- [ ] Add golden snapshot conformance scenarios (deferred — covered by unit/integration tests for now)
-- [x] Update `docs/conformance/schall03-konformitaetserklaerung.md` to mark barrier diffraction as supported
-
-### Known complexity and risks
-
-1. **Rubber band method is a 2D upper convex hull** in the vertical cross-section. Algorithmically O(n log n) but n is small (rarely more than 3–4 barriers on one path). A simple incremental scan suffices — no need for a full convex hull library.
-
-2. **Lateral diffraction geometry** requires 3D path computation around barrier endpoints. The standard models lateral edges as straight lines (Geradenstücke), which simplifies the geometry to segment-endpoint-to-segment-endpoint paths.
-
-3. **Per-subsegment barrier checking** is O(subsegments × barriers). For typical scenes (10–50 barriers, 100–500 subsegments), this is manageable. If performance becomes an issue, a spatial index (R-tree) on barrier bounding boxes can prune candidates.
-
-4. **Go-Clipper2 evaluation**: The rubber band method and ray–segment intersection are simple enough that `geo.SegmentIntersection` should suffice. Clipper2 would only be needed if we later need to clip barrier polygons or compute visibility polygons, which is not in scope here.
+- Schall 03 Section 6.5 (Gl. 17–26), ISO 9613-2:1996 Section 7.4, CNOSSOS-EU Section 2.5.5
+- Maekawa (1968) "Noise reduction by screens", Pierce (1974) "Diffraction of sound around corners"
 
 ---
 

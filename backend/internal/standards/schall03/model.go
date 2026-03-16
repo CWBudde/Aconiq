@@ -394,6 +394,7 @@ type TrackSegment struct {
 	IsStation          bool             `json:"is_station,omitempty"`            // speed min 70 km/h rule
 	StreckeMaxKPH      float64          `json:"strecke_max_kph"`                 // track speed limit
 	WaterBodyFractionW float64          `json:"water_body_fraction_w,omitempty"` // Gl. 16: fraction of source–receiver path over water, 0–1
+	PermanentlySlow    bool             `json:"permanently_slow,omitempty"`      // Nr. 5.3.2: Straßenbahn section permanently at ≤ 30 km/h
 	Operations         []TrainOperation `json:"operations"`
 }
 

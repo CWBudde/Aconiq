@@ -64,17 +64,14 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 - Speed factors embedded per Teilquelle via `B *BeiblattSpectrum` — Table 14 (Straßenbahn-specific b-values for Rollgeräusch, aerodynamisch, Aggregat, Antrieb)
 - Track type corrections c1 for Straßenbahn Fahrbahnarten (3 types) — Table 15
 - Bridge corrections K_Br for Straßenbahn bridge types (5 types) — Table 16
-- Speed clamp (Nr. 5.3.2): effective speed floor of 50 km/h applied when operating speed exceeds 50 km/h
-- Curve noise penalty (Nr. 5.3.2): K_L = +4 dB for curve radii r < 200 m
+- Speed clamp (Nr. 5.3.2): effective speed floor of 50 km/h applied when operating speed < 50 km/h ✓
+- Permanently slow section exception (Nr. 5.3.2): sections with dauerhaft v ≤ 30 km/h use v = 30 km/h instead of clamping to 50 km/h (`PermanentlySlow` flag) ✓
+- Curve noise penalty (Nr. 5.3.2): K_L = +4 dB for curve radii r < 200 m ✓
 
 **Assessment (Gl. 37–38)**
 
 - Gl. 37–38 for Straßenbahnen use the same formula structure as Gl. 33–34; supported via the existing Beurteilungspegel pipeline
 - K_S = +5 dB (Schienenbonus retained for Straßenbahnen per current 16. BImSchV)
-
-**Open items (Phase 20a)**
-
-- Permanently slow section exception (Nr. 5.3.2, ≤ 30 km/h): speed clamp not applied for sections operated permanently at ≤ 30 km/h — **not yet implemented** (deferred to Phase 20a follow-up)
 
 ### Unterstützt (Phase 20b — Nr. 4.8 Rangier- und Umschlagbahnhöfe)
 
@@ -145,10 +142,9 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 ### Not yet supported (deferred)
 
-| Feature                                                  | Reason deferred     |
-| -------------------------------------------------------- | ------------------- |
-| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) | Phase 20a follow-up |
-| Section 9 measurement-based vehicle data                 | Out of scope        |
+| Feature                                  | Reason deferred |
+| ---------------------------------------- | --------------- |
+| Section 9 measurement-based vehicle data | Out of scope    |
 
 ## Evidence
 

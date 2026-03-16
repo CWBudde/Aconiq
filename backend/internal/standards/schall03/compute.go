@@ -26,14 +26,15 @@ func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float
 	}
 
 	return StreckeEmissionInput{
-		Vehicles:     vehicles,
-		SpeedKPH:     effectiveSpeed,
-		Fahrbahn:     seg.Fahrbahn,
-		SFahrbahn:    seg.SFahrbahn,
-		Surface:      seg.Surface,
-		BridgeType:   seg.BridgeType,
-		BridgeMitig:  seg.BridgeMitig,
-		CurveRadiusM: seg.CurveRadiusM,
+		Vehicles:        vehicles,
+		SpeedKPH:        effectiveSpeed,
+		Fahrbahn:        seg.Fahrbahn,
+		SFahrbahn:       seg.SFahrbahn,
+		Surface:         seg.Surface,
+		BridgeType:      seg.BridgeType,
+		BridgeMitig:     seg.BridgeMitig,
+		CurveRadiusM:    seg.CurveRadiusM,
+		PermanentlySlow: seg.PermanentlySlow,
 	}
 }
 
