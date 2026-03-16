@@ -33,11 +33,12 @@ type StreckeEmissionInput struct {
 	// Eisenbahn track type (Table 7). Ignored for Strassenbahn vehicles.
 	Fahrbahn FahrbahnartType // from tables.go
 	// Strassenbahn track type (Table 15). Ignored for Eisenbahn vehicles.
-	SFahrbahn    SFahrbahnartType
-	Surface      SurfaceCondType // from this file
-	BridgeType   int             // 0=none, 1-4 per Table 9 (Eisenbahn) or Table 16 (Strassenbahn)
-	BridgeMitig  bool            // K_LM applies
-	CurveRadiusM float64         // 0 = straight, >0 = curved
+	SFahrbahn       SFahrbahnartType
+	Surface         SurfaceCondType // from this file
+	BridgeType      int             // 0=none, 1-4 per Table 9 (Eisenbahn) or Table 16 (Strassenbahn)
+	BridgeMitig     bool            // K_LM applies
+	CurveRadiusM    float64         // 0 = straight, >0 = curved
+	PermanentlySlow bool            // Nr. 5.3.2: section permanently at ≤ 30 km/h (Straßenbahn only)
 }
 
 // VehicleInput describes one Fahrzeug-Kategorie contribution to a train.
@@ -69,10 +70,17 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 	// Detect mode from first vehicle.
 	isStrassenbahn := len(input.Vehicles) > 0 && IsStrassenbahnFz(input.Vehicles[0].Fz)
 
-	// Apply speed clamp: Strassenbahn minimum speed is 50 km/h (Nr. 5.3.2).
+	// Apply speed clamp per Nr. 5.3.2:
+	//   - Default: Straßenbahn minimum speed is 50 km/h.
+	//   - Exception: sections permanently at ≤ 30 km/h (r > 200 m, no switches/
+	//     stations/crossings) use v = 30 km/h instead of clamping to 50.
 	effectiveSpeed := input.SpeedKPH
 	if isStrassenbahn && effectiveSpeed < 50 {
-		effectiveSpeed = 50
+		if input.PermanentlySlow {
+			effectiveSpeed = 30
+		} else {
+			effectiveSpeed = 50
+		}
 	}
 
 	fzMap := buildFzMap()

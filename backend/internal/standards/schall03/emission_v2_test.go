@@ -464,6 +464,50 @@ func TestStrassenbahnSpeedClamp50(t *testing.T) {
 	}
 }
 
+func TestStrassenbahnPermanentlySlowException(t *testing.T) {
+	// Nr. 5.3.2 exception: sections permanently at ≤ 30 km/h use v=30 km/h
+	// instead of clamping to 50.  Result must differ from the clamped case.
+	clamped := StreckeEmissionInput{
+		Vehicles:  []VehicleInput{{Fz: 21, NPerHour: 10}},
+		SpeedKPH:  20,
+		SFahrbahn: SFahrbahnSchwellengleis,
+	}
+	permanentlySlow := StreckeEmissionInput{
+		Vehicles:        []VehicleInput{{Fz: 21, NPerHour: 10}},
+		SpeedKPH:        20,
+		SFahrbahn:       SFahrbahnSchwellengleis,
+		PermanentlySlow: true,
+	}
+
+	rClamped, err := ComputeStreckeEmission(clamped)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rSlow, err := ComputeStreckeEmission(permanentlySlow)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Clamped uses v=50 km/h; permanently slow uses v=30 km/h.
+	// The levels must differ (different effective speeds).
+	foundDiff := false
+
+	for h, spClamped := range rClamped.PerHeight {
+		spSlow := rSlow.PerHeight[h]
+
+		for f := range NumBeiblattOctaveBands {
+			if spClamped[f] != spSlow[f] {
+				foundDiff = true
+			}
+		}
+	}
+
+	if !foundDiff {
+		t.Error("permanently slow exception should produce different levels from clamped case")
+	}
+}
+
 func TestStrassenbahnC1Correction(t *testing.T) {
 	// Result with Strassenbuendiger Bahnkoerper must differ from Schwellengleis.
 	ref := StreckeEmissionInput{
