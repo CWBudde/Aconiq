@@ -183,7 +183,7 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 
 	for _, indicator := range table.IndicatorOrder {
 		colName := sanitizeColumnName(indicator)
-		colDefs = append(colDefs, fmt.Sprintf("%s REAL", colName))
+		colDefs = append(colDefs, colName+" REAL")
 	}
 
 	createSQL := fmt.Sprintf("CREATE TABLE receivers (%s)", strings.Join(colDefs, ", "))
@@ -240,6 +240,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -309,6 +310,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()

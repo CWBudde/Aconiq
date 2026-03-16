@@ -2,6 +2,7 @@ package export
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -36,7 +37,7 @@ const DefaultContourInterval = 5.0
 // GenerateContours generates ISO-band contour lines from a raster using marching squares.
 func GenerateContours(raster *results.Raster, gt GeoTransform, opts ContourOptions) ([]ContourLine, error) {
 	if raster == nil {
-		return nil, fmt.Errorf("raster is nil")
+		return nil, errors.New("raster is nil")
 	}
 
 	meta := raster.Metadata()
@@ -142,8 +143,8 @@ func marchingSquares(grid [][]float64, level float64, nodata float64) [][2][2]fl
 
 	var segments [][2][2]float64
 
-	for row := 0; row < height-1; row++ {
-		for col := 0; col < width-1; col++ {
+	for row := range height - 1 {
+		for col := range width - 1 {
 			// Four corners of the cell (bottom-left origin convention).
 			// bl=grid[row][col], br=grid[row][col+1], tr=grid[row+1][col+1], tl=grid[row+1][col]
 			bl := grid[row][col]
@@ -294,6 +295,7 @@ func joinSegments(segments [][2][2]float64) [][][2]float64 {
 	for i, seg := range segments {
 		sk := key(seg[0])
 		ek := key(seg[1])
+
 		startIndex[sk] = append(startIndex[sk], i)
 		endIndex[ek] = append(endIndex[ek], i)
 	}

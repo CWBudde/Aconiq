@@ -219,6 +219,7 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 	addExtra := func(data []byte) int {
 		idx := len(extras)
 		extras = append(extras, extraBlock{data: data})
+
 		return idx
 	}
 
