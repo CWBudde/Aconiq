@@ -182,6 +182,7 @@ func TestExportGeoTIFFRowFlip(t *testing.T) {
 	entryCount := int(binary.LittleEndian.Uint16(data[ifdOffset:]))
 
 	var imageOffset int
+
 	for i := range entryCount {
 		pos := ifdOffset + 2 + i*12
 		tag := binary.LittleEndian.Uint16(data[pos:])

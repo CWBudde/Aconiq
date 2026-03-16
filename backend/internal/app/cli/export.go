@@ -714,6 +714,7 @@ func executeFormatExports(
 			}
 
 			basePath := filepath.Join(formatsDir, "raster")
+
 			paths, err := exportfmt.ExportGeoTIFF(basePath, raster, gt, projectCRS)
 			if err != nil {
 				return nil, fmt.Errorf("geotiff export: %w", err)

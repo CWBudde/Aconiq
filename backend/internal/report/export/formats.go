@@ -3,6 +3,7 @@ package export
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -112,13 +113,7 @@ func ParseFormats(input string) ([]Format, error) {
 }
 
 func isValidFormat(f Format) bool {
-	for _, valid := range AllFormats {
-		if f == valid {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(AllFormats, f)
 }
 
 func validFormatList() string {
