@@ -1,12 +1,12 @@
 # Schall 03 Konformitätserklärung — Aconiq
 
-Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahnhöfe + Reflexionen scope (Phase 20 + 20a + 20b + 20c)
+Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahnhöfe + Reflexionen + Abschirmung scope (Phase 20 + 20a + 20b + 20c + 20d)
 
 ## Software
 
 - Name: Aconiq
 - Module: `schall03`
-- Version: `phase20c-normative-reflections-v1`
+- Version: `phase20d-normative-barrier-diffraction-v1`
 - License: MIT
 
 ## Standard
@@ -126,13 +126,29 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 `phase20c-normative-reflections-v1`
 
+### Unterstützt (Phase 20d — Nr. 6.5 Abschirmung durch Hindernisse)
+
+- Abschirmung durch Hindernisse (Gl. 17–26) im Ausbreitungsweg ✓
+- Gummibandmethode (Upper Convex Hull) zur Auswahl maßgeblicher Beugungskanten ✓
+- Einfachbeugung (D_z ≤ 20 dB) und Doppelbeugung (D_z ≤ 25 dB, C₃-Faktor Gl. 22) ✓
+- Seitliche Beugung um Schirmenden (Gl. 18) ✓
+- Minimum aus Beugung über Oberkante und seitlicher Beugung je Oktavband ✓
+- D_refl-Korrektur für absorbierende Sockelflächen (Gl. 20) ✓
+- Meteorologische Korrektur K_met (Gl. 23–24) ✓
+- Barriereattenuation auf direkten Ausbreitungswegen ✓
+- Barriereattenuation auf reflektierten Ausbreitungswegen (Spiegelquelle als Quelle) ✓
+- Einheitliche Szenen-API: `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` ✓
+
+#### Software-Version
+
+`phase20d-normative-barrier-diffraction-v1`
+
 ### Not yet supported (deferred)
 
-| Feature                                                       | Reason deferred     |
-| ------------------------------------------------------------- | ------------------- |
-| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h)      | Phase 20a follow-up |
-| Reflection + barrier diffraction combined paths (Gl. 28 note) | Phase 20c follow-up |
-| Section 9 measurement-based vehicle data                      | Out of scope        |
+| Feature                                                  | Reason deferred     |
+| -------------------------------------------------------- | ------------------- |
+| Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) | Phase 20a follow-up |
+| Section 9 measurement-based vehicle data                 | Out of scope        |
 
 ## Evidence
 
@@ -149,4 +165,4 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 1. **Line source integration step**: Subsegment length is variable (auto-computed from track geometry); this may introduce minor numerical differences vs. implementations using a fixed step. Results converge to the same value as step length decreases.
 2. **Ground absorption**: Both A_gr,B (land, Gl. 14) and A_gr,W (water body, Gl. 16) are implemented. The water body fraction is specified per `TrackSegment` via `water_body_fraction_w` (0–1), which is a simplification: in a full terrain model, water fractions would be computed per propagation path.
-3. **Reflection paths**: Image-source reflections per Gl. 27–28 are supported up to 3rd order. Combined reflection + barrier diffraction paths are not yet implemented; reflected paths use free-field propagation only.
+3. **Reflection paths**: Image-source reflections per Gl. 27–28 are supported up to 3rd order. Combined reflection + barrier diffraction paths are supported (barrier attenuation applied along reflected path using image source position).
