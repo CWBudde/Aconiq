@@ -412,9 +412,9 @@ func printCityGMLImportReport(cmd *cobra.Command, r citygmlimport.ImportReport) 
 
 // inputPayload holds the raw GeoJSON bytes and optional auto-detected CRS.
 type inputPayload struct {
-	payload          []byte
-	detectedCRS      string                        // e.g. "EPSG:25832", empty if not detected
-	citygmlReport    *citygmlimport.ImportReport    // non-nil for CityGML imports
+	payload       []byte
+	detectedCRS   string                      // e.g. "EPSG:25832", empty if not detected
+	citygmlReport *citygmlimport.ImportReport // non-nil for CityGML imports
 }
 
 func epsgToString(code int) string {
