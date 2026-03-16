@@ -3,6 +3,7 @@ package export
 import (
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -341,8 +342,6 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 func encodeGPKGPoint(x float64, y float64, z float64, srsID int) []byte {
 	// GeoPackage binary header (8 bytes) + WKB Point Z.
 	// Header: magic (GP), version, flags, srs_id.
-	buf := make([]byte, 8+8+8+8+4) // header(8) + WKB type(4+1) ... actually let me compute
-
 	// GeoPackage binary geometry format:
 	// 2 bytes: magic = 0x4750 ('G','P')
 	// 1 byte: version = 0
@@ -352,7 +351,7 @@ func encodeGPKGPoint(x float64, y float64, z float64, srsID int) []byte {
 
 	// WKB PointZ: byte_order(1) + wkb_type(4) + x(8) + y(8) + z(8)
 	total := 8 + 1 + 4 + 8 + 8 + 8
-	buf = make([]byte, total)
+	buf := make([]byte, total)
 
 	// GP header.
 	buf[0] = 'G'
@@ -433,6 +432,384 @@ func computeReceiverExtent(table results.ReceiverTable) (float64, float64, float
 	}
 
 	return minX, minY, maxX, maxY
+}
+
+// ModelFeature is a simplified representation of a model feature for GeoPackage export.
+// This avoids importing modelgeojson in the export package.
+type ModelFeature struct {
+	ID           string
+	Kind         string  // source, building, barrier, receiver
+	SourceType   string  // point, line, area (for sources)
+	HeightM      float64 // 0 if not applicable
+	GeometryType string  // Point, LineString, Polygon
+	Coordinates  any     // parsed GeoJSON coordinates
+}
+
+// ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
+// as an OGC GeoPackage with mixed geometry types.
+func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create gpkg directory: %w", err)
+	}
+
+	_ = os.Remove(path)
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return fmt.Errorf("open gpkg database: %w", err)
+	}
+	defer db.Close()
+
+	if err = initGeoPackage(db, crs, srsID); err != nil {
+		return fmt.Errorf("init geopackage: %w", err)
+	}
+
+	if err = createModelFeaturesTable(db, features, srsID); err != nil {
+		return fmt.Errorf("create model_features table: %w", err)
+	}
+
+	if err = insertModelFeatures(db, features, srsID); err != nil {
+		return fmt.Errorf("insert model features: %w", err)
+	}
+
+	return nil
+}
+
+func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) error {
+	_, err := db.Exec(`CREATE TABLE model_features (
+		fid INTEGER PRIMARY KEY AUTOINCREMENT,
+		geom BLOB,
+		feature_id TEXT,
+		kind TEXT,
+		source_type TEXT,
+		height_m REAL
+	)`)
+	if err != nil {
+		return err
+	}
+
+	minX, minY, maxX, maxY := computeModelFeaturesExtent(features)
+
+	_, err = db.Exec(
+		`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, last_change, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"model_features", "features", "model_features", "Model features (sources, buildings, barriers)",
+		time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		minX, minY, maxX, maxY, srsID,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(
+		`INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?, ?, ?, ?, ?, ?)`,
+		"model_features", "geom", "GEOMETRY", srsID, 0, 0,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
+	if len(features) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	stmt, err := tx.Prepare("INSERT INTO model_features (geom, feature_id, kind, source_type, height_m) VALUES (?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, f := range features {
+		geomBlob, err := parseModelGeometry(f.GeometryType, f.Coordinates, srsID)
+		if err != nil {
+			return fmt.Errorf("encode geometry for feature %s: %w", f.ID, err)
+		}
+
+		_, err = stmt.Exec(geomBlob, f.ID, f.Kind, f.SourceType, f.HeightM)
+		if err != nil {
+			return fmt.Errorf("insert feature %s: %w", f.ID, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func parseModelGeometry(geomType string, coords any, srsID int) ([]byte, error) {
+	switch geomType {
+	case "Point":
+		return parsePointCoords(coords, srsID)
+	case "LineString":
+		return parseLineStringCoords(coords, srsID)
+	case "Polygon":
+		return parsePolygonCoords(coords, srsID)
+	default:
+		return nil, fmt.Errorf("unsupported geometry type: %s", geomType)
+	}
+}
+
+func parsePointCoords(coords any, srsID int) ([]byte, error) {
+	arr, ok := coords.([]any)
+	if !ok {
+		return nil, fmt.Errorf("point coordinates: expected []any, got %T", coords)
+	}
+
+	if len(arr) < 2 {
+		return nil, fmt.Errorf("point coordinates: need at least 2 values, got %d", len(arr))
+	}
+
+	x, err := toFloat64(arr[0])
+	if err != nil {
+		return nil, fmt.Errorf("point x: %w", err)
+	}
+
+	y, err := toFloat64(arr[1])
+	if err != nil {
+		return nil, fmt.Errorf("point y: %w", err)
+	}
+
+	return encodeGPKGPoint2D(x, y, srsID), nil
+}
+
+func parseLineStringCoords(coords any, srsID int) ([]byte, error) {
+	arr, ok := coords.([]any)
+	if !ok {
+		return nil, fmt.Errorf("linestring coordinates: expected []any, got %T", coords)
+	}
+
+	points := make([][2]float64, 0, len(arr))
+
+	for i, pt := range arr {
+		pair, ok := pt.([]any)
+		if !ok {
+			return nil, fmt.Errorf("linestring point %d: expected []any, got %T", i, pt)
+		}
+
+		if len(pair) < 2 {
+			return nil, fmt.Errorf("linestring point %d: need at least 2 values", i)
+		}
+
+		x, err := toFloat64(pair[0])
+		if err != nil {
+			return nil, fmt.Errorf("linestring point %d x: %w", i, err)
+		}
+
+		y, err := toFloat64(pair[1])
+		if err != nil {
+			return nil, fmt.Errorf("linestring point %d y: %w", i, err)
+		}
+
+		points = append(points, [2]float64{x, y})
+	}
+
+	return encodeGPKGLineString(points, srsID), nil
+}
+
+func parsePolygonCoords(coords any, srsID int) ([]byte, error) {
+	arr, ok := coords.([]any)
+	if !ok {
+		return nil, fmt.Errorf("polygon coordinates: expected []any, got %T", coords)
+	}
+
+	rings := make([][][2]float64, 0, len(arr))
+
+	for i, ringRaw := range arr {
+		ringArr, ok := ringRaw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("polygon ring %d: expected []any, got %T", i, ringRaw)
+		}
+
+		ring := make([][2]float64, 0, len(ringArr))
+
+		for j, pt := range ringArr {
+			pair, ok := pt.([]any)
+			if !ok {
+				return nil, fmt.Errorf("polygon ring %d point %d: expected []any, got %T", i, j, pt)
+			}
+
+			if len(pair) < 2 {
+				return nil, fmt.Errorf("polygon ring %d point %d: need at least 2 values", i, j)
+			}
+
+			x, err := toFloat64(pair[0])
+			if err != nil {
+				return nil, fmt.Errorf("polygon ring %d point %d x: %w", i, j, err)
+			}
+
+			y, err := toFloat64(pair[1])
+			if err != nil {
+				return nil, fmt.Errorf("polygon ring %d point %d y: %w", i, j, err)
+			}
+
+			ring = append(ring, [2]float64{x, y})
+		}
+
+		rings = append(rings, ring)
+	}
+
+	return encodeGPKGPolygon(rings, srsID), nil
+}
+
+func toFloat64(v any) (float64, error) {
+	switch val := v.(type) {
+	case float64:
+		return val, nil
+	case float32:
+		return float64(val), nil
+	case int:
+		return float64(val), nil
+	case int64:
+		return float64(val), nil
+	case json.Number:
+		return val.Float64()
+	default:
+		return 0, fmt.Errorf("cannot convert %T to float64", v)
+	}
+}
+
+// encodeGPKGPoint2D encodes a 2D point as GeoPackage standard binary geometry.
+func encodeGPKGPoint2D(x float64, y float64, srsID int) []byte {
+	// GP header(8) + WKB byte_order(1) + type(4) + x(8) + y(8)
+	total := 8 + 1 + 4 + 8 + 8
+	buf := make([]byte, total)
+
+	buf[0] = 'G'
+	buf[1] = 'P'
+	buf[2] = 0
+	buf[3] = 0x01
+	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+
+	offset := 8
+	buf[offset] = 1 // little-endian
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], 1) // wkbPoint
+	offset += 4
+	binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(x))
+	offset += 8
+	binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(y))
+
+	return buf
+}
+
+// encodeGPKGPolygon encodes a polygon as GeoPackage standard binary geometry.
+func encodeGPKGPolygon(rings [][][2]float64, srsID int) []byte {
+	// GP header(8) + WKB byte_order(1) + type(4) + numRings(4)
+	// + for each ring: numPoints(4) + points(numPoints*16)
+	total := 8 + 1 + 4 + 4
+	for _, ring := range rings {
+		total += 4 + len(ring)*16
+	}
+
+	buf := make([]byte, total)
+
+	buf[0] = 'G'
+	buf[1] = 'P'
+	buf[2] = 0
+	buf[3] = 0x01
+	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+
+	offset := 8
+	buf[offset] = 1 // little-endian
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], 3) // wkbPolygon
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(rings)))
+	offset += 4
+
+	for _, ring := range rings {
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(ring)))
+		offset += 4
+
+		for _, pt := range ring {
+			binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(pt[0]))
+			offset += 8
+			binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(pt[1]))
+			offset += 8
+		}
+	}
+
+	return buf
+}
+
+func computeModelFeaturesExtent(features []ModelFeature) (float64, float64, float64, float64) {
+	if len(features) == 0 {
+		return 0, 0, 0, 0
+	}
+
+	minX := math.MaxFloat64
+	minY := math.MaxFloat64
+	maxX := -math.MaxFloat64
+	maxY := -math.MaxFloat64
+
+	collectPoint := func(x, y float64) {
+		if x < minX {
+			minX = x
+		}
+
+		if x > maxX {
+			maxX = x
+		}
+
+		if y < minY {
+			minY = y
+		}
+
+		if y > maxY {
+			maxY = y
+		}
+	}
+
+	found := false
+
+	for _, f := range features {
+		collectFromCoords(f.Coordinates, collectPoint, &found)
+	}
+
+	if !found {
+		return 0, 0, 0, 0
+	}
+
+	return minX, minY, maxX, maxY
+}
+
+func collectFromCoords(coords any, collect func(x, y float64), found *bool) {
+	arr, ok := coords.([]any)
+	if !ok {
+		return
+	}
+
+	if len(arr) == 0 {
+		return
+	}
+
+	// Check if this is a coordinate pair (leaf): first element is a number.
+	if _, err := toFloat64(arr[0]); err == nil && len(arr) >= 2 {
+		x, xerr := toFloat64(arr[0])
+		y, yerr := toFloat64(arr[1])
+
+		if xerr == nil && yerr == nil {
+			collect(x, y)
+			*found = true
+
+			return
+		}
+	}
+
+	// Otherwise recurse into nested arrays.
+	for _, elem := range arr {
+		collectFromCoords(elem, collect, found)
+	}
 }
 
 func sanitizeColumnName(name string) string {

@@ -262,6 +262,7 @@ func newExportCommand() *cobra.Command {
 				exportedPaths, fmtErr := executeFormatExports(
 					formats, bundleDir, proj.CRS,
 					copiedResults, contourInterval,
+					modelGeoJSONPath,
 				)
 				if fmtErr != nil {
 					return domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
@@ -328,7 +329,7 @@ func newExportCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
 	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
 	cmd.Flags().BoolVar(&generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
-	cmd.Flags().StringVar(&formatList, "format", "", "Comma-separated export formats: geotiff, gpkg, contour-geojson, contour-gpkg")
+	cmd.Flags().StringVar(&formatList, "format", "", "Comma-separated export formats: geotiff, cog, gpkg, contour-geojson, contour-gpkg")
 	cmd.Flags().Float64Var(&contourInterval, "contour-interval", exportfmt.DefaultContourInterval, "Contour line interval in dB (default 5)")
 
 	return cmd
@@ -647,6 +648,7 @@ func executeFormatExports(
 	projectCRS string,
 	copiedResults copiedRunResults,
 	contourInterval float64,
+	modelGeoJSONPath string,
 ) (map[string][]string, error) {
 	out := make(map[string][]string)
 	epsgCode := 0
@@ -727,19 +729,63 @@ func executeFormatExports(
 
 			out[string(exportfmt.FormatGeoTIFF)] = relPaths
 
-		case exportfmt.FormatGeoPackage:
-			if receiverTable == nil {
+		case exportfmt.FormatCOG:
+			if raster == nil {
 				continue
 			}
 
-			gpkgPath := filepath.Join(formatsDir, "receivers.gpkg")
-
-			err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, projectCRS, epsgCode)
-			if err != nil {
-				return nil, fmt.Errorf("geopackage export: %w", err)
+			if !hasGT {
+				gt = exportfmt.GeoTransform{
+					OriginX: 0, OriginY: float64(raster.Metadata().Height),
+					PixelSizeX: 1, PixelSizeY: -1,
+				}
 			}
 
-			out[string(exportfmt.FormatGeoPackage)] = []string{relativePath(bundleDir, gpkgPath)}
+			cogBasePath := filepath.Join(formatsDir, "raster")
+
+			cogPaths, err := exportfmt.ExportCOG(cogBasePath, raster, gt, projectCRS)
+			if err != nil {
+				return nil, fmt.Errorf("cog export: %w", err)
+			}
+
+			cogRelPaths := make([]string, len(cogPaths))
+			for i, p := range cogPaths {
+				cogRelPaths[i] = relativePath(bundleDir, p)
+			}
+
+			out[string(exportfmt.FormatCOG)] = cogRelPaths
+
+		case exportfmt.FormatGeoPackage:
+			var gpkgPaths []string
+
+			if receiverTable != nil {
+				gpkgPath := filepath.Join(formatsDir, "receivers.gpkg")
+
+				err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, projectCRS, epsgCode)
+				if err != nil {
+					return nil, fmt.Errorf("geopackage export: %w", err)
+				}
+
+				gpkgPaths = append(gpkgPaths, relativePath(bundleDir, gpkgPath))
+			}
+
+			if modelGeoJSONPath != "" {
+				modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(modelGeoJSONPath)
+				if loadErr == nil && len(modelFeatures) > 0 {
+					modelGpkgPath := filepath.Join(formatsDir, "model.gpkg")
+
+					exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, projectCRS, epsgCode)
+					if exportErr != nil {
+						return nil, fmt.Errorf("model geopackage export: %w", exportErr)
+					}
+
+					gpkgPaths = append(gpkgPaths, relativePath(bundleDir, modelGpkgPath))
+				}
+			}
+
+			if len(gpkgPaths) > 0 {
+				out[string(exportfmt.FormatGeoPackage)] = gpkgPaths
+			}
 
 		case exportfmt.FormatContourGeoJSON:
 			if raster == nil {
@@ -867,4 +913,57 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 		filepath.ToSlash(filepath.Join("sample-results", filepath.Base(jsonPath))),
 		filepath.ToSlash(filepath.Join("sample-results", filepath.Base(csvPath))),
 	}, nil
+}
+
+// loadModelFeaturesFromGeoJSON reads a normalized model GeoJSON file and converts
+// its features into export.ModelFeature values for GeoPackage export.
+func loadModelFeaturesFromGeoJSON(geojsonPath string) ([]exportfmt.ModelFeature, error) {
+	data, err := os.ReadFile(geojsonPath)
+	if err != nil {
+		return nil, fmt.Errorf("read model geojson: %w", err)
+	}
+
+	var fc struct {
+		Features []struct {
+			Properties map[string]any `json:"properties"`
+			Geometry   struct {
+				Type        string `json:"type"`
+				Coordinates any    `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+
+	err = json.Unmarshal(data, &fc)
+	if err != nil {
+		return nil, fmt.Errorf("parse model geojson: %w", err)
+	}
+
+	out := make([]exportfmt.ModelFeature, 0, len(fc.Features))
+
+	for _, f := range fc.Features {
+		mf := exportfmt.ModelFeature{
+			GeometryType: f.Geometry.Type,
+			Coordinates:  f.Geometry.Coordinates,
+		}
+
+		if id, ok := f.Properties["id"].(string); ok {
+			mf.ID = id
+		}
+
+		if kind, ok := f.Properties["kind"].(string); ok {
+			mf.Kind = kind
+		}
+
+		if st, ok := f.Properties["source_type"].(string); ok {
+			mf.SourceType = st
+		}
+
+		if h, ok := f.Properties["height_m"].(float64); ok {
+			mf.HeightM = h
+		}
+
+		out = append(out, mf)
+	}
+
+	return out, nil
 }
