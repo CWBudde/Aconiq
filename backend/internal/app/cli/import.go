@@ -314,6 +314,17 @@ func runGeometryImport(
 		return err
 	}
 
+	if result.citygmlReport != nil {
+		citygmlReportPath := filepath.Join(filepath.Dir(normalizedPath), "citygml-import-report.json")
+
+		err = writeJSONFile(citygmlReportPath, result.citygmlReport)
+		if err != nil {
+			return err
+		}
+
+		printCityGMLImportReport(cmd, *result.citygmlReport)
+	}
+
 	printImportSummary(cmd, state, model, report, relInput, effectiveCRS, store.Root(), normalizedPath, dumpPath, reportPath)
 
 	return nil
@@ -386,10 +397,24 @@ func printImportSummary(
 	}
 }
 
+func printCityGMLImportReport(cmd *cobra.Command, r citygmlimport.ImportReport) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "CityGML: imported %d/%d buildings", r.Imported, r.Total)
+	if r.Skipped > 0 {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), ", %d skipped", r.Skipped)
+	}
+
+	_, _ = fmt.Fprintln(cmd.OutOrStdout())
+
+	for _, s := range r.Details {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  skipped %s: %s\n", s.ID, s.Reason)
+	}
+}
+
 // inputPayload holds the raw GeoJSON bytes and optional auto-detected CRS.
 type inputPayload struct {
-	payload     []byte
-	detectedCRS string // e.g. "EPSG:25832", empty if not detected
+	payload          []byte
+	detectedCRS      string                        // e.g. "EPSG:25832", empty if not detected
+	citygmlReport    *citygmlimport.ImportReport    // non-nil for CityGML imports
 }
 
 func epsgToString(code int) string {
@@ -498,7 +523,9 @@ func readCityGMLAsGeoJSON(path string, layerName string) (inputPayload, error) {
 		return inputPayload{}, domainerrors.New(domainerrors.KindInternal, "cli.import", "marshal CityGML to GeoJSON", err)
 	}
 
-	return inputPayload{payload: encoded, detectedCRS: epsgToString(result.EPSGCode)}, nil
+	report := result.Report
+
+	return inputPayload{payload: encoded, detectedCRS: epsgToString(result.EPSGCode), citygmlReport: &report}, nil
 }
 
 const defaultTerrainPath = ".noise/model/terrain.tif"
