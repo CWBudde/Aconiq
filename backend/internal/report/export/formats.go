@@ -22,11 +22,15 @@ const (
 
 	// FormatContourGeoPackage exports ISO-band contour lines as GeoPackage.
 	FormatContourGeoPackage Format = "contour-gpkg"
+
+	// FormatCOG exports raster results as Cloud Optimized GeoTIFF with tiles and overviews.
+	FormatCOG Format = "cog"
 )
 
 // AllFormats lists every supported export format.
 var AllFormats = []Format{
 	FormatGeoTIFF,
+	FormatCOG,
 	FormatGeoPackage,
 	FormatContourGeoJSON,
 	FormatContourGeoPackage,
@@ -48,6 +52,13 @@ func FormatMatrix() []FormatInfo {
 			Format:      FormatGeoTIFF,
 			Label:       "GeoTIFF",
 			Description: "Raster results as GeoTIFF with embedded CRS metadata, one band per indicator",
+			Category:    "raster",
+			Extension:   ".tif",
+		},
+		{
+			Format:      FormatCOG,
+			Label:       "Cloud Optimized GeoTIFF",
+			Description: "Raster results as Cloud Optimized GeoTIFF with tiles and overview pyramids",
 			Category:    "raster",
 			Extension:   ".tif",
 		},

@@ -276,18 +276,18 @@ Status: preview baseline shipped (industry point sources, LpAeq, favorable meteo
 
 **Why:** Aconiq uses internal raster/table containers (float64 LE + JSON sidecar). Authorities and planners expect GeoTIFF rasters, GeoPackage vectors, and contour line exports. Without standard exports, results cannot be integrated into third-party GIS workflows.
 
-- [ ] GeoTIFF / COG raster export
-  - [ ] Export result rasters as GeoTIFF with embedded CRS metadata
-  - [ ] Support Cloud Optimized GeoTIFF (COG) profile for web/GIS compatibility
-  - [ ] Preserve indicator metadata in TIFF tags or sidecar
-- [ ] GeoPackage vector export
-  - [ ] Export receiver tables as GeoPackage with attributed points
-  - [ ] Export model features as GeoPackage for archival/exchange
-- [ ] Contour line generation and export
-  - [ ] Generate ISO-band contour lines from raster results (5 dB steps per EU END convention)
-  - [ ] Export contours as GeoJSON and GeoPackage
-  - [ ] Add contour overlays and labels in frontend map view
-- [ ] Define export format matrix (which formats are required vs. optional per use case)
+- [x] GeoTIFF / COG raster export
+  - [x] Export result rasters as GeoTIFF with embedded CRS metadata
+  - [x] Support Cloud Optimized GeoTIFF (COG) profile for web/GIS compatibility
+  - [x] Preserve indicator metadata in TIFF tags or sidecar
+- [x] GeoPackage vector export
+  - [x] Export receiver tables as GeoPackage with attributed points
+  - [x] Export model features as GeoPackage for archival/exchange
+- [x] Contour line generation and export
+  - [x] Generate ISO-band contour lines from raster results (5 dB steps per EU END convention)
+  - [x] Export contours as GeoJSON and GeoPackage
+  - [ ] ~~Add contour overlays and labels in frontend map view~~ (deferred — frontend inactive)
+- [x] Define export format matrix (which formats are required vs. optional per use case)
 
 ---
 
