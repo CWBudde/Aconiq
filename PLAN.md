@@ -489,7 +489,7 @@ Status: **complete** — building import hardened with attribute preservation, s
 
 ## Phase 36 — Interoperability: SoundPlan project import & cross-validation
 
-Status: Step 1 complete (Project.sp and .res parsing).
+Status: Steps 1–2 complete, Step 3 in progress (core .abs result parsing done, RRAI/RRAD and grid maps pending).
 
 **Goal:** import SoundPlan projects (`.sp` + associated geometry/data files) into Aconiq's internal model, run the same calculations, and compare results against SoundPlan's computed outputs. This enables cross-tool validation and provides a migration path for practitioners switching from SoundPlan.
 
@@ -550,12 +550,18 @@ A SoundPlan project is a directory containing:
 
 ### Step 3 — Parse binary result/data tables
 
-- [ ] Investigate `.abs` binary format
-  - [ ] Document record structure, header format, field layout
-  - [ ] Identify how result columns map to indicators (Lr,Tag, Lr,Nacht, partial levels, frequency spectra)
-- [ ] Implement result `.abs` parser for single-point results (`RSPS*/RREC*.abs`, `RRAD*.abs`, `RRAI*.abs`)
-  - [ ] Extract per-receiver immission levels (day/night)
-  - [ ] Extract per-receiver partial levels and source contributions
+Uses `github.com/meko-tech/go-absolute-database` (local `../go-absolute-database`) for .abs file I/O.
+
+- [x] Investigate `.abs` binary format
+  - [x] Document record structure, header format, field layout — handled by go-absolute-database library (page-based I/O, zlib-compressed schema, auto-detected record layout)
+  - [x] Identify how result columns map to indicators (Lr,Tag, Lr,Nacht, partial levels, frequency spectra) — schema introspection via `absdb dump`
+- [x] Implement result `.abs` parser for single-point results (`RSPS*/RREC*.abs`, `RGRP*.abs`, `RMPA*.abs`)
+  - [x] Extract per-receiver immission levels (day/night) — `ParseGroupResults` reads ZB1/ZB2 from RGRP files (verified: 30 results, levels 48–68 dB)
+  - [x] Extract per-receiver partial levels and source contributions — `ParsePartialResults` reads RMPA files (516 records with source names and assessment periods)
+  - [x] Extract receiver metadata — `ParseReceiverResults` reads RREC files (27 receivers with names, ObjIDs, floor numbers)
+  - [x] Extract train type catalog — `ParseTrainTypes` reads TS03.abs (18 train types with SBA, Vmax, DFz)
+  - [x] `LoadRunResults` loads all result files from a run subdirectory
+- [ ] Implement result `.abs` parser for RRAI/RRAD emission data (record layout detection issue for v7.61 files — deferred pending go-absolute-database improvement)
 - [ ] Implement result `.abs` parser for grid map results (`RRLK*/RRLK*.GM`)
   - [ ] Extract raster metadata (grid origin, spacing, dimensions)
   - [ ] Extract raster level values
