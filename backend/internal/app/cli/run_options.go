@@ -165,6 +165,33 @@ type schall03RunOptions struct {
 	MinDistanceM          float64
 }
 
+type aircraftRunOptions struct {
+	GridResolutionM        float64
+	GridPaddingM           float64
+	ReceiverHeightM        float64
+	AirportID              string
+	RunwayID               string
+	OperationType          string
+	AircraftClass          string
+	ProcedureType          string
+	ThrustMode             string
+	ReferencePowerLevelDB  float64
+	EngineStateFactor      float64
+	BankAngleDeg           float64
+	LateralOffsetM         float64
+	TrackStartHeightM      float64
+	TrackEndHeightM        float64
+	MovementDayPerHour     float64
+	MovementEveningPerHour float64
+	MovementNightPerHour   float64
+	AirAbsorptionDBPerKM   float64
+	GroundAttenuationDB    float64
+	LateralDirectivityDB   float64
+	ApproachCorrectionDB   float64
+	ClimbCorrectionDB      float64
+	MinSlantDistanceM      float64
+}
+
 type cnossosAircraftRunOptions struct {
 	GridResolutionM        float64
 	GridPaddingM           float64
@@ -759,6 +786,15 @@ func (o cnossosRailRunOptions) PropagationConfig() cnossosrail.PropagationConfig
 func parseSchall03RunOptions(params map[string]string) (schall03RunOptions, error) {
 	options := schall03RunOptions{}
 
+	err := fillSchall03RunOptions(&options, params)
+	if err != nil {
+		return schall03RunOptions{}, err
+	}
+
+	return options, nil
+}
+
+func fillSchall03RunOptions(options *schall03RunOptions, params map[string]string) error {
 	parseFloat := func(key string, target *float64) error {
 		value, ok := params[key]
 		if !ok {
@@ -804,7 +840,7 @@ func parseSchall03RunOptions(params map[string]string) (schall03RunOptions, erro
 	} {
 		err := parseFloat(item.key, item.target)
 		if err != nil {
-			return schall03RunOptions{}, err
+			return err
 		}
 	}
 
@@ -812,40 +848,49 @@ func parseSchall03RunOptions(params map[string]string) (schall03RunOptions, erro
 
 	options.TractionType, err = getString("rail_traction_type")
 	if err != nil {
-		return schall03RunOptions{}, err
+		return err
 	}
 
 	options.TrainClass, err = getString("rail_train_class")
 	if err != nil {
-		return schall03RunOptions{}, err
+		return err
 	}
 
 	options.TrackType, err = getString("rail_track_type")
 	if err != nil {
-		return schall03RunOptions{}, err
+		return err
 	}
 
 	options.TrackForm, err = getString("rail_track_form")
 	if err != nil {
-		return schall03RunOptions{}, err
+		return err
 	}
 
 	options.TrackRoughnessClass, err = getString("rail_track_roughness_class")
 	if err != nil {
-		return schall03RunOptions{}, err
+		return err
 	}
 
+	options.OnBridge, err = parseRailOnBridge(params)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parseRailOnBridge(params map[string]string) (bool, error) {
 	rawOnBridge, ok := params["rail_on_bridge"]
 	if !ok {
-		return schall03RunOptions{}, domainerrors.New(domainerrors.KindInternal, "cli.parseSchall03RunOptions", `normalized parameter "rail_on_bridge" missing`, nil)
+		return false, domainerrors.New(domainerrors.KindInternal, "cli.parseSchall03RunOptions", `normalized parameter "rail_on_bridge" missing`, nil)
 	}
 
-	options.OnBridge, err = strconv.ParseBool(strings.TrimSpace(rawOnBridge))
+	onBridge, err := strconv.ParseBool(strings.TrimSpace(rawOnBridge))
 	if err != nil {
-		return schall03RunOptions{}, domainerrors.New(domainerrors.KindUserInput, "cli.parseSchall03RunOptions", fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
+		return false, domainerrors.New(domainerrors.KindUserInput, "cli.parseSchall03RunOptions", fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
 	}
 
-	return options, nil
+	return onBridge, nil
 }
 
 func (o schall03RunOptions) PropagationConfig() schall03.PropagationConfig {
@@ -1020,18 +1065,18 @@ func parseRLS19RoadRunOptions(params map[string]string) (rls19RoadRunOptions, er
 	return options, nil
 }
 
-func parseCnossosAircraftRunOptions(params map[string]string) (cnossosAircraftRunOptions, error) {
-	options := cnossosAircraftRunOptions{}
+func parseAircraftRunOptions(params map[string]string, contextName string) (aircraftRunOptions, error) {
+	options := aircraftRunOptions{}
 
 	parseFloat := func(key string, target *float64) error {
 		value, ok := params[key]
 		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosAircraftRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+			return domainerrors.New(domainerrors.KindInternal, contextName, fmt.Sprintf("normalized parameter %q missing", key), nil)
 		}
 
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseCnossosAircraftRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
+			return domainerrors.New(domainerrors.KindUserInput, contextName, fmt.Sprintf("invalid %s=%q", key, value), err)
 		}
 
 		*target = parsed
@@ -1042,7 +1087,7 @@ func parseCnossosAircraftRunOptions(params map[string]string) (cnossosAircraftRu
 	getString := func(key string) (string, error) {
 		value, ok := params[key]
 		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosAircraftRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
+			return "", domainerrors.New(domainerrors.KindInternal, contextName, fmt.Sprintf("normalized parameter %q missing", key), nil)
 		}
 
 		return strings.TrimSpace(value), nil
@@ -1073,7 +1118,7 @@ func parseCnossosAircraftRunOptions(params map[string]string) (cnossosAircraftRu
 	} {
 		err := parseFloat(item.key, item.target)
 		if err != nil {
-			return cnossosAircraftRunOptions{}, err
+			return aircraftRunOptions{}, err
 		}
 	}
 
@@ -1081,127 +1126,61 @@ func parseCnossosAircraftRunOptions(params map[string]string) (cnossosAircraftRu
 
 	options.AirportID, err = getString("airport_id")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	options.RunwayID, err = getString("runway_id")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	options.OperationType, err = getString("aircraft_operation_type")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	options.AircraftClass, err = getString("aircraft_class")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	options.ProcedureType, err = getString("aircraft_procedure_type")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	options.ThrustMode, err = getString("aircraft_thrust_mode")
 	if err != nil {
-		return cnossosAircraftRunOptions{}, err
+		return aircraftRunOptions{}, err
 	}
 
 	return options, nil
 }
 
+func parseCnossosAircraftRunOptions(params map[string]string) (cnossosAircraftRunOptions, error) {
+	options, err := parseAircraftRunOptions(params, "cli.parseCnossosAircraftRunOptions")
+	if err != nil {
+		return cnossosAircraftRunOptions{}, err
+	}
+
+	return toCnossosAircraftRunOptions(options), nil
+}
+
 func parseBUFAircraftRunOptions(params map[string]string) (bufAircraftRunOptions, error) {
-	options := bufAircraftRunOptions{}
-
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseBUFAircraftRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseBUFAircraftRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseBUFAircraftRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"reference_power_level_db", &options.ReferencePowerLevelDB},
-		{"engine_state_factor", &options.EngineStateFactor},
-		{"bank_angle_deg", &options.BankAngleDeg},
-		{"lateral_offset_m", &options.LateralOffsetM},
-		{"track_start_height_m", &options.TrackStartHeightM},
-		{"track_end_height_m", &options.TrackEndHeightM},
-		{"movement_day_per_hour", &options.MovementDayPerHour},
-		{"movement_evening_per_hour", &options.MovementEveningPerHour},
-		{"movement_night_per_hour", &options.MovementNightPerHour},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"lateral_directivity_db", &options.LateralDirectivityDB},
-		{"approach_correction_db", &options.ApproachCorrectionDB},
-		{"climb_correction_db", &options.ClimbCorrectionDB},
-		{"min_slant_distance_m", &options.MinSlantDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return bufAircraftRunOptions{}, err
-		}
-	}
-
-	var err error
-
-	options.AirportID, err = getString("airport_id")
+	options, err := parseAircraftRunOptions(params, "cli.parseBUFAircraftRunOptions")
 	if err != nil {
 		return bufAircraftRunOptions{}, err
 	}
 
-	options.RunwayID, err = getString("runway_id")
-	if err != nil {
-		return bufAircraftRunOptions{}, err
-	}
+	return toBUFAircraftRunOptions(options), nil
+}
 
-	options.OperationType, err = getString("aircraft_operation_type")
-	if err != nil {
-		return bufAircraftRunOptions{}, err
-	}
+func toCnossosAircraftRunOptions(options aircraftRunOptions) cnossosAircraftRunOptions {
+	return cnossosAircraftRunOptions(options)
+}
 
-	options.AircraftClass, err = getString("aircraft_class")
-	if err != nil {
-		return bufAircraftRunOptions{}, err
-	}
-
-	options.ProcedureType, err = getString("aircraft_procedure_type")
-	if err != nil {
-		return bufAircraftRunOptions{}, err
-	}
-
-	options.ThrustMode, err = getString("aircraft_thrust_mode")
-	if err != nil {
-		return bufAircraftRunOptions{}, err
-	}
-
-	return options, nil
+func toBUFAircraftRunOptions(options aircraftRunOptions) bufAircraftRunOptions {
+	return bufAircraftRunOptions(options)
 }
 
 func (o cnossosRoadRunOptions) PropagationConfig() cnossosroad.PropagationConfig {

@@ -28,6 +28,8 @@ type occupancyEstimate struct {
 	Persons   float64
 }
 
+type receiverLevelProvider func([]geo.PointReceiver) (map[string]levelIndicators, error)
+
 var (
 	defaultLdenBandEdges   = []float64{55, 60, 65, 70, 75}
 	defaultLnightBandEdges = []float64{50, 55, 60, 65, 70}
@@ -35,12 +37,39 @@ var (
 
 // ComputeOutputs computes building exposure results and aggregate totals.
 func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg ExposureConfig, propagation road.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
+		if len(roads) == 0 {
+			return nil, errors.New("at least one road source is required")
+		}
+
+		roadOutputs, err := road.ComputeReceiverOutputs(receivers, roads, propagation)
+		if err != nil {
+			return nil, err
+		}
+
+		return roadLevelIndicatorsByReceiver(roadOutputs), nil
+	})
+}
+
+// ComputeOutputsFromAircraft computes BEB outputs from BUF aircraft receiver levels.
+func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufaircraft.AircraftSource, cfg ExposureConfig, propagation bufaircraft.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
+		if len(aircraftSources) == 0 {
+			return nil, errors.New("at least one aircraft source is required")
+		}
+
+		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, propagation)
+		if err != nil {
+			return nil, err
+		}
+
+		return aircraftLevelIndicatorsByReceiver(aircraftOutputs), nil
+	})
+}
+
+func computeOutputs(buildings []BuildingUnit, cfg ExposureConfig, receiverHeightM float64, provideLevels receiverLevelProvider) ([]BuildingExposureOutput, Summary, error) {
 	if len(buildings) == 0 {
 		return nil, Summary{}, errors.New("at least one building is required")
-	}
-
-	if len(roads) == 0 {
-		return nil, Summary{}, errors.New("at least one road source is required")
 	}
 
 	err := cfg.Validate()
@@ -53,56 +82,36 @@ func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg Expos
 		return nil, Summary{}, err
 	}
 
-	roadOutputs, err := road.ComputeReceiverOutputs(receivers, roads, propagation)
+	levelByID, err := provideLevels(receivers)
 	if err != nil {
 		return nil, Summary{}, err
-	}
-
-	levelByID := make(map[string]levelIndicators, len(roadOutputs))
-	for _, output := range roadOutputs {
-		levelByID[output.Receiver.ID] = levelIndicators{
-			Lden:   output.Indicators.Lden,
-			Lnight: output.Indicators.Lnight,
-		}
 	}
 
 	return finalizeOutputs(prepared, levelByID, cfg)
 }
 
-// ComputeOutputsFromAircraft computes BEB outputs from BUF aircraft receiver levels.
-func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufaircraft.AircraftSource, cfg ExposureConfig, propagation bufaircraft.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
-	if len(buildings) == 0 {
-		return nil, Summary{}, errors.New("at least one building is required")
-	}
-
-	if len(aircraftSources) == 0 {
-		return nil, Summary{}, errors.New("at least one aircraft source is required")
-	}
-
-	err := cfg.Validate()
-	if err != nil {
-		return nil, Summary{}, err
-	}
-
-	prepared, receivers, err := prepareBuildings(buildings, receiverHeightM, cfg.FacadeEvaluationMode)
-	if err != nil {
-		return nil, Summary{}, err
-	}
-
-	aircraftOutputs, err := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, propagation)
-	if err != nil {
-		return nil, Summary{}, err
-	}
-
-	levelByID := make(map[string]levelIndicators, len(aircraftOutputs))
-	for _, output := range aircraftOutputs {
+func roadLevelIndicatorsByReceiver(outputs []road.ReceiverOutput) map[string]levelIndicators {
+	levelByID := make(map[string]levelIndicators, len(outputs))
+	for _, output := range outputs {
 		levelByID[output.Receiver.ID] = levelIndicators{
 			Lden:   output.Indicators.Lden,
 			Lnight: output.Indicators.Lnight,
 		}
 	}
 
-	return finalizeOutputs(prepared, levelByID, cfg)
+	return levelByID
+}
+
+func aircraftLevelIndicatorsByReceiver(outputs []bufaircraft.ReceiverOutput) map[string]levelIndicators {
+	levelByID := make(map[string]levelIndicators, len(outputs))
+	for _, output := range outputs {
+		levelByID[output.Receiver.ID] = levelIndicators{
+			Lden:   output.Indicators.Lden,
+			Lnight: output.Indicators.Lnight,
+		}
+	}
+
+	return levelByID
 }
 
 func prepareBuildings(buildings []BuildingUnit, receiverHeightM float64, facadeEvaluationMode string) ([]preparedBuilding, []geo.PointReceiver, error) {

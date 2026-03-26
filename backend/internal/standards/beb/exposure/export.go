@@ -34,6 +34,53 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
 
+	table := buildBEBReceiverTable(outputs)
+
+	receiverJSONPath := filepath.Join(baseDir, "buildings.json")
+	receiverCSVPath := filepath.Join(baseDir, "buildings.csv")
+
+	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	raster, err := buildBEBResultRaster(summary)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	err = populateBEBResultRaster(raster, summary)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	persistence, err := results.SaveRaster(filepath.Join(baseDir, "beb-exposure"), raster)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	summaryPath := filepath.Join(baseDir, "beb-summary.json")
+
+	err = writeBEBSummary(summaryPath, summary)
+	if err != nil {
+		return ExportOutputs{}, err
+	}
+
+	return ExportOutputs{
+		ReceiverJSONPath: receiverJSONPath,
+		ReceiverCSVPath:  receiverCSVPath,
+		RasterMetaPath:   persistence.MetadataPath,
+		RasterDataPath:   persistence.DataPath,
+		SummaryPath:      summaryPath,
+	}, nil
+}
+
+func buildBEBReceiverTable(outputs []BuildingExposureOutput) results.ReceiverTable {
 	table := results.ReceiverTable{
 		IndicatorOrder: []string{
 			IndicatorLden,
@@ -68,19 +115,10 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		})
 	}
 
-	receiverJSONPath := filepath.Join(baseDir, "buildings.json")
-	receiverCSVPath := filepath.Join(baseDir, "buildings.csv")
+	return table
+}
 
-	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
-	if err != nil {
-		return ExportOutputs{}, err
-	}
-
-	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
-	if err != nil {
-		return ExportOutputs{}, err
-	}
-
+func buildBEBResultRaster(summary Summary) (*results.Raster, error) {
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     1,
 		Height:    1,
@@ -90,51 +128,43 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		BandNames: []string{IndicatorAffectedPersonsLden, IndicatorAffectedPersonsLnight, IndicatorAffectedDwellingsLden, IndicatorAffectedDwellingsLnight},
 	})
 	if err != nil {
-		return ExportOutputs{}, err
+		return nil, err
 	}
+
+	return raster, populateBEBResultRaster(raster, summary)
+}
+
+func populateBEBResultRaster(raster *results.Raster, summary Summary) error {
+	var err error
 
 	err = raster.Set(0, 0, 0, summary.AffectedPersonsLden)
 	if err != nil {
-		return ExportOutputs{}, err
+		return err
 	}
 
 	err = raster.Set(0, 0, 1, summary.AffectedPersonsLnight)
 	if err != nil {
-		return ExportOutputs{}, err
+		return err
 	}
 
 	err = raster.Set(0, 0, 2, summary.AffectedDwellingsLden)
 	if err != nil {
-		return ExportOutputs{}, err
+		return err
 	}
 
 	err = raster.Set(0, 0, 3, summary.AffectedDwellingsLnight)
 	if err != nil {
-		return ExportOutputs{}, err
+		return err
 	}
 
-	persistence, err := results.SaveRaster(filepath.Join(baseDir, "beb-exposure"), raster)
-	if err != nil {
-		return ExportOutputs{}, err
-	}
+	return nil
+}
 
-	summaryPath := filepath.Join(baseDir, "beb-summary.json")
-
+func writeBEBSummary(summaryPath string, summary Summary) error {
 	payload, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
-		return ExportOutputs{}, err
+		return err
 	}
 
-	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
-	if err != nil {
-		return ExportOutputs{}, err
-	}
-
-	return ExportOutputs{
-		ReceiverJSONPath: receiverJSONPath,
-		ReceiverCSVPath:  receiverCSVPath,
-		RasterMetaPath:   persistence.MetadataPath,
-		RasterDataPath:   persistence.DataPath,
-		SummaryPath:      summaryPath,
-	}, nil
+	return os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
 }

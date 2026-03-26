@@ -116,88 +116,7 @@ func newBenchCommand() *cobra.Command {
 		Use:   "bench",
 		Short: "Run synthetic benchmark scenarios for engine runtime, memory, cache IO, and drift",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			state, ok := stateFromCommand(cmd)
-			if !ok {
-				return domainerrors.New(domainerrors.KindInternal, "cli.bench", "command state unavailable", nil)
-			}
-
-			if chunkSize <= 0 {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--chunk-size must be > 0", nil)
-			}
-
-			if sourceIndexCellM <= 0 || math.IsNaN(sourceIndexCellM) || math.IsInf(sourceIndexCellM, 0) {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--source-index-cell-m must be finite and > 0", nil)
-			}
-
-			if keepLast < 1 {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--keep-last must be >= 1", nil)
-			}
-
-			scenarios, err := resolveBenchScenarios(scenarioNames)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.bench", err.Error(), nil)
-			}
-
-			benchID := time.Now().UTC().Format("20060102T150405.000000000Z")
-			benchRoot := filepath.Join(state.Config.CacheDir, "bench")
-			suiteDir := filepath.Join(benchRoot, benchID)
-
-			err = os.MkdirAll(suiteDir, 0o755)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.bench", "create bench suite directory "+suiteDir, err)
-			}
-
-			summary := benchSummary{
-				BenchID:         benchID,
-				GeneratedAt:     nowUTC(),
-				CacheRoot:       benchRoot,
-				ScenarioResults: make([]benchScenarioResult, 0, len(scenarios)),
-			}
-
-			for _, scenario := range scenarios {
-				result, err := runBenchScenario(suiteDir, scenario, workers, chunkSize, sourceIndexCellM)
-				if err != nil {
-					return err
-				}
-
-				summary.ScenarioResults = append(summary.ScenarioResults, result)
-			}
-
-			prunedSuites, err := pruneBenchSuites(benchRoot, keepLast)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.bench", "prune bench suites", err)
-			}
-
-			summary.PrunedSuites = prunedSuites
-
-			summaryPath := filepath.Join(suiteDir, "summary.json")
-
-			err = writeJSONFile(summaryPath, summary)
-			if err != nil {
-				return err
-			}
-
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Benchmark suite %s\n", summary.BenchID)
-			for _, scenario := range summary.ScenarioResults {
-				_, _ = fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"%s: receivers=%d sources=%d cold=%dms warm=%dms cached_chunks=%d drift_max_abs_db=%.9f\n",
-					scenario.Scenario.Name,
-					scenario.ColdCache.ReceiverCount,
-					scenario.ColdCache.SourceCount,
-					scenario.ColdCache.DurationMS,
-					scenario.WarmCache.DurationMS,
-					scenario.WarmCache.UsedCachedChunks,
-					scenario.NumericDrift.MaxAbsLevelDeltaDB,
-				)
-			}
-
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)
-			if len(summary.PrunedSuites) > 0 {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Pruned suites: %d\n", len(summary.PrunedSuites))
-			}
-
-			return nil
+			return runBenchCommand(cmd, scenarioNames, workers, chunkSize, sourceIndexCellM, keepLast)
 		},
 	}
 
@@ -208,6 +127,91 @@ func newBenchCommand() *cobra.Command {
 	cmd.Flags().IntVar(&keepLast, "keep-last", 5, "Keep at most this many benchmark suites under the bench cache root")
 
 	return cmd
+}
+
+func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, chunkSize int, sourceIndexCellM float64, keepLast int) error {
+	state, ok := stateFromCommand(cmd)
+	if !ok {
+		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "command state unavailable", nil)
+	}
+
+	if chunkSize <= 0 {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--chunk-size must be > 0", nil)
+	}
+
+	if sourceIndexCellM <= 0 || math.IsNaN(sourceIndexCellM) || math.IsInf(sourceIndexCellM, 0) {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--source-index-cell-m must be finite and > 0", nil)
+	}
+
+	if keepLast < 1 {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--keep-last must be >= 1", nil)
+	}
+
+	scenarios, err := resolveBenchScenarios(scenarioNames)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", err.Error(), nil)
+	}
+
+	benchID := time.Now().UTC().Format("20060102T150405.000000000Z")
+	benchRoot := filepath.Join(state.Config.CacheDir, "bench")
+	suiteDir := filepath.Join(benchRoot, benchID)
+
+	err = os.MkdirAll(suiteDir, 0o755)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "create bench suite directory "+suiteDir, err)
+	}
+
+	summary := benchSummary{
+		BenchID:         benchID,
+		GeneratedAt:     nowUTC(),
+		CacheRoot:       benchRoot,
+		ScenarioResults: make([]benchScenarioResult, 0, len(scenarios)),
+	}
+
+	for _, scenario := range scenarios {
+		result, err := runBenchScenario(suiteDir, scenario, workers, chunkSize, sourceIndexCellM)
+		if err != nil {
+			return err
+		}
+
+		summary.ScenarioResults = append(summary.ScenarioResults, result)
+	}
+
+	prunedSuites, err := pruneBenchSuites(benchRoot, keepLast)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "prune bench suites", err)
+	}
+
+	summary.PrunedSuites = prunedSuites
+
+	summaryPath := filepath.Join(suiteDir, "summary.json")
+
+	err = writeJSONFile(summaryPath, summary)
+	if err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Benchmark suite %s\n", summary.BenchID)
+	for _, scenario := range summary.ScenarioResults {
+		_, _ = fmt.Fprintf(
+			cmd.OutOrStdout(),
+			"%s: receivers=%d sources=%d cold=%dms warm=%dms cached_chunks=%d drift_max_abs_db=%.9f\n",
+			scenario.Scenario.Name,
+			scenario.ColdCache.ReceiverCount,
+			scenario.ColdCache.SourceCount,
+			scenario.ColdCache.DurationMS,
+			scenario.WarmCache.DurationMS,
+			scenario.WarmCache.UsedCachedChunks,
+			scenario.NumericDrift.MaxAbsLevelDeltaDB,
+		)
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)
+	if len(summary.PrunedSuites) > 0 {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Pruned suites: %d\n", len(summary.PrunedSuites))
+	}
+
+	return nil
 }
 
 func resolveBenchScenarios(names []string) ([]benchScenarioSpec, error) {

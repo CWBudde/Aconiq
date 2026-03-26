@@ -162,11 +162,11 @@ func writeGeoTIFFFile(path string, data []float64, width int, height int, nodata
 	for i := range ifdEntries {
 		if ifdEntries[i].resolveExtra >= 0 {
 			idx := ifdEntries[i].resolveExtra
-			binary.LittleEndian.PutUint32(ifdEntries[i].value[:], uint32(extraBlocks[idx].offset))
+			binary.LittleEndian.PutUint32(ifdEntries[i].value[:], mustUint32(extraBlocks[idx].offset))
 		}
 
 		if ifdEntries[i].resolveImage {
-			binary.LittleEndian.PutUint32(ifdEntries[i].value[:], uint32(imageDataOffset))
+			binary.LittleEndian.PutUint32(ifdEntries[i].value[:], mustUint32(imageDataOffset))
 		}
 	}
 
@@ -182,7 +182,7 @@ func writeGeoTIFFFile(path string, data []float64, width int, height int, nodata
 
 	// IFD.
 	pos := 8
-	binary.LittleEndian.PutUint16(buf[pos:], uint16(len(ifdEntries)))
+	binary.LittleEndian.PutUint16(buf[pos:], mustUint16(len(ifdEntries)))
 	pos += 2
 
 	for _, entry := range ifdEntries {
@@ -238,13 +238,13 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 	// ImageWidth.
 	entries = append(entries, ifdEntry{
 		tag: tiffTagImageWidth, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(width)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(width)), resolveExtra: -1,
 	})
 
 	// ImageLength.
 	entries = append(entries, ifdEntry{
 		tag: tiffTagImageLength, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(height)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(height)), resolveExtra: -1,
 	})
 
 	// BitsPerSample.
@@ -280,13 +280,13 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 	// RowsPerStrip (all rows in one strip).
 	entries = append(entries, ifdEntry{
 		tag: tiffTagRowsPerStrip, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(height)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(height)), resolveExtra: -1,
 	})
 
 	// StripByteCounts.
 	entries = append(entries, ifdEntry{
 		tag: tiffTagStripByteCounts, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(imageByteCount)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(imageByteCount)), resolveExtra: -1,
 	})
 
 	// SampleFormat: float.
@@ -333,7 +333,7 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 	geoKeyIdx := addExtra(geoKeyData)
 
 	entries = append(entries, ifdEntry{
-		tag: tiffTagGeoKeyDirectory, typ: tiffTypeShort, count: uint32(len(geoKeys)),
+		tag: tiffTagGeoKeyDirectory, typ: tiffTypeShort, count: mustUint32(len(geoKeys)),
 		resolveExtra: geoKeyIdx,
 	})
 
@@ -346,13 +346,13 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 		copy(val[:], nodataASCII)
 
 		entries = append(entries, ifdEntry{
-			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: uint32(len(nodataASCII)),
+			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: mustUint32(len(nodataASCII)),
 			value: val, resolveExtra: -1,
 		})
 	} else {
 		nodataIdx := addExtra(nodataASCII)
 		entries = append(entries, ifdEntry{
-			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: uint32(len(nodataASCII)),
+			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: mustUint32(len(nodataASCII)),
 			resolveExtra: nodataIdx,
 		})
 	}
@@ -377,7 +377,7 @@ func buildGeoKeys(epsgCode int) []uint16 {
 			geoKeyDirectoryVersion, geoKeyRevisionMajor, geoKeyRevisionMinor, 3,
 			geoKeyGTModelType, 0, 1, modelTypeGeographic,
 			geoKeyGTRasterType, 0, 1, rasterTypePixelIsArea,
-			geoKeyGeographicType, 0, 1, uint16(epsgCode),
+			geoKeyGeographicType, 0, 1, mustUint16(epsgCode),
 		}
 	}
 
@@ -385,7 +385,7 @@ func buildGeoKeys(epsgCode int) []uint16 {
 		geoKeyDirectoryVersion, geoKeyRevisionMajor, geoKeyRevisionMinor, 3,
 		geoKeyGTModelType, 0, 1, modelTypeProjected,
 		geoKeyGTRasterType, 0, 1, rasterTypePixelIsArea,
-		geoKeyProjectedCSType, 0, 1, uint16(epsgCode),
+		geoKeyProjectedCSType, 0, 1, mustUint16(epsgCode),
 	}
 }
 
@@ -515,7 +515,7 @@ func computeCOGFileLayout(levels []cogLevel, layouts []cogLevelLayout, nodata fl
 			entry := &allEntries[i][j]
 			if entry.resolveExtra >= 0 {
 				idx := entry.resolveExtra
-				binary.LittleEndian.PutUint32(entry.value[:], uint32(allExtras[i][idx].offset))
+				binary.LittleEndian.PutUint32(entry.value[:], mustUint32(allExtras[i][idx].offset))
 			}
 		}
 
@@ -539,12 +539,12 @@ func assembleCOGFile(layout cogFileLayout, levels []cogLevel, nodata float64) []
 	buf[0] = 'I'
 	buf[1] = 'I'
 	binary.LittleEndian.PutUint16(buf[2:], 42)
-	binary.LittleEndian.PutUint32(buf[4:], uint32(layout.ifdOffsets[0]))
+	binary.LittleEndian.PutUint32(buf[4:], mustUint32(layout.ifdOffsets[0]))
 
 	// Write IFDs.
 	for i := range levels {
 		p := layout.ifdOffsets[i]
-		binary.LittleEndian.PutUint16(buf[p:], uint16(len(layout.ifdEntries[i])))
+		binary.LittleEndian.PutUint16(buf[p:], mustUint16(len(layout.ifdEntries[i])))
 		p += 2
 
 		for _, entry := range layout.ifdEntries[i] {
@@ -556,7 +556,7 @@ func assembleCOGFile(layout cogFileLayout, levels []cogLevel, nodata float64) []
 		}
 
 		if i+1 < len(levels) {
-			binary.LittleEndian.PutUint32(buf[p:], uint32(layout.ifdOffsets[i+1]))
+			binary.LittleEndian.PutUint32(buf[p:], mustUint32(layout.ifdOffsets[i+1]))
 		} else {
 			binary.LittleEndian.PutUint32(buf[p:], 0)
 		}
@@ -674,13 +674,13 @@ func buildCOGIFD(width, height, tileW, tileH int, nodata float64, gt GeoTransfor
 	// TileWidth.
 	entries = append(entries, ifdEntry{
 		tag: tiffTagTileWidth, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(tileW)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(tileW)), resolveExtra: -1,
 	})
 
 	// TileLength.
 	entries = append(entries, ifdEntry{
 		tag: tiffTagTileLength, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(uint32(tileH)), resolveExtra: -1,
+		value: uint32ToBytes(mustUint32(tileH)), resolveExtra: -1,
 	})
 
 	// TileOffsets — array of uint32, one per tile. Values resolved later.
@@ -688,20 +688,20 @@ func buildCOGIFD(width, height, tileW, tileH int, nodata float64, gt GeoTransfor
 	tileOffsetsIdx := addExtra(tileOffsetsData)
 
 	entries = append(entries, ifdEntry{
-		tag: tiffTagTileOffsets, typ: tiffTypeLong, count: uint32(tileCount),
+		tag: tiffTagTileOffsets, typ: tiffTypeLong, count: mustUint32(tileCount),
 		resolveExtra: tileOffsetsIdx,
 	})
 
 	// TileByteCounts — array of uint32, one per tile.
 	tileByteCountsData := make([]byte, tileCount*4)
 	for i := range tileCount {
-		binary.LittleEndian.PutUint32(tileByteCountsData[i*4:], uint32(tileByteCount))
+		binary.LittleEndian.PutUint32(tileByteCountsData[i*4:], mustUint32(tileByteCount))
 	}
 
 	tileByteCountsIdx := addExtra(tileByteCountsData)
 
 	entries = append(entries, ifdEntry{
-		tag: tiffTagTileByteCounts, typ: tiffTypeLong, count: uint32(tileCount),
+		tag: tiffTagTileByteCounts, typ: tiffTypeLong, count: mustUint32(tileCount),
 		resolveExtra: tileByteCountsIdx,
 	})
 
@@ -716,8 +716,8 @@ func buildCOGIFD(width, height, tileW, tileH int, nodata float64, gt GeoTransfor
 // buildFloat64ImageTags returns the common IFD entries that describe a single-band float64 image.
 func buildFloat64ImageTags(width, height int) []ifdEntry {
 	return []ifdEntry{
-		{tag: tiffTagImageWidth, typ: tiffTypeLong, count: 1, value: uint32ToBytes(uint32(width)), resolveExtra: -1},
-		{tag: tiffTagImageLength, typ: tiffTypeLong, count: 1, value: uint32ToBytes(uint32(height)), resolveExtra: -1},
+		{tag: tiffTagImageWidth, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(width)), resolveExtra: -1},
+		{tag: tiffTagImageLength, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(height)), resolveExtra: -1},
 		{tag: tiffTagBitsPerSample, typ: tiffTypeShort, count: 1, value: uint16ToBytes(64), resolveExtra: -1},
 		{tag: tiffTagCompression, typ: tiffTypeShort, count: 1, value: uint16ToBytes(tiffCompressionNone), resolveExtra: -1},
 		{tag: tiffTagPhotometric, typ: tiffTypeShort, count: 1, value: uint16ToBytes(tiffPhotometricMinIsBlack), resolveExtra: -1},
@@ -775,7 +775,7 @@ func buildGeoIFDEntries(gt GeoTransform, epsgCode int, nodata float64, extraBase
 	geoKeyIdx := addExtra(geoKeyData)
 
 	entries = append(entries, ifdEntry{
-		tag: tiffTagGeoKeyDirectory, typ: tiffTypeShort, count: uint32(len(geoKeys)),
+		tag: tiffTagGeoKeyDirectory, typ: tiffTypeShort, count: mustUint32(len(geoKeys)),
 		resolveExtra: geoKeyIdx,
 	})
 
@@ -788,13 +788,13 @@ func buildGeoIFDEntries(gt GeoTransform, epsgCode int, nodata float64, extraBase
 		copy(val[:], nodataASCII)
 
 		entries = append(entries, ifdEntry{
-			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: uint32(len(nodataASCII)),
+			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: mustUint32(len(nodataASCII)),
 			value: val, resolveExtra: -1,
 		})
 	} else {
 		nodataIdx := addExtra(nodataASCII)
 		entries = append(entries, ifdEntry{
-			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: uint32(len(nodataASCII)),
+			tag: tiffTagGDALNoData, typ: tiffTypeASCII, count: mustUint32(len(nodataASCII)),
 			resolveExtra: nodataIdx,
 		})
 	}
@@ -810,7 +810,7 @@ func resolveCOGTileOffsets(entries []ifdEntry, extras []extraBlock, tileDataStar
 		if entries[i].tag == tiffTagTileOffsets {
 			idx := entries[i].resolveExtra
 			for t := range tileCount {
-				binary.LittleEndian.PutUint32(extras[idx].data[t*4:], uint32(tileDataStart+t*tileByteCount))
+				binary.LittleEndian.PutUint32(extras[idx].data[t*4:], mustUint32(tileDataStart+t*tileByteCount))
 			}
 
 			// The IFD value field should point to the extra block (already resolved by resolveExtra).
