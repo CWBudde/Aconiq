@@ -18,7 +18,22 @@ type Fixture struct {
 
 // Catalog returns the currently curated deterministic acceptance fixtures.
 func Catalog() []Fixture {
-	fixtures := []Fixture{
+	fixtures := append([]Fixture(nil), acceptanceFixturesCore()...)
+	fixtures = append(fixtures, acceptanceFixturesRls19()...)
+
+	sort.Slice(fixtures, func(i, j int) bool {
+		if fixtures[i].StandardID == fixtures[j].StandardID {
+			return fixtures[i].Name < fixtures[j].Name
+		}
+
+		return fixtures[i].StandardID < fixtures[j].StandardID
+	})
+
+	return fixtures
+}
+
+func acceptanceFixturesCore() []Fixture {
+	return []Fixture{
 		{
 			Name:             "cnossos-road-synthetic-baseline",
 			StandardID:       "cnossos-road",
@@ -163,6 +178,11 @@ func Catalog() []Fixture {
 			ScenarioPath:     fixturePath("beb-exposure", "building_exposure_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("beb-exposure", "building_exposure_contextual.golden.json"),
 		},
+	}
+}
+
+func acceptanceFixturesRls19() []Fixture {
+	return []Fixture{
 		{
 			Name:             "rls19-road-synthetic-baseline",
 			StandardID:       "rls19-road",
@@ -182,16 +202,6 @@ func Catalog() []Fixture {
 			ExpectedJSONPath: fixturePath("schall03", "rail_planning_preview.golden.json"),
 		},
 	}
-
-	sort.Slice(fixtures, func(i, j int) bool {
-		if fixtures[i].StandardID == fixtures[j].StandardID {
-			return fixtures[i].Name < fixtures[j].Name
-		}
-
-		return fixtures[i].StandardID < fixtures[j].StandardID
-	})
-
-	return fixtures
 }
 
 func fixturePath(parts ...string) string {

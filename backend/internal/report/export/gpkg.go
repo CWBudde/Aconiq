@@ -388,13 +388,13 @@ func encodeGPKGPoint(x float64, y float64, z float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0    // version
 	buf[3] = 0x01 // flags: little-endian, no envelope
-	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
 
 	// WKB PointZ.
 	offset := 8
 	buf[offset] = 1 // little-endian
 	offset++
-	binary.LittleEndian.PutUint32(buf[offset:], 1001) // wkbPointZ
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(1001)) // wkbPointZ
 	offset += 4
 	binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(x))
 	offset += 8
@@ -415,14 +415,14 @@ func encodeGPKGLineString(points [][2]float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian
 	offset++
-	binary.LittleEndian.PutUint32(buf[offset:], 2) // wkbLineString
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(2)) // wkbLineString
 	offset += 4
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(points)))
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(len(points)))
 	offset += 4
 
 	for _, pt := range points {
@@ -728,12 +728,12 @@ func encodeGPKGPoint2D(x float64, y float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian
 	offset++
-	binary.LittleEndian.PutUint32(buf[offset:], 1) // wkbPoint
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(1)) // wkbPoint
 	offset += 4
 	binary.LittleEndian.PutUint64(buf[offset:], math.Float64bits(x))
 	offset += 8
@@ -757,18 +757,18 @@ func encodeGPKGPolygon(rings [][][2]float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], uint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian
 	offset++
-	binary.LittleEndian.PutUint32(buf[offset:], 3) // wkbPolygon
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(3)) // wkbPolygon
 	offset += 4
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(rings)))
+	binary.LittleEndian.PutUint32(buf[offset:], mustUint32(len(rings)))
 	offset += 4
 
 	for _, ring := range rings {
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(ring)))
+		binary.LittleEndian.PutUint32(buf[offset:], mustUint32(len(ring)))
 		offset += 4
 
 		for _, pt := range ring {
