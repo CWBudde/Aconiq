@@ -19,11 +19,13 @@ import (
 // ExportReceiverGeoPackage writes a receiver table as an OGC GeoPackage
 // with attributed point features.
 func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) error {
-	if err := table.Validate(); err != nil {
+	err := table.Validate()
+	if err != nil {
 		return fmt.Errorf("validate receiver table: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
 
@@ -36,15 +38,18 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 	}
 	defer db.Close()
 
-	if err = initGeoPackage(db, crs, srsID); err != nil {
+	err = initGeoPackage(db, crs, srsID)
+	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	if err = createReceiverTable(db, table, srsID); err != nil {
+	err = createReceiverTable(db, table, srsID)
+	if err != nil {
 		return fmt.Errorf("create receiver table: %w", err)
 	}
 
-	if err = insertReceivers(db, table); err != nil {
+	err = insertReceivers(db, table)
+	if err != nil {
 		return fmt.Errorf("insert receivers: %w", err)
 	}
 
@@ -53,7 +58,8 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 
 // ExportContourGeoPackage writes contour lines as an OGC GeoPackage.
 func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
 
@@ -65,15 +71,18 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 	}
 	defer db.Close()
 
-	if err = initGeoPackage(db, crs, srsID); err != nil {
+	err = initGeoPackage(db, crs, srsID)
+	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	if err = createContourTable(db, srsID); err != nil {
+	err = createContourTable(db, srsID)
+	if err != nil {
 		return fmt.Errorf("create contour table: %w", err)
 	}
 
-	if err = insertContours(db, contours); err != nil {
+	err = insertContours(db, contours)
+	if err != nil {
 		return fmt.Errorf("insert contours: %w", err)
 	}
 
@@ -177,6 +186,8 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 }
 
 func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) error {
+	ctx := context.Background()
+
 	// Build column definitions for indicator values.
 	colDefs := []string{
 		"fid INTEGER PRIMARY KEY AUTOINCREMENT",
@@ -192,9 +203,9 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 		colDefs = append(colDefs, colName+" REAL")
 	}
 
-	createSQL := fmt.Sprintf("CREATE TABLE receivers (%s)", strings.Join(colDefs, ", "))
+	createSQL := "CREATE TABLE receivers (" + strings.Join(colDefs, ", ") + ")"
 
-	_, err := db.Exec(createSQL)
+	_, err := db.ExecContext(ctx, createSQL)
 	if err != nil {
 		return fmt.Errorf("create receivers table: %w", err)
 	}
@@ -203,7 +214,8 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 	minX, minY, maxX, maxY := computeReceiverExtent(table)
 
 	// Register in gpkg_contents.
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, last_change, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"receivers", "features", "receivers", "Receiver points with noise indicators",
 		time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
@@ -214,7 +226,8 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 	}
 
 	// Register geometry column.
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?, ?, ?, ?, ?, ?)`,
 		"receivers", "geom", "POINT", srsID, 1, 0,
 	)
@@ -226,6 +239,8 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 }
 
 func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
+	ctx := context.Background()
+
 	// Build the INSERT statement.
 	colNames := []string{"geom", "receiver_id", "x", "y", "height_m"}
 	for _, indicator := range table.IndicatorOrder {
@@ -237,12 +252,16 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 		placeholders[i] = "?"
 	}
 
-	insertSQL := fmt.Sprintf("INSERT INTO receivers (%s) VALUES (%s)",
-		strings.Join(colNames, ", "),
-		strings.Join(placeholders, ", "),
-	)
+	var sqlBuilder strings.Builder
+	sqlBuilder.Grow(len(colNames)*16 + len(placeholders)*2 + 32)
+	sqlBuilder.WriteString("INSERT INTO receivers (")
+	sqlBuilder.WriteString(strings.Join(colNames, ", "))
+	sqlBuilder.WriteString(") VALUES (")
+	sqlBuilder.WriteString(strings.Join(placeholders, ", "))
+	sqlBuilder.WriteString(")")
+	insertSQL := sqlBuilder.String()
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -251,7 +270,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 		_ = tx.Rollback()
 	}()
 
-	stmt, err := tx.Prepare(insertSQL)
+	stmt, err := tx.PrepareContext(ctx, insertSQL)
 	if err != nil {
 		return err
 	}
@@ -267,7 +286,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 			args = append(args, record.Values[indicator])
 		}
 
-		_, err = stmt.Exec(args...)
+		_, err = stmt.ExecContext(ctx, args...)
 		if err != nil {
 			return fmt.Errorf("insert receiver %s: %w", record.ID, err)
 		}
@@ -277,7 +296,9 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 }
 
 func createContourTable(db *sql.DB, srsID int) error {
-	_, err := db.Exec(`CREATE TABLE contours (
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `CREATE TABLE contours (
 		fid INTEGER PRIMARY KEY AUTOINCREMENT,
 		geom BLOB,
 		level_db REAL NOT NULL,
@@ -287,7 +308,8 @@ func createContourTable(db *sql.DB, srsID int) error {
 		return err
 	}
 
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, last_change, srs_id) VALUES (?, ?, ?, ?, ?, ?)`,
 		"contours", "features", "contours", "Noise contour lines",
 		time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), srsID,
@@ -296,7 +318,8 @@ func createContourTable(db *sql.DB, srsID int) error {
 		return err
 	}
 
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?, ?, ?, ?, ?, ?)`,
 		"contours", "geom", "LINESTRING", srsID, 0, 0,
 	)
@@ -308,11 +331,13 @@ func createContourTable(db *sql.DB, srsID int) error {
 }
 
 func insertContours(db *sql.DB, contours []ContourLine) error {
+	ctx := context.Background()
+
 	if len(contours) == 0 {
 		return nil
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -321,7 +346,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 		_ = tx.Rollback()
 	}()
 
-	stmt, err := tx.Prepare("INSERT INTO contours (geom, level_db, band_name) VALUES (?, ?, ?)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO contours (geom, level_db, band_name) VALUES (?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -334,7 +359,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 
 		geomBlob := encodeGPKGLineString(c.Points, 0)
 
-		_, err = stmt.Exec(geomBlob, c.Level, c.BandName)
+		_, err = stmt.ExecContext(ctx, geomBlob, c.Level, c.BandName)
 		if err != nil {
 			return fmt.Errorf("insert contour level=%g: %w", c.Level, err)
 		}
@@ -453,7 +478,8 @@ type ModelFeature struct {
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
 // as an OGC GeoPackage with mixed geometry types.
 func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
 
@@ -465,15 +491,18 @@ func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs str
 	}
 	defer db.Close()
 
-	if err = initGeoPackage(db, crs, srsID); err != nil {
+	err = initGeoPackage(db, crs, srsID)
+	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	if err = createModelFeaturesTable(db, features, srsID); err != nil {
+	err = createModelFeaturesTable(db, features, srsID)
+	if err != nil {
 		return fmt.Errorf("create model_features table: %w", err)
 	}
 
-	if err = insertModelFeatures(db, features, srsID); err != nil {
+	err = insertModelFeatures(db, features, srsID)
+	if err != nil {
 		return fmt.Errorf("insert model features: %w", err)
 	}
 
@@ -481,7 +510,9 @@ func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs str
 }
 
 func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) error {
-	_, err := db.Exec(`CREATE TABLE model_features (
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `CREATE TABLE model_features (
 		fid INTEGER PRIMARY KEY AUTOINCREMENT,
 		geom BLOB,
 		feature_id TEXT,
@@ -495,7 +526,8 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 
 	minX, minY, maxX, maxY := computeModelFeaturesExtent(features)
 
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, last_change, min_x, min_y, max_x, max_y, srs_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"model_features", "features", "model_features", "Model features (sources, buildings, barriers)",
 		time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
@@ -505,7 +537,8 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 		return err
 	}
 
-	_, err = db.Exec(
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?, ?, ?, ?, ?, ?)`,
 		"model_features", "geom", "GEOMETRY", srsID, 0, 0,
 	)
@@ -517,11 +550,13 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 }
 
 func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
+	ctx := context.Background()
+
 	if len(features) == 0 {
 		return nil
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -530,7 +565,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 		_ = tx.Rollback()
 	}()
 
-	stmt, err := tx.Prepare("INSERT INTO model_features (geom, feature_id, kind, source_type, height_m) VALUES (?, ?, ?, ?, ?)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO model_features (geom, feature_id, kind, source_type, height_m) VALUES (?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -542,7 +577,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 			return fmt.Errorf("encode geometry for feature %s: %w", f.ID, err)
 		}
 
-		_, err = stmt.Exec(geomBlob, f.ID, f.Kind, f.SourceType, f.HeightM)
+		_, err = stmt.ExecContext(ctx, geomBlob, f.ID, f.Kind, f.SourceType, f.HeightM)
 		if err != nil {
 			return fmt.Errorf("insert feature %s: %w", f.ID, err)
 		}
@@ -799,7 +834,8 @@ func collectFromCoords(coords any, collect func(x, y float64), found *bool) {
 	}
 
 	// Check if this is a coordinate pair (leaf): first element is a number.
-	if _, err := toFloat64(arr[0]); err == nil && len(arr) >= 2 {
+	_, err := toFloat64(arr[0])
+	if err == nil && len(arr) >= 2 {
 		x, xerr := toFloat64(arr[0])
 		y, yerr := toFloat64(arr[1])
 

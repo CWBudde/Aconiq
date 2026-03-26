@@ -72,7 +72,8 @@ func PointInPolygon(p Point2D, rings [][]Point2D) bool {
 	}
 
 	for i := 1; i < len(rings); i++ {
-		if len(rings[i]) >= 4 && pointInRing(p, rings[i]) {
+		ring := rings[i]
+		if len(ring) >= 4 && pointInRing(p, ring) {
 			return false
 		}
 	}
