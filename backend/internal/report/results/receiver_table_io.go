@@ -45,7 +45,7 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 
 	payload = append(payload, '\n')
 
-	err = os.WriteFile(path, payload, 0o644)
+	err = os.WriteFile(path, payload, 0o600)
 	if err != nil {
 		return fmt.Errorf("write receiver table json %s: %w", path, err)
 	}

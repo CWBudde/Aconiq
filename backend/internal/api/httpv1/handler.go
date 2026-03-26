@@ -199,8 +199,6 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	now := opts.clock
 	if opts.clock == nil {
 		now = time.Now
-	} else {
-		now = opts.clock
 	}
 
 	sseInterval := opts.sseInterval

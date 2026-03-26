@@ -83,7 +83,7 @@ func writeTestGeoTIFF(t *testing.T, width, height int, pixels []float32, originX
 	data := buildMinimalGeoTIFF(width, height, pixels, originX, originY, pixelSizeX, pixelSizeY)
 	path := filepath.Join(t.TempDir(), "test.tif")
 
-	err := os.WriteFile(path, data, 0o644)
+	err := os.WriteFile(path, data, 0o600)
 	if err != nil {
 		t.Fatalf("write test GeoTIFF: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestLoadFromBytes_InvalidData(t *testing.T) {
 func TestLoad_InvalidFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.tif")
 
-	err := os.WriteFile(path, []byte("not a tiff"), 0o644)
+	err := os.WriteFile(path, []byte("not a tiff"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}

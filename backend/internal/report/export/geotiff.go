@@ -204,7 +204,7 @@ func writeGeoTIFFFile(path string, data []float64, width int, height int, nodata
 	// Image data.
 	copy(buf[imageDataOffset:], imageBytes)
 
-	return os.WriteFile(path, buf, 0o644)
+	return os.WriteFile(path, buf, 0o600)
 }
 
 type ifdEntry struct {
@@ -452,7 +452,7 @@ func writeCOGFile(path string, data []float64, width, height int, nodata float64
 
 	buf := assembleCOGFile(fileLayout, levels, nodata)
 
-	return os.WriteFile(path, buf, 0o644)
+	return os.WriteFile(path, buf, 0o600)
 }
 
 // computeCOGLevelLayouts computes tile counts and data sizes for each COG level.

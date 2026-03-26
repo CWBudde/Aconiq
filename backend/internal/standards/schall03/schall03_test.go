@@ -306,7 +306,7 @@ func TestLoadDataPack(t *testing.T) {
 		t.Fatalf("marshal data pack: %v", err)
 	}
 
-	err = os.WriteFile(path, payload, 0o644)
+	err = os.WriteFile(path, payload, 0o600)
 	if err != nil {
 		t.Fatalf("write data pack: %v", err)
 	}

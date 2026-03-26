@@ -60,7 +60,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		binary.LittleEndian.PutUint64(binaryPayload[i*8:], math.Float64bits(value))
 	}
 
-	err = os.WriteFile(dataPath, binaryPayload, 0o644)
+	err = os.WriteFile(dataPath, binaryPayload, 0o600)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster data %s: %w", dataPath, err)
 	}
@@ -82,7 +82,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 
 	encodedMeta = append(encodedMeta, '\n')
 
-	err = os.WriteFile(metadataPath, encodedMeta, 0o644)
+	err = os.WriteFile(metadataPath, encodedMeta, 0o600)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster metadata %s: %w", metadataPath, err)
 	}

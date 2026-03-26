@@ -20,6 +20,7 @@ const (
 	ModeCISafe             = "ci-safe"
 	ModeLocalSuite         = "local-suite"
 	localSuiteManifestName = "suite.json"
+	taskStatusFailed       = "failed"
 )
 
 type Options struct {
@@ -195,9 +196,9 @@ func Run(opts Options) (Report, error) {
 		switch task.Status {
 		case "passed":
 			report.PassedCount++
-		case "failed":
+		case taskStatusFailed:
 			report.FailedCount++
-			report.Status = "failed"
+			report.Status = taskStatusFailed
 		case "skipped":
 			report.SkippedCount++
 			if report.Status == "passed" {
@@ -214,7 +215,7 @@ func Run(opts Options) (Report, error) {
 		switch task.Status {
 		case "passed":
 			cs.PassCount++
-		case "failed":
+		case taskStatusFailed:
 			cs.FailCount++
 		case "skipped":
 			cs.SkipCount++
@@ -331,7 +332,7 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 
 	result.MaxAbsDeltaDB = round6(maxDelta)
 	if compareErr != nil {
-		result.Status = "failed"
+		result.Status = taskStatusFailed
 		result.Details = compareErr.Error()
 
 		return result, nil
@@ -454,7 +455,7 @@ func writeJSONFile(path string, value any) error {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 
-	err = os.WriteFile(path, payload, 0o644)
+	err = os.WriteFile(path, payload, 0o600)
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

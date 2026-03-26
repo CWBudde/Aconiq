@@ -125,7 +125,7 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, err
 	}
 
-	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o644)
+	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
 	if err != nil {
 		return ExportOutputs{}, err
 	}

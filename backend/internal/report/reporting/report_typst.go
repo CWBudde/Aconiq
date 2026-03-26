@@ -24,7 +24,7 @@ func writeTypst(path string, ctx reportContext) error {
 		return err
 	}
 
-	err = os.WriteFile(path, source, 0o644)
+	err = os.WriteFile(path, source, 0o600)
 	if err != nil {
 		return fmt.Errorf("write report typst %s: %w", path, err)
 	}

@@ -146,6 +146,8 @@ func decodeLineString(data []byte, offset int, order binary.ByteOrder) (string, 
 		return "", nil, 0, errors.New("wkb: LineString numPoints too short")
 	}
 
+	const lineStringGeometryType = "LineString"
+
 	numPoints := int(order.Uint32(data[offset:]))
 	offset += uint32Size
 
@@ -154,7 +156,7 @@ func decodeLineString(data []byte, offset int, order binary.ByteOrder) (string, 
 		return "", nil, 0, err
 	}
 
-	return "LineString", pts, offset + n, nil
+	return lineStringGeometryType, pts, offset + n, nil
 }
 
 func decodePolygon(data []byte, offset int, order binary.ByteOrder) (string, any, int, error) {

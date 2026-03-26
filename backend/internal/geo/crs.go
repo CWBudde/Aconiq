@@ -65,7 +65,7 @@ func classifyEPSG(code int) CRSKind {
 // TransformStep transforms points between CRS stages.
 type TransformStep interface {
 	Name() string
-	TransformPoint(Point2D) (Point2D, error)
+	TransformPoint(p Point2D) (Point2D, error)
 }
 
 // TransformPipeline maps coordinates from ImportCRS into ProjectCRS.

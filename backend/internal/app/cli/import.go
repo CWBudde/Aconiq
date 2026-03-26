@@ -566,7 +566,7 @@ func runTerrainImport(
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "create model directory", err)
 	}
 
-	err = os.WriteFile(destPath, srcData, 0o644)
+	err = os.WriteFile(destPath, srcData, 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "write terrain file", err)
 	}

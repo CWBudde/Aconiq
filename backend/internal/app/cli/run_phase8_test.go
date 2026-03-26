@@ -1033,7 +1033,7 @@ func TestRunRLS19RoadCustomReceiversProduceTableOnlyOutputs(t *testing.T) {
   ]
 }`)
 
-	err := os.WriteFile(modelPath, payload, 0o644)
+	err := os.WriteFile(modelPath, payload, 0o600)
 	if err != nil {
 		t.Fatalf("write custom model: %v", err)
 	}
@@ -1165,7 +1165,7 @@ func TestRunRLS19RoadCustomReceiversUsePerReceiverHeight(t *testing.T) {
   ]
 }`)
 
-	err := os.WriteFile(modelPath, payload, 0o644)
+	err := os.WriteFile(modelPath, payload, 0o600)
 	if err != nil {
 		t.Fatalf("write custom model: %v", err)
 	}
@@ -1331,7 +1331,7 @@ func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
   ]
 }`)
 
-	err := os.WriteFile(modelPath, payload, 0o644)
+	err := os.WriteFile(modelPath, payload, 0o600)
 	if err != nil {
 		t.Fatalf("write model: %v", err)
 	}

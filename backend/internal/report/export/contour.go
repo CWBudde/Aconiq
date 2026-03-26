@@ -390,7 +390,7 @@ func ExportContourGeoJSON(path string, contours []ContourLine) error {
 
 	data = append(data, '\n')
 
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func buildContourFeatureCollection(contours []ContourLine) map[string]any {
