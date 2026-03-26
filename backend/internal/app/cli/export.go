@@ -510,7 +510,7 @@ func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS stri
 
 	out = append(out, '\n')
 
-	return os.WriteFile(geojsonPath, out, 0o644)
+	return os.WriteFile(geojsonPath, out, 0o600)
 }
 
 func copyModelGeoJSONToBundle(projectRoot string, bundleDir string, artifacts []project.ArtifactRef) (string, string, error) {

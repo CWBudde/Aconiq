@@ -151,7 +151,7 @@ func TestLoadErrors(t *testing.T) {
 		t.Fatalf("mkdir manifest dir: %v", err)
 	}
 
-	err = os.WriteFile(store.ManifestPath(), []byte("{not-json"), 0o644)
+	err = os.WriteFile(store.ManifestPath(), []byte("{not-json"), 0o600)
 	if err != nil {
 		t.Fatalf("write invalid manifest: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestLoadErrors(t *testing.T) {
 		t.Fatalf("marshal invalid manifest: %v", err)
 	}
 
-	err = os.WriteFile(store.ManifestPath(), payload, 0o644)
+	err = os.WriteFile(store.ManifestPath(), payload, 0o600)
 	if err != nil {
 		t.Fatalf("write invalid-version manifest: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestCreateRunWritesProvenanceAndLog(t *testing.T) {
 
 	inputPath := filepath.Join(root, "input.geojson")
 
-	err = os.WriteFile(inputPath, []byte(`{"type":"FeatureCollection","features":[]}`), 0o644)
+	err = os.WriteFile(inputPath, []byte(`{"type":"FeatureCollection","features":[]}`), 0o600)
 	if err != nil {
 		t.Fatalf("write input file: %v", err)
 	}

@@ -96,7 +96,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("write raster metadata: %v", err)
 	}
 
-	err = os.WriteFile(filepath.Join(bundleDir, "results", "lden.bin"), []byte{1, 2, 3, 4}, 0o644)
+	err = os.WriteFile(filepath.Join(bundleDir, "results", "lden.bin"), []byte{1, 2, 3, 4}, 0o600)
 	if err != nil {
 		t.Fatalf("write raster binary: %v", err)
 	}
@@ -309,5 +309,5 @@ func writeJSONFile(path string, value any) error {
 
 	encoded = append(encoded, '\n')
 
-	return os.WriteFile(path, encoded, 0o644)
+	return os.WriteFile(path, encoded, 0o600)
 }

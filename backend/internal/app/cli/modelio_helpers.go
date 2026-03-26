@@ -42,7 +42,7 @@ func writeJSONFile(path string, value any) error {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "create directory for "+path, err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o644)
+	err = os.WriteFile(path, encoded, 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "write "+path, err)
 	}

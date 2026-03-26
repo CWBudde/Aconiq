@@ -575,7 +575,7 @@ func writeJSONFile(path string, value any) error {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o644)
+	err = os.WriteFile(path, encoded, 0o600)
 	if err != nil {
 		return fmt.Errorf("write json %s: %w", path, err)
 	}

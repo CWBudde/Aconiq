@@ -38,7 +38,7 @@ func AssertJSONSnapshot(t *testing.T, snapshotPath string, got any) {
 			t.Fatalf("create snapshot directory: %v", err)
 		}
 
-		err = os.WriteFile(snapshotPath, serialized, 0o644)
+		err = os.WriteFile(snapshotPath, serialized, 0o600)
 		if err != nil {
 			t.Fatalf("write snapshot file: %v", err)
 		}

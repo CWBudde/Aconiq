@@ -221,7 +221,7 @@ func (s Store) Save(proj project.Project) error {
 
 	tmpPath := s.manifestPath() + ".tmp"
 
-	err = os.WriteFile(tmpPath, serialized, 0o644)
+	err = os.WriteFile(tmpPath, serialized, 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "write temporary project manifest", err)
 	}
@@ -387,7 +387,7 @@ func writeRunLog(path string, lines []string) error {
 
 	text := strings.Join(lines, "\n") + "\n"
 
-	err := os.WriteFile(path, []byte(text), 0o644)
+	err := os.WriteFile(path, []byte(text), 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeRunLog", "write run log", err)
 	}
@@ -403,7 +403,7 @@ func writeJSONFile(path string, v any) error {
 
 	data = append(data, '\n')
 
-	err = os.WriteFile(path, data, 0o644)
+	err = os.WriteFile(path, data, 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write json file "+path, err)
 	}

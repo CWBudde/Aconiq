@@ -436,7 +436,7 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 		return fmt.Errorf("create openapi output directory: %w", err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o644)
+	err = os.WriteFile(path, encoded, 0o600)
 	if err != nil {
 		return fmt.Errorf("write openapi spec %s: %w", path, err)
 	}

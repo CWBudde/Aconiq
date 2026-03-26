@@ -14,6 +14,12 @@ type point2 struct {
 	y float64
 }
 
+const (
+	geometryTypePoint      = "Point"
+	geometryTypeMultiPoint = "MultiPoint"
+	receiverGeometryPoint  = "Point"
+)
+
 // Validate applies schema and geometry checks to the normalized model.
 func Validate(model Model) ValidationReport {
 	report := ValidationReport{
@@ -64,11 +70,12 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 	switch kind {
 	case "source":
 		sourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
-		if sourceType == "" {
+		switch {
+		case sourceType == "":
 			addError(report, "source.type.required", id, "source feature requires source_type (point|line|area)")
-		} else if !isOneOf(sourceType, "point", "line", "area") {
+		case !isOneOf(sourceType, "point", "line", "area"):
 			addError(report, "source.type.invalid", id, "source_type must be one of point|line|area")
-		} else if !geometryCompatibleWithSourceType(geomType, sourceType) {
+		case !geometryCompatibleWithSourceType(geomType, sourceType):
 			addError(report, "source.geometry.mismatch", id, fmt.Sprintf("geometry type %s does not match source_type %s", geomType, sourceType))
 		}
 	case "building":
@@ -98,7 +105,7 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 			addError(report, "receiver.height.invalid", id, "receiver height_m must be > 0")
 		}
 
-		if geomType != "Point" {
+		if geomType != receiverGeometryPoint {
 			addError(report, "receiver.geometry.invalid", id, "receiver geometry must be Point")
 		}
 	default:
@@ -119,7 +126,7 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 	coords := feature.Coordinates
 
 	switch geomType {
-	case "Point":
+	case geometryTypePoint:
 		p, err := parsePoint(coords)
 		if err != nil {
 			addError(report, "geometry.point.invalid", id, err.Error())
@@ -127,7 +134,7 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 		}
 
 		return []point2{p}, true
-	case "MultiPoint":
+	case geometryTypeMultiPoint:
 		rawPoints, ok := coords.([]any)
 		if !ok || len(rawPoints) == 0 {
 			addError(report, "geometry.multipoint.invalid", id, "MultiPoint coordinates must be a non-empty array")
@@ -457,7 +464,7 @@ func asFiniteFloat(value any) (float64, bool) {
 func geometryCompatibleWithSourceType(geometryType string, sourceType string) bool {
 	switch sourceType {
 	case "point":
-		return isOneOf(geometryType, "Point", "MultiPoint")
+		return isOneOf(geometryType, geometryTypePoint, geometryTypeMultiPoint)
 	case "line":
 		return isOneOf(geometryType, "LineString", "MultiLineString")
 	case "area":

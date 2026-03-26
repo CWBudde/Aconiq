@@ -1,6 +1,7 @@
 package export
 
 import (
+	"context"
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
@@ -80,13 +81,15 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 }
 
 func initGeoPackage(db *sql.DB, crs string, srsID int) error {
+	ctx := context.Background()
+
 	// Set GeoPackage application_id.
-	_, err := db.Exec("PRAGMA application_id = 0x47504B47") // 'GPKG'
+	_, err := db.ExecContext(ctx, "PRAGMA application_id = 0x47504B47") // 'GPKG'
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec("PRAGMA user_version = 10301") // GeoPackage 1.3.1
+	_, err = db.ExecContext(ctx, "PRAGMA user_version = 10301") // GeoPackage 1.3.1
 	if err != nil {
 		return err
 	}
@@ -128,7 +131,7 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 	}
 
 	for _, stmt := range stmts {
-		_, err = db.Exec(stmt)
+		_, err = db.ExecContext(ctx, stmt)
 		if err != nil {
 			return fmt.Errorf("exec %q: %w", stmt[:40], err)
 		}
@@ -148,7 +151,8 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 	}
 
 	for _, s := range defaultSRS {
-		_, err = db.Exec(
+		_, err = db.ExecContext(
+			ctx,
 			"INSERT OR IGNORE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES (?, ?, ?, ?, ?)",
 			s.name, s.id, s.org, s.orgID, s.def,
 		)
@@ -159,7 +163,8 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 
 	// Insert the project CRS if it differs from defaults.
 	if srsID != -1 && srsID != 0 && srsID != 4326 {
-		_, err = db.Exec(
+		_, err = db.ExecContext(
+			ctx,
 			"INSERT OR IGNORE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES (?, ?, ?, ?, ?)",
 			crs, srsID, "EPSG", srsID, "undefined",
 		)
