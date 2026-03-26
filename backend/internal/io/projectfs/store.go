@@ -268,12 +268,15 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 		std.Profile = "default"
 	}
 
+	return s.persistRun(proj, spec, scenarioID, std)
+}
+
+func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID string, std project.StandardRef) (project.Run, project.ProvenanceManifest, error) {
 	now := time.Now().UTC()
 	runID := buildID("run")
-
 	runDir := filepath.Join(s.runsDir(), runID)
 
-	err = os.MkdirAll(runDir, 0o755)
+	err := os.MkdirAll(runDir, 0o755)
 	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, domainerrors.New(domainerrors.KindInternal, "projectfs.CreateRun", "create run directory", err)
 	}

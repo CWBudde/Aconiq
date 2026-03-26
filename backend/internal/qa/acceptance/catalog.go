@@ -33,6 +33,15 @@ func Catalog() []Fixture {
 }
 
 func acceptanceFixturesCore() []Fixture {
+	fixtures := append([]Fixture(nil), acceptanceFixturesCnossosRoad()...)
+	fixtures = append(fixtures, acceptanceFixturesCnossosRailIndustryISO()...)
+	fixtures = append(fixtures, acceptanceFixturesAircraftAndBeb()...)
+	fixtures = append(fixtures, acceptanceFixturesBub()...)
+
+	return fixtures
+}
+
+func acceptanceFixturesCnossosRoad() []Fixture {
 	return []Fixture{
 		{
 			Name:             "cnossos-road-synthetic-baseline",
@@ -70,6 +79,11 @@ func acceptanceFixturesCore() []Fixture {
 			ScenarioPath:     fixturePath("cnossos-rail", "rail_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("cnossos-rail", "rail_contextual.golden.json"),
 		},
+	}
+}
+
+func acceptanceFixturesCnossosRailIndustryISO() []Fixture {
+	return []Fixture{
 		{
 			Name:             "cnossos-industry-synthetic-baseline",
 			StandardID:       "cnossos-industry",
@@ -106,6 +120,11 @@ func acceptanceFixturesCore() []Fixture {
 			ScenarioPath:     fixturePath("iso9613", "point_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("iso9613", "point_contextual.golden.json"),
 		},
+	}
+}
+
+func acceptanceFixturesAircraftAndBeb() []Fixture {
+	return []Fixture{
 		{
 			Name:             "cnossos-aircraft-synthetic-baseline",
 			StandardID:       "cnossos-aircraft",
@@ -124,6 +143,29 @@ func acceptanceFixturesCore() []Fixture {
 			ScenarioPath:     fixturePath("cnossos-aircraft", "aircraft_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("cnossos-aircraft", "aircraft_contextual.golden.json"),
 		},
+		{
+			Name:             "beb-exposure-synthetic-baseline",
+			StandardID:       "beb-exposure",
+			Description:      "Repo-authored synthetic building exposure scenario used as a deterministic acceptance baseline.",
+			EvidenceClass:    "license-safe synthetic acceptance fixture",
+			Provenance:       "repo-authored synthetic scenario",
+			ScenarioPath:     fixturePath("beb-exposure", "building_exposure.scenario.json"),
+			ExpectedJSONPath: fixturePath("beb-exposure", "building_exposure.golden.json"),
+		},
+		{
+			Name:             "beb-exposure-synthetic-contextual",
+			StandardID:       "beb-exposure",
+			Description:      "Repo-authored synthetic building exposure scenario stressing height-derived occupancy and max-facade evaluation.",
+			EvidenceClass:    "license-safe synthetic acceptance fixture",
+			Provenance:       "repo-authored synthetic scenario",
+			ScenarioPath:     fixturePath("beb-exposure", "building_exposure_contextual.scenario.json"),
+			ExpectedJSONPath: fixturePath("beb-exposure", "building_exposure_contextual.golden.json"),
+		},
+	}
+}
+
+func acceptanceFixturesBub() []Fixture {
+	return []Fixture{
 		{
 			Name:             "bub-road-synthetic-baseline",
 			StandardID:       "bub-road",
@@ -159,24 +201,6 @@ func acceptanceFixturesCore() []Fixture {
 			Provenance:       "repo-authored synthetic scenario",
 			ScenarioPath:     fixturePath("buf-aircraft", "aircraft_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("buf-aircraft", "aircraft_contextual.golden.json"),
-		},
-		{
-			Name:             "beb-exposure-synthetic-baseline",
-			StandardID:       "beb-exposure",
-			Description:      "Repo-authored synthetic building exposure scenario used as a deterministic acceptance baseline.",
-			EvidenceClass:    "license-safe synthetic acceptance fixture",
-			Provenance:       "repo-authored synthetic scenario",
-			ScenarioPath:     fixturePath("beb-exposure", "building_exposure.scenario.json"),
-			ExpectedJSONPath: fixturePath("beb-exposure", "building_exposure.golden.json"),
-		},
-		{
-			Name:             "beb-exposure-synthetic-contextual",
-			StandardID:       "beb-exposure",
-			Description:      "Repo-authored synthetic building exposure scenario stressing height-derived occupancy and max-facade evaluation.",
-			EvidenceClass:    "license-safe synthetic acceptance fixture",
-			Provenance:       "repo-authored synthetic scenario",
-			ScenarioPath:     fixturePath("beb-exposure", "building_exposure_contextual.scenario.json"),
-			ExpectedJSONPath: fixturePath("beb-exposure", "building_exposure_contextual.golden.json"),
 		},
 	}
 }
