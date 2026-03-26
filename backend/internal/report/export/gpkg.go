@@ -189,14 +189,15 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 	ctx := context.Background()
 
 	// Build column definitions for indicator values.
-	colDefs := []string{
+	colDefs := make([]string, 0, len(table.IndicatorOrder)+5)
+	colDefs = append(colDefs,
 		"fid INTEGER PRIMARY KEY AUTOINCREMENT",
 		"geom BLOB",
 		"receiver_id TEXT NOT NULL",
 		"x REAL NOT NULL",
 		"y REAL NOT NULL",
 		"height_m REAL NOT NULL",
-	}
+	)
 
 	for _, indicator := range table.IndicatorOrder {
 		colName := sanitizeColumnName(indicator)
@@ -242,7 +243,9 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 	ctx := context.Background()
 
 	// Build the INSERT statement.
-	colNames := []string{"geom", "receiver_id", "x", "y", "height_m"}
+	colNames := make([]string, 0, len(table.IndicatorOrder)+5)
+
+	colNames = append(colNames, "geom", "receiver_id", "x", "y", "height_m")
 	for _, indicator := range table.IndicatorOrder {
 		colNames = append(colNames, sanitizeColumnName(indicator))
 	}
