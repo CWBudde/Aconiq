@@ -132,7 +132,7 @@ func LoadRaster(metadataPath string) (*Raster, error) {
 		return nil, fmt.Errorf("raster binary size mismatch: got %d bytes, expected %d", len(binaryPayload), expectedBytes)
 	}
 
-	for i := 0; i < raster.CellCount(); i++ {
+	for i := range raster.data {
 		value := math.Float64frombits(binary.LittleEndian.Uint64(binaryPayload[i*8:]))
 		raster.data[i] = value
 	}

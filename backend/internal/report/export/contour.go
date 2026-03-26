@@ -377,7 +377,8 @@ func joinSegments(segments [][2][2]float64) [][][2]float64 {
 
 // ExportContourGeoJSON writes contour lines as a GeoJSON FeatureCollection.
 func ExportContourGeoJSON(path string, contours []ContourLine) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	if err != nil {
 		return fmt.Errorf("create contour geojson directory: %w", err)
 	}
 
