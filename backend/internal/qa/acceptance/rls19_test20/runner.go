@@ -332,10 +332,11 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 
 	result.MaxAbsDeltaDB = round6(maxDelta)
 	if compareErr != nil {
+		// A failed comparison is reported as task failure, not as a hard execution error.
 		result.Status = taskStatusFailed
 		result.Details = compareErr.Error()
 
-		return result, nil
+		return result, nil //nolint:nilerr
 	}
 
 	result.Status = "passed"

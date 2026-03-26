@@ -10,6 +10,9 @@ import (
 
 const OpenAPIVersion = "3.1.0"
 
+// BuildOpenAPISpec assembles the declarative OpenAPI document.
+//
+//nolint:funlen,maintidx
 func BuildOpenAPISpec(serverURL string) map[string]any {
 	server := "http://127.0.0.1:8080"
 	if serverURL != "" {

@@ -72,7 +72,8 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	header := []string{"id", "x", "y", "height_m"}
+	header := make([]string, 0, len(table.IndicatorOrder)+4)
+	header = append(header, "id", "x", "y", "height_m")
 
 	header = append(header, table.IndicatorOrder...)
 

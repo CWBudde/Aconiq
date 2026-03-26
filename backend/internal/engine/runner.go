@@ -522,7 +522,12 @@ func reduceDeterministic(chunks map[int][]ReceiverResult) []ReceiverResult {
 
 	sort.Ints(indices)
 
-	merged := make([]ReceiverResult, 0)
+	total := 0
+	for _, idx := range indices {
+		total += len(chunks[idx])
+	}
+
+	merged := make([]ReceiverResult, 0, total)
 	for _, idx := range indices {
 		merged = append(merged, chunks[idx]...)
 	}

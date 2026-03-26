@@ -63,26 +63,6 @@ func (s Store) ManifestPath() string {
 	return s.manifestPath()
 }
 
-func (s Store) controlDir() string {
-	return filepath.Join(s.root, ".noise")
-}
-
-func (s Store) manifestPath() string {
-	return filepath.Join(s.controlDir(), "project.json")
-}
-
-func (s Store) runsDir() string {
-	return filepath.Join(s.controlDir(), "runs")
-}
-
-func (s Store) artifactsDir() string {
-	return filepath.Join(s.controlDir(), "artifacts")
-}
-
-func (s Store) logsDir() string {
-	return filepath.Join(s.controlDir(), "logs")
-}
-
 // Exists reports whether the project manifest already exists.
 func (s Store) Exists() (bool, error) {
 	_, err := os.Stat(s.manifestPath())
@@ -341,6 +321,26 @@ func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID s
 	provenance.ManifestPath = provRelPath
 
 	return run, provenance, nil
+}
+
+func (s Store) controlDir() string {
+	return filepath.Join(s.root, ".noise")
+}
+
+func (s Store) manifestPath() string {
+	return filepath.Join(s.controlDir(), "project.json")
+}
+
+func (s Store) runsDir() string {
+	return filepath.Join(s.controlDir(), "runs")
+}
+
+func (s Store) artifactsDir() string {
+	return filepath.Join(s.controlDir(), "artifacts")
+}
+
+func (s Store) logsDir() string {
+	return filepath.Join(s.controlDir(), "logs")
 }
 
 func (s Store) hashInputs(paths []string) (map[string]string, error) {

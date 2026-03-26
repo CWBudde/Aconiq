@@ -1598,7 +1598,7 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 	return buildings, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
+//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
 func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAircraftRunOptions, supportedSourceTypes []string) ([]cnossosaircraft.AircraftSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -1838,7 +1838,7 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 	return sources, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
+//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
 func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunOptions, supportedSourceTypes []string) ([]bufaircraft.AircraftSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
