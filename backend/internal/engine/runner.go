@@ -39,102 +39,23 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 		return RunOutput{}, err
 	}
 
-	startedAt := time.Now().UTC()
-	runDir := filepath.Join(cfg.CacheDir, cfg.RunID)
-	runChunksDir := filepath.Join(runDir, "chunks")
-	sharedChunksDir := filepath.Join(cfg.CacheDir, "shared-chunks")
-	outputPath := filepath.Join(runDir, "run-output.json")
-	statePath := filepath.Join(runDir, "run-state.json")
+	return r.executeRun(ctx, cfg)
+}
 
-	err = os.MkdirAll(runChunksDir, 0o755)
-	if err != nil {
-		return RunOutput{}, fmt.Errorf("create run cache directory: %w", err)
-	}
+func (r *Runner) executeRun(ctx context.Context, cfg RunConfig) (RunOutput, error) {
+	var err error
 
-	err = os.MkdirAll(sharedChunksDir, 0o755)
-	if err != nil {
-		return RunOutput{}, fmt.Errorf("create shared chunk cache directory: %w", err)
-	}
-
-	r.emit(cfg.RunID, "load", "start", -1, 0, 0)
-
-	err = writeRunState(statePath, RunState{
-		RunID:           cfg.RunID,
-		Status:          RunStateRunning,
-		UpdatedAt:       time.Now().UTC(),
-		TotalChunks:     0,
-		CompletedChunks: 0,
-		Message:         "load",
-	})
+	execution, err := r.prepareRunExecution(ctx, cfg)
 	if err != nil {
 		return RunOutput{}, err
 	}
 
-	r.emit(cfg.RunID, "load", "done", -1, 0, 0)
-
-	r.emit(cfg.RunID, "prepare", "start", -1, 0, 0)
-	{
-		_, err := buildSourceIndex(cfg)
-		if err != nil {
-			return RunOutput{}, err
-		}
-	}
-
-	r.emit(cfg.RunID, "prepare", "done", -1, 0, 0)
-
-	r.emit(cfg.RunID, "chunk", "start", -1, 0, 0)
-	chunks := chunkReceivers(cfg.Receivers, cfg.ChunkSize)
-
-	totalChunks := len(chunks)
-
-	err = writeRunState(statePath, RunState{
-		RunID:           cfg.RunID,
-		Status:          RunStateRunning,
-		UpdatedAt:       time.Now().UTC(),
-		TotalChunks:     totalChunks,
-		CompletedChunks: 0,
-		Message:         "chunk",
-	})
-	if err != nil {
-		return RunOutput{}, err
-	}
-
-	r.emit(cfg.RunID, "chunk", "done", -1, 0, totalChunks)
-
-	r.emit(cfg.RunID, "compute", "start", -1, 0, totalChunks)
-	ffSources := convertSourcesToFreefield(cfg.Sources)
-
-	received, usedCached, err := r.computeChunks(ctx, cfg, chunks, ffSources, runChunksDir, sharedChunksDir, statePath)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			_ = cleanupTmpFiles(runChunksDir)
-			_ = writeRunState(statePath, RunState{
-				RunID:           cfg.RunID,
-				Status:          RunStateCanceled,
-				UpdatedAt:       time.Now().UTC(),
-				TotalChunks:     totalChunks,
-				CompletedChunks: len(received),
-				Message:         "canceled",
-			})
-			r.emit(cfg.RunID, "compute", "canceled", -1, len(received), totalChunks)
-
-			return RunOutput{}, context.Canceled
-		}
-
-		_ = cleanupTmpFiles(runChunksDir)
-		_ = writeRunState(statePath, RunState{
-			RunID:           cfg.RunID,
-			Status:          RunStateFailed,
-			UpdatedAt:       time.Now().UTC(),
-			TotalChunks:     totalChunks,
-			CompletedChunks: len(received),
-			Message:         err.Error(),
-		})
-
-		return RunOutput{}, err
-	}
-
-	r.emit(cfg.RunID, "compute", "done", -1, len(received), totalChunks)
+	startedAt := execution.startedAt
+	totalChunks := execution.totalChunks
+	received := execution.received
+	usedCached := execution.usedCached
+	outputPath := execution.outputPath
+	statePath := execution.statePath
 
 	r.emit(cfg.RunID, "reduce", "start", -1, len(received), totalChunks)
 	results := reduceDeterministic(received)
@@ -191,6 +112,135 @@ func (r *Runner) Run(ctx context.Context, cfg RunConfig) (RunOutput, error) {
 	}
 
 	return output, nil
+}
+
+type runExecution struct {
+	startedAt    time.Time
+	runChunksDir string
+	outputPath   string
+	statePath    string
+	received     map[int][]ReceiverResult
+	usedCached   int
+	totalChunks  int
+}
+
+func (r *Runner) prepareRunExecution(ctx context.Context, cfg RunConfig) (runExecution, error) {
+	startedAt := time.Now().UTC()
+	runDir := filepath.Join(cfg.CacheDir, cfg.RunID)
+	runChunksDir := filepath.Join(runDir, "chunks")
+	sharedChunksDir := filepath.Join(cfg.CacheDir, "shared-chunks")
+	outputPath := filepath.Join(runDir, "run-output.json")
+	statePath := filepath.Join(runDir, "run-state.json")
+
+	err := os.MkdirAll(runChunksDir, 0o755)
+	if err != nil {
+		return runExecution{}, fmt.Errorf("create run cache directory: %w", err)
+	}
+
+	err = os.MkdirAll(sharedChunksDir, 0o755)
+	if err != nil {
+		return runExecution{}, fmt.Errorf("create shared chunk cache directory: %w", err)
+	}
+
+	r.emit(cfg.RunID, "load", "start", -1, 0, 0)
+
+	err = writeRunState(statePath, RunState{
+		RunID:           cfg.RunID,
+		Status:          RunStateRunning,
+		UpdatedAt:       time.Now().UTC(),
+		TotalChunks:     0,
+		CompletedChunks: 0,
+		Message:         "load",
+	})
+	if err != nil {
+		return runExecution{}, err
+	}
+
+	r.emit(cfg.RunID, "load", "done", -1, 0, 0)
+
+	r.emit(cfg.RunID, "prepare", "start", -1, 0, 0)
+	{
+		_, err := buildSourceIndex(cfg)
+		if err != nil {
+			return runExecution{}, err
+		}
+	}
+
+	r.emit(cfg.RunID, "prepare", "done", -1, 0, 0)
+
+	r.emit(cfg.RunID, "chunk", "start", -1, 0, 0)
+	chunks := chunkReceivers(cfg.Receivers, cfg.ChunkSize)
+	totalChunks := len(chunks)
+
+	err = writeRunState(statePath, RunState{
+		RunID:           cfg.RunID,
+		Status:          RunStateRunning,
+		UpdatedAt:       time.Now().UTC(),
+		TotalChunks:     totalChunks,
+		CompletedChunks: 0,
+		Message:         "chunk",
+	})
+	if err != nil {
+		return runExecution{}, err
+	}
+
+	r.emit(cfg.RunID, "chunk", "done", -1, 0, totalChunks)
+
+	r.emit(cfg.RunID, "compute", "start", -1, 0, totalChunks)
+	ffSources := convertSourcesToFreefield(cfg.Sources)
+
+	received, usedCached, err := r.computeChunks(ctx, cfg, chunks, ffSources, runChunksDir, sharedChunksDir, statePath)
+	if err != nil {
+		return runExecution{}, r.handleRunComputeError(cfg, runChunksDir, statePath, received, totalChunks, err)
+	}
+
+	r.emit(cfg.RunID, "compute", "done", -1, len(received), totalChunks)
+
+	return runExecution{
+		startedAt:    startedAt,
+		runChunksDir: runChunksDir,
+		outputPath:   outputPath,
+		statePath:    statePath,
+		received:     received,
+		usedCached:   usedCached,
+		totalChunks:  totalChunks,
+	}, nil
+}
+
+func (r *Runner) handleRunComputeError(
+	cfg RunConfig,
+	runChunksDir string,
+	statePath string,
+	received map[int][]ReceiverResult,
+	totalChunks int,
+	err error,
+) error {
+	if errors.Is(err, context.Canceled) {
+		_ = cleanupTmpFiles(runChunksDir)
+		_ = writeRunState(statePath, RunState{
+			RunID:           cfg.RunID,
+			Status:          RunStateCanceled,
+			UpdatedAt:       time.Now().UTC(),
+			TotalChunks:     totalChunks,
+			CompletedChunks: len(received),
+			Message:         "canceled",
+		})
+		r.emit(cfg.RunID, "compute", "canceled", -1, len(received), totalChunks)
+
+		return context.Canceled
+	}
+
+	_ = cleanupTmpFiles(runChunksDir)
+	_ = writeRunState(statePath, RunState{
+		RunID:           cfg.RunID,
+		Status:          RunStateFailed,
+		UpdatedAt:       time.Now().UTC(),
+		TotalChunks:     totalChunks,
+		CompletedChunks: len(received),
+		Message:         err.Error(),
+	})
+
+	return err
 }
 
 func normalizeConfig(cfg RunConfig) RunConfig {

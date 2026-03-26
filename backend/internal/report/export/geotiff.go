@@ -235,65 +235,7 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 		return idx
 	}
 
-	// ImageWidth.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagImageWidth, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(mustUint32(width)), resolveExtra: -1,
-	})
-
-	// ImageLength.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagImageLength, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(mustUint32(height)), resolveExtra: -1,
-	})
-
-	// BitsPerSample.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagBitsPerSample, typ: tiffTypeShort, count: 1,
-		value: uint16ToBytes(64), resolveExtra: -1,
-	})
-
-	// Compression: none.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagCompression, typ: tiffTypeShort, count: 1,
-		value: uint16ToBytes(tiffCompressionNone), resolveExtra: -1,
-	})
-
-	// PhotometricInterpretation.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagPhotometric, typ: tiffTypeShort, count: 1,
-		value: uint16ToBytes(tiffPhotometricMinIsBlack), resolveExtra: -1,
-	})
-
-	// StripOffsets (single strip = image data offset, resolved later).
-	entries = append(entries, ifdEntry{
-		tag: tiffTagStripOffsets, typ: tiffTypeLong, count: 1,
-		resolveExtra: -1, resolveImage: true,
-	})
-
-	// SamplesPerPixel.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagSamplesPerPixel, typ: tiffTypeShort, count: 1,
-		value: uint16ToBytes(1), resolveExtra: -1,
-	})
-
-	// RowsPerStrip (all rows in one strip).
-	entries = append(entries, ifdEntry{
-		tag: tiffTagRowsPerStrip, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(mustUint32(height)), resolveExtra: -1,
-	})
-
-	// StripByteCounts.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagStripByteCounts, typ: tiffTypeLong, count: 1,
-		value: uint32ToBytes(mustUint32(imageByteCount)), resolveExtra: -1,
-	})
-
-	// SampleFormat: float.
-	entries = append(entries, ifdEntry{
-		tag: tiffTagSampleFormat, typ: tiffTypeShort, count: 1,
-		value: uint16ToBytes(tiffSampleFormatFloat), resolveExtra: -1,
-	})
+	entries = append(entries, buildGeoTIFFImageIFDEntries(width, height, imageByteCount)...)
 
 	// ModelPixelScaleTag: [ScaleX, ScaleY, ScaleZ].
 	scaleData := make([]byte, 24)
@@ -358,6 +300,21 @@ func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, eps
 	}
 
 	return entries, extras
+}
+
+func buildGeoTIFFImageIFDEntries(width, height, imageByteCount int) []ifdEntry {
+	return []ifdEntry{
+		{tag: tiffTagImageWidth, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(width)), resolveExtra: -1},
+		{tag: tiffTagImageLength, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(height)), resolveExtra: -1},
+		{tag: tiffTagBitsPerSample, typ: tiffTypeShort, count: 1, value: uint16ToBytes(64), resolveExtra: -1},
+		{tag: tiffTagCompression, typ: tiffTypeShort, count: 1, value: uint16ToBytes(tiffCompressionNone), resolveExtra: -1},
+		{tag: tiffTagPhotometric, typ: tiffTypeShort, count: 1, value: uint16ToBytes(tiffPhotometricMinIsBlack), resolveExtra: -1},
+		{tag: tiffTagStripOffsets, typ: tiffTypeLong, count: 1, resolveExtra: -1, resolveImage: true},
+		{tag: tiffTagSamplesPerPixel, typ: tiffTypeShort, count: 1, value: uint16ToBytes(1), resolveExtra: -1},
+		{tag: tiffTagRowsPerStrip, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(height)), resolveExtra: -1},
+		{tag: tiffTagStripByteCounts, typ: tiffTypeLong, count: 1, value: uint32ToBytes(mustUint32(imageByteCount)), resolveExtra: -1},
+		{tag: tiffTagSampleFormat, typ: tiffTypeShort, count: 1, value: uint16ToBytes(tiffSampleFormatFloat), resolveExtra: -1},
+	}
 }
 
 func buildGeoKeys(epsgCode int) []uint16 {

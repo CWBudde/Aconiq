@@ -308,100 +308,9 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	nightContrib := make([]float64, 0, len(sources)*4)
 
 	for _, source := range sources {
-		{
-			err := source.Validate()
-			if err != nil {
-				return PeriodLevels{}, err
-			}
-		}
-
-		emission, err := ComputeEmission(source)
+		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, sourceHeightM, effectiveBarriers, effectiveCfg, cfg)
 		if err != nil {
 			return PeriodLevels{}, err
-		}
-
-		// Prepare per-vertex elevations: use CenterlineElevations if provided,
-		// otherwise fill from the uniform ElevationM field.
-		elevations := source.CenterlineElevations
-		if len(elevations) != len(source.Centerline) {
-			elevations = make([]float64, len(source.Centerline))
-			for i := range elevations {
-				elevations[i] = source.ElevationM
-			}
-		}
-
-		// Split the source line into sub-segments (Teilstueckverfahren).
-		segments := SplitLineIntoSegments(source.Centerline, elevations, cfg.SegmentLengthM)
-		if len(segments) == 0 {
-			continue
-		}
-
-		totalLength := polylineLength(source.Centerline)
-		if totalLength <= 0 {
-			continue
-		}
-
-		for _, seg := range segments {
-			// Absolute source Z (road surface + 0.5 m source height).
-			sourceZ := seg.MidZ + sourceHeightM
-
-			// Plan-view and 3D slant distances.
-			planDist := dist2D(seg.MidPoint, receiver)
-			dz := receiverZ - sourceZ
-			slantDist := math.Sqrt(planDist*planDist + dz*dz)
-
-			// Mean height above terrain for ground correction.
-			hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, effectiveCfg.Terrain)
-
-			// Free-field attenuation (D_div + D_atm + D_gr).
-			att := computeAttenuation(planDist, slantDist, hm, effectiveCfg)
-
-			// Barrier shielding (relative heights, existing approach).
-			barrierLoss := 0.0
-
-			if len(effectiveBarriers) > 0 {
-				shielding := ComputeShielding(
-					seg.MidPoint, sourceHeightM,
-					receiver, effectiveCfg.ReceiverHeightM,
-					effectiveBarriers,
-				)
-				barrierLoss = shielding.InsertionLoss
-			}
-
-			// Terrain-edge shielding (absolute Z).
-			terrainLoss := 0.0
-
-			if len(cfg.Terrain) > 0 {
-				terrainShield := computeTerrainEdgeShielding(
-					seg.MidPoint, sourceZ,
-					receiver, receiverZ,
-					cfg.Terrain,
-				)
-				terrainLoss = terrainShield.InsertionLoss
-			}
-
-			// RLS-19 rule: when shielded, D_z replaces D_gr (not added on top).
-			totalShielding := math.Max(barrierLoss, terrainLoss)
-			if totalShielding > 0 {
-				att.BarrierShielding = totalShielding
-				att.Total = att.GeometricDivergence + att.AirAbsorption + totalShielding
-			}
-
-			// Length weighting: each sub-segment contributes proportionally.
-			lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)
-
-			dayContrib = append(dayContrib, emission.LmEDay+lengthWeight-att.Total)
-			nightContrib = append(nightContrib, emission.LmENight+lengthWeight-att.Total)
-
-			// Reflected paths: each adds an independent energy contribution via
-			// the image-source method. Ground correction uses mean height along
-			// the reflected path (flat terrain approximation for reflected legs).
-			appendReflectedContribs(
-				&dayContrib, &nightContrib,
-				emission, lengthWeight,
-				seg.MidPoint, sourceZ, receiver, receiverZ,
-				effectiveCfg,
-			)
 		}
 	}
 
@@ -409,6 +318,139 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		LrDay:   energySumDB(dayContrib),
 		LrNight: energySumDB(nightContrib),
 	}, nil
+}
+
+func appendSourceContributions(
+	dayContrib, nightContrib *[]float64,
+	source RoadSource,
+	receiver geo.Point2D,
+	receiverZ float64,
+	sourceHeightM float64,
+	effectiveBarriers []Barrier,
+	effectiveCfg PropagationConfig,
+	baseCfg PropagationConfig,
+) error {
+	err := source.Validate()
+	if err != nil {
+		return err
+	}
+
+	emission, err := ComputeEmission(source)
+	if err != nil {
+		return err
+	}
+
+	// Prepare per-vertex elevations: use CenterlineElevations if provided,
+	// otherwise fill from the uniform ElevationM field.
+	elevations := source.CenterlineElevations
+	if len(elevations) != len(source.Centerline) {
+		elevations = make([]float64, len(source.Centerline))
+		for i := range elevations {
+			elevations[i] = source.ElevationM
+		}
+	}
+
+	// Split the source line into sub-segments (Teilstueckverfahren).
+	segments := SplitLineIntoSegments(source.Centerline, elevations, effectiveCfg.SegmentLengthM)
+	if len(segments) == 0 {
+		return nil
+	}
+
+	totalLength := polylineLength(source.Centerline)
+	if totalLength <= 0 {
+		return nil
+	}
+
+	for _, seg := range segments {
+		appendSegmentContributions(
+			dayContrib, nightContrib,
+			emission,
+			seg,
+			receiver,
+			receiverZ,
+			sourceHeightM,
+			totalLength,
+			effectiveBarriers,
+			effectiveCfg,
+			baseCfg.Terrain,
+		)
+	}
+
+	return nil
+}
+
+func appendSegmentContributions(
+	dayContrib, nightContrib *[]float64,
+	emission EmissionResult,
+	seg Segment,
+	receiver geo.Point2D,
+	receiverZ float64,
+	sourceHeightM float64,
+	totalLength float64,
+	effectiveBarriers []Barrier,
+	effectiveCfg PropagationConfig,
+	terrain []TerrainProfile,
+) {
+	// Absolute source Z (road surface + 0.5 m source height).
+	sourceZ := seg.MidZ + sourceHeightM
+
+	// Plan-view and 3D slant distances.
+	planDist := dist2D(seg.MidPoint, receiver)
+	dz := receiverZ - sourceZ
+	slantDist := math.Sqrt(planDist*planDist + dz*dz)
+
+	// Mean height above terrain for ground correction.
+	hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, effectiveCfg.Terrain)
+
+	// Free-field attenuation (D_div + D_atm + D_gr).
+	att := computeAttenuation(planDist, slantDist, hm, effectiveCfg)
+
+	// Barrier shielding (relative heights, existing approach).
+	barrierLoss := 0.0
+
+	if len(effectiveBarriers) > 0 {
+		shielding := ComputeShielding(
+			seg.MidPoint, sourceHeightM,
+			receiver, effectiveCfg.ReceiverHeightM,
+			effectiveBarriers,
+		)
+		barrierLoss = shielding.InsertionLoss
+	}
+
+	// Terrain-edge shielding (absolute Z).
+	terrainLoss := 0.0
+
+	if len(terrain) > 0 {
+		terrainShield := computeTerrainEdgeShielding(
+			seg.MidPoint, sourceZ,
+			receiver, receiverZ,
+			terrain,
+		)
+		terrainLoss = terrainShield.InsertionLoss
+	}
+
+	// RLS-19 rule: when shielded, D_z replaces D_gr (not added on top).
+	totalShielding := math.Max(barrierLoss, terrainLoss)
+	if totalShielding > 0 {
+		att.BarrierShielding = totalShielding
+		att.Total = att.GeometricDivergence + att.AirAbsorption + totalShielding
+	}
+
+	// Length weighting: each sub-segment contributes proportionally.
+	lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)
+
+	*dayContrib = append(*dayContrib, emission.LmEDay+lengthWeight-att.Total)
+	*nightContrib = append(*nightContrib, emission.LmENight+lengthWeight-att.Total)
+
+	// Reflected paths: each adds an independent energy contribution via
+	// the image-source method. Ground correction uses mean height along
+	// the reflected path (flat terrain approximation for reflected legs).
+	appendReflectedContribs(
+		dayContrib, nightContrib,
+		emission, lengthWeight,
+		seg.MidPoint, sourceZ, receiver, receiverZ,
+		effectiveCfg,
+	)
 }
 
 // buildingBarriers returns the combined list of explicit barriers and barriers
