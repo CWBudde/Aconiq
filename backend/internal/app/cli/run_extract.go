@@ -855,7 +855,8 @@ var rls19AcousticOverrideKeys = []string{
 	"gradient_percent", "road_gradient_percent",
 	"junction_type", "road_junction_type",
 	"junction_distance_m", "road_junction_distance_m",
-	"reflection_surcharge_db",
+	"building_height_m",
+	"street_width_m",
 	"traffic_day_pkw", "traffic_day_lkw1", "traffic_day_lkw2", "traffic_day_krad",
 	"traffic_night_pkw", "traffic_night_lkw1", "traffic_night_lkw2", "traffic_night_krad",
 }
@@ -1083,14 +1084,24 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				}
 			}
 
-			reflectionSurchargeDB := 0.0
+			buildingHeightM := 0.0
+			streetWidthM := 0.0
 
 			{
-				value, ok, err := propertyFloat(properties, "reflection_surcharge_db")
+				value, ok, err := propertyFloat(properties, "building_height_m")
 				if err != nil {
 					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 				} else if ok {
-					reflectionSurchargeDB = value
+					buildingHeightM = value
+				}
+			}
+
+			{
+				value, ok, err := propertyFloat(properties, "street_width_m")
+				if err != nil {
+					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+				} else if ok {
+					streetWidthM = value
 				}
 			}
 
@@ -1158,12 +1169,13 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 					Lkw2KPH: speedLkw2KPH,
 					KradKPH: speedKradKPH,
 				},
-				GradientPercent:       gradientPercent,
-				JunctionType:          junctionType,
-				JunctionDistanceM:     junctionDistanceM,
-				ReflectionSurchargeDB: reflectionSurchargeDB,
-				TrafficDay:            trafficDay,
-				TrafficNight:          trafficNight,
+				GradientPercent:   gradientPercent,
+				JunctionType:      junctionType,
+				JunctionDistanceM: junctionDistanceM,
+				BuildingHeightM:   buildingHeightM,
+				StreetWidthM:      streetWidthM,
+				TrafficDay:        trafficDay,
+				TrafficNight:      trafficNight,
 			}
 
 			err = source.Validate()

@@ -253,13 +253,13 @@ Normative formula: `D_{KKT}(x) = K_KT · max(1 – x/120, 0)` with K_KT: signali
 
 Normative formula: `D_refl(h_Beb, w) = min(2·h_Beb/w, 1.6)` (Korrekturblatt Feb 2020 only corrects subscript, not value).
 Conditions: parallel walls ≤100 m apart; walls treated as parallel if angle ≤5° to road axis.
-Currently modelled as a pre-computed user input `ReflectionSurchargeDB`.
+Implemented: `ReflectionSurchargeDB` removed; replaced by `BuildingHeightM`/`StreetWidthM` fields with internal Eq. 9 computation.
 
-- [ ] Add `BuildingHeightM` and `StreetWidthM` fields to `RoadSource` for Mehrfachreflexion inputs
-- [ ] Compute `D_refl` from Eq. 9 internally (not as user-supplied dB value)
-- [ ] Apply only when both walls are present (not for one-sided open situations)
-- [ ] Deprecate/remove `ReflectionSurchargeDB` field after migration
-- [ ] Add unit tests for D_refl at h_Beb/w ratios covering the clamp at min(2·h/w, 1.6)
+- [x] Add `BuildingHeightM` and `StreetWidthM` fields to `RoadSource` for Mehrfachreflexion inputs
+- [x] Compute `D_refl` from Eq. 9 internally (not as user-supplied dB value)
+- [x] Apply only when both walls are present (not for one-sided open situations)
+- [x] Deprecate/remove `ReflectionSurchargeDB` field after migration
+- [x] Add unit tests for D_refl at h_Beb/w ratios covering the clamp at min(2·h/w, 1.6)
 
 ### Section 3.4 — Parkplätze (missing source type)
 

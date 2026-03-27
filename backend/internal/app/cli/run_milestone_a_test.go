@@ -519,7 +519,8 @@ func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
         "gradient_percent": 3,
         "junction_type": "signalized",
         "junction_distance_m": 30,
-        "reflection_surcharge_db": 2,
+        "building_height_m": 12,
+        "street_width_m": 15,
         "traffic_day_pkw": 500,
         "traffic_day_lkw1": 20,
         "traffic_day_lkw2": 30,
@@ -600,8 +601,8 @@ func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
 		t.Fatalf("unexpected junction overrides: type=%v dist=%g", s.JunctionType, s.JunctionDistanceM)
 	}
 
-	if s.ReflectionSurchargeDB != 2 {
-		t.Fatalf("expected reflection surcharge 2, got %g", s.ReflectionSurchargeDB)
+	if s.BuildingHeightM != 12 || s.StreetWidthM != 15 {
+		t.Fatalf("expected building_height_m=12 street_width_m=15, got h=%g w=%g", s.BuildingHeightM, s.StreetWidthM)
 	}
 
 	if s.TrafficDay.PkwPerHour != 500 || s.TrafficDay.Lkw1PerHour != 20 || s.TrafficDay.Lkw2PerHour != 30 || s.TrafficDay.KradPerHour != 5 {

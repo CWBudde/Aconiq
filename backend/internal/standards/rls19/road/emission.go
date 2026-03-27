@@ -66,9 +66,9 @@ func emissionForPeriod(source RoadSource, traffic TrafficInput) float64 {
 	}
 
 	// E7/EG: convert the Eq. 4 sum to dB(A)/m and add the
-	// multiple-reflection surcharge (E5).
+	// multiple-reflection surcharge E5 (Eq. 9).
 	total := 10*math.Log10(sum) - 30
-	total += source.ReflectionSurchargeDB
+	total += MultipleReflectionSurcharge(source.BuildingHeightM, source.StreetWidthM)
 
 	return total
 }
@@ -126,6 +126,19 @@ func computeBaseEmission(speedKPH float64, vg VehicleGroup) float64 {
 	base := baseEmissionTable[vg]
 	v := clampBaseEmissionSpeed(speedKPH, vg)
 	return base.A + 10*math.Log10(1+math.Pow(v/base.B, base.C))
+}
+
+// MultipleReflectionSurcharge computes the Mehrfachreflexionszuschlag D_refl
+// per RLS-19 Eq. 9: D_refl = min(2·h_Beb/w, 1.6 dB).
+//
+// The surcharge applies only when buildings flank both sides of the road
+// canyon. Zero building height or zero street width means no surcharge.
+func MultipleReflectionSurcharge(buildingHeightM, streetWidthM float64) float64 {
+	if buildingHeightM <= 0 || streetWidthM <= 0 {
+		return 0
+	}
+
+	return math.Min(2*buildingHeightM/streetWidthM, 1.6)
 }
 
 // energySumDB performs an energetic summation of dB(A) values.

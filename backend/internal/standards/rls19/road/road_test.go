@@ -362,7 +362,6 @@ func TestEmissionForPeriod_ImplementsEq4ForSingleVehicleGroup(t *testing.T) {
 	source.JunctionType = JunctionNone
 	source.SurfaceType = SurfaceSMA
 	source.GradientPercent = 0
-	source.ReflectionSurchargeDB = 0
 	source.TrafficDay = TrafficInput{PkwPerHour: 900}
 
 	result, err := ComputeEmission(source)
@@ -382,7 +381,6 @@ func TestEmissionForPeriod_PerGroupCountsMatchTotalShareForm(t *testing.T) {
 	t.Parallel()
 
 	source := sampleSource()
-	source.ReflectionSurchargeDB = 0
 
 	direct := 0.0
 	shareWeighted := 0.0
@@ -567,6 +565,37 @@ func TestEmission_JunctionAffectsLevel(t *testing.T) {
 	}
 }
 
+// TestMultipleReflectionSurcharge verifies the Mehrfachreflexionszuschlag
+// formula D_refl = min(2·h_Beb/w, 1.6) per RLS-19 Eq. 9.
+func TestMultipleReflectionSurcharge(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		h, w   float64
+		wantDB float64
+	}{
+		{"no buildings", 0, 10, 0},
+		{"no width given", 5, 0, 0},
+		{"both zero", 0, 0, 0},
+		{"below clamp h=1 w=10", 1, 10, 0.2},
+		{"below clamp h=5 w=10", 5, 10, 1.0},
+		{"at clamp h=8 w=10", 8, 10, 1.6},
+		{"above clamp capped to 1.6", 12, 10, 1.6},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := MultipleReflectionSurcharge(tc.h, tc.w)
+			if !almostEqual(got, tc.wantDB, 1e-9) {
+				t.Fatalf("MultipleReflectionSurcharge(h=%g, w=%g) = %g, want %g", tc.h, tc.w, got, tc.wantDB)
+			}
+		})
+	}
+}
+
 func TestEmission_ReflectionSurcharge(t *testing.T) {
 	t.Parallel()
 
@@ -577,18 +606,19 @@ func TestEmission_ReflectionSurcharge(t *testing.T) {
 		t.Fatalf("compute base: %v", err)
 	}
 
+	// h=5, w=10 → D_refl = min(2·5/10, 1.6) = 1.0 dB.
 	withRefl := sampleSource()
-	withRefl.ReflectionSurchargeDB = 2.0
+	withRefl.BuildingHeightM = 5
+	withRefl.StreetWidthM = 10
 
 	reflResult, err := ComputeEmission(withRefl)
 	if err != nil {
 		t.Fatalf("compute with reflection: %v", err)
 	}
 
-	// Reflection surcharge should increase level by exactly 2 dB.
 	diff := reflResult.LmEDay - baseResult.LmEDay
-	if !almostEqual(diff, 2.0, 0.01) {
-		t.Fatalf("reflection surcharge should add 2 dB: got diff=%f", diff)
+	if !almostEqual(diff, 1.0, 0.01) {
+		t.Fatalf("reflection surcharge should add 1.0 dB: got diff=%f", diff)
 	}
 }
 
@@ -2453,7 +2483,7 @@ func TestGradientCorrection_Eq7a_Pkw_Uphill(t *testing.T) {
 
 	// Eq. 7a for g > +2: D = (g-2)/10 * (v_Pkw+70)/100
 	// g=8, v=100: (8-2)/10 * (100+70)/100 = 0.6 * 1.7 = 1.020
-	want := (8.0-2.0)/10.0 * (100.0+70.0)/100.0
+	want := (8.0 - 2.0) / 10.0 * (100.0 + 70.0) / 100.0
 	got := GradientCorrection(8, Pkw, 100)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Pkw, 100): want %.4f, got %.4f", want, got)
@@ -2464,7 +2494,7 @@ func TestGradientCorrection_Eq7a_Pkw_Uphill_LowSpeed(t *testing.T) {
 	t.Parallel()
 
 	// g=4, v=50: just above threshold → (4-2)/10 * (50+70)/100 = 0.2 * 1.2 = 0.240
-	want := (4.0-2.0)/10.0 * (50.0+70.0)/100.0
+	want := (4.0 - 2.0) / 10.0 * (50.0 + 70.0) / 100.0
 	got := GradientCorrection(4, Pkw, 50)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(4, Pkw, 50): want %.4f, got %.4f", want, got)
@@ -2476,7 +2506,7 @@ func TestGradientCorrection_Eq7a_Pkw_Downhill(t *testing.T) {
 
 	// Eq. 7a for g < -6: D = (g+6)/(-6) * (90-min(v_Pkw,70))/20
 	// g=-8, v=100: (-8+6)/(-6) * (90-70)/20 = (1/3) * 1 = 0.333...
-	want := (-8.0+6.0)/(-6.0) * (90.0-70.0)/20.0
+	want := (-8.0 + 6.0) / (-6.0) * (90.0 - 70.0) / 20.0
 	got := GradientCorrection(-8, Pkw, 100)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-8, Pkw, 100): want %.4f, got %.4f", want, got)
@@ -2500,7 +2530,7 @@ func TestGradientCorrection_Eq7b_Lkw1_Uphill(t *testing.T) {
 
 	// Eq. 7b for g > +2: D = (g-2)/10 * v_Lkw1/10
 	// g=8, v=80: (8-2)/10 * 80/10 = 0.6 * 8 = 4.800
-	want := (8.0-2.0)/10.0 * 80.0/10.0
+	want := (8.0 - 2.0) / 10.0 * 80.0 / 10.0
 	got := GradientCorrection(8, Lkw1, 80)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Lkw1, 80): want %.4f, got %.4f", want, got)
@@ -2512,7 +2542,7 @@ func TestGradientCorrection_Eq7b_Lkw1_Downhill(t *testing.T) {
 
 	// Eq. 7b for g < -4: D = (g+4)/(-8) * (v_Lkw1-20)/10
 	// g=-6, v=80: (-6+4)/(-8) * (80-20)/10 = 0.25 * 6 = 1.500
-	want := (-6.0+4.0)/(-8.0) * (80.0-20.0)/10.0
+	want := (-6.0 + 4.0) / (-8.0) * (80.0 - 20.0) / 10.0
 	got := GradientCorrection(-6, Lkw1, 80)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-6, Lkw1, 80): want %.4f, got %.4f", want, got)
@@ -2524,7 +2554,7 @@ func TestGradientCorrection_Eq7c_Lkw2_Uphill(t *testing.T) {
 
 	// Eq. 7c for g > +2: D = (g-2)/10 * (v_Lkw2+10)/10
 	// g=8, v=70: (8-2)/10 * (70+10)/10 = 0.6 * 8 = 4.800
-	want := (8.0-2.0)/10.0 * (70.0+10.0)/10.0
+	want := (8.0 - 2.0) / 10.0 * (70.0 + 10.0) / 10.0
 	got := GradientCorrection(8, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Lkw2, 70): want %.4f, got %.4f", want, got)
@@ -2536,7 +2566,7 @@ func TestGradientCorrection_Eq7c_Lkw2_Downhill(t *testing.T) {
 
 	// Eq. 7c for g < -4: D = (g+4)/(-8) * (v_Lkw2-10)/10
 	// g=-6, v=70: (-6+4)/(-8) * (70-10)/10 = 0.25 * 6 = 1.500
-	want := (-6.0+4.0)/(-8.0) * (70.0-10.0)/10.0
+	want := (-6.0 + 4.0) / (-8.0) * (70.0 - 10.0) / 10.0
 	got := GradientCorrection(-6, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-6, Lkw2, 70): want %.4f, got %.4f", want, got)
