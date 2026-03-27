@@ -278,10 +278,12 @@ type RoadSource struct {
 	JunctionType      JunctionType `json:"junction_type,omitempty"`
 	JunctionDistanceM float64      `json:"junction_distance_m,omitempty"`
 
-	// Multiple-reflection surcharge input (E5): building heights and
-	// street canyon width for the Mehrfachreflexionszuschlag.
+	// Multiple-reflection surcharge inputs (E5) for Mehrfachreflexionszuschlag
+	// per RLS-19 Eq. 9: D_refl = min(2·BuildingHeightM/StreetWidthM, 1.6 dB).
+	// Applies only when both walls are present (both values > 0).
 	// Zero values mean no surcharge.
-	ReflectionSurchargeDB float64 `json:"reflection_surcharge_db,omitempty"`
+	BuildingHeightM float64 `json:"building_height_m,omitempty"`
+	StreetWidthM    float64 `json:"street_width_m,omitempty"`
 
 	// Traffic per time period (maßgebende stündliche Verkehrsstärke).
 	TrafficDay   TrafficInput `json:"traffic_day"`
@@ -330,8 +332,12 @@ func (s RoadSource) Validate() error {
 		return fmt.Errorf("road source %q junction_distance_m must be finite and >= 0", s.ID)
 	}
 
-	if !isFinite(s.ReflectionSurchargeDB) || s.ReflectionSurchargeDB < 0 {
-		return fmt.Errorf("road source %q reflection_surcharge_db must be finite and >= 0", s.ID)
+	if !isFinite(s.BuildingHeightM) || s.BuildingHeightM < 0 {
+		return fmt.Errorf("road source %q building_height_m must be finite and >= 0", s.ID)
+	}
+
+	if !isFinite(s.StreetWidthM) || s.StreetWidthM < 0 {
+		return fmt.Errorf("road source %q street_width_m must be finite and >= 0", s.ID)
 	}
 
 	err = validateTrafficInput(s.ID, "day", s.TrafficDay)
