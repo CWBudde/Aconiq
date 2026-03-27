@@ -278,20 +278,20 @@ Implemented: `parking.go` — `ParkingSource`, `ComputeParkingEmission`, `Defaul
 
 ### Section 3.5 — Schallausbreitung (Eqs. 11–17)
 
-- [ ] Verify `D_div` (Eq. 12): `20·lg[s] + 10·lg[2π]` — the `2π` factor (not `4π`) accounts for ground reflection; confirm implementation
-- [ ] Verify `D_atm` (Eq. 13): `s/200` — confirm no additional frequency-dependent term
-- [ ] Verify `D_gr` (Eq. 14): `max(4.8 – h_m/s · (34 + 600/s), 0)` — confirm h_m computed as F/s_gr (area / ground distance per Bild 11)
-- [ ] Verify `D_z` (Eq. 15): `10·lg[3 + 80·z·K_w]` with `K_w = exp(–1/2000 · sqrt(A·B·s / (2·z)))` (Eq. 17)
-- [ ] Verify `z = A + B + C – s` (Eq. 16) including multi-diffraction C term (Gummibandmethode per Probst 2010)
-- [ ] Confirm rule `max{D_gr; D_z}` in Eq. 11 (ground attenuation and shielding are not additive; only the larger applies)
+- [x] Verify `D_div` (Eq. 12): `20·lg[s] + 10·lg[2π]` — was using `+11` (4π); corrected to `+10·lg(2π)` ≈ 7.98 dB
+- [x] Verify `D_atm` (Eq. 13): `s/200` — was using coefficient 1.0 dB/km; corrected to 5.0 dB/km (= s/200)
+- [x] Verify `D_gr` (Eq. 14): `max(4.8 – h_m/s · (34 + 600/s), 0)` — formula confirmed correct; `h_m` uses area/ground-distance per Bild 11
+- [x] Verify `D_z` (Eq. 15): `10·lg[3 + 80·z·K_w]` with `K_w = exp(–1/2000 · sqrt(A·B·s / (2·z)))` (Eq. 17) — replaced Maekawa approximation with exact RLS-19 formula
+- [ ] Verify `z = A + B + C – s` (Eq. 16) including multi-diffraction C term (Gummibandmethode per Probst 2010) — single-edge (C=0) implemented; multi-diffraction not yet implemented
+- [x] Confirm rule `max{D_gr; D_z}` in Eq. 11 (ground attenuation and shielding are not additive; only the larger applies) — fixed; was using D_z directly, now uses max(D_gr, D_z)
 
 ### Section 3.6 — Berücksichtigung von Reflexionen (Tabelle 8)
 
-- [ ] Verify reflection condition: h_R ≥ 1.0 m **and** h_R ≥ 0.3·√(a_R) (where a_R = smaller of source–reflector and reflector–receiver distances)
-- [ ] Implement `ReflectorType` enum mapping to Tabelle 8 loss values: `FacadeOrReflecting`=0.5 dB, `ReflectionReducing`=3.0 dB, `StronglyReflectionReducing`=5.0 dB
-- [ ] Apply D_RV1 to first reflection and D_RV2 to second reflection (per Eqs. 2 and 3 / Tabelle 8)
-- [ ] Only the active Teilstück (the segment from which sound rays pass through the reflector) contributes as mirror source (Bild 14)
-- [ ] Verify up to 2nd-order reflections handled; 3rd-order reflections are ignored per standard
+- [x] Verify reflection condition: h_R ≥ 1.0 m **and** h_R ≥ 0.3·√(a_R) (where a_R = smaller of source–reflector and reflector–receiver distances) — implemented in `firstOrderReflections` and `secondOrderReflections`; P1 is now computed for 2nd-order paths to apply correct per-bounce distances
+- [x] Implement `ReflectorType` enum mapping to Tabelle 8 loss values: `FacadeOrReflecting`=0.5 dB, `ReflectionReducing`=3.0 dB, `StronglyReflectionReducing`=5.0 dB — added `ReflectorType` and updated `effectiveLoss()`
+- [x] Apply D_RV1 to first reflection and D_RV2 to second reflection (per Eqs. 2 and 3 / Tabelle 8) — 1st-order uses `w.loss`, 2nd-order uses `w1.loss + w2.loss`; documented via comments
+- [x] Only the active Teilstück (the segment from which sound rays pass through the reflector) contributes as mirror source (Bild 14) — enforced by the segment-intersection check in `computeReflectedPaths`; documented in `appendReflectedContribs`
+- [x] Verify up to 2nd-order reflections handled; 3rd-order reflections are ignored per standard — `computeReflectedPaths` only calls `firstOrderReflections` + `secondOrderReflections`; verified by `TestComputeReflectedPaths_ThirdOrder_NotComputed`
 
 ### General accuracy and test coverage
 
