@@ -148,7 +148,13 @@ All completed phases are compacted here. Detailed baseline docs exist under `doc
 
 ## Phase 19 — RLS-19: standards-faithful completion & conformance
 
-Status: implementation and conformance tracking complete.
+Status: infrastructure complete; normative formula accuracy requires review against the actual document.
+
+**Note (2026-03-27):** The RLS-19 document (FGSV 052, Ausgabe 2019 + Korrekturblatt Feb 2020) and supplementary documents (ARS 19/2020, BT-Drucksache 19/18471) are now available at `interoperability/RLS-19/`. The `tables.go` implementation was written from placeholder values before the document was available. A full reconciliation pass against the normative text is required.
+
+**Legal context:** RLS-19 is legally binding as of 1 March 2021 under § 3 of the amended 16. BImSchV (BGBl. 2020 I S. 2334). Sections 1 and 3 are directly referenced by the Verordnung. The ARS Nr. 19/2020 makes it binding for Bundesfernstraßen (new construction and Lärmsanierung).
+
+### Completed (infrastructure)
 
 - [x] Scope, compliance boundaries, data model, emission chain (E1-E7/EG), propagation (Teilstückverfahren, shielding, topography, reflections), indicators (LrDay/LrNight), provenance, export — all implemented.
 - [x] Dedicated TEST-20 acceptance runner with local-suite and CI-safe modes, per-task tolerances, conformance report artifact.
@@ -158,6 +164,143 @@ Status: implementation and conformance tracking complete.
 - [x] Publish a formal "RLS-19 Konformitätserklärung" artifact (`docs/conformance/rls19-konformitaetserklaerung.md` — draft template)
 - [x] Add a machine-readable conformance report (JSON) with category coverage exportable alongside run artifacts
 - [x] Expand CI-safe suite to cover all TEST-20 task categories: E1-E7 (emission), I1-I9 (immission, ref+check), K1-K5 (complex, ref+check) — 34 total tasks
+
+### Section 3.3.4 — Grundwert des Schallleistungspegels (Eq. 6 / Tabelle 3)
+
+The actual RLS-19 Eq. 6 formula is: `L_{W0,FzG}(v) = A_{W,FzG} + 10·lg[1 + (v/B_{W,FzG})^C_{W,FzG}]`
+with normative Tabelle 3 coefficients: Pkw (A=88.0, B=20, C=3.06), Lkw1 (A=100.3, B=40, C=4.33), Lkw2 (A=105.4, B=50, C=4.88).
+The current `tables.go` uses a rolling+propulsion split formula with placeholder coefficients — not the RLS-19 formula.
+
+- [ ] Replace rolling+propulsion formula with Eq. 6 `A + 10·lg[1 + (v/B)^C]`
+- [ ] Replace placeholder coefficients in `baseEmissionTable` with normative Tabelle 3 values (Pkw, Lkw1, Lkw2)
+- [ ] Define Krad coefficients: standard treatment is Lkw2 emission with Pkw speed (note in §3.3.2); document in code
+- [ ] Remove `RollingNoiseCoeffs` and `PropulsionNoiseCoeffs` structs (now superseded by single Eq. 6 formula)
+- [ ] Add unit tests for Eq. 6 at boundary speeds (30, 60, 80, 100, 130 km/h) against Table-3-derived reference values
+
+### Section 3.3.2 — Längenbezogener Schallleistungspegel (Eq. 4 / Tabelle 2)
+
+Eq. 4: `L_w' = 10·lg[M] + 10·lg[Σ_vg (share_vg · 10^(0.1·L_{W,FzG}(v_vg)) / v_vg)] – 30`
+The `–30` is a normalization term; the `v_vg` divisor converts from per-vehicle to length-related power.
+Current `emissionForPeriod` computes `lwA + 10·lg(count)` per group and sums — missing the `/v_vg` and `–30` terms.
+
+- [ ] Verify whether current emission formula matches Eq. 4 exactly (the `/v_vg – 30` structure)
+- [ ] If not, correct `emissionForPeriod` to match Eq. 4 including the `v_vg` divisor and `–30` normalization
+- [ ] Verify total-M + p1/p2 representation is equivalent to per-group counts as currently modelled
+- [ ] Expose a `DTVToHourly` helper implementing Tabelle 2 (DTV → M, p1, p2 by Straßenart for day/night)
+  - Bundesautobahnen/Kraftfahrstraßen: day M=0.0555·DTV, p1=3%, p2=11%; night M=0.0140·DTV, p1=10%, p2=25%
+  - Bundesstraßen: day M=0.0575·DTV, p1=3%, p2=7%; night M=0.0100·DTV, p1=7%, p2=13%
+  - Landes-/Kreis-/Gemeindeverbindungsstraßen: day M=0.0575·DTV, p1=3%, p2=5%; night M=0.0100·DTV, p1=5%, p2=6%
+  - Gemeindestraßen: day M=0.0575·DTV, p1=3%, p2=4%; night M=0.0100·DTV, p1=3%, p2=4%
+
+### Section 3.3.1 — Modellierung einer Straße (Bild 6)
+
+Source line positioning rules depend on lane count (per Bild 6):
+1 lane → over lane center; 2 lanes → over outer lane; 3–4 lanes → over Trennlinie; 5+ lanes → over second outermost lane.
+For bidirectional roads with different surface types per direction: use the larger correction per vehicle class (Pkw, Lkw).
+
+- [ ] Document source line positioning rules in code (currently user-specified, no validation)
+- [ ] Add optional `LaneCount` field to `RoadSource` to enable automatic source line offset calculation
+- [ ] Validate that multi-surface-type roads use the per-direction maximum correction rule
+
+### Section 3.3.5 — Straßendeckschichtkorrektur (Tabelle 4a / 4b)
+
+Tabelle 4a corrections are speed-dependent (≤60 vs >60 km/h), apply separately to Pkw and Lkw (Lkw1+Lkw2 share one correction), and do NOT apply to Pflasterbeläge.
+Tabelle 4b covers Pflasterbeläge with three speed thresholds (30, 40, ≥50 km/h), no vehicle-group distinction.
+
+The current `surfaceCorrectionTable` has single values per vehicle group (not speed-dependent for standard asphalt types) — values are placeholders.
+
+- [ ] Restructure `SurfaceCorrectionEntry` to hold `(PkwLow, PkwHigh, LkwLow, LkwHigh float64)` (low = ≤60, high = >60)
+- [ ] Populate Tabelle 4a normative values (outside Pflaster) for all surface types:
+  - SMA 5/8 (v≤60 only): Pkw –2.6, Lkw –1.8
+  - SMA 8/11 (v>60 only): Lkw –1.8/Lkw –2.0 (check direction-specific values in table)
+  - AB ≤ AC 11: Pkw –2.7/–1.9, Lkw –1.9/–2.1
+  - OPA PA 11: Pkw –4.5/–4.5, Lkw –4.4/–4.4
+  - OPA PA 8: Pkw –5.5/–5.5, Lkw –5.4/–5.4
+  - Beton (Waschbeton): Pkw –1.4/–1.4, Lkw –2.3/–2.3
+  - Lärmarmer Gussasphalt: Pkw –2.0/–2.0, Lkw –1.5/–1.5
+  - LOA (AC D LOA): Pkw –3.2 (v≤60 only), Lkw –1.0 (v≤60 only)
+  - SMA LA 8: Pkw –2.8 (v≤60 only), Lkw –4.6 (v>60 only)
+  - DSH-V 5: Pkw –3.9/–2.8, Lkw –0.9/–2.3
+  - (cells with × in table = that speed range not applicable for that surface)
+- [ ] Populate Tabelle 4b normative values for Pflasterbeläge:
+  - Pflaster eben (b≤5.0 mm, b+2f≤9.0 mm): +1.0/+2.0/+3.0 (at 30/40/≥50 km/h)
+  - Sonstiges Pflaster (b>5.0 mm or f>2.0 mm, or Kopfsteinpflaster): +5.0/+6.0/+7.0
+- [ ] Update `SurfaceCorrection(st, vg, speedKPH)` signature to accept speed
+- [ ] Add unit tests for each Tabelle 4a/4b row at relevant speed thresholds
+
+### Section 3.3.6 — Längsneigungskorrektur (Eqs. 7a / 7b / 7c)
+
+Normative formulas are speed-dependent and differ per vehicle group. Current `GradientCorrection` is speed-independent — a simplified approximation.
+
+- [ ] Replace `GradientCorrection(g, vg)` with `GradientCorrection(g, vg, speedKPH)` implementing the three normative formulas:
+  - Pkw (7a): `(g+6)/–6 · (90–min(v_Pkw,70))/20` for g < –6; `(g–2)/10 · (v_Pkw+70)/100` for g > +2; else 0
+  - Lkw1 (7b): `(g+4)/–8 · (v_Lkw1–20)/10` for g < –4; `(g–2)/10 · v_Lkw1/10` for g > +2; else 0
+  - Lkw2 (7c): `(g+4)/–8 · (v_Lkw2–10)/10` for g < –4; `(g–2)/10 · (v_Lkw2+10)/10` for g > +2; else 0
+  - Clamp g to [–12, +12] before applying formulas
+- [ ] For Krad: use Pkw formula 7a with v_Pkw (per §3.3.2 Krad note)
+- [ ] Add unit tests at g = –12, –6, –4, 0, +2, +4, +6, +12 for each vehicle group at representative speeds
+
+### Section 3.3.7 — Knotenpunktkorrektur (Eq. 8 / Tabelle 5)
+
+Normative formula: `D_{KKT}(x) = K_KT · max(1 – x/120, 0)` with K_KT: signalized=3 dB, roundabout=2 dB, other=0 dB.
+Current code uses a distance-stepped lookup table — not the continuous linear decay formula.
+
+- [ ] Replace step-table `junctionCorrectionTable` with Eq. 8 continuous formula
+- [ ] Set K_KT for `JunctionOther` to 0 dB (currently table has non-zero values)
+- [ ] Verify decay reaches 0 at exactly x = 120 m for signalized/roundabout
+- [ ] Add unit tests at x = 0, 30, 60, 90, 120, 150 m for each junction type
+
+### Section 3.3.8 — Mehrfachreflexionszuschlag (Eq. 9, corrected)
+
+Normative formula: `D_refl(h_Beb, w) = min(2·h_Beb/w, 1.6)` (Korrekturblatt Feb 2020 only corrects subscript, not value).
+Conditions: parallel walls ≤100 m apart; walls treated as parallel if angle ≤5° to road axis.
+Currently modelled as a pre-computed user input `ReflectionSurchargeDB`.
+
+- [ ] Add `BuildingHeightM` and `StreetWidthM` fields to `RoadSource` for Mehrfachreflexion inputs
+- [ ] Compute `D_refl` from Eq. 9 internally (not as user-supplied dB value)
+- [ ] Apply only when both walls are present (not for one-sided open situations)
+- [ ] Deprecate/remove `ReflectionSurchargeDB` field after migration
+- [ ] Add unit tests for D_refl at h_Beb/w ratios covering the clamp at min(2·h/w, 1.6)
+
+### Section 3.4 — Parkplätze (missing source type)
+
+Eq. 10 (corrected): `L_W'' = 63 + 10·lg[N·n] + D_{P,PT} – 10·lg[P/1m²]`
+with Tabelle 6: D_P,PT = Pkw 0 dB, Motorrad 5 dB, Lkw/Omnibus 10 dB.
+Tabelle 7 standard values for N: P+R (day 0.3, night 0.06), Tank/Rastanlage (day 1.5, night 0.8).
+
+- [ ] Add `ParkingSource` type to model with fields: `AreaM2`, `NumSpaces`, `ParkingType`, `MovementsPerSpacePerHour` (day/night)
+- [ ] Implement Eq. 10 `ComputeParkingEmission(source ParkingSource) (float64, error)`
+- [ ] Add `ParkingType` enum: `Pkw`, `Motorrad`, `LkwOmnibus` with Tabelle 6 surcharges
+- [ ] Expose Tabelle 7 standard N values as `DefaultMovementsPerHour(pt ParkingType, period TimePeriod) float64`
+- [ ] Integrate parking contribution into Eq. 3 (`L_r''`) and Eq. 1 (`L_r`) computation
+- [ ] Add `ParkingSources []ParkingSource` to `PropagationConfig` or compute entrypoint
+- [ ] Add unit tests for Eq. 10 against hand-calculated reference values (at least one Pkw and one Lkw case)
+
+### Section 3.5 — Schallausbreitung (Eqs. 11–17)
+
+- [ ] Verify `D_div` (Eq. 12): `20·lg[s] + 10·lg[2π]` — the `2π` factor (not `4π`) accounts for ground reflection; confirm implementation
+- [ ] Verify `D_atm` (Eq. 13): `s/200` — confirm no additional frequency-dependent term
+- [ ] Verify `D_gr` (Eq. 14): `max(4.8 – h_m/s · (34 + 600/s), 0)` — confirm h_m computed as F/s_gr (area / ground distance per Bild 11)
+- [ ] Verify `D_z` (Eq. 15): `10·lg[3 + 80·z·K_w]` with `K_w = exp(–1/2000 · sqrt(A·B·s / (2·z)))` (Eq. 17)
+- [ ] Verify `z = A + B + C – s` (Eq. 16) including multi-diffraction C term (Gummibandmethode per Probst 2010)
+- [ ] Confirm rule `max{D_gr; D_z}` in Eq. 11 (ground attenuation and shielding are not additive; only the larger applies)
+
+### Section 3.6 — Berücksichtigung von Reflexionen (Tabelle 8)
+
+- [ ] Verify reflection condition: h_R ≥ 1.0 m **and** h_R ≥ 0.3·√(a_R) (where a_R = smaller of source–reflector and reflector–receiver distances)
+- [ ] Implement `ReflectorType` enum mapping to Tabelle 8 loss values: `FacadeOrReflecting`=0.5 dB, `ReflectionReducing`=3.0 dB, `StronglyReflectionReducing`=5.0 dB
+- [ ] Apply D_RV1 to first reflection and D_RV2 to second reflection (per Eqs. 2 and 3 / Tabelle 8)
+- [ ] Only the active Teilstück (the segment from which sound rays pass through the reflector) contributes as mirror source (Bild 14)
+- [ ] Verify up to 2nd-order reflections handled; 3rd-order reflections are ignored per standard
+
+### General accuracy and test coverage
+
+- [ ] Run full TEST-20 suite after each formula fix to detect regressions
+- [ ] Add golden scenarios for the standard test cases from Diagramm I (single vehicle, speed sweep) to lock in Grundwert values
+- [ ] Add golden scenarios for Tabelle 4a surface corrections (DStrO sweep per vehicle group and speed)
+- [ ] Add golden scenario for Section 3.4 parking lot case (verify Eq. 10 end-to-end)
+- [ ] Update `docs/conformance/rls19-konformitaetserklaerung.md` with accurate scope after formula reconciliation
+- [ ] Note Korrekturblatt 2/2020 fixes applied: (1) Eq. 3 corrected form, (2) D_refl subscript corrected, (3) Eq. 10 corrected form
 
 ---
 
