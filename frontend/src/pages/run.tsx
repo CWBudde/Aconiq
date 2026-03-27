@@ -40,12 +40,30 @@ import type {
   ParameterDefinition,
   ProfileInfo,
   RunSummary,
+  StandardDescriptor,
 } from "@/api/client";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const STANDARD_LABELS: Record<string, () => string> = {
+  upstream_mapping_standard: m.standard_upstream_mapping_standard,
+};
+
+const STANDARD_DESCRIPTIONS: Record<string, () => string> = {
+  upstream_mapping_standard:
+    m.standard_upstream_mapping_standard_description,
+};
+
+function getStandardLabel(standard: StandardDescriptor): string {
+  return STANDARD_LABELS[standard.id]?.() ?? standard.id;
+}
+
+function getStandardDescription(standard: StandardDescriptor): string {
+  return STANDARD_DESCRIPTIONS[standard.id]?.() ?? standard.description;
+}
 
 function formatDuration(startedAt: string, finishedAt: string): string {
   const start = new Date(startedAt).getTime();

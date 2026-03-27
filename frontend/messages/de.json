@@ -6,10 +6,18 @@
   "language_de": "Deutsch",
   "label_receiver": "Empfänger",
   "placeholder_select_source_type": "Typ auswählen",
+  "placeholder_select_version": "Auswählen…",
+  "placeholder_select_profile": "Auswählen…",
   "label_vehicle_class_pkw": "Pkw",
   "label_vehicle_class_lkw1": "Lkw 1",
   "label_vehicle_class_lkw2": "Lkw 2",
   "label_vehicle_class_krad": "Krad",
+  "action_import_from_file": "Aus Datei",
+  "action_import_from_osm": "Von OpenStreetMap",
+  "status_starting_run": "Wird gestartet…",
+  "standard_upstream_mapping_standard": "Upstream-Mapping-Standard",
+  "standard_upstream_mapping_standard_description":
+    "Vertrag des Upstream-Mapping-Standards zur Höhenermittlung.",
 
   "nav_map": "Karte",
   "nav_import": "Import",

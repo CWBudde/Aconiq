@@ -6,10 +6,18 @@
   "language_de": "Deutsch",
   "label_receiver": "Receiver",
   "placeholder_select_source_type": "Select type",
+  "placeholder_select_version": "Select…",
+  "placeholder_select_profile": "Select…",
   "label_vehicle_class_pkw": "Cars",
   "label_vehicle_class_lkw1": "Trucks 1",
   "label_vehicle_class_lkw2": "Trucks 2",
   "label_vehicle_class_krad": "Motorcycles",
+  "action_import_from_file": "From File",
+  "action_import_from_osm": "From OpenStreetMap",
+  "status_starting_run": "Starting…",
+  "standard_upstream_mapping_standard": "Upstream mapping standard",
+  "standard_upstream_mapping_standard_description":
+    "Upstream mapping standard contract used for level derivation.",
 
   "nav_map": "Map",
   "nav_import": "Import",

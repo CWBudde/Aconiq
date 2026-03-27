@@ -1,4 +1,5 @@
 import type { LayerSpecification } from "maplibre-gl";
+import { m } from "@/i18n/messages";
 
 /**
  * Layer definitions for noise model features.
@@ -187,25 +188,25 @@ export interface LayerGroup {
 export const MODEL_LAYER_GROUPS: LayerGroup[] = [
   {
     id: "calc-area",
-    label: "Calculation Area",
+    label: m.label_calc_area(),
     layerIds: [LAYER_IDS.calcAreaFill, LAYER_IDS.calcAreaOutline],
     defaultVisible: true,
   },
   {
     id: "buildings",
-    label: "Buildings",
+    label: m.label_buildings(),
     layerIds: [LAYER_IDS.buildingsFill, LAYER_IDS.buildingsOutline],
     defaultVisible: true,
   },
   {
     id: "barriers",
-    label: "Barriers",
+    label: m.label_barriers(),
     layerIds: [LAYER_IDS.barrierLine],
     defaultVisible: true,
   },
   {
     id: "sources",
-    label: "Sources",
+    label: m.label_sources(),
     layerIds: [
       LAYER_IDS.sourcesArea,
       LAYER_IDS.sourcesLine,
@@ -215,7 +216,7 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
   },
   {
     id: "receivers",
-    label: "Receivers",
+    label: m.label_receivers(),
     layerIds: [LAYER_IDS.receiversPoint],
     defaultVisible: true,
   },
