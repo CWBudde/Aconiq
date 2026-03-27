@@ -40,7 +40,6 @@ import type {
   ParameterDefinition,
   ProfileInfo,
   RunSummary,
-  StandardDescriptor,
 } from "@/api/client";
 import { m } from "@/i18n/messages";
 
@@ -53,18 +52,14 @@ const STANDARD_LABELS: Record<string, () => string> = {
 };
 
 const STANDARD_DESCRIPTIONS: Record<string, () => string> = {
-  upstream_mapping_standard:
-    m.standard_upstream_mapping_standard_description,
+  upstream_mapping_standard: m.standard_upstream_mapping_standard_description,
 };
 
 function getStandardLabel(standardId: string): string {
   return STANDARD_LABELS[standardId]?.() ?? standardId;
 }
 
-function getStandardDescription(
-  standardId: string,
-  fallback: string,
-): string {
+function getStandardDescription(standardId: string, fallback: string): string {
   return STANDARD_DESCRIPTIONS[standardId]?.() ?? fallback;
 }
 
@@ -83,6 +78,10 @@ function formatTime(iso: string): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function toSummaryDescription(summary: RunSummary): string {
+  return summary.standard.description;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,14 +448,14 @@ function RunFilterBar({
             onChange({ ...filters, scenarioId: v === "_all" ? "" : v });
           }}
         >
-        <SelectTrigger className="h-7 w-32 text-xs">
-          <SelectValue placeholder={m.label_scenarios_field()} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="_all">{m.label_scenario_filter()}</SelectItem>
-          {scenarios.map((s) => (
-            <SelectItem key={s} value={s}>
-              {s}
+          <SelectTrigger className="h-7 w-32 text-xs">
+            <SelectValue placeholder={m.label_scenarios_field()} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">{m.label_scenario_filter()}</SelectItem>
+            {scenarios.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
               </SelectItem>
             ))}
           </SelectContent>
@@ -885,7 +884,9 @@ function RunSetupDialog({
                     onValueChange={handleStandardChange}
                   >
                     <SelectTrigger id="standard">
-                      <SelectValue placeholder={m.placeholder_select_standard()} />
+                      <SelectValue
+                        placeholder={m.placeholder_select_standard()}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {standards?.map((s) => (
@@ -905,7 +906,9 @@ function RunSetupDialog({
                     disabled={!selectedStandard}
                   >
                     <SelectTrigger id="version">
-                      <SelectValue placeholder={m.placeholder_select_version()} />
+                      <SelectValue
+                        placeholder={m.placeholder_select_version()}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedStandard?.versions.map((v) => (
@@ -925,7 +928,9 @@ function RunSetupDialog({
                     disabled={!selectedVersion}
                   >
                     <SelectTrigger id="profile">
-                      <SelectValue placeholder={m.placeholder_select_profile()} />
+                      <SelectValue
+                        placeholder={m.placeholder_select_profile()}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedVersion?.profiles.map((p) => (
@@ -1041,9 +1046,7 @@ function RunSetupDialog({
                 IS_WASM_MODE ? (
                   <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      {m.msg_no_explicit_receivers()}
-                    </span>
+                    <span>{m.msg_no_explicit_receivers()}</span>
                   </div>
                 ) : null
               ) : null}

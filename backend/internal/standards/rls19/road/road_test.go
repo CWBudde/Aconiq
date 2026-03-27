@@ -175,6 +175,7 @@ func TestParseJunctionType(t *testing.T) {
 
 func TestSurfaceCorrection(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		surface  SurfaceType
@@ -222,7 +223,6 @@ func TestSurfaceCorrection(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -248,6 +248,7 @@ func TestGradientCorrection(t *testing.T) {
 	// Lkw2 at g=8, v=70: (8-2)/10*(70+10)/10 = 4.8
 	// Pkw  at g=8, v=100: (8-2)/10*(100+70)/100 = 1.02
 	lkw2Up := GradientCorrection(8, Lkw2, 70)
+
 	pkwUp := GradientCorrection(8, Pkw, 100)
 	if lkw2Up <= pkwUp {
 		t.Fatalf("expected Lkw2 gradient correction > Pkw uphill: Lkw2=%f Pkw=%f", lkw2Up, pkwUp)
@@ -312,7 +313,6 @@ func TestComputeBaseEmission_Table3ReferenceValues(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -339,6 +339,7 @@ func TestComputeVehicleGroupEmissions_KradUsesPkwSpeedForBaseEmission(t *testing
 	}
 
 	var krad VehicleGroupEmission
+
 	for _, emission := range emissions {
 		if emission.Group == Krad {
 			krad = emission
@@ -371,6 +372,7 @@ func TestEmissionForPeriod_ImplementsEq4ForSingleVehicleGroup(t *testing.T) {
 
 	base := computeVehicleSoundPower(source, Pkw)
 	speed := effectiveVehicleSpeed(source.Speeds, Pkw)
+
 	want := base + 10*math.Log10(source.TrafficDay.PkwPerHour/speed) - 30
 	if !almostEqual(result.LmEDay, want, 0.000001) {
 		t.Fatalf("single-group Eq. 4 emission: want %.6f, got %.6f", want, result.LmEDay)
@@ -384,6 +386,7 @@ func TestEmissionForPeriod_PerGroupCountsMatchTotalShareForm(t *testing.T) {
 
 	direct := 0.0
 	shareWeighted := 0.0
+
 	totalCount := source.TrafficDay.TotalPerHour()
 	if totalCount <= 0 {
 		t.Fatal("sample source must have positive total traffic")
@@ -404,6 +407,7 @@ func TestEmissionForPeriod_PerGroupCountsMatchTotalShareForm(t *testing.T) {
 	}
 
 	directLevel := 10*math.Log10(direct) - 30
+
 	shareLevel := 10*math.Log10(totalCount) + 10*math.Log10(shareWeighted) - 30
 	if !almostEqual(directLevel, shareLevel, 0.000001) {
 		t.Fatalf("Eq. 4 direct-count and total-share forms should match: direct=%.6f share=%.6f", directLevel, shareLevel)
@@ -2546,6 +2550,7 @@ func TestGradientCorrection_Eq7a_Pkw_Uphill(t *testing.T) {
 	// Eq. 7a for g > +2: D = (g-2)/10 * (v_Pkw+70)/100
 	// g=8, v=100: (8-2)/10 * (100+70)/100 = 0.6 * 1.7 = 1.020
 	want := (8.0 - 2.0) / 10.0 * (100.0 + 70.0) / 100.0
+
 	got := GradientCorrection(8, Pkw, 100)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Pkw, 100): want %.4f, got %.4f", want, got)
@@ -2557,6 +2562,7 @@ func TestGradientCorrection_Eq7a_Pkw_Uphill_LowSpeed(t *testing.T) {
 
 	// g=4, v=50: just above threshold → (4-2)/10 * (50+70)/100 = 0.2 * 1.2 = 0.240
 	want := (4.0 - 2.0) / 10.0 * (50.0 + 70.0) / 100.0
+
 	got := GradientCorrection(4, Pkw, 50)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(4, Pkw, 50): want %.4f, got %.4f", want, got)
@@ -2569,6 +2575,7 @@ func TestGradientCorrection_Eq7a_Pkw_Downhill(t *testing.T) {
 	// Eq. 7a for g < -6: D = (g+6)/(-6) * (90-min(v_Pkw,70))/20
 	// g=-8, v=100: (-8+6)/(-6) * (90-70)/20 = (1/3) * 1 = 0.333...
 	want := (-8.0 + 6.0) / (-6.0) * (90.0 - 70.0) / 20.0
+
 	got := GradientCorrection(-8, Pkw, 100)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-8, Pkw, 100): want %.4f, got %.4f", want, got)
@@ -2593,6 +2600,7 @@ func TestGradientCorrection_Eq7b_Lkw1_Uphill(t *testing.T) {
 	// Eq. 7b for g > +2: D = (g-2)/10 * v_Lkw1/10
 	// g=8, v=80: (8-2)/10 * 80/10 = 0.6 * 8 = 4.800
 	want := (8.0 - 2.0) / 10.0 * 80.0 / 10.0
+
 	got := GradientCorrection(8, Lkw1, 80)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Lkw1, 80): want %.4f, got %.4f", want, got)
@@ -2605,6 +2613,7 @@ func TestGradientCorrection_Eq7b_Lkw1_Downhill(t *testing.T) {
 	// Eq. 7b for g < -4: D = (g+4)/(-8) * (v_Lkw1-20)/10
 	// g=-6, v=80: (-6+4)/(-8) * (80-20)/10 = 0.25 * 6 = 1.500
 	want := (-6.0 + 4.0) / (-8.0) * (80.0 - 20.0) / 10.0
+
 	got := GradientCorrection(-6, Lkw1, 80)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-6, Lkw1, 80): want %.4f, got %.4f", want, got)
@@ -2617,6 +2626,7 @@ func TestGradientCorrection_Eq7c_Lkw2_Uphill(t *testing.T) {
 	// Eq. 7c for g > +2: D = (g-2)/10 * (v_Lkw2+10)/10
 	// g=8, v=70: (8-2)/10 * (70+10)/10 = 0.6 * 8 = 4.800
 	want := (8.0 - 2.0) / 10.0 * (70.0 + 10.0) / 10.0
+
 	got := GradientCorrection(8, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(8, Lkw2, 70): want %.4f, got %.4f", want, got)
@@ -2629,6 +2639,7 @@ func TestGradientCorrection_Eq7c_Lkw2_Downhill(t *testing.T) {
 	// Eq. 7c for g < -4: D = (g+4)/(-8) * (v_Lkw2-10)/10
 	// g=-6, v=70: (-6+4)/(-8) * (70-10)/10 = 0.25 * 6 = 1.500
 	want := (-6.0 + 4.0) / (-8.0) * (70.0 - 10.0) / 10.0
+
 	got := GradientCorrection(-6, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("GradientCorrection(-6, Lkw2, 70): want %.4f, got %.4f", want, got)
@@ -2689,6 +2700,7 @@ func TestJunctionCorrection_Eq8_Roundabout_At40m(t *testing.T) {
 
 	// x=40: 2 * (1 - 40/120) = 2 * (2/3) ≈ 1.333
 	want := 2.0 * (1.0 - 40.0/120.0)
+
 	got := JunctionCorrection(JunctionRoundabout, 40)
 	if !almostEqual(got, want, 0.001) {
 		t.Fatalf("JunctionCorrection(Roundabout, 40): want %.4f, got %.4f", want, got)

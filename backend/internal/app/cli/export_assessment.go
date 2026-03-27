@@ -19,6 +19,7 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 	if strings.TrimSpace(modelGeoJSONPath) == "" || strings.TrimSpace(receiverTablePath) == "" {
 		return "", false, nil
 	}
+
 	if !supports16BImSchVAssessment(standardID) {
 		return "", false, nil
 	}
@@ -42,6 +43,7 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 	if err != nil {
 		return "", false, err
 	}
+
 	if envelope.AssessedCount == 0 && len(envelope.Skipped) == 0 {
 		return "", false, nil
 	}
@@ -52,10 +54,12 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 	}
 
 	outPath := filepath.Join(assessmentDir, "16bimschv-assessment.json")
+
 	payload, err := json.MarshalIndent(envelope, "", "  ")
 	if err != nil {
 		return "", false, fmt.Errorf("encode 16. BImSchV assessment: %w", err)
 	}
+
 	payload = append(payload, '\n')
 
 	if err := os.WriteFile(outPath, payload, 0o600); err != nil {

@@ -88,6 +88,7 @@ func effectiveVehicleSpeed(speeds SpeedInput, vg VehicleGroup) float64 {
 
 func clampBaseEmissionSpeed(speedKPH float64, vg VehicleGroup) float64 {
 	base := baseEmissionTable[vg]
+
 	v := speedKPH
 	if v < base.VMin {
 		v = base.VMin
@@ -125,6 +126,7 @@ func computeVehicleSoundPower(source RoadSource, vg VehicleGroup) float64 {
 func computeBaseEmission(speedKPH float64, vg VehicleGroup) float64 {
 	base := baseEmissionTable[vg]
 	v := clampBaseEmissionSpeed(speedKPH, vg)
+
 	return base.A + 10*math.Log10(1+math.Pow(v/base.B, base.C))
 }
 

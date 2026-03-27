@@ -56,6 +56,7 @@ func TestMaybeBuild16BImSchVAssessment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build assessment: %v", err)
 	}
+
 	if !built {
 		t.Fatal("expected assessment to be built")
 	}
@@ -64,6 +65,7 @@ func TestMaybeBuild16BImSchVAssessment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read assessment: %v", err)
 	}
+
 	text := string(payload)
 	if !strings.Contains(text, `"law": "16. BImSchV"`) || !strings.Contains(text, `"receiver_id": "rx-1"`) {
 		t.Fatalf("unexpected assessment payload: %s", text)

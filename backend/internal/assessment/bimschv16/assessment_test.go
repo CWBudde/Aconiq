@@ -29,6 +29,7 @@ func TestThresholdsForCategory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("thresholds for %s: %v", tc.category, err)
 		}
+
 		if got.Day != tc.day || got.Night != tc.night {
 			t.Fatalf("%s: got %d/%d want %d/%d", tc.category, got.Day, got.Night, tc.day, tc.night)
 		}
@@ -51,6 +52,7 @@ func TestParseAreaCategory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %q: %v", raw, err)
 		}
+
 		if got != want {
 			t.Fatalf("parse %q: got %q want %q", raw, got, want)
 		}
@@ -63,6 +65,7 @@ func TestRoundForThresholdComparison(t *testing.T) {
 	if got := RoundForThresholdComparison(59.01); got != 60 {
 		t.Fatalf("got %d want 60", got)
 	}
+
 	if got := RoundForThresholdComparison(59.0); got != 59 {
 		t.Fatalf("got %d want 59", got)
 	}
@@ -83,12 +86,15 @@ func TestAssessReceiverRoadOnly(t *testing.T) {
 	if result.EligibleForNoiseProtectionMeasures {
 		t.Fatal("did not expect exceedance")
 	}
+
 	if result.Road == nil || result.Combined == nil {
 		t.Fatal("expected road and combined assessments")
 	}
+
 	if result.Road.DayRounded != 59 || result.Road.NightRounded != 48 {
 		t.Fatalf("unexpected rounded values: %+v", result.Road)
 	}
+
 	if !strings.Contains(result.SummaryDE, "Beurteilungspegel Straße 59/48 dB") {
 		t.Fatalf("unexpected summary: %s", result.SummaryDE)
 	}
@@ -110,12 +116,15 @@ func TestAssessReceiverCombinedRoadAndRail(t *testing.T) {
 	if result.Combined == nil {
 		t.Fatal("expected combined assessment")
 	}
+
 	if result.Combined.DayRounded <= result.Road.DayRounded {
 		t.Fatalf("expected combined day > single-source day: combined=%d road=%d", result.Combined.DayRounded, result.Road.DayRounded)
 	}
+
 	if !result.EligibleForNoiseProtectionMeasures {
 		t.Fatal("expected exceedance-based eligibility")
 	}
+
 	if !strings.Contains(result.SummaryDE, "kombinierter Beurteilungspegel Straße + Schiene") {
 		t.Fatalf("unexpected summary: %s", result.SummaryDE)
 	}
@@ -146,9 +155,11 @@ func TestBuildExportEnvelope(t *testing.T) {
 	if envelope.AssessedCount != 1 || envelope.ExceedingCount != 1 {
 		t.Fatalf("unexpected counts: %+v", envelope)
 	}
+
 	if len(envelope.Results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(envelope.Results))
 	}
+
 	if len(envelope.Skipped) != 1 || envelope.Skipped[0].ReceiverID != "rx-2" {
 		t.Fatalf("unexpected skipped list: %+v", envelope.Skipped)
 	}

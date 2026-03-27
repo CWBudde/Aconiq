@@ -879,6 +879,7 @@ func rls19PropertiesHaveAcousticOverrides(properties map[string]any) bool {
 
 func resolveRLS19SurfaceType(properties map[string]any, defaultSurface string) (string, error) {
 	surfaceType := defaultSurface
+
 	value, ok, err := propertyString(properties, "surface_type", "road_surface_type")
 	if err != nil {
 		return "", err
@@ -902,7 +903,7 @@ func resolveRLS19LaneCount(properties map[string]any) (int, error) {
 	}
 
 	if value < 1 || math.Trunc(value) != value {
-		return 0, fmt.Errorf("lane_count/lanes must be an integer >= 1")
+		return 0, errors.New("lane_count/lanes must be an integer >= 1")
 	}
 
 	return int(value), nil
@@ -1016,6 +1017,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			seenSourceIDs[sourceID] = struct{}{}
 
 			properties := mergedProperties(feature.Properties, directional.Overrides)
+
 			surfaceType, err := resolveRLS19SurfaceType(properties, options.SurfaceType)
 			if err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
