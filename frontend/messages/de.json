@@ -4,6 +4,12 @@
   "language": "Sprache",
   "language_en": "English",
   "language_de": "Deutsch",
+  "label_receiver": "Empfänger",
+  "placeholder_select_source_type": "Typ auswählen",
+  "label_vehicle_class_pkw": "Pkw",
+  "label_vehicle_class_lkw1": "Lkw 1",
+  "label_vehicle_class_lkw2": "Lkw 2",
+  "label_vehicle_class_krad": "Krad",
 
   "nav_map": "Karte",
   "nav_import": "Import",
