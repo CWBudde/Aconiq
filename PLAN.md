@@ -323,6 +323,7 @@ Status: **complete** — all normative formulas (Gl. 1–36), all tables (1–18
 ### Remaining items
 
 - [x] Nr. 5.3.2 permanently slow section exception (≤ 30 km/h) — `PermanentlySlow` flag on TrackSegment/StreckeEmissionInput
+- [x] BImSchV source document conformance audit — Phase 37
 - [ ] Section 9 measurement-based vehicle data — custom vehicle acoustics from measurements (input pathway, not computation gap; out of scope)
 - [ ] End-to-end report/export checks
 - [ ] Golden snapshot conformance scenarios for Phase 20d barrier diffraction
@@ -763,6 +764,34 @@ Uses `github.com/meko-tech/go-absolute-database` (local `../go-absolute-database
 - [ ] Can SoundPlan export to CadnaA or other intermediate formats that are better documented?
 - [ ] Investigate whether SoundPlan's "ASCII export" or "data exchange" features produce parseable intermediate files
 - [ ] Legal: confirm that parsing a proprietary file format for interoperability is permitted (likely yes under EU interoperability directives, but document the position)
+
+---
+
+## Phase 37 — Schall 03 BImSchV conformance audit
+
+Status: **complete**
+
+Systematic audit of all normative tables and coefficients against the authoritative
+BGBl source document (BGBl. Jahrgang 2014 Teil I Nr. 61, pp. 2269-2313).
+
+### Fixes applied
+
+| Bug | File | Description |
+|-----|------|-------------|
+| Fz4 m=7 DeltaA | beiblatt1.go | Spectrum shifted from 1000 Hz; correct: {-16,-9,-7,-7,-7,-9,-12,-19} |
+| Gleisbremse i=6 | beiblatt3.go | Missing 63 Hz value (-56); spectrum shifted left |
+| Gleisbremse i=8 | beiblatt3.go | Gummiwalkbremse had entirely wrong spectrum |
+| Gleisbremse i=10 | beiblatt3.go | Schraubenbremse had extra -21 at 500 Hz |
+| K_S combined formula | indicators.go | kSStrecke changed from -5.0 to 0.0 (abolished since 2015/2019) |
+
+### Regression tests
+
+`bimschv_audit_test.go` — pins all normative table values with BGBl page references.
+
+### Verified correct (no changes needed)
+
+Tables 3-9, 11-17; Beiblatt 1 Fz 1-3/5-10; Beiblatt 2 Fz 21-23;
+Beiblatt 3 (except 4 Gleisbremse rows fixed above).
 
 ---
 
