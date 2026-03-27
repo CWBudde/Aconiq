@@ -123,11 +123,13 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 	return correction
 }
 
-// GradientCorrection computes the gradient correction D_Stg for a given
-// vehicle group and gradient in percent.
-// The correction depends on the sign and magnitude of the gradient and
-// differs between vehicle groups (heavy vehicles are more affected).
-func GradientCorrection(gradientPercent float64, vg VehicleGroup) float64 {
+// GradientCorrection computes the Längsneigungskorrektur D_LN for a road
+// segment with the given gradient, vehicle group, and speed.
+//
+// RLS-19 Section 3.3.6, Equations 7a / 7b / 7c.
+// Gradients outside [–12 %, +12 %] are clamped to the boundary values.
+// Krad is treated identically to Pkw (Eq. 7a with Pkw speed).
+func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float64) float64 {
 	g := gradientPercent
 	if g > 12 {
 		g = 12
@@ -137,84 +139,73 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup) float64 {
 		g = -12
 	}
 
-	absG := g
-	if absG < 0 {
-		absG = -absG
-	}
-
 	switch vg {
 	case Pkw, Krad:
-		// Light vehicles: small correction only for steep positive gradients.
-		if g > 4 {
-			return 0.2 * (absG - 4)
+		// Eq. 7a
+		if g < -6 {
+			return (g + 6) / (-6) * (90 - math.Min(speedKPH, 70)) / 20
+		}
+
+		if g > 2 {
+			return (g - 2) / 10 * (speedKPH + 70) / 100
 		}
 
 		return 0
+
 	case Lkw1:
-		// Light trucks: moderate correction.
-		if absG <= 2 {
-			return 0
+		// Eq. 7b
+		if g < -4 {
+			return (g + 4) / (-8) * (speedKPH - 20) / 10
 		}
 
-		if g > 0 {
-			return 0.5 * (absG - 2)
+		if g > 2 {
+			return (g - 2) / 10 * speedKPH / 10
 		}
 
-		return -0.1 * (absG - 2)
+		return 0
+
 	case Lkw2:
-		// Heavy trucks: largest correction.
-		if absG <= 2 {
-			return 0
+		// Eq. 7c
+		if g < -4 {
+			return (g + 4) / (-8) * (speedKPH - 10) / 10
 		}
 
-		if g > 0 {
-			return 0.7 * (absG - 2)
+		if g > 2 {
+			return (g - 2) / 10 * (speedKPH + 10) / 10
 		}
 
-		return -0.2 * (absG - 2)
+		return 0
+
 	default:
 		return 0
 	}
 }
 
-// JunctionCorrectionEntry holds junction type + distance dependent corrections.
-type JunctionCorrectionEntry struct {
-	MaxDistanceM float64
-	Correction   float64
+// kktTable holds the K_KT maximum correction values per junction type (Tabelle 5).
+var kktTable = map[JunctionType]float64{
+	JunctionSignalized: 3,
+	JunctionRoundabout: 2,
+	JunctionOther:      0,
 }
 
-// junctionCorrectionTable defines distance-stepped corrections per junction type.
-var junctionCorrectionTable = map[JunctionType][]JunctionCorrectionEntry{
-	JunctionSignalized: {
-		{MaxDistanceM: 30, Correction: 3.0},
-		{MaxDistanceM: 60, Correction: 2.0},
-		{MaxDistanceM: 100, Correction: 1.0},
-	},
-	JunctionRoundabout: {
-		{MaxDistanceM: 40, Correction: 2.0},
-		{MaxDistanceM: 80, Correction: 1.0},
-	},
-	JunctionOther: {
-		{MaxDistanceM: 25, Correction: 2.0},
-		{MaxDistanceM: 50, Correction: 1.0},
-	},
-}
-
-// JunctionCorrection returns the junction correction D_KP for a given
-// junction type and distance.
+// JunctionCorrection returns the Knotenpunktkorrektur D_KKT for a junction
+// type KT at distance x from the nearest junction.
+//
+// RLS-19 Section 3.3.7, Equation 8:
+//
+//	D_KKT(x) = K_KT · max(1 – x/120, 0)
 func JunctionCorrection(jt JunctionType, distanceM float64) float64 {
-	entries, ok := junctionCorrectionTable[jt]
+	kkt, ok := kktTable[jt]
 	if !ok || jt == JunctionNone {
 		return 0
 	}
 
-	for _, e := range entries {
-		if distanceM <= e.MaxDistanceM {
-			return e.Correction
-		}
+	factor := 1 - distanceM/120
+	if factor < 0 {
+		factor = 0
 	}
 
-	return 0
+	return kkt * factor
 }
 
 // PropagationConstants holds physical constants for the propagation model.

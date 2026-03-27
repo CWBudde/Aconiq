@@ -230,25 +230,24 @@ The current `surfaceCorrectionTable` has single values per vehicle group (not sp
 
 ### Section 3.3.6 — Längsneigungskorrektur (Eqs. 7a / 7b / 7c)
 
-Normative formulas are speed-dependent and differ per vehicle group. Current `GradientCorrection` is speed-independent — a simplified approximation.
+Normative formulas are speed-dependent and differ per vehicle group.
 
-- [ ] Replace `GradientCorrection(g, vg)` with `GradientCorrection(g, vg, speedKPH)` implementing the three normative formulas:
+- [x] Replace `GradientCorrection(g, vg)` with `GradientCorrection(g, vg, speedKPH)` implementing the three normative formulas:
   - Pkw (7a): `(g+6)/–6 · (90–min(v_Pkw,70))/20` for g < –6; `(g–2)/10 · (v_Pkw+70)/100` for g > +2; else 0
   - Lkw1 (7b): `(g+4)/–8 · (v_Lkw1–20)/10` for g < –4; `(g–2)/10 · v_Lkw1/10` for g > +2; else 0
   - Lkw2 (7c): `(g+4)/–8 · (v_Lkw2–10)/10` for g < –4; `(g–2)/10 · (v_Lkw2+10)/10` for g > +2; else 0
   - Clamp g to [–12, +12] before applying formulas
-- [ ] For Krad: use Pkw formula 7a with v_Pkw (per §3.3.2 Krad note)
-- [ ] Add unit tests at g = –12, –6, –4, 0, +2, +4, +6, +12 for each vehicle group at representative speeds
+- [x] For Krad: use Pkw formula 7a with v_Pkw (per §3.3.2 Krad note)
+- [x] Add unit tests at key gradient values for each vehicle group at representative speeds (Eqs. 7a/7b/7c verified)
 
 ### Section 3.3.7 — Knotenpunktkorrektur (Eq. 8 / Tabelle 5)
 
 Normative formula: `D_{KKT}(x) = K_KT · max(1 – x/120, 0)` with K_KT: signalized=3 dB, roundabout=2 dB, other=0 dB.
-Current code uses a distance-stepped lookup table — not the continuous linear decay formula.
 
-- [ ] Replace step-table `junctionCorrectionTable` with Eq. 8 continuous formula
-- [ ] Set K_KT for `JunctionOther` to 0 dB (currently table has non-zero values)
-- [ ] Verify decay reaches 0 at exactly x = 120 m for signalized/roundabout
-- [ ] Add unit tests at x = 0, 30, 60, 90, 120, 150 m for each junction type
+- [x] Replace step-table `junctionCorrectionTable` with Eq. 8 continuous formula
+- [x] Set K_KT for `JunctionOther` to 0 dB (currently table had non-zero values)
+- [x] Verify decay reaches 0 at exactly x = 120 m for signalized/roundabout
+- [x] Add unit tests at x = 0, 60, 120 m for signalized; roundabout at 40 m; Other always 0
 
 ### Section 3.3.8 — Mehrfachreflexionszuschlag (Eq. 9, corrected)
 

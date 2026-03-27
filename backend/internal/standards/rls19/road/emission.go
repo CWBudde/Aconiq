@@ -110,8 +110,8 @@ func computeVehicleSoundPower(source RoadSource, vg VehicleGroup) float64 {
 	// E2: Surface correction (DStrO).
 	surfCorr := SurfaceCorrection(source.SurfaceType, vg, speed)
 
-	// E3: Gradient correction.
-	gradCorr := GradientCorrection(source.GradientPercent, vg)
+	// E3: Gradient correction (speed-dependent, Eq. 7a/7b/7c).
+	gradCorr := GradientCorrection(source.GradientPercent, vg, speed)
 
 	// E4: Junction correction.
 	juncCorr := JunctionCorrection(source.JunctionType, source.JunctionDistanceM)
@@ -162,7 +162,7 @@ func ComputeVehicleGroupEmissions(source RoadSource) ([]VehicleGroupEmission, er
 		speed := effectiveVehicleSpeed(source.Speeds, vg)
 		base := computeBaseEmission(speed, vg)
 		surfCorr := SurfaceCorrection(source.SurfaceType, vg, speed)
-		gradCorr := GradientCorrection(source.GradientPercent, vg)
+		gradCorr := GradientCorrection(source.GradientPercent, vg, speed)
 		juncCorr := JunctionCorrection(source.JunctionType, source.JunctionDistanceM)
 
 		results = append(results, VehicleGroupEmission{
