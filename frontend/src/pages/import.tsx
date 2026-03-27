@@ -184,7 +184,7 @@ export default function ImportPage() {
                   setError(null);
                 }}
               >
-                From File
+                {m.action_import_from_file()}
               </Button>
               <Button
                 variant={source === "osm" ? "default" : "ghost"}
@@ -193,7 +193,7 @@ export default function ImportPage() {
                   setError(null);
                 }}
               >
-                From OpenStreetMap
+                {m.action_import_from_osm()}
               </Button>
             </div>
 
