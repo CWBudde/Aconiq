@@ -38,6 +38,7 @@ type BuildOptions struct {
 	ReceiverTablePath string
 	RasterMetaPaths   []string
 	ModelDumpPath     string
+	AssessmentPath    string
 	QASuites          []QASuiteStatus
 	GeneratedAt       time.Time
 	GeneratePDF       bool
@@ -88,6 +89,7 @@ type reportContext struct {
 	Maps            []rasterMapView `json:"maps"`
 	ReceiverUnit    string          `json:"receiver_unit,omitempty"`
 	Indicators      []indicatorView `json:"indicators"`
+	Assessment      *assessmentView `json:"assessment,omitempty"`
 	QASuites        []qaSuiteView   `json:"qa_suites"`
 	Notes           []string        `json:"notes,omitempty"`
 }
@@ -128,6 +130,16 @@ type qaSuiteView struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Details string `json:"details,omitempty"`
+}
+
+type assessmentView struct {
+	Law            string          `json:"law"`
+	SourceStandard string          `json:"source_standard"`
+	AssessedCount  int             `json:"assessed_count"`
+	ExceedingCount int             `json:"exceeding_count"`
+	SkippedCount   int             `json:"skipped_count"`
+	Categories     []kindCountView `json:"categories,omitempty"`
+	ExamplesDE     []string        `json:"examples_de,omitempty"`
 }
 
 type provenanceEnvelope struct {
@@ -321,6 +333,14 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 
 	ctx.Maps = maps
 
+	assessment, hasAssessment, err := loadAssessment(opts.AssessmentPath)
+	if err != nil {
+		return reportContext{}, err
+	}
+	if hasAssessment {
+		ctx.Assessment = assessment
+	}
+
 	ctx.QASuites = normalizeQASuites(opts.QASuites)
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
@@ -333,8 +353,62 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if len(ctx.InputFiles) == 0 {
 		ctx.Notes = append(ctx.Notes, "No input hashes were found in provenance.")
 	}
+	if ctx.Assessment == nil && (ctx.StandardID == "rls19-road" || ctx.StandardID == "schall03") {
+		ctx.Notes = append(ctx.Notes, "No 16. BImSchV assessment artifact was generated. This usually means the run used no explicit receivers with area-category properties.")
+	}
 
 	return ctx, nil
+}
+
+func loadAssessment(path string) (*assessmentView, bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, false, nil
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("read assessment %s: %w", path, err)
+	}
+
+	var parsed struct {
+		Law              string         `json:"law"`
+		SourceStandardID string         `json:"source_standard_id"`
+		AssessedCount    int            `json:"assessed_count"`
+		ExceedingCount   int            `json:"exceeding_count"`
+		CategoryCounts   map[string]int `json:"category_counts"`
+		Skipped          []any          `json:"skipped"`
+		Results          []struct {
+			SummaryDE string `json:"summary_de"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		return nil, false, fmt.Errorf("decode assessment %s: %w", path, err)
+	}
+
+	view := &assessmentView{
+		Law:            parsed.Law,
+		SourceStandard: parsed.SourceStandardID,
+		AssessedCount:  parsed.AssessedCount,
+		ExceedingCount: parsed.ExceedingCount,
+		SkippedCount:   len(parsed.Skipped),
+		Categories:     kindCountsFromMap(parsed.CategoryCounts),
+		ExamplesDE:     make([]string, 0, minInt(3, len(parsed.Results))),
+	}
+	for _, result := range parsed.Results {
+		if strings.TrimSpace(result.SummaryDE) == "" {
+			continue
+		}
+		view.ExamplesDE = append(view.ExamplesDE, result.SummaryDE)
+		if len(view.ExamplesDE) == 3 {
+			break
+		}
+	}
+
+	return view, true, nil
 }
 
 func loadProvenance(path string) (provenanceEnvelope, bool, error) {
@@ -813,6 +887,24 @@ Unit: {{.ReceiverUnit}}
 No receiver statistics were available.
 {{end}}
 
+{{if .Assessment}}
+## 16. BImSchV assessment
+
+- Law: {{.Assessment.Law}}
+- Source standard: {{.Assessment.SourceStandard}}
+- Assessed receivers: {{.Assessment.AssessedCount}}
+- Receivers with threshold exceedance: {{.Assessment.ExceedingCount}}
+- Skipped receivers: {{.Assessment.SkippedCount}}
+{{if .Assessment.Categories}}
+- Area categories:
+{{range .Assessment.Categories}}  - {{.Kind}}: {{.Count}}
+{{end}}{{end}}
+{{if .Assessment.ExamplesDE}}
+- German assessment text blocks:
+{{range .Assessment.ExamplesDE}}  - {{.}}
+{{end}}{{end}}
+{{end}}
+
 ## QA status (which suites passed)
 
 | Suite | Status | Details |
@@ -943,6 +1035,26 @@ const htmlTemplate = `<!doctype html>
   <p>No receiver statistics were available.</p>
   {{end}}
 
+  {{if .Assessment}}
+  <h2>16. BImSchV assessment</h2>
+  <ul>
+    <li>Law: {{.Assessment.Law}}</li>
+    <li>Source standard: {{.Assessment.SourceStandard}}</li>
+    <li>Assessed receivers: {{.Assessment.AssessedCount}}</li>
+    <li>Receivers with threshold exceedance: {{.Assessment.ExceedingCount}}</li>
+    <li>Skipped receivers: {{.Assessment.SkippedCount}}</li>
+  </ul>
+  {{if .Assessment.Categories}}
+  <table>
+    <thead><tr><th>Area category</th><th>Count</th></tr></thead>
+    <tbody>{{range .Assessment.Categories}}<tr><td>{{.Kind}}</td><td>{{.Count}}</td></tr>{{end}}</tbody>
+  </table>
+  {{end}}
+  {{if .Assessment.ExamplesDE}}
+  <ul>{{range .Assessment.ExamplesDE}}<li>{{.}}</li>{{end}}</ul>
+  {{end}}
+  {{end}}
+
   <h2>QA status (which suites passed)</h2>
   <table>
     <thead><tr><th>Suite</th><th>Status</th><th>Details</th></tr></thead>
@@ -956,3 +1068,10 @@ const htmlTemplate = `<!doctype html>
 </body>
 </html>
 `
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

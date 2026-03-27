@@ -22,16 +22,17 @@ import (
 )
 
 type exportSummary struct {
-	ExportID            string              `json:"export_id"`
-	ProjectID           string              `json:"project_id"`
-	ProjectCRS          string              `json:"project_crs,omitempty"`
-	RunID               string              `json:"run_id"`
-	ExportedAt          time.Time           `json:"exported_at"`
-	OutputDirectory     string              `json:"output_directory"`
-	CopiedFiles         []string            `json:"copied_files"`
-	GeneratedSampleData []string            `json:"generated_sample_data,omitempty"`
-	GeneratedReports    []string            `json:"generated_reports,omitempty"`
-	ExportedFormats     map[string][]string `json:"exported_formats,omitempty"`
+	ExportID             string              `json:"export_id"`
+	ProjectID            string              `json:"project_id"`
+	ProjectCRS           string              `json:"project_crs,omitempty"`
+	RunID                string              `json:"run_id"`
+	ExportedAt           time.Time           `json:"exported_at"`
+	OutputDirectory      string              `json:"output_directory"`
+	CopiedFiles          []string            `json:"copied_files"`
+	GeneratedSampleData  []string            `json:"generated_sample_data,omitempty"`
+	GeneratedReports     []string            `json:"generated_reports,omitempty"`
+	GeneratedAssessments []string            `json:"generated_assessments,omitempty"`
+	ExportedFormats      map[string][]string `json:"exported_formats,omitempty"`
 }
 
 type copiedRunResults struct {
@@ -170,6 +171,29 @@ func newExportCommand() *cobra.Command {
 			}
 
 			reportArtifacts := make([]project.ArtifactRef, 0, 3)
+			var assessmentPath string
+
+			assessmentPath, builtAssessment, assessmentErr := maybeBuild16BImSchVAssessment(
+				bundleDir,
+				modelGeoJSONPath,
+				copiedResults.ReceiverTableJSON,
+				proj.CRS,
+				run.Standard.ID,
+				nowUTC(),
+			)
+			if assessmentErr != nil {
+				return domainerrors.New(domainerrors.KindInternal, "cli.export", "build 16. BImSchV assessment", assessmentErr)
+			}
+			if builtAssessment {
+				summary.GeneratedAssessments = []string{relativePath(bundleDir, assessmentPath)}
+				reportArtifacts = append(reportArtifacts, project.ArtifactRef{
+					ID:        fmt.Sprintf("artifact-export-%s-assessment-16bimschv", exportID),
+					RunID:     run.ID,
+					Kind:      "export.assessment_16bimschv_json",
+					Path:      relativePath(store.Root(), assessmentPath),
+					CreatedAt: nowUTC(),
+				})
+			}
 
 			if !skipReport {
 				reportBundle, reportErr := reporting.BuildRunReport(reporting.BuildOptions{
@@ -181,6 +205,7 @@ func newExportCommand() *cobra.Command {
 					ReceiverTablePath: copiedResults.ReceiverTableJSON,
 					RasterMetaPaths:   copiedResults.RasterMetadataList,
 					ModelDumpPath:     copiedResults.ModelDump,
+					AssessmentPath:    assessmentPath,
 					QASuites:          collectQASuites(proj.Artifacts, run.ID),
 					GeneratedAt:       nowUTC(),
 					GeneratePDF:       generatePDF,
