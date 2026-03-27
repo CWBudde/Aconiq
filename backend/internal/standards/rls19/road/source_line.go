@@ -57,6 +57,7 @@ func polylineVertexRightNormal(line []geo.Point2D, index int) (float64, float64)
 	case prevOK && nextOK:
 		nx := prevX + nextX
 		ny := prevY + nextY
+
 		norm := math.Hypot(nx, ny)
 		if norm > 0 {
 			return nx / norm, ny / norm
@@ -79,6 +80,7 @@ func polylineSegmentRightNormal(line []geo.Point2D, segmentIndex int) (float64, 
 
 	dx := line[segmentIndex+1].X - line[segmentIndex].X
 	dy := line[segmentIndex+1].Y - line[segmentIndex].Y
+
 	length := math.Hypot(dx, dy)
 	if length == 0 {
 		return 0, 0, false

@@ -337,6 +337,7 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if err != nil {
 		return reportContext{}, err
 	}
+
 	if hasAssessment {
 		ctx.Assessment = assessment
 	}
@@ -353,6 +354,7 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if len(ctx.InputFiles) == 0 {
 		ctx.Notes = append(ctx.Notes, "No input hashes were found in provenance.")
 	}
+
 	if ctx.Assessment == nil && (ctx.StandardID == "rls19-road" || ctx.StandardID == "schall03") {
 		ctx.Notes = append(ctx.Notes, "No 16. BImSchV assessment artifact was generated. This usually means the run used no explicit receivers with area-category properties.")
 	}
@@ -370,6 +372,7 @@ func loadAssessment(path string) (*assessmentView, bool, error) {
 		if os.IsNotExist(err) {
 			return nil, false, nil
 		}
+
 		return nil, false, fmt.Errorf("read assessment %s: %w", path, err)
 	}
 
@@ -402,6 +405,7 @@ func loadAssessment(path string) (*assessmentView, bool, error) {
 		if strings.TrimSpace(result.SummaryDE) == "" {
 			continue
 		}
+
 		view.ExamplesDE = append(view.ExamplesDE, result.SummaryDE)
 		if len(view.ExamplesDE) == 3 {
 			break
@@ -1073,5 +1077,6 @@ func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
+
 	return b
 }

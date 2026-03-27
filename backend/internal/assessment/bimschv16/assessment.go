@@ -140,6 +140,7 @@ func normalizeCategory(raw string) string {
 		",", "",
 		" ", "",
 	)
+
 	return replacer.Replace(text)
 }
 
@@ -172,14 +173,17 @@ func assessLevels(levels PeriodLevels, thresholds Thresholds) (*LevelAssessment,
 
 func combineLevels(inputs ...*PeriodLevels) *PeriodLevels {
 	dayTerms := make([]float64, 0, len(inputs))
+
 	nightTerms := make([]float64, 0, len(inputs))
 	for _, input := range inputs {
 		if input == nil {
 			continue
 		}
+
 		dayTerms = append(dayTerms, input.Day)
 		nightTerms = append(nightTerms, input.Night)
 	}
+
 	if len(dayTerms) == 0 {
 		return nil
 	}
@@ -195,6 +199,7 @@ func energySumDB(levels []float64) float64 {
 	for _, level := range levels {
 		sum += math.Pow(10, level/10)
 	}
+
 	return 10 * math.Log10(sum)
 }
 
@@ -202,6 +207,7 @@ func AssessReceiver(input ReceiverInput) (ReceiverAssessment, error) {
 	if strings.TrimSpace(input.ReceiverID) == "" {
 		return ReceiverAssessment{}, errors.New("receiver id is required")
 	}
+
 	if input.Road == nil && input.Rail == nil {
 		return ReceiverAssessment{}, errors.New("at least one road or rail level set is required")
 	}
@@ -251,10 +257,12 @@ func (r ReceiverAssessment) exceedsAnyThreshold() bool {
 		if check == nil {
 			continue
 		}
+
 		if check.DayExceeds || check.NightExceeds {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -268,6 +276,7 @@ func buildSummaryDE(result ReceiverAssessment) string {
 	)
 
 	label := "maßgeblicher Beurteilungspegel"
+
 	assessment := result.Combined
 	switch {
 	case result.Road != nil && result.Rail == nil:
@@ -279,11 +288,13 @@ func buildSummaryDE(result ReceiverAssessment) string {
 	case result.Road != nil && result.Rail != nil:
 		label = "kombinierter Beurteilungspegel Straße + Schiene"
 	}
+
 	if assessment == nil {
 		return base
 	}
 
 	status := "Die Immissionsgrenzwerte werden eingehalten."
+
 	if assessment.DayExceeds || assessment.NightExceeds {
 		switch {
 		case assessment.DayExceeds && assessment.NightExceeds:
@@ -302,6 +313,7 @@ func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
+
 	return b
 }
 
@@ -310,6 +322,7 @@ func assessmentLevelsFromRecord(record results.ReceiverRecord) (PeriodLevels, er
 	if !ok {
 		day, ok = record.Values[schall03.IndicatorLrDay]
 	}
+
 	if !ok {
 		return PeriodLevels{}, errors.New("receiver table record missing LrDay")
 	}
@@ -318,6 +331,7 @@ func assessmentLevelsFromRecord(record results.ReceiverRecord) (PeriodLevels, er
 	if !ok {
 		night, ok = record.Values[schall03.IndicatorLrNight]
 	}
+
 	if !ok {
 		return PeriodLevels{}, errors.New("receiver table record missing LrNight")
 	}
@@ -347,6 +361,7 @@ func categoryFromFeature(feature modelgeojson.Feature) (AreaCategory, bool, erro
 		if err != nil {
 			return "", false, err
 		}
+
 		return category, true, nil
 	}
 
@@ -385,6 +400,7 @@ func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, 
 		if feature.Kind != "receiver" {
 			continue
 		}
+
 		out.ReceiverCount++
 
 		category, ok, err := categoryFromFeature(feature)
@@ -392,6 +408,7 @@ func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, 
 			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: err.Error()})
 			continue
 		}
+
 		if !ok {
 			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: "missing 16. BImSchV area category property"})
 			continue
@@ -413,6 +430,7 @@ func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, 
 			ReceiverID:   feature.ID,
 			AreaCategory: category,
 		}
+
 		switch sourceStandardID {
 		case rls19road.StandardID:
 			input.Road = &levels
@@ -430,12 +448,14 @@ func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, 
 		if result.EligibleForNoiseProtectionMeasures {
 			out.ExceedingCount++
 		}
+
 		out.CategoryCounts[string(result.AreaCategory)]++
 		out.Results = append(out.Results, result)
 	}
 
 	sort.Slice(out.Results, func(i, j int) bool { return out.Results[i].ReceiverID < out.Results[j].ReceiverID })
 	sort.Slice(out.Skipped, func(i, j int) bool { return out.Skipped[i].ReceiverID < out.Skipped[j].ReceiverID })
+
 	if len(out.CategoryCounts) == 0 {
 		out.CategoryCounts = nil
 	}

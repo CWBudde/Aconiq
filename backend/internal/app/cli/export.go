@@ -184,6 +184,7 @@ func newExportCommand() *cobra.Command {
 			if assessmentErr != nil {
 				return domainerrors.New(domainerrors.KindInternal, "cli.export", "build 16. BImSchV assessment", assessmentErr)
 			}
+
 			if builtAssessment {
 				summary.GeneratedAssessments = []string{relativePath(bundleDir, assessmentPath)}
 				reportArtifacts = append(reportArtifacts, project.ArtifactRef{

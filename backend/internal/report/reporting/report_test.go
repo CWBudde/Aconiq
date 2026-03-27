@@ -35,6 +35,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create model dir: %v", err)
 	}
+
 	err = os.MkdirAll(filepath.Dir(assessmentPath), 0o755)
 	if err != nil {
 		t.Fatalf("create assessment dir: %v", err)
@@ -190,6 +191,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if !strings.Contains(htmlText, "<h2>QA status (which suites passed)</h2>") {
 		t.Fatalf("expected QA section in html report")
 	}
+
 	if !strings.Contains(htmlText, "<h2>16. BImSchV assessment</h2>") {
 		t.Fatalf("expected assessment section in html report")
 	}
@@ -202,6 +204,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if !strings.Contains(string(typstSource), "#show: doc => template(report)") {
 		t.Fatalf("expected typst template entrypoint")
 	}
+
 	if !strings.Contains(string(typstSource), "[== 16. BImSchV assessment]") {
 		t.Fatalf("expected assessment section in typst source")
 	}
@@ -227,6 +230,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected assessment block in context, got %#v", context["assessment"])
 	}
+
 	if assessment["law"] != "16. BImSchV" {
 		t.Fatalf("unexpected assessment law: %#v", assessment["law"])
 	}
