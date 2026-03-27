@@ -4,6 +4,12 @@
   "language": "Language",
   "language_en": "English",
   "language_de": "Deutsch",
+  "label_receiver": "Receiver",
+  "placeholder_select_source_type": "Select type",
+  "label_vehicle_class_pkw": "Cars",
+  "label_vehicle_class_lkw1": "Trucks 1",
+  "label_vehicle_class_lkw2": "Trucks 2",
+  "label_vehicle_class_krad": "Motorcycles",
 
   "nav_map": "Map",
   "nav_import": "Import",

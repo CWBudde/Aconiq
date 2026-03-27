@@ -23,6 +23,19 @@ import {
 import { Trash2 } from "lucide-react";
 import { m } from "@/i18n/messages";
 
+const FEATURE_KIND_LABELS: Record<"source" | "building" | "barrier", string> = {
+  source: m.option_source(),
+  building: m.option_building(),
+  barrier: m.option_barrier(),
+};
+
+const VEHICLE_CLASS_LABELS: Record<"pkw" | "lkw1" | "lkw2" | "krad", string> = {
+  pkw: m.label_vehicle_class_pkw(),
+  lkw1: m.label_vehicle_class_lkw1(),
+  lkw2: m.label_vehicle_class_lkw2(),
+  krad: m.label_vehicle_class_krad(),
+};
+
 interface FeatureEditorProps {
   featureId: string | null;
   onClose: () => void;
@@ -45,7 +58,9 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
   return (
     <div className="absolute right-3 top-3 z-10 w-72 rounded-md border bg-background p-4 shadow-md">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold capitalize">{feature.kind}</h3>
+        <h3 className="text-sm font-semibold capitalize">
+          {FEATURE_KIND_LABELS[feature.kind]}
+        </h3>
         <Button
           variant="ghost"
           size="sm"
@@ -114,7 +129,7 @@ function ReceiverEditor({
   return (
     <div className="absolute right-3 top-3 z-10 w-72 rounded-md border bg-background p-4 shadow-md">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Receiver</h3>
+        <h3 className="text-sm font-semibold">{m.label_receiver()}</h3>
         <Button
           variant="ghost"
           size="sm"
@@ -199,7 +214,7 @@ function SourceFields({ feature }: { feature: ModelFeature }) {
           onValueChange={handleTypeChange}
         >
           <SelectTrigger id="source-type" className="h-8 text-xs">
-            <SelectValue placeholder="Select type" />
+            <SelectValue placeholder={m.placeholder_select_source_type()} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="point">
@@ -251,28 +266,28 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         <PropertyNumberField
           feature={feature}
           propertyKey="speed_pkw_kph"
-          label="PKW"
+          label={VEHICLE_CLASS_LABELS.pkw}
           min={0.1}
           step={1}
         />
         <PropertyNumberField
           feature={feature}
           propertyKey="speed_lkw1_kph"
-          label="LKW1"
+          label={VEHICLE_CLASS_LABELS.lkw1}
           min={0.1}
           step={1}
         />
         <PropertyNumberField
           feature={feature}
           propertyKey="speed_lkw2_kph"
-          label="LKW2"
+          label={VEHICLE_CLASS_LABELS.lkw2}
           min={0.1}
           step={1}
         />
         <PropertyNumberField
           feature={feature}
           propertyKey="speed_krad_kph"
-          label="KRAD"
+          label={VEHICLE_CLASS_LABELS.krad}
           min={0.1}
           step={1}
         />
@@ -317,28 +332,28 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_day_pkw"
-            label="PKW"
+            label={VEHICLE_CLASS_LABELS.pkw}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_day_lkw1"
-            label="LKW1"
+            label={VEHICLE_CLASS_LABELS.lkw1}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_day_lkw2"
-            label="LKW2"
+            label={VEHICLE_CLASS_LABELS.lkw2}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_day_krad"
-            label="KRAD"
+            label={VEHICLE_CLASS_LABELS.krad}
             min={0}
             step={1}
           />
@@ -352,28 +367,28 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_night_pkw"
-            label="PKW"
+            label={VEHICLE_CLASS_LABELS.pkw}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_night_lkw1"
-            label="LKW1"
+            label={VEHICLE_CLASS_LABELS.lkw1}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_night_lkw2"
-            label="LKW2"
+            label={VEHICLE_CLASS_LABELS.lkw2}
             min={0}
             step={1}
           />
           <PropertyNumberField
             feature={feature}
             propertyKey="traffic_night_krad"
-            label="KRAD"
+            label={VEHICLE_CLASS_LABELS.krad}
             min={0}
             step={1}
           />
