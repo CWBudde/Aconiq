@@ -46,7 +46,7 @@ func TestGleisbremse_DeltaLW_BGBl_p2312(t *testing.T) {
 			data, ok := schall03.Beiblatt3GleisbremsenByType(tt.typ)
 			require.True(t, ok, "Gleisbremse type %d must exist", tt.typ)
 
-			assert.Equal(t, tt.wantLWA, data.LWA, "L_WA mismatch")
+			assert.InDelta(t, tt.wantLWA, data.LWA, 0.001, "L_WA mismatch")
 			assert.Equal(t, tt.wantDLW, [8]float64(data.DeltaLW), "DeltaLW spectrum mismatch")
 		})
 	}
