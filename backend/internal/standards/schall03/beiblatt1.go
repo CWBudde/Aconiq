@@ -219,7 +219,7 @@ func fzKat4HGVNeigezug() FzKategorie {
 			},
 			{
 				M: 7, SourceType: SourceTypeAerodynamic, HeightH: 1, HeightM: 0,
-				DeltaA: BeiblattSpectrum{-16, -9, -7, -7, -9, -12, -19, -19}, AA: 44,
+				DeltaA: BeiblattSpectrum{-16, -9, -7, -7, -7, -9, -12, -19}, AA: 44,
 			},
 			{
 				M: 8, SourceType: SourceTypeAggregate, HeightH: 2, HeightM: 4,

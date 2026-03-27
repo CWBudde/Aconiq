@@ -81,6 +81,52 @@ func TestFzKategorie1HGVTriebkopf(t *testing.T) {
 	}
 }
 
+// TestFz4M7DeltaA_BGBl2308 verifies the DeltaA spectrum for Fz-Kategorie 4
+// (HGV-Neigezug), Teilquelle m=7 (aerodynamic, Umströmung Drehgestelle, 0m)
+// against the authoritative BGBl source (p. 2308).
+func TestFz4M7DeltaA_BGBl2308(t *testing.T) {
+	t.Parallel()
+
+	fz4 := FzKategorien[3]
+	if fz4.Fz != 4 {
+		t.Fatalf("expected Fz=4, got %d", fz4.Fz)
+	}
+
+	var found bool
+
+	for _, tq := range fz4.Teilquellen {
+		if tq.M != 7 {
+			continue
+		}
+
+		found = true
+
+		if tq.SourceType != SourceTypeAerodynamic {
+			t.Errorf("m=7: expected SourceType=%q, got %q", SourceTypeAerodynamic, tq.SourceType)
+		}
+
+		if tq.HeightH != 1 || tq.HeightM != 0 {
+			t.Errorf("m=7: expected HeightH=1, HeightM=0, got HeightH=%d, HeightM=%g", tq.HeightH, tq.HeightM)
+		}
+
+		// BGBl p.2308: 63=-16, 125=-9, 250=-7, 500=-7, 1000=-7, 2000=-9, 4000=-12, 8000=-19
+		wantDeltaA := BeiblattSpectrum{-16, -9, -7, -7, -7, -9, -12, -19}
+		if tq.DeltaA != wantDeltaA {
+			t.Errorf("m=7 DeltaA: want %v, got %v", wantDeltaA, tq.DeltaA)
+		}
+
+		if tq.AA != 44 {
+			t.Errorf("m=7: expected a_A=44, got %g", tq.AA)
+		}
+
+		break
+	}
+
+	if !found {
+		t.Fatal("Fz 4 missing Teilquelle m=7")
+	}
+}
+
 func TestFzKategorienAllHaveTeilquellen(t *testing.T) {
 	t.Parallel()
 
