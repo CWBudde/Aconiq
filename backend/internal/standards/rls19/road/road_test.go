@@ -226,6 +226,142 @@ func TestJunctionCorrection(t *testing.T) {
 	}
 }
 
+func TestComputeBaseEmission_Table3ReferenceValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		group    VehicleGroup
+		speedKPH float64
+		want     float64
+	}{
+		{name: "Pkw 30", group: Pkw, speedKPH: 30, want: 94.491511},
+		{name: "Pkw 60", group: Pkw, speedKPH: 60, want: 102.747947},
+		{name: "Pkw 80", group: Pkw, speedKPH: 80, want: 106.485034},
+		{name: "Pkw 100", group: Pkw, speedKPH: 100, want: 109.419914},
+		{name: "Pkw 130", group: Pkw, speedKPH: 130, want: 112.889260},
+		{name: "Lkw1 30", group: Lkw1, speedKPH: 30, want: 101.398315},
+		{name: "Lkw1 60", group: Lkw1, speedKPH: 60, want: 108.616963},
+		{name: "Lkw1 80", group: Lkw1, speedKPH: 80, want: 113.545338},
+		{name: "Lkw1 100", group: Lkw1, speedKPH: 100, want: 117.612203},
+		{name: "Lkw1 130", group: Lkw1, speedKPH: 130, want: 122.490853},
+		{name: "Lkw2 30", group: Lkw2, speedKPH: 30, want: 105.744984},
+		{name: "Lkw2 60", group: Lkw2, speedKPH: 60, want: 110.758598},
+		{name: "Lkw2 80", group: Lkw2, speedKPH: 80, want: 115.778537},
+		{name: "Lkw2 100", group: Lkw2, speedKPH: 100, want: 120.235303},
+		{name: "Lkw2 130", group: Lkw2, speedKPH: 130, want: 125.691501},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := computeBaseEmission(tt.speedKPH, tt.group)
+			if !almostEqual(got, tt.want, 0.000001) {
+				t.Fatalf("computeBaseEmission(%s, %.0f): want %.6f, got %.6f", tt.group, tt.speedKPH, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestComputeVehicleGroupEmissions_KradUsesPkwSpeedForBaseEmission(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.JunctionType = JunctionNone
+	source.SurfaceType = SurfaceSMA
+	source.GradientPercent = 0
+	source.Speeds = SpeedInput{PkwKPH: 30, Lkw1KPH: 60, Lkw2KPH: 80, KradKPH: 130}
+
+	emissions, err := ComputeVehicleGroupEmissions(source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var krad VehicleGroupEmission
+	for _, emission := range emissions {
+		if emission.Group == Krad {
+			krad = emission
+			break
+		}
+	}
+
+	if !almostEqual(krad.BaseLevel, 105.744984, 0.000001) {
+		t.Fatalf("Krad base emission should use Pkw speed with Lkw2 coefficients: got %.6f", krad.BaseLevel)
+	}
+
+	if almostEqual(krad.BaseLevel, 125.691501, 0.000001) {
+		t.Fatal("Krad base emission should not use KradKPH directly")
+	}
+}
+
+func TestEmissionForPeriod_ImplementsEq4ForSingleVehicleGroup(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.JunctionType = JunctionNone
+	source.SurfaceType = SurfaceSMA
+	source.GradientPercent = 0
+	source.ReflectionSurchargeDB = 0
+	source.TrafficDay = TrafficInput{PkwPerHour: 900}
+
+	result, err := ComputeEmission(source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	base := computeVehicleSoundPower(source, Pkw)
+	speed := effectiveVehicleSpeed(source.Speeds, Pkw)
+	want := base + 10*math.Log10(source.TrafficDay.PkwPerHour/speed) - 30
+	if !almostEqual(result.LmEDay, want, 0.000001) {
+		t.Fatalf("single-group Eq. 4 emission: want %.6f, got %.6f", want, result.LmEDay)
+	}
+}
+
+func TestEmissionForPeriod_PerGroupCountsMatchTotalShareForm(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.ReflectionSurchargeDB = 0
+
+	direct := 0.0
+	shareWeighted := 0.0
+	totalCount := source.TrafficDay.TotalPerHour()
+	if totalCount <= 0 {
+		t.Fatal("sample source must have positive total traffic")
+	}
+
+	for _, vg := range AllVehicleGroups() {
+		count := source.TrafficDay.CountForGroup(vg)
+		if count <= 0 {
+			continue
+		}
+
+		level := computeVehicleSoundPower(source, vg)
+		speed := effectiveVehicleSpeed(source.Speeds, vg)
+		term := math.Pow(10, level/10) / speed
+
+		direct += count * term
+		shareWeighted += (count / totalCount) * term
+	}
+
+	directLevel := 10*math.Log10(direct) - 30
+	shareLevel := 10*math.Log10(totalCount) + 10*math.Log10(shareWeighted) - 30
+	if !almostEqual(directLevel, shareLevel, 0.000001) {
+		t.Fatalf("Eq. 4 direct-count and total-share forms should match: direct=%.6f share=%.6f", directLevel, shareLevel)
+	}
+
+	result, err := ComputeEmission(source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !almostEqual(result.LmEDay, directLevel, 0.000001) {
+		t.Fatalf("ComputeEmission should implement Eq. 4: want %.6f, got %.6f", directLevel, result.LmEDay)
+	}
+}
+
 // --- emission tests ---
 
 func TestComputeEmission_Valid(t *testing.T) {

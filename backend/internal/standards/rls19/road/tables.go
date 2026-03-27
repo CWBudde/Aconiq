@@ -3,19 +3,15 @@ package road
 // Normative coefficient tables for RLS-19 road emission.
 //
 // These are structured as data so they can be replaced by an external
-// "standards data pack" without code changes. The values here are
-// representative placeholders derived from publicly available overview
-// material. A conformant implementation must verify these against the
-// normative standard document.
+// "standards data pack" without code changes.
 
 // BaseEmissionCoeffs holds the speed-dependent base emission formula
 // coefficients (Grundwert) per vehicle group.
-// Formula: L_m,E = a + b * lg(v/v_ref)
-// where v is the permitted speed [km/h] and v_ref is the reference speed.
+// Formula (RLS-19 Eq. 6): L_W0,FzG(v) = A + 10*lg(1 + (v/B)^C).
 type BaseEmissionCoeffs struct {
 	A    float64 // constant term [dB(A)]
-	B    float64 // speed coefficient
-	VRef float64 // reference speed [km/h]
+	B    float64 // speed scale [km/h]
+	C    float64 // speed exponent
 	VMin float64 // minimum clamped speed [km/h]
 	VMax float64 // maximum clamped speed [km/h]
 }
@@ -23,40 +19,10 @@ type BaseEmissionCoeffs struct {
 // baseEmissionTable holds coefficients per vehicle group.
 // Index: VehicleGroup (Pkw=0, Lkw1=1, Lkw2=2, Krad=3).
 var baseEmissionTable = [4]BaseEmissionCoeffs{
-	Pkw:  {A: 27.7, B: 10.0, VRef: 100.0, VMin: 30, VMax: 130},
-	Lkw1: {A: 23.8, B: 10.0, VRef: 80.0, VMin: 30, VMax: 100},
-	Lkw2: {A: 33.3, B: 10.0, VRef: 70.0, VMin: 30, VMax: 80},
-	Krad: {A: 28.1, B: 12.0, VRef: 100.0, VMin: 30, VMax: 130},
-}
-
-// RollingNoiseCoeffs holds the rolling noise component coefficients.
-// Formula: L_roll = a_roll + b_roll * lg(v/v_ref).
-type RollingNoiseCoeffs struct {
-	A    float64
-	B    float64
-	VRef float64
-}
-
-var rollingNoiseTable = [4]RollingNoiseCoeffs{
-	Pkw:  {A: 30.0, B: 20.0, VRef: 100.0},
-	Lkw1: {A: 30.0, B: 20.0, VRef: 80.0},
-	Lkw2: {A: 36.7, B: 20.0, VRef: 70.0},
-	Krad: {A: 30.6, B: 20.0, VRef: 100.0},
-}
-
-// PropulsionNoiseCoeffs holds the propulsion noise component coefficients.
-// Formula: L_prop = a_prop + b_prop * lg(v/v_ref).
-type PropulsionNoiseCoeffs struct {
-	A    float64
-	B    float64
-	VRef float64
-}
-
-var propulsionNoiseTable = [4]PropulsionNoiseCoeffs{
-	Pkw:  {A: 23.0, B: 15.0, VRef: 100.0},
-	Lkw1: {A: 26.5, B: 10.0, VRef: 80.0},
-	Lkw2: {A: 31.0, B: 10.0, VRef: 70.0},
-	Krad: {A: 27.5, B: 18.0, VRef: 100.0},
+	Pkw:  {A: 88.0, B: 20.0, C: 3.06, VMin: 30, VMax: 130},
+	Lkw1: {A: 100.3, B: 40.0, C: 4.33, VMin: 30, VMax: 130},
+	Lkw2: {A: 105.4, B: 50.0, C: 4.88, VMin: 30, VMax: 130},
+	Krad: {A: 105.4, B: 50.0, C: 4.88, VMin: 30, VMax: 130},
 }
 
 // SurfaceCorrectionEntry holds the DStrO correction per vehicle group.
