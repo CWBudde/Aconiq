@@ -111,6 +111,18 @@ func TestRoadSourceValidate_InvalidSurface(t *testing.T) {
 	}
 }
 
+func TestRoadSourceValidate_InvalidLaneCount(t *testing.T) {
+	t.Parallel()
+
+	s := sampleSource()
+	s.LaneCount = -1
+
+	err := s.Validate()
+	if err == nil {
+		t.Fatal("expected error for negative lane_count")
+	}
+}
+
 func TestVehicleGroupString(t *testing.T) {
 	t.Parallel()
 
@@ -163,21 +175,62 @@ func TestParseJunctionType(t *testing.T) {
 
 func TestSurfaceCorrection(t *testing.T) {
 	t.Parallel()
-	// SMA/AB should be 0 for Pkw.
-	if got := SurfaceCorrection(SurfaceSMA, Pkw); got != 0 {
-		t.Fatalf("SMA/Pkw correction: expected 0, got %f", got)
+	tests := []struct {
+		name     string
+		surface  SurfaceType
+		group    VehicleGroup
+		speedKPH float64
+		want     float64
+	}{
+		{name: "SMA alias low Pkw", surface: SurfaceSMA, group: Pkw, speedKPH: 60, want: -2.6},
+		{name: "SMA alias high Lkw", surface: SurfaceSMA, group: Lkw1, speedKPH: 80, want: -2.0},
+		{name: "Non-ribbed guss asphalt", surface: SurfaceGussasphaltStandard, group: Lkw1, speedKPH: 80, want: 0.0},
+		{name: "SMA 5/8 Pkw low", surface: SurfaceSMA5_8, group: Pkw, speedKPH: 60, want: -2.6},
+		{name: "SMA 5/8 Lkw low", surface: SurfaceSMA5_8, group: Lkw1, speedKPH: 60, want: -1.8},
+		{name: "SMA 5/8 high not applicable", surface: SurfaceSMA5_8, group: Pkw, speedKPH: 80, want: 0.0},
+		{name: "SMA 8/11 Pkw high", surface: SurfaceSMA8_11, group: Pkw, speedKPH: 80, want: -1.8},
+		{name: "SMA 8/11 Lkw high", surface: SurfaceSMA8_11, group: Lkw1, speedKPH: 80, want: -2.0},
+		{name: "AB Pkw low", surface: SurfaceAB, group: Pkw, speedKPH: 50, want: -2.7},
+		{name: "AB Pkw high", surface: SurfaceAB, group: Pkw, speedKPH: 80, want: -1.9},
+		{name: "AB Lkw low", surface: SurfaceAB, group: Lkw1, speedKPH: 50, want: -1.9},
+		{name: "AB Lkw high", surface: SurfaceAB, group: Lkw1, speedKPH: 80, want: -2.1},
+		{name: "OPA alias high Pkw", surface: SurfaceOPA, group: Pkw, speedKPH: 80, want: -4.5},
+		{name: "OPA PA11 high Lkw", surface: SurfaceOPA11, group: Lkw1, speedKPH: 80, want: -4.4},
+		{name: "OPA PA8 high Pkw", surface: SurfaceOPA8, group: Pkw, speedKPH: 80, want: -5.5},
+		{name: "Concrete low Pkw", surface: SurfaceConcrete, group: Pkw, speedKPH: 40, want: -1.4},
+		{name: "Concrete high Lkw", surface: SurfaceConcrete, group: Lkw1, speedKPH: 80, want: -2.3},
+		{name: "Low-noise guss asphalt Pkw", surface: SurfaceGussasphalt, group: Pkw, speedKPH: 40, want: -2.0},
+		{name: "Low-noise guss asphalt Lkw", surface: SurfaceGussasphalt, group: Lkw1, speedKPH: 80, want: -1.5},
+		{name: "LOA low Pkw", surface: SurfaceLOA, group: Pkw, speedKPH: 40, want: -3.2},
+		{name: "LOA low Lkw", surface: SurfaceLOA, group: Lkw1, speedKPH: 40, want: -1.0},
+		{name: "LOA high not applicable", surface: SurfaceLOA, group: Pkw, speedKPH: 80, want: 0.0},
+		{name: "SMA LA 8 high Pkw", surface: SurfaceSMALA8, group: Pkw, speedKPH: 80, want: -2.8},
+		{name: "SMA LA 8 high Lkw", surface: SurfaceSMALA8, group: Lkw1, speedKPH: 80, want: -4.6},
+		{name: "DSH-V low Pkw", surface: SurfaceDSHV, group: Pkw, speedKPH: 50, want: -3.9},
+		{name: "DSH-V high Pkw", surface: SurfaceDSHV, group: Pkw, speedKPH: 80, want: -2.8},
+		{name: "DSH-V low Lkw", surface: SurfaceDSHV, group: Lkw1, speedKPH: 50, want: -0.9},
+		{name: "DSH-V high Lkw", surface: SurfaceDSHV, group: Lkw1, speedKPH: 80, want: -2.3},
+		{name: "Paving even 30", surface: SurfacePavingEven, group: Pkw, speedKPH: 30, want: 1.0},
+		{name: "Paving even 40", surface: SurfacePavingEven, group: Lkw1, speedKPH: 40, want: 2.0},
+		{name: "Paving even 50", surface: SurfacePavingEven, group: Pkw, speedKPH: 50, want: 3.0},
+		{name: "Paving rough alias 30", surface: SurfacePaving, group: Pkw, speedKPH: 30, want: 5.0},
+		{name: "Paving rough 40", surface: SurfacePavingOther, group: Lkw1, speedKPH: 40, want: 6.0},
+		{name: "Paving rough 50", surface: SurfacePavingOther, group: Pkw, speedKPH: 50, want: 7.0},
+		{name: "Krad uses Pkw band", surface: SurfaceAB, group: Krad, speedKPH: 50, want: -2.7},
+		{name: "Legacy damaged surface", surface: SurfaceUnpavedOrDamaged, group: Krad, speedKPH: 50, want: 3.0},
+		{name: "Unknown surface", surface: "unknown", group: Pkw, speedKPH: 50, want: 0.0},
 	}
-	// OPA should be negative (quieter).
-	if got := SurfaceCorrection(SurfaceOPA, Pkw); got >= 0 {
-		t.Fatalf("OPA/Pkw correction should be negative, got %f", got)
-	}
-	// Paving should be positive (louder).
-	if got := SurfaceCorrection(SurfacePaving, Pkw); got <= 0 {
-		t.Fatalf("Paving/Pkw correction should be positive, got %f", got)
-	}
-	// Unknown surface returns 0.
-	if got := SurfaceCorrection("unknown", Pkw); got != 0 {
-		t.Fatalf("unknown surface should return 0, got %f", got)
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := SurfaceCorrection(tt.surface, tt.group, tt.speedKPH)
+			if !almostEqual(got, tt.want, 0.000001) {
+				t.Fatalf("SurfaceCorrection(%q, %s, %.0f): want %.6f, got %.6f", tt.surface, tt.group, tt.speedKPH, tt.want, got)
+			}
+		})
 	}
 }
 
@@ -650,6 +703,59 @@ func TestSplitLineIntoSegments_Deterministic(t *testing.T) {
 		if segs1[i].MidPoint != segs2[i].MidPoint || segs1[i].LengthM != segs2[i].LengthM {
 			t.Fatalf("segment %d differs between runs", i)
 		}
+	}
+}
+
+func TestRoadSourceEffectiveCenterline_AppliesLaneOffset(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.Centerline = []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}}
+	source.LaneCount = 2
+
+	line := source.EffectiveCenterline()
+	if len(line) != 2 {
+		t.Fatalf("expected 2 points, got %d", len(line))
+	}
+
+	if !almostEqual(source.SourceLineOffsetM(), 1.75, 0.000001) {
+		t.Fatalf("expected lane-count offset 1.75 m, got %.6f", source.SourceLineOffsetM())
+	}
+
+	if !almostEqual(line[0].Y, -1.75, 0.000001) || !almostEqual(line[1].Y, -1.75, 0.000001) {
+		t.Fatalf("expected right-hand offset line at y=-1.75, got %#v", line)
+	}
+}
+
+func TestPropagation_LaneCountAutoOffsetMatchesExplicitGeometry(t *testing.T) {
+	t.Parallel()
+
+	auto := sampleSource()
+	auto.Centerline = []geo.Point2D{{X: 0, Y: 0}, {X: 100, Y: 0}}
+	auto.LaneCount = 2
+
+	explicit := sampleSource()
+	explicit.Centerline = []geo.Point2D{{X: 0, Y: -1.75}, {X: 100, Y: -1.75}}
+
+	cfg := DefaultPropagationConfig()
+	receiver := geo.Point2D{X: 50, Y: -20}
+
+	autoLevels, err := ComputeReceiverLevels(receiver, []RoadSource{auto}, nil, cfg)
+	if err != nil {
+		t.Fatalf("auto-offset propagation: %v", err)
+	}
+
+	explicitLevels, err := ComputeReceiverLevels(receiver, []RoadSource{explicit}, nil, cfg)
+	if err != nil {
+		t.Fatalf("explicit-offset propagation: %v", err)
+	}
+
+	if !almostEqual(autoLevels.LrDay, explicitLevels.LrDay, 0.000001) {
+		t.Fatalf("expected equal day level for auto and explicit source line: auto=%.6f explicit=%.6f", autoLevels.LrDay, explicitLevels.LrDay)
+	}
+
+	if !almostEqual(autoLevels.LrNight, explicitLevels.LrNight, 0.000001) {
+		t.Fatalf("expected equal night level for auto and explicit source line: auto=%.6f explicit=%.6f", autoLevels.LrNight, explicitLevels.LrNight)
 	}
 }
 

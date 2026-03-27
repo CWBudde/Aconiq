@@ -97,7 +97,7 @@ func buildBUBRoadReceivers(sources []bubroad.RoadSource, options bubRoadRunOptio
 func buildRLS19RoadReceivers(sources []rls19road.RoadSource, options rls19RoadRunOptions) ([]geo.PointReceiver, int, int, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
 	for _, source := range sources {
-		sourcePoints = append(sourcePoints, source.Centerline...)
+		sourcePoints = append(sourcePoints, source.EffectiveCenterline()...)
 	}
 
 	return buildReceiversFromPoints("cli.buildRLS19RoadReceivers", sourcePoints, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
