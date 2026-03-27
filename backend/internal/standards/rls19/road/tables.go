@@ -210,12 +210,14 @@ func JunctionCorrection(jt JunctionType, distanceM float64) float64 {
 
 // PropagationConstants holds physical constants for the propagation model.
 var PropagationConstants = struct {
-	// AirAbsorptionCoeff is the air absorption coefficient in dB/km at ~500 Hz,
-	// 10 degC, 70% humidity (representative for annual average conditions).
+	// AirAbsorptionCoeff is the broadband A-weighted air absorption coefficient
+	// in dB/km per RLS-19 Eq. 13: D_atm = α·s/1000 = 5·s/1000 = s/200.
+	// Value 5.0 dB/km is the RLS-19 simplified annual-average approximation
+	// (not a frequency-specific ISO 9613-2 value).
 	AirAbsorptionCoeff float64
 	// ReferenceDistance is the reference distance for geometric divergence [m].
 	ReferenceDistance float64
 }{
-	AirAbsorptionCoeff: 1.0,
+	AirAbsorptionCoeff: 5.0,
 	ReferenceDistance:  1.0,
 }

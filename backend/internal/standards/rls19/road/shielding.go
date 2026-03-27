@@ -101,25 +101,25 @@ func ComputeShielding(
 			continue
 		}
 
-		// Compute the path length difference in the vertical cross-section.
-		delta := pathDifference(
+		// Compute single-edge diffraction geometry and insertion loss (RLS-19 Eq. 15/17).
+		diff := computeDiffraction(
 			dSourceBarrier, sourceHeightM,
 			dBarrierReceiver, receiverHeightM,
 			b.HeightM,
 		)
 
-		if delta <= 0 {
+		if diff.Z <= 0 {
 			// Barrier top is below the line of sight — no shielding.
 			continue
 		}
 
-		loss := maekawaInsertionLoss(delta)
+		loss := rls19BarrierLoss(diff)
 
 		if loss > best.InsertionLoss {
 			best = ShieldingResult{
 				Shielded:       true,
 				InsertionLoss:  loss,
-				PathDifference: delta,
+				PathDifference: diff.Z,
 				BarrierID:      b.ID,
 			}
 		}
@@ -128,68 +128,59 @@ func ComputeShielding(
 	return best
 }
 
-// pathDifference computes the signed path length difference delta for
-// single-edge diffraction in a vertical cross-section.
-//
-// The geometry in the vertical plane:
-//
-//	S (source) at height hS, horizontal distance dSB from barrier
-//	B (barrier top) at height hB
-//	R (receiver) at height hR, horizontal distance dBR from barrier
-//
-// The unsigned path difference is always >= 0 (triangle inequality).
-// We apply a sign: positive when the barrier top is above the source-receiver
-// line of sight (diffraction occurs), negative when below (no shielding).
-func pathDifference(dSB, hS, dBR, hR, hB float64) float64 {
-	dTotal := dSB + dBR
-	if dTotal <= 0 {
-		return 0
-	}
-
-	// Height of the line of sight at the barrier location.
-	hLOS := hS + (hR-hS)*dSB/dTotal
-
-	// Path over barrier: S → barrier top → R.
-	pathSB := math.Sqrt(dSB*dSB + (hB-hS)*(hB-hS))
-	pathBR := math.Sqrt(dBR*dBR + (hB-hR)*(hB-hR))
-
-	// Direct path: S → R.
-	pathDirect := math.Sqrt(dTotal*dTotal + (hR-hS)*(hR-hS))
-
-	delta := pathSB + pathBR - pathDirect
-
-	// Sign: positive only when barrier is above line of sight.
-	if hB < hLOS {
-		return -delta
-	}
-
-	return delta
+// diffractionGeometry holds the 3D path lengths for single-edge diffraction.
+// All distances are in metres.
+type diffractionGeometry struct {
+	Z float64 // path difference: A + B − s  (> 0 means barrier is above line-of-sight)
+	A float64 // source → edge top (3D distance)
+	B float64 // edge top → receiver (3D distance)
+	S float64 // source → receiver direct (3D distance)
 }
 
-// maekawaInsertionLoss computes the barrier insertion loss using the
-// Kurze-Anderson approximation of the Maekawa curve.
+// computeDiffraction returns the single-edge diffraction geometry for the
+// vertical cross-section through source, barrier, and receiver.
 //
-// For a path length difference delta > 0:
+// Parameters are the plan-view horizontal distances and heights:
 //
-//	N = 2 * delta / lambda  (Fresnel number, using lambda = 0.34 m for ~1 kHz)
-//	A_bar = 10 * lg(3 + 20*N)  (Kurze-Anderson, capped at 20 dB)
+//	dSB  – plan distance source → barrier crossing
+//	hS   – source height (absolute Z or relative, but consistent with hR, hEdge)
+//	dBR  – plan distance barrier crossing → receiver
+//	hR   – receiver height
+//	hEdge – barrier/edge height
 //
-// The wavelength of ~0.34 m corresponds to approximately 1000 Hz, which is
-// representative for A-weighted road traffic noise.
-const referenceWavelengthM = 0.34 // ~1000 Hz
+// Z > 0 indicates the edge is above the source-receiver line-of-sight (shielding).
+// Z ≤ 0 means no shielding.
+func computeDiffraction(dSB, hS, dBR, hR, hEdge float64) diffractionGeometry {
+	dTotal := dSB + dBR
+	A := math.Sqrt(dSB*dSB + (hEdge-hS)*(hEdge-hS))
+	B := math.Sqrt(dBR*dBR + (hEdge-hR)*(hEdge-hR))
+	S := math.Sqrt(dTotal*dTotal + (hR-hS)*(hR-hS))
+	Z := A + B - S
 
-func maekawaInsertionLoss(delta float64) float64 {
-	if delta <= 0 {
+	// Negate if edge is below line-of-sight (no shielding).
+	hLOS := hS + (hR-hS)*dSB/dTotal
+	if hEdge < hLOS {
+		Z = -Z
+	}
+
+	return diffractionGeometry{Z: Z, A: A, B: B, S: S}
+}
+
+// rls19BarrierLoss computes the barrier insertion loss D_z per RLS-19 Eqs. 15/17.
+//
+//	D_z  = 10·lg(3 + 80·z·K_w)                           (Eq. 15)
+//	K_w  = exp(−1/2000 · sqrt(A·B·s / (2·z)))             (Eq. 17)
+//
+// K_w is a frequency-distance weighting factor that accounts for the broadband
+// nature of A-weighted road traffic noise. Returns 0 when z ≤ 0.
+func rls19BarrierLoss(d diffractionGeometry) float64 {
+	if d.Z <= 0 {
 		return 0
 	}
 
-	fresnelN := 2 * delta / referenceWavelengthM
-	loss := 10 * math.Log10(3+20*fresnelN)
+	// Eq. 17: K_w frequency-distance weighting.
+	kw := math.Exp(-math.Sqrt(d.A*d.B*d.S/(2*d.Z)) / 2000.0)
 
-	// Practical cap for single-edge diffraction.
-	if loss > 20 {
-		loss = 20
-	}
-
-	return loss
+	// Eq. 15: barrier insertion loss.
+	return 10 * math.Log10(3+80*d.Z*kw)
 }

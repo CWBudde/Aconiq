@@ -1198,57 +1198,119 @@ func TestPropagation_WithBarrier(t *testing.T) {
 	}
 }
 
-func TestPathDifference(t *testing.T) {
+func TestComputeDiffraction(t *testing.T) {
 	t.Parallel()
 
-	// Barrier exactly at line of sight: delta should be ~0.
+	// Barrier exactly at line of sight: Z should be ~0.
 	// Source at (0, h=0.5), barrier at (10, h=4), receiver at (50, h=4).
 	// Line of sight from source to receiver: at x=10, height = 0.5 + (4-0.5)*10/50 = 1.2.
-	// Barrier height 1.2 → delta ≈ 0.
-	delta := pathDifference(10, 0.5, 40, 4.0, 1.2)
-	if math.Abs(delta) > 0.01 {
-		t.Fatalf("barrier at line of sight should have delta ~0, got %f", delta)
+	// Barrier height 1.2 → Z ≈ 0.
+	d := computeDiffraction(10, 0.5, 40, 4.0, 1.2)
+	if math.Abs(d.Z) > 0.01 {
+		t.Fatalf("barrier at line of sight should have Z ~0, got %f", d.Z)
 	}
 
-	// Barrier well above line of sight: positive delta.
-	delta = pathDifference(10, 0.5, 40, 4.0, 8.0)
-	if delta <= 0 {
-		t.Fatalf("tall barrier should have positive delta, got %f", delta)
+	// Barrier well above line of sight: positive Z.
+	d = computeDiffraction(10, 0.5, 40, 4.0, 8.0)
+	if d.Z <= 0 {
+		t.Fatalf("tall barrier should have positive Z, got %f", d.Z)
 	}
 
-	// Barrier below line of sight: non-positive delta.
-	delta = pathDifference(10, 0.5, 40, 4.0, 0.1)
-	if delta > 0 {
-		t.Fatalf("low barrier should have non-positive delta, got %f", delta)
+	// Barrier below line of sight: non-positive Z.
+	d = computeDiffraction(10, 0.5, 40, 4.0, 0.1)
+	if d.Z > 0 {
+		t.Fatalf("low barrier should have non-positive Z, got %f", d.Z)
+	}
+
+	// A, B, S must be positive for a valid geometry.
+	d = computeDiffraction(10, 0.5, 40, 4.0, 4.0)
+	if d.A <= 0 || d.B <= 0 || d.S <= 0 {
+		t.Fatalf("A/B/S must be positive: A=%f B=%f S=%f", d.A, d.B, d.S)
 	}
 }
 
-func TestMaekawaInsertionLoss(t *testing.T) {
+// TestRLS19BarrierLoss verifies D_z = 10·lg(3 + 80·z·K_w) per RLS-19 Eqs. 15/17.
+func TestRLS19BarrierLoss(t *testing.T) {
 	t.Parallel()
 
-	// Zero delta: no loss.
-	if maekawaInsertionLoss(0) != 0 {
-		t.Fatal("zero delta should give zero loss")
+	// z <= 0: no loss.
+	if rls19BarrierLoss(diffractionGeometry{Z: 0, A: 10, B: 20, S: 29}) != 0 {
+		t.Fatal("z=0 should give zero loss")
 	}
 
-	// Positive delta: positive loss.
-	loss := maekawaInsertionLoss(0.5)
+	if rls19BarrierLoss(diffractionGeometry{Z: -0.1, A: 10, B: 20, S: 29}) != 0 {
+		t.Fatal("negative z should give zero loss")
+	}
+
+	// z > 0: positive loss (3 + 80*z*K_w > 3 > 1 so log10 > 0).
+	loss := rls19BarrierLoss(diffractionGeometry{Z: 0.5, A: 10, B: 20, S: 29.5})
 	if loss <= 0 {
-		t.Fatalf("positive delta should give positive loss, got %f", loss)
+		t.Fatalf("positive z should give positive loss, got %f", loss)
 	}
 
-	// Loss increases with delta.
-	lossSmall := maekawaInsertionLoss(0.1)
+	// Loss increases with z (for moderate z where 80*z*K_w grows).
+	lossSmall := rls19BarrierLoss(diffractionGeometry{Z: 0.1, A: 10, B: 20, S: 29.9})
+	lossLarge := rls19BarrierLoss(diffractionGeometry{Z: 1.0, A: 10, B: 20, S: 29.0})
 
-	lossLarge := maekawaInsertionLoss(1.0)
 	if lossLarge <= lossSmall {
-		t.Fatalf("loss should increase with delta: small=%f large=%f", lossSmall, lossLarge)
+		t.Fatalf("loss should increase with z: small=%f large=%f", lossSmall, lossLarge)
 	}
 
-	// Capped at 20 dB.
-	lossCapped := maekawaInsertionLoss(100)
-	if lossCapped > 20 {
-		t.Fatalf("loss should be capped at 20, got %f", lossCapped)
+	// Hand-calculated reference (RLS-19 Eqs. 15/17):
+	// z=0.5, A=10.31, B=20.02, S=30.20
+	// K_w = exp(-sqrt(10.31*20.02*30.20 / (2*0.5)) / 2000)
+	//     = exp(-sqrt(6236.7) / 2000) = exp(-78.97/2000) = exp(-0.03948) ≈ 0.9613
+	// D_z = 10*log10(3 + 80*0.5*0.9613) = 10*log10(3 + 38.45) = 10*log10(41.45) ≈ 16.17 dB
+	geom := diffractionGeometry{Z: 0.5, A: 10.31, B: 20.02, S: 30.20}
+	expected := 10 * math.Log10(3+80*0.5*math.Exp(-math.Sqrt(10.31*20.02*30.20/(2*0.5))/2000))
+	got := rls19BarrierLoss(geom)
+
+	if math.Abs(got-expected) > 0.01 {
+		t.Fatalf("D_z mismatch: expected %.4f dB, got %.4f dB", expected, got)
+	}
+}
+
+// TestComputeAttenuation_DDivFormula verifies D_div uses 2π per RLS-19 Eq. 12.
+func TestComputeAttenuation_DDivFormula(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultPropagationConfig()
+	cfg.MinDistanceM = 0.1
+
+	// At s=100m, flat terrain (hm=0): D_div = 20*log10(100) + 10*log10(2π).
+	// 10*log10(2π) ≈ 7.982 dB.
+	expected := 20*math.Log10(100) + 10*math.Log10(2*math.Pi)
+	att := computeAttenuation(100, 100, 0, cfg)
+
+	// D_gr = 0 when h_m = 0 (formula = 4.8 - 0 = 4.8, but clamped at 0 since hm=0 → positive).
+	// Actually: D_gr = 4.8 - (0/100)*(34+600/100) = 4.8 dB (not zero).
+	// So we check GeometricDivergence specifically.
+	if math.Abs(att.GeometricDivergence-expected) > 0.01 {
+		t.Fatalf("D_div at 100m: expected %.4f dB, got %.4f dB", expected, att.GeometricDivergence)
+	}
+}
+
+// TestComputeAttenuation_DAtmFormula verifies D_atm = s/200 per RLS-19 Eq. 13.
+func TestComputeAttenuation_DAtmFormula(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultPropagationConfig()
+	cfg.MinDistanceM = 0.1
+
+	// At s=200m: D_atm should be 200/200 = 1.0 dB.
+	att := computeAttenuation(200, 200, 5, cfg)
+	expected := 1.0
+
+	if math.Abs(att.AirAbsorption-expected) > 0.01 {
+		t.Fatalf("D_atm at 200m: expected %.4f dB, got %.4f dB", expected, att.AirAbsorption)
+	}
+
+	// At s=1000m: D_atm = 1000/200 = 5.0 dB.
+	att = computeAttenuation(1000, 1000, 5, cfg)
+	expected = 1000.0 / 200.0
+
+	if math.Abs(att.AirAbsorption-expected) > 0.01 {
+		t.Fatalf("D_atm at 1000m: expected %.4f dB, got %.4f dB", expected, att.AirAbsorption)
 	}
 }
 

@@ -264,18 +264,18 @@ func terrainEdgeShieldingResult(
 		edgeZ = a.Z + t*(b.Z-a.Z)
 	}
 
-	// pathDifference is translation-invariant: passing absolute Z is correct.
-	delta := pathDifference(dSB, sourceZ, dBR, receiverZ, edgeZ)
-	if delta <= 0 {
+	// computeDiffraction is translation-invariant: absolute Z values are correct.
+	diff := computeDiffraction(dSB, sourceZ, dBR, receiverZ, edgeZ)
+	if diff.Z <= 0 {
 		return ShieldingResult{}
 	}
 
-	loss := maekawaInsertionLoss(delta)
+	loss := rls19BarrierLoss(diff)
 
 	return ShieldingResult{
 		Shielded:       true,
 		InsertionLoss:  loss,
-		PathDifference: delta,
+		PathDifference: diff.Z,
 		BarrierID:      edge.ID,
 	}
 }

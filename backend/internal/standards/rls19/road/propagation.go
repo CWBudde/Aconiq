@@ -36,6 +36,11 @@ type PropagationConfig struct {
 	// (adding reflected paths via the image-source method). They enable
 	// house-front, perpendicular, and courtyard ("Hinterhof") scenarios.
 	Buildings []Building
+
+	// ParkingSources are RLS-19 §3.4 parking-area sources. Each lot is
+	// approximated as a point source at its Center and contributes to the
+	// receiver level via the standard point-source propagation chain.
+	ParkingSources []ParkingSource
 }
 
 // DefaultPropagationConfig returns baseline propagation parameters.
@@ -218,14 +223,15 @@ type AttenuationComponents struct {
 
 // computeAttenuation computes free-field propagation attenuation.
 //
-// RLS-19 / DIN ISO 9613-2 point-source attenuation:
+// RLS-19 propagation terms (Eqs. 12–14):
 //
-//	D_div = 20·lg(s) + 11      geometric spreading  [3D slant distance s]
-//	D_atm = α · s / 1000       air absorption       [3D slant distance s]
-//	D_gr  = ground correction  [plan distance s_gr, mean height h_m]
+//	D_div = 20·lg(s) + 10·lg(2π)  geometric spreading, hemispherical [3D slant s]
+//	D_atm = α · s / 1000           air absorption [3D slant distance s]
+//	D_gr  = ground correction      [plan distance s_gr, mean height h_m]
 //
-// When a barrier or terrain edge shields the path, the caller replaces D_gr
-// with D_z and resets Total (RLS-19 rule: D_z replaces, not adds to, D_gr).
+// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z)
+// When a barrier or terrain edge shields the path, D_z ≥ D_gr in typical cases;
+// the caller applies max(D_gr, D_z) rather than summing both.
 func computeAttenuation(planDistM, slantDistM, hm float64, cfg PropagationConfig) AttenuationComponents {
 	s := slantDistM
 	if s < cfg.MinDistanceM {
@@ -237,8 +243,10 @@ func computeAttenuation(planDistM, slantDistM, hm float64, cfg PropagationConfig
 		sgr = cfg.MinDistanceM
 	}
 
-	// Geometric divergence (point source, 3D slant distance).
-	aDiv := 20*math.Log10(s) + 11.0
+	// Geometric divergence (point source, hemispherical radiation into ground half-space).
+	// RLS-19 Eq. 12: D_div = 20·lg(s) + 10·lg(2π) ≈ 20·lg(s) + 7.98 dB
+	// The 2π factor (not 4π) accounts for the ground-reflection assumption.
+	aDiv := 20*math.Log10(s) + 10*math.Log10(2*math.Pi)
 
 	// Air absorption (3D slant distance).
 	aAtm := PropagationConstants.AirAbsorptionCoeff * (s / 1000.0)
@@ -309,6 +317,13 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 
 	for _, source := range sources {
 		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, sourceHeightM, effectiveBarriers, effectiveCfg, cfg)
+		if err != nil {
+			return PeriodLevels{}, err
+		}
+	}
+
+	if len(cfg.ParkingSources) > 0 {
+		err := appendParkingContributions(&dayContrib, &nightContrib, cfg.ParkingSources, receiver, receiverZ, effectiveCfg)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
@@ -431,11 +446,12 @@ func appendSegmentContributions(
 		terrainLoss = terrainShield.InsertionLoss
 	}
 
-	// RLS-19 rule: when shielded, D_z replaces D_gr (not added on top).
+	// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z).
+	// Ground effect and barrier shielding are not additive — only the larger applies.
 	totalShielding := math.Max(barrierLoss, terrainLoss)
 	if totalShielding > 0 {
 		att.BarrierShielding = totalShielding
-		att.Total = att.GeometricDivergence + att.AirAbsorption + totalShielding
+		att.Total = att.GeometricDivergence + att.AirAbsorption + math.Max(att.GroundMeteorological, totalShielding)
 	}
 
 	// Length weighting: each sub-segment contributes proportionally.

@@ -266,14 +266,15 @@ Implemented: `ReflectionSurchargeDB` removed; replaced by `BuildingHeightM`/`Str
 Eq. 10 (corrected): `L_W'' = 63 + 10·lg[N·n] + D_{P,PT} – 10·lg[P/1m²]`
 with Tabelle 6: D_P,PT = Pkw 0 dB, Motorrad 5 dB, Lkw/Omnibus 10 dB.
 Tabelle 7 standard values for N: P+R (day 0.3, night 0.06), Tank/Rastanlage (day 1.5, night 0.8).
+Implemented: `parking.go` — `ParkingSource`, `ComputeParkingEmission`, `DefaultMovementsPerHour`; wired into `PropagationConfig.ParkingSources`.
 
-- [ ] Add `ParkingSource` type to model with fields: `AreaM2`, `NumSpaces`, `ParkingType`, `MovementsPerSpacePerHour` (day/night)
-- [ ] Implement Eq. 10 `ComputeParkingEmission(source ParkingSource) (float64, error)`
-- [ ] Add `ParkingType` enum: `Pkw`, `Motorrad`, `LkwOmnibus` with Tabelle 6 surcharges
-- [ ] Expose Tabelle 7 standard N values as `DefaultMovementsPerHour(pt ParkingType, period TimePeriod) float64`
-- [ ] Integrate parking contribution into Eq. 3 (`L_r''`) and Eq. 1 (`L_r`) computation
-- [ ] Add `ParkingSources []ParkingSource` to `PropagationConfig` or compute entrypoint
-- [ ] Add unit tests for Eq. 10 against hand-calculated reference values (at least one Pkw and one Lkw case)
+- [x] Add `ParkingSource` type to model with fields: `AreaM2`, `NumSpaces`, `ParkingType`, `MovementsPerSpacePerHour` (day/night)
+- [x] Implement Eq. 10 `ComputeParkingEmission(source ParkingSource) (ParkingEmissionResult, error)`
+- [x] Add `ParkingVehicleType` enum: `ParkingPkw`, `ParkingMotorrad`, `ParkingLkwOmnibus` with Tabelle 6 surcharges
+- [x] Expose Tabelle 7 standard N values as `DefaultMovementsPerHour(ft ParkingFacilityType, period TimePeriod) float64`
+- [x] Integrate parking contribution into receiver level computation (point-source at centroid via `appendParkingContributions`)
+- [x] Add `ParkingSources []ParkingSource` to `PropagationConfig`
+- [x] Add unit tests for Eq. 10 against hand-calculated reference values (Pkw, Lkw/Omnibus, Motorrad cases)
 
 ### Section 3.5 — Schallausbreitung (Eqs. 11–17)
 
