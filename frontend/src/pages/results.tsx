@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/ui/components/select";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
-import type { ArtifactRef, ReceiverTable, RunSummary } from "@/api/client";
+import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ const statusConfig: Record<
 };
 
 function StatusBadge({ status }: { status: RunStatus }) {
-  const cfg = statusConfig[status] ?? statusConfig.pending;
+  const cfg = statusConfig[status];
   const Icon = cfg.icon;
   return (
     <span
@@ -118,7 +118,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
   const [sortCol, setSortCol] = useState<string>("id");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const indicators = data?.indicator_order ?? [];
+  const indicators = useMemo(() => data?.indicator_order ?? [], [data]);
   const unit = data?.unit ?? "";
 
   const summaryCards = useMemo(() => {

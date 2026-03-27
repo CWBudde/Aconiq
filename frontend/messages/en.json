@@ -221,17 +221,12 @@
 
   "banner_draft_recovery": "Draft recovery",
 
-  "msg_settings_intro": "Manage appearance, language, and browser storage from one place.",
-  "msg_settings_taxonomy_intro": "Settings are grouped by the parts of the product they affect.",
-  "msg_settings_local_only": "These settings stay in this browser.",
   "msg_settings_appearance_help": "Choose how the interface should look.",
   "msg_settings_language_help": "Choose the language used across the UI.",
   "msg_settings_storage_help": "Saved drafts live in localStorage and can be cleared here.",
   "msg_settings_storage_note": "Saved drafts stay in browser localStorage and can be removed without affecting the backend project.",
   "msg_settings_storage_summary": "Theme preference is stored in `aconiq-theme`, locale preference in `PARAGLIDE_LOCALE`, and saved drafts in `aconiq.model.draft`.",
   "msg_settings_runtime_help": "This page shows which frontend runtime mode is active.",
-  "msg_settings_available_now": "Available now",
-  "msg_settings_planned": "Planned",
   "msg_api_endpoint_help": "Override the backend URL for this browser. Leave it blank to use the environment default.",
   "msg_api_endpoint_note": "This affects all browser-side API requests and is stored locally in this browser only.",
   "msg_api_endpoint_current": "Current API endpoint",
@@ -269,7 +264,6 @@
   "page_title_exports": "Exports",
   "page_title_results": "Results",
   "page_title_runs": "Runs",
-  "page_title_settings": "Settings",
   "page_title_status": "Status",
 
   "msg_api_error_export": "Could not load runs. Is the API server running?",

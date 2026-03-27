@@ -80,10 +80,6 @@ function formatTime(iso: string): string {
   });
 }
 
-function toSummaryDescription(summary: RunSummary): string {
-  return summary.standard.description;
-}
-
 // ---------------------------------------------------------------------------
 // Status badge
 // ---------------------------------------------------------------------------
@@ -121,7 +117,7 @@ const statusConfig: Record<
 };
 
 function StatusBadge({ status }: { status: RunStatus }) {
-  const cfg = statusConfig[status] ?? statusConfig.pending;
+  const cfg = statusConfig[status];
   const Icon = cfg.icon;
   return (
     <span

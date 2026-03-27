@@ -221,17 +221,12 @@
 
   "banner_draft_recovery": "Entwurf wiederherstellen",
 
-  "msg_settings_intro": "Verwalte Erscheinungsbild, Sprache und browserseitige Ablage an einem Ort.",
-  "msg_settings_taxonomy_intro": "Die Einstellungen sind nach den Bereichen des Produkts gruppiert, die sie beeinflussen.",
-  "msg_settings_local_only": "Diese Einstellungen bleiben in diesem Browser.",
   "msg_settings_appearance_help": "Wähle aus, wie die Oberfläche aussehen soll.",
   "msg_settings_language_help": "Wähle die in der Oberfläche verwendete Sprache.",
   "msg_settings_storage_help": "Gespeicherte Entwürfe liegen in localStorage und können hier gelöscht werden.",
   "msg_settings_storage_note": "Gespeicherte Entwürfe bleiben in localStorage des Browsers und können entfernt werden, ohne das Backend-Projekt zu beeinflussen.",
   "msg_settings_storage_summary": "Die Design-Einstellung liegt in `aconiq-theme`, die Sprache in `PARAGLIDE_LOCALE` und gespeicherte Entwürfe in `aconiq.model.draft`.",
   "msg_settings_runtime_help": "Hier wird angezeigt, welcher Frontend-Modus aktiv ist.",
-  "msg_settings_available_now": "Jetzt verfügbar",
-  "msg_settings_planned": "Geplant",
   "msg_api_endpoint_help": "Überschreibe die Backend-URL für diesen Browser. Leer lassen, um die Standardvorgabe aus der Umgebung zu verwenden.",
   "msg_api_endpoint_note": "Das betrifft alle browserseitigen API-Anfragen und wird nur lokal in diesem Browser gespeichert.",
   "msg_api_endpoint_current": "Aktueller API-Endpunkt",
@@ -269,7 +264,6 @@
   "page_title_exports": "Exporte",
   "page_title_results": "Ergebnisse",
   "page_title_runs": "Berechnungen",
-  "page_title_settings": "Einstellungen",
   "page_title_status": "Status",
 
   "msg_api_error_export": "Berechnungen konnten nicht geladen werden. Läuft der API-Server?",

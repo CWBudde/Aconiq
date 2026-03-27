@@ -95,7 +95,7 @@ export function ModelLayers() {
 function isMapStyleReady(map: maplibregl.Map): boolean {
   try {
     const style = map.getStyle();
-    return Boolean(style && style.sources);
+    return Boolean(style.sources);
   } catch {
     return false;
   }

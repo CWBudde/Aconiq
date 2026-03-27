@@ -47,7 +47,7 @@ export default function ImportPage() {
   const osmMutation = useImportFromOSM();
 
   const handleUseCurrentLocation = useCallback(() => {
-    if (!navigator.geolocation) {
+    if (typeof navigator.geolocation.getCurrentPosition !== "function") {
       setError(m.error_geolocation_not_supported());
       return;
     }

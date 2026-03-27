@@ -11,7 +11,9 @@ async function expectAccessible(container: Element) {
   const results = await axe.run(container);
   if (results.violations.length > 0) {
     const summary = results.violations
-      .map((v) => `[${v.id}] ${v.description} (${v.impact})`)
+      .map(
+        (v) => `[${v.id}] ${v.description} (${String(v.impact ?? "unknown")})`,
+      )
       .join("\n");
     throw new Error(
       `axe found ${String(results.violations.length)} violation(s):\n${summary}`,

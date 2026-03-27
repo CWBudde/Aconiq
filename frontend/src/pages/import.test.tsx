@@ -36,6 +36,14 @@ function makeFile(content: string, name = "model.geojson"): File {
   return new File([content], name, { type: "application/json" });
 }
 
+function getFileInput(): HTMLInputElement {
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) {
+    throw new Error("file input not found");
+  }
+  return input;
+}
+
 function renderImportPage() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -76,8 +84,7 @@ describe("ImportPage", () => {
 
   it("shows preview after a valid file is selected", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => {
       expect(screen.getByText("Import Preview")).toBeInTheDocument();
@@ -87,8 +94,7 @@ describe("ImportPage", () => {
 
   it("shows an error for invalid JSON", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile("not json")] } });
     await waitFor(() => {
       expect(screen.getByText(/failed to parse/i)).toBeInTheDocument();
@@ -97,8 +103,7 @@ describe("ImportPage", () => {
 
   it("shows an error for a non-FeatureCollection JSON", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, {
       target: { files: [makeFile('{"type":"Feature"}')] },
     });
@@ -111,8 +116,7 @@ describe("ImportPage", () => {
 
   it("loads features into the model store on confirm", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
@@ -121,8 +125,7 @@ describe("ImportPage", () => {
 
   it("shows done step after confirm", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
@@ -134,8 +137,7 @@ describe("ImportPage", () => {
 
   it("goes back to upload step from preview", async () => {
     renderImportPage();
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
