@@ -857,7 +857,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, or /api/v1/import/osm.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, or /api/v1/import/terrain.",
 	})
 }
 

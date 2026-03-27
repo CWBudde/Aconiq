@@ -17,6 +17,7 @@ Status: DRAFT — not yet submitted
 | Field           | Value                                                               |
 | --------------- | ------------------------------------------------------------------- |
 | Standard        | RLS-19 (Richtlinien fuer den Laermschutz an Strassen, Ausgabe 2019) |
+| Errata          | Korrekturblatt 2/2020 (Februar 2020) — all three corrections applied |
 | Legal basis     | 16. BImSchV                                                         |
 | TEST-20 version | 2.1 (July 2025)                                                     |
 | FGSV catalogue  | 334/2                                                               |
@@ -35,6 +36,15 @@ Status: DRAFT — not yet submitted
 | E6   | Schallleistungspegel eines Fahrzeugs (single-vehicle sound power)  | Implemented |
 | E7   | Laengenbezogener Schallleistungspegel (length-related sound power) | Implemented |
 
+### Parking sources (§3.4)
+
+| Step | Description                                                        | Status      |
+| ---- | ------------------------------------------------------------------ | ----------- |
+| P1   | Flaechenbezogener Schallleistungspegel (Eq. 10, corrected form)    | Implemented |
+| P2   | Fahrzeugtypzuschlag D_P,PT (Tabelle 6: Pkw/Motorrad/Lkw-Omnibus)  | Implemented |
+| P3   | Standardbewegungsraten N (Tabelle 7: P+R, Tank-/Rastanlagen)       | Implemented |
+| P4   | Propagation from parking centroid (point source, §3.5 chain)       | Implemented |
+
 ### Propagation
 
 | Feature                                                | Status      |
@@ -50,6 +60,18 @@ Status: DRAFT — not yet submitted
 | Single explicit reflector                              | Implemented |
 | Up to 2 reflectors                                     | Implemented |
 
+### Reflections (§3.6, Tabelle 8)
+
+| Feature                                                               | Status      |
+| --------------------------------------------------------------------- | ----------- |
+| First-order reflections (Spiegelschallquellen 1. Ordnung)             | Implemented |
+| Second-order reflections (Spiegelschallquellen 2. Ordnung)            | Implemented |
+| Third-order reflections ignored per standard                          | Implemented |
+| Height condition: h_R >= 1.0 m and h_R >= 0.3*sqrt(a_R)              | Implemented |
+| ReflectorType enum: FacadeOrReflecting (0.5 dB), ReflectionReducing   | Implemented |
+| (3.0 dB), StronglyReflectionReducing (5.0 dB) per Tabelle 8          | Implemented |
+| Active-Teilstueck rule (Bild 14): segment-intersection enforcement    | Implemented |
+
 ### Indicators
 
 | Indicator | Period      | Status      |
@@ -57,9 +79,27 @@ Status: DRAFT — not yet submitted
 | LrDay     | 06:00-22:00 | Implemented |
 | LrNight   | 22:00-06:00 | Implemented |
 
+## Korrekturblatt 2/2020 — applied corrections
+
+The Korrekturblatt Februar 2020 (FGSV 052, 2/2020) issued three corrections,
+all of which are applied in this implementation:
+
+| No. | Location              | Correction                                                                              | Applied in          |
+| --- | --------------------- | --------------------------------------------------------------------------------------- | ------------------- |
+| 1   | p. 12, §3.2, Eq. 3    | Corrected form of the Beurteilungspegel formula (index alignment in sum notation)       | `propagation.go`    |
+| 2   | p. 16, §3.3.8, Eq. 9  | Index "refl" at D_refl corrected to subscript (typographic fix; formula value unchanged)| `emission.go`       |
+| 3   | p. 17, §3.4.1, Eq. 10 | Corrected form: `L_W'' = 63 + 10·lg[N·n] + D_P,PT − 10·lg[P/1m²]` (area term added)   | `parking.go`        |
+
+Note: The corrected Eq. 10 includes `−10·lg[P/1m²]` to express the
+_area-related_ level L_W''. When propagating parking as a point source, the
+implementation uses the _total_ sound power `L_W = L_W'' + 10·lg[P/1m²] =
+63 + 10·lg[N·n] + D_P,PT`, which cancels the area term.
+
 ## Not yet supported
 
-- (document any known gaps here)
+- Multi-diffraction (Gummibandmethode) for barriers with C term (§3.5.5, Eq. 16):
+  single-edge diffraction is implemented; multi-diffraction with C>0 is not.
+- Section 9 measurement-based vehicle data (custom acoustics from measurements).
 
 ## TEST-20 task coverage
 

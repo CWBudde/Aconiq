@@ -2917,3 +2917,91 @@ func TestComputeReflectedPaths_ThirdOrder_NotComputed(t *testing.T) {
 		}
 	}
 }
+
+// TestDiagrammI_SingleVehicleSpeedSweep verifies that the single-vehicle
+// length-related sound power level L_W' matches the normative Diagramm I
+// from RLS-19 (Ausgabe 2019, Anhang).
+//
+// Diagramm I: "Längenbezogener Schallleistungspegel L_W' eines Fahrzeuges
+// pro Stunde in dB" as a function of speed for Pkw, Lkw1, and Lkw2.
+//
+// For one vehicle/h with no surface, gradient, or junction corrections:
+//
+//	L_W'(v, FzG) = L_W0(v, FzG) − 10·lg(v) − 30
+//
+// with Tabelle 3 coefficients:
+//
+//	Pkw:  A=88.0,  B=20, C=3.06
+//	Lkw1: A=100.3, B=40, C=4.33
+//	Lkw2: A=105.4, B=50, C=4.88
+//
+// Reference values are computed from the normative Tabelle 3 formula; the
+// Diagramm I chart values are consistent with these results.
+func TestDiagrammI_SingleVehicleSpeedSweep(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		group    VehicleGroup
+		speedKPH float64
+		wantLWp  float64 // L_W' = L_W0 − 10·lg(v) − 30
+	}{
+		// Pkw (A=88.0, B=20, C=3.06) – values readable from Diagramm I
+		{name: "Pkw 30 km/h", group: Pkw, speedKPH: 30, wantLWp: 49.720298},
+		{name: "Pkw 80 km/h", group: Pkw, speedKPH: 80, wantLWp: 57.454134},
+		{name: "Pkw 100 km/h", group: Pkw, speedKPH: 100, wantLWp: 59.419914},
+		{name: "Pkw 130 km/h", group: Pkw, speedKPH: 130, wantLWp: 61.749826},
+		// Lkw1 (A=100.3, B=40, C=4.33)
+		{name: "Lkw1 30 km/h", group: Lkw1, speedKPH: 30, wantLWp: 56.627102},
+		{name: "Lkw1 80 km/h", group: Lkw1, speedKPH: 80, wantLWp: 64.514438},
+		{name: "Lkw1 100 km/h", group: Lkw1, speedKPH: 100, wantLWp: 67.612203},
+		// Lkw2 (A=105.4, B=50, C=4.88)
+		{name: "Lkw2 30 km/h", group: Lkw2, speedKPH: 30, wantLWp: 60.973771},
+		{name: "Lkw2 80 km/h", group: Lkw2, speedKPH: 80, wantLWp: 66.747637},
+		{name: "Lkw2 100 km/h", group: Lkw2, speedKPH: 100, wantLWp: 70.235303},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Neutral source: no surface correction, no gradient, no junction.
+			source := RoadSource{
+				ID:          "diagramm-i",
+				SurfaceType: SurfaceGussasphaltStandard,
+				Speeds: SpeedInput{
+					PkwKPH:  tt.speedKPH,
+					Lkw1KPH: tt.speedKPH,
+					Lkw2KPH: tt.speedKPH,
+					KradKPH: tt.speedKPH,
+				},
+				GradientPercent: 0,
+				JunctionType:    JunctionNone,
+				BuildingHeightM: 0,
+				StreetWidthM:    0,
+				Centerline: []geo.Point2D{
+					{X: -1, Y: 0},
+					{X: 1, Y: 0},
+				},
+			}
+
+			// One vehicle per hour of the tested group only.
+			var traffic TrafficInput
+
+			switch tt.group {
+			case Pkw:
+				traffic.PkwPerHour = 1
+			case Lkw1:
+				traffic.Lkw1PerHour = 1
+			case Lkw2:
+				traffic.Lkw2PerHour = 1
+			}
+
+			got := emissionForPeriod(source, traffic)
+			if !almostEqual(got, tt.wantLWp, 1e-4) {
+				t.Fatalf("L_W'(%s, %.0f km/h): want %.6f, got %.6f dB",
+					tt.group, tt.speedKPH, tt.wantLWp, got)
+			}
+		})
+	}
+}

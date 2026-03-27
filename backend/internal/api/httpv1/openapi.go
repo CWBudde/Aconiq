@@ -178,6 +178,47 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 					},
 				},
 			},
+			"/api/v1/artifacts/{id}/content": map[string]any{
+				"get": map[string]any{
+					"summary":     "Artifact file content",
+					"operationId": "getArtifactContent",
+					"parameters": []map[string]any{
+						{
+							"name":        "id",
+							"in":          "path",
+							"required":    true,
+							"description": "Artifact ID",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Artifact file content",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+									},
+								},
+								"text/html": map[string]any{
+									"schema": map[string]any{
+										"type": "string",
+									},
+								},
+								"text/markdown": map[string]any{
+									"schema": map[string]any{
+										"type": "string",
+									},
+								},
+							},
+						},
+						"400": openapiErrorResponse("Missing artifact ID"),
+						"404": openapiErrorResponse("Artifact not found"),
+						"405": methodNotAllowedResponse(),
+						"500": openapiErrorResponse("Failed to read artifact file"),
+					},
+				},
+			},
 			"/api/v1/events": map[string]any{
 				"get": map[string]any{
 					"summary":     "Server-sent event stream",
@@ -196,6 +237,75 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 							},
 						},
 						"405": methodNotAllowedResponse(),
+					},
+				},
+			},
+			"/api/v1/import/osm": map[string]any{
+				"post": map[string]any{
+					"summary":     "Import OSM data for a WGS84 bounding box",
+					"operationId": "importOSM",
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/ImportOSMRequest",
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Imported GeoJSON feature collection",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+									},
+								},
+							},
+						},
+						"400": openapiErrorResponse("Invalid OSM import request"),
+						"405": methodNotAllowedResponse(),
+						"502": openapiErrorResponse("Overpass API request failed"),
+					},
+				},
+			},
+			"/api/v1/import/terrain": map[string]any{
+				"post": map[string]any{
+					"summary":     "Import a GeoTIFF terrain model",
+					"operationId": "importTerrain",
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"multipart/form-data": map[string]any{
+								"schema": map[string]any{
+									"type":     "object",
+									"required": []string{"file"},
+									"properties": map[string]any{
+										"file": map[string]any{
+											"type":   "string",
+											"format": "binary",
+										},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Imported terrain metadata",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/TerrainInfo",
+									},
+								},
+							},
+						},
+						"400": openapiErrorResponse("Invalid terrain import request"),
+						"405": methodNotAllowedResponse(),
+						"500": openapiErrorResponse("Failed to persist terrain artifact"),
 					},
 				},
 			},
@@ -347,6 +457,46 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 						"input_paths": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
+						},
+					},
+				},
+				"ImportOSMRequest": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"south", "west", "north", "east"},
+					"properties": map[string]any{
+						"south":             map[string]any{"type": "number"},
+						"west":              map[string]any{"type": "number"},
+						"north":             map[string]any{"type": "number"},
+						"east":              map[string]any{"type": "number"},
+						"overpass_endpoint": map[string]any{"type": "string"},
+					},
+				},
+				"TerrainInfo": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"bounds", "pixel_size", "grid_size"},
+					"properties": map[string]any{
+						"bounds": map[string]any{
+							"type":        "array",
+							"minItems":    4,
+							"maxItems":    4,
+							"description": "Bounding box [min_x, min_y, max_x, max_y]",
+							"items":       map[string]any{"type": "number"},
+						},
+						"pixel_size": map[string]any{
+							"type":        "array",
+							"minItems":    2,
+							"maxItems":    2,
+							"description": "Pixel size [width, height] in CRS units",
+							"items":       map[string]any{"type": "number"},
+						},
+						"grid_size": map[string]any{
+							"type":        "array",
+							"minItems":    2,
+							"maxItems":    2,
+							"description": "Raster dimensions [width, height]",
+							"items":       map[string]any{"type": "integer"},
 						},
 					},
 				},

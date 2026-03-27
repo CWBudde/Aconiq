@@ -37,8 +37,14 @@ func TestOpenAPICommandWritesSpec(t *testing.T) {
 	}
 
 	for _, required := range []string{
+		"/api/v1/artifacts/{id}/content",
 		"/api/v1/health",
+		"/api/v1/import/osm",
+		"/api/v1/import/terrain",
+		"/api/v1/runs",
+		"/api/v1/runs/{id}/log",
 		"/api/v1/project/status",
+		"/api/v1/standards",
 		"/api/v1/events",
 		"/api/v1/openapi.json",
 	} {

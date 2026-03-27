@@ -204,6 +204,19 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	if _, exists := paths["/api/v1/events"]; !exists {
 		t.Fatalf("expected /api/v1/events path in openapi document")
 	}
+
+	for _, required := range []string{
+		"/api/v1/artifacts/{id}/content",
+		"/api/v1/import/osm",
+		"/api/v1/import/terrain",
+		"/api/v1/runs",
+		"/api/v1/runs/{id}/log",
+		"/api/v1/standards",
+	} {
+		if _, exists := paths[required]; !exists {
+			t.Fatalf("expected %s path in openapi document", required)
+		}
+	}
 }
 
 func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
