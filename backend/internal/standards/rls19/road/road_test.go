@@ -2706,3 +2706,214 @@ func TestJunctionCorrection_Eq8_Other_AlwaysZero(t *testing.T) {
 		}
 	}
 }
+
+// --- RLS-19 Section 3.6: Berücksichtigung von Reflexionen (Tabelle 8) ---
+
+// TestReflectorType_Tabelle8_LossValues verifies that each ReflectorType
+// returns the normative loss value from RLS-19 Tabelle 8.
+func TestReflectorType_Tabelle8_LossValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		rt     ReflectorType
+		wantDB float64
+		name   string
+	}{
+		{ReflectorTypeFacadeOrReflecting, 0.5, "FacadeOrReflecting"},
+		{ReflectorTypeReflectionReducing, 3.0, "ReflectionReducing"},
+		{ReflectorTypeStronglyReflectionReducing, 5.0, "StronglyReflectionReducing"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := Reflector{
+				ID:       "wall",
+				Geometry: []geo.Point2D{{X: 0, Y: 0}, {X: 1, Y: 0}},
+				HeightM:  5.0,
+				Type:     tc.rt,
+			}
+			got := r.effectiveLoss()
+
+			if !almostEqual(got, tc.wantDB, 1e-9) {
+				t.Fatalf("effectiveLoss() = %g dB, want %g dB", got, tc.wantDB)
+			}
+		})
+	}
+}
+
+// TestReflectorType_TypeTakesPrecedenceOverExplicitLoss verifies that when
+// Type is set, it overrides ReflectionLossDB.
+func TestReflectorType_TypeTakesPrecedenceOverExplicitLoss(t *testing.T) {
+	t.Parallel()
+
+	r := Reflector{
+		ID:               "wall",
+		Geometry:         []geo.Point2D{{X: 0, Y: 0}, {X: 1, Y: 0}},
+		HeightM:          5.0,
+		Type:             ReflectorTypeFacadeOrReflecting, // 0.5 dB
+		ReflectionLossDB: 3.0,                             // should be ignored
+	}
+
+	got := r.effectiveLoss()
+	if !almostEqual(got, 0.5, 1e-9) {
+		t.Fatalf("effectiveLoss() = %g dB, want 0.5 dB (Type takes precedence)", got)
+	}
+}
+
+// TestReflectorType_Unspecified_UsesExplicitLoss verifies that
+// ReflectorTypeUnspecified falls back to ReflectionLossDB when set.
+func TestReflectorType_Unspecified_UsesExplicitLoss(t *testing.T) {
+	t.Parallel()
+
+	r := Reflector{
+		ID:               "wall",
+		Geometry:         []geo.Point2D{{X: 0, Y: 0}, {X: 1, Y: 0}},
+		HeightM:          5.0,
+		ReflectionLossDB: 2.5,
+	}
+
+	got := r.effectiveLoss()
+	if !almostEqual(got, 2.5, 1e-9) {
+		t.Fatalf("effectiveLoss() = %g dB, want 2.5 dB", got)
+	}
+}
+
+// TestReflectorType_Unspecified_DefaultLoss verifies that when neither Type
+// nor ReflectionLossDB is set, effectiveLoss returns the 1.0 dB default.
+func TestReflectorType_Unspecified_DefaultLoss(t *testing.T) {
+	t.Parallel()
+
+	r := Reflector{
+		ID:       "wall",
+		Geometry: []geo.Point2D{{X: 0, Y: 0}, {X: 1, Y: 0}},
+		HeightM:  5.0,
+		// Type = ReflectorTypeUnspecified (zero), ReflectionLossDB = 0
+	}
+
+	got := r.effectiveLoss()
+	if !almostEqual(got, 1.0, 1e-9) {
+		t.Fatalf("effectiveLoss() = %g dB, want 1.0 dB (default)", got)
+	}
+}
+
+// TestReflection_NormativeHeightCondition_Below1m verifies that a reflector
+// with height < 1.0 m is rejected even when the ray would not pass over it.
+//
+// RLS-19 Tabelle 8: h_R ≥ 1.0 m is a minimum regardless of path geometry.
+//
+// Geometry: source (0,0) z=0, receiver (100,0) z=0 (same height), so the
+// reflected ray stays at z=0 — the ray would not pass over a 0.8 m wall.
+// However h_R = 0.8 < 1.0 → normative condition fails → no reflection.
+func TestReflection_NormativeHeightCondition_Below1m(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "low-wall",
+		Geometry: []geo.Point2D{{X: 110, Y: -20}, {X: 110, Y: 20}},
+		HeightM:  0.8, // < 1.0 m: normative minimum not satisfied
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.0,
+		geo.Point2D{X: 100, Y: 0}, 0.0,
+		[]Reflector{wall},
+	)
+
+	if len(paths) != 0 {
+		t.Fatalf("expected 0 paths (h_R < 1.0 m), got %d", len(paths))
+	}
+}
+
+// TestReflection_NormativeHeightCondition_Geometric verifies that a reflector
+// whose height satisfies h_R ≥ 1.0 m but fails h_R ≥ 0.3·√(a_R) produces no
+// reflected path.
+//
+// Geometry: source (0,0) z=0, receiver (100,0) z=0, wall at y=20 (x ∈ [−30,130]).
+// Reflection point P = (50, 20) (midpoint of the 90-degree path).
+// dist(S,P) = dist(P,R) = √(2500+400) ≈ 53.85 m → a_R = 53.85 m.
+// 0.3·√53.85 ≈ 2.20 m.
+// Wall height = 1.5 m ≥ 1.0 m ✓  but 1.5 < 2.20 ✗ → no reflection.
+func TestReflection_NormativeHeightCondition_Geometric(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "short-for-distance",
+		Geometry: []geo.Point2D{{X: -30, Y: 20}, {X: 130, Y: 20}},
+		HeightM:  1.5, // ≥ 1.0 m but < 0.3·√(53.85) ≈ 2.20 m
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.0,
+		geo.Point2D{X: 100, Y: 0}, 0.0,
+		[]Reflector{wall},
+	)
+
+	if len(paths) != 0 {
+		t.Fatalf("expected 0 paths (h_R < 0.3·√a_R), got %d", len(paths))
+	}
+}
+
+// TestReflection_NormativeHeightCondition_TallEnough verifies that a wall
+// satisfying both normative height conditions produces a valid reflection.
+//
+// Same geometry as above but wall height = 3.0 m ≥ 2.20 m → reflection valid.
+func TestReflection_NormativeHeightCondition_TallEnough(t *testing.T) {
+	t.Parallel()
+
+	wall := Reflector{
+		ID:       "tall-enough",
+		Geometry: []geo.Point2D{{X: -30, Y: 20}, {X: 130, Y: 20}},
+		HeightM:  3.0, // ≥ 1.0 m and ≥ 0.3·√53.85 ≈ 2.20 m
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.0,
+		geo.Point2D{X: 100, Y: 0}, 0.0,
+		[]Reflector{wall},
+	)
+
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path (tall enough wall), got %d", len(paths))
+	}
+}
+
+// TestComputeReflectedPaths_ThirdOrder_NotComputed verifies that
+// computeReflectedPaths only returns 1st- and 2nd-order paths.
+// RLS-19 explicitly ignores 3rd- and higher-order reflections.
+//
+// Three walls are arranged in a U-shape around the source. With 3 walls the
+// theoretical maximum is 3 (1st-order) + 6 (2nd-order) = 9 paths.
+// Any 3rd-order path would require 3 bounces and cannot appear in the result.
+func TestComputeReflectedPaths_ThirdOrder_NotComputed(t *testing.T) {
+	t.Parallel()
+
+	// Three tall walls forming a U-shape behind the source.
+	walls := []Reflector{
+		{ID: "w1", Geometry: []geo.Point2D{{X: -20, Y: -5}, {X: -20, Y: 5}}, HeightM: 10},
+		{ID: "w2", Geometry: []geo.Point2D{{X: 20, Y: -5}, {X: 20, Y: 5}}, HeightM: 10},
+		{ID: "w3", Geometry: []geo.Point2D{{X: -20, Y: -5}, {X: 20, Y: -5}}, HeightM: 10},
+	}
+
+	paths := computeReflectedPaths(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		walls,
+	)
+
+	// Maximum possible paths = 1st-order (≤3) + 2nd-order (≤6) = ≤9.
+	// If 3rd-order were computed, the count would exceed this bound.
+	const maxExpected = 9
+	if len(paths) > maxExpected {
+		t.Fatalf("expected at most %d paths (no 3rd-order), got %d", maxExpected, len(paths))
+	}
+
+	// Additionally: no path should carry a loss exceeding 3 * max-single-loss.
+	// With the 1.0 dB default, a 3rd-order path would have loss > 2.0 dB.
+	for _, p := range paths {
+		if p.lossDB > 2.0+1e-9 {
+			t.Fatalf("path loss %g dB exceeds 2-bounce maximum (3rd-order not expected)", p.lossDB)
+		}
+	}
+}

@@ -511,6 +511,12 @@ func buildingReflectors(explicit []Reflector, buildings []Building) []Reflector 
 // additional point source at the image-source position; ground correction uses
 // the mean height of the direct path (flat terrain approximation for the
 // reflected legs, which is adequate for first-order use).
+//
+// Active Teilstück (Bild 14): only the sub-segment whose reflected ray
+// geometrically intersects the reflector contributes as a mirror source. This
+// is enforced inside computeReflectedPaths via the segment-intersection check —
+// sub-segments with no valid crossing return no reflected paths and therefore
+// add no energy.
 func appendReflectedContribs(
 	dayContrib, nightContrib *[]float64,
 	emission EmissionResult,
