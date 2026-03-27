@@ -186,7 +186,7 @@ Current `emissionForPeriod` computes `lwA + 10·lg(count)` per group and sums �
 - [x] Verify whether current emission formula matches Eq. 4 exactly (the `/v_vg – 30` structure)
 - [x] If not, correct `emissionForPeriod` to match Eq. 4 including the `v_vg` divisor and `–30` normalization
 - [x] Verify total-M + p1/p2 representation is equivalent to per-group counts as currently modelled
-- [ ] Expose a `DTVToHourly` helper implementing Tabelle 2 (DTV → M, p1, p2 by Straßenart for day/night)
+- [x] Expose a `DTVToHourly` helper implementing Tabelle 2 (DTV → M, p1, p2 by Straßenart for day/night)
   - Bundesautobahnen/Kraftfahrstraßen: day M=0.0555·DTV, p1=3%, p2=11%; night M=0.0140·DTV, p1=10%, p2=25%
   - Bundesstraßen: day M=0.0575·DTV, p1=3%, p2=7%; night M=0.0100·DTV, p1=7%, p2=13%
   - Landes-/Kreis-/Gemeindeverbindungsstraßen: day M=0.0575·DTV, p1=3%, p2=5%; night M=0.0100·DTV, p1=5%, p2=6%
@@ -198,9 +198,9 @@ Source line positioning rules depend on lane count (per Bild 6):
 1 lane → over lane center; 2 lanes → over outer lane; 3–4 lanes → over Trennlinie; 5+ lanes → over second outermost lane.
 For bidirectional roads with different surface types per direction: use the larger correction per vehicle class (Pkw, Lkw).
 
-- [ ] Document source line positioning rules in code (currently user-specified, no validation)
-- [ ] Add optional `LaneCount` field to `RoadSource` to enable automatic source line offset calculation
-- [ ] Validate that multi-surface-type roads use the per-direction maximum correction rule
+- [x] Document source line positioning rules in code (currently user-specified, no validation)
+- [x] Add optional `LaneCount` field to `RoadSource` to enable automatic source line offset calculation
+- [x] Validate that multi-surface-type roads use the per-direction maximum correction rule
 
 ### Section 3.3.5 — Straßendeckschichtkorrektur (Tabelle 4a / 4b)
 
@@ -209,8 +209,8 @@ Tabelle 4b covers Pflasterbeläge with three speed thresholds (30, 40, ≥50 km/
 
 The current `surfaceCorrectionTable` has single values per vehicle group (not speed-dependent for standard asphalt types) — values are placeholders.
 
-- [ ] Restructure `SurfaceCorrectionEntry` to hold `(PkwLow, PkwHigh, LkwLow, LkwHigh float64)` (low = ≤60, high = >60)
-- [ ] Populate Tabelle 4a normative values (outside Pflaster) for all surface types:
+- [x] Restructure `SurfaceCorrectionEntry` to hold `(PkwLow, PkwHigh, LkwLow, LkwHigh float64)` (low = ≤60, high = >60)
+- [x] Populate Tabelle 4a normative values (outside Pflaster) for all surface types:
   - SMA 5/8 (v≤60 only): Pkw –2.6, Lkw –1.8
   - SMA 8/11 (v>60 only): Lkw –1.8/Lkw –2.0 (check direction-specific values in table)
   - AB ≤ AC 11: Pkw –2.7/–1.9, Lkw –1.9/–2.1
@@ -222,11 +222,11 @@ The current `surfaceCorrectionTable` has single values per vehicle group (not sp
   - SMA LA 8: Pkw –2.8 (v≤60 only), Lkw –4.6 (v>60 only)
   - DSH-V 5: Pkw –3.9/–2.8, Lkw –0.9/–2.3
   - (cells with × in table = that speed range not applicable for that surface)
-- [ ] Populate Tabelle 4b normative values for Pflasterbeläge:
+- [x] Populate Tabelle 4b normative values for Pflasterbeläge:
   - Pflaster eben (b≤5.0 mm, b+2f≤9.0 mm): +1.0/+2.0/+3.0 (at 30/40/≥50 km/h)
   - Sonstiges Pflaster (b>5.0 mm or f>2.0 mm, or Kopfsteinpflaster): +5.0/+6.0/+7.0
-- [ ] Update `SurfaceCorrection(st, vg, speedKPH)` signature to accept speed
-- [ ] Add unit tests for each Tabelle 4a/4b row at relevant speed thresholds
+- [x] Update `SurfaceCorrection(st, vg, speedKPH)` signature to accept speed
+- [x] Add unit tests for each Tabelle 4a/4b row at relevant speed thresholds
 
 ### Section 3.3.6 — Längsneigungskorrektur (Eqs. 7a / 7b / 7c)
 

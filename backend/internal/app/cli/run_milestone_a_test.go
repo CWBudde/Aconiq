@@ -623,6 +623,55 @@ func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
 	}
 }
 
+func TestExtractRLS19RoadSourcesParsesLaneCount(t *testing.T) {
+	t.Parallel()
+
+	model := mustNormalizeModel(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rls19-rd-lanes",
+        "kind": "source",
+        "source_type": "line",
+        "lanes": 2
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0,0],[100,0]]}
+    }
+  ]
+}`)
+
+	sources, _, err := extractRLS19RoadSources(model, rls19RoadRunOptions{
+		SurfaceType:      string(rls19road.SurfaceSMA),
+		SpeedPkwKPH:      100,
+		SpeedLkw1KPH:     100,
+		SpeedLkw2KPH:     80,
+		SpeedKradKPH:     100,
+		TrafficDayPkw:    900,
+		TrafficDayLkw1:   40,
+		TrafficDayLkw2:   60,
+		TrafficDayKrad:   10,
+		TrafficNightPkw:  200,
+		TrafficNightLkw1: 10,
+		TrafficNightLkw2: 20,
+		TrafficNightKrad: 2,
+		SegmentLengthM:   1,
+		MinDistanceM:     3,
+	}, []string{"line"})
+	if err != nil {
+		t.Fatalf("extract rls19 road sources: %v", err)
+	}
+
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+
+	if sources[0].LaneCount != 2 {
+		t.Fatalf("expected lane_count=2, got %d", sources[0].LaneCount)
+	}
+}
+
 func mustNormalizeModel(t *testing.T, payload string) modelgeojson.Model {
 	t.Helper()
 

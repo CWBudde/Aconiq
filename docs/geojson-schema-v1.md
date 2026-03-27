@@ -50,6 +50,10 @@ geometry conventions from feature properties.
 
 - Line sources may use `LineString` / `MultiLineString` coordinates in either
   `2D` (`[x, y]`) or `3D` (`[x, y, z]`) form.
+- A source feature may optionally provide `lane_count` (or imported OSM `lanes`)
+  to derive the normative source line automatically from the reference line.
+  The current implementation applies the Bild 6 lane-count placement rules with
+  right-hand traffic and a default 3.5 m lane width.
 - When `3D` coordinates are present, the vertex `z` values are mapped to
   per-vertex road elevations for rising / descending roads.
 - Alternatively, a source feature may provide:
@@ -60,10 +64,14 @@ geometry conventions from feature properties.
   each entry defines one directional line source with:
   - `centerline` or `coordinates`
   - optional `id` / `direction_id` / `direction`
+  - optional `lane_count`
   - optional per-direction acoustic overrides such as `traffic_day_*`,
     `traffic_night_*`, `speed_*_kph`, `surface_type`, `gradient_percent`,
     `junction_type`, `junction_distance_m`, `reflection_surcharge_db`,
     `elevation_m`, and `centerline_elevations`
+- If directional sources would resolve to different `surface_type` values, the
+  input must already be harmonized to a single shared surface choice that
+  reflects the larger per-direction correction.
 
 ## Geometry Sanity Checks
 

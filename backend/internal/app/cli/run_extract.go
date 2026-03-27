@@ -876,6 +876,58 @@ func rls19PropertiesHaveAcousticOverrides(properties map[string]any) bool {
 	return false
 }
 
+func resolveRLS19SurfaceType(properties map[string]any, defaultSurface string) (string, error) {
+	surfaceType := defaultSurface
+	value, ok, err := propertyString(properties, "surface_type", "road_surface_type")
+	if err != nil {
+		return "", err
+	}
+
+	if ok {
+		surfaceType = value
+	}
+
+	return surfaceType, nil
+}
+
+func resolveRLS19LaneCount(properties map[string]any) (int, error) {
+	value, ok, err := propertyFloat(properties, "lane_count", "lanes")
+	if err != nil {
+		return 0, err
+	}
+
+	if !ok {
+		return 0, nil
+	}
+
+	if value < 1 || math.Trunc(value) != value {
+		return 0, fmt.Errorf("lane_count/lanes must be an integer >= 1")
+	}
+
+	return int(value), nil
+}
+
+func validateRLS19DirectionalSurfaceTypes(feature modelgeojson.Feature, directionalSources []rls19DirectionalSourceSpec, defaultSurface string) error {
+	if len(directionalSources) <= 1 {
+		return nil
+	}
+
+	resolved := make(map[string]struct{}, len(directionalSources))
+	for _, directional := range directionalSources {
+		surfaceType, err := resolveRLS19SurfaceType(mergedProperties(feature.Properties, directional.Overrides), defaultSurface)
+		if err != nil {
+			return err
+		}
+
+		resolved[surfaceType] = struct{}{}
+		if len(resolved) > 1 {
+			return errors.New("directional sources with different surface_type values are not supported; use one shared surface_type that already reflects the larger per-direction correction")
+		}
+	}
+
+	return nil
+}
+
 // extractRLS19RoadSources extracts RLS-19 road sources from the normalized
 // model, applying per-source feature properties as overrides over the run-wide
 // defaults in options. Sources are returned in model feature order, preserving
@@ -920,6 +972,11 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 		}
 
+		err = validateRLS19DirectionalSurfaceTypes(feature, directionalSources, options.SurfaceType)
+		if err != nil {
+			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
 		baseID := strings.TrimSpace(feature.ID)
 		if baseID == "" {
 			baseID = fmt.Sprintf("rls19-road-source-%03d", featureIndex)
@@ -958,15 +1015,14 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			seenSourceIDs[sourceID] = struct{}{}
 
 			properties := mergedProperties(feature.Properties, directional.Overrides)
-			surfaceType := options.SurfaceType
+			surfaceType, err := resolveRLS19SurfaceType(properties, options.SurfaceType)
+			if err != nil {
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+			}
 
-			{
-				value, ok, err := propertyString(properties, "surface_type", "road_surface_type")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					surfaceType = value
-				}
+			laneCount, err := resolveRLS19LaneCount(properties)
+			if err != nil {
+				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			}
 
 			speedPkwKPH := options.SpeedPkwKPH
@@ -1094,6 +1150,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				ID:                   sourceID,
 				Centerline:           directional.Geometry.Centerline,
 				CenterlineElevations: directional.Geometry.CenterlineElevations,
+				LaneCount:            laneCount,
 				SurfaceType:          rls19road.SurfaceType(surfaceType),
 				Speeds: rls19road.SpeedInput{
 					PkwKPH:  speedPkwKPH,
@@ -1109,7 +1166,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 				TrafficNight:          trafficNight,
 			}
 
-			err := source.Validate()
+			err = source.Validate()
 			if err != nil {
 				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
 			}

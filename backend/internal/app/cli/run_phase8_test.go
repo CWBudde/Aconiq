@@ -1303,6 +1303,66 @@ func TestExtractRLS19RoadSourcesDirectionalGeometry(t *testing.T) {
 	}
 }
 
+func TestExtractRLS19RoadSourcesRejectsMixedDirectionalSurfaceTypes(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rd-mixed-surface",
+        "kind": "source",
+        "source_type": "line",
+        "surface_type": "SMA",
+        "rls19_directional_sources": [
+          {
+            "id": "northbound",
+            "centerline": [[0, -2], [120, -2]],
+            "surface_type": "OPA"
+          },
+          {
+            "id": "southbound",
+            "centerline": [[0, 2], [120, 2]],
+            "surface_type": "Beton"
+          }
+        ]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[0, 0], [120, 0]]}
+    }
+  ]
+}`)
+
+	model, err := modelgeojson.Normalize(payload, "EPSG:25832", "directional-mixed-surface.geojson")
+	if err != nil {
+		t.Fatalf("normalize model: %v", err)
+	}
+
+	_, _, err = extractRLS19RoadSources(model, rls19RoadRunOptions{
+		SurfaceType:      string(rls19road.SurfaceSMA),
+		SpeedPkwKPH:      100,
+		SpeedLkw1KPH:     80,
+		SpeedLkw2KPH:     70,
+		SpeedKradKPH:     100,
+		TrafficDayPkw:    900,
+		TrafficDayLkw1:   40,
+		TrafficDayLkw2:   60,
+		TrafficDayKrad:   10,
+		TrafficNightPkw:  200,
+		TrafficNightLkw1: 10,
+		TrafficNightLkw2: 20,
+		TrafficNightKrad: 2,
+	}, []string{"line"})
+	if err == nil {
+		t.Fatal("expected error for mixed directional surface types")
+	}
+
+	if !strings.Contains(err.Error(), "shared surface_type") {
+		t.Fatalf("expected mixed-surface guidance in error, got %v", err)
+	}
+}
+
 func TestRunRLS19RoadPerSourceAcousticsRecordedInSummary(t *testing.T) {
 	t.Parallel()
 

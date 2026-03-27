@@ -104,10 +104,11 @@ func clampBaseEmissionSpeed(speedKPH float64, vg VehicleGroup) float64 {
 // for a given vehicle group, including all corrections (E1-E4, E6).
 func computeVehicleSoundPower(source RoadSource, vg VehicleGroup) float64 {
 	// E1: Base emission (Grundwert) - speed-dependent.
-	base := computeBaseEmission(effectiveVehicleSpeed(source.Speeds, vg), vg)
+	speed := effectiveVehicleSpeed(source.Speeds, vg)
+	base := computeBaseEmission(speed, vg)
 
 	// E2: Surface correction (DStrO).
-	surfCorr := SurfaceCorrection(source.SurfaceType, vg)
+	surfCorr := SurfaceCorrection(source.SurfaceType, vg, speed)
 
 	// E3: Gradient correction.
 	gradCorr := GradientCorrection(source.GradientPercent, vg)
@@ -160,7 +161,7 @@ func ComputeVehicleGroupEmissions(source RoadSource) ([]VehicleGroupEmission, er
 	for _, vg := range groups {
 		speed := effectiveVehicleSpeed(source.Speeds, vg)
 		base := computeBaseEmission(speed, vg)
-		surfCorr := SurfaceCorrection(source.SurfaceType, vg)
+		surfCorr := SurfaceCorrection(source.SurfaceType, vg, speed)
 		gradCorr := GradientCorrection(source.GradientPercent, vg)
 		juncCorr := JunctionCorrection(source.JunctionType, source.JunctionDistanceM)
 

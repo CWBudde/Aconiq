@@ -84,28 +84,44 @@ type SurfaceType string
 
 const (
 	// SurfaceNotSpecified indicates no surface type was specified.
-	SurfaceNotSpecified     SurfaceType = ""
-	SurfaceSMA              SurfaceType = "SMA"         // Splittmastixasphalt
-	SurfaceAB               SurfaceType = "AB"          // Asphaltbeton
-	SurfaceOPA              SurfaceType = "OPA"         // Offenporiger Asphalt
-	SurfacePaving           SurfaceType = "Pflaster"    // Pflaster
-	SurfaceConcrete         SurfaceType = "Beton"       // Waschbeton/Beton
-	SurfaceLOA              SurfaceType = "LOA"         // Lärmoptimierter Asphalt
-	SurfaceDSHV             SurfaceType = "DSH-V"       // Dünne Schicht im Heißeinbau auf Versiegelung
-	SurfaceGussasphalt      SurfaceType = "Gussasphalt" // Gussasphalt
-	SurfaceUnpavedOrDamaged SurfaceType = "beschaedigt" // unbefestigt/stark beschädigt
+	SurfaceNotSpecified        SurfaceType = ""
+	SurfaceSMA                 SurfaceType = "SMA"                         // generic alias: SMA 5/8 at <=60, SMA 8/11 at >60
+	SurfaceSMA5_8              SurfaceType = "SMA-5-8"                     // Splittmastixasphalt SMA 5/8
+	SurfaceSMA8_11             SurfaceType = "SMA-8-11"                    // Splittmastixasphalt SMA 8/11
+	SurfaceAB                  SurfaceType = "AB"                          // Asphaltbeton <= AC 11
+	SurfaceOPA                 SurfaceType = "OPA"                         // generic alias: OPA PA 11
+	SurfaceOPA11               SurfaceType = "OPA-11"                      // Offenporiger Asphalt PA 11
+	SurfaceOPA8                SurfaceType = "OPA-8"                       // Offenporiger Asphalt PA 8
+	SurfacePaving              SurfaceType = "Pflaster"                    // generic alias: sonstiges Pflaster
+	SurfacePavingEven          SurfaceType = "Pflaster-eben"               // Pflaster mit ebener Oberfläche
+	SurfacePavingOther         SurfaceType = "Pflaster-sonstig"            // sonstiges Pflaster / Kopfsteinpflaster
+	SurfaceConcrete            SurfaceType = "Beton"                       // Waschbeton/Beton
+	SurfaceLOA                 SurfaceType = "LOA"                         // AC D LOA
+	SurfaceSMALA8              SurfaceType = "SMA-LA-8"                    // SMA LA 8
+	SurfaceDSHV                SurfaceType = "DSH-V"                       // DSH-V 5
+	SurfaceGussasphalt         SurfaceType = "Gussasphalt"                 // generic alias: lärmarmer Gussasphalt
+	SurfaceGussasphaltStandard SurfaceType = "Gussasphalt-nicht-geriffelt" // nicht geriffelter Gussasphalt
+	SurfaceUnpavedOrDamaged    SurfaceType = "beschaedigt"                 // unbefestigt/stark beschädigt (legacy fallback)
 )
 
 var allowedSurfaceTypes = map[SurfaceType]struct{}{
-	SurfaceSMA:              {},
-	SurfaceAB:               {},
-	SurfaceOPA:              {},
-	SurfacePaving:           {},
-	SurfaceConcrete:         {},
-	SurfaceLOA:              {},
-	SurfaceDSHV:             {},
-	SurfaceGussasphalt:      {},
-	SurfaceUnpavedOrDamaged: {},
+	SurfaceSMA:                 {},
+	SurfaceSMA5_8:              {},
+	SurfaceSMA8_11:             {},
+	SurfaceAB:                  {},
+	SurfaceOPA:                 {},
+	SurfaceOPA11:               {},
+	SurfaceOPA8:                {},
+	SurfacePaving:              {},
+	SurfacePavingEven:          {},
+	SurfacePavingOther:         {},
+	SurfaceConcrete:            {},
+	SurfaceLOA:                 {},
+	SurfaceSMALA8:              {},
+	SurfaceDSHV:                {},
+	SurfaceGussasphalt:         {},
+	SurfaceGussasphaltStandard: {},
+	SurfaceUnpavedOrDamaged:    {},
 }
 
 func isAllowedSurface(st SurfaceType) bool {
@@ -235,6 +251,9 @@ type RoadSource struct {
 	ID string `json:"id"`
 
 	// Geometry: source line for this direction/lane group (plan view, 2D).
+	// If LaneCount is set, geometry consumers may derive the normative source line
+	// from this reference line using the Bild 6 placement rules via EffectiveCenterline.
+	// The automatic placement assumes right-hand traffic and a default 3.5 m lane width.
 	Centerline []geo.Point2D `json:"centerline"`
 
 	// ElevationM is the absolute Z of the road surface (uniform for flat roads).
@@ -245,6 +264,12 @@ type RoadSource struct {
 	// roads (Ansteigende/Wegführende Straße). Must have the same length as
 	// Centerline if provided; overrides ElevationM at each vertex.
 	CenterlineElevations []float64 `json:"centerline_elevations,omitempty"`
+
+	// LaneCount enables automatic source-line placement from the reference line.
+	// Bild 6 rules: 1 lane -> lane center, 2 lanes -> outer lane, 3-4 lanes ->
+	// separating line, 5+ lanes -> second outermost lane.
+	// Zero means the Centerline is already the final source line.
+	LaneCount int `json:"lane_count,omitempty"`
 
 	// Road attributes.
 	SurfaceType       SurfaceType  `json:"surface_type"`
@@ -286,6 +311,10 @@ func (s RoadSource) Validate() error {
 
 	if s.SurfaceType != SurfaceNotSpecified && !isAllowedSurface(s.SurfaceType) {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
+	}
+
+	if s.LaneCount < 0 {
+		return fmt.Errorf("road source %q lane_count must be >= 0", s.ID)
 	}
 
 	err = validateSpeedInput(s.ID, s.Speeds)
@@ -378,9 +407,12 @@ func Descriptor() framework.StandardDescriptor {
 									Kind:         framework.ParameterKindString,
 									DefaultValue: string(SurfaceSMA),
 									Enum: []string{
-										string(SurfaceSMA), string(SurfaceAB), string(SurfaceOPA),
-										string(SurfacePaving), string(SurfaceConcrete), string(SurfaceLOA),
-										string(SurfaceDSHV), string(SurfaceGussasphalt), string(SurfaceUnpavedOrDamaged),
+										string(SurfaceSMA), string(SurfaceSMA5_8), string(SurfaceSMA8_11),
+										string(SurfaceAB), string(SurfaceOPA), string(SurfaceOPA11), string(SurfaceOPA8),
+										string(SurfacePaving), string(SurfacePavingEven), string(SurfacePavingOther),
+										string(SurfaceConcrete), string(SurfaceLOA), string(SurfaceSMALA8),
+										string(SurfaceDSHV), string(SurfaceGussasphalt), string(SurfaceGussasphaltStandard),
+										string(SurfaceUnpavedOrDamaged),
 									},
 									Description: "Default surface type (DStrO) for road sources",
 								},

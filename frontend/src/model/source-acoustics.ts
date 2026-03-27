@@ -2,13 +2,21 @@ import type { ModelFeature } from "./types";
 
 export const RLS19_SURFACE_TYPES = [
   "SMA",
+  "SMA-5-8",
+  "SMA-8-11",
   "AB",
   "OPA",
+  "OPA-11",
+  "OPA-8",
   "Pflaster",
+  "Pflaster-eben",
+  "Pflaster-sonstig",
   "Beton",
   "LOA",
+  "SMA-LA-8",
   "DSH-V",
   "Gussasphalt",
+  "Gussasphalt-nicht-geriffelt",
   "beschaedigt",
 ] as const;
 

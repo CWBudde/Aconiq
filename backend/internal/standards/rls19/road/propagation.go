@@ -350,13 +350,15 @@ func appendSourceContributions(
 		}
 	}
 
+	sourceLine := source.EffectiveCenterline()
+
 	// Split the source line into sub-segments (Teilstueckverfahren).
-	segments := SplitLineIntoSegments(source.Centerline, elevations, effectiveCfg.SegmentLengthM)
+	segments := SplitLineIntoSegments(sourceLine, elevations, effectiveCfg.SegmentLengthM)
 	if len(segments) == 0 {
 		return nil
 	}
 
-	totalLength := polylineLength(source.Centerline)
+	totalLength := polylineLength(sourceLine)
 	if totalLength <= 0 {
 		return nil
 	}
