@@ -86,7 +86,7 @@ var gleisbremsTable = [9]YardSourceData{
 	// ΔL_W,f values: 500 Hz band value cross-referenced from PDF p. 44.
 	{
 		LWA: 98, HeightM: 0, SourceShape: YardSourcePoint,
-		DeltaLW: BeiblattSpectrum{-52, -45, -41, -38, -9, -1, -13, -13},
+		DeltaLW: BeiblattSpectrum{-56, -52, -45, -41, -38, -9, -1, -13},
 	},
 	// i=7: Richtungsgleisbremse, TWE einseitig mit Segmenten
 	{
@@ -96,7 +96,7 @@ var gleisbremsTable = [9]YardSourceData{
 	// i=8: Gummiwalkbremse
 	{
 		LWA: 83, HeightM: 0, SourceShape: YardSourcePoint,
-		DeltaLW: BeiblattSpectrum{-57, -52, -45, -41, -38, -9, -7, -11},
+		DeltaLW: BeiblattSpectrum{-28, -18, -12, -7, -6, -7, -8, -11},
 	},
 	// i=9: FEW Talbremse
 	{
@@ -106,7 +106,7 @@ var gleisbremsTable = [9]YardSourceData{
 	// i=10: Schraubenbremse (L_WA for 1 element of ~1.2 m length)
 	{
 		LWA: 72, HeightM: 0, SourceShape: YardSourcePoint,
-		DeltaLW: BeiblattSpectrum{-29, -21, -9, -21, -10, -8, -4, -13},
+		DeltaLW: BeiblattSpectrum{-29, -21, -9, -10, -8, -4, -9, -13},
 	},
 }
 
