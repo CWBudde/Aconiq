@@ -272,7 +272,7 @@ func TestCombinedAssessmentGl35YardDominant(t *testing.T) {
 	t.Parallel()
 
 	// When yard contribution dominates, result ≈ yard level.
-	// Yard day=80 dB, Strecke day=-100 dB (negligible after K_S=-5)
+	// Yard day=80 dB, Strecke day=-100 dB (negligible)
 	lrTag, lrNacht := ComputeCombinedBeurteilungspegel(80, 10, -100, -100)
 	if math.Abs(lrTag-80) > 0.1 {
 		t.Errorf("yard-dominant day: expected ~80, got %g", lrTag)
@@ -286,9 +286,9 @@ func TestCombinedAssessmentGl35YardDominant(t *testing.T) {
 func TestCombinedAssessmentGl35EqualContributions(t *testing.T) {
 	t.Parallel()
 
-	// Yard=70, Strecke=75 (after K_S=-5 → 70). Equal contributions sum to 73.01 dB.
+	// Yard=70, Strecke=70 (K_S=0 → 70). Equal contributions sum to 73.01 dB.
 	// L_r = 10·lg(10^7 + 10^7) = 10·lg(2·10^7) = 73.01
-	lrTag, _ := ComputeCombinedBeurteilungspegel(70, 0, 75, 0)
+	lrTag, _ := ComputeCombinedBeurteilungspegel(70, 0, 70, 0)
 	if math.Abs(lrTag-73.01) > 0.1 {
 		t.Errorf("equal contributions: expected ~73.01, got %g", lrTag)
 	}
@@ -297,10 +297,38 @@ func TestCombinedAssessmentGl35EqualContributions(t *testing.T) {
 func TestCombinedAssessmentGl35KSAppliedOnlyToStrecken(t *testing.T) {
 	t.Parallel()
 
-	// Verify K_S=-5 applies to Strecke but NOT to yard.
-	// Yard negligible (-200), Strecke=55 → Strecke term = 55-5=50 dB result.
+	// K_S=0 (abolished), so Strecke term passes through unchanged.
+	// Yard negligible (-200), Strecke=55 → result ≈ 55 dB.
 	lrTag, _ := ComputeCombinedBeurteilungspegel(-200, -200, 55, -200)
-	if math.Abs(lrTag-50) > 0.2 {
-		t.Errorf("K_S on Strecke only: expected ~50, got %g", lrTag)
+	if math.Abs(lrTag-55) > 0.2 {
+		t.Errorf("K_S on Strecke only: expected ~55, got %g", lrTag)
+	}
+}
+
+func TestCombinedBeurteilungspegel_KS_Abolished(t *testing.T) {
+	t.Parallel()
+
+	// With K_S=0 (Schienenbonus abolished), combining yard=70 dB and
+	// strecke=70 dB should be a pure energetic sum with no -5 dB bonus
+	// on the strecke part.
+	//
+	// Expected: L_r = 10·lg(10^7 + 10^7) = 10·lg(2·10^7) ≈ 73.01 dB
+	wantTag := 10 * math.Log10(math.Pow(10, 0.1*70)+math.Pow(10, 0.1*70))
+
+	lrTag, lrNacht := ComputeCombinedBeurteilungspegel(70, 70, 70, 70)
+
+	if math.Abs(lrTag-wantTag) > 0.01 {
+		t.Errorf("day: expected pure energetic sum ≈ %g, got %g", wantTag, lrTag)
+	}
+
+	if math.Abs(lrNacht-wantTag) > 0.01 {
+		t.Errorf("night: expected pure energetic sum ≈ %g, got %g", wantTag, lrNacht)
+	}
+
+	// Ensure the old K_S=-5 value is NOT applied: if it were, the strecke
+	// contribution would be 65 dB and the result would be ~71.19 dB.
+	wrongResult := 10 * math.Log10(math.Pow(10, 0.1*70)+math.Pow(10, 0.1*65))
+	if math.Abs(lrTag-wrongResult) < 0.5 {
+		t.Errorf("day result %g matches old K_S=-5 value %g — Schienenbonus not abolished", lrTag, wrongResult)
 	}
 }
