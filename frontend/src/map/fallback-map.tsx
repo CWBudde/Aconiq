@@ -136,8 +136,8 @@ export function FallbackMap({ center }: FallbackMapProps) {
     >
       {tiles.map((tile) => (
         <img
-          key={`${view.zoom}/${tile.x}/${tile.y}`}
-          src={`https://tile.openstreetmap.org/${view.zoom}/${tile.x}/${tile.y}.png`}
+          key={`${String(view.zoom)}/${String(tile.x)}/${String(tile.y)}`}
+          src={`https://tile.openstreetmap.org/${String(view.zoom)}/${String(tile.x)}/${String(tile.y)}.png`}
           alt=""
           draggable={false}
           className="pointer-events-none absolute max-w-none select-none"
@@ -152,7 +152,7 @@ export function FallbackMap({ center }: FallbackMapProps) {
 
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full"
-        viewBox={`0 0 ${size.width || 1} ${size.height || 1}`}
+        viewBox={`0 0 ${String(size.width || 1)} ${String(size.height || 1)}`}
         preserveAspectRatio="none"
       >
         {features.map((feature) => (
@@ -237,7 +237,7 @@ function FeatureOverlay({
             key={`${feature.id}-poly-${String(index)}`}
             points={polygon
               .map(project)
-              .map(({ x, y }) => `${x},${y}`)
+              .map(({ x, y }) => `${String(x)},${String(y)}`)
               .join(" ")}
             fill={feature.kind === "source" ? `${color}33` : `${color}55`}
             stroke={color}
@@ -257,7 +257,7 @@ function FeatureOverlay({
             key={`${feature.id}-line-${String(index)}`}
             points={line
               .map(project)
-              .map(({ x, y }) => `${x},${y}`)
+              .map(({ x, y }) => `${String(x)},${String(y)}`)
               .join(" ")}
             fill="none"
             stroke={color}
@@ -465,7 +465,7 @@ function collectLines(coords: unknown): [number, number][][] {
   if (
     coords.length > 0 &&
     Array.isArray(coords[0]) &&
-    Array.isArray(coords[0][0]) === false
+    !Array.isArray(coords[0][0])
   ) {
     const line = collectPoints(coords);
     return line.length >= 2 ? [line] : [];
@@ -479,7 +479,7 @@ function collectPolygons(coords: unknown): [number, number][][] {
     coords.length > 0 &&
     Array.isArray(coords[0]) &&
     Array.isArray(coords[0][0]) &&
-    Array.isArray(coords[0][0][0]) === false
+    !Array.isArray(coords[0][0][0])
   ) {
     const outer = collectPoints(coords[0]);
     return outer.length >= 3 ? [outer] : [];

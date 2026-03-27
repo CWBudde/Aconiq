@@ -93,7 +93,9 @@ describe("draft utilities", () => {
       .mockImplementation(() => {
         throw new Error("storage unavailable");
       });
-    expect(() => discardDraft()).not.toThrow();
+    expect(() => {
+      discardDraft();
+    }).not.toThrow();
     setSpy.mockRestore();
   });
 });

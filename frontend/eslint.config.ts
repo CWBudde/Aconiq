@@ -11,6 +11,7 @@ export default tseslint.config(
       "eslint.config.ts",
       "vite.config.ts",
       "vitest.config.ts",
+      "src/i18n/**",
     ],
   },
   js.configs.recommended,

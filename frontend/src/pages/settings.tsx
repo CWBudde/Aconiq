@@ -49,7 +49,6 @@ type Category = {
   icon: React.ComponentType<{ className?: string }>;
   title: () => string;
   description: () => string;
-  status: () => string;
 };
 
 const CATEGORY_QUERY_KEY = "category";
@@ -138,16 +137,6 @@ function CategoryButton({
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center justify-between gap-3">
           <span className="font-medium">{category.title()}</span>
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-[11px] font-medium",
-              active
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground",
-            )}
-          >
-            {category.status()}
-          </span>
         </div>
         <p className="text-sm leading-5 text-muted-foreground">
           {category.description()}
@@ -193,12 +182,6 @@ function AppSettings({
             <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {m.settings_category_app()}
             </h3>
-            <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-              {m.msg_settings_intro()}
-            </p>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {m.msg_settings_taxonomy_intro()}
-            </p>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 lg:w-[28rem]">
@@ -260,7 +243,7 @@ function AppSettings({
               variant={locale === "en" ? "default" : "outline"}
               aria-pressed={locale === "en"}
               onClick={() => {
-                setLocale("en");
+                void setLocale("en");
               }}
             >
               {m.language_en()}
@@ -269,7 +252,7 @@ function AppSettings({
               variant={locale === "de" ? "default" : "outline"}
               aria-pressed={locale === "de"}
               onClick={() => {
-                setLocale("de");
+                void setLocale("de");
               }}
             >
               {m.language_de()}
@@ -445,9 +428,6 @@ function PlannedCategory({ category }: { category: Category }) {
           <Icon className="h-5 w-5" aria-hidden />
         </div>
         <div className="space-y-2">
-          <div className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-            {category.status()}
-          </div>
           <h3 className="text-2xl font-semibold tracking-tight">
             {category.title()}
           </h3>
@@ -458,10 +438,7 @@ function PlannedCategory({ category }: { category: Category }) {
       </div>
 
       <div className="mt-6 rounded-2xl border border-dashed bg-muted/30 p-6">
-        <p className="text-sm font-medium text-foreground">
-          {m.msg_settings_planned()}
-        </p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        <p className="text-sm leading-6 text-muted-foreground">
           This category is reserved for future settings in the product and will
           live here once those controls are defined.
         </p>
@@ -500,49 +477,42 @@ export default function SettingsPage() {
       icon: Settings,
       title: m.settings_category_app,
       description: m.settings_category_app_desc,
-      status: m.msg_settings_available_now,
     },
     {
       id: "project",
       icon: FolderKanban,
       title: m.settings_category_project,
       description: m.settings_category_project_desc,
-      status: m.msg_settings_planned,
     },
     {
       id: "model",
       icon: Layers3,
       title: m.settings_category_model,
       description: m.settings_category_model_desc,
-      status: m.msg_settings_planned,
     },
     {
       id: "map",
       icon: Map,
       title: m.settings_category_map,
       description: m.settings_category_map_desc,
-      status: m.msg_settings_planned,
     },
     {
       id: "runs",
       icon: Play,
       title: m.settings_category_runs,
       description: m.settings_category_runs_desc,
-      status: m.msg_settings_planned,
     },
     {
       id: "results",
       icon: BarChart3,
       title: m.settings_category_results,
       description: m.settings_category_results_desc,
-      status: m.msg_settings_planned,
     },
     {
       id: "advanced",
       icon: SlidersHorizontal,
       title: m.settings_category_advanced,
       description: m.settings_category_advanced_desc,
-      status: m.msg_settings_available_now,
     },
   ];
 
@@ -597,59 +567,6 @@ export default function SettingsPage() {
       />
 
       <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <section className="grid gap-6 rounded-3xl border bg-card/90 p-6 shadow-sm backdrop-blur lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Settings className="h-3.5 w-3.5" aria-hidden />
-              {m.page_title_settings()}
-            </div>
-            <div className="space-y-3">
-              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                {m.page_title_settings()}
-              </h2>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                {m.msg_settings_intro()}
-              </p>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                {m.msg_settings_taxonomy_intro()}
-              </p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-              <PreferencePill label={m.label_current()} value={themeLabel} />
-              <PreferencePill label={m.language()} value={localeLabel} />
-              <PreferencePill
-                label={m.section_runtime()}
-                value={runtimeLabel}
-              />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-muted/40 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">
-              {m.msg_settings_local_only()}
-            </p>
-            <p className="mt-2 leading-6">{m.msg_settings_storage_help()}</p>
-            <Separator className="my-4" />
-            <dl className="grid gap-3 text-sm">
-              <div>
-                <dt className="text-xs uppercase tracking-[0.2em]">
-                  {m.label_api_base_url()}
-                </dt>
-                <dd className="mt-1 font-mono text-xs text-foreground">
-                  {visibleApiBaseUrl}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.2em]">
-                  {m.section_runtime()}
-                </dt>
-                <dd className="mt-1 text-foreground">{runtimeLabel}</dd>
-              </div>
-            </dl>
-          </div>
-        </section>
-
         <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside className="rounded-3xl border bg-card/80 p-3 shadow-sm">
             <div className="px-3 pb-3 pt-2">

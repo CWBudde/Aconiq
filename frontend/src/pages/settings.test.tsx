@@ -33,9 +33,6 @@ describe("SettingsPage", () => {
     renderPage();
 
     expect(
-      screen.getByRole("heading", { name: m.page_title_settings() }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByText(m.section_settings_categories()),
     ).toBeInTheDocument();
     expect(
@@ -44,7 +41,6 @@ describe("SettingsPage", () => {
     expect(
       screen.getByRole("button", { name: m.language_en() }),
     ).toBeInTheDocument();
-    expect(screen.getByText(m.msg_settings_local_only())).toBeInTheDocument();
   });
 
   it("switches to a planned settings category", () => {
@@ -55,7 +51,6 @@ describe("SettingsPage", () => {
     expect(
       screen.getByRole("heading", { name: m.settings_category_project() }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText(m.msg_settings_planned())).not.toHaveLength(0);
     expect(screen.getByTestId("location-search")).toHaveTextContent(
       "?category=project",
     );

@@ -87,6 +87,8 @@ export function useAutosave(): void {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+    };
   }, [dirty]);
 }

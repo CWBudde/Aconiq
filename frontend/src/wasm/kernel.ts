@@ -32,13 +32,16 @@ async function loadWasmExecScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = `${import.meta.env.BASE_URL}wasm_exec.js`;
-    script.onload = () => resolve();
-    script.onerror = () =>
+    script.onload = () => {
+      resolve();
+    };
+    script.onerror = () => {
       reject(
         new Error(
           "Failed to load wasm_exec.js. Run `just wasm-build` to generate the WASM kernel.",
         ),
       );
+    };
     document.head.appendChild(script);
   });
 }

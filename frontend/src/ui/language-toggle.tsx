@@ -9,7 +9,9 @@ import {
 import { getLocale, setLocale, locales } from "@/i18n/runtime";
 import { m } from "@/i18n/messages";
 
-const LOCALE_LABELS: Record<string, () => string> = {
+type Locale = (typeof locales)[number];
+
+const LOCALE_LABELS: Record<Locale, () => string> = {
   en: m.language_en,
   de: m.language_de,
 };
@@ -26,11 +28,13 @@ export function LanguageToggle() {
         {locales.map((locale) => (
           <DropdownMenuItem
             key={locale}
-            onClick={() => setLocale(locale as "en" | "de")}
+            onClick={() => {
+              void setLocale(locale);
+            }}
             data-active={getLocale() === locale}
             className="data-[active=true]:font-semibold"
           >
-            {(LOCALE_LABELS[locale] ?? (() => locale))()}
+            {LOCALE_LABELS[locale]()}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
