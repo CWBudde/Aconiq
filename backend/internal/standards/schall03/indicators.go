@@ -26,8 +26,9 @@ type NormativeReceiverLevels struct {
 //
 //	L_r = L_pAeq + K_S
 //
-// K_S is the Schienenbonus; for Eisenbahnen it is 0 dB since the 2015
-// amendment to 16. BImSchV.
+// K_S is the Schienenbonus; abolished by 11. BImSchG-Änderungsgesetz
+// (BGBl. 2013 I S. 1943): effective 2015-01-01 for Eisenbahnen,
+// 2019-01-01 for Strassenbahnen.  K_S = 0 dB for both.
 func beurteilungspegel(lpAeq, ks float64) float64 {
 	return lpAeq + ks
 }
@@ -40,7 +41,14 @@ func roundToWholeDB(l float64) float64 {
 
 // kSStrecke is the Schienenbonus applied to Eisenbahn/Strassenbahn Strecken
 // in Gl. 35-36.  Note: K_S does NOT apply to the Rangierbahnhof contribution.
-const kSStrecke = -5.0
+//
+// The Schienenbonus (formerly -5 dB) was abolished by the
+// 11. BImSchG-Änderungsgesetz (BGBl. 2013 I S. 1943):
+//   - Eisenbahnen: effective 2015-01-01
+//   - Strassenbahnen: effective 2019-01-01
+//
+// Ref: BGBl 2014 p. 2275, Anlage 2 Nr. 2.2.18 Anmerkung 1.
+const kSStrecke = 0.0
 
 // ComputeCombinedBeurteilungspegel implements Gl. 35-36 for a location
 // affected by both a Rangierbahnhof and passing trains (Strecke).
