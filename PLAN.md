@@ -171,11 +171,11 @@ The actual RLS-19 Eq. 6 formula is: `L_{W0,FzG}(v) = A_{W,FzG} + 10·lg[1 + (v/B
 with normative Tabelle 3 coefficients: Pkw (A=88.0, B=20, C=3.06), Lkw1 (A=100.3, B=40, C=4.33), Lkw2 (A=105.4, B=50, C=4.88).
 The current `tables.go` uses a rolling+propulsion split formula with placeholder coefficients — not the RLS-19 formula.
 
-- [ ] Replace rolling+propulsion formula with Eq. 6 `A + 10·lg[1 + (v/B)^C]`
-- [ ] Replace placeholder coefficients in `baseEmissionTable` with normative Tabelle 3 values (Pkw, Lkw1, Lkw2)
-- [ ] Define Krad coefficients: standard treatment is Lkw2 emission with Pkw speed (note in §3.3.2); document in code
-- [ ] Remove `RollingNoiseCoeffs` and `PropulsionNoiseCoeffs` structs (now superseded by single Eq. 6 formula)
-- [ ] Add unit tests for Eq. 6 at boundary speeds (30, 60, 80, 100, 130 km/h) against Table-3-derived reference values
+- [x] Replace rolling+propulsion formula with Eq. 6 `A + 10·lg[1 + (v/B)^C]`
+- [x] Replace placeholder coefficients in `baseEmissionTable` with normative Tabelle 3 values (Pkw, Lkw1, Lkw2)
+- [x] Define Krad coefficients: standard treatment is Lkw2 emission with Pkw speed (note in §3.3.2); document in code
+- [x] Remove `RollingNoiseCoeffs` and `PropulsionNoiseCoeffs` structs (now superseded by single Eq. 6 formula)
+- [x] Add unit tests for Eq. 6 at boundary speeds (30, 60, 80, 100, 130 km/h) against Table-3-derived reference values
 
 ### Section 3.3.2 — Längenbezogener Schallleistungspegel (Eq. 4 / Tabelle 2)
 
@@ -183,9 +183,9 @@ Eq. 4: `L_w' = 10·lg[M] + 10·lg[Σ_vg (share_vg · 10^(0.1·L_{W,FzG}(v_vg)) /
 The `–30` is a normalization term; the `v_vg` divisor converts from per-vehicle to length-related power.
 Current `emissionForPeriod` computes `lwA + 10·lg(count)` per group and sums — missing the `/v_vg` and `–30` terms.
 
-- [ ] Verify whether current emission formula matches Eq. 4 exactly (the `/v_vg – 30` structure)
-- [ ] If not, correct `emissionForPeriod` to match Eq. 4 including the `v_vg` divisor and `–30` normalization
-- [ ] Verify total-M + p1/p2 representation is equivalent to per-group counts as currently modelled
+- [x] Verify whether current emission formula matches Eq. 4 exactly (the `/v_vg – 30` structure)
+- [x] If not, correct `emissionForPeriod` to match Eq. 4 including the `v_vg` divisor and `–30` normalization
+- [x] Verify total-M + p1/p2 representation is equivalent to per-group counts as currently modelled
 - [ ] Expose a `DTVToHourly` helper implementing Tabelle 2 (DTV → M, p1, p2 by Straßenart for day/night)
   - Bundesautobahnen/Kraftfahrstraßen: day M=0.0555·DTV, p1=3%, p2=11%; night M=0.0140·DTV, p1=10%, p2=25%
   - Bundesstraßen: day M=0.0575·DTV, p1=3%, p2=7%; night M=0.0100·DTV, p1=7%, p2=13%

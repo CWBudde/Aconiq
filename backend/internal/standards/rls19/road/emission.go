@@ -42,44 +42,69 @@ func ComputeEmission(source RoadSource) (EmissionResult, error) {
 }
 
 func emissionForPeriod(source RoadSource, traffic TrafficInput) float64 {
-	groups := AllVehicleGroups()
-	contributions := make([]float64, 0, len(groups))
+	sum := 0.0
 
-	for _, vg := range groups {
+	for _, vg := range AllVehicleGroups() {
 		count := traffic.CountForGroup(vg)
 		if count <= 0 {
 			continue
 		}
 
-		// E6: per-vehicle sound power with corrections
+		speed := effectiveVehicleSpeed(source.Speeds, vg)
+
+		// E6: per-vehicle sound power with corrections.
 		lwA := computeVehicleSoundPower(source, vg)
 
-		// E7: length-related sound power level
-		// L_m,E,vg = L_WA,vg + 10*lg(M_vg) - 30  [for hourly count M]
-		// The -30 converts from per-vehicle to per-meter-per-hour
-		// (accounting for reference speed normalization).
-		lmE := lwA + 10*math.Log10(count)
-
-		contributions = append(contributions, lmE)
+		// E7 / Eq. 4: accumulate the per-group length-related power term
+		// M_vg * 10^(0.1*L_WA,vg) / v_vg. This is algebraically equivalent
+		// to the total-M + share_vg representation from RLS-19.
+		sum += count * math.Pow(10, lwA/10) / speed
 	}
 
-	if len(contributions) == 0 {
+	if sum <= 0 {
 		return -999.0
 	}
 
-	// E7/EG: energetic sum of all vehicle group contributions,
-	// plus the multiple-reflection surcharge (E5).
-	total := energySumDB(contributions)
+	// E7/EG: convert the Eq. 4 sum to dB(A)/m and add the
+	// multiple-reflection surcharge (E5).
+	total := 10*math.Log10(sum) - 30
 	total += source.ReflectionSurchargeDB
 
 	return total
+}
+
+func baseEmissionSpeed(speeds SpeedInput, vg VehicleGroup) float64 {
+	if vg == Krad {
+		// RLS-19 treats motorcycles with the Lkw2 base-emission curve, but at Pkw speed.
+		return speeds.PkwKPH
+	}
+
+	return speeds.SpeedForGroup(vg)
+}
+
+func effectiveVehicleSpeed(speeds SpeedInput, vg VehicleGroup) float64 {
+	return clampBaseEmissionSpeed(baseEmissionSpeed(speeds, vg), vg)
+}
+
+func clampBaseEmissionSpeed(speedKPH float64, vg VehicleGroup) float64 {
+	base := baseEmissionTable[vg]
+	v := speedKPH
+	if v < base.VMin {
+		v = base.VMin
+	}
+
+	if v > base.VMax {
+		v = base.VMax
+	}
+
+	return v
 }
 
 // computeVehicleSoundPower computes the per-vehicle sound power level L_WA
 // for a given vehicle group, including all corrections (E1-E4, E6).
 func computeVehicleSoundPower(source RoadSource, vg VehicleGroup) float64 {
 	// E1: Base emission (Grundwert) - speed-dependent.
-	base := computeBaseEmission(source.Speeds.SpeedForGroup(vg), vg)
+	base := computeBaseEmission(effectiveVehicleSpeed(source.Speeds, vg), vg)
 
 	// E2: Surface correction (DStrO).
 	surfCorr := SurfaceCorrection(source.SurfaceType, vg)
@@ -95,30 +120,11 @@ func computeVehicleSoundPower(source RoadSource, vg VehicleGroup) float64 {
 }
 
 // computeBaseEmission computes the E1 base emission (Grundwert) for a
-// given speed and vehicle group using the rolling + propulsion noise model.
+// given speed and vehicle group using the RLS-19 Eq. 6 coefficient model.
 func computeBaseEmission(speedKPH float64, vg VehicleGroup) float64 {
-	roll := rollingNoiseTable[vg]
-	prop := propulsionNoiseTable[vg]
 	base := baseEmissionTable[vg]
-
-	// Clamp speed to valid range.
-	v := speedKPH
-	if v < base.VMin {
-		v = base.VMin
-	}
-
-	if v > base.VMax {
-		v = base.VMax
-	}
-
-	lgVRoll := math.Log10(v / roll.VRef)
-	lgVProp := math.Log10(v / prop.VRef)
-
-	rollLevel := roll.A + roll.B*lgVRoll
-	propLevel := prop.A + prop.B*lgVProp
-
-	// Energetic sum of rolling and propulsion noise.
-	return energySumDB([]float64{rollLevel, propLevel})
+	v := clampBaseEmissionSpeed(speedKPH, vg)
+	return base.A + 10*math.Log10(1+math.Pow(v/base.B, base.C))
 }
 
 // energySumDB performs an energetic summation of dB(A) values.
@@ -152,7 +158,7 @@ func ComputeVehicleGroupEmissions(source RoadSource) ([]VehicleGroupEmission, er
 	results := make([]VehicleGroupEmission, 0, len(groups))
 
 	for _, vg := range groups {
-		speed := source.Speeds.SpeedForGroup(vg)
+		speed := effectiveVehicleSpeed(source.Speeds, vg)
 		base := computeBaseEmission(speed, vg)
 		surfCorr := SurfaceCorrection(source.SurfaceType, vg)
 		gradCorr := GradientCorrection(source.GradientPercent, vg)
