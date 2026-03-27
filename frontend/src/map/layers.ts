@@ -225,13 +225,13 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
 export const RESULT_LAYER_GROUPS: LayerGroup[] = [
   {
     id: "raster",
-    label: "Result Raster",
+    label: m.label_result_raster(),
     layerIds: [LAYER_IDS.resultRaster],
     defaultVisible: true,
   },
   {
     id: "contours",
-    label: "Contours",
+    label: m.label_result_contours(),
     layerIds: [LAYER_IDS.contourLine, LAYER_IDS.contourLabel],
     defaultVisible: true,
   },

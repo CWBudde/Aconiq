@@ -18,6 +18,12 @@
   "standard_upstream_mapping_standard": "Upstream mapping standard",
   "standard_upstream_mapping_standard_description":
     "Upstream mapping standard contract used for level derivation.",
+  "msg_no_explicit_receivers":
+    "No explicit receivers have been placed. Use the map workspace to add receiver points before running.",
+  "msg_api_mode_reads_explicit_receivers":
+    "API mode reads explicit receivers from the backend project model, not the browser-only draft state.",
+  "label_result_raster": "Result Raster",
+  "label_result_contours": "Contours",
 
   "nav_map": "Map",
   "nav_import": "Import",
