@@ -399,20 +399,20 @@ Status: preview baseline shipped (industry point sources, LpAeq, favorable meteo
 
 **Why:** The 16. BImSchV (Verkehrslärmschutzverordnung) is the legal framework for traffic noise assessment in Germany. Schall 03 (rail) and RLS-19 (road) are its computational annexes. Without the assessment layer, Aconiq produces propagation results but cannot generate legally compliant traffic noise assessments.
 
-Status: prerequisites partially complete. Schall 03 and RLS-19 already compute and export `LrDay`/`LrNight` receiver results; the actual 16. BImSchV threshold/decision/reporting layer below is still open.
+Status: partially implemented. Schall 03 and RLS-19 already compute and export `LrDay`/`LrNight`; Aconiq now also supports an initial 16. BImSchV assessment layer for explicit receivers that carry an area-category property, with per-receiver threshold comparison, German assessment text, export-bundle JSON, and report integration. Scope-definition work and broader workflow coverage remain open.
 
 - [ ] Define 16. BImSchV scope
   - [ ] Clarify which sections and annexes are covered
   - [x] Define how RLS-19 and Schall 03 results feed into assessment
-- [ ] Implement assessment logic
-  - [ ] Threshold tables (Immissionsgrenzwerte) per area category and time period
-  - [ ] Combined assessment for road + rail (Gesamtlärmpegel where required)
-  - [ ] Anspruch auf Lärmschutzmaßnahmen determination
-- [ ] Implement reporting
-  - [ ] Structured assessment result per receiver
-  - [ ] German-language result text blocks
-  - [ ] Integration into report context and export bundles
-- [ ] Add verification coverage
+- [x] Implement assessment logic
+  - [x] Threshold tables (Immissionsgrenzwerte) per area category and time period
+  - [x] Combined assessment for road + rail (Gesamtlärmpegel where required)
+  - [x] Anspruch auf Lärmschutzmaßnahmen determination
+- [x] Implement reporting
+  - [x] Structured assessment result per receiver
+  - [x] German-language result text blocks
+  - [x] Integration into report context and export bundles
+- [x] Add verification coverage
 
 ---
 

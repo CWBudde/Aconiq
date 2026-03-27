@@ -24,6 +24,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	receiverPath := filepath.Join(bundleDir, "results", "receivers.json")
 	rasterMetaPath := filepath.Join(bundleDir, "results", "lden.json")
 	modelDumpPath := filepath.Join(bundleDir, "model", "model.dump.json")
+	assessmentPath := filepath.Join(bundleDir, "assessment", "16bimschv-assessment.json")
 
 	err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o755)
 	if err != nil {
@@ -33,6 +34,10 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	err = os.MkdirAll(filepath.Dir(modelDumpPath), 0o755)
 	if err != nil {
 		t.Fatalf("create model dir: %v", err)
+	}
+	err = os.MkdirAll(filepath.Dir(assessmentPath), 0o755)
+	if err != nil {
+		t.Fatalf("create assessment dir: %v", err)
 	}
 
 	provenance := map[string]any{
@@ -114,6 +119,26 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("write model dump: %v", err)
 	}
 
+	err = writeJSONFile(assessmentPath, map[string]any{
+		"law":                "16. BImSchV",
+		"source_standard_id": "rls19-road",
+		"assessed_count":     2,
+		"exceeding_count":    1,
+		"category_counts": map[string]int{
+			"residential": 2,
+		},
+		"skipped": []map[string]any{
+			{"receiver_id": "rx-3", "reason": "missing 16. BImSchV area category property"},
+		},
+		"results": []map[string]any{
+			{"summary_de": "Empfänger rx-1: Die Immissionsgrenzwerte werden eingehalten."},
+			{"summary_de": "Empfänger rx-2: Die Immissionsgrenzwerte werden tags um 2 dB überschritten."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("write assessment: %v", err)
+	}
+
 	report, err := BuildRunReport(BuildOptions{
 		BundleDir:         bundleDir,
 		Project:           project.Project{ProjectID: "proj-1", Name: "Demo", CRS: "EPSG:25832"},
@@ -123,6 +148,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		ReceiverTablePath: receiverPath,
 		RasterMetaPaths:   []string{rasterMetaPath},
 		ModelDumpPath:     modelDumpPath,
+		AssessmentPath:    assessmentPath,
 		QASuites: []QASuiteStatus{
 			{Name: "golden", Status: "passed", Details: "phase8 fixture"},
 		},
@@ -143,6 +169,7 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		"## Standard ID + version/profile + parameters",
 		"## Maps/images",
 		"## Tables (receiver stats)",
+		"## 16. BImSchV assessment",
 		"## QA status (which suites passed)",
 	} {
 		if !strings.Contains(markdownText, section) {
@@ -163,6 +190,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	if !strings.Contains(htmlText, "<h2>QA status (which suites passed)</h2>") {
 		t.Fatalf("expected QA section in html report")
 	}
+	if !strings.Contains(htmlText, "<h2>16. BImSchV assessment</h2>") {
+		t.Fatalf("expected assessment section in html report")
+	}
 
 	typstSource, err := os.ReadFile(report.TypstPath)
 	if err != nil {
@@ -171,6 +201,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 
 	if !strings.Contains(string(typstSource), "#show: doc => template(report)") {
 		t.Fatalf("expected typst template entrypoint")
+	}
+	if !strings.Contains(string(typstSource), "[== 16. BImSchV assessment]") {
+		t.Fatalf("expected assessment section in typst source")
 	}
 
 	payload, err := os.ReadFile(report.ContextPath)
@@ -188,6 +221,14 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	indicators, ok := context["indicators"].([]any)
 	if !ok || len(indicators) != 2 {
 		t.Fatalf("expected two indicator stats in context, got %#v", context["indicators"])
+	}
+
+	assessment, ok := context["assessment"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected assessment block in context, got %#v", context["assessment"])
+	}
+	if assessment["law"] != "16. BImSchV" {
+		t.Fatalf("unexpected assessment law: %#v", assessment["law"])
 	}
 }
 

@@ -40,6 +40,15 @@ This schema is the minimal common input for `noise import` / `noise validate`.
 
 - `height_m` required and `> 0`
 - Geometry must be `Point`
+- Optional for 16. BImSchV traffic-noise assessment on explicit receivers:
+  - `bimschv16_area_category`
+  - accepted examples:
+    - `allgemeines Wohngebiet`
+    - `Mischgebiet`
+    - `Gewerbegebiet`
+    - `Krankenhaus`
+  - the current assessment/export slice uses explicit receiver IDs plus this
+    property to compare `LrDay`/`LrNight` against the legal threshold table
 
 ## Standard-Specific Geometry Conventions
 

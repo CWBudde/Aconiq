@@ -174,6 +174,27 @@ const reportTypstTemplate = `
     No receiver statistics were available.
   ]
 
+  if report.Assessment != none [
+    [== 16. BImSchV assessment]
+    labeled-list((
+      [Law: #report.Assessment.Law],
+      [Source standard: #report.Assessment.SourceStandard],
+      [Assessed receivers: #report.Assessment.AssessedCount],
+      [Receivers with threshold exceedance: #report.Assessment.ExceedingCount],
+      [Skipped receivers: #report.Assessment.SkippedCount],
+    ))
+    if report.Assessment.Categories.len() > 0 [
+      #for category in report.Assessment.Categories [
+        - #category.Kind: #category.Count
+      ]
+    ]
+    if report.Assessment.ExamplesDE.len() > 0 [
+      #for example in report.Assessment.ExamplesDE [
+        - #example
+      ]
+    ]
+  ]
+
   [== QA status (which suites passed)]
   for suite in report.QASuites [
     - #suite.Name: #suite.Status#if suite.Details != "" { " (" + suite.Details + ")" }
