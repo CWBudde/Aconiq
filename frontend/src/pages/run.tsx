@@ -57,12 +57,15 @@ const STANDARD_DESCRIPTIONS: Record<string, () => string> = {
     m.standard_upstream_mapping_standard_description,
 };
 
-function getStandardLabel(standard: StandardDescriptor): string {
-  return STANDARD_LABELS[standard.id]?.() ?? standard.id;
+function getStandardLabel(standardId: string): string {
+  return STANDARD_LABELS[standardId]?.() ?? standardId;
 }
 
-function getStandardDescription(standard: StandardDescriptor): string {
-  return STANDARD_DESCRIPTIONS[standard.id]?.() ?? standard.description;
+function getStandardDescription(
+  standardId: string,
+  fallback: string,
+): string {
+  return STANDARD_DESCRIPTIONS[standardId]?.() ?? fallback;
 }
 
 function formatDuration(startedAt: string, finishedAt: string): string {
@@ -97,22 +100,22 @@ const statusConfig: Record<
   }
 > = {
   pending: {
-    label: "Pending",
+    label: m.status_badge_pending(),
     icon: Clock,
     className: "text-muted-foreground bg-muted",
   },
   running: {
-    label: "Running",
+    label: m.status_badge_running(),
     icon: Loader2,
     className: "text-blue-600 bg-blue-50 dark:bg-blue-950",
   },
   completed: {
-    label: "Completed",
+    label: m.status_badge_completed(),
     icon: CheckCircle2,
     className: "text-green-600 bg-green-50 dark:bg-green-950",
   },
   failed: {
-    label: "Failed",
+    label: m.status_badge_failed(),
     icon: XCircle,
     className: "text-destructive bg-destructive/10",
   },
@@ -145,32 +148,32 @@ interface TimelineStep {
 }
 
 const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: string }> = [
-  { key: "started", pattern: /run started/, label: "Run started" },
-  { key: "model", pattern: /model=/, label: "Loading model" },
+  { key: "started", pattern: /run started/, label: m.timeline_run_started() },
+  { key: "model", pattern: /model=/, label: m.timeline_loading_model() },
   {
     key: "sources",
     pattern: /(?:sources|road_sources)=\d+/,
-    label: "Extracting sources",
+    label: m.timeline_extracting_sources(),
   },
   {
     key: "receivers",
     pattern: /receivers=\d+/,
-    label: "Building receivers",
+    label: m.timeline_building_receivers(),
   },
   {
     key: "compute",
     pattern: /stage=compute/,
-    label: "Computing",
+    label: m.timeline_computing(),
   },
   {
     key: "persist",
     pattern: /(?:output_hash=|persisted=)/,
-    label: "Persisting outputs",
+    label: m.timeline_persisting_outputs(),
   },
   {
     key: "done",
     pattern: /run (?:completed|failed)/,
-    label: "Finalised",
+    label: m.timeline_finalised(),
   },
 ];
 
@@ -408,10 +411,10 @@ function RunFilterBar({
         }}
       >
         <SelectTrigger className="h-7 w-32 text-xs">
-          <SelectValue placeholder="Status" />
+          <SelectValue placeholder={m.label_status_field()} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="_all">All statuses</SelectItem>
+          <SelectItem value="_all">{m.label_status_filter()}</SelectItem>
           {statuses.map((s) => (
             <SelectItem key={s} value={s}>
               {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -427,13 +430,13 @@ function RunFilterBar({
         }}
       >
         <SelectTrigger className="h-7 w-36 text-xs">
-          <SelectValue placeholder="Standard" />
+          <SelectValue placeholder={m.label_standard_select()} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="_all">All standards</SelectItem>
+          <SelectItem value="_all">{m.label_standard_filter()}</SelectItem>
           {standards.map((s) => (
             <SelectItem key={s} value={s}>
-              {s}
+              {getStandardLabel(s)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -446,14 +449,14 @@ function RunFilterBar({
             onChange({ ...filters, scenarioId: v === "_all" ? "" : v });
           }}
         >
-          <SelectTrigger className="h-7 w-32 text-xs">
-            <SelectValue placeholder="Scenario" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All scenarios</SelectItem>
-            {scenarios.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
+        <SelectTrigger className="h-7 w-32 text-xs">
+          <SelectValue placeholder={m.label_scenarios_field()} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="_all">{m.label_scenario_filter()}</SelectItem>
+          {scenarios.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
               </SelectItem>
             ))}
           </SelectContent>
@@ -469,7 +472,7 @@ function RunFilterBar({
             onChange({ status: "", standardId: "", scenarioId: "" });
           }}
         >
-          Clear
+          {m.action_clear_filters()}
         </Button>
       ) : null}
     </div>
@@ -496,7 +499,7 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           </span>
         </div>
         <p className="text-sm">
-          <span className="font-mono">{run.standard_id}</span>
+          <span className="font-mono">{getStandardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}
@@ -511,7 +514,7 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           ) : null}
         </p>
         <p className="text-xs text-muted-foreground">
-          Started {formatTime(run.started_at)}
+          {m.label_started()} {formatTime(run.started_at)}
           {run.status !== "running" && run.status !== "pending"
             ? ` · ${formatDuration(run.started_at, run.finished_at)}`
             : null}
@@ -522,22 +525,19 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
       {run.status === "completed" ? (
         <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            Re-running the same inputs with this standard, version, and profile
-            will produce identical results.
-          </span>
+          <span>{m.msg_determinism_hint()}</span>
         </div>
       ) : null}
 
       {/* Progress timeline */}
       <section>
         <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Progress
+          {m.section_progress()}
         </h4>
         {logLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading…
+            {m.status_loading()}
           </div>
         ) : (
           <ProgressTimeline lines={lines} status={run.status} />
@@ -547,12 +547,12 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
       {/* Log viewer */}
       <section>
         <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Logs
+          {m.section_logs()}
         </h4>
         {logLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading…
+            {m.status_loading()}
           </div>
         ) : (
           <LogViewer lines={lines} />
@@ -875,22 +875,22 @@ function RunSetupDialog({
             {/* Standard / Version / Profile */}
             <section className="space-y-4">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Standard
+                {m.label_standard()}
               </h3>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <Label htmlFor="standard">Standard</Label>
+                  <Label htmlFor="standard">{m.label_standard()}</Label>
                   <Select
                     value={effectiveStandardId}
                     onValueChange={handleStandardChange}
                   >
                     <SelectTrigger id="standard">
-                      <SelectValue placeholder="Select…" />
+                      <SelectValue placeholder={m.placeholder_select_standard()} />
                     </SelectTrigger>
                     <SelectContent>
                       {standards?.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.id}
+                          {getStandardLabel(s)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -898,14 +898,14 @@ function RunSetupDialog({
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="version">Version</Label>
+                  <Label htmlFor="version">{m.label_version()}</Label>
                   <Select
                     value={effectiveVersion}
                     onValueChange={handleVersionChange}
                     disabled={!selectedStandard}
                   >
                     <SelectTrigger id="version">
-                      <SelectValue placeholder="Select…" />
+                      <SelectValue placeholder={m.placeholder_select_version()} />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedStandard?.versions.map((v) => (
@@ -918,14 +918,14 @@ function RunSetupDialog({
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="profile">Profile</Label>
+                  <Label htmlFor="profile">{m.label_profile()}</Label>
                   <Select
                     value={effectiveProfile}
                     onValueChange={handleProfileChange}
                     disabled={!selectedVersion}
                   >
                     <SelectTrigger id="profile">
-                      <SelectValue placeholder="Select…" />
+                      <SelectValue placeholder={m.placeholder_select_profile()} />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedVersion?.profiles.map((p) => (
@@ -940,7 +940,10 @@ function RunSetupDialog({
 
               {selectedStandard ? (
                 <p className="text-xs text-muted-foreground">
-                  {selectedStandard.description}
+                  {getStandardDescription(
+                    selectedStandard.id,
+                    selectedStandard.description,
+                  )}
                 </p>
               ) : null}
 
@@ -962,7 +965,7 @@ function RunSetupDialog({
             {selectedProfile && selectedProfile.parameters.length > 0 ? (
               <section className="space-y-4">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  Parameters
+                  {m.section_parameters()}
                 </h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   {selectedProfile.parameters.map((param) => (
@@ -982,7 +985,7 @@ function RunSetupDialog({
             {/* Receiver set */}
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Receivers
+                {m.label_receivers()}
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -998,10 +1001,11 @@ function RunSetupDialog({
                 >
                   <Grid2x2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div>
-                    <p className="text-sm font-medium">Auto-grid</p>
+                    <p className="text-sm font-medium">
+                      {m.label_receiver_auto_grid()}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      Regular grid derived from source extent and
-                      grid_resolution_m / grid_padding_m parameters.
+                      {m.msg_receiver_auto_grid_desc()}
                     </p>
                   </div>
                 </button>
@@ -1019,17 +1023,18 @@ function RunSetupDialog({
                 >
                   <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div>
-                    <p className="text-sm font-medium">Custom receiver set</p>
+                    <p className="text-sm font-medium">
+                      {m.label_receiver_custom_set()}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      Explicit receivers placed in the map workspace.
+                      {m.msg_receiver_custom_set_desc()}
                     </p>
                   </div>
                 </button>
               </div>
               {receiverMode === "auto-grid" && calcArea ? (
                 <p className="text-xs text-blue-600 dark:text-blue-400">
-                  Calculation area is set — auto-grid will use this area instead
-                  of source extent.
+                  {m.msg_calc_area_active()}
                 </p>
               ) : null}
               {receiverMode === "custom" && receiverCount === 0 ? (
@@ -1037,8 +1042,7 @@ function RunSetupDialog({
                   <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
-                      No explicit receivers have been placed. Use the map
-                      workspace to add receiver points before running.
+                      {m.msg_no_explicit_receivers()}
                     </span>
                   </div>
                 ) : null
@@ -1051,8 +1055,7 @@ function RunSetupDialog({
               ) : null}
               {receiverMode === "custom" && !IS_WASM_MODE ? (
                 <p className="text-xs text-muted-foreground">
-                  API mode reads explicit receivers from the backend project
-                  model, not the browser-only draft state.
+                  {m.msg_api_mode_reads_explicit_receivers()}
                 </p>
               ) : null}
             </section>
@@ -1061,14 +1064,7 @@ function RunSetupDialog({
             {selectedProfile ? (
               <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>
-                  <span className="font-medium text-foreground">
-                    Deterministic by design.
-                  </span>{" "}
-                  The same inputs, standard, version, and profile always produce
-                  identical outputs — regardless of worker count or execution
-                  order.
-                </span>
+                <span>{m.msg_determinism_hint_dialog()}</span>
               </div>
             ) : null}
           </div>
@@ -1077,7 +1073,7 @@ function RunSetupDialog({
         {!isLoading && !error ? (
           <DialogFooter>
             <Button variant="ghost" onClick={handleClose}>
-              Cancel
+              {m.action_cancel()}
             </Button>
             <Button
               onClick={handleSubmit}
@@ -1090,7 +1086,9 @@ function RunSetupDialog({
               }
             >
               <Play className="mr-2 h-4 w-4" />
-              {createRun.isPending ? "Running…" : "Start Run"}
+              {createRun.isPending
+                ? m.status_starting_run()
+                : m.action_start_run()}
             </Button>
           </DialogFooter>
         ) : null}

@@ -18,6 +18,12 @@
   "standard_upstream_mapping_standard": "Upstream-Mapping-Standard",
   "standard_upstream_mapping_standard_description":
     "Vertrag des Upstream-Mapping-Standards zur Höhenermittlung.",
+  "msg_no_explicit_receivers":
+    "Keine expliziten Empfänger platziert. Bitte im Kartenbereich Empfängerpunkte hinzufügen, bevor die Berechnung gestartet wird.",
+  "msg_api_mode_reads_explicit_receivers":
+    "Der API-Modus liest explizite Empfänger aus dem Projektmodell des Backends und nicht aus dem browserseitigen Entwurfszustand.",
+  "label_result_raster": "Ergebnisraster",
+  "label_result_contours": "Konturen",
 
   "nav_map": "Karte",
   "nav_import": "Import",
