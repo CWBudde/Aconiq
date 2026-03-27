@@ -46,6 +46,7 @@ func TestTable6_SpeedFactorB_BGBl2285(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := schall03.SpeedFactorBForTeilquelle(tt.m)
 			assert.Equal(t, tt.want, [8]float64(got), "speed factor b spectrum mismatch for m=%d", tt.m)
 		})
@@ -54,6 +55,7 @@ func TestTable6_SpeedFactorB_BGBl2285(t *testing.T) {
 	// Unknown m should return zero spectrum.
 	t.Run("m=0 unknown", func(t *testing.T) {
 		t.Parallel()
+
 		got := schall03.SpeedFactorBForTeilquelle(0)
 		assert.Equal(t, [8]float64{}, [8]float64(got), "unknown m should return zero spectrum")
 	})
@@ -86,13 +88,15 @@ func TestTable9_BridgeCorrections_BGBl2287(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			row := table[tt.idx]
 			assert.Equal(t, tt.wantTyp, row.Type, "BridgeType mismatch")
-			assert.Equal(t, tt.wantKBr, row.KBr, "K_Br mismatch")
+			assert.InDelta(t, tt.wantKBr, row.KBr, 0.001, "K_Br mismatch")
+
 			if tt.nanKLM {
 				assert.True(t, math.IsNaN(row.KLM), "K_LM should be NaN for type %d", row.Type)
 			} else {
-				assert.Equal(t, tt.wantKLM, row.KLM, "K_LM mismatch")
+				assert.InDelta(t, tt.wantKLM, row.KLM, 0.001, "K_LM mismatch")
 			}
 		})
 	}
@@ -106,10 +110,10 @@ func TestTable11_CurveNoise_BGBl2289(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		radiusM  float64
-		wantKL   float64
-		wantKLA  float64
+		name    string
+		radiusM float64
+		wantKL  float64
+		wantKLA float64
 	}{
 		{"r=100 (<300)", 100, 8, -3},
 		{"r=299.9 (<300)", 299.9, 8, -3},
@@ -125,9 +129,10 @@ func TestTable11_CurveNoise_BGBl2289(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			kL, kLA := schall03.CurveNoiseCorrectionForRadius(tt.radiusM)
-			assert.Equal(t, tt.wantKL, kL, "K_L mismatch for r=%.1f", tt.radiusM)
-			assert.Equal(t, tt.wantKLA, kLA, "K_L,A mismatch for r=%.1f", tt.radiusM)
+			assert.InDelta(t, tt.wantKL, kL, 0.001, "K_L mismatch for r=%.1f", tt.radiusM)
+			assert.InDelta(t, tt.wantKLA, kLA, 0.001, "K_L,A mismatch for r=%.1f", tt.radiusM)
 		})
 	}
 }
@@ -164,6 +169,7 @@ func TestTable15_StrassenbahnC1_BGBl2292(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			entry, ok := schall03.C1StrassenbahnForType(tt.typ)
 			require.True(t, ok, "type %d must exist", tt.typ)
 			assert.Equal(t, tt.wantC1, [8]float64(entry.C1), "c1 spectrum mismatch")
@@ -173,6 +179,7 @@ func TestTable15_StrassenbahnC1_BGBl2292(t *testing.T) {
 	// Schwellengleis (reference) should not be found.
 	t.Run("Schwellengleis not found", func(t *testing.T) {
 		t.Parallel()
+
 		_, ok := schall03.C1StrassenbahnForType(schall03.SFahrbahnSchwellengleis)
 		assert.False(t, ok, "Schwellengleis (reference) should not have a c1 entry")
 	})
@@ -205,12 +212,14 @@ func TestTable16_StrassenbahnBridge_BGBl2292(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			row := table[tt.idx]
-			assert.Equal(t, tt.wantKBr, row.KBr, "K_Br mismatch")
+			assert.InDelta(t, tt.wantKBr, row.KBr, 0.001, "K_Br mismatch")
+
 			if tt.nanKLM {
 				assert.True(t, math.IsNaN(row.KLM), "K_LM should be NaN for row %d", tt.idx+1)
 			} else {
-				assert.Equal(t, tt.wantKLM, row.KLM, "K_LM mismatch")
+				assert.InDelta(t, tt.wantKLM, row.KLM, 0.001, "K_LM mismatch")
 			}
 		})
 	}
@@ -304,6 +313,7 @@ func TestBeiblatt1_AllFzKategorien_AA_BGBl2306(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("Fz"+itoa(tt.fz), func(t *testing.T) {
 			t.Parallel()
+
 			fz, ok := schall03.LookupFzKategorie(tt.fz)
 			require.True(t, ok, "Fz %d must exist", tt.fz)
 
@@ -316,7 +326,7 @@ func TestBeiblatt1_AllFzKategorien_AA_BGBl2306(t *testing.T) {
 			for _, c := range tt.checks {
 				aa, found := byM[c.m]
 				require.True(t, found, "Fz%d must have Teilquelle m=%d", tt.fz, c.m)
-				assert.Equal(t, c.want, aa, "Fz%d m=%d: a_A mismatch", tt.fz, c.m)
+				assert.InDelta(t, c.want, aa, 0.001, "Fz%d m=%d: a_A mismatch", tt.fz, c.m)
 			}
 		})
 	}
@@ -359,6 +369,7 @@ func TestBeiblatt2_StrassenbahnFz_BGBl2311(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("Fz"+itoa(tt.fz), func(t *testing.T) {
 			t.Parallel()
+
 			fz, ok := schall03.LookupFzKategorie(tt.fz)
 			require.True(t, ok, "Fz %d must exist", tt.fz)
 
@@ -370,7 +381,7 @@ func TestBeiblatt2_StrassenbahnFz_BGBl2311(t *testing.T) {
 			for _, c := range tt.checks {
 				tq, found := byM[c.m]
 				require.True(t, found, "Fz%d must have Teilquelle m=%d", tt.fz, c.m)
-				assert.Equal(t, c.aa, tq.AA, "Fz%d m=%d: a_A mismatch", tt.fz, c.m)
+				assert.InDelta(t, c.aa, tq.AA, 0.001, "Fz%d m=%d: a_A mismatch", tt.fz, c.m)
 				assert.Equal(t, c.deltaA, [8]float64(tq.DeltaA), "Fz%d m=%d: DeltaA mismatch", tt.fz, c.m)
 			}
 		})
@@ -391,36 +402,64 @@ func TestBeiblatt3_AllGleisbremsen_BGBl2312(t *testing.T) {
 		wantLWA float64
 		wantDLW [8]float64
 	}{
-		{"i=2 Zulauf ohne Segmente", schall03.GleisbremsZulaufOhneSegmente, 2,
-			110, [8]float64{-56, -50, -42, -32, -24, -13, -1, -12}},
-		{"i=3 Talbremse ohne Segmente", schall03.GleisbremsTalbremseOhneSegmente, 3,
-			105, [8]float64{-56, -50, -42, -32, -24, -13, -1, -12}},
-		{"i=4 Talbremse mit GG", schall03.GleisbremsTalbremseMitGG, 4,
-			88, [8]float64{-53, -46, -36, -35, -33, -9, -2, -7}},
-		{"i=5 Schalloptimiert", schall03.GleisbremseSchalloptimiert, 5,
-			85, [8]float64{-28, -23, -18, -13, -9, -6, -4, -9}},
-		{"i=6 Talbremse mit Segmenten", schall03.GleisbremsTalbremsMitSegmenten, 6,
-			98, [8]float64{-56, -52, -45, -41, -38, -9, -1, -13}},
-		{"i=7 Richtung einseitig Segmente", schall03.GleisbremsRichtungEinseitigSegmente, 7,
-			92, [8]float64{-56, -52, -45, -41, -38, -9, -1, -13}},
-		{"i=8 Gummiwalkbremse", schall03.GleisbremsGummiwalk, 8,
-			83, [8]float64{-28, -18, -12, -7, -6, -7, -8, -11}},
-		{"i=9 FEW Talbremse", schall03.GleisbremsFEWTalbremse, 9,
-			98, [8]float64{-38, -28, -23, -18, -15, -5, -3, -13}},
-		{"i=10 Schraubenbremse", schall03.GleisbremsSchraubenbremse, 10,
-			72, [8]float64{-29, -21, -9, -10, -8, -4, -9, -13}},
+		{
+			"i=2 Zulauf ohne Segmente", schall03.GleisbremsZulaufOhneSegmente, 2,
+			110,
+			[8]float64{-56, -50, -42, -32, -24, -13, -1, -12},
+		},
+		{
+			"i=3 Talbremse ohne Segmente", schall03.GleisbremsTalbremseOhneSegmente, 3,
+			105,
+			[8]float64{-56, -50, -42, -32, -24, -13, -1, -12},
+		},
+		{
+			"i=4 Talbremse mit GG", schall03.GleisbremsTalbremseMitGG, 4,
+			88,
+			[8]float64{-53, -46, -36, -35, -33, -9, -2, -7},
+		},
+		{
+			"i=5 Schalloptimiert", schall03.GleisbremseSchalloptimiert, 5,
+			85,
+			[8]float64{-28, -23, -18, -13, -9, -6, -4, -9},
+		},
+		{
+			"i=6 Talbremse mit Segmenten", schall03.GleisbremsTalbremsMitSegmenten, 6,
+			98,
+			[8]float64{-56, -52, -45, -41, -38, -9, -1, -13},
+		},
+		{
+			"i=7 Richtung einseitig Segmente", schall03.GleisbremsRichtungEinseitigSegmente, 7,
+			92,
+			[8]float64{-56, -52, -45, -41, -38, -9, -1, -13},
+		},
+		{
+			"i=8 Gummiwalkbremse", schall03.GleisbremsGummiwalk, 8,
+			83,
+			[8]float64{-28, -18, -12, -7, -6, -7, -8, -11},
+		},
+		{
+			"i=9 FEW Talbremse", schall03.GleisbremsFEWTalbremse, 9,
+			98,
+			[8]float64{-38, -28, -23, -18, -15, -5, -3, -13},
+		},
+		{
+			"i=10 Schraubenbremse", schall03.GleisbremsSchraubenbremse, 10,
+			72,
+			[8]float64{-29, -21, -9, -10, -8, -4, -9, -13},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			data, ok := schall03.Beiblatt3GleisbremsenByType(tt.typ)
 			require.True(t, ok, "Gleisbremse type i=%d must exist", tt.iNum)
 
-			assert.Equal(t, tt.wantLWA, data.LWA, "L_WA mismatch for i=%d", tt.iNum)
+			assert.InDelta(t, tt.wantLWA, data.LWA, 0.001, "L_WA mismatch for i=%d", tt.iNum)
 			assert.Equal(t, tt.wantDLW, [8]float64(data.DeltaLW), "DeltaLW mismatch for i=%d", tt.iNum)
 			assert.Equal(t, schall03.YardSourcePoint, data.SourceShape, "Gleisbremsen must be point sources")
-			assert.Equal(t, 0.0, data.HeightM, "Gleisbremsen height must be 0 m")
+			assert.InDelta(t, 0.0, data.HeightM, 0.001, "Gleisbremsen height must be 0 m")
 		})
 	}
 }
@@ -434,64 +473,72 @@ func TestBeiblatt3_OtherYardSources_BGBl2312(t *testing.T) {
 
 	t.Run("Kurvenfahrgeraeusch", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3Kurvenfahrgeraeusch
-		assert.Equal(t, 69.0, d.LWA)
+		assert.InDelta(t, 69.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-27, -19, -12, -10, -8, -5, -6, -8}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourceLine, d.SourceShape)
 	})
 
 	t.Run("RetarderVerzoegerung", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3RetarderVerzoegerungsstrecke
-		assert.Equal(t, 90.0, d.LWA)
+		assert.InDelta(t, 90.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-11, -15, -15, -16, -9, -5, -8, -15}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourcePoint, d.SourceShape)
 	})
 
 	t.Run("RetarderBeharrung", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3RetarderBeharrungsstreckeBase
-		assert.Equal(t, 62.0, d.LWA)
+		assert.InDelta(t, 62.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-28, -23, -16, -12, -9, -3, -8, -14}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourceLine, d.SourceShape)
 	})
 
 	t.Run("RetarderRangieren", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3RetarderRangierenBase
-		assert.Equal(t, 72.0, d.LWA)
+		assert.InDelta(t, 72.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-30, -26, -18, -12, -9, -3, -6, -13}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourceLine, d.SourceShape)
 	})
 
 	t.Run("Hemmschuh", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3HemmschuhauflaufgeraeuschData
-		assert.Equal(t, 95.0, d.LWA)
+		assert.InDelta(t, 95.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-41, -37, -16, -21, -18, -19, -7, -1}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourcePoint, d.SourceShape)
 	})
 
 	t.Run("AuflaufstossModern", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3AuflaufstossByTech(true)
-		assert.Equal(t, 78.0, d.LWA)
+		assert.InDelta(t, 78.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-23, -15, -11, -11, -6, -5, -7, -13}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourcePoint, d.SourceShape)
 	})
 
 	t.Run("AuflaufstossOlder", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3AuflaufstossByTech(false)
-		assert.Equal(t, 91.0, d.LWA)
+		assert.InDelta(t, 91.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-25, -18, -12, -11, -6, -4, -8, -13}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourcePoint, d.SourceShape)
 	})
 
 	t.Run("Anreissen", func(t *testing.T) {
 		t.Parallel()
+
 		d := schall03.Beiblatt3AnreissenAbbremsenBase
-		assert.Equal(t, 75.0, d.LWA)
+		assert.InDelta(t, 75.0, d.LWA, 0.001)
 		assert.Equal(t, [8]float64{-26, -15, -13, -9, -6, -5, -7, -12}, [8]float64(d.DeltaLW))
 		assert.Equal(t, schall03.YardSourceLine, d.SourceShape)
 	})
