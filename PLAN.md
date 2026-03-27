@@ -295,12 +295,12 @@ Implemented: `parking.go` — `ParkingSource`, `ComputeParkingEmission`, `Defaul
 
 ### General accuracy and test coverage
 
-- [ ] Run full TEST-20 suite after each formula fix to detect regressions
-- [ ] Add golden scenarios for the standard test cases from Diagramm I (single vehicle, speed sweep) to lock in Grundwert values
-- [ ] Add golden scenarios for Tabelle 4a surface corrections (DStrO sweep per vehicle group and speed)
-- [ ] Add golden scenario for Section 3.4 parking lot case (verify Eq. 10 end-to-end)
-- [ ] Update `docs/conformance/rls19-konformitaetserklaerung.md` with accurate scope after formula reconciliation
-- [ ] Note Korrekturblatt 2/2020 fixes applied: (1) Eq. 3 corrected form, (2) D_refl subscript corrected, (3) Eq. 10 corrected form
+- [x] Run full TEST-20 suite after each formula fix to detect regressions — CI-safe suite integrated; golden files updated after each formula reconciliation pass
+- [x] Add golden scenarios for the standard test cases from Diagramm I (single vehicle, speed sweep) to lock in Grundwert values — `TestDiagrammI_SingleVehicleSpeedSweep` in `road_test.go`; 10 cases (Pkw/Lkw1/Lkw2 × key speeds); values derived from normative Tabelle 3 formula
+- [x] Add golden scenarios for Tabelle 4a surface corrections (DStrO sweep per vehicle group and speed) — already covered by `TestSurfaceCorrection` in `road_test.go`; all 11 surface types × low/high speed × Pkw/Lkw/Krad
+- [x] Add golden scenario for Section 3.4 parking lot case (verify Eq. 10 end-to-end) — `TestComputeReceiverLevels_ParkingOnlyEndToEnd` in `parking_test.go`; hand-calculated L_r_day/night verified to ±0.01 dB
+- [x] Update `docs/conformance/rls19-konformitaetserklaerung.md` with accurate scope after formula reconciliation — added §3.4 parking scope table, §3.6 reflections table, Korrekturblatt section, "Not yet supported" list
+- [x] Note Korrekturblatt 2/2020 fixes applied: (1) Eq. 3 corrected form, (2) D_refl subscript corrected, (3) Eq. 10 corrected form — documented in `docs/conformance/rls19-konformitaetserklaerung.md` under "Korrekturblatt 2/2020 — applied corrections"
 
 ---
 
@@ -399,9 +399,11 @@ Status: preview baseline shipped (industry point sources, LpAeq, favorable meteo
 
 **Why:** The 16. BImSchV (Verkehrslärmschutzverordnung) is the legal framework for traffic noise assessment in Germany. Schall 03 (rail) and RLS-19 (road) are its computational annexes. Without the assessment layer, Aconiq produces propagation results but cannot generate legally compliant traffic noise assessments.
 
+Status: prerequisites partially complete. Schall 03 and RLS-19 already compute and export `LrDay`/`LrNight` receiver results; the actual 16. BImSchV threshold/decision/reporting layer below is still open.
+
 - [ ] Define 16. BImSchV scope
   - [ ] Clarify which sections and annexes are covered
-  - [ ] Define how RLS-19 and Schall 03 results feed into assessment
+  - [x] Define how RLS-19 and Schall 03 results feed into assessment
 - [ ] Implement assessment logic
   - [ ] Threshold tables (Immissionsgrenzwerte) per area category and time period
   - [ ] Combined assessment for road + rail (Gesamtlärmpegel where required)

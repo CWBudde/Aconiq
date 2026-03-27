@@ -217,6 +217,76 @@ func TestParkingSource_Validate(t *testing.T) {
 	}
 }
 
+// TestComputeReceiverLevels_ParkingOnlyEndToEnd verifies Eq. 10 end-to-end:
+// emission (§3.4) → propagation (§3.5) → receiver level.
+//
+// Scenario: P+R parking lot (n=100 spaces, N_day=0.5, N_night=0.1, Pkw) at
+// the origin, receiver 30 m away at 4 m height, flat terrain, no barriers.
+//
+// Hand-calculation:
+//
+//	L_W_day  = 63 + 10·lg(0.5·100)       = 79.990 dB  (Eq. 10, D_PPT=0)
+//	L_W_night= 63 + 10·lg(0.1·100)       = 73.000 dB
+//	source Z = 0.5 m (0 m terrain + 0.5 m source height)
+//	receiver Z = 4.0 m
+//	s_plan = 30 m, s_slant = sqrt(30²+3.5²) = 30.203 m
+//	D_div = 20·lg(30.203) + 10·lg(2π)    = 37.583 dB  (Eq. 12)
+//	D_atm = 5.0 · 30.203/1000            = 0.151 dB   (Eq. 13)
+//	h_m   = (0.5+4.0)/2 − 0             = 2.25 m     (flat terrain)
+//	D_gr  = 4.8 − (2·2.25/30)·(17+10)   = 0.750 dB   (Eq. 14)
+//	D_A   = 37.583 + 0.151 + 0.750       = 38.484 dB  (Eq. 11)
+//	L_r_day   ≈ 79.990 − 38.484 = 41.506 dB
+//	L_r_night ≈ 73.000 − 38.484 = 34.516 dB
+func TestComputeReceiverLevels_ParkingOnlyEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultPropagationConfig() // ReceiverHeightM=4, MinDistanceM=3
+	receiver := geo.Point2D{X: 0, Y: 30}
+
+	cfgWithParking := cfg
+	cfgWithParking.ParkingSources = []ParkingSource{{
+		ID:                     "pr-lot",
+		Center:                 geo.Point2D{X: 0, Y: 0},
+		ElevationM:             0,
+		AreaM2:                 1000,
+		NumSpaces:              100,
+		VehicleType:            ParkingPkw,
+		MovementsPerSpaceDay:   0.5,
+		MovementsPerSpaceNight: 0.1,
+	}}
+
+	// Dummy road source far away with zero traffic so it emits -999 dB
+	// (ignored in energetic summation) but satisfies the "at least one source"
+	// requirement. Only the parking contribution matters.
+	silentSource := RoadSource{
+		ID:          "silent",
+		SurfaceType: SurfaceGussasphaltStandard,
+		Speeds:      SpeedInput{PkwKPH: 50, Lkw1KPH: 50, Lkw2KPH: 50, KradKPH: 50},
+		Centerline:  []geo.Point2D{{X: -1, Y: 1000}, {X: 1, Y: 1000}},
+	}
+
+	result, err := ComputeReceiverLevels(receiver, []RoadSource{silentSource}, nil, cfgWithParking)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	const wantDay = 41.506
+	const wantNight = 34.516
+	const tol = 0.01
+
+	if !almostEqual(result.LrDay, wantDay, tol) {
+		t.Errorf("LrDay: want %.3f ± %.3f dB, got %.6f dB", wantDay, tol, result.LrDay)
+	}
+
+	if !almostEqual(result.LrNight, wantNight, tol) {
+		t.Errorf("LrNight: want %.3f ± %.3f dB, got %.6f dB", wantNight, tol, result.LrNight)
+	}
+
+	if result.LrDay <= result.LrNight {
+		t.Errorf("expected LrDay (%.3f) > LrNight (%.3f)", result.LrDay, result.LrNight)
+	}
+}
+
 // TestComputeReceiverLevels_ParkingSourceIncreasesLevel verifies that adding a
 // high-emission parking lot near the road raises the receiver level.
 func TestComputeReceiverLevels_ParkingSourceIncreasesLevel(t *testing.T) {
