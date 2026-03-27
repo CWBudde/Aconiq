@@ -236,27 +236,33 @@ func TestSurfaceCorrection(t *testing.T) {
 
 func TestGradientCorrection(t *testing.T) {
 	t.Parallel()
-	// Flat road: no correction for any group.
+
+	// Flat road (g=0): no correction for any group at any speed.
 	for _, vg := range AllVehicleGroups() {
-		if got := GradientCorrection(0, vg); got != 0 {
+		if got := GradientCorrection(0, vg, 100); got != 0 {
 			t.Fatalf("flat road %s: expected 0, got %f", vg, got)
 		}
 	}
-	// Steep uphill: heavy trucks get largest correction.
-	lkw2Up := GradientCorrection(8, Lkw2)
 
-	pkwUp := GradientCorrection(8, Pkw)
+	// Steep uphill: Lkw2 correction must exceed Pkw correction.
+	// Lkw2 at g=8, v=70: (8-2)/10*(70+10)/10 = 4.8
+	// Pkw  at g=8, v=100: (8-2)/10*(100+70)/100 = 1.02
+	lkw2Up := GradientCorrection(8, Lkw2, 70)
+	pkwUp := GradientCorrection(8, Pkw, 100)
 	if lkw2Up <= pkwUp {
-		t.Fatalf("expected Lkw2 gradient correction > Pkw: Lkw2=%f Pkw=%f", lkw2Up, pkwUp)
+		t.Fatalf("expected Lkw2 gradient correction > Pkw uphill: Lkw2=%f Pkw=%f", lkw2Up, pkwUp)
 	}
-	// Downhill: Lkw2 gets negative correction.
-	lkw2Down := GradientCorrection(-6, Lkw2)
-	if lkw2Down >= 0 {
-		t.Fatalf("expected negative downhill correction for Lkw2, got %f", lkw2Down)
+
+	// Downhill (g=-6): RLS-19 Eqs. 7b/7c give a positive correction for Lkw
+	// (engine braking increases noise). Correction must be > 0.
+	lkw2Down := GradientCorrection(-6, Lkw2, 70)
+	if lkw2Down <= 0 {
+		t.Fatalf("expected positive downhill correction for Lkw2 (engine braking), got %f", lkw2Down)
 	}
+
 	// Clamped at +/-12.
-	if GradientCorrection(15, Lkw2) != GradientCorrection(12, Lkw2) {
-		t.Fatal("gradient should be clamped at 12%")
+	if GradientCorrection(15, Lkw2, 70) != GradientCorrection(12, Lkw2, 70) {
+		t.Fatal("gradient should be clamped at +12%")
 	}
 }
 
@@ -2432,5 +2438,179 @@ func TestPropagation_ShieldedNoGroundEffect(t *testing.T) {
 	reduction := freeField.LrDay - withBarrier.LrDay
 	if reduction < 10 {
 		t.Fatalf("tall barrier should attenuate by >10 dB, got %f dB", reduction)
+	}
+}
+
+// --- RLS-19 Section 3.3.6: Längsneigungskorrektur (Eqs. 7a / 7b / 7c) ---
+//
+// Normative formulas are speed-dependent.  The existing GradientCorrection
+// function accepts no speed parameter and therefore cannot implement the
+// correct formulas.  These tests encode the exact Eq. 7a/7b/7c values and
+// are expected to FAIL until GradientCorrection is updated.
+
+func TestGradientCorrection_Eq7a_Pkw_Uphill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7a for g > +2: D = (g-2)/10 * (v_Pkw+70)/100
+	// g=8, v=100: (8-2)/10 * (100+70)/100 = 0.6 * 1.7 = 1.020
+	want := (8.0-2.0)/10.0 * (100.0+70.0)/100.0
+	got := GradientCorrection(8, Pkw, 100)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(8, Pkw, 100): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7a_Pkw_Uphill_LowSpeed(t *testing.T) {
+	t.Parallel()
+
+	// g=4, v=50: just above threshold → (4-2)/10 * (50+70)/100 = 0.2 * 1.2 = 0.240
+	want := (4.0-2.0)/10.0 * (50.0+70.0)/100.0
+	got := GradientCorrection(4, Pkw, 50)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(4, Pkw, 50): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7a_Pkw_Downhill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7a for g < -6: D = (g+6)/(-6) * (90-min(v_Pkw,70))/20
+	// g=-8, v=100: (-8+6)/(-6) * (90-70)/20 = (1/3) * 1 = 0.333...
+	want := (-8.0+6.0)/(-6.0) * (90.0-70.0)/20.0
+	got := GradientCorrection(-8, Pkw, 100)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(-8, Pkw, 100): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7a_Pkw_Flat(t *testing.T) {
+	t.Parallel()
+
+	// |g| <= 2 for Pkw → 0 at any speed.
+	for _, v := range []float64{30, 60, 100, 130} {
+		got := GradientCorrection(1, Pkw, v)
+		if got != 0 {
+			t.Fatalf("GradientCorrection(1, Pkw, %.0f): want 0, got %.4f", v, got)
+		}
+	}
+}
+
+func TestGradientCorrection_Eq7b_Lkw1_Uphill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7b for g > +2: D = (g-2)/10 * v_Lkw1/10
+	// g=8, v=80: (8-2)/10 * 80/10 = 0.6 * 8 = 4.800
+	want := (8.0-2.0)/10.0 * 80.0/10.0
+	got := GradientCorrection(8, Lkw1, 80)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(8, Lkw1, 80): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7b_Lkw1_Downhill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7b for g < -4: D = (g+4)/(-8) * (v_Lkw1-20)/10
+	// g=-6, v=80: (-6+4)/(-8) * (80-20)/10 = 0.25 * 6 = 1.500
+	want := (-6.0+4.0)/(-8.0) * (80.0-20.0)/10.0
+	got := GradientCorrection(-6, Lkw1, 80)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(-6, Lkw1, 80): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7c_Lkw2_Uphill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7c for g > +2: D = (g-2)/10 * (v_Lkw2+10)/10
+	// g=8, v=70: (8-2)/10 * (70+10)/10 = 0.6 * 8 = 4.800
+	want := (8.0-2.0)/10.0 * (70.0+10.0)/10.0
+	got := GradientCorrection(8, Lkw2, 70)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(8, Lkw2, 70): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Eq7c_Lkw2_Downhill(t *testing.T) {
+	t.Parallel()
+
+	// Eq. 7c for g < -4: D = (g+4)/(-8) * (v_Lkw2-10)/10
+	// g=-6, v=70: (-6+4)/(-8) * (70-10)/10 = 0.25 * 6 = 1.500
+	want := (-6.0+4.0)/(-8.0) * (70.0-10.0)/10.0
+	got := GradientCorrection(-6, Lkw2, 70)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("GradientCorrection(-6, Lkw2, 70): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestGradientCorrection_Clamped_At12(t *testing.T) {
+	t.Parallel()
+
+	// Gradients beyond ±12% use ±12% values.
+	if GradientCorrection(15, Lkw2, 70) != GradientCorrection(12, Lkw2, 70) {
+		t.Fatal("gradient should be clamped at +12%")
+	}
+
+	if GradientCorrection(-15, Pkw, 100) != GradientCorrection(-12, Pkw, 100) {
+		t.Fatal("gradient should be clamped at -12%")
+	}
+}
+
+// --- RLS-19 Section 3.3.7: Knotenpunktkorrektur (Eq. 8 / Tabelle 5) ---
+//
+// Eq. 8: D_{KKT}(x) = K_KT * max(1 - x/120, 0)
+// Tabelle 5: signalized K_KT=3, roundabout K_KT=2, other K_KT=0.
+// The step-table currently in JunctionCorrection does not implement this formula.
+
+func TestJunctionCorrection_Eq8_Signalized_At0m(t *testing.T) {
+	t.Parallel()
+
+	// x=0: K_KT * (1 - 0) = 3 * 1 = 3.0
+	got := JunctionCorrection(JunctionSignalized, 0)
+	if !almostEqual(got, 3.0, 0.001) {
+		t.Fatalf("JunctionCorrection(Signalized, 0): want 3.000, got %.4f", got)
+	}
+}
+
+func TestJunctionCorrection_Eq8_Signalized_ContinuousAt60m(t *testing.T) {
+	t.Parallel()
+
+	// x=60: 3 * (1 - 60/120) = 3 * 0.5 = 1.5
+	got := JunctionCorrection(JunctionSignalized, 60)
+	if !almostEqual(got, 1.5, 0.001) {
+		t.Fatalf("JunctionCorrection(Signalized, 60): want 1.500, got %.4f", got)
+	}
+}
+
+func TestJunctionCorrection_Eq8_Signalized_At120m(t *testing.T) {
+	t.Parallel()
+
+	// x=120: 3 * (1 - 1) = 0
+	got := JunctionCorrection(JunctionSignalized, 120)
+	if !almostEqual(got, 0.0, 0.001) {
+		t.Fatalf("JunctionCorrection(Signalized, 120): want 0.000, got %.4f", got)
+	}
+}
+
+func TestJunctionCorrection_Eq8_Roundabout_At40m(t *testing.T) {
+	t.Parallel()
+
+	// x=40: 2 * (1 - 40/120) = 2 * (2/3) ≈ 1.333
+	want := 2.0 * (1.0 - 40.0/120.0)
+	got := JunctionCorrection(JunctionRoundabout, 40)
+	if !almostEqual(got, want, 0.001) {
+		t.Fatalf("JunctionCorrection(Roundabout, 40): want %.4f, got %.4f", want, got)
+	}
+}
+
+func TestJunctionCorrection_Eq8_Other_AlwaysZero(t *testing.T) {
+	t.Parallel()
+
+	// K_KT=0 for sonstige Knotenpunkte → always 0.
+	for _, x := range []float64{0, 10, 50, 120} {
+		got := JunctionCorrection(JunctionOther, x)
+		if got != 0 {
+			t.Fatalf("JunctionCorrection(Other, %.0f): want 0, got %.4f", x, got)
+		}
 	}
 }
