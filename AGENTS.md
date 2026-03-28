@@ -22,7 +22,9 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 | `just update-golden`   | Update golden snapshots (`UPDATE_GOLDEN=1`)        |
 | `just build`           | Build CLI → `bin/noise`                            |
 | `just check-tidy`      | Verify `go.mod` is tidy                            |
-| `just ci`              | Run all checks (format, test, lint, tidy)          |
+| `just license-check`   | Check dependency licenses for policy violations    |
+| `just license-report`  | Generate CSV report of all dependency licenses     |
+| `just ci`              | Run all checks (format, test, lint, tidy, license) |
 | `just clean`           | Remove build artifacts                             |
 
 **Run a single test:**

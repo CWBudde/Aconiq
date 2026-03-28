@@ -55,8 +55,24 @@ wasm-build:
 fe-build-wasm: wasm-build
     cd frontend && VITE_WASM_MODE=true bun run build
 
+# Check dependency licenses for policy violations (restricted, forbidden, unknown)
+license-check:
+    cd backend && go-licenses check ./... \
+      --ignore github.com/aconiq/backend \
+      --ignore modernc.org/mathutil \
+      --ignore github.com/cwbudde/go-absolute-database \
+      --disallowed_types=restricted,forbidden,unknown
+
+# Generate a CSV report of all dependency licenses
+license-report:
+    cd backend && go-licenses report ./... \
+      --ignore github.com/aconiq/backend \
+      --ignore modernc.org/mathutil \
+      --ignore github.com/cwbudde/go-absolute-database \
+      2>/dev/null
+
 # Run all checks (formatting, linting, tests, tidiness)
-ci: check-formatted test lint check-tidy fe-ci
+ci: check-formatted test lint check-tidy license-check fe-ci
 
 # Start dev environment: backend API server + frontend Vite dev server in parallel.
 # Requires a project at the repo root (run `bin/noise init .` first if needed).

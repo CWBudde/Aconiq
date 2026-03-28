@@ -65,8 +65,8 @@ Shipped already:
 
 Open work:
 
-- [ ] Add dependency license scanning to CI, for example via `go-licenses` or an equivalent tool, and make the result reviewable in CI output or artifacts.
-- [ ] Review and finalize the compliance boundaries document in `docs/preflight/compliance-boundaries.md` so it matches the modules and assessments that are actually shipped today.
+- [x] Add dependency license scanning to CI, for example via `go-licenses` or an equivalent tool, and make the result reviewable in CI output or artifacts.
+- [x] Review and finalize the compliance boundaries document in `docs/preflight/compliance-boundaries.md` so it matches the modules and assessments that are actually shipped today.
 
 ### Priority 2 — RLS-19 conformance closure
 
