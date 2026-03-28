@@ -425,7 +425,8 @@ func roundISO9613Outputs(outputs []iso9613.ReceiverOutput) []map[string]any {
 			"x":        round6(output.Receiver.Point.X),
 			"y":        round6(output.Receiver.Point.Y),
 			"height_m": round6(output.Receiver.HeightM),
-			"LpAeq":    round6(output.Indicators.LpAeq),
+			"LpAeq_DW": round6(output.Indicators.LpAeqDW),
+			"LpAeq_LT": round6(output.Indicators.LpAeqLT),
 		})
 	}
 

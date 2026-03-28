@@ -724,13 +724,13 @@ func persistISO9613RunOutputs(
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
 		"receiver_mode":  receiverMode,
-		"indicator":      iso9613.IndicatorLpAeq,
+		"indicator":      iso9613.IndicatorLpAeqDW,
 	}
 
 	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{iso9613.IndicatorLpAeq}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		table := results.ReceiverTable{IndicatorOrder: []string{iso9613.IndicatorLpAeqDW, iso9613.IndicatorLpAeqLT}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
 		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{iso9613.IndicatorLpAeq: output.Indicators.LpAeq}})
+			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{iso9613.IndicatorLpAeqDW: output.Indicators.LpAeqDW, iso9613.IndicatorLpAeqLT: output.Indicators.LpAeqLT}})
 		}
 
 		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
