@@ -139,7 +139,7 @@ Done — conformance:
 Open work — conformance:
 
 - [x] Synthetic validation cases with hand-calculated reference values for each attenuation term.
-- [ ] Add comparison rules for tolerance checking in the acceptance test runner.
+- [x] Comparison rules for tolerance checking in the acceptance test runner (Table 5 tolerances: ±3 dB / ±1 dB by height and distance).
 
 ### Priority 4 — Remaining Schall 03 closure work
 
