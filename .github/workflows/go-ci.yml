@@ -46,6 +46,22 @@ jobs:
       - name: Check tidy
         run: just check-tidy
 
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check dependency licenses
+        run: just license-check
+
+      - name: Generate license report
+        run: just license-report > license-report.csv
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: license-report.csv
+          retention-days: 30
+
       - name: Build CLI
         run: just build
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	absdb "github.com/meko-tech/go-absolute-database"
+	absdb "github.com/cwbudde/go-absolute-database"
 )
 
 // ReceiverResult holds per-receiver immission levels from RREC*.abs files.

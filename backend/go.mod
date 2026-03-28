@@ -14,7 +14,7 @@ require (
 require github.com/wroge/wgs84 v1.1.7
 
 require (
-	github.com/meko-tech/go-absolute-database v0.0.0-00010101000000-000000000000
+	github.com/cwbudde/go-absolute-database v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.8.4
 )
 
@@ -44,4 +44,4 @@ require (
 
 replace github.com/cwbudde/go-citygml => ../../go-citygml
 
-replace github.com/meko-tech/go-absolute-database => ../../go-absolute-database
+replace github.com/cwbudde/go-absolute-database => ../../go-absolute-database
