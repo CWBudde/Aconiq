@@ -1,0 +1,44 @@
+{
+  "segments": [
+    {
+      "id": "ice1_barrier_track",
+      "track_centerline": [
+        {"x": -100, "y": 0},
+        {"x": 100, "y": 0}
+      ],
+      "elevation_m": 0,
+      "fahrbahn": -1,
+      "surface": 0,
+      "bridge_type": 0,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 250,
+      "operations": [
+        {
+          "train_type": "ICE-1-Zug",
+          "fz_composition": [
+            {"fz": 1, "count": 2},
+            {"fz": 2, "count": 12}
+          ],
+          "speed_kph": 250,
+          "trains_per_hour_day": 8,
+          "trains_per_hour_night": 2
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_behind_barrier",
+      "point": {"x": 0, "y": 30},
+      "height_m": 3.5
+    }
+  ],
+  "barriers": [
+    {
+      "a": {"x": -100, "y": 15},
+      "b": {"x": 100, "y": 15},
+      "top_height_m": 4,
+      "base_height_m": 0
+    }
+  ]
+}

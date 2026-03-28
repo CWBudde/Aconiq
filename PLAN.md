@@ -49,101 +49,26 @@ The path to DACH adoption runs through four gates:
 
 ## Active roadmap
 
-### Priority 1 — Legal and compliance close-out
+### Priority 1 — ISO 9613-2 residual work
 
-Goal: finish the last legal blockers for external adoption.
-
-Why now: the license foundation is already in place, so the remaining work is small but still directly affects third-party trust and reuse.
-
-Shipped already:
-
-- [x] `LICENSE` added as MIT.
-- [x] `NOTICE` added with dependency attributions, including the MPL-2.0 note for `hashicorp/golang-lru`.
-- [x] `CONTRIBUTING.md` added with contribution guidance and standards-module guidance.
-- [x] `SECURITY.md` added with vulnerability reporting process.
-- [x] Trademark/naming rules explicitly left as N/A for now.
-
-Open work:
-
-- [x] Add dependency license scanning to CI, for example via `go-licenses` or an equivalent tool, and make the result reviewable in CI output or artifacts.
-- [x] Review and finalize the compliance boundaries document in `docs/preflight/compliance-boundaries.md` so it matches the modules and assessments that are actually shipped today.
-
-### Priority 2 — RLS-19 conformance closure
-
-Status: infrastructure is strong and the main normative corrections are already implemented, but one propagation gap and one full-document reconciliation pass remain.
-
-Why now: RLS-19 is one of the core Germany-facing trust anchors. The remaining gap is narrow enough that this should be finished cleanly rather than left permanently half-open.
-
-Done already, compacted:
-
-- [x] Scope, compliance boundaries, data model, emission chain, propagation, indicators, provenance, and export are implemented.
-- [x] Dedicated TEST-20 acceptance runner exists with local-suite and CI-safe modes, per-task tolerances, and machine-readable conformance reporting.
-- [x] TEST-20 sourcing, version tracking, legal analysis, and CI-safe-suite definition are documented.
-- [x] The RLS-19 conformance declaration exists at `docs/conformance/rls19-konformitaetserklaerung.md`.
-- [x] Section 3.3.4 Eq. 6 and Tabelle 3 were corrected to the normative `A + 10·lg[1 + (v/B)^C]` form with unit coverage.
-- [x] Section 3.3.2 Eq. 4 and Tabelle 2 handling were corrected, including the `DTVToHourly` helper for day/night road-category mappings.
-- [x] Section 3.3.1 lane-positioning rules and multi-surface correction handling are documented and validated.
-- [x] Section 3.3.5 surface corrections were reworked to match Tabellen 4a and 4b with speed-aware behavior and tests.
-- [x] Section 3.3.6 gradient correction formulas 7a, 7b, and 7c are implemented with speed dependence and tests.
-- [x] Section 3.3.7 junction correction now uses the continuous Eq. 8 form.
-- [x] Section 3.3.8 Mehrfachreflexion is computed from Eq. 9 inputs instead of user-supplied dB values.
-- [x] Section 3.4 parking sources are implemented end to end, including Eq. 10, defaults, integration, and tests.
-- [x] Section 3.5 propagation formulas 11, 12, 13, 14, 15, and 17 were verified or corrected.
-- [x] Section 3.6 reflection handling now covers the normative conditions and up to second-order reflections.
-- [x] Golden and conformance coverage was expanded after the formula reconciliation pass.
-
-Open work:
-
-- [x] Complete Eq. 16 shielding geometry for `z = A + B + C - s`, including the multi-diffraction `C` term via the Gummibandmethode referenced by Probst 2010. Single-edge `C = 0` is already in place; the remaining work is true multi-edge support.
-- [x] Run a full reconciliation pass against the authoritative documents in `interoperability/RLS-19/` to confirm that no placeholder values, table gaps, or scope mismatches remain outside the sections already corrected.
-
-### Priority 3 — ISO 9613-2 from preview baseline to engineering-ready module
-
-Status: octave-band engineering method implemented for point sources. Conformance documentation and validation cases remain open.
+Status: the octave-band point-source workflow is implemented and documented. The remaining items are geometry-driven extensions and secondary use cases.
 
 Why now: TA Lärm is already implemented as an assessment layer, so ISO 9613-2 is the main remaining propagation track needed for a complete industrial workflow.
 
 Shipped already:
 
-- [x] Module structure, standards descriptor, source emission interface, propagation chain, CLI wiring, receiver tables, rasters, provenance, unit tests, validation projects, and golden scenarios.
+- [x] Typed inputs, deterministic point-source octave-band attenuation chain, import/run mapping, exported indicators, provenance, tests, and golden scenarios.
+- [x] Normative attenuation terms implemented for A_atm, A_gr, simplified ground, A_bar with precomputed geometry, and C_met.
+- [x] ISO 9613-2 conformance declaration, tolerances, embedded reference data decisions, synthetic validation cases, and acceptance-runner comparison rules.
 
-Done — octave-band attenuation chain:
+Open work:
 
-- [x] Octave-band processing (63 Hz to 8 kHz) with per-band attenuation and A-weighted energetic summation (Eq. 3–5).
-- [x] Normative atmospheric absorption A_atm (Eq. 8) with Table 2 coefficients and nearest-row lookup.
-- [x] Normative ground effect A_gr (Eq. 9, Table 3) with three-region model and functions a'(h), b'(h), c'(h), d'(h). Single global ground factor G.
-- [x] Simplified ground effect (Eq. 10) as alternative calculation path.
-- [x] Barrier screening formulas A_bar (Eq. 12, 14–18): D_z, C_3, z, K_met. Input: pre-computed diffraction geometry.
-- [x] Meteorological correction C_met (Eq. 21–22) with configurable C_0 parameter.
-- [x] Source model extended to octave-band sound power levels with single-value 500 Hz fallback.
-- [x] LpAeq_DW and LpAeq_LT indicators exported.
-- [x] Module separation, determinism, and result separation maintained.
-- [x] Import/run mapping from normalized GeoJSON plus run parameters into typed ISO 9613-2 inputs.
+- [ ] Extract the shared barrier-intersection/ray-geometry logic from RLS-19 into a common package and wire automatic barrier detection for ISO 9613-2 diffraction inputs.
+- [ ] Add reflections via image sources for enclosed industrial-yard cases once building geometry is readily available. This becomes more valuable when the SoundPlan import path below delivers richer building data.
+- [ ] Add line and area source subdivision for extended industrial sources such as conveyor belts, cooling towers, and facades.
+- [ ] Add spatial ground zones so the per-region G values come from polygon geometry instead of a single global ground factor.
 
-Open work — deferred implementation:
-
-The items below are deferred because the current octave-band point-source chain already covers the core TA Lärm industrial workflow: a practitioner can model point sources with full normative attenuation, get LpAeq_DW and LpAeq_LT, and feed the results into the TA Lärm assessment layer. Each deferred item addresses a secondary use case or a geometric feature that depends on shared infrastructure not yet available.
-
-- [ ] **Geometric barrier detection.** The diffraction formulas (Eq. 12–18) are implemented and tested; what is missing is the ray-barrier intersection that computes d_ss, d_sr, e, and a from barrier geometry. This logic already exists in the RLS-19 module for road noise barriers. Before implementing it here, the shared barrier-intersection code should be extracted from `rls19/road/shielding.go` into a common `geo/` or `propagation/` package so both standards can reuse it. Without this, users can still supply pre-computed barrier geometry via the API.
-- [ ] **Lateral diffraction around vertical edges** (Section 7.4.3, Eq. 13). Relevant only when a barrier's horizontal extent is comparable to the wavelength. Most industrial barrier assessments are dominated by top-edge diffraction; lateral paths matter mainly for narrow obstacles. Low priority until barrier detection is wired.
-- [ ] **Reflections via image sources** (Section 7.5, Eq. 19–20, Table 4). Architecturally independent — reflections add more source-receiver paths but do not change the per-path attenuation formulas. Relevant for enclosed industrial yards with large reflecting facades. Can be added without rearchitecting anything, but requires building-geometry input and specular-reflection construction. Priority increases when the SoundPlan import path (Priority 8) delivers building geometry.
-- [ ] **Line and area source subdivision** (Section 4). The standard decomposes extended sources into equivalent point sources. This is needed for conveyor belts, cooling towers, and building facades but not for stacks, vents, and equipment — which are the primary TA Lärm point-source use case. The 2024 edition formalises the projection method with a raster factor k; implementing this should follow that edition once a full copy is available.
-- [ ] **Spatial ground zones.** The three-region ground model is fully implemented; only the per-region G lookup from polygon geometry is missing. This requires spatial point-in-polygon queries against user-supplied ground-zone polygons. Low effort once the input schema is defined, but the single-global-G default (G = 0.5, mixed ground) is adequate for most industrial sites where the ground between source and receiver is roughly uniform.
-- [ ] **A_misc: foliage, industrial site, housing** (Annex A). These are informative, not normative. Foliage attenuation (Table A.1) and industrial-site scattering (Table A.2) apply only to specific propagation geometries. Housing attenuation (A.3) is situation-dependent and the standard itself recommends measurement or modelling instead. None of these are required for a conformance claim.
-
-Done — conformance:
-
-- [x] Implementation notes and legal/compliance notes in conformance declaration.
-- [x] Tolerances documented from Section 9, Table 5 of the standard.
-- [x] Coefficients and tables decision: Table 2 and Table 3 functions embedded as reference data; no external data pack required.
-- [x] ISO 9613-2 conformance boundary document published at `docs/conformance/iso9613-konformitaetserklaerung.md`.
-
-Open work — conformance:
-
-- [x] Synthetic validation cases with hand-calculated reference values for each attenuation term.
-- [x] Comparison rules for tolerance checking in the acceptance test runner (Table 5 tolerances: ±3 dB / ±1 dB by height and distance).
-
-### Priority 4 — Remaining Schall 03 closure work
+### Priority 2 — Remaining Schall 03 closure work
 
 Status: the normative computation core is complete; the remaining gaps are verification and one input-path extension.
 
@@ -160,11 +85,13 @@ Done already, compacted:
 
 Open work:
 
-- [ ] Add Section 9 measurement-based vehicle data support as an input pathway for custom vehicle acoustics. This is not a propagation gap, but it is still part of completing the standard-facing workflow.
-- [ ] Add end-to-end report/export checks so Schall 03 outputs are verified at the artifact level, not only at the computation level.
-- [ ] Add golden snapshot conformance scenarios for former Phase 20d barrier diffraction.
+- [ ] **Task B — End-to-end export golden test.** The existing `TestExportResultBundle` only checks file existence and JSON round-tripping. Add `TestExportGoldenSnapshot` in `schall03_test.go` that: (a) builds a multi-receiver scenario (2x1 grid), runs `ComputeReceiverOutputs` + `ExportResultBundle`, (b) golden-snapshots the exported `receivers.json` content and the raster metadata JSON, (c) verifies the CSV has the expected header and row count, (d) verifies the raster binary has the expected byte size (width × height × bands × 8).
 
-### Priority 5 — 16. BImSchV scope completion
+- [ ] **Task C — Barrier diffraction acceptance scenarios.** The acceptance runner's `scenarioFile` struct currently has only `Segments` and `Receivers` — no walls or barriers. `computeSnapshots` only calls `ComputeNormativeReceiverLevels`. Extend: (a) add optional `Walls []schall03.ReflectingWall` and `Barriers []schall03.BarrierSegment` to `scenarioFile`, (b) make `computeSnapshots` call `ComputeNormativeReceiverLevelsWithScene` when either field is present, (c) add two CI-safe scenarios: `b1_single_barrier` (ICE-1, 4 m barrier at 15 m, receiver at 30 m — basic screening) and `b2_barrier_with_wall` (same plus reflecting wall behind receiver — barrier+reflection interaction).
+
+- [ ] **Task A — Section 9 measurement-based vehicle data (Nr. 9.1–9.3).** Section 9 of Schall 03 allows replacing Beiblatt 1–3 spectra with measured pass-by data (per DIN EN ISO 3095). The existing `DataPack` emission model is too coarse for this (single base spectrum + corrections). Add a `MeasuredVehicle` struct that provides octave-band spectra per Teilquelle (m = 1..11) for a custom Fz category, plus the Table 19/20 wheel/rail roughness-split parameters and Table 20 measurement-condition correction factors. This slots into the emission pipeline as an alternative to the Beiblatt lookup: when a segment's `VehicleInput.Fz` references a measured category number (≥ 100), the emission code uses the measured spectra instead. Subsections to implement: Nr. 9.1.1 (vehicles), 9.1.2 (components), 9.1.4 (track types), 9.1.5 (bridges), 9.1.6 (rail/wheel mitigation), 9.2.1–9.2.2 (evaluation of measurement results), and validation of the 2 dB / 4 dB significance thresholds.
+
+### Priority 3 — 16. BImSchV scope completion
 
 Status: a usable first assessment layer exists, but scope definition and broader workflow coverage remain open.
 
@@ -185,7 +112,7 @@ Open work:
 - [ ] Clarify which sections and annexes are covered and which are intentionally excluded.
 - [ ] Decide whether workflow coverage should expand beyond the current explicit-receiver model to support the reporting and onboarding scenarios planned later in this roadmap.
 
-### Priority 6 — DACH reporting and report verification (former Phase 25 plus reporting residuals)
+### Priority 4 — DACH reporting and report verification (former Phase 25 plus reporting residuals)
 
 Goal: move from generic report/export capability to authority-facing German report packages that are deterministic, reviewable, and CI-checked.
 
@@ -219,7 +146,7 @@ Research that feeds this priority:
 - [ ] Define a template/versioning policy for backward-compatible report styles.
 - [ ] Survey published Gutachten examples to pin down the minimum structure expected in practice.
 
-### Priority 7 — QA hardening and conformance packaging (former Phases 27 and 29)
+### Priority 5 — QA hardening and conformance packaging (former Phases 27 and 29)
 
 Goal: turn correctness, reproducibility, and conformance evidence into maintained product assets rather than ad hoc one-off validation work.
 
@@ -251,7 +178,7 @@ Open work — conformance packages:
 - [ ] Publish conformance packages for the CNOSSOS family: Road, Rail, Industry, and Aircraft.
 - [ ] Automate conformance-report generation in CI with per-module pass/fail gating where practical.
 
-### Priority 8 — SoundPlan import and cross-validation (former Phase 36)
+### Priority 6 — SoundPlan import and cross-validation (former Phase 36)
 
 Status: Steps 1 and 2 are complete; Step 3 is partly complete.
 
@@ -318,7 +245,7 @@ Research and legal questions that remain attached to this priority:
 - [ ] Can SoundPlan export via better-documented intermediate formats such as CadnaA-compatible exchange?
 - [ ] Confirm and document the legal interoperability position for parsing the proprietary format.
 
-### Priority 9 — Performance and scaling (former Phase 28)
+### Priority 7 — Performance and scaling (former Phase 28)
 
 Goal: keep city-scale workloads practical without weakening determinism.
 
@@ -342,7 +269,7 @@ Optional, advanced, non-normative work under this priority:
 - [ ] `algo-pde` for research-only wave and low-frequency propagation experiments.
 - [ ] WebAssembly delivery for interactive research/demo modules.
 
-### Priority 10 — Example projects and DACH onboarding (former Phase 30)
+### Priority 8 — Example projects and DACH onboarding (former Phase 30)
 
 Goal: make adoption easier by giving new users complete, license-safe, runnable examples.
 
@@ -359,7 +286,7 @@ Open work:
 - [ ] Add a German-language getting-started guide.
 - [ ] Add CI jobs that keep example projects green across releases.
 
-### Priority 11 — Community and release engineering (former Phase 31)
+### Priority 9 — Community and release engineering (former Phase 31)
 
 Goal: make the project visibly maintainable and adoptable from outside the core development circle.
 
@@ -463,9 +390,11 @@ This section keeps the completed work visible without forcing the active roadmap
 
 ### Assessment and conformance foundations already shipped (former Phases 20 shipped scope, 22, and 37)
 
+- [x] Legal and compliance close-out is complete, including CI license scanning and finalized compliance boundaries.
+- [x] RLS-19 conformance closure is complete, including the Eq. 16 multi-diffraction shielding work and full reconciliation against the authoritative source documents.
 - [x] Schall 03 normative core, reflections, barrier diffraction, and BImSchV conformance audit.
 - [x] TA Lärm assessment layer complete, including thresholds, Teilzeiten, Lr computation, load assessment, receiver assessment logic, export envelope, report text blocks, golden scenarios, and conformance declaration.
-- [x] Existing conformance declarations for RLS-19, Schall 03, and TA Lärm are already in the repository.
+- [x] Existing conformance declarations for RLS-19, ISO 9613-2, Schall 03, and TA Lärm are already in the repository.
 
 ### API and frontend foundation (former shipped portions of Phases 23 and 32)
 
@@ -489,9 +418,7 @@ This section keeps the completed work visible without forcing the active roadmap
 
 - [ ] CNOSSOS Road/Rail/Industry/Aircraft: collect license-safe validation cases and define tolerances.
 - [ ] BUB/BUF/BEB: obtain current documents/annexes and define exact input requirements per module.
-- [ ] RLS-19 TEST-20: finish clarifying sourcing, storage format, legal redistribution, and CI automation from an operational perspective.
 - [ ] Schall 03: acquire license-safe verification cases and clarify redistribution rights for normative tables.
-- [ ] ISO 9613-2: identify public example cases or create synthetic ones.
 - [ ] TA Lärm: survey published Gutachten for structural conventions and assessment patterns.
 - [ ] 16. BImSchV: clarify combined assessment rules for road plus rail.
 

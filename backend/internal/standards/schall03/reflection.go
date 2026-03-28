@@ -38,10 +38,10 @@ func Table18AbsorptionLoss(surface WallSurfaceType) float64 {
 // ReflectingWall describes one reflecting surface as a 2D line segment
 // with a height and acoustic surface type.
 type ReflectingWall struct {
-	A       geo.Point2D     // first endpoint
-	B       geo.Point2D     // second endpoint
-	HeightM float64         // wall height above ground [m]
-	Surface WallSurfaceType // acoustic surface category (Table 18)
+	A       geo.Point2D     `json:"a"`        // first endpoint
+	B       geo.Point2D     `json:"b"`        // second endpoint
+	HeightM float64         `json:"height_m"` // wall height above ground [m]
+	Surface WallSurfaceType `json:"surface"`  // acoustic surface category (Table 18)
 }
 
 // Validate checks the wall for geometric and physical validity.

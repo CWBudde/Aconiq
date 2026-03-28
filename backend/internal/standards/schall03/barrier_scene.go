@@ -14,23 +14,23 @@ import (
 // propagation.
 type BarrierSegment struct {
 	// A is the first endpoint of the barrier in plan view.
-	A geo.Point2D
+	A geo.Point2D `json:"a"`
 	// B is the second endpoint of the barrier in plan view.
-	B geo.Point2D
+	B geo.Point2D `json:"b"`
 	// TopHeightM is the barrier top height above ground [m].
-	TopHeightM float64
+	TopHeightM float64 `json:"top_height_m"`
 	// BaseHeightM is the height of the absorbing base (Sockel) above rail
 	// level [m].  Used for D_refl correction (Gl. 20).  Set to 0 for a
 	// fully reflective barrier.
-	BaseHeightM float64
+	BaseHeightM float64 `json:"base_height_m"`
 	// ThicknessM is the barrier thickness (distance between two diffraction
 	// edges) [m].  0 for a thin single-edge barrier; >0 for a wide barrier
 	// with double diffraction (Gl. 22, C₃ factor).
-	ThicknessM float64
+	ThicknessM float64 `json:"thickness_m,omitempty"`
 	// IsParallel indicates whether the barrier's two diffraction edges are
 	// parallel (for Gl. 25 path difference).  Only relevant when
 	// ThicknessM > 0.
-	IsParallel bool
+	IsParallel bool `json:"is_parallel,omitempty"`
 }
 
 // Validate checks the barrier segment for geometric and physical validity.
