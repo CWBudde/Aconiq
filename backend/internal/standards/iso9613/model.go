@@ -14,7 +14,9 @@ const (
 	// StandardID identifies the ISO 9613-2 planning-track scaffold.
 	StandardID = "iso9613"
 
-	IndicatorLpAeq = "LpAeq"
+	IndicatorLpAeq   = "LpAeq"    // backward compat alias
+	IndicatorLpAeqDW = "LpAeq_DW" // downwind (favorable propagation)
+	IndicatorLpAeqLT = "LpAeq_LT" // long-term (with meteorological correction)
 )
 
 const (
@@ -173,7 +175,7 @@ func Descriptor() framework.StandardDescriptor {
 					{
 						Name:                 "point-source",
 						SupportedSourceTypes: []string{SourceTypePoint},
-						SupportedIndicators:  []string{IndicatorLpAeq},
+						SupportedIndicators:  []string{IndicatorLpAeqDW, IndicatorLpAeqLT},
 						ParameterSchema: framework.ParameterSchema{
 							Parameters: []framework.ParameterDefinition{
 								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "10", Min: &minPositive, Description: "Receiver grid spacing in meters"},

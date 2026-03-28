@@ -41,7 +41,7 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 	}
 
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{IndicatorLpAeq},
+		IndicatorOrder: []string{IndicatorLpAeqDW, IndicatorLpAeqLT},
 		Unit:           "dB",
 		Records:        make([]results.ReceiverRecord, 0, len(outputs)),
 	}
@@ -53,7 +53,8 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 			Y:       output.Receiver.Point.Y,
 			HeightM: output.Receiver.HeightM,
 			Values: map[string]float64{
-				IndicatorLpAeq: output.Indicators.LpAeq,
+				IndicatorLpAeqDW: output.Indicators.LpAeqDW,
+				IndicatorLpAeqLT: output.Indicators.LpAeqLT,
 			},
 		})
 	}
@@ -77,7 +78,7 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		Bands:     1,
 		NoData:    -9999,
 		Unit:      "dB",
-		BandNames: []string{IndicatorLpAeq},
+		BandNames: []string{IndicatorLpAeqDW},
 	})
 	if err != nil {
 		return ExportOutputs{}, err
@@ -87,7 +88,7 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		x := index % gridWidth
 		y := index / gridWidth
 
-		err := raster.Set(x, y, 0, output.Indicators.LpAeq)
+		err := raster.Set(x, y, 0, output.Indicators.LpAeqDW)
 		if err != nil {
 			return ExportOutputs{}, err
 		}
