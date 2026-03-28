@@ -1,8 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import { Link } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Button } from "@/ui/components/button";
+import { useProjectStatus } from "@/api";
 import { MapView } from "@/map/map-view";
 import { LayerControl } from "@/map/layer-control";
 import { CoordinateDisplay } from "@/map/coordinate-display";
@@ -13,6 +15,7 @@ import { NewFeatureDialog } from "@/map/new-feature-dialog";
 import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
+import { fitViewToWorkspace } from "@/map/extent";
 import { useDraw } from "@/map/use-draw";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
@@ -20,6 +23,94 @@ import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 
 export default function MapPage() {
+  const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
+  const calcArea = useModelStore((s) => s.calcArea);
+  const hasWorkspaceContent =
+    features.length > 0 || receivers.length > 0 || calcArea !== null;
+
+  if (!hasWorkspaceContent) {
+    return <WorkspaceStart />;
+  }
+
+  return <MapWorkspace />;
+}
+
+function WorkspaceStart() {
+  const project = useProjectStatus();
+
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
+        <section className="rounded-3xl border bg-card p-8 shadow-sm">
+          <div className="max-w-2xl space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground">
+              {m.section_workspace()}
+            </div>
+            <h2 className="text-3xl font-semibold tracking-tight">
+              {m.heading_map_workspace()}
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground sm:text-base">
+              {m.msg_map_workspace_description()}
+            </p>
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button asChild>
+              <Link to="/import">{m.nav_import()}</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/status">{m.nav_status()}</Link>
+            </Button>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border bg-card p-6 shadow-sm">
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              {m.section_project()}
+            </h3>
+            {project.isLoading ? (
+              <p className="text-sm text-muted-foreground">
+                {m.status_loading_project()}
+              </p>
+            ) : project.isError ? (
+              <p className="text-sm text-destructive">
+                {project.error?.message ?? "Unknown error"}
+              </p>
+            ) : project.data ? (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">
+                  {m.label_name_field()}
+                </dt>
+                <dd>{project.data.name}</dd>
+                <dt className="text-muted-foreground">{m.label_crs_field()}</dt>
+                <dd className="font-mono">{project.data.crs}</dd>
+                <dt className="text-muted-foreground">
+                  {m.label_scenarios_field()}
+                </dt>
+                <dd>{String(project.data.scenario_count)}</dd>
+                <dt className="text-muted-foreground">
+                  {m.label_runs_field()}
+                </dt>
+                <dd>{String(project.data.run_count)}</dd>
+              </dl>
+            ) : (
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <p className="text-sm font-medium">{m.msg_no_project_yet()}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {m.msg_no_project_yet_help()}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function MapWorkspace() {
   const [clickedFeature, setClickedFeature] =
     useState<MapGeoJSONFeature | null>(null);
   const [popupLngLat, setPopupLngLat] = useState<[number, number] | null>(null);
@@ -29,6 +120,13 @@ export default function MapPage() {
   const setCalcArea = useModelStore((s) => s.setCalcArea);
   const clearCalcArea = useModelStore((s) => s.clearCalcArea);
   const calcArea = useModelStore((s) => s.calcArea);
+  const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
+
+  const workspaceView = useMemo(
+    () => fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
+    [features, receivers, calcArea],
+  );
 
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
@@ -81,7 +179,11 @@ export default function MapPage() {
 
   return (
     <TooltipProvider>
-      <MapView onFeatureClick={handleFeatureClick}>
+      <MapView
+        center={workspaceView.center}
+        zoom={workspaceView.zoom}
+        onFeatureClick={handleFeatureClick}
+      >
         <ModelLayers />
         <DrawToolbar
           activeMode={activeMode}
