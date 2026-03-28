@@ -1169,6 +1169,70 @@ func TestComputeShielding_MultipleBarriers(t *testing.T) {
 	}
 }
 
+func TestComputeShielding_MultiBarrierMultiDiffraction(t *testing.T) {
+	t.Parallel()
+
+	// Two barriers between source and receiver, both above LOS.
+	// Source at y=0 (height 0.5m), receiver at y=50 (height 4m).
+	barrier1 := Barrier{
+		ID:       "wall-1",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  6.0,
+	}
+	barrier2 := Barrier{
+		ID:       "wall-2",
+		Geometry: []geo.Point2D{{X: -100, Y: 20}, {X: 100, Y: 20}},
+		HeightM:  6.0,
+	}
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{barrier1, barrier2},
+	)
+
+	if !result.Shielded {
+		t.Fatal("expected shielding from two barriers")
+	}
+
+	// Multi-diffraction must produce higher loss than single-edge.
+	singleResult := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{barrier1}, // only the first barrier
+	)
+
+	if result.InsertionLoss <= singleResult.InsertionLoss {
+		t.Fatalf("multi-barrier loss (%f) should exceed single-barrier loss (%f)",
+			result.InsertionLoss, singleResult.InsertionLoss)
+	}
+}
+
+func TestComputeShielding_SingleBarrierUnchanged(t *testing.T) {
+	t.Parallel()
+
+	barrier := sampleBarrier() // wall-1 at y=10, height 4m
+
+	result := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{barrier},
+	)
+
+	// Compute expected value via original single-edge functions.
+	crossPt, _, _ := geo.LineStringIntersectsSegment(barrier.Geometry,
+		geo.Point2D{X: 0, Y: 0}, geo.Point2D{X: 0, Y: 50})
+	dSB := dist2D(geo.Point2D{X: 0, Y: 0}, crossPt)
+	dBR := dist2D(crossPt, geo.Point2D{X: 0, Y: 50})
+	geom := computeDiffraction(dSB, 0.5, dBR, 4.0, barrier.HeightM)
+	expectedLoss := rls19BarrierLoss(geom)
+
+	if math.Abs(result.InsertionLoss-expectedLoss) > 1e-10 {
+		t.Fatalf("single barrier loss changed: got %f, expected %f",
+			result.InsertionLoss, expectedLoss)
+	}
+}
+
 func TestPropagation_WithBarrier(t *testing.T) {
 	t.Parallel()
 

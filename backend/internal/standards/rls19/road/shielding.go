@@ -214,15 +214,17 @@ type ShieldingResult struct {
 	BarrierID      string  // ID of the effective barrier (empty if not shielded)
 }
 
-// ComputeShielding determines if any barrier shields the direct path between
-// source and receiver, and computes the insertion loss using the
-// Maekawa/Kurze-Anderson approximation.
+// ComputeShielding determines barrier shielding for the path between source
+// and receiver per RLS-19 §3.5.5, supporting both single-edge and multi-edge
+// diffraction.
 //
-// The method works in a vertical cross-section along the direct source-receiver
-// line. For each barrier that intersects this line in plan view, we compute
-// the path length difference (source→barrier-top→receiver vs source→receiver)
-// and derive the insertion loss. The barrier producing the largest insertion
-// loss is the effective one.
+// The method finds all barrier crossings along the source→receiver line,
+// selects significant diffraction edges via the Gummibandmethode (upper convex
+// hull in the vertical cross-section, per Probst 2010), and computes the
+// insertion loss using Eqs. 15-17 with the C term for multi-edge paths.
+//
+// For a single barrier, this reduces to the standard z = A + B - s formula
+// (C=0), producing identical results to the previous single-edge implementation.
 //
 // Parameters:
 //   - source: source point (2D plan position)
@@ -230,9 +232,6 @@ type ShieldingResult struct {
 //   - receiver: receiver point (2D plan position)
 //   - receiverHeightM: receiver height above ground [m]
 //   - barriers: list of barriers to check
-//
-// The maximum insertion loss is capped at 20 dB (practical limit for
-// single-edge diffraction).
 func ComputeShielding(
 	source geo.Point2D, sourceHeightM float64,
 	receiver geo.Point2D, receiverHeightM float64,
@@ -247,51 +246,31 @@ func ComputeShielding(
 		return ShieldingResult{}
 	}
 
-	best := ShieldingResult{}
-
-	for i := range barriers {
-		b := &barriers[i]
-
-		// Find where the barrier intersects the source-receiver line in plan view.
-		crossPt, _, intersects := geo.LineStringIntersectsSegment(b.Geometry, source, receiver)
-		if !intersects {
-			continue
-		}
-
-		// Compute distances in plan view.
-		dSourceBarrier := dist2D(source, crossPt)
-		dBarrierReceiver := dist2D(crossPt, receiver)
-
-		// Skip if intersection is at endpoints (barrier not truly between).
-		if dSourceBarrier < 1e-6 || dBarrierReceiver < 1e-6 {
-			continue
-		}
-
-		// Compute single-edge diffraction geometry and insertion loss (RLS-19 Eq. 15/17).
-		diff := computeDiffraction(
-			dSourceBarrier, sourceHeightM,
-			dBarrierReceiver, receiverHeightM,
-			b.HeightM,
-		)
-
-		if diff.Z <= 0 {
-			// Barrier top is below the line of sight — no shielding.
-			continue
-		}
-
-		loss := rls19BarrierLoss(diff)
-
-		if loss > best.InsertionLoss {
-			best = ShieldingResult{
-				Shielded:       true,
-				InsertionLoss:  loss,
-				PathDifference: diff.Z,
-				BarrierID:      b.ID,
-			}
-		}
+	// Step 1: find all barrier crossings sorted by distance from source.
+	crossings := findBarrierCrossings(source, receiver, barriers)
+	if len(crossings) == 0 {
+		return ShieldingResult{}
 	}
 
-	return best
+	// Step 2-3: select significant diffraction edges via Gummibandmethode.
+	edges := selectDiffractionEdges(sourceHeightM, receiverHeightM, directDist, crossings)
+	if len(edges) == 0 {
+		return ShieldingResult{}
+	}
+
+	// Step 4-6: compute z and D_z via Eqs. 15-17 (with C term for multi-edge).
+	z, loss := computeMultiEdgeLoss(edges, sourceHeightM, receiverHeightM, directDist)
+	if z <= 0 || loss <= 0 {
+		return ShieldingResult{}
+	}
+
+	// Report the first barrier as the effective one (it defines leg A).
+	return ShieldingResult{
+		Shielded:       true,
+		InsertionLoss:  loss,
+		PathDifference: z,
+		BarrierID:      edges[0].barrier.ID,
+	}
 }
 
 // diffractionGeometry holds the 3D path lengths for single-edge diffraction.
