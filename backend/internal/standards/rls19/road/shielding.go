@@ -57,6 +57,123 @@ func findBarrierCrossings(source, receiver geo.Point2D, barriers []Barrier) []ba
 	return crossings
 }
 
+// diffractionEdge describes one significant diffraction edge selected by the
+// Gummibandmethode (rubber band method) per RLS-19 §3.5.5.
+type diffractionEdge struct {
+	distFromSource float64  // 2D plan distance from source [m]
+	heightM        float64  // barrier top height [m]
+	barrier        *Barrier // source barrier
+}
+
+// hullPoint is a point in the vertical cross-section for the upper convex hull.
+type hullPoint struct {
+	dist        float64
+	height      float64
+	crossingIdx int // index into crossings; -1 for source/receiver
+}
+
+// selectDiffractionEdges implements the Gummibandmethode to select significant
+// diffraction edges from barrier crossings.
+//
+// The method projects barrier tops into the vertical source→receiver
+// cross-section and computes the upper convex hull. Hull vertices (excluding
+// source and receiver) that lie above the line of sight are the significant
+// edges, returned in order from source to receiver.
+//
+// crossings must be sorted by distFromSource and pre-filtered to only include
+// barriers that actually intersect the source→receiver line.
+func selectDiffractionEdges(
+	sourceHeightM, receiverHeightM, totalDistM float64,
+	crossings []barrierCrossing,
+) []diffractionEdge {
+	if len(crossings) == 0 {
+		return nil
+	}
+
+	// Filter to obstructing crossings (barrier top above line of sight).
+	var obstructing []barrierCrossing
+	for _, c := range crossings {
+		frac := c.distFromSource / totalDistM
+		losHeight := sourceHeightM + frac*(receiverHeightM-sourceHeightM)
+		if c.barrier.HeightM > losHeight {
+			obstructing = append(obstructing, c)
+		}
+	}
+
+	if len(obstructing) == 0 {
+		return nil
+	}
+
+	// For a single obstructing barrier, skip the hull computation.
+	if len(obstructing) == 1 {
+		c := obstructing[0]
+		return []diffractionEdge{{
+			distFromSource: c.distFromSource,
+			heightM:        c.barrier.HeightM,
+			barrier:        c.barrier,
+		}}
+	}
+
+	// Build points for upper convex hull: source, obstructing tops, receiver.
+	points := make([]hullPoint, 0, len(obstructing)+2)
+	points = append(points, hullPoint{dist: 0, height: sourceHeightM, crossingIdx: -1})
+	for i, c := range obstructing {
+		points = append(points, hullPoint{
+			dist:        c.distFromSource,
+			height:      c.barrier.HeightM,
+			crossingIdx: i,
+		})
+	}
+	points = append(points, hullPoint{dist: totalDistM, height: receiverHeightM, crossingIdx: -1})
+
+	// Upper convex hull (Andrew's monotone chain, upper hull only).
+	hull := upperConvexHull(points)
+
+	// Extract edges: hull vertices that are not source or receiver.
+	var edges []diffractionEdge
+	for _, hp := range hull {
+		if hp.crossingIdx < 0 {
+			continue
+		}
+		c := obstructing[hp.crossingIdx]
+		edges = append(edges, diffractionEdge{
+			distFromSource: c.distFromSource,
+			heightM:        c.barrier.HeightM,
+			barrier:        c.barrier,
+		})
+	}
+
+	return edges
+}
+
+// upperConvexHull computes the upper convex hull of points sorted by dist.
+// Points on or below the line from their neighbours are removed.
+func upperConvexHull(points []hullPoint) []hullPoint {
+	n := len(points)
+	if n <= 2 {
+		return points
+	}
+
+	hull := make([]hullPoint, 0, n)
+	for i := range n {
+		for len(hull) >= 2 {
+			a := hull[len(hull)-2]
+			b := hull[len(hull)-1]
+			c := points[i]
+			// Cross product: if >= 0, b is on or below line a→c → remove.
+			cross := (b.dist-a.dist)*(c.height-a.height) -
+				(b.height-a.height)*(c.dist-a.dist)
+			if cross < 0 {
+				break
+			}
+			hull = hull[:len(hull)-1]
+		}
+		hull = append(hull, points[i])
+	}
+
+	return hull
+}
+
 // Barrier represents a noise barrier or shielding obstacle (wall, berm, building edge).
 // In plan view it is a polyline; the height is uniform along its length.
 type Barrier struct {

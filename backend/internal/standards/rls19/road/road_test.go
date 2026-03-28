@@ -3082,3 +3082,71 @@ func TestFindBarrierCrossings_SkipsNonIntersecting(t *testing.T) {
 		t.Fatal("expected the crossing barrier")
 	}
 }
+
+func TestSelectDiffractionEdges_SingleObstructing(t *testing.T) {
+	t.Parallel()
+
+	crossings := []barrierCrossing{
+		{distFromSource: 10, barrier: &Barrier{ID: "w1", HeightM: 6.0}},
+	}
+
+	edges := selectDiffractionEdges(0.5, 4.0, 50.0, crossings)
+
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(edges))
+	}
+	if edges[0].barrier.ID != "w1" {
+		t.Fatalf("expected w1, got %q", edges[0].barrier.ID)
+	}
+}
+
+func TestSelectDiffractionEdges_TwoEdges(t *testing.T) {
+	t.Parallel()
+
+	// Both barriers above LOS → both selected.
+	crossings := []barrierCrossing{
+		{distFromSource: 10, barrier: &Barrier{ID: "w1", HeightM: 6.0}},
+		{distFromSource: 30, barrier: &Barrier{ID: "w2", HeightM: 6.0}},
+	}
+
+	edges := selectDiffractionEdges(0.5, 4.0, 50.0, crossings)
+
+	if len(edges) != 2 {
+		t.Fatalf("expected 2 edges, got %d", len(edges))
+	}
+}
+
+func TestSelectDiffractionEdges_HullReduces(t *testing.T) {
+	t.Parallel()
+
+	// Three barriers: middle one is below rubber band between outer two → excluded.
+	crossings := []barrierCrossing{
+		{distFromSource: 10, barrier: &Barrier{ID: "w1", HeightM: 8.0}},
+		{distFromSource: 20, barrier: &Barrier{ID: "w2", HeightM: 3.0}}, // below hull
+		{distFromSource: 30, barrier: &Barrier{ID: "w3", HeightM: 8.0}},
+	}
+
+	edges := selectDiffractionEdges(0.5, 4.0, 50.0, crossings)
+
+	if len(edges) != 2 {
+		t.Fatalf("expected 2 edges (middle excluded by hull), got %d", len(edges))
+	}
+	if edges[0].barrier.ID != "w1" || edges[1].barrier.ID != "w3" {
+		t.Fatalf("expected w1 and w3, got %q and %q", edges[0].barrier.ID, edges[1].barrier.ID)
+	}
+}
+
+func TestSelectDiffractionEdges_NoneObstructing(t *testing.T) {
+	t.Parallel()
+
+	// Barrier below line of sight.
+	crossings := []barrierCrossing{
+		{distFromSource: 25, barrier: &Barrier{ID: "low", HeightM: 1.0}},
+	}
+
+	edges := selectDiffractionEdges(0.5, 4.0, 50.0, crossings)
+
+	if len(edges) != 0 {
+		t.Fatalf("expected 0 edges for non-obstructing barrier, got %d", len(edges))
+	}
+}
