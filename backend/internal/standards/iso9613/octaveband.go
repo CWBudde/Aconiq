@@ -29,5 +29,6 @@ func BandLevelsFromAWeighted(lwa float64) BandLevels {
 	for i := range levels {
 		levels[i] = lwa
 	}
+
 	return levels
 }

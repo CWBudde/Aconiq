@@ -33,6 +33,8 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 // Validate checks propagation inputs for sane ranges.
+//
+//nolint:cyclop // Validation functions check each field independently.
 func (cfg PropagationConfig) Validate() error {
 	if math.IsNaN(cfg.GroundFactor) || math.IsInf(cfg.GroundFactor, 0) || cfg.GroundFactor < 0 || cfg.GroundFactor > 1 {
 		return errors.New("ground_factor must be finite and within [0,1]")

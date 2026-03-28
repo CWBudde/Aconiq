@@ -1,7 +1,5 @@
 package iso9613
 
-import "math"
-
 // EffectiveBandLevels returns the octave-band sound power levels for a source.
 // If the source provides explicit octave-band levels those are used; otherwise
 // the single A-weighted sound power level is distributed across all bands.
@@ -32,22 +30,4 @@ func ComputeEmission(source PointSource) (float64, error) {
 		source.DirectivityCorrectionDB +
 		source.TonalityCorrectionDB +
 		source.ImpulsivityCorrectionDB, nil
-}
-
-func energySumDB(levels []float64) float64 {
-	sum := 0.0
-
-	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) || level <= -900 {
-			continue
-		}
-
-		sum += math.Pow(10, level/10)
-	}
-
-	if sum <= 0 {
-		return -999.0
-	}
-
-	return 10 * math.Log10(sum)
 }

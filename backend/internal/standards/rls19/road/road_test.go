@@ -3173,6 +3173,7 @@ func TestSelectDiffractionEdges_SingleObstructing(t *testing.T) {
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(edges))
 	}
+
 	if edges[0].barrier.ID != "w1" {
 		t.Fatalf("expected w1, got %q", edges[0].barrier.ID)
 	}
@@ -3209,6 +3210,7 @@ func TestSelectDiffractionEdges_HullReduces(t *testing.T) {
 	if len(edges) != 2 {
 		t.Fatalf("expected 2 edges (middle excluded by hull), got %d", len(edges))
 	}
+
 	if edges[0].barrier.ID != "w1" || edges[1].barrier.ID != "w3" {
 		t.Fatalf("expected w1 and w3, got %q and %q", edges[0].barrier.ID, edges[1].barrier.ID)
 	}
@@ -3247,6 +3249,7 @@ func TestMultiDiffractionLoss_SingleEdgeMatchesExisting(t *testing.T) {
 	if math.Abs(z-singleGeom.Z) > 1e-10 {
 		t.Fatalf("z mismatch: multi=%f single=%f", z, singleGeom.Z)
 	}
+
 	if math.Abs(loss-singleLoss) > 1e-10 {
 		t.Fatalf("loss mismatch: multi=%f single=%f", loss, singleLoss)
 	}

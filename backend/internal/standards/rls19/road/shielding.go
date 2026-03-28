@@ -92,8 +92,10 @@ func selectDiffractionEdges(
 
 	// Filter to obstructing crossings (barrier top above line of sight).
 	var obstructing []barrierCrossing
+
 	for _, c := range crossings {
 		frac := c.distFromSource / totalDistM
+
 		losHeight := sourceHeightM + frac*(receiverHeightM-sourceHeightM)
 		if c.barrier.HeightM > losHeight {
 			obstructing = append(obstructing, c)
@@ -107,6 +109,7 @@ func selectDiffractionEdges(
 	// For a single obstructing barrier, skip the hull computation.
 	if len(obstructing) == 1 {
 		c := obstructing[0]
+
 		return []diffractionEdge{{
 			distFromSource: c.distFromSource,
 			heightM:        c.barrier.HeightM,
@@ -116,6 +119,7 @@ func selectDiffractionEdges(
 
 	// Build points for upper convex hull: source, obstructing tops, receiver.
 	points := make([]hullPoint, 0, len(obstructing)+2)
+
 	points = append(points, hullPoint{dist: 0, height: sourceHeightM, crossingIdx: -1})
 	for i, c := range obstructing {
 		points = append(points, hullPoint{
@@ -124,6 +128,7 @@ func selectDiffractionEdges(
 			crossingIdx: i,
 		})
 	}
+
 	points = append(points, hullPoint{dist: totalDistM, height: receiverHeightM, crossingIdx: -1})
 
 	// Upper convex hull (Andrew's monotone chain, upper hull only).
@@ -131,10 +136,12 @@ func selectDiffractionEdges(
 
 	// Extract edges: hull vertices that are not source or receiver.
 	var edges []diffractionEdge
+
 	for _, hp := range hull {
 		if hp.crossingIdx < 0 {
 			continue
 		}
+
 		c := obstructing[hp.crossingIdx]
 		edges = append(edges, diffractionEdge{
 			distFromSource: c.distFromSource,
@@ -166,8 +173,10 @@ func upperConvexHull(points []hullPoint) []hullPoint {
 			if cross < 0 {
 				break
 			}
+
 			hull = hull[:len(hull)-1]
 		}
+
 		hull = append(hull, points[i])
 	}
 
@@ -351,6 +360,7 @@ func computeMultiEdgeLoss(
 
 	// C: sum of 3D distances between consecutive edges.
 	C := 0.0
+
 	for i := 1; i < len(edges); i++ {
 		dH := edges[i].distFromSource - edges[i-1].distFromSource
 		dV := edges[i].heightM - edges[i-1].heightM
@@ -375,6 +385,7 @@ func computeMultiEdgeLoss(
 	} else {
 		Bkw = B + C
 	}
+
 	kw := math.Exp(-math.Sqrt(Akw*Bkw*s/(2*z)) / 2000.0)
 
 	// Eq. 15: D_z = 10·lg(3 + 80·z·K_w).
