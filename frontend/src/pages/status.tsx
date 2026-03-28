@@ -1,5 +1,7 @@
+import { Link } from "react-router";
 import { useHealth, useProjectStatus } from "@/api";
 import type { HealthResponse, ProjectStatusResponse } from "@/api";
+import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 
 function HealthSection({ data }: { data: HealthResponse }) {
@@ -15,7 +17,22 @@ function HealthSection({ data }: { data: HealthResponse }) {
   );
 }
 
-function ProjectSection({ data }: { data: ProjectStatusResponse }) {
+function ProjectSection({ data }: { data: ProjectStatusResponse | null }) {
+  if (!data) {
+    return (
+      <div className="rounded-2xl border bg-muted/30 p-4">
+        <p className="text-sm font-medium">{m.msg_no_project_yet()}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {m.msg_no_project_yet_help()}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button asChild size="sm">
+            <Link to="/import">{m.nav_import()}</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
       <dt className="text-muted-foreground">{m.label_name_field()}</dt>
@@ -41,7 +58,7 @@ function QueryResult<T>({
   isLoading: boolean;
   isError: boolean;
   error: Error | null;
-  data: T | undefined;
+  data: T | null | undefined;
   loadingText: string;
   children: (data: T) => React.ReactNode;
 }) {
@@ -55,7 +72,7 @@ function QueryResult<T>({
       </p>
     );
   }
-  if (!data) {
+  if (data == null) {
     return null;
   }
   return <>{children(data)}</>;
@@ -82,9 +99,17 @@ export default function StatusPage() {
         <h3 className="text-sm font-medium text-muted-foreground">
           {m.section_project()}
         </h3>
-        <QueryResult {...project} loadingText={m.status_loading_project()}>
-          {(data) => <ProjectSection data={data} />}
-        </QueryResult>
+        {project.isLoading ? (
+          <p className="text-sm text-muted-foreground">
+            {m.status_loading_project()}
+          </p>
+        ) : project.isError ? (
+          <p className="text-sm text-destructive">
+            {project.error?.message ?? "Unknown error"}
+          </p>
+        ) : (
+          <ProjectSection data={project.data ?? null} />
+        )}
       </section>
     </div>
   );

@@ -8,6 +8,7 @@ const ResultsPage = lazy(() => import("@/pages/results"));
 const ExportPage = lazy(() => import("@/pages/export"));
 const StatusPage = lazy(() => import("@/pages/status"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
+const WelcomePage = lazy(() => import("@/pages/welcome"));
 
 import { RootLayout } from "@/layouts/root-layout";
 
@@ -16,7 +17,8 @@ export const router = createBrowserRouter(
     {
       element: <RootLayout />,
       children: [
-        { index: true, element: <Navigate to="/map" replace /> },
+        { index: true, element: <Navigate to="/welcome" replace /> },
+        { path: "welcome", element: <WelcomePage /> },
         { path: "map", element: <MapPage /> },
         { path: "import", element: <ImportPage /> },
         { path: "run", element: <RunPage /> },

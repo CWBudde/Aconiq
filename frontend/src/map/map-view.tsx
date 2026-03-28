@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { IS_WASM_MODE } from "@/api/mode";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
-import { FallbackMap } from "./fallback-map";
 import { useMapStore } from "./map-store";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
@@ -18,27 +16,6 @@ const INTERACTIVE_LAYERS = [
   LAYER_IDS.barrierLine,
   LAYER_IDS.receiversPoint,
 ];
-
-const WEBGL_DISABLED_KEY = "aconiq.map.webgl_disabled";
-
-function isWebGLDisabled(): boolean {
-  if (IS_WASM_MODE) {
-    return true;
-  }
-  try {
-    return window.sessionStorage.getItem(WEBGL_DISABLED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function disableWebGLForSession(): void {
-  try {
-    window.sessionStorage.setItem(WEBGL_DISABLED_KEY, "true");
-  } catch {
-    // Ignore storage failures; fallbackMode state still prevents reuse locally.
-  }
-}
 
 interface MapViewProps {
   children?: React.ReactNode;
@@ -62,12 +39,12 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
-  const [fallbackMode, setFallbackMode] = useState(isWebGLDisabled);
+  const [mapError, setMapError] = useState<string | null>(null);
   const basemap = useMapStore((s) => s.basemap);
 
   // Initialize map
   useEffect(() => {
-    if (fallbackMode) return;
+    if (mapError) return;
     if (!containerRef.current) return;
 
     let m: Map;
@@ -80,8 +57,7 @@ export function MapView({
         attributionControl: {},
       });
     } catch {
-      disableWebGLForSession();
-      setFallbackMode(true);
+      setMapError("Map rendering is unavailable in this browser.");
       return;
     }
 
@@ -94,8 +70,7 @@ export function MapView({
     const canvas = m.getCanvas();
     const handleContextLost = (event: Event) => {
       event.preventDefault();
-      disableWebGLForSession();
-      setFallbackMode(true);
+      setMapError("WebGL context was lost.");
     };
     const handleContextRestored = () => {
       m.resize();
@@ -125,7 +100,7 @@ export function MapView({
     };
     // Only re-create the map on basemap change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basemap, fallbackMode, center, zoom]);
+  }, [basemap, mapError, center, zoom]);
 
   // Feature click handler
   useEffect(() => {
@@ -188,8 +163,13 @@ export function MapView({
   return (
     <MapContext value={map}>
       <div className="relative flex flex-1">
-        {fallbackMode ? (
-          <FallbackMap center={center} />
+        {mapError ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center">
+            <div className="max-w-md space-y-2 rounded-2xl border bg-card p-6 shadow-sm">
+              <p className="text-lg font-semibold">Map unavailable</p>
+              <p className="text-sm text-muted-foreground">{mapError}</p>
+            </div>
+          </div>
         ) : (
           <div ref={containerRef} className="absolute inset-0" />
         )}

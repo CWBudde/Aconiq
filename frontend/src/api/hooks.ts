@@ -53,7 +53,17 @@ export function useProjectStatus() {
       if (IS_WASM_MODE) {
         return browserBackend.getProjectStatus();
       }
-      return fetchJSON<ProjectStatusResponse>("/api/v1/project/status");
+      const response = await fetch(apiURL("/api/v1/project/status"), {
+        headers: { Accept: "application/json" },
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Request failed: ${String(response.status)}`);
+      }
+      return (await response.json()) as ProjectStatusResponse;
     },
   });
 }

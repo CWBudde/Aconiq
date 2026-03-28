@@ -8,6 +8,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
+import { useProjectStatus } from "@/api";
 import {
   Sidebar,
   SidebarContent,
@@ -43,6 +44,9 @@ const navFooter = [
 
 function AppSidebar() {
   const location = useLocation();
+  const project = useProjectStatus();
+  const showWorkspaceNav = project.data != null;
+  const workspaceNav = showWorkspaceNav ? navMain : [navMain[1]];
 
   return (
     <Sidebar collapsible="icon">
@@ -62,7 +66,7 @@ function AppSidebar() {
           <SidebarGroupLabel>{m.section_workspace()}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navMain.map((item) => (
+              {workspaceNav.map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
@@ -109,6 +113,13 @@ function PageTitle() {
   const location = useLocation();
   const allNav = [...navMain, ...navFooter];
   const current = allNav.find((item) => item.path === location.pathname);
+  if (location.pathname === "/welcome") {
+    return (
+      <h1 className="text-sm font-medium text-muted-foreground">
+        {m.page_title_welcome()}
+      </h1>
+    );
+  }
   return (
     <h1 className="text-sm font-medium text-muted-foreground">
       {current ? current.title() : m.nav_workspace()}
