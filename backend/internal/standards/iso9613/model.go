@@ -32,6 +32,7 @@ type PointSource struct {
 	Point                   geo.Point2D `json:"point"`
 	SourceHeightM           float64     `json:"source_height_m"`
 	SoundPowerLevelDB       float64     `json:"sound_power_level_db"`
+	OctaveBandLevels        *BandLevels `json:"octave_band_levels,omitempty"`
 	DirectivityCorrectionDB float64     `json:"directivity_correction_db,omitempty"`
 	TonalityCorrectionDB    float64     `json:"tonality_correction_db,omitempty"`
 	ImpulsivityCorrectionDB float64     `json:"impulsivity_correction_db,omitempty"`

@@ -37,24 +37,14 @@ func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg
 		return 0, errors.New("at least one source is required")
 	}
 
-	contributions := make([]float64, 0, len(sources))
-
 	for _, source := range sources {
 		err := source.Validate()
 		if err != nil {
 			return 0, err
 		}
-
-		emission, err := ComputeEmission(source)
-		if err != nil {
-			return 0, err
-		}
-
-		terms := attenuation(receiver, source, cfg)
-		contributions = append(contributions, emission-totalAttenuation(terms))
 	}
 
-	return energySumDB(contributions), nil
+	return ComputeDownwindLevel(receiver, sources, cfg), nil
 }
 
 // ComputeReceiverOutputs computes ISO 9613-2 preview outputs for all receivers in order.

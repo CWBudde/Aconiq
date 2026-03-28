@@ -8,32 +8,31 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 )
 
-// PropagationConfig defines the preview attenuation terms used by the Phase 19 baseline.
+// PropagationConfig defines the attenuation terms for ISO 9613-2 octave-band processing.
 type PropagationConfig struct {
 	GroundFactor            float64
 	AirTemperatureC         float64
 	RelativeHumidityPercent float64
 	MeteorologyAssumption   string
-	BarrierAttenuationDB    float64
+	Barrier                 *BarrierGeometry
+	C0                      float64
 	MinDistanceM            float64
+
+	// BarrierAttenuationDB is retained for backward compatibility with the CLI
+	// and acceptance tests. It is ignored by the octave-band chain; use the
+	// Barrier field instead.
+	BarrierAttenuationDB float64
 }
 
-type attenuationTerms struct {
-	DistanceM   float64
-	GeometricDB float64
-	AirDB       float64
-	GroundDB    float64
-	BarrierDB   float64
-}
-
-// DefaultPropagationConfig returns the preview ISO 9613-2 baseline configuration.
+// DefaultPropagationConfig returns the default ISO 9613-2 propagation configuration.
 func DefaultPropagationConfig() PropagationConfig {
 	return PropagationConfig{
 		GroundFactor:            0.5,
 		AirTemperatureC:         10,
 		RelativeHumidityPercent: 70,
 		MeteorologyAssumption:   MeteorologyDownwind,
-		BarrierAttenuationDB:    0,
+		Barrier:                 nil,
+		C0:                      0,
 		MinDistanceM:            1,
 	}
 }
@@ -56,8 +55,8 @@ func (cfg PropagationConfig) Validate() error {
 		return fmt.Errorf("meteorology_assumption must be %q", MeteorologyDownwind)
 	}
 
-	if math.IsNaN(cfg.BarrierAttenuationDB) || math.IsInf(cfg.BarrierAttenuationDB, 0) || cfg.BarrierAttenuationDB < 0 {
-		return errors.New("barrier_attenuation_db must be finite and >= 0")
+	if math.IsNaN(cfg.C0) || math.IsInf(cfg.C0, 0) || cfg.C0 < 0 {
+		return errors.New("c0 must be finite and >= 0")
 	}
 
 	if math.IsNaN(cfg.MinDistanceM) || math.IsInf(cfg.MinDistanceM, 0) || cfg.MinDistanceM <= 0 {
@@ -75,7 +74,7 @@ func effectiveDistance(distanceM float64, cfg PropagationConfig) float64 {
 	return distanceM
 }
 
-func sourceDistance(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) float64 {
+func sourceDistance(receiver geo.PointReceiver, source PointSource) float64 {
 	horizontal := geo.Distance(receiver.Point, source.Point)
 	heightDelta := receiver.HeightM - source.SourceHeightM
 
@@ -86,45 +85,49 @@ func geometricDivergence(distanceM float64) float64 {
 	return 20*math.Log10(distanceM) + 11
 }
 
-func atmosphericAbsorption(distanceM float64, cfg PropagationConfig) float64 {
-	base := 0.0015
-	tempFactor := 0.00003 * (cfg.AirTemperatureC - 10)
-	humidityFactor := -0.00001 * (cfg.RelativeHumidityPercent - 70)
-	coefficient := math.Max(0.0002, base+tempFactor+humidityFactor)
+// BandAttenuation computes per-octave-band attenuation A(j) for one source-receiver path.
+// Returns the 8-band attenuation and the effective source-receiver distance.
+func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) (BandLevels, float64) {
+	distance := effectiveDistance(sourceDistance(receiver, source), cfg)
+	hs := source.SourceHeightM
+	hr := receiver.HeightM
+	dp := geo.Distance(receiver.Point, source.Point) // projected ground distance
 
-	return coefficient * distanceM
-}
+	adiv := geometricDivergence(distance)
+	aatm := AtmosphericAbsorptionBands(cfg.AirTemperatureC, cfg.RelativeHumidityPercent, distance)
+	agr := GroundEffectBands(cfg.GroundFactor, cfg.GroundFactor, cfg.GroundFactor, hs, hr, dp)
+	abar := BarrierAttenuationBands(cfg.Barrier, agr, 20)
 
-func groundEffect(distanceM float64, cfg PropagationConfig) float64 {
-	if distanceM <= cfg.MinDistanceM {
-		return 0
+	var totalAtten BandLevels
+	for i := range NumBands {
+		totalAtten[i] = adiv + aatm[i] + agr[i] + abar[i]
 	}
 
-	effect := (0.5 + 1.5*cfg.GroundFactor) * math.Log10(1+distanceM/50.0)
-	if effect < 0 {
-		return 0
+	return totalAtten, distance
+}
+
+// ComputeDownwindLevel computes L_AT(DW) for one receiver from all sources (Eq. 5).
+func ComputeDownwindLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) float64 {
+	sum := 0.0
+
+	for _, source := range sources {
+		bandLevels := EffectiveBandLevels(source)
+		atten, _ := BandAttenuation(receiver, source, cfg)
+
+		for j := range NumBands {
+			lft := bandLevels[j] - atten[j]
+			sum += math.Pow(10, 0.1*(lft+AWeighting[j]))
+		}
 	}
 
-	return math.Min(6, effect)
-}
-
-func attenuation(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) attenuationTerms {
-	distance := effectiveDistance(sourceDistance(receiver, source, cfg), cfg)
-
-	return attenuationTerms{
-		DistanceM:   distance,
-		GeometricDB: geometricDivergence(distance),
-		AirDB:       atmosphericAbsorption(distance, cfg),
-		GroundDB:    groundEffect(distance, cfg),
-		BarrierDB:   cfg.BarrierAttenuationDB,
+	if sum <= 0 {
+		return -999
 	}
+
+	return 10 * math.Log10(sum)
 }
 
-func totalAttenuation(terms attenuationTerms) float64 {
-	return terms.GeometricDB + terms.AirDB + terms.GroundDB + terms.BarrierDB
-}
-
-// MeteorologicalCorrection computes C_met from Eq. 21–22.
+// MeteorologicalCorrection computes C_met from Eq. 21-22.
 // c0 depends on local meteorological statistics; default 0 for pure downwind.
 // hs is source height, hr is receiver height, dp is projected distance.
 func MeteorologicalCorrection(c0, hs, hr, dp float64) float64 {

@@ -191,7 +191,13 @@ func TestBarrierAttenuationLowersLevel(t *testing.T) {
 	}
 
 	cfg := DefaultPropagationConfig()
-	cfg.BarrierAttenuationDB = 5
+	cfg.Barrier = &BarrierGeometry{
+		Dss: 25,
+		Dsr: 25,
+		E:   0,
+		A:   0,
+		D:   50,
+	}
 
 	barrierLevel, err := ComputeReceiverLevel(receiver, []PointSource{source}, cfg)
 	if err != nil {
