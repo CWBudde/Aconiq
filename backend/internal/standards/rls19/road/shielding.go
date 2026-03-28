@@ -332,6 +332,78 @@ func computeDiffraction(dSB, hS, dBR, hR, hEdge float64) diffractionGeometry {
 	return diffractionGeometry{Z: Z, A: A, B: B, S: S}
 }
 
+// computeMultiEdgeLoss computes the barrier insertion loss D_z for one or more
+// diffraction edges per RLS-19 §3.5.5 Eqs. 15-17.
+//
+// For a single edge (len(edges)==1), this produces identical results to the
+// existing computeDiffraction + rls19BarrierLoss path (C=0).
+//
+// For multiple edges, the C term (inter-edge path length) is included in z,
+// and K_w is modified per the standard: C is added to whichever of A or B
+// is larger.
+//
+// Parameters:
+//   - edges: significant diffraction edges, sorted by distFromSource
+//   - sourceHeightM: source height above ground [m]
+//   - receiverHeightM: receiver height above ground [m]
+//   - totalDistM: 2D plan distance source → receiver [m]
+//
+// Returns (z, D_z). z <= 0 means no shielding; D_z is 0 in that case.
+func computeMultiEdgeLoss(
+	edges []diffractionEdge,
+	sourceHeightM, receiverHeightM, totalDistM float64,
+) (float64, float64) {
+	if len(edges) == 0 {
+		return 0, 0
+	}
+
+	first := edges[0]
+	last := edges[len(edges)-1]
+
+	// A: 3D distance source → first edge.
+	dSB := first.distFromSource
+	dhA := first.heightM - sourceHeightM
+	A := math.Sqrt(dSB*dSB + dhA*dhA)
+
+	// B: 3D distance last edge → receiver.
+	dBR := totalDistM - last.distFromSource
+	dhB := receiverHeightM - last.heightM
+	B := math.Sqrt(dBR*dBR + dhB*dhB)
+
+	// C: sum of 3D distances between consecutive edges.
+	C := 0.0
+	for i := 1; i < len(edges); i++ {
+		dH := edges[i].distFromSource - edges[i-1].distFromSource
+		dV := edges[i].heightM - edges[i-1].heightM
+		C += math.Sqrt(dH*dH + dV*dV)
+	}
+
+	// s: 3D direct distance source → receiver.
+	dh := receiverHeightM - sourceHeightM
+	s := math.Sqrt(totalDistM*totalDistM + dh*dh)
+
+	// Eq. 16: z = A + B + C - s.
+	z := A + B + C - s
+	if z <= 0 {
+		return z, 0
+	}
+
+	// Eq. 17: K_w with multi-diffraction modification.
+	// C is added to the larger of A or B.
+	Akw, Bkw := A, B
+	if A >= B {
+		Akw = A + C
+	} else {
+		Bkw = B + C
+	}
+	kw := math.Exp(-math.Sqrt(Akw*Bkw*s/(2*z)) / 2000.0)
+
+	// Eq. 15: D_z = 10·lg(3 + 80·z·K_w).
+	dz := 10 * math.Log10(3+80*z*kw)
+
+	return z, dz
+}
+
 // rls19BarrierLoss computes the barrier insertion loss D_z per RLS-19 Eqs. 15/17.
 //
 //	D_z  = 10·lg(3 + 80·z·K_w)                           (Eq. 15)

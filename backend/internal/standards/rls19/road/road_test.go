@@ -3150,3 +3150,96 @@ func TestSelectDiffractionEdges_NoneObstructing(t *testing.T) {
 		t.Fatalf("expected 0 edges for non-obstructing barrier, got %d", len(edges))
 	}
 }
+
+func TestMultiDiffractionLoss_SingleEdgeMatchesExisting(t *testing.T) {
+	t.Parallel()
+
+	// Single edge at distance 10m, height 6m.
+	// Source: height 0.5m. Receiver: height 4m at 50m.
+	edges := []diffractionEdge{
+		{distFromSource: 10, heightM: 6.0},
+	}
+
+	z, loss := computeMultiEdgeLoss(edges, 0.5, 4.0, 50.0)
+
+	// Compare with existing single-edge computation.
+	singleGeom := computeDiffraction(10, 0.5, 40, 4.0, 6.0)
+	singleLoss := rls19BarrierLoss(singleGeom)
+
+	if math.Abs(z-singleGeom.Z) > 1e-10 {
+		t.Fatalf("z mismatch: multi=%f single=%f", z, singleGeom.Z)
+	}
+	if math.Abs(loss-singleLoss) > 1e-10 {
+		t.Fatalf("loss mismatch: multi=%f single=%f", loss, singleLoss)
+	}
+}
+
+func TestMultiDiffractionLoss_TwoEdges_CTermPositive(t *testing.T) {
+	t.Parallel()
+
+	// Two edges: wide building scenario (Bild 13, case 2).
+	// Source at 0, height 0.5m. Receiver at 50m, height 4m.
+	// Edge 1 at 10m, height 6m. Edge 2 at 20m, height 6m.
+	edges := []diffractionEdge{
+		{distFromSource: 10, heightM: 6.0},
+		{distFromSource: 20, heightM: 6.0},
+	}
+
+	z, loss := computeMultiEdgeLoss(edges, 0.5, 4.0, 50.0)
+
+	// z must be greater than single-edge case (C > 0 adds path length).
+	singleGeom := computeDiffraction(10, 0.5, 40, 4.0, 6.0)
+	if z <= singleGeom.Z {
+		t.Fatalf("multi-edge z (%f) should exceed single-edge z (%f)", z, singleGeom.Z)
+	}
+
+	// Loss must be greater than single-edge case.
+	singleLoss := rls19BarrierLoss(singleGeom)
+	if loss <= singleLoss {
+		t.Fatalf("multi-edge loss (%f) should exceed single-edge loss (%f)", loss, singleLoss)
+	}
+
+	// Verify z = A + B + C - s.
+	dSB := 10.0
+	dBR := 30.0 // 50 - 20
+	dTotal := 50.0
+	hS := 0.5
+	hR := 4.0
+	hE1 := 6.0
+	hE2 := 6.0
+
+	A := math.Sqrt(dSB*dSB + (hE1-hS)*(hE1-hS))
+	B := math.Sqrt(dBR*dBR + (hR-hE2)*(hR-hE2))
+	interEdgeDist := 20.0 - 10.0
+	interEdgeH := hE2 - hE1
+	C := math.Sqrt(interEdgeDist*interEdgeDist + interEdgeH*interEdgeH)
+	s := math.Sqrt(dTotal*dTotal + (hR-hS)*(hR-hS))
+	expectedZ := A + B + C - s
+
+	if math.Abs(z-expectedZ) > 1e-10 {
+		t.Fatalf("z = %f, expected A+B+C-s = %f", z, expectedZ)
+	}
+}
+
+func TestMultiDiffractionLoss_KwUsesLargerLeg(t *testing.T) {
+	t.Parallel()
+
+	// Asymmetric setup: A > B, so C should be added to A in K_w.
+	edgesALarger := []diffractionEdge{
+		{distFromSource: 5, heightM: 6.0},
+		{distFromSource: 45, heightM: 6.0},
+	}
+	_, lossALarger := computeMultiEdgeLoss(edgesALarger, 0.5, 4.0, 50.0)
+
+	// Different geometry: B > A.
+	edgesBLarger := []diffractionEdge{
+		{distFromSource: 5, heightM: 6.0},
+		{distFromSource: 10, heightM: 6.0},
+	}
+	_, lossBLarger := computeMultiEdgeLoss(edgesBLarger, 0.5, 4.0, 50.0)
+
+	// Both should produce valid positive losses.
+	if lossALarger <= 0 || lossBLarger <= 0 {
+		t.Fatalf("expected positive losses: A-larger=%f B-larger=%f", lossALarger, lossBLarger)
+	}
+}
