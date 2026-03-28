@@ -171,6 +171,45 @@ func TestImportJSONOutput(t *testing.T) {
 	}
 }
 
+func TestImportSoundPlanJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	soundPlanDir := soundPlanInteropPath(t)
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "ImpSoundPlanJSON", "--crs", "EPSG:25832")
+
+	var buf bytes.Buffer
+
+	cmd := newRootCommand()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "import", "--from-soundplan", soundPlanDir})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("import soundplan: %v", err)
+	}
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
+		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
+	}
+
+	if result["command"] != "import" {
+		t.Fatalf("command = %v, want import", result["command"])
+	}
+
+	if result["soundplan_source"] == nil || result["soundplan_source"] == "" {
+		t.Fatal("expected soundplan_source")
+	}
+
+	if result["soundplan_report_path"] == nil || result["soundplan_report_path"] == "" {
+		t.Fatal("expected soundplan_report_path")
+	}
+}
+
 func TestRunJSONOutput(t *testing.T) {
 	t.Parallel()
 

@@ -238,6 +238,28 @@ Open work — workflow and validation:
 - [ ] Add a cross-validation acceptance test for import, run, and compare.
 - [ ] Document format findings in `docs/research/soundplan-format.md`.
 
+Refined execution slices:
+
+- [ ] Slice A — import preparation layer:
+  - [x] Add a single project-bundle loader that parses the currently supported SoundPlan inputs.
+  - [x] Add explicit SoundPlan standard-ID to Aconiq-standard mapping with deterministic warnings for unsupported IDs.
+  - [x] Add `Höhen.txt` terrain fallback loading.
+  - [x] Add a structured import-report JSON artifact describing discovered files, parser coverage, warnings, and unresolved fields.
+- [ ] Slice B — geometry-to-model conversion:
+  - [x] Convert rail tracks into normalized line-source GeoJSON features with explicit placeholder/default properties.
+  - [x] Convert buildings into normalized building polygons with height handling decisions documented.
+  - [x] Convert barriers into normalized barrier lines with height handling decisions documented.
+  - [x] Convert receivers into normalized receiver points using project/run defaults for receiver height.
+  - [ ] Convert calc area into import metadata for future grid/run setup.
+- [ ] Slice C — CLI integration:
+  - [x] Add `noise import --from-soundplan <project-dir>`.
+  - [x] Persist normalized model, dump, validation report, and SoundPlan import report under `.noise/model/`.
+  - [x] Surface unsupported standards and unresolved mappings as non-fatal warnings in CLI output.
+- [ ] Slice D — validation loop:
+  - [x] Add integration coverage for the sample Schall 03 project bundle and normalized model output.
+  - [ ] Add first run-level comparison for single-point receiver results.
+  - [ ] Extend comparison to raster/grid outputs once `RRLK*.GM` parsing exists.
+
 Research and legal questions that remain attached to this priority:
 
 - [ ] How stable is the binary `.geo` format across SoundPlan versions?
