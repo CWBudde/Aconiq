@@ -94,8 +94,8 @@ Done already, compacted:
 
 Open work:
 
-- [ ] Complete Eq. 16 shielding geometry for `z = A + B + C - s`, including the multi-diffraction `C` term via the Gummibandmethode referenced by Probst 2010. Single-edge `C = 0` is already in place; the remaining work is true multi-edge support.
-- [ ] Run a full reconciliation pass against the authoritative documents in `interoperability/RLS-19/` to confirm that no placeholder values, table gaps, or scope mismatches remain outside the sections already corrected.
+- [x] Complete Eq. 16 shielding geometry for `z = A + B + C - s`, including the multi-diffraction `C` term via the Gummibandmethode referenced by Probst 2010. Single-edge `C = 0` is already in place; the remaining work is true multi-edge support.
+- [x] Run a full reconciliation pass against the authoritative documents in `interoperability/RLS-19/` to confirm that no placeholder values, table gaps, or scope mismatches remain outside the sections already corrected.
 
 ### Priority 3 — ISO 9613-2 from preview baseline to engineering-ready module
 
