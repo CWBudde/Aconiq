@@ -8,6 +8,55 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 )
 
+// barrierCrossing records where a barrier intersects the source→receiver
+// line in plan view.
+type barrierCrossing struct {
+	point          geo.Point2D
+	distFromSource float64 // 2D plan distance from source
+	barrier        *Barrier
+}
+
+// findBarrierCrossings returns all barriers that intersect the line from
+// source to receiver in plan view, sorted by distance from source.
+func findBarrierCrossings(source, receiver geo.Point2D, barriers []Barrier) []barrierCrossing {
+	var crossings []barrierCrossing
+
+	for i := range barriers {
+		b := &barriers[i]
+
+		crossPt, _, intersects := geo.LineStringIntersectsSegment(b.Geometry, source, receiver)
+		if !intersects {
+			continue
+		}
+
+		d := dist2D(source, crossPt)
+		if d < 1e-6 || dist2D(crossPt, receiver) < 1e-6 {
+			continue // at endpoint, not truly between
+		}
+
+		crossings = append(crossings, barrierCrossing{
+			point:          crossPt,
+			distFromSource: d,
+			barrier:        b,
+		})
+	}
+
+	// Sort by distance from source (insertion sort — n is small).
+	for i := 1; i < len(crossings); i++ {
+		key := crossings[i]
+
+		j := i - 1
+		for j >= 0 && crossings[j].distFromSource > key.distFromSource {
+			crossings[j+1] = crossings[j]
+			j--
+		}
+
+		crossings[j+1] = key
+	}
+
+	return crossings
+}
+
 // Barrier represents a noise barrier or shielding obstacle (wall, berm, building edge).
 // In plan view it is a polyline; the height is uniform along its length.
 type Barrier struct {

@@ -3017,3 +3017,68 @@ func TestDiagrammI_SingleVehicleSpeedSweep(t *testing.T) {
 		})
 	}
 }
+
+// --- barrier crossing tests ---
+
+func TestFindBarrierCrossings_SortedByDistance(t *testing.T) {
+	t.Parallel()
+
+	// Two barriers: far one listed first, near one second.
+	farBarrier := Barrier{
+		ID:       "far",
+		Geometry: []geo.Point2D{{X: -100, Y: 30}, {X: 100, Y: 30}},
+		HeightM:  5.0,
+	}
+	nearBarrier := Barrier{
+		ID:       "near",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  4.0,
+	}
+
+	crossings := findBarrierCrossings(
+		geo.Point2D{X: 0, Y: 0},
+		geo.Point2D{X: 0, Y: 50},
+		[]Barrier{farBarrier, nearBarrier},
+	)
+
+	if len(crossings) != 2 {
+		t.Fatalf("expected 2 crossings, got %d", len(crossings))
+	}
+
+	if crossings[0].barrier.ID != "near" {
+		t.Fatalf("expected nearest barrier first, got %q", crossings[0].barrier.ID)
+	}
+
+	if crossings[1].barrier.ID != "far" {
+		t.Fatalf("expected farthest barrier second, got %q", crossings[1].barrier.ID)
+	}
+}
+
+func TestFindBarrierCrossings_SkipsNonIntersecting(t *testing.T) {
+	t.Parallel()
+
+	parallel := Barrier{
+		ID:       "parallel",
+		Geometry: []geo.Point2D{{X: 5, Y: -10}, {X: 5, Y: 100}},
+		HeightM:  4.0,
+	}
+	crossing := Barrier{
+		ID:       "crossing",
+		Geometry: []geo.Point2D{{X: -100, Y: 20}, {X: 100, Y: 20}},
+		HeightM:  4.0,
+	}
+
+	crossings := findBarrierCrossings(
+		geo.Point2D{X: 0, Y: 0},
+		geo.Point2D{X: 0, Y: 50},
+		[]Barrier{parallel, crossing},
+	)
+
+	if len(crossings) != 1 {
+		t.Fatalf("expected 1 crossing, got %d", len(crossings))
+	}
+
+	if crossings[0].barrier.ID != "crossing" {
+		t.Fatal("expected the crossing barrier")
+	}
+}
