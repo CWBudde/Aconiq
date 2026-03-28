@@ -99,7 +99,7 @@ Open work:
 
 ### Priority 3 — ISO 9613-2 from preview baseline to engineering-ready module
 
-Status: preview baseline shipped for industry point sources and favorable meteorology. Design for octave-band rework approved (see `docs/plans/2026-03-28-iso9613-octave-band.md`).
+Status: octave-band engineering method implemented for point sources. Conformance documentation and validation cases remain open.
 
 Why now: TA Lärm is already implemented as an assessment layer, so ISO 9613-2 is the main remaining propagation track needed for a complete industrial workflow.
 
@@ -107,20 +107,18 @@ Shipped already:
 
 - [x] Module structure, standards descriptor, source emission interface, propagation chain, CLI wiring, receiver tables, rasters, provenance, unit tests, validation projects, and golden scenarios.
 
-Open work — octave-band attenuation chain (current iteration):
+Done — octave-band attenuation chain:
 
-- [ ] Implement octave-band processing (63 Hz to 8 kHz) with per-band attenuation and A-weighted energetic summation (Eq. 3–5).
-- [ ] Implement normative atmospheric absorption A_atm (Eq. 8) with Table 2 coefficients and interpolation for non-tabulated conditions.
-- [ ] Implement normative ground effect A_gr (Eq. 9, Table 3) with three-region model and functions a'(h), b'(h), c'(h), d'(h). Initial scope: single global ground factor G.
-- [ ] Implement simplified ground effect (Eq. 10) as alternative calculation path.
-- [ ] Implement barrier screening formulas A_bar (Eq. 12, 14–18): D_z, C_3, z, K_met. Input: pre-computed diffraction geometry. No geometric barrier detection in this iteration.
-- [ ] Implement meteorological correction C_met (Eq. 21–22) with configurable C_0 parameter.
-- [ ] Extend source model to octave-band sound power levels with single-value 500 Hz fallback.
-- [ ] Export LpAeq_DW and LpAeq_LT indicators; optional per-band output.
-- [ ] Ensure module separation stays strict so normative outputs remain clearly standard-specific.
-- [ ] Define import/run mapping from normalized GeoJSON plus run parameters into typed ISO 9613-2 inputs.
-- [ ] Keep deterministic behavior for segmentation, attenuation ordering, and energetic summation.
-- [ ] Keep ISO 9613-2 results clearly separated from CNOSSOS and national-track outputs in UX, provenance, and exported artifacts.
+- [x] Octave-band processing (63 Hz to 8 kHz) with per-band attenuation and A-weighted energetic summation (Eq. 3–5).
+- [x] Normative atmospheric absorption A_atm (Eq. 8) with Table 2 coefficients and nearest-row lookup.
+- [x] Normative ground effect A_gr (Eq. 9, Table 3) with three-region model and functions a'(h), b'(h), c'(h), d'(h). Single global ground factor G.
+- [x] Simplified ground effect (Eq. 10) as alternative calculation path.
+- [x] Barrier screening formulas A_bar (Eq. 12, 14–18): D_z, C_3, z, K_met. Input: pre-computed diffraction geometry.
+- [x] Meteorological correction C_met (Eq. 21–22) with configurable C_0 parameter.
+- [x] Source model extended to octave-band sound power levels with single-value 500 Hz fallback.
+- [x] LpAeq_DW and LpAeq_LT indicators exported.
+- [x] Module separation, determinism, and result separation maintained.
+- [x] Import/run mapping from normalized GeoJSON plus run parameters into typed ISO 9613-2 inputs.
 
 Open work — deferred implementation:
 
@@ -131,13 +129,17 @@ Open work — deferred implementation:
 - [ ] Spatial ground zones: replace single global G with per-region ground factor lookup from GroundZone polygons.
 - [ ] A_misc: foliage (A.1, Table A.1), industrial site (A.2, Table A.2), and housing (A.3) attenuation from Annex A (informative).
 
+Done — conformance:
+
+- [x] Implementation notes and legal/compliance notes in conformance declaration.
+- [x] Tolerances documented from Section 9, Table 5 of the standard.
+- [x] Coefficients and tables decision: Table 2 and Table 3 functions embedded as reference data; no external data pack required.
+- [x] ISO 9613-2 conformance boundary document published at `docs/conformance/iso9613-konformitaetserklaerung.md`.
+
 Open work — conformance:
 
-- [ ] Add implementation notes and legal/compliance notes.
-- [ ] Identify public example cases or create synthetic validation cases.
-- [ ] Document tolerances and comparison rules for those validation cases.
-- [ ] Decide which coefficients and tables belong in an external standards data pack.
-- [ ] Publish the ISO 9613-2 conformance boundary document covering scope, tolerances, and known deviations.
+- [ ] Create additional synthetic validation cases with hand-calculated reference values for each attenuation term.
+- [ ] Add comparison rules for tolerance checking in the acceptance test runner.
 
 ### Priority 4 — Remaining Schall 03 closure work
 
