@@ -97,9 +97,15 @@ implementation uses the \_total* sound power `L_W = L_W'' + 10·lg[P/1m²] =
 
 ## Not yet supported
 
-- Multi-diffraction (Gummibandmethode) for barriers with C term (§3.5.5, Eq. 16):
-  single-edge diffraction is implemented; multi-diffraction with C>0 is not.
 - Section 9 measurement-based vehicle data (custom acoustics from measurements).
+
+## Recently completed
+
+- Multi-diffraction (Gummibandmethode) for barriers with C term (§3.5.5, Eq. 16):
+  fully implemented. Significant diffraction edges are selected via upper convex
+  hull (Gummibandmethode per Probst 2010). Path difference z = A + B + C - s
+  (Eq. 16) and modified K_w (Eq. 17, C added to larger of A or B) are computed
+  for multi-edge cases. Single-edge diffraction (C=0) is a special case.
 
 ## TEST-20 task coverage
 
