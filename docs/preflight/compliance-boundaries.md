@@ -71,14 +71,13 @@ Modules without a conformance declaration must not be presented as normatively v
 
 ### Ignored packages in `go-licenses` scanning
 
-Two packages require `--ignore` flags due to detection limitations, not license concerns:
+One package requires an `--ignore` flag due to a detection limitation, not a license concern:
 
 | Package | Actual license | Reason for ignore |
 |---------|---------------|-------------------|
 | `modernc.org/mathutil` | BSD-3-Clause | License file exists but `go-licenses` fails to detect it (confidence threshold issue). |
-| `github.com/cwbudde/go-absolute-database` | MIT | Local `replace` directive; `go-licenses` cannot resolve license from the module cache for local replaces. |
 
-Both are documented in the `NOTICE` file and verified manually.
+This package is documented in the `NOTICE` file and verified manually.
 
 ### Policy
 

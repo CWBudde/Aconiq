@@ -14,7 +14,7 @@ require (
 require github.com/wroge/wgs84 v1.1.7
 
 require (
-	github.com/cwbudde/go-absolute-database v0.0.0-00010101000000-000000000000
+	github.com/cwbudde/go-absolute-database v0.1.0
 	github.com/stretchr/testify v1.8.4
 )
 
@@ -25,7 +25,7 @@ require (
 )
 
 require (
-	github.com/cwbudde/go-citygml v0.1.0
+	github.com/cwbudde/go-citygml v0.2.0
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -41,7 +41,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/cwbudde/go-citygml => ../../go-citygml
-
-replace github.com/cwbudde/go-absolute-database => ../../go-absolute-database

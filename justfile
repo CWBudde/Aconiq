@@ -60,7 +60,6 @@ license-check:
     cd backend && go-licenses check ./... \
       --ignore github.com/aconiq/backend \
       --ignore modernc.org/mathutil \
-      --ignore github.com/cwbudde/go-absolute-database \
       --disallowed_types=restricted,forbidden,unknown
 
 # Generate a CSV report of all dependency licenses
@@ -68,7 +67,6 @@ license-report:
     cd backend && go-licenses report ./... \
       --ignore github.com/aconiq/backend \
       --ignore modernc.org/mathutil \
-      --ignore github.com/cwbudde/go-absolute-database \
       2>/dev/null
 
 # Run all checks (formatting, linting, tests, tidiness)
