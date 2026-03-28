@@ -1,8 +1,8 @@
 package iso9613
 
 const (
-	// BuiltinModelVersion identifies the preview point-source baseline contract.
-	BuiltinModelVersion = "phase19-preview-v2"
+	// BuiltinModelVersion identifies the octave-band engineering method.
+	BuiltinModelVersion = "iso9613-octaveband-v1"
 
 	// ReportingPrecisionDB documents the intended public reporting boundary.
 	ReportingPrecisionDB = 0.1
@@ -14,8 +14,8 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"model_version":          BuiltinModelVersion,
 		"reporting_precision_db": "0.1",
 		"indicator_order":        IndicatorLpAeqDW + "," + IndicatorLpAeqLT,
-		"compliance_boundary":    "phase19-iso9613-point-source-preview",
-		"implementation_status":  "preview-point-source-run-wired",
+		"compliance_boundary":    "iso9613-engineering-octaveband",
+		"implementation_status":  "octaveband-point-source",
 		"source_scope":           SourceTypePoint,
 		"meteorology_assumption": MeteorologyDownwind,
 	}
@@ -33,7 +33,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"air_temperature_c",
 		"relative_humidity_percent",
 		"meteorology_assumption",
-		"barrier_attenuation_db",
+		"c0_met",
 		"min_distance_m",
 	} {
 		if value, ok := params[key]; ok {

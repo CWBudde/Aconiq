@@ -154,7 +154,7 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 				AirTemperatureC         float64 `json:"air_temperature_c"`
 				RelativeHumidityPercent float64 `json:"relative_humidity_percent"`
 				MeteorologyAssumption   string  `json:"meteorology_assumption"`
-				BarrierAttenuationDB    float64 `json:"barrier_attenuation_db"`
+				C0Met                   float64 `json:"c0_met"`
 				MinDistanceM            float64 `json:"min_distance_m"`
 			} `json:"propagation_config"`
 		}
@@ -169,7 +169,6 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			AirTemperatureC:         scenario.PropagationConfig.AirTemperatureC,
 			RelativeHumidityPercent: scenario.PropagationConfig.RelativeHumidityPercent,
 			MeteorologyAssumption:   scenario.PropagationConfig.MeteorologyAssumption,
-			BarrierAttenuationDB:    scenario.PropagationConfig.BarrierAttenuationDB,
 			MinDistanceM:            scenario.PropagationConfig.MinDistanceM,
 		})
 		if err != nil {
