@@ -3,6 +3,10 @@ github.com/Dadido3/go-typst v0.10.0/go.mod h1:QYis9sT70u65kn1SkFfyPRmHsPxgoxWbAi
 github.com/MeKo-Christian/go-overpass v0.0.0-20251224010608-5fb9afa66cb9 h1:g0PgcdtGXGqYAm3XYEkX4lAXYV3LGp+sLTPmSRNMAGo=
 github.com/MeKo-Christian/go-overpass v0.0.0-20251224010608-5fb9afa66cb9/go.mod h1:Q/du99UvIJBFpHMaD6Uc6crVvltDPTj+HVenGFdsE4Q=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
+github.com/cwbudde/go-absolute-database v0.1.0 h1:BJDYlSYQ4Rokt0pSABnkuUi+FZh6hwfmQrQvN3pbSJQ=
+github.com/cwbudde/go-absolute-database v0.1.0/go.mod h1:f1P9m9/6mxLtFmnB3gk06c/qAQQ5ojCUfimlQLvI7AM=
+github.com/cwbudde/go-citygml v0.2.0 h1:gD32OgAcTx1Oq+lrChZGYHjxNnLhjny68P3k4SBKzdo=
+github.com/cwbudde/go-citygml v0.2.0/go.mod h1:OVIaNW5ITF1TSszuEge+TezMQ0yHD7VWKbTRz8Qgqwc=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
