@@ -409,7 +409,8 @@ func roundedRecords(records []results.ReceiverRecord) []map[string]any {
 
 func splitNonEmpty(s string) []string {
 	var lines []string
-	for _, line := range strings.Split(s, "\n") {
+
+	for line := range strings.SplitSeq(s, "\n") {
 		if strings.TrimSpace(line) != "" {
 			lines = append(lines, line)
 		}
