@@ -48,169 +48,79 @@ func TestWriteCommandOutputNoOpWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestStatusJSONOutput(t *testing.T) {
-	t.Parallel()
-
-	projectDir := t.TempDir()
-	mustRunCLI(t, "--project", projectDir, "init", "--name", "StatusJSON")
-
-	var buf bytes.Buffer
-	cmd := newRootCommand()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--json", "--project", projectDir, "status"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("status: %v", err)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
-	}
-
-	if result["command"] != "status" {
-		t.Fatalf("command = %v, want status", result["command"])
-	}
-	if result["project_name"] != "StatusJSON" {
-		t.Fatalf("project_name = %v, want StatusJSON", result["project_name"])
-	}
-}
-
-func TestRunJSONOutput(t *testing.T) {
-	t.Parallel()
-
-	projectDir := t.TempDir()
-	modelPath := testdataPath(t, "phase8", "model.geojson")
-
-	mustRunCLI(t, "--project", projectDir, "init", "--name", "RunJSON", "--crs", "EPSG:25832")
-	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-
-	var buf bytes.Buffer
-	cmd := newRootCommand()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{
-		"--json", "--project", projectDir, "run",
-		"--standard", "dummy-freefield",
-		"--param", "grid_resolution_m=10",
-		"--param", "grid_padding_m=0",
-		"--param", "source_emission_db=90",
-		"--param", "receiver_height_m=4",
-	})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
-	}
-
-	if result["command"] != "run" {
-		t.Fatalf("command = %v, want run", result["command"])
-	}
-	if result["run_id"] == nil || result["run_id"] == "" {
-		t.Fatal("expected non-empty run_id")
-	}
-	if result["status"] != "completed" {
-		t.Fatalf("status = %v, want completed", result["status"])
-	}
-}
-
 func TestInitJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
+
 	var buf bytes.Buffer
 
 	cmd := newRootCommand()
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{"--json", "--project", projectDir, "init", "--name", "TestJSON"})
-	if err := cmd.Execute(); err != nil {
+
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatalf("init: %v", err)
 	}
 
 	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
 		t.Fatalf("unmarshal stdout: %v\nraw: %s", err, buf.String())
 	}
 
 	if result["command"] != "init" {
 		t.Fatalf("command = %v, want init", result["command"])
 	}
+
 	if result["project_name"] != "TestJSON" {
 		t.Fatalf("project_name = %v, want TestJSON", result["project_name"])
 	}
+
 	if result["project_id"] == nil || result["project_id"] == "" {
 		t.Fatal("expected non-empty project_id")
 	}
+
 	if result["manifest_path"] == nil || result["manifest_path"] == "" {
 		t.Fatal("expected non-empty manifest_path")
 	}
 }
 
-func TestExportJSONOutput(t *testing.T) {
+func TestValidateJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
 	modelPath := testdataPath(t, "phase8", "model.geojson")
 
-	mustRunCLI(t, "--project", projectDir, "init", "--name", "ExpJSON", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "ValJSON", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run",
-		"--standard", "dummy-freefield",
-		"--param", "grid_resolution_m=10",
-		"--param", "grid_padding_m=0",
-		"--param", "source_emission_db=90",
-		"--param", "receiver_height_m=4",
-	)
 
 	var buf bytes.Buffer
+
 	cmd := newRootCommand()
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--json", "--project", projectDir, "export"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("export: %v", err)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "validate"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("validate: %v", err)
 	}
 
 	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
 		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
 	}
 
-	if result["command"] != "export" {
-		t.Fatalf("command = %v, want export", result["command"])
-	}
-	if result["run_id"] == nil {
-		t.Fatal("expected run_id")
-	}
-	if result["bundle_dir"] == nil {
-		t.Fatal("expected bundle_dir")
-	}
-}
-
-func TestBenchJSONOutput(t *testing.T) {
-	t.Parallel()
-
-	projectDir := t.TempDir()
-	mustRunCLI(t, "--project", projectDir, "init", "--name", "BenchJSON")
-
-	var buf bytes.Buffer
-	cmd := newRootCommand()
-	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--json", "--project", projectDir, "bench", "--scenario", "micro"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("bench: %v", err)
+	if result["command"] != "validate" {
+		t.Fatalf("command = %v, want validate", result["command"])
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
-	}
-
-	if result["command"] != "bench" {
-		t.Fatalf("command = %v, want bench", result["command"])
-	}
-	if result["bench_id"] == nil {
-		t.Fatal("expected bench_id")
+	if result["feature_count"] == nil {
+		t.Fatal("expected feature_count")
 	}
 }
 
@@ -223,16 +133,20 @@ func TestImportJSONOutput(t *testing.T) {
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "ImpJSON", "--crs", "EPSG:25832")
 
 	var buf bytes.Buffer
+
 	cmd := newRootCommand()
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{"--json", "--project", projectDir, "import", "--input", modelPath})
 
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
 	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
 		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
 	}
 
@@ -257,34 +171,162 @@ func TestImportJSONOutput(t *testing.T) {
 	}
 }
 
-func TestValidateJSONOutput(t *testing.T) {
+func TestRunJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
 	modelPath := testdataPath(t, "phase8", "model.geojson")
 
-	mustRunCLI(t, "--project", projectDir, "init", "--name", "ValJSON", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "RunJSON", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
 
 	var buf bytes.Buffer
+
 	cmd := newRootCommand()
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--json", "--project", projectDir, "validate"})
+	cmd.SetArgs([]string{
+		"--json", "--project", projectDir, "run",
+		"--standard", "dummy-freefield",
+		"--param", "grid_resolution_m=10",
+		"--param", "grid_padding_m=0",
+		"--param", "source_emission_db=90",
+		"--param", "receiver_height_m=4",
+	})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("validate: %v", err)
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
 		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
 	}
 
-	if result["command"] != "validate" {
-		t.Fatalf("command = %v, want validate", result["command"])
+	if result["command"] != "run" {
+		t.Fatalf("command = %v, want run", result["command"])
 	}
 
-	if result["feature_count"] == nil {
-		t.Fatal("expected feature_count")
+	if result["run_id"] == nil || result["run_id"] == "" {
+		t.Fatal("expected non-empty run_id")
+	}
+
+	if result["status"] != "completed" {
+		t.Fatalf("status = %v, want completed", result["status"])
+	}
+}
+
+func TestStatusJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "StatusJSON")
+
+	var buf bytes.Buffer
+
+	cmd := newRootCommand()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "status"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
+		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
+	}
+
+	if result["command"] != "status" {
+		t.Fatalf("command = %v, want status", result["command"])
+	}
+
+	if result["project_name"] != "StatusJSON" {
+		t.Fatalf("project_name = %v, want StatusJSON", result["project_name"])
+	}
+}
+
+func TestExportJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "ExpJSON", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run",
+		"--standard", "dummy-freefield",
+		"--param", "grid_resolution_m=10",
+		"--param", "grid_padding_m=0",
+		"--param", "source_emission_db=90",
+		"--param", "receiver_height_m=4",
+	)
+
+	var buf bytes.Buffer
+
+	cmd := newRootCommand()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "export"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
+		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
+	}
+
+	if result["command"] != "export" {
+		t.Fatalf("command = %v, want export", result["command"])
+	}
+
+	if result["run_id"] == nil {
+		t.Fatal("expected run_id")
+	}
+
+	if result["bundle_dir"] == nil {
+		t.Fatal("expected bundle_dir")
+	}
+}
+
+func TestBenchJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "BenchJSON")
+
+	var buf bytes.Buffer
+
+	cmd := newRootCommand()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "bench", "--scenario", "micro"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("bench: %v", err)
+	}
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
+		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
+	}
+
+	if result["command"] != "bench" {
+		t.Fatalf("command = %v, want bench", result["command"])
+	}
+
+	if result["bench_id"] == nil {
+		t.Fatal("expected bench_id")
 	}
 }
