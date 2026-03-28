@@ -53,6 +53,7 @@
 ## Validierung
 
 Golden-Test-Szenarien in `backend/internal/assessment/talaerm/testdata/`:
+
 - `full_assessment.golden.json` — 8 Empfänger, alle Bewertungspfade
 
 ## Stand
