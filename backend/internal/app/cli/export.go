@@ -328,6 +328,16 @@ func newExportCommand() *cobra.Command {
 				"sample_files", len(summary.GeneratedSampleData),
 			)
 
+			if state.Config.JSONLogs {
+				return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
+					"command":      "export",
+					"run_id":       run.ID,
+					"bundle_dir":   bundleDir,
+					"summary_path": summaryPath,
+					"summary":      summary,
+				})
+			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exported run %s to %s\n", run.ID, bundleDir)
 
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)

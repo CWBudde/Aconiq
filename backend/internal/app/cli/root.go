@@ -86,7 +86,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&projectPath, "project", "", "Path to project directory (defaults to current working directory)")
 	rootCmd.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "Path to cache directory (defaults to <project>/.noise/cache)")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable debug-level logs")
-	rootCmd.PersistentFlags().BoolVar(&jsonLogs, "json", false, "Emit logs as JSON")
+	rootCmd.PersistentFlags().BoolVar(&jsonLogs, "json", false, "Emit structured JSON output (stdout) and JSON logs (stderr)")
 
 	rootCmd.AddCommand(
 		newInitCommand(),

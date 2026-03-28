@@ -84,6 +84,36 @@ func newValidateCommand() *cobra.Command {
 				"warnings", report.WarningCount(),
 			)
 
+			if state.Config.JSONLogs {
+				payload := map[string]any{
+					"command":       "validate",
+					"input":         relInput,
+					"feature_count": len(model.Features),
+					"errors":        report.ErrorCount(),
+					"warnings":      report.WarningCount(),
+				}
+				if writeReport {
+					reportPath := filepath.Join(store.Root(), ".noise", "model", "validation-report.json")
+					payload["report_path"] = relativePath(store.Root(), reportPath)
+				}
+
+				writeErr := writeCommandOutput(cmd.OutOrStdout(), true, payload)
+				if writeErr != nil {
+					return writeErr
+				}
+
+				if report.ErrorCount() > 0 {
+					messages := make([]string, 0, len(report.Errors))
+					for _, issue := range report.Errors {
+						messages = append(messages, fmt.Sprintf("%s: %s", issue.Code, issue.Message))
+					}
+
+					return domainerrors.New(domainerrors.KindValidation, "cli.validate", summarizeValidationErrors(messages, 5), nil)
+				}
+
+				return nil
+			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Validated %d features from %s\n", len(model.Features), relInput)
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Errors: %d\n", report.ErrorCount())
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Warnings: %d\n", report.WarningCount())

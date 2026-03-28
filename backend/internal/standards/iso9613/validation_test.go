@@ -20,6 +20,7 @@ import (
 
 func refSource() PointSource {
 	bands := BandLevels{100, 100, 100, 100, 100, 100, 100, 100}
+
 	return PointSource{
 		ID:                "src",
 		Point:             geo.Point2D{X: 0, Y: 0},
@@ -226,6 +227,7 @@ func TestValidationBarrierIncreasesAttenuation(t *testing.T) {
 
 	// D_z should increase with frequency (shorter wavelength = more diffraction loss).
 	var prevDz float64
+
 	for i, freq := range OctaveBandFrequencies {
 		dz := BarrierDz(*barrier, z, freq, 20)
 		if dz <= 0 {

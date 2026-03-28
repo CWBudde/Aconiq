@@ -726,6 +726,20 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		"output_hash", outputHash,
 	)
 
+	if state.Config.JSONLogs {
+		return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
+			"command":          "run",
+			"run_id":           run.ID,
+			"status":           string(project.RunStatusCompleted),
+			"scenario":         run.ScenarioID,
+			"standard":         run.Standard.ID,
+			"standard_version": run.Standard.Version,
+			"standard_profile": run.Standard.Profile,
+			"provenance_path":  provenance.ManifestPath,
+			"results_path":     relativePath(store.Root(), filepath.Join(runDir, "results")),
+		})
+	}
+
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Completed run %s (%s)\n", run.ID, project.RunStatusCompleted)
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Provenance: %s\n", provenance.ManifestPath)
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results: %s\n", relativePath(store.Root(), filepath.Join(runDir, "results")))

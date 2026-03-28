@@ -38,6 +38,17 @@ func newInitCommand() *cobra.Command {
 				"manifest", store.ManifestPath(),
 			)
 
+			if state.Config.JSONLogs {
+				return writeCommandOutput(cmd.OutOrStdout(), true, map[string]string{
+					"command":       "init",
+					"project_id":    proj.ProjectID,
+					"project_name":  proj.Name,
+					"project_path":  store.Root(),
+					"manifest_path": store.ManifestPath(),
+					"crs":           proj.CRS,
+				})
+			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Initialized project %q at %s\n", proj.Name, store.Root())
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manifest: %s\n", store.ManifestPath())
 

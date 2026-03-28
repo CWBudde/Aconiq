@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -76,6 +77,16 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 	dumpPath := filepath.Join(modelDir, "model.dump.json")
 	reportPath := filepath.Join(modelDir, "validation-report.json")
 
+	// When JSON output is enabled, suppress human-readable output from
+	// sub-functions and emit a single JSON object at the end.
+	jsonMode := state.Config.JSONLogs
+
+	var origOut io.Writer
+	if jsonMode {
+		origOut = cmd.OutOrStdout()
+		cmd.SetOut(io.Discard)
+	}
+
 	switch {
 	case osmBBox != "":
 		err = runOSMImport(cmd, state, store, &proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
@@ -91,7 +102,57 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 		err = runTerrainImport(cmd, state, store, &proj, terrainPath)
 	}
 
+	if jsonMode && err == nil {
+		cmd.SetOut(origOut)
+
+		return writeCommandOutput(
+			cmd.OutOrStdout(), true,
+			buildImportJSONResult(store.Root(), inputPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath),
+		)
+	}
+
 	return err
+}
+
+// buildImportJSONResult constructs the JSON payload for `noise --json import`.
+// It reads back artifact files already written to disk to populate counts.
+func buildImportJSONResult(root, inputPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath string) map[string]any {
+	result := map[string]any{"command": "import"}
+
+	if inputPath != "" {
+		result["input"] = relativePath(root, resolvePath(root, inputPath))
+	}
+
+	if osmBBox != "" {
+		result["osm_bbox"] = osmBBox
+	}
+
+	result["normalized_path"] = relativePath(root, normalizedPath)
+	result["dump_path"] = relativePath(root, dumpPath)
+	result["report_path"] = relativePath(root, reportPath)
+
+	// Read feature count from the normalized model on disk.
+	data, readErr := os.ReadFile(normalizedPath)
+	if readErr == nil {
+		var fc struct {
+			Features []json.RawMessage `json:"features"`
+		}
+
+		if json.Unmarshal(data, &fc) == nil {
+			result["feature_count"] = len(fc.Features)
+		}
+	}
+
+	if trafficPath != "" {
+		result["traffic_input"] = relativePath(root, resolvePath(root, trafficPath))
+	}
+
+	if terrainPath != "" {
+		result["terrain_input"] = relativePath(root, resolvePath(root, terrainPath))
+		result["terrain_stored_path"] = defaultTerrainPath
+	}
+
+	return result
 }
 
 func validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox string) error {
