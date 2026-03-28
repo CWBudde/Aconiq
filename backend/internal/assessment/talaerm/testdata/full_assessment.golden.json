@@ -1,0 +1,306 @@
+{
+  "regulation": "TA Lärm",
+  "edition": "26.08.1998 (GMBl. S. 503), geändert 01.06.2017 (BAnz. AT 08.06.2017 B5)",
+  "generated_at": "2026-03-28T12:00:00Z",
+  "source_standard_id": "iso9613-2",
+  "receiver_count": 9,
+  "assessed_count": 8,
+  "exceeding_count": 3,
+  "irrelevant_count": 3,
+  "category_counts": {
+    "a": 1,
+    "b": 2,
+    "c": 1,
+    "d": 1,
+    "e": 1,
+    "f": 1,
+    "g": 1
+  },
+  "results": [
+    {
+      "receiver_id": "IO-01",
+      "area_category": "industrial",
+      "area_category_label_de": "Industriegebiet",
+      "area_category_code": "a",
+      "richtwerte": {
+        "day": 70,
+        "night": 70
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 65,
+        "level_rounded": 65,
+        "richtwert": 70,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 65,
+        "level_rounded": 65,
+        "richtwert": 70,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "irrelevanz": {
+        "day_irrelevant": false,
+        "night_irrelevant": false,
+        "day_margin_db": -1,
+        "night_margin_db": -1
+      },
+      "measurement_deduction": false,
+      "exceeds": false,
+      "summary_de": "Immissionsort IO-01 (Industriegebiet, Buchstabe a): Immissionsrichtwerte Tag/Nacht 70/70 dB(A). Zusatzbelastung Tag/Nacht 65/65 dB(A). Die Immissionsrichtwerte werden eingehalten."
+    },
+    {
+      "receiver_id": "IO-02",
+      "area_category": "commercial",
+      "area_category_label_de": "Gewerbegebiet",
+      "area_category_code": "b",
+      "richtwerte": {
+        "day": 65,
+        "night": 50
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 66,
+        "level_rounded": 66,
+        "richtwert": 65,
+        "exceeds": true,
+        "exceedance_db": 1
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 51,
+        "level_rounded": 51,
+        "richtwert": 50,
+        "exceeds": true,
+        "exceedance_db": 1
+      },
+      "irrelevanz": {
+        "day_irrelevant": false,
+        "night_irrelevant": false,
+        "day_margin_db": -7,
+        "night_margin_db": -7
+      },
+      "measurement_deduction": false,
+      "exceeds": true,
+      "summary_de": "Immissionsort IO-02 (Gewerbegebiet, Buchstabe b): Immissionsrichtwerte Tag/Nacht 65/50 dB(A). Zusatzbelastung Tag/Nacht 66/51 dB(A). Die Immissionsrichtwerte werden überschritten."
+    },
+    {
+      "receiver_id": "IO-03",
+      "area_category": "urban",
+      "area_category_label_de": "urbanes Gebiet",
+      "area_category_code": "c",
+      "richtwerte": {
+        "day": 63,
+        "night": 45
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 50,
+        "level_rounded": 50,
+        "richtwert": 63,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 32,
+        "level_rounded": 32,
+        "richtwert": 45,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "irrelevanz": {
+        "day_irrelevant": true,
+        "night_irrelevant": true,
+        "day_margin_db": 7,
+        "night_margin_db": 7
+      },
+      "measurement_deduction": false,
+      "exceeds": false,
+      "summary_de": "Immissionsort IO-03 (urbanes Gebiet, Buchstabe c): Immissionsrichtwerte Tag/Nacht 63/45 dB(A). Zusatzbelastung Tag/Nacht 50/32 dB(A). Irrelevanzkriterium erfüllt: Zusatzbelastung unterschreitet den Immissionsrichtwert um mindestens 6 dB(A). Die Immissionsrichtwerte werden eingehalten."
+    },
+    {
+      "receiver_id": "IO-04",
+      "area_category": "mixed",
+      "area_category_label_de": "Kern-, Dorf- oder Mischgebiet",
+      "area_category_code": "d",
+      "richtwerte": {
+        "day": 60,
+        "night": 45
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 52,
+        "level_rounded": 52,
+        "richtwert": 60,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 38,
+        "level_rounded": 38,
+        "richtwert": 45,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "vorbelastung": {
+        "day": 58,
+        "night": 43
+      },
+      "gesamtbelastung": {
+        "day": 58.97322793708696,
+        "night": 44.19331048066095
+      },
+      "irrelevanz": {
+        "day_irrelevant": true,
+        "night_irrelevant": true,
+        "day_margin_db": 2,
+        "night_margin_db": 1
+      },
+      "measurement_deduction": false,
+      "exceeds": false,
+      "summary_de": "Immissionsort IO-04 (Kern-, Dorf- oder Mischgebiet, Buchstabe d): Immissionsrichtwerte Tag/Nacht 60/45 dB(A). Zusatzbelastung Tag/Nacht 52/38 dB(A). Irrelevanzkriterium erfüllt: Zusatzbelastung unterschreitet den Immissionsrichtwert um mindestens 6 dB(A). Gesamtbelastung Tag/Nacht 59.0/44.2 dB(A). Die Immissionsrichtwerte werden eingehalten."
+    },
+    {
+      "receiver_id": "IO-05",
+      "area_category": "residential",
+      "area_category_label_de": "allgemeines Wohngebiet oder Kleinsiedlungsgebiet",
+      "area_category_code": "e",
+      "richtwerte": {
+        "day": 55,
+        "night": 40
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 53,
+        "level_rounded": 53,
+        "richtwert": 55,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 38,
+        "level_rounded": 38,
+        "richtwert": 40,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "irrelevanz": {
+        "day_irrelevant": false,
+        "night_irrelevant": false,
+        "day_margin_db": -4,
+        "night_margin_db": -4
+      },
+      "measurement_deduction": true,
+      "exceeds": false,
+      "summary_de": "Immissionsort IO-05 (allgemeines Wohngebiet oder Kleinsiedlungsgebiet, Buchstabe e): Immissionsrichtwerte Tag/Nacht 55/40 dB(A). Zusatzbelastung Tag/Nacht 53/38 dB(A). Messabschlag von 3 dB nach Nr. 6.9 wurde angewendet. Die Immissionsrichtwerte werden eingehalten."
+    },
+    {
+      "receiver_id": "IO-06",
+      "area_category": "pure_residential",
+      "area_category_label_de": "reines Wohngebiet",
+      "area_category_code": "f",
+      "richtwerte": {
+        "day": 50,
+        "night": 35
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 40,
+        "level_rounded": 40,
+        "richtwert": 50,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 25,
+        "level_rounded": 25,
+        "richtwert": 35,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "irrelevanz": {
+        "day_irrelevant": true,
+        "night_irrelevant": true,
+        "day_margin_db": 4,
+        "night_margin_db": 4
+      },
+      "peak": {
+        "peak_day": 81,
+        "limit_day": 80,
+        "limit_night": 55,
+        "day_exceeds": true,
+        "night_exceeds": false
+      },
+      "measurement_deduction": false,
+      "exceeds": true,
+      "summary_de": "Immissionsort IO-06 (reines Wohngebiet, Buchstabe f): Immissionsrichtwerte Tag/Nacht 50/35 dB(A). Zusatzbelastung Tag/Nacht 40/25 dB(A). Irrelevanzkriterium erfüllt: Zusatzbelastung unterschreitet den Immissionsrichtwert um mindestens 6 dB(A). Kurzzeitige Geräuschspitzen überschreiten die zulässigen Werte. Die Immissionsrichtwerte werden überschritten."
+    },
+    {
+      "receiver_id": "IO-07",
+      "area_category": "healthcare",
+      "area_category_label_de": "Kurgebiet, Krankenhaus oder Pflegeanstalt",
+      "area_category_code": "g",
+      "richtwerte": {
+        "day": 45,
+        "night": 35
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 40,
+        "level_rounded": 40,
+        "richtwert": 45,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 30,
+        "level_rounded": 30,
+        "richtwert": 35,
+        "exceeds": false,
+        "exceedance_db": 0
+      },
+      "irrelevanz": {
+        "day_irrelevant": false,
+        "night_irrelevant": false,
+        "day_margin_db": -1,
+        "night_margin_db": -1
+      },
+      "measurement_deduction": false,
+      "exceeds": false,
+      "summary_de": "Immissionsort IO-07 (Kurgebiet, Krankenhaus oder Pflegeanstalt, Buchstabe g): Immissionsrichtwerte Tag/Nacht 45/35 dB(A). Zusatzbelastung Tag/Nacht 40/30 dB(A). Die Immissionsrichtwerte werden eingehalten."
+    },
+    {
+      "receiver_id": "IO-08",
+      "area_category": "commercial",
+      "area_category_label_de": "Gewerbegebiet",
+      "area_category_code": "b",
+      "richtwerte": {
+        "day": 58,
+        "night": 43
+      },
+      "zusatzbelastung_day": {
+        "level_raw": 59,
+        "level_rounded": 59,
+        "richtwert": 58,
+        "exceeds": true,
+        "exceedance_db": 1
+      },
+      "zusatzbelastung_night": {
+        "level_raw": 44,
+        "level_rounded": 44,
+        "richtwert": 43,
+        "exceeds": true,
+        "exceedance_db": 1
+      },
+      "irrelevanz": {
+        "day_irrelevant": false,
+        "night_irrelevant": false,
+        "day_margin_db": -7,
+        "night_margin_db": -7
+      },
+      "measurement_deduction": false,
+      "exceeds": true,
+      "summary_de": "Immissionsort IO-08 (Gewerbegebiet, Buchstabe b): Immissionsrichtwerte Tag/Nacht 58/43 dB(A). Zusatzbelastung Tag/Nacht 59/44 dB(A). Die Immissionsrichtwerte werden überschritten."
+    }
+  ],
+  "skipped": [
+    {
+      "receiver_id": "IO-SKIP",
+      "reason": "no area category assigned"
+    }
+  ]
+}

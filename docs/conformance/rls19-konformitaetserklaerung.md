@@ -14,13 +14,13 @@ Status: DRAFT — not yet submitted
 
 ## Standard
 
-| Field           | Value                                                               |
-| --------------- | ------------------------------------------------------------------- |
-| Standard        | RLS-19 (Richtlinien fuer den Laermschutz an Strassen, Ausgabe 2019) |
+| Field           | Value                                                                |
+| --------------- | -------------------------------------------------------------------- |
+| Standard        | RLS-19 (Richtlinien fuer den Laermschutz an Strassen, Ausgabe 2019)  |
 | Errata          | Korrekturblatt 2/2020 (Februar 2020) — all three corrections applied |
-| Legal basis     | 16. BImSchV                                                         |
-| TEST-20 version | 2.1 (July 2025)                                                     |
-| FGSV catalogue  | 334/2                                                               |
+| Legal basis     | 16. BImSchV                                                          |
+| TEST-20 version | 2.1 (July 2025)                                                      |
+| FGSV catalogue  | 334/2                                                                |
 
 ## Supported scope
 
@@ -38,12 +38,12 @@ Status: DRAFT — not yet submitted
 
 ### Parking sources (§3.4)
 
-| Step | Description                                                        | Status      |
-| ---- | ------------------------------------------------------------------ | ----------- |
-| P1   | Flaechenbezogener Schallleistungspegel (Eq. 10, corrected form)    | Implemented |
-| P2   | Fahrzeugtypzuschlag D_P,PT (Tabelle 6: Pkw/Motorrad/Lkw-Omnibus)  | Implemented |
-| P3   | Standardbewegungsraten N (Tabelle 7: P+R, Tank-/Rastanlagen)       | Implemented |
-| P4   | Propagation from parking centroid (point source, §3.5 chain)       | Implemented |
+| Step | Description                                                      | Status      |
+| ---- | ---------------------------------------------------------------- | ----------- |
+| P1   | Flaechenbezogener Schallleistungspegel (Eq. 10, corrected form)  | Implemented |
+| P2   | Fahrzeugtypzuschlag D_P,PT (Tabelle 6: Pkw/Motorrad/Lkw-Omnibus) | Implemented |
+| P3   | Standardbewegungsraten N (Tabelle 7: P+R, Tank-/Rastanlagen)     | Implemented |
+| P4   | Propagation from parking centroid (point source, §3.5 chain)     | Implemented |
 
 ### Propagation
 
@@ -62,15 +62,15 @@ Status: DRAFT — not yet submitted
 
 ### Reflections (§3.6, Tabelle 8)
 
-| Feature                                                               | Status      |
-| --------------------------------------------------------------------- | ----------- |
-| First-order reflections (Spiegelschallquellen 1. Ordnung)             | Implemented |
-| Second-order reflections (Spiegelschallquellen 2. Ordnung)            | Implemented |
-| Third-order reflections ignored per standard                          | Implemented |
-| Height condition: h_R >= 1.0 m and h_R >= 0.3*sqrt(a_R)              | Implemented |
-| ReflectorType enum: FacadeOrReflecting (0.5 dB), ReflectionReducing   | Implemented |
-| (3.0 dB), StronglyReflectionReducing (5.0 dB) per Tabelle 8          | Implemented |
-| Active-Teilstueck rule (Bild 14): segment-intersection enforcement    | Implemented |
+| Feature                                                             | Status      |
+| ------------------------------------------------------------------- | ----------- |
+| First-order reflections (Spiegelschallquellen 1. Ordnung)           | Implemented |
+| Second-order reflections (Spiegelschallquellen 2. Ordnung)          | Implemented |
+| Third-order reflections ignored per standard                        | Implemented |
+| Height condition: h_R >= 1.0 m and h_R >= 0.3\*sqrt(a_R)            | Implemented |
+| ReflectorType enum: FacadeOrReflecting (0.5 dB), ReflectionReducing | Implemented |
+| (3.0 dB), StronglyReflectionReducing (5.0 dB) per Tabelle 8         | Implemented |
+| Active-Teilstueck rule (Bild 14): segment-intersection enforcement  | Implemented |
 
 ### Indicators
 
@@ -84,15 +84,15 @@ Status: DRAFT — not yet submitted
 The Korrekturblatt Februar 2020 (FGSV 052, 2/2020) issued three corrections,
 all of which are applied in this implementation:
 
-| No. | Location              | Correction                                                                              | Applied in          |
-| --- | --------------------- | --------------------------------------------------------------------------------------- | ------------------- |
-| 1   | p. 12, §3.2, Eq. 3    | Corrected form of the Beurteilungspegel formula (index alignment in sum notation)       | `propagation.go`    |
-| 2   | p. 16, §3.3.8, Eq. 9  | Index "refl" at D_refl corrected to subscript (typographic fix; formula value unchanged)| `emission.go`       |
-| 3   | p. 17, §3.4.1, Eq. 10 | Corrected form: `L_W'' = 63 + 10·lg[N·n] + D_P,PT − 10·lg[P/1m²]` (area term added)   | `parking.go`        |
+| No. | Location              | Correction                                                                               | Applied in       |
+| --- | --------------------- | ---------------------------------------------------------------------------------------- | ---------------- |
+| 1   | p. 12, §3.2, Eq. 3    | Corrected form of the Beurteilungspegel formula (index alignment in sum notation)        | `propagation.go` |
+| 2   | p. 16, §3.3.8, Eq. 9  | Index "refl" at D_refl corrected to subscript (typographic fix; formula value unchanged) | `emission.go`    |
+| 3   | p. 17, §3.4.1, Eq. 10 | Corrected form: `L_W'' = 63 + 10·lg[N·n] + D_P,PT − 10·lg[P/1m²]` (area term added)      | `parking.go`     |
 
 Note: The corrected Eq. 10 includes `−10·lg[P/1m²]` to express the
-_area-related_ level L_W''. When propagating parking as a point source, the
-implementation uses the _total_ sound power `L_W = L_W'' + 10·lg[P/1m²] =
+_area-related_ level L*W''. When propagating parking as a point source, the
+implementation uses the \_total* sound power `L_W = L_W'' + 10·lg[P/1m²] =
 63 + 10·lg[N·n] + D_P,PT`, which cancels the area term.
 
 ## Not yet supported
