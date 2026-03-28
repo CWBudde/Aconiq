@@ -138,7 +138,7 @@ Done — conformance:
 
 Open work — conformance:
 
-- [ ] Create additional synthetic validation cases with hand-calculated reference values for each attenuation term.
+- [x] Synthetic validation cases with hand-calculated reference values for each attenuation term.
 - [ ] Add comparison rules for tolerance checking in the acceptance test runner.
 
 ### Priority 4 — Remaining Schall 03 closure work
