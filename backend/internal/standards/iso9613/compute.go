@@ -48,8 +48,10 @@ func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource
 	dwLevel := ComputeDownwindLevel(receiver, sources, cfg)
 
 	ltLevel := dwLevel
+
 	if cfg.C0 > 0 && len(sources) > 0 {
 		dp := 0.0
+
 		for _, source := range sources {
 			d := geo.Distance(receiver.Point, source.Point)
 			if d > dp {

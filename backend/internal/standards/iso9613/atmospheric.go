@@ -31,9 +31,11 @@ func LookupAlpha(tempC, humidity float64, band int) float64 {
 
 	best := 0
 	bestDist := 1e18
+
 	for i, row := range table2 {
 		dt := (tempC - row.TempC) / 10.0
 		dh := (humidity - row.Humidity) / 50.0
+
 		dist := dt*dt + dh*dh
 		if dist < bestDist {
 			bestDist = dist
@@ -52,9 +54,11 @@ func AtmosphericAbsorption(alpha, distanceM float64) float64 {
 // AtmosphericAbsorptionBands computes A_atm for all 8 octave bands.
 func AtmosphericAbsorptionBands(tempC, humidity, distanceM float64) BandLevels {
 	var result BandLevels
+
 	for i := range NumBands {
 		alpha := LookupAlpha(tempC, humidity, i)
 		result[i] = AtmosphericAbsorption(alpha, distanceM)
 	}
+
 	return result
 }

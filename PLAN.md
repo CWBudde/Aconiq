@@ -99,7 +99,7 @@ Open work:
 
 ### Priority 3 — ISO 9613-2 from preview baseline to engineering-ready module
 
-Status: preview baseline shipped for industry point sources and favorable meteorology.
+Status: preview baseline shipped for industry point sources and favorable meteorology. Design for octave-band rework approved (see `docs/plans/2026-03-28-iso9613-octave-band.md`).
 
 Why now: TA Lärm is already implemented as an assessment layer, so ISO 9613-2 is the main remaining propagation track needed for a complete industrial workflow.
 
@@ -107,14 +107,29 @@ Shipped already:
 
 - [x] Module structure, standards descriptor, source emission interface, propagation chain, CLI wiring, receiver tables, rasters, provenance, unit tests, validation projects, and golden scenarios.
 
-Open work — implementation:
+Open work — octave-band attenuation chain (current iteration):
 
+- [ ] Implement octave-band processing (63 Hz to 8 kHz) with per-band attenuation and A-weighted energetic summation (Eq. 3–5).
+- [ ] Implement normative atmospheric absorption A_atm (Eq. 8) with Table 2 coefficients and interpolation for non-tabulated conditions.
+- [ ] Implement normative ground effect A_gr (Eq. 9, Table 3) with three-region model and functions a'(h), b'(h), c'(h), d'(h). Initial scope: single global ground factor G.
+- [ ] Implement simplified ground effect (Eq. 10) as alternative calculation path.
+- [ ] Implement barrier screening formulas A_bar (Eq. 12, 14–18): D_z, C_3, z, K_met. Input: pre-computed diffraction geometry. No geometric barrier detection in this iteration.
+- [ ] Implement meteorological correction C_met (Eq. 21–22) with configurable C_0 parameter.
+- [ ] Extend source model to octave-band sound power levels with single-value 500 Hz fallback.
+- [ ] Export LpAeq_DW and LpAeq_LT indicators; optional per-band output.
 - [ ] Ensure module separation stays strict so normative outputs remain clearly standard-specific.
-- [ ] Define typed source schemas for ground/terrain inputs and meteorological assumptions.
 - [ ] Define import/run mapping from normalized GeoJSON plus run parameters into typed ISO 9613-2 inputs.
 - [ ] Keep deterministic behavior for segmentation, attenuation ordering, and energetic summation.
 - [ ] Keep ISO 9613-2 results clearly separated from CNOSSOS and national-track outputs in UX, provenance, and exported artifacts.
-- [ ] Expand beyond point-source-only support to line and area sources where the target workflow requires it.
+
+Open work — deferred implementation:
+
+- [ ] Geometric barrier detection: wire barrier formulas to ray-barrier intersection logic shared with RLS-19 infrastructure.
+- [ ] Lateral diffraction around vertical edges (Section 7.4.3, Eq. 13).
+- [ ] Reflections via image sources (Section 7.5, Eq. 19–20, Table 4): construct mirror images per reflecting surface, compute reflected paths with reflection coefficient and directivity.
+- [ ] Line and area source subdivision per Section 4 projection method (decompose extended sources into equivalent point sources with raster factor k).
+- [ ] Spatial ground zones: replace single global G with per-region ground factor lookup from GroundZone polygons.
+- [ ] A_misc: foliage (A.1, Table A.1), industrial site (A.2, Table A.2), and housing (A.3) attenuation from Annex A (informative).
 
 Open work — conformance:
 

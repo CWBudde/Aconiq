@@ -22,6 +22,7 @@ func TestAtmosphericAbsorptionTable2Row1(t *testing.T) {
 
 	for _, tc := range tests {
 		alpha := LookupAlpha(10, 70, tc.band)
+
 		got := AtmosphericAbsorption(alpha, tc.distance)
 		if math.Abs(got-tc.expected) > 0.01 {
 			t.Errorf("band %d, d=%.0fm: expected %.2f, got %.2f", tc.band, tc.distance, tc.expected, got)
@@ -68,9 +69,11 @@ func TestAtmosphericAbsorptionBandLevels(t *testing.T) {
 
 func TestLookupAlphaInvalidBand(t *testing.T) {
 	t.Parallel()
+
 	if LookupAlpha(10, 70, -1) != 0 {
 		t.Error("expected 0 for invalid band -1")
 	}
+
 	if LookupAlpha(10, 70, 8) != 0 {
 		t.Error("expected 0 for invalid band 8")
 	}
