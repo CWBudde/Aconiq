@@ -122,12 +122,14 @@ Done — octave-band attenuation chain:
 
 Open work — deferred implementation:
 
-- [ ] Geometric barrier detection: wire barrier formulas to ray-barrier intersection logic shared with RLS-19 infrastructure.
-- [ ] Lateral diffraction around vertical edges (Section 7.4.3, Eq. 13).
-- [ ] Reflections via image sources (Section 7.5, Eq. 19–20, Table 4): construct mirror images per reflecting surface, compute reflected paths with reflection coefficient and directivity.
-- [ ] Line and area source subdivision per Section 4 projection method (decompose extended sources into equivalent point sources with raster factor k).
-- [ ] Spatial ground zones: replace single global G with per-region ground factor lookup from GroundZone polygons.
-- [ ] A_misc: foliage (A.1, Table A.1), industrial site (A.2, Table A.2), and housing (A.3) attenuation from Annex A (informative).
+The items below are deferred because the current octave-band point-source chain already covers the core TA Lärm industrial workflow: a practitioner can model point sources with full normative attenuation, get LpAeq_DW and LpAeq_LT, and feed the results into the TA Lärm assessment layer. Each deferred item addresses a secondary use case or a geometric feature that depends on shared infrastructure not yet available.
+
+- [ ] **Geometric barrier detection.** The diffraction formulas (Eq. 12–18) are implemented and tested; what is missing is the ray-barrier intersection that computes d_ss, d_sr, e, and a from barrier geometry. This logic already exists in the RLS-19 module for road noise barriers. Before implementing it here, the shared barrier-intersection code should be extracted from `rls19/road/shielding.go` into a common `geo/` or `propagation/` package so both standards can reuse it. Without this, users can still supply pre-computed barrier geometry via the API.
+- [ ] **Lateral diffraction around vertical edges** (Section 7.4.3, Eq. 13). Relevant only when a barrier's horizontal extent is comparable to the wavelength. Most industrial barrier assessments are dominated by top-edge diffraction; lateral paths matter mainly for narrow obstacles. Low priority until barrier detection is wired.
+- [ ] **Reflections via image sources** (Section 7.5, Eq. 19–20, Table 4). Architecturally independent — reflections add more source-receiver paths but do not change the per-path attenuation formulas. Relevant for enclosed industrial yards with large reflecting facades. Can be added without rearchitecting anything, but requires building-geometry input and specular-reflection construction. Priority increases when the SoundPlan import path (Priority 8) delivers building geometry.
+- [ ] **Line and area source subdivision** (Section 4). The standard decomposes extended sources into equivalent point sources. This is needed for conveyor belts, cooling towers, and building facades but not for stacks, vents, and equipment — which are the primary TA Lärm point-source use case. The 2024 edition formalises the projection method with a raster factor k; implementing this should follow that edition once a full copy is available.
+- [ ] **Spatial ground zones.** The three-region ground model is fully implemented; only the per-region G lookup from polygon geometry is missing. This requires spatial point-in-polygon queries against user-supplied ground-zone polygons. Low effort once the input schema is defined, but the single-global-G default (G = 0.5, mixed ground) is adequate for most industrial sites where the ground between source and receiver is roughly uniform.
+- [ ] **A_misc: foliage, industrial site, housing** (Annex A). These are informative, not normative. Foliage attenuation (Table A.1) and industrial-site scattering (Table A.2) apply only to specific propagation geometries. Housing attenuation (A.3) is situation-dependent and the standard itself recommends measurement or modelling instead. None of these are required for a conformance claim.
 
 Done — conformance:
 
