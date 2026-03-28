@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "phase20-v2",
+  "suite_version": "phase20-v3",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -59,6 +59,22 @@
       "description": "Full chain: Fz 21 Niederflur-ET at 60 km/h, free-field propagation to two receivers at 25 m and 75 m",
       "scenario_path": "ci_safe/s2_strassenbahn_fullchain.scenario.json",
       "expected_path": "ci_safe/s2_strassenbahn_fullchain.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b1_single_barrier",
+      "category": "propagation",
+      "description": "ICE-1-Zug at 250 km/h with 4 m barrier at 15 m, receiver at 30 m — basic single-barrier screening (Gl. 21-26)",
+      "scenario_path": "ci_safe/b1_single_barrier.scenario.json",
+      "expected_path": "ci_safe/b1_single_barrier.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b2_barrier_with_wall",
+      "category": "propagation",
+      "description": "ICE-1-Zug at 250 km/h with 4 m barrier at 15 m plus hard reflecting wall at 40 m — barrier+reflection interaction",
+      "scenario_path": "ci_safe/b2_barrier_with_wall.scenario.json",
+      "expected_path": "ci_safe/b2_barrier_with_wall.expected.json",
       "tolerance_db": 0.0001
     }
   ]

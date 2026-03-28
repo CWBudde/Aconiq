@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_barrier_wall",
+      "x": 0,
+      "y": 30,
+      "height_m": 3.5,
+      "LpAeqDay": 71.570699,
+      "LpAeqNight": 65.550099,
+      "LrDay": 71.570699,
+      "LrNight": 65.550099
+    }
+  ]
+}

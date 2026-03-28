@@ -1,0 +1,16 @@
+{
+  "band_names": [
+    "LrDay",
+    "LrNight"
+  ],
+  "bands": 2,
+  "cell_count": 4,
+  "data_bytes": 32,
+  "data_file": "schall03.bin",
+  "encoding": "float64-le-v1",
+  "height": 1,
+  "nodata": -9999,
+  "schema_name": "aconiq.raster.v1",
+  "unit": "dB",
+  "width": 2
+}

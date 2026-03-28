@@ -104,8 +104,10 @@ type taskManifest struct {
 }
 
 type scenarioFile struct {
-	Segments  []schall03.TrackSegment  `json:"segments"`
-	Receivers []schall03.ReceiverInput `json:"receivers"`
+	Segments  []schall03.TrackSegment    `json:"segments"`
+	Receivers []schall03.ReceiverInput   `json:"receivers"`
+	Walls     []schall03.ReflectingWall  `json:"walls,omitempty"`
+	Barriers  []schall03.BarrierSegment  `json:"barriers,omitempty"`
 }
 
 type expectedFile struct {
@@ -280,9 +282,21 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 
 func computeSnapshots(scenario scenarioFile) ([]ReceiverSnapshot, error) {
 	out := make([]ReceiverSnapshot, 0, len(scenario.Receivers))
+	hasScene := len(scenario.Walls) > 0 || len(scenario.Barriers) > 0
 
 	for _, receiver := range scenario.Receivers {
-		levels, err := schall03.ComputeNormativeReceiverLevels(receiver, scenario.Segments)
+		var levels schall03.NormativeReceiverLevels
+
+		var err error
+
+		if hasScene {
+			levels, err = schall03.ComputeNormativeReceiverLevelsWithScene(
+				receiver, scenario.Segments, scenario.Walls, scenario.Barriers,
+			)
+		} else {
+			levels, err = schall03.ComputeNormativeReceiverLevels(receiver, scenario.Segments)
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}

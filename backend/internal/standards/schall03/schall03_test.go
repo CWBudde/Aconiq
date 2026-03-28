@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -284,6 +285,137 @@ func TestExportResultBundle(t *testing.T) {
 	if filepath.Base(exported.RasterMetaPath) != StandardID+".json" {
 		t.Fatalf("unexpected raster meta path: %s", exported.RasterMetaPath)
 	}
+}
+
+func TestExportGoldenSnapshot(t *testing.T) {
+	t.Parallel()
+
+	// Two receivers in a 2x1 grid, computed from an actual scenario.
+	outputs, err := ComputeReceiverOutputs([]geo.PointReceiver{
+		{ID: "r-near", Point: geo.Point2D{X: 0, Y: 25}, HeightM: 4},
+		{ID: "r-far", Point: geo.Point2D{X: 0, Y: 100}, HeightM: 4},
+	}, []RailSource{
+		{
+			ID: "track-1",
+			TrackCenterline: []geo.Point2D{
+				{X: -50, Y: 0},
+				{X: 50, Y: 0},
+			},
+			TrainClass:      TrainClassPassenger,
+			AverageSpeedKPH: 100,
+			Infrastructure: RailInfrastructure{
+				TractionType:        TractionElectric,
+				TrackType:           TrackTypeBallasted,
+				TrackForm:           TrackFormMainline,
+				TrackRoughnessClass: RoughnessStandard,
+			},
+			TrafficDay:   TrafficPeriod{TrainsPerHour: 6},
+			TrafficNight: TrafficPeriod{TrainsPerHour: 2},
+		},
+	}, DefaultPropagationConfig())
+	if err != nil {
+		t.Fatalf("compute receiver outputs: %v", err)
+	}
+
+	baseDir := t.TempDir()
+
+	exported, err := ExportResultBundle(baseDir, outputs, 2, 1)
+	if err != nil {
+		t.Fatalf("export result bundle: %v", err)
+	}
+
+	// Golden-test the receiver JSON content.
+	receiverPayload, err := os.ReadFile(exported.ReceiverJSONPath)
+	if err != nil {
+		t.Fatalf("read receiver json: %v", err)
+	}
+
+	var receiverTable results.ReceiverTable
+
+	err = json.Unmarshal(receiverPayload, &receiverTable)
+	if err != nil {
+		t.Fatalf("decode receiver table: %v", err)
+	}
+
+	receiverSnapshot := map[string]any{
+		"indicator_order": receiverTable.IndicatorOrder,
+		"unit":            receiverTable.Unit,
+		"records":         roundedRecords(receiverTable.Records),
+	}
+
+	golden.AssertJSONSnapshot(t, testdataPath(t, "export_receivers.golden.json"), receiverSnapshot)
+
+	// Golden-test the raster metadata.
+	rasterMetaPayload, err := os.ReadFile(exported.RasterMetaPath)
+	if err != nil {
+		t.Fatalf("read raster metadata: %v", err)
+	}
+
+	var rasterMeta map[string]any
+
+	err = json.Unmarshal(rasterMetaPayload, &rasterMeta)
+	if err != nil {
+		t.Fatalf("decode raster metadata: %v", err)
+	}
+
+	// Remove non-deterministic timestamp before golden comparison.
+	delete(rasterMeta, "created_at")
+
+	golden.AssertJSONSnapshot(t, testdataPath(t, "export_raster_meta.golden.json"), rasterMeta)
+
+	// Verify CSV has expected header and row count.
+	csvPayload, err := os.ReadFile(exported.ReceiverCSVPath)
+	if err != nil {
+		t.Fatalf("read receiver csv: %v", err)
+	}
+
+	csvLines := splitNonEmpty(string(csvPayload))
+	// 1 header + 2 data rows
+	if len(csvLines) != 3 {
+		t.Fatalf("expected 3 CSV lines (header + 2 rows), got %d", len(csvLines))
+	}
+
+	// Verify raster binary has expected size: width * height * bands * 8 bytes.
+	rasterInfo, err := os.Stat(exported.RasterDataPath)
+	if err != nil {
+		t.Fatalf("stat raster data: %v", err)
+	}
+
+	expectedSize := int64(2 * 1 * 2 * 8) // 2 cells * 1 row * 2 bands * 8 bytes
+	if rasterInfo.Size() != expectedSize {
+		t.Fatalf("expected raster data size %d, got %d", expectedSize, rasterInfo.Size())
+	}
+}
+
+func roundedRecords(records []results.ReceiverRecord) []map[string]any {
+	out := make([]map[string]any, 0, len(records))
+	for _, r := range records {
+		values := make(map[string]any, len(r.Values))
+		for k, v := range r.Values {
+			values[k] = round6(v)
+		}
+
+		out = append(out, map[string]any{
+			"id":       r.ID,
+			"x":        round6(r.X),
+			"y":        round6(r.Y),
+			"height_m": round6(r.HeightM),
+			"values":   values,
+		})
+	}
+
+	return out
+}
+
+func splitNonEmpty(s string) []string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	return lines
 }
 
 func TestBuiltinDataPackValidates(t *testing.T) {

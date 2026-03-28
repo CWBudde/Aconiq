@@ -1,0 +1,29 @@
+{
+  "indicator_order": [
+    "LrDay",
+    "LrNight"
+  ],
+  "records": [
+    {
+      "height_m": 4,
+      "id": "r-near",
+      "values": {
+        "LrDay": 77.703629,
+        "LrNight": 74.023861
+      },
+      "x": 0,
+      "y": 25
+    },
+    {
+      "height_m": 4,
+      "id": "r-far",
+      "values": {
+        "LrDay": 67.852951,
+        "LrNight": 64.173183
+      },
+      "x": 0,
+      "y": 100
+    }
+  ],
+  "unit": "dB"
+}
