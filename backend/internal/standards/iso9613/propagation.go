@@ -123,3 +123,15 @@ func attenuation(receiver geo.PointReceiver, source PointSource, cfg Propagation
 func totalAttenuation(terms attenuationTerms) float64 {
 	return terms.GeometricDB + terms.AirDB + terms.GroundDB + terms.BarrierDB
 }
+
+// MeteorologicalCorrection computes C_met from Eq. 21–22.
+// c0 depends on local meteorological statistics; default 0 for pure downwind.
+// hs is source height, hr is receiver height, dp is projected distance.
+func MeteorologicalCorrection(c0, hs, hr, dp float64) float64 {
+	limit := 10 * (hs + hr)
+	if dp <= limit {
+		return 0
+	}
+
+	return c0 * (1 - limit/dp)
+}

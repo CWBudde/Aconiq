@@ -52,7 +52,7 @@ func AtmosphericAbsorption(alpha, distanceM float64) float64 {
 // AtmosphericAbsorptionBands computes A_atm for all 8 octave bands.
 func AtmosphericAbsorptionBands(tempC, humidity, distanceM float64) BandLevels {
 	var result BandLevels
-	for i := 0; i < NumBands; i++ {
+	for i := range NumBands {
 		alpha := LookupAlpha(tempC, humidity, i)
 		result[i] = AtmosphericAbsorption(alpha, distanceM)
 	}
