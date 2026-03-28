@@ -365,31 +365,71 @@ Status: preview baseline shipped (industry point sources, LpAeq, favorable meteo
 
 ---
 
-## Phase 22 — TA Lärm assessment layer (NEW)
+## Phase 22 — TA Lärm assessment layer
 
 **Goal:** implement TA Lärm as a **regulatory assessment and reporting layer**, not as a propagation standard.
 
 **Why:** TA Lärm is the central administrative regulation (Verwaltungsvorschrift) for industrial noise protection in Germany. It defines assessment logic, area categories, time periods, surcharges, and thresholds — on top of propagation results from ISO 9613-2, CNOSSOS-Industry, or other standards. Without TA Lärm assessment logic, Aconiq cannot produce legally compliant industrial noise reports for German authorities.
 
-- [ ] Define TA Lärm scope and implementation boundary
-  - [ ] Clarify which TA Lärm sections are implemented (Nrn. 3-7 assessment, Anhang threshold tables)
-  - [ ] Separate assessment/evaluation logic from underlying propagation standards
-  - [ ] Document what is normative assessment vs. informational guidance
-- [ ] Implement TA Lärm assessment logic
-  - [ ] Area categories (Gebietskategorien) and associated threshold tables (Immissionsrichtwerte)
-  - [ ] Time periods: Tag (06-22), Nacht (22-06), lauteste Nachtstunde
-  - [ ] Zuschläge: Ton-, Impuls-, Informationshaltigkeit
-  - [ ] Vorbelastung / Zusatzbelastung / Gesamtbelastung accounting
-  - [ ] Relevanzprüfung (irrelevance criterion)
-  - [ ] Spitzenpegelkriterium (peak level criterion)
-- [ ] Implement TA Lärm reporting
-  - [ ] Structured assessment result (per receiver: Beurteilungspegel vs. Richtwert, pass/fail)
-  - [ ] German-language assessment text blocks for gutachterliche Stellungnahme
-  - [ ] Export as part of report context (JSON + Typst/HTML rendering)
-- [ ] Add verification coverage
-  - [ ] Synthetic test cases for each assessment pathway
-  - [ ] Golden scenarios for typical industrial assessment cases
-  - [ ] Document TA Lärm version/edition and mapping to norm editions used
+**Normative basis:** TA Lärm vom 26.08.1998 (GMBl. S. 503), geändert durch VwV vom 01.06.2017 (BAnz. AT 08.06.2017 B5). The 2017 amendment added category c) "urbane Gebiete". LAI-Hinweise (Stand 24.02.2023) serve as authoritative interpretation guidance. Reference documents in `interoperability/TA-Laerm/`.
+
+**Detailed plan:** `docs/plans/2026-03-28-phase22-ta-laerm-assessment.md`
+
+**Package:** `backend/internal/assessment/talaerm/`
+
+### Phase 22.1 — Area categories and threshold tables
+
+- [x] Define `AreaCategory` type with 7 categories (a–g, including 2017 "urbane Gebiete")
+- [x] Implement `ThresholdsOutdoor` (Nr. 6.1), `ThresholdsIndoor` (Nr. 6.2), `ThresholdsRareEvents` (Nr. 6.3)
+- [x] Implement `PeakLimitsOutdoor` per category (day +30, night +20 over Richtwert)
+- [x] German labels, category codes, `ParseAreaCategory` parser
+- [x] `IsErhoehtEmpfindlichkeit` — categories d–f per 2017 text
+- [x] Unit tests for all lookups and parsing
+
+### Phase 22.2 — Time periods and Teilzeiten
+
+- [x] Model assessment periods: Tag 06:00–22:00 (16h), Nacht 22:00–06:00 (1h/8h)
+- [x] `Teilzeit` struct with LAeq, KT, KI, KR per partial time
+- [x] Lauteste Nachtstunde concept (Nr. 6.4)
+- [x] Nr. 6.5 erhöhte Empfindlichkeit time windows (weekday/weekend, 6 dB)
+- [x] Unit tests
+
+### Phase 22.3 — Beurteilungspegel computation (Lr)
+
+- [x] Implement Anhang equation G2: Lr from Teilzeiten with Cmet, KT, KI, KR
+- [x] Simple mode for single-Teilzeit case
+- [x] Impulshaltigkeit surcharge formula G6: KI = LAFTeq − LAeq
+- [x] Validation: Teilzeit durations must sum to Tr
+- [x] Unit tests with hand-calculated examples
+
+### Phase 22.4 — Vorbelastung / Zusatzbelastung / Gesamtbelastung
+
+- [x] Implement Anhang equation G1: LG = 10·lg(10^(0.1·LV) + 10^(0.1·LZ))
+- [x] Relevanzprüfung (Nr. 3.2.1): Zusatzbelastung ≥ 6 dB below Richtwert → irrelevant
+- [x] `LoadAssessment` struct with all three tiers
+- [x] Unit tests with energetic summation edge cases
+
+### Phase 22.5 — Assessment logic (Regelfallprüfung)
+
+- [x] `AssessReceiver` — Lr vs. Richtwert comparison, pass/fail
+- [x] Spitzenpegelkriterium (peak level check)
+- [x] Gemengelagen intermediate values (Nr. 6.7)
+- [x] Nr. 6.9 Messabschlag (−3 dB for measurement-based)
+- [x] German summary text generation
+- [x] Unit tests for all assessment pathways
+
+### Phase 22.6 — Export envelope and reporting
+
+- [x] `ExportEnvelope` struct (follows bimschv16 pattern)
+- [x] `BuildExportEnvelope` — assemble from model + results
+- [x] German report text blocks for gutachterliche Stellungnahme
+- [x] Unit tests and JSON round-trip
+
+### Phase 22.7 — Verification and conformance
+
+- [x] Golden test scenarios (8 scenarios covering all pathways)
+- [x] Conformance declaration: `docs/conformance/ta-laerm-konformitaetserklaerung.md`
+- [x] Document implemented sections, known limitations, edition tracking
 
 ---
 
@@ -778,13 +818,13 @@ BGBl source document (BGBl. Jahrgang 2014 Teil I Nr. 61, pp. 2269-2313).
 
 ### Fixes applied
 
-| Bug | File | Description |
-|-----|------|-------------|
-| Fz4 m=7 DeltaA | beiblatt1.go | Spectrum shifted from 1000 Hz; correct: {-16,-9,-7,-7,-7,-9,-12,-19} |
-| Gleisbremse i=6 | beiblatt3.go | Missing 63 Hz value (-56); spectrum shifted left |
-| Gleisbremse i=8 | beiblatt3.go | Gummiwalkbremse had entirely wrong spectrum |
-| Gleisbremse i=10 | beiblatt3.go | Schraubenbremse had extra -21 at 500 Hz |
-| K_S combined formula | indicators.go | kSStrecke changed from -5.0 to 0.0 (abolished since 2015/2019) |
+| Bug                  | File          | Description                                                          |
+| -------------------- | ------------- | -------------------------------------------------------------------- |
+| Fz4 m=7 DeltaA       | beiblatt1.go  | Spectrum shifted from 1000 Hz; correct: {-16,-9,-7,-7,-7,-9,-12,-19} |
+| Gleisbremse i=6      | beiblatt3.go  | Missing 63 Hz value (-56); spectrum shifted left                     |
+| Gleisbremse i=8      | beiblatt3.go  | Gummiwalkbremse had entirely wrong spectrum                          |
+| Gleisbremse i=10     | beiblatt3.go  | Schraubenbremse had extra -21 at 500 Hz                              |
+| K_S combined formula | indicators.go | kSStrecke changed from -5.0 to 0.0 (abolished since 2015/2019)       |
 
 ### Regression tests
 
