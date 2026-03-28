@@ -279,7 +279,7 @@ type iso9613RunOptions struct {
 	AirTemperatureC         float64
 	RelativeHumidityPercent float64
 	MeteorologyAssumption   string
-	BarrierAttenuationDB    float64
+	C0Met                   float64
 	MinDistanceM            float64
 }
 
@@ -1361,7 +1361,7 @@ func parseISO9613RunOptions(params map[string]string) (iso9613RunOptions, error)
 		{"ground_factor", &options.GroundFactor},
 		{"air_temperature_c", &options.AirTemperatureC},
 		{"relative_humidity_percent", &options.RelativeHumidityPercent},
-		{"barrier_attenuation_db", &options.BarrierAttenuationDB},
+		{"c0_met", &options.C0Met},
 		{"min_distance_m", &options.MinDistanceM},
 	} {
 		err := parseFloat(item.key, item.target)
@@ -1379,7 +1379,7 @@ func (o iso9613RunOptions) PropagationConfig() iso9613.PropagationConfig {
 		AirTemperatureC:         o.AirTemperatureC,
 		RelativeHumidityPercent: o.RelativeHumidityPercent,
 		MeteorologyAssumption:   o.MeteorologyAssumption,
-		BarrierAttenuationDB:    o.BarrierAttenuationDB,
+		C0:                      o.C0Met,
 		MinDistanceM:            o.MinDistanceM,
 	}
 }

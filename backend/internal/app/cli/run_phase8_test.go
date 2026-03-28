@@ -208,11 +208,11 @@ func TestRunISO9613ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 		t.Fatalf("unexpected model_version: %#v", provenance.Metadata)
 	}
 
-	if got := provenance.Metadata["compliance_boundary"]; got != "phase19-iso9613-point-source-preview" {
+	if got := provenance.Metadata["compliance_boundary"]; got != "iso9613-engineering-octaveband" {
 		t.Fatalf("unexpected compliance boundary metadata: %q", got)
 	}
 
-	if got := provenance.Metadata["implementation_status"]; got != "preview-point-source-run-wired" {
+	if got := provenance.Metadata["implementation_status"]; got != "octaveband-point-source" {
 		t.Fatalf("unexpected implementation_status metadata: %q", got)
 	}
 }

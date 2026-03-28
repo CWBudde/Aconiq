@@ -17,11 +17,6 @@ type PropagationConfig struct {
 	Barrier                 *BarrierGeometry
 	C0                      float64
 	MinDistanceM            float64
-
-	// BarrierAttenuationDB is retained for backward compatibility with the CLI
-	// and acceptance tests. It is ignored by the octave-band chain; use the
-	// Barrier field instead.
-	BarrierAttenuationDB float64
 }
 
 // DefaultPropagationConfig returns the default ISO 9613-2 propagation configuration.

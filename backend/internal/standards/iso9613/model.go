@@ -165,11 +165,11 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
-		Description:    "ISO 9613-2 industry scaffold for point-source planning runs; metadata and compliance boundary are defined, compute chain remains pending.",
-		DefaultVersion: "1996-scaffold",
+		Description:    "ISO 9613-2 octave-band engineering method for point-source industrial noise calculations.",
+		DefaultVersion: "1996-octaveband",
 		Versions: []framework.Version{
 			{
-				Name:           "1996-scaffold",
+				Name:           "1996-octaveband",
 				DefaultProfile: "point-source",
 				Profiles: []framework.Profile{
 					{
@@ -190,7 +190,7 @@ func Descriptor() framework.StandardDescriptor {
 								{Name: "air_temperature_c", Kind: framework.ParameterKindFloat, DefaultValue: "10", Description: "Air temperature used for atmospheric absorption inputs"},
 								{Name: "relative_humidity_percent", Kind: framework.ParameterKindFloat, DefaultValue: "70", Min: &minZero, Max: &maxHumidity, Description: "Relative humidity used for atmospheric absorption inputs"},
 								{Name: "meteorology_assumption", Kind: framework.ParameterKindString, DefaultValue: MeteorologyDownwind, Enum: []string{MeteorologyDownwind}, Description: "Favorable propagation assumption for ISO 9613-2 engineering calculations"},
-								{Name: "barrier_attenuation_db", Kind: framework.ParameterKindFloat, DefaultValue: "0", Min: &minZero, Description: "Placeholder attenuation term until the explicit ISO barrier chain is implemented"},
+								{Name: "c0_met", Kind: framework.ParameterKindFloat, DefaultValue: "0", Min: &minZero, Description: "Meteorological correction factor C0; 0 for pure downwind assessment (TA Lärm default)"},
 								{Name: "min_distance_m", Kind: framework.ParameterKindFloat, DefaultValue: "1", Min: &minPositive, Description: "Minimum source-receiver distance for stable propagation calculations"},
 							},
 						},
