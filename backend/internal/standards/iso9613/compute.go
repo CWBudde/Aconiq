@@ -9,7 +9,8 @@ import (
 
 // ReceiverIndicators stores exported indicators for one receiver.
 type ReceiverIndicators struct {
-	LpAeq float64
+	LpAeqDW float64
+	LpAeqLT float64
 }
 
 // ReceiverOutput stores one computed receiver record.
@@ -18,33 +19,62 @@ type ReceiverOutput struct {
 	Indicators ReceiverIndicators
 }
 
-// ComputeReceiverLevel computes the combined receiver level for one receiver.
-func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, error) {
+// ComputeReceiverIndicators computes both DW and LT indicators for one receiver.
+func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (ReceiverIndicators, error) {
 	err := cfg.Validate()
 	if err != nil {
-		return 0, err
+		return ReceiverIndicators{}, err
 	}
 
 	if receiver.ID == "" {
-		return 0, errors.New("receiver id is required")
+		return ReceiverIndicators{}, errors.New("receiver id is required")
 	}
 
 	if !receiver.Point.IsFinite() {
-		return 0, errors.New("receiver point is not finite")
+		return ReceiverIndicators{}, errors.New("receiver point is not finite")
 	}
 
 	if len(sources) == 0 {
-		return 0, errors.New("at least one source is required")
+		return ReceiverIndicators{}, errors.New("at least one source is required")
 	}
 
 	for _, source := range sources {
 		err := source.Validate()
 		if err != nil {
-			return 0, err
+			return ReceiverIndicators{}, err
 		}
 	}
 
-	return ComputeDownwindLevel(receiver, sources, cfg), nil
+	dwLevel := ComputeDownwindLevel(receiver, sources, cfg)
+
+	ltLevel := dwLevel
+	if cfg.C0 > 0 && len(sources) > 0 {
+		dp := 0.0
+		for _, source := range sources {
+			d := geo.Distance(receiver.Point, source.Point)
+			if d > dp {
+				dp = d
+			}
+		}
+
+		hs := sources[0].SourceHeightM
+		hr := receiver.HeightM
+		cmet := MeteorologicalCorrection(cfg.C0, hs, hr, dp)
+		ltLevel = dwLevel - cmet
+	}
+
+	return ReceiverIndicators{LpAeqDW: dwLevel, LpAeqLT: ltLevel}, nil
+}
+
+// ComputeReceiverLevel computes the combined downwind receiver level for one receiver.
+// Retained for backward compatibility; prefer ComputeReceiverIndicators.
+func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, error) {
+	indicators, err := ComputeReceiverIndicators(receiver, sources, cfg)
+	if err != nil {
+		return 0, err
+	}
+
+	return indicators.LpAeqDW, nil
 }
 
 // ComputeReceiverOutputs computes ISO 9613-2 preview outputs for all receivers in order.
@@ -55,14 +85,14 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []PointSource
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 	for _, receiver := range receivers {
-		level, err := ComputeReceiverLevel(receiver, sources, cfg)
+		indicators, err := ComputeReceiverIndicators(receiver, sources, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
 
 		outputs = append(outputs, ReceiverOutput{
 			Receiver:   receiver,
-			Indicators: ReceiverIndicators{LpAeq: level},
+			Indicators: indicators,
 		})
 	}
 

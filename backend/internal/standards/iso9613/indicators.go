@@ -13,7 +13,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 	metadata := map[string]string{
 		"model_version":          BuiltinModelVersion,
 		"reporting_precision_db": "0.1",
-		"indicator_order":        IndicatorLpAeq,
+		"indicator_order":        IndicatorLpAeqDW + "," + IndicatorLpAeqLT,
 		"compliance_boundary":    "phase19-iso9613-point-source-preview",
 		"implementation_status":  "preview-point-source-run-wired",
 		"source_scope":           SourceTypePoint,

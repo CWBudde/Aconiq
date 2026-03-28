@@ -43,7 +43,7 @@ func TestComputeReceiverOutputsDeterministicPointScope(t *testing.T) {
 		t.Fatalf("expected 2 outputs, got %d", len(outputs))
 	}
 
-	if outputs[0].Indicators.LpAeq <= outputs[1].Indicators.LpAeq {
+	if outputs[0].Indicators.LpAeqDW <= outputs[1].Indicators.LpAeqDW {
 		t.Fatalf("expected receiver r1 closer to dominant source than r2: %#v", outputs)
 	}
 
@@ -64,11 +64,11 @@ func TestExportResultBundleWritesExpectedFiles(t *testing.T) {
 	outputs := []ReceiverOutput{
 		{
 			Receiver:   geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4},
-			Indicators: ReceiverIndicators{LpAeq: 55.2},
+			Indicators: ReceiverIndicators{LpAeqDW: 55.2, LpAeqLT: 55.2},
 		},
 		{
 			Receiver:   geo.PointReceiver{ID: "r2", Point: geo.Point2D{X: 10, Y: 0}, HeightM: 4},
-			Indicators: ReceiverIndicators{LpAeq: 49.8},
+			Indicators: ReceiverIndicators{LpAeqDW: 49.8, LpAeqLT: 49.8},
 		},
 	}
 
@@ -236,7 +236,7 @@ func TestExportResultBundleRejectsShapeMismatch(t *testing.T) {
 	_, err := ExportResultBundle(t.TempDir(), []ReceiverOutput{
 		{
 			Receiver:   geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4},
-			Indicators: ReceiverIndicators{LpAeq: 55},
+			Indicators: ReceiverIndicators{LpAeqDW: 55, LpAeqLT: 55},
 		},
 	}, 2, 1)
 	if err == nil || !strings.Contains(err.Error(), "do not match") {
