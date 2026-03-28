@@ -1141,7 +1141,9 @@ func TestComputeShielding_TallBarrier(t *testing.T) {
 func TestComputeShielding_MultipleBarriers(t *testing.T) {
 	t.Parallel()
 
-	// Two barriers: the taller one should determine the result.
+	// Two barriers: the short one (height 4m at y=10) is below the rubber band
+	// line from source to the tall one (height 8m at y=20), so the
+	// Gummibandmethode excludes it. Only the tall barrier is a significant edge.
 	shortBarrier := Barrier{
 		ID:       "short",
 		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
@@ -1165,7 +1167,19 @@ func TestComputeShielding_MultipleBarriers(t *testing.T) {
 	}
 
 	if result.BarrierID != "tall" {
-		t.Fatalf("expected tall barrier to dominate, got %q", result.BarrierID)
+		t.Fatalf("expected tall barrier (short excluded by hull), got %q", result.BarrierID)
+	}
+
+	// Loss should equal single-tall-barrier case (short is excluded).
+	tallOnly := ComputeShielding(
+		geo.Point2D{X: 0, Y: 0}, 0.5,
+		geo.Point2D{X: 0, Y: 50}, 4.0,
+		[]Barrier{tallBarrier},
+	)
+
+	if math.Abs(result.InsertionLoss-tallOnly.InsertionLoss) > 1e-10 {
+		t.Fatalf("loss with hull-excluded short barrier (%f) should equal tall-only (%f)",
+			result.InsertionLoss, tallOnly.InsertionLoss)
 	}
 }
 
@@ -3305,5 +3319,54 @@ func TestMultiDiffractionLoss_KwUsesLargerLeg(t *testing.T) {
 	// Both should produce valid positive losses.
 	if lossALarger <= 0 || lossBLarger <= 0 {
 		t.Fatalf("expected positive losses: A-larger=%f B-larger=%f", lossALarger, lossBLarger)
+	}
+}
+
+func TestPropagation_WithMultipleBarriers(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	cfg := DefaultPropagationConfig()
+	receiver := geo.Point2D{X: 0, Y: 50}
+
+	// Free-field level.
+	freeField, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfg)
+	if err != nil {
+		t.Fatalf("free field: %v", err)
+	}
+
+	// Single barrier.
+	barrier1 := Barrier{
+		ID:       "wall-1",
+		Geometry: []geo.Point2D{{X: -100, Y: 10}, {X: 100, Y: 10}},
+		HeightM:  6.0,
+	}
+
+	singleBarrier, err := ComputeReceiverLevels(receiver, []RoadSource{source}, []Barrier{barrier1}, cfg)
+	if err != nil {
+		t.Fatalf("single barrier: %v", err)
+	}
+
+	// Two barriers (both above LOS with equal height → multi-diffraction).
+	barrier2 := Barrier{
+		ID:       "wall-2",
+		Geometry: []geo.Point2D{{X: -100, Y: 20}, {X: 100, Y: 20}},
+		HeightM:  6.0,
+	}
+
+	doubleBarrier, err := ComputeReceiverLevels(receiver, []RoadSource{source}, []Barrier{barrier1, barrier2}, cfg)
+	if err != nil {
+		t.Fatalf("double barrier: %v", err)
+	}
+
+	// free-field > single barrier > double barrier (more shielding = lower level).
+	if singleBarrier.LrDay >= freeField.LrDay {
+		t.Fatalf("single barrier day (%f) should be less than free field (%f)",
+			singleBarrier.LrDay, freeField.LrDay)
+	}
+
+	if doubleBarrier.LrDay >= singleBarrier.LrDay {
+		t.Fatalf("double barrier day (%f) should be less than single barrier (%f)",
+			doubleBarrier.LrDay, singleBarrier.LrDay)
 	}
 }
