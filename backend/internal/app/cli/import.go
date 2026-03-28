@@ -25,6 +25,7 @@ import (
 
 func newImportCommand() *cobra.Command {
 	var inputPath string
+	var soundPlanPath string
 	var layerName string
 	var inputCRS string
 	var trafficPath string
@@ -34,13 +35,14 @@ func newImportCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "import",
-		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, or CityGML model data into the project",
+		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, or SoundPLAN model data into the project",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runImport(cmd, inputPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint)
+			return runImport(cmd, inputPath, soundPlanPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint)
 		},
 	}
 
 	cmd.Flags().StringVar(&inputPath, "input", "", "Path to GeoJSON, GeoPackage (.gpkg), FlatGeobuf (.fgb), or CityGML (.gml/.citygml) input file")
+	cmd.Flags().StringVar(&soundPlanPath, "from-soundplan", "", "Path to a SoundPLAN project directory containing Project.sp and related files")
 	cmd.Flags().StringVar(&layerName, "layer", "", "Layer name to import from a GeoPackage file (required for .gpkg)")
 	cmd.Flags().StringVar(&inputCRS, "input-crs", "", "CRS of the input data (e.g. EPSG:25832); auto-detected from GeoPackage/FlatGeobuf/CityGML if omitted")
 	cmd.Flags().StringVar(&trafficPath, "traffic", "", "Path to CSV attribute table for merging into the model")
@@ -51,8 +53,8 @@ func newImportCommand() *cobra.Command {
 	return cmd
 }
 
-func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
-	err := validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox)
+func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
+	err := validateImportFlags(inputPath, soundPlanPath, trafficPath, terrainPath, osmBBox)
 	if err != nil {
 		return err
 	}
@@ -76,6 +78,7 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 	normalizedPath := filepath.Join(modelDir, "model.normalized.geojson")
 	dumpPath := filepath.Join(modelDir, "model.dump.json")
 	reportPath := filepath.Join(modelDir, "validation-report.json")
+	soundPlanReportPath := filepath.Join(modelDir, "soundplan-import-report.json")
 
 	// When JSON output is enabled, suppress human-readable output from
 	// sub-functions and emit a single JSON object at the end.
@@ -90,6 +93,16 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 	switch {
 	case osmBBox != "":
 		err = runOSMImport(cmd, state, store, &proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
+	case soundPlanPath != "":
+		if layerName != "" {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported with --from-soundplan", nil)
+		}
+
+		if inputCRS != "" {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input-crs is not supported with --from-soundplan", nil)
+		}
+
+		err = runSoundPlanImport(cmd, state, store, &proj, soundPlanPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath)
 	case inputPath != "":
 		err = runGeometryImport(cmd, state, store, &proj, inputPath, layerName, inputCRS, normalizedPath, dumpPath, reportPath)
 	}
@@ -107,7 +120,7 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 
 		return writeCommandOutput(
 			cmd.OutOrStdout(), true,
-			buildImportJSONResult(store.Root(), inputPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath),
+			buildImportJSONResult(store.Root(), inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath),
 		)
 	}
 
@@ -116,11 +129,16 @@ func runImport(cmd *cobra.Command, inputPath, layerName, inputCRS, trafficPath, 
 
 // buildImportJSONResult constructs the JSON payload for `noise --json import`.
 // It reads back artifact files already written to disk to populate counts.
-func buildImportJSONResult(root, inputPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath string) map[string]any {
+func buildImportJSONResult(root, inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath string) map[string]any {
 	result := map[string]any{"command": "import"}
 
 	if inputPath != "" {
 		result["input"] = relativePath(root, resolvePath(root, inputPath))
+	}
+
+	if soundPlanPath != "" {
+		result["soundplan_source"] = relativePath(root, resolvePath(root, soundPlanPath))
+		result["soundplan_report_path"] = relativePath(root, soundPlanReportPath)
 	}
 
 	if osmBBox != "" {
@@ -155,13 +173,21 @@ func buildImportJSONResult(root, inputPath, osmBBox, trafficPath, terrainPath, n
 	return result
 }
 
-func validateImportFlags(inputPath, trafficPath, terrainPath, osmBBox string) error {
+func validateImportFlags(inputPath, soundPlanPath, trafficPath, terrainPath, osmBBox string) error {
 	if osmBBox != "" && inputPath != "" {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --input", nil)
 	}
 
-	if inputPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-osm, --terrain, or --traffic is required", nil)
+	if osmBBox != "" && soundPlanPath != "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --from-soundplan", nil)
+	}
+
+	if inputPath != "" && soundPlanPath != "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --input together with --from-soundplan", nil)
+	}
+
+	if inputPath == "" && soundPlanPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-soundplan, --from-osm, --terrain, or --traffic is required", nil)
 	}
 
 	return nil
