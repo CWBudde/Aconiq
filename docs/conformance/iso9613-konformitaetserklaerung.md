@@ -98,9 +98,9 @@ Tabelle 2 (Absorptionskoeffizienten) ist als Referenztabelle aus der öffentlich
 Gemäß Abschnitt 9, Tabelle 5 der Norm:
 
 | Höhe h | Entfernung d < 100 m | Entfernung 100–1000 m |
-|--------|---------------------|-----------------------|
-| 0–5 m  | ±3 dB               | ±3 dB                |
-| 5–30 m | ±1 dB               | ±3 dB                |
+| ------ | -------------------- | --------------------- |
+| 0–5 m  | ±3 dB                | ±3 dB                 |
+| 5–30 m | ±1 dB                | ±3 dB                 |
 
 Diese Genauigkeitsangaben gelten für Breitbandrauschen unter Mitwind-/Inversionsbedingungen ohne Abschirmung oder Reflexion.
 

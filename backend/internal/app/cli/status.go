@@ -48,6 +48,52 @@ func newStatusCommand() *cobra.Command {
 				limit = 10
 			}
 
+			if state.Config.JSONLogs {
+				type runEntry struct {
+					ID              string `json:"id"`
+					Status          string `json:"status"`
+					ScenarioID      string `json:"scenario"`
+					StandardID      string `json:"standard"`
+					StandardVersion string `json:"standard_version"`
+					StandardProfile string `json:"standard_profile"`
+					StartedAt       string `json:"started_at"`
+					FinishedAt      string `json:"finished_at"`
+					LogPath         string `json:"log_path"`
+				}
+
+				runs := make([]runEntry, 0, len(proj.Runs))
+				start := max(len(proj.Runs)-limit, 0)
+				for _, r := range proj.Runs[start:] {
+					runs = append(runs, runEntry{
+						ID:              r.ID,
+						Status:          string(r.Status),
+						ScenarioID:      r.ScenarioID,
+						StandardID:      r.Standard.ID,
+						StandardVersion: r.Standard.Version,
+						StandardProfile: r.Standard.Profile,
+						StartedAt:       r.StartedAt.Format(time.RFC3339),
+						FinishedAt:      r.FinishedAt.Format(time.RFC3339),
+						LogPath:         r.LogPath,
+					})
+				}
+
+				payload := map[string]any{
+					"command":          "status",
+					"project_id":       proj.ProjectID,
+					"project_name":     proj.Name,
+					"project_path":     store.Root(),
+					"manifest_version": proj.ManifestVersion,
+					"crs":              proj.CRS,
+					"scenario_count":   len(proj.Scenarios),
+					"runs":             runs,
+				}
+				if hasLatest {
+					payload["last_run_id"] = latestRun.ID
+					payload["last_run_status"] = string(latestRun.Status)
+				}
+				return writeCommandOutput(cmd.OutOrStdout(), true, payload)
+			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Project: %s (%s)\n", proj.Name, proj.ProjectID)
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path: %s\n", store.Root())
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manifest Version: v%d\n", proj.ManifestVersion)

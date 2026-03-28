@@ -191,6 +191,15 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 		return err
 	}
 
+	if state.Config.JSONLogs {
+		return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
+			"command":      "bench",
+			"bench_id":     summary.BenchID,
+			"summary_path": summaryPath,
+			"summary":      summary,
+		})
+	}
+
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Benchmark suite %s\n", summary.BenchID)
 	for _, scenario := range summary.ScenarioResults {
 		_, _ = fmt.Fprintf(
