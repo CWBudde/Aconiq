@@ -632,3 +632,215 @@ func defaultBEBExposureConfig(raw struct {
 func round6(value float64) float64 {
 	return math.Round(value*1e6) / 1e6
 }
+
+// iso9613Tolerance returns the Table 5 tolerance (dB) from ISO 9613-2:1996
+// Section 9 for broadband A-weighted levels under downwind conditions without
+// screening or reflection.
+//
+// Parameters:
+//   - meanHeight: mean height of source and receiver (m)
+//   - distance:   horizontal source-receiver distance (m)
+//
+// Outside the stated applicability (h > 30 m or d > 1000 m) the function
+// returns +Inf so that no tolerance assertion can pass silently.
+func iso9613Tolerance(meanHeight, distance float64) float64 {
+	switch {
+	case distance > 1000 || meanHeight > 30:
+		return math.Inf(1)
+	case meanHeight >= 5 && distance < 100:
+		return 1
+	default:
+		return 3
+	}
+}
+
+func TestISO9613ToleranceLookup(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		meanHeight float64
+		distance   float64
+		want       float64
+	}{
+		// h < 5 m, d < 100 m  → ±3 dB
+		{name: "low-height-short-range", meanHeight: 2, distance: 50, want: 3},
+		{name: "low-height-at-100m-boundary", meanHeight: 2, distance: 100, want: 3},
+		// h < 5 m, d = 100–1000 m  → ±3 dB
+		{name: "low-height-mid-range", meanHeight: 4.9, distance: 500, want: 3},
+		{name: "low-height-at-1000m", meanHeight: 2, distance: 1000, want: 3},
+		// h = 5–30 m, d < 100 m  → ±1 dB
+		{name: "mid-height-short-range", meanHeight: 5, distance: 50, want: 1},
+		{name: "mid-height-just-below-100m", meanHeight: 15, distance: 99, want: 1},
+		// h = 5–30 m, d = 100–1000 m  → ±3 dB
+		{name: "mid-height-mid-range", meanHeight: 10, distance: 500, want: 3},
+		{name: "mid-height-at-1000m", meanHeight: 30, distance: 1000, want: 3},
+		// Outside applicability → +Inf
+		{name: "over-height", meanHeight: 31, distance: 100, want: math.Inf(1)},
+		{name: "over-distance", meanHeight: 10, distance: 1001, want: math.Inf(1)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := iso9613Tolerance(tc.meanHeight, tc.distance)
+			if got != tc.want {
+				t.Errorf("iso9613Tolerance(%.1f, %.1f) = %v, want %v",
+					tc.meanHeight, tc.distance, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestISO9613ToleranceCompliance(t *testing.T) {
+	t.Parallel()
+
+	for _, fixture := range Catalog() {
+		if fixture.StandardID != iso9613.StandardID {
+			continue
+		}
+
+		t.Run(fixture.Name, func(t *testing.T) {
+			t.Parallel()
+
+			// Decode the scenario to get source/receiver geometry.
+			var scenario struct {
+				Sources   []iso9613.PointSource `json:"sources"`
+				Receivers []geo.PointReceiver   `json:"receivers"`
+			}
+
+			err := decodeFixtureJSON(fixture.ScenarioPath, &scenario)
+			if err != nil {
+				t.Fatalf("decode scenario: %v", err)
+			}
+
+			// Compute the snapshot (our current output).
+			snapshot, err := computeFixtureSnapshot(fixture)
+			if err != nil {
+				t.Fatalf("compute snapshot: %v", err)
+			}
+
+			// Load the golden expected output.
+			goldenBytes, err := os.ReadFile(fixture.ExpectedJSONPath)
+			if err != nil {
+				t.Fatalf("read golden: %v", err)
+			}
+
+			var golden map[string]any
+			if err := json.Unmarshal(goldenBytes, &golden); err != nil {
+				t.Fatalf("unmarshal golden: %v", err)
+			}
+
+			// Parse computed and expected receiver slices.
+			computedReceivers := snapshotReceivers(t, snapshot)
+			expectedReceivers := snapshotReceivers(t, golden)
+
+			if len(computedReceivers) != len(expectedReceivers) {
+				t.Fatalf("receiver count mismatch: computed %d, expected %d",
+					len(computedReceivers), len(expectedReceivers))
+			}
+
+			// Build a source lookup by ID for geometry.
+			sourceByID := make(map[string]iso9613.PointSource, len(scenario.Sources))
+			for _, s := range scenario.Sources {
+				sourceByID[s.ID] = s
+			}
+
+			// Build a receiver lookup by ID for geometry.
+			receiverByID := make(map[string]geo.PointReceiver, len(scenario.Receivers))
+			for _, r := range scenario.Receivers {
+				receiverByID[r.ID] = r
+			}
+
+			for i, comp := range computedReceivers {
+				exp := expectedReceivers[i]
+				rid := comp.id
+
+				recv, ok := receiverByID[rid]
+				if !ok {
+					t.Fatalf("receiver %q not found in scenario", rid)
+				}
+
+				// Determine the most conservative tolerance across all
+				// source-receiver pairs contributing to this receiver.
+				maxTol := 0.0
+				for _, src := range scenario.Sources {
+					dx := src.Point.X - recv.Point.X
+					dy := src.Point.Y - recv.Point.Y
+					dist := math.Sqrt(dx*dx + dy*dy)
+					meanH := (src.SourceHeightM + recv.HeightM) / 2
+
+					tol := iso9613Tolerance(meanH, dist)
+					if tol > maxTol {
+						maxTol = tol
+					}
+				}
+
+				// Check LpAeq_DW.
+				diffDW := math.Abs(comp.lpAeqDW - exp.lpAeqDW)
+				if diffDW > maxTol {
+					t.Errorf("receiver %q LpAeq_DW: |%.6f - %.6f| = %.6f > tolerance %.0f dB",
+						rid, comp.lpAeqDW, exp.lpAeqDW, diffDW, maxTol)
+				}
+
+				// Check LpAeq_LT.
+				diffLT := math.Abs(comp.lpAeqLT - exp.lpAeqLT)
+				if diffLT > maxTol {
+					t.Errorf("receiver %q LpAeq_LT: |%.6f - %.6f| = %.6f > tolerance %.0f dB",
+						rid, comp.lpAeqLT, exp.lpAeqLT, diffLT, maxTol)
+				}
+
+				t.Logf("receiver %q: DW diff=%.6f dB, LT diff=%.6f dB, tolerance=%.0f dB",
+					rid, diffDW, diffLT, maxTol)
+			}
+		})
+	}
+}
+
+// iso9613ReceiverRow holds parsed indicator values for one receiver.
+type iso9613ReceiverRow struct {
+	id      string
+	lpAeqDW float64
+	lpAeqLT float64
+}
+
+// snapshotReceivers extracts the receiver rows from a snapshot map.
+func snapshotReceivers(t *testing.T, snap map[string]any) []iso9613ReceiverRow {
+	t.Helper()
+
+	raw, ok := snap["receivers"]
+	if !ok {
+		t.Fatal("snapshot missing 'receivers' key")
+	}
+
+	slice, ok := raw.([]any)
+	if !ok {
+		// Handle the typed []map[string]any produced by computeFixtureSnapshot.
+		if typed, ok2 := raw.([]map[string]any); ok2 {
+			slice = make([]any, len(typed))
+			for i, m := range typed {
+				slice[i] = m
+			}
+		} else {
+			t.Fatalf("unexpected receivers type: %T", raw)
+		}
+	}
+
+	rows := make([]iso9613ReceiverRow, 0, len(slice))
+
+	for _, entry := range slice {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			t.Fatalf("receiver entry is %T, want map[string]any", entry)
+		}
+
+		rows = append(rows, iso9613ReceiverRow{
+			id:      m["id"].(string),
+			lpAeqDW: m["LpAeq_DW"].(float64),
+			lpAeqLT: m["LpAeq_LT"].(float64),
+		})
+	}
+
+	return rows
+}
