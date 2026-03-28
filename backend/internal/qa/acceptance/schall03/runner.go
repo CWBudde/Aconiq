@@ -104,10 +104,10 @@ type taskManifest struct {
 }
 
 type scenarioFile struct {
-	Segments  []schall03.TrackSegment    `json:"segments"`
-	Receivers []schall03.ReceiverInput   `json:"receivers"`
-	Walls     []schall03.ReflectingWall  `json:"walls,omitempty"`
-	Barriers  []schall03.BarrierSegment  `json:"barriers,omitempty"`
+	Segments  []schall03.TrackSegment   `json:"segments"`
+	Receivers []schall03.ReceiverInput  `json:"receivers"`
+	Walls     []schall03.ReflectingWall `json:"walls,omitempty"`
+	Barriers  []schall03.BarrierSegment `json:"barriers,omitempty"`
 }
 
 type expectedFile struct {

@@ -39,6 +39,12 @@ type StreckeEmissionInput struct {
 	BridgeMitig     bool            // K_LM applies
 	CurveRadiusM    float64         // 0 = straight, >0 = curved
 	PermanentlySlow bool            // Nr. 5.3.2: section permanently at ≤ 30 km/h (Straßenbahn only)
+
+	// MeasuredVehicles provides Section 9 measurement-based vehicle categories
+	// (Fz >= 100) that extend the standard Beiblatt 1-3 lookup table.
+	// When a VehicleInput references an Fz in this slice, its measured spectra
+	// are used instead of the standard tables.
+	MeasuredVehicles []MeasuredVehicle
 }
 
 // VehicleInput describes one Fahrzeug-Kategorie contribution to a train.
@@ -84,6 +90,12 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 	}
 
 	fzMap := buildFzMap()
+
+	// Register Section 9 measured vehicles into the lookup map.
+	for i := range input.MeasuredVehicles {
+		fzKat := input.MeasuredVehicles[i].ToFzKategorie()
+		fzMap[fzKat.Fz] = &fzKat
+	}
 
 	// Collect per-band linear power contributions per height.
 	// heights: 1 (0m SO), 2 (4m SO), 3 (5m SO).
@@ -320,12 +332,20 @@ func validateEmissionInput(input StreckeEmissionInput) error {
 		return errors.New("at least one vehicle is required")
 	}
 
+	measuredFz, err := validateMeasuredVehicles(input.MeasuredVehicles)
+	if err != nil {
+		return err
+	}
+
 	fzMap := buildFzMap()
 	hasEisenbahn := false
 	hasStrassenbahn := false
 
 	for i, vi := range input.Vehicles {
-		if _, ok := fzMap[vi.Fz]; !ok {
+		_, inStandard := fzMap[vi.Fz]
+		_, inMeasured := measuredFz[vi.Fz]
+
+		if !inStandard && !inMeasured {
 			return fmt.Errorf("vehicle[%d]: unknown Fz-Kategorie %d", i, vi.Fz)
 		}
 
@@ -333,6 +353,7 @@ func validateEmissionInput(input StreckeEmissionInput) error {
 			return fmt.Errorf("vehicle[%d]: NPerHour must be finite and >= 0, got %g", i, vi.NPerHour)
 		}
 
+		// Measured vehicles (Fz >= 100) are treated as Eisenbahn for mode detection.
 		if IsStrassenbahnFz(vi.Fz) {
 			hasStrassenbahn = true
 		} else {
@@ -345,4 +366,21 @@ func validateEmissionInput(input StreckeEmissionInput) error {
 	}
 
 	return nil
+}
+
+// validateMeasuredVehicles validates Section 9 measured vehicles and returns
+// a set of their Fz numbers for lookup during vehicle validation.
+func validateMeasuredVehicles(mvs []MeasuredVehicle) (map[int]struct{}, error) {
+	result := make(map[int]struct{}, len(mvs))
+
+	for i, mv := range mvs {
+		err := mv.Validate()
+		if err != nil {
+			return nil, fmt.Errorf("measured_vehicles[%d]: %w", i, err)
+		}
+
+		result[mv.Fz] = struct{}{}
+	}
+
+	return result, nil
 }
