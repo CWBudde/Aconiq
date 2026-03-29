@@ -58,6 +58,26 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("source count = %d, want at least 2", counts["source"])
 	}
 
+	var sawDerivedRail bool
+	for _, feature := range fc.Features {
+		kind, _ := feature.Properties["kind"].(string)
+		if kind != "source" {
+			continue
+		}
+
+		if value, ok := feature.Properties["soundplan_dominant_train_name"].(string); ok && value != "" {
+			sawDerivedRail = true
+		}
+
+		if feature.Properties["traffic_day_trains_per_hour"] == nil {
+			t.Fatal("expected traffic_day_trains_per_hour on imported rail source")
+		}
+	}
+
+	if !sawDerivedRail {
+		t.Fatal("expected at least one imported rail source with derived dominant train name")
+	}
+
 	reportPayload, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("read soundplan import report: %v", err)
@@ -86,6 +106,10 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 	if len(report.Warnings) == 0 {
 		t.Fatal("expected non-empty import warnings")
+	}
+
+	if report.CountsByKind["source"] < 2 {
+		t.Fatalf("report source count = %d, want at least 2", report.CountsByKind["source"])
 	}
 }
 
