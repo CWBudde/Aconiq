@@ -55,12 +55,44 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatal("expected raster metadata section in compare report")
 	}
 
-	if report.Raster.Status != "parsed_values_unaligned" {
-		t.Fatalf("raster status = %q, want parsed_values_unaligned", report.Raster.Status)
+	if report.Raster.Status != "heuristic_scanline_compare" {
+		t.Fatalf("raster status = %q, want heuristic_scanline_compare", report.Raster.Status)
 	}
 
 	if len(report.Raster.SoundPlanRuns) != 4 {
 		t.Fatalf("raster run count = %d, want 4", len(report.Raster.SoundPlanRuns))
+	}
+
+	if report.Raster.ArtifactPath == "" {
+		t.Fatal("expected raster artifact path in compare report")
+	}
+
+	if len(report.Raster.Runs) != 4 {
+		t.Fatalf("raster summary run count = %d, want 4", len(report.Raster.Runs))
+	}
+
+	for _, run := range report.Raster.Runs {
+		if run.ComparedCellCount == 0 {
+			t.Fatalf("%s compared_cell_count = 0, want > 0", run.ResultSubFolder)
+		}
+	}
+
+	rasterPayload, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(report.Raster.ArtifactPath)))
+	if err != nil {
+		t.Fatalf("read raster compare artifact: %v", err)
+	}
+
+	var rasterArtifact soundPlanRasterCompareArtifact
+	if err := json.Unmarshal(rasterPayload, &rasterArtifact); err != nil {
+		t.Fatalf("decode raster compare artifact: %v", err)
+	}
+
+	if rasterArtifact.Status != "heuristic_scanline_compare" {
+		t.Fatalf("raster artifact status = %q, want heuristic_scanline_compare", rasterArtifact.Status)
+	}
+
+	if len(rasterArtifact.Runs) != 4 {
+		t.Fatalf("raster artifact run count = %d, want 4", len(rasterArtifact.Runs))
 	}
 
 	manifestPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "project.json"))

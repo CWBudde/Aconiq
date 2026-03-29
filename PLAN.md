@@ -180,7 +180,7 @@ Open work — conformance packages:
 
 ### Priority 6 — SoundPlan import and cross-validation (former Phase 36)
 
-Status: Steps 1 and 2 are complete; Step 3 is partly complete.
+Status: Steps 1 and 2 are complete; Step 3 now includes receiver-level comparison and a first heuristic raster comparison loop.
 
 Goal: import SoundPlan projects, map them into Aconiq, run the same calculations, and compare outputs to build practitioner trust and reduce migration friction.
 
@@ -210,8 +210,8 @@ Open work — remaining parser coverage:
 - [ ] Implement grid-map parsing for `RRLK*` and `RRLK*.GM`:
   - [x] Extract currently reliable metadata such as discovered layer names, file size, linked assessment periods, and run statistics.
   - [x] Decode the current fixture's GM cell stream into per-row active-cell spans plus elevation/day/night values.
-  - [ ] Extract raster metadata such as origin, spacing, dimensions, and active-cell layout.
-  - [ ] Extract raster level values.
+  - [ ] Extract raster metadata such as origin, spacing, and dimensions from explicit SoundPLAN payload metadata rather than heuristics.
+  - [x] Extract raster level values.
 - [ ] Implement `.ntd` parsing for immission point tables.
 
 Open work — model mapping:
@@ -230,10 +230,10 @@ Open work — workflow and validation:
 
 - [ ] Implement `noise import --from-soundplan <project-dir>`.
 - [ ] Implement a comparison mode such as `noise compare` that can:
-  - [ ] Compare per-receiver levels.
-  - [ ] Produce raster difference maps.
-  - [ ] Compute summary statistics such as mean, max, P95, and tolerance exceedances.
-  - [ ] Support configurable tolerance thresholds, for example ±0.5 dB for conformance and ±1.0 dB for informational comparison.
+  - [x] Compare per-receiver levels.
+  - [x] Produce raster difference data and per-cell deltas through a first heuristic scanline alignment.
+  - [x] Compute summary statistics such as mean, max, P95, and tolerance exceedances.
+  - [x] Support configurable tolerance thresholds, for example ±0.5 dB for conformance and ±1.0 dB for informational comparison.
 - [ ] Generate a cross-validation report artifact with tables, deviation distribution, map overlay, and provenance.
 - [ ] Add unit tests for all parsers.
 - [ ] Add an integration test around `interoperability/Schienenprojekt - Schall 03/` to verify geometry extraction and parameter mapping.
@@ -258,6 +258,7 @@ Refined execution slices:
   - [x] Add `noise import --from-soundplan <project-dir>`.
   - [x] Persist normalized model, dump, validation report, and SoundPlan import report under `.noise/model/`.
   - [x] Surface unsupported standards and unresolved mappings as non-fatal warnings in CLI output.
+  - [x] Add `noise compare` receiver validation against `RREC` and heuristic raster validation against decoded `RRLK*.GM` runs.
 - [ ] Slice D — validation loop:
   - [x] Add integration coverage for the sample Schall 03 project bundle and normalized model output.
   - [x] Add first run-level comparison for single-point receiver results.

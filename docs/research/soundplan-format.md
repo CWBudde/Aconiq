@@ -37,7 +37,7 @@ Observed files in that fixture:
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
 - `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
-- `RRLK*.GM`: decoded layer descriptors plus the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery and per-band value stats.
+- `RRLK*.GM`: decoded layer descriptors plus the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery, per-band value stats, and marker-cell stripping into row-wise raster values.
 
 There is now also a staging loader:
 
@@ -61,7 +61,7 @@ Still open at the file-format level:
 - `GeoWand.geo`: `:D!` material and absorption properties.
 - `GeoTmp.geo` plus `.dgm`: binary digital terrain model extraction.
 - `RRAI` and `RRAD`: robust emission parsing for affected SoundPLAN versions, especially the v7.61 record-layout issue.
-- `RRLK*` / `RRLK*.GM`: spatial origin/alignment metadata for turning decoded row spans into georeferenced raster deltas against Aconiq outputs.
+- `RRLK*` / `RRLK*.GM`: explicit spatial origin/alignment metadata for replacing the current heuristic scanline alignment with fully pinned georeferenced raster deltas against Aconiq outputs.
 - `.ntd`: immission point table parsing.
 
 ## Recommended implementation order
@@ -78,8 +78,8 @@ Current status:
 - `noise compare` exists for the first Schall 03 receiver-level validation loop.
 - It runs the imported normalized model with custom receivers and compares Aconiq `LrDay` / `LrNight` against aggregated SoundPLAN `RREC` receiver tables.
 - It writes a JSON report artifact with per-receiver deltas and summary stats (mean, max, P95, tolerance exceedances).
-- The compare report now also surfaces decoded SoundPLAN grid-map runs from `RRLK*.GM`, including row counts, active-cell counts, row-span lengths, and per-band min/max/mean values.
-- Full raster delta maps are still blocked on spatial alignment: the fixture payload's value stream is decoded, but origin/dimension mapping into Aconiq grid coordinates is not pinned down yet.
+- The compare report now also synthesizes heuristic raster receivers from `CalcArea.geo` plus decoded GM row spans, runs them through the existing Schall 03 custom-receiver path, and writes per-cell day/night deltas plus summary stats into `.noise/artifacts/soundplan-raster-compare.json`.
+- Raster comparison is therefore no longer metadata-only, but it is still heuristic: row spacing comes from the SoundPLAN grid distance and scanline spans come from `CalcArea` intersection geometry because the GM payload's explicit origin metadata is still unresolved.
 
 ## Concrete next slices
 
@@ -95,7 +95,7 @@ Recommended near-term tasks:
    - rail operations -> derive speed, day/night trains per hour, dominant train names, and train-class heuristics from `RRAI`/`RRAD` where available
 4. Encode all unresolved mappings as warnings instead of silently defaulting.
 5. Add an integration test that asserts bundle counts and mapped standard selection for the sample project.
-6. Upgrade comparison from GM metadata reporting to real raster/grid level deltas once the GM payload layout is decoded.
+6. Replace the current heuristic scanline raster compare with explicit GM-origin georeferencing once the remaining payload metadata is decoded.
 
 ## Constraints to preserve
 

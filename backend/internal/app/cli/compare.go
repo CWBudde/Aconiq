@@ -49,10 +49,15 @@ type soundPlanReceiverComparisonRecord struct {
 }
 
 type soundPlanRasterCompareReport struct {
-	Status          string                            `json:"status"`
-	GridResolutionM float64                           `json:"grid_resolution_m,omitempty"`
-	SoundPlanRuns   []soundplanimport.GridMapMetadata `json:"soundplan_runs,omitempty"`
-	Warnings        []string                          `json:"warnings,omitempty"`
+	Status                 string                             `json:"status"`
+	Alignment              string                             `json:"alignment,omitempty"`
+	GridResolutionM        float64                            `json:"grid_resolution_m,omitempty"`
+	ReceiverHeightM        float64                            `json:"receiver_height_m,omitempty"`
+	SyntheticReceiverCount int                                `json:"synthetic_receiver_count,omitempty"`
+	ArtifactPath           string                             `json:"artifact_path,omitempty"`
+	SoundPlanRuns          []soundplanimport.GridMapMetadata  `json:"soundplan_runs,omitempty"`
+	Runs                   []soundPlanRasterRunCompareSummary `json:"runs,omitempty"`
+	Warnings               []string                           `json:"warnings,omitempty"`
 }
 
 type soundPlanCompareReport struct {
@@ -123,23 +128,6 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		return err
 	}
 
-	run, err := executeCompareRun(cmd, runCommandRequest{
-		scenarioID:      scenarioID,
-		standardID:      standardID,
-		standardVersion: standardVersion,
-		standardProfile: standardProfile,
-		modelPath:       modelPath,
-		receiverMode:    receiverModeCustom,
-	})
-	if err != nil {
-		return err
-	}
-
-	receiverTable, err := results.LoadReceiverTableJSON(filepath.Join(store.Root(), ".noise", "runs", run.ID, "results", "receivers.json"))
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.compare", "load run receiver outputs", err)
-	}
-
 	soundPlanRoot := resolvePath(store.Root(), importReport.SourcePath)
 	resultRunDirs, err := selectSoundPlanReceiverResultDirs(soundPlanRoot)
 	if err != nil {
@@ -151,12 +139,48 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		return err
 	}
 
-	report, err := compareSoundPlanReceiverTables(receiverTable, soundPlanReceivers, toleranceDB, importReport.SourcePath, strings.Join(resultRunDirs, ","), run.ID, standardID, standardVersion, standardProfile)
+	rasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, modelPath)
+	if err != nil {
+		return err
+	}
+	if rasterPrep != nil {
+		defer cleanupRasterComparePreparation(rasterPrep)
+	}
+
+	runModelPath := modelPath
+	if rasterPrep != nil && strings.TrimSpace(rasterPrep.tempModelPath) != "" {
+		runModelPath = relativePath(store.Root(), rasterPrep.tempModelPath)
+	}
+
+	run, err := executeCompareRun(cmd, runCommandRequest{
+		scenarioID:      scenarioID,
+		standardID:      standardID,
+		standardVersion: standardVersion,
+		standardProfile: standardProfile,
+		modelPath:       runModelPath,
+		receiverMode:    receiverModeCustom,
+	})
 	if err != nil {
 		return err
 	}
 
-	report.Raster = buildSoundPlanRasterCompareReport(importReport)
+	receiverTable, err := results.LoadReceiverTableJSON(filepath.Join(store.Root(), ".noise", "runs", run.ID, "results", "receivers.json"))
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.compare", "load run receiver outputs", err)
+	}
+
+	report, err := compareSoundPlanReceiverTables(filterOutSyntheticRasterReceivers(receiverTable), soundPlanReceivers, toleranceDB, importReport.SourcePath, strings.Join(resultRunDirs, ","), run.ID, standardID, standardVersion, standardProfile)
+	if err != nil {
+		return err
+	}
+
+	report.Raster, _, err = finalizeSoundPlanRasterCompare(store.Root(), rasterPrep, receiverTable, toleranceDB)
+	if err != nil {
+		return err
+	}
+	if report.Raster == nil {
+		report.Raster = buildSoundPlanRasterCompareReport(importReport)
+	}
 
 	reportPath := filepath.Join(store.Root(), filepath.FromSlash(defaultCompareReportPath))
 	if err := writeJSONFile(reportPath, report); err != nil {
@@ -174,6 +198,14 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		Path:      defaultCompareReportPath,
 		CreatedAt: nowUTC(),
 	})
+	if report.Raster != nil && strings.TrimSpace(report.Raster.ArtifactPath) != "" {
+		proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
+			ID:        "artifact-soundplan-raster-compare",
+			Kind:      "comparison.soundplan_raster",
+			Path:      report.Raster.ArtifactPath,
+			CreatedAt: nowUTC(),
+		})
+	}
 	if err := store.Save(proj); err != nil {
 		return err
 	}
@@ -188,6 +220,13 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 			"unmatched_soundplan_count": report.UnmatchedSPCount,
 			"soundplan_result_run":      report.SoundPlanResultRun,
 			"raster_status":             compareRasterStatus(report.Raster),
+			"raster_artifact_path": func() string {
+				if report.Raster == nil {
+					return ""
+				}
+
+				return report.Raster.ArtifactPath
+			}(),
 			"soundplan_raster_run_count": func() int {
 				if report.Raster == nil {
 					return 0
