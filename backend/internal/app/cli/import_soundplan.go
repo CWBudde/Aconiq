@@ -137,10 +137,22 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	if len(bundle.RailTracks) > 0 {
-		warnings = append(warnings, "rail traffic, train class, traction, track form, and roughness are imported with explicit placeholder defaults until full SoundPLAN train-operation mapping is implemented")
+		if len(bundle.RailOps) == 0 {
+			warnings = append(warnings, "rail traffic and train class could not be derived from SoundPLAN RRAD/RRAI tables; importer fell back to explicit placeholders")
+		}
+
+		warnings = append(warnings, "rail traction, track form, and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
+	}
+
+	railOpsByName := make(map[string][]soundplanimport.RailOperationSummary)
+	for _, summary := range bundle.RailOps {
+		railOpsByName[strings.TrimSpace(summary.Railname)] = append(railOpsByName[strings.TrimSpace(summary.Railname)], summary)
 	}
 
 	for trackIndex, track := range bundle.RailTracks {
+		opsForTrack := railOpsByName[strings.TrimSpace(track.Name)]
+		trackSummary := aggregateRailSummaries(opsForTrack)
+
 		for segmentIndex, segment := range track.Segments {
 			if len(segment.Points) < 2 {
 				warnings = append(warnings, fmt.Sprintf("rail track %q segment %d skipped because it has fewer than 2 points", track.Name, segmentIndex+1))
@@ -148,7 +160,10 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 			}
 
 			id := fmt.Sprintf("soundplan-rail-%02d-%02d", trackIndex+1, segmentIndex+1)
-			speedKPH := segment.Params.Speed
+			speedKPH := trackSummary.AverageSpeedKPH
+			if speedKPH <= 0 {
+				speedKPH = segment.Params.Speed
+			}
 			if speedKPH <= 0 {
 				speedKPH = 100
 			}
@@ -159,22 +174,29 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 			}
 
 			properties := map[string]any{
-				"soundplan_track_name":               strings.TrimSpace(track.Name),
-				"soundplan_segment_index":            segmentIndex + 1,
-				"soundplan_bridge_correction_db":     segment.Params.BridgeCorrection,
-				"soundplan_track_height_m":           segment.Params.TrackHeight,
-				"elevation_m":                        segment.Points[0].ZTrack,
-				"rail_train_class":                   schall03.TrainClassMixed,
-				"rail_traction_type":                 schall03.TractionElectric,
-				"rail_track_type":                    schall03.TrackTypeBallasted,
-				"rail_track_form":                    schall03.TrackFormMainline,
-				"rail_track_roughness_class":         schall03.RoughnessStandard,
-				"rail_average_train_speed_kph":       speedKPH,
-				"rail_curve_radius_m":                defaultSoundPlanCurveRadiusM,
-				"rail_on_bridge":                     segment.Params.BridgeCorrection > -999.0,
-				"traffic_day_trains_per_hour":        defaultSoundPlanTrafficDayPH,
-				"traffic_night_trains_per_hour":      defaultSoundPlanTrafficNightPH,
-				"soundplan_placeholder_mapping_used": true,
+				"soundplan_track_name":           strings.TrimSpace(track.Name),
+				"soundplan_segment_index":        segmentIndex + 1,
+				"soundplan_bridge_correction_db": segment.Params.BridgeCorrection,
+				"soundplan_track_height_m":       segment.Params.TrackHeight,
+				"elevation_m":                    segment.Points[0].ZTrack,
+				"rail_train_class":               coalesceString(trackSummary.TrainClass, schall03.TrainClassMixed),
+				"rail_traction_type":             schall03.TractionElectric,
+				"rail_track_type":                schall03.TrackTypeBallasted,
+				"rail_track_form":                schall03.TrackFormMainline,
+				"rail_track_roughness_class":     schall03.RoughnessStandard,
+				"rail_average_train_speed_kph":   speedKPH,
+				"rail_curve_radius_m":            defaultSoundPlanCurveRadiusM,
+				"rail_on_bridge":                 trackSummary.OnBridge || segment.Params.BridgeCorrection > -999.0,
+				"traffic_day_trains_per_hour":    coalescePositive(trackSummary.TrafficDayPH, defaultSoundPlanTrafficDayPH),
+				"traffic_night_trains_per_hour":  coalescePositive(trackSummary.TrafficNightPH, defaultSoundPlanTrafficNightPH),
+				"soundplan_placeholder_mapping":  len(opsForTrack) == 0,
+				"soundplan_dominant_train_name":  trackSummary.DominantTrainName,
+				"soundplan_train_names":          trackSummary.TrainNames,
+				"soundplan_day_train_count":      trackSummary.DayTrainCount,
+				"soundplan_night_train_count":    trackSummary.NightTrainCount,
+				"soundplan_track_vmax_kph":       trackSummary.TrackVMaxKPH,
+				"soundplan_assessment_day_hours": trackSummary.AssessmentDayHours,
+				"soundplan_assessment_night_h":   trackSummary.AssessmentNightHrs,
 			}
 
 			features = append(features, modelgeojson.Feature{
@@ -298,6 +320,93 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	return model, report, nil
+}
+
+func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundplanimport.RailOperationSummary {
+	if len(items) == 0 {
+		return soundplanimport.RailOperationSummary{}
+	}
+
+	out := soundplanimport.RailOperationSummary{
+		Railname:           items[0].Railname,
+		AssessmentDayHours: items[0].AssessmentDayHours,
+		AssessmentNightHrs: items[0].AssessmentNightHrs,
+	}
+
+	classSeen := make(map[string]struct{})
+	nameSeen := make(map[string]struct{})
+	dominantWeight := -1.0
+	speedWeight := 0.0
+
+	for _, item := range items {
+		out.DayTrainCount += item.DayTrainCount
+		out.NightTrainCount += item.NightTrainCount
+		out.TrafficDayPH += item.TrafficDayPH
+		out.TrafficNightPH += item.TrafficNightPH
+		out.OnBridge = out.OnBridge || item.OnBridge
+		if item.TrackVMaxKPH > out.TrackVMaxKPH {
+			out.TrackVMaxKPH = item.TrackVMaxKPH
+		}
+
+		weight := item.DayTrainCount + item.NightTrainCount
+		if weight > 0 && item.AverageSpeedKPH > 0 {
+			out.AverageSpeedKPH += item.AverageSpeedKPH * weight
+			speedWeight += weight
+		}
+
+		if item.TrainClass != "" {
+			classSeen[item.TrainClass] = struct{}{}
+		}
+
+		for _, name := range item.TrainNames {
+			if _, ok := nameSeen[name]; ok || strings.TrimSpace(name) == "" {
+				continue
+			}
+
+			nameSeen[name] = struct{}{}
+			out.TrainNames = append(out.TrainNames, name)
+		}
+
+		if weight > dominantWeight && strings.TrimSpace(item.DominantTrainName) != "" {
+			dominantWeight = weight
+			out.DominantTrainName = item.DominantTrainName
+		}
+	}
+
+	if speedWeight > 0 {
+		out.AverageSpeedKPH /= speedWeight
+	}
+
+	switch len(classSeen) {
+	case 0:
+		out.TrainClass = ""
+	case 1:
+		for class := range classSeen {
+			out.TrainClass = class
+		}
+	default:
+		out.TrainClass = schall03.TrainClassMixed
+	}
+
+	slices.Sort(out.TrainNames)
+
+	return out
+}
+
+func coalescePositive(value float64, fallback float64) float64 {
+	if value > 0 {
+		return value
+	}
+
+	return fallback
+}
+
+func coalesceString(value string, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+
+	return fallback
 }
 
 func persistSoundPlanArtifacts(

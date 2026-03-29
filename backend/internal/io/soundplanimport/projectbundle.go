@@ -12,6 +12,7 @@ type ProjectBundle struct {
 	Project        *Project
 	Runs           []*RunResult
 	Standards      []StandardMapping
+	RailOps        []RailOperationSummary
 	RailTracks     []RailTrack
 	GeoObjects     *GeoObjects
 	Barriers       []NoiseBarrier
@@ -120,6 +121,14 @@ func LoadProjectBundle(projectDir string) (*ProjectBundle, error) {
 
 		return parseErr
 	})
+
+	railOps, railOpsResultDir, railOpsErr := LoadRailOperationSummaries(projectDir, proj, runs)
+	if railOpsErr == nil {
+		bundle.RailOps = railOps
+		bundle.ResultFileRefs = append(bundle.ResultFileRefs, filepath.Base(railOpsResultDir))
+	} else {
+		bundle.Warnings = append(bundle.Warnings, railOpsErr.Error())
+	}
 
 	return bundle, nil
 }

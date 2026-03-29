@@ -36,6 +36,7 @@ Observed files in that fixture:
 - `CalcArea.geo`: calculation area polygon.
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
+- `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
 
 There is now also a staging loader:
 
@@ -82,6 +83,7 @@ Recommended near-term tasks:
    - barriers -> `kind=barrier`
    - receivers -> `kind=receiver`
    - rail centerlines -> `kind=source`, `source_type=line`
+   - rail operations -> derive speed, day/night trains per hour, dominant train names, and train-class heuristics from `RRAI`/`RRAD` where available
 4. Encode all unresolved mappings as warnings instead of silently defaulting.
 5. Add an integration test that asserts bundle counts and mapped standard selection for the sample project.
 

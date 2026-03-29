@@ -247,6 +247,7 @@ Refined execution slices:
   - [x] Add a structured import-report JSON artifact describing discovered files, parser coverage, warnings, and unresolved fields.
 - [ ] Slice B — geometry-to-model conversion:
   - [x] Convert rail tracks into normalized line-source GeoJSON features with explicit placeholder/default properties.
+  - [x] Derive imported rail speed, dominant train names, train-class heuristics, bridge flags, and day/night trains per hour from `RRAI` and `RRAD` where available.
   - [x] Convert buildings into normalized building polygons with height handling decisions documented.
   - [x] Convert barriers into normalized barrier lines with height handling decisions documented.
   - [x] Convert receivers into normalized receiver points using project/run defaults for receiver height.
