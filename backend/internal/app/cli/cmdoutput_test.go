@@ -298,8 +298,12 @@ func TestCompareJSONOutput(t *testing.T) {
 		t.Fatal("expected matched_receiver_count")
 	}
 
-	if result["raster_status"] != "parsed_values_unaligned" {
-		t.Fatalf("raster_status = %v, want parsed_values_unaligned", result["raster_status"])
+	if result["raster_status"] != "heuristic_scanline_compare" {
+		t.Fatalf("raster_status = %v, want heuristic_scanline_compare", result["raster_status"])
+	}
+
+	if result["raster_artifact_path"] == nil || result["raster_artifact_path"] == "" {
+		t.Fatal("expected raster_artifact_path")
 	}
 }
 

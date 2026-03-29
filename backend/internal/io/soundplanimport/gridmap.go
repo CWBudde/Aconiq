@@ -26,6 +26,20 @@ type GridMapValueStats struct {
 	Count int     `json:"count"`
 }
 
+// GridMapCell contains one decoded SoundPLAN grid-map cell.
+type GridMapCell struct {
+	GroundM float64 `json:"ground_m"`
+	DayDB   float64 `json:"day_db"`
+	NightDB float64 `json:"night_db"`
+}
+
+// DecodedGridMap contains the decoded GM row stream.
+type DecodedGridMap struct {
+	Rows            [][]GridMapCell `json:"rows"`
+	MarkerCellCount int             `json:"marker_cell_count"`
+	ValueCellCount  int             `json:"value_cell_count"`
+}
+
 // GridMapMetadata describes the currently decoded metadata from one SoundPLAN
 // grid-map result. Value extraction is intentionally deferred until the GM
 // payload layout is understood well enough to avoid guesswork.
@@ -185,6 +199,45 @@ func ParseGridMapMetadata(path string, pointsTotal int) (GridMapMetadata, error)
 	})
 
 	return meta, nil
+}
+
+// ParseDecodedGridMap decodes the current SoundPLAN GM payload into row-wise
+// cells. The leading `(-1,0,0)` marker cell on each row is stripped.
+func ParseDecodedGridMap(path string, pointsTotal int) (DecodedGridMap, error) {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return DecodedGridMap{}, fmt.Errorf("soundplan: read GM: %w", err)
+	}
+
+	rows, err := decodeGridMapRows(payload, pointsTotal)
+	if err != nil {
+		return DecodedGridMap{}, err
+	}
+
+	out := DecodedGridMap{
+		Rows: make([][]GridMapCell, 0, len(rows)),
+	}
+
+	for _, row := range rows {
+		decodedRow := make([]GridMapCell, 0, len(row))
+		for idx, cell := range row {
+			if idx == 0 && cell.groundM == -1 && cell.dayDB == 0 && cell.nightDB == 0 {
+				out.MarkerCellCount++
+				continue
+			}
+
+			decodedRow = append(decodedRow, GridMapCell{
+				GroundM: float64(cell.groundM),
+				DayDB:   float64(cell.dayDB),
+				NightDB: float64(cell.nightDB),
+			})
+			out.ValueCellCount++
+		}
+
+		out.Rows = append(out.Rows, decodedRow)
+	}
+
+	return out, nil
 }
 
 func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, error) {
