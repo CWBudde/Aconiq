@@ -271,13 +271,21 @@ func buildSoundPlanRasterCompareReport(importReport soundPlanImportReport) *soun
 		return nil
 	}
 
+	status := "metadata_only"
+	warning := "RRLK*.GM files are currently decoded as metadata only; raster values, origin, spacing alignment, and active-cell masks are not compared yet."
+	for _, item := range importReport.GridMaps {
+		if item.DecodedValues && item.ActiveCellCount > 0 {
+			status = "parsed_values_unaligned"
+			warning = "RRLK*.GM values and row spans are decoded, but raster deltas are still blocked on spatial origin/alignment against the Aconiq run grid."
+			break
+		}
+	}
+
 	report := &soundPlanRasterCompareReport{
-		Status:          "metadata_only",
+		Status:          status,
 		GridResolutionM: importReport.GridResolutionM,
 		SoundPlanRuns:   append([]soundplanimport.GridMapMetadata(nil), importReport.GridMaps...),
-		Warnings: []string{
-			"RRLK*.GM files are currently decoded as metadata only; raster values, origin, spacing alignment, and active-cell masks are not compared yet.",
-		},
+		Warnings:        []string{warning},
 	}
 
 	return report

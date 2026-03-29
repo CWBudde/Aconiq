@@ -1,9 +1,12 @@
 package soundplanimport
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -13,43 +16,34 @@ type GridMapLayer struct {
 	Unit string `json:"unit,omitempty"`
 }
 
+// GridMapValueStats describes one decoded numeric layer.
+type GridMapValueStats struct {
+	Name  string  `json:"name"`
+	Unit  string  `json:"unit,omitempty"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+	Mean  float64 `json:"mean"`
+	Count int     `json:"count"`
+}
+
 // GridMapMetadata describes the currently decoded metadata from one SoundPLAN
 // grid-map result. Value extraction is intentionally deferred until the GM
 // payload layout is understood well enough to avoid guesswork.
 type GridMapMetadata struct {
-	ResultSubFolder   string         `json:"result_subfolder"`
-	RunType           string         `json:"run_type,omitempty"`
-	GMFile            string         `json:"gm_file"`
-	FileSizeBytes     int64          `json:"file_size_bytes"`
-	PointsTotal       int            `json:"points_total,omitempty"`
-	PointsCalculated  int            `json:"points_calculated,omitempty"`
-	AssessmentPeriods []string       `json:"assessment_periods,omitempty"`
-	Layers            []GridMapLayer `json:"layers,omitempty"`
-	Warnings          []string       `json:"warnings,omitempty"`
-}
-
-// ParseGridMapMetadata reads the currently supported metadata from an RRLK*.GM file.
-func ParseGridMapMetadata(path string) (GridMapMetadata, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return GridMapMetadata{}, fmt.Errorf("soundplan: stat GM: %w", err)
-	}
-
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return GridMapMetadata{}, fmt.Errorf("soundplan: read GM: %w", err)
-	}
-
-	layers := parseGridMapLayers(payload)
-	if len(layers) == 0 {
-		return GridMapMetadata{}, fmt.Errorf("soundplan: parse GM: no raster layer descriptors found")
-	}
-
-	return GridMapMetadata{
-		GMFile:        filepath.Base(path),
-		FileSizeBytes: info.Size(),
-		Layers:        layers,
-	}, nil
+	ResultSubFolder   string              `json:"result_subfolder"`
+	RunType           string              `json:"run_type,omitempty"`
+	GMFile            string              `json:"gm_file"`
+	FileSizeBytes     int64               `json:"file_size_bytes"`
+	PointsTotal       int                 `json:"points_total,omitempty"`
+	PointsCalculated  int                 `json:"points_calculated,omitempty"`
+	AssessmentPeriods []string            `json:"assessment_periods,omitempty"`
+	Layers            []GridMapLayer      `json:"layers,omitempty"`
+	DecodedValues     bool                `json:"decoded_values"`
+	ActiveCellCount   int                 `json:"active_cell_count,omitempty"`
+	RowCount          int                 `json:"row_count,omitempty"`
+	RowCellCounts     []int               `json:"row_cell_counts,omitempty"`
+	ValueStats        []GridMapValueStats `json:"value_stats,omitempty"`
+	Warnings          []string            `json:"warnings,omitempty"`
 }
 
 // LoadGridMapMetadata discovers grid-map result metadata from the known run directories.
@@ -86,7 +80,7 @@ func LoadGridMapMetadata(projectDir string, runs []*RunResult) []GridMapMetadata
 			}
 		}
 
-		parsed, err := ParseGridMapMetadata(gmPath)
+		parsed, err := ParseGridMapMetadata(gmPath, run.Statistics.PointsTotal)
 		if err != nil {
 			item.Warnings = append(item.Warnings, err.Error())
 			out = append(out, item)
@@ -96,6 +90,12 @@ func LoadGridMapMetadata(projectDir string, runs []*RunResult) []GridMapMetadata
 		item.GMFile = parsed.GMFile
 		item.FileSizeBytes = parsed.FileSizeBytes
 		item.Layers = parsed.Layers
+		item.DecodedValues = parsed.DecodedValues
+		item.ActiveCellCount = parsed.ActiveCellCount
+		item.RowCount = parsed.RowCount
+		item.RowCellCounts = parsed.RowCellCounts
+		item.ValueStats = parsed.ValueStats
+		item.Warnings = append(item.Warnings, parsed.Warnings...)
 		out = append(out, item)
 	}
 
@@ -120,6 +120,288 @@ func parseGridMapLayers(payload []byte) []GridMapLayer {
 		seen[key] = struct{}{}
 		out = append(out, GridMapLayer{Name: name, Unit: unit})
 	}
+
+	return out
+}
+
+type gridMapCellRecord struct {
+	groundM float32
+	dayDB   float32
+	nightDB float32
+	flag    byte
+}
+
+func ParseGridMapMetadata(path string, pointsTotal int) (GridMapMetadata, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return GridMapMetadata{}, fmt.Errorf("soundplan: stat GM: %w", err)
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return GridMapMetadata{}, fmt.Errorf("soundplan: read GM: %w", err)
+	}
+
+	layers := parseGridMapLayers(payload)
+	if len(layers) == 0 {
+		return GridMapMetadata{}, fmt.Errorf("soundplan: parse GM: no raster layer descriptors found")
+	}
+
+	meta := GridMapMetadata{
+		GMFile:        filepath.Base(path),
+		FileSizeBytes: info.Size(),
+		Layers:        layers,
+	}
+
+	rows, decodeErr := decodeGridMapRows(payload, pointsTotal)
+	if decodeErr != nil {
+		meta.Warnings = append(meta.Warnings, decodeErr.Error())
+		return meta, nil
+	}
+
+	meta.DecodedValues = true
+	meta.RowCount = len(rows)
+	meta.RowCellCounts = make([]int, 0, len(rows))
+
+	groundStats := newGridMapStatAccumulator(layers, 0, "Ground elevation", "m")
+	dayStats := newGridMapStatAccumulator(layers, 1, "Tag", "dB(A)")
+	nightStats := newGridMapStatAccumulator(layers, 2, "Nacht", "dB(A)")
+
+	for _, row := range rows {
+		meta.RowCellCounts = append(meta.RowCellCounts, len(row))
+		meta.ActiveCellCount += len(row)
+
+		for _, cell := range row {
+			groundStats.add(float64(cell.groundM))
+			dayStats.add(float64(cell.dayDB))
+			nightStats.add(float64(cell.nightDB))
+		}
+	}
+
+	meta.ValueStats = compactGridMapStats([]GridMapValueStats{
+		groundStats.finish(),
+		dayStats.finish(),
+		nightStats.finish(),
+	})
+
+	return meta, nil
+}
+
+func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, error) {
+	if pointsTotal <= 0 {
+		return nil, fmt.Errorf("soundplan: decode GM rows: points_total must be > 0")
+	}
+
+	start, err := detectGridMapCellStreamStart(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	spans := splitGridMapNonZeroSpansFromPayload(payload, start)
+	startSpan := -1
+	for i := range spans {
+		sum := 0
+		for _, row := range spans[i:] {
+			sum += len(row)
+		}
+
+		if sum == pointsTotal {
+			startSpan = i
+			break
+		}
+	}
+
+	if startSpan < 0 {
+		return nil, fmt.Errorf("soundplan: decode GM rows: could not match %d points_total to decoded row spans", pointsTotal)
+	}
+
+	rows := spans[startSpan:]
+	actualTotal := 0
+	for _, row := range rows {
+		actualTotal += len(row)
+	}
+
+	if actualTotal != pointsTotal {
+		return nil, fmt.Errorf("soundplan: decode GM rows: got %d decoded cells, want %d", actualTotal, pointsTotal)
+	}
+
+	return rows, nil
+}
+
+func detectGridMapCellStreamStart(payload []byte) (int, error) {
+	bestStart := -1
+	bestCount := -1
+
+	for start := 0; start < 13; start++ {
+		count := 0
+		for off := start; off <= len(payload)-13; off += 13 {
+			if _, ok := decodeGridMapCellRecord(payload[off : off+13]); ok {
+				count++
+			}
+		}
+
+		if count > bestCount {
+			bestStart = start
+			bestCount = count
+		}
+	}
+
+	if bestStart < 0 || bestCount <= 0 {
+		return 0, fmt.Errorf("soundplan: decode GM rows: no plausible 13-byte cell stream found")
+	}
+
+	return bestStart, nil
+}
+
+func decodeGridMapCellRecord(chunk []byte) (gridMapCellRecord, bool) {
+	if len(chunk) != 13 {
+		return gridMapCellRecord{}, false
+	}
+
+	flag := chunk[12]
+	if flag == 0 {
+		return gridMapCellRecord{}, false
+	}
+
+	cell := gridMapCellRecord{
+		groundM: math.Float32frombits(binary.LittleEndian.Uint32(chunk[0:4])),
+		dayDB:   math.Float32frombits(binary.LittleEndian.Uint32(chunk[4:8])),
+		nightDB: math.Float32frombits(binary.LittleEndian.Uint32(chunk[8:12])),
+		flag:    flag,
+	}
+
+	if !allFinite(float64(cell.groundM), float64(cell.dayDB), float64(cell.nightDB)) {
+		return gridMapCellRecord{}, false
+	}
+
+	switch {
+	case cell.groundM == -1 && cell.dayDB == 0 && cell.nightDB == 0:
+		return cell, true
+	case cell.groundM >= 100 && cell.groundM <= 400 && cell.dayDB >= 0 && cell.dayDB <= 150 && cell.nightDB >= 0 && cell.nightDB <= 150:
+		return cell, true
+	default:
+		return gridMapCellRecord{}, false
+	}
+}
+
+func splitGridMapNonZeroSpansFromPayload(payload []byte, start int) [][]gridMapCellRecord {
+	rows := make([][]gridMapCellRecord, 0, 96)
+	current := make([]gridMapCellRecord, 0, 96)
+
+	for off := start; off <= len(payload)-13; off += 13 {
+		flag := payload[off+12]
+		if flag == 0 {
+			if len(current) > 0 {
+				rows = append(rows, current)
+				current = make([]gridMapCellRecord, 0, 96)
+			}
+
+			continue
+		}
+
+		cell, ok := decodeGridMapCellRecord(payload[off : off+13])
+		if !ok {
+			if len(current) > 0 {
+				rows = append(rows, current)
+				current = make([]gridMapCellRecord, 0, 96)
+			}
+
+			continue
+		}
+
+		current = append(current, cell)
+	}
+
+	if len(current) > 0 {
+		rows = append(rows, current)
+	}
+
+	return rows
+}
+
+func allFinite(values ...float64) bool {
+	for _, value := range values {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+
+	return true
+}
+
+type gridMapStatAccumulator struct {
+	name  string
+	unit  string
+	min   float64
+	max   float64
+	sum   float64
+	count int
+}
+
+func newGridMapStatAccumulator(layers []GridMapLayer, index int, fallbackName, fallbackUnit string) gridMapStatAccumulator {
+	acc := gridMapStatAccumulator{
+		name: fallbackName,
+		unit: fallbackUnit,
+		min:  math.Inf(1),
+		max:  math.Inf(-1),
+	}
+
+	if index >= 0 && index < len(layers) {
+		if strings.TrimSpace(layers[index].Name) != "" {
+			acc.name = layers[index].Name
+		}
+		if strings.TrimSpace(layers[index].Unit) != "" {
+			acc.unit = layers[index].Unit
+		}
+	}
+
+	return acc
+}
+
+func (a *gridMapStatAccumulator) add(value float64) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return
+	}
+
+	if value < a.min {
+		a.min = value
+	}
+	if value > a.max {
+		a.max = value
+	}
+
+	a.sum += value
+	a.count++
+}
+
+func (a gridMapStatAccumulator) finish() GridMapValueStats {
+	if a.count == 0 {
+		return GridMapValueStats{}
+	}
+
+	return GridMapValueStats{
+		Name:  a.name,
+		Unit:  a.unit,
+		Min:   a.min,
+		Max:   a.max,
+		Mean:  a.sum / float64(a.count),
+		Count: a.count,
+	}
+}
+
+func compactGridMapStats(items []GridMapValueStats) []GridMapValueStats {
+	out := make([]GridMapValueStats, 0, len(items))
+	for _, item := range items {
+		if item.Count == 0 {
+			continue
+		}
+
+		out = append(out, item)
+	}
+
+	slices.SortFunc(out, func(a, b GridMapValueStats) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return out
 }

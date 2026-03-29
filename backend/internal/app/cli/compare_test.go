@@ -55,8 +55,8 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatal("expected raster metadata section in compare report")
 	}
 
-	if report.Raster.Status != "metadata_only" {
-		t.Fatalf("raster status = %q, want metadata_only", report.Raster.Status)
+	if report.Raster.Status != "parsed_values_unaligned" {
+		t.Fatalf("raster status = %q, want parsed_values_unaligned", report.Raster.Status)
 	}
 
 	if len(report.Raster.SoundPlanRuns) != 4 {

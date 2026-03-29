@@ -37,7 +37,7 @@ Observed files in that fixture:
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
 - `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
-- `RRLK*.GM`: metadata-only grid-map parsing for discovered raster layers, linked assessment periods, result-folder mapping, and file sizes.
+- `RRLK*.GM`: decoded layer descriptors plus the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery and per-band value stats.
 
 There is now also a staging loader:
 
@@ -61,7 +61,7 @@ Still open at the file-format level:
 - `GeoWand.geo`: `:D!` material and absorption properties.
 - `GeoTmp.geo` plus `.dgm`: binary digital terrain model extraction.
 - `RRAI` and `RRAD`: robust emission parsing for affected SoundPLAN versions, especially the v7.61 record-layout issue.
-- `RRLK*` / `RRLK*.GM`: grid raster metadata and values.
+- `RRLK*` / `RRLK*.GM`: spatial origin/alignment metadata for turning decoded row spans into georeferenced raster deltas against Aconiq outputs.
 - `.ntd`: immission point table parsing.
 
 ## Recommended implementation order
@@ -78,7 +78,8 @@ Current status:
 - `noise compare` exists for the first Schall 03 receiver-level validation loop.
 - It runs the imported normalized model with custom receivers and compares Aconiq `LrDay` / `LrNight` against aggregated SoundPLAN `RREC` receiver tables.
 - It writes a JSON report artifact with per-receiver deltas and summary stats (mean, max, P95, tolerance exceedances).
-- The compare report now also surfaces discovered SoundPLAN grid-map runs from `RRLK*.GM`, but only as metadata. Full raster value comparison is still blocked on decoding the GM payload layout.
+- The compare report now also surfaces decoded SoundPLAN grid-map runs from `RRLK*.GM`, including row counts, active-cell counts, row-span lengths, and per-band min/max/mean values.
+- Full raster delta maps are still blocked on spatial alignment: the fixture payload's value stream is decoded, but origin/dimension mapping into Aconiq grid coordinates is not pinned down yet.
 
 ## Concrete next slices
 

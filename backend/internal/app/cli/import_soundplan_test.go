@@ -112,6 +112,14 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("grid map count = %d, want 4", len(report.GridMaps))
 	}
 
+	if !report.GridMaps[0].DecodedValues {
+		t.Fatal("expected decoded SoundPLAN grid-map values")
+	}
+
+	if report.GridMaps[0].ActiveCellCount != 5961 {
+		t.Fatalf("active_cell_count = %d, want 5961", report.GridMaps[0].ActiveCellCount)
+	}
+
 	if len(report.StandardMappings) == 0 {
 		t.Fatal("expected standard mappings in report")
 	}

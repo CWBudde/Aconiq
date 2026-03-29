@@ -155,7 +155,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	if len(bundle.GridMaps) > 0 {
-		warnings = append(warnings, "SoundPLAN grid-map GM payloads are currently parsed as metadata only; raster values, origin, and active-cell layout are not decoded yet")
+		warnings = append(warnings, "SoundPLAN grid-map GM payloads are decoded into row spans and layer values, but spatial origin/alignment for direct raster delta maps is still unresolved")
 	}
 
 	railOpsByName := make(map[string][]soundplanimport.RailOperationSummary)
