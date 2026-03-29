@@ -47,6 +47,10 @@ func TestLoadProjectBundle(t *testing.T) {
 		t.Fatal("no train types loaded")
 	}
 
+	if len(bundle.GridMaps) != 4 {
+		t.Fatalf("grid map count = %d, want 4", len(bundle.GridMaps))
+	}
+
 	foundProjectSP := false
 	foundGeoRailRef := false
 	for _, ref := range bundle.ResultFileRefs {

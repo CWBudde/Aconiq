@@ -37,6 +37,7 @@ Observed files in that fixture:
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
 - `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
+- `RRLK*.GM`: metadata-only grid-map parsing for discovered raster layers, linked assessment periods, result-folder mapping, and file sizes.
 
 There is now also a staging loader:
 
@@ -72,6 +73,13 @@ The lowest-risk path is:
 3. Only after that, wire `noise import --from-soundplan` to write those artifacts into `.noise/model/`.
 4. Add `noise compare` once imported models can be run through the existing standards pipeline.
 
+Current status:
+
+- `noise compare` exists for the first Schall 03 receiver-level validation loop.
+- It runs the imported normalized model with custom receivers and compares Aconiq `LrDay` / `LrNight` against aggregated SoundPLAN `RREC` receiver tables.
+- It writes a JSON report artifact with per-receiver deltas and summary stats (mean, max, P95, tolerance exceedances).
+- The compare report now also surfaces discovered SoundPLAN grid-map runs from `RRLK*.GM`, but only as metadata. Full raster value comparison is still blocked on decoding the GM payload layout.
+
 ## Concrete next slices
 
 Recommended near-term tasks:
@@ -86,6 +94,7 @@ Recommended near-term tasks:
    - rail operations -> derive speed, day/night trains per hour, dominant train names, and train-class heuristics from `RRAI`/`RRAD` where available
 4. Encode all unresolved mappings as warnings instead of silently defaulting.
 5. Add an integration test that asserts bundle counts and mapped standard selection for the sample project.
+6. Upgrade comparison from GM metadata reporting to real raster/grid level deltas once the GM payload layout is decoded.
 
 ## Constraints to preserve
 

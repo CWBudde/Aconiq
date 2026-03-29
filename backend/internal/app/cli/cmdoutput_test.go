@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
 func TestWriteCommandOutputJSON(t *testing.T) {
@@ -254,6 +256,50 @@ func TestRunJSONOutput(t *testing.T) {
 
 	if result["status"] != "completed" {
 		t.Fatalf("status = %v, want completed", result["status"])
+	}
+}
+
+func TestCompareJSONOutput(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	soundPlanDir := soundPlanInteropPath(t)
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "CompareJSON", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--from-soundplan", soundPlanDir)
+
+	var buf bytes.Buffer
+
+	cmd := newRootCommand()
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "compare", "--standard", schall03.StandardID})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("compare: %v", err)
+	}
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	if err != nil {
+		t.Fatalf("unmarshal: %v\nraw: %s", err, buf.String())
+	}
+
+	if result["command"] != "compare" {
+		t.Fatalf("command = %v, want compare", result["command"])
+	}
+
+	if result["report_path"] == nil || result["report_path"] == "" {
+		t.Fatal("expected report_path")
+	}
+
+	if result["matched_receiver_count"] == nil {
+		t.Fatal("expected matched_receiver_count")
+	}
+
+	if result["raster_status"] != "metadata_only" {
+		t.Fatalf("raster_status = %v, want metadata_only", result["raster_status"])
 	}
 }
 

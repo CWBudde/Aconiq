@@ -91,6 +91,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(
 		newInitCommand(),
 		newImportCommand(),
+		newCompareCommand(),
 		newValidateCommand(),
 		newRunCommand(),
 		newStatusCommand(),
