@@ -209,6 +209,7 @@ Open work — remaining parser coverage:
 - [ ] Implement `.abs` parsing for RRAI and RRAD emission data. This is currently blocked by record-layout detection for v7.61 files in `go-absolute-database`.
 - [ ] Implement grid-map parsing for `RRLK*` and `RRLK*.GM`:
   - [x] Extract currently reliable metadata such as discovered layer names, file size, linked assessment periods, and run statistics.
+  - [x] Decode the current fixture's GM cell stream into per-row active-cell spans plus elevation/day/night values.
   - [ ] Extract raster metadata such as origin, spacing, dimensions, and active-cell layout.
   - [ ] Extract raster level values.
 - [ ] Implement `.ntd` parsing for immission point tables.
@@ -261,7 +262,8 @@ Refined execution slices:
   - [x] Add integration coverage for the sample Schall 03 project bundle and normalized model output.
   - [x] Add first run-level comparison for single-point receiver results.
   - [x] Surface SoundPLAN raster/grid runs in import and compare reports via `RRLK*.GM` metadata parsing.
-  - [ ] Extend comparison from raster metadata to actual raster/grid level deltas once the GM payload layout is decoded.
+  - [x] Upgrade raster reporting from metadata-only to decoded value/range reporting with active-cell row spans.
+  - [ ] Extend comparison from decoded SoundPLAN raster values to actual spatially aligned raster/grid level deltas once origin/alignment is decoded.
 
 Research and legal questions that remain attached to this priority:
 

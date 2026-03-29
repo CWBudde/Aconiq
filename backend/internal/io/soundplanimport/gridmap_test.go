@@ -10,7 +10,7 @@ func TestParseGridMapMetadata_Layers(t *testing.T) {
 
 	dir := testProjectDir(t)
 
-	meta, err := ParseGridMapMetadata(filepath.Join(dir, "RRLK0022", "RRLK0022.GM"))
+	meta, err := ParseGridMapMetadata(filepath.Join(dir, "RRLK0022", "RRLK0022.GM"), 5961)
 	if err != nil {
 		t.Fatalf("ParseGridMapMetadata: %v", err)
 	}
@@ -33,6 +33,34 @@ func TestParseGridMapMetadata_Layers(t *testing.T) {
 
 	if meta.Layers[2].Name != "Nacht" || meta.Layers[2].Unit != "dB(A)" {
 		t.Fatalf("layer[2] = %+v, want Nacht|dB(A)", meta.Layers[2])
+	}
+
+	if !meta.DecodedValues {
+		t.Fatal("expected decoded_values=true")
+	}
+
+	if meta.ActiveCellCount != 5961 {
+		t.Fatalf("active_cell_count = %d, want 5961", meta.ActiveCellCount)
+	}
+
+	if meta.RowCount != 74 {
+		t.Fatalf("row_count = %d, want 74", meta.RowCount)
+	}
+
+	if len(meta.RowCellCounts) != 74 {
+		t.Fatalf("row_cell_counts len = %d, want 74", len(meta.RowCellCounts))
+	}
+
+	if meta.RowCellCounts[0] != 42 {
+		t.Fatalf("row_cell_counts[0] = %d, want 42", meta.RowCellCounts[0])
+	}
+
+	if meta.RowCellCounts[len(meta.RowCellCounts)-1] != 6 {
+		t.Fatalf("last row cell count = %d, want 6", meta.RowCellCounts[len(meta.RowCellCounts)-1])
+	}
+
+	if len(meta.ValueStats) != 3 {
+		t.Fatalf("value_stats len = %d, want 3", len(meta.ValueStats))
 	}
 }
 
@@ -66,6 +94,14 @@ func TestLoadGridMapMetadata(t *testing.T) {
 
 		if len(item.Layers) != 3 {
 			t.Fatalf("%s layer count = %d, want 3", item.ResultSubFolder, len(item.Layers))
+		}
+
+		if !item.DecodedValues {
+			t.Fatalf("%s expected decoded values", item.ResultSubFolder)
+		}
+
+		if item.ActiveCellCount != item.PointsTotal {
+			t.Fatalf("%s active_cell_count = %d, want %d", item.ResultSubFolder, item.ActiveCellCount, item.PointsTotal)
 		}
 	}
 }

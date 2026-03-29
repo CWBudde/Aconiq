@@ -298,8 +298,8 @@ func TestCompareJSONOutput(t *testing.T) {
 		t.Fatal("expected matched_receiver_count")
 	}
 
-	if result["raster_status"] != "metadata_only" {
-		t.Fatalf("raster_status = %v, want metadata_only", result["raster_status"])
+	if result["raster_status"] != "parsed_values_unaligned" {
+		t.Fatalf("raster_status = %v, want parsed_values_unaligned", result["raster_status"])
 	}
 }
 
