@@ -12,6 +12,7 @@ type ProjectBundle struct {
 	Project        *Project
 	Runs           []*RunResult
 	Standards      []StandardMapping
+	GridMaps       []GridMapMetadata
 	RailOps        []RailOperationSummary
 	RailTracks     []RailTrack
 	GeoObjects     *GeoObjects
@@ -55,6 +56,8 @@ func LoadProjectBundle(projectDir string) (*ProjectBundle, error) {
 			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("standard %d: %s", mapping.SoundPlanID, mapping.Warning))
 		}
 	}
+
+	bundle.GridMaps = LoadGridMapMetadata(projectDir, runs)
 
 	loadOptional := func(path string, fn func(string) error) {
 		if _, statErr := os.Stat(path); statErr != nil {

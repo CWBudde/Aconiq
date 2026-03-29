@@ -100,6 +100,18 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("terrain source = %q, want GeoTmp.geo", report.TerrainSource)
 	}
 
+	if report.GridResolutionM != 5.0 {
+		t.Fatalf("grid_resolution_m = %v, want 5.0", report.GridResolutionM)
+	}
+
+	if report.CalcAreaBounds == nil {
+		t.Fatal("expected calc_area_bounds")
+	}
+
+	if len(report.GridMaps) != 4 {
+		t.Fatalf("grid map count = %d, want 4", len(report.GridMaps))
+	}
+
 	if len(report.StandardMappings) == 0 {
 		t.Fatal("expected standard mappings in report")
 	}

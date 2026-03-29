@@ -28,14 +28,24 @@ type soundPlanImportReport struct {
 	SourcePath       string                             `json:"source_path"`
 	ProjectCRS       string                             `json:"project_crs"`
 	AssumedImportCRS string                             `json:"assumed_import_crs"`
+	GridResolutionM  float64                            `json:"grid_resolution_m,omitempty"`
 	RunCount         int                                `json:"run_count"`
 	CountsByKind     map[string]int                     `json:"counts_by_kind"`
+	CalcAreaBounds   *soundPlanBounds                   `json:"calc_area_bounds,omitempty"`
 	TerrainSource    string                             `json:"terrain_source,omitempty"`
+	GridMaps         []soundplanimport.GridMapMetadata  `json:"grid_maps,omitempty"`
 	StandardMappings []soundplanimport.StandardMapping  `json:"standard_mappings"`
 	Warnings         []string                           `json:"warnings,omitempty"`
 	Decisions        []string                           `json:"decisions,omitempty"`
 	Assessment       []soundplanimport.AssessmentPeriod `json:"assessment_periods,omitempty"`
 	ResultRuns       []soundPlanImportRunSummary        `json:"result_runs,omitempty"`
+}
+
+type soundPlanBounds struct {
+	MinX float64 `json:"min_x"`
+	MinY float64 `json:"min_y"`
+	MaxX float64 `json:"max_x"`
+	MaxY float64 `json:"max_y"`
 }
 
 type soundPlanImportRunSummary struct {
@@ -142,6 +152,10 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		}
 
 		warnings = append(warnings, "rail traction, track form, and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
+	}
+
+	if len(bundle.GridMaps) > 0 {
+		warnings = append(warnings, "SoundPLAN grid-map GM payloads are currently parsed as metadata only; raster values, origin, and active-cell layout are not decoded yet")
 	}
 
 	railOpsByName := make(map[string][]soundplanimport.RailOperationSummary)
@@ -293,6 +307,11 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	slices.Sort(warnings)
 
+	var calcAreaBounds *soundPlanBounds
+	if bundle.CalcArea != nil {
+		calcAreaBounds = calcAreaEnvelope(bundle.CalcArea)
+	}
+
 	report := soundPlanImportReport{
 		Format:           "soundplan",
 		ProjectTitle:     bundle.Project.Title,
@@ -301,9 +320,12 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		SourcePath:       sourcePath,
 		ProjectCRS:       projectCRS,
 		AssumedImportCRS: projectCRS,
+		GridResolutionM:  bundle.Project.Settings.GridMapDistance,
 		RunCount:         len(bundle.Runs),
 		CountsByKind:     counts,
+		CalcAreaBounds:   calcAreaBounds,
 		TerrainSource:    terrainSource,
+		GridMaps:         append([]soundplanimport.GridMapMetadata(nil), bundle.GridMaps...),
 		StandardMappings: append([]soundplanimport.StandardMapping(nil), bundle.Standards...),
 		Warnings:         warnings,
 		Decisions:        decisions,
@@ -493,4 +515,34 @@ func points3DToRing(points []soundplanimport.Point3D) []any {
 func float64Ptr(v float64) *float64 {
 	out := v
 	return &out
+}
+
+func calcAreaEnvelope(area *soundplanimport.CalcArea) *soundPlanBounds {
+	if area == nil || len(area.Points) == 0 {
+		return nil
+	}
+
+	bounds := &soundPlanBounds{
+		MinX: area.Points[0].X,
+		MinY: area.Points[0].Y,
+		MaxX: area.Points[0].X,
+		MaxY: area.Points[0].Y,
+	}
+
+	for _, point := range area.Points[1:] {
+		if point.X < bounds.MinX {
+			bounds.MinX = point.X
+		}
+		if point.Y < bounds.MinY {
+			bounds.MinY = point.Y
+		}
+		if point.X > bounds.MaxX {
+			bounds.MaxX = point.X
+		}
+		if point.Y > bounds.MaxY {
+			bounds.MaxY = point.Y
+		}
+	}
+
+	return bounds
 }
