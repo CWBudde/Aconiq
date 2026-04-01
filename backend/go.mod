@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Dadido3/go-typst v0.10.0
-	github.com/MeKo-Christian/go-overpass v0.0.0-20251224010608-5fb9afa66cb9
+	github.com/cwbudde/go-overpass v0.0.0-20251224010608-5fb9afa66cb9
 	github.com/gogama/flatgeobuf v1.0.0
 	github.com/google/flatbuffers v23.5.26+incompatible
 	github.com/spf13/cobra v1.10.2
