@@ -28,6 +28,8 @@ type ContourLine struct {
 type TerrainData struct {
 	ElevationPoints []ElevationPoint
 	ContourLines    []ContourLine
+	DGMFiles        []DGMData
+	Warnings        []string
 }
 
 // ParseGeoTmpFile reads a SoundPlan GeoTmp.geo binary file and extracts

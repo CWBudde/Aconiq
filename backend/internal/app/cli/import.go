@@ -127,7 +127,7 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 	return err
 }
 
-// buildImportJSONResult constructs the JSON payload for `noise --json import`.
+// buildImportJSONResult constructs the JSON payload for `aconiq --json import`.
 // It reads back artifact files already written to disk to populate counts.
 func buildImportJSONResult(root, inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath string) map[string]any {
 	result := map[string]any{"command": "import"}

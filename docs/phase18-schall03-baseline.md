@@ -11,7 +11,7 @@ The repository currently ships a deterministic Schall 03 planning-track baseline
 
 What is implemented now:
 
-- typed rail-source extraction for `noise run --standard schall03`
+- typed rail-source extraction for `aconiq run --standard schall03`
 - planning-period outputs `LrDay` and `LrNight`
 - octave-band handling from `63 Hz` through `8000 Hz`
 - deterministic line integration and cross-source energetic summation

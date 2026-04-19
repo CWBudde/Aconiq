@@ -1,5 +1,5 @@
 {
-  "command": "noise run",
+  "command": "aconiq run",
   "duration_ms": 123,
   "status": "ok"
 }

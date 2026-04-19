@@ -50,6 +50,11 @@ type GridMapMetadata struct {
 	FileSizeBytes     int64               `json:"file_size_bytes"`
 	PointsTotal       int                 `json:"points_total,omitempty"`
 	PointsCalculated  int                 `json:"points_calculated,omitempty"`
+	OriginX           float64             `json:"origin_x,omitempty"`
+	OriginY           float64             `json:"origin_y,omitempty"`
+	SpacingX          float64             `json:"spacing_x,omitempty"`
+	SpacingY          float64             `json:"spacing_y,omitempty"`
+	DeclaredRowCount  int                 `json:"declared_row_count,omitempty"`
 	AssessmentPeriods []string            `json:"assessment_periods,omitempty"`
 	Layers            []GridMapLayer      `json:"layers,omitempty"`
 	DecodedValues     bool                `json:"decoded_values"`
@@ -103,6 +108,11 @@ func LoadGridMapMetadata(projectDir string, runs []*RunResult) []GridMapMetadata
 
 		item.GMFile = parsed.GMFile
 		item.FileSizeBytes = parsed.FileSizeBytes
+		item.OriginX = parsed.OriginX
+		item.OriginY = parsed.OriginY
+		item.SpacingX = parsed.SpacingX
+		item.SpacingY = parsed.SpacingY
+		item.DeclaredRowCount = parsed.DeclaredRowCount
 		item.Layers = parsed.Layers
 		item.DecodedValues = parsed.DecodedValues
 		item.ActiveCellCount = parsed.ActiveCellCount
@@ -166,6 +176,15 @@ func ParseGridMapMetadata(path string, pointsTotal int) (GridMapMetadata, error)
 		FileSizeBytes: info.Size(),
 		Layers:        layers,
 	}
+	if geometry, ok := parseGridMapGeometry(payload); ok {
+		meta.OriginX = geometry.originX
+		meta.OriginY = geometry.originY
+		meta.SpacingX = geometry.spacingX
+		meta.SpacingY = geometry.spacingY
+		meta.DeclaredRowCount = geometry.rowCount
+	} else {
+		meta.Warnings = append(meta.Warnings, "soundplan: parse GM geometry: no plausible origin/spacing header found")
+	}
 
 	rows, decodeErr := decodeGridMapRows(payload, pointsTotal)
 	if decodeErr != nil {
@@ -199,6 +218,60 @@ func ParseGridMapMetadata(path string, pointsTotal int) (GridMapMetadata, error)
 	})
 
 	return meta, nil
+}
+
+type gridMapGeometry struct {
+	originX  float64
+	originY  float64
+	spacingX float64
+	spacingY float64
+	rowCount int
+}
+
+func parseGridMapGeometry(payload []byte) (gridMapGeometry, bool) {
+	const (
+		gridMapHeaderMinBytes = 57
+		rowCountOffset        = 4
+		originXOffset         = 9
+		originYOffset         = 17
+		spacingXOffset        = 49
+		spacingYOffset        = 53
+	)
+
+	if len(payload) < gridMapHeaderMinBytes {
+		return gridMapGeometry{}, false
+	}
+
+	rowCount := int(binary.BigEndian.Uint16(payload[rowCountOffset : rowCountOffset+2]))
+	originX := readF64(payload, originXOffset)
+	originY := readF64(payload, originYOffset)
+	spacingX := float64(readF32(payload, spacingXOffset))
+	spacingY := float64(readF32(payload, spacingYOffset))
+
+	if rowCount <= 0 || rowCount > 10000 {
+		return gridMapGeometry{}, false
+	}
+
+	if !allFinite(originX, originY, spacingX, spacingY) {
+		return gridMapGeometry{}, false
+	}
+
+	if spacingX <= 0 || spacingY <= 0 {
+		return gridMapGeometry{}, false
+	}
+
+	// SoundPLAN fixture coordinates are in projected meters; reject obviously bogus headers.
+	if originX < 1000 || originY < 1000 {
+		return gridMapGeometry{}, false
+	}
+
+	return gridMapGeometry{
+		originX:  originX,
+		originY:  originY,
+		spacingX: spacingX,
+		spacingY: spacingY,
+		rowCount: rowCount,
+	}, true
 }
 
 // ParseDecodedGridMap decodes the current SoundPLAN GM payload into row-wise

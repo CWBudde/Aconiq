@@ -175,7 +175,7 @@ func NewHandlerWithRegistry(store projectfs.Store, clock func() time.Time, regis
 	})
 }
 
-// NewServeHandler builds a handler suitable for `noise serve` with CORS enabled.
+// NewServeHandler builds a handler suitable for `aconiq serve` with CORS enabled.
 // corsOrigins holds extra allowed origins beyond localhost/127.0.0.1 (nil is fine for local use).
 func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, corsOrigins []string) http.Handler {
 	return newHandlerWithOptions(store, handlerOptions{
@@ -1108,7 +1108,7 @@ func writeDomainError(w http.ResponseWriter, err error) {
 		case domainerrors.KindNotFound:
 			status = http.StatusNotFound
 			apiErr.Code = "not_found"
-			apiErr.Hint = "Initialize the project first with `noise init`."
+			apiErr.Hint = "Initialize the project first with `aconiq init`."
 		default:
 			status = http.StatusInternalServerError
 			apiErr.Code = "internal_error"

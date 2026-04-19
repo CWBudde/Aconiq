@@ -2,7 +2,7 @@
 
 Status date: 2026-03-06
 
-This schema is the minimal common input for `noise import` / `noise validate`.
+This schema is the minimal common input for `aconiq import` / `aconiq validate`.
 
 ## Container
 
@@ -98,7 +98,7 @@ Validation uses project CRS from `.noise/project.json`.
 
 ## Debug Exports
 
-`noise import` writes:
+`aconiq import` writes:
 
 - `.noise/model/model.normalized.geojson`
 - `.noise/model/model.dump.json`

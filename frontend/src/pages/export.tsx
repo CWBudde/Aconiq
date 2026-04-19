@@ -162,7 +162,7 @@ function ExportDetail({ run }: { run: RunSummary }) {
   const htmlArtifact = exportArtifacts.find(
     (a) => a.kind === "export.report_html",
   );
-  const cliCommand = `noise export --run-id ${run.id}`;
+  const cliCommand = `aconiq export --run-id ${run.id}`;
 
   return (
     <div className="flex flex-col gap-6 overflow-y-auto p-5">
@@ -203,7 +203,7 @@ function ExportDetail({ run }: { run: RunSummary }) {
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             Run{" "}
             <code className="rounded bg-muted px-1">
-              noise export --run-id {run.id}
+              aconiq export --run-id {run.id}
             </code>{" "}
             to generate a report.
           </div>
@@ -253,8 +253,8 @@ function NewExportDialog({
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const createExport = useCreateExport();
   const cliCommand = selectedRunId
-    ? `noise export --run-id ${selectedRunId}`
-    : "noise export --run-id <run-id>";
+    ? `aconiq export --run-id ${selectedRunId}`
+    : "aconiq export --run-id <run-id>";
 
   return (
     <Dialog

@@ -21,7 +21,7 @@ What is implemented:
 - Two exported indicators: LpAeq_DW (downwind) and LpAeq_LT (long-term)
 - Typed payloads for point sources, receivers, ground zones, and meteorological assumptions
 - Provenance metadata, receiver tables, raster export
-- CLI integration via `noise run --standard iso9613`
+- CLI integration via `aconiq run --standard iso9613`
 - Acceptance fixtures with golden coverage
 
 What is not implemented:

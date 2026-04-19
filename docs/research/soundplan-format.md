@@ -1,6 +1,6 @@
 # SoundPLAN Import Findings
 
-Status: working note for Priority 6. This document records the currently verified file coverage, the remaining gaps, and the staging plan for `noise import --from-soundplan`.
+Status: working note for Priority 6. This document records the currently verified file coverage, the remaining gaps, and the staging plan for `aconiq import --from-soundplan`.
 
 ## Sample project in repo
 
@@ -29,15 +29,16 @@ Observed files in that fixture:
 - `Project.sp`: Windows-1252 INI parsing, project metadata, enabled standards, time slices, selected road/rail/industry standards, geometry defaults, receiver/grid defaults.
 - `*.res`: run metadata, statistics, geometry references, warnings, assessment windows.
 - `GeoRail.geo`: rail centerlines, segment splitting on parameter changes, basic per-segment parameters.
-- `GeoObjs.geo`: building footprints and receiver points.
-- `GeoWand.geo`: barrier geometry and per-point heights.
-- `GeoTmp.geo`: elevation points and contour/break lines.
+- `GeoObjs.geo`: building footprints, building heights, nearest-building address anchors, and receiver points.
+- `GeoWand.geo`: barrier geometry, per-point heights, and `:D!` acoustic/material properties.
+- `GeoTmp.geo`: elevation points and contour/break lines, plus supplemental `.dgm` digital ground model vertex tables.
 - `Höhen.txt`: text fallback parser for elevation points.
 - `CalcArea.geo`: calculation area polygon.
+- `IOTable*.ntd`: immission-table column definitions, result-field bindings, and formulas.
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
 - `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
-- `RRLK*.GM`: decoded layer descriptors plus the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery, per-band value stats, and marker-cell stripping into row-wise raster values.
+- `RRLK*.GM`: decoded layer descriptors, explicit raster origin/spacing/row-count header metadata, and the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery, per-band value stats, and marker-cell stripping into row-wise raster values.
 
 There is now also a staging loader:
 
@@ -55,22 +56,14 @@ Any other enabled SoundPLAN standard must remain non-fatal and produce an explic
 
 ## Remaining parser gaps
 
-Still open at the file-format level:
-
-- `GeoObjs.geo`: type `0x03e9` building attributes and `:D1` address/name extraction.
-- `GeoWand.geo`: `:D!` material and absorption properties.
-- `GeoTmp.geo` plus `.dgm`: binary digital terrain model extraction.
-- `RRAI` and `RRAD`: robust emission parsing for affected SoundPLAN versions, especially the v7.61 record-layout issue.
-- `RRLK*` / `RRLK*.GM`: explicit spatial origin/alignment metadata for replacing the current heuristic scanline alignment with fully pinned georeferenced raster deltas against Aconiq outputs.
-- `.ntd`: immission point table parsing.
-
+No confirmed file-format parser gaps remain in the current fixture set. The remaining raster work is comparison alignment: converting decoded `RRLK*.GM` geometry metadata and row spans into fully pinned georeferenced raster deltas against Aconiq outputs.
 ## Recommended implementation order
 
 The lowest-risk path is:
 
 1. Keep building a deterministic inspection/import-preparation layer in `soundplanimport`.
 2. Convert supported SoundPLAN inputs into normalized model GeoJSON plus a separate import report artifact.
-3. Only after that, wire `noise import --from-soundplan` to write those artifacts into `.noise/model/`.
+3. Only after that, wire `aconiq import --from-soundplan` to write those artifacts into `.noise/model/`.
 4. Add `noise compare` once imported models can be run through the existing standards pipeline.
 
 Current status:

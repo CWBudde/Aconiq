@@ -123,3 +123,31 @@ func TestParseGeoWand_FirstPoint(t *testing.T) {
 		t.Errorf("first point Height=%.2f, want 2.0", pt.Height)
 	}
 }
+
+func TestParseGeoWand_AcousticProperties(t *testing.T) {
+	t.Parallel()
+
+	dir := testProjectDir(t)
+
+	barriers, err := ParseGeoWandFile(filepath.Join(dir, "GeoWand.geo"))
+	if err != nil {
+		t.Fatalf("ParseGeoWandFile: %v", err)
+	}
+
+	barrier := barriers[0]
+	if !barrier.HasAcousticProperties {
+		t.Fatal("expected :D! acoustic properties on sample barrier")
+	}
+
+	if math.Abs(barrier.AbsorptionSideADB-30.0) > 0.01 {
+		t.Fatalf("AbsorptionSideADB=%.2f, want 30.0", barrier.AbsorptionSideADB)
+	}
+
+	if math.Abs(barrier.AbsorptionSideBDB-30.0) > 0.01 {
+		t.Fatalf("AbsorptionSideBDB=%.2f, want 30.0", barrier.AbsorptionSideBDB)
+	}
+
+	if barrier.MaterialCode != -1 {
+		t.Fatalf("MaterialCode=%d, want -1 sentinel for unset material", barrier.MaterialCode)
+	}
+}

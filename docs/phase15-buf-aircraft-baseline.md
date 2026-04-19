@@ -87,7 +87,7 @@ The current aircraft baseline implements:
   - receiver tables: `receivers.json`, `receivers.csv`
   - raster sidecar/data pair: `buf-aircraft.json`, `buf-aircraft.bin`
 - CLI wiring:
-  - `noise run --standard buf-aircraft`
+  - `aconiq run --standard buf-aircraft`
   - extraction from normalized GeoJSON
   - receiver-grid generation
   - result persistence

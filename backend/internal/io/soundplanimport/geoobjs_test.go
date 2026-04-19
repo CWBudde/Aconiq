@@ -108,3 +108,61 @@ func TestParseGeoObjs_ReceiverCoordinatesPlausible(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGeoObjs_BuildingHeightsExtracted(t *testing.T) {
+	t.Parallel()
+
+	dir := testProjectDir(t)
+
+	objs, err := ParseGeoObjsFile(filepath.Join(dir, "GeoObjs.geo"))
+	if err != nil {
+		t.Fatalf("ParseGeoObjsFile: %v", err)
+	}
+
+	for i, building := range objs.Buildings {
+		if building.HeightM <= 0 {
+			t.Fatalf("building %d: height_m = %.3f, want > 0", i, building.HeightM)
+		}
+	}
+
+	wantHeights := []float64{6.1, 3.1, 3.1, 6.1, 16.1, 2.1}
+	for i, want := range wantHeights {
+		if math.Abs(objs.Buildings[i].HeightM-want) > 0.01 {
+			t.Fatalf("building %d: height_m = %.3f, want %.1f", i, objs.Buildings[i].HeightM, want)
+		}
+	}
+}
+
+func TestParseGeoObjs_BuildingAddressesAssigned(t *testing.T) {
+	t.Parallel()
+
+	dir := testProjectDir(t)
+
+	objs, err := ParseGeoObjsFile(filepath.Join(dir, "GeoObjs.geo"))
+	if err != nil {
+		t.Fatalf("ParseGeoObjsFile: %v", err)
+	}
+
+	addresses := make(map[string]bool)
+	buildingsWithAddress := 0
+	for _, building := range objs.Buildings {
+		if len(building.Addresses) == 0 {
+			continue
+		}
+
+		buildingsWithAddress++
+		for _, address := range building.Addresses {
+			addresses[address] = true
+		}
+	}
+
+	if buildingsWithAddress < 10 {
+		t.Fatalf("got %d buildings with addresses, want at least 10", buildingsWithAddress)
+	}
+
+	for _, want := range []string{"Hauptstraße 4", "Wallchenstraße 25", "Grasmückenweg 11"} {
+		if !addresses[want] {
+			t.Fatalf("expected address %q in parsed building metadata", want)
+		}
+	}
+}

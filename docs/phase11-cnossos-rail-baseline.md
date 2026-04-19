@@ -85,7 +85,7 @@ with:
   - receiver tables: `receivers.json`, `receivers.csv`
   - raster sidecar/data pair: `cnossos-rail.json`, `cnossos-rail.bin`
 - CLI wiring:
-  - `noise run --standard cnossos-rail`
+  - `aconiq run --standard cnossos-rail`
   - extraction from normalized GeoJSON
   - receiver-grid generation
   - result persistence

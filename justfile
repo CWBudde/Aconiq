@@ -44,7 +44,7 @@ update-golden:
 
 # Build the CLI
 build:
-    cd backend && go build -o ../bin/noise ./cmd/noise
+    cd backend && go build -o ../bin/aconiq ./cmd/aconiq
 
 # Build the WebAssembly computation kernel (outputs to frontend/public/)
 wasm-build:
@@ -73,13 +73,13 @@ license-report:
 ci: check-formatted test lint check-tidy license-check fe-ci
 
 # Start dev environment: backend API server + frontend Vite dev server in parallel.
-# Requires a project at the repo root (run `bin/noise init .` first if needed).
+# Requires a project at the repo root (run `bin/aconiq init .` first if needed).
 # Backend serves on :8080; frontend on :5173 (CORS is pre-configured for localhost).
 dev: build
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'kill $(jobs -p) 2>/dev/null; wait' EXIT INT TERM
-    bin/noise serve --project . &
+    bin/aconiq serve --project . &
     cd frontend && bun run dev
 
 # Start only the frontend dev server (no backend)
@@ -132,3 +132,7 @@ fe-ci: fe-typecheck fe-lint fe-test fe-build fe-bundle-check
 # Clean build artifacts
 clean:
     rm -rf bin/ backend/coverage.out backend/coverage.html frontend/dist frontend/public/aconiq.wasm frontend/public/wasm_exec.js
+
+fix:
+    just lint-fix
+    just fmt

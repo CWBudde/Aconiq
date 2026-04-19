@@ -19,7 +19,7 @@ We will acknowledge receipt within 5 business days and aim to provide a fix or m
 Aconiq is a CLI-first, offline-first application. The primary attack surface is:
 
 - Local file parsing (GeoJSON, GeoPackage, CityGML, GeoTIFF, CSV, FlatGeobuf).
-- The local HTTP API when `noise serve` is running (localhost-only by default).
+- The local HTTP API when `aconiq serve` is running (localhost-only by default).
 - Dependencies (Go modules).
 
 ## Supported versions

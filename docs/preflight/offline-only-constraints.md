@@ -6,7 +6,7 @@ Status date: 2026-03-06
 
 MVP is CLI-only and offline-first.
 
-- Required command workflows are local (`noise init/import/validate/run/status/export/bench`).
+- Required command workflows are local (`aconiq init/import/validate/run/status/export/bench`).
 - No HTTP server is required for MVP completion.
 - Browser GUI is deferred to later phases.
 
@@ -22,6 +22,6 @@ MVP is CLI-only and offline-first.
 
 ## Deferred Capabilities
 
-- `noise serve` and GUI workflows.
+- `aconiq serve` and GUI workflows.
 - Multiuser/server storage and remote execution.
 - Online basemap dependencies in critical paths.

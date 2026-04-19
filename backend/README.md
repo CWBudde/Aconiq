@@ -4,7 +4,7 @@ Go backend (CLI-first) for project management, validation, compute engine, stand
 
 Planned package structure:
 
-- `cmd/noise/`
+- `cmd/aconiq/`
 - `internal/app/`
 - `internal/domain/`
 - `internal/geo/`
@@ -24,7 +24,7 @@ Planned package structure:
 
 - Project store: `internal/io/projectfs` (JSON manifest in `.noise/project.json`)
 - Domain entities: `internal/domain/project`
-- Implemented commands: `noise init`, `noise import`, `noise validate`, `noise status`
+- Implemented commands: `aconiq init`, `aconiq import`, `aconiq validate`, `aconiq status`
 
 ## Phase 4 Baseline
 
@@ -45,7 +45,7 @@ Planned package structure:
 - Result container package: `internal/report/results`
 - Raster API + custom binary/JSON persistence
 - Receiver table API + CSV/JSON writers
-- `noise export` skeleton command with run bundle export
+- `aconiq export` skeleton command with run bundle export
 
 ## Phase 7 Baseline
 
@@ -56,7 +56,7 @@ Planned package structure:
 ## Phase 8 Baseline
 
 - Dummy standard module: `internal/standards/dummy/freefield` (explicitly non-normative)
-- `noise run --standard dummy-freefield` executes end-to-end:
+- `aconiq run --standard dummy-freefield` executes end-to-end:
   - loads normalized model
   - builds receiver grid
   - executes engine
@@ -79,7 +79,7 @@ Planned package structure:
   - central registration of available standards
 - Dummy module integration:
   - `dummy-freefield` exported as a standards descriptor with profiles (`default`, `highres`)
-- `noise run` integration:
+- `aconiq run` integration:
   - resolves selected standard/version/profile through registry
   - validates and normalizes `--param` values against profile schema
   - records resolved standard + normalized parameters in run provenance
@@ -97,7 +97,7 @@ Planned package structure:
     - receiver table (`receivers.json`, `receivers.csv`)
     - raster bands (`Lden`, `Lnight`) via `cnossos-road.json/bin`
 - Standards registry now includes `cnossos-road` descriptor.
-- `noise run --standard cnossos-road` is wired to line-source model extraction and result export.
+- `aconiq run --standard cnossos-road` is wired to line-source model extraction and result export.
 
 ## Phase 11 Baseline
 
@@ -126,12 +126,12 @@ Planned package structure:
     - maps/images from raster artifacts
     - receiver table statistics
     - QA status summary
-- `noise export` now copies run result artifacts into export bundles and generates report files by default.
+- `aconiq export` now copies run result artifacts into export bundles and generates report files by default.
 - Optional flag: `--skip-report` to export bundle artifacts without report generation.
 
 ## Phase 22 Initial Slice
 
-- CLI command: `noise bench`
+- CLI command: `aconiq bench`
   - runs built-in synthetic scenarios: `micro`, `corridor`, `district`
   - captures:
     - runtime
@@ -153,6 +153,6 @@ Planned package structure:
   - `GET /api/v1/project/status`
   - `GET /api/v1/events` (SSE stream: heartbeat + project status snapshots)
   - standardized JSON error envelope (`code`, `message`, `details`, `hint`)
-- CLI command: `noise serve`
+- CLI command: `aconiq serve`
   - starts local HTTP server (default `127.0.0.1:8080`)
   - graceful shutdown on `SIGINT`/`SIGTERM`

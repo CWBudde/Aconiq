@@ -20,7 +20,7 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 | `just test-race`       | Run tests with race detector                       |
 | `just test-coverage`   | Run tests with coverage report                     |
 | `just update-golden`   | Update golden snapshots (`UPDATE_GOLDEN=1`)        |
-| `just build`           | Build CLI → `bin/noise`                            |
+| `just build`           | Build CLI → `bin/aconiq`                           |
 | `just check-tidy`      | Verify `go.mod` is tidy                            |
 | `just license-check`   | Check dependency licenses for policy violations    |
 | `just license-report`  | Generate CSV report of all dependency licenses     |
@@ -84,7 +84,7 @@ A project is a folder with `.noise/` containing:
 
 ### GeoJSON Input Schema (v1)
 
-`noise import` accepts a `FeatureCollection` with features having `kind` = `source`, `building`, or `barrier`. Sources require `source_type` (`point`|`line`|`area`); buildings and barriers require `height_m > 0`.
+`aconiq import` accepts a `FeatureCollection` with features having `kind` = `source`, `building`, or `barrier`. Sources require `source_type` (`point`|`line`|`area`); buildings and barriers require `height_m > 0`.
 
 ### Result Containers v1
 

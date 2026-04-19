@@ -39,6 +39,10 @@ func TestLoadProjectBundle(t *testing.T) {
 		t.Fatal("no terrain loaded")
 	}
 
+	if len(bundle.Terrain.DGMFiles) != 1 {
+		t.Fatalf("got %d DGM files, want 1", len(bundle.Terrain.DGMFiles))
+	}
+
 	if bundle.CalcArea == nil || len(bundle.CalcArea.Points) == 0 {
 		t.Fatal("no calc area loaded")
 	}
@@ -49,6 +53,10 @@ func TestLoadProjectBundle(t *testing.T) {
 
 	if len(bundle.GridMaps) != 4 {
 		t.Fatalf("grid map count = %d, want 4", len(bundle.GridMaps))
+	}
+
+	if len(bundle.ImmissionTables) != 1 {
+		t.Fatalf("immission table count = %d, want 1", len(bundle.ImmissionTables))
 	}
 
 	foundProjectSP := false

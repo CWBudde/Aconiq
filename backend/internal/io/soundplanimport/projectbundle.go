@@ -7,22 +7,23 @@ import (
 )
 
 // ProjectBundle collects the currently supported SoundPlan project inputs.
-// It is a staging structure for future `noise import --from-soundplan` work.
+// It is a staging structure for future `aconiq import --from-soundplan` work.
 type ProjectBundle struct {
-	Project        *Project
-	Runs           []*RunResult
-	Standards      []StandardMapping
-	GridMaps       []GridMapMetadata
-	RailOps        []RailOperationSummary
-	RailTracks     []RailTrack
-	GeoObjects     *GeoObjects
-	Barriers       []NoiseBarrier
-	Terrain        *TerrainData
-	CalcArea       *CalcArea
-	TrainTypes     []TrainType
-	Warnings       []string
-	ProjectDir     string
-	ResultFileRefs []string
+	Project         *Project
+	Runs            []*RunResult
+	Standards       []StandardMapping
+	GridMaps        []GridMapMetadata
+	ImmissionTables []ImmissionTable
+	RailOps         []RailOperationSummary
+	RailTracks      []RailTrack
+	GeoObjects      *GeoObjects
+	Barriers        []NoiseBarrier
+	Terrain         *TerrainData
+	CalcArea        *CalcArea
+	TrainTypes      []TrainType
+	Warnings        []string
+	ProjectDir      string
+	ResultFileRefs  []string
 }
 
 // LoadProjectBundle parses the supported SoundPlan project inputs found in one directory.
@@ -58,6 +59,11 @@ func LoadProjectBundle(projectDir string) (*ProjectBundle, error) {
 	}
 
 	bundle.GridMaps = LoadGridMapMetadata(projectDir, runs)
+
+	if tables, tableWarnings := LoadImmissionTables(projectDir); len(tables) > 0 || len(tableWarnings) > 0 {
+		bundle.ImmissionTables = tables
+		bundle.Warnings = append(bundle.Warnings, tableWarnings...)
+	}
 
 	loadOptional := func(path string, fn func(string) error) {
 		if _, statErr := os.Stat(path); statErr != nil {
@@ -112,6 +118,7 @@ func LoadProjectBundle(projectDir string) (*ProjectBundle, error) {
 
 	if terrain, terrainErr := LoadTerrainData(projectDir); terrainErr == nil {
 		bundle.Terrain = terrain
+		bundle.Warnings = append(bundle.Warnings, terrain.Warnings...)
 	} else {
 		bundle.Warnings = append(bundle.Warnings, terrainErr.Error())
 	}

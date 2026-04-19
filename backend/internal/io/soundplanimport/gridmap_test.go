@@ -1,6 +1,7 @@
 package soundplanimport
 
 import (
+	"math"
 	"path/filepath"
 	"testing"
 )
@@ -17,6 +18,18 @@ func TestParseGridMapMetadata_Layers(t *testing.T) {
 
 	if meta.FileSizeBytes <= 0 {
 		t.Fatal("expected positive GM file size")
+	}
+
+	if math.Abs(meta.OriginX-7405.0) > 0.001 || math.Abs(meta.OriginY-6660.0) > 0.001 {
+		t.Fatalf("origin = (%.3f, %.3f), want (7405.000, 6660.000)", meta.OriginX, meta.OriginY)
+	}
+
+	if math.Abs(meta.SpacingX-5.0) > 0.001 || math.Abs(meta.SpacingY-5.0) > 0.001 {
+		t.Fatalf("spacing = (%.3f, %.3f), want (5.000, 5.000)", meta.SpacingX, meta.SpacingY)
+	}
+
+	if meta.DeclaredRowCount != 74 {
+		t.Fatalf("declared_row_count = %d, want 74", meta.DeclaredRowCount)
 	}
 
 	if len(meta.Layers) != 3 {
@@ -94,6 +107,18 @@ func TestLoadGridMapMetadata(t *testing.T) {
 
 		if len(item.Layers) != 3 {
 			t.Fatalf("%s layer count = %d, want 3", item.ResultSubFolder, len(item.Layers))
+		}
+
+		if item.DeclaredRowCount != 74 {
+			t.Fatalf("%s declared_row_count = %d, want 74", item.ResultSubFolder, item.DeclaredRowCount)
+		}
+
+		if math.Abs(item.OriginX-7405.0) > 0.001 || math.Abs(item.OriginY-6660.0) > 0.001 {
+			t.Fatalf("%s origin = (%.3f, %.3f), want (7405.000, 6660.000)", item.ResultSubFolder, item.OriginX, item.OriginY)
+		}
+
+		if math.Abs(item.SpacingX-5.0) > 0.001 || math.Abs(item.SpacingY-5.0) > 0.001 {
+			t.Fatalf("%s spacing = (%.3f, %.3f), want (5.000, 5.000)", item.ResultSubFolder, item.SpacingX, item.SpacingY)
 		}
 
 		if !item.DecodedValues {

@@ -51,9 +51,9 @@ Core entities in v1:
 
 ## CLI Behavior (Phase 8 baseline)
 
-- `noise init` creates `.noise` structure + v1 manifest.
-- `noise status` displays run list, last status, and latest run log tail.
-- `noise run --standard dummy-freefield` executes an offline E2E run, persists results in `.noise/runs/<run-id>/results`, and records provenance.
+- `aconiq init` creates `.noise` structure + v1 manifest.
+- `aconiq status` displays run list, last status, and latest run log tail.
+- `aconiq run --standard dummy-freefield` executes an offline E2E run, persists results in `.noise/runs/<run-id>/results`, and records provenance.
 
 ## Provenance Manifest
 

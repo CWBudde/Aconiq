@@ -83,7 +83,7 @@ The current road baseline implements:
   - receiver tables: `receivers.json`, `receivers.csv`
   - raster sidecar/data pair: `bub-road.json`, `bub-road.bin`
 - CLI wiring:
-  - `noise run --standard bub-road`
+  - `aconiq run --standard bub-road`
   - extraction from normalized GeoJSON
   - receiver-grid generation
   - result persistence

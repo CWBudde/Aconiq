@@ -139,6 +139,8 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 			terrainSource = "GeoTmp.geo"
 		case len(bundle.Terrain.ElevationPoints) > 0:
 			terrainSource = "Höhen.txt"
+		case len(bundle.Terrain.DGMFiles) > 0:
+			terrainSource = ".dgm"
 		}
 	}
 
@@ -226,13 +228,11 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	if bundle.GeoObjects != nil {
-		if len(bundle.GeoObjects.Buildings) > 0 {
-			warnings = append(warnings, fmt.Sprintf("building heights are not yet available from GeoObjs.geo attributes; imported %d buildings with derived default height %.2f m", len(bundle.GeoObjects.Buildings), buildingHeightM))
-		}
-
 		if len(bundle.GeoObjects.Receivers) > 0 {
 			warnings = append(warnings, fmt.Sprintf("receiver heights are not encoded per receiver in the current parser; imported %d receivers with project default height %.2f m", len(bundle.GeoObjects.Receivers), receiverHeightM))
 		}
+
+		missingBuildingHeights := 0
 
 		for buildingIndex, building := range bundle.GeoObjects.Buildings {
 			if len(building.Footprint) < 4 {
@@ -240,15 +240,38 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 				continue
 			}
 
+			heightM := buildingHeightM
+			properties := map[string]any{
+				"soundplan_base_elevation_m": building.Footprint[0].Z,
+			}
+			if building.HeightM > 0 {
+				heightM = building.HeightM
+			} else {
+				missingBuildingHeights++
+				properties["soundplan_placeholder_height"] = true
+			}
+
+			switch len(building.Addresses) {
+			case 1:
+				properties["soundplan_address"] = building.Addresses[0]
+			case 0:
+			default:
+				properties["soundplan_addresses"] = append([]string(nil), building.Addresses...)
+			}
+
 			features = append(features, modelgeojson.Feature{
 				ID:           fmt.Sprintf("soundplan-building-%04d", buildingIndex+1),
 				Kind:         "building",
-				HeightM:      float64Ptr(buildingHeightM),
-				Properties:   map[string]any{"soundplan_placeholder_height": true, "soundplan_base_elevation_m": building.Footprint[0].Z},
+				HeightM:      float64Ptr(heightM),
+				Properties:   properties,
 				GeometryType: "Polygon",
 				Coordinates:  []any{points3DToRing(building.Footprint)},
 			})
 			counts["building"]++
+		}
+
+		if missingBuildingHeights > 0 {
+			warnings = append(warnings, fmt.Sprintf("building heights were missing for %d GeoObjs buildings; imported those features with derived default height %.2f m", missingBuildingHeights, buildingHeightM))
 		}
 
 		for receiverIndex, receiver := range bundle.GeoObjects.Receivers {
@@ -282,14 +305,25 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 			}
 		}
 
+		properties := map[string]any{
+			"soundplan_height_profile_m": topHeights,
+			"soundplan_variable_height":  true,
+		}
+		if barrier.HasAcousticProperties {
+			properties["soundplan_barrier_absorption_a_db"] = barrier.AbsorptionSideADB
+			properties["soundplan_barrier_absorption_b_db"] = barrier.AbsorptionSideBDB
+			if barrier.MaterialCode >= 0 {
+				properties["soundplan_barrier_material_code"] = barrier.MaterialCode
+			} else {
+				properties["soundplan_barrier_material_unset"] = true
+			}
+		}
+
 		features = append(features, modelgeojson.Feature{
-			ID:      fmt.Sprintf("soundplan-barrier-%03d", barrierIndex+1),
-			Kind:    "barrier",
-			HeightM: float64Ptr(maxHeight),
-			Properties: map[string]any{
-				"soundplan_height_profile_m": topHeights,
-				"soundplan_variable_height":  true,
-			},
+			ID:           fmt.Sprintf("soundplan-barrier-%03d", barrierIndex+1),
+			Kind:         "barrier",
+			HeightM:      float64Ptr(maxHeight),
+			Properties:   properties,
 			GeometryType: "LineString",
 			Coordinates:  coords,
 		})

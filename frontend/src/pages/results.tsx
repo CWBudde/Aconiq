@@ -805,7 +805,7 @@ export default function ResultsPage() {
               <BarChart3 className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 text-xs text-muted-foreground">
                 No completed runs yet. Use{" "}
-                <code className="rounded bg-muted px-1">noise run</code> from
+                <code className="rounded bg-muted px-1">aconiq run</code> from
                 the CLI to execute a run.
               </p>
             </div>

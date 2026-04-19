@@ -87,7 +87,7 @@ propagation path with:
   - receiver tables: `receivers.json`, `receivers.csv`
   - raster sidecar/data pair: `cnossos-industry.json`, `cnossos-industry.bin`
 - CLI wiring:
-  - `noise run --standard cnossos-industry`
+  - `aconiq run --standard cnossos-industry`
   - extraction from normalized GeoJSON
   - receiver-grid generation
   - result persistence

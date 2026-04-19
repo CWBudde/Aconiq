@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	toolName    = "noise"
+	toolName    = "aconiq"
 	toolVersion = "dev"
 )
 

@@ -106,7 +106,7 @@ propagation path with:
   - receiver tables: `receivers.json`, `receivers.csv`
   - raster sidecar/data pair: `cnossos-aircraft.json`, `cnossos-aircraft.bin`
 - CLI wiring:
-  - `noise run --standard cnossos-aircraft`
+  - `aconiq run --standard cnossos-aircraft`
   - extraction from normalized GeoJSON
   - receiver-grid generation
   - result persistence

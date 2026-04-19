@@ -37,9 +37,9 @@ Implemented in `backend/internal/report/results`:
 - Validation for duplicate IDs, required indicators, and finite numeric values
 - Writers for JSON and CSV outputs
 
-## `noise export` Skeleton
+## `aconiq export` Skeleton
 
-`noise export` now:
+`aconiq export` now:
 
 - Selects a run (latest by default or explicit `--run-id`)
 - Creates export bundle directory under `.noise/exports/`

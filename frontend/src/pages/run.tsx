@@ -570,12 +570,12 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           disabled={!isRunning}
           title={
             isRunning
-              ? "Runs are started from the CLI — kill the noise process to cancel."
+              ? "Runs are started from the CLI — kill the aconiq process to cancel."
               : "Only running jobs can be cancelled"
           }
           onClick={() => {
             alert(
-              "Cancel is not supported from the UI. Kill the `noise run` CLI process to abort.",
+              "Cancel is not supported from the UI. Kill the `aconiq run` CLI process to abort.",
             );
           }}
         >

@@ -38,6 +38,78 @@ func TestParseTrainTypes(t *testing.T) {
 	}
 }
 
+func TestParseRailEmissions(t *testing.T) {
+	path := filepath.Join(interopDir, "RSPS0011", "RRAI0011.abs")
+
+	emissions, err := ParseRailEmissions(path)
+	if err != nil {
+		t.Fatalf("ParseRailEmissions: %v", err)
+	}
+
+	if len(emissions) == 0 {
+		t.Fatal("expected at least 1 rail emission row")
+	}
+
+	found := false
+	for _, emission := range emissions {
+		if emission.Railname != "Hauptstrecke Gleis 1" {
+			continue
+		}
+
+		found = true
+
+		if emission.ObjID <= 0 {
+			t.Fatalf("ObjID = %d, want > 0", emission.ObjID)
+		}
+
+		if emission.LmEDay <= 0 || emission.LmENight <= 0 {
+			t.Fatalf("LmE day/night = %.1f / %.1f, want both > 0", emission.LmEDay, emission.LmENight)
+		}
+
+		break
+	}
+
+	if !found {
+		t.Fatal("expected rail emission row for Hauptstrecke Gleis 1")
+	}
+}
+
+func TestParseTrainEmissions(t *testing.T) {
+	path := filepath.Join(interopDir, "RSPS0011", "RRAD0011.abs")
+
+	emissions, err := ParseTrainEmissions(path)
+	if err != nil {
+		t.Fatalf("ParseTrainEmissions: %v", err)
+	}
+
+	if len(emissions) == 0 {
+		t.Fatal("expected at least 1 train emission row")
+	}
+
+	found := false
+	for _, emission := range emissions {
+		if emission.Trainname == "" {
+			continue
+		}
+
+		found = true
+
+		if emission.Speed <= 0 {
+			t.Fatalf("Speed = %.1f, want > 0", emission.Speed)
+		}
+
+		if emission.NDay < 0 || emission.NNight < 0 {
+			t.Fatalf("N day/night = %.1f / %.1f, want non-negative", emission.NDay, emission.NNight)
+		}
+
+		break
+	}
+
+	if !found {
+		t.Fatal("expected at least one named train emission row")
+	}
+}
+
 func TestParseGroupResults(t *testing.T) {
 	path := filepath.Join(interopDir, "RSPS0011", "RGRP0011.abs")
 

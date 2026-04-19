@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -59,23 +60,48 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 	}
 
 	var sawDerivedRail bool
+	var sawAddressedBuilding bool
+	var sawBarrierAcoustics bool
 	for _, feature := range fc.Features {
 		kind, _ := feature.Properties["kind"].(string)
-		if kind != "source" {
-			continue
-		}
+		switch kind {
+		case "source":
+			if value, ok := feature.Properties["soundplan_dominant_train_name"].(string); ok && value != "" {
+				sawDerivedRail = true
+			}
 
-		if value, ok := feature.Properties["soundplan_dominant_train_name"].(string); ok && value != "" {
-			sawDerivedRail = true
-		}
+			if feature.Properties["traffic_day_trains_per_hour"] == nil {
+				t.Fatal("expected traffic_day_trains_per_hour on imported rail source")
+			}
 
-		if feature.Properties["traffic_day_trains_per_hour"] == nil {
-			t.Fatal("expected traffic_day_trains_per_hour on imported rail source")
+		case "building":
+			address, _ := feature.Properties["soundplan_address"].(string)
+			if address == "Hauptstraße 4" {
+				sawAddressedBuilding = true
+				if _, ok := feature.Properties["soundplan_placeholder_height"]; ok {
+					t.Fatal("expected parsed SoundPLAN building height, not placeholder height metadata")
+				}
+			}
+
+		case "barrier":
+			absorptionA, okA := feature.Properties["soundplan_barrier_absorption_a_db"].(float64)
+			absorptionB, okB := feature.Properties["soundplan_barrier_absorption_b_db"].(float64)
+			if okA && okB && absorptionA == 30 && absorptionB == 30 {
+				sawBarrierAcoustics = true
+			}
 		}
 	}
 
 	if !sawDerivedRail {
 		t.Fatal("expected at least one imported rail source with derived dominant train name")
+	}
+
+	if !sawAddressedBuilding {
+		t.Fatal("expected at least one imported building with parsed SoundPLAN address metadata")
+	}
+
+	if !sawBarrierAcoustics {
+		t.Fatal("expected imported SoundPLAN barrier acoustic properties from GeoWand :D! records")
 	}
 
 	reportPayload, err := os.ReadFile(reportPath)
@@ -126,6 +152,12 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 	if len(report.Warnings) == 0 {
 		t.Fatal("expected non-empty import warnings")
+	}
+
+	for _, warning := range report.Warnings {
+		if strings.Contains(warning, "building heights are not yet available from GeoObjs.geo attributes") {
+			t.Fatalf("unexpected legacy GeoObjs height warning: %q", warning)
+		}
 	}
 
 	if report.CountsByKind["source"] < 2 {

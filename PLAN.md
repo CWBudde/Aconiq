@@ -202,17 +202,17 @@ Completed so far, compacted:
 
 Open work — remaining parser coverage:
 
-- [ ] In `GeoObjs.geo`, extract building addresses and attributes from type `0x03e9` plus `:D1` name records.
-- [ ] In `GeoWand.geo`, extract barrier material and absorption properties from `:D!` records.
-- [ ] In `GeoTmp.geo`, extract digital ground model data from `.dgm` binaries.
-- [ ] Add the fallback import path for `Höhen.txt` elevation points.
-- [ ] Implement `.abs` parsing for RRAI and RRAD emission data. This is currently blocked by record-layout detection for v7.61 files in `go-absolute-database`.
-- [ ] Implement grid-map parsing for `RRLK*` and `RRLK*.GM`:
+- [x] In `GeoObjs.geo`, extract building heights from `:D\xa0` records and attach address anchors from type `0x03e9` / `:D1` name records to buildings.
+- [x] In `GeoWand.geo`, extract barrier material and absorption properties from `:D!` records.
+- [x] In `GeoTmp.geo`, extract digital ground model data from `.dgm` binaries.
+- [x] Add the fallback import path for `Höhen.txt` elevation points.
+- [x] Implement `.abs` parsing for RRAI and RRAD emission data.
+- [x] Implement grid-map parsing for `RRLK*` and `RRLK*.GM`:
   - [x] Extract currently reliable metadata such as discovered layer names, file size, linked assessment periods, and run statistics.
   - [x] Decode the current fixture's GM cell stream into per-row active-cell spans plus elevation/day/night values.
-  - [ ] Extract raster metadata such as origin, spacing, and dimensions from explicit SoundPLAN payload metadata rather than heuristics.
+  - [x] Extract raster metadata such as origin, spacing, and dimensions from explicit SoundPLAN payload metadata rather than heuristics.
   - [x] Extract raster level values.
-- [ ] Implement `.ntd` parsing for immission point tables.
+- [x] Implement `.ntd` parsing for immission point tables.
 
 Open work — model mapping:
 

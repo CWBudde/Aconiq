@@ -20,7 +20,7 @@ type commandState struct {
 
 type commandStateKey struct{}
 
-// Execute runs the noise CLI and maps known user errors to a dedicated exit code.
+// Execute runs the aconiq CLI and maps known user errors to a dedicated exit code.
 func Execute(args []string) int {
 	rootCmd := newRootCommand()
 	rootCmd.SetArgs(args)
@@ -60,7 +60,7 @@ func newRootCommand() *cobra.Command {
 	var jsonLogs bool
 
 	rootCmd := &cobra.Command{
-		Use:           "noise",
+		Use:           "aconiq",
 		Short:         "Environmental noise modeling CLI",
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -28,7 +28,7 @@ just test     # run tests
 
 ## Supported Capabilities
 
-- Project-oriented local workflow via `noise init`, `noise import`, `noise validate`, `noise status`, `noise run`, `noise export`, `noise serve`, and `noise openapi`
+- Project-oriented local workflow via `aconiq init`, `aconiq import`, `aconiq validate`, `aconiq status`, `aconiq run`, `aconiq export`, `aconiq serve`, and `aconiq openapi`
 - Local project storage under `.noise/` with JSON manifest, run logs, provenance files, run result bundles, and exports
 - Deterministic offline execution with chunked workers, cancellation handling, disk-backed cache, and golden-test coverage
 
@@ -107,6 +107,6 @@ just test     # run tests
 
 - ISO 9613-2 as an additional industry / engineering method module
 - Additional import/export paths such as GeoPackage, FlatGeobuf, CSV traffic tables, GeoTIFF, and tiled/PMTiles-based delivery
-- Richer Typst report template/versioning support beyond the current `noise export --pdf` path
+- Richer Typst report template/versioning support beyond the current `aconiq export --pdf` path
 - Expanded browser workflows around modeling, scenario comparison, result visualization, and large-map tiling
 - Optional desktop packaging via Wails after the local API/web workflow matures
