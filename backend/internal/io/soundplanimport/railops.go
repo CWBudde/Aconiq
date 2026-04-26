@@ -16,6 +16,7 @@ type RailOperationSummary struct {
 	ObjID              int32
 	Railname           string
 	TrainClass         string
+	TractionType       string
 	AverageSpeedKPH    float64
 	TrafficDayPH       float64
 	TrafficNightPH     float64
@@ -90,6 +91,7 @@ func LoadRailOperationSummaries(projectDir string, proj *Project, runs []*RunRes
 		totalWeight := 0.0
 		dominantWeight := -1.0
 		classSeen := make(map[string]struct{})
+		tractionSeen := make(map[string]struct{})
 		trainNames := make([]string, 0, len(linked))
 
 		for _, train := range linked {
@@ -112,7 +114,9 @@ func LoadRailOperationSummaries(projectDir string, proj *Project, runs []*RunRes
 				summary.DominantTrainName = name
 			}
 
-			classSeen[classifyTrainName(name, typeByName[name])] = struct{}{}
+			trainType := typeByName[name]
+			classSeen[classifyTrainClass(name, trainType)] = struct{}{}
+			tractionSeen[classifyTractionType(name, trainType)] = struct{}{}
 		}
 
 		if totalWeight > 0 {
@@ -131,6 +135,7 @@ func LoadRailOperationSummaries(projectDir string, proj *Project, runs []*RunRes
 
 		summary.TrainNames = trainNames
 		summary.TrainClass = collapseTrainClasses(classSeen)
+		summary.TractionType = collapseTractionTypes(tractionSeen)
 
 		summaries = append(summaries, summary)
 	}
@@ -196,7 +201,14 @@ func durationHours(period string) float64 {
 	return duration
 }
 
-func classifyTrainName(name string, trainType TrainType) string {
+func classifyTrainClass(name string, trainType TrainType) string {
+	switch trainType.ZugArt {
+	case 6, 7:
+		return schall03.TrainClassFreight
+	case 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18:
+		return schall03.TrainClassPassenger
+	}
+
 	lower := strings.ToLower(strings.TrimSpace(name))
 
 	switch {
@@ -214,6 +226,28 @@ func classifyTrainName(name string, trainType TrainType) string {
 	return schall03.TrainClassMixed
 }
 
+func classifyTractionType(name string, trainType TrainType) string {
+	switch trainType.ZugArt {
+	case 8, 9, 13, 14, 15, 16, 17, 18:
+		return schall03.TractionElectric
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(name))
+	typeName := strings.ToLower(strings.TrimSpace(trainType.Name))
+
+	switch {
+	case strings.Contains(lower, "e-lok"), strings.Contains(typeName, "e-lok"):
+		return schall03.TractionElectric
+	case strings.Contains(lower, "v-lok"), strings.Contains(typeName, "v-lok"), strings.Contains(lower, "diesel"), strings.Contains(typeName, "diesel"):
+		return schall03.TractionDiesel
+	case strings.Contains(lower, "straßenbahn"), strings.Contains(lower, "strassenbahn"), strings.Contains(lower, "s-bahn"), strings.Contains(lower, "u - bahn"), strings.Contains(lower, "u-bahn"), strings.Contains(lower, "ice"),
+		strings.Contains(typeName, "straßenbahn"), strings.Contains(typeName, "strassenbahn"), strings.Contains(typeName, "s-bahn"), strings.Contains(typeName, "u - bahn"), strings.Contains(typeName, "u-bahn"), strings.Contains(typeName, "ice"):
+		return schall03.TractionElectric
+	default:
+		return schall03.TractionMixed
+	}
+}
+
 func collapseTrainClasses(seen map[string]struct{}) string {
 	if len(seen) == 0 {
 		return schall03.TrainClassMixed
@@ -226,4 +260,18 @@ func collapseTrainClasses(seen map[string]struct{}) string {
 	}
 
 	return schall03.TrainClassMixed
+}
+
+func collapseTractionTypes(seen map[string]struct{}) string {
+	if len(seen) == 0 {
+		return schall03.TractionMixed
+	}
+
+	if len(seen) == 1 {
+		for traction := range seen {
+			return traction
+		}
+	}
+
+	return schall03.TractionMixed
 }

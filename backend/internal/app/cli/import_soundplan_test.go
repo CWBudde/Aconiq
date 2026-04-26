@@ -60,6 +60,7 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 	}
 
 	var sawDerivedRail bool
+	var sawDerivedTraction bool
 	var sawAddressedBuilding bool
 	var sawBarrierAcoustics bool
 	for _, feature := range fc.Features {
@@ -72,6 +73,10 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 			if feature.Properties["traffic_day_trains_per_hour"] == nil {
 				t.Fatal("expected traffic_day_trains_per_hour on imported rail source")
+			}
+
+			if value, ok := feature.Properties["rail_traction_type"].(string); ok && value == "mixed" {
+				sawDerivedTraction = true
 			}
 
 		case "building":
@@ -94,6 +99,10 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 	if !sawDerivedRail {
 		t.Fatal("expected at least one imported rail source with derived dominant train name")
+	}
+
+	if !sawDerivedTraction {
+		t.Fatal("expected at least one imported rail source with derived non-placeholder traction metadata")
 	}
 
 	if !sawAddressedBuilding {
@@ -132,6 +141,18 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 	if report.CalcAreaBounds == nil {
 		t.Fatal("expected calc_area_bounds")
+	}
+
+	if report.CalcArea == nil {
+		t.Fatal("expected calc_area metadata")
+	}
+
+	if len(report.CalcArea.Points) == 0 {
+		t.Fatal("expected at least one calc_area point")
+	}
+
+	if !report.CalcArea.IsClosed {
+		t.Fatal("expected calc_area polygon to be closed")
 	}
 
 	if len(report.GridMaps) != 4 {

@@ -31,6 +31,7 @@ type soundPlanImportReport struct {
 	GridResolutionM  float64                            `json:"grid_resolution_m,omitempty"`
 	RunCount         int                                `json:"run_count"`
 	CountsByKind     map[string]int                     `json:"counts_by_kind"`
+	CalcArea         *soundPlanImportCalcArea           `json:"calc_area,omitempty"`
 	CalcAreaBounds   *soundPlanBounds                   `json:"calc_area_bounds,omitempty"`
 	TerrainSource    string                             `json:"terrain_source,omitempty"`
 	GridMaps         []soundplanimport.GridMapMetadata  `json:"grid_maps,omitempty"`
@@ -39,6 +40,17 @@ type soundPlanImportReport struct {
 	Decisions        []string                           `json:"decisions,omitempty"`
 	Assessment       []soundplanimport.AssessmentPeriod `json:"assessment_periods,omitempty"`
 	ResultRuns       []soundPlanImportRunSummary        `json:"result_runs,omitempty"`
+}
+
+type soundPlanImportCalcArea struct {
+	Points   []soundPlanPoint `json:"points"`
+	IsClosed bool             `json:"is_closed"`
+}
+
+type soundPlanPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
 }
 
 type soundPlanBounds struct {
@@ -150,10 +162,10 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	if len(bundle.RailTracks) > 0 {
 		if len(bundle.RailOps) == 0 {
-			warnings = append(warnings, "rail traffic and train class could not be derived from SoundPLAN RRAD/RRAI tables; importer fell back to explicit placeholders")
+			warnings = append(warnings, "rail traffic, train class, and traction type could not be derived from SoundPLAN RRAD/RRAI tables; importer fell back to explicit placeholders")
 		}
 
-		warnings = append(warnings, "rail traction, track form, and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
+		warnings = append(warnings, "rail track form and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
 	}
 
 	if len(bundle.GridMaps) > 0 {
@@ -196,7 +208,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 				"soundplan_track_height_m":       segment.Params.TrackHeight,
 				"elevation_m":                    segment.Points[0].ZTrack,
 				"rail_train_class":               coalesceString(trackSummary.TrainClass, schall03.TrainClassMixed),
-				"rail_traction_type":             schall03.TractionElectric,
+				"rail_traction_type":             coalesceString(trackSummary.TractionType, schall03.TractionMixed),
 				"rail_track_type":                schall03.TrackTypeBallasted,
 				"rail_track_form":                schall03.TrackFormMainline,
 				"rail_track_roughness_class":     schall03.RoughnessStandard,
@@ -342,8 +354,10 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	slices.Sort(warnings)
 
 	var calcAreaBounds *soundPlanBounds
+	var calcAreaMeta *soundPlanImportCalcArea
 	if bundle.CalcArea != nil {
 		calcAreaBounds = calcAreaEnvelope(bundle.CalcArea)
+		calcAreaMeta = calcAreaMetadata(bundle.CalcArea)
 	}
 
 	report := soundPlanImportReport{
@@ -357,6 +371,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		GridResolutionM:  bundle.Project.Settings.GridMapDistance,
 		RunCount:         len(bundle.Runs),
 		CountsByKind:     counts,
+		CalcArea:         calcAreaMeta,
 		CalcAreaBounds:   calcAreaBounds,
 		TerrainSource:    terrainSource,
 		GridMaps:         append([]soundplanimport.GridMapMetadata(nil), bundle.GridMaps...),
@@ -378,6 +393,33 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	return model, report, nil
 }
 
+func calcAreaMetadata(area *soundplanimport.CalcArea) *soundPlanImportCalcArea {
+	if area == nil || len(area.Points) == 0 {
+		return nil
+	}
+
+	points := make([]soundPlanPoint, 0, len(area.Points))
+	for _, point := range area.Points {
+		points = append(points, soundPlanPoint{
+			X: point.X,
+			Y: point.Y,
+			Z: point.Z,
+		})
+	}
+
+	isClosed := false
+	if len(points) >= 2 {
+		first := points[0]
+		last := points[len(points)-1]
+		isClosed = first.X == last.X && first.Y == last.Y && first.Z == last.Z
+	}
+
+	return &soundPlanImportCalcArea{
+		Points:   points,
+		IsClosed: isClosed,
+	}
+}
+
 func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundplanimport.RailOperationSummary {
 	if len(items) == 0 {
 		return soundplanimport.RailOperationSummary{}
@@ -390,6 +432,7 @@ func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundp
 	}
 
 	classSeen := make(map[string]struct{})
+	tractionSeen := make(map[string]struct{})
 	nameSeen := make(map[string]struct{})
 	dominantWeight := -1.0
 	speedWeight := 0.0
@@ -412,6 +455,10 @@ func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundp
 
 		if item.TrainClass != "" {
 			classSeen[item.TrainClass] = struct{}{}
+		}
+
+		if item.TractionType != "" {
+			tractionSeen[item.TractionType] = struct{}{}
 		}
 
 		for _, name := range item.TrainNames {
@@ -442,6 +489,17 @@ func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundp
 		}
 	default:
 		out.TrainClass = schall03.TrainClassMixed
+	}
+
+	switch len(tractionSeen) {
+	case 0:
+		out.TractionType = ""
+	case 1:
+		for traction := range tractionSeen {
+			out.TractionType = traction
+		}
+	default:
+		out.TractionType = schall03.TractionMixed
 	}
 
 	slices.Sort(out.TrainNames)

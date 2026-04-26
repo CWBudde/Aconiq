@@ -59,6 +59,10 @@ func TestLoadRailOperationSummaries(t *testing.T) {
 			t.Fatalf("unexpected train class %q", summary.TrainClass)
 		}
 
+		if summary.TractionType != schall03.TractionMixed && summary.TractionType != schall03.TractionElectric && summary.TractionType != schall03.TractionDiesel {
+			t.Fatalf("unexpected traction type %q", summary.TractionType)
+		}
+
 		if summary.DominantTrainName == "" {
 			t.Fatal("expected DominantTrainName")
 		}
@@ -66,5 +70,51 @@ func TestLoadRailOperationSummaries(t *testing.T) {
 
 	if !found {
 		t.Fatal("expected summary for Hauptstrecke Gleis 1")
+	}
+}
+
+func TestClassifyTrainClassAndTractionType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		trainType    TrainType
+		wantClass    string
+		wantTraction string
+	}{
+		{
+			name:         "ICE  (v<=250)",
+			trainType:    TrainType{ZugArt: 8, Name: "ICE  (v<=250)"},
+			wantClass:    schall03.TrainClassPassenger,
+			wantTraction: schall03.TractionElectric,
+		},
+		{
+			name:         "Güterzug (Fernv.)",
+			trainType:    TrainType{ZugArt: 6, Name: "Güterzug (Fernv.)"},
+			wantClass:    schall03.TrainClassFreight,
+			wantTraction: schall03.TractionMixed,
+		},
+		{
+			name:         "Straßenbahn",
+			trainType:    TrainType{ZugArt: 17, Name: "Straßenbahn"},
+			wantClass:    schall03.TrainClassPassenger,
+			wantTraction: schall03.TractionElectric,
+		},
+		{
+			name:         "IC-Zug-V-Lok",
+			trainType:    TrainType{Name: "IC-Zug-V-Lok"},
+			wantClass:    schall03.TrainClassPassenger,
+			wantTraction: schall03.TractionDiesel,
+		},
+	}
+
+	for _, tt := range tests {
+		if got := classifyTrainClass(tt.name, tt.trainType); got != tt.wantClass {
+			t.Errorf("classifyTrainClass(%q, %+v) = %q, want %q", tt.name, tt.trainType, got, tt.wantClass)
+		}
+
+		if got := classifyTractionType(tt.name, tt.trainType); got != tt.wantTraction {
+			t.Errorf("classifyTractionType(%q, %+v) = %q, want %q", tt.name, tt.trainType, got, tt.wantTraction)
+		}
 	}
 }

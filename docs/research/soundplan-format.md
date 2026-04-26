@@ -37,7 +37,7 @@ Observed files in that fixture:
 - `IOTable*.ntd`: immission-table column definitions, result-field bindings, and formulas.
 - `TS03.abs`: train-type catalog.
 - `RREC*`, `RGRP*`, `RMPA*`: receiver/group/partial results via `go-absolute-database`.
-- `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
+- `RRAI*`, `RRAD*`: per-track and per-train rail-emission tables used to derive imported rail speed, train-class and traction heuristics, bridge flags, dominant train names, and day/night trains-per-hour where available.
 - `RRLK*.GM`: decoded layer descriptors, explicit raster origin/spacing/row-count header metadata, and the current fixture's 13-byte cell stream format (`float32` elevation/day/night + flag), including active row-span recovery, per-band value stats, and marker-cell stripping into row-wise raster values.
 
 There is now also a staging loader:
@@ -56,7 +56,7 @@ Any other enabled SoundPLAN standard must remain non-fatal and produce an explic
 
 ## Remaining parser gaps
 
-No confirmed file-format parser gaps remain in the current fixture set. The remaining raster work is comparison alignment: converting decoded `RRLK*.GM` geometry metadata and row spans into fully pinned georeferenced raster deltas against Aconiq outputs.
+No confirmed file-format parser gaps remain in the current fixture set. Remaining raster work is reducing alignment uncertainty in `RRLK*.GM` compared against Aconiq outputs, especially around row orientation and optional anchor offsets when multiple valid origin interpretations are possible.
 ## Recommended implementation order
 
 The lowest-risk path is:
@@ -64,15 +64,15 @@ The lowest-risk path is:
 1. Keep building a deterministic inspection/import-preparation layer in `soundplanimport`.
 2. Convert supported SoundPLAN inputs into normalized model GeoJSON plus a separate import report artifact.
 3. Only after that, wire `aconiq import --from-soundplan` to write those artifacts into `.noise/model/`.
-4. Add `noise compare` once imported models can be run through the existing standards pipeline.
+4. Add `aconiq compare` once imported models can be run through the existing standards pipeline.
 
 Current status:
 
-- `noise compare` exists for the first Schall 03 receiver-level validation loop.
+- `aconiq compare` exists for the first Schall 03 receiver-level validation loop.
 - It runs the imported normalized model with custom receivers and compares Aconiq `LrDay` / `LrNight` against aggregated SoundPLAN `RREC` receiver tables.
 - It writes a JSON report artifact with per-receiver deltas and summary stats (mean, max, P95, tolerance exceedances).
-- The compare report now also synthesizes heuristic raster receivers from `CalcArea.geo` plus decoded GM row spans, runs them through the existing Schall 03 custom-receiver path, and writes per-cell day/night deltas plus summary stats into `.noise/artifacts/soundplan-raster-compare.json`.
-- Raster comparison is therefore no longer metadata-only, but it is still heuristic: row spacing comes from the SoundPLAN grid distance and scanline spans come from `CalcArea` intersection geometry because the GM payload's explicit origin metadata is still unresolved.
+- The compare report now synthesizes raster receivers using explicit GM metadata whenever available (`origin`, `spacing`, row count), runs them through the existing Schall 03 custom-receiver path, and writes per-cell day/night deltas plus summary stats into `.noise/artifacts/soundplan-raster-compare.json`.
+- Raster comparison is now metadata-first: explicit GM alignment is attempted first, then falls back to the heuristic `CalcArea.geo` scanline synthesis when metadata is missing or inconsistent.
 
 ## Concrete next slices
 
@@ -88,7 +88,7 @@ Recommended near-term tasks:
    - rail operations -> derive speed, day/night trains per hour, dominant train names, and train-class heuristics from `RRAI`/`RRAD` where available
 4. Encode all unresolved mappings as warnings instead of silently defaulting.
 5. Add an integration test that asserts bundle counts and mapped standard selection for the sample project.
-6. Replace the current heuristic scanline raster compare with explicit GM-origin georeferencing once the remaining payload metadata is decoded.
+6. Finish GM-origin georeferencing edge cases (directionality assumptions and documented column anchoring) and persist acceptance-level test coverage for imported fixtures.
 
 ## Constraints to preserve
 

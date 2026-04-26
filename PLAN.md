@@ -121,7 +121,7 @@ Why now: most of the technical core exists. The remaining gap is turning those a
 Already shipped into the baseline:
 
 - [x] Offline Markdown/HTML templating and required report sections.
-- [x] Typst PDF export via `noise export --pdf`.
+- [x] Typst PDF export via `aconiq export --pdf`.
 - [x] Deterministic font/asset strategy and sufficient report context for current exports.
 
 Open work:
@@ -228,8 +228,8 @@ Open work — model mapping:
 
 Open work — workflow and validation:
 
-- [ ] Implement `noise import --from-soundplan <project-dir>`.
-- [ ] Implement a comparison mode such as `noise compare` that can:
+- [ ] Implement `aconiq import --from-soundplan <project-dir>`.
+- [ ] Implement a comparison mode such as `aconiq compare` that can:
   - [x] Compare per-receiver levels.
   - [x] Produce raster difference data and per-cell deltas through a first heuristic scanline alignment.
   - [x] Compute summary statistics such as mean, max, P95, and tolerance exceedances.
@@ -249,16 +249,16 @@ Refined execution slices:
   - [x] Add a structured import-report JSON artifact describing discovered files, parser coverage, warnings, and unresolved fields.
 - [ ] Slice B — geometry-to-model conversion:
   - [x] Convert rail tracks into normalized line-source GeoJSON features with explicit placeholder/default properties.
-  - [x] Derive imported rail speed, dominant train names, train-class heuristics, bridge flags, and day/night trains per hour from `RRAI` and `RRAD` where available.
+  - [x] Derive imported rail speed, dominant train names, train-class and traction heuristics, bridge flags, and day/night trains per hour from `RRAI` and `RRAD` where available.
   - [x] Convert buildings into normalized building polygons with height handling decisions documented.
   - [x] Convert barriers into normalized barrier lines with height handling decisions documented.
   - [x] Convert receivers into normalized receiver points using project/run defaults for receiver height.
   - [ ] Convert calc area into import metadata for future grid/run setup.
 - [ ] Slice C — CLI integration:
-  - [x] Add `noise import --from-soundplan <project-dir>`.
+  - [x] Add `aconiq import --from-soundplan <project-dir>`.
   - [x] Persist normalized model, dump, validation report, and SoundPlan import report under `.noise/model/`.
   - [x] Surface unsupported standards and unresolved mappings as non-fatal warnings in CLI output.
-  - [x] Add `noise compare` receiver validation against `RREC` and heuristic raster validation against decoded `RRLK*.GM` runs.
+  - [x] Add `aconiq compare` receiver validation against `RREC` and heuristic raster validation against decoded `RRLK*.GM` runs.
 - [ ] Slice D — validation loop:
   - [x] Add integration coverage for the sample Schall 03 project bundle and normalized model output.
   - [x] Add first run-level comparison for single-point receiver results.
@@ -282,7 +282,7 @@ Shipped already:
 - [x] Broader cache keys and reuse for equivalent workloads.
 - [x] Per-run and shared keyed chunk cache on disk.
 - [x] Cache retention/cleanup policy and stale-cache invalidation.
-- [x] `noise bench` with standard scenarios, runtime/memory/IO/drift output, summary persistence, warm-cache reuse, and benchmark-suite cleanup support.
+- [x] `aconiq bench` with standard scenarios, runtime/memory/IO/drift output, summary persistence, warm-cache reuse, and benchmark-suite cleanup support.
 
 Open work:
 
@@ -390,7 +390,7 @@ This section keeps the completed work visible without forcing the active roadmap
 - [x] Repository layout, compliance preflight docs, target platforms, definition of done, risk register, and offline-only MVP constraints.
 - [x] Go module/package structure, config/logging/error layers, Cobra CLI skeleton, shared flags, and testability.
 - [x] CI for lint/test/format, determinism policy, and golden-test conventions.
-- [x] Project lifecycle with manifest v1, project/run domain model, JSON-first storage, `noise init`, `noise status`, provenance, and migrations.
+- [x] Project lifecycle with manifest v1, project/run domain model, JSON-first storage, `aconiq init`, `aconiq status`, provenance, and migrations.
 - [x] GeoJSON import, feature schemas, validation, and debug model exports.
 - [x] Geometry primitives, spatial indexing, receiver-set models, raster/table result containers, and export skeleton.
 - [x] Generic deterministic run pipeline with chunking, worker pool, progress events, cancellation/cleanup, and disk-backed cache.
@@ -413,7 +413,7 @@ This section keeps the completed work visible without forcing the active roadmap
 - [x] GeoTIFF/COG raster export, GeoPackage vector export, contour generation/export, and export-format matrix.
 - [x] GeoPackage, FlatGeobuf, CSV traffic/time-table importers.
 - [x] Terrain/DTM import from GeoTIFF with bilinear interpolation and runtime loading.
-- [x] OSM/Overpass import via `noise import --from-osm`.
+- [x] OSM/Overpass import via `aconiq import --from-osm`.
 - [x] CityGML import hardening with attribute preservation, structured import reporting, and documented decisions.
 
 ### Assessment and conformance foundations already shipped (former Phases 20 shipped scope, 22, and 37)
@@ -426,7 +426,7 @@ This section keeps the completed work visible without forcing the active roadmap
 
 ### API and frontend foundation (former shipped portions of Phases 23 and 32)
 
-- [x] `noise serve` with HTTP API v1, health/status/runs/standards endpoints, SSE events, and OpenAPI.
+- [x] `aconiq serve` with HTTP API v1, health/status/runs/standards endpoints, SSE events, and OpenAPI.
 - [x] React/TypeScript/Vite/Bun frontend scaffold with shadcn/ui baseline, SPA routing, TanStack Query, and Zustand.
 - [x] MapLibre workspace with basemap, model/result layers, legend, interactions, and coordinate display.
 - [x] Model editing for sources, buildings, barriers, and receivers, plus validation overlay, import assistant, and undo/redo.
