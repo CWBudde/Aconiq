@@ -180,7 +180,7 @@ Open work — conformance packages:
 
 ### Priority 6 — SoundPlan import and cross-validation (former Phase 36)
 
-Status: Steps 1 and 2 are complete; Step 3 now includes receiver-level comparison and a first heuristic raster comparison loop.
+Status: Steps 1 and 2 are complete; Step 3 now includes receiver-level comparison plus GM metadata-aligned raster receivers with heuristic fallback when metadata is missing.
 
 Goal: import SoundPlan projects, map them into Aconiq, run the same calculations, and compare outputs to build practitioner trust and reduce migration friction.
 
@@ -216,11 +216,11 @@ Open work — remaining parser coverage:
 
 Open work — model mapping:
 
-- [ ] Define mapping from SoundPlan standard IDs to Aconiq standards modules:
-  - [ ] `20490` to `schall03`.
-  - [ ] `10490` to `rls19`.
-  - [ ] `30000` to `iso9613`.
-  - [ ] Unsupported standards must emit clear warnings.
+- [x] Define mapping from SoundPlan standard IDs to Aconiq standards modules:
+  - [x] `20490` to `schall03`.
+  - [x] `10490` to `rls19`.
+  - [x] `30000` to `iso9613`.
+  - [x] Unsupported standards must emit clear warnings.
 - [ ] Convert SoundPlan rail geometry into Aconiq `TrackSegment` and `TrainOperation` structures.
 - [ ] Map SoundPlan track parameters and train types to Aconiq emission model fields and Fz categories.
 - [ ] Convert SoundPlan buildings, barriers, terrain, receivers, and calculation areas into the Aconiq internal model.
@@ -228,33 +228,33 @@ Open work — model mapping:
 
 Open work — workflow and validation:
 
-- [ ] Implement `aconiq import --from-soundplan <project-dir>`.
-- [ ] Implement a comparison mode such as `aconiq compare` that can:
+- [x] Implement `aconiq import --from-soundplan <project-dir>`.
+- [x] Implement a comparison mode such as `aconiq compare` that can:
   - [x] Compare per-receiver levels.
   - [x] Produce raster difference data and per-cell deltas through a first heuristic scanline alignment.
   - [x] Compute summary statistics such as mean, max, P95, and tolerance exceedances.
   - [x] Support configurable tolerance thresholds, for example ±0.5 dB for conformance and ±1.0 dB for informational comparison.
 - [ ] Generate a cross-validation report artifact with tables, deviation distribution, map overlay, and provenance.
 - [ ] Add unit tests for all parsers.
-- [ ] Add an integration test around `interoperability/Schienenprojekt - Schall 03/` to verify geometry extraction and parameter mapping.
-- [ ] Add a cross-validation acceptance test for import, run, and compare.
-- [ ] Document format findings in `docs/research/soundplan-format.md`.
+- [x] Add an integration test around `interoperability/Schienenprojekt - Schall 03/` to verify geometry extraction and parameter mapping.
+- [x] Add a cross-validation acceptance test for import, run, and compare.
+- [x] Document format findings in `docs/research/soundplan-format.md`.
 
 Refined execution slices:
 
-- [ ] Slice A — import preparation layer:
+- [x] Slice A — import preparation layer:
   - [x] Add a single project-bundle loader that parses the currently supported SoundPlan inputs.
   - [x] Add explicit SoundPlan standard-ID to Aconiq-standard mapping with deterministic warnings for unsupported IDs.
   - [x] Add `Höhen.txt` terrain fallback loading.
   - [x] Add a structured import-report JSON artifact describing discovered files, parser coverage, warnings, and unresolved fields.
-- [ ] Slice B — geometry-to-model conversion:
+- [x] Slice B — geometry-to-model conversion:
   - [x] Convert rail tracks into normalized line-source GeoJSON features with explicit placeholder/default properties.
   - [x] Derive imported rail speed, dominant train names, train-class and traction heuristics, bridge flags, and day/night trains per hour from `RRAI` and `RRAD` where available.
   - [x] Convert buildings into normalized building polygons with height handling decisions documented.
   - [x] Convert barriers into normalized barrier lines with height handling decisions documented.
   - [x] Convert receivers into normalized receiver points using project/run defaults for receiver height.
-  - [ ] Convert calc area into import metadata for future grid/run setup.
-- [ ] Slice C — CLI integration:
+  - [x] Convert calc area into import metadata for future grid/run setup.
+- [x] Slice C — CLI integration:
   - [x] Add `aconiq import --from-soundplan <project-dir>`.
   - [x] Persist normalized model, dump, validation report, and SoundPlan import report under `.noise/model/`.
   - [x] Surface unsupported standards and unresolved mappings as non-fatal warnings in CLI output.
@@ -264,7 +264,7 @@ Refined execution slices:
   - [x] Add first run-level comparison for single-point receiver results.
   - [x] Surface SoundPLAN raster/grid runs in import and compare reports via `RRLK*.GM` metadata parsing.
   - [x] Upgrade raster reporting from metadata-only to decoded value/range reporting with active-cell row spans.
-  - [ ] Extend comparison from decoded SoundPLAN raster values to actual spatially aligned raster/grid level deltas once origin/alignment is decoded.
+  - [ ] Extend comparison from decoded SoundPLAN raster values to fully validated spatial alignment in all cases (direction/anchor ambiguity remains for some GM variants).
 
 Research and legal questions that remain attached to this priority:
 
