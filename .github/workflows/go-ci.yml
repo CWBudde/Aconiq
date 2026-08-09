@@ -20,8 +20,11 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
+      # golangci-lint-action@v7 installs golangci-lint v2, matching the v2
+      # .golangci.yml config. v6 pins the v1 line (v1.64.8, built with go1.24),
+      # which refuses go.mod's `go 1.25.0` target with a config-load error.
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           working-directory: backend
@@ -32,6 +35,7 @@ jobs:
         run: |
           go install mvdan.cc/gofumpt@latest
           go install github.com/daixiang0/gci@latest
+          go install github.com/numtide/treefmt/v2@latest
 
       - name: Check formatting
         run: just check-formatted
@@ -66,7 +70,9 @@ jobs:
         run: just build
 
       - name: Generate OpenAPI spec
-        run: bin/noise openapi --out docs/api/openapi.v1.json --server-url http://127.0.0.1:8080
+        run: |
+          mkdir -p docs/api
+          bin/aconiq openapi --out docs/api/openapi.v1.json --server-url http://127.0.0.1:8080
 
       - name: Upload OpenAPI spec
         uses: actions/upload-artifact@v4

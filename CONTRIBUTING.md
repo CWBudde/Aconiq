@@ -5,7 +5,7 @@ Thank you for your interest in contributing to Aconiq! This document explains ho
 ## Getting started
 
 1. Fork and clone the repository.
-2. Install prerequisites: Go 1.24+, [just](https://github.com/casey/just), and the formatters listed in `treefmt.toml`.
+2. Install prerequisites: Go 1.25+, [just](https://github.com/casey/just), and the formatters listed in `treefmt.toml`.
 3. Run `just ci` to verify everything builds, passes tests, and is formatted.
 
 ## Development workflow
@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Aconiq! This document explains ho
 just fmt          # Format all files
 just lint         # Run golangci-lint
 just test         # Run all Go tests
-just build        # Build CLI → bin/noise
+just build        # Build CLI → bin/aconiq
 just ci           # Run all checks (format, test, lint, tidy)
 ```
 
