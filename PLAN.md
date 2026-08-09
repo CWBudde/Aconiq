@@ -49,6 +49,62 @@ The path to DACH adoption runs through four gates:
 
 ## Active roadmap
 
+### Priority 0 — Repository quality and integrity remediation (Phase QR)
+
+Status: new phase, added after a full-repo quality review (build/test/lint plus architecture, code-quality, testing, docs/CI, and domain-correctness passes). The engine, standards, assessment, and frontend tracks are far more advanced than the top-level docs claim, but the review surfaced a broken CI pipeline, a standards-integrity problem, and one determinism-policy violation that outrank the feature roadmap below. Fix these before shipping new standards work.
+
+Why now: CI cannot currently pass, the top-level docs actively mislead contributors and agents, and several modules emit non-normative numbers while registered as peers of validated standards — an integrity risk in a regulatory noise tool. These are correctness/trust issues, not polish.
+
+Review baseline (verified locally): `go vet`, `golangci-lint`, and `go test` are clean on every buildable package; all buildable tests pass. The only hard failures are the private-module build blocker and the stale CI references below.
+
+#### QR-1 — Unbreak the build and CI (blocker)
+
+- [ ] Make the tree build without private-repo credentials. `backend/go.mod` requires `github.com/cwbudde/go-absolute-database v0.1.0` (used only by `internal/io/soundplanimport/absresults.go`); it is unfetchable without auth, which fails `go build ./...`, `go vet`, `just test`, `just check-tidy`, `just license-check`, and `just build` — transitively breaking `cmd/aconiq` (the whole CLI), `internal/app/cli`, `internal/api/httpv1`, and `internal/io/osmimport`. Gate SoundPLAN `.abs` reading behind a build tag or an interface (or vendor/mirror the module and set `GOPRIVATE` + a token step in CI).
+- [ ] Fix stale binary name in CI: `.github/workflows/go-ci.yml` runs `bin/noise openapi …`, but `just build` now produces `bin/aconiq` (rename noise→aconiq, commit `f3c37be`). Also `mkdir -p docs/api` before the openapi step (the output dir does not exist). Fix the same `bin/noise` reference in `CONTRIBUTING.md`.
+- [ ] Install the formatters the format gate needs in CI: `go-ci.yml` runs `just check-formatted` (→ `treefmt`) but only installs `gofumpt` and `gci`; `treefmt`, `shfmt`, `shellcheck`, and `prettier` are absent, so the gate errors out.
+- [ ] Reconcile `just ci` with the GitHub workflow (the workflow hand-rolls a different, non-equivalent step list) so "run `just ci` locally" actually matches the gate — or document the difference.
+
+#### QR-2 — Standards integrity: separate normative from preview/fabricated modules (blocker)
+
+- [ ] Stop presenting non-normative modules as peers of validated standards. Review verdicts: RLS-19 road and ISO 9613-2 are genuine; Schall 03 is genuine in structure but ships preview emission data (`datapack.go`, self-labeled `baseline-preview-no-normative-tables`); `cnossos/{road,rail,industry,aircraft}`, `bub/{road,rail,industry}`, and `buf/aircraft` use invented coefficients unrelated to the named standards (e.g. `cnossos/road/emission.go` base levels 35/39/42/37 dB with no octave bands; `buf/aircraft/emission.go` is byte-identical to `cnossos/aircraft/emission.go`; CNOSSOS defines no aircraft method).
+- [ ] Add a `normativity` / `compliance_boundary` field to each standard descriptor and surface it end-to-end into `provenance.json`, run logs, and result/report output, so validated / preview / non-normative modules are machine-distinguishable in every result.
+- [ ] Hard-gate the non-normative modules behind an explicit `--experimental` (or non-normative-acknowledgement) flag so they cannot silently produce authoritative-looking dBA values; and remove or rename `cnossos/aircraft`/`buf/aircraft`.
+- [ ] Replace the "reads more like a method implementation than a compact heuristic" styling/comments with an unmistakable non-normative banner in code and output for any module not backed by real coefficient tables.
+- [ ] Record standard-internal data versions (Schall 03 data-pack version/hash, per-module coefficient-table version) in provenance `input_hashes`, so identical provenance guarantees identical numbers.
+
+#### QR-3 — Determinism and numerical-stability policy compliance
+
+- [ ] Fix the determinism-policy violation in Schall 03: four sites range directly over the `PerHeight map[int]…` map while accumulating energy (`compute.go:78`, `compute.go:260`, `reflection.go:238`, `reflection.go:296`). Iterate over sorted keys so the float sum order is stable (the neighboring `EnergeticSumLevels` already documents deterministic ordering).
+- [ ] Implement the mandated stable summation (`docs/policies/determinism.md`): no pairwise/compensated (Kahan/Neumaier) summation exists anywhere today. Route energetic dB sums and line-source integration (RLS-19 Teilstückverfahren, CNOSSOS line integration) through a shared compensated-summation helper.
+- [ ] Add a real worker-count determinism test against a genuine standard (today only `dummy/freefield` runs on the engine's parallel path, so the determinism guarantee is untested for real compute), or document that genuine standards are single-threaded by design.
+
+#### QR-4 — Test suite: validate correctness, not just self-consistency
+
+- [ ] Replace self-recorded "conformance" snapshots with real reference values. `internal/qa/acceptance/rls19_test20/testdata/ci_safe_suite.json` and the `qa/acceptance/testdata/*` CNOSSOS/BEB/BUB/BUF goldens assert the implementation against its own output at 1e-6 dB tolerance — a regression snapshot, not conformance. Encode published RLS-19 TEST-20 / CNOSSOS worked-example values with realistic (~0.1 dB) tolerances (follow the iso9613/schall03 pattern, which do genuine reference validation).
+- [ ] Add hand-calculated absolute-value assertions per module for cnossos/bub/buf/beb (currently only monotonicity / code-equals-code checks).
+- [ ] Add tests for the untested policy-bearing packages: `domain/project` (manifest round-trip) and `domain/errors` (user-input vs internal classification, which drives CLI exit codes). Also `app/config`, `app/logging`.
+- [ ] De-flake `engine/runner_test.go:76` `TestCancellationLeavesConsistentState` (40 ms sleep-then-cancel is timing-dependent); drive cancellation off a deterministic signal.
+- [ ] Add fuzz targets for the importer parsers (GeoJSON, CSV, CityGML, FGB, GPKG, OSM) — untrusted input with only one fuzz target in the repo today — and add `testing.B` benchmarks for the compute hot path to match the advertised `bench` workflow.
+
+#### QR-5 — Architecture and code-quality debt
+
+- [ ] Introduce one `Standard` compute interface and make the engine the single execution path. Today the engine (`engine/runner.go`, ~728 lines of chunking/caching/determinism) is wired only to `dummy/freefield`; every real standard is dispatched through a ~555-line hardcoded `switch` in `run_pipeline.go` and never inherits the engine's infrastructure. Adding a standard requires editing four files in lockstep (`registry.go`, the switch, `run_extract.go`, `run_options.go`), and the default arm admits the registry and executor can disagree.
+- [ ] Break up the `app/cli` god-package (~12k non-test LOC). Split the 3,087-line `run_extract.go` (10 near-identical `extract*Sources` functions) and the 707-line `executeRunCommand` in `run_pipeline.go`; move generic GeoJSON geometry parsing into `geo/modelgeojson`, and per-standard extract/options/persist next to each standard.
+- [ ] Extract a shared in-process application/service layer so `app/cli` and `api/httpv1` share it, replacing the current subprocess exec in `httpv1/handler.go` (`os.Executable()` + rebuilt argv) — prerequisite for a credible library/WASM story.
+- [ ] Consolidate the duplicated `energySumDB` (5+ divergent copies across standards, with a `-900` guard present in some and missing in others) into one helper with one defined empty/invalid convention; name the `-999.0`/`-900` "silence" sentinel (40 sites) as a documented constant; reconcile with `schall03.EnergeticSumLevels` (which uses `-Inf`).
+- [ ] Factor shared propagation primitives (spherical divergence, ISO 9613-1 air absorption, ground geometry) into a common kernel; 9 packages reimplement `propagation.go` and none reuse `iso9613`.
+- [ ] Relocate the result container (`report/results` — `Raster`, `ReceiverTable`) out of `report/`; it is imported by 12 compute modules, making compute depend on a package named `report`.
+- [ ] Push the error taxonomy (`domain/errors`) into the domain: it is used only at the CLI/API boundary (19 files), so classification is retrofitted rather than carried from the source; add package-level sentinel/typed errors for recurring conditions (currently 690 inline `errors.New` strings, 0 sentinels).
+- [ ] Propagate `cmd.Context()` into `engineRunner.Run` (`run_pipeline.go`, `bench.go`) and thread `ctx` through `report/export/gpkg.go` (7× `context.Background()`) so CLI cancellation reaches long-running work; stop silently discarding cache/state write errors (`runner.go:411,462`).
+
+#### QR-6 — Documentation and repo hygiene
+
+- [ ] Rewrite `AGENTS.md` to match reality. It claims "Phase 6 / engine not implemented / standards not implemented / frontend deferred" while the repo has ~13 standards modules, a working engine, an HTTP API, a WASM target, assessment layers, and a full React frontend with e2e. Point agents at PLAN.md as the live status; consider generating the package/CLI tables from the tree to prevent re-drift.
+- [ ] Reconcile `NOTICE` with `go.mod`: wrong owner for go-overpass (`MeKo-Christian` vs `cwbudde`), a "local replace" claim for go-absolute-database that does not exist, and several modules missing. Regenerate from `just license-report`.
+- [ ] Fix doc inconsistencies: Go version (`CONTRIBUTING.md` says 1.24+, `go.mod` pins 1.25.0); "all linters enabled" (`.golangci.yml` disables ~20 — say "default: all with tuned disables"); README/AGENTS descriptions of empty `scripts/` and `examples/`.
+- [ ] Remove committed artifacts and clutter: the 3.28 MB compiled `backend/wasm` binary, `backend/cmd/noise/.gitkeep` (dead post-rename placeholder), `frontend/tsconfig.app.tsbuildinfo` (build cache), and the empty root `.codex` file; gitignore build outputs. Consolidate on one frontend package manager (both `frontend/bun.lock` and `frontend/package-lock.json` plus a root `package-lock.json` exist — lockfile drift).
+- [ ] Introduce versioning/CHANGELOG (see Priority 9) so `SECURITY.md`'s "latest release on main" language becomes true.
+
 ### Priority 1 — ISO 9613-2 residual work
 
 Status: the octave-band point-source workflow is implemented and documented. The remaining items are geometry-driven extensions and secondary use cases.
