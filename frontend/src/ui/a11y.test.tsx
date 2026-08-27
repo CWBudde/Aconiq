@@ -37,7 +37,7 @@ describe("Accessibility: ErrorBoundary", () => {
 
   it("error fallback UI has no axe violations", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    function Throw() {
+    function Throw(): never {
       throw new Error("boom");
     }
     const { container } = render(

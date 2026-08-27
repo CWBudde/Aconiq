@@ -46,7 +46,8 @@ function AppSidebar() {
   const location = useLocation();
   const project = useProjectStatus();
   const showWorkspaceNav = project.data != null;
-  const workspaceNav = showWorkspaceNav ? navMain : [navMain[1]];
+  // navMain[1] is the "Import" entry; slice keeps the element type non-optional
+  const workspaceNav = showWorkspaceNav ? navMain : navMain.slice(1, 2);
 
   return (
     <Sidebar collapsible="icon">

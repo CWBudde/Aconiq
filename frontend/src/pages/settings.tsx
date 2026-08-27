@@ -30,7 +30,6 @@ import {
 } from "@/i18n/runtime";
 import { DRAFT_KEY, discardDraft, hasDraft } from "@/model/use-autosave";
 import { Button } from "@/ui/components/button";
-import { Separator } from "@/ui/components/separator";
 import { FormField } from "@/ui/form-field";
 import { useTheme } from "@/ui/theme-provider";
 import { cn } from "@/ui/lib/utils";
