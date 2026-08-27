@@ -20,12 +20,12 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Gl. 3 — Oktavband-Immissionspegel: L_fT(DW) = L_W + D_c − A
 - [x] Gl. 4 — Gesamtdämpfung: A = A_div + A_atm + A_gr + A_bar + A_misc
 - [x] Gl. 5 — Energetische A-bewertete Summation über Quellen und Oktavbänder
-- [x] Gl. 6 — Langzeit-Mittelungspegel: L_AT(LT) = L_AT(DW) − C_met
+- [x] Gl. 6 — Langzeit-Mittelungspegel: L_AT(LT) = L_AT(DW) − C_met, wobei C_met gemäß Abschnitt 8 je Quelle-Empfänger-Pfad vor der energetischen Summation angewandt wird
 
 ### Quellenmodell (Abschnitt 4)
 
 - [x] Punktquellen mit Oktavband-Schallleistungspegeln
-- [x] Einzelwert-Fallback (A-bewerteter Gesamtpegel → 500 Hz Dämpfungsterme, Anmerkung 1)
+- [x] Einzelwert-Fallback (A-bewerteter Gesamtpegel → Dämpfungsterme bei 500 Hz, Anmerkung 1): ein einzelnes Band, ohne erneute A-Bewertung
 - [x] Richtwirkungskorrektur D_c
 - [ ] Linienquellen (Zerlegung in Punktquellen, Abschnitt 4)
 - [ ] Flächenquellen (Zerlegung in Punktquellen, Abschnitt 4)
@@ -37,7 +37,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 ### Luftabsorption A_atm (Abschnitt 7.2)
 
 - [x] Gl. 8 — A_atm = α·d/1000
-- [x] Tabelle 2 — Absorptionskoeffizienten für 7 Referenzbedingungen
+- [x] Tabelle 2 — Absorptionskoeffizienten für 6 Referenzbedingungen
 - [x] Nächste-Zeile-Auswahl für nicht tabellierte Bedingungen
 
 ### Bodendämpfung A_gr (Abschnitt 7.3)
@@ -46,15 +46,16 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Tabelle 3 — Frequenzabhängige Ausdrücke mit Funktionen a'(h), b'(h), c'(h), d'(h)
 - [x] Gewichtungsfaktor q für die Mittelregion
 - [x] Gl. 10 — Vereinfachtes Verfahren für A-bewertete Pegel
-- [x] Gl. 11 — D_Ω Nahfeldkorrektur bei vereinfachtem Verfahren (Formel implementiert, nicht in aktiver Kette)
+- [ ] Gl. 11 — D_Ω Nahfeldkorrektur bei vereinfachtem Verfahren
 
 ### Abschirmung A_bar (Abschnitt 7.4)
 
-- [x] Gl. 12 — A_bar = D_z − A_gr ≥ 0
+- [x] Gl. 12 — A_bar = D_z − A_gr ≥ 0; bei freier Sichtverbindung (z ≤ 0) ist A_bar = 0 und A_gr bleibt in Gl. 4 wirksam
 - [x] Gl. 14 — D_z = 10·lg[3 + (C_2/λ)·C_3·z·K_met]
 - [x] Gl. 15 — C_3 für Doppelbeugung
 - [x] Gl. 16 — Wegdifferenz z bei Einfachbeugung
 - [x] Gl. 17 — Wegdifferenz z bei Doppelbeugung
+- [x] Abschnitt 7.4 — negatives Vorzeichen von z, wenn die Sichtverbindung über die Oberkante der Barriere verläuft (Feld `LineOfSightClear`)
 - [x] Gl. 18 — Meteorologischer Korrekturfaktor K_met
 - [x] Begrenzung D_z ≤ 20 dB (einfach) bzw. ≤ 25 dB (doppelt)
 - [ ] Gl. 13 — Seitliche Beugung um vertikale Kanten (Abschnitt 7.4.3)
@@ -72,6 +73,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Gl. 21 — C_met = 0 für d_p ≤ 10·(h_s + h_r)
 - [x] Gl. 22 — C_met = C_0·[1 − 10·(h_s + h_r)/d_p]
 - [x] C_0 als konfigurierbarer Parameter (Standard: 0 für reine Mitwindbeurteilung)
+- [x] C_met wird je Quelle aus deren h_s und d_p gebildet und vor der Summation angewandt
 
 ### Sonstige Dämpfung A_misc (Anhang A, informativ)
 
@@ -83,7 +85,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 
 - Luftabsorption nutzt Nächste-Zeile-Auswahl aus Tabelle 2 statt des vollständigen ISO-9613-1-Modells
 - Bodendämpfung nutzt einen einzigen globalen Bodenfaktor G für alle drei Regionen
-- Barrierendämpfung erfordert vorberechnete Beugungsgeometrie (keine automatische Strahl-Barriere-Verschneidung)
+- Barrierendämpfung erfordert vorberechnete Beugungsgeometrie (keine automatische Strahl-Barriere-Verschneidung); das Vorzeichen von z nach Abschnitt 7.4 muss der Aufrufer über `LineOfSightClear` mitliefern, geometrisch inkonsistente Eingaben werden zurückgewiesen
 - Keine Reflexionsberechnung (Spiegelquellen)
 - Keine Linien-/Flächenquellzerlegung
 - Keine seitliche Beugung um vertikale Kanten
@@ -109,19 +111,22 @@ Diese Genauigkeitsangaben gelten für Breitbandrauschen unter Mitwind-/Inversion
 Golden-Test-Szenarien in `backend/internal/qa/acceptance/testdata/iso9613/`:
 
 - `point_preview.scenario.json` — 2 Quellen, 4 Empfänger (Gitteranordnung)
-- `point_contextual.scenario.json` — 3 Quellen, 6 Empfänger (komplexeres Szenario mit Barriere und Bodenfaktor)
+- `point_contextual.scenario.json` — 3 Quellen, 6 Empfänger (abweichender Bodenfaktor, Temperatur, Luftfeuchte und Mindestabstand; ohne Barriere)
 
 Einheitentests in `backend/internal/standards/iso9613/`:
 
 - Oktavband-Konstanten und A-Bewertung
 - Atmosphärische Absorption gegen Tabelle-2-Referenzwerte
 - Bodendämpfung für harten Boden (G=0) und porösen Boden (G=1)
-- Barrierenbeugung: Wegdifferenz, C_3, K_met, D_z-Begrenzung
-- Meteorologische Korrektur: Nah-/Fernbereich, C_0=0-Sonderfall
+- Anmerkung-1-Pfad: absoluter Pegel bei 500 Hz und Gleichwertigkeit mit einem äquivalenten 500-Hz-Spektrum (keine doppelte A-Bewertung)
+- Bodendämpfung Mittelregion bei 63 Hz: A_m = −3q nach Tabelle 3
+- Barrierenbeugung: Wegdifferenz mit Vorzeichen, C_3, K_met, D_z-Begrenzung, freie Sichtverbindung, Geometrievalidierung
+- Meteorologische Korrektur: Nah-/Fernbereich, C_0=0-Sonderfall, pfadweise Anwendung bei mehreren Quellen
 - Determinismus und Rückwärtskompatibilität
 
 ## Stand
 
 Erstellt: 2026-03-28
+Zuletzt geprüft: 2026-08-28
 Modellversion: `iso9613-octaveband-v1`
 Konformitätsgrenze: `iso9613-engineering-octaveband`

@@ -169,6 +169,7 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			AirTemperatureC:         scenario.PropagationConfig.AirTemperatureC,
 			RelativeHumidityPercent: scenario.PropagationConfig.RelativeHumidityPercent,
 			MeteorologyAssumption:   scenario.PropagationConfig.MeteorologyAssumption,
+			C0:                      scenario.PropagationConfig.C0Met,
 			MinDistanceM:            scenario.PropagationConfig.MinDistanceM,
 		})
 		if err != nil {

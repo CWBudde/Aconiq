@@ -191,9 +191,10 @@ func TestBarrierAttenuationLowersLevel(t *testing.T) {
 	}
 
 	cfg := DefaultPropagationConfig()
+	// Diffracted path 2*27 = 54 m over a direct distance of 50 m, i.e. z = 4 m.
 	cfg.Barrier = &BarrierGeometry{
-		Dss: 25,
-		Dsr: 25,
+		Dss: 27,
+		Dsr: 27,
 		E:   0,
 		A:   0,
 		D:   50,

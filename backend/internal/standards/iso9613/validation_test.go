@@ -323,3 +323,213 @@ func TestValidationCmetReducesLongTermLevel(t *testing.T) {
 			closeIndicators.LpAeqLT, closeIndicators.LpAeqDW)
 	}
 }
+
+// TestValidationNoteOneSingle500HzBand pins the absolute level of the default
+// import path, where a source carries only an A-weighted sound power level and
+// OctaveBandLevels is nil.
+//
+// ISO 9613-2:1996 NOTE 1 evaluates the 500 Hz attenuation terms once. The
+// previous implementation replicated L_WA into all eight bands and then
+// energy-summed them with the A-weighting of Eq. 5, which weighted the already
+// A-weighted level a second time and inflated the result by
+// 10*lg(sum_j 10^(0.1*A_j)) = +6.99 dB.
+func TestValidationNoteOneSingle500HzBand(t *testing.T) {
+	t.Parallel()
+
+	source := PointSource{
+		ID:                "src",
+		Point:             geo.Point2D{X: 0, Y: 0},
+		SourceHeightM:     4,
+		SoundPowerLevelDB: 100,
+		// OctaveBandLevels deliberately nil: this is the default import path.
+	}
+	receiver := geo.PointReceiver{ID: "rcv", Point: geo.Point2D{X: 100, Y: 0}, HeightM: 4}
+
+	cfg := refConfig()
+	cfg.GroundFactor = 0 // hard ground keeps A_gr free of the a'..d' functions
+
+	// Hand calculation at 500 Hz, d = dp = 100 m (source and receiver both at 4 m):
+	//   A_div = 20*lg(100) + 11                        = 51.00 dB
+	//   A_atm = 1.9 dB/km * 100 m / 1000               =  0.19 dB   (Table 2, 10 C / 70 %)
+	//   A_gr  = A_s + A_r + A_m = -1.5 + -1.5 + 0      = -3.00 dB   (Table 3, G = 0, q = 0)
+	//   A_bar = 0
+	//   L_AT(DW) = 100 - (51.00 + 0.19 - 3.00)         = 51.81 dB
+	expected := 100.0 - (20*math.Log10(100) + 11 + 1.9*100/1000 - 3.0)
+
+	indicators, err := ComputeReceiverIndicators(receiver, []PointSource{source}, cfg)
+	if err != nil {
+		t.Fatalf("ComputeReceiverIndicators: %v", err)
+	}
+
+	if math.Abs(indicators.LpAeqDW-expected) > 0.001 {
+		t.Errorf("Note 1 level: expected %.3f dB, got %.3f dB (delta %.3f dB)",
+			expected, indicators.LpAeqDW, indicators.LpAeqDW-expected)
+	}
+}
+
+// TestValidationNoteOneMatchesEquivalent500HzSpectrum cross-checks that the
+// A-weighting is applied exactly once on each of the two paths. A source whose
+// energy sits entirely in the 500 Hz band at L_W = L_WA - A_500 must produce
+// the same receiver level as the NOTE 1 estimate for L_WA.
+func TestValidationNoteOneMatchesEquivalent500HzSpectrum(t *testing.T) {
+	t.Parallel()
+
+	const lwa = 100.0
+
+	receiver := geo.PointReceiver{ID: "rcv", Point: geo.Point2D{X: 150, Y: 0}, HeightM: 4}
+	cfg := refConfig()
+
+	broadband := PointSource{
+		ID:                "broadband",
+		Point:             geo.Point2D{X: 0, Y: 0},
+		SourceHeightM:     4,
+		SoundPowerLevelDB: lwa,
+	}
+
+	// Silent everywhere except 500 Hz, where L_W = L_WA - A_500.
+	const silent = -400.0
+
+	bands := BandLevels{silent, silent, silent, lwa - AWeighting[NoteOneBandIndex], silent, silent, silent, silent}
+	spectral := broadband
+	spectral.ID = "spectral"
+	spectral.OctaveBandLevels = &bands
+
+	broadbandLevel, err := ComputeReceiverLevel(receiver, []PointSource{broadband}, cfg)
+	if err != nil {
+		t.Fatalf("broadband: %v", err)
+	}
+
+	spectralLevel, err := ComputeReceiverLevel(receiver, []PointSource{spectral}, cfg)
+	if err != nil {
+		t.Fatalf("spectral: %v", err)
+	}
+
+	if math.Abs(broadbandLevel-spectralLevel) > 0.001 {
+		t.Errorf("expected the NOTE 1 estimate to match an equivalent 500 Hz spectrum: broadband=%.4f spectral=%.4f",
+			broadbandLevel, spectralLevel)
+	}
+}
+
+// TestValidationGroundMiddleRegion63Hz covers ISO 9613-2:1996 Table 3, where
+// A_m is -3q at 63 Hz. The implementation previously returned +3q there, an
+// error of 6q dB in the 63 Hz band.
+func TestValidationGroundMiddleRegion63Hz(t *testing.T) {
+	t.Parallel()
+
+	// hs = hr = 2 m, dp = 200 m: limit = 30*(2+2) = 120 m < dp,
+	// so q = 1 - 120/200 = 0.4.
+	hs, hr, dp := 2.0, 2.0, 200.0
+
+	q := middleRegionQ(hs, hr, dp)
+	if math.Abs(q-0.4) > 1e-12 {
+		t.Fatalf("q: expected 0.4, got %v", q)
+	}
+
+	// Table 3: A_m(63 Hz) = -3q, independent of G_m.
+	for _, gm := range []float64{0, 0.5, 1} {
+		got := middleRegionAtten(gm, 0, q)
+		if math.Abs(got-(-3*q)) > 1e-12 {
+			t.Errorf("A_m(63 Hz, G_m=%.1f): expected %.4f, got %.4f", gm, -3*q, got)
+		}
+	}
+
+	// Full band: A_s = A_r = -1.5 (63 Hz, any G), A_m = -1.2 => A_gr = -4.2 dB.
+	bands := GroundEffectBands(0.5, 0.5, 0.5, hs, hr, dp)
+
+	expected := -1.5 + -1.5 + -3*q
+	if math.Abs(bands[0]-expected) > 1e-9 {
+		t.Errorf("A_gr(63 Hz): expected %.4f dB, got %.4f dB", expected, bands[0])
+	}
+}
+
+// TestValidationCmetIsAppliedPerSource covers Eq. 6 together with clause 8:
+// C_met depends on the source height and the projected distance of one point
+// source, so it must be applied to each path before the energy summation of
+// Eq. 5. Deriving a single C_met from the farthest source over-corrected every
+// nearer source by up to C_0 dB.
+func TestValidationCmetIsAppliedPerSource(t *testing.T) {
+	t.Parallel()
+
+	receiver := geo.PointReceiver{ID: "rcv", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4}
+
+	near := PointSource{ID: "near", Point: geo.Point2D{X: 100, Y: 0}, SourceHeightM: 4, SoundPowerLevelDB: 100}
+	far := PointSource{ID: "far", Point: geo.Point2D{X: 1000, Y: 0}, SourceHeightM: 4, SoundPowerLevelDB: 120}
+
+	cfg := refConfig()
+	cfg.C0 = 5
+
+	// limit = 10*(hs + hr) = 80 m.
+	// near: C_met = 5*(1 - 80/100)  = 1.00 dB
+	// far:  C_met = 5*(1 - 80/1000) = 4.60 dB
+	cmetNear := MeteorologicalCorrection(cfg.C0, near.SourceHeightM, receiver.HeightM, 100)
+	cmetFar := MeteorologicalCorrection(cfg.C0, far.SourceHeightM, receiver.HeightM, 1000)
+
+	if math.Abs(cmetNear-1.0) > 1e-9 || math.Abs(cmetFar-4.6) > 1e-9 {
+		t.Fatalf("C_met setup: near=%.4f far=%.4f", cmetNear, cmetFar)
+	}
+
+	downwind := refConfig() // C0 = 0 => per-source downwind levels
+
+	nearDW, err := ComputeReceiverLevel(receiver, []PointSource{near}, downwind)
+	if err != nil {
+		t.Fatalf("near: %v", err)
+	}
+
+	farDW, err := ComputeReceiverLevel(receiver, []PointSource{far}, downwind)
+	if err != nil {
+		t.Fatalf("far: %v", err)
+	}
+
+	indicators, err := ComputeReceiverIndicators(receiver, []PointSource{near, far}, cfg)
+	if err != nil {
+		t.Fatalf("ComputeReceiverIndicators: %v", err)
+	}
+
+	expectedLT := 10 * math.Log10(math.Pow(10, 0.1*(nearDW-cmetNear))+math.Pow(10, 0.1*(farDW-cmetFar)))
+	if math.Abs(indicators.LpAeqLT-expectedLT) > 1e-9 {
+		t.Errorf("L_AT(LT): expected %.6f dB, got %.6f dB", expectedLT, indicators.LpAeqLT)
+	}
+
+	// The pre-fix behaviour subtracted the farthest source's C_met from the
+	// whole sum, over-correcting the near source.
+	overCorrected := indicators.LpAeqDW - cmetFar
+	if indicators.LpAeqLT <= overCorrected {
+		t.Errorf("expected the near source not to be over-corrected: LT=%.4f, single-C_met result=%.4f",
+			indicators.LpAeqLT, overCorrected)
+	}
+
+	// The total correction must lie between the two per-path corrections.
+	total := indicators.LpAeqDW - indicators.LpAeqLT
+	if total < cmetNear-1e-9 || total > cmetFar+1e-9 {
+		t.Errorf("total correction %.4f dB outside [%.4f, %.4f]", total, cmetNear, cmetFar)
+	}
+}
+
+// TestValidationCmetZeroIsExactlyNeutral guards the invariant that moving
+// C_met into the per-source loop leaves results bit-identical while C_0 = 0,
+// which is the CLI default (c0_met = 0).
+func TestValidationCmetZeroIsExactlyNeutral(t *testing.T) {
+	t.Parallel()
+
+	receiver := geo.PointReceiver{ID: "rcv", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4}
+	sources := []PointSource{
+		{ID: "a", Point: geo.Point2D{X: 100, Y: 0}, SourceHeightM: 4, SoundPowerLevelDB: 100},
+		{ID: "b", Point: geo.Point2D{X: 1000, Y: 25}, SourceHeightM: 12, SoundPowerLevelDB: 120},
+		{ID: "c", Point: geo.Point2D{X: -350, Y: -40}, SourceHeightM: 1, SoundPowerLevelDB: 95},
+	}
+
+	cfg := refConfig()
+	if cfg.C0 != 0 {
+		t.Fatalf("expected C0 = 0 in the reference config, got %v", cfg.C0)
+	}
+
+	indicators, err := ComputeReceiverIndicators(receiver, sources, cfg)
+	if err != nil {
+		t.Fatalf("ComputeReceiverIndicators: %v", err)
+	}
+
+	if indicators.LpAeqLT != indicators.LpAeqDW {
+		t.Errorf("with C0 = 0 expected LT to be bit-identical to DW, got LT=%v DW=%v",
+			indicators.LpAeqLT, indicators.LpAeqDW)
+	}
+}

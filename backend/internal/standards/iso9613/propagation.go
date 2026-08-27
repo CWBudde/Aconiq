@@ -60,6 +60,13 @@ func (cfg PropagationConfig) Validate() error {
 		return errors.New("min_distance_m must be finite and > 0")
 	}
 
+	if cfg.Barrier != nil {
+		err := cfg.Barrier.Validate()
+		if err != nil {
+			return fmt.Errorf("barrier: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -103,25 +110,76 @@ func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg Propaga
 	return totalAtten, distance
 }
 
-// ComputeDownwindLevel computes L_AT(DW) for one receiver from all sources (Eq. 5).
-func ComputeDownwindLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) float64 {
-	sum := 0.0
+// sourcePressureRatio returns the A-weighted mean-square pressure ratio that
+// one source contributes at the receiver, i.e. one summand of Eq. 5.
+//
+// A source with an explicit octave-band spectrum is evaluated band by band and
+// A-weighted exactly once, as Eq. 5 prescribes. A source that carries only an
+// A-weighted sound power level is evaluated with the 500 Hz attenuation terms
+// per ISO 9613-2:1996 NOTE 1; its level is already A-weighted, so no further
+// weighting is applied.
+func sourcePressureRatio(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) float64 {
+	atten, _ := BandAttenuation(receiver, source, cfg)
 
-	for _, source := range sources {
-		bandLevels := EffectiveBandLevels(source)
-		atten, _ := BandAttenuation(receiver, source, cfg)
+	bandLevels, hasSpectrum := EffectiveBandLevels(source)
+	if !hasSpectrum {
+		lat := EffectiveAWeightedPowerLevel(source) - atten[NoteOneBandIndex]
 
-		for j := range NumBands {
-			lft := bandLevels[j] - atten[j]
-			sum += math.Pow(10, 0.1*(lft+AWeighting[j]))
-		}
+		return math.Pow(10, 0.1*lat)
 	}
 
+	sum := 0.0
+
+	for j := range NumBands {
+		lft := bandLevels[j] - atten[j]
+		sum += math.Pow(10, 0.1*(lft+AWeighting[j]))
+	}
+
+	return sum
+}
+
+// levelFromPressureRatio converts a summed mean-square pressure ratio into a
+// level, mapping a non-positive sum to the sentinel used for silent receivers.
+func levelFromPressureRatio(sum float64) float64 {
 	if sum <= 0 {
 		return -999
 	}
 
 	return 10 * math.Log10(sum)
+}
+
+// ComputeDownwindLevel computes L_AT(DW) for one receiver from all sources (Eq. 5).
+func ComputeDownwindLevel(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) float64 {
+	dw, _ := ComputeDownwindAndLongTermLevels(receiver, sources, cfg)
+
+	return dw
+}
+
+// ComputeDownwindAndLongTermLevels computes L_AT(DW) (Eq. 5) and L_AT(LT)
+// (Eq. 6) for one receiver in a single pass over the sources.
+//
+// C_met is applied per source-receiver path before the energy summation.
+// Clause 8 derives C_met from the source height h_s and the projected distance
+// d_p of one point sound source (Eq. 21/22), so every path has its own value.
+// Deriving a single C_met from the farthest source and subtracting it from the
+// already summed level would over-correct every nearer source by up to C_0 dB.
+//
+// Sources are visited in slice order and every summand is independent of that
+// order apart from float64 rounding, so the result is deterministic.
+func ComputeDownwindAndLongTermLevels(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, float64) {
+	dwSum := 0.0
+	ltSum := 0.0
+
+	for _, source := range sources {
+		ratio := sourcePressureRatio(receiver, source, cfg)
+		dwSum += ratio
+
+		dp := geo.Distance(receiver.Point, source.Point)
+		cmet := MeteorologicalCorrection(cfg.C0, source.SourceHeightM, receiver.HeightM, dp)
+		ltSum += ratio * math.Pow(10, -0.1*cmet)
+	}
+
+	return levelFromPressureRatio(dwSum), levelFromPressureRatio(ltSum)
 }
 
 // MeteorologicalCorrection computes C_met from Eq. 21-22.

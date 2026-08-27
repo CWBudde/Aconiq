@@ -2,6 +2,7 @@ package iso9613
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -32,11 +33,75 @@ func TestBarrierPathDifferenceDouble(t *testing.T) {
 func TestBarrierPathDifferenceNegative(t *testing.T) {
 	t.Parallel()
 
-	geom := BarrierGeometry{Dss: 49, Dsr: 50, E: 0, A: 0, D: 100}
+	// ISO 9613-2:1996, 7.4: when the line of sight passes above the top edge
+	// of the barrier, z is given a negative sign. The distances alone always
+	// give z >= 0, so the sign comes from LineOfSightClear.
+	geom := BarrierGeometry{Dss: 50, Dsr: 51, E: 0, A: 0, D: 100, LineOfSightClear: true}
 
 	z := pathDifference(geom)
 	if z >= 0 {
-		t.Errorf("expected negative z for line-of-sight, got %v", z)
+		t.Errorf("expected negative z for a clear line of sight, got %v", z)
+	}
+
+	blocking := geom
+	blocking.LineOfSightClear = false
+
+	if z != -pathDifference(blocking) {
+		t.Errorf("expected the clear line of sight to only flip the sign of z, got %v and %v", z, pathDifference(blocking))
+	}
+}
+
+func TestBarrierAttenuationBandsClearLineOfSight(t *testing.T) {
+	t.Parallel()
+
+	// A receiver that sees the source over the top of a low barrier must get
+	// A_bar = 0 in every band, and the unscreened A_gr must survive Eq. 4.
+	// Before the fix D_z = 0 was fed into Eq. 12 as A_bar = 0 - A_gr, which
+	// turned a negative A_gr into a spurious positive screening attenuation.
+	geom := BarrierGeometry{Dss: 50, Dsr: 51, E: 0, A: 0, D: 100, LineOfSightClear: true}
+	groundAtten := BandLevels{-3, -3, -3, -3, -3, -3, -3, -3}
+
+	result := BarrierAttenuationBands(&geom, groundAtten, 20)
+	for i, v := range result {
+		if v != 0 {
+			t.Errorf("band %d: expected A_bar = 0 for a clear line of sight, got %v", i, v)
+		}
+	}
+}
+
+func TestBarrierGeometryValidate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		geom    BarrierGeometry
+		wantErr bool
+	}{
+		{"valid single", BarrierGeometry{Dss: 50, Dsr: 60, D: 100}, false},
+		{"valid double", BarrierGeometry{Dss: 40, Dsr: 50, E: 10, D: 90}, false},
+		{"degenerate straight path", BarrierGeometry{Dss: 50, Dsr: 50, D: 100}, false},
+		{"diffracted path shorter than direct", BarrierGeometry{Dss: 49, Dsr: 50, D: 100}, true},
+		{"zero direct distance", BarrierGeometry{Dss: 50, Dsr: 50, D: 0}, true},
+		{"negative leg", BarrierGeometry{Dss: -1, Dsr: 120, D: 100}, true},
+	}
+
+	for _, tc := range tests {
+		err := tc.geom.Validate()
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%s: wantErr=%v, got %v", tc.name, tc.wantErr, err)
+		}
+	}
+}
+
+func TestPropagationConfigRejectsInconsistentBarrier(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultPropagationConfig()
+	cfg.Barrier = &BarrierGeometry{Dss: 49, Dsr: 50, D: 100}
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "barrier") {
+		t.Fatalf("expected an inconsistent barrier geometry to be rejected, got %v", err)
 	}
 }
 

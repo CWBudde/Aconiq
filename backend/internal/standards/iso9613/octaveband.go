@@ -20,15 +20,15 @@ func Wavelength(freqHz float64) float64 {
 	return SpeedOfSound / freqHz
 }
 
-// BandLevelsFromAWeighted creates octave-band levels from a single A-weighted
-// value by setting all bands to that value. This is the fallback per
-// ISO 9613-2 Note 1: use 500 Hz attenuation terms when only A-weighted
-// sound power is known.
-func BandLevelsFromAWeighted(lwa float64) BandLevels {
-	var levels BandLevels
-	for i := range levels {
-		levels[i] = lwa
-	}
-
-	return levels
-}
+// NoteOneBandIndex is the index of the 500 Hz octave band.
+//
+// ISO 9613-2:1996, clause 1, NOTE 1: "If only A-weighted sound power levels of
+// the sources are known, the attenuation terms for 500 Hz may be used to
+// estimate the resulting attenuation."
+//
+// The A-weighted sound power level is already A-weighted, so the Note 1
+// estimate evaluates a single attenuation value -- the 500 Hz one -- and must
+// not re-apply the A-weighting of Eq. 5. Replicating L_WA into all eight bands
+// and then energy-summing with A-weighting would add
+// 10*lg(sum_j 10^(0.1*A_j)) = +6.99 dB.
+const NoteOneBandIndex = 3

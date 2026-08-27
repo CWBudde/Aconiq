@@ -45,25 +45,9 @@ func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource
 		}
 	}
 
-	dwLevel := ComputeDownwindLevel(receiver, sources, cfg)
-
-	ltLevel := dwLevel
-
-	if cfg.C0 > 0 && len(sources) > 0 {
-		dp := 0.0
-
-		for _, source := range sources {
-			d := geo.Distance(receiver.Point, source.Point)
-			if d > dp {
-				dp = d
-			}
-		}
-
-		hs := sources[0].SourceHeightM
-		hr := receiver.HeightM
-		cmet := MeteorologicalCorrection(cfg.C0, hs, hr, dp)
-		ltLevel = dwLevel - cmet
-	}
+	// C_met is applied per source-receiver path inside the summation
+	// (Eq. 6 with clause 8), not once to the summed level.
+	dwLevel, ltLevel := ComputeDownwindAndLongTermLevels(receiver, sources, cfg)
 
 	return ReceiverIndicators{LpAeqDW: dwLevel, LpAeqLT: ltLevel}, nil
 }

@@ -56,10 +56,12 @@ func sourceReceiverAtten(g, h, dp float64, band int) float64 {
 }
 
 // middleRegionAtten computes A_m from Table 3 for one band.
+// ISO 9613-2:1996 Table 3 gives A_m = -3q at 63 Hz and A_m = -3q(1 - G_m)
+// from 125 Hz to 8 kHz; both expressions are negative for q > 0.
 func middleRegionAtten(gm float64, band int, q float64) float64 {
 	switch band {
 	case 0: // 63 Hz
-		return 3 * q
+		return -3 * q
 	default: // 125-8000 Hz
 		return -3 * q * (1 - gm)
 	}

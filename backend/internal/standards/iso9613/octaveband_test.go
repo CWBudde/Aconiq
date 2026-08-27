@@ -39,13 +39,28 @@ func TestWavelength(t *testing.T) {
 	}
 }
 
-func TestBandLevelsFromSingleValue(t *testing.T) {
+func TestNoteOneBandIndexIs500Hz(t *testing.T) {
 	t.Parallel()
 
-	levels := BandLevelsFromAWeighted(100.0)
-	for i, v := range levels {
-		if v != 100.0 {
-			t.Fatalf("band %d: expected 100.0, got %v", i, v)
-		}
+	// ISO 9613-2:1996 NOTE 1 uses the 500 Hz attenuation terms when only an
+	// A-weighted sound power level is known.
+	if OctaveBandFrequencies[NoteOneBandIndex] != 500 {
+		t.Fatalf("expected NoteOneBandIndex to select 500 Hz, got %v Hz", OctaveBandFrequencies[NoteOneBandIndex])
+	}
+}
+
+// TestAWeightingEnergySumMagnitude pins the size of the double-A-weighting
+// error that replicating L_WA into all eight bands used to introduce.
+func TestAWeightingEnergySumMagnitude(t *testing.T) {
+	t.Parallel()
+
+	sum := 0.0
+	for _, a := range AWeighting {
+		sum += math.Pow(10, 0.1*a)
+	}
+
+	got := 10 * math.Log10(sum)
+	if math.Abs(got-6.99) > 0.01 {
+		t.Fatalf("expected the A-weighting energy sum to be +6.99 dB, got %.4f dB", got)
 	}
 }

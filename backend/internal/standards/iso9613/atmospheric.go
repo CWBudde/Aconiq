@@ -9,7 +9,7 @@ type atmosphericRow struct {
 	Alpha    [NumBands]float64
 }
 
-// table2 holds the 7 reference rows from ISO 9613-2 Table 2.
+// table2 holds the 6 reference rows from ISO 9613-2 Table 2.
 // Row order: 63, 125, 250, 500, 1000, 2000, 4000, 8000 Hz.
 var table2 = []atmosphericRow{
 	{10, 70, [NumBands]float64{0.1, 0.4, 1.0, 1.9, 3.7, 9.7, 32.8, 117.0}},
