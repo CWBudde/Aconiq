@@ -190,7 +190,8 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 
 	// Build column definitions for indicator values.
 	colDefs := make([]string, 0, len(table.IndicatorOrder)+5)
-	colDefs = append(colDefs,
+	colDefs = append(
+		colDefs,
 		"fid INTEGER PRIMARY KEY AUTOINCREMENT",
 		"geom BLOB",
 		"receiver_id TEXT NOT NULL",

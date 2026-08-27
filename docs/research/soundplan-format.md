@@ -57,6 +57,7 @@ Any other enabled SoundPLAN standard must remain non-fatal and produce an explic
 ## Remaining parser gaps
 
 No confirmed file-format parser gaps remain in the current fixture set. Remaining raster work is reducing alignment uncertainty in `RRLK*.GM` compared against Aconiq outputs, especially around row orientation and optional anchor offsets when multiple valid origin interpretations are possible.
+
 ## Recommended implementation order
 
 The lowest-risk path is:

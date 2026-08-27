@@ -250,7 +250,8 @@ func buildSummaryDE(result ReceiverAssessment) string {
 
 	// Irrelevance.
 	if result.Irrelevanz.DayIrrelevant && result.Irrelevanz.NightIrrelevant {
-		parts = append(parts,
+		parts = append(
+			parts,
 			"Irrelevanzkriterium erfüllt: Zusatzbelastung unterschreitet den Immissionsrichtwert um mindestens 6 dB(A).",
 		)
 	}

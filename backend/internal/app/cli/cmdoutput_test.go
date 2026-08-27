@@ -348,7 +348,8 @@ func TestExportJSONOutput(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "ExpJSON", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run",
+	mustRunCLI(
+		t, "--project", projectDir, "run",
 		"--standard", "dummy-freefield",
 		"--param", "grid_resolution_m=10",
 		"--param", "grid_padding_m=0",
