@@ -9,26 +9,31 @@ issues:
 
 linters:
   default: all
+  # Every disable below is justified in docs/lint-triage.md — keep the two in sync.
   disable:
     - depguard # no import allow/deny lists needed
     - err113 # sentinel errors too verbose for this codebase
     - exhaustive # don't require exhaustive switch on enums
     - exhaustruct # don't require all struct fields populated
     - gochecknoglobals # sync.Pools, singletons, config vars are fine
+    - goconst # fires on JSON output keys and CLI flag names; hoisting them hurts readability
+    - gocyclo # redundant: cyclop enforces the same cyclomatic metric
     - godox # allow TODO/FIXME comments
+    - gomodguard # deprecated since v2.12.0, replaced by gomodguard_v2
     - ireturn # allow returning interfaces
     - lll # long lines acceptable in math-heavy code
     - mnd # magic numbers acceptable in math-heavy code
     - musttag # no struct tag enforcement needed
     - nlreturn # no blank-line-before-return enforcement
+    - noinlineerr # `if err := f(); err != nil` is idiomatic Go and scopes err tightly
     - nonamedreturns # named returns useful for complex signatures
     - paralleltest # not enforcing t.Parallel everywhere
-    - sqlclosecheck # no SQL in this project
     - testpackage # allow white-box tests in same package
     - varnamelen # short names idiomatic in math/acoustics code
-    - wsl # use wsl_v5 instead
+    - wsl # whitespace/cuddling style only, no defect-catching value
+    - wsl_v5 # same as wsl: pure whitespace style
   enable:
-    - wsl_v5
+    - gomodguard_v2
 
     - revive
   settings:
@@ -43,11 +48,6 @@ linters:
         rules:
           json: snake
 
-    wsl_v5:
-      allow-first-in-block: true
-      allow-whole-block: false
-      branch-max-lines: 2
-      disable: [decl]
     revive:
       rules:
         - name: file-length-limit
@@ -66,10 +66,25 @@ linters:
         path: cmd/
 
       # test files are more relaxed
-      - linters: [funlen, cyclop, gocognit, maintidx, wrapcheck, dupl, noctx, forcetypeassert, gosec, thelper, usetesting, goconst]
+      - linters:
+          [
+            funlen,
+            cyclop,
+            gocognit,
+            maintidx,
+            wrapcheck,
+            dupl,
+            noctx,
+            forcetypeassert,
+            gosec,
+            thelper,
+            usetesting,
+          ]
         path: _test\.go
 
-      # wrapcheck too noisy in internal packages
+      # FIXME(lint-triage): blanket exclusion — leaves the error-wrapping policy
+      # unenforced across the whole codebase (190 findings if removed).
+      # See docs/lint-triage.md; revisit with the domain/errors work in PLAN.md P7.
       - linters: [wrapcheck]
         path: internal/
 
