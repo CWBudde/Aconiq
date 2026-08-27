@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ func FromFlags(projectPath string, cacheDir string, verbose bool, jsonLogs bool)
 	if projectPath == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return Config{}, err
+			return Config{}, fmt.Errorf("get working directory: %w", err)
 		}
 
 		projectPath = cwd
@@ -27,7 +28,7 @@ func FromFlags(projectPath string, cacheDir string, verbose bool, jsonLogs bool)
 
 	absProjectPath, err := filepath.Abs(projectPath)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("resolve absolute project path %q: %w", projectPath, err)
 	}
 
 	if cacheDir == "" {
@@ -36,7 +37,7 @@ func FromFlags(projectPath string, cacheDir string, verbose bool, jsonLogs bool)
 
 	absCacheDir, err := filepath.Abs(cacheDir)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("resolve absolute cache dir %q: %w", cacheDir, err)
 	}
 
 	level := slog.LevelInfo

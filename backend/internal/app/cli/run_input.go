@@ -82,11 +82,11 @@ func extractExplicitReceivers(model modelgeojson.Model) ([]geo.PointReceiver, er
 	seen := make(map[string]struct{})
 
 	for _, feature := range model.Features {
-		if feature.Kind != "receiver" {
+		if feature.Kind != modelgeojson.FeatureKindReceiver {
 			continue
 		}
 
-		if feature.GeometryType != "Point" {
+		if feature.GeometryType != modelgeojson.GeometryTypePoint {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractExplicitReceivers", fmt.Sprintf("receiver %q geometry must be Point", feature.ID), nil)
 		}
 

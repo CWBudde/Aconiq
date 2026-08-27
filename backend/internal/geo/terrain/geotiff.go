@@ -65,7 +65,7 @@ type ifdEntry struct {
 func readGeoTIFF(path string) (*gridModel, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open geotiff %s: %w", path, err)
 	}
 
 	defer f.Close()
@@ -130,8 +130,10 @@ func readIFD(data []byte, order binary.ByteOrder, offset uint64, bigtiff bool) (
 
 	pos := int(offset) //nolint:gosec // TIFF IFD offset bounded by file size
 
-	var numEntries int
-	var entrySize int
+	var (
+		numEntries int
+		entrySize  int
+	)
 
 	if bigtiff {
 		if pos+8 > len(data) {
@@ -174,8 +176,10 @@ func parseIFDEntry(data []byte, order binary.ByteOrder, pos int, bigtiff bool) (
 	tag := order.Uint16(data[pos : pos+2])
 	dataType := order.Uint16(data[pos+2 : pos+4])
 
-	var count uint64
-	var valueBytes []byte
+	var (
+		count      uint64
+		valueBytes []byte
+	)
 
 	if bigtiff {
 		count = order.Uint64(data[pos+4 : pos+12])
@@ -259,8 +263,10 @@ func buildGrid(data []byte, order binary.ByteOrder, entries []ifdEntry) (*gridMo
 	}
 
 	// Read pixel data.
-	var rawPixels []byte
-	var readErr error
+	var (
+		rawPixels []byte
+		readErr   error
+	)
 
 	//nolint:gosec // TIFF dimensions bounded by uint16/uint32, safe on 64-bit
 	iWidth, iHeight, iBps, iSampleFmt, iCompression := int(width), int(height), int(bps), int(sampleFmt), int(compression)
@@ -441,7 +447,12 @@ func decompressChunk(chunk []byte, compression int) ([]byte, error) {
 
 		defer r.Close()
 
-		return io.ReadAll(r)
+		out, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("deflate read: %w", err)
+		}
+
+		return out, nil
 	default:
 		return nil, fmt.Errorf("unsupported compression: %d", compression)
 	}

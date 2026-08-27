@@ -228,11 +228,45 @@ commit messages; the consequences each one exposed are open items below.
       Note `frontend-ci` is currently green but `fe-bundle-check` is not part of it — the map
       bundle is over budget (Priority 8), so requiring `frontend-ci` does not yet gate bundle size.
 
-- [ ] **Pay down the debts a green `just lint` hides.** `wrapcheck` is excluded for all of
-      `internal/`, i.e. the entire backend, so the error-wrapping policy is unenforced; removing
-      that exclusion costs 190 findings and should be sequenced after the `domain/errors` work in
-      Priority 7. Separately, 430 of the original 542 findings were removed by switching linters
-      off rather than by fixing code. Per-linter reasons in `docs/lint-triage.md`.
+- [ ] **Pay down the debts a green `just lint` hides.** Partly paid on 2026-08-28 — 293 findings
+      converted from config-hidden to fixed code, 557 still hidden. Audit in `docs/lint-triage.md`.
+
+      Done:
+
+      - **`wrapcheck` is enforced.** The blanket `path: internal/` exclusion is deleted and all
+        190 sites are wrapped as `fmt.Errorf("<operation>: %w", err)`, with **zero
+        `//nolint:wrapcheck` escapes** — no site turned out to be a sentinel pass-through. Origin
+        of the 190: 115 in-module cross-package, 62 stdlib, 13 `flatgeobuf`. The earlier
+        "sequence it after `domain/errors`" plan was wrong: `%w` preserves the
+        `errors.As(&AppError)` classification the CLI exit codes rely on, so P7 can still convert
+        these to typed errors on top of the wrapping.
+      - **gosec G301 is enforced.** All 54 `os.MkdirAll(…, 0o755)` sites became `0o750` (44
+        non-test, 10 test). G301 was inside the `legacy` preset's EXC0009, bundled with G302/G307
+        under one regex and therefore not separable; `legacy` was dropped and replayed as four
+        explicit rules (EXC0004, EXC0005, EXC0008, EXC0009-minus-G301), so only G301 changed.
+      - **`goconst` is enabled again** with `ignore-tests: true` and `min-occurrences: 3`.
+        509 → 216 by dropping tests, 216 → 167 by fixing 49 findings in code, 167 → 0 by three
+        exclusion rules scoped by path **and** string value.
+
+      Remaining, with today's uncapped counts:
+
+      - `goconst` **167** excluded. 39 are the OpenAPI keyword set and are permanent; the other
+        128 are owned by the Priority 7 parameter-descriptor refactor (99) and typed response
+        payloads (29). Named and bounded now, but not fixed.
+      - gosec **G304 97** (47 non-test) still hidden by the exclusion presets. Reason unchanged —
+        opening a user-named path is what a file-format toolchain does — but the count doubled
+        from 47 while suppressed, which is the same drift that made G301 worth fixing. Nobody has
+        re-litigated it on current evidence.
+      - `wsl_v5` **196** (was 120) and `noinlineerr` **94** (was 41) still disabled; both are
+        style opinions this project has declined in writing and the reasons still hold.
+        `noinlineerr` grew partly because the `wrapcheck` work introduces exactly the
+        `if err := f(); err != nil` form it objects to.
+      - `gocyclo` **3** still disabled as redundant with `cyclop`.
+
+      What did change structurally: **no linter is switched off across the entire backend any
+      more.** Every remaining exclusion names a rule the project argued about in writing, or a
+      path and a string value.
+
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
       `GO-2026-5970`, reachable via `reporting.renderTypstSource`) and `backend/go.mod` gained
@@ -632,9 +666,13 @@ currently open.
       `modelgeojson/validate.go:355-380`, `fgbimport.go:167,191,225`, `citygmlimport.go:62`
       (nesting depth only — XXE and billion-laughs are already safe under Go's `xml.Decoder`),
       `store.go:365-377`, `gridmap.go:87` / `railops.go:155`.
-- [ ] Stop neutering gosec: `.golangci.yml` exclusion presets suppress G304 (47 hits) and G301
-      (44 hits, all `MkdirAll(0o755)`). Decide each explicitly rather than suppressing silently —
-      G304 is arguably the product (the tool opens paths the user names), G301 is a real choice.
+- [ ] Stop neutering gosec. **G301 is done (2026-08-28):** it was not suppressed by this project's
+      config at all but bundled with G302/G307 inside the `legacy` preset's EXC0009 regex, so it
+      could not be split out; `legacy` was dropped and replayed as four explicit rules minus G301,
+      and all 54 `MkdirAll(0o755)` sites became `0o750`. Enforcement proven with a deliberate
+      probe. **G304 is still suppressed and the count doubled while nobody looked: 47 → 97** (50
+      test, 47 non-test). G304 is arguably the product — the tool opens paths the user names — but
+      that verdict was taken at 47 and has not been re-examined at 97.
       **Correction (27 August 2026):** the earlier claim that "17 G115 integer-overflow hits
       concentrate in `geotiff.go`" is wrong. `geo/terrain/geotiff.go` carries 13 explicit,
       individually justified `//nolint:gosec` directives, all confirmed still live by
@@ -830,12 +868,16 @@ them left a decision behind:
       coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module. Either promote those
       scanners into `go-ci.yml` or drop trunk.
 - [ ] Stop claiming "all linters enabled". `AGENTS.md` and `README.md` both say it; `.golangci.yml`
-      disables roughly 20. "Defaults plus tuned disables" is accurate and just as short.
-- [ ] `.golangci.yml` disables `wrapcheck` for all of `internal/` — the whole backend — so the
-      error-wrapping policy is unenforced. Removing the exclusion costs 190 findings, so sequence
-      it after the `domain/errors` work in Priority 7; a `FIXME(lint-triage)` in the config carries
-      the count. (The `sqlclosecheck` half of this item is done: the "no SQL in this project"
-      claim was false, and the linter is re-enabled at 0 findings — `0a13e80`.)
+      disables **20** linters outright (21 before `goconst` came back on 2026-08-28) and excludes
+      four more rules by path or string value. "Defaults plus tuned disables" is accurate and just
+      as short. Unchanged by the 2026-08-28 lint debt pass — the claim is still wrong.
+- [x] `.golangci.yml` disabled `wrapcheck` for all of `internal/` — the whole backend — so the
+      error-wrapping policy was unenforced. **Done 2026-08-28:** the exclusion and its
+      `FIXME(lint-triage)` are deleted, all 190 findings are fixed with `fmt.Errorf("…: %w", err)`
+      and no `//nolint:wrapcheck` was needed anywhere. The `sqlclosecheck` half was already done:
+      the "no SQL in this project" claim was false, and the linter is re-enabled at 0 findings
+      (`0a13e80`). The `cmd/` and `_test.go` exclusions still list `wrapcheck` and are unchanged —
+      both are legitimate.
 
 ---
 

@@ -24,7 +24,7 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 		return fmt.Errorf("validate receiver table: %w", err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
@@ -58,7 +58,7 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 
 // ExportContourGeoPackage writes contour lines as an OGC GeoPackage.
 func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	err := os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
@@ -95,12 +95,12 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 	// Set GeoPackage application_id.
 	_, err := db.ExecContext(ctx, "PRAGMA application_id = 0x47504B47") // 'GPKG'
 	if err != nil {
-		return err
+		return fmt.Errorf("set gpkg application_id pragma: %w", err)
 	}
 
 	_, err = db.ExecContext(ctx, "PRAGMA user_version = 10301") // GeoPackage 1.3.1
 	if err != nil {
-		return err
+		return fmt.Errorf("set gpkg user_version pragma: %w", err)
 	}
 
 	// Create required GeoPackage metadata tables.
@@ -166,7 +166,7 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 			s.name, s.id, s.org, s.orgID, s.def,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("insert default srs %d into gpkg_spatial_ref_sys: %w", s.id, err)
 		}
 	}
 
@@ -178,7 +178,7 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 			crs, srsID, "EPSG", srsID, "undefined",
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("insert project srs %d into gpkg_spatial_ref_sys: %w", srsID, err)
 		}
 	}
 
@@ -228,7 +228,7 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 		minX, minY, maxX, maxY, srsID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_contents for table receivers: %w", err)
 	}
 
 	// Register geometry column.
@@ -238,7 +238,7 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 		"receivers", "geom", "POINT", srsID, 1, 0,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_geometry_columns for table receivers: %w", err)
 	}
 
 	return nil
@@ -271,7 +271,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction for table receivers: %w", err)
 	}
 
 	defer func() {
@@ -280,7 +280,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 
 	stmt, err := tx.PrepareContext(ctx, insertSQL)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare insert statement for table receivers: %w", err)
 	}
 	defer stmt.Close()
 
@@ -300,7 +300,11 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction for table receivers: %w", err)
+	}
+
+	return nil
 }
 
 func createContourTable(db *sql.DB, srsID int) error {
@@ -313,7 +317,7 @@ func createContourTable(db *sql.DB, srsID int) error {
 		band_name TEXT NOT NULL
 	)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("create table contours: %w", err)
 	}
 
 	_, err = db.ExecContext(
@@ -323,7 +327,7 @@ func createContourTable(db *sql.DB, srsID int) error {
 		time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), srsID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_contents for table contours: %w", err)
 	}
 
 	_, err = db.ExecContext(
@@ -332,7 +336,7 @@ func createContourTable(db *sql.DB, srsID int) error {
 		"contours", "geom", "LINESTRING", srsID, 0, 0,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_geometry_columns for table contours: %w", err)
 	}
 
 	return nil
@@ -347,7 +351,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction for table contours: %w", err)
 	}
 
 	defer func() {
@@ -356,7 +360,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 
 	stmt, err := tx.PrepareContext(ctx, "INSERT INTO contours (geom, level_db, band_name) VALUES (?, ?, ?)")
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare insert statement for table contours: %w", err)
 	}
 	defer stmt.Close()
 
@@ -373,7 +377,11 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction for table contours: %w", err)
+	}
+
+	return nil
 }
 
 // encodeGPKGPoint encodes a point as GeoPackage standard binary geometry (GP).
@@ -486,7 +494,7 @@ type ModelFeature struct {
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
 // as an OGC GeoPackage with mixed geometry types.
 func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	err := os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
@@ -529,7 +537,7 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 		height_m REAL
 	)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("create table model_features: %w", err)
 	}
 
 	minX, minY, maxX, maxY := computeModelFeaturesExtent(features)
@@ -542,7 +550,7 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 		minX, minY, maxX, maxY, srsID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_contents for table model_features: %w", err)
 	}
 
 	_, err = db.ExecContext(
@@ -551,7 +559,7 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 		"model_features", "geom", "GEOMETRY", srsID, 0, 0,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("insert into gpkg_geometry_columns for table model_features: %w", err)
 	}
 
 	return nil
@@ -566,7 +574,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction for table model_features: %w", err)
 	}
 
 	defer func() {
@@ -575,7 +583,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 
 	stmt, err := tx.PrepareContext(ctx, "INSERT INTO model_features (geom, feature_id, kind, source_type, height_m) VALUES (?, ?, ?, ?, ?)")
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare insert statement for table model_features: %w", err)
 	}
 	defer stmt.Close()
 
@@ -591,7 +599,11 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction for table model_features: %w", err)
+	}
+
+	return nil
 }
 
 func parseModelGeometry(geomType string, coords any, srsID int) ([]byte, error) {
@@ -720,7 +732,12 @@ func toFloat64(v any) (float64, error) {
 	case int64:
 		return float64(val), nil
 	case json.Number:
-		return val.Float64()
+		f, err := val.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("convert json.Number %q to float64: %w", val.String(), err)
+		}
+
+		return f, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float64", v)
 	}

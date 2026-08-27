@@ -374,7 +374,7 @@ func ListRuns(projectDir string) ([]*RunResult, error) {
 func parseINIFile(path string) (map[string]map[string]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open ini file %s: %w", path, err)
 	}
 	defer f.Close()
 

@@ -22,7 +22,6 @@ linters:
     - exhaustive # don't require exhaustive switch on enums
     - exhaustruct # don't require all struct fields populated
     - gochecknoglobals # sync.Pools, singletons, config vars are fine
-    - goconst # fires on JSON output keys and CLI flag names; hoisting them hurts readability
     - gocyclo # redundant: cyclop enforces the same cyclomatic metric
     - godox # allow TODO/FIXME comments
     - gomodguard # deprecated since v2.12.0, replaced by gomodguard_v2
@@ -36,13 +35,23 @@ linters:
     - paralleltest # not enforcing t.Parallel everywhere
     - testpackage # allow white-box tests in same package
     - varnamelen # short names idiomatic in math/acoustics code
-    - wsl # whitespace/cuddling style only, no defect-catching value
-    - wsl_v5 # same as wsl: pure whitespace style
+    - wsl # superseded by wsl_v5, which is enabled
   enable:
     - gomodguard_v2
 
     - revive
   settings:
+    goconst:
+      # Test fixtures repeat scenario names, standard IDs and expected strings by
+      # construction; that is not debt. Dropping test files takes the finding
+      # count from 509 to 216 and leaves only production duplication.
+      ignore-tests: true
+      # Left at the default of 3. Raising it does not help here: the
+      # highest-count strings are the JSON output keys we deliberately keep
+      # literal (group 3 below), so a higher threshold silences the actionable
+      # 3-occurrence findings first. See docs/lint-triage.md.
+      min-occurrences: 3
+
     cyclop:
       max-complexity: 15
 
@@ -64,9 +73,37 @@ linters:
 
   exclusions:
     generated: lax
-    presets: [comments, common-false-positives, legacy, std-error-handling]
+    # `legacy` dropped: it bundled gosec G301 (dir perms > 0750) in with G302
+    # and G307 (file perms > 0600) under one EXC0009 pattern, so keeping the
+    # preset meant G301 stayed silently excluded too. The four rules below
+    # replay everything else `legacy` provided (EXC0004, EXC0005, EXC0008,
+    # and EXC0009's G302/G307) so nothing else changes — only G301 becomes
+    # enforced. Measured 2026-08-28: with those four rules deleted the tree is
+    # also at 0, i.e. none of them fires today. They are insurance, not dead
+    # weight — do not "simplify" them away.
+    presets: [comments, common-false-positives, std-error-handling]
 
     rules:
+      # Replaces `legacy` preset's EXC0004: common govet false positives.
+      - linters: [govet]
+        text: "(possible misuse of unsafe.Pointer|should have signature)"
+
+      # Replaces `legacy` preset's EXC0005: C-style explicit 'break' in a
+      # 'switch' is fine (staticcheck SA4011).
+      - linters: [staticcheck]
+        text: "SA4011"
+
+      # Replaces `legacy` preset's EXC0008: G104 duplicates errcheck.
+      - linters: [gosec]
+        text: "G104"
+
+      # Replaces `legacy` preset's EXC0009, minus G301: file (G302) and
+      # deferred-close (G307) permission findings are still noisy in popular
+      # repos and stay excluded; G301 (directory perms > 0750) is now
+      # enforced project-wide — see PLAN.md decision to standardise on 0o750.
+      - linters: [gosec]
+        text: "(G302|G307): Expect (directory permissions to be 0750|file permissions to be 0600) or less"
+
       # cmd/ uses inits for cobra, wraps errors less strictly
       - linters: [gochecknoinits, wrapcheck]
         path: cmd/
@@ -88,11 +125,40 @@ linters:
           ]
         path: _test\.go
 
-      # FIXME(lint-triage): blanket exclusion — leaves the error-wrapping policy
-      # unenforced across the whole codebase (190 findings if removed).
-      # See docs/lint-triage.md; revisit with the domain/errors work in PLAN.md P7.
-      - linters: [wrapcheck]
-        path: internal/
+      # goconst group 1 — OpenAPI 3 wire vocabulary. openapi.go builds the spec
+      # as nested map[string]any literals, so `type`, `string`, `properties`,
+      # `$ref`, `responses` and the rest of the OpenAPI keyword set repeat by
+      # construction. The spellings are fixed by the OpenAPI specification, not
+      # by us, so a constant buys no typo protection and makes the spec builder
+      # unreadable. The file contains nothing but that builder, so scoping the
+      # exclusion to it excludes exactly this vocabulary.
+      - linters: [goconst]
+        path: internal/api/httpv1/openapi\.go
+
+      # goconst group 2 — CLI and standard-module parameter names. Each name
+      # appears exactly three times: flag/descriptor registration, parse, and
+      # provenance metadata. goconst has a fair point (a typo between the three
+      # fails silently), but the fix is the parameter-descriptor refactor in
+      # PLAN.md Priority 7, which removes the triplication outright; a constant
+      # per name would add ~45 identifiers and leave the duplication in place.
+      # Scoped to both the files that carry the triplication and the parameter
+      # vocabulary itself, so any other repeated string in these files is still
+      # reported.
+      - linters: [goconst]
+        path: (internal/app/cli/(run_options|run_options_beb|run_extract_rls19|import_soundplan)\.go|internal/standards/(schall03|iso9613)/(model|propagation|indicators)\.go)
+        text: "string `(air_absorption_db_per_km|bridge_correction_db|curve_correction_db|grid_padding_m|grid_resolution_m|ground_attenuation_db|meteorology_assumption|min_distance_m|rail_[a-z0-9_]+|receiver_height_m|receiver_mode|road_[a-z0-9_]+|slab_track_correction_db|speed_[a-z0-9_]+|traffic_[a-z0-9_]+)`"
+
+      # goconst group 3 — JSON output-contract keys. These sit inside the
+      # `map[string]any{…}` literals that serialise the CLI `--json` output, the
+      # HTTP API responses and the GeoJSON contour export. They are a public
+      # output contract: hoisting them hides that fact and makes the emitted
+      # shape unreadable at the emission site, where it most needs to be
+      # greppable. PLAN.md Priority 7 owns the structural fix (typed response
+      # payloads instead of map literals); until then the keys stay literal.
+      # Scoped to the emitting packages and to the enumerated key set.
+      - linters: [goconst]
+        path: (internal/app/cli/|internal/api/httpv1/|internal/report/export/)
+        text: "string `(command|error|finished_at|kind|model_version|output_hash|path|receiver_count|receiver_mode|reporting_precision_db|run_id|scenario_id|source_count|standard_id|started_at|status|time|type)`"
 
 formatters:
   enable:

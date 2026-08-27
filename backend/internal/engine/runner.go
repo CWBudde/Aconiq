@@ -132,12 +132,12 @@ func (r *Runner) prepareRunExecution(ctx context.Context, cfg RunConfig) (runExe
 	outputPath := filepath.Join(runDir, "run-output.json")
 	statePath := filepath.Join(runDir, "run-state.json")
 
-	err := os.MkdirAll(runChunksDir, 0o755)
+	err := os.MkdirAll(runChunksDir, 0o750)
 	if err != nil {
 		return runExecution{}, fmt.Errorf("create run cache directory: %w", err)
 	}
 
-	err = os.MkdirAll(sharedChunksDir, 0o755)
+	err = os.MkdirAll(sharedChunksDir, 0o750)
 	if err != nil {
 		return runExecution{}, fmt.Errorf("create shared chunk cache directory: %w", err)
 	}
@@ -298,7 +298,7 @@ func validateConfig(cfg RunConfig) error {
 func buildSourceIndex(cfg RunConfig) (geo.SpatialIndex, error) {
 	index, err := geo.NewGridSpatialIndex(cfg.SourceIndexCellM)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build source spatial index: %w", err)
 	}
 
 	for _, source := range cfg.Sources {
@@ -312,7 +312,7 @@ func buildSourceIndex(cfg RunConfig) (geo.SpatialIndex, error) {
 			},
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("index source %s: %w", source.ID, err)
 		}
 	}
 
@@ -625,7 +625,7 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 }
 
 func writeChunk(path string, results []ReceiverResult) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	err := os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create chunk cache directory %s: %w", filepath.Dir(path), err)
 	}
@@ -657,7 +657,7 @@ func writeJSONFile(path string, value any) error {
 
 	encoded = append(encoded, '\n')
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
@@ -677,7 +677,7 @@ func cleanupTmpFiles(root string) error {
 			return nil
 		}
 
-		return err
+		return fmt.Errorf("read tmp dir %s: %w", root, err)
 	}
 
 	for _, entry := range entries {
@@ -689,7 +689,7 @@ func cleanupTmpFiles(root string) error {
 		if filepath.Ext(name) == ".tmp" {
 			err := os.Remove(filepath.Join(root, name))
 			if err != nil && !os.IsNotExist(err) {
-				return err
+				return fmt.Errorf("remove tmp file %s: %w", name, err)
 			}
 		}
 	}

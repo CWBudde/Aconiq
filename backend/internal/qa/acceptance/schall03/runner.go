@@ -441,7 +441,7 @@ func writeJSONFile(path string, value any) error {
 
 	payload = append(payload, '\n')
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}

@@ -33,7 +33,7 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 		return err
 	}
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create receiver table directory: %w", err)
 	}
@@ -60,7 +60,7 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 		return err
 	}
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create receiver table directory: %w", err)
 	}

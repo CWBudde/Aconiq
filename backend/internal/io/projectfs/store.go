@@ -21,6 +21,11 @@ import (
 const (
 	toolName    = "aconiq"
 	toolVersion = "dev"
+
+	// Fallbacks written by Init and applied by CreateRun when the caller leaves
+	// the scenario or standard profile unset.
+	defaultScenarioID      = "default"
+	defaultStandardProfile = "default"
 )
 
 // Store persists project metadata and run provenance in the local project folder.
@@ -88,22 +93,22 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 		return project.Project{}, domainerrors.New(domainerrors.KindUserInput, "projectfs.Init", "project already initialized: "+s.manifestPath(), nil)
 	}
 
-	err = os.MkdirAll(s.root, 0o755)
+	err = os.MkdirAll(s.root, 0o750)
 	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create project directory", err)
 	}
 
-	err = os.MkdirAll(s.runsDir(), 0o755)
+	err = os.MkdirAll(s.runsDir(), 0o750)
 	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create runs directory", err)
 	}
 
-	err = os.MkdirAll(s.artifactsDir(), 0o755)
+	err = os.MkdirAll(s.artifactsDir(), 0o750)
 	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create artifacts directory", err)
 	}
 
-	err = os.MkdirAll(s.logsDir(), 0o755)
+	err = os.MkdirAll(s.logsDir(), 0o750)
 	if err != nil {
 		return project.Project{}, domainerrors.New(domainerrors.KindInternal, "projectfs.Init", "create logs directory", err)
 	}
@@ -129,12 +134,12 @@ func (s Store) Init(name string, crs string) (project.Project, error) {
 		},
 		Scenarios: []project.Scenario{
 			{
-				ID:   "default",
+				ID:   defaultScenarioID,
 				Name: "Default Scenario",
 				Standard: project.StandardRef{
 					ID:      "unassigned",
 					Version: "v0",
-					Profile: "default",
+					Profile: defaultStandardProfile,
 				},
 				CreatedAt: now,
 			},
@@ -194,7 +199,7 @@ func (s Store) Save(proj project.Project) error {
 
 	serialized = append(serialized, '\n')
 
-	err = os.MkdirAll(filepath.Dir(s.manifestPath()), 0o755)
+	err = os.MkdirAll(filepath.Dir(s.manifestPath()), 0o750)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "create manifest directory", err)
 	}
@@ -223,7 +228,7 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 
 	scenarioID := spec.ScenarioID
 	if scenarioID == "" {
-		scenarioID = "default"
+		scenarioID = defaultScenarioID
 	}
 
 	scenario, ok := findScenarioByID(proj.Scenarios, scenarioID)
@@ -245,7 +250,7 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	}
 
 	if std.Profile == "" {
-		std.Profile = "default"
+		std.Profile = defaultStandardProfile
 	}
 
 	return s.persistRun(proj, spec, scenarioID, std)
@@ -256,7 +261,7 @@ func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID s
 	runID := buildID("run")
 	runDir := filepath.Join(s.runsDir(), runID)
 
-	err := os.MkdirAll(runDir, 0o755)
+	err := os.MkdirAll(runDir, 0o750)
 	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, domainerrors.New(domainerrors.KindInternal, "projectfs.CreateRun", "create run directory", err)
 	}

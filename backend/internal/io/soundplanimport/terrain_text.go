@@ -79,6 +79,7 @@ func LoadTerrainData(projectDir string) (*TerrainData, error) {
 
 	if !baseTerrainLoaded {
 		hoehenPath := filepath.Join(projectDir, "Höhen.txt")
+
 		points, txtErr := ParseHoehenTxtFile(hoehenPath)
 		if txtErr == nil {
 			terrain.ElevationPoints = points
@@ -111,6 +112,7 @@ func loadDGMFiles(projectDir string, baseTerrainLoaded bool) (dgmFiles []DGMData
 	}
 
 	sort.Strings(dgmPaths)
+
 	for _, path := range dgmPaths {
 		dgm, dgmErr := ParseDGMFile(path)
 		if dgmErr == nil {

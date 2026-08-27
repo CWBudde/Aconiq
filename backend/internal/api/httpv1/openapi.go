@@ -584,7 +584,7 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 
 	encoded = append(encoded, '\n')
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create openapi output directory: %w", err)
 	}

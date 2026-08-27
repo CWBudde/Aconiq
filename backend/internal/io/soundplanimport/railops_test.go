@@ -36,6 +36,7 @@ func TestLoadRailOperationSummaries(t *testing.T) {
 	}
 
 	found := false
+
 	for _, summary := range summaries {
 		if summary.Railname != "Hauptstrecke Gleis 1" {
 			continue

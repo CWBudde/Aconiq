@@ -187,6 +187,7 @@ func (p *objsParser) readDataRecordPayload(i int) ([]byte, int, bool) {
 	}
 
 	payloadLen := int(readU32(p.data, i+10))
+
 	recEnd += payloadLen
 	if recEnd > len(p.data) {
 		return nil, i + 3, false
@@ -310,6 +311,7 @@ func footprintDistanceSq(footprint []Point3D, point Point3D) float64 {
 	}
 
 	best := math.Inf(1)
+
 	for i := 1; i < len(footprint); i++ {
 		dist := pointToSegmentDistanceSq(point, footprint[i-1], footprint[i])
 		if dist < best {
@@ -329,6 +331,7 @@ func footprintDistanceSq(footprint []Point3D, point Point3D) float64 {
 
 func pointToSegmentDistanceSq(point Point3D, start Point3D, end Point3D) float64 {
 	dx := end.X - start.X
+
 	dy := end.Y - start.Y
 	if dx == 0 && dy == 0 {
 		return squaredDistance(point.X, point.Y, start.X, start.Y)
@@ -343,6 +346,7 @@ func pointToSegmentDistanceSq(point Point3D, start Point3D, end Point3D) float64
 	default:
 		projX := start.X + t*dx
 		projY := start.Y + t*dy
+
 		return squaredDistance(point.X, point.Y, projX, projY)
 	}
 }

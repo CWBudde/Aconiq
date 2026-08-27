@@ -146,7 +146,7 @@ func TestLoadErrors(t *testing.T) {
 		}
 	}
 
-	err = os.MkdirAll(filepath.Dir(store.ManifestPath()), 0o755)
+	err = os.MkdirAll(filepath.Dir(store.ManifestPath()), 0o750)
 	if err != nil {
 		t.Fatalf("mkdir manifest dir: %v", err)
 	}

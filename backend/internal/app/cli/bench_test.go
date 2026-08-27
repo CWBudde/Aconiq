@@ -16,6 +16,7 @@ func TestBenchGeneratesSummaryAndReusesCache(t *testing.T) {
 	cacheDir := filepath.Join(projectDir, ".noise", "cache")
 
 	cmd := newRootCommand()
+
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stdout)
@@ -86,7 +87,7 @@ func TestBenchPrunesOlderSuites(t *testing.T) {
 		"20260308T000000.000000002Z",
 		"20260308T000000.000000003Z",
 	} {
-		err := os.MkdirAll(filepath.Join(benchRoot, suiteID), 0o755)
+		err := os.MkdirAll(filepath.Join(benchRoot, suiteID), 0o750)
 		if err != nil {
 			t.Fatalf("create suite %s: %v", suiteID, err)
 		}

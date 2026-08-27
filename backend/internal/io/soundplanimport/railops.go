@@ -107,6 +107,7 @@ func buildRailOperationSummary(rail RailEmission, linked []TrainEmission, typeBy
 		}
 
 		summary.TrainClass = schall03.TrainClassMixed
+
 		return summary
 	}
 
@@ -172,6 +173,7 @@ func selectRailOperationResultDir(projectDir string, runs []*RunResult) (string,
 			}
 
 			dir := filepath.Join(projectDir, run.ResultSubFolder)
+
 			suffix := extractRunSuffix(run.ResultSubFolder)
 			if fileExists(filepath.Join(dir, "RRAI"+suffix+".abs")) && fileExists(filepath.Join(dir, "RRAD"+suffix+".abs")) {
 				return dir, nil
@@ -189,6 +191,7 @@ func deriveAssessmentHours(proj *Project) (float64, float64) {
 
 	dayHours := durationHours(proj.DayPeriod)
 	nightHours := durationHours(proj.NightPeriod)
+
 	if dayHours <= 0 {
 		dayHours = 16
 	}
@@ -208,6 +211,7 @@ func durationHours(period string) float64 {
 
 	start := parseGermanFloat(parts[0])
 	end := parseGermanFloat(parts[1])
+
 	duration := end - start
 	if duration <= 0 {
 		duration += 24

@@ -29,7 +29,7 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 		return ExportOutputs{}, errors.New("at least one building exposure output is required")
 	}
 
-	err := os.MkdirAll(baseDir, 0o755)
+	err := os.MkdirAll(baseDir, 0o750)
 	if err != nil {
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
@@ -41,12 +41,12 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 
 	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save receiver table json %s: %w", receiverJSONPath, err)
 	}
 
 	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save receiver table csv %s: %w", receiverCSVPath, err)
 	}
 
 	raster, err := buildBEBResultRaster(summary)
@@ -61,7 +61,7 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 
 	persistence, err := results.SaveRaster(filepath.Join(baseDir, "beb-exposure"), raster)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save raster %s: %w", StandardID, err)
 	}
 
 	summaryPath := filepath.Join(baseDir, "beb-summary.json")
@@ -128,7 +128,7 @@ func buildBEBResultRaster(summary Summary) (*results.Raster, error) {
 		BandNames: []string{IndicatorAffectedPersonsLden, IndicatorAffectedPersonsLnight, IndicatorAffectedDwellingsLden, IndicatorAffectedDwellingsLnight},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create raster: %w", err)
 	}
 
 	return raster, populateBEBResultRaster(raster, summary)
@@ -139,22 +139,22 @@ func populateBEBResultRaster(raster *results.Raster, summary Summary) error {
 
 	err = raster.Set(0, 0, 0, summary.AffectedPersonsLden)
 	if err != nil {
-		return err
+		return fmt.Errorf("set raster band %s: %w", IndicatorAffectedPersonsLden, err)
 	}
 
 	err = raster.Set(0, 0, 1, summary.AffectedPersonsLnight)
 	if err != nil {
-		return err
+		return fmt.Errorf("set raster band %s: %w", IndicatorAffectedPersonsLnight, err)
 	}
 
 	err = raster.Set(0, 0, 2, summary.AffectedDwellingsLden)
 	if err != nil {
-		return err
+		return fmt.Errorf("set raster band %s: %w", IndicatorAffectedDwellingsLden, err)
 	}
 
 	err = raster.Set(0, 0, 3, summary.AffectedDwellingsLnight)
 	if err != nil {
-		return err
+		return fmt.Errorf("set raster band %s: %w", IndicatorAffectedDwellingsLnight, err)
 	}
 
 	return nil
@@ -163,8 +163,13 @@ func populateBEBResultRaster(raster *results.Raster, summary Summary) error {
 func writeBEBSummary(summaryPath string, summary Summary) error {
 	payload, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal beb summary: %w", err)
 	}
 
-	return os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
+	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
+	if err != nil {
+		return fmt.Errorf("write beb summary %s: %w", summaryPath, err)
+	}
+
+	return nil
 }

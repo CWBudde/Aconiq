@@ -38,6 +38,7 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 	}
 
 	counts := make(map[string]int)
+
 	for _, feature := range fc.Features {
 		kind, _ := feature.Properties["kind"].(string)
 		counts[kind]++
@@ -59,10 +60,13 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("source count = %d, want at least 2", counts["source"])
 	}
 
-	var sawDerivedRail bool
-	var sawDerivedTraction bool
-	var sawAddressedBuilding bool
-	var sawBarrierAcoustics bool
+	var (
+		sawDerivedRail       bool
+		sawDerivedTraction   bool
+		sawAddressedBuilding bool
+		sawBarrierAcoustics  bool
+	)
+
 	for _, feature := range fc.Features {
 		kind, _ := feature.Properties["kind"].(string)
 		switch kind {
@@ -83,6 +87,7 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 			address, _ := feature.Properties["soundplan_address"].(string)
 			if address == "Hauptstraße 4" {
 				sawAddressedBuilding = true
+
 				if _, ok := feature.Properties["soundplan_placeholder_height"]; ok {
 					t.Fatal("expected parsed SoundPLAN building height, not placeholder height metadata")
 				}
@@ -90,6 +95,7 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 		case "barrier":
 			absorptionA, okA := feature.Properties["soundplan_barrier_absorption_a_db"].(float64)
+
 			absorptionB, okB := feature.Properties["soundplan_barrier_absorption_b_db"].(float64)
 			if okA && okB && absorptionA == 30 && absorptionB == 30 {
 				sawBarrierAcoustics = true

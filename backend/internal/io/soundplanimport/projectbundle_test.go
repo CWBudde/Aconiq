@@ -61,6 +61,7 @@ func TestLoadProjectBundle(t *testing.T) {
 
 	foundProjectSP := false
 	foundGeoRailRef := false
+
 	for _, ref := range bundle.ResultFileRefs {
 		if ref == filepath.Base(filepath.Join(dir, "GeoRail.geo")) {
 			foundGeoRailRef = true

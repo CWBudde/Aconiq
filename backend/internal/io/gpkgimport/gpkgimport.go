@@ -110,7 +110,7 @@ func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
 
 	return ReadResult{
 		Collection: modelgeojson.FeatureCollection{
-			Type:     "FeatureCollection",
+			Type:     modelgeojson.TypeFeatureCollection,
 			Features: features,
 		},
 		EPSGCode: epsg,
@@ -216,9 +216,12 @@ func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojs
 		return nil, fmt.Errorf("gpkg: scan row: %w", scanErr)
 	}
 
-	var geomType string
-	var coords any
-	var featureID any
+	var (
+		geomType  string
+		coords    any
+		featureID any
+	)
+
 	props := make(map[string]any)
 
 	for i, col := range colNames {

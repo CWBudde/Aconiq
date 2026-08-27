@@ -44,7 +44,7 @@ func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg Expos
 
 		roadOutputs, err := road.ComputeReceiverOutputs(receivers, roads, propagation)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compute road receiver outputs: %w", err)
 		}
 
 		return roadLevelIndicatorsByReceiver(roadOutputs), nil
@@ -60,7 +60,7 @@ func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufa
 
 		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, propagation)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compute aircraft receiver outputs: %w", err)
 		}
 
 		return aircraftLevelIndicatorsByReceiver(aircraftOutputs), nil

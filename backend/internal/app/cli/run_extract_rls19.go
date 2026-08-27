@@ -118,7 +118,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	overrideCount := 0
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -421,14 +421,14 @@ func extractRLS19DirectionalSourceSpecs(feature modelgeojson.Feature) ([]rls19Di
 
 func rls19LineGeometriesFromFeature(feature modelgeojson.Feature) ([]rls19LineGeometry, error) {
 	switch feature.GeometryType {
-	case geometryTypeLineString:
+	case modelgeojson.GeometryTypeLineString:
 		line, err := parseRLS19LineGeometry(feature.Coordinates, feature.Properties)
 		if err != nil {
 			return nil, err
 		}
 
 		return []rls19LineGeometry{line}, nil
-	case geometryTypeMultiLineString:
+	case modelgeojson.GeometryTypeMultiLineString:
 		rawLines, ok := feature.Coordinates.([]any)
 		if !ok {
 			return nil, errors.New("geometry MultiLineString coordinates must be an array")
@@ -529,7 +529,7 @@ func extractRLS19Barriers(model modelgeojson.Model) ([]rls19road.Barrier, error)
 	barriers := make([]rls19road.Barrier, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != "barrier" {
+		if feature.Kind != modelgeojson.FeatureKindBarrier {
 			continue
 		}
 
@@ -580,7 +580,7 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 	buildings := make([]rls19road.Building, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != "building" {
+		if feature.Kind != modelgeojson.FeatureKindBuilding {
 			continue
 		}
 

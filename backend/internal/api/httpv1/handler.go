@@ -29,6 +29,15 @@ const (
 	apiVersion = "v1"
 )
 
+// apiError.Code values. They are part of the HTTP API contract: clients switch
+// on them, and openapi.go documents them, so every emission site must use these
+// spellings.
+const (
+	errorCodeBadRequest    = "bad_request"
+	errorCodeNotFound      = "not_found"
+	errorCodeInternalError = "internal_error"
+)
+
 type Handler struct {
 	store       projectfs.Store
 	now         func() time.Time
@@ -323,7 +332,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "request body must be valid JSON",
 		})
 
@@ -333,7 +342,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	err = req.validate()
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: err.Error(),
 		})
 
@@ -559,7 +568,9 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 		// passed as a slice.
 		//nolint:gosec // request fields are validated by createRunRequest.validate
 		cmd := exec.CommandContext(ctx, executable, args...)
+
 		var stderr bytes.Buffer
+
 		cmd.Stdout = io.Discard
 		cmd.Stderr = &stderr
 
@@ -590,7 +601,7 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("id")
 	if runID == "" {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "run id is required",
 		})
 
@@ -614,7 +625,7 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 
 	if logPath == "" {
 		writeAPIError(w, http.StatusNotFound, apiError{
-			Code:    "not_found",
+			Code:    errorCodeNotFound,
 			Message: fmt.Sprintf("run %q not found", runID),
 		})
 
@@ -626,7 +637,7 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 	raw, readErr := os.ReadFile(absLogPath)
 	if readErr != nil {
 		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "internal_error",
+			Code:    errorCodeInternalError,
 			Message: "failed to read run log",
 		})
 
@@ -648,7 +659,7 @@ func (h Handler) handleArtifactContent(w http.ResponseWriter, r *http.Request) {
 	artifactID := r.PathValue("id")
 	if artifactID == "" {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "artifact id is required",
 		})
 
@@ -672,7 +683,7 @@ func (h Handler) handleArtifactContent(w http.ResponseWriter, r *http.Request) {
 
 	if artifactPath == "" {
 		writeAPIError(w, http.StatusNotFound, apiError{
-			Code:    "not_found",
+			Code:    errorCodeNotFound,
 			Message: fmt.Sprintf("artifact %q not found", artifactID),
 		})
 
@@ -684,7 +695,7 @@ func (h Handler) handleArtifactContent(w http.ResponseWriter, r *http.Request) {
 	raw, readErr := os.ReadFile(absPath)
 	if readErr != nil {
 		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "internal_error",
+			Code:    errorCodeInternalError,
 			Message: "failed to read artifact file",
 		})
 
@@ -776,7 +787,7 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "failed to decode request body: " + err.Error(),
 		})
 
@@ -785,7 +796,7 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 
 	if req.South >= req.North {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "south must be less than north",
 		})
 
@@ -794,7 +805,7 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 
 	if req.West >= req.East {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "west must be less than east",
 		})
 
@@ -803,7 +814,7 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 
 	if req.South < -90 || req.North > 90 || req.West < -180 || req.East > 180 {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "bounding box coordinates out of WGS84 range (lat: -90..90, lon: -180..180)",
 		})
 
@@ -854,7 +865,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(maxTerrainUploadBytes)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "failed to parse multipart form: " + err.Error(),
 		})
 
@@ -864,7 +875,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "missing 'file' field in multipart form",
 		})
 
@@ -876,7 +887,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".tif" && ext != ".tiff" {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "file must have .tif or .tiff extension",
 		})
 
@@ -886,7 +897,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(file)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "failed to read uploaded file: " + err.Error(),
 		})
 
@@ -896,7 +907,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	model, err := terrain.LoadFromBytes(data)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "bad_request",
+			Code:    errorCodeBadRequest,
 			Message: "invalid GeoTIFF terrain file: " + err.Error(),
 		})
 
@@ -906,7 +917,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	err = h.storeTerrainArtifact(data)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "internal_error",
+			Code:    errorCodeInternalError,
 			Message: err.Error(),
 		})
 
@@ -962,7 +973,7 @@ func updateOrAppendArtifact(artifacts []project.ArtifactRef, ref project.Artifac
 
 func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeAPIError(w, http.StatusNotFound, apiError{
-		Code:    "not_found",
+		Code:    errorCodeNotFound,
 		Message: "endpoint not found",
 		Details: map[string]any{
 			"method": r.Method,
@@ -1060,7 +1071,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 	proj, err := h.store.Load()
 	if err != nil {
 		apiErr := apiError{
-			Code:    "internal_error",
+			Code:    errorCodeInternalError,
 			Message: "failed to load project status",
 		}
 
@@ -1072,13 +1083,13 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 
 			switch appErr.Kind {
 			case domainerrors.KindNotFound:
-				apiErr.Code = "not_found"
+				apiErr.Code = errorCodeNotFound
 			case domainerrors.KindValidation:
 				apiErr.Code = "validation_error"
 			case domainerrors.KindUserInput:
 				apiErr.Code = "user_input_error"
 			default:
-				apiErr.Code = "internal_error"
+				apiErr.Code = errorCodeInternalError
 			}
 
 			apiErr.Details = map[string]any{
@@ -1175,17 +1186,17 @@ func requireMethod(w http.ResponseWriter, r *http.Request, expected string) bool
 func writeSSEEvent(w io.Writer, event string, data any) error {
 	payload, err := json.Marshal(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal SSE event %q data: %w", event, err)
 	}
 
 	_, err = fmt.Fprintf(w, "event: %s\n", event)
 	if err != nil {
-		return err
+		return fmt.Errorf("write SSE event %q header: %w", event, err)
 	}
 
 	_, err = fmt.Fprintf(w, "data: %s\n\n", payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("write SSE event %q data: %w", event, err)
 	}
 
 	return nil
@@ -1194,7 +1205,7 @@ func writeSSEEvent(w io.Writer, event string, data any) error {
 func writeDomainError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	apiErr := apiError{
-		Code:    "internal_error",
+		Code:    errorCodeInternalError,
 		Message: "request failed",
 	}
 
@@ -1218,11 +1229,11 @@ func writeDomainError(w http.ResponseWriter, err error) {
 			apiErr.Code = "validation_error"
 		case domainerrors.KindNotFound:
 			status = http.StatusNotFound
-			apiErr.Code = "not_found"
+			apiErr.Code = errorCodeNotFound
 			apiErr.Hint = "Initialize the project first with `aconiq init`."
 		default:
 			status = http.StatusInternalServerError
-			apiErr.Code = "internal_error"
+			apiErr.Code = errorCodeInternalError
 		}
 	}
 

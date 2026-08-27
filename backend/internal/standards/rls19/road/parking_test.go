@@ -64,6 +64,7 @@ func TestComputeParkingEmission_LkwOmnibus(t *testing.T) {
 	}
 
 	const dPT = 10.0
+
 	wantDay := 63 + 10*math.Log10(0.3*50) + dPT
 	wantNight := 63 + 10*math.Log10(0.05*50) + dPT
 
@@ -95,6 +96,7 @@ func TestComputeParkingEmission_Motorrad(t *testing.T) {
 	}
 
 	const dPT = 5.0
+
 	wantDay := 63 + 10*math.Log10(1.0*30) + dPT
 	wantNight := 63 + 10*math.Log10(0.2*30) + dPT
 
@@ -270,9 +272,11 @@ func TestComputeReceiverLevels_ParkingOnlyEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	const wantDay = 41.506
-	const wantNight = 34.516
-	const tol = 0.01
+	const (
+		wantDay   = 41.506
+		wantNight = 34.516
+		tol       = 0.01
+	)
 
 	if !almostEqual(result.LrDay, wantDay, tol) {
 		t.Errorf("LrDay: want %.3f ± %.3f dB, got %.6f dB", wantDay, tol, result.LrDay)

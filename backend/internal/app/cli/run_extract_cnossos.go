@@ -27,7 +27,7 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 	sources := make([]cnossosroad.RoadSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -294,7 +294,7 @@ func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunO
 	sources := make([]cnossosrail.RailSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -475,7 +475,7 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 	sources := make([]cnossosaircraft.AircraftSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -715,7 +715,7 @@ func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndu
 	sources := make([]cnossosindustry.IndustrySource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 

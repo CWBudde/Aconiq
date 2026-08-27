@@ -997,6 +997,7 @@ func createMultipartFile(t *testing.T, fieldName, fileName string, data []byte) 
 	t.Helper()
 
 	var b bytes.Buffer
+
 	w := multipart.NewWriter(&b)
 
 	part, err := w.CreateFormFile(fieldName, fileName)

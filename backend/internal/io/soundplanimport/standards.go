@@ -22,6 +22,7 @@ func MapStandardID(id int) StandardMapping {
 	switch id {
 	case 20490:
 		descriptor := schall03.Descriptor()
+
 		return StandardMapping{
 			SoundPlanID: id,
 			Aconiq: project.StandardRef{
@@ -34,6 +35,7 @@ func MapStandardID(id int) StandardMapping {
 		}
 	case 10490:
 		descriptor := rls19road.Descriptor()
+
 		return StandardMapping{
 			SoundPlanID: id,
 			Aconiq: project.StandardRef{
@@ -46,6 +48,7 @@ func MapStandardID(id int) StandardMapping {
 		}
 	case 30000:
 		descriptor := iso9613.Descriptor()
+
 		return StandardMapping{
 			SoundPlanID: id,
 			Aconiq: project.StandardRef{

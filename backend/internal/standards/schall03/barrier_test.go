@@ -163,6 +163,7 @@ func TestAbarLateralSingleBarrier(t *testing.T) {
 	}
 
 	var agrZero BeiblattSpectrum
+
 	abar := ComputeAbar(geom, agrZero)
 
 	// All bands should be > 0 (path difference z=1m > 0)
@@ -197,6 +198,7 @@ func TestDzCappedSingle(t *testing.T) {
 	}
 
 	var agrZero BeiblattSpectrum
+
 	abar := ComputeAbar(geom, agrZero)
 
 	for f := range NumBeiblattOctaveBands {
@@ -221,6 +223,7 @@ func TestDzCappedDouble(t *testing.T) {
 	}
 
 	var agrZero BeiblattSpectrum
+
 	abar := ComputeAbar(geom, agrZero)
 
 	for f := range NumBeiblattOctaveBands {

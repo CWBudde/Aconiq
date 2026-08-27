@@ -41,7 +41,7 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 
 	envelope, err := bimschv16.BuildExportEnvelope(model, table, standardID, generatedAt)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("build 16. BImSchV assessment envelope: %w", err)
 	}
 
 	if envelope.AssessedCount == 0 && len(envelope.Skipped) == 0 {
@@ -49,7 +49,7 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 	}
 
 	assessmentDir := filepath.Join(bundleDir, "assessment")
-	if err := os.MkdirAll(assessmentDir, 0o755); err != nil {
+	if err := os.MkdirAll(assessmentDir, 0o750); err != nil {
 		return "", false, fmt.Errorf("create assessment directory: %w", err)
 	}
 

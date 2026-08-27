@@ -10,12 +10,6 @@ import (
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
-const (
-	featureKindSource           = "source"
-	geometryTypeLineString      = "LineString"
-	geometryTypeMultiLineString = "MultiLineString"
-)
-
 type rls19LineGeometry struct {
 	Centerline           []geo.Point2D
 	CenterlineElevations []float64
@@ -41,7 +35,7 @@ func extractDummySources(model modelgeojson.Model, emissionDB float64, supported
 	sources := make([]freefield.Source, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 

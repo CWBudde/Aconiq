@@ -44,7 +44,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 	metadataPath := basePath + ".json"
 	dataPath := basePath + ".bin"
 
-	err := os.MkdirAll(filepath.Dir(basePath), 0o755)
+	err := os.MkdirAll(filepath.Dir(basePath), 0o750)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("create raster output directory: %w", err)
 	}

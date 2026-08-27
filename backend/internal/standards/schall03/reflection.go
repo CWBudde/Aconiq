@@ -367,8 +367,10 @@ func EnumerateReflectionPaths(source, receiver geo.Point2D, walls []ReflectingWa
 		maxOrder = MaxReflectionOrder
 	}
 
-	var result []ReflectionPath
-	var current []candidate
+	var (
+		result  []ReflectionPath
+		current []candidate
+	)
 
 	for i, w := range walls {
 		rg, ok := ComputeReflectionGeometry(source, receiver, w)

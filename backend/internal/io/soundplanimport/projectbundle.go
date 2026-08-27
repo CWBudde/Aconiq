@@ -29,6 +29,7 @@ type ProjectBundle struct {
 // LoadProjectBundle parses the supported SoundPlan project inputs found in one directory.
 func LoadProjectBundle(projectDir string) (*ProjectBundle, error) {
 	projectPath := filepath.Join(projectDir, "Project.sp")
+
 	proj, err := ParseProjectFile(projectPath)
 	if err != nil {
 		return nil, err
@@ -97,6 +98,7 @@ func (bundle *ProjectBundle) loadOptional(path string, fn func(string) error) {
 		}
 
 		bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("%s: %v", filepath.Base(path), statErr))
+
 		return
 	}
 

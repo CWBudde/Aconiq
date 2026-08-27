@@ -20,6 +20,7 @@ type CommandRun struct {
 // New creates a structured logger that can emit text or JSON output.
 func New(level slog.Level, jsonLogs bool) *slog.Logger {
 	handlerOptions := &slog.HandlerOptions{Level: level}
+
 	var handler slog.Handler
 
 	if jsonLogs {

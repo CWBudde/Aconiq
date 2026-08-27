@@ -218,9 +218,11 @@ func TestBuildMetadataAlignedRasterReceiversUsesOriginSpacing(t *testing.T) {
 		if receiver.ID != exp.id {
 			t.Fatalf("%d id = %q, want %q", i, receiver.ID, exp.id)
 		}
+
 		if receiver.Row != exp.row || receiver.Col != exp.col {
 			t.Fatalf("%s row/col = %d,%d, want %d,%d", receiver.ID, receiver.Row, receiver.Col, exp.row, exp.col)
 		}
+
 		if receiver.X != exp.x || receiver.Y != exp.y {
 			t.Fatalf("%s xy=(%v,%v), want (%v,%v)", receiver.ID, receiver.X, receiver.Y, exp.x, exp.y)
 		}
@@ -275,8 +277,9 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 	projectRoot := t.TempDir()
 
 	modelPath := filepath.Join(".noise", "model", "model.normalized.geojson")
+
 	modelFile := filepath.Join(projectRoot, modelPath)
-	if err := os.MkdirAll(filepath.Dir(modelFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(modelFile), 0o750); err != nil {
 		t.Fatalf("make model dir: %v", err)
 	}
 
@@ -288,17 +291,20 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 			"geometry":   map[string]any{"type": "Point", "coordinates": []any{0, 0}},
 		}},
 	}
+
 	payload, err := json.Marshal(featureCollection)
 	if err != nil {
 		t.Fatalf("marshal model: %v", err)
 	}
+
 	if err := os.WriteFile(modelFile, payload, 0o600); err != nil {
 		t.Fatalf("write model: %v", err)
 	}
 
 	soundPlanRoot := filepath.Join(projectRoot, "soundplan")
+
 	gmDir := filepath.Join(soundPlanRoot, "RS01")
-	if err := os.MkdirAll(gmDir, 0o755); err != nil {
+	if err := os.MkdirAll(gmDir, 0o750); err != nil {
 		t.Fatalf("make gm dir: %v", err)
 	}
 
@@ -319,6 +325,7 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
+
 	if !hasPrep || len(prep.syntheticReceiverIDs) == 0 {
 		t.Fatal("expected prepared synthetic raster receivers")
 	}
@@ -344,6 +351,7 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}
+
 	if reportOut == nil {
 		t.Fatal("expected raster compare report")
 	}
@@ -351,6 +359,7 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 	if reportOut.Alignment != "calcarea_scanlines_centered" {
 		t.Fatalf("alignment = %q", reportOut.Alignment)
 	}
+
 	if reportOut.ArtifactPath != defaultRasterCompareArtifactPath {
 		t.Fatalf("artifact path = %q", reportOut.ArtifactPath)
 	}
@@ -358,15 +367,18 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 	if artifact == nil {
 		t.Fatal("expected raster artifact")
 	}
+
 	if len(artifact.Runs) != 1 {
 		t.Fatalf("artifact run count = %d", len(artifact.Runs))
 	}
+
 	if got := artifact.Runs[0].ComparedCellCount; got != 1 {
 		t.Fatalf("compared cell count = %d", got)
 	}
 
 	t.Cleanup(func() {
 		_ = os.Remove(filepath.Join(projectRoot, filepath.FromSlash(defaultRasterCompareArtifactPath)))
+
 		cleanupRasterComparePreparation(prep)
 	})
 }
@@ -377,8 +389,9 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 	projectRoot := t.TempDir()
 
 	modelPath := filepath.Join(".noise", "model", "model.normalized.geojson")
+
 	modelFile := filepath.Join(projectRoot, modelPath)
-	if err := os.MkdirAll(filepath.Dir(modelFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(modelFile), 0o750); err != nil {
 		t.Fatalf("make model dir: %v", err)
 	}
 
@@ -390,17 +403,20 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 			"geometry":   map[string]any{"type": "Point", "coordinates": []any{0, 0}},
 		}},
 	}
+
 	payload, err := json.Marshal(featureCollection)
 	if err != nil {
 		t.Fatalf("marshal model: %v", err)
 	}
+
 	if err := os.WriteFile(modelFile, payload, 0o600); err != nil {
 		t.Fatalf("write model: %v", err)
 	}
 
 	soundPlanRoot := filepath.Join(projectRoot, "soundplan")
+
 	gmDir := filepath.Join(soundPlanRoot, "RS01")
-	if err := os.MkdirAll(gmDir, 0o755); err != nil {
+	if err := os.MkdirAll(gmDir, 0o750); err != nil {
 		t.Fatalf("make gm dir: %v", err)
 	}
 
@@ -421,6 +437,7 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
+
 	if !hasPrep || len(prep.syntheticReceiverIDs) == 0 {
 		t.Fatal("expected prepared synthetic raster receivers")
 	}
@@ -428,12 +445,14 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 	if got, want := prep.report.Alignment, soundPlanRasterMetadataAlignment; got != want {
 		t.Fatalf("alignment = %q, want %q", got, want)
 	}
+
 	if got, want := prep.report.Status, "heuristic_scanline_compare"; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
 
 	t.Cleanup(func() {
 		_ = os.Remove(filepath.Join(projectRoot, filepath.FromSlash(defaultRasterCompareArtifactPath)))
+
 		cleanupRasterComparePreparation(prep)
 	})
 }
@@ -451,12 +470,15 @@ func writeTestGridMapFile(path string, cells []testGridCell) error {
 		if err := binary.Write(&buf, binary.LittleEndian, cell.ground); err != nil {
 			return err
 		}
+
 		if err := binary.Write(&buf, binary.LittleEndian, cell.day); err != nil {
 			return err
 		}
+
 		if err := binary.Write(&buf, binary.LittleEndian, cell.night); err != nil {
 			return err
 		}
+
 		if err := buf.WriteByte(cell.flag); err != nil {
 			return err
 		}

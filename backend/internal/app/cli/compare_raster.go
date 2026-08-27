@@ -94,11 +94,13 @@ func decodeGridMapRuns(soundPlanRoot string, gridMaps []soundplanimport.GridMapM
 		}
 
 		gmPath := filepath.Join(soundPlanRoot, gm.ResultSubFolder, gm.GMFile)
+
 		decoded, decodeErr := soundplanimport.ParseDecodedGridMap(gmPath, gm.PointsTotal)
 		if decodeErr != nil {
 			warnings = append(warnings, fmt.Sprintf("%s: %v", gm.ResultSubFolder, decodeErr))
 			continue
 		}
+
 		if decoded.ValueCellCount == 0 || len(decoded.Rows) == 0 {
 			warnings = append(warnings, gm.ResultSubFolder+": decoded GM has no value cells")
 			continue
@@ -129,8 +131,10 @@ func synthesizeRasterReceivers(
 	if len(syntheticReceivers) > 0 {
 		report.Alignment = soundPlanRasterMetadataAlignment
 	}
+
 	if len(syntheticReceivers) == 0 {
 		gridResolutionM := importReport.GridResolutionM
+
 		if calcArea == nil || len(calcArea.Points) < 4 {
 			report.Warnings = append(report.Warnings, "CalcArea.geo is missing or incomplete, and GM metadata was insufficient for raster synthesis")
 			return nil, nil, false
@@ -144,6 +148,7 @@ func synthesizeRasterReceivers(
 		syntheticReceivers, ids, synthWarnings = buildHeuristicRasterReceivers(calcArea, gridResolutionM, receiverHeightM, layoutRows)
 		report.Alignment = "calcarea_scanlines_centered"
 	}
+
 	report.Warnings = append(report.Warnings, synthWarnings...)
 	if len(syntheticReceivers) == 0 {
 		report.Warnings = append(report.Warnings, "heuristic raster receiver synthesis produced no receivers")
@@ -180,6 +185,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 
 	layoutRows := decodedRuns[0].decoded.Rows
 	baseModelPath := resolvePath(projectRoot, modelPath)
+
 	baseModel, err := loadValidatedModel(baseModelPath, importReport.ProjectCRS, relativePath(projectRoot, baseModelPath))
 	if err != nil {
 		report.Warnings = append(report.Warnings, fmt.Sprintf("load normalized model for raster compare: %v", err))
@@ -187,6 +193,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}
 
 	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
+
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
 		report, importReport, decodedRuns[0].metadata, calcArea, syntheticReceiverHeight, layoutRows,
 	)
@@ -205,6 +212,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	if report.Alignment == "" {
 		report.Alignment = "calcarea_scanlines_centered"
 	}
+
 	report.ReceiverHeightM = syntheticReceivers[0].HeightM
 	report.SyntheticReceiverCount = len(ids)
 
@@ -232,7 +240,7 @@ func calcAreaFromImportReport(area *soundPlanImportCalcArea) *soundplanimport.Ca
 
 func receiverHeightFromModel(model modelgeojson.Model) float64 {
 	for _, feature := range model.Features {
-		if feature.Kind != "receiver" {
+		if feature.Kind != modelgeojson.FeatureKindReceiver {
 			continue
 		}
 
@@ -271,15 +279,18 @@ func compareDecodedGridMapRun(
 			if cellIndex >= len(syntheticReceiverIDs) {
 				detail.Status = "partial_compare"
 				detail.Warnings = append(detail.Warnings, "Aconiq raster receiver sequence is shorter than decoded SoundPLAN cells")
+
 				break
 			}
 
 			receiverID := syntheticReceiverIDs[cellIndex]
+
 			record, ok := recordByID[receiverID]
 			if !ok {
 				detail.Status = "partial_compare"
 				detail.Warnings = append(detail.Warnings, "missing raster receiver output for "+receiverID)
 				cellIndex++
+
 				continue
 			}
 
@@ -384,6 +395,7 @@ func finalizeSoundPlanRasterCompare(
 	}
 
 	prep.report.ArtifactPath = defaultRasterCompareArtifactPath
+
 	return prep.report, artifact, nil
 }
 
@@ -445,10 +457,12 @@ func buildHeuristicRasterReceivers(
 		}
 
 		y := yPositions[rowIndex]
+
 		left, right, ok := calcAreaHorizontalSpan(area, y)
 		if !ok || right <= left {
 			left = minX
 			right = maxX
+
 			warnings = append(warnings, fmt.Sprintf("row %d could not be intersected with CalcArea; fell back to bounding box span", rowIndex))
 		}
 
@@ -557,7 +571,9 @@ func metadataAlignedRowCenters(meta soundplanimport.GridMapMetadata, rowCount in
 	if rowCount <= 0 {
 		return nil
 	}
+
 	yFromOrigin := make([]float64, 0, rowCount)
+
 	yFromReverse := make([]float64, 0, rowCount)
 	for i := range rowCount {
 		yFromOrigin = append(yFromOrigin, meta.OriginY+float64(i)*meta.SpacingY)
@@ -576,6 +592,7 @@ func metadataAlignedRowCenters(meta soundplanimport.GridMapMetadata, rowCount in
 	maxY := maxYFromArea(area)
 
 	scoreFromOrigin := rasterSpanOverlapScore(yFromOrigin, minY, maxY)
+
 	scoreFromReverse := rasterSpanOverlapScore(yFromReverse, minY, maxY)
 	if scoreFromOrigin >= scoreFromReverse {
 		return yFromOrigin
@@ -604,6 +621,7 @@ func rasterSpanOverlapScore(values []float64, minY, maxY float64) float64 {
 
 func spanOverlap(a0, a1, b0, b1 float64) float64 {
 	low := math.Max(math.Min(a0, a1), math.Min(b0, b1))
+
 	high := math.Min(math.Max(a0, a1), math.Max(b0, b1))
 	if high <= low {
 		return 0
@@ -617,7 +635,7 @@ func appendSyntheticRasterReceivers(model modelgeojson.Model, receivers []heuris
 	out.Features = make([]modelgeojson.Feature, 0, len(model.Features)+len(receivers))
 
 	for _, feature := range model.Features {
-		if feature.Kind == "receiver" && strings.HasPrefix(feature.ID, soundPlanRasterReceiverPrefix) {
+		if feature.Kind == modelgeojson.FeatureKindReceiver && strings.HasPrefix(feature.ID, soundPlanRasterReceiverPrefix) {
 			continue
 		}
 
@@ -627,14 +645,14 @@ func appendSyntheticRasterReceivers(model modelgeojson.Model, receivers []heuris
 	for _, receiver := range receivers {
 		out.Features = append(out.Features, modelgeojson.Feature{
 			ID:      receiver.ID,
-			Kind:    "receiver",
+			Kind:    modelgeojson.FeatureKindReceiver,
 			HeightM: float64Ptr(receiver.HeightM),
 			Properties: map[string]any{
 				"soundplan_raster_compare": true,
 				"soundplan_raster_row":     receiver.Row,
 				"soundplan_raster_col":     receiver.Col,
 			},
-			GeometryType: "Point",
+			GeometryType: modelgeojson.GeometryTypePoint,
 			Coordinates:  []any{receiver.X, receiver.Y},
 		})
 	}
@@ -654,6 +672,7 @@ func heuristicRasterRowCenters(minY, maxY, resolutionM float64, rowCount int) []
 	}
 
 	totalSpan := float64(rowCount-1) * resolutionM
+
 	topCenter := maxY - ((maxY-minY)-totalSpan)/2
 	for i := range centers {
 		centers[i] = topCenter - float64(i)*resolutionM
@@ -673,6 +692,7 @@ func heuristicRowXPositions(left, right, resolutionM float64, count int) []float
 	}
 
 	totalSpan := float64(count-1) * resolutionM
+
 	start := (left + right - totalSpan) / 2
 	for i := range count {
 		xs = append(xs, start+float64(i)*resolutionM)
@@ -705,12 +725,14 @@ func calcAreaHorizontalSpan(area *soundplanimport.CalcArea, y float64) (float64,
 	intersections := make([]float64, 0, len(area.Points))
 	for i := range len(area.Points) - 1 {
 		a := area.Points[i]
+
 		b := area.Points[i+1]
 		if a.Y == b.Y {
 			continue
 		}
 
 		minY := math.Min(a.Y, b.Y)
+
 		maxY := math.Max(a.Y, b.Y)
 		if y < minY || y >= maxY {
 			continue
@@ -728,6 +750,7 @@ func calcAreaHorizontalSpan(area *soundplanimport.CalcArea, y float64) (float64,
 	bestLeft := intersections[0]
 	bestRight := intersections[1]
 	bestWidth := bestRight - bestLeft
+
 	for i := 2; i+1 < len(intersections); i += 2 {
 		width := intersections[i+1] - intersections[i]
 		if width > bestWidth {
@@ -755,15 +778,18 @@ func uniqueStrings(items []string) []string {
 	}
 
 	seen := make(map[string]struct{}, len(items))
+
 	out := make([]string, 0, len(items))
 	for _, item := range items {
 		item = strings.TrimSpace(item)
 		if item == "" {
 			continue
 		}
+
 		if _, ok := seen[item]; ok {
 			continue
 		}
+
 		seen[item] = struct{}{}
 		out = append(out, item)
 	}

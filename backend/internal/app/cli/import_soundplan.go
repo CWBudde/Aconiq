@@ -125,10 +125,10 @@ func runSoundPlanImport(
 
 func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, projectCRS string, sourcePath string) (modelgeojson.Model, soundPlanImportReport) {
 	counts := map[string]int{
-		"source":   0,
-		"building": 0,
-		"barrier":  0,
-		"receiver": 0,
+		modelgeojson.FeatureKindSource:   0,
+		modelgeojson.FeatureKindBuilding: 0,
+		modelgeojson.FeatureKindBarrier:  0,
+		modelgeojson.FeatureKindReceiver: 0,
 	}
 
 	warnings := append([]string(nil), bundle.Warnings...)
@@ -147,19 +147,21 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	railFeatures, railWarnings := buildSoundPlanRailFeatures(bundle)
 	features = append(features, railFeatures...)
-	counts["source"] += len(railFeatures)
+	counts[modelgeojson.FeatureKindSource] += len(railFeatures)
+
 	warnings = append(warnings, railWarnings...)
 
 	geoObjects := buildSoundPlanGeoObjectFeatures(bundle.GeoObjects, buildingHeightM, receiverHeightM)
 	features = append(features, geoObjects.buildings...)
 	features = append(features, geoObjects.receivers...)
-	counts["building"] += len(geoObjects.buildings)
-	counts["receiver"] += len(geoObjects.receivers)
+	counts[modelgeojson.FeatureKindBuilding] += len(geoObjects.buildings)
+	counts[modelgeojson.FeatureKindReceiver] += len(geoObjects.receivers)
 	warnings = append(warnings, geoObjects.warnings...)
 
 	barrierFeatures, barrierWarnings := buildSoundPlanBarrierFeatures(bundle.Barriers)
 	features = append(features, barrierFeatures...)
-	counts["barrier"] += len(barrierFeatures)
+	counts[modelgeojson.FeatureKindBarrier] += len(barrierFeatures)
+
 	warnings = append(warnings, barrierWarnings...)
 
 	reportRuns := make([]soundPlanImportRunSummary, 0, len(bundle.Runs))
@@ -173,8 +175,11 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	slices.Sort(warnings)
 
-	var calcAreaBounds *soundPlanBounds
-	var calcAreaMeta *soundPlanImportCalcArea
+	var (
+		calcAreaBounds *soundPlanBounds
+		calcAreaMeta   *soundPlanImportCalcArea
+	)
+
 	if bundle.CalcArea != nil {
 		calcAreaBounds = calcAreaEnvelope(bundle.CalcArea)
 		calcAreaMeta = calcAreaMetadata(bundle.CalcArea)
@@ -294,10 +299,12 @@ func buildSoundPlanRailSegmentFeature(
 	placeholderMapping bool,
 ) modelgeojson.Feature {
 	id := fmt.Sprintf("soundplan-rail-%02d-%02d", trackIndex+1, segmentIndex+1)
+
 	speedKPH := trackSummary.AverageSpeedKPH
 	if speedKPH <= 0 {
 		speedKPH = segment.Params.Speed
 	}
+
 	if speedKPH <= 0 {
 		speedKPH = 100
 	}
@@ -335,10 +342,10 @@ func buildSoundPlanRailSegmentFeature(
 
 	return modelgeojson.Feature{
 		ID:           id,
-		Kind:         "source",
-		SourceType:   "line",
+		Kind:         modelgeojson.FeatureKindSource,
+		SourceType:   modelgeojson.SourceTypeLine,
 		Properties:   properties,
-		GeometryType: "LineString",
+		GeometryType: modelgeojson.GeometryTypeLineString,
 		Coordinates:  coords,
 	}
 }
@@ -379,6 +386,7 @@ func buildSoundPlanGeoObjectFeatures(
 		}
 
 		heightM := buildingHeightM
+
 		properties := map[string]any{
 			"soundplan_base_elevation_m": building.Footprint[0].Z,
 		}
@@ -399,10 +407,10 @@ func buildSoundPlanGeoObjectFeatures(
 
 		out.buildings = append(out.buildings, modelgeojson.Feature{
 			ID:           fmt.Sprintf("soundplan-building-%04d", buildingIndex+1),
-			Kind:         "building",
+			Kind:         modelgeojson.FeatureKindBuilding,
 			HeightM:      float64Ptr(heightM),
 			Properties:   properties,
-			GeometryType: "Polygon",
+			GeometryType: modelgeojson.GeometryTypePolygon,
 			Coordinates:  []any{points3DToRing(building.Footprint)},
 		})
 	}
@@ -414,10 +422,10 @@ func buildSoundPlanGeoObjectFeatures(
 	for receiverIndex, receiver := range objects.Receivers {
 		out.receivers = append(out.receivers, modelgeojson.Feature{
 			ID:           fmt.Sprintf("soundplan-receiver-%04d", receiverIndex+1),
-			Kind:         "receiver",
+			Kind:         modelgeojson.FeatureKindReceiver,
 			HeightM:      float64Ptr(receiverHeightM),
 			Properties:   map[string]any{"soundplan_z_m": receiver.Z},
-			GeometryType: "Point",
+			GeometryType: modelgeojson.GeometryTypePoint,
 			Coordinates:  []any{receiver.X, receiver.Y},
 		})
 	}
@@ -442,6 +450,7 @@ func buildSoundPlanBarrierFeatures(barriers []soundplanimport.NoiseBarrier) ([]m
 
 		for _, point := range barrier.Points {
 			coords = append(coords, []any{point.X, point.Y})
+
 			topHeights = append(topHeights, point.ZTop)
 			if point.Height > maxHeight {
 				maxHeight = point.Height
@@ -454,6 +463,7 @@ func buildSoundPlanBarrierFeatures(barriers []soundplanimport.NoiseBarrier) ([]m
 		}
 		if barrier.HasAcousticProperties {
 			properties["soundplan_barrier_absorption_a_db"] = barrier.AbsorptionSideADB
+
 			properties["soundplan_barrier_absorption_b_db"] = barrier.AbsorptionSideBDB
 			if barrier.MaterialCode >= 0 {
 				properties["soundplan_barrier_material_code"] = barrier.MaterialCode
@@ -464,10 +474,10 @@ func buildSoundPlanBarrierFeatures(barriers []soundplanimport.NoiseBarrier) ([]m
 
 		features = append(features, modelgeojson.Feature{
 			ID:           fmt.Sprintf("soundplan-barrier-%03d", barrierIndex+1),
-			Kind:         "barrier",
+			Kind:         modelgeojson.FeatureKindBarrier,
 			HeightM:      float64Ptr(maxHeight),
 			Properties:   properties,
-			GeometryType: "LineString",
+			GeometryType: modelgeojson.GeometryTypeLineString,
 			Coordinates:  coords,
 		})
 	}
@@ -490,6 +500,7 @@ func calcAreaMetadata(area *soundplanimport.CalcArea) *soundPlanImportCalcArea {
 	}
 
 	isClosed := false
+
 	if len(points) >= 2 {
 		first := points[0]
 		last := points[len(points)-1]
@@ -518,6 +529,7 @@ func (a *railSummaryAccumulator) add(out *soundplanimport.RailOperationSummary, 
 	out.NightTrainCount += item.NightTrainCount
 	out.TrafficDayPH += item.TrafficDayPH
 	out.TrafficNightPH += item.TrafficNightPH
+
 	out.OnBridge = out.OnBridge || item.OnBridge
 	if item.TrackVMaxKPH > out.TrackVMaxKPH {
 		out.TrackVMaxKPH = item.TrackVMaxKPH
@@ -648,15 +660,19 @@ func persistSoundPlanArtifacts(
 
 	now := nowUTC()
 	for _, ref := range []project.ArtifactRef{
-		{ID: "artifact-model-normalized", Kind: "model.normalized_geojson", Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
-		{ID: "artifact-model-dump", Kind: "model.dump_json", Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
-		{ID: "artifact-model-validation", Kind: "model.validation_report", Path: relativePath(store.Root(), reportPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelNormalized, Kind: project.ArtifactKindModelNormalizedGeoJSON, Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: relativePath(store.Root(), reportPath), CreatedAt: now},
 		{ID: "artifact-soundplan-import-report", Kind: "model.soundplan_import_report", Path: relativePath(store.Root(), importReportPath), CreatedAt: now},
 	} {
 		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
 	}
 
-	return store.Save(*proj)
+	if err := store.Save(*proj); err != nil {
+		return fmt.Errorf("save project manifest: %w", err)
+	}
+
+	return nil
 }
 
 func derivedBuildingHeight(proj *soundplanimport.Project) float64 {
@@ -721,12 +737,15 @@ func calcAreaEnvelope(area *soundplanimport.CalcArea) *soundPlanBounds {
 		if point.X < bounds.MinX {
 			bounds.MinX = point.X
 		}
+
 		if point.Y < bounds.MinY {
 			bounds.MinY = point.Y
 		}
+
 		if point.X > bounds.MaxX {
 			bounds.MaxX = point.X
 		}
+
 		if point.Y > bounds.MaxY {
 			bounds.MaxY = point.Y
 		}

@@ -18,9 +18,11 @@ import (
 )
 
 func newServeCommand() *cobra.Command {
-	var listenAddr string
-	var shutdownTimeout time.Duration
-	var corsOrigins []string
+	var (
+		listenAddr      string
+		shutdownTimeout time.Duration
+		corsOrigins     []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -38,7 +40,7 @@ Use --cors-origins to allow additional origins, or leave it empty for local-only
 
 			store, err := projectfs.New(state.Config.ProjectPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 			}
 
 			registry, err := standards.NewRegistry()

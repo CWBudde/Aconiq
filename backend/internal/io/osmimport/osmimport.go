@@ -68,7 +68,7 @@ func Fetch(ctx context.Context, cfg Config) (modelgeojson.FeatureCollection, err
 	}
 
 	return modelgeojson.FeatureCollection{
-		Type:     "FeatureCollection",
+		Type:     modelgeojson.TypeFeatureCollection,
 		Features: features,
 	}, nil
 }
@@ -123,12 +123,12 @@ func classifyWay(way *overpass.Way, tags map[string]string, props map[string]any
 	case tags["highway"] != "":
 		applyHighwayProps(tags, props)
 
-		return "LineString", lineCoords(way.Geometry), true
+		return modelgeojson.GeometryTypeLineString, lineCoords(way.Geometry), true
 
 	case tags["railway"] != "":
 		applyRailwayProps(tags, props)
 
-		return "LineString", lineCoords(way.Geometry), true
+		return modelgeojson.GeometryTypeLineString, lineCoords(way.Geometry), true
 
 	case tags["building"] != "":
 		ring := polygonCoords(way.Geometry)
@@ -138,12 +138,12 @@ func classifyWay(way *overpass.Way, tags map[string]string, props map[string]any
 
 		applyBuildingProps(tags, props)
 
-		return "Polygon", ring, true
+		return modelgeojson.GeometryTypePolygon, ring, true
 
 	case tags["barrier"] != "":
 		applyBarrierProps(tags, props)
 
-		return "LineString", lineCoords(way.Geometry), true
+		return modelgeojson.GeometryTypeLineString, lineCoords(way.Geometry), true
 
 	default:
 		return "", nil, false

@@ -186,7 +186,7 @@ func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 		generatedAt = time.Now().UTC()
 	}
 
-	err := os.MkdirAll(opts.BundleDir, 0o755)
+	err := os.MkdirAll(opts.BundleDir, 0o750)
 	if err != nil {
 		return GeneratedReport{}, fmt.Errorf("create report directory: %w", err)
 	}

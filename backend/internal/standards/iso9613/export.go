@@ -35,7 +35,7 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", gridWidth, gridHeight, len(outputs))
 	}
 
-	err := os.MkdirAll(baseDir, 0o755)
+	err := os.MkdirAll(baseDir, 0o750)
 	if err != nil {
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
@@ -64,12 +64,12 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 
 	err = results.SaveReceiverTableJSON(receiverJSONPath, table)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save receiver table json %s: %w", receiverJSONPath, err)
 	}
 
 	err = results.SaveReceiverTableCSV(receiverCSVPath, table)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save receiver table csv %s: %w", receiverCSVPath, err)
 	}
 
 	raster, err := results.NewRaster(results.RasterMetadata{
@@ -81,7 +81,7 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		BandNames: []string{IndicatorLpAeqDW},
 	})
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("create raster: %w", err)
 	}
 
 	for index, output := range outputs {
@@ -90,13 +90,13 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 
 		err := raster.Set(x, y, 0, output.Indicators.LpAeqDW)
 		if err != nil {
-			return ExportOutputs{}, err
+			return ExportOutputs{}, fmt.Errorf("set raster band %s: %w", IndicatorLpAeqDW, err)
 		}
 	}
 
 	persistence, err := results.SaveRaster(filepath.Join(baseDir, "iso9613"), raster)
 	if err != nil {
-		return ExportOutputs{}, err
+		return ExportOutputs{}, fmt.Errorf("save raster %s: %w", StandardID, err)
 	}
 
 	return ExportOutputs{

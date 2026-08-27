@@ -765,6 +765,7 @@ func TestISO9613ToleranceCompliance(t *testing.T) {
 				// Determine the most conservative tolerance across all
 				// source-receiver pairs contributing to this receiver.
 				maxTol := 0.0
+
 				for _, src := range scenario.Sources {
 					dx := src.Point.X - recv.Point.X
 					dy := src.Point.Y - recv.Point.Y

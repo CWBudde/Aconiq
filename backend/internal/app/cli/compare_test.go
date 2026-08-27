@@ -21,6 +21,7 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 	mustRunCLI(t, "--project", projectDir, "compare")
 
 	reportPath := filepath.Join(projectDir, ".noise", "artifacts", "soundplan-receiver-compare.json")
+
 	payload, err := os.ReadFile(reportPath)
 	if err != nil {
 		t.Fatalf("read compare report: %v", err)

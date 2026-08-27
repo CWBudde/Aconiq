@@ -9,8 +9,10 @@ import (
 )
 
 func newInitCommand() *cobra.Command {
-	var projectName string
-	var crs string
+	var (
+		projectName string
+		crs         string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -23,12 +25,12 @@ func newInitCommand() *cobra.Command {
 
 			store, err := projectfs.New(state.Config.ProjectPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 			}
 
 			proj, err := store.Init(projectName, crs)
 			if err != nil {
-				return err
+				return fmt.Errorf("initialize project %s: %w", projectName, err)
 			}
 
 			state.Logger.Info(

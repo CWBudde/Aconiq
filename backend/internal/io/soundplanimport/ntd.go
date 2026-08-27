@@ -45,6 +45,7 @@ func LoadImmissionTables(projectDir string) ([]ImmissionTable, []string) {
 
 	tables := make([]ImmissionTable, 0, len(paths))
 	warnings := make([]string, 0)
+
 	for _, path := range paths {
 		table, parseErr := ParseImmissionTableFile(path)
 		if parseErr != nil {
@@ -77,6 +78,7 @@ func parseImmissionTableData(sourceFile string, data []byte) (*ImmissionTable, e
 		if token == "StandardtextT" {
 			active = true
 			pendingTitle = ""
+
 			continue
 		}
 

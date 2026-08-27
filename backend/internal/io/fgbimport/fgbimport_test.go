@@ -114,6 +114,7 @@ func buildFeature(geomType flat.GeometryType, xy []float64, ends []uint32, props
 // encodeProps encodes properties using PropWriter matching the given column schema.
 func encodeProps(columns []testColumn, values []any) []byte {
 	var buf bytes.Buffer
+
 	pw := flatgeobuf.NewPropWriter(&buf)
 
 	for i, val := range values {

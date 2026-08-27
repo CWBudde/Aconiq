@@ -14,12 +14,6 @@ type point2 struct {
 	y float64
 }
 
-const (
-	geometryTypePoint      = "Point"
-	geometryTypeMultiPoint = "MultiPoint"
-	receiverGeometryPoint  = "Point"
-)
-
 // Validate applies schema and geometry checks to the normalized model.
 func Validate(model Model) ValidationReport {
 	report := ValidationReport{
@@ -68,24 +62,24 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 	geomType := strings.TrimSpace(feature.GeometryType)
 
 	switch kind {
-	case "source":
+	case FeatureKindSource:
 		validateSourceKind(feature, geomType, report)
-	case "building":
-		validateHeightM(feature.HeightM, id, "building", report)
+	case FeatureKindBuilding:
+		validateHeightM(feature.HeightM, id, FeatureKindBuilding, report)
 
-		if !isOneOf(geomType, "Polygon", "MultiPolygon") {
+		if !isOneOf(geomType, GeometryTypePolygon, GeometryTypeMultiPolygon) {
 			addError(report, "building.geometry.invalid", id, "building geometry must be Polygon or MultiPolygon")
 		}
-	case "barrier":
-		validateHeightM(feature.HeightM, id, "barrier", report)
+	case FeatureKindBarrier:
+		validateHeightM(feature.HeightM, id, FeatureKindBarrier, report)
 
-		if !isOneOf(geomType, "LineString", "MultiLineString") {
+		if !isOneOf(geomType, GeometryTypeLineString, GeometryTypeMultiLineString) {
 			addError(report, "barrier.geometry.invalid", id, "barrier geometry must be LineString or MultiLineString")
 		}
-	case "receiver":
-		validateHeightM(feature.HeightM, id, "receiver", report)
+	case FeatureKindReceiver:
+		validateHeightM(feature.HeightM, id, FeatureKindReceiver, report)
 
-		if geomType != receiverGeometryPoint {
+		if geomType != GeometryTypePoint {
 			addError(report, "receiver.geometry.invalid", id, "receiver geometry must be Point")
 		}
 	default:
@@ -108,7 +102,7 @@ func validateSourceKind(feature Feature, geomType string, report *ValidationRepo
 	switch {
 	case sourceType == "":
 		addError(report, "source.type.required", id, "source feature requires source_type (point|line|area)")
-	case !isOneOf(sourceType, "point", "line", "area"):
+	case !isOneOf(sourceType, SourceTypePoint, SourceTypeLine, SourceTypeArea):
 		addError(report, "source.type.invalid", id, "source_type must be one of point|line|area")
 	case !geometryCompatibleWithSourceType(geomType, sourceType):
 		addError(report, "source.geometry.mismatch", id, fmt.Sprintf("geometry type %s does not match source_type %s", geomType, sourceType))
@@ -133,17 +127,17 @@ func validateGeometry(feature Feature, report *ValidationReport) ([]point2, bool
 	coords := feature.Coordinates
 
 	switch geomType {
-	case geometryTypePoint:
+	case GeometryTypePoint:
 		return validatePointGeometry(coords, id, report)
-	case geometryTypeMultiPoint:
+	case GeometryTypeMultiPoint:
 		return validateMultiPointGeometry(coords, id, report)
-	case "LineString":
+	case GeometryTypeLineString:
 		return validateLineStringGeometry(coords, id, report)
-	case "MultiLineString":
+	case GeometryTypeMultiLineString:
 		return validateMultiLineStringGeometry(coords, id, report)
-	case "Polygon":
+	case GeometryTypePolygon:
 		return validatePolygonGeometry(coords, id, report)
-	case "MultiPolygon":
+	case GeometryTypeMultiPolygon:
 		return validateMultiPolygonGeometry(coords, id, report)
 	default:
 		addError(report, "geometry.type.unsupported", id, fmt.Sprintf("unsupported geometry type %q", geomType))
@@ -501,12 +495,12 @@ func asFiniteFloat(value any) (float64, bool) {
 
 func geometryCompatibleWithSourceType(geometryType string, sourceType string) bool {
 	switch sourceType {
-	case "point":
-		return isOneOf(geometryType, geometryTypePoint, geometryTypeMultiPoint)
-	case "line":
-		return isOneOf(geometryType, "LineString", "MultiLineString")
-	case "area":
-		return isOneOf(geometryType, "Polygon", "MultiPolygon")
+	case SourceTypePoint:
+		return isOneOf(geometryType, GeometryTypePoint, GeometryTypeMultiPoint)
+	case SourceTypeLine:
+		return isOneOf(geometryType, GeometryTypeLineString, GeometryTypeMultiLineString)
+	case SourceTypeArea:
+		return isOneOf(geometryType, GeometryTypePolygon, GeometryTypeMultiPolygon)
 	default:
 		return false
 	}

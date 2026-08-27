@@ -71,6 +71,7 @@ func ComputeAreaSourceLevel(
 	areaM2 float64,
 ) BeiblattSpectrum {
 	const s0 = 1.0 // S_0 = 1 m²
+
 	const l0 = 1.0 // l_0 = 1 m
 
 	var result BeiblattSpectrum
@@ -105,6 +106,7 @@ func ComputeAreaSourceLevel(
 //	L_WA,f,h,kS = L_W'A,f,h + 10·lg(l_kS / l_0)   with l_0 = 1 m
 func LineToPointTeilstueck(lineSpectrum BeiblattSpectrum, lKS float64) BeiblattSpectrum {
 	const l0 = 1.0
+
 	offset := 10.0 * math.Log10(lKS/l0)
 
 	var result BeiblattSpectrum
@@ -122,6 +124,7 @@ func LineToPointTeilstueck(lineSpectrum BeiblattSpectrum, lKS float64) BeiblattS
 //	L_WA,f,h,kF = L_W''A,f,h + 10·lg(S_kF / S_0)   with S_0 = 1 m²
 func AreaToPointTeilflaeche(areaSpectrum BeiblattSpectrum, sKF float64) BeiblattSpectrum {
 	const s0 = 1.0
+
 	offset := 10.0 * math.Log10(sKF/s0)
 
 	var result BeiblattSpectrum

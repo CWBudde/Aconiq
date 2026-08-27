@@ -95,7 +95,7 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 
 	return ReadResult{
 		Collection: modelgeojson.FeatureCollection{
-			Type:     "FeatureCollection",
+			Type:     modelgeojson.TypeFeatureCollection,
 			Features: features,
 		},
 		EPSGCode: doc.CRS.Code,
@@ -166,7 +166,7 @@ func buildingToFeature(b *types.Building, index int) (modelgeojson.GeoJSONFeatur
 		Type:       "Feature",
 		Properties: props,
 		Geometry: modelgeojson.Geometry{
-			Type:        "Polygon",
+			Type:        modelgeojson.GeometryTypePolygon,
 			Coordinates: []any{coords},
 		},
 	}, ""

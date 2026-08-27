@@ -72,7 +72,7 @@ func ReadWithCRS(path string) (ReadResult, error) {
 
 	return ReadResult{
 		Collection: modelgeojson.FeatureCollection{
-			Type:     "FeatureCollection",
+			Type:     modelgeojson.TypeFeatureCollection,
 			Features: features,
 		},
 		EPSGCode: epsg,
@@ -137,17 +137,17 @@ func geometryToGeoJSON(geom *flat.Geometry, headerType flat.GeometryType) (strin
 
 	switch gt {
 	case flat.GeometryTypePoint:
-		return "Point", decodePoint(geom), nil
+		return modelgeojson.GeometryTypePoint, decodePoint(geom), nil
 	case flat.GeometryTypeLineString:
-		return "LineString", decodeCoordSequence(geom, 0, geom.XyLength()/2), nil
+		return modelgeojson.GeometryTypeLineString, decodeCoordSequence(geom, 0, geom.XyLength()/2), nil
 	case flat.GeometryTypePolygon:
-		return "Polygon", decodePolygon(geom), nil
+		return modelgeojson.GeometryTypePolygon, decodePolygon(geom), nil
 	case flat.GeometryTypeMultiPoint:
-		return "MultiPoint", decodeMultiPoint(geom), nil
+		return modelgeojson.GeometryTypeMultiPoint, decodeMultiPoint(geom), nil
 	case flat.GeometryTypeMultiLineString:
-		return "MultiLineString", decodeMultiLineString(geom), nil
+		return modelgeojson.GeometryTypeMultiLineString, decodeMultiLineString(geom), nil
 	case flat.GeometryTypeMultiPolygon:
-		return "MultiPolygon", decodeMultiPolygon(geom), nil
+		return modelgeojson.GeometryTypeMultiPolygon, decodeMultiPolygon(geom), nil
 	default:
 		return "", nil, fmt.Errorf("unsupported geometry type: %s", gt)
 	}
@@ -307,37 +307,41 @@ func readProperties(feat *flat.Feature, hdr *flat.Header) (map[string]any, error
 	return props, nil
 }
 
+// propertyReaders maps each FlatGeobuf column type to the reader function and
+// human-readable name used to build error context in readPropertyValue.
+var propertyReaders = map[flat.ColumnType]struct {
+	name string
+	read func(*flatgeobuf.PropReader) (any, error)
+}{
+	flat.ColumnTypeByte:     {"byte", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadByte() }},
+	flat.ColumnTypeUByte:    {"ubyte", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadUByte() }},
+	flat.ColumnTypeBool:     {"bool", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadBool() }},
+	flat.ColumnTypeShort:    {"short", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadShort() }},
+	flat.ColumnTypeUShort:   {"ushort", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadUShort() }},
+	flat.ColumnTypeInt:      {"int", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadInt() }},
+	flat.ColumnTypeUInt:     {"uint", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadUInt() }},
+	flat.ColumnTypeLong:     {"long", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadLong() }},
+	flat.ColumnTypeULong:    {"ulong", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadULong() }},
+	flat.ColumnTypeFloat:    {"float", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadFloat() }},
+	flat.ColumnTypeDouble:   {"double", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadDouble() }},
+	flat.ColumnTypeString:   {"string", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadString() }},
+	flat.ColumnTypeDateTime: {"datetime", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadString() }},
+	flat.ColumnTypeJson:     {"json", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadBinary() }},
+	flat.ColumnTypeBinary:   {"binary", func(pr *flatgeobuf.PropReader) (any, error) { return pr.ReadBinary() }},
+}
+
 func readPropertyValue(pr *flatgeobuf.PropReader, colType flat.ColumnType) (any, error) {
-	switch colType {
-	case flat.ColumnTypeByte:
-		return pr.ReadByte()
-	case flat.ColumnTypeUByte:
-		return pr.ReadUByte()
-	case flat.ColumnTypeBool:
-		return pr.ReadBool()
-	case flat.ColumnTypeShort:
-		return pr.ReadShort()
-	case flat.ColumnTypeUShort:
-		return pr.ReadUShort()
-	case flat.ColumnTypeInt:
-		return pr.ReadInt()
-	case flat.ColumnTypeUInt:
-		return pr.ReadUInt()
-	case flat.ColumnTypeLong:
-		return pr.ReadLong()
-	case flat.ColumnTypeULong:
-		return pr.ReadULong()
-	case flat.ColumnTypeFloat:
-		return pr.ReadFloat()
-	case flat.ColumnTypeDouble:
-		return pr.ReadDouble()
-	case flat.ColumnTypeString, flat.ColumnTypeDateTime:
-		return pr.ReadString()
-	case flat.ColumnTypeJson, flat.ColumnTypeBinary:
-		return pr.ReadBinary()
-	default:
+	reader, ok := propertyReaders[colType]
+	if !ok {
 		return nil, fmt.Errorf("unsupported column type %d", colType)
 	}
+
+	v, err := reader.read(pr)
+	if err != nil {
+		return v, fmt.Errorf("read %s property: %w", reader.name, err)
+	}
+
+	return v, nil
 }
 
 func normalizeValue(val any) any {

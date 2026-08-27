@@ -30,6 +30,7 @@ func TestParseImmissionTableFile(t *testing.T) {
 
 	foundFormula := false
 	foundSecondRun := false
+
 	for _, col := range table.Columns {
 		if col.Formula == `if X6=1 then "EG" else Text(X6-1)+".OG";)` {
 			foundFormula = true

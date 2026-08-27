@@ -53,7 +53,7 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 		return Model{}, fmt.Errorf("decode geojson: %w", err)
 	}
 
-	if collection.Type != "FeatureCollection" {
+	if collection.Type != TypeFeatureCollection {
 		return Model{}, fmt.Errorf("expected GeoJSON FeatureCollection, got %q", collection.Type)
 	}
 
@@ -86,7 +86,7 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 		}
 
 		sourceType := normalizeSourceType(raw.Properties["source_type"])
-		if sourceType == "" && kind == "source" {
+		if sourceType == "" && kind == FeatureKindSource {
 			sourceType = inferSourceTypeFromGeometry(geometryType)
 		}
 
@@ -222,7 +222,7 @@ func (m Model) ToFeatureCollection() FeatureCollection {
 	}
 
 	collection := FeatureCollection{
-		Type:     "FeatureCollection",
+		Type:     TypeFeatureCollection,
 		Features: features,
 	}
 	if m.ProjectCRS != "" {
@@ -308,12 +308,12 @@ func normalizeSourceType(value any) string {
 
 func inferSourceTypeFromGeometry(geometryType string) string {
 	switch geometryType {
-	case "Point", "MultiPoint":
-		return "point"
-	case "LineString", "MultiLineString":
-		return "line"
-	case "Polygon", "MultiPolygon":
-		return "area"
+	case GeometryTypePoint, GeometryTypeMultiPoint:
+		return SourceTypePoint
+	case GeometryTypeLineString, GeometryTypeMultiLineString:
+		return SourceTypeLine
+	case GeometryTypePolygon, GeometryTypeMultiPolygon:
+		return SourceTypeArea
 	default:
 		return ""
 	}
@@ -339,7 +339,7 @@ func readOptionalNumber(value any) (float64, bool, error) {
 
 		parsed, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
-			return 0, false, err
+			return 0, false, fmt.Errorf("parse numeric property %q: %w", trimmed, err)
 		}
 
 		return parsed, true, nil

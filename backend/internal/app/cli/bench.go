@@ -16,6 +16,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// commandNameBench is the cobra command name; it also names the bench cache
+	// subdirectory and is written to the `command` field of the JSON output.
+	commandNameBench = "bench"
+
+	// benchRunID is the fixed engine run ID used by every benchmark measurement,
+	// so cache keys stay stable between cold and warm passes.
+	benchRunID = "bench"
+)
+
 type benchScenarioSpec struct {
 	Name             string  `json:"name"`
 	Description      string  `json:"description"`
@@ -106,14 +116,16 @@ var defaultBenchScenarios = []benchScenarioSpec{
 }
 
 func newBenchCommand() *cobra.Command {
-	var scenarioNames []string
-	var workers int
-	var chunkSize int
-	var sourceIndexCellM float64
-	var keepLast int
+	var (
+		scenarioNames    []string
+		workers          int
+		chunkSize        int
+		sourceIndexCellM float64
+		keepLast         int
+	)
 
 	cmd := &cobra.Command{
-		Use:   "bench",
+		Use:   commandNameBench,
 		Short: "Run synthetic benchmark scenarios for engine runtime, memory, cache IO, and drift",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBenchCommand(cmd, scenarioNames, workers, chunkSize, sourceIndexCellM, keepLast)
@@ -163,10 +175,10 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 	}
 
 	benchID := time.Now().UTC().Format("20060102T150405.000000000Z")
-	benchRoot := filepath.Join(state.Config.CacheDir, "bench")
+	benchRoot := filepath.Join(state.Config.CacheDir, commandNameBench)
 	suiteDir := filepath.Join(benchRoot, benchID)
 
-	err = os.MkdirAll(suiteDir, 0o755)
+	err = os.MkdirAll(suiteDir, 0o750)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "create bench suite directory "+suiteDir, err)
 	}
@@ -203,7 +215,7 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 
 	if state.Config.JSONLogs {
 		return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
-			"command":      "bench",
+			"command":      commandNameBench,
 			"bench_id":     summary.BenchID,
 			"summary_path": summaryPath,
 			"summary":      summary,
@@ -295,8 +307,8 @@ func runBenchScenario(
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run reference benchmark scenario "+spec.Name, err)
 	}
 
-	cold, coldOut, err := measureBenchRun(runner, scenarioDir, "bench", engine.RunConfig{
-		RunID:            "bench",
+	cold, coldOut, err := measureBenchRun(runner, scenarioDir, benchRunID, engine.RunConfig{
+		RunID:            benchRunID,
 		Workers:          workers,
 		ChunkSize:        chunkSize,
 		CacheDir:         scenarioDir,
@@ -310,8 +322,8 @@ func runBenchScenario(
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run cold benchmark scenario "+spec.Name, err)
 	}
 
-	warm, warmOut, err := measureBenchRun(runner, scenarioDir, "bench", engine.RunConfig{
-		RunID:            "bench",
+	warm, warmOut, err := measureBenchRun(runner, scenarioDir, benchRunID, engine.RunConfig{
+		RunID:            benchRunID,
 		Workers:          workers,
 		ChunkSize:        chunkSize,
 		CacheDir:         scenarioDir,
@@ -411,7 +423,7 @@ func measureBenchRun(
 	duration := time.Since(startedAt)
 
 	if err != nil {
-		return benchRunMetrics{}, engine.RunOutput{}, err
+		return benchRunMetrics{}, engine.RunOutput{}, fmt.Errorf("run bench scenario %s: %w", runID, err)
 	}
 
 	var after runtime.MemStats
@@ -491,7 +503,7 @@ func pruneBenchSuites(root string, keepLast int) ([]string, error) {
 			return nil, nil
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("read bench suites directory %s: %w", root, err)
 	}
 
 	suites := make([]string, 0, len(entries))
@@ -515,7 +527,7 @@ func pruneBenchSuites(root string, keepLast int) ([]string, error) {
 
 		err := os.RemoveAll(path)
 		if err != nil {
-			return pruned, err
+			return pruned, fmt.Errorf("remove bench suite %s: %w", path, err)
 		}
 
 		pruned = append(pruned, path)
@@ -531,7 +543,7 @@ func directorySize(root string) (int64, error) {
 			return 0, nil
 		}
 
-		return 0, err
+		return 0, fmt.Errorf("stat bench run directory %s: %w", root, err)
 	}
 
 	if !info.IsDir() {
@@ -551,7 +563,7 @@ func directorySize(root string) (int64, error) {
 
 		info, err := d.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("stat bench run entry %s: %w", path, err)
 		}
 
 		total += info.Size()
@@ -559,7 +571,7 @@ func directorySize(root string) (int64, error) {
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("walk bench run directory %s: %w", root, err)
 	}
 
 	return total, nil
@@ -572,7 +584,7 @@ func countChunkCacheFiles(root string) (int, error) {
 			return 0, nil
 		}
 
-		return 0, err
+		return 0, fmt.Errorf("read chunk cache directory %s: %w", root, err)
 	}
 
 	total := 0

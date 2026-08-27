@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
 
 const (
@@ -120,11 +122,11 @@ func decodeWKBGeometry(data []byte, offset int, wkbType uint32, order binary.Byt
 	case wkbPolygon:
 		return decodePolygon(data, offset, order)
 	case wkbMultiPoint:
-		return decodeMultiGeometry("MultiPoint", data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPoint, data, offset, order)
 	case wkbMultiLineString:
-		return decodeMultiGeometry("MultiLineString", data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiLineString, data, offset, order)
 	case wkbMultiPolygon:
-		return decodeMultiGeometry("MultiPolygon", data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPolygon, data, offset, order)
 	default:
 		return "", nil, 0, fmt.Errorf("wkb: unsupported geometry type %d", wkbType)
 	}
@@ -138,7 +140,7 @@ func decodePoint(data []byte, offset int, order binary.ByteOrder) (string, any, 
 	x := readFloat64(data[offset:], order)
 	y := readFloat64(data[offset+float64Size:], order)
 
-	return "Point", []any{x, y}, offset + 2*float64Size, nil
+	return modelgeojson.GeometryTypePoint, []any{x, y}, offset + 2*float64Size, nil
 }
 
 func decodeLineString(data []byte, offset int, order binary.ByteOrder) (string, any, int, error) {
@@ -146,7 +148,7 @@ func decodeLineString(data []byte, offset int, order binary.ByteOrder) (string, 
 		return "", nil, 0, errors.New("wkb: LineString numPoints too short")
 	}
 
-	const lineStringGeometryType = "LineString"
+	const lineStringGeometryType = modelgeojson.GeometryTypeLineString
 
 	numPoints := int(order.Uint32(data[offset:]))
 	offset += uint32Size
@@ -187,7 +189,7 @@ func decodePolygon(data []byte, offset int, order binary.ByteOrder) (string, any
 		rings = append(rings, pts)
 	}
 
-	return "Polygon", rings, offset, nil
+	return modelgeojson.GeometryTypePolygon, rings, offset, nil
 }
 
 func decodeMultiGeometry(geomType string, data []byte, offset int, order binary.ByteOrder) (string, any, int, error) {

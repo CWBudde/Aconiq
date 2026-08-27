@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -16,5 +17,9 @@ func writeCommandOutput(w io.Writer, jsonEnabled bool, payload any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 
-	return enc.Encode(payload)
+	if err := enc.Encode(payload); err != nil {
+		return fmt.Errorf("encode command output: %w", err)
+	}
+
+	return nil
 }

@@ -77,6 +77,7 @@ func sourceAdjustment(source RailSource, cfg PropagationConfig) float64 {
 
 func lineSourceSpectrumAtReceiver(sourceSpectrum OctaveSpectrum, receiver geo.Point2D, source RailSource, cfg PropagationConfig, pack DataPack) OctaveSpectrum {
 	var bandContribs [8][]float64
+
 	adjustment := sourceAdjustment(source, cfg)
 
 	for i := range len(source.TrackCenterline) - 1 {

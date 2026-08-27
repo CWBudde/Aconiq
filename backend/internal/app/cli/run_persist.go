@@ -35,7 +35,7 @@ func persistReceiverTableOnly(
 	table results.ReceiverTable,
 	summary map[string]any,
 ) (persistedRunOutputs, error) {
-	err := os.MkdirAll(resultsDir, 0o755)
+	err := os.MkdirAll(resultsDir, 0o750)
 	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistReceiverTableOnly", "create results directory "+resultsDir, err)
 	}
@@ -78,7 +78,7 @@ func persistDummyRunOutputs(
 ) (persistedRunOutputs, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	err := os.MkdirAll(resultsDir, 0o755)
+	err := os.MkdirAll(resultsDir, 0o750)
 	if err != nil {
 		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "create results directory "+resultsDir, err)
 	}
@@ -772,7 +772,7 @@ func hashCnossosRoadOutputs(outputs []cnossosroad.ReceiverOutput) (string, error
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal cnossos road receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -796,7 +796,7 @@ func hashISO9613Outputs(outputs []iso9613.ReceiverOutput) (string, error) {
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal ISO 9613 receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -820,7 +820,7 @@ func hashCnossosRailOutputs(outputs []cnossosrail.ReceiverOutput) (string, error
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal cnossos rail receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -844,7 +844,7 @@ func hashBUBRoadOutputs(outputs []bubroad.ReceiverOutput) (string, error) {
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal BUB road receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -868,7 +868,7 @@ func hashRLS19RoadOutputs(outputs []rls19road.ReceiverOutput) (string, error) {
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal RLS-19 road receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -892,7 +892,7 @@ func hashSchall03Outputs(outputs []schall03.ReceiverOutput) (string, error) {
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal Schall 03 receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -916,7 +916,7 @@ func hashCnossosAircraftOutputs(outputs []cnossosaircraft.ReceiverOutput) (strin
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal cnossos aircraft receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -940,7 +940,7 @@ func hashBUFAircraftOutputs(outputs []bufaircraft.ReceiverOutput) (string, error
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal BUF aircraft receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -970,7 +970,7 @@ func hashBEBExposureOutputs(outputs []bebexposure.BuildingExposureOutput, summar
 		Summary:   summary,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal BEB exposure outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -994,7 +994,7 @@ func hashCnossosIndustryOutputs(outputs []cnossosindustry.ReceiverOutput) (strin
 
 	payload, err := json.Marshal(records)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal cnossos industry receiver outputs: %w", err)
 	}
 
 	sum := sha256.Sum256(payload)
@@ -1007,23 +1007,23 @@ func buildRunArtifacts(projectRoot string, runID string, persisted persistedRunO
 
 	artifacts := make([]project.ArtifactRef, 0, 5)
 	if persisted.ReceiverJSONPath != "" {
-		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-json", runID), RunID: runID, Kind: "run.result.receiver_table_json", Path: relativePath(projectRoot, persisted.ReceiverJSONPath), CreatedAt: now})
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-json", runID), RunID: runID, Kind: project.ArtifactKindRunResultReceiverTableJSON, Path: relativePath(projectRoot, persisted.ReceiverJSONPath), CreatedAt: now})
 	}
 
 	if persisted.ReceiverCSVPath != "" {
-		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-csv", runID), RunID: runID, Kind: "run.result.receiver_table_csv", Path: relativePath(projectRoot, persisted.ReceiverCSVPath), CreatedAt: now})
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-receivers-csv", runID), RunID: runID, Kind: project.ArtifactKindRunResultReceiverTableCSV, Path: relativePath(projectRoot, persisted.ReceiverCSVPath), CreatedAt: now})
 	}
 
 	if persisted.RasterMetadataPath != "" {
-		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-meta", runID), RunID: runID, Kind: "run.result.raster_metadata", Path: relativePath(projectRoot, persisted.RasterMetadataPath), CreatedAt: now})
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-meta", runID), RunID: runID, Kind: project.ArtifactKindRunResultRasterMetadata, Path: relativePath(projectRoot, persisted.RasterMetadataPath), CreatedAt: now})
 	}
 
 	if persisted.RasterDataPath != "" {
-		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-data", runID), RunID: runID, Kind: "run.result.raster_binary", Path: relativePath(projectRoot, persisted.RasterDataPath), CreatedAt: now})
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-raster-data", runID), RunID: runID, Kind: project.ArtifactKindRunResultRasterBinary, Path: relativePath(projectRoot, persisted.RasterDataPath), CreatedAt: now})
 	}
 
 	if persisted.SummaryPath != "" {
-		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-summary", runID), RunID: runID, Kind: "run.result.summary", Path: relativePath(projectRoot, persisted.SummaryPath), CreatedAt: now})
+		artifacts = append(artifacts, project.ArtifactRef{ID: fmt.Sprintf("artifact-run-%s-summary", runID), RunID: runID, Kind: project.ArtifactKindRunResultSummary, Path: relativePath(projectRoot, persisted.SummaryPath), CreatedAt: now})
 	}
 
 	return artifacts
@@ -1056,7 +1056,7 @@ func finalizeRun(
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	foundRun := false
@@ -1083,7 +1083,7 @@ func finalizeRun(
 
 	err = store.Save(proj)
 	if err != nil {
-		return err
+		return fmt.Errorf("save project manifest: %w", err)
 	}
 
 	if len(logLines) == 0 {

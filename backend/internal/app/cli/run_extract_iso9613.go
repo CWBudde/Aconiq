@@ -24,7 +24,7 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 	sources := make([]iso9613.PointSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 

@@ -20,6 +20,10 @@ import (
 )
 
 const (
+	// commandNameCompare is the cobra command name; it is also written to the
+	// `command` field of the JSON output and of the compare report.
+	commandNameCompare = "compare"
+
 	defaultCompareReportPath = ".noise/artifacts/soundplan-receiver-compare.json"
 	defaultReceiverMatchTolM = 0.5
 )
@@ -79,15 +83,17 @@ type soundPlanCompareReport struct {
 }
 
 func newCompareCommand() *cobra.Command {
-	var standardID string
-	var standardVersion string
-	var standardProfile string
-	var modelPath string
-	var scenarioID string
-	var toleranceDB float64
+	var (
+		standardID      string
+		standardVersion string
+		standardProfile string
+		modelPath       string
+		scenarioID      string
+		toleranceDB     float64
+	)
 
 	cmd := &cobra.Command{
-		Use:   "compare",
+		Use:   commandNameCompare,
 		Short: "Run a comparison against imported SoundPLAN receiver results",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCompare(cmd, standardID, standardVersion, standardProfile, modelPath, scenarioID, toleranceDB)
@@ -133,6 +139,7 @@ func loadCompareInputs(root string) (compareInputs, error) {
 	}
 
 	soundPlanRoot := resolvePath(root, importReport.SourcePath)
+
 	resultRunDirs, err := selectSoundPlanReceiverResultDirs(soundPlanRoot)
 	if err != nil {
 		return compareInputs{}, err
@@ -172,7 +179,7 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	inputs, err := loadCompareInputs(store.Root())
@@ -188,6 +195,7 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 	if err != nil {
 		return err
 	}
+
 	if hasRasterPrep {
 		defer cleanupRasterComparePreparation(rasterPrep)
 	}
@@ -220,6 +228,7 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 	if err != nil {
 		return err
 	}
+
 	if report.Raster == nil {
 		report.Raster = buildSoundPlanRasterCompareReport(importReport)
 	}
@@ -247,7 +256,7 @@ func persistCompareReport(store projectfs.Store, report soundPlanCompareReport) 
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
@@ -265,20 +274,25 @@ func persistCompareReport(store projectfs.Store, report soundPlanCompareReport) 
 		})
 	}
 
-	return store.Save(proj)
+	if err := store.Save(proj); err != nil {
+		return fmt.Errorf("save project manifest: %w", err)
+	}
+
+	return nil
 }
 
 // writeCompareJSONOutput emits the machine-readable compare summary.
 func writeCompareJSONOutput(cmd *cobra.Command, runID string, report soundPlanCompareReport) error {
 	rasterArtifactPath := ""
 	rasterRunCount := 0
+
 	if report.Raster != nil {
 		rasterArtifactPath = report.Raster.ArtifactPath
 		rasterRunCount = len(report.Raster.SoundPlanRuns)
 	}
 
 	return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
-		"command":                    "compare",
+		"command":                    commandNameCompare,
 		"report_path":                defaultCompareReportPath,
 		"run_id":                     runID,
 		"matched_receiver_count":     report.MatchedReceiverCount,
@@ -297,6 +311,7 @@ func printCompareSummary(cmd *cobra.Command, runID string, report soundPlanCompa
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Matched receivers: %d\n", report.MatchedReceiverCount)
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Unmatched Aconiq receivers: %d\n", report.UnmatchedAconiqCount)
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Unmatched SoundPLAN receivers: %d\n", report.UnmatchedSPCount)
+
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Report: %s\n", defaultCompareReportPath)
 	if report.Raster != nil {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Raster coverage: %s (%d SoundPLAN grid-map runs)\n", report.Raster.Status, len(report.Raster.SoundPlanRuns))
@@ -323,14 +338,15 @@ func executeCompareRun(parent *cobra.Command, req runCommandRequest) (project.Ru
 	}
 
 	state, _ := stateFromCommand(parent)
+
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return project.Run{}, err
+		return project.Run{}, fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return project.Run{}, err
+		return project.Run{}, fmt.Errorf("load project manifest: %w", err)
 	}
 
 	run, ok := latestRun(proj.Runs)
@@ -366,10 +382,12 @@ func buildSoundPlanRasterCompareReport(importReport soundPlanImportReport) *soun
 
 	status := "metadata_only"
 	warning := "RRLK*.GM files are currently decoded as metadata only; raster values, origin, spacing alignment, and active-cell masks are not compared yet."
+
 	for _, item := range importReport.GridMaps {
 		if item.DecodedValues && item.ActiveCellCount > 0 {
 			status = "parsed_values_unaligned"
 			warning = "RRLK*.GM values and row spans are decoded, but raster deltas are still blocked on spatial origin/alignment against the Aconiq run grid."
+
 			break
 		}
 	}
@@ -394,9 +412,11 @@ func compareRasterStatus(report *soundPlanRasterCompareReport) string {
 
 func selectSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
 	resultDirs := make([]string, 0, 4)
+
 	candidates := []string{"RSPS0011", "RSPS0021", "RSPS0000"}
 	for _, candidate := range candidates {
 		dir := filepath.Join(soundPlanRoot, candidate)
+
 		suffix := compareExtractRunSuffix(candidate)
 		if compareFileExists(filepath.Join(dir, "RREC"+suffix+".abs")) {
 			resultDirs = append(resultDirs, candidate)
@@ -413,8 +433,10 @@ func selectSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
 	}
 
 	slices.Sort(matches)
+
 	for _, match := range matches {
 		name := filepath.Base(match)
+
 		suffix := compareExtractRunSuffix(name)
 		if compareFileExists(filepath.Join(match, "RREC"+suffix+".abs")) {
 			resultDirs = append(resultDirs, name)
@@ -430,6 +452,7 @@ func selectSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
 
 func loadSoundPlanReceiverResults(soundPlanRoot string, resultRunDirs []string) ([]soundplanimport.ReceiverResult, error) {
 	all := make([]soundplanimport.ReceiverResult, 0, 128)
+
 	for _, resultRunDir := range resultRunDirs {
 		suffix := compareExtractRunSuffix(resultRunDir)
 		path := filepath.Join(soundPlanRoot, resultRunDir, "RREC"+suffix+".abs")
@@ -484,6 +507,7 @@ func matchSoundPlanReceiver(
 
 		dx := record.X - candidate.X
 		dy := record.Y - candidate.Y
+
 		distance := math.Hypot(dx, dy)
 		if distance > defaultReceiverMatchTolM {
 			continue
@@ -512,6 +536,7 @@ func matchSoundPlanReceiver(
 // countUnusedSoundPlanReceivers counts SoundPLAN receivers left without a match.
 func countUnusedSoundPlanReceivers(used []bool) int {
 	unmatched := 0
+
 	for i := range used {
 		if !used[i] {
 			unmatched++
@@ -559,6 +584,7 @@ func compareSoundPlanReceiverTables(
 		matched := soundPlan[bestIndex]
 		deltaDay := dayValue - matched.ZB1
 		deltaNight := nightValue - matched.ZB2
+
 		dayAbs = append(dayAbs, math.Abs(deltaDay))
 		nightAbs = append(nightAbs, math.Abs(deltaNight))
 
@@ -587,7 +613,7 @@ func compareSoundPlanReceiverTables(
 	unmatchedSoundPlan := countUnusedSoundPlanReceivers(used)
 
 	return soundPlanCompareReport{
-		Command:              "compare",
+		Command:              commandNameCompare,
 		StandardID:           standardID,
 		StandardVersion:      standardVersion,
 		StandardProfile:      standardProfile,
@@ -614,6 +640,7 @@ func buildCompareIndicatorStats(absDeltas []float64, toleranceDB float64) compar
 
 	sum := 0.0
 	exceeding := 0
+
 	for _, value := range sorted {
 		sum += value
 		if value > toleranceDB {

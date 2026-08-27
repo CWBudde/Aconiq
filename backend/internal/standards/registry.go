@@ -1,6 +1,8 @@
 package standards
 
 import (
+	"fmt"
+
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
 	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
@@ -19,7 +21,7 @@ import (
 
 // NewRegistry returns the local standards registry used by CLI runs.
 func NewRegistry() (framework.Registry, error) {
-	return framework.NewRegistry(
+	registry, err := framework.NewRegistry(
 		freefield.Descriptor(),
 		bebexposure.Descriptor(),
 		bubindustry.Descriptor(),
@@ -34,4 +36,9 @@ func NewRegistry() (framework.Registry, error) {
 		rls19road.Descriptor(),
 		schall03.Descriptor(),
 	)
+	if err != nil {
+		return framework.Registry{}, fmt.Errorf("build standards registry: %w", err)
+	}
+
+	return registry, nil
 }

@@ -13,7 +13,7 @@ import (
 
 func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error) {
 	switch feature.GeometryType {
-	case "Point":
+	case modelgeojson.GeometryTypePoint:
 		point, err := parsePointCoordinate(feature.Coordinates)
 		if err != nil {
 			return nil, err
@@ -44,14 +44,14 @@ func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error
 
 func lineStringsFromFeature(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
 	switch feature.GeometryType {
-	case geometryTypeLineString:
+	case modelgeojson.GeometryTypeLineString:
 		line, err := parseLineStringCoordinates(feature.Coordinates)
 		if err != nil {
 			return nil, err
 		}
 
 		return [][]geo.Point2D{line}, nil
-	case geometryTypeMultiLineString:
+	case modelgeojson.GeometryTypeMultiLineString:
 		rawLines, ok := feature.Coordinates.([]any)
 		if !ok {
 			return nil, errors.New("geometry MultiLineString coordinates must be an array")
@@ -75,14 +75,14 @@ func lineStringsFromFeature(feature modelgeojson.Feature) ([][]geo.Point2D, erro
 
 func polygonsFromFeature(feature modelgeojson.Feature) ([][][]geo.Point2D, error) {
 	switch feature.GeometryType {
-	case "Polygon":
+	case modelgeojson.GeometryTypePolygon:
 		polygon, err := parsePolygonCoordinates(feature.Coordinates)
 		if err != nil {
 			return nil, err
 		}
 
 		return [][][]geo.Point2D{polygon}, nil
-	case "MultiPolygon":
+	case modelgeojson.GeometryTypeMultiPolygon:
 		rawPolygons, ok := feature.Coordinates.([]any)
 		if !ok {
 			return nil, errors.New("geometry MultiPolygon coordinates must be an array")
@@ -106,14 +106,14 @@ func polygonsFromFeature(feature modelgeojson.Feature) ([][][]geo.Point2D, error
 
 func flightTracksFromFeature(feature modelgeojson.Feature, options cnossosAircraftRunOptions) ([][]geo.Point3D, error) {
 	switch feature.GeometryType {
-	case geometryTypeLineString:
+	case modelgeojson.GeometryTypeLineString:
 		line, err := parseFlightTrackCoordinates(feature.Coordinates, options)
 		if err != nil {
 			return nil, err
 		}
 
 		return [][]geo.Point3D{line}, nil
-	case geometryTypeMultiLineString:
+	case modelgeojson.GeometryTypeMultiLineString:
 		rawLines, ok := feature.Coordinates.([]any)
 		if !ok {
 			return nil, errors.New("geometry MultiLineString coordinates must be an array")
@@ -137,14 +137,14 @@ func flightTracksFromFeature(feature modelgeojson.Feature, options cnossosAircra
 
 func flightTracksFromFeatureBUF(feature modelgeojson.Feature, options bufAircraftRunOptions) ([][]geo.Point3D, error) {
 	switch feature.GeometryType {
-	case geometryTypeLineString:
+	case modelgeojson.GeometryTypeLineString:
 		line, err := parseFlightTrackCoordinatesBUF(feature.Coordinates, options)
 		if err != nil {
 			return nil, err
 		}
 
 		return [][]geo.Point3D{line}, nil
-	case geometryTypeMultiLineString:
+	case modelgeojson.GeometryTypeMultiLineString:
 		rawLines, ok := feature.Coordinates.([]any)
 		if !ok {
 			return nil, errors.New("geometry MultiLineString coordinates must be an array")

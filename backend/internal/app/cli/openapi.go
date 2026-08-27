@@ -10,8 +10,10 @@ import (
 )
 
 func newOpenAPICommand() *cobra.Command {
-	var outPath string
-	var serverURL string
+	var (
+		outPath   string
+		serverURL string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "openapi",

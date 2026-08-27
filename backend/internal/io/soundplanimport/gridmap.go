@@ -104,6 +104,7 @@ func LoadGridMapMetadata(projectDir string, runs []*RunResult) []GridMapMetadata
 		if err != nil {
 			item.Warnings = append(item.Warnings, err.Error())
 			out = append(out, item)
+
 			continue
 		}
 
@@ -143,6 +144,7 @@ func parseGridMapLayers(payload []byte) []GridMapLayer {
 		}
 
 		seen[key] = struct{}{}
+
 		out = append(out, GridMapLayer{Name: name, Unit: unit})
 	}
 
@@ -326,6 +328,7 @@ func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, 
 
 	spans := splitGridMapNonZeroSpansFromPayload(payload, start)
 	startSpan := -1
+
 	for i := range spans {
 		sum := 0
 		for _, row := range spans[i:] {
@@ -343,6 +346,7 @@ func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, 
 	}
 
 	rows := spans[startSpan:]
+
 	actualTotal := 0
 	for _, row := range rows {
 		actualTotal += len(row)
@@ -361,6 +365,7 @@ func detectGridMapCellStreamStart(payload []byte) (int, error) {
 
 	for start := range 13 {
 		count := 0
+
 		for off := start; off <= len(payload)-13; off += 13 {
 			if _, ok := decodeGridMapCellRecord(payload[off : off+13]); ok {
 				count++
@@ -477,6 +482,7 @@ func newGridMapStatAccumulator(layers []GridMapLayer, index int, fallbackName, f
 		if strings.TrimSpace(layers[index].Name) != "" {
 			acc.name = layers[index].Name
 		}
+
 		if strings.TrimSpace(layers[index].Unit) != "" {
 			acc.unit = layers[index].Unit
 		}
@@ -493,6 +499,7 @@ func (a *gridMapStatAccumulator) add(value float64) {
 	if value < a.min {
 		a.min = value
 	}
+
 	if value > a.max {
 		a.max = value
 	}
@@ -545,6 +552,7 @@ func parseGridMapLayer(raw string) (string, string, bool) {
 	}
 
 	name = strings.TrimSpace(name)
+
 	unit = strings.TrimSpace(unit)
 	if name == "" || unit == "" {
 		return "", "", false
@@ -559,6 +567,7 @@ func parseGridMapLayer(raw string) (string, string, bool) {
 
 func extractPrintableNullTerminatedStrings(payload []byte) []string {
 	out := make([]string, 0, 16)
+
 	var current []byte
 
 	flush := func() {
@@ -593,6 +602,7 @@ func isPlausibleGridMapName(value string) bool {
 	}
 
 	hasLetter := false
+
 	for _, r := range value {
 		switch {
 		case r >= 'A' && r <= 'Z':

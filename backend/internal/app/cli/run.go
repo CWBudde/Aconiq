@@ -6,14 +6,16 @@ import (
 )
 
 func newRunCommand() *cobra.Command {
-	var scenarioID string
-	var standardID string
-	var standardVersion string
-	var standardProfile string
-	var modelPath string
-	var receiverMode string
-	var rawParams []string
-	var inputPaths []string
+	var (
+		scenarioID      string
+		standardID      string
+		standardVersion string
+		standardProfile string
+		modelPath       string
+		receiverMode    string
+		rawParams       []string
+		inputPaths      []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "run",

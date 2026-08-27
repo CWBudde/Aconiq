@@ -2,6 +2,38 @@ package modelgeojson
 
 import "time"
 
+// TypeFeatureCollection is the GeoJSON `type` member of a FeatureCollection
+// object.
+const TypeFeatureCollection = "FeatureCollection"
+
+// GeoJSON geometry type tags, as they appear in a geometry object's `type`
+// member and in Feature.GeometryType. These are the canonical spellings for
+// the whole backend — importers, extractors and validators must use them
+// rather than repeating the literals.
+const (
+	GeometryTypePoint           = "Point"
+	GeometryTypeMultiPoint      = "MultiPoint"
+	GeometryTypeLineString      = "LineString"
+	GeometryTypeMultiLineString = "MultiLineString"
+	GeometryTypePolygon         = "Polygon"
+	GeometryTypeMultiPolygon    = "MultiPolygon"
+)
+
+// Feature kinds accepted by model schema v1 (Feature.Kind).
+const (
+	FeatureKindSource   = "source"
+	FeatureKindBuilding = "building"
+	FeatureKindBarrier  = "barrier"
+	FeatureKindReceiver = "receiver"
+)
+
+// Source geometry classes accepted by model schema v1 (Feature.SourceType).
+const (
+	SourceTypePoint = "point"
+	SourceTypeLine  = "line"
+	SourceTypeArea  = "area"
+)
+
 // Model contains normalized GeoJSON features for the project model layer.
 type Model struct {
 	SchemaVersion    int       `json:"schema_version"`

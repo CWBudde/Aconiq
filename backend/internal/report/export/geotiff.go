@@ -90,7 +90,7 @@ func exportRasterBands(
 		return nil, errors.New("raster has invalid dimensions")
 	}
 
-	err := os.MkdirAll(filepath.Dir(basePath), 0o755)
+	err := os.MkdirAll(filepath.Dir(basePath), 0o750)
 	if err != nil {
 		return nil, fmt.Errorf("create output directory: %w", err)
 	}
@@ -204,7 +204,16 @@ func writeGeoTIFFFile(path string, data []float64, width int, height int, nodata
 	// Image data.
 	copy(buf[imageDataOffset:], imageBytes)
 
-	return os.WriteFile(path, buf, 0o600)
+	return writeTIFFBytes(path, buf)
+}
+
+// writeTIFFBytes writes the assembled TIFF/COG bytes to disk, wrapping any error.
+func writeTIFFBytes(path string, buf []byte) error {
+	if err := os.WriteFile(path, buf, 0o600); err != nil {
+		return fmt.Errorf("write geotiff %s: %w", path, err)
+	}
+
+	return nil
 }
 
 type ifdEntry struct {
@@ -222,8 +231,10 @@ type extraBlock struct {
 }
 
 func buildGeoTIFFIFD(width int, height int, nodata float64, gt GeoTransform, epsgCode int) ([]ifdEntry, []extraBlock) {
-	var entries []ifdEntry
-	var extras []extraBlock
+	var (
+		entries []ifdEntry
+		extras  []extraBlock
+	)
 
 	imageByteCount := width * height * 8
 
@@ -409,7 +420,7 @@ func writeCOGFile(path string, data []float64, width, height int, nodata float64
 
 	buf := assembleCOGFile(fileLayout, levels, nodata)
 
-	return os.WriteFile(path, buf, 0o600)
+	return writeTIFFBytes(path, buf)
 }
 
 // computeCOGLevelLayouts computes tile counts and data sizes for each COG level.
@@ -686,8 +697,10 @@ func buildFloat64ImageTags(width, height int) []ifdEntry {
 // buildGeoIFDEntries creates the GeoTIFF metadata entries (pixel scale, tiepoint, geo keys, nodata).
 // extraBaseIdx is the current length of the extras slice, used to compute correct resolveExtra indices.
 func buildGeoIFDEntries(gt GeoTransform, epsgCode int, nodata float64, extraBaseIdx int) ([]ifdEntry, []extraBlock) {
-	var entries []ifdEntry
-	var extras []extraBlock
+	var (
+		entries []ifdEntry
+		extras  []extraBlock
+	)
 
 	addExtra := func(data []byte) int {
 		idx := extraBaseIdx + len(extras)

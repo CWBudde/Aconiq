@@ -258,7 +258,7 @@ func TestRunCacheRetentionPrunesOlderRunDirectories(t *testing.T) {
 	cacheDir := t.TempDir()
 	runner := NewRunner(nil)
 
-	err := os.MkdirAll(filepath.Join(cacheDir, "bench", "keep"), 0o755)
+	err := os.MkdirAll(filepath.Join(cacheDir, "bench", "keep"), 0o750)
 	if err != nil {
 		t.Fatalf("create bench cache dir: %v", err)
 	}
@@ -309,6 +309,7 @@ func TestProgressEventsIncludePipelineStages(t *testing.T) {
 	sources := []Source{{ID: "s1", Point: geo.Point2D{X: 1, Y: 1}, Emission: 88}}
 
 	var mu sync.Mutex
+
 	events := make([]ProgressEvent, 0)
 	runner := NewRunner(func(event ProgressEvent) {
 		mu.Lock()

@@ -371,6 +371,7 @@ func ComputeLateralDiffraction(
 	}
 
 	var bestAbar BeiblattSpectrum
+
 	found := false
 
 	for _, endpoint := range [2]geo.Point2D{barrier.A, barrier.B} {

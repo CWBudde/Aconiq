@@ -98,12 +98,12 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	run, err := findRunForExport(proj.Runs, opts.runID)
@@ -120,7 +120,7 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 
 	bundleDir := filepath.Join(outRoot, exportID)
 
-	err = os.MkdirAll(bundleDir, 0o755)
+	err = os.MkdirAll(bundleDir, 0o750)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.export", "create export directory: "+bundleDir, err)
 	}
@@ -216,7 +216,7 @@ func persistExportBundle(
 
 	err = store.Save(proj)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("save project manifest: %w", err)
 	}
 
 	return summaryPath, nil
@@ -524,29 +524,29 @@ func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
 			return false, nil
 		}
 
-		return false, err
+		return false, fmt.Errorf("stat export source %s: %w", srcPath, err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(dstPath), 0o755)
+	err = os.MkdirAll(filepath.Dir(dstPath), 0o750)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("create export bundle directory %s: %w", filepath.Dir(dstPath), err)
 	}
 
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("open export source %s: %w", srcPath, err)
 	}
 	defer src.Close()
 
 	dst, err := os.Create(dstPath)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("create export bundle file %s: %w", dstPath, err)
 	}
 	defer dst.Close()
 
 	_, err = io.Copy(dst, src)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("copy %s to export bundle: %w", srcPath, err)
 	}
 
 	return true, nil
@@ -559,7 +559,7 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 			continue
 		}
 
-		if !strings.HasPrefix(artifact.Kind, "run.result.") {
+		if !strings.HasPrefix(artifact.Kind, project.ArtifactKindRunResultPrefix) {
 			continue
 		}
 
@@ -600,11 +600,11 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 		out.CopiedFiles = append(out.CopiedFiles, filepath.ToSlash(destRel))
 
 		switch artifact.Kind {
-		case "run.result.receiver_table_json":
+		case project.ArtifactKindRunResultReceiverTableJSON:
 			out.ReceiverTableJSON = dstPath
-		case "run.result.summary":
+		case project.ArtifactKindRunResultSummary:
 			out.RunSummary = dstPath
-		case "run.result.raster_metadata":
+		case project.ArtifactKindRunResultRasterMetadata:
 			out.RasterMetadataList = append(out.RasterMetadataList, dstPath)
 		}
 	}
@@ -617,10 +617,11 @@ func copyRunResultArtifactsToBundle(projectRoot string, bundleDir string, artifa
 
 func copyModelDumpToBundle(projectRoot string, bundleDir string, artifacts []project.ArtifactRef) (string, string, error) {
 	modelDumpPath := ""
+
 	var latestAt time.Time
 
 	for _, artifact := range artifacts {
-		if artifact.Kind != "model.dump_json" {
+		if artifact.Kind != project.ArtifactKindModelDumpJSON {
 			continue
 		}
 
@@ -678,15 +679,20 @@ func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS stri
 	// export bundle the CLI itself laid out; only the bundle root comes from
 	// --out, which is the destination the user asked for.
 	//nolint:gosec // in-place rewrite of a bundle file the exporter created
-	return os.WriteFile(geojsonPath, out, 0o600)
+	if err := os.WriteFile(geojsonPath, out, 0o600); err != nil {
+		return fmt.Errorf("write re-projected GeoJSON %s: %w", geojsonPath, err)
+	}
+
+	return nil
 }
 
 func copyModelGeoJSONToBundle(projectRoot string, bundleDir string, artifacts []project.ArtifactRef) (string, string, error) {
 	modelGeoJSONPath := ""
+
 	var latestAt time.Time
 
 	for _, artifact := range artifacts {
-		if artifact.Kind != "model.normalized_geojson" {
+		if artifact.Kind != project.ArtifactKindModelNormalizedGeoJSON {
 			continue
 		}
 
@@ -718,11 +724,11 @@ func copyModelGeoJSONToBundle(projectRoot string, bundleDir string, artifacts []
 
 func destinationPathForRunArtifact(artifact project.ArtifactRef) string {
 	switch artifact.Kind {
-	case "run.result.receiver_table_json":
+	case project.ArtifactKindRunResultReceiverTableJSON:
 		return filepath.ToSlash(filepath.Join("results", "receivers.json"))
-	case "run.result.receiver_table_csv":
+	case project.ArtifactKindRunResultReceiverTableCSV:
 		return filepath.ToSlash(filepath.Join("results", "receivers.csv"))
-	case "run.result.summary":
+	case project.ArtifactKindRunResultSummary:
 		return filepath.ToSlash(filepath.Join("results", "run-summary.json"))
 	default:
 		return filepath.ToSlash(filepath.Join("results", filepath.Base(artifact.Path)))
@@ -1068,10 +1074,18 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 	return nil
 }
 
+// Indicator names used by the sample result bundle emitted with
+// `aconiq export --with-sample`. They must match the indicator names the
+// standards modules produce.
+const (
+	sampleIndicatorLden   = "Lden"
+	sampleIndicatorLnight = "Lnight"
+)
+
 func emitSampleResultBundle(bundleDir string) ([]string, error) {
 	resultsDir := filepath.Join(bundleDir, "sample-results")
 
-	err := os.MkdirAll(resultsDir, 0o755)
+	err := os.MkdirAll(resultsDir, 0o750)
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "create sample results directory", err)
 	}
@@ -1082,7 +1096,7 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 		Bands:     1,
 		NoData:    -9999,
 		Unit:      "dB",
-		BandNames: []string{"Lden"},
+		BandNames: []string{sampleIndicatorLden},
 	})
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "build sample raster", err)
@@ -1105,12 +1119,12 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 	}
 
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
+		IndicatorOrder: []string{sampleIndicatorLden, sampleIndicatorLnight},
 		Unit:           "dB",
 		Records: []results.ReceiverRecord{
-			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 56.3, "Lnight": 47.8}},
-			{ID: "rx-002", X: 110, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 58.1, "Lnight": 49.2}},
-			{ID: "rx-003", X: 120, Y: 205, HeightM: 4, Values: map[string]float64{"Lden": 55.4, "Lnight": 46.6}},
+			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{sampleIndicatorLden: 56.3, sampleIndicatorLnight: 47.8}},
+			{ID: "rx-002", X: 110, Y: 200, HeightM: 4, Values: map[string]float64{sampleIndicatorLden: 58.1, sampleIndicatorLnight: 49.2}},
+			{ID: "rx-003", X: 120, Y: 205, HeightM: 4, Values: map[string]float64{sampleIndicatorLden: 55.4, sampleIndicatorLnight: 46.6}},
 		},
 	}
 

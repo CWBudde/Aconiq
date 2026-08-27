@@ -94,7 +94,7 @@ func extractBandGrid(raster *results.Raster, meta results.RasterMetadata, band i
 		for x := range meta.Width {
 			val, err := raster.At(x, y, band)
 			if err != nil {
-				return nil, 0, 0, err
+				return nil, 0, 0, fmt.Errorf("read raster band %d at (%d, %d): %w", band, x, y, err)
 			}
 
 			grid[y][x] = val
@@ -449,7 +449,7 @@ func joinSegments(segments [][2][2]float64) [][][2]float64 {
 
 // ExportContourGeoJSON writes contour lines as a GeoJSON FeatureCollection.
 func ExportContourGeoJSON(path string, contours []ContourLine) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	err := os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create contour geojson directory: %w", err)
 	}
@@ -463,7 +463,11 @@ func ExportContourGeoJSON(path string, contours []ContourLine) error {
 
 	data = append(data, '\n')
 
-	return os.WriteFile(path, data, 0o600)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write contour geojson %s: %w", path, err)
+	}
+
+	return nil
 }
 
 func buildContourFeatureCollection(contours []ContourLine) map[string]any {

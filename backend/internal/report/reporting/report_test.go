@@ -26,17 +26,17 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	modelDumpPath := filepath.Join(bundleDir, "model", "model.dump.json")
 	assessmentPath := filepath.Join(bundleDir, "assessment", "16bimschv-assessment.json")
 
-	err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o755)
+	err := os.MkdirAll(filepath.Dir(runSummaryPath), 0o750)
 	if err != nil {
 		t.Fatalf("create results dir: %v", err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(modelDumpPath), 0o755)
+	err = os.MkdirAll(filepath.Dir(modelDumpPath), 0o750)
 	if err != nil {
 		t.Fatalf("create model dir: %v", err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(assessmentPath), 0o755)
+	err = os.MkdirAll(filepath.Dir(assessmentPath), 0o750)
 	if err != nil {
 		t.Fatalf("create assessment dir: %v", err)
 	}

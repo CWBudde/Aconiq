@@ -24,7 +24,7 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 	sources := make([]schall03.RailSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 

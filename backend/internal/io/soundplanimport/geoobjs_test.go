@@ -145,12 +145,14 @@ func TestParseGeoObjs_BuildingAddressesAssigned(t *testing.T) {
 
 	addresses := make(map[string]bool)
 	buildingsWithAddress := 0
+
 	for _, building := range objs.Buildings {
 		if len(building.Addresses) == 0 {
 			continue
 		}
 
 		buildingsWithAddress++
+
 		for _, address := range building.Addresses {
 			addresses[address] = true
 		}

@@ -149,6 +149,7 @@ func (p *wandParser) readDataRecordPayload(i int) ([]byte, int, bool) {
 	}
 
 	payloadLen := int(readU32(p.data, i+10))
+
 	recEnd += payloadLen
 	if recEnd > len(p.data) {
 		return nil, i + 3, false

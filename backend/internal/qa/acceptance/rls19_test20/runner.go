@@ -21,6 +21,8 @@ const (
 	ModeLocalSuite         = "local-suite"
 	localSuiteManifestName = "suite.json"
 	taskStatusFailed       = "failed"
+	taskStatusPassed       = "passed"
+	taskStatusSkipped      = "skipped"
 )
 
 type Options struct {
@@ -148,7 +150,7 @@ func Run(opts Options) (Report, error) {
 			SuiteName:   "rls19-test20",
 			StandardID:  rls19road.StandardID,
 			Mode:        mode,
-			Status:      "skipped",
+			Status:      taskStatusSkipped,
 			GeneratedAt: generatedAt,
 			SkipReason:  skipReason,
 		}, opts)
@@ -201,19 +203,20 @@ func runTasks(tasks []taskManifest, suiteDir string) ([]TaskResult, error) {
 // summarizeTaskStatuses derives the overall report status and per-status
 // task counts. Status precedence is: failed > skipped > passed.
 func summarizeTaskStatuses(tasks []TaskResult) (status string, passed, failed, skipped int) {
-	status = "passed"
+	status = taskStatusPassed
 
 	for _, task := range tasks {
 		switch task.Status {
-		case "passed":
+		case taskStatusPassed:
 			passed++
 		case taskStatusFailed:
 			failed++
 			status = taskStatusFailed
-		case "skipped":
+		case taskStatusSkipped:
 			skipped++
-			if status == "passed" {
-				status = "skipped"
+
+			if status == taskStatusPassed {
+				status = taskStatusSkipped
 			}
 		}
 	}
@@ -231,11 +234,11 @@ func summarizeCategoryCoverage(tasks []TaskResult) map[string]CategoryStatus {
 		cs.TaskCount++
 
 		switch task.Status {
-		case "passed":
+		case taskStatusPassed:
 			cs.PassCount++
 		case taskStatusFailed:
 			cs.FailCount++
-		case "skipped":
+		case taskStatusSkipped:
 			cs.SkipCount++
 		}
 
@@ -329,14 +332,14 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 		scenario.PropagationConfig.toPropagationConfig(scenario.Buildings),
 	)
 	if err != nil {
-		return TaskResult{}, err
+		return TaskResult{}, fmt.Errorf("compute receiver outputs for scenario %s: %w", task.ScenarioPath, err)
 	}
 
 	result.Actual = snapshotsFromOutputs(outputs)
 	result.ReceiverCount = len(result.Actual)
 
 	if task.ExpectedPath == "" {
-		result.Status = "skipped"
+		result.Status = taskStatusSkipped
 		result.Details = "no expected snapshot configured"
 
 		return result, nil
@@ -363,7 +366,7 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 		return result, nil //nolint:nilerr
 	}
 
-	result.Status = "passed"
+	result.Status = taskStatusPassed
 
 	return result, nil
 }
@@ -475,7 +478,7 @@ func writeJSONFile(path string, value any) error {
 
 	payload = append(payload, '\n')
 
-	err = os.MkdirAll(filepath.Dir(path), 0o755)
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}

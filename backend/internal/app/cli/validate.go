@@ -13,8 +13,10 @@ import (
 )
 
 func newValidateCommand() *cobra.Command {
-	var inputPath string
-	var writeReport bool
+	var (
+		inputPath   string
+		writeReport bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "validate",
@@ -38,12 +40,12 @@ func runValidateCommand(cmd *cobra.Command, inputPath string, writeReport bool) 
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	if inputPath == "" {
@@ -89,6 +91,7 @@ func runValidateCommand(cmd *cobra.Command, inputPath string, writeReport bool) 
 			"errors":        report.ErrorCount(),
 			"warnings":      report.WarningCount(),
 		}
+
 		if writeReport {
 			reportPath := filepath.Join(store.Root(), ".noise", "model", "validation-report.json")
 			jsonPayload["report_path"] = relativePath(store.Root(), reportPath)
@@ -118,13 +121,17 @@ func persistValidationReport(store projectfs.Store, proj *project.Project, repor
 	}
 
 	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-validation",
-		Kind:      "model.validation_report",
+		ID:        project.ArtifactIDModelValidation,
+		Kind:      project.ArtifactKindModelValidationReport,
 		Path:      relativePath(store.Root(), reportPath),
 		CreatedAt: nowUTC(),
 	})
 
-	return store.Save(*proj)
+	if err := store.Save(*proj); err != nil {
+		return fmt.Errorf("save project manifest: %w", err)
+	}
+
+	return nil
 }
 
 func validationReportError(report modelgeojson.ValidationReport) error {

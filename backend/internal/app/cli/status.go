@@ -16,8 +16,10 @@ import (
 )
 
 func newStatusCommand() *cobra.Command {
-	var limit int
-	var tailLines int
+	var (
+		limit     int
+		tailLines int
+	)
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -41,12 +43,12 @@ func runStatusCommand(cmd *cobra.Command, limit, tailLines int) error {
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	latestRun, hasLatest := latestRun(proj.Runs)
@@ -91,6 +93,7 @@ func writeStatusJSON(
 	limit int,
 ) error {
 	runs := make([]statusRunEntry, 0, len(proj.Runs))
+
 	start := max(len(proj.Runs)-limit, 0)
 	for _, r := range proj.Runs[start:] {
 		runs = append(runs, statusRunEntry{

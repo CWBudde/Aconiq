@@ -26,7 +26,7 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 	sources := make([]bubroad.RoadSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -323,7 +323,7 @@ func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunO
 	sources := make([]bufaircraft.AircraftSource, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != featureKindSource {
+		if feature.Kind != modelgeojson.FeatureKindSource {
 			continue
 		}
 
@@ -553,7 +553,7 @@ func extractBEBBuildings(model modelgeojson.Model, options bebExposureRunOptions
 	buildings := make([]bebexposure.BuildingUnit, 0)
 
 	for featureIndex, feature := range model.Features {
-		if feature.Kind != "building" {
+		if feature.Kind != modelgeojson.FeatureKindBuilding {
 			continue
 		}
 

@@ -275,8 +275,10 @@ func TestExportModelFeaturesGeoPackage(t *testing.T) {
 	}
 
 	// Verify columns and values for a specific feature.
-	var featureID, kind, sourceType string
-	var heightM float64
+	var (
+		featureID, kind, sourceType string
+		heightM                     float64
+	)
 
 	err = db.QueryRow("SELECT feature_id, kind, source_type, height_m FROM model_features WHERE feature_id = 'bar-1'").Scan(&featureID, &kind, &sourceType, &heightM)
 	if err != nil {

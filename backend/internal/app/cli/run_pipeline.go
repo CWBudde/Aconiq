@@ -10,6 +10,7 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/engine"
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
@@ -72,12 +73,12 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	resolvedModelPath := resolvePath(store.Root(), req.modelPath)
@@ -103,7 +104,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create run for scenario %s: %w", req.scenarioID, err)
 	}
 
 	logLines := []string{
@@ -134,11 +135,14 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	}
 
 	runDir := filepath.Join(store.Root(), ".noise", "runs", run.ID)
-	var persisted persistedRunOutputs
-	var outputHash string
-	var finishedAt time.Time
-	var sourceCount int
-	var receiverCount int
+
+	var (
+		persisted     persistedRunOutputs
+		outputHash    string
+		finishedAt    time.Time
+		sourceCount   int
+		receiverCount int
+	)
 
 	switch resolvedStandard.StandardID {
 	case freefield.StandardID:
@@ -460,12 +464,15 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		}
 
 		receiverCount = len(buildings)
-		var buildingOutputs []bebexposure.BuildingExposureOutput
-		var summary bebexposure.Summary
+
+		var (
+			buildingOutputs []bebexposure.BuildingExposureOutput
+			summary         bebexposure.Summary
+		)
 
 		switch options.UpstreamMappingStandard {
 		case bebexposure.UpstreamStandardBUBRoad:
-			roadSources, extractErr := extractBUBRoadSources(model, options.BUBRoadOptions(), []string{"line"})
+			roadSources, extractErr := extractBUBRoadSources(model, options.BUBRoadOptions(), []string{modelgeojson.SourceTypeLine})
 			if extractErr != nil {
 				logLines = append(logLines, fmt.Sprintf("%s failed to extract BEB upstream road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
 				return finalizeRunFailure(store, run, logLines, extractErr)
@@ -487,7 +494,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 				options.FacadeReceiverHeightM,
 			)
 		case bebexposure.UpstreamStandardBUFAircraft:
-			aircraftSources, extractErr := extractBUFAircraftSources(model, options.BUFAircraftOptions(), []string{"line"})
+			aircraftSources, extractErr := extractBUFAircraftSources(model, options.BUFAircraftOptions(), []string{modelgeojson.SourceTypeLine})
 			if extractErr != nil {
 				logLines = append(logLines, fmt.Sprintf("%s failed to extract BEB upstream aircraft sources: %v", nowUTC().Format(time.RFC3339), extractErr))
 				return finalizeRunFailure(store, run, logLines, extractErr)

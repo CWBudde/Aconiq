@@ -33,7 +33,7 @@ func AssertJSONSnapshot(t *testing.T, snapshotPath string, got any) {
 	serialized = append(serialized, '\n')
 
 	if UpdateEnabled() {
-		err := os.MkdirAll(filepath.Dir(snapshotPath), 0o755)
+		err := os.MkdirAll(filepath.Dir(snapshotPath), 0o750)
 		if err != nil {
 			t.Fatalf("create snapshot directory: %v", err)
 		}

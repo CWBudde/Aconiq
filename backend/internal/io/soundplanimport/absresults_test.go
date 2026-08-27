@@ -52,6 +52,7 @@ func TestParseRailEmissions(t *testing.T) {
 	}
 
 	found := false
+
 	for _, emission := range emissions {
 		if emission.Railname != "Hauptstrecke Gleis 1" {
 			continue
@@ -90,6 +91,7 @@ func TestParseTrainEmissions(t *testing.T) {
 	}
 
 	found := false
+
 	for _, emission := range emissions {
 		if emission.Trainname == "" {
 			continue

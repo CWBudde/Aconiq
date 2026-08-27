@@ -72,9 +72,16 @@ const (
 	FahrbahnartBahnuebergang                                   // Bahnuebergang
 )
 
+// C1Entry.Effect values: the Table 7 corrections are split into a rail-borne
+// (Schiene) and a reflection (Reflexion) component.
+const (
+	c1EffectSchiene   = "schiene"
+	c1EffectReflexion = "reflexion"
+)
+
 // C1Entry holds a single correction component of Table 7.
 type C1Entry struct {
-	Effect      string           // "schiene" or "reflexion"
+	Effect      string           // c1EffectSchiene or c1EffectReflexion
 	Teilquellen []int            // which m values this correction applies to
 	C1          BeiblattSpectrum // correction in dB per octave band
 }
@@ -93,12 +100,12 @@ var C1FahrbahnartTable = [3]C1FahrbahnartEntry{
 		Type: FahrbahnartFesteFahrbahn,
 		Corrections: []C1Entry{
 			{
-				Effect:      "schiene",
+				Effect:      c1EffectSchiene,
 				Teilquellen: []int{1, 2},
 				C1:          BeiblattSpectrum{0, 0, 0, 7, 3, 0, 0, 0},
 			},
 			{
-				Effect:      "reflexion",
+				Effect:      c1EffectReflexion,
 				Teilquellen: []int{1, 2, 7, 9, 11},
 				C1:          BeiblattSpectrum{1, 1, 1, 1, 1, 1, 1, 1},
 			},
@@ -109,12 +116,12 @@ var C1FahrbahnartTable = [3]C1FahrbahnartEntry{
 		Type: FahrbahnartFesteFahrbahnMitAbsorber,
 		Corrections: []C1Entry{
 			{
-				Effect:      "schiene",
+				Effect:      c1EffectSchiene,
 				Teilquellen: []int{1, 2},
 				C1:          BeiblattSpectrum{0, 0, 0, 7, 3, 0, 0, 0},
 			},
 			{
-				Effect:      "reflexion",
+				Effect:      c1EffectReflexion,
 				Teilquellen: []int{1, 2, 7, 9, 11},
 				C1:          BeiblattSpectrum{0, 0, 0, -2, -2, -3, 0, 0},
 			},
@@ -125,12 +132,12 @@ var C1FahrbahnartTable = [3]C1FahrbahnartEntry{
 		Type: FahrbahnartBahnuebergang,
 		Corrections: []C1Entry{
 			{
-				Effect:      "schiene",
+				Effect:      c1EffectSchiene,
 				Teilquellen: []int{1, 2},
 				C1:          BeiblattSpectrum{0, 0, 0, 8, 4, 0, 0, 0},
 			},
 			{
-				Effect:      "reflexion",
+				Effect:      c1EffectReflexion,
 				Teilquellen: []int{1, 2, 7, 9, 11},
 				C1:          BeiblattSpectrum{1, 1, 1, 1, 1, 1, 1, 1},
 			},

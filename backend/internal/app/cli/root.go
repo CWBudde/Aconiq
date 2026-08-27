@@ -54,10 +54,12 @@ func Execute(args []string) int {
 }
 
 func newRootCommand() *cobra.Command {
-	var projectPath string
-	var cacheDir string
-	var verbose bool
-	var jsonLogs bool
+	var (
+		projectPath string
+		cacheDir    string
+		verbose     bool
+		jsonLogs    bool
+	)
 
 	rootCmd := &cobra.Command{
 		Use:           "aconiq",

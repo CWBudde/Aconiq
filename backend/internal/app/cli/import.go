@@ -24,14 +24,16 @@ import (
 )
 
 func newImportCommand() *cobra.Command {
-	var inputPath string
-	var soundPlanPath string
-	var layerName string
-	var inputCRS string
-	var trafficPath string
-	var terrainPath string
-	var osmBBox string
-	var osmEndpoint string
+	var (
+		inputPath     string
+		soundPlanPath string
+		layerName     string
+		inputCRS      string
+		trafficPath   string
+		terrainPath   string
+		osmBBox       string
+		osmEndpoint   string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "import",
@@ -66,12 +68,12 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load project manifest: %w", err)
 	}
 
 	modelDir := filepath.Join(store.Root(), ".noise", "model")
@@ -332,27 +334,27 @@ func writeOSMImportArtifacts(
 
 	now := nowUTC()
 	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-normalized",
-		Kind:      "model.normalized_geojson",
+		ID:        project.ArtifactIDModelNormalized,
+		Kind:      project.ArtifactKindModelNormalizedGeoJSON,
 		Path:      relativePath(store.Root(), normalizedPath),
 		CreatedAt: now,
 	})
 	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-dump",
-		Kind:      "model.dump_json",
+		ID:        project.ArtifactIDModelDump,
+		Kind:      project.ArtifactKindModelDumpJSON,
 		Path:      relativePath(store.Root(), dumpPath),
 		CreatedAt: now,
 	})
 	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        "artifact-model-validation",
-		Kind:      "model.validation_report",
+		ID:        project.ArtifactIDModelValidation,
+		Kind:      project.ArtifactKindModelValidationReport,
 		Path:      relativePath(store.Root(), reportPath),
 		CreatedAt: now,
 	})
 
 	err = store.Save(*proj)
 	if err != nil {
-		return err
+		return fmt.Errorf("save project manifest: %w", err)
 	}
 
 	state.Logger.Info(
@@ -459,14 +461,18 @@ func persistModelArtifacts(
 
 	now := nowUTC()
 	for _, ref := range []project.ArtifactRef{
-		{ID: "artifact-model-normalized", Kind: "model.normalized_geojson", Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
-		{ID: "artifact-model-dump", Kind: "model.dump_json", Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
-		{ID: "artifact-model-validation", Kind: "model.validation_report", Path: relativePath(store.Root(), reportPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelNormalized, Kind: project.ArtifactKindModelNormalizedGeoJSON, Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
+		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: relativePath(store.Root(), reportPath), CreatedAt: now},
 	} {
 		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
 	}
 
-	return store.Save(*proj)
+	if err := store.Save(*proj); err != nil {
+		return fmt.Errorf("save project manifest: %w", err)
+	}
+
+	return nil
 }
 
 func printImportSummary(
@@ -668,7 +674,7 @@ func runTerrainImport(
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "read terrain file", err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(destPath), 0o755)
+	err = os.MkdirAll(filepath.Dir(destPath), 0o750)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "create model directory", err)
 	}
@@ -693,7 +699,7 @@ func runTerrainImport(
 
 	err = store.Save(*proj)
 	if err != nil {
-		return err
+		return fmt.Errorf("save project manifest: %w", err)
 	}
 
 	state.Logger.Info(
