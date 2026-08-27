@@ -139,16 +139,16 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		return err
 	}
 
-	rasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, modelPath)
+	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, modelPath)
 	if err != nil {
 		return err
 	}
-	if rasterPrep != nil {
+	if hasRasterPrep {
 		defer cleanupRasterComparePreparation(rasterPrep)
 	}
 
 	runModelPath := modelPath
-	if rasterPrep != nil && strings.TrimSpace(rasterPrep.tempModelPath) != "" {
+	if hasRasterPrep && strings.TrimSpace(rasterPrep.tempModelPath) != "" {
 		runModelPath = relativePath(store.Root(), rasterPrep.tempModelPath)
 	}
 
@@ -549,10 +549,7 @@ func buildCompareIndicatorStats(absDeltas []float64, toleranceDB float64) compar
 		}
 	}
 
-	p95Index := int(math.Ceil(0.95*float64(len(sorted)))) - 1
-	if p95Index < 0 {
-		p95Index = 0
-	}
+	p95Index := max(int(math.Ceil(0.95*float64(len(sorted))))-1, 0)
 	if p95Index >= len(sorted) {
 		p95Index = len(sorted) - 1
 	}

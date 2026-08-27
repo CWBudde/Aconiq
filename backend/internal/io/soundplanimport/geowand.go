@@ -175,6 +175,14 @@ func (p *wandParser) flushBarrier() {
 	p.points = p.points[:0]
 }
 
+// readI64 decodes a little-endian 64-bit material code. The conversion is a
+// reinterpretation of a fixed-width field rather than a narrowing one, so no
+// value can be lost and no bound is meaningful here. SoundPLAN does write codes
+// that come out negative — 0xFFFFFFFFFFFFFFFF appears in real project files —
+// and the consumer treats those as "not set": see the MaterialCode >= 0 guard
+// in app/cli/import_soundplan.go.
+//
+//nolint:gosec // G115: a 64-bit reinterpretation cannot overflow
 func readI64(data []byte, off int) int64 {
 	_ = data[off+7]
 

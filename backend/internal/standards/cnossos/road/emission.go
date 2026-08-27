@@ -1,7 +1,6 @@
 package road
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -339,12 +338,4 @@ func energySumDB(levels []float64) float64 {
 	}
 
 	return 10 * math.Log10(sum)
-}
-
-func mustFinite(level float64, field string) error {
-	if math.IsNaN(level) || math.IsInf(level, 0) {
-		return fmt.Errorf("%s is not finite", field)
-	}
-
-	return nil
 }

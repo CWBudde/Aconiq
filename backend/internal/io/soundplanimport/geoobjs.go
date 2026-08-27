@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 
 	"golang.org/x/text/encoding/charmap"
@@ -150,10 +151,7 @@ func (p *objsParser) handleNameRecord(i int) int {
 		return recEnd
 	}
 
-	textLen := int(payload[0])
-	if textLen > len(payload)-1 {
-		textLen = len(payload) - 1
-	}
+	textLen := min(int(payload[0]), len(payload)-1)
 
 	p.groupName = strings.TrimSpace(decodeWindows1252(payload[1 : 1+textLen]))
 
@@ -357,10 +355,8 @@ func squaredDistance(ax float64, ay float64, bx float64, by float64) float64 {
 }
 
 func appendUniqueString(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
+	if slices.Contains(values, value) {
+		return values
 	}
 
 	return append(values, value)

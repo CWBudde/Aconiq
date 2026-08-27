@@ -48,6 +48,28 @@ func ComputeReceiverLevelDB(receiver geo.Point2D, sources []Source) float64 {
 	return 10 * math.Log10(linearSum)
 }
 
+// freefieldProfile builds one dummy-freefield profile. The "default" and
+// "highres" profiles differ only in grid resolution and engine chunk size;
+// this helper keeps those two parameter tables from drifting apart.
+func freefieldProfile(name, gridResolutionDefault, chunkSizeDefault string, minResolution, minZero, minChunkSize *float64) framework.Profile {
+	return framework.Profile{
+		Name:                 name,
+		SupportedSourceTypes: []string{"point"},
+		SupportedIndicators:  []string{IndicatorLdummy},
+		ParameterSchema: framework.ParameterSchema{
+			Parameters: []framework.ParameterDefinition{
+				{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: gridResolutionDefault, Min: minResolution, Description: "Receiver grid spacing in meters"},
+				{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "20", Min: minZero, Description: "Padding around source extent in meters"},
+				{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: minZero, Description: "Receiver height above ground"},
+				{Name: "source_emission_db", Kind: framework.ParameterKindFloat, DefaultValue: "90", Min: minZero, Description: "Uniform source emission level"},
+				{Name: "chunk_size", Kind: framework.ParameterKindInt, DefaultValue: chunkSizeDefault, Min: minChunkSize, Description: "Engine receiver chunk size"},
+				{Name: "workers", Kind: framework.ParameterKindInt, DefaultValue: "0", Min: minZero, Description: "Engine worker count (0=auto)"},
+				{Name: "disable_cache", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Disable chunk cache writes/reads"},
+			},
+		},
+	}
+}
+
 // Descriptor returns the standards-framework descriptor for dummy-freefield.
 func Descriptor() framework.StandardDescriptor {
 	minZero := 0.0
@@ -64,38 +86,8 @@ func Descriptor() framework.StandardDescriptor {
 				Name:           "v0",
 				DefaultProfile: "default",
 				Profiles: []framework.Profile{
-					{
-						Name:                 "default",
-						SupportedSourceTypes: []string{"point"},
-						SupportedIndicators:  []string{IndicatorLdummy},
-						ParameterSchema: framework.ParameterSchema{
-							Parameters: []framework.ParameterDefinition{
-								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "10", Min: &minResolution, Description: "Receiver grid spacing in meters"},
-								{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "20", Min: &minZero, Description: "Padding around source extent in meters"},
-								{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Receiver height above ground"},
-								{Name: "source_emission_db", Kind: framework.ParameterKindFloat, DefaultValue: "90", Min: &minZero, Description: "Uniform source emission level"},
-								{Name: "chunk_size", Kind: framework.ParameterKindInt, DefaultValue: "128", Min: &minChunkSize, Description: "Engine receiver chunk size"},
-								{Name: "workers", Kind: framework.ParameterKindInt, DefaultValue: "0", Min: &minZero, Description: "Engine worker count (0=auto)"},
-								{Name: "disable_cache", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Disable chunk cache writes/reads"},
-							},
-						},
-					},
-					{
-						Name:                 "highres",
-						SupportedSourceTypes: []string{"point"},
-						SupportedIndicators:  []string{IndicatorLdummy},
-						ParameterSchema: framework.ParameterSchema{
-							Parameters: []framework.ParameterDefinition{
-								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "5", Min: &minResolution, Description: "Receiver grid spacing in meters"},
-								{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "20", Min: &minZero, Description: "Padding around source extent in meters"},
-								{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Receiver height above ground"},
-								{Name: "source_emission_db", Kind: framework.ParameterKindFloat, DefaultValue: "90", Min: &minZero, Description: "Uniform source emission level"},
-								{Name: "chunk_size", Kind: framework.ParameterKindInt, DefaultValue: "64", Min: &minChunkSize, Description: "Engine receiver chunk size"},
-								{Name: "workers", Kind: framework.ParameterKindInt, DefaultValue: "0", Min: &minZero, Description: "Engine worker count (0=auto)"},
-								{Name: "disable_cache", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Disable chunk cache writes/reads"},
-							},
-						},
-					},
+					freefieldProfile("default", "10", "128", &minResolution, &minZero, &minChunkSize),
+					freefieldProfile("highres", "5", "64", &minResolution, &minZero, &minChunkSize),
 				},
 			},
 		},

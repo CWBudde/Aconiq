@@ -1,6 +1,7 @@
 package soundplanimport
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ func parseImmissionTableData(sourceFile string, data []byte) (*ImmissionTable, e
 	active := false
 	pendingTitle := ""
 
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		token := strings.TrimSpace(tokens[i])
 		if token == "" {
 			continue
@@ -115,7 +116,7 @@ func parseImmissionTableData(sourceFile string, data []byte) (*ImmissionTable, e
 	}
 
 	if len(table.Columns) == 0 {
-		return nil, fmt.Errorf("soundplan: ntd: no immission-table columns found")
+		return nil, errors.New("soundplan: ntd: no immission-table columns found")
 	}
 
 	return table, nil

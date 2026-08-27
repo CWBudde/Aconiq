@@ -279,7 +279,7 @@ func parseLineString(value any) ([]point2, error) {
 func parsePolygon(value any) ([][]point2, error) {
 	rawRings, ok := value.([]any)
 	if !ok || len(rawRings) == 0 {
-		return nil, errors.New("Polygon must contain at least one ring")
+		return nil, errors.New("polygon must contain at least one ring")
 	}
 
 	rings := make([][]point2, 0, len(rawRings))

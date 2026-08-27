@@ -67,7 +67,8 @@ func makePolygon(rings [][][2]float64) []byte {
 
 func gpkgBlob(wkb []byte) []byte {
 	// Header: GP + version(1) + flags(1) + srs_id(4) = 8 bytes total, no envelope.
-	hdr := []byte{0x47, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	hdr := make([]byte, 0, 8+len(wkb))
+	hdr = append(hdr, 0x47, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
 
 	return append(hdr, wkb...)
 }

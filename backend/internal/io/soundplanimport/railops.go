@@ -1,7 +1,7 @@
 package soundplanimport
 
 import (
-	"fmt"
+	"errors"
 	"math"
 	"path/filepath"
 	"slices"
@@ -160,7 +160,7 @@ func selectRailOperationResultDir(projectDir string, runs []*RunResult) (string,
 		}
 	}
 
-	return "", fmt.Errorf("soundplan: no result subdirectory with both RRAI and RRAD tables found")
+	return "", errors.New("soundplan: no result subdirectory with both RRAI and RRAD tables found")
 }
 
 func deriveAssessmentHours(proj *Project) (float64, float64) {

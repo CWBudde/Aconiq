@@ -2,6 +2,7 @@ package soundplanimport
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -168,7 +169,7 @@ func ParseGridMapMetadata(path string, pointsTotal int) (GridMapMetadata, error)
 
 	layers := parseGridMapLayers(payload)
 	if len(layers) == 0 {
-		return GridMapMetadata{}, fmt.Errorf("soundplan: parse GM: no raster layer descriptors found")
+		return GridMapMetadata{}, errors.New("soundplan: parse GM: no raster layer descriptors found")
 	}
 
 	meta := GridMapMetadata{
@@ -315,7 +316,7 @@ func ParseDecodedGridMap(path string, pointsTotal int) (DecodedGridMap, error) {
 
 func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, error) {
 	if pointsTotal <= 0 {
-		return nil, fmt.Errorf("soundplan: decode GM rows: points_total must be > 0")
+		return nil, errors.New("soundplan: decode GM rows: points_total must be > 0")
 	}
 
 	start, err := detectGridMapCellStreamStart(payload)
@@ -358,7 +359,7 @@ func detectGridMapCellStreamStart(payload []byte) (int, error) {
 	bestStart := -1
 	bestCount := -1
 
-	for start := 0; start < 13; start++ {
+	for start := range 13 {
 		count := 0
 		for off := start; off <= len(payload)-13; off += 13 {
 			if _, ok := decodeGridMapCellRecord(payload[off : off+13]); ok {
@@ -373,7 +374,7 @@ func detectGridMapCellStreamStart(payload []byte) (int, error) {
 	}
 
 	if bestStart < 0 || bestCount <= 0 {
-		return 0, fmt.Errorf("soundplan: decode GM rows: no plausible 13-byte cell stream found")
+		return 0, errors.New("soundplan: decode GM rows: no plausible 13-byte cell stream found")
 	}
 
 	return bestStart, nil
@@ -500,7 +501,7 @@ func (a *gridMapStatAccumulator) add(value float64) {
 	a.count++
 }
 
-func (a gridMapStatAccumulator) finish() GridMapValueStats {
+func (a *gridMapStatAccumulator) finish() GridMapValueStats {
 	if a.count == 0 {
 		return GridMapValueStats{}
 	}

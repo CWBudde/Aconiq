@@ -2,6 +2,7 @@ package soundplanimport
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func ParseHoehenTxtFile(path string) ([]ElevationPoint, error) {
 	}
 
 	if len(points) == 0 {
-		return nil, fmt.Errorf("soundplan: hoehen.txt: no elevation points found")
+		return nil, errors.New("soundplan: hoehen.txt: no elevation points found")
 	}
 
 	return points, nil
@@ -59,19 +60,21 @@ func ParseHoehenTxtFile(path string) ([]ElevationPoint, error) {
 // falls back to Höhen.txt elevation points when binary terrain data is absent.
 func LoadTerrainData(projectDir string) (*TerrainData, error) {
 	terrain := &TerrainData{}
-	errors := make([]string, 0, 3)
+	loadErrors := make([]string, 0, 3)
 	baseTerrainLoaded := false
 
 	geoTmpPath := filepath.Join(projectDir, "GeoTmp.geo")
 	geoTmpTerrain, geoErr := ParseGeoTmpFile(geoTmpPath)
-	if geoErr == nil && geoTmpTerrain != nil && (len(geoTmpTerrain.ElevationPoints) > 0 || len(geoTmpTerrain.ContourLines) > 0) {
+
+	switch {
+	case geoErr == nil && geoTmpTerrain != nil && (len(geoTmpTerrain.ElevationPoints) > 0 || len(geoTmpTerrain.ContourLines) > 0):
 		terrain.ElevationPoints = geoTmpTerrain.ElevationPoints
 		terrain.ContourLines = geoTmpTerrain.ContourLines
 		baseTerrainLoaded = true
-	} else if geoErr != nil {
-		errors = append(errors, fmt.Sprintf("geotmp=%v", geoErr))
-	} else {
-		errors = append(errors, "geotmp=no terrain features found")
+	case geoErr != nil:
+		loadErrors = append(loadErrors, fmt.Sprintf("geotmp=%v", geoErr))
+	default:
+		loadErrors = append(loadErrors, "geotmp=no terrain features found")
 	}
 
 	if !baseTerrainLoaded {
@@ -81,13 +84,13 @@ func LoadTerrainData(projectDir string) (*TerrainData, error) {
 			terrain.ElevationPoints = points
 			baseTerrainLoaded = true
 		} else {
-			errors = append(errors, fmt.Sprintf("hoehen=%v", txtErr))
+			loadErrors = append(loadErrors, fmt.Sprintf("hoehen=%v", txtErr))
 		}
 	}
 
 	dgmPaths, globErr := filepath.Glob(filepath.Join(projectDir, "*.dgm"))
 	if globErr != nil {
-		errors = append(errors, fmt.Sprintf("dgm=%v", globErr))
+		loadErrors = append(loadErrors, fmt.Sprintf("dgm=%v", globErr))
 	} else {
 		sort.Strings(dgmPaths)
 		for _, path := range dgmPaths {
@@ -101,7 +104,7 @@ func LoadTerrainData(projectDir string) (*TerrainData, error) {
 			if baseTerrainLoaded || len(terrain.DGMFiles) > 0 {
 				terrain.Warnings = append(terrain.Warnings, msg)
 			} else {
-				errors = append(errors, fmt.Sprintf("dgm=%s", msg))
+				loadErrors = append(loadErrors, "dgm="+msg)
 			}
 		}
 	}
@@ -110,5 +113,5 @@ func LoadTerrainData(projectDir string) (*TerrainData, error) {
 		return terrain, nil
 	}
 
-	return nil, fmt.Errorf("soundplan: load terrain data: %s", strings.Join(errors, "; "))
+	return nil, fmt.Errorf("soundplan: load terrain data: %s", strings.Join(loadErrors, "; "))
 }

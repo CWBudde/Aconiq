@@ -110,8 +110,14 @@ commit messages; the consequences each one exposed are open items below.
       red before any other gate could run. `just check-formatted` now exits 0.
 - [x] **Frontend typecheck no-op fixed** (`f2b60f7`). See the open item below for the 55 errors it
       turned out to be hiding.
-- [x] **Lint triage** (`0a13e80`). 542 → 112, audited in `docs/lint-triage.md`. See below — the
-      reduction was configuration, not fixes.
+- [x] **Lint triage** (`0a13e80`). 542 → 112, audited in `docs/lint-triage.md`. The reduction was
+      configuration, not fixes.
+- [x] **Lint resolution pass.** 112 → 54, and this time by changing code: 26 mechanical, 26 real
+      defects, 8 security. Two of the security findings were real fixes rather than suppressions —
+      `createRunRequest` reached `exec.CommandContext` with **no validation at all**, so an
+      unauthenticated caller could choose arbitrary `--input`/`--model` paths, and the terrain
+      upload's request body was unbounded. See `docs/lint-triage.md` for the per-finding record,
+      including two verdicts the pass disproved.
 - [x] **Unguarded fixture tests** (`bda9767`). Eight tests in `io/soundplanimport` hard-failed on a
       clean checkout over a gitignored fixture; they now skip with the resolved path and reason.
 - [x] **CI tool versions pinned** (`e183c68`), matched to the local toolbox so `just go-ci` and CI
@@ -167,22 +173,18 @@ commit messages; the consequences each one exposed are open items below.
       Verify afterwards with
       `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
       which must succeed against a cold cache.
-- [ ] **Work the 112 lint findings that remain after triage.** Full audit in `docs/lint-triage.md`.
-      Be clear about what the triage did: **542 → 112, and every one of those 430 came from
-      disabling linters, not from fixing code.** `goconst` (266, dominated by JSON output keys in
-      `map[string]any` literals — hoisting them hides the output contract), `wsl_v5` (120, pure
-      whitespace), `noinlineerr` (41, forbids the idiomatic `if err := f(); err != nil`) and
-      `gocyclo` (3, duplicates `cyclop`'s metric) are now off, each with a recorded reason.
-      `sqlclosecheck` was re-**enabled**: its disable comment claimed "no SQL in this project"
-      while `io/gpkgimport` and `report/export/gpkg.go` both use `modernc.org/sqlite` — it
-      measures 0 findings, so the guard is free. `gomodguard` was migrated to `gomodguard_v2`.
-      Of the 112: ~26 are real defects with `file:line` in the doc, and the other ~53 plus the
-      complexity findings are Priority 7 itself (16 of the worst 20 are in `app/cli`;
-      `newExportCommand` is cognitive complexity **90**). **`just lint` cannot become a merge gate
-      until Priority 7 lands** or a deliberately temporary, documented complexity exclusion is
-      added. Note also `wrapcheck` is excluded for all of `internal/`, i.e. the entire backend, so
-      the error-wrapping policy is unenforced; removing that exclusion costs 190 findings, and it
-      should be sequenced after the `domain/errors` work in Priority 7.
+- [ ] **Work the remaining 54 lint findings — all of them Priority 7.** Full audit in
+      `docs/lint-triage.md`. The 112 that remained after triage are now **54**, and unlike the
+      542 → 112 step, this one was code: 26 mechanical (`perfsprint`, `modernize`, `intrange`),
+      26 real defects and smells, and all 8 security findings. What is left is exclusively
+      `cyclop` (32), `gocognit` (16), `revive` file-length (4), `funlen` (1) and `nestif` (1) —
+      the bucket the triage explicitly says must not be hand-fixed because it dissolves once
+      Priority 7 lands. **`just lint` still cannot become a merge gate until Priority 7 lands** or
+      a deliberately temporary, documented complexity exclusion is added — but that is now the
+      only thing standing between the repo and a green `just lint`. Note also `wrapcheck` is
+      excluded for all of `internal/`, i.e. the entire backend, so the error-wrapping policy is
+      unenforced; removing that exclusion costs 190 findings, and it should be sequenced after the
+      `domain/errors` work in Priority 7.
 - [ ] **Finish the frontend package-manager consolidation.** `frontend/package-lock.json` is
       deleted — nothing referenced it (both workflows use `oven-sh/setup-bun` and
       `bun install --frozen-lockfile`; a repo-wide grep for `npm ci`/`npm install`/`package-lock`

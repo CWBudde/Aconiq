@@ -42,6 +42,11 @@ func writeJSONFile(path string, value any) error {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "create directory for "+path, err)
 	}
 
+	// G703 follows the taint from the CLI's --project / --out flags. Callers
+	// build path from the project root plus a fixed artifact name, and a CLI
+	// writes with the invoking user's own rights; request-supplied paths on the
+	// HTTP path are constrained in httpv1.createRunRequest.validate.
+	//nolint:gosec // path is project-root derived, not caller-controlled text
 	err = os.WriteFile(path, encoded, 0o600)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "write "+path, err)
@@ -65,21 +70,21 @@ func upsertArtifact(artifacts []project.ArtifactRef, artifact project.ArtifactRe
 	return out
 }
 
-func summarizeValidationErrors(errors []string, max int) string {
+func summarizeValidationErrors(errors []string, limit int) string {
 	if len(errors) == 0 {
 		return ""
 	}
 
-	if max <= 0 || max > len(errors) {
-		max = len(errors)
+	if limit <= 0 || limit > len(errors) {
+		limit = len(errors)
 	}
 
-	parts := make([]string, 0, max)
-	parts = append(parts, errors[:max]...)
+	parts := make([]string, 0, limit)
+	parts = append(parts, errors[:limit]...)
 
 	summary := strings.Join(parts, "; ")
-	if len(errors) > max {
-		summary += fmt.Sprintf(" (+%d more)", len(errors)-max)
+	if len(errors) > limit {
+		summary += fmt.Sprintf(" (+%d more)", len(errors)-limit)
 	}
 
 	return summary

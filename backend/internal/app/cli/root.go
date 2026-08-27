@@ -104,26 +104,6 @@ func newRootCommand() *cobra.Command {
 	return rootCmd
 }
 
-func newPlaceholderCommand(use string, short string) *cobra.Command {
-	return &cobra.Command{
-		Use:   use,
-		Short: short,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			state, ok := stateFromCommand(cmd)
-			if ok {
-				state.Logger.Info(
-					"placeholder command executed",
-					slog.String("command", cmd.CommandPath()),
-					slog.String("project", state.Config.ProjectPath),
-					slog.String("cache_dir", state.Config.CacheDir),
-				)
-			}
-
-			return nil
-		},
-	}
-}
-
 func setState(cmd *cobra.Command, state commandState) {
 	ctx := context.WithValue(cmd.Root().Context(), commandStateKey{}, state)
 	cmd.Root().SetContext(ctx)

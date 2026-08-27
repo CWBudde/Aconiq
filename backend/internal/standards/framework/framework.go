@@ -333,13 +333,13 @@ func cloneParameterSchema(schema ParameterSchema) ParameterSchema {
 			Enum:         append([]string(nil), parameter.Enum...),
 		}
 		if parameter.Min != nil {
-			min := *parameter.Min
-			cloned.Min = &min
+			lower := *parameter.Min
+			cloned.Min = &lower
 		}
 
 		if parameter.Max != nil {
-			max := *parameter.Max
-			cloned.Max = &max
+			upper := *parameter.Max
+			cloned.Max = &upper
 		}
 
 		parameters = append(parameters, cloned)

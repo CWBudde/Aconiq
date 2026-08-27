@@ -546,6 +546,10 @@ func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS stri
 
 	out = append(out, '\n')
 
+	// G703: geojsonPath is a file this function has just read from inside the
+	// export bundle the CLI itself laid out; only the bundle root comes from
+	// --out, which is the destination the user asked for.
+	//nolint:gosec // in-place rewrite of a bundle file the exporter created
 	return os.WriteFile(geojsonPath, out, 0o600)
 }
 

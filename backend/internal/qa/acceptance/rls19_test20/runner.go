@@ -123,8 +123,8 @@ type ReceiverSnapshot struct {
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
 	HeightM float64 `json:"height_m"`
-	LrDay   float64 `json:"LrDay"`
-	LrNight float64 `json:"LrNight"`
+	LrDay   float64 `json:"lr_day"`
+	LrNight float64 `json:"lr_night"`
 }
 
 func Run(opts Options) (Report, error) {

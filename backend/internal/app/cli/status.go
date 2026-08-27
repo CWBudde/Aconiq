@@ -66,7 +66,7 @@ func newStatusCommand() *cobra.Command {
 				for _, r := range proj.Runs[start:] {
 					runs = append(runs, runEntry{
 						ID:              r.ID,
-						Status:          string(r.Status),
+						Status:          r.Status,
 						ScenarioID:      r.ScenarioID,
 						StandardID:      r.Standard.ID,
 						StandardVersion: r.Standard.Version,
@@ -89,7 +89,7 @@ func newStatusCommand() *cobra.Command {
 				}
 				if hasLatest {
 					payload["last_run_id"] = latestRun.ID
-					payload["last_run_status"] = string(latestRun.Status)
+					payload["last_run_status"] = latestRun.Status
 				}
 				return writeCommandOutput(cmd.OutOrStdout(), true, payload)
 			}

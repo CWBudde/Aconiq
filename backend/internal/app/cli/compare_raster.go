@@ -81,9 +81,9 @@ type decodedGridMapRun struct {
 	decoded  soundplanimport.DecodedGridMap
 }
 
-func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImportReport, modelPath string) (*rasterComparePreparation, error) {
+func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImportReport, modelPath string) (*rasterComparePreparation, bool, error) {
 	if len(importReport.GridMaps) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	report := &soundPlanRasterCompareReport{
@@ -112,7 +112,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 			continue
 		}
 		if decoded.ValueCellCount == 0 || len(decoded.Rows) == 0 {
-			report.Warnings = append(report.Warnings, fmt.Sprintf("%s: decoded GM has no value cells", gm.ResultSubFolder))
+			report.Warnings = append(report.Warnings, gm.ResultSubFolder+": decoded GM has no value cells")
 			continue
 		}
 
@@ -124,7 +124,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 
 	if len(decodedRuns) == 0 {
 		report.Warnings = append(report.Warnings, "no decodable GM payload was available for raster comparison")
-		return &rasterComparePreparation{report: report}, nil
+		return &rasterComparePreparation{report: report}, true, nil
 	}
 
 	layoutRows := decodedRuns[0].decoded.Rows
@@ -132,7 +132,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	baseModel, err := loadValidatedModel(baseModelPath, importReport.ProjectCRS, relativePath(projectRoot, baseModelPath))
 	if err != nil {
 		report.Warnings = append(report.Warnings, fmt.Sprintf("load normalized model for raster compare: %v", err))
-		return &rasterComparePreparation{report: report}, nil
+		return &rasterComparePreparation{report: report}, true, nil
 	}
 
 	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
@@ -144,12 +144,12 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 		gridResolutionM := importReport.GridResolutionM
 		if calcArea == nil || len(calcArea.Points) < 4 {
 			report.Warnings = append(report.Warnings, "CalcArea.geo is missing or incomplete, and GM metadata was insufficient for raster synthesis")
-			return &rasterComparePreparation{report: report}, nil
+			return &rasterComparePreparation{report: report}, true, nil
 		}
 
 		if gridResolutionM <= 0 {
 			report.Warnings = append(report.Warnings, "grid resolution is unavailable, so raster scanline receivers could not be synthesized")
-			return &rasterComparePreparation{report: report}, nil
+			return &rasterComparePreparation{report: report}, true, nil
 		}
 
 		syntheticReceivers, ids, synthWarnings = buildHeuristicRasterReceivers(calcArea, gridResolutionM, syntheticReceiverHeight, layoutRows)
@@ -158,17 +158,14 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	report.Warnings = append(report.Warnings, synthWarnings...)
 	if len(syntheticReceivers) == 0 {
 		report.Warnings = append(report.Warnings, "heuristic raster receiver synthesis produced no receivers")
-		return &rasterComparePreparation{report: report}, nil
+		return &rasterComparePreparation{report: report}, true, nil
 	}
 
-	tempModel, err := appendSyntheticRasterReceivers(baseModel, syntheticReceivers)
-	if err != nil {
-		return nil, err
-	}
+	tempModel := appendSyntheticRasterReceivers(baseModel, syntheticReceivers)
 
 	tempModelPath := filepath.Join(projectRoot, ".noise", "tmp", "soundplan-raster-compare-model.geojson")
 	if err := writeJSONFile(tempModelPath, tempModel.ToFeatureCollection()); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	report.Status = "heuristic_scanline_compare"
@@ -184,7 +181,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 		syntheticReceiverIDs: ids,
 		soundPlanRuns:        append([]soundplanimport.GridMapMetadata(nil), importReport.GridMaps...),
 		decodedRuns:          decodedRuns,
-	}, nil
+	}, true, nil
 }
 
 func calcAreaFromImportReport(area *soundPlanImportCalcArea) *soundplanimport.CalcArea {
@@ -274,7 +271,7 @@ func finalizeSoundPlanRasterCompare(
 				record, ok := recordByID[receiverID]
 				if !ok {
 					detail.Status = "partial_compare"
-					detail.Warnings = append(detail.Warnings, fmt.Sprintf("missing raster receiver output for %s", receiverID))
+					detail.Warnings = append(detail.Warnings, "missing raster receiver output for "+receiverID)
 					cellIndex++
 					continue
 				}
@@ -495,7 +492,7 @@ func metadataAlignedRowCenters(meta soundplanimport.GridMapMetadata, rowCount in
 	}
 	yFromOrigin := make([]float64, 0, rowCount)
 	yFromReverse := make([]float64, 0, rowCount)
-	for i := 0; i < rowCount; i++ {
+	for i := range rowCount {
 		yFromOrigin = append(yFromOrigin, meta.OriginY+float64(i)*meta.SpacingY)
 		yFromReverse = append(yFromReverse, meta.OriginY-float64(i)*meta.SpacingY)
 	}
@@ -521,12 +518,12 @@ func metadataAlignedRowCenters(meta soundplanimport.GridMapMetadata, rowCount in
 }
 
 func minYFromArea(area *soundplanimport.CalcArea) float64 {
-	_, minY, _, _ := calcAreaBounds(area)
+	_, minY, _, _ := calcAreaBounds(area) //nolint:dogsled // only one bound is needed here
 	return minY
 }
 
 func maxYFromArea(area *soundplanimport.CalcArea) float64 {
-	_, _, _, maxY := calcAreaBounds(area)
+	_, _, _, maxY := calcAreaBounds(area) //nolint:dogsled // only one bound is needed here
 	return maxY
 }
 
@@ -548,7 +545,7 @@ func spanOverlap(a0, a1, b0, b1 float64) float64 {
 	return high - low
 }
 
-func appendSyntheticRasterReceivers(model modelgeojson.Model, receivers []heuristicRasterReceiver) (modelgeojson.Model, error) {
+func appendSyntheticRasterReceivers(model modelgeojson.Model, receivers []heuristicRasterReceiver) modelgeojson.Model {
 	out := model
 	out.Features = make([]modelgeojson.Feature, 0, len(model.Features)+len(receivers))
 
@@ -575,7 +572,7 @@ func appendSyntheticRasterReceivers(model modelgeojson.Model, receivers []heuris
 		})
 	}
 
-	return out, nil
+	return out
 }
 
 func heuristicRasterRowCenters(minY, maxY, resolutionM float64, rowCount int) []float64 {
@@ -610,7 +607,7 @@ func heuristicRowXPositions(left, right, resolutionM float64, count int) []float
 
 	totalSpan := float64(count-1) * resolutionM
 	start := (left + right - totalSpan) / 2
-	for i := 0; i < count; i++ {
+	for i := range count {
 		xs = append(xs, start+float64(i)*resolutionM)
 	}
 
@@ -639,7 +636,7 @@ func calcAreaHorizontalSpan(area *soundplanimport.CalcArea, y float64) (float64,
 	}
 
 	intersections := make([]float64, 0, len(area.Points))
-	for i := 0; i < len(area.Points)-1; i++ {
+	for i := range len(area.Points) - 1 {
 		a := area.Points[i]
 		b := area.Points[i+1]
 		if a.Y == b.Y {

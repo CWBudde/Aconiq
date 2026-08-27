@@ -205,6 +205,10 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 		colDefs = append(colDefs, colName+" REAL")
 	}
 
+	// G202 flags the concatenation, but every interpolated fragment is either a
+	// literal above or a sanitizeColumnName result, which rewrites anything
+	// outside [a-z0-9_] to an underscore. No caller-controlled text survives.
+	//nolint:gosec // column names pass the sanitizeColumnName allow-list
 	createSQL := "CREATE TABLE receivers (" + strings.Join(colDefs, ", ") + ")"
 
 	_, err := db.ExecContext(ctx, createSQL)

@@ -2,6 +2,7 @@ package soundplanimport
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -35,7 +36,7 @@ func ParseDGMFile(path string) (*DGMData, error) {
 
 func parseDGMData(sourceFile string, data []byte) (*DGMData, error) {
 	if len(data) < dgmVertexBlockOffset {
-		return nil, fmt.Errorf("soundplan: dgm: file too short for header and vertex table")
+		return nil, errors.New("soundplan: dgm: file too short for header and vertex table")
 	}
 
 	dgm := &DGMData{SourceFile: sourceFile}
@@ -45,7 +46,7 @@ func parseDGMData(sourceFile string, data []byte) (*DGMData, error) {
 
 	vertexCount := int(dgm.HeaderValues[dgmVertexCountIndex])
 	if vertexCount <= 0 {
-		return nil, fmt.Errorf("soundplan: dgm: missing vertex count in header")
+		return nil, errors.New("soundplan: dgm: missing vertex count in header")
 	}
 
 	vertexBlockEnd := dgmVertexBlockOffset + vertexCount*dgmVertexRecordSize
@@ -54,7 +55,7 @@ func parseDGMData(sourceFile string, data []byte) (*DGMData, error) {
 	}
 
 	dgm.Points = make([]ElevationPoint, 0, vertexCount)
-	for i := 0; i < vertexCount; i++ {
+	for i := range vertexCount {
 		off := dgmVertexBlockOffset + i*dgmVertexRecordSize
 		dgm.Points = append(dgm.Points, ElevationPoint{
 			X: readF64(data, off),

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/gogama/flatgeobuf/flatgeobuf"
@@ -19,18 +20,18 @@ func buildHeader(geomType flat.GeometryType, columns []testColumn, featureCount 
 
 	// Build column offsets.
 	colOffsets := make([]flatbuffers.UOffsetT, len(columns))
-	for i := len(columns) - 1; i >= 0; i-- {
-		nameOff := bldr.CreateString(columns[i].name)
+	for i, v := range slices.Backward(columns) {
+		nameOff := bldr.CreateString(v.name)
 		flat.ColumnStart(bldr)
 		flat.ColumnAddName(bldr, nameOff)
-		flat.ColumnAddType(bldr, columns[i].colType)
+		flat.ColumnAddType(bldr, v.colType)
 		colOffsets[i] = flat.ColumnEnd(bldr)
 	}
 
 	flat.HeaderStartColumnsVector(bldr, len(columns))
 
-	for i := len(colOffsets) - 1; i >= 0; i-- {
-		bldr.PrependUOffsetT(colOffsets[i])
+	for _, v := range slices.Backward(colOffsets) {
+		bldr.PrependUOffsetT(v)
 	}
 
 	colsVec := bldr.EndVector(len(columns))
@@ -61,8 +62,8 @@ func buildFeature(geomType flat.GeometryType, xy []float64, ends []uint32, props
 	// Build geometry.
 	flat.GeometryStartXyVector(bldr, len(xy))
 
-	for i := len(xy) - 1; i >= 0; i-- {
-		bldr.PrependFloat64(xy[i])
+	for _, v := range slices.Backward(xy) {
+		bldr.PrependFloat64(v)
 	}
 
 	xyVec := bldr.EndVector(len(xy))
@@ -72,8 +73,8 @@ func buildFeature(geomType flat.GeometryType, xy []float64, ends []uint32, props
 	if len(ends) > 0 {
 		flat.GeometryStartEndsVector(bldr, len(ends))
 
-		for i := len(ends) - 1; i >= 0; i-- {
-			bldr.PrependUint32(ends[i])
+		for _, v := range slices.Backward(ends) {
+			bldr.PrependUint32(v)
 		}
 
 		endsVec = bldr.EndVector(len(ends))

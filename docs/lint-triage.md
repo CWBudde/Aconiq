@@ -19,8 +19,12 @@ in the follow-up lists below.
 | ---------------------------- | ---------- |
 | Before triage                | **542**    |
 | After config changes         | **112**    |
+| After the resolution pass    | **54**     |
 | Removed by disabling linters | 430 (79 %) |
-| Removed by fixing code       | 0          |
+| Removed by fixing code       | 58         |
+
+The 542 → 112 step was configuration only. The 112 → 54 step is the resolution pass recorded at
+the end of this document, and it was code.
 
 **Be clear about what happened here: the reduction is entirely configuration.** No Go source was
 touched. Three linters (`goconst`, `wsl_v5`, `noinlineerr`) accounted for 427 of the 430, and the
@@ -140,10 +144,10 @@ These are the findings that indicate a defect or a genuine smell rather than a s
 | `backend/internal/app/cli/status.go:69`, `:92`                      | unconvert   | **Real.** Redundant conversions; harmless but noise.                                                                                                                                                                                                                                                                                           |
 | `backend/internal/app/cli/modelio_helpers.go:68`                    | predeclared | **Real.** Parameter named `max` shadows the Go 1.21 builtin.                                                                                                                                                                                                                                                                                   |
 | `backend/internal/app/cli/run_options.go:437`, `:457`               | predeclared | **Real.** Parameters named `min`.                                                                                                                                                                                                                                                                                                              |
-| `backend/internal/standards/framework/framework.go:336`, `:341`     | predeclared | **Real.** Variables `min` / `max` — in `validateScalar`, a function that does numeric range checks, so shadowing the builtins here is maximally confusing.                                                                                                                                                                                     |
+| `backend/internal/standards/framework/framework.go:336`, `:341`     | predeclared | **Real.** Variables `min` / `max`. (Correction: these are in `cloneParameterSchema`, not `validateScalar` — `validateScalar` dereferences `parameter.Min`/`.Max` directly and shadows nothing.)                                                                                                                                                |
 | `backend/internal/standards/schall03/emission_v2.go:132`, `:147`    | nolintlint  | **Real.** Two `//nolint:gosec` directives are stale — gosec no longer fires there. Remove them; leaving them masks future G-rule hits on those lines.                                                                                                                                                                                          |
 | `backend/internal/qa/acceptance/rls19_test20/runner.go:126`, `:127` | tagliatelle | **Real.** JSON tags `LrDay` / `LrNight` violate the configured `json: snake` rule; should be `lr_day` / `lr_night`. Confirm against the TEST-20 fixture format before changing — if the fixture demands PascalCase, this needs a targeted exclusion instead.                                                                                   |
-| `backend/internal/standards/dummy/freefield/freefield.go:67`, `:83` | dupl        | **Real but benign.** Two 16-line duplicate blocks in the dummy reference standard. Low priority.                                                                                                                                                                                                                                               |
+| `backend/internal/standards/dummy/freefield/freefield.go:67`, `:83` | dupl        | **Real but benign.** Two 16-line duplicate blocks in the dummy reference standard. (Correction: they are the `default` and `highres` profile parameter tables, which differ only in grid resolution and chunk size — not two halves of a computation.)                                                                                         |
 | `backend/internal/app/cli/compare_raster.go:524`, `:529`            | dogsled     | **Cosmetic.** `minYFromArea` / `maxYFromArea` each do `_, minY, _, _ := calcAreaBounds(area)`. Idiomatic enough; a targeted `//nolint:dogsled` is a reasonable resolution.                                                                                                                                                                     |
 | `backend/internal/io/gpkgimport/gpkgimport_test.go:70`              | prealloc    | **Cosmetic**, in a test.                                                                                                                                                                                                                                                                                                                       |
 | `backend/internal/io/soundplanimport/terrain_text.go:67`            | gocritic    | **Real.** if-else chain → switch. Owned by in-flight SoundPLAN work.                                                                                                                                                                                                                                                                           |
@@ -167,7 +171,7 @@ once that work lands, not repo-wide.
 | `backend/internal/api/httpv1/handler.go:456`                                                                  | G702 | **Worth a real look.** The HTTP handler shells out to the `aconiq` binary with request-controlled argv: `--param <key>=<value>` for every key in `req.Params`, and `--input <path>` for every entry in `req.InputPaths`. It uses `exec.CommandContext` with an argv slice and no shell, so this is not classic shell injection — but an unauthenticated caller choosing arbitrary `--input` paths and arbitrary flag-shaped `--param` values is a genuine exposure surface. Validate `req.Params` keys against the standard's declared parameter set and constrain `InputPaths` to the project root. |
 | `backend/internal/api/httpv1/handler.go:743`                                                                  | G120 | **Real, minor.** `r.ParseMultipartForm(maxTerrainUploadBytes)` bounds only what is buffered _in memory_; the request body itself is unbounded. Wrap `r.Body` in `http.MaxBytesReader` for an actual upload cap.                                                                                                                                                                                                                                                                                                                                                                                      |
 | `backend/internal/app/cli/export_assessment.go:65`, `export.go:549`, `import.go:656`, `modelio_helpers.go:45` | G703 | **Low risk, CLI context.** Path traversal via taint analysis on user-supplied paths. In a CLI the user already has the invoking user's filesystem rights, so this is not a privilege boundary. Same code paths reached through the HTTP API _are_ a boundary — resolve alongside the G702 item above.                                                                                                                                                                                                                                                                                                |
-| `backend/internal/io/soundplanimport/geowand.go:181`                                                          | G115 | **Real.** `uint64` → `int64` conversion on a value read from an untrusted SoundPLAN file. Needs a bounds check, not a `//nolint`. Owned by in-flight SoundPLAN work.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `backend/internal/io/soundplanimport/geowand.go:181`                                                          | G115 | **Verdict corrected 2026-08-27 — false positive.** The conversion is a same-width reinterpretation of a fixed-width field, so no value can be lost and no bound is meaningful. A bounds check was attempted and had to be reverted: it rejected `0xFFFFFFFFFFFFFFFF`, which real project files genuinely carry, and made one malformed record discard every barrier in the file. The consumer already handles it — `app/cli/import_soundplan.go:327` treats a negative `MaterialCode` as "not set". Resolved with a `//nolint:gosec` carrying that reasoning.                                        |
 | `backend/internal/report/export/gpkg.go:207`                                                                  | G202 | **False positive.** `createSQL` concatenates `sanitizeColumnName(indicator)`, and `sanitizeColumnName` (`gpkg.go:860`) rewrites every character outside `[a-z0-9_]` to `_` and substitutes `"value"` for the empty string. Injection is not reachable. Resolve with `//nolint:gosec // column names pass sanitizeColumnName allow-list` rather than restructuring.                                                                                                                                                                                                                                   |
 
 ### Suppressed by the exclusion presets — flagged for review
@@ -289,10 +293,59 @@ that are about to be replaced by sentinels is wasted work. The sequencing should
 The exclusion now carries a `FIXME(lint-triage)` comment with the finding count so it cannot stay
 invisible.
 
+## Resolution pass — 2026-08-27
+
+Steps 1–3 of the plan below are done: **112 → 54**, and this time by changing code. The 54 that
+remain are exactly the complexity and file-length bucket, which stays blocked on PLAN.md
+Priority 7.
+
+| Bucket                                             | Was | Now | How                                                                         |
+| -------------------------------------------------- | --: | --: | --------------------------------------------------------------------------- |
+| Mechanical (`perfsprint`, `modernize`, `intrange`) |  26 |   0 | `golangci-lint --fix` per linter, plus the `errors` imports it does not add |
+| Real defects and smells                            |  26 |   0 | Individually, below                                                         |
+| Security                                           |   8 |   0 | Two real fixes, six justified suppressions                                  |
+| Complexity and file length                         |  52 |  54 | Untouched — see below for why the count moved                               |
+
+### Security
+
+- **G702** (`api/httpv1/handler.go`) — fixed, not suppressed. `createRunRequest` had **no
+  validation at all**: an unauthenticated caller could set `--input`, `--model`, `--param` and the
+  standard identifiers to any string. Added `createRunRequest.validate`, called before the
+  executor: identifiers and parameter names must match a fixed pattern, paths must satisfy
+  `filepath.IsLocal` (rejecting absolute paths and `..` escapes) and must not begin with `-`,
+  which would otherwise be parsed as a flag. Covered by
+  `TestCreateRunEndpointRejectsArgumentInjection`. gosec's taint analysis cannot see the
+  validation, so the exec site keeps a `//nolint` that names the validating function.
+- **G120** (`api/httpv1/handler.go`) — fixed. `r.Body` is now wrapped in `http.MaxBytesReader`
+  before `ParseMultipartForm`, whose argument only ever bounded the in-memory buffer. The rule
+  fires on the call regardless, so the suppression points at the wrapper.
+- **G703** ×4 (`app/cli`) — suppressed with per-site reasons. In each case the written path is the
+  project root or the requested bundle directory joined with a **fixed** file name; the tainted
+  value gosec follows is a path that is only ever read.
+- **G202** (`report/export/gpkg.go`) — suppressed. `sanitizeColumnName` is a strict allow-list
+  (anything outside `[a-z0-9_]` becomes `_`), so no caller-controlled text reaches the SQL.
+- **G115** (`io/soundplanimport/geowand.go`) — verdict corrected, see above.
+
+### Notes worth keeping
+
+- **`tagliatelle` was safe to fix.** The `LrDay`/`LrNight` keys appear only in
+  `qa/acceptance/rls19_test20/testdata/ci_safe/*.golden.json`, which this package owns and
+  regenerates; they are not an external TEST-20 format. Renamed to `lr_day`/`lr_night` and the 34
+  golden files updated with them.
+- **`unparam` on `handleRunsList`** was resolved by naming the parameter `_`, keeping the handler
+  shape intact. Threading a request context into the store is a separate Priority 7 item.
+- **The complexity count moved 52 → 54 and that is expected.** Two of the fixes traded one
+  finding for another: rewriting the `gocritic` if-else chain in `io/soundplanimport/terrain_text.go`
+  as a `switch` pushed `LoadTerrainData` from 15 to 16 on `cyclop`, and resolving the `nilnil`
+  finding in `app/cli/compare_raster.go` added a boolean return. Both are better code; `cyclop`
+  simply counts a `switch` case and an extra return differently. `prepareSoundPlanRasterCompare`
+  went 19 → 18 in the same change.
+
 ## Where this leaves `just lint`
 
-**Not green.** 112 findings remain, and 430 of the 542 went away because linters were switched off,
-not because anything was fixed.
+**Not green, but the only thing left is Priority 7.** 54 findings remain, all of them `cyclop`,
+`gocognit`, `revive` file-length, `funlen` and `nestif`. Every finding that could be resolved
+without the architectural refactor has been.
 
 Rough shape of the remaining work:
 
@@ -303,18 +356,18 @@ Rough shape of the remaining work:
 | Real defects and smells                                                     |       26 | Listed above. Individually small.                                |
 | Security                                                                    |        8 | Two need judgement (G702, G120), one is a false positive.        |
 
-Realistic path to a merge gate:
+Realistic path to a merge gate — steps 1–3 are done, step 4 is what is left:
 
-1. Run `--fix` per package for the 26 mechanical findings once the SoundPLAN work lands. → 86 left.
-2. Fix the 26 real-defect findings — most are one-line. Several are already PLAN.md P7 items. → ~60.
-3. Resolve the security items: fix G120, validate the G702 inputs, `//nolint` the G202 false
-   positive with a reason. → ~53.
-4. The remaining ~53 are complexity and file-length. These _are_ PLAN.md Priority 7. Until it
+1. ~~Run `--fix` per package for the 26 mechanical findings.~~ Done.
+2. ~~Fix the 26 real-defect findings.~~ Done.
+3. ~~Resolve the security items.~~ Done.
+4. The remaining 54 are complexity and file length. These _are_ PLAN.md Priority 7. Until it
    lands, either accept a non-green `just lint` or add a single time-boxed exclusion block that
    names P7 and is deleted with it.
 
-Step 4 is the honest blocker. `just lint` cannot become a hard merge gate until Priority 7 lands
-or an explicitly temporary, documented exclusion is added for the complexity linters.
+Step 4 is the honest blocker, and it is now the _only_ one. `just lint` cannot become a hard merge
+gate until Priority 7 lands or an explicitly temporary, documented exclusion is added for the
+complexity linters.
 
 ## Reproducing these numbers
 

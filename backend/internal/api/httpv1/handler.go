@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -301,7 +302,7 @@ func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
+func (h Handler) handleRunsList(w http.ResponseWriter, _ *http.Request) {
 	proj, err := h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)
@@ -309,8 +310,8 @@ func (h Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
-	for i := len(proj.Runs) - 1; i >= 0; i-- {
-		summaries = append(summaries, summarizeRun(proj, proj.Runs[i]))
+	for _, v := range slices.Backward(proj.Runs) {
+		summaries = append(summaries, summarizeRun(proj, v))
 	}
 
 	writeJSON(w, http.StatusOK, summaries)
@@ -324,6 +325,16 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    "bad_request",
 			Message: "request body must be valid JSON",
+		})
+
+		return
+	}
+
+	err = req.validate()
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "bad_request",
+			Message: err.Error(),
 		})
 
 		return
@@ -405,6 +416,93 @@ func writeRunCreateError(w http.ResponseWriter, err error) {
 	})
 }
 
+// The run executor turns a request into argv for the aconiq binary. The API is
+// unauthenticated and reachable cross-origin, so every field that becomes an
+// argument is constrained here rather than trusted: an entry starting with "-"
+// would be read as a flag, and an absolute or "../"-escaping path would let a
+// caller point a run at any file the server process can read.
+var (
+	// Standard, scenario and profile identifiers as the registry declares them
+	// ("rls19-road", "iso9613", "auto-grid").
+	runIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	// Parameter names as the standards modules declare them ("road_speed_kph").
+	runParamKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
+
+func (req createRunRequest) validate() error {
+	fields := []struct {
+		name  string
+		value string
+	}{
+		{"scenario_id", req.ScenarioID},
+		{"standard_id", req.StandardID},
+		{"standard_version", req.StandardVersion},
+		{"standard_profile", req.StandardProfile},
+		{"receiver_mode", req.ReceiverMode},
+	}
+
+	for _, field := range fields {
+		if field.value == "" {
+			continue
+		}
+
+		if !runIdentifierPattern.MatchString(field.value) {
+			return fmt.Errorf("%s must match %s", field.name, runIdentifierPattern)
+		}
+	}
+
+	if req.ModelPath != "" {
+		err := validateRunInputPath("model_path", req.ModelPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, inputPath := range req.InputPaths {
+		err := validateRunInputPath("input_paths", inputPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Sorted so that a request with several invalid keys always reports the same
+	// one.
+	paramKeys := make([]string, 0, len(req.Params))
+	for key := range req.Params {
+		paramKeys = append(paramKeys, key)
+	}
+
+	slices.Sort(paramKeys)
+
+	for _, key := range paramKeys {
+		value := req.Params[key]
+		if !runParamKeyPattern.MatchString(key) {
+			return fmt.Errorf("params key %q must match %s", key, runParamKeyPattern)
+		}
+
+		if strings.ContainsAny(value, "\x00\n\r") {
+			return fmt.Errorf("params value for %q must not contain control characters", key)
+		}
+	}
+
+	return nil
+}
+
+// validateRunInputPath keeps a path inside the project root. filepath.IsLocal
+// rejects absolute paths, ".." escapes and the empty string; the leading-dash
+// check stops a path from being parsed as a flag instead.
+func validateRunInputPath(field, path string) error {
+	if strings.HasPrefix(path, "-") {
+		return fmt.Errorf("%s must not start with %q", field, "-")
+	}
+
+	if !filepath.IsLocal(path) {
+		return fmt.Errorf("%s must be a relative path inside the project", field)
+	}
+
+	return nil
+}
+
 func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 	return func(ctx context.Context, req createRunRequest) error {
 		executable, err := os.Executable()
@@ -453,6 +551,13 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			args = append(args, "--input", inputPath)
 		}
 
+		// G702 reports the taint from the request body to argv. The flow is real,
+		// but every field that reaches args is constrained by
+		// createRunRequest.validate before the handler calls this executor:
+		// identifiers and parameter names must match a fixed pattern, and paths
+		// must be relative and inside the project. There is no shell — argv is
+		// passed as a slice.
+		//nolint:gosec // request fields are validated by createRunRequest.validate
 		cmd := exec.CommandContext(ctx, executable, args...)
 		var stderr bytes.Buffer
 		cmd.Stdout = io.Discard
@@ -740,6 +845,12 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ParseMultipartForm's argument bounds only what is buffered in memory; the
+	// remainder spills to temp files, so the request body itself is unbounded
+	// without MaxBytesReader.
+	r.Body = http.MaxBytesReader(w, r.Body, maxTerrainUploadBytes)
+
+	//nolint:gosec // G120: the body is bounded by the MaxBytesReader above
 	err := r.ParseMultipartForm(maxTerrainUploadBytes)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{

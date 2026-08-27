@@ -310,6 +310,103 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 	}
 }
 
+func TestCreateRunEndpointRejectsArgumentInjection(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"absolute input path", `{"input_paths": ["/etc/passwd"]}`},
+		{"escaping input path", `{"input_paths": ["../../../etc/passwd"]}`},
+		{"flag-shaped input path", `{"input_paths": ["--project"]}`},
+		{"absolute model path", `{"model_path": "/etc/passwd"}`},
+		{"flag-shaped standard id", `{"standard_id": "--project"}`},
+		{"flag-shaped param key", `{"params": {"--project": "x"}}`},
+		{"newline in param value", "{\"params\": {\"road_speed_kph\": \"50\\n--project\"}}"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store, err := projectfs.New(t.TempDir())
+			if err != nil {
+				t.Fatalf("new store: %v", err)
+			}
+
+			_, err = store.Init("Run Validation Test", "EPSG:25832")
+			if err != nil {
+				t.Fatalf("init project: %v", err)
+			}
+
+			executed := false
+			handler := newHandlerWithOptions(store, handlerOptions{
+				clock: time.Now,
+				runExecutor: func(_ context.Context, _ createRunRequest) error {
+					executed = true
+
+					return nil
+				},
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			if executed {
+				t.Fatal("run executor was reached with an unvalidated request")
+			}
+		})
+	}
+}
+
+func TestCreateRunEndpointAcceptsRelativeInputPaths(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Run Validation Test", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	var got createRunRequest
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock: time.Now,
+		runExecutor: func(_ context.Context, req createRunRequest) error {
+			got = req
+
+			return nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
+		"standard_id": "rls19-road",
+		"receiver_mode": "auto-grid",
+		"model_path": ".noise/model/normalized.geojson",
+		"input_paths": ["inputs/terrain.tif"],
+		"params": {"road_speed_kph": "50"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if got.ModelPath != ".noise/model/normalized.geojson" {
+		t.Fatalf("valid request was rejected before reaching the executor: %+v", got)
+	}
+}
+
 func TestRunLogEndpointReturnsNotFoundForUnknownRun(t *testing.T) {
 	t.Parallel()
 

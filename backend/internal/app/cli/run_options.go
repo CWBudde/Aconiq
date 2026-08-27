@@ -434,7 +434,7 @@ func receiverSetID(mode string) string {
 func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 	options := dummyRunOptions{}
 
-	parseFloat := func(key string, target *float64, min float64) error {
+	parseFloat := func(key string, target *float64, minValue float64) error {
 		value, ok := params[key]
 		if !ok {
 			return domainerrors.New(domainerrors.KindInternal, "cli.parseDummyRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
@@ -445,8 +445,8 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
 		}
 
-		if math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < min {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("%s must be >= %g", key, min), nil)
+		if math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < minValue {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("%s must be >= %g", key, minValue), nil)
 		}
 
 		*target = parsed
@@ -454,7 +454,7 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 		return nil
 	}
 
-	parseInt := func(key string, target *int, min int) error {
+	parseInt := func(key string, target *int, minValue int) error {
 		value, ok := params[key]
 		if !ok {
 			return domainerrors.New(domainerrors.KindInternal, "cli.parseDummyRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
@@ -465,8 +465,8 @@ func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
 		}
 
-		if parsed < min {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("%s must be >= %d", key, min), nil)
+		if parsed < minValue {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.parseDummyRunOptions", fmt.Sprintf("%s must be >= %d", key, minValue), nil)
 		}
 
 		*target = parsed

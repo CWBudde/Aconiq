@@ -100,13 +100,13 @@ func areaGeometryEffect(receiver geo.PointReceiver, source IndustrySource, cfg P
 		return 0
 	}
 
-	distance := math.Max(sourceDistance(receiver, source, cfg), cfg.MinDistanceM)
+	distance := math.Max(sourceDistance(receiver, source), cfg.MinDistanceM)
 
 	return math.Min(6.0, 10*math.Log10(1+effectiveRadius/distance))
 }
 
 func attenuationTerms(receiver geo.PointReceiver, source IndustrySource, cfg PropagationConfig) propagationTerms {
-	distance := effectivePropagationDistance(sourceDistance(receiver, source, cfg), cfg)
+	distance := effectivePropagationDistance(sourceDistance(receiver, source), cfg)
 
 	return propagationTerms{
 		DistanceM:   distance,
@@ -123,7 +123,7 @@ func totalAttenuation(terms propagationTerms) float64 {
 	return terms.GeometricDB + terms.AirDB + terms.GroundDB + terms.ScreeningDB - terms.FacadeDB - terms.AreaDB
 }
 
-func sourceDistance(receiver geo.PointReceiver, source IndustrySource, cfg PropagationConfig) float64 {
+func sourceDistance(receiver geo.PointReceiver, source IndustrySource) float64 {
 	horizontal := 0.0
 
 	switch source.SourceType {

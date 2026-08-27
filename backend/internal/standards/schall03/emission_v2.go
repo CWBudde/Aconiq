@@ -129,7 +129,7 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 
 			for f := range NumBeiblattOctaveBands {
 				// Gl. 2: n_Fz * 10^(0.1 * L_W'A,f,h,m,Fz)
-				sums[f] += nFz * math.Pow(10, 0.1*level[f]) //nolint:gosec // f bounded by NumBeiblattOctaveBands = len(sums)
+				sums[f] += nFz * math.Pow(10, 0.1*level[f])
 			}
 
 			heightSums[h] = sums
@@ -144,7 +144,7 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 		var spectrum BeiblattSpectrum
 
 		for f := range NumBeiblattOctaveBands {
-			if sums[f] > 0 { //nolint:gosec // f bounded by NumBeiblattOctaveBands = len(sums)
+			if sums[f] > 0 {
 				spectrum[f] = 10 * math.Log10(sums[f])
 			} else {
 				spectrum[f] = math.Inf(-1)

@@ -60,7 +60,7 @@ type IndustrySource struct {
 	SourceType              string          `json:"source_type"`
 	SourceCategory          string          `json:"source_category"`
 	EnclosureState          string          `json:"enclosure_state"`
-	Point                   geo.Point2D     `json:"point,omitempty"`
+	Point                   geo.Point2D     `json:"point"`
 	AreaPolygon             [][]geo.Point2D `json:"area_polygon,omitempty"`
 	SourceHeightM           float64         `json:"source_height_m"`
 	SoundPowerLevelDB       float64         `json:"sound_power_level_db"`

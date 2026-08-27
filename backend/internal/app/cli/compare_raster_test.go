@@ -315,11 +315,11 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 		GridMaps:        []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if prep == nil || len(prep.syntheticReceiverIDs) == 0 {
+	if !hasPrep || len(prep.syntheticReceiverIDs) == 0 {
 		t.Fatal("expected prepared synthetic raster receivers")
 	}
 
@@ -417,11 +417,11 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 		GridMaps:        []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2, OriginX: 100, OriginY: 200, SpacingX: 10, SpacingY: 10}},
 	}
 
-	prep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if prep == nil || len(prep.syntheticReceiverIDs) == 0 {
+	if !hasPrep || len(prep.syntheticReceiverIDs) == 0 {
 		t.Fatal("expected prepared synthetic raster receivers")
 	}
 

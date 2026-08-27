@@ -62,6 +62,9 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 
 	payload = append(payload, '\n')
 
+	// G703: outPath is bundleDir plus two fixed path segments; only bundleDir
+	// comes from --out, which is the destination the user asked for.
+	//nolint:gosec // fixed file name under the requested bundle directory
 	if err := os.WriteFile(outPath, payload, 0o600); err != nil {
 		return "", false, fmt.Errorf("write 16. BImSchV assessment: %w", err)
 	}
