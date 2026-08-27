@@ -128,8 +128,35 @@ type ExposureBandSummary struct {
 	EstimatedPersons   float64  `json:"estimated_persons"`
 }
 
+// finite reports whether v is neither NaN nor infinite.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// finitePositive reports whether v is finite and strictly greater than zero.
+func finitePositive(v float64) bool {
+	return finite(v) && v > 0
+}
+
+// finiteNonNegative reports whether v is finite and greater than or equal to zero.
+func finiteNonNegative(v float64) bool {
+	return finite(v) && v >= 0
+}
+
 // Validate validates one building unit payload.
 func (b BuildingUnit) Validate() error {
+	if err := b.validateIdentity(); err != nil {
+		return err
+	}
+
+	if err := b.validateOptionalCounts(); err != nil {
+		return err
+	}
+
+	return b.validateFootprint()
+}
+
+func (b BuildingUnit) validateIdentity() error {
 	if strings.TrimSpace(b.ID) == "" {
 		return errors.New("building id is required")
 	}
@@ -138,28 +165,30 @@ func (b BuildingUnit) Validate() error {
 		return fmt.Errorf("building %q has unsupported usage_type %q", b.ID, b.UsageType)
 	}
 
-	if math.IsNaN(b.HeightM) || math.IsInf(b.HeightM, 0) || b.HeightM <= 0 {
+	if !finitePositive(b.HeightM) {
 		return fmt.Errorf("building %q height_m must be finite and > 0", b.ID)
 	}
 
-	if b.EstimatedDwellings != nil {
-		if math.IsNaN(*b.EstimatedDwellings) || math.IsInf(*b.EstimatedDwellings, 0) || *b.EstimatedDwellings < 0 {
-			return fmt.Errorf("building %q estimated_dwellings must be finite and >= 0", b.ID)
-		}
+	return nil
+}
+
+func (b BuildingUnit) validateOptionalCounts() error {
+	if b.EstimatedDwellings != nil && !finiteNonNegative(*b.EstimatedDwellings) {
+		return fmt.Errorf("building %q estimated_dwellings must be finite and >= 0", b.ID)
 	}
 
-	if b.FloorCount != nil {
-		if math.IsNaN(*b.FloorCount) || math.IsInf(*b.FloorCount, 0) || *b.FloorCount < 0 {
-			return fmt.Errorf("building %q floor_count must be finite and >= 0", b.ID)
-		}
+	if b.FloorCount != nil && !finiteNonNegative(*b.FloorCount) {
+		return fmt.Errorf("building %q floor_count must be finite and >= 0", b.ID)
 	}
 
-	if b.EstimatedPersons != nil {
-		if math.IsNaN(*b.EstimatedPersons) || math.IsInf(*b.EstimatedPersons, 0) || *b.EstimatedPersons < 0 {
-			return fmt.Errorf("building %q estimated_persons must be finite and >= 0", b.ID)
-		}
+	if b.EstimatedPersons != nil && !finiteNonNegative(*b.EstimatedPersons) {
+		return fmt.Errorf("building %q estimated_persons must be finite and >= 0", b.ID)
 	}
 
+	return nil
+}
+
+func (b BuildingUnit) validateFootprint() error {
 	if len(b.Footprint) == 0 {
 		return fmt.Errorf("building %q footprint is required", b.ID)
 	}
@@ -181,26 +210,38 @@ func (b BuildingUnit) Validate() error {
 
 // Validate validates one exposure configuration.
 func (c ExposureConfig) Validate() error {
-	if math.IsNaN(c.FloorHeightM) || math.IsInf(c.FloorHeightM, 0) || c.FloorHeightM <= 0 {
+	if err := c.validateNumericFields(); err != nil {
+		return err
+	}
+
+	return c.validateModes()
+}
+
+func (c ExposureConfig) validateNumericFields() error {
+	if !finitePositive(c.FloorHeightM) {
 		return errors.New("floor_height_m must be finite and > 0")
 	}
 
-	if math.IsNaN(c.DwellingsPerFloor) || math.IsInf(c.DwellingsPerFloor, 0) || c.DwellingsPerFloor < 0 {
+	if !finiteNonNegative(c.DwellingsPerFloor) {
 		return errors.New("dwellings_per_floor must be finite and >= 0")
 	}
 
-	if math.IsNaN(c.PersonsPerDwelling) || math.IsInf(c.PersonsPerDwelling, 0) || c.PersonsPerDwelling < 0 {
+	if !finiteNonNegative(c.PersonsPerDwelling) {
 		return errors.New("persons_per_dwelling must be finite and >= 0")
 	}
 
-	if math.IsNaN(c.ThresholdLdenDB) || math.IsInf(c.ThresholdLdenDB, 0) {
+	if !finite(c.ThresholdLdenDB) {
 		return errors.New("threshold_lden_db must be finite")
 	}
 
-	if math.IsNaN(c.ThresholdLnightDB) || math.IsInf(c.ThresholdLnightDB, 0) {
+	if !finite(c.ThresholdLnightDB) {
 		return errors.New("threshold_lnight_db must be finite")
 	}
 
+	return nil
+}
+
+func (c ExposureConfig) validateModes() error {
 	if _, ok := allowedOccupancyModes[strings.TrimSpace(c.OccupancyMode)]; !ok {
 		return fmt.Errorf("occupancy_mode must be one of %q, %q", OccupancyModePreferFeatureOverrides, OccupancyModeHeightDerived)
 	}

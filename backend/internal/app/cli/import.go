@@ -90,22 +90,11 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 		cmd.SetOut(io.Discard)
 	}
 
-	switch {
-	case osmBBox != "":
-		err = runOSMImport(cmd, state, store, &proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
-	case soundPlanPath != "":
-		if layerName != "" {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported with --from-soundplan", nil)
-		}
-
-		if inputCRS != "" {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input-crs is not supported with --from-soundplan", nil)
-		}
-
-		err = runSoundPlanImport(cmd, state, store, &proj, soundPlanPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath)
-	case inputPath != "":
-		err = runGeometryImport(cmd, state, store, &proj, inputPath, layerName, inputCRS, normalizedPath, dumpPath, reportPath)
-	}
+	err = runPrimaryImport(
+		cmd, state, store, &proj,
+		inputPath, soundPlanPath, layerName, inputCRS, osmBBox, osmEndpoint,
+		normalizedPath, dumpPath, reportPath, soundPlanReportPath,
+	)
 
 	if err == nil && trafficPath != "" {
 		err = mergeTrafficCSV(cmd, state, trafficPath, normalizedPath, dumpPath, store.Root())
@@ -125,6 +114,37 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 	}
 
 	return err
+}
+
+// runPrimaryImport dispatches to the importer selected by the mutually exclusive
+// source flags. It returns nil when no primary source was requested, which happens
+// for --traffic/--terrain-only invocations.
+func runPrimaryImport(
+	cmd *cobra.Command,
+	state commandState,
+	store projectfs.Store,
+	proj *project.Project,
+	inputPath, soundPlanPath, layerName, inputCRS, osmBBox, osmEndpoint string,
+	normalizedPath, dumpPath, reportPath, soundPlanReportPath string,
+) error {
+	switch {
+	case osmBBox != "":
+		return runOSMImport(cmd, state, store, proj, osmBBox, osmEndpoint, normalizedPath, dumpPath, reportPath)
+	case soundPlanPath != "":
+		if layerName != "" {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--layer is not supported with --from-soundplan", nil)
+		}
+
+		if inputCRS != "" {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input-crs is not supported with --from-soundplan", nil)
+		}
+
+		return runSoundPlanImport(cmd, state, store, proj, soundPlanPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath)
+	case inputPath != "":
+		return runGeometryImport(cmd, state, store, proj, inputPath, layerName, inputCRS, normalizedPath, dumpPath, reportPath)
+	default:
+		return nil
+	}
 }
 
 // buildImportJSONResult constructs the JSON payload for `aconiq --json import`.

@@ -20,11 +20,12 @@ in the follow-up lists below.
 | Before triage                | **542**    |
 | After config changes         | **112**    |
 | After the resolution pass    | **54**     |
+| After the complexity pass    | **0**      |
 | Removed by disabling linters | 430 (79 %) |
-| Removed by fixing code       | 58         |
+| Removed by fixing code       | 112        |
 
-The 542 → 112 step was configuration only. The 112 → 54 step is the resolution pass recorded at
-the end of this document, and it was code.
+The 542 → 112 step was configuration only. The 112 → 54 and 54 → 0 steps are the resolution pass
+and the complexity pass recorded at the end of this document, and both were code.
 
 **Be clear about what happened here: the reduction is entirely configuration.** No Go source was
 touched. Three linters (`goconst`, `wsl_v5`, `noinlineerr`) accounted for 427 of the 430, and the
@@ -197,8 +198,16 @@ bounds claims still hold, but the mechanism is correct.)
 
 ## Complexity hotspots
 
-47 findings (31 `cyclop`, 16 `gocognit`). **Do not restructure these individually** — most of them
-dissolve once PLAN.md Priority 7 lands, and pre-emptive splitting would collide with it.
+47 findings (31 `cyclop`, 16 `gocognit`).
+
+> **Verdict corrected 2026-08-27.** This section originally read "**Do not restructure these
+> individually** — most of them dissolve once PLAN.md Priority 7 lands, and pre-emptive splitting
+> would collide with it." That was wrong on both counts, and the complexity pass below resolved
+> all of them without the P7 refactor. Nearly every finding here is a long _procedural_ function,
+> not a structurally coupled one: flat guard-clause chains in `Validate()` methods, giant `RunE`
+> closures in the cobra constructors, and per-format or per-geometry-type dispatch. Extracting
+> named helpers is behaviour-preserving and does not collide with P7 — if anything it makes the
+> P7 work smaller, because the god-file split it calls for is now done.
 
 The worst 20, by metric:
 
@@ -341,33 +350,68 @@ Priority 7.
   simply counts a `switch` case and an extra return differently. `prepareSoundPlanRasterCompare`
   went 19 → 18 in the same change.
 
+## Complexity pass — 2026-08-27
+
+The 54 findings left after the resolution pass were all complexity or file length. They were
+resolved by refactoring, in six parallel passes partitioned by package so no two touched the same
+file.
+
+| Area                                                        | Findings | Shape of the fix                                                       |
+| ----------------------------------------------------------- | -------: | ---------------------------------------------------------------------- |
+| `app/cli` cobra constructors and god files                  |       10 | `RunE` closures extracted; `run_extract.go` and `run_options.go` split |
+| `app/cli` import, compare and bench                         |       10 | Procedural phases extracted into named helpers                         |
+| `standards/{cnossos,bub,buf,beb}` `Validate()` and emission |       15 | Guard chains grouped; two switch trees became lookup tables            |
+| `standards/{framework,rls19,schall03}`                      |        5 | `validateScalar` split per kind; Tabelle 2 became a lookup table       |
+| `geo/modelgeojson`, `report/*`, `engine`, `assessment`      |       10 | One helper per geometry type; marching-squares cases extracted         |
+| `io/soundplanimport`, `qa/acceptance`                       |        4 | Per-input-source loader stages extracted                               |
+
+Two further findings surfaced during the pass (`cyclop` on `runCompare`, `funlen` on
+`prepareSoundPlanRasterCompare`). Both were pre-existing, not introduced: `golangci-lint` dedups
+issues by line, so they had been hidden behind the finding reported on the same line. **The 54 was
+a floor, not a total** — worth remembering when estimating any future lint backlog from a count.
+
+### File splits
+
+| File                      | Before | After | New files |
+| ------------------------- | -----: | ----: | --------: |
+| `run_extract.go`          |  3 087 |    89 |         6 |
+| `rls19/road/road_test.go` |  3 375 | 1 139 |         2 |
+| `run_phase8_test.go`      |  1 587 |   907 |         1 |
+| `run_options.go`          |  1 604 | 1 188 |         2 |
+
+This completes the "split the god files" item under PLAN.md Priority 7 for the two non-test files
+the linter flagged. `run_persist.go`, `api/httpv1/handler.go`, `report/reporting/report.go` and
+`app/cli/export.go` are still large but sit under the 1 500-line limit, so they remain P7 work
+rather than lint findings.
+
+### How the refactor was verified
+
+Behaviour preservation was checked against a pristine worktree at the parent commit, not by
+inspection alone:
+
+- **69 golden snapshots byte-identical.** `UPDATE_GOLDEN` was never set. This is the primary
+  evidence that the contour and marching-squares refactor did not perturb output.
+- **843 tests, identical set.** `go test -list` output diffed against the baseline, so the four
+  file splits provably did not drop, rename or duplicate a test.
+- **Full suite passes**, `golangci-lint` reports **0 issues**, `treefmt` clean.
+- The two normative lookup tables converted from `switch` statements were re-verified value by
+  value against the baseline: all 24 RLS-19 Tabelle 2 coefficients and all 40 CNOSSOS road
+  correction values are unchanged. In the CNOSSOS case the old `default:` branches also caught
+  unknown vehicle classes, where a map miss now yields 0 — this is unreachable, because
+  `vehicleClass` is unexported and the only call site passes one of four constants.
+
 ## Where this leaves `just lint`
 
-**Not green, but the only thing left is Priority 7.** 54 findings remain, all of them `cyclop`,
-`gocognit`, `revive` file-length, `funlen` and `nestif`. Every finding that could be resolved
-without the architectural refactor has been.
+**Green.** `golangci-lint` reports 0 issues across `backend/...`, so `just lint` can now be a hard
+merge gate, and making it one is the natural next step.
 
-Rough shape of the remaining work:
+Two caveats worth stating plainly, because a green run overstates the coverage:
 
-| Bucket                                                                      | Findings | Notes                                                            |
-| --------------------------------------------------------------------------- | -------: | ---------------------------------------------------------------- |
-| Complexity (`cyclop`, `gocognit`, `revive` file-length, `funlen`, `nestif`) |       52 | Blocked on / dissolved by PLAN.md P7. Do not hand-fix.           |
-| Mechanical, auto-fixable (`perfsprint`, `modernize`, `intrange`)            |       26 | `--fix` handles these; 20 are in packages under concurrent edit. |
-| Real defects and smells                                                     |       26 | Listed above. Individually small.                                |
-| Security                                                                    |        8 | Two need judgement (G702, G120), one is a false positive.        |
-
-Realistic path to a merge gate — steps 1–3 are done, step 4 is what is left:
-
-1. ~~Run `--fix` per package for the 26 mechanical findings.~~ Done.
-2. ~~Fix the 26 real-defect findings.~~ Done.
-3. ~~Resolve the security items.~~ Done.
-4. The remaining 54 are complexity and file length. These _are_ PLAN.md Priority 7. Until it
-   lands, either accept a non-green `just lint` or add a single time-boxed exclusion block that
-   names P7 and is deleted with it.
-
-Step 4 is the honest blocker, and it is now the _only_ one. `just lint` cannot become a hard merge
-gate until Priority 7 lands or an explicitly temporary, documented exclusion is added for the
-complexity linters.
+- `wrapcheck` is still excluded for all of `internal/`, i.e. the whole backend, so the
+  error-wrapping policy is unenforced. Removing that exclusion costs 190 findings and should be
+  sequenced after the `domain/errors` work in Priority 7.
+- The 430 findings removed at triage were removed by switching linters off, not by fixing code.
+  The per-linter decisions and their reasons are recorded above; each remains a standing debt.
 
 ## Reproducing these numbers
 

@@ -24,50 +24,16 @@ type ReceiverTable struct {
 }
 
 func (t ReceiverTable) Validate() error {
-	if len(t.IndicatorOrder) == 0 {
-		return errors.New("receiver table indicator_order is required")
-	}
-
-	seenIndicators := make(map[string]struct{}, len(t.IndicatorOrder))
-	for _, indicator := range t.IndicatorOrder {
-		if indicator == "" {
-			return errors.New("receiver table indicator cannot be empty")
-		}
-
-		if _, exists := seenIndicators[indicator]; exists {
-			return fmt.Errorf("receiver table indicator %q is duplicated", indicator)
-		}
-
-		seenIndicators[indicator] = struct{}{}
+	err := t.validateIndicatorOrder()
+	if err != nil {
+		return err
 	}
 
 	seenReceivers := make(map[string]struct{}, len(t.Records))
 	for i, record := range t.Records {
-		if record.ID == "" {
-			return fmt.Errorf("receiver record[%d] id is required", i)
-		}
-
-		if _, exists := seenReceivers[record.ID]; exists {
-			return fmt.Errorf("receiver record id %q is duplicated", record.ID)
-		}
-
-		if !isFinite(record.X) || !isFinite(record.Y) || !isFinite(record.HeightM) || record.HeightM < 0 {
-			return fmt.Errorf("receiver record %q has invalid coordinates or height", record.ID)
-		}
-
-		if len(record.Values) == 0 {
-			return fmt.Errorf("receiver record %q has no indicator values", record.ID)
-		}
-
-		for _, indicator := range t.IndicatorOrder {
-			value, ok := record.Values[indicator]
-			if !ok {
-				return fmt.Errorf("receiver record %q missing indicator %q", record.ID, indicator)
-			}
-
-			if math.IsNaN(value) || math.IsInf(value, 0) {
-				return fmt.Errorf("receiver record %q indicator %q has non-finite value", record.ID, indicator)
-			}
+		err = t.validateRecord(i, record, seenReceivers)
+		if err != nil {
+			return err
 		}
 
 		seenReceivers[record.ID] = struct{}{}
@@ -85,6 +51,65 @@ func (t ReceiverTable) SortedRecordIDs() []string {
 	sort.Strings(ids)
 
 	return ids
+}
+
+// validateIndicatorOrder checks that indicator_order is present, non-empty and free of duplicates.
+func (t ReceiverTable) validateIndicatorOrder() error {
+	if len(t.IndicatorOrder) == 0 {
+		return errors.New("receiver table indicator_order is required")
+	}
+
+	seenIndicators := make(map[string]struct{}, len(t.IndicatorOrder))
+	for _, indicator := range t.IndicatorOrder {
+		if indicator == "" {
+			return errors.New("receiver table indicator cannot be empty")
+		}
+
+		if _, exists := seenIndicators[indicator]; exists {
+			return fmt.Errorf("receiver table indicator %q is duplicated", indicator)
+		}
+
+		seenIndicators[indicator] = struct{}{}
+	}
+
+	return nil
+}
+
+// validateRecord checks a single receiver record in the same order as the original inline checks.
+func (t ReceiverTable) validateRecord(i int, record ReceiverRecord, seenReceivers map[string]struct{}) error {
+	if record.ID == "" {
+		return fmt.Errorf("receiver record[%d] id is required", i)
+	}
+
+	if _, exists := seenReceivers[record.ID]; exists {
+		return fmt.Errorf("receiver record id %q is duplicated", record.ID)
+	}
+
+	if !isFinite(record.X) || !isFinite(record.Y) || !isFinite(record.HeightM) || record.HeightM < 0 {
+		return fmt.Errorf("receiver record %q has invalid coordinates or height", record.ID)
+	}
+
+	return t.validateRecordValues(record)
+}
+
+// validateRecordValues checks that a record carries a finite value for every ordered indicator.
+func (t ReceiverTable) validateRecordValues(record ReceiverRecord) error {
+	if len(record.Values) == 0 {
+		return fmt.Errorf("receiver record %q has no indicator values", record.ID)
+	}
+
+	for _, indicator := range t.IndicatorOrder {
+		value, ok := record.Values[indicator]
+		if !ok {
+			return fmt.Errorf("receiver record %q missing indicator %q", record.ID, indicator)
+		}
+
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("receiver record %q indicator %q has non-finite value", record.ID, indicator)
+		}
+	}
+
+	return nil
 }
 
 func isFinite(v float64) bool {

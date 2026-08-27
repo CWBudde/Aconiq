@@ -85,10 +85,7 @@ func runSoundPlanImport(
 		return fmt.Errorf("load soundplan project: %w", err)
 	}
 
-	model, importReport, err := buildSoundPlanModelAndReport(bundle, proj.CRS, relInput)
-	if err != nil {
-		return err
-	}
+	model, importReport := buildSoundPlanModelAndReport(bundle, proj.CRS, relInput)
 
 	report := modelgeojson.Validate(model)
 	if report.ErrorCount() > 0 {
@@ -126,8 +123,7 @@ func runSoundPlanImport(
 	return nil
 }
 
-func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, projectCRS string, sourcePath string) (modelgeojson.Model, soundPlanImportReport, error) {
-	features := make([]modelgeojson.Feature, 0, 512)
+func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, projectCRS string, sourcePath string) (modelgeojson.Model, soundPlanImportReport) {
 	counts := map[string]int{
 		"source":   0,
 		"building": 0,
@@ -143,204 +139,28 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	buildingHeightM := derivedBuildingHeight(bundle.Project)
 	receiverHeightM := derivedReceiverHeight(bundle.Project)
-	terrainSource := ""
+	terrainSource := soundPlanTerrainSource(bundle.Terrain)
 
-	if bundle.Terrain != nil {
-		switch {
-		case len(bundle.Terrain.ContourLines) > 0:
-			terrainSource = "GeoTmp.geo"
-		case len(bundle.Terrain.ElevationPoints) > 0:
-			terrainSource = "Höhen.txt"
-		case len(bundle.Terrain.DGMFiles) > 0:
-			terrainSource = ".dgm"
-		}
-	}
+	warnings = append(warnings, soundPlanBundleWarnings(bundle)...)
 
-	if len(bundle.Barriers) > 0 {
-		warnings = append(warnings, "barrier height_m is collapsed to one scalar per barrier using the maximum point height; per-vertex height variation is preserved only in SoundPLAN-specific properties")
-	}
+	features := make([]modelgeojson.Feature, 0, 512)
 
-	if len(bundle.RailTracks) > 0 {
-		if len(bundle.RailOps) == 0 {
-			warnings = append(warnings, "rail traffic, train class, and traction type could not be derived from SoundPLAN RRAD/RRAI tables; importer fell back to explicit placeholders")
-		}
+	railFeatures, railWarnings := buildSoundPlanRailFeatures(bundle)
+	features = append(features, railFeatures...)
+	counts["source"] += len(railFeatures)
+	warnings = append(warnings, railWarnings...)
 
-		warnings = append(warnings, "rail track form and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
-	}
+	geoObjects := buildSoundPlanGeoObjectFeatures(bundle.GeoObjects, buildingHeightM, receiverHeightM)
+	features = append(features, geoObjects.buildings...)
+	features = append(features, geoObjects.receivers...)
+	counts["building"] += len(geoObjects.buildings)
+	counts["receiver"] += len(geoObjects.receivers)
+	warnings = append(warnings, geoObjects.warnings...)
 
-	if len(bundle.GridMaps) > 0 {
-		warnings = append(warnings, "SoundPLAN grid-map GM payloads are decoded into row spans and layer values, but spatial origin/alignment for direct raster delta maps is still unresolved")
-	}
-
-	railOpsByName := make(map[string][]soundplanimport.RailOperationSummary)
-	for _, summary := range bundle.RailOps {
-		railOpsByName[strings.TrimSpace(summary.Railname)] = append(railOpsByName[strings.TrimSpace(summary.Railname)], summary)
-	}
-
-	for trackIndex, track := range bundle.RailTracks {
-		opsForTrack := railOpsByName[strings.TrimSpace(track.Name)]
-		trackSummary := aggregateRailSummaries(opsForTrack)
-
-		for segmentIndex, segment := range track.Segments {
-			if len(segment.Points) < 2 {
-				warnings = append(warnings, fmt.Sprintf("rail track %q segment %d skipped because it has fewer than 2 points", track.Name, segmentIndex+1))
-				continue
-			}
-
-			id := fmt.Sprintf("soundplan-rail-%02d-%02d", trackIndex+1, segmentIndex+1)
-			speedKPH := trackSummary.AverageSpeedKPH
-			if speedKPH <= 0 {
-				speedKPH = segment.Params.Speed
-			}
-			if speedKPH <= 0 {
-				speedKPH = 100
-			}
-
-			coords := make([]any, 0, len(segment.Points))
-			for _, point := range segment.Points {
-				coords = append(coords, []any{point.X, point.Y})
-			}
-
-			properties := map[string]any{
-				"soundplan_track_name":           strings.TrimSpace(track.Name),
-				"soundplan_segment_index":        segmentIndex + 1,
-				"soundplan_bridge_correction_db": segment.Params.BridgeCorrection,
-				"soundplan_track_height_m":       segment.Params.TrackHeight,
-				"elevation_m":                    segment.Points[0].ZTrack,
-				"rail_train_class":               coalesceString(trackSummary.TrainClass, schall03.TrainClassMixed),
-				"rail_traction_type":             coalesceString(trackSummary.TractionType, schall03.TractionMixed),
-				"rail_track_type":                schall03.TrackTypeBallasted,
-				"rail_track_form":                schall03.TrackFormMainline,
-				"rail_track_roughness_class":     schall03.RoughnessStandard,
-				"rail_average_train_speed_kph":   speedKPH,
-				"rail_curve_radius_m":            defaultSoundPlanCurveRadiusM,
-				"rail_on_bridge":                 trackSummary.OnBridge || segment.Params.BridgeCorrection > -999.0,
-				"traffic_day_trains_per_hour":    coalescePositive(trackSummary.TrafficDayPH, defaultSoundPlanTrafficDayPH),
-				"traffic_night_trains_per_hour":  coalescePositive(trackSummary.TrafficNightPH, defaultSoundPlanTrafficNightPH),
-				"soundplan_placeholder_mapping":  len(opsForTrack) == 0,
-				"soundplan_dominant_train_name":  trackSummary.DominantTrainName,
-				"soundplan_train_names":          trackSummary.TrainNames,
-				"soundplan_day_train_count":      trackSummary.DayTrainCount,
-				"soundplan_night_train_count":    trackSummary.NightTrainCount,
-				"soundplan_track_vmax_kph":       trackSummary.TrackVMaxKPH,
-				"soundplan_assessment_day_hours": trackSummary.AssessmentDayHours,
-				"soundplan_assessment_night_h":   trackSummary.AssessmentNightHrs,
-			}
-
-			features = append(features, modelgeojson.Feature{
-				ID:           id,
-				Kind:         "source",
-				SourceType:   "line",
-				Properties:   properties,
-				GeometryType: "LineString",
-				Coordinates:  coords,
-			})
-			counts["source"]++
-		}
-	}
-
-	if bundle.GeoObjects != nil {
-		if len(bundle.GeoObjects.Receivers) > 0 {
-			warnings = append(warnings, fmt.Sprintf("receiver heights are not encoded per receiver in the current parser; imported %d receivers with project default height %.2f m", len(bundle.GeoObjects.Receivers), receiverHeightM))
-		}
-
-		missingBuildingHeights := 0
-
-		for buildingIndex, building := range bundle.GeoObjects.Buildings {
-			if len(building.Footprint) < 4 {
-				warnings = append(warnings, fmt.Sprintf("building %d skipped because footprint has fewer than 4 points", buildingIndex+1))
-				continue
-			}
-
-			heightM := buildingHeightM
-			properties := map[string]any{
-				"soundplan_base_elevation_m": building.Footprint[0].Z,
-			}
-			if building.HeightM > 0 {
-				heightM = building.HeightM
-			} else {
-				missingBuildingHeights++
-				properties["soundplan_placeholder_height"] = true
-			}
-
-			switch len(building.Addresses) {
-			case 1:
-				properties["soundplan_address"] = building.Addresses[0]
-			case 0:
-			default:
-				properties["soundplan_addresses"] = append([]string(nil), building.Addresses...)
-			}
-
-			features = append(features, modelgeojson.Feature{
-				ID:           fmt.Sprintf("soundplan-building-%04d", buildingIndex+1),
-				Kind:         "building",
-				HeightM:      float64Ptr(heightM),
-				Properties:   properties,
-				GeometryType: "Polygon",
-				Coordinates:  []any{points3DToRing(building.Footprint)},
-			})
-			counts["building"]++
-		}
-
-		if missingBuildingHeights > 0 {
-			warnings = append(warnings, fmt.Sprintf("building heights were missing for %d GeoObjs buildings; imported those features with derived default height %.2f m", missingBuildingHeights, buildingHeightM))
-		}
-
-		for receiverIndex, receiver := range bundle.GeoObjects.Receivers {
-			features = append(features, modelgeojson.Feature{
-				ID:           fmt.Sprintf("soundplan-receiver-%04d", receiverIndex+1),
-				Kind:         "receiver",
-				HeightM:      float64Ptr(receiverHeightM),
-				Properties:   map[string]any{"soundplan_z_m": receiver.Z},
-				GeometryType: "Point",
-				Coordinates:  []any{receiver.X, receiver.Y},
-			})
-			counts["receiver"]++
-		}
-	}
-
-	for barrierIndex, barrier := range bundle.Barriers {
-		if len(barrier.Points) < 2 {
-			warnings = append(warnings, fmt.Sprintf("barrier %d skipped because it has fewer than 2 points", barrierIndex+1))
-			continue
-		}
-
-		coords := make([]any, 0, len(barrier.Points))
-		maxHeight := barrier.Points[0].Height
-		topHeights := make([]float64, 0, len(barrier.Points))
-
-		for _, point := range barrier.Points {
-			coords = append(coords, []any{point.X, point.Y})
-			topHeights = append(topHeights, point.ZTop)
-			if point.Height > maxHeight {
-				maxHeight = point.Height
-			}
-		}
-
-		properties := map[string]any{
-			"soundplan_height_profile_m": topHeights,
-			"soundplan_variable_height":  true,
-		}
-		if barrier.HasAcousticProperties {
-			properties["soundplan_barrier_absorption_a_db"] = barrier.AbsorptionSideADB
-			properties["soundplan_barrier_absorption_b_db"] = barrier.AbsorptionSideBDB
-			if barrier.MaterialCode >= 0 {
-				properties["soundplan_barrier_material_code"] = barrier.MaterialCode
-			} else {
-				properties["soundplan_barrier_material_unset"] = true
-			}
-		}
-
-		features = append(features, modelgeojson.Feature{
-			ID:           fmt.Sprintf("soundplan-barrier-%03d", barrierIndex+1),
-			Kind:         "barrier",
-			HeightM:      float64Ptr(maxHeight),
-			Properties:   properties,
-			GeometryType: "LineString",
-			Coordinates:  coords,
-		})
-		counts["barrier"]++
-	}
+	barrierFeatures, barrierWarnings := buildSoundPlanBarrierFeatures(bundle.Barriers)
+	features = append(features, barrierFeatures...)
+	counts["barrier"] += len(barrierFeatures)
+	warnings = append(warnings, barrierWarnings...)
 
 	reportRuns := make([]soundPlanImportRunSummary, 0, len(bundle.Runs))
 	for _, run := range bundle.Runs {
@@ -390,7 +210,269 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		Features:      features,
 	}
 
-	return model, report, nil
+	return model, report
+}
+
+// soundPlanTerrainSource names the file the terrain data was recovered from.
+func soundPlanTerrainSource(terrain *soundplanimport.TerrainData) string {
+	if terrain == nil {
+		return ""
+	}
+
+	switch {
+	case len(terrain.ContourLines) > 0:
+		return "GeoTmp.geo"
+	case len(terrain.ElevationPoints) > 0:
+		return "Höhen.txt"
+	case len(terrain.DGMFiles) > 0:
+		return ".dgm"
+	}
+
+	return ""
+}
+
+// soundPlanBundleWarnings reports the modelling simplifications that apply to
+// the bundle as a whole, independent of individual features.
+func soundPlanBundleWarnings(bundle *soundplanimport.ProjectBundle) []string {
+	warnings := make([]string, 0, 4)
+
+	if len(bundle.Barriers) > 0 {
+		warnings = append(warnings, "barrier height_m is collapsed to one scalar per barrier using the maximum point height; per-vertex height variation is preserved only in SoundPLAN-specific properties")
+	}
+
+	if len(bundle.RailTracks) > 0 {
+		if len(bundle.RailOps) == 0 {
+			warnings = append(warnings, "rail traffic, train class, and traction type could not be derived from SoundPLAN RRAD/RRAI tables; importer fell back to explicit placeholders")
+		}
+
+		warnings = append(warnings, "rail track form and roughness still use explicit placeholders until deeper SoundPLAN parameter mapping is implemented")
+	}
+
+	if len(bundle.GridMaps) > 0 {
+		warnings = append(warnings, "SoundPLAN grid-map GM payloads are decoded into row spans and layer values, but spatial origin/alignment for direct raster delta maps is still unresolved")
+	}
+
+	return warnings
+}
+
+// buildSoundPlanRailFeatures converts SoundPLAN rail tracks into line sources.
+func buildSoundPlanRailFeatures(bundle *soundplanimport.ProjectBundle) ([]modelgeojson.Feature, []string) {
+	railOpsByName := make(map[string][]soundplanimport.RailOperationSummary)
+	for _, summary := range bundle.RailOps {
+		railOpsByName[strings.TrimSpace(summary.Railname)] = append(railOpsByName[strings.TrimSpace(summary.Railname)], summary)
+	}
+
+	features := make([]modelgeojson.Feature, 0, len(bundle.RailTracks))
+	warnings := make([]string, 0, 4)
+
+	for trackIndex, track := range bundle.RailTracks {
+		opsForTrack := railOpsByName[strings.TrimSpace(track.Name)]
+		trackSummary := aggregateRailSummaries(opsForTrack)
+
+		for segmentIndex, segment := range track.Segments {
+			if len(segment.Points) < 2 {
+				warnings = append(warnings, fmt.Sprintf("rail track %q segment %d skipped because it has fewer than 2 points", track.Name, segmentIndex+1))
+				continue
+			}
+
+			features = append(features, buildSoundPlanRailSegmentFeature(
+				trackIndex, segmentIndex, track, segment, trackSummary, len(opsForTrack) == 0,
+			))
+		}
+	}
+
+	return features, warnings
+}
+
+// buildSoundPlanRailSegmentFeature builds the line-source feature for one rail segment.
+func buildSoundPlanRailSegmentFeature(
+	trackIndex int,
+	segmentIndex int,
+	track soundplanimport.RailTrack,
+	segment soundplanimport.RailSegment,
+	trackSummary soundplanimport.RailOperationSummary,
+	placeholderMapping bool,
+) modelgeojson.Feature {
+	id := fmt.Sprintf("soundplan-rail-%02d-%02d", trackIndex+1, segmentIndex+1)
+	speedKPH := trackSummary.AverageSpeedKPH
+	if speedKPH <= 0 {
+		speedKPH = segment.Params.Speed
+	}
+	if speedKPH <= 0 {
+		speedKPH = 100
+	}
+
+	coords := make([]any, 0, len(segment.Points))
+	for _, point := range segment.Points {
+		coords = append(coords, []any{point.X, point.Y})
+	}
+
+	properties := map[string]any{
+		"soundplan_track_name":           strings.TrimSpace(track.Name),
+		"soundplan_segment_index":        segmentIndex + 1,
+		"soundplan_bridge_correction_db": segment.Params.BridgeCorrection,
+		"soundplan_track_height_m":       segment.Params.TrackHeight,
+		"elevation_m":                    segment.Points[0].ZTrack,
+		"rail_train_class":               coalesceString(trackSummary.TrainClass, schall03.TrainClassMixed),
+		"rail_traction_type":             coalesceString(trackSummary.TractionType, schall03.TractionMixed),
+		"rail_track_type":                schall03.TrackTypeBallasted,
+		"rail_track_form":                schall03.TrackFormMainline,
+		"rail_track_roughness_class":     schall03.RoughnessStandard,
+		"rail_average_train_speed_kph":   speedKPH,
+		"rail_curve_radius_m":            defaultSoundPlanCurveRadiusM,
+		"rail_on_bridge":                 trackSummary.OnBridge || segment.Params.BridgeCorrection > -999.0,
+		"traffic_day_trains_per_hour":    coalescePositive(trackSummary.TrafficDayPH, defaultSoundPlanTrafficDayPH),
+		"traffic_night_trains_per_hour":  coalescePositive(trackSummary.TrafficNightPH, defaultSoundPlanTrafficNightPH),
+		"soundplan_placeholder_mapping":  placeholderMapping,
+		"soundplan_dominant_train_name":  trackSummary.DominantTrainName,
+		"soundplan_train_names":          trackSummary.TrainNames,
+		"soundplan_day_train_count":      trackSummary.DayTrainCount,
+		"soundplan_night_train_count":    trackSummary.NightTrainCount,
+		"soundplan_track_vmax_kph":       trackSummary.TrackVMaxKPH,
+		"soundplan_assessment_day_hours": trackSummary.AssessmentDayHours,
+		"soundplan_assessment_night_h":   trackSummary.AssessmentNightHrs,
+	}
+
+	return modelgeojson.Feature{
+		ID:           id,
+		Kind:         "source",
+		SourceType:   "line",
+		Properties:   properties,
+		GeometryType: "LineString",
+		Coordinates:  coords,
+	}
+}
+
+// soundPlanGeoObjectFeatures groups the features derived from GeoObjs.geo.
+type soundPlanGeoObjectFeatures struct {
+	buildings []modelgeojson.Feature
+	receivers []modelgeojson.Feature
+	warnings  []string
+}
+
+// buildSoundPlanGeoObjectFeatures converts GeoObjs.geo buildings and receivers.
+func buildSoundPlanGeoObjectFeatures(
+	objects *soundplanimport.GeoObjects,
+	buildingHeightM float64,
+	receiverHeightM float64,
+) soundPlanGeoObjectFeatures {
+	if objects == nil {
+		return soundPlanGeoObjectFeatures{}
+	}
+
+	out := soundPlanGeoObjectFeatures{
+		buildings: make([]modelgeojson.Feature, 0, len(objects.Buildings)),
+		receivers: make([]modelgeojson.Feature, 0, len(objects.Receivers)),
+		warnings:  make([]string, 0, 4),
+	}
+
+	if len(objects.Receivers) > 0 {
+		out.warnings = append(out.warnings, fmt.Sprintf("receiver heights are not encoded per receiver in the current parser; imported %d receivers with project default height %.2f m", len(objects.Receivers), receiverHeightM))
+	}
+
+	missingBuildingHeights := 0
+
+	for buildingIndex, building := range objects.Buildings {
+		if len(building.Footprint) < 4 {
+			out.warnings = append(out.warnings, fmt.Sprintf("building %d skipped because footprint has fewer than 4 points", buildingIndex+1))
+			continue
+		}
+
+		heightM := buildingHeightM
+		properties := map[string]any{
+			"soundplan_base_elevation_m": building.Footprint[0].Z,
+		}
+		if building.HeightM > 0 {
+			heightM = building.HeightM
+		} else {
+			missingBuildingHeights++
+			properties["soundplan_placeholder_height"] = true
+		}
+
+		switch len(building.Addresses) {
+		case 1:
+			properties["soundplan_address"] = building.Addresses[0]
+		case 0:
+		default:
+			properties["soundplan_addresses"] = append([]string(nil), building.Addresses...)
+		}
+
+		out.buildings = append(out.buildings, modelgeojson.Feature{
+			ID:           fmt.Sprintf("soundplan-building-%04d", buildingIndex+1),
+			Kind:         "building",
+			HeightM:      float64Ptr(heightM),
+			Properties:   properties,
+			GeometryType: "Polygon",
+			Coordinates:  []any{points3DToRing(building.Footprint)},
+		})
+	}
+
+	if missingBuildingHeights > 0 {
+		out.warnings = append(out.warnings, fmt.Sprintf("building heights were missing for %d GeoObjs buildings; imported those features with derived default height %.2f m", missingBuildingHeights, buildingHeightM))
+	}
+
+	for receiverIndex, receiver := range objects.Receivers {
+		out.receivers = append(out.receivers, modelgeojson.Feature{
+			ID:           fmt.Sprintf("soundplan-receiver-%04d", receiverIndex+1),
+			Kind:         "receiver",
+			HeightM:      float64Ptr(receiverHeightM),
+			Properties:   map[string]any{"soundplan_z_m": receiver.Z},
+			GeometryType: "Point",
+			Coordinates:  []any{receiver.X, receiver.Y},
+		})
+	}
+
+	return out
+}
+
+// buildSoundPlanBarrierFeatures converts SoundPLAN noise barriers into barrier lines.
+func buildSoundPlanBarrierFeatures(barriers []soundplanimport.NoiseBarrier) ([]modelgeojson.Feature, []string) {
+	features := make([]modelgeojson.Feature, 0, len(barriers))
+	warnings := make([]string, 0, 4)
+
+	for barrierIndex, barrier := range barriers {
+		if len(barrier.Points) < 2 {
+			warnings = append(warnings, fmt.Sprintf("barrier %d skipped because it has fewer than 2 points", barrierIndex+1))
+			continue
+		}
+
+		coords := make([]any, 0, len(barrier.Points))
+		maxHeight := barrier.Points[0].Height
+		topHeights := make([]float64, 0, len(barrier.Points))
+
+		for _, point := range barrier.Points {
+			coords = append(coords, []any{point.X, point.Y})
+			topHeights = append(topHeights, point.ZTop)
+			if point.Height > maxHeight {
+				maxHeight = point.Height
+			}
+		}
+
+		properties := map[string]any{
+			"soundplan_height_profile_m": topHeights,
+			"soundplan_variable_height":  true,
+		}
+		if barrier.HasAcousticProperties {
+			properties["soundplan_barrier_absorption_a_db"] = barrier.AbsorptionSideADB
+			properties["soundplan_barrier_absorption_b_db"] = barrier.AbsorptionSideBDB
+			if barrier.MaterialCode >= 0 {
+				properties["soundplan_barrier_material_code"] = barrier.MaterialCode
+			} else {
+				properties["soundplan_barrier_material_unset"] = true
+			}
+		}
+
+		features = append(features, modelgeojson.Feature{
+			ID:           fmt.Sprintf("soundplan-barrier-%03d", barrierIndex+1),
+			Kind:         "barrier",
+			HeightM:      float64Ptr(maxHeight),
+			Properties:   properties,
+			GeometryType: "LineString",
+			Coordinates:  coords,
+		})
+	}
+
+	return features, warnings
 }
 
 func calcAreaMetadata(area *soundplanimport.CalcArea) *soundPlanImportCalcArea {
@@ -420,6 +502,73 @@ func calcAreaMetadata(area *soundplanimport.CalcArea) *soundPlanImportCalcArea {
 	}
 }
 
+// railSummaryAccumulator collects the cross-record state needed to fold several
+// SoundPLAN rail operation records into one summary.
+type railSummaryAccumulator struct {
+	classSeen      map[string]struct{}
+	tractionSeen   map[string]struct{}
+	nameSeen       map[string]struct{}
+	dominantWeight float64
+	speedWeight    float64
+}
+
+// add folds one rail operation record into out and updates the accumulator state.
+func (a *railSummaryAccumulator) add(out *soundplanimport.RailOperationSummary, item soundplanimport.RailOperationSummary) {
+	out.DayTrainCount += item.DayTrainCount
+	out.NightTrainCount += item.NightTrainCount
+	out.TrafficDayPH += item.TrafficDayPH
+	out.TrafficNightPH += item.TrafficNightPH
+	out.OnBridge = out.OnBridge || item.OnBridge
+	if item.TrackVMaxKPH > out.TrackVMaxKPH {
+		out.TrackVMaxKPH = item.TrackVMaxKPH
+	}
+
+	weight := item.DayTrainCount + item.NightTrainCount
+	if weight > 0 && item.AverageSpeedKPH > 0 {
+		out.AverageSpeedKPH += item.AverageSpeedKPH * weight
+		a.speedWeight += weight
+	}
+
+	if item.TrainClass != "" {
+		a.classSeen[item.TrainClass] = struct{}{}
+	}
+
+	if item.TractionType != "" {
+		a.tractionSeen[item.TractionType] = struct{}{}
+	}
+
+	for _, name := range item.TrainNames {
+		if _, ok := a.nameSeen[name]; ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+
+		a.nameSeen[name] = struct{}{}
+		out.TrainNames = append(out.TrainNames, name)
+	}
+
+	if weight > a.dominantWeight && strings.TrimSpace(item.DominantTrainName) != "" {
+		a.dominantWeight = weight
+		out.DominantTrainName = item.DominantTrainName
+	}
+}
+
+// collapseRailCategory reduces a set of observed category values to a single one:
+// empty when nothing was observed, the sole value when unambiguous, otherwise mixed.
+func collapseRailCategory(seen map[string]struct{}, mixed string) string {
+	switch len(seen) {
+	case 0:
+		return ""
+	case 1:
+		for value := range seen {
+			return value
+		}
+
+		return ""
+	default:
+		return mixed
+	}
+}
+
 func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundplanimport.RailOperationSummary {
 	if len(items) == 0 {
 		return soundplanimport.RailOperationSummary{}
@@ -431,76 +580,23 @@ func aggregateRailSummaries(items []soundplanimport.RailOperationSummary) soundp
 		AssessmentNightHrs: items[0].AssessmentNightHrs,
 	}
 
-	classSeen := make(map[string]struct{})
-	tractionSeen := make(map[string]struct{})
-	nameSeen := make(map[string]struct{})
-	dominantWeight := -1.0
-	speedWeight := 0.0
+	acc := railSummaryAccumulator{
+		classSeen:      make(map[string]struct{}),
+		tractionSeen:   make(map[string]struct{}),
+		nameSeen:       make(map[string]struct{}),
+		dominantWeight: -1.0,
+	}
 
 	for _, item := range items {
-		out.DayTrainCount += item.DayTrainCount
-		out.NightTrainCount += item.NightTrainCount
-		out.TrafficDayPH += item.TrafficDayPH
-		out.TrafficNightPH += item.TrafficNightPH
-		out.OnBridge = out.OnBridge || item.OnBridge
-		if item.TrackVMaxKPH > out.TrackVMaxKPH {
-			out.TrackVMaxKPH = item.TrackVMaxKPH
-		}
-
-		weight := item.DayTrainCount + item.NightTrainCount
-		if weight > 0 && item.AverageSpeedKPH > 0 {
-			out.AverageSpeedKPH += item.AverageSpeedKPH * weight
-			speedWeight += weight
-		}
-
-		if item.TrainClass != "" {
-			classSeen[item.TrainClass] = struct{}{}
-		}
-
-		if item.TractionType != "" {
-			tractionSeen[item.TractionType] = struct{}{}
-		}
-
-		for _, name := range item.TrainNames {
-			if _, ok := nameSeen[name]; ok || strings.TrimSpace(name) == "" {
-				continue
-			}
-
-			nameSeen[name] = struct{}{}
-			out.TrainNames = append(out.TrainNames, name)
-		}
-
-		if weight > dominantWeight && strings.TrimSpace(item.DominantTrainName) != "" {
-			dominantWeight = weight
-			out.DominantTrainName = item.DominantTrainName
-		}
+		acc.add(&out, item)
 	}
 
-	if speedWeight > 0 {
-		out.AverageSpeedKPH /= speedWeight
+	if acc.speedWeight > 0 {
+		out.AverageSpeedKPH /= acc.speedWeight
 	}
 
-	switch len(classSeen) {
-	case 0:
-		out.TrainClass = ""
-	case 1:
-		for class := range classSeen {
-			out.TrainClass = class
-		}
-	default:
-		out.TrainClass = schall03.TrainClassMixed
-	}
-
-	switch len(tractionSeen) {
-	case 0:
-		out.TractionType = ""
-	case 1:
-		for traction := range tractionSeen {
-			out.TractionType = traction
-		}
-	default:
-		out.TractionType = schall03.TractionMixed
-	}
+	out.TrainClass = collapseRailCategory(acc.classSeen, schall03.TrainClassMixed)
+	out.TractionType = collapseRailCategory(acc.tractionSeen, schall03.TractionMixed)
 
 	slices.Sort(out.TrainNames)
 

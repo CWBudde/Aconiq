@@ -52,6 +52,22 @@ func LoadRailOperationSummaries(projectDir string, proj *Project, runs []*RunRes
 	}
 
 	trainTypes, _ := ParseTrainTypes(filepath.Join(projectDir, "TS03.abs"))
+	typeByName := buildTrainTypeIndex(trainTypes)
+
+	dayHours, nightHours := deriveAssessmentHours(proj)
+	trainsByIDX := groupTrainEmissionsByIDX(trainEmissions)
+
+	summaries := make([]RailOperationSummary, 0, len(railEmissions))
+	for _, rail := range railEmissions {
+		summaries = append(summaries, buildRailOperationSummary(rail, trainsByIDX[rail.IDX], typeByName, dayHours, nightHours))
+	}
+
+	return summaries, resultDir, nil
+}
+
+// buildTrainTypeIndex indexes train types by their trimmed name for lookup
+// during rail operation summary derivation.
+func buildTrainTypeIndex(trainTypes []TrainType) map[string]TrainType {
 	typeByName := make(map[string]TrainType, len(trainTypes))
 	for _, trainType := range trainTypes {
 		if name := strings.TrimSpace(trainType.Name); name != "" {
@@ -59,88 +75,91 @@ func LoadRailOperationSummaries(projectDir string, proj *Project, runs []*RunRes
 		}
 	}
 
-	dayHours, nightHours := deriveAssessmentHours(proj)
+	return typeByName
+}
 
+// groupTrainEmissionsByIDX groups train emission rows by their rail track
+// IDX reference.
+func groupTrainEmissionsByIDX(trainEmissions []TrainEmission) map[int32][]TrainEmission {
 	trainsByIDX := make(map[int32][]TrainEmission)
 	for _, emission := range trainEmissions {
 		trainsByIDX[emission.IDX] = append(trainsByIDX[emission.IDX], emission)
 	}
 
-	summaries := make([]RailOperationSummary, 0, len(railEmissions))
-	for _, rail := range railEmissions {
-		summary := RailOperationSummary{
-			ObjID:              rail.ObjID,
-			Railname:           strings.TrimSpace(rail.Railname),
-			TrackVMaxKPH:       rail.TrackV,
-			OnBridge:           rail.DBue > 0,
-			AssessmentDayHours: dayHours,
-			AssessmentNightHrs: nightHours,
-		}
+	return trainsByIDX
+}
 
-		linked := trainsByIDX[rail.IDX]
-		if len(linked) == 0 {
-			if rail.TrackV > 0 {
-				summary.AverageSpeedKPH = rail.TrackV
-			}
+// buildRailOperationSummary derives one rail track's operation summary from
+// its emission row and the train emissions linked to it.
+func buildRailOperationSummary(rail RailEmission, linked []TrainEmission, typeByName map[string]TrainType, dayHours, nightHours float64) RailOperationSummary {
+	summary := RailOperationSummary{
+		ObjID:              rail.ObjID,
+		Railname:           strings.TrimSpace(rail.Railname),
+		TrackVMaxKPH:       rail.TrackV,
+		OnBridge:           rail.DBue > 0,
+		AssessmentDayHours: dayHours,
+		AssessmentNightHrs: nightHours,
+	}
 
-			summary.TrainClass = schall03.TrainClassMixed
-			summaries = append(summaries, summary)
-			continue
-		}
-
-		totalWeight := 0.0
-		dominantWeight := -1.0
-		classSeen := make(map[string]struct{})
-		tractionSeen := make(map[string]struct{})
-		trainNames := make([]string, 0, len(linked))
-
-		for _, train := range linked {
-			summary.DayTrainCount += train.NDay
-			summary.NightTrainCount += train.NNight
-
-			weight := train.NDay + train.NNight
-			if weight > 0 && train.Speed > 0 {
-				summary.AverageSpeedKPH += train.Speed * weight
-				totalWeight += weight
-			}
-
-			name := strings.TrimSpace(train.Trainname)
-			if name != "" && !slices.Contains(trainNames, name) {
-				trainNames = append(trainNames, name)
-			}
-
-			if weight > dominantWeight && name != "" {
-				dominantWeight = weight
-				summary.DominantTrainName = name
-			}
-
-			trainType := typeByName[name]
-			classSeen[classifyTrainClass(name, trainType)] = struct{}{}
-			tractionSeen[classifyTractionType(name, trainType)] = struct{}{}
-		}
-
-		if totalWeight > 0 {
-			summary.AverageSpeedKPH /= totalWeight
-		} else if rail.TrackV > 0 {
+	if len(linked) == 0 {
+		if rail.TrackV > 0 {
 			summary.AverageSpeedKPH = rail.TrackV
 		}
 
-		if dayHours > 0 {
-			summary.TrafficDayPH = summary.DayTrainCount / dayHours
-		}
-
-		if nightHours > 0 {
-			summary.TrafficNightPH = summary.NightTrainCount / nightHours
-		}
-
-		summary.TrainNames = trainNames
-		summary.TrainClass = collapseTrainClasses(classSeen)
-		summary.TractionType = collapseTractionTypes(tractionSeen)
-
-		summaries = append(summaries, summary)
+		summary.TrainClass = schall03.TrainClassMixed
+		return summary
 	}
 
-	return summaries, resultDir, nil
+	totalWeight := 0.0
+	dominantWeight := -1.0
+	classSeen := make(map[string]struct{})
+	tractionSeen := make(map[string]struct{})
+	trainNames := make([]string, 0, len(linked))
+
+	for _, train := range linked {
+		summary.DayTrainCount += train.NDay
+		summary.NightTrainCount += train.NNight
+
+		weight := train.NDay + train.NNight
+		if weight > 0 && train.Speed > 0 {
+			summary.AverageSpeedKPH += train.Speed * weight
+			totalWeight += weight
+		}
+
+		name := strings.TrimSpace(train.Trainname)
+		if name != "" && !slices.Contains(trainNames, name) {
+			trainNames = append(trainNames, name)
+		}
+
+		if weight > dominantWeight && name != "" {
+			dominantWeight = weight
+			summary.DominantTrainName = name
+		}
+
+		trainType := typeByName[name]
+		classSeen[classifyTrainClass(name, trainType)] = struct{}{}
+		tractionSeen[classifyTractionType(name, trainType)] = struct{}{}
+	}
+
+	if totalWeight > 0 {
+		summary.AverageSpeedKPH /= totalWeight
+	} else if rail.TrackV > 0 {
+		summary.AverageSpeedKPH = rail.TrackV
+	}
+
+	if dayHours > 0 {
+		summary.TrafficDayPH = summary.DayTrainCount / dayHours
+	}
+
+	if nightHours > 0 {
+		summary.TrafficNightPH = summary.NightTrainCount / nightHours
+	}
+
+	summary.TrainNames = trainNames
+	summary.TrainClass = collapseTrainClasses(classSeen)
+	summary.TractionType = collapseTractionTypes(tractionSeen)
+
+	return summary
 }
 
 func selectRailOperationResultDir(projectDir string, runs []*RunResult) (string, error) {

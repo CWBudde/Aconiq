@@ -85,103 +85,103 @@ func trafficFlowCorrection(vehiclesPerHour float64) float64 {
 	return 10 * math.Log10(vehiclesPerHour+1)
 }
 
+// roadCategoryCorrections holds the per-category, per-vehicle-class emission
+// correction terms. Values must match the CNOSSOS road baseline exactly.
+var roadCategoryCorrections = map[string]map[vehicleClass]float64{
+	CategoryUrbanMotorway: {
+		vehicleClassLight:              0.6,
+		vehicleClassMedium:             0.8,
+		vehicleClassHeavy:              0.8,
+		vehicleClassPoweredTwoWheelers: 0.3,
+	},
+	CategoryUrbanMajor: {
+		vehicleClassLight:              0.2,
+		vehicleClassMedium:             0.2,
+		vehicleClassHeavy:              0.2,
+		vehicleClassPoweredTwoWheelers: 0.2,
+	},
+	CategoryUrbanLocal: {
+		vehicleClassLight:              -0.2,
+		vehicleClassMedium:             -0.2,
+		vehicleClassHeavy:              -0.4,
+		vehicleClassPoweredTwoWheelers: 0.2,
+	},
+	CategoryRuralMotorway: {
+		vehicleClassLight:              0.4,
+		vehicleClassMedium:             0.7,
+		vehicleClassHeavy:              0.7,
+		vehicleClassPoweredTwoWheelers: 0,
+	},
+	CategoryRuralMajor: {
+		vehicleClassLight:              0,
+		vehicleClassMedium:             0,
+		vehicleClassHeavy:              0.3,
+		vehicleClassPoweredTwoWheelers: 0,
+	},
+}
+
 func roadCategoryCorrection(category string, class vehicleClass) float64 {
-	switch category {
-	case CategoryUrbanMotorway:
-		switch class {
-		case vehicleClassLight:
-			return 0.6
-		case vehicleClassMedium, vehicleClassHeavy:
-			return 0.8
-		default:
-			return 0.3
-		}
-	case CategoryUrbanMajor:
-		return 0.2
-	case CategoryUrbanLocal:
-		switch class {
-		case vehicleClassHeavy:
-			return -0.4
-		case vehicleClassPoweredTwoWheelers:
-			return 0.2
-		default:
-			return -0.2
-		}
-	case CategoryRuralMotorway:
-		switch class {
-		case vehicleClassLight:
-			return 0.4
-		case vehicleClassMedium, vehicleClassHeavy:
-			return 0.7
-		default:
-			return 0
-		}
-	case CategoryRuralMajor:
-		switch class {
-		case vehicleClassHeavy:
-			return 0.3
-		default:
-			return 0
-		}
-	default:
+	corrections, ok := roadCategoryCorrections[category]
+	if !ok {
 		return 0
+	}
+
+	return corrections[class]
+}
+
+// lowSpeedCorrections holds the fixed correction terms applied below 40 km/h.
+var lowSpeedCorrections = map[vehicleClass]float64{
+	vehicleClassLight:              -2.5,
+	vehicleClassMedium:             -2.0,
+	vehicleClassHeavy:              -1.5,
+	vehicleClassPoweredTwoWheelers: -1.0,
+}
+
+// midSpeedMultipliers holds the log-speed multipliers for 40-80 km/h.
+var midSpeedMultipliers = map[vehicleClass]float64{
+	vehicleClassLight:              9,
+	vehicleClassMedium:             7.5,
+	vehicleClassHeavy:              6,
+	vehicleClassPoweredTwoWheelers: 10,
+}
+
+// highSpeedOffsets and highSpeedMultipliers hold the log-speed terms above 80 km/h.
+var highSpeedOffsets = map[vehicleClass]float64{
+	vehicleClassLight:              2.0,
+	vehicleClassMedium:             1.7,
+	vehicleClassHeavy:              1.5,
+	vehicleClassPoweredTwoWheelers: 2.5,
+}
+
+var highSpeedMultipliers = map[vehicleClass]float64{
+	vehicleClassLight:              7,
+	vehicleClassMedium:             6,
+	vehicleClassHeavy:              5,
+	vehicleClassPoweredTwoWheelers: 7.5,
+}
+
+func clampSpeedKPH(speedKPH float64) float64 {
+	switch {
+	case speedKPH < 20:
+		return 20
+	case speedKPH > 130:
+		return 130
+	default:
+		return speedKPH
 	}
 }
 
 func speedCorrection(speedKPH float64, class vehicleClass) float64 {
-	clamped := speedKPH
-	if clamped < 20 {
-		clamped = 20
-	}
-
-	if clamped > 130 {
-		clamped = 130
-	}
+	clamped := clampSpeedKPH(speedKPH)
 
 	switch {
 	case clamped < 40:
-		switch class {
-		case vehicleClassLight:
-			return -2.5
-		case vehicleClassMedium:
-			return -2.0
-		case vehicleClassHeavy:
-			return -1.5
-		case vehicleClassPoweredTwoWheelers:
-			return -1.0
-		default:
-			return 0
-		}
+		return lowSpeedCorrections[class]
 	case clamped <= 80:
-		base := math.Log10(clamped / 50)
-
-		switch class {
-		case vehicleClassLight:
-			return 9 * base
-		case vehicleClassMedium:
-			return 7.5 * base
-		case vehicleClassHeavy:
-			return 6 * base
-		case vehicleClassPoweredTwoWheelers:
-			return 10 * base
-		default:
-			return 0
-		}
+		return midSpeedMultipliers[class] * math.Log10(clamped/50)
 	default:
 		base := math.Log10(clamped / 80)
-
-		switch class {
-		case vehicleClassLight:
-			return 2.0 + 7*base
-		case vehicleClassMedium:
-			return 1.7 + 6*base
-		case vehicleClassHeavy:
-			return 1.5 + 5*base
-		case vehicleClassPoweredTwoWheelers:
-			return 2.5 + 7.5*base
-		default:
-			return 0
-		}
+		return highSpeedOffsets[class] + highSpeedMultipliers[class]*base
 	}
 }
 

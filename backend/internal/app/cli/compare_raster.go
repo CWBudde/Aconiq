@@ -81,6 +81,78 @@ type decodedGridMapRun struct {
 	decoded  soundplanimport.DecodedGridMap
 }
 
+// decodeGridMapRuns decodes every usable RRLK*.GM payload referenced by the
+// import report. It returns the decoded runs plus one warning per skipped record.
+func decodeGridMapRuns(soundPlanRoot string, gridMaps []soundplanimport.GridMapMetadata) ([]decodedGridMapRun, []string) {
+	decodedRuns := make([]decodedGridMapRun, 0, len(gridMaps))
+	warnings := make([]string, 0, len(gridMaps))
+
+	for _, gm := range gridMaps {
+		if strings.TrimSpace(gm.ResultSubFolder) == "" || strings.TrimSpace(gm.GMFile) == "" {
+			warnings = append(warnings, "skipping incomplete grid-map metadata record")
+			continue
+		}
+
+		gmPath := filepath.Join(soundPlanRoot, gm.ResultSubFolder, gm.GMFile)
+		decoded, decodeErr := soundplanimport.ParseDecodedGridMap(gmPath, gm.PointsTotal)
+		if decodeErr != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: %v", gm.ResultSubFolder, decodeErr))
+			continue
+		}
+		if decoded.ValueCellCount == 0 || len(decoded.Rows) == 0 {
+			warnings = append(warnings, gm.ResultSubFolder+": decoded GM has no value cells")
+			continue
+		}
+
+		decodedRuns = append(decodedRuns, decodedGridMapRun{
+			metadata: gm,
+			decoded:  decoded,
+		})
+	}
+
+	return decodedRuns, warnings
+}
+
+// synthesizeRasterReceivers places one Aconiq receiver per decoded SoundPLAN
+// grid cell, preferring the GM origin metadata and falling back to CalcArea
+// scanlines. It records the chosen alignment and any warnings on report, and
+// reports false when no receivers could be synthesized.
+func synthesizeRasterReceivers(
+	report *soundPlanRasterCompareReport,
+	importReport soundPlanImportReport,
+	meta soundplanimport.GridMapMetadata,
+	calcArea *soundplanimport.CalcArea,
+	receiverHeightM float64,
+	layoutRows [][]soundplanimport.GridMapCell,
+) ([]heuristicRasterReceiver, []string, bool) {
+	syntheticReceivers, ids, synthWarnings := buildMetadataAlignedRasterReceivers(meta, calcArea, receiverHeightM, layoutRows)
+	if len(syntheticReceivers) > 0 {
+		report.Alignment = soundPlanRasterMetadataAlignment
+	}
+	if len(syntheticReceivers) == 0 {
+		gridResolutionM := importReport.GridResolutionM
+		if calcArea == nil || len(calcArea.Points) < 4 {
+			report.Warnings = append(report.Warnings, "CalcArea.geo is missing or incomplete, and GM metadata was insufficient for raster synthesis")
+			return nil, nil, false
+		}
+
+		if gridResolutionM <= 0 {
+			report.Warnings = append(report.Warnings, "grid resolution is unavailable, so raster scanline receivers could not be synthesized")
+			return nil, nil, false
+		}
+
+		syntheticReceivers, ids, synthWarnings = buildHeuristicRasterReceivers(calcArea, gridResolutionM, receiverHeightM, layoutRows)
+		report.Alignment = "calcarea_scanlines_centered"
+	}
+	report.Warnings = append(report.Warnings, synthWarnings...)
+	if len(syntheticReceivers) == 0 {
+		report.Warnings = append(report.Warnings, "heuristic raster receiver synthesis produced no receivers")
+		return nil, nil, false
+	}
+
+	return syntheticReceivers, ids, true
+}
+
 func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImportReport, modelPath string) (*rasterComparePreparation, bool, error) {
 	if len(importReport.GridMaps) == 0 {
 		return nil, false, nil
@@ -98,29 +170,8 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	soundPlanRoot := resolvePath(projectRoot, importReport.SourcePath)
 	calcArea := calcAreaFromImportReport(importReport.CalcArea)
 
-	decodedRuns := make([]decodedGridMapRun, 0, len(importReport.GridMaps))
-	for _, gm := range importReport.GridMaps {
-		if strings.TrimSpace(gm.ResultSubFolder) == "" || strings.TrimSpace(gm.GMFile) == "" {
-			report.Warnings = append(report.Warnings, "skipping incomplete grid-map metadata record")
-			continue
-		}
-
-		gmPath := filepath.Join(soundPlanRoot, gm.ResultSubFolder, gm.GMFile)
-		decoded, decodeErr := soundplanimport.ParseDecodedGridMap(gmPath, gm.PointsTotal)
-		if decodeErr != nil {
-			report.Warnings = append(report.Warnings, fmt.Sprintf("%s: %v", gm.ResultSubFolder, decodeErr))
-			continue
-		}
-		if decoded.ValueCellCount == 0 || len(decoded.Rows) == 0 {
-			report.Warnings = append(report.Warnings, gm.ResultSubFolder+": decoded GM has no value cells")
-			continue
-		}
-
-		decodedRuns = append(decodedRuns, decodedGridMapRun{
-			metadata: gm,
-			decoded:  decoded,
-		})
-	}
+	decodedRuns, decodeWarnings := decodeGridMapRuns(soundPlanRoot, importReport.GridMaps)
+	report.Warnings = append(report.Warnings, decodeWarnings...)
 
 	if len(decodedRuns) == 0 {
 		report.Warnings = append(report.Warnings, "no decodable GM payload was available for raster comparison")
@@ -136,28 +187,10 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}
 
 	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
-	syntheticReceivers, ids, synthWarnings := buildMetadataAlignedRasterReceivers(decodedRuns[0].metadata, calcArea, syntheticReceiverHeight, layoutRows)
-	if len(syntheticReceivers) > 0 {
-		report.Alignment = soundPlanRasterMetadataAlignment
-	}
-	if len(syntheticReceivers) == 0 {
-		gridResolutionM := importReport.GridResolutionM
-		if calcArea == nil || len(calcArea.Points) < 4 {
-			report.Warnings = append(report.Warnings, "CalcArea.geo is missing or incomplete, and GM metadata was insufficient for raster synthesis")
-			return &rasterComparePreparation{report: report}, true, nil
-		}
-
-		if gridResolutionM <= 0 {
-			report.Warnings = append(report.Warnings, "grid resolution is unavailable, so raster scanline receivers could not be synthesized")
-			return &rasterComparePreparation{report: report}, true, nil
-		}
-
-		syntheticReceivers, ids, synthWarnings = buildHeuristicRasterReceivers(calcArea, gridResolutionM, syntheticReceiverHeight, layoutRows)
-		report.Alignment = "calcarea_scanlines_centered"
-	}
-	report.Warnings = append(report.Warnings, synthWarnings...)
-	if len(syntheticReceivers) == 0 {
-		report.Warnings = append(report.Warnings, "heuristic raster receiver synthesis produced no receivers")
+	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
+		report, importReport, decodedRuns[0].metadata, calcArea, syntheticReceiverHeight, layoutRows,
+	)
+	if !synthesized {
 		return &rasterComparePreparation{report: report}, true, nil
 	}
 
@@ -211,6 +244,89 @@ func receiverHeightFromModel(model modelgeojson.Model) float64 {
 	return 4.0
 }
 
+// compareDecodedGridMapRun compares one decoded SoundPLAN grid map against the
+// synthetic raster receivers computed by the Aconiq run, in scanline order.
+func compareDecodedGridMapRun(
+	run decodedGridMapRun,
+	syntheticReceiverIDs []string,
+	recordByID map[string]results.ReceiverRecord,
+	toleranceDB float64,
+) (soundPlanRasterRunCompareDetail, error) {
+	detail := soundPlanRasterRunCompareDetail{
+		ResultSubFolder:   run.metadata.ResultSubFolder,
+		Status:            "compared",
+		RowCount:          len(run.decoded.Rows),
+		MarkerCellCount:   run.decoded.MarkerCellCount,
+		ValueCellCount:    run.decoded.ValueCellCount,
+		ComparedCellCount: 0,
+		Stats:             map[string]compareIndicatorStats{},
+	}
+
+	dayAbs := make([]float64, 0, run.decoded.ValueCellCount)
+	nightAbs := make([]float64, 0, run.decoded.ValueCellCount)
+	cellIndex := 0
+
+	for rowIndex, row := range run.decoded.Rows {
+		for colIndex, cell := range row {
+			if cellIndex >= len(syntheticReceiverIDs) {
+				detail.Status = "partial_compare"
+				detail.Warnings = append(detail.Warnings, "Aconiq raster receiver sequence is shorter than decoded SoundPLAN cells")
+				break
+			}
+
+			receiverID := syntheticReceiverIDs[cellIndex]
+			record, ok := recordByID[receiverID]
+			if !ok {
+				detail.Status = "partial_compare"
+				detail.Warnings = append(detail.Warnings, "missing raster receiver output for "+receiverID)
+				cellIndex++
+				continue
+			}
+
+			dayValue, ok := record.Values[schall03.IndicatorLrDay]
+			if !ok {
+				return detail, fmt.Errorf("raster receiver table missing %s", schall03.IndicatorLrDay)
+			}
+
+			nightValue, ok := record.Values[schall03.IndicatorLrNight]
+			if !ok {
+				return detail, fmt.Errorf("raster receiver table missing %s", schall03.IndicatorLrNight)
+			}
+
+			dayDelta := dayValue - cell.DayDB
+			nightDelta := nightValue - cell.NightDB
+			detail.Records = append(detail.Records, soundPlanRasterCellComparisonRecord{
+				ReceiverID:     receiverID,
+				Row:            rowIndex,
+				Col:            colIndex,
+				X:              record.X,
+				Y:              record.Y,
+				AconiqLrDay:    dayValue,
+				SoundPlanDayDB: cell.DayDB,
+				DeltaDayDB:     dayDelta,
+				AconiqLrNight:  nightValue,
+				SoundPlanNight: cell.NightDB,
+				DeltaNightDB:   nightDelta,
+			})
+
+			dayAbs = append(dayAbs, math.Abs(dayDelta))
+			nightAbs = append(nightAbs, math.Abs(nightDelta))
+			detail.ComparedCellCount++
+			cellIndex++
+		}
+	}
+
+	if detail.ComparedCellCount == 0 {
+		detail.Status = "decoded_but_unmatched"
+		detail.Warnings = append(detail.Warnings, "no raster cells could be matched to Aconiq receiver outputs")
+	}
+
+	detail.Stats[schall03.IndicatorLrDay] = buildCompareIndicatorStats(dayAbs, toleranceDB)
+	detail.Stats[schall03.IndicatorLrNight] = buildCompareIndicatorStats(nightAbs, toleranceDB)
+
+	return detail, nil
+}
+
 func finalizeSoundPlanRasterCompare(
 	projectRoot string,
 	prep *rasterComparePreparation,
@@ -245,77 +361,11 @@ func finalizeSoundPlanRasterCompare(
 	prep.report.Runs = make([]soundPlanRasterRunCompareSummary, 0, len(prep.decodedRuns))
 
 	for _, run := range prep.decodedRuns {
-		detail := soundPlanRasterRunCompareDetail{
-			ResultSubFolder:   run.metadata.ResultSubFolder,
-			Status:            "compared",
-			RowCount:          len(run.decoded.Rows),
-			MarkerCellCount:   run.decoded.MarkerCellCount,
-			ValueCellCount:    run.decoded.ValueCellCount,
-			ComparedCellCount: 0,
-			Stats:             map[string]compareIndicatorStats{},
+		detail, err := compareDecodedGridMapRun(run, prep.syntheticReceiverIDs, recordByID, toleranceDB)
+		if err != nil {
+			return prep.report, nil, err
 		}
 
-		dayAbs := make([]float64, 0, run.decoded.ValueCellCount)
-		nightAbs := make([]float64, 0, run.decoded.ValueCellCount)
-		cellIndex := 0
-
-		for rowIndex, row := range run.decoded.Rows {
-			for colIndex, cell := range row {
-				if cellIndex >= len(prep.syntheticReceiverIDs) {
-					detail.Status = "partial_compare"
-					detail.Warnings = append(detail.Warnings, "Aconiq raster receiver sequence is shorter than decoded SoundPLAN cells")
-					break
-				}
-
-				receiverID := prep.syntheticReceiverIDs[cellIndex]
-				record, ok := recordByID[receiverID]
-				if !ok {
-					detail.Status = "partial_compare"
-					detail.Warnings = append(detail.Warnings, "missing raster receiver output for "+receiverID)
-					cellIndex++
-					continue
-				}
-
-				dayValue, ok := record.Values[schall03.IndicatorLrDay]
-				if !ok {
-					return prep.report, nil, fmt.Errorf("raster receiver table missing %s", schall03.IndicatorLrDay)
-				}
-
-				nightValue, ok := record.Values[schall03.IndicatorLrNight]
-				if !ok {
-					return prep.report, nil, fmt.Errorf("raster receiver table missing %s", schall03.IndicatorLrNight)
-				}
-
-				dayDelta := dayValue - cell.DayDB
-				nightDelta := nightValue - cell.NightDB
-				detail.Records = append(detail.Records, soundPlanRasterCellComparisonRecord{
-					ReceiverID:     receiverID,
-					Row:            rowIndex,
-					Col:            colIndex,
-					X:              record.X,
-					Y:              record.Y,
-					AconiqLrDay:    dayValue,
-					SoundPlanDayDB: cell.DayDB,
-					DeltaDayDB:     dayDelta,
-					AconiqLrNight:  nightValue,
-					SoundPlanNight: cell.NightDB,
-					DeltaNightDB:   nightDelta,
-				})
-
-				dayAbs = append(dayAbs, math.Abs(dayDelta))
-				nightAbs = append(nightAbs, math.Abs(nightDelta))
-				detail.ComparedCellCount++
-				cellIndex++
-			}
-		}
-
-		if detail.ComparedCellCount == 0 {
-			detail.Status = "decoded_but_unmatched"
-			detail.Warnings = append(detail.Warnings, "no raster cells could be matched to Aconiq receiver outputs")
-		}
-
-		detail.Stats[schall03.IndicatorLrDay] = buildCompareIndicatorStats(dayAbs, toleranceDB)
-		detail.Stats[schall03.IndicatorLrNight] = buildCompareIndicatorStats(nightAbs, toleranceDB)
 		artifact.Runs = append(artifact.Runs, detail)
 		prep.report.Runs = append(prep.report.Runs, soundPlanRasterRunCompareSummary{
 			ResultSubFolder:   detail.ResultSubFolder,
@@ -420,44 +470,61 @@ func buildHeuristicRasterReceivers(
 	return receivers, ids, uniqueStrings(warnings)
 }
 
+// anyGridMapRowHasCells reports whether at least one decoded row carries cells.
+func anyGridMapRowHasCells(rows [][]soundplanimport.GridMapCell) bool {
+	for _, row := range rows {
+		if len(row) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// gridMapMetadataFinite reports whether origin and spacing are usable numbers.
+func gridMapMetadataFinite(meta soundplanimport.GridMapMetadata) bool {
+	return !(math.IsNaN(meta.OriginX) || math.IsInf(meta.OriginX, 0) ||
+		math.IsNaN(meta.OriginY) || math.IsInf(meta.OriginY, 0) ||
+		math.IsNaN(meta.SpacingX) || math.IsInf(meta.SpacingX, 0) ||
+		math.IsNaN(meta.SpacingY) || math.IsInf(meta.SpacingY, 0))
+}
+
+// gridMapAlignmentUsable reports whether the GM metadata can place the decoded
+// rows on the project grid. When it cannot, it returns the warning explaining why
+// (nil when the decoded payload simply carries no cells).
+func gridMapAlignmentUsable(meta soundplanimport.GridMapMetadata, rows [][]soundplanimport.GridMapCell) ([]string, bool) {
+	if len(rows) == 0 || !anyGridMapRowHasCells(rows) {
+		return nil, false
+	}
+
+	if meta.OriginX == 0 && meta.OriginY == 0 {
+		return []string{"skip GM metadata receiver synthesis: missing origin"}, false
+	}
+
+	if meta.SpacingX <= 0 || meta.SpacingY <= 0 {
+		return []string{"skip GM metadata receiver synthesis: missing or non-positive spacing"}, false
+	}
+
+	if !gridMapMetadataFinite(meta) {
+		return []string{"skip GM metadata receiver synthesis: invalid origin/spacing metadata"}, false
+	}
+
+	if meta.DeclaredRowCount > 0 && meta.DeclaredRowCount != len(rows) {
+		return []string{fmt.Sprintf("skip GM metadata receiver synthesis: row count mismatch (metadata=%d, decoded=%d)", meta.DeclaredRowCount, len(rows))}, false
+	}
+
+	return nil, true
+}
+
 func buildMetadataAlignedRasterReceivers(
 	meta soundplanimport.GridMapMetadata,
 	area *soundplanimport.CalcArea,
 	receiverHeightM float64,
 	rows [][]soundplanimport.GridMapCell,
 ) ([]heuristicRasterReceiver, []string, []string) {
-	if len(rows) == 0 {
-		return nil, nil, nil
-	}
-
-	hasCellData := false
-	for _, row := range rows {
-		if len(row) > 0 {
-			hasCellData = true
-			break
-		}
-	}
-	if !hasCellData {
-		return nil, nil, nil
-	}
-
-	if meta.OriginX == 0 && meta.OriginY == 0 {
-		return nil, nil, []string{"skip GM metadata receiver synthesis: missing origin"}
-	}
-
-	if meta.SpacingX <= 0 || meta.SpacingY <= 0 {
-		return nil, nil, []string{"skip GM metadata receiver synthesis: missing or non-positive spacing"}
-	}
-
-	if math.IsNaN(meta.OriginX) || math.IsInf(meta.OriginX, 0) ||
-		math.IsNaN(meta.OriginY) || math.IsInf(meta.OriginY, 0) ||
-		math.IsNaN(meta.SpacingX) || math.IsInf(meta.SpacingX, 0) ||
-		math.IsNaN(meta.SpacingY) || math.IsInf(meta.SpacingY, 0) {
-		return nil, nil, []string{"skip GM metadata receiver synthesis: invalid origin/spacing metadata"}
-	}
-
-	if meta.DeclaredRowCount > 0 && meta.DeclaredRowCount != len(rows) {
-		return nil, nil, []string{fmt.Sprintf("skip GM metadata receiver synthesis: row count mismatch (metadata=%d, decoded=%d)", meta.DeclaredRowCount, len(rows))}
+	warnings, usable := gridMapAlignmentUsable(meta, rows)
+	if !usable {
+		return nil, nil, warnings
 	}
 
 	yPositions := metadataAlignedRowCenters(meta, len(rows), area)

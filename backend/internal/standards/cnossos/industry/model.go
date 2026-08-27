@@ -71,37 +71,78 @@ type IndustrySource struct {
 	OperationNight          OperationPeriod `json:"operation_night"`
 }
 
+// finite reports whether v is neither NaN nor infinite.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// finiteNonNegative reports whether v is finite and greater than or equal to zero.
+func finiteNonNegative(v float64) bool {
+	return finite(v) && v >= 0
+}
+
+// finitePositive reports whether v is finite and strictly greater than zero.
+func finitePositive(v float64) bool {
+	return finite(v) && v > 0
+}
+
 // Validate validates one industry source payload.
 func (s IndustrySource) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return errors.New("industry source id is required")
 	}
 
+	if err := s.validateGeometry(); err != nil {
+		return err
+	}
+
+	if err := s.validateClassification(); err != nil {
+		return err
+	}
+
+	if err := s.validateAcoustics(); err != nil {
+		return err
+	}
+
+	return s.validateOperations()
+}
+
+func (s IndustrySource) validateAreaPolygon() error {
+	if len(s.AreaPolygon) == 0 {
+		return fmt.Errorf("industry source %q area_polygon must contain at least one ring", s.ID)
+	}
+
+	for ringIndex, ring := range s.AreaPolygon {
+		if len(ring) < 4 {
+			return fmt.Errorf("industry source %q area_polygon ring[%d] must contain at least 4 points", s.ID, ringIndex)
+		}
+
+		for pointIndex, point := range ring {
+			if !point.IsFinite() {
+				return fmt.Errorf("industry source %q area_polygon ring[%d] point[%d] is not finite", s.ID, ringIndex, pointIndex)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s IndustrySource) validateGeometry() error {
 	switch strings.TrimSpace(s.SourceType) {
 	case SourceTypePoint:
 		if !s.Point.IsFinite() {
 			return fmt.Errorf("industry source %q point is not finite", s.ID)
 		}
+
+		return nil
 	case SourceTypeArea:
-		if len(s.AreaPolygon) == 0 {
-			return fmt.Errorf("industry source %q area_polygon must contain at least one ring", s.ID)
-		}
-
-		for ringIndex, ring := range s.AreaPolygon {
-			if len(ring) < 4 {
-				return fmt.Errorf("industry source %q area_polygon ring[%d] must contain at least 4 points", s.ID, ringIndex)
-			}
-
-			for pointIndex, point := range ring {
-				if !point.IsFinite() {
-					return fmt.Errorf("industry source %q area_polygon ring[%d] point[%d] is not finite", s.ID, ringIndex, pointIndex)
-				}
-			}
-		}
+		return s.validateAreaPolygon()
 	default:
 		return fmt.Errorf("industry source %q has unsupported source_type %q", s.ID, s.SourceType)
 	}
+}
 
+func (s IndustrySource) validateClassification() error {
 	if _, ok := allowedSourceCategories[strings.TrimSpace(s.SourceCategory)]; !ok {
 		return fmt.Errorf("industry source %q has unsupported source_category %q", s.ID, s.SourceCategory)
 	}
@@ -110,42 +151,43 @@ func (s IndustrySource) Validate() error {
 		return fmt.Errorf("industry source %q has unsupported enclosure_state %q", s.ID, s.EnclosureState)
 	}
 
-	if math.IsNaN(s.SourceHeightM) || math.IsInf(s.SourceHeightM, 0) || s.SourceHeightM < 0 {
+	return nil
+}
+
+func (s IndustrySource) validateAcoustics() error {
+	if !finiteNonNegative(s.SourceHeightM) {
 		return fmt.Errorf("industry source %q source_height_m must be finite and >= 0", s.ID)
 	}
 
-	if math.IsNaN(s.SoundPowerLevelDB) || math.IsInf(s.SoundPowerLevelDB, 0) {
+	if !finite(s.SoundPowerLevelDB) {
 		return fmt.Errorf("industry source %q sound_power_level_db must be finite", s.ID)
 	}
 
-	if math.IsNaN(s.TonalityCorrectionDB) || math.IsInf(s.TonalityCorrectionDB, 0) {
+	if !finite(s.TonalityCorrectionDB) {
 		return fmt.Errorf("industry source %q tonality_correction_db must be finite", s.ID)
 	}
 
-	if math.IsNaN(s.ImpulsivityCorrectionDB) || math.IsInf(s.ImpulsivityCorrectionDB, 0) {
+	if !finite(s.ImpulsivityCorrectionDB) {
 		return fmt.Errorf("industry source %q impulsivity_correction_db must be finite", s.ID)
-	}
-
-	err := validateOperationPeriod(s.ID, "day", s.OperationDay)
-	if err != nil {
-		return err
-	}
-
-	err = validateOperationPeriod(s.ID, "evening", s.OperationEvening)
-	if err != nil {
-		return err
-	}
-
-	err = validateOperationPeriod(s.ID, "night", s.OperationNight)
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
+func (s IndustrySource) validateOperations() error {
+	if err := validateOperationPeriod(s.ID, "day", s.OperationDay); err != nil {
+		return err
+	}
+
+	if err := validateOperationPeriod(s.ID, "evening", s.OperationEvening); err != nil {
+		return err
+	}
+
+	return validateOperationPeriod(s.ID, "night", s.OperationNight)
+}
+
 func validateOperationPeriod(sourceID string, period string, operation OperationPeriod) error {
-	if math.IsNaN(operation.OperatingFactor) || math.IsInf(operation.OperatingFactor, 0) || operation.OperatingFactor < 0 {
+	if !finiteNonNegative(operation.OperatingFactor) {
 		return fmt.Errorf("industry source %q operation_%s operating_factor must be finite and >= 0", sourceID, period)
 	}
 

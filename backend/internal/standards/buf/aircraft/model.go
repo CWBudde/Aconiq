@@ -102,8 +102,43 @@ type AircraftSource struct {
 	MovementNight         MovementPeriod `json:"movement_night"`
 }
 
+// finite reports whether v is neither NaN nor infinite.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// finitePositive reports whether v is finite and strictly greater than zero.
+func finitePositive(v float64) bool {
+	return finite(v) && v > 0
+}
+
+// finiteNonNegative reports whether v is finite and greater than or equal to zero.
+func finiteNonNegative(v float64) bool {
+	return finite(v) && v >= 0
+}
+
 // Validate validates one aircraft source payload.
 func (s AircraftSource) Validate() error {
+	if err := s.validateIdentity(); err != nil {
+		return err
+	}
+
+	if err := s.validateClassification(); err != nil {
+		return err
+	}
+
+	if err := s.validateTrack(); err != nil {
+		return err
+	}
+
+	if err := s.validateAcoustics(); err != nil {
+		return err
+	}
+
+	return s.validateMovements()
+}
+
+func (s AircraftSource) validateIdentity() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return errors.New("aircraft source id is required")
 	}
@@ -120,6 +155,10 @@ func (s AircraftSource) Validate() error {
 		return fmt.Errorf("aircraft source %q airport.runway_id is required", s.ID)
 	}
 
+	return nil
+}
+
+func (s AircraftSource) validateClassification() error {
 	if _, ok := allowedOperations[strings.TrimSpace(s.OperationType)]; !ok {
 		return fmt.Errorf("aircraft source %q has unsupported operation_type %q", s.ID, s.OperationType)
 	}
@@ -136,6 +175,10 @@ func (s AircraftSource) Validate() error {
 		return fmt.Errorf("aircraft source %q has unsupported thrust_mode %q", s.ID, s.ThrustMode)
 	}
 
+	return nil
+}
+
+func (s AircraftSource) validateTrack() error {
 	if len(s.FlightTrack) < 2 {
 		return fmt.Errorf("aircraft source %q flight_track must contain at least 2 points", s.ID)
 	}
@@ -146,42 +189,43 @@ func (s AircraftSource) Validate() error {
 		}
 	}
 
-	if math.IsNaN(s.ReferencePowerLevelDB) || math.IsInf(s.ReferencePowerLevelDB, 0) {
+	return nil
+}
+
+func (s AircraftSource) validateAcoustics() error {
+	if !finite(s.ReferencePowerLevelDB) {
 		return fmt.Errorf("aircraft source %q reference_power_level_db must be finite", s.ID)
 	}
 
-	if math.IsNaN(s.LateralOffsetM) || math.IsInf(s.LateralOffsetM, 0) {
+	if !finite(s.LateralOffsetM) {
 		return fmt.Errorf("aircraft source %q lateral_offset_m must be finite", s.ID)
 	}
 
-	if math.IsNaN(s.EngineStateFactor) || math.IsInf(s.EngineStateFactor, 0) || s.EngineStateFactor <= 0 {
+	if !finitePositive(s.EngineStateFactor) {
 		return fmt.Errorf("aircraft source %q engine_state_factor must be finite and > 0", s.ID)
 	}
 
-	if math.IsNaN(s.BankAngleDeg) || math.IsInf(s.BankAngleDeg, 0) {
+	if !finite(s.BankAngleDeg) {
 		return fmt.Errorf("aircraft source %q bank_angle_deg must be finite", s.ID)
-	}
-
-	err := validateMovementPeriod(s.ID, "day", s.MovementDay)
-	if err != nil {
-		return err
-	}
-
-	err = validateMovementPeriod(s.ID, "evening", s.MovementEvening)
-	if err != nil {
-		return err
-	}
-
-	err = validateMovementPeriod(s.ID, "night", s.MovementNight)
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
+func (s AircraftSource) validateMovements() error {
+	if err := validateMovementPeriod(s.ID, "day", s.MovementDay); err != nil {
+		return err
+	}
+
+	if err := validateMovementPeriod(s.ID, "evening", s.MovementEvening); err != nil {
+		return err
+	}
+
+	return validateMovementPeriod(s.ID, "night", s.MovementNight)
+}
+
 func validateMovementPeriod(sourceID string, period string, movement MovementPeriod) error {
-	if math.IsNaN(movement.MovementsPerHour) || math.IsInf(movement.MovementsPerHour, 0) || movement.MovementsPerHour < 0 {
+	if !finiteNonNegative(movement.MovementsPerHour) {
 		return fmt.Errorf("aircraft source %q movement_%s movements_per_hour must be finite and >= 0", sourceID, period)
 	}
 

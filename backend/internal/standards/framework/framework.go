@@ -356,53 +356,69 @@ func validateScalar(parameter ParameterDefinition, value string) (string, error)
 
 	switch parameter.Kind {
 	case ParameterKindString:
-		if len(parameter.Enum) > 0 {
-			if !containsText(parameter.Enum, value) {
-				return "", fmt.Errorf("value %q must be one of [%s]", value, strings.Join(parameter.Enum, ", "))
-			}
-		}
-
-		return value, nil
+		return validateStringScalar(parameter, value)
 	case ParameterKindBool:
-		parsed, err := strconv.ParseBool(value)
-		if err != nil {
-			return "", errors.New("expected bool")
-		}
-
-		return strconv.FormatBool(parsed), nil
+		return validateBoolScalar(value)
 	case ParameterKindInt:
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return "", errors.New("expected int")
-		}
-
-		if parameter.Min != nil && float64(parsed) < *parameter.Min {
-			return "", fmt.Errorf("value %d is below minimum %g", parsed, *parameter.Min)
-		}
-
-		if parameter.Max != nil && float64(parsed) > *parameter.Max {
-			return "", fmt.Errorf("value %d exceeds maximum %g", parsed, *parameter.Max)
-		}
-
-		return strconv.Itoa(parsed), nil
+		return validateIntScalar(parameter, value)
 	case ParameterKindFloat:
-		parsed, err := strconv.ParseFloat(value, 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return "", errors.New("expected finite float")
-		}
-
-		if parameter.Min != nil && parsed < *parameter.Min {
-			return "", fmt.Errorf("value %g is below minimum %g", parsed, *parameter.Min)
-		}
-
-		if parameter.Max != nil && parsed > *parameter.Max {
-			return "", fmt.Errorf("value %g exceeds maximum %g", parsed, *parameter.Max)
-		}
-
-		return strconv.FormatFloat(parsed, 'f', -1, 64), nil
+		return validateFloatScalar(parameter, value)
 	default:
 		return "", fmt.Errorf("unsupported kind %q", parameter.Kind)
 	}
+}
+
+func validateStringScalar(parameter ParameterDefinition, value string) (string, error) {
+	if len(parameter.Enum) > 0 {
+		if !containsText(parameter.Enum, value) {
+			return "", fmt.Errorf("value %q must be one of [%s]", value, strings.Join(parameter.Enum, ", "))
+		}
+	}
+
+	return value, nil
+}
+
+func validateBoolScalar(value string) (string, error) {
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return "", errors.New("expected bool")
+	}
+
+	return strconv.FormatBool(parsed), nil
+}
+
+func validateIntScalar(parameter ParameterDefinition, value string) (string, error) {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return "", errors.New("expected int")
+	}
+
+	if parameter.Min != nil && float64(parsed) < *parameter.Min {
+		return "", fmt.Errorf("value %d is below minimum %g", parsed, *parameter.Min)
+	}
+
+	if parameter.Max != nil && float64(parsed) > *parameter.Max {
+		return "", fmt.Errorf("value %d exceeds maximum %g", parsed, *parameter.Max)
+	}
+
+	return strconv.Itoa(parsed), nil
+}
+
+func validateFloatScalar(parameter ParameterDefinition, value string) (string, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return "", errors.New("expected finite float")
+	}
+
+	if parameter.Min != nil && parsed < *parameter.Min {
+		return "", fmt.Errorf("value %g is below minimum %g", parsed, *parameter.Min)
+	}
+
+	if parameter.Max != nil && parsed > *parameter.Max {
+		return "", fmt.Errorf("value %g exceeds maximum %g", parsed, *parameter.Max)
+	}
+
+	return strconv.FormatFloat(parsed, 'f', -1, 64), nil
 }
 
 func containsText(values []string, target string) bool {

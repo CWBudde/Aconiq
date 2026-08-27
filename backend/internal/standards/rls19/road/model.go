@@ -292,6 +292,18 @@ type RoadSource struct {
 
 // Validate validates a road source.
 func (s RoadSource) Validate() error {
+	if err := s.validateGeometry(); err != nil {
+		return err
+	}
+
+	if err := s.validateRoadAttributes(); err != nil {
+		return err
+	}
+
+	return s.validateTraffic()
+}
+
+func (s RoadSource) validateGeometry() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return errors.New("road source id is required")
 	}
@@ -306,11 +318,10 @@ func (s RoadSource) Validate() error {
 		}
 	}
 
-	err := s.validateElevation()
-	if err != nil {
-		return err
-	}
+	return s.validateElevation()
+}
 
+func (s RoadSource) validateRoadAttributes() error {
 	if s.SurfaceType != SurfaceNotSpecified && !isAllowedSurface(s.SurfaceType) {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
 	}
@@ -319,7 +330,7 @@ func (s RoadSource) Validate() error {
 		return fmt.Errorf("road source %q lane_count must be >= 0", s.ID)
 	}
 
-	err = validateSpeedInput(s.ID, s.Speeds)
+	err := validateSpeedInput(s.ID, s.Speeds)
 	if err != nil {
 		return err
 	}
@@ -340,17 +351,16 @@ func (s RoadSource) Validate() error {
 		return fmt.Errorf("road source %q street_width_m must be finite and >= 0", s.ID)
 	}
 
-	err = validateTrafficInput(s.ID, "day", s.TrafficDay)
-	if err != nil {
-		return err
-	}
-
-	err = validateTrafficInput(s.ID, "night", s.TrafficNight)
-	if err != nil {
-		return err
-	}
-
 	return nil
+}
+
+func (s RoadSource) validateTraffic() error {
+	err := validateTrafficInput(s.ID, "day", s.TrafficDay)
+	if err != nil {
+		return err
+	}
+
+	return validateTrafficInput(s.ID, "night", s.TrafficNight)
 }
 
 func isFinite(v float64) bool {

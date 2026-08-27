@@ -88,30 +88,43 @@ func LoadTerrainData(projectDir string) (*TerrainData, error) {
 		}
 	}
 
-	dgmPaths, globErr := filepath.Glob(filepath.Join(projectDir, "*.dgm"))
-	if globErr != nil {
-		loadErrors = append(loadErrors, fmt.Sprintf("dgm=%v", globErr))
-	} else {
-		sort.Strings(dgmPaths)
-		for _, path := range dgmPaths {
-			dgm, dgmErr := ParseDGMFile(path)
-			if dgmErr == nil {
-				terrain.DGMFiles = append(terrain.DGMFiles, *dgm)
-				continue
-			}
-
-			msg := fmt.Sprintf("%s: %v", filepath.Base(path), dgmErr)
-			if baseTerrainLoaded || len(terrain.DGMFiles) > 0 {
-				terrain.Warnings = append(terrain.Warnings, msg)
-			} else {
-				loadErrors = append(loadErrors, "dgm="+msg)
-			}
-		}
-	}
+	dgmFiles, dgmWarnings, dgmLoadErrors := loadDGMFiles(projectDir, baseTerrainLoaded)
+	terrain.DGMFiles = append(terrain.DGMFiles, dgmFiles...)
+	terrain.Warnings = append(terrain.Warnings, dgmWarnings...)
+	loadErrors = append(loadErrors, dgmLoadErrors...)
 
 	if baseTerrainLoaded || len(terrain.DGMFiles) > 0 {
 		return terrain, nil
 	}
 
 	return nil, fmt.Errorf("soundplan: load terrain data: %s", strings.Join(loadErrors, "; "))
+}
+
+// loadDGMFiles globs and parses *.dgm files in projectDir. Parse failures
+// become warnings once some terrain data (base terrain or a prior DGM file)
+// has already loaded successfully; otherwise they become fatal load errors.
+func loadDGMFiles(projectDir string, baseTerrainLoaded bool) (dgmFiles []DGMData, warnings []string, loadErrors []string) {
+	dgmPaths, globErr := filepath.Glob(filepath.Join(projectDir, "*.dgm"))
+	if globErr != nil {
+		loadErrors = append(loadErrors, fmt.Sprintf("dgm=%v", globErr))
+		return dgmFiles, warnings, loadErrors
+	}
+
+	sort.Strings(dgmPaths)
+	for _, path := range dgmPaths {
+		dgm, dgmErr := ParseDGMFile(path)
+		if dgmErr == nil {
+			dgmFiles = append(dgmFiles, *dgm)
+			continue
+		}
+
+		msg := fmt.Sprintf("%s: %v", filepath.Base(path), dgmErr)
+		if baseTerrainLoaded || len(dgmFiles) > 0 {
+			warnings = append(warnings, msg)
+		} else {
+			loadErrors = append(loadErrors, "dgm="+msg)
+		}
+	}
+
+	return dgmFiles, warnings, loadErrors
 }

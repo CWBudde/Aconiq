@@ -48,6 +48,36 @@ func (t Table2HourlyTraffic) ToTrafficInput(kradPerHour float64) TrafficInput {
 	}
 }
 
+// table2Factors holds the Tabelle 2 hourly factor and Lkw1/Lkw2 percentage
+// shares for a given road class and time period. MFactor multiplies the DTV
+// to yield the hourly traffic volume.
+type table2Factors struct {
+	MFactor   float64
+	P1Percent float64
+	P2Percent float64
+}
+
+// table2Coefficients is the Tabelle 2 lookup table, keyed by road class and
+// then by time period. Values must match RLS-19 Tabelle 2 exactly.
+var table2Coefficients = map[Table2RoadClass]map[Table2Period]table2Factors{
+	Table2RoadClassMotorwayExpressway: {
+		Table2PeriodDay:   {MFactor: 0.0555, P1Percent: 3, P2Percent: 11},
+		Table2PeriodNight: {MFactor: 0.0140, P1Percent: 10, P2Percent: 25},
+	},
+	Table2RoadClassFederalRoad: {
+		Table2PeriodDay:   {MFactor: 0.0575, P1Percent: 3, P2Percent: 7},
+		Table2PeriodNight: {MFactor: 0.0100, P1Percent: 7, P2Percent: 13},
+	},
+	Table2RoadClassStateCountyMunicipalLinkRoad: {
+		Table2PeriodDay:   {MFactor: 0.0575, P1Percent: 3, P2Percent: 5},
+		Table2PeriodNight: {MFactor: 0.0100, P1Percent: 5, P2Percent: 6},
+	},
+	Table2RoadClassMunicipalRoad: {
+		Table2PeriodDay:   {MFactor: 0.0575, P1Percent: 3, P2Percent: 4},
+		Table2PeriodNight: {MFactor: 0.0100, P1Percent: 3, P2Percent: 4},
+	},
+}
+
 // DTVToHourly converts a DTV value to the Tabelle 2 hourly representation
 // for the selected road class and time period.
 func DTVToHourly(dtv float64, roadClass Table2RoadClass, period Table2Period) (Table2HourlyTraffic, error) {
@@ -55,38 +85,19 @@ func DTVToHourly(dtv float64, roadClass Table2RoadClass, period Table2Period) (T
 		return Table2HourlyTraffic{}, fmt.Errorf("dtv must be finite and >= 0, got %g", dtv)
 	}
 
-	switch roadClass {
-	case Table2RoadClassMotorwayExpressway:
-		switch period {
-		case Table2PeriodDay:
-			return Table2HourlyTraffic{MPerHour: 0.0555 * dtv, P1Percent: 3, P2Percent: 11}, nil
-		case Table2PeriodNight:
-			return Table2HourlyTraffic{MPerHour: 0.0140 * dtv, P1Percent: 10, P2Percent: 25}, nil
-		}
-	case Table2RoadClassFederalRoad:
-		switch period {
-		case Table2PeriodDay:
-			return Table2HourlyTraffic{MPerHour: 0.0575 * dtv, P1Percent: 3, P2Percent: 7}, nil
-		case Table2PeriodNight:
-			return Table2HourlyTraffic{MPerHour: 0.0100 * dtv, P1Percent: 7, P2Percent: 13}, nil
-		}
-	case Table2RoadClassStateCountyMunicipalLinkRoad:
-		switch period {
-		case Table2PeriodDay:
-			return Table2HourlyTraffic{MPerHour: 0.0575 * dtv, P1Percent: 3, P2Percent: 5}, nil
-		case Table2PeriodNight:
-			return Table2HourlyTraffic{MPerHour: 0.0100 * dtv, P1Percent: 5, P2Percent: 6}, nil
-		}
-	case Table2RoadClassMunicipalRoad:
-		switch period {
-		case Table2PeriodDay:
-			return Table2HourlyTraffic{MPerHour: 0.0575 * dtv, P1Percent: 3, P2Percent: 4}, nil
-		case Table2PeriodNight:
-			return Table2HourlyTraffic{MPerHour: 0.0100 * dtv, P1Percent: 3, P2Percent: 4}, nil
-		}
-	default:
+	byPeriod, ok := table2Coefficients[roadClass]
+	if !ok {
 		return Table2HourlyTraffic{}, fmt.Errorf("unknown Tabelle 2 road class %d", roadClass)
 	}
 
-	return Table2HourlyTraffic{}, fmt.Errorf("unknown Tabelle 2 period %d", period)
+	factors, ok := byPeriod[period]
+	if !ok {
+		return Table2HourlyTraffic{}, fmt.Errorf("unknown Tabelle 2 period %d", period)
+	}
+
+	return Table2HourlyTraffic{
+		MPerHour:  factors.MFactor * dtv,
+		P1Percent: factors.P1Percent,
+		P2Percent: factors.P2Percent,
+	}, nil
 }

@@ -83,8 +83,39 @@ type RoadSource struct {
 	TrafficNight      TrafficPeriod `json:"traffic_night"`
 }
 
+// finite reports whether v is neither NaN nor infinite.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// finitePositive reports whether v is finite and strictly greater than zero.
+func finitePositive(v float64) bool {
+	return finite(v) && v > 0
+}
+
+// finiteNonNegative reports whether v is finite and greater than or equal to zero.
+func finiteNonNegative(v float64) bool {
+	return finite(v) && v >= 0
+}
+
 // Validate validates one BUB road source schema payload.
 func (s RoadSource) Validate() error {
+	if err := s.validateGeometry(); err != nil {
+		return err
+	}
+
+	if err := s.validateClassification(); err != nil {
+		return err
+	}
+
+	if err := s.validateAcoustics(); err != nil {
+		return err
+	}
+
+	return s.validateTraffic()
+}
+
+func (s RoadSource) validateGeometry() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return errors.New("road source id is required")
 	}
@@ -99,6 +130,10 @@ func (s RoadSource) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+func (s RoadSource) validateClassification() error {
 	if _, ok := allowedSurfaceTypes[strings.TrimSpace(s.SurfaceType)]; !ok {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
 	}
@@ -107,11 +142,15 @@ func (s RoadSource) Validate() error {
 		return fmt.Errorf("road source %q has unsupported road_function_class %q", s.ID, s.RoadFunctionClass)
 	}
 
-	if math.IsNaN(s.SpeedKPH) || math.IsInf(s.SpeedKPH, 0) || s.SpeedKPH <= 0 {
+	return nil
+}
+
+func (s RoadSource) validateAcoustics() error {
+	if !finitePositive(s.SpeedKPH) {
 		return fmt.Errorf("road source %q speed_kph must be finite and > 0", s.ID)
 	}
 
-	if math.IsNaN(s.GradientPercent) || math.IsInf(s.GradientPercent, 0) {
+	if !finite(s.GradientPercent) {
 		return fmt.Errorf("road source %q gradient_percent must be finite", s.ID)
 	}
 
@@ -119,50 +158,47 @@ func (s RoadSource) Validate() error {
 		return fmt.Errorf("road source %q has unsupported junction_type %q", s.ID, s.JunctionType)
 	}
 
-	if math.IsNaN(s.JunctionDistanceM) || math.IsInf(s.JunctionDistanceM, 0) || s.JunctionDistanceM < 0 {
+	if !finiteNonNegative(s.JunctionDistanceM) {
 		return fmt.Errorf("road source %q junction_distance_m must be finite and >= 0", s.ID)
 	}
 
-	if math.IsNaN(s.TemperatureC) || math.IsInf(s.TemperatureC, 0) {
+	if !finite(s.TemperatureC) {
 		return fmt.Errorf("road source %q temperature_c must be finite", s.ID)
 	}
 
-	if math.IsNaN(s.StuddedTyreShare) || math.IsInf(s.StuddedTyreShare, 0) || s.StuddedTyreShare < 0 || s.StuddedTyreShare > 1 {
+	if !finite(s.StuddedTyreShare) || s.StuddedTyreShare < 0 || s.StuddedTyreShare > 1 {
 		return fmt.Errorf("road source %q studded_tyre_share must be within [0,1]", s.ID)
-	}
-
-	err := validateTrafficPeriod(s.ID, "day", s.TrafficDay)
-	if err != nil {
-		return err
-	}
-
-	err = validateTrafficPeriod(s.ID, "evening", s.TrafficEvening)
-	if err != nil {
-		return err
-	}
-
-	err = validateTrafficPeriod(s.ID, "night", s.TrafficNight)
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
+func (s RoadSource) validateTraffic() error {
+	if err := validateTrafficPeriod(s.ID, "day", s.TrafficDay); err != nil {
+		return err
+	}
+
+	if err := validateTrafficPeriod(s.ID, "evening", s.TrafficEvening); err != nil {
+		return err
+	}
+
+	return validateTrafficPeriod(s.ID, "night", s.TrafficNight)
+}
+
 func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod) error {
-	if math.IsNaN(traffic.LightVehiclesPerHour) || math.IsInf(traffic.LightVehiclesPerHour, 0) || traffic.LightVehiclesPerHour < 0 {
+	if !finiteNonNegative(traffic.LightVehiclesPerHour) {
 		return fmt.Errorf("road source %q traffic_%s light_vehicles_per_hour must be finite and >= 0", sourceID, period)
 	}
 
-	if math.IsNaN(traffic.MediumVehiclesPerHour) || math.IsInf(traffic.MediumVehiclesPerHour, 0) || traffic.MediumVehiclesPerHour < 0 {
+	if !finiteNonNegative(traffic.MediumVehiclesPerHour) {
 		return fmt.Errorf("road source %q traffic_%s medium_vehicles_per_hour must be finite and >= 0", sourceID, period)
 	}
 
-	if math.IsNaN(traffic.HeavyVehiclesPerHour) || math.IsInf(traffic.HeavyVehiclesPerHour, 0) || traffic.HeavyVehiclesPerHour < 0 {
+	if !finiteNonNegative(traffic.HeavyVehiclesPerHour) {
 		return fmt.Errorf("road source %q traffic_%s heavy_vehicles_per_hour must be finite and >= 0", sourceID, period)
 	}
 
-	if math.IsNaN(traffic.PoweredTwoWheelersPerHour) || math.IsInf(traffic.PoweredTwoWheelersPerHour, 0) || traffic.PoweredTwoWheelersPerHour < 0 {
+	if !finiteNonNegative(traffic.PoweredTwoWheelersPerHour) {
 		return fmt.Errorf("road source %q traffic_%s powered_two_wheelers_per_hour must be finite and >= 0", sourceID, period)
 	}
 

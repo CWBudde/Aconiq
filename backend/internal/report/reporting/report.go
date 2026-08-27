@@ -267,25 +267,9 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 		Notes:           make([]string, 0),
 	}
 
-	provenance, hasProvenance, err := loadProvenance(opts.ProvenancePath)
+	err := applyProvenance(&ctx, opts.ProvenancePath)
 	if err != nil {
 		return reportContext{}, err
-	}
-
-	if hasProvenance {
-		if provenance.Standard.ID != "" {
-			ctx.StandardID = provenance.Standard.ID
-			ctx.StandardContext = provenance.Standard.Context
-			ctx.StandardVersion = provenance.Standard.Version
-			ctx.StandardProfile = provenance.Standard.Profile
-		}
-
-		ctx.InputFiles = inputFilesFromHashes(provenance.InputHashes)
-		ctx.Parameters = kvPairsFromMap(provenance.Parameters)
-	}
-
-	if len(ctx.Parameters) == 0 {
-		ctx.Parameters = []kvPairView{{Key: "(none)", Value: ""}}
 	}
 
 	summary, hasSummary, err := loadRunSummary(opts.RunSummaryPath)
@@ -343,6 +327,40 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	}
 
 	ctx.QASuites = normalizeQASuites(opts.QASuites)
+
+	appendContextNotes(&ctx)
+
+	return ctx, nil
+}
+
+// applyProvenance loads provenance data into the report context.
+func applyProvenance(ctx *reportContext, provenancePath string) error {
+	provenance, hasProvenance, err := loadProvenance(provenancePath)
+	if err != nil {
+		return err
+	}
+
+	if hasProvenance {
+		if provenance.Standard.ID != "" {
+			ctx.StandardID = provenance.Standard.ID
+			ctx.StandardContext = provenance.Standard.Context
+			ctx.StandardVersion = provenance.Standard.Version
+			ctx.StandardProfile = provenance.Standard.Profile
+		}
+
+		ctx.InputFiles = inputFilesFromHashes(provenance.InputHashes)
+		ctx.Parameters = kvPairsFromMap(provenance.Parameters)
+	}
+
+	if len(ctx.Parameters) == 0 {
+		ctx.Parameters = []kvPairView{{Key: "(none)", Value: ""}}
+	}
+
+	return nil
+}
+
+// appendContextNotes appends the explanatory notes for missing report sections, in fixed order.
+func appendContextNotes(ctx *reportContext) {
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
 	}
@@ -358,8 +376,6 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	if ctx.Assessment == nil && (ctx.StandardID == "rls19-road" || ctx.StandardID == "schall03") {
 		ctx.Notes = append(ctx.Notes, "No 16. BImSchV assessment artifact was generated. This usually means the run used no explicit receivers with area-category properties.")
 	}
-
-	return ctx, nil
 }
 
 func loadAssessment(path string) (*assessmentView, bool, error) {

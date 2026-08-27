@@ -40,27 +40,27 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 func (cfg PropagationConfig) Validate() error {
-	if math.IsNaN(cfg.AirAbsorptionDBPerKM) || math.IsInf(cfg.AirAbsorptionDBPerKM, 0) || cfg.AirAbsorptionDBPerKM < 0 {
+	if !finiteNonNegative(cfg.AirAbsorptionDBPerKM) {
 		return errors.New("air_absorption_db_per_km must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.GroundAttenuationDB) || math.IsInf(cfg.GroundAttenuationDB, 0) || cfg.GroundAttenuationDB < 0 {
+	if !finiteNonNegative(cfg.GroundAttenuationDB) {
 		return errors.New("ground_attenuation_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.LateralDirectivityDB) || math.IsInf(cfg.LateralDirectivityDB, 0) {
+	if !finite(cfg.LateralDirectivityDB) {
 		return errors.New("lateral_directivity_db must be finite")
 	}
 
-	if math.IsNaN(cfg.ApproachCorrectionDB) || math.IsInf(cfg.ApproachCorrectionDB, 0) || cfg.ApproachCorrectionDB < 0 {
+	if !finiteNonNegative(cfg.ApproachCorrectionDB) {
 		return errors.New("approach_correction_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.ClimbCorrectionDB) || math.IsInf(cfg.ClimbCorrectionDB, 0) || cfg.ClimbCorrectionDB < 0 {
+	if !finiteNonNegative(cfg.ClimbCorrectionDB) {
 		return errors.New("climb_correction_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.MinSlantDistanceM) || math.IsInf(cfg.MinSlantDistanceM, 0) || cfg.MinSlantDistanceM <= 0 {
+	if !finitePositive(cfg.MinSlantDistanceM) {
 		return errors.New("min_slant_distance_m must be finite and > 0")
 	}
 

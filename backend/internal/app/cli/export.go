@@ -43,332 +43,460 @@ type copiedRunResults struct {
 	ModelDump          string
 }
 
+// exportOptions carries the parsed `export` command flags.
+type exportOptions struct {
+	runID             string
+	outDir            string
+	targetCRS         string
+	emitSampleResults bool
+	skipReport        bool
+	generatePDF       bool
+	formatList        string
+	contourInterval   float64
+}
+
+// stagedExportBundle describes the files copied into a freshly created bundle.
+type stagedExportBundle struct {
+	copiedFiles      []string
+	provenancePath   string
+	runResults       copiedRunResults
+	modelGeoJSONPath string
+}
+
 func newExportCommand() *cobra.Command {
-	var runID string
-	var outDir string
-	var targetCRS string
-	var emitSampleResults bool
-	var skipReport bool
-	var generatePDF bool
-	var formatList string
-	var contourInterval float64
+	var opts exportOptions
 
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export run artifacts into a portable bundle with offline report files",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			state, ok := stateFromCommand(cmd)
-			if !ok {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "command state unavailable", nil)
-			}
-
-			if skipReport && generatePDF {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.export", "--pdf cannot be used together with --skip-report", nil)
-			}
-
-			store, err := projectfs.New(state.Config.ProjectPath)
-			if err != nil {
-				return err
-			}
-
-			proj, err := store.Load()
-			if err != nil {
-				return err
-			}
-
-			run, err := findRunForExport(proj.Runs, runID)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindUserInput, "cli.export", err.Error(), nil)
-			}
-
-			if outDir == "" {
-				outDir = filepath.Join(".noise", "exports")
-			}
-
-			outRoot := resolvePath(store.Root(), outDir)
-			exportID := fmt.Sprintf("%s-%s", run.ID, time.Now().UTC().Format("20060102T150405Z"))
-
-			bundleDir := filepath.Join(outRoot, exportID)
-
-			err = os.MkdirAll(bundleDir, 0o755)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "create export directory: "+bundleDir, err)
-			}
-
-			copiedFiles := make([]string, 0, 12)
-			var provenancePath string
-
-			if run.LogPath != "" {
-				src := filepath.Join(store.Root(), filepath.FromSlash(run.LogPath))
-				dst := filepath.Join(bundleDir, "run.log")
-
-				copied, err := copyFileIfExists(src, dst)
-				if err != nil {
-					return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run log", err)
-				}
-
-				if copied {
-					copiedFiles = append(copiedFiles, filepath.ToSlash("run.log"))
-				}
-			}
-
-			if run.ProvenancePath != "" {
-				src := filepath.Join(store.Root(), filepath.FromSlash(run.ProvenancePath))
-				dst := filepath.Join(bundleDir, "provenance.json")
-
-				copied, err := copyFileIfExists(src, dst)
-				if err != nil {
-					return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy provenance", err)
-				}
-
-				if copied {
-					copiedFiles = append(copiedFiles, filepath.ToSlash("provenance.json"))
-					provenancePath = dst
-				}
-			}
-
-			copiedResults, err := copyRunResultArtifactsToBundle(store.Root(), bundleDir, proj.Artifacts, run.ID)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run result artifacts", err)
-			}
-
-			copiedFiles = append(copiedFiles, copiedResults.CopiedFiles...)
-
-			modelDumpPath, modelDumpRel, err := copyModelDumpToBundle(store.Root(), bundleDir, proj.Artifacts)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model dump artifact", err)
-			}
-
-			if modelDumpPath != "" {
-				copiedFiles = append(copiedFiles, modelDumpRel)
-				copiedResults.ModelDump = modelDumpPath
-			}
-
-			modelGeoJSONPath, modelGeoJSONRel, err := copyModelGeoJSONToBundle(store.Root(), bundleDir, proj.Artifacts)
-			if err != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model geojson artifact", err)
-			}
-
-			if modelGeoJSONPath != "" {
-				copiedFiles = append(copiedFiles, modelGeoJSONRel)
-			}
-
-			if targetCRS != "" && modelGeoJSONPath != "" {
-				err = reprojectModelGeoJSON(modelGeoJSONPath, proj.CRS, targetCRS)
-				if err != nil {
-					return domainerrors.New(domainerrors.KindUserInput, "cli.export", "re-project model GeoJSON", err)
-				}
-			}
-
-			summary := exportSummary{
-				ExportID:        exportID,
-				ProjectID:       proj.ProjectID,
-				ProjectCRS:      proj.CRS,
-				RunID:           run.ID,
-				ExportedAt:      nowUTC(),
-				OutputDirectory: bundleDir,
-				CopiedFiles:     dedupeAndSort(copiedFiles),
-			}
-
-			reportArtifacts := make([]project.ArtifactRef, 0, 3)
-			var assessmentPath string
-
-			assessmentPath, builtAssessment, assessmentErr := maybeBuild16BImSchVAssessment(
-				bundleDir,
-				modelGeoJSONPath,
-				copiedResults.ReceiverTableJSON,
-				proj.CRS,
-				run.Standard.ID,
-				nowUTC(),
-			)
-			if assessmentErr != nil {
-				return domainerrors.New(domainerrors.KindInternal, "cli.export", "build 16. BImSchV assessment", assessmentErr)
-			}
-
-			if builtAssessment {
-				summary.GeneratedAssessments = []string{relativePath(bundleDir, assessmentPath)}
-				reportArtifacts = append(reportArtifacts, project.ArtifactRef{
-					ID:        fmt.Sprintf("artifact-export-%s-assessment-16bimschv", exportID),
-					RunID:     run.ID,
-					Kind:      "export.assessment_16bimschv_json",
-					Path:      relativePath(store.Root(), assessmentPath),
-					CreatedAt: nowUTC(),
-				})
-			}
-
-			if !skipReport {
-				reportBundle, reportErr := reporting.BuildRunReport(reporting.BuildOptions{
-					BundleDir:         bundleDir,
-					Project:           proj,
-					Run:               run,
-					ProvenancePath:    provenancePath,
-					RunSummaryPath:    copiedResults.RunSummary,
-					ReceiverTablePath: copiedResults.ReceiverTableJSON,
-					RasterMetaPaths:   copiedResults.RasterMetadataList,
-					ModelDumpPath:     copiedResults.ModelDump,
-					AssessmentPath:    assessmentPath,
-					QASuites:          collectQASuites(proj.Artifacts, run.ID),
-					GeneratedAt:       nowUTC(),
-					GeneratePDF:       generatePDF,
-				})
-				if reportErr != nil {
-					return domainerrors.New(domainerrors.KindInternal, "cli.export", "build report bundle", reportErr)
-				}
-
-				generatedReports := []string{
-					relativePath(bundleDir, reportBundle.ContextPath),
-					relativePath(bundleDir, reportBundle.MarkdownPath),
-					relativePath(bundleDir, reportBundle.HTMLPath),
-					relativePath(bundleDir, reportBundle.TypstPath),
-				}
-				if reportBundle.PDFPath != "" {
-					generatedReports = append(generatedReports, relativePath(bundleDir, reportBundle.PDFPath))
-				}
-
-				summary.GeneratedReports = dedupeAndSort(generatedReports)
-
-				reportArtifacts = append(
-					reportArtifacts,
-					project.ArtifactRef{
-						ID:        fmt.Sprintf("artifact-export-%s-report-context", exportID),
-						RunID:     run.ID,
-						Kind:      "export.report_context_json",
-						Path:      relativePath(store.Root(), reportBundle.ContextPath),
-						CreatedAt: nowUTC(),
-					},
-					project.ArtifactRef{
-						ID:        fmt.Sprintf("artifact-export-%s-report-markdown", exportID),
-						RunID:     run.ID,
-						Kind:      "export.report_markdown",
-						Path:      relativePath(store.Root(), reportBundle.MarkdownPath),
-						CreatedAt: nowUTC(),
-					},
-					project.ArtifactRef{
-						ID:        fmt.Sprintf("artifact-export-%s-report-html", exportID),
-						RunID:     run.ID,
-						Kind:      "export.report_html",
-						Path:      relativePath(store.Root(), reportBundle.HTMLPath),
-						CreatedAt: nowUTC(),
-					},
-					project.ArtifactRef{
-						ID:        fmt.Sprintf("artifact-export-%s-report-typst", exportID),
-						RunID:     run.ID,
-						Kind:      "export.report_typst",
-						Path:      relativePath(store.Root(), reportBundle.TypstPath),
-						CreatedAt: nowUTC(),
-					},
-				)
-				if reportBundle.PDFPath != "" {
-					reportArtifacts = append(reportArtifacts, project.ArtifactRef{
-						ID:        fmt.Sprintf("artifact-export-%s-report-pdf", exportID),
-						RunID:     run.ID,
-						Kind:      "export.report_pdf",
-						Path:      relativePath(store.Root(), reportBundle.PDFPath),
-						CreatedAt: nowUTC(),
-					})
-				}
-			}
-
-			if emitSampleResults {
-				generated, err := emitSampleResultBundle(bundleDir)
-				if err != nil {
-					return err
-				}
-
-				summary.GeneratedSampleData = generated
-			}
-
-			// Process additional export formats (GeoTIFF, GeoPackage, contours).
-			if formatList != "" {
-				formats, parseErr := exportfmt.ParseFormats(formatList)
-				if parseErr != nil {
-					return domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
-				}
-
-				exportedPaths, fmtErr := executeFormatExports(
-					formats, bundleDir, proj.CRS,
-					copiedResults, contourInterval,
-					modelGeoJSONPath,
-				)
-				if fmtErr != nil {
-					return domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
-				}
-
-				summary.ExportedFormats = exportedPaths
-			}
-
-			summaryPath := filepath.Join(bundleDir, "export-summary.json")
-
-			err = writeJSONFile(summaryPath, summary)
-			if err != nil {
-				return err
-			}
-
-			proj.Artifacts = append(proj.Artifacts, project.ArtifactRef{
-				ID:        fmt.Sprintf("artifact-export-%s-%d", run.ID, time.Now().UTC().UnixNano()),
-				RunID:     run.ID,
-				Kind:      "export.bundle",
-				Path:      relativePath(store.Root(), summaryPath),
-				CreatedAt: nowUTC(),
-			})
-
-			proj.Artifacts = append(proj.Artifacts, reportArtifacts...)
-
-			err = store.Save(proj)
-			if err != nil {
-				return err
-			}
-
-			state.Logger.Info(
-				"export completed",
-				"run_id", run.ID,
-				"bundle_dir", bundleDir,
-				"copied_files", len(summary.CopiedFiles),
-				"report_files", len(summary.GeneratedReports),
-				"sample_files", len(summary.GeneratedSampleData),
-			)
-
-			if state.Config.JSONLogs {
-				return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
-					"command":      "export",
-					"run_id":       run.ID,
-					"bundle_dir":   bundleDir,
-					"summary_path": summaryPath,
-					"summary":      summary,
-				})
-			}
-
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exported run %s to %s\n", run.ID, bundleDir)
-
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary: %s\n", summaryPath)
-			if emitSampleResults {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Sample results generated: %d files\n", len(summary.GeneratedSampleData))
-			}
-
-			if len(summary.GeneratedReports) > 0 {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Report files generated: %d\n", len(summary.GeneratedReports))
-			}
-
-			if len(summary.ExportedFormats) > 0 {
-				for fmtName, paths := range summary.ExportedFormats {
-					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Format %s: %d files\n", fmtName, len(paths))
-				}
-			}
-
-			return nil
+			return runExportCommand(cmd, opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to export (defaults to latest run)")
-	cmd.Flags().StringVar(&outDir, "out", filepath.Join(".noise", "exports"), "Output directory for export bundles")
-	cmd.Flags().StringVar(&targetCRS, "target-crs", "", "Re-project exported model GeoJSON to target CRS (e.g. EPSG:4326)")
-	cmd.Flags().BoolVar(&emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
-	cmd.Flags().BoolVar(&skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
-	cmd.Flags().BoolVar(&generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
-	cmd.Flags().StringVar(&formatList, "format", "", "Comma-separated export formats: geotiff, cog, gpkg, contour-geojson, contour-gpkg")
-	cmd.Flags().Float64Var(&contourInterval, "contour-interval", exportfmt.DefaultContourInterval, "Contour line interval in dB (default 5)")
+	cmd.Flags().StringVar(&opts.runID, "run-id", "", "Run ID to export (defaults to latest run)")
+	cmd.Flags().StringVar(&opts.outDir, "out", filepath.Join(".noise", "exports"), "Output directory for export bundles")
+	cmd.Flags().StringVar(&opts.targetCRS, "target-crs", "", "Re-project exported model GeoJSON to target CRS (e.g. EPSG:4326)")
+	cmd.Flags().BoolVar(&opts.emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
+	cmd.Flags().BoolVar(&opts.skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
+	cmd.Flags().BoolVar(&opts.generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
+	cmd.Flags().StringVar(&opts.formatList, "format", "", "Comma-separated export formats: geotiff, cog, gpkg, contour-geojson, contour-gpkg")
+	cmd.Flags().Float64Var(&opts.contourInterval, "contour-interval", exportfmt.DefaultContourInterval, "Contour line interval in dB (default 5)")
 
 	return cmd
+}
+
+func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
+	state, ok := stateFromCommand(cmd)
+	if !ok {
+		return domainerrors.New(domainerrors.KindInternal, "cli.export", "command state unavailable", nil)
+	}
+
+	if opts.skipReport && opts.generatePDF {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.export", "--pdf cannot be used together with --skip-report", nil)
+	}
+
+	store, err := projectfs.New(state.Config.ProjectPath)
+	if err != nil {
+		return err
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		return err
+	}
+
+	run, err := findRunForExport(proj.Runs, opts.runID)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.export", err.Error(), nil)
+	}
+
+	if opts.outDir == "" {
+		opts.outDir = filepath.Join(".noise", "exports")
+	}
+
+	outRoot := resolvePath(store.Root(), opts.outDir)
+	exportID := fmt.Sprintf("%s-%s", run.ID, time.Now().UTC().Format("20060102T150405Z"))
+
+	bundleDir := filepath.Join(outRoot, exportID)
+
+	err = os.MkdirAll(bundleDir, 0o755)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.export", "create export directory: "+bundleDir, err)
+	}
+
+	staged, err := stageExportBundle(store.Root(), bundleDir, proj, run, opts.targetCRS)
+	if err != nil {
+		return err
+	}
+
+	summary := exportSummary{
+		ExportID:        exportID,
+		ProjectID:       proj.ProjectID,
+		ProjectCRS:      proj.CRS,
+		RunID:           run.ID,
+		ExportedAt:      nowUTC(),
+		OutputDirectory: bundleDir,
+		CopiedFiles:     dedupeAndSort(staged.copiedFiles),
+	}
+
+	reportArtifacts, err := buildExportReports(exportReportInputs{
+		storeRoot: store.Root(),
+		bundleDir: bundleDir,
+		exportID:  exportID,
+		proj:      proj,
+		run:       run,
+		staged:    staged,
+		opts:      opts,
+	}, &summary)
+	if err != nil {
+		return err
+	}
+
+	err = applyOptionalExportOutputs(&summary, opts, bundleDir, proj.CRS, staged)
+	if err != nil {
+		return err
+	}
+
+	summaryPath, err := persistExportBundle(store, proj, run, bundleDir, summary, reportArtifacts)
+	if err != nil {
+		return err
+	}
+
+	state.Logger.Info(
+		"export completed",
+		"run_id", run.ID,
+		"bundle_dir", bundleDir,
+		"copied_files", len(summary.CopiedFiles),
+		"report_files", len(summary.GeneratedReports),
+		"sample_files", len(summary.GeneratedSampleData),
+	)
+
+	if state.Config.JSONLogs {
+		return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
+			"command":      "export",
+			"run_id":       run.ID,
+			"bundle_dir":   bundleDir,
+			"summary_path": summaryPath,
+			"summary":      summary,
+		})
+	}
+
+	writeExportSummaryText(cmd, run.ID, bundleDir, summaryPath, summary, opts.emitSampleResults)
+
+	return nil
+}
+
+// persistExportBundle writes the export summary and records the bundle plus the
+// generated report artifacts in the project manifest.
+func persistExportBundle(
+	store projectfs.Store,
+	proj project.Project,
+	run project.Run,
+	bundleDir string,
+	summary exportSummary,
+	reportArtifacts []project.ArtifactRef,
+) (string, error) {
+	summaryPath := filepath.Join(bundleDir, "export-summary.json")
+
+	err := writeJSONFile(summaryPath, summary)
+	if err != nil {
+		return "", err
+	}
+
+	proj.Artifacts = append(proj.Artifacts, project.ArtifactRef{
+		ID:        fmt.Sprintf("artifact-export-%s-%d", run.ID, time.Now().UTC().UnixNano()),
+		RunID:     run.ID,
+		Kind:      "export.bundle",
+		Path:      relativePath(store.Root(), summaryPath),
+		CreatedAt: nowUTC(),
+	})
+
+	proj.Artifacts = append(proj.Artifacts, reportArtifacts...)
+
+	err = store.Save(proj)
+	if err != nil {
+		return "", err
+	}
+
+	return summaryPath, nil
+}
+
+// stageExportBundle copies the run log, provenance, result artifacts and model
+// exports of a run into the freshly created bundle directory.
+func stageExportBundle(
+	storeRoot string,
+	bundleDir string,
+	proj project.Project,
+	run project.Run,
+	targetCRS string,
+) (stagedExportBundle, error) {
+	staged := stagedExportBundle{copiedFiles: make([]string, 0, 12)}
+
+	if run.LogPath != "" {
+		src := filepath.Join(storeRoot, filepath.FromSlash(run.LogPath))
+		dst := filepath.Join(bundleDir, "run.log")
+
+		copied, err := copyFileIfExists(src, dst)
+		if err != nil {
+			return stagedExportBundle{}, domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run log", err)
+		}
+
+		if copied {
+			staged.copiedFiles = append(staged.copiedFiles, filepath.ToSlash("run.log"))
+		}
+	}
+
+	if run.ProvenancePath != "" {
+		src := filepath.Join(storeRoot, filepath.FromSlash(run.ProvenancePath))
+		dst := filepath.Join(bundleDir, "provenance.json")
+
+		copied, err := copyFileIfExists(src, dst)
+		if err != nil {
+			return stagedExportBundle{}, domainerrors.New(domainerrors.KindInternal, "cli.export", "copy provenance", err)
+		}
+
+		if copied {
+			staged.copiedFiles = append(staged.copiedFiles, filepath.ToSlash("provenance.json"))
+			staged.provenancePath = dst
+		}
+	}
+
+	copiedResults, err := copyRunResultArtifactsToBundle(storeRoot, bundleDir, proj.Artifacts, run.ID)
+	if err != nil {
+		return stagedExportBundle{}, domainerrors.New(domainerrors.KindInternal, "cli.export", "copy run result artifacts", err)
+	}
+
+	staged.copiedFiles = append(staged.copiedFiles, copiedResults.CopiedFiles...)
+
+	modelDumpPath, modelDumpRel, err := copyModelDumpToBundle(storeRoot, bundleDir, proj.Artifacts)
+	if err != nil {
+		return stagedExportBundle{}, domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model dump artifact", err)
+	}
+
+	if modelDumpPath != "" {
+		staged.copiedFiles = append(staged.copiedFiles, modelDumpRel)
+		copiedResults.ModelDump = modelDumpPath
+	}
+
+	staged.runResults = copiedResults
+
+	modelGeoJSONPath, modelGeoJSONRel, err := copyModelGeoJSONToBundle(storeRoot, bundleDir, proj.Artifacts)
+	if err != nil {
+		return stagedExportBundle{}, domainerrors.New(domainerrors.KindInternal, "cli.export", "copy model geojson artifact", err)
+	}
+
+	if modelGeoJSONPath != "" {
+		staged.copiedFiles = append(staged.copiedFiles, modelGeoJSONRel)
+	}
+
+	staged.modelGeoJSONPath = modelGeoJSONPath
+
+	if targetCRS != "" && modelGeoJSONPath != "" {
+		err = reprojectModelGeoJSON(modelGeoJSONPath, proj.CRS, targetCRS)
+		if err != nil {
+			return stagedExportBundle{}, domainerrors.New(domainerrors.KindUserInput, "cli.export", "re-project model GeoJSON", err)
+		}
+	}
+
+	return staged, nil
+}
+
+// exportReportInputs bundles everything the report/assessment stage needs.
+type exportReportInputs struct {
+	storeRoot string
+	bundleDir string
+	exportID  string
+	proj      project.Project
+	run       project.Run
+	staged    stagedExportBundle
+	opts      exportOptions
+}
+
+func buildExportReports(in exportReportInputs, summary *exportSummary) ([]project.ArtifactRef, error) {
+	reportArtifacts := make([]project.ArtifactRef, 0, 3)
+
+	assessmentPath, builtAssessment, assessmentErr := maybeBuild16BImSchVAssessment(
+		in.bundleDir,
+		in.staged.modelGeoJSONPath,
+		in.staged.runResults.ReceiverTableJSON,
+		in.proj.CRS,
+		in.run.Standard.ID,
+		nowUTC(),
+	)
+	if assessmentErr != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export", "build 16. BImSchV assessment", assessmentErr)
+	}
+
+	if builtAssessment {
+		summary.GeneratedAssessments = []string{relativePath(in.bundleDir, assessmentPath)}
+		reportArtifacts = append(reportArtifacts, project.ArtifactRef{
+			ID:        fmt.Sprintf("artifact-export-%s-assessment-16bimschv", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.assessment_16bimschv_json",
+			Path:      relativePath(in.storeRoot, assessmentPath),
+			CreatedAt: nowUTC(),
+		})
+	}
+
+	if in.opts.skipReport {
+		return reportArtifacts, nil
+	}
+
+	bundleArtifacts, err := buildReportBundleArtifacts(in, assessmentPath, summary)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(reportArtifacts, bundleArtifacts...), nil
+}
+
+func buildReportBundleArtifacts(
+	in exportReportInputs,
+	assessmentPath string,
+	summary *exportSummary,
+) ([]project.ArtifactRef, error) {
+	reportBundle, reportErr := reporting.BuildRunReport(reporting.BuildOptions{
+		BundleDir:         in.bundleDir,
+		Project:           in.proj,
+		Run:               in.run,
+		ProvenancePath:    in.staged.provenancePath,
+		RunSummaryPath:    in.staged.runResults.RunSummary,
+		ReceiverTablePath: in.staged.runResults.ReceiverTableJSON,
+		RasterMetaPaths:   in.staged.runResults.RasterMetadataList,
+		ModelDumpPath:     in.staged.runResults.ModelDump,
+		AssessmentPath:    assessmentPath,
+		QASuites:          collectQASuites(in.proj.Artifacts, in.run.ID),
+		GeneratedAt:       nowUTC(),
+		GeneratePDF:       in.opts.generatePDF,
+	})
+	if reportErr != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export", "build report bundle", reportErr)
+	}
+
+	generatedReports := []string{
+		relativePath(in.bundleDir, reportBundle.ContextPath),
+		relativePath(in.bundleDir, reportBundle.MarkdownPath),
+		relativePath(in.bundleDir, reportBundle.HTMLPath),
+		relativePath(in.bundleDir, reportBundle.TypstPath),
+	}
+	if reportBundle.PDFPath != "" {
+		generatedReports = append(generatedReports, relativePath(in.bundleDir, reportBundle.PDFPath))
+	}
+
+	summary.GeneratedReports = dedupeAndSort(generatedReports)
+
+	artifacts := []project.ArtifactRef{
+		{
+			ID:        fmt.Sprintf("artifact-export-%s-report-context", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.report_context_json",
+			Path:      relativePath(in.storeRoot, reportBundle.ContextPath),
+			CreatedAt: nowUTC(),
+		},
+		{
+			ID:        fmt.Sprintf("artifact-export-%s-report-markdown", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.report_markdown",
+			Path:      relativePath(in.storeRoot, reportBundle.MarkdownPath),
+			CreatedAt: nowUTC(),
+		},
+		{
+			ID:        fmt.Sprintf("artifact-export-%s-report-html", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.report_html",
+			Path:      relativePath(in.storeRoot, reportBundle.HTMLPath),
+			CreatedAt: nowUTC(),
+		},
+		{
+			ID:        fmt.Sprintf("artifact-export-%s-report-typst", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.report_typst",
+			Path:      relativePath(in.storeRoot, reportBundle.TypstPath),
+			CreatedAt: nowUTC(),
+		},
+	}
+
+	if reportBundle.PDFPath != "" {
+		artifacts = append(artifacts, project.ArtifactRef{
+			ID:        fmt.Sprintf("artifact-export-%s-report-pdf", in.exportID),
+			RunID:     in.run.ID,
+			Kind:      "export.report_pdf",
+			Path:      relativePath(in.storeRoot, reportBundle.PDFPath),
+			CreatedAt: nowUTC(),
+		})
+	}
+
+	return artifacts, nil
+}
+
+// applyOptionalExportOutputs handles the optional sample-result bundle and the
+// additional export formats (GeoTIFF, GeoPackage, contours).
+func applyOptionalExportOutputs(
+	summary *exportSummary,
+	opts exportOptions,
+	bundleDir string,
+	projectCRS string,
+	staged stagedExportBundle,
+) error {
+	if opts.emitSampleResults {
+		generated, err := emitSampleResultBundle(bundleDir)
+		if err != nil {
+			return err
+		}
+
+		summary.GeneratedSampleData = generated
+	}
+
+	if opts.formatList == "" {
+		return nil
+	}
+
+	formats, parseErr := exportfmt.ParseFormats(opts.formatList)
+	if parseErr != nil {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
+	}
+
+	exportedPaths, fmtErr := executeFormatExports(
+		formats, bundleDir, projectCRS,
+		staged.runResults, opts.contourInterval,
+		staged.modelGeoJSONPath,
+	)
+	if fmtErr != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
+	}
+
+	summary.ExportedFormats = exportedPaths
+
+	return nil
+}
+
+func writeExportSummaryText(
+	cmd *cobra.Command,
+	runID string,
+	bundleDir string,
+	summaryPath string,
+	summary exportSummary,
+	emitSampleResults bool,
+) {
+	out := cmd.OutOrStdout()
+
+	_, _ = fmt.Fprintf(out, "Exported run %s to %s\n", runID, bundleDir)
+
+	_, _ = fmt.Fprintf(out, "Summary: %s\n", summaryPath)
+	if emitSampleResults {
+		_, _ = fmt.Fprintf(out, "Sample results generated: %d files\n", len(summary.GeneratedSampleData))
+	}
+
+	if len(summary.GeneratedReports) > 0 {
+		_, _ = fmt.Fprintf(out, "Report files generated: %d\n", len(summary.GeneratedReports))
+	}
+
+	if len(summary.ExportedFormats) > 0 {
+		for fmtName, paths := range summary.ExportedFormats {
+			_, _ = fmt.Fprintf(out, "Format %s: %d files\n", fmtName, len(paths))
+		}
+	}
 }
 
 func findRunForExport(runs []project.Run, runID string) (project.Run, error) {
@@ -682,6 +810,20 @@ func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.
 	return suites
 }
 
+// formatExportContext holds the data shared by all per-format export helpers.
+type formatExportContext struct {
+	bundleDir        string
+	formatsDir       string
+	projectCRS       string
+	epsgCode         int
+	contourInterval  float64
+	modelGeoJSONPath string
+	receiverTable    *results.ReceiverTable
+	raster           *results.Raster
+	geoTransform     exportfmt.GeoTransform
+	hasGeoTransform  bool
+}
+
 func executeFormatExports(
 	formats []exportfmt.Format,
 	bundleDir string,
@@ -690,202 +832,240 @@ func executeFormatExports(
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) (map[string][]string, error) {
+	ctx := newFormatExportContext(bundleDir, projectCRS, copiedResults, contourInterval, modelGeoJSONPath)
+
 	out := make(map[string][]string)
-	epsgCode := 0
-
-	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &epsgCode)
-
-	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
-	var receiverTable *results.ReceiverTable
-
-	if copiedResults.ReceiverTableJSON != "" {
-		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
-		if err == nil {
-			receiverTable = &table
-		}
-	}
-
-	// Load raster if available (needed for GeoTIFF + contours).
-	var raster *results.Raster
-
-	if len(copiedResults.RasterMetadataList) > 0 {
-		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
-		if err == nil {
-			raster = r
-		}
-	}
-
-	// Infer geo-transform from receiver coordinates if we have both receiver table and raster.
-	var gt exportfmt.GeoTransform
-	var hasGT bool
-
-	if receiverTable != nil && raster != nil {
-		meta := raster.Metadata()
-		xs := make([]float64, 0, len(receiverTable.Records))
-		ys := make([]float64, 0, len(receiverTable.Records))
-
-		for _, r := range receiverTable.Records {
-			xs = append(xs, r.X)
-			ys = append(ys, r.Y)
-		}
-
-		if len(xs) == meta.Width*meta.Height {
-			inferred, err := exportfmt.InferGeoTransformFromReceivers(xs, ys, meta.Width, meta.Height)
-			if err == nil {
-				gt = inferred
-				hasGT = true
-			}
-		}
-	}
-
-	formatsDir := filepath.Join(bundleDir, "formats")
 
 	for _, f := range formats {
-		switch f {
-		case exportfmt.FormatGeoTIFF:
-			if raster == nil {
-				continue // skip if no raster available
-			}
-
-			if !hasGT {
-				// Use a default identity transform if we can't infer.
-				gt = exportfmt.GeoTransform{
-					OriginX: 0, OriginY: float64(raster.Metadata().Height),
-					PixelSizeX: 1, PixelSizeY: -1,
-				}
-			}
-
-			basePath := filepath.Join(formatsDir, "raster")
-
-			paths, err := exportfmt.ExportGeoTIFF(basePath, raster, gt, projectCRS)
-			if err != nil {
-				return nil, fmt.Errorf("geotiff export: %w", err)
-			}
-
-			relPaths := make([]string, len(paths))
-			for i, p := range paths {
-				relPaths[i] = relativePath(bundleDir, p)
-			}
-
-			out[string(exportfmt.FormatGeoTIFF)] = relPaths
-
-		case exportfmt.FormatCOG:
-			if raster == nil {
-				continue
-			}
-
-			if !hasGT {
-				gt = exportfmt.GeoTransform{
-					OriginX: 0, OriginY: float64(raster.Metadata().Height),
-					PixelSizeX: 1, PixelSizeY: -1,
-				}
-			}
-
-			cogBasePath := filepath.Join(formatsDir, "raster")
-
-			cogPaths, err := exportfmt.ExportCOG(cogBasePath, raster, gt, projectCRS)
-			if err != nil {
-				return nil, fmt.Errorf("cog export: %w", err)
-			}
-
-			cogRelPaths := make([]string, len(cogPaths))
-			for i, p := range cogPaths {
-				cogRelPaths[i] = relativePath(bundleDir, p)
-			}
-
-			out[string(exportfmt.FormatCOG)] = cogRelPaths
-
-		case exportfmt.FormatGeoPackage:
-			var gpkgPaths []string
-
-			if receiverTable != nil {
-				gpkgPath := filepath.Join(formatsDir, "receivers.gpkg")
-
-				err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, projectCRS, epsgCode)
-				if err != nil {
-					return nil, fmt.Errorf("geopackage export: %w", err)
-				}
-
-				gpkgPaths = append(gpkgPaths, relativePath(bundleDir, gpkgPath))
-			}
-
-			if modelGeoJSONPath != "" {
-				modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(modelGeoJSONPath)
-				if loadErr == nil && len(modelFeatures) > 0 {
-					modelGpkgPath := filepath.Join(formatsDir, "model.gpkg")
-
-					exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, projectCRS, epsgCode)
-					if exportErr != nil {
-						return nil, fmt.Errorf("model geopackage export: %w", exportErr)
-					}
-
-					gpkgPaths = append(gpkgPaths, relativePath(bundleDir, modelGpkgPath))
-				}
-			}
-
-			if len(gpkgPaths) > 0 {
-				out[string(exportfmt.FormatGeoPackage)] = gpkgPaths
-			}
-
-		case exportfmt.FormatContourGeoJSON:
-			if raster == nil {
-				continue
-			}
-
-			if !hasGT {
-				gt = exportfmt.GeoTransform{
-					OriginX: 0, OriginY: float64(raster.Metadata().Height),
-					PixelSizeX: 1, PixelSizeY: -1,
-				}
-			}
-
-			contours, err := exportfmt.GenerateContours(raster, gt, exportfmt.ContourOptions{
-				Interval: contourInterval,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("contour generation: %w", err)
-			}
-
-			contourPath := filepath.Join(formatsDir, "contours.geojson")
-
-			err = exportfmt.ExportContourGeoJSON(contourPath, contours)
-			if err != nil {
-				return nil, fmt.Errorf("contour geojson export: %w", err)
-			}
-
-			out[string(exportfmt.FormatContourGeoJSON)] = []string{relativePath(bundleDir, contourPath)}
-
-		case exportfmt.FormatContourGeoPackage:
-			if raster == nil {
-				continue
-			}
-
-			if !hasGT {
-				gt = exportfmt.GeoTransform{
-					OriginX: 0, OriginY: float64(raster.Metadata().Height),
-					PixelSizeX: 1, PixelSizeY: -1,
-				}
-			}
-
-			contours, err := exportfmt.GenerateContours(raster, gt, exportfmt.ContourOptions{
-				Interval: contourInterval,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("contour generation: %w", err)
-			}
-
-			contourGpkgPath := filepath.Join(formatsDir, "contours.gpkg")
-
-			err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, projectCRS, epsgCode)
-			if err != nil {
-				return nil, fmt.Errorf("contour geopackage export: %w", err)
-			}
-
-			out[string(exportfmt.FormatContourGeoPackage)] = []string{relativePath(bundleDir, contourGpkgPath)}
+		err := ctx.exportFormat(f, out)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	return out, nil
+}
+
+func newFormatExportContext(
+	bundleDir string,
+	projectCRS string,
+	copiedResults copiedRunResults,
+	contourInterval float64,
+	modelGeoJSONPath string,
+) formatExportContext {
+	ctx := formatExportContext{
+		bundleDir:        bundleDir,
+		formatsDir:       filepath.Join(bundleDir, "formats"),
+		projectCRS:       projectCRS,
+		contourInterval:  contourInterval,
+		modelGeoJSONPath: modelGeoJSONPath,
+	}
+
+	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &ctx.epsgCode)
+
+	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
+	if copiedResults.ReceiverTableJSON != "" {
+		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
+		if err == nil {
+			ctx.receiverTable = &table
+		}
+	}
+
+	// Load raster if available (needed for GeoTIFF + contours).
+	if len(copiedResults.RasterMetadataList) > 0 {
+		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
+		if err == nil {
+			ctx.raster = r
+		}
+	}
+
+	ctx.inferGeoTransform()
+
+	return ctx
+}
+
+// inferGeoTransform derives the raster geo-transform from receiver coordinates
+// when both a receiver table and a raster are available.
+func (c *formatExportContext) inferGeoTransform() {
+	if c.receiverTable == nil || c.raster == nil {
+		return
+	}
+
+	meta := c.raster.Metadata()
+	xs := make([]float64, 0, len(c.receiverTable.Records))
+	ys := make([]float64, 0, len(c.receiverTable.Records))
+
+	for _, r := range c.receiverTable.Records {
+		xs = append(xs, r.X)
+		ys = append(ys, r.Y)
+	}
+
+	if len(xs) != meta.Width*meta.Height {
+		return
+	}
+
+	inferred, err := exportfmt.InferGeoTransformFromReceivers(xs, ys, meta.Width, meta.Height)
+	if err == nil {
+		c.geoTransform = inferred
+		c.hasGeoTransform = true
+	}
+}
+
+// rasterGeoTransform returns the inferred transform, or a default identity
+// transform when inference was not possible.
+func (c *formatExportContext) rasterGeoTransform() exportfmt.GeoTransform {
+	if c.hasGeoTransform {
+		return c.geoTransform
+	}
+
+	return exportfmt.GeoTransform{
+		OriginX: 0, OriginY: float64(c.raster.Metadata().Height),
+		PixelSizeX: 1, PixelSizeY: -1,
+	}
+}
+
+func (c *formatExportContext) exportFormat(f exportfmt.Format, out map[string][]string) error {
+	switch f {
+	case exportfmt.FormatGeoTIFF:
+		return c.exportGeoTIFF(out)
+	case exportfmt.FormatCOG:
+		return c.exportCOG(out)
+	case exportfmt.FormatGeoPackage:
+		return c.exportGeoPackage(out)
+	case exportfmt.FormatContourGeoJSON:
+		return c.exportContourGeoJSON(out)
+	case exportfmt.FormatContourGeoPackage:
+		return c.exportContourGeoPackage(out)
+	}
+
+	return nil
+}
+
+func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
+	if c.raster == nil {
+		return nil // skip if no raster available
+	}
+
+	basePath := filepath.Join(c.formatsDir, "raster")
+
+	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, c.rasterGeoTransform(), c.projectCRS)
+	if err != nil {
+		return fmt.Errorf("geotiff export: %w", err)
+	}
+
+	relPaths := make([]string, len(paths))
+	for i, p := range paths {
+		relPaths[i] = relativePath(c.bundleDir, p)
+	}
+
+	out[string(exportfmt.FormatGeoTIFF)] = relPaths
+
+	return nil
+}
+
+func (c *formatExportContext) exportCOG(out map[string][]string) error {
+	if c.raster == nil {
+		return nil
+	}
+
+	cogBasePath := filepath.Join(c.formatsDir, "raster")
+
+	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, c.rasterGeoTransform(), c.projectCRS)
+	if err != nil {
+		return fmt.Errorf("cog export: %w", err)
+	}
+
+	cogRelPaths := make([]string, len(cogPaths))
+	for i, p := range cogPaths {
+		cogRelPaths[i] = relativePath(c.bundleDir, p)
+	}
+
+	out[string(exportfmt.FormatCOG)] = cogRelPaths
+
+	return nil
+}
+
+func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
+	var gpkgPaths []string
+
+	if c.receiverTable != nil {
+		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
+
+		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *c.receiverTable, c.projectCRS, c.epsgCode)
+		if err != nil {
+			return fmt.Errorf("geopackage export: %w", err)
+		}
+
+		gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, gpkgPath))
+	}
+
+	if c.modelGeoJSONPath != "" {
+		modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(c.modelGeoJSONPath)
+		if loadErr == nil && len(modelFeatures) > 0 {
+			modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
+
+			exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
+			if exportErr != nil {
+				return fmt.Errorf("model geopackage export: %w", exportErr)
+			}
+
+			gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, modelGpkgPath))
+		}
+	}
+
+	if len(gpkgPaths) > 0 {
+		out[string(exportfmt.FormatGeoPackage)] = gpkgPaths
+	}
+
+	return nil
+}
+
+func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
+	if c.raster == nil {
+		return nil
+	}
+
+	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
+		Interval: c.contourInterval,
+	})
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	contourPath := filepath.Join(c.formatsDir, "contours.geojson")
+
+	err = exportfmt.ExportContourGeoJSON(contourPath, contours)
+	if err != nil {
+		return fmt.Errorf("contour geojson export: %w", err)
+	}
+
+	out[string(exportfmt.FormatContourGeoJSON)] = []string{relativePath(c.bundleDir, contourPath)}
+
+	return nil
+}
+
+func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) error {
+	if c.raster == nil {
+		return nil
+	}
+
+	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
+		Interval: c.contourInterval,
+	})
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	contourGpkgPath := filepath.Join(c.formatsDir, "contours.gpkg")
+
+	err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, c.projectCRS, c.epsgCode)
+	if err != nil {
+		return fmt.Errorf("contour geopackage export: %w", err)
+	}
+
+	out[string(exportfmt.FormatContourGeoPackage)] = []string{relativePath(c.bundleDir, contourGpkgPath)}
+
+	return nil
 }
 
 func emitSampleResultBundle(bundleDir string) ([]string, error) {

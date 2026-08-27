@@ -75,8 +75,39 @@ type RailSource struct {
 	TrafficNight         TrafficPeriod `json:"traffic_night"`
 }
 
+// finite reports whether v is neither NaN nor infinite.
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// finitePositive reports whether v is finite and strictly greater than zero.
+func finitePositive(v float64) bool {
+	return finite(v) && v > 0
+}
+
+// finiteNonNegative reports whether v is finite and greater than or equal to zero.
+func finiteNonNegative(v float64) bool {
+	return finite(v) && v >= 0
+}
+
 // Validate validates one rail source payload.
 func (s RailSource) Validate() error {
+	if err := s.validateGeometry(); err != nil {
+		return err
+	}
+
+	if err := s.validateClassification(); err != nil {
+		return err
+	}
+
+	if err := s.validateAcoustics(); err != nil {
+		return err
+	}
+
+	return s.validateTraffic()
+}
+
+func (s RailSource) validateGeometry() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return errors.New("rail source id is required")
 	}
@@ -91,6 +122,10 @@ func (s RailSource) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+func (s RailSource) validateClassification() error {
 	if _, ok := allowedTractionTypes[strings.TrimSpace(s.TractionType)]; !ok {
 		return fmt.Errorf("rail source %q has unsupported traction_type %q", s.ID, s.TractionType)
 	}
@@ -103,38 +138,39 @@ func (s RailSource) Validate() error {
 		return fmt.Errorf("rail source %q has unsupported track_roughness_class %q", s.ID, s.TrackRoughnessClass)
 	}
 
-	if math.IsNaN(s.AverageTrainSpeedKPH) || math.IsInf(s.AverageTrainSpeedKPH, 0) || s.AverageTrainSpeedKPH <= 0 {
+	return nil
+}
+
+func (s RailSource) validateAcoustics() error {
+	if !finitePositive(s.AverageTrainSpeedKPH) {
 		return fmt.Errorf("rail source %q average_train_speed_kph must be finite and > 0", s.ID)
 	}
 
-	if math.IsNaN(s.BrakingShare) || math.IsInf(s.BrakingShare, 0) || s.BrakingShare < 0 || s.BrakingShare > 1 {
+	if !finite(s.BrakingShare) || s.BrakingShare < 0 || s.BrakingShare > 1 {
 		return fmt.Errorf("rail source %q braking_share must be within [0,1]", s.ID)
 	}
 
-	if math.IsNaN(s.CurveRadiusM) || math.IsInf(s.CurveRadiusM, 0) {
+	if !finite(s.CurveRadiusM) {
 		return fmt.Errorf("rail source %q curve_radius_m must be finite", s.ID)
-	}
-
-	err := validateTrafficPeriod(s.ID, "day", s.TrafficDay)
-	if err != nil {
-		return err
-	}
-
-	err = validateTrafficPeriod(s.ID, "evening", s.TrafficEvening)
-	if err != nil {
-		return err
-	}
-
-	err = validateTrafficPeriod(s.ID, "night", s.TrafficNight)
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
+func (s RailSource) validateTraffic() error {
+	if err := validateTrafficPeriod(s.ID, "day", s.TrafficDay); err != nil {
+		return err
+	}
+
+	if err := validateTrafficPeriod(s.ID, "evening", s.TrafficEvening); err != nil {
+		return err
+	}
+
+	return validateTrafficPeriod(s.ID, "night", s.TrafficNight)
+}
+
 func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod) error {
-	if math.IsNaN(traffic.TrainsPerHour) || math.IsInf(traffic.TrainsPerHour, 0) || traffic.TrainsPerHour < 0 {
+	if !finiteNonNegative(traffic.TrainsPerHour) {
 		return fmt.Errorf("rail source %q traffic_%s trains_per_hour must be finite and >= 0", sourceID, period)
 	}
 

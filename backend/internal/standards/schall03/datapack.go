@@ -125,6 +125,22 @@ func LoadDataPack(path string) (DataPack, error) {
 
 // Validate checks that a data pack is structurally usable.
 func (p DataPack) Validate() error {
+	if err := p.validateHeader(); err != nil {
+		return err
+	}
+
+	if err := p.validateSpectra(); err != nil {
+		return err
+	}
+
+	if err := p.validatePropagation(); err != nil {
+		return err
+	}
+
+	return p.validateSpeedModel()
+}
+
+func (p DataPack) validateHeader() error {
 	if p.Version == "" {
 		return errors.New("schall03 data pack version is required")
 	}
@@ -133,6 +149,10 @@ func (p DataPack) Validate() error {
 		return errors.New("schall03 data pack compliance_boundary is required")
 	}
 
+	return nil
+}
+
+func (p DataPack) validateSpectra() error {
 	err := p.Emission.BaseRollingSpectrum.Validate("base_rolling_spectrum")
 	if err != nil {
 		return err
@@ -153,21 +173,19 @@ func (p DataPack) Validate() error {
 		return err
 	}
 
-	err = validateSpectrumMap("track_form_spectra", p.Emission.TrackFormSpectra, allowedTrackForms)
+	return validateSpectrumMap("track_form_spectra", p.Emission.TrackFormSpectra, allowedTrackForms)
+}
+
+func (p DataPack) validatePropagation() error {
+	err := p.Propagation.AirAbsorptionBandFactor.Validate("air_absorption_band_factor")
 	if err != nil {
 		return err
 	}
 
-	err = p.Propagation.AirAbsorptionBandFactor.Validate("air_absorption_band_factor")
-	if err != nil {
-		return err
-	}
+	return p.Propagation.DefaultConfig.Validate()
+}
 
-	err = p.Propagation.DefaultConfig.Validate()
-	if err != nil {
-		return err
-	}
-
+func (p DataPack) validateSpeedModel() error {
 	for _, item := range []struct {
 		name string
 		v    float64

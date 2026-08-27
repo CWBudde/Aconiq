@@ -38,23 +38,23 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 func (cfg PropagationConfig) Validate() error {
-	if math.IsNaN(cfg.AirAbsorptionDBPerKM) || math.IsInf(cfg.AirAbsorptionDBPerKM, 0) || cfg.AirAbsorptionDBPerKM < 0 {
+	if !finiteNonNegative(cfg.AirAbsorptionDBPerKM) {
 		return errors.New("air_absorption_db_per_km must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.GroundAttenuationDB) || math.IsInf(cfg.GroundAttenuationDB, 0) || cfg.GroundAttenuationDB < 0 {
+	if !finiteNonNegative(cfg.GroundAttenuationDB) {
 		return errors.New("ground_attenuation_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.ScreeningAttenuationDB) || math.IsInf(cfg.ScreeningAttenuationDB, 0) || cfg.ScreeningAttenuationDB < 0 {
+	if !finiteNonNegative(cfg.ScreeningAttenuationDB) {
 		return errors.New("screening_attenuation_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.FacadeReflectionDB) || math.IsInf(cfg.FacadeReflectionDB, 0) || cfg.FacadeReflectionDB < 0 {
+	if !finiteNonNegative(cfg.FacadeReflectionDB) {
 		return errors.New("facade_reflection_db must be finite and >= 0")
 	}
 
-	if math.IsNaN(cfg.MinDistanceM) || math.IsInf(cfg.MinDistanceM, 0) || cfg.MinDistanceM <= 0 {
+	if !finitePositive(cfg.MinDistanceM) {
 		return errors.New("min_distance_m must be finite and > 0")
 	}
 

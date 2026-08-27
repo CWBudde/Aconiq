@@ -441,43 +441,77 @@ func computeOrLoadChunk(
 	}
 
 	if !cfg.DisableCache {
-		{
-			cached, ok, err := readChunk(runCachePath)
-			if err != nil {
-				return nil, false, err
-			}
-
-			if ok {
-				return cached, true, nil
-			}
+		cached, ok, err := readCachedChunk(runCachePath, sharedCachePath)
+		if err != nil {
+			return nil, false, err
 		}
 
-		{
-			cached, ok, err := readChunk(sharedCachePath)
-			if err != nil {
-				return nil, false, err
-			}
-
-			if ok {
-				_ = writeChunk(runCachePath, cached)
-
-				return cached, true, nil
-			}
+		if ok {
+			return cached, true, nil
 		}
 	}
 
+	results, err := computeChunkResults(ctx, cfg, chunk, ffSources)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if !cfg.DisableCache {
+		err = writeChunkCaches(runCachePath, sharedCachePath, results)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+
+	return results, false, nil
+}
+
+// readCachedChunk looks up the run-local cache first, then the shared cache. A shared
+// cache hit is mirrored into the run-local cache, exactly as before.
+func readCachedChunk(runCachePath string, sharedCachePath string) ([]ReceiverResult, bool, error) {
+	cached, ok, err := readChunk(runCachePath)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if ok {
+		return cached, true, nil
+	}
+
+	cached, ok, err = readChunk(sharedCachePath)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if ok {
+		_ = writeChunk(runCachePath, cached)
+
+		return cached, true, nil
+	}
+
+	return nil, false, nil
+}
+
+// computeChunkResults evaluates every receiver of a chunk in order.
+func computeChunkResults(
+	ctx context.Context,
+	cfg RunConfig,
+	chunk receiverChunk,
+	ffSources []freefield.Source,
+) ([]ReceiverResult, error) {
 	results := make([]ReceiverResult, 0, len(chunk.Receivers))
+
 	for _, receiver := range chunk.Receivers {
 		select {
 		case <-ctx.Done():
-			return nil, false, context.Canceled
+			return nil, context.Canceled
 		default:
 		}
 
 		if cfg.ComputeDelay > 0 {
 			select {
 			case <-ctx.Done():
-				return nil, false, context.Canceled
+				return nil, context.Canceled
 			case <-time.After(cfg.ComputeDelay):
 			}
 		}
@@ -486,19 +520,17 @@ func computeOrLoadChunk(
 		results = append(results, ReceiverResult{ReceiverID: receiver.ID, LevelDB: level})
 	}
 
-	if !cfg.DisableCache {
-		err := writeChunk(runCachePath, results)
-		if err != nil {
-			return nil, false, err
-		}
+	return results, nil
+}
 
-		err = writeChunk(sharedCachePath, results)
-		if err != nil {
-			return nil, false, err
-		}
+// writeChunkCaches persists chunk results to the run-local and shared caches.
+func writeChunkCaches(runCachePath string, sharedCachePath string, results []ReceiverResult) error {
+	err := writeChunk(runCachePath, results)
+	if err != nil {
+		return err
 	}
 
-	return results, false, nil
+	return writeChunk(sharedCachePath, results)
 }
 
 func convertSourcesToFreefield(sources []Source) []freefield.Source {

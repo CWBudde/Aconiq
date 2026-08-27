@@ -144,24 +144,14 @@ func Run(opts Options) (Report, error) {
 	}
 
 	if skipReason != "" {
-		report := Report{
+		return finalizeReport(Report{
 			SuiteName:   "rls19-test20",
 			StandardID:  rls19road.StandardID,
 			Mode:        mode,
 			Status:      "skipped",
 			GeneratedAt: generatedAt,
 			SkipReason:  skipReason,
-		}
-		if opts.OutputDir != "" {
-			reportPath, err := writeReportArtifact(opts.OutputDir, mode, report)
-			if err != nil {
-				return Report{}, err
-			}
-
-			report.ReportPath = reportPath
-		}
-
-		return report, nil
+		}, opts)
 	}
 
 	suite, suiteDir, err := loadSuiteManifest(manifestPath)
@@ -180,35 +170,63 @@ func Run(opts Options) (Report, error) {
 		Tasks:         make([]TaskResult, 0, len(suite.Tasks)),
 	}
 
-	for _, task := range suite.Tasks {
-		result, err := runTask(task, suiteDir)
-		if err != nil {
-			return Report{}, err
-		}
-
-		report.Tasks = append(report.Tasks, result)
+	report.Tasks, err = runTasks(suite.Tasks, suiteDir)
+	if err != nil {
+		return Report{}, err
 	}
 
 	report.TaskCount = len(report.Tasks)
+	report.Status, report.PassedCount, report.FailedCount, report.SkippedCount = summarizeTaskStatuses(report.Tasks)
+	report.CategoryCoverage = summarizeCategoryCoverage(report.Tasks)
 
-	report.Status = "passed"
-	for _, task := range report.Tasks {
+	return finalizeReport(report, opts)
+}
+
+// runTasks executes every task in the suite manifest, in order.
+func runTasks(tasks []taskManifest, suiteDir string) ([]TaskResult, error) {
+	results := make([]TaskResult, 0, len(tasks))
+
+	for _, task := range tasks {
+		result, err := runTask(task, suiteDir)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// summarizeTaskStatuses derives the overall report status and per-status
+// task counts. Status precedence is: failed > skipped > passed.
+func summarizeTaskStatuses(tasks []TaskResult) (status string, passed, failed, skipped int) {
+	status = "passed"
+
+	for _, task := range tasks {
 		switch task.Status {
 		case "passed":
-			report.PassedCount++
+			passed++
 		case taskStatusFailed:
-			report.FailedCount++
-			report.Status = taskStatusFailed
+			failed++
+			status = taskStatusFailed
 		case "skipped":
-			report.SkippedCount++
-			if report.Status == "passed" {
-				report.Status = "skipped"
+			skipped++
+			if status == "passed" {
+				status = "skipped"
 			}
 		}
 	}
 
+	return status, passed, failed, skipped
+}
+
+// summarizeCategoryCoverage aggregates per-task-category pass/fail/skip
+// counts.
+func summarizeCategoryCoverage(tasks []TaskResult) map[string]CategoryStatus {
 	coverage := make(map[string]CategoryStatus)
-	for _, task := range report.Tasks {
+
+	for _, task := range tasks {
 		cs := coverage[task.Category]
 		cs.TaskCount++
 
@@ -224,16 +242,22 @@ func Run(opts Options) (Report, error) {
 		coverage[task.Category] = cs
 	}
 
-	report.CategoryCoverage = coverage
+	return coverage
+}
 
-	if opts.OutputDir != "" {
-		reportPath, err := writeReportArtifact(opts.OutputDir, mode, report)
-		if err != nil {
-			return Report{}, err
-		}
-
-		report.ReportPath = reportPath
+// finalizeReport writes the report artifact when an output directory was
+// requested, then returns the (possibly annotated) report.
+func finalizeReport(report Report, opts Options) (Report, error) {
+	if opts.OutputDir == "" {
+		return report, nil
 	}
+
+	reportPath, err := writeReportArtifact(opts.OutputDir, report.Mode, report)
+	if err != nil {
+		return Report{}, err
+	}
+
+	report.ReportPath = reportPath
 
 	return report, nil
 }

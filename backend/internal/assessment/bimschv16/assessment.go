@@ -377,6 +377,52 @@ func supportedSourceStandard(standardID string) bool {
 	}
 }
 
+// assessReceiverFeature assesses one receiver feature. It returns ok=false together with
+// the skip reason when the feature cannot be assessed, preserving the original check order.
+func assessReceiverFeature(
+	feature modelgeojson.Feature,
+	recordsByID map[string]results.ReceiverRecord,
+	sourceStandardID string,
+) (ReceiverAssessment, bool, string) {
+	category, ok, err := categoryFromFeature(feature)
+	if err != nil {
+		return ReceiverAssessment{}, false, err.Error()
+	}
+
+	if !ok {
+		return ReceiverAssessment{}, false, "missing 16. BImSchV area category property"
+	}
+
+	record, ok := recordsByID[feature.ID]
+	if !ok {
+		return ReceiverAssessment{}, false, "receiver not found in result table"
+	}
+
+	levels, err := assessmentLevelsFromRecord(record)
+	if err != nil {
+		return ReceiverAssessment{}, false, err.Error()
+	}
+
+	input := ReceiverInput{
+		ReceiverID:   feature.ID,
+		AreaCategory: category,
+	}
+
+	switch sourceStandardID {
+	case rls19road.StandardID:
+		input.Road = &levels
+	case schall03.StandardID:
+		input.Rail = &levels
+	}
+
+	result, err := AssessReceiver(input)
+	if err != nil {
+		return ReceiverAssessment{}, false, err.Error()
+	}
+
+	return result, true, ""
+}
+
 func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, sourceStandardID string, generatedAt time.Time) (ExportEnvelope, error) {
 	if !supportedSourceStandard(sourceStandardID) {
 		return ExportEnvelope{}, fmt.Errorf("16. BImSchV assessment currently supports only %q and %q, got %q", rls19road.StandardID, schall03.StandardID, sourceStandardID)
@@ -403,44 +449,9 @@ func BuildExportEnvelope(model modelgeojson.Model, table results.ReceiverTable, 
 
 		out.ReceiverCount++
 
-		category, ok, err := categoryFromFeature(feature)
-		if err != nil {
-			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: err.Error()})
-			continue
-		}
-
+		result, ok, skipReason := assessReceiverFeature(feature, recordsByID, sourceStandardID)
 		if !ok {
-			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: "missing 16. BImSchV area category property"})
-			continue
-		}
-
-		record, ok := recordsByID[feature.ID]
-		if !ok {
-			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: "receiver not found in result table"})
-			continue
-		}
-
-		levels, err := assessmentLevelsFromRecord(record)
-		if err != nil {
-			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: err.Error()})
-			continue
-		}
-
-		input := ReceiverInput{
-			ReceiverID:   feature.ID,
-			AreaCategory: category,
-		}
-
-		switch sourceStandardID {
-		case rls19road.StandardID:
-			input.Road = &levels
-		case schall03.StandardID:
-			input.Rail = &levels
-		}
-
-		result, err := AssessReceiver(input)
-		if err != nil {
-			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: err.Error()})
+			out.Skipped = append(out.Skipped, SkippedReceiver{ReceiverID: feature.ID, Reason: skipReason})
 			continue
 		}
 

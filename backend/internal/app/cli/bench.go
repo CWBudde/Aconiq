@@ -129,12 +129,8 @@ func newBenchCommand() *cobra.Command {
 	return cmd
 }
 
-func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, chunkSize int, sourceIndexCellM float64, keepLast int) error {
-	state, ok := stateFromCommand(cmd)
-	if !ok {
-		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "command state unavailable", nil)
-	}
-
+// validateBenchFlags rejects benchmark flag combinations that cannot produce a run.
+func validateBenchFlags(chunkSize int, sourceIndexCellM float64, keepLast int) error {
 	if chunkSize <= 0 {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--chunk-size must be > 0", nil)
 	}
@@ -145,6 +141,20 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 
 	if keepLast < 1 {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.bench", "--keep-last must be >= 1", nil)
+	}
+
+	return nil
+}
+
+func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, chunkSize int, sourceIndexCellM float64, keepLast int) error {
+	state, ok := stateFromCommand(cmd)
+	if !ok {
+		return domainerrors.New(domainerrors.KindInternal, "cli.bench", "command state unavailable", nil)
+	}
+
+	err := validateBenchFlags(chunkSize, sourceIndexCellM, keepLast)
+	if err != nil {
+		return err
 	}
 
 	scenarios, err := resolveBenchScenarios(scenarioNames)
@@ -200,6 +210,13 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 		})
 	}
 
+	printBenchSummary(cmd, summary, summaryPath)
+
+	return nil
+}
+
+// printBenchSummary writes the human-readable benchmark suite overview.
+func printBenchSummary(cmd *cobra.Command, summary benchSummary, summaryPath string) {
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Benchmark suite %s\n", summary.BenchID)
 	for _, scenario := range summary.ScenarioResults {
 		_, _ = fmt.Fprintf(
@@ -219,8 +236,6 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 	if len(summary.PrunedSuites) > 0 {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Pruned suites: %d\n", len(summary.PrunedSuites))
 	}
-
-	return nil
 }
 
 func resolveBenchScenarios(names []string) ([]benchScenarioSpec, error) {
