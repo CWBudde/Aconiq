@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -56,11 +57,15 @@ func TestReceiverHeightFromModel(t *testing.T) {
 func TestBuildHeuristicRasterReceiversUsesAreaAndRows(t *testing.T) {
 	t.Parallel()
 
+	// The CalcArea is 6 m tall while the two rows span (2-1)*5 = 5 m, so both row
+	// centres fall strictly inside the polygon and are intersected normally. See
+	// TestBuildHeuristicRasterReceiversRowOnTopEdgeFallsBack for the degenerate
+	// case where the row grid exactly fills the bounding box.
 	area := &soundplanimport.CalcArea{Points: []soundplanimport.Point3D{
 		{X: 0, Y: 0, Z: 0},
 		{X: 10, Y: 0, Z: 0},
-		{X: 10, Y: 5, Z: 0},
-		{X: 0, Y: 5, Z: 0},
+		{X: 10, Y: 6, Z: 0},
+		{X: 0, Y: 6, Z: 0},
 		{X: 0, Y: 0, Z: 0},
 	}}
 
@@ -88,9 +93,9 @@ func TestBuildHeuristicRasterReceiversUsesAreaAndRows(t *testing.T) {
 		row int
 		col int
 	}{
-		"soundplan-raster-r001-c001": {x: 0, y: 5, row: 0, col: 0},
-		"soundplan-raster-r002-c001": {x: 2.5, y: 0, row: 1, col: 0},
-		"soundplan-raster-r002-c002": {x: 7.5, y: 0, row: 1, col: 1},
+		"soundplan-raster-r001-c001": {x: 5, y: 5.5, row: 0, col: 0},
+		"soundplan-raster-r002-c001": {x: 2.5, y: 0.5, row: 1, col: 0},
+		"soundplan-raster-r002-c002": {x: 7.5, y: 0.5, row: 1, col: 1},
 	}
 
 	for _, receiver := range receivers {
@@ -105,6 +110,56 @@ func TestBuildHeuristicRasterReceiversUsesAreaAndRows(t *testing.T) {
 
 		if math.Abs(receiver.X-exp.x) > 1e-9 || math.Abs(receiver.Y-exp.y) > 1e-9 {
 			t.Fatalf("%s position=(%.2f,%.2f), want (%.2f,%.2f)", receiver.ID, receiver.X, receiver.Y, exp.x, exp.y)
+		}
+	}
+}
+
+// TestBuildHeuristicRasterReceiversRowOnTopEdgeFallsBack pins current behaviour for
+// the knife-edge case where the row grid exactly fills the CalcArea bounding box:
+// heuristicRasterRowCenters then places row 0 at y == maxY, and the half-open
+// scanline rule in calcAreaHorizontalSpan (y >= maxY rejects every edge) finds no
+// intersections, so the row silently falls back to the bounding-box span.
+//
+// For a rectangle the fallback span equals the true span, so only the warning is
+// observable. For a non-rectangular CalcArea the fallback would be wrong. Fixing
+// the boundary rule is tracked in PLAN.md (Priority 13); this test exists so that
+// the fix cannot land unnoticed.
+func TestBuildHeuristicRasterReceiversRowOnTopEdgeFallsBack(t *testing.T) {
+	t.Parallel()
+
+	// Height 5 m, two rows at 5 m spacing => topCenter == maxY == 5.
+	area := &soundplanimport.CalcArea{Points: []soundplanimport.Point3D{
+		{X: 0, Y: 0, Z: 0},
+		{X: 10, Y: 0, Z: 0},
+		{X: 10, Y: 5, Z: 0},
+		{X: 0, Y: 5, Z: 0},
+		{X: 0, Y: 0, Z: 0},
+	}}
+
+	rows := [][]soundplanimport.GridMapCell{
+		{{}},
+		{{}, {}},
+	}
+
+	receivers, _, warnings := buildHeuristicRasterReceivers(area, 5, 4, rows)
+
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one bounding-box fallback warning", warnings)
+	}
+
+	if !strings.Contains(warnings[0], "row 0 could not be intersected with CalcArea") {
+		t.Fatalf("unexpected warning %q", warnings[0])
+	}
+
+	// The fallback still yields the geometrically correct centre here, because the
+	// bounding box of a rectangle is the rectangle.
+	for _, receiver := range receivers {
+		if receiver.Row != 0 {
+			continue
+		}
+
+		if math.Abs(receiver.X-5) > 1e-9 || math.Abs(receiver.Y-5) > 1e-9 {
+			t.Fatalf("row 0 position=(%.2f,%.2f), want (5.00,5.00)", receiver.X, receiver.Y)
 		}
 	}
 }

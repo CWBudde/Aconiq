@@ -748,6 +748,17 @@ the comparison into evidence (the assertion itself is Priority 3).
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
 - [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline.
+- [ ] Fix the top-edge boundary rule in the heuristic raster alignment.
+      `heuristicRasterRowCenters` (`app/cli/compare_raster.go:581`) places row 0 at exactly
+      `y == maxY` whenever the row grid fills the CalcArea bounding box
+      (`(rowCount-1)*resolution == maxY-minY`), and `calcAreaHorizontalSpan:636` uses a half-open
+      scanline rule (`y < minY || y >= maxY`) that rejects every edge at that y. Row 0 therefore
+      always falls back to the bounding-box span and emits a warning. Harmless for rectangles —
+      the bbox span is the true span — but wrong for non-convex or non-rectangular CalcAreas, and
+      the trigger condition is exact float equality, so real data hits it unpredictably. Either
+      make the top boundary inclusive at the polygon's global `maxY` or nudge row centres
+      epsilon-inward. Current behaviour is pinned by
+      `TestBuildHeuristicRasterReceiversRowOnTopEdgeFallsBack`, which must be updated with the fix.
 - [ ] Extend raster comparison from decoded values to fully validated spatial alignment —
       direction/anchor ambiguity remains for some GM variants.
 - [ ] Generate a cross-validation report artifact with tables, deviation distribution, map overlay,
