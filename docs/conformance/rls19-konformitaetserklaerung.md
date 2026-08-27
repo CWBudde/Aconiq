@@ -10,7 +10,7 @@ Status: DRAFT — not yet submitted
 | Module     | rls19-road                        |
 | Version    | (to be filled at release)         |
 | License    | MIT                               |
-| Repository | https://github.com/aconiq/backend |
+| Repository | https://github.com/cwbudde/Aconiq |
 
 ## Standard
 
@@ -47,18 +47,29 @@ Status: DRAFT — not yet submitted
 
 ### Propagation
 
-| Feature                                                | Status      |
-| ------------------------------------------------------ | ----------- |
-| Teilstueckverfahren (segment method)                   | Implemented |
-| Configurable segment length (reference/check settings) | Implemented |
-| Single barrier shielding                               | Implemented |
-| Double barrier shielding                               | Implemented |
-| Terrain: cutting (Tieflage)                            | Implemented |
-| Terrain: elevated (Hochlage)                           | Implemented |
-| Terrain: ascending road                                | Implemented |
-| Terrain: receding road                                 | Implemented |
-| Single explicit reflector                              | Implemented |
-| Up to 2 reflectors                                     | Implemented |
+| Feature                                                         | Status      |
+| --------------------------------------------------------------- | ----------- |
+| Teilstueckverfahren (segment method)                            | Implemented |
+| Configurable segment length (reference/check settings)          | Implemented |
+| Length weighting 10·lg(l_i / l_0) with l_0 = 1 m (§3.5, Eq. 10) | Implemented |
+| Single barrier shielding                                        | Implemented |
+| Double barrier shielding                                        | Implemented |
+| Terrain: cutting (Tieflage)                                     | Implemented |
+| Terrain: elevated (Hochlage)                                    | Implemented |
+| Terrain: ascending road                                         | Implemented |
+| Terrain: receding road                                          | Implemented |
+| Single explicit reflector                                       | Implemented |
+| Up to 2 reflectors                                              | Implemented |
+
+Note on the length weighting: the emission chain yields the length-related sound
+power level L_m,E in dB(A)/m (step E7). Each Teilstueck of length l_i therefore
+contributes L_m,E + 10·lg(l_i / l_0) with the reference length l_0 = 1 m, on the
+direct path and on every mirrored path alike. The weight must not be normalised
+by the total length of the source line; such a normalisation would make the whole
+road radiate the sound power of a single one-metre section and would make the
+result depend on how the source geometry happens to be split. Earlier revisions
+of this module normalised by the total length; see "Implementation corrections"
+below.
 
 ### Reflections (§3.6, Tabelle 8)
 
@@ -95,6 +106,22 @@ _area-related_ level L*W''. When propagating parking as a point source, the
 implementation uses the \_total* sound power `L_W = L_W'' + 10·lg[P/1m²] =
 63 + 10·lg[N·n] + D_P,PT`, which cancels the area term.
 
+## Implementation corrections
+
+Defects found in this module after its first draft, and how they were resolved.
+Entries here are corrections to Aconiq, not to the standard.
+
+| No. | Area                     | Defect                                                                                                                                                                                                                            | Resolution                                                                                                                                                                                       |
+| --- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1  | §3.5 Teilstueckverfahren | The per-Teilstueck length weight was computed as `10·lg(l_i / l_total)` instead of `10·lg(l_i / l_0)` with `l_0 = 1 m`. Because the weights then summed to unity, a road of any length radiated the sound power of a 1 m section. | Corrected in `propagation.go` (direct and mirrored paths share the same weight). Error magnitude was `−10·lg(l_total / 1 m)`: −20 dB for a 100 m source line, −23 dB for 200 m, −30 dB for 1 km. |
+
+All CI-safe expected snapshots under
+`backend/internal/qa/acceptance/rls19_test20/testdata/ci_safe/` and the
+`rls19-road` acceptance fixture were regenerated after C1. Expected values
+recorded before that correction are void; the observed shift per fixture equals
+`10·lg(l_total / 1 m)` of its source line, as the sources are otherwise
+unchanged.
+
 ## Not yet supported
 
 - Section 9 measurement-based vehicle data (custom acoustics from measurements).
@@ -108,6 +135,11 @@ implementation uses the \_total* sound power `L_W = L_W'' + 10·lg[P/1m²] =
   for multi-edge cases. Single-edge diffraction (C=0) is a special case.
 
 ## TEST-20 task coverage
+
+The delta columns below are placeholders. They stay empty until the module is run
+against the official TEST-20 task set; no values are carried over from the
+CI-safe suite, which only pins Aconiq against itself and proves nothing about
+agreement with the reference results.
 
 ### Emission tasks
 

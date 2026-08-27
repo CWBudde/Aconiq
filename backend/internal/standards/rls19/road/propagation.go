@@ -73,6 +73,11 @@ func (cfg PropagationConfig) Validate() error {
 	return nil
 }
 
+// referenceLengthM is the RLS-19 reference length l_0 = 1 m used to convert the
+// length-related emission level L_m,E [dB(A)/m] into the sound power level of a
+// sub-segment of length l_i: L_W,i = L_m,E + 10·lg(l_i / l_0).
+const referenceLengthM = 1.0
+
 // Segment represents one sub-segment of a source line for the
 // Teilstueckverfahren (partial segment method).
 type Segment struct {
@@ -373,8 +378,7 @@ func appendSourceContributions(
 		return nil
 	}
 
-	totalLength := polylineLength(sourceLine)
-	if totalLength <= 0 {
+	if polylineLength(sourceLine) <= 0 {
 		return nil
 	}
 
@@ -386,7 +390,6 @@ func appendSourceContributions(
 			receiver,
 			receiverZ,
 			sourceHeightM,
-			totalLength,
 			effectiveBarriers,
 			effectiveCfg,
 			baseCfg.Terrain,
@@ -403,7 +406,6 @@ func appendSegmentContributions(
 	receiver geo.Point2D,
 	receiverZ float64,
 	sourceHeightM float64,
-	totalLength float64,
 	effectiveBarriers []Barrier,
 	effectiveCfg PropagationConfig,
 	terrain []TerrainProfile,
@@ -454,8 +456,13 @@ func appendSegmentContributions(
 		att.Total = att.GeometricDivergence + att.AirAbsorption + math.Max(att.GroundMeteorological, totalShielding)
 	}
 
-	// Length weighting: each sub-segment contributes proportionally.
-	lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)
+	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
+	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
+	// reference length l_0 = 1 m. L_m,E is already per-metre (emission.go converts
+	// veh/h ÷ km/h to veh/m via the −30 dB term), so the weight must NOT be
+	// normalised by the total road length: doing so would make the whole road
+	// radiate the power of a single 1 m long section.
+	lengthWeight := 10 * math.Log10(seg.LengthM/referenceLengthM)
 
 	*dayContrib = append(*dayContrib, emission.LmEDay+lengthWeight-att.Total)
 	*nightContrib = append(*nightContrib, emission.LmENight+lengthWeight-att.Total)
