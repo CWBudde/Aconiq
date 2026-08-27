@@ -170,10 +170,7 @@ func ComputeYardPointSourceImmission(inp YardPointImmissionInput) (float64, erro
 	dOmega := solidAngleDOmega(dp, inp.SourceHeightM, inp.ReceiverHeightM)
 	adivVal := adiv(dSlant)
 
-	hm := (inp.SourceHeightM + inp.ReceiverHeightM) / 2
-	if hm < 0 {
-		hm = 0
-	}
+	hm := meanPathHeight(inp.SourceHeightM, inp.ReceiverHeightM)
 
 	dLand := dp * (1 - inp.WaterFractionW)
 	dWater := dp * inp.WaterFractionW
@@ -181,7 +178,7 @@ func ComputeYardPointSourceImmission(inp YardPointImmissionInput) (float64, erro
 	// Compute A_gr once (frequency-independent per Gl. 13–16).
 	agrVal := agrW(dWater, dp)
 	if dLand > 0 {
-		agrVal += agrB(hm, dSlant, dLand)
+		agrVal += agrB(hm, dSlant)
 	}
 
 	// Compute A_bar per band if barrier present.

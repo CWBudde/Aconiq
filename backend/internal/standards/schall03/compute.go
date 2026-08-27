@@ -12,6 +12,15 @@ import (
 // h=1 → 0 m (rail level), h=2 → 4 m (pantograph), h=3 → 5 m (above pantograph).
 var heightAboveSO = map[int]float64{1: 0, 2: 4, 3: 5}
 
+// teilquelleHeightIndices lists the Teilquelle height indices in a fixed order.
+//
+// Emission spectra are stored in a map[int]BeiblattSpectrum.  Ranging over that
+// map and accumulating floats would make the summation order depend on Go's
+// randomised map iteration, which docs/policies/determinism.md forbids ("Map
+// iteration order must never influence numeric results").  Every accumulation
+// over PerHeight therefore walks this slice instead.
+var teilquelleHeightIndices = [3]int{1, 2, 3}
+
 // buildVehicleInputs converts a TrainOperation into VehicleInput records for
 // one planning period using the provided trains-per-hour value.
 func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float64) StreckeEmissionInput {
@@ -68,21 +77,23 @@ func normativeSubsegmentContrib(
 	log10Step := math.Log10(stepLen)
 
 	// Gl. 13: A_gr = A_gr,B + A_gr,W
-	// A_gr,B uses only the land portion of the path (Gl. 14: d_p = land path length).
-	// A_gr,W uses the water portion and total path (Gl. 16).
+	// A_gr,B (Gl. 14) depends only on h_m and d; it is applied whenever the path
+	// has a land portion.  A_gr,W (Gl. 16) uses d_w/d_p, the water share.
 	dLand := (1.0 - waterFractionW) * dp
 	dWater := waterFractionW * dp
 
 	var contrib float64
 
-	for h, spectrum := range emission.PerHeight {
+	for _, h := range teilquelleHeightIndices {
+		spectrum, present := emission.PerHeight[h]
+		if !present {
+			continue
+		}
+
 		hg := elevationM + heightAboveSO[h]
 		hr := receiver.HeightM
 
-		hm := (hg + hr) / 2
-		if hm < 0 {
-			hm = 0
-		}
+		hm := meanPathHeight(hg, hr)
 
 		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
 		if dSlant < 1 {
@@ -97,7 +108,7 @@ func normativeSubsegmentContrib(
 		// A_gr,W is negative and applies only when there is a water path.
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant, dLand)
+			agrVal += agrB(hm, dSlant)
 		}
 
 		for f := range NumBeiblattOctaveBands {
@@ -257,14 +268,16 @@ func normativeSubsegmentContribWithBarriers(
 
 	var contrib float64
 
-	for h, spectrum := range emission.PerHeight {
+	for _, h := range teilquelleHeightIndices {
+		spectrum, present := emission.PerHeight[h]
+		if !present {
+			continue
+		}
+
 		hg := elevationM + heightAboveSO[h]
 		hr := receiver.HeightM
 
-		hm := (hg + hr) / 2
-		if hm < 0 {
-			hm = 0
-		}
+		hm := meanPathHeight(hg, hr)
 
 		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
 		if dSlant < 1 {
@@ -276,7 +289,7 @@ func normativeSubsegmentContribWithBarriers(
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant, dLand)
+			agrVal += agrB(hm, dSlant)
 		}
 
 		// Compute barrier attenuation for this height level.

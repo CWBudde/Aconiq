@@ -15,8 +15,8 @@ func almostEqual(a, b float64) bool {
 // Schwellengleis (no corrections).
 // Expected at 1000 Hz (band index 4):
 //
-//	a_A=62, Δa_f[4]=-3, n_Q=4, n_Q0=4, b[4]=25, v=250, v_0=100
-//	L = 62 + (-3) + 10*lg(4/4) + 25*lg(250/100) = 62 - 3 + 0 + 9.949 = 68.949 dB
+//	a_A=62, Δa_f[4]=-3, n_Q=4, n_Q0=4, b[4]=10 (Tabelle 6 Zeile 2), v=250, v_0=100
+//	L = 62 + (-3) + 10*lg(4/4) + 10*lg(250/100) = 62 - 3 + 0 + 3.979 = 62.979 dB
 func TestTeilquelleGl1Basic(t *testing.T) {
 	t.Parallel()
 
@@ -35,7 +35,7 @@ func TestTeilquelleGl1Basic(t *testing.T) {
 	)
 
 	// 1000 Hz is band index 4.
-	expected := 62.0 + (-3.0) + 0 + 25.0*math.Log10(250.0/100.0)
+	expected := 62.0 + (-3.0) + 0 + 10.0*math.Log10(250.0/100.0)
 	if !almostEqual(level[4], expected) {
 		t.Errorf("1000 Hz: expected %.3f, got %.3f", expected, level[4])
 	}
@@ -52,7 +52,7 @@ func TestTeilquelleGl1Basic(t *testing.T) {
 // Fz1 m=1 at 250 km/h on Feste Fahrbahn:
 //
 //	c1_schiene[4]=3, c1_reflexion[4]=1 (m=1 gets both)
-//	L = 68.949 + 3 + 1 = 72.949 dB at 1000 Hz
+//	L = 62.979 + 3 + 1 = 66.979 dB at 1000 Hz
 func TestTeilquelleWithFesteFahrbahn(t *testing.T) {
 	t.Parallel()
 
@@ -66,8 +66,8 @@ func TestTeilquelleWithFesteFahrbahn(t *testing.T) {
 		false,
 	)
 
-	baseAt1000 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0) // 68.949
-	expected := baseAt1000 + 3.0 + 1.0                         // schiene + reflexion at 1000 Hz
+	baseAt1000 := 62.0 + (-3.0) + 10.0*math.Log10(250.0/100.0)
+	expected := baseAt1000 + 3.0 + 1.0 // schiene + reflexion at 1000 Hz
 
 	if !almostEqual(level[4], expected) {
 		t.Errorf("1000 Hz with Feste Fahrbahn: expected %.3f, got %.3f", expected, level[4])
@@ -88,7 +88,7 @@ func TestTeilquelleWithBridge(t *testing.T) {
 		2, false, 0, false,
 	)
 
-	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
+	baseM1 := 62.0 + (-3.0) + 10.0*math.Log10(250.0/100.0)
 	expectedM1 := baseM1 + 6.0 // K_Br=6 for bridge type 2
 
 	if !almostEqual(levelM1[4], expectedM1) {
@@ -114,6 +114,80 @@ func TestTeilquelleWithBridge(t *testing.T) {
 	}
 }
 
+// TestTeilquelleBridgeSuppressesFahrbahnC1 covers Nr. 4.6: on a bridge the
+// Tabelle 7 Zeile 1-4 Fahrbahnart corrections must not be applied.
+//
+// REGRESSION (PLAN 1.7): "Brücke mit fester Fahrbahn" (Tabelle 9 Zeile 4,
+// K_Br = +4 dB) used to also collect c1 = +7 dB (Schiene) and +1 dB
+// (Reflexion) at 500 Hz, i.e. +8 dB too much.
+func TestTeilquelleBridgeSuppressesFahrbahnC1(t *testing.T) {
+	t.Parallel()
+
+	fz1 := FzKategorien[0]
+	tqM1 := fz1.Teilquellen[0] // m=1
+
+	const band500 = 3 // 500 Hz
+
+	// Reference: plain Schwellengleis on a "Brücke mit fester Fahrbahn"
+	// (bridge type 4, K_Br = +4 dB, K_LM not applicable).
+	ref := computeTeilquelleLevel(
+		tqM1, 4, 4, 250,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		4, false, 0, false,
+	)
+
+	// Same bridge, but the segment is annotated as Feste Fahrbahn.  Tabelle 7
+	// Zeile 1 and 2 must be suppressed, so the level must be identical.
+	onBridge := computeTeilquelleLevel(
+		tqM1, 4, 4, 250,
+		FahrbahnartFesteFahrbahn, SFahrbahnSchwellengleis, SurfaceCondNone,
+		4, false, 0, false,
+	)
+
+	for f := range NumBeiblattOctaveBands {
+		if !almostEqual(onBridge[f], ref[f]) {
+			t.Errorf(
+				"band %d: Feste Fahrbahn on a bridge must not add c1: expected %.3f, got %.3f",
+				f, ref[f], onBridge[f],
+			)
+		}
+	}
+
+	// Sanity: off the bridge the same c1 must still be applied (+7 +1 at 500 Hz).
+	offBridge := computeTeilquelleLevel(
+		tqM1, 4, 4, 250,
+		FahrbahnartFesteFahrbahn, SFahrbahnSchwellengleis, SurfaceCondNone,
+		0, false, 0, false,
+	)
+	plain := computeTeilquelleLevel(
+		tqM1, 4, 4, 250,
+		FahrbahnartSchwellengleis, SFahrbahnSchwellengleis, SurfaceCondNone,
+		0, false, 0, false,
+	)
+
+	if !almostEqual(offBridge[band500]-plain[band500], 8.0) {
+		t.Errorf(
+			"off the bridge, Feste Fahrbahn must add +8 dB at 500 Hz, got %.3f",
+			offBridge[band500]-plain[band500],
+		)
+	}
+
+	// Bahnübergang (Tabelle 7 Zeile 5/6) is NOT covered by the Nr. 4.6
+	// exclusion and must survive on a bridge.
+	crossingOnBridge := computeTeilquelleLevel(
+		tqM1, 4, 4, 250,
+		FahrbahnartBahnuebergang, SFahrbahnSchwellengleis, SurfaceCondNone,
+		4, false, 0, false,
+	)
+
+	if !almostEqual(crossingOnBridge[band500]-ref[band500], 9.0) {
+		t.Errorf(
+			"Bahnübergang on a bridge must keep its +9 dB at 500 Hz, got %.3f",
+			crossingOnBridge[band500]-ref[band500],
+		)
+	}
+}
+
 // TestTeilquelleWithBridgeMitigation verifies K_LM is applied when mitigation
 // is active and K_LM is not NaN.
 func TestTeilquelleWithBridgeMitigation(t *testing.T) {
@@ -129,7 +203,7 @@ func TestTeilquelleWithBridgeMitigation(t *testing.T) {
 		2, true, 0, false,
 	)
 
-	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
+	baseM1 := 62.0 + (-3.0) + 10.0*math.Log10(250.0/100.0)
 	expected := baseM1 + 6.0 + (-3.0) // K_Br + K_LM
 
 	if !almostEqual(level[4], expected) {
@@ -151,7 +225,7 @@ func TestTeilquelleWithCurve(t *testing.T) {
 		0, false, 200, false,
 	)
 
-	baseM1 := 62.0 + (-3.0) + 25.0*math.Log10(250.0/100.0)
+	baseM1 := 62.0 + (-3.0) + 10.0*math.Log10(250.0/100.0)
 	expected := baseM1 + 8.0 // K_L=8 for r<300
 
 	if !almostEqual(level[4], expected) {

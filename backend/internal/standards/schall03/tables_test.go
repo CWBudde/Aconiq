@@ -33,7 +33,8 @@ func TestSpeedFactorBRolling(t *testing.T) {
 		t.Fatalf("expected Rollgeraeusche, got %q", rolling.Description)
 	}
 
-	expected := BeiblattSpectrum{-5, -5, 0, 10, 25, 25, 25, 25}
+	// Tabelle 6, Zeile 2 (16. BImSchV Anlage 2, Nr. 4.3).
+	expected := BeiblattSpectrum{-5, -5, -5, 0, 10, 25, 25, 25}
 	if rolling.B != expected {
 		t.Errorf("rolling speed factor b: expected %v, got %v", expected, rolling.B)
 	}
@@ -81,8 +82,56 @@ func TestSpeedFactorBForTeilquelleRolling(t *testing.T) {
 			t.Errorf("m=%d: expected b[0]=-5, got %g", m, b[0])
 		}
 
-		if b[4] != 25 {
-			t.Errorf("m=%d: expected b[4]=25, got %g", m, b[4])
+		// 1000 Hz (index 4) is b = 10 per Tabelle 6, Zeile 2 — the band that a
+		// one-column shift of the row silently corrupts.
+		if b[4] != 10 {
+			t.Errorf("m=%d: expected b[4]=10, got %g", m, b[4])
+		}
+
+		if b[7] != 25 {
+			t.Errorf("m=%d: expected b[7]=25, got %g", m, b[7])
+		}
+	}
+}
+
+// TestSpeedFactorBRollingSpeedSweep exercises the Tabelle 6 Zeile 2 speed term
+// at speeds other than v₀ = 100 km/h.
+//
+// REGRESSION (PLAN 1.6): the row used to be shifted one band to the left
+// (a leading -5 dropped).  The speed term is b_f·lg(v/v₀), so any such error
+// cancels exactly at v = v₀ = 100 km/h and only shows up away from it — which
+// is why every unit test at 100 km/h passed with the wrong row.
+func TestSpeedFactorBRollingSpeedSweep(t *testing.T) {
+	t.Parallel()
+
+	b := SpeedFactorBForTeilquelle(1)
+
+	cases := []struct {
+		speedKPH float64
+		bandIdx  int
+		want     float64 // b_f · lg(v/v₀) in dB
+	}{
+		// 160 km/h, lg(1.6) = 0.204120.
+		{160, 3, 0.0},       //  500 Hz: b =  0
+		{160, 4, 2.041200},  // 1000 Hz: b = 10 (was 25 → +3.06 dB too loud)
+		{160, 5, 5.103000},  // 2000 Hz: b = 25
+		{160, 2, -1.020600}, //  250 Hz: b = -5 (was 0 → +1.02 dB too loud)
+		// 60 km/h, lg(0.6) = -0.221849.
+		{60, 4, -2.218488}, // 1000 Hz (was 25 → -3.33 dB too quiet)
+		{60, 3, 0.0},       //  500 Hz
+		{60, 2, 1.109244},  //  250 Hz
+		// 100 km/h: the blind spot — every band contributes exactly 0.
+		{100, 4, 0.0},
+		{100, 2, 0.0},
+	}
+
+	for _, tc := range cases {
+		got := b[tc.bandIdx] * math.Log10(tc.speedKPH/v0)
+		if math.Abs(got-tc.want) > 1e-6 {
+			t.Errorf(
+				"speed term at v=%g km/h, band %d: expected %.6f dB, got %.6f dB",
+				tc.speedKPH, tc.bandIdx, tc.want, got,
+			)
 		}
 	}
 }

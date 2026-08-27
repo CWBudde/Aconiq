@@ -199,7 +199,7 @@ func computeTeilquelleLevel(
 			L += curveCorrectionStrassenbahnForTeilquelle(curveRadiusM, tq.M)
 		} else {
 			// Eisenbahn: c1 from Table 7, c2 from Table 8, bridge from Table 9, curve per Nr. 4.3.
-			L += sumC1ForTeilquelle(fahrbahn, tq.M, f)
+			L += sumC1ForTeilquelle(effectiveFahrbahn(fahrbahn, bridgeType), tq.M, f)
 			L += sumC2ForTeilquelle(surface, tq.M, f)
 			L += bridgeCorrectionForTeilquelle(bridgeType, bridgeMitig, tq.M)
 			L += curveCorrectionForTeilquelle(curveRadiusM, tq.M)
@@ -209,6 +209,29 @@ func computeTeilquelleLevel(
 	}
 
 	return result
+}
+
+// effectiveFahrbahn suppresses the Tabelle 7 Fahrbahnart corrections that must
+// not be combined with a bridge correction.
+//
+// Nr. 4.6 (Brücken), last sentence of the paragraph introducing Tabelle 9:
+// "Korrekturen für Fahrbahnarten nach Tabelle 7 Zeile 1 bis 4 sind nicht
+// anzusetzen."  Zeilen 1-4 are the two "Feste Fahrbahn" variants (with and
+// without absorber); Zeilen 5 and 6 (Bahnübergang) are not covered by that
+// exclusion and stay in effect.
+//
+// Without this, "Brücke mit fester Fahrbahn" would collect K_Br = +4 dB *and*
+// c1 = +7 dB at 500 Hz.
+func effectiveFahrbahn(fahrbahn FahrbahnartType, bridgeType int) FahrbahnartType {
+	if bridgeType <= 0 || bridgeType > len(BridgeCorrectionTable) {
+		return fahrbahn
+	}
+
+	if fahrbahn == FahrbahnartFesteFahrbahn || fahrbahn == FahrbahnartFesteFahrbahnMitAbsorber {
+		return FahrbahnartSchwellengleis
+	}
+
+	return fahrbahn
 }
 
 // sumC1ForTeilquelle returns the total c1 correction from Table 7 for a given

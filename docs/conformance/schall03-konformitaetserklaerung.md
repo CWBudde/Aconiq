@@ -27,7 +27,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 - Speed factor per source type (Rollgeräusch, aerodynamisch, Aggregat, Antrieb) — Table 6
 - Track corrections c1 for Fahrbahnarten (Schwellengleis reference, feste Fahrbahn, feste Fahrbahn mit Absorber, Bahnübergang) — Table 7
 - Surface corrections c2 (büG, Schienenstegdämpfer, Schienenstegabschirmung) — Table 8
-- Bridge corrections K_Br and K_LM for types 1–4 — Table 9
+- Bridge corrections K_Br and K_LM for types 1–4 — Table 9, applied to Teilquellen 1 and 2 only, with the Table 7 rows 1–4 Fahrbahnart corrections suppressed on bridges per Nr. 4.6 ("Korrekturen für Fahrbahnarten nach Tabelle 7 Zeile 1 bis 4 sind nicht anzusetzen")
 - Curve noise Auffälligkeitskorrektur K_L / K_LA (r < 300 m, 300–500 m, ≥ 500 m) — Table 11
 - 19 standard Zugarten with factory compositions — Table 4
 
@@ -46,7 +46,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 - Path difference z (Gl. 25 for parallel edges, Gl. 26 for non-parallel)
 - Meteorological correction K_met (Gl. 23–24)
 - Multiple diffraction factor C₃ (Gl. 22)
-- Reflective barrier correction D_refl (Gl. 20)
+- Reflective barrier correction D_refl (Gl. 20), restricted per Gl. 20 to reflective walls at d_s ≤ 5 m with an absorbing base
 - D_z caps: 20 dB (single barrier), 25 dB (double barrier)
 - C₂ = 40 (normative value for Strecke)
 
@@ -130,7 +130,8 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 - Einfachbeugung (D_z ≤ 20 dB) und Doppelbeugung (D_z ≤ 25 dB, C₃-Faktor Gl. 22) ✓
 - Seitliche Beugung um Schirmenden (Gl. 18) ✓
 - Minimum aus Beugung über Oberkante und seitlicher Beugung je Oktavband ✓
-- D_refl-Korrektur für absorbierende Sockelflächen (Gl. 20) ✓
+- D_refl-Korrektur nach Gl. 20 ✓ — ausschließlich für reflektierende Schallschutzwände im Abstand d_s ≤ 5 m mit absorbierendem Sockel der Höhe h_abs; absorbierende Wände und Wände mit d_s > 5 m behalten ihre volle Abschirmwirkung (Gl. 20 Anmerkung 5). Die Eigenschaft „reflektierend“ wird über das Feld `reflective` je `BarrierSegment` gesetzt; ohne Angabe gilt die Wand als absorbierend.
+- e nach Bild 6 als Laufweglänge zwischen erster und letzter Schirmkante (e = e₁ + e₂ + e₃ …), nicht als Sehne zwischen den äußeren Kanten ✓
 - Meteorologische Korrektur K_met (Gl. 23–24) ✓
 - Barriereattenuation auf direkten Ausbreitungswegen ✓
 - Barriereattenuation auf reflektierten Ausbreitungswegen (Spiegelquelle als Quelle) ✓
@@ -162,3 +163,6 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 1. **Line source integration step**: Subsegment length is variable (auto-computed from track geometry); this may introduce minor numerical differences vs. implementations using a fixed step. Results converge to the same value as step length decreases.
 2. **Ground absorption**: Both A_gr,B (land, Gl. 14) and A_gr,W (water body, Gl. 16) are implemented. The water body fraction is specified per `TrackSegment` via `water_body_fraction_w` (0–1), which is a simplification: in a full terrain model, water fractions would be computed per propagation path.
 3. **Reflection paths**: Image-source reflections per Gl. 27–28 are supported up to 3rd order. Combined reflection + barrier diffraction paths are supported (barrier attenuation applied along reflected path using image source position).
+4. **Mean path height h_m (Gl. 14/15)**: Gl. 15 defines h_m = S/d, with S the area between the propagation path and the terrain profile (Bild 4). Aconiq carries no terrain profile for Schall 03 propagation and evaluates the flat-ground special case instead, where the area under the straight source–receiver path is a trapezoid and S/d reduces exactly to (h_g + h_r)/2. Over sloping or undulating ground the value therefore deviates from the normative h_m; ground attenuation A_gr,B is affected accordingly. Removing this simplification requires terrain-profile sampling along each propagation path.
+5. **Lateral diffraction around a Seitenkante**: The diffraction point on a vertical side edge is placed at the height that minimises the detour length (linear interpolation between source and receiver height), clamped to the barrier top. The standard specifies the geometry only through Gl. 26 and Bild 5; this is the shortest-path reading of it.
+6. **Effective speed floor (Nr. 4.3 vs. Nr. 5.3.2)**: The 50 km/h substitute speed of Nr. 5.3.2 is currently applied to all track segments, including Eisenbahn segments. Nr. 4.3 (Eisenbahnen) prescribes no such floor — it only requires at least 70 km/h in Personenbahnhof and Haltepunkt/Haltestelle areas, which is implemented via the `is_station` flag. For Straßenbahnen, Nr. 5.3.2 restricts the 50 km/h substitution to Weichen, Kreuzungen and Haltestellen (each plus 25 m on either side), whereas the implementation applies it to the whole segment. Both deviations are open.

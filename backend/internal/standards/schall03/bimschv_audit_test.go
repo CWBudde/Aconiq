@@ -27,10 +27,10 @@ func TestTable6_SpeedFactorB_BGBl2285(t *testing.T) {
 		want [8]float64
 	}{
 		// Row 1: Rollgeräusche (m=1,2,3,4)
-		{"m=1 Rollgeraeusch", 1, [8]float64{-5, -5, 0, 10, 25, 25, 25, 25}},
-		{"m=2 Rollgeraeusch", 2, [8]float64{-5, -5, 0, 10, 25, 25, 25, 25}},
-		{"m=3 Rollgeraeusch", 3, [8]float64{-5, -5, 0, 10, 25, 25, 25, 25}},
-		{"m=4 Rollgeraeusch", 4, [8]float64{-5, -5, 0, 10, 25, 25, 25, 25}},
+		{"m=1 Rollgeraeusch", 1, [8]float64{-5, -5, -5, 0, 10, 25, 25, 25}},
+		{"m=2 Rollgeraeusch", 2, [8]float64{-5, -5, -5, 0, 10, 25, 25, 25}},
+		{"m=3 Rollgeraeusch", 3, [8]float64{-5, -5, -5, 0, 10, 25, 25, 25}},
+		{"m=4 Rollgeraeusch", 4, [8]float64{-5, -5, -5, 0, 10, 25, 25, 25}},
 		// Row 2: Aerodynamische Geräusche (m=5,6,7)
 		{"m=5 Aerodynamisch", 5, [8]float64{50, 50, 50, 50, 50, 50, 50, 50}},
 		{"m=6 Aerodynamisch", 6, [8]float64{50, 50, 50, 50, 50, 50, 50, 50}},

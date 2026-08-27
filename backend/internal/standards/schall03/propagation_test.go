@@ -63,23 +63,31 @@ func TestAatmGl12(t *testing.T) {
 func TestAgrBGl14(t *testing.T) {
 	t.Parallel()
 
-	// A_gr,B = [4.8 - (2·h_m/d)·(17 + 300·d_p/d)] ≥ 0
-	// h_m=0.1, d=1000, d_p=1000:
-	// A_gr,B = 4.8 - (0.2/1000)·(17+300) = 4.8 - 0.0634 = 4.737
-	got := agrB(0.1, 1000.0, 1000.0)
-	almostEqualProp(t, got, 4.737, 0.01, "agrB(h=0.1, d=1000, dp=1000)")
+	// A_gr,B = [4.8 - (2·h_m/d)·(17 + 300·d₀/d)] ≥ 0 with d₀ = 1 m (Gl. 11).
+	// h_m=0.1, d=1000:
+	// A_gr,B = 4.8 - (0.2/1000)·(17 + 0.3) = 4.8 - 0.00346 = 4.79654
+	got := agrB(0.1, 1000.0)
+	almostEqualProp(t, got, 4.79654, 0.0001, "agrB(h=0.1, d=1000)")
 
 	// Large h_m — result clamped to 0.
-	// h_m=5, d=200, d_p=200:
-	// 4.8 - (10/200)·(17+300) = 4.8 - 15.85 = -11.05 → clamped to 0
-	got2 := agrB(5.0, 200.0, 200.0)
+	// h_m=50, d=200: 4.8 - (100/200)·(17+1.5) = 4.8 - 9.25 = -4.45 → 0
+	got2 := agrB(50.0, 200.0)
 	almostEqualProp(t, got2, 0.0, 0.001, "agrB clamped to zero")
 
-	// Near-grazing with low d_p:
-	// h_m=1, d=50, d_p=50:
-	// 4.8 - (2/50)·(17+300) = 4.8 - 12.68 = -7.88 → clamped to 0
-	got3 := agrB(1.0, 50.0, 50.0)
-	almostEqualProp(t, got3, 0.0, 0.001, "agrB low d_p clamped")
+	// Typical assessment geometry: h_m=2, d=100.
+	// 4.8 - (4/100)·(17 + 3) = 4.8 - 0.8 = 4.0
+	got3 := agrB(2.0, 100.0)
+	almostEqualProp(t, got3, 4.0, 0.0001, "agrB(h=2, d=100)")
+
+	// REGRESSION (PLAN 1.5): d₀ is the 1 m reference length of Gl. 11, not the
+	// land path length.  Substituting d_p = d here would give
+	// 4.8 - (4/100)·(17+300) = -7.88 → 0 dB, i.e. no ground damping at all.
+	if got3 == 0 {
+		t.Error("agrB(2, 100) must not vanish — d₀ = 1 m, not d_p")
+	}
+
+	// Short range: h_m=1, d=10 → 4.8 - (2/10)·(17+30) = 4.8 - 9.4 → 0
+	almostEqualProp(t, agrB(1.0, 10.0), 0.0, 0.001, "agrB short range clamped")
 }
 
 // ---------------------------------------------------------------------------

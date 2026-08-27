@@ -28,7 +28,9 @@ var SpeedFactorBTable = [4]SpeedFactorEntry{
 	{
 		Description: "Rollgeraeusche",
 		Teilquellen: []int{1, 2, 3, 4},
-		B:           BeiblattSpectrum{-5, -5, 0, 10, 25, 25, 25, 25},
+		// Tabelle 6, Zeile 2: 63/125/250 Hz = -5, 500 Hz = 0, 1000 Hz = 10,
+		// 2000/4000/8000 Hz = 25.
+		B: BeiblattSpectrum{-5, -5, -5, 0, 10, 25, 25, 25},
 	},
 	{
 		Description: "Aerodynamische Geraeusche",

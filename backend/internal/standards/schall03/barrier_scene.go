@@ -19,10 +19,16 @@ type BarrierSegment struct {
 	B geo.Point2D `json:"b"`
 	// TopHeightM is the barrier top height above ground [m].
 	TopHeightM float64 `json:"top_height_m"`
-	// BaseHeightM is the height of the absorbing base (Sockel) above rail
-	// level [m].  Used for D_refl correction (Gl. 20).  Set to 0 for a
-	// fully reflective barrier.
+	// BaseHeightM is the height h_abs of the absorbing base (Sockel) above
+	// rail level [m].  Used for D_refl (Gl. 20), and only read when
+	// Reflective is true.  0 means the reflective wall has no absorbing base.
 	BaseHeightM float64 `json:"base_height_m"`
+	// Reflective marks the barrier face towards the track as acoustically
+	// reflective.  Gl. 20 defines D_refl only for "reflektierende
+	// Schallschutzwände ... mit absorbierendem Sockel"; absorbing walls keep
+	// their full insertion loss.  Defaults to false (absorbing), so an
+	// unannotated barrier is not penalised.
+	Reflective bool `json:"reflective,omitempty"`
 	// ThicknessM is the barrier thickness (distance between two diffraction
 	// edges) [m].  0 for a thin single-edge barrier; >0 for a wide barrier
 	// with double diffraction (Gl. 22, C₃ factor).
@@ -240,9 +246,13 @@ func upperConvexHull(points []hullPoint) []hullPoint {
 // edges selected by the rubber band method.
 //
 // For 1 edge: single diffraction (IsDouble=false, E=0).
-// For 2 edges: double diffraction (IsDouble=true, E=distance between edges).
-// For >2 edges: uses the outermost two edges (the standard caps D_z at 25 dB
-// for double diffraction; intermediate edges are subsumed by the hull).
+// For >= 2 edges: multiple diffraction (IsDouble=true).  d_s runs from the
+// source to the first edge and d_r from the last edge to the receiver; e is the
+// travel path length between the first and the last Schirmkante, i.e. the sum
+// e = e₁ + e₂ + e₃ … over every consecutive pair of selected edges (Bild 6/7,
+// Gl. 25/26: "e  Laufweglänge zwischen erster und letzter Schirmkante").
+// Taking the straight chord from the first to the last edge instead would
+// under-estimate e and therefore z.
 //
 // sourceHeightM and receiverHeightM are heights above ground [m].
 // totalHorizDistM is the horizontal source→receiver distance [m].
@@ -262,11 +272,22 @@ func ComputeBarrierGeometryFromEdges(
 		return singleEdgeGeometry(edges[0], sourceHeightM, receiverHeightM, totalHorizDistM, d)
 	}
 
-	// Double diffraction: use first and last edge.
-	first := edges[0]
-	last := edges[len(edges)-1]
+	return multiEdgeGeometry(edges, sourceHeightM, receiverHeightM, totalHorizDistM, d)
+}
 
-	return doubleEdgeGeometry(first, last, sourceHeightM, receiverHeightM, totalHorizDistM, d)
+// diffractedEdgeRunLength returns e, the travel path length along the
+// diffracted ray between the first and the last selected Schirmkante
+// (Bild 6: e = e₁ + e₂ + e₃ …).
+func diffractedEdgeRunLength(edges []DiffractionEdge) float64 {
+	var e float64
+
+	for i := 1; i < len(edges); i++ {
+		horiz := edges[i].DistFromSource - edges[i-1].DistFromSource
+		vert := edges[i].HeightM - edges[i-1].HeightM
+		e += math.Sqrt(horiz*horiz + vert*vert)
+	}
+
+	return e
 }
 
 // singleEdgeGeometry computes BarrierGeometry for a single diffraction edge.
@@ -293,17 +314,21 @@ func singleEdgeGeometry(
 		Z:              z,
 		E:              0,
 		Habs:           edge.Barrier.BaseHeightM,
+		ReflectiveWall: edge.Barrier.Reflective,
 		IsDouble:       false,
 		TopDiffraction: true,
 	}
 }
 
-// doubleEdgeGeometry computes BarrierGeometry for double diffraction using the
-// first and last selected edges.
-func doubleEdgeGeometry(
-	first, last DiffractionEdge,
+// multiEdgeGeometry computes BarrierGeometry for multiple diffraction over two
+// or more selected edges.
+func multiEdgeGeometry(
+	edges []DiffractionEdge,
 	sourceH, receiverH, totalHorizDist, directDist float64,
 ) BarrierGeometry {
+	first := edges[0]
+	last := edges[len(edges)-1]
+
 	// 3D distance source→first edge top.
 	dhS := first.HeightM - sourceH
 	ds := math.Sqrt(first.DistFromSource*first.DistFromSource + dhS*dhS)
@@ -313,23 +338,31 @@ func doubleEdgeGeometry(
 	dhR := receiverH - last.HeightM
 	dr := math.Sqrt(horizDR*horizDR + dhR*dhR)
 
-	// Distance between the two edges (barrier "thickness" e).
-	horizE := last.DistFromSource - first.DistFromSource
-	dhE := last.HeightM - first.HeightM
-	e := math.Sqrt(horizE*horizE + dhE*dhE)
+	// e = e₁ + e₂ + e₃ … along the diffracted path (Bild 6), not the chord.
+	e := diffractedEdgeRunLength(edges)
 
 	// Path difference z per Gl. 26 (non-parallel top diffraction).
-	z := ds + dr + e - directDist
+	z := pathDifferenceNonParallel(ds, dr, e, directDist)
 
-	// Use the larger BaseHeightM for D_refl (conservative: less correction).
-	habs := math.Max(first.Barrier.BaseHeightM, last.Barrier.BaseHeightM)
+	// D_refl (Gl. 20) is governed by the source-side wall: it is the wall at
+	// distance d_s that reflects between itself and the wagon body.
+	habs := first.Barrier.BaseHeightM
+	reflective := first.Barrier.Reflective
 
-	// Check if the two barriers have parallel edges.
-	isParallel := first.Barrier.IsParallel && last.Barrier.IsParallel
+	// Gl. 25 applies only when every selected Beugungskante is parallel.
+	isParallel := true
+
+	for _, edge := range edges {
+		if !edge.Barrier.IsParallel {
+			isParallel = false
+
+			break
+		}
+	}
 
 	if isParallel {
 		// Gl. 25: z = sqrt((ds+dr+e)² + dPar²) - d.
-		// For top diffraction between two parallel barriers, dPar = 0.
+		// For top diffraction between parallel barriers, dPar = 0.
 		z = pathDifferenceParallel(ds, dr, e, 0, directDist)
 	}
 
@@ -340,6 +373,7 @@ func doubleEdgeGeometry(
 		Z:              z,
 		E:              e,
 		Habs:           habs,
+		ReflectiveWall: reflective,
 		IsDouble:       true,
 		TopDiffraction: true,
 	}
@@ -395,19 +429,35 @@ func lateralPathAbar(
 	source, receiver, endpoint geo.Point2D,
 	sourceH, receiverH, barrierTopH, directDist float64,
 ) (BeiblattSpectrum, bool) {
-	// Horizontal distances.
+	// Horizontal distances of the plan-view detour around the Seitenkante.
 	horizSE := geo.Distance(source, endpoint)
 	horizER := geo.Distance(endpoint, receiver)
+	horizTotal := horizSE + horizER
 
-	// 3D distances: use barrier top height at the endpoint.
-	dhS := barrierTopH - sourceH
+	if horizTotal <= 0 {
+		return BeiblattSpectrum{}, false
+	}
+
+	// A Seitenkante is a vertical edge (Nr. 6.5: "eine Seitenkante als eine
+	// Gerade"), so the diffraction point is free to slide along it and the
+	// shortest detour touches it where both legs share the same slope — the
+	// linear interpolation between source and receiver height.  The path goes
+	// *around* the edge, so it must not be charged the full climb to the
+	// barrier crest; only where the optimum would sit above the crest does the
+	// top of the wall limit it.
+	edgeH := sourceH + (receiverH-sourceH)*horizSE/horizTotal
+	if edgeH > barrierTopH {
+		edgeH = barrierTopH
+	}
+
+	dhS := edgeH - sourceH
 	ds := math.Sqrt(horizSE*horizSE + dhS*dhS)
 
-	dhR := receiverH - barrierTopH
+	dhR := receiverH - edgeH
 	dr := math.Sqrt(horizER*horizER + dhR*dhR)
 
-	// Path difference z per Gl. 26.
-	z := ds + dr - directDist
+	// Path difference z per Gl. 26 (single edge, e = 0).
+	z := pathDifferenceNonParallel(ds, dr, 0, directDist)
 
 	if z <= 0 {
 		return BeiblattSpectrum{}, false // no screening effect
@@ -434,16 +484,34 @@ func lateralPathAbar(
 	return abar, true
 }
 
-// energeticTotalSpectrum returns the A-weighted energetic sum of a BeiblattSpectrum
-// for comparison purposes (lower = less attenuation = dominant path).
+// energeticTotalSpectrum collapses a per-band attenuation spectrum into a
+// single effective broadband attenuation in dB, for ranking competing
+// diffraction paths (lower = less attenuation = dominant path).
+//
+// The bands are combined energetically, not arithmetically: what competes
+// between two paths is transmitted acoustic energy, so each band contributes
+// 10^(-A_f/10) and the result is
+//
+//	A_eff = -10·lg( (1/N)·Σ_f 10^(-A_f/10) ).
+//
+// Beiblatt spectra are already A-weighted band levels (a_A + Δa_f), so no
+// further weighting is applied here; assuming a flat spectrum across the eight
+// bands makes A_eff depend only on the attenuation being ranked.  Adding the
+// dB values arithmetically would let a path that is opaque in one band
+// out-rank one that is transparent in the band that actually carries the
+// energy.
 func energeticTotalSpectrum(s BeiblattSpectrum) float64 {
 	sum := 0.0
 
 	for f := range NumBeiblattOctaveBands {
-		sum += s[f]
+		sum += math.Pow(10, -0.1*s[f])
 	}
 
-	return sum
+	if sum <= 0 {
+		return math.Inf(1)
+	}
+
+	return -10 * math.Log10(sum/float64(NumBeiblattOctaveBands))
 }
 
 // ComputePathBarrierAttenuation computes the barrier attenuation A_bar for a

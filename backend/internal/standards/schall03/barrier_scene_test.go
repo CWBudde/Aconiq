@@ -448,7 +448,9 @@ func TestBarrierGeometryDoubleBarrier(t *testing.T) {
 	// e  = sqrt(40² + 0²) = 40.0 (same height, horiz only)
 	// d  = 100
 	// z  = ds + dr + e - d ≈ 30.41 + 30.41 + 40 - 100 = 0.82
-	// habs = max(0.5, 1.0) = 1.0
+	// habs = 0.5 — Gl. 20 is about the reflection between the *source-side*
+	//        wall (the one at distance d_s) and the wagon body, so the base
+	//        height of the first edge governs.
 	edges := []schall03.DiffractionEdge{
 		makeEdge(30, 5, 0.5, 0),
 		makeEdge(70, 5, 1.0, 1),
@@ -461,7 +463,7 @@ func TestBarrierGeometryDoubleBarrier(t *testing.T) {
 	assertApproxRefl(t, bg.D, 100.0, 0.01, "d")
 	assertApproxRefl(t, bg.E, 40.0, 0.01, "e")
 	assertApproxRefl(t, bg.Z, 0.82, 0.02, "z")
-	assertApproxRefl(t, bg.Habs, 1.0, 0.001, "habs (max of two)")
+	assertApproxRefl(t, bg.Habs, 0.5, 0.001, "habs from the source-side wall")
 
 	if !bg.IsDouble {
 		t.Error("two barriers should be double diffraction")

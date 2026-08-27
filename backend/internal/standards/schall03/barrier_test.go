@@ -129,18 +129,37 @@ func TestC3Multiple(t *testing.T) {
 func TestDreflGl20(t *testing.T) {
 	t.Parallel()
 
-	// D_refl = max(3 - h_abs, 0)
+	// D_refl = max(3 - h_abs, 0) — reflective wall at d_s ≤ 5 m.
+	refl := func(habs, ds float64) BarrierGeometry {
+		return BarrierGeometry{Ds: ds, Habs: habs, ReflectiveWall: true}
+	}
+
 	// h_abs=1m: D_refl = 2
-	almostEqualBarrier(t, drefl(1.0), 2.0, 0.001, "drefl(1m)")
+	almostEqualBarrier(t, drefl(refl(1.0, 4.0)), 2.0, 0.001, "drefl(1m)")
 
 	// h_abs=3m: D_refl = 0
-	almostEqualBarrier(t, drefl(3.0), 0.0, 0.001, "drefl(3m)")
+	almostEqualBarrier(t, drefl(refl(3.0, 4.0)), 0.0, 0.001, "drefl(3m)")
 
 	// h_abs=4m: clamped to 0
-	almostEqualBarrier(t, drefl(4.0), 0.0, 0.001, "drefl(4m)")
+	almostEqualBarrier(t, drefl(refl(4.0, 4.0)), 0.0, 0.001, "drefl(4m)")
 
 	// h_abs=0: D_refl = 3
-	almostEqualBarrier(t, drefl(0.0), 3.0, 0.001, "drefl(0m)")
+	almostEqualBarrier(t, drefl(refl(0.0, 4.0)), 3.0, 0.001, "drefl(0m)")
+
+	// Boundary: d_s = 5 m still applies (Gl. 20: "im Abstand d_s ≤ 5 m").
+	almostEqualBarrier(t, drefl(refl(0.0, 5.0)), 3.0, 0.001, "drefl at d_s=5m")
+
+	// REGRESSION (PLAN 1.7): beyond d_s = 5 m, D_refl must vanish
+	// (Gl. 20 Anmerkung 5), otherwise every barrier loses up to 3 dB.
+	almostEqualBarrier(t, drefl(refl(0.0, 5.001)), 0.0, 0.001, "drefl beyond d_s=5m")
+	almostEqualBarrier(t, drefl(refl(0.0, 25.0)), 0.0, 0.001, "drefl at d_s=25m")
+
+	// REGRESSION (PLAN 1.7): an absorbing wall never gets D_refl, at any d_s.
+	almostEqualBarrier(
+		t,
+		drefl(BarrierGeometry{Ds: 2.0, Habs: 0.0, ReflectiveWall: false}),
+		0.0, 0.001, "drefl on an absorbing wall",
+	)
 }
 
 // ---------------------------------------------------------------------------

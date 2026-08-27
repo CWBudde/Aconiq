@@ -141,16 +141,42 @@ func aatm(alpha, d float64) float64 {
 	return alpha * d / 1000.0
 }
 
+// groundReferenceLengthM is the reference length d₀ = 1 m defined with Gl. 11
+// ("d₀ = 1 m  Bezugslänge") and reused by Gl. 14.
+const groundReferenceLengthM = 1.0
+
 // agrB computes ground absorption over land per Gl. 14.
 //
-//	A_gr,B = [4.8 - (2·h_m/d)·(17 + 300·d_p/d)] ≥ 0 dB
+//	A_gr,B = [4.8 - (2·h_m/d)·(17 + 300·d₀/d)] dB ≥ 0 dB
 //
-// h_m: mean height of propagation path above ground [m],
-// d:   source–receiver distance [m],
-// d_p: length of propagation path over land [m].
-func agrB(hm, d, dp float64) float64 {
-	val := 4.8 - (2.0*hm/d)*(17.0+300.0*dp/d)
+// The variable list of Gl. 14 contains only h_m, d and S — d₀ is the 1 m
+// reference length introduced with Gl. 11, not a path length.  d_p appears
+// only in Gl. 16 (the water term).
+//
+// h_m: mean height of the propagation path above ground [m] (Gl. 15, Bild 4),
+// d:   distance between source centre and receiver [m].
+func agrB(hm, d float64) float64 {
+	val := 4.8 - (2.0*hm/d)*(17.0+300.0*groundReferenceLengthM/d)
 	return math.Max(val, 0.0)
+}
+
+// meanPathHeight returns h_m, the mean height of the propagation path above
+// ground, for Gl. 14.
+//
+// KNOWN SIMPLIFICATION: Gl. 15 defines h_m = S/d, with S the area between the
+// propagation path and the terrain profile (Bild 4).  This implementation has
+// no terrain profile and therefore evaluates the flat-ground special case, for
+// which the area under the straight source→receiver path is a trapezoid and
+// S/d reduces exactly to (h_g + h_r)/2.  Over sloping or undulating ground the
+// value deviates from the normative h_m.  Listed in
+// docs/conformance/schall03-konformitaetserklaerung.md as a known limitation.
+func meanPathHeight(hg, hr float64) float64 {
+	hm := (hg + hr) / 2
+	if hm < 0 {
+		hm = 0
+	}
+
+	return hm
 }
 
 // agrW computes the water-body ground correction per Gl. 16.

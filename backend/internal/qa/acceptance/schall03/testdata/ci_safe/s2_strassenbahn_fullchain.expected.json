@@ -5,20 +5,20 @@
       "x": 150,
       "y": 25,
       "height_m": 3.5,
-      "LpAeqDay": 54.452301,
-      "LpAeqNight": 51.442001,
-      "LrDay": 54.452301,
-      "LrNight": 51.442001
+      "LpAeqDay": 52.8601,
+      "LpAeqNight": 49.8498,
+      "LrDay": 52.8601,
+      "LrNight": 49.8498
     },
     {
       "id": "r_75m",
       "x": 150,
       "y": 75,
       "height_m": 3.5,
-      "LpAeqDay": 49.037209,
-      "LpAeqNight": 46.026909,
-      "LrDay": 49.037209,
-      "LrNight": 46.026909
+      "LpAeqDay": 45.072,
+      "LpAeqNight": 42.0617,
+      "LrDay": 45.072,
+      "LrNight": 42.0617
     }
   ]
 }

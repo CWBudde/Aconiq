@@ -40,6 +40,11 @@ type BarrierGeometry struct {
 	// Habs is the height of the absorbing surface at the barrier base [m].
 	// Used for D_refl correction (Gl. 20).
 	Habs float64
+	// ReflectiveWall is true when the source-side diffraction edge belongs to a
+	// reflective (i.e. non-absorbing) noise barrier.  D_refl (Gl. 20) models the
+	// multiple reflection between a *reflektierende* Schallschutzwand and the
+	// wagon body, so it must not be applied to absorbing walls.
+	ReflectiveWall bool
 	// IsDouble is true when two separate barrier edges are present.
 	IsDouble bool
 	// TopDiffraction is true when the path goes over the barrier top rather
@@ -127,12 +132,28 @@ func c3Multiple(lambda, e float64) float64 {
 	return (1.0 + ratio*ratio) / (1.0/3.0 + ratio*ratio)
 }
 
+// dReflMaxDsM is the maximum source-to-diffraction-edge distance d_s for which
+// D_refl applies (Gl. 20: "reflektierende Schallschutzwände im Abstand
+// d_s ≤ 5 m"; Anmerkung 5: "Bei Abständen > 5 m zwischen Schallquelle und
+// reflektierender Schallschutzwand kann D_refl vernachlässigt werden").
+const dReflMaxDsM = 5.0
+
 // drefl computes the correction for reflective barriers with an absorbing base
 // per Gl. 20.
 //
-//	D_refl = max(3 - h_abs/1m, 0) dB
-func drefl(habs float64) float64 {
-	return math.Max(3.0-habs, 0.0)
+//	D_refl = (3 - h_abs/1 m) dB ≥ 0 dB
+//
+// Gl. 20 restricts this to *reflektierende* Schallschutzwände at a distance
+// d_s ≤ 5 m from the source that carry an absorbing base (Sockel) of height
+// h_abs above the Schienenoberkante.  Both conditions are enforced here: an
+// absorbing wall, or one further away than d_s = 5 m, gets D_refl = 0 dB and
+// therefore keeps its full insertion loss.
+func drefl(geom BarrierGeometry) float64 {
+	if !geom.ReflectiveWall || geom.Ds > dReflMaxDsM {
+		return 0.0
+	}
+
+	return math.Max(3.0-geom.Habs, 0.0)
 }
 
 // ComputeAbarYard computes barrier attenuation for a Rangierbahnhof path
@@ -166,7 +187,7 @@ func ComputeAbarYard(geom BarrierGeometry, agrBandValues BeiblattSpectrum) Beibl
 
 		if geom.TopDiffraction {
 			// Gl. 19: A_bar = D_z - D_refl - A_gr ≥ 0
-			dr := drefl(geom.Habs)
+			dr := drefl(geom)
 			abar = math.Max(dz-dr-agrBandValues[f], 0)
 		} else {
 			// Gl. 18: A_bar = D_z ≥ 0
@@ -216,7 +237,7 @@ func ComputeAbar(geom BarrierGeometry, agrBandValues BeiblattSpectrum) BeiblattS
 
 		if geom.TopDiffraction {
 			// Gl. 19: A_bar = D_z - D_refl - A_gr ≥ 0
-			dr := drefl(geom.Habs)
+			dr := drefl(geom)
 			abar = math.Max(dz-dr-agrBandValues[f], 0)
 		} else {
 			// Gl. 18: A_bar = D_z ≥ 0

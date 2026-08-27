@@ -235,14 +235,16 @@ func ReflectedSubsegmentContrib(
 
 	var contrib float64
 
-	for h, spectrum := range emission.PerHeight {
+	for _, h := range teilquelleHeightIndices {
+		spectrum, present := emission.PerHeight[h]
+		if !present {
+			continue
+		}
+
 		hg := elevationM + heightAboveSO[h]
 		hr := receiver.HeightM
 
-		hm := (hg + hr) / 2
-		if hm < 0 {
-			hm = 0
-		}
+		hm := meanPathHeight(hg, hr)
 
 		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
 		if dSlant < 1 {
@@ -254,7 +256,7 @@ func ReflectedSubsegmentContrib(
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant, dLand)
+			agrVal += agrB(hm, dSlant)
 		}
 
 		for f := range NumBeiblattOctaveBands {
@@ -293,14 +295,16 @@ func ReflectedSubsegmentContribWithBarriers(
 
 	var contrib float64
 
-	for h, spectrum := range emission.PerHeight {
+	for _, h := range teilquelleHeightIndices {
+		spectrum, present := emission.PerHeight[h]
+		if !present {
+			continue
+		}
+
 		hg := elevationM + heightAboveSO[h]
 		hr := receiver.HeightM
 
-		hm := (hg + hr) / 2
-		if hm < 0 {
-			hm = 0
-		}
+		hm := meanPathHeight(hg, hr)
 
 		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
 		if dSlant < 1 {
@@ -312,7 +316,7 @@ func ReflectedSubsegmentContribWithBarriers(
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant, dLand)
+			agrVal += agrB(hm, dSlant)
 		}
 
 		// Barrier attenuation along the reflected path (image source → receiver).
@@ -509,10 +513,15 @@ func ComputeReflectedLineSourceLpAeq(
 			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 
 			for _, rp := range paths {
-				// Use the first geometry's image source for directivity angle.
+				// Gl. 28: D_Ir is the directivity of the point source "in der Richtung
+				// des Spiegelschallempfängers" — the direction from the source towards
+				// the mirrored receiver, which is the same ray as source → first
+				// reflection point (Bild 8: R lies on Q–IO_i).  The source→own-image
+				// direction is perpendicular to the wall by construction and does not
+				// depend on the receiver at all.
 				firstGeom := rp.Geometries[0]
-				rvX := firstGeom.ImageSource.X - pt.X
-				rvY := firstGeom.ImageSource.Y - pt.Y
+				rvX := firstGeom.ReflectionPoint.X - pt.X
+				rvY := firstGeom.ReflectionPoint.Y - pt.Y
 				dp := math.Sqrt(rvX*rvX + rvY*rvY)
 
 				if dp < 1 {
@@ -588,9 +597,11 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 
 			for _, rp := range paths {
+				// Gl. 28: directivity towards the first reflection point (see the
+				// comment in ComputeReflectedLineSourceLpAeq).
 				firstGeom := rp.Geometries[0]
-				rvX := firstGeom.ImageSource.X - pt.X
-				rvY := firstGeom.ImageSource.Y - pt.Y
+				rvX := firstGeom.ReflectionPoint.X - pt.X
+				rvY := firstGeom.ReflectionPoint.Y - pt.Y
 				dp := math.Sqrt(rvX*rvX + rvY*rvY)
 
 				if dp < 1 {
