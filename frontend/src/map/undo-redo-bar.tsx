@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/ui/components/tooltip";
 import { useModelStore } from "@/model/model-store";
+import { isTextEntryTarget } from "./event-utils";
 import { m } from "@/i18n/messages";
 
 export function UndoRedoBar() {
@@ -17,6 +18,10 @@ export function UndoRedoBar() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // The shortcut is global, so it would otherwise steal Ctrl+Z from any
+      // focused text field — typing in the feature editor and undoing a typo
+      // reverted a map edit instead, with no way to get the text back.
+      if (isTextEntryTarget(e.target)) return;
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
         if (e.shiftKey) {

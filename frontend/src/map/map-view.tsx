@@ -57,9 +57,12 @@ const INTERACTIVE_LAYERS = [
 
 interface MapViewProps {
   children?: React.ReactNode;
-  /** Initial center [lng, lat]. Default: center of Germany. */
+  /**
+   * Initial center [lng, lat]. Default: center of Germany. Read once on mount;
+   * later changes are ignored so the user's pan is never yanked back.
+   */
   center?: [number, number];
-  /** Initial zoom level. */
+  /** Initial zoom level. Read once on mount, like `center`. */
   zoom?: number;
   /** Called when a feature is clicked. */
   onFeatureClick?: (features: MapGeoJSONFeature[], e: MapMouseEvent) => void;
@@ -82,6 +85,13 @@ export function MapView({
   );
   const basemap = useMapStore((s) => s.basemap);
 
+  // `center`/`zoom` are documented as the *initial* viewport, so they are read
+  // through a ref that is never updated. Keeping them in the init effect's
+  // dependency list tore the map down and rebuilt it on every model edit (the
+  // caller re-derives the view from the model), losing the user's pan/zoom,
+  // re-adding every layer and re-arming the load-timeout fallback.
+  const initialViewRef = useRef({ center, zoom });
+
   // Initialize map
   useEffect(() => {
     if (mapError) return;
@@ -92,8 +102,8 @@ export function MapView({
       m = new maplibregl.Map({
         container: containerRef.current,
         style: BASEMAP_STYLES[basemap],
-        center,
-        zoom,
+        center: initialViewRef.current.center,
+        zoom: initialViewRef.current.zoom,
         attributionControl: {},
       });
     } catch {
@@ -138,8 +148,8 @@ export function MapView({
       setMap(null);
       m.remove();
     };
-    // Rebuilds the map on a basemap, viewport or error-state change.
-  }, [basemap, mapError, center, zoom]);
+    // Rebuilds the map only on a basemap or error-state change.
+  }, [basemap, mapError]);
 
   // Feature click handler
   useEffect(() => {

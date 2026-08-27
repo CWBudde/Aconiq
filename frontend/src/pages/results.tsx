@@ -759,16 +759,16 @@ export default function ResultsPage() {
     [runs],
   );
 
+  // Derived, not stored: falling back to the first completed run here avoids
+  // the render-phase `setSelectedRunId` this used to do, which forced an extra
+  // render pass on every load.
   const selectedRun = useMemo(
-    () => completedRuns.find((r) => r.id === selectedRunId) ?? null,
+    () =>
+      completedRuns.find((r) => r.id === selectedRunId) ??
+      completedRuns[0] ??
+      null,
     [completedRuns, selectedRunId],
   );
-
-  // Auto-select first completed run if selection is invalid.
-  const firstCompletedRun = completedRuns[0];
-  if (!selectedRun && firstCompletedRun && !isLoading) {
-    setSelectedRunId(firstCompletedRun.id);
-  }
 
   if (isLoading) {
     return (
@@ -783,7 +783,7 @@ export default function ResultsPage() {
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" />
-          Could not load runs. Is the API server running?
+          {m.msg_api_error_results()}
         </div>
       </div>
     );
@@ -794,10 +794,12 @@ export default function ResultsPage() {
       {/* Left panel */}
       <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
         <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Results</h2>
+          <h2 className="text-sm font-semibold">{m.page_title_results()}</h2>
           <p className="text-xs text-muted-foreground">
-            {String(completedRuns.length)} completed run
-            {completedRuns.length !== 1 ? "s" : ""}
+            {String(completedRuns.length)}{" "}
+            {completedRuns.length === 1
+              ? m.msg_completed_runs()
+              : m.msg_completed_runs_plural()}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -805,9 +807,7 @@ export default function ResultsPage() {
             <div className="px-4 py-6 text-center">
               <BarChart3 className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 text-xs text-muted-foreground">
-                No completed runs yet. Use{" "}
-                <code className="rounded bg-muted px-1">aconiq run</code> from
-                the CLI to execute a run.
+                {m.msg_no_completed_runs()}
               </p>
             </div>
           ) : (
@@ -815,7 +815,7 @@ export default function ResultsPage() {
               <ResultRunListItem
                 key={run.id}
                 run={run}
-                selected={run.id === selectedRunId}
+                selected={run.id === selectedRun?.id}
                 onClick={() => {
                   setSelectedRunId(run.id);
                 }}
@@ -831,7 +831,7 @@ export default function ResultsPage() {
           <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Select a completed run to view its results.
+            {m.msg_select_completed_run_details()}
           </div>
         )}
       </div>

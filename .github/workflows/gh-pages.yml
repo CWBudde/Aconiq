@@ -15,8 +15,73 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Deploying to production Pages used to happen on every push to `main` with no
+# gate at all: a commit that broke the frontend, or the Go kernel the frontend
+# runs, shipped regardless. The two check jobs below reproduce the CI gates for
+# both halves of the repo and `build` waits on them.
+#
+# They are jobs here rather than a `workflow_run` trigger on Frontend CI / Go CI
+# deliberately. `workflow_run` fires when *any one* listed workflow finishes, not
+# when both pass, and Frontend CI is path-filtered — so a push touching neither
+# tree would leave the deploy waiting on a workflow that never ran.
+env:
+  JUST_VERSION: 1.42.4
+
 jobs:
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          # Keep in sync with .github/workflows/frontend-ci.yml.
+          bun-version: 1.3.7
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: bun run typecheck
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Test
+        working-directory: frontend
+        run: bun run test
+
+  backend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      # The deployed page runs the Go kernel compiled to WASM, so the Go tests
+      # gate this deployment just as much as the frontend ones do.
+      - name: Go vet
+        run: just vet
+
+      - name: Go tests
+        run: just test
+
   build:
+    needs: [frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

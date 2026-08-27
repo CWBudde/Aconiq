@@ -35,7 +35,7 @@ function LayerToggle({ group }: { group: LayerGroup }) {
       size="sm"
       className="h-7 justify-start gap-2 px-2 text-xs"
       onClick={handleToggle}
-      aria-label={`${visible ? "Hide" : "Show"} ${group.label}`}
+      aria-label={`${visible ? "Hide" : "Show"} ${group.label()}`}
     >
       {visible ? (
         <Eye className="h-3.5 w-3.5" />
@@ -43,7 +43,7 @@ function LayerToggle({ group }: { group: LayerGroup }) {
         <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
       )}
       <span className={visible ? "" : "text-muted-foreground"}>
-        {group.label}
+        {group.label()}
       </span>
     </Button>
   );

@@ -63,14 +63,12 @@
   "status_badge_running": "Running",
   "status_badge_completed": "Completed",
   "status_badge_failed": "Failed",
-  "status_connecting": "Connecting...",
   "status_copied": "Copied!",
   "status_fetching": "Fetching…",
   "status_import_complete": "Import Complete",
   "status_loading": "Loading…",
   "status_locating": "Locating…",
   "status_path_copied": "Copied!",
-  "status_run_queued": "Run queued",
   "status_validation_errors": "validation error(s)",
   "status_validation_warnings": "warning(s)",
 
@@ -110,7 +108,6 @@
   "label_north": "North",
   "label_overpass_endpoint_optional": "Overpass Endpoint (optional)",
   "label_profile": "Profile:",
-  "label_profile_select": "Profile",
   "label_receiver_auto_grid": "Auto-grid",
   "label_receiver_custom_set": "Custom receiver set",
   "label_receiver_probe_tool": "Receiver value probe tool (deferred)",
@@ -118,13 +115,10 @@
   "label_runs_field": "Runs",
   "label_scenarios_field": "Scenarios",
   "label_section_parameters": "Parameters",
-  "label_section_receivers": "Receivers",
-  "label_section_standard": "Standard",
   "label_select_run": "Select run",
   "label_sources": "Sources:",
   "label_south": "South",
   "label_standard": "Standard:",
-  "label_standard_field": "Status",
   "label_standard_filter": "All standards",
   "label_standard_select": "Standard",
   "label_started": "Started:",
@@ -135,7 +129,6 @@
   "label_unit": "Unit:",
   "label_version": "Version:",
   "label_version_field": "Version",
-  "label_version_select": "Version",
   "label_west": "West",
 
   "section_artifacts": "Artifacts",
@@ -238,9 +231,6 @@
   "export_artifact_label_markdown_report": "Markdown Report",
   "export_artifact_label_json_context": "Report Context (JSON)",
 
-  "legend_title_noise_level": "Noise Level",
-  "legend_unit_db": "dB(A)",
-
   "banner_draft_recovery": "Draft recovery",
 
   "msg_settings_appearance_help": "Choose how the interface should look.",
@@ -304,6 +294,7 @@
   "msg_geojson_error_parse": "Failed to parse file as JSON",
   "msg_import_complete_description": "features loaded into the model.",
   "msg_import_osm_description": "Enter a bounding box to fetch roads, buildings, and barriers via Overpass API.",
+  "label_validation": "Validation",
   "msg_model_valid": "Model is valid — no issues found.",
   "msg_source_acoustics_defaults": "Leave fields empty to inherit the current run defaults. Filled values override the run only for this source.",
   "msg_source_acoustics_default_fallback": "Empty = use run default",
@@ -323,9 +314,6 @@
   "msg_receiver_auto_grid_desc": "Regular grid derived from source extent and grid_resolution_m / grid_padding_m parameters.",
   "msg_receiver_custom_set_desc": "Explicit point or grid receiver sets (Phase 24+).",
   "msg_records_count": "/ records",
-  "msg_run_count": "run",
-  "msg_run_count_plural": "runs",
-  "msg_run_execution_not_implemented": "Run execution via the HTTP API is not yet implemented. Use aconiq run from the CLI to execute this configuration.",
   "msg_run_in_progress": "Run in progress…",
   "msg_run_column_selected": "Run A (selected)",
   "msg_run_column_compare": "Run B",
@@ -336,7 +324,6 @@
   "msg_select_run_compare": "Select a second completed run above to compare parameters and metadata side by side.",
   "msg_select_run_details": "Select a run to view details",
   "msg_select_run_for_details": "Select a run to view its export artifacts.",
-  "msg_settings_future": "Application settings (future)",
   "msg_unsaved_draft_found": "Unsaved draft found. Restore your previous work?",
   "msg_validation_errors_count": "error(s)",
   "msg_validation_warnings_count": "warning(s)",
@@ -359,6 +346,5 @@
   "tool_draw_calc_area": "Set Calculation Area",
   "label_calc_area": "Calculation Area",
   "action_clear_calc_area": "Clear Calculation Area",
-  "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent.",
-  "tooltip_set_calc_area": "Set Calculation Area"
+  "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent."
 }

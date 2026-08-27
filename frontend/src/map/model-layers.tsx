@@ -52,7 +52,14 @@ export function ModelLayers() {
             data: data as unknown as GeoJSON.GeoJSON,
           });
         }
-      } catch {
+      } catch (error) {
+        // Bailing out silently left the map showing stale or missing data with
+        // nothing anywhere to say why. The early return stays — a style that
+        // rejects one source will reject the rest — but the cause is reported.
+        console.error(
+          `ModelLayers: could not sync GeoJSON source "${sourceId}"`,
+          error,
+        );
         return;
       }
     }
@@ -71,7 +78,8 @@ export function ModelLayers() {
         if (!map.getLayer(layer.id)) {
           map.addLayer(layer);
         }
-      } catch {
+      } catch (error) {
+        console.error(`ModelLayers: could not add layer "${layer.id}"`, error);
         return;
       }
     }

@@ -1,20 +1,33 @@
 #!/usr/bin/env node
 /**
  * Bundle size budget check.
- * Reads dist/assets/ JS files after a production build and fails if any
- * individual chunk exceeds CHUNK_LIMIT_KB or the total exceeds TOTAL_LIMIT_KB.
+ *
+ * Budgets are expressed in **gzipped** bytes, which is what a browser actually
+ * downloads. The previous raw-byte budgets failed on every real build: the map
+ * chunk is 1 182 KB raw against a 750 KB limit, but only 314 KB over the wire —
+ * maplibre-gl and terra-draw minify poorly and compress well, so the raw figure
+ * measured the wrong thing and `bun run bundle-check` (and `just ci` through
+ * `fe-ci`) could not pass.
+ *
+ * Level-6 gzip via node's zlib matches the figures Vite prints after a build,
+ * so the two agree.
  *
  * Usage: node scripts/check-bundle-size.mjs
  * Or via justfile: just fe-bundle-check
  */
-import { readdirSync, statSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
+import { gzipSync } from "zlib";
 
 const DIST_DIR = new URL("../dist/assets", import.meta.url).pathname;
-const CHUNK_LIMIT_KB = 750; // single chunk soft limit
-const TOTAL_LIMIT_KB = 3000; // total JS hard limit
 
-let totalBytes = 0;
+// Headroom over the current build (map chunk 314 KB gz, total 510 KB gz across
+// 22 chunks) is roughly 25 %: enough that an ordinary feature does not trip the
+// gate, tight enough that pulling in another map-sized dependency does.
+const CHUNK_LIMIT_GZIP_KB = 400; // single chunk soft limit
+const TOTAL_LIMIT_GZIP_KB = 650; // total JS hard limit
+
+let totalGzipBytes = 0;
 let failed = false;
 
 let files;
@@ -33,20 +46,35 @@ if (jsFiles.length === 0) {
   process.exit(1);
 }
 
-for (const file of jsFiles) {
-  const bytes = statSync(join(DIST_DIR, file)).size;
-  const kb = bytes / 1024;
-  totalBytes += bytes;
-  const status = kb > CHUNK_LIMIT_KB ? "OVER LIMIT" : "ok";
-  if (kb > CHUNK_LIMIT_KB) failed = true;
-  console.log(`  ${status.padEnd(10)} ${kb.toFixed(1).padStart(8)} KB  ${file}`);
+const rows = jsFiles.map((file) => {
+  const raw = readFileSync(join(DIST_DIR, file));
+  return {
+    file,
+    rawKb: raw.length / 1024,
+    gzipKb: gzipSync(raw).length / 1024,
+  };
+});
+rows.sort((a, b) => b.gzipKb - a.gzipKb);
+
+for (const { file, rawKb, gzipKb } of rows) {
+  totalGzipBytes += gzipKb;
+  const over = gzipKb > CHUNK_LIMIT_GZIP_KB;
+  if (over) failed = true;
+  console.log(
+    `  ${(over ? "OVER LIMIT" : "ok").padEnd(10)} ${gzipKb.toFixed(1).padStart(8)} KB gz  ` +
+      `(${rawKb.toFixed(1).padStart(8)} KB raw)  ${file}`,
+  );
 }
 
-const totalKb = totalBytes / 1024;
-console.log(`\n  Total JS: ${totalKb.toFixed(1)} KB (limit ${String(TOTAL_LIMIT_KB)} KB)`);
+console.log(
+  `\n  Total JS: ${totalGzipBytes.toFixed(1)} KB gzipped ` +
+    `(limit ${String(TOTAL_LIMIT_GZIP_KB)} KB, per-chunk limit ${String(CHUNK_LIMIT_GZIP_KB)} KB)`,
+);
 
-if (totalKb > TOTAL_LIMIT_KB) {
-  console.error(`\nFAIL: Total JS exceeds ${String(TOTAL_LIMIT_KB)} KB budget.`);
+if (totalGzipBytes > TOTAL_LIMIT_GZIP_KB) {
+  console.error(
+    `\nFAIL: Total gzipped JS exceeds ${String(TOTAL_LIMIT_GZIP_KB)} KB budget.`,
+  );
   failed = true;
 }
 

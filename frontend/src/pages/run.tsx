@@ -86,31 +86,33 @@ function formatTime(iso: string): string {
 
 type RunStatus = RunSummary["status"];
 
+// Labels are held as functions, not resolved strings: calling a message at
+// module scope freezes it to the locale active at import time.
 const statusConfig: Record<
   RunStatus,
   {
-    label: string;
+    label: () => string;
     icon: React.ComponentType<{ className?: string }>;
     className: string;
   }
 > = {
   pending: {
-    label: m.status_badge_pending(),
+    label: m.status_badge_pending,
     icon: Clock,
     className: "text-muted-foreground bg-muted",
   },
   running: {
-    label: m.status_badge_running(),
+    label: m.status_badge_running,
     icon: Loader2,
     className: "text-blue-600 bg-blue-50 dark:bg-blue-950",
   },
   completed: {
-    label: m.status_badge_completed(),
+    label: m.status_badge_completed,
     icon: CheckCircle2,
     className: "text-green-600 bg-green-50 dark:bg-green-950",
   },
   failed: {
-    label: m.status_badge_failed(),
+    label: m.status_badge_failed,
     icon: XCircle,
     className: "text-destructive bg-destructive/10",
   },
@@ -126,7 +128,7 @@ function StatusBadge({ status }: { status: RunStatus }) {
       <Icon
         className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`}
       />
-      {cfg.label}
+      {cfg.label()}
     </span>
   );
 }
@@ -142,35 +144,36 @@ interface TimelineStep {
   active: boolean;
 }
 
-const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: string }> = [
-  { key: "started", pattern: /run started/, label: m.timeline_run_started() },
-  { key: "model", pattern: /model=/, label: m.timeline_loading_model() },
-  {
-    key: "sources",
-    pattern: /(?:sources|road_sources)=\d+/,
-    label: m.timeline_extracting_sources(),
-  },
-  {
-    key: "receivers",
-    pattern: /receivers=\d+/,
-    label: m.timeline_building_receivers(),
-  },
-  {
-    key: "compute",
-    pattern: /stage=compute/,
-    label: m.timeline_computing(),
-  },
-  {
-    key: "persist",
-    pattern: /(?:output_hash=|persisted=)/,
-    label: m.timeline_persisting_outputs(),
-  },
-  {
-    key: "done",
-    pattern: /run (?:completed|failed)/,
-    label: m.timeline_finalised(),
-  },
-];
+const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
+  [
+    { key: "started", pattern: /run started/, label: m.timeline_run_started },
+    { key: "model", pattern: /model=/, label: m.timeline_loading_model },
+    {
+      key: "sources",
+      pattern: /(?:sources|road_sources)=\d+/,
+      label: m.timeline_extracting_sources,
+    },
+    {
+      key: "receivers",
+      pattern: /receivers=\d+/,
+      label: m.timeline_building_receivers,
+    },
+    {
+      key: "compute",
+      pattern: /stage=compute/,
+      label: m.timeline_computing,
+    },
+    {
+      key: "persist",
+      pattern: /(?:output_hash=|persisted=)/,
+      label: m.timeline_persisting_outputs,
+    },
+    {
+      key: "done",
+      pattern: /run (?:completed|failed)/,
+      label: m.timeline_finalised,
+    },
+  ];
 
 function parseTimeline(lines: string[], status: RunStatus): TimelineStep[] {
   const matched = new Map<string, string>();
@@ -195,7 +198,7 @@ function parseTimeline(lines: string[], status: RunStatus): TimelineStep[] {
       (!prevStage || matched.has(prevStage.key)) &&
       (!nextStage || !matched.has(nextStage.key));
     return {
-      label: stage.label,
+      label: stage.label(),
       ...(ts !== undefined && { timestamp: ts }),
       done,
       active,
@@ -272,7 +275,7 @@ function LogViewer({ lines }: { lines: string[] }) {
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           <Terminal className="h-3.5 w-3.5" />
-          Log ({String(lines.length)} lines)
+          {m.label_log()} ({String(lines.length)} lines)
         </div>
         {lines.length > 20 ? (
           <Button
@@ -283,13 +286,13 @@ function LogViewer({ lines }: { lines: string[] }) {
               setExpanded((e) => !e);
             }}
           >
-            {expanded ? "Show less" : "Show all"}
+            {expanded ? m.action_show_less() : m.action_show_all()}
           </Button>
         ) : null}
       </div>
       <div className="max-h-48 overflow-y-auto p-3 font-mono text-xs leading-relaxed">
         {lines.length === 0 ? (
-          <span className="text-muted-foreground">No log lines yet.</span>
+          <span className="text-muted-foreground">{m.msg_no_log_lines()}</span>
         ) : (
           visible.map((line, i) => (
             <div key={i} className="whitespace-pre-wrap break-all">
@@ -306,12 +309,14 @@ function LogViewer({ lines }: { lines: string[] }) {
 // Artifact links
 // ---------------------------------------------------------------------------
 
-const ARTIFACT_KIND_LABELS: Record<string, string> = {
-  "run.result.receiver_table_json": "Receivers (JSON)",
-  "run.result.receiver_table_csv": "Receivers (CSV)",
-  "run.result.raster_metadata": "Raster metadata",
-  "run.result.raster_binary": "Raster data",
-  "run.result.summary": "Run summary",
+// Message functions must be *called* during render, never at module scope, or
+// the labels freeze to the locale that was active at import time.
+const ARTIFACT_KIND_LABELS: Record<string, () => string> = {
+  "run.result.receiver_table_json": m.artifact_kind_receivers_json,
+  "run.result.receiver_table_csv": m.artifact_kind_receivers_csv,
+  "run.result.raster_metadata": m.artifact_kind_raster_metadata,
+  "run.result.raster_binary": m.artifact_kind_raster_binary,
+  "run.result.summary": m.artifact_kind_summary,
 };
 
 function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
@@ -327,13 +332,17 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
   }
 
   if (artifacts.length === 0) {
-    return <p className="text-xs text-muted-foreground">No artifacts yet.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        {m.msg_no_artifacts_yet()}
+      </p>
+    );
   }
 
   return (
     <div className="space-y-1">
       {artifacts.map((a) => {
-        const label = ARTIFACT_KIND_LABELS[a.kind] ?? a.kind;
+        const label = ARTIFACT_KIND_LABELS[a.kind]?.() ?? a.kind;
         const filename = a.path.split("/").pop() ?? a.path;
         return (
           <div
@@ -357,7 +366,9 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
                 copyPath(a.path);
               }}
             >
-              {copied === a.path ? "Copied!" : "Copy path"}
+              {copied === a.path
+                ? m.status_path_copied()
+                : m.action_copy_path()}
             </Button>
           </div>
         );
@@ -563,7 +574,7 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
       {/* Artifacts */}
       <section>
         <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Artifacts
+          {m.section_artifacts()}
         </h4>
         <ArtifactLinks artifacts={run.artifacts} />
       </section>
@@ -575,14 +586,10 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           size="sm"
           disabled={!isRunning}
           title={
-            isRunning
-              ? "Runs are started from the CLI — kill the aconiq process to cancel."
-              : "Only running jobs can be cancelled"
+            isRunning ? m.tooltip_cancel_run() : m.tooltip_cancel_not_running()
           }
           onClick={() => {
-            alert(
-              "Cancel is not supported from the UI. Kill the `aconiq run` CLI process to abort.",
-            );
+            alert(m.alert_cancel_not_supported());
           }}
         >
           <StopCircle className="mr-1.5 h-3.5 w-3.5" />
@@ -590,7 +597,7 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
         </Button>
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          Retry
+          {m.action_retry()}
         </Button>
       </section>
     </div>
@@ -1134,16 +1141,16 @@ export default function RunPage() {
     });
   }, [runs, filters]);
 
+  // Derived, not stored: when the stored id is filtered out, the first visible
+  // run stands in. Doing that with a render-phase `setSelectedRunId` (as this
+  // used to) made every filter change cost an extra render pass.
   const selectedRun = useMemo(
-    () => filteredRuns.find((r) => r.id === selectedRunId) ?? null,
+    () =>
+      filteredRuns.find((r) => r.id === selectedRunId) ??
+      filteredRuns[0] ??
+      null,
     [filteredRuns, selectedRunId],
   );
-
-  // Auto-select first visible run if current selection isn't visible.
-  const firstFilteredRun = filteredRuns[0];
-  if (!selectedRun && firstFilteredRun && !isLoading) {
-    setSelectedRunId(firstFilteredRun.id);
-  }
 
   const hasRuns = runs.length > 0;
 
@@ -1152,11 +1159,11 @@ export default function RunPage() {
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b px-5 py-3">
         <div>
-          <h2 className="text-sm font-semibold">Runs</h2>
+          <h2 className="text-sm font-semibold">{m.page_title_runs()}</h2>
           {hasRunning ? (
             <p className="text-xs text-blue-600">
               <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-              Run in progress…
+              {m.msg_run_in_progress()}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -1211,7 +1218,7 @@ export default function RunPage() {
                 <RunListItem
                   key={run.id}
                   run={run}
-                  selected={run.id === selectedRunId}
+                  selected={run.id === selectedRun?.id}
                   onClick={() => {
                     setSelectedRunId(run.id);
                   }}
@@ -1231,7 +1238,7 @@ export default function RunPage() {
               />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Select a run to view details
+                {m.msg_select_run_details()}
               </div>
             )}
           </div>

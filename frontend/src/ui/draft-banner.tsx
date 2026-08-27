@@ -12,8 +12,7 @@ import { m } from "@/i18n/messages";
 export function DraftBanner() {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
-  const loadFeatures = useModelStore((s) => s.loadFeatures);
-  const loadReceivers = useModelStore((s) => s.loadReceivers);
+  const loadModel = useModelStore((s) => s.loadModel);
   const [visible, setVisible] = useState(false);
 
   // Check only on first mount — don't re-show after user interaction.
@@ -29,8 +28,7 @@ export function DraftBanner() {
   function handleRestore() {
     const draft = loadDraft();
     if (draft) {
-      loadFeatures(draft.features);
-      loadReceivers(draft.receivers);
+      loadModel(draft);
     }
     discardDraft();
     setVisible(false);

@@ -284,10 +284,30 @@ function readState(): BrowserBackendState {
 
 function writeState(state: BrowserBackendState): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  for (const url of urlCache.values()) {
-    URL.revokeObjectURL(url);
+  pruneURLCache(state);
+}
+
+/**
+ * Revokes only the object URLs whose artifact no longer exists.
+ *
+ * Revoking the whole cache on every write broke pages that were still showing
+ * a URL: starting a second run invalidated the `<iframe src>` of the report the
+ * user was reading, and the "open in browser" link with it. Artifact ids embed
+ * the run id and an export timestamp, so an id never names two different
+ * payloads and a surviving URL can never be stale.
+ */
+function pruneURLCache(state: BrowserBackendState): void {
+  const liveArtifactIds = new Set<string>();
+  for (const storedRun of state.runs) {
+    for (const artifactId of Object.keys(storedRun.artifacts)) {
+      liveArtifactIds.add(artifactId);
+    }
   }
-  urlCache.clear();
+  for (const [artifactId, url] of urlCache) {
+    if (liveArtifactIds.has(artifactId)) continue;
+    URL.revokeObjectURL(url);
+    urlCache.delete(artifactId);
+  }
 }
 
 function nowISO(): string {

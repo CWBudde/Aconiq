@@ -1,6 +1,7 @@
-export { APIClient } from "./client";
+// The `APIClient` class that used to live in ./client was never instantiated —
+// every caller goes through the react-query hooks or `browserBackend`. Only its
+// response *types* were ever load-bearing, and those stay.
 export type {
-  APIClientOptions,
   APIError,
   CreateRunRequest,
   ErrorEnvelope,

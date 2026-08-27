@@ -2,7 +2,6 @@ export { MapView } from "./map-view";
 export { useMap, MapContext } from "./use-map";
 export { useMapStore } from "./map-store";
 export { LayerControl } from "./layer-control";
-export { Legend } from "./legend";
 export { CoordinateDisplay } from "./coordinate-display";
 export { FeaturePopup } from "./feature-popup";
 export { eventToLngLat } from "./event-utils";

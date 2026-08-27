@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 import { Link } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
@@ -20,6 +20,7 @@ import { useDraw } from "@/map/use-draw";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
+import { validateModel } from "@/model/validate";
 import { m } from "@/i18n/messages";
 
 export default function MapPage() {
@@ -123,9 +124,12 @@ function MapWorkspace() {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
 
-  const workspaceView = useMemo(
-    () => fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
-    [features, receivers, calcArea],
+  // The initial viewport is computed once, on mount. `useMemo` recomputed it on
+  // every model edit, and MapView treats a new `center`/`zoom` as a reason to
+  // rebuild — so drawing a single feature discarded the map. Later fitting is
+  // ModelLayers' job (it calls `fitBounds` when data first arrives).
+  const [workspaceView] = useState(() =>
+    fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
   );
 
   const handleDrawFinish = useCallback(
@@ -214,6 +218,12 @@ function MapWorkspace() {
             </Button>
           </div>
         ) : null}
+        <ValidationToggle
+          open={showValidation}
+          onToggle={() => {
+            setShowValidation((open) => !open);
+          }}
+        />
         {showValidation ? (
           <div className="absolute bottom-14 left-3 z-10 w-80 rounded-md border bg-background shadow-md">
             <ValidationPanel onSelectFeature={handleSelectFromValidation} />
@@ -228,5 +238,46 @@ function MapWorkspace() {
         }}
       />
     </TooltipProvider>
+  );
+}
+
+/**
+ * Opens the validation panel. Without it the panel was unreachable: nothing in
+ * the workspace ever set `showValidation` to `true`, so `ValidationPanel` and
+ * `handleSelectFromValidation` were wired to a switch that did not exist.
+ */
+function ValidationToggle({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const features = useModelStore((s) => s.features);
+  const report = useMemo(() => validateModel(features), [features]);
+  const issueCount = report.errors.length + report.warnings.length;
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="absolute bottom-3 left-3 z-10 h-8 gap-1.5 text-xs shadow-md"
+      aria-pressed={open}
+      onClick={onToggle}
+    >
+      <ShieldAlert
+        className={
+          report.errors.length > 0
+            ? "h-3.5 w-3.5 text-destructive"
+            : "h-3.5 w-3.5"
+        }
+      />
+      {m.label_validation()}
+      {issueCount > 0 ? (
+        <span className="rounded-full bg-secondary px-1.5 py-0.5 tabular-nums">
+          {String(issueCount)}
+        </span>
+      ) : null}
+    </Button>
   );
 }

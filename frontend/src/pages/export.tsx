@@ -407,16 +407,18 @@ export default function ExportPage() {
     [runs],
   );
 
+  // The selection is *derived*, falling back to the first run with exports.
+  // It used to be stored: a `setSelectedRunId` call in the render body, which
+  // React treats as a render-phase update of this component's own state and
+  // re-renders for — an extra pass on every load, and a warning loop whenever
+  // the fallback disagreed with the stored id.
   const selectedRun = useMemo(
-    () => runsWithExports.find((r) => r.id === selectedRunId) ?? null,
+    () =>
+      runsWithExports.find((r) => r.id === selectedRunId) ??
+      runsWithExports[0] ??
+      null,
     [runsWithExports, selectedRunId],
   );
-
-  // Auto-select first.
-  const firstRunWithExports = runsWithExports[0];
-  if (!selectedRun && firstRunWithExports && !isLoading) {
-    setSelectedRunId(firstRunWithExports.id);
-  }
 
   if (isLoading) {
     return (
@@ -477,7 +479,7 @@ export default function ExportPage() {
                 <ExportListItem
                   key={run.id}
                   run={run}
-                  selected={run.id === selectedRunId}
+                  selected={run.id === selectedRun?.id}
                   onClick={() => {
                     setSelectedRunId(run.id);
                   }}

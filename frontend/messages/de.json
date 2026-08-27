@@ -63,14 +63,12 @@
   "status_badge_running": "Läuft",
   "status_badge_completed": "Abgeschlossen",
   "status_badge_failed": "Fehlgeschlagen",
-  "status_connecting": "Verbinde...",
   "status_copied": "Kopiert!",
   "status_fetching": "Lade...",
   "status_import_complete": "Import abgeschlossen",
   "status_loading": "Lade...",
   "status_locating": "Lade Standort...",
   "status_path_copied": "Kopiert!",
-  "status_run_queued": "Berechnung in Warteschlange",
   "status_validation_errors": "Validierungsfehler",
   "status_validation_warnings": "Warnung(en)",
 
@@ -110,7 +108,6 @@
   "label_north": "Nord",
   "label_overpass_endpoint_optional": "Overpass-Endpunkt (optional)",
   "label_profile": "Profil:",
-  "label_profile_select": "Profil",
   "label_receiver_auto_grid": "Automatisches Raster",
   "label_receiver_custom_set": "Benutzerdefinierte Empfängermenge",
   "label_receiver_probe_tool": "Empfänger-Abfragewerkzeug (zurückgestellt)",
@@ -118,13 +115,10 @@
   "label_runs_field": "Berechnungen",
   "label_scenarios_field": "Szenarien",
   "label_section_parameters": "Parameter",
-  "label_section_receivers": "Empfänger",
-  "label_section_standard": "Standard",
   "label_select_run": "Berechnung auswählen",
   "label_sources": "Quellen:",
   "label_south": "Süd",
   "label_standard": "Standard:",
-  "label_standard_field": "Status",
   "label_standard_filter": "Alle Standards",
   "label_standard_select": "Standard",
   "label_started": "Gestartet:",
@@ -135,7 +129,6 @@
   "label_unit": "Einheit:",
   "label_version": "Version:",
   "label_version_field": "Version",
-  "label_version_select": "Version",
   "label_west": "West",
 
   "section_artifacts": "Artefakte",
@@ -238,9 +231,6 @@
   "export_artifact_label_markdown_report": "Markdown-Bericht",
   "export_artifact_label_json_context": "Berichtskontext (JSON)",
 
-  "legend_title_noise_level": "Lärmpegel",
-  "legend_unit_db": "dB(A)",
-
   "banner_draft_recovery": "Entwurf wiederherstellen",
 
   "msg_settings_appearance_help": "Wähle aus, wie die Oberfläche aussehen soll.",
@@ -304,6 +294,7 @@
   "msg_geojson_error_parse": "Datei konnte nicht als JSON geparst werden",
   "msg_import_complete_description": "Objekte ins Modell geladen.",
   "msg_import_osm_description": "Begrenzungsrahmen eingeben, um Straßen, Gebäude und Hindernisse über die Overpass-API zu laden.",
+  "label_validation": "Validierung",
   "msg_model_valid": "Modell ist gültig — keine Probleme gefunden.",
   "msg_source_acoustics_defaults": "Leere Felder übernehmen die aktuellen Berechnungsstandards. Ausgefüllte Werte überschreiben die Berechnung nur für diese Quelle.",
   "msg_source_acoustics_default_fallback": "Leer = Berechnungsstandard verwenden",
@@ -323,9 +314,6 @@
   "msg_receiver_auto_grid_desc": "Regelmäßiges Raster aus der Quellausdehnung und den Parametern grid_resolution_m / grid_padding_m.",
   "msg_receiver_custom_set_desc": "Explizite Punkt- oder Rasterempfängermengen (Phase 24+).",
   "msg_records_count": "/ Datensätze",
-  "msg_run_count": "Berechnung",
-  "msg_run_count_plural": "Berechnungen",
-  "msg_run_execution_not_implemented": "Berechnungsausführung über die HTTP-API ist noch nicht implementiert. aconiq run über die CLI ausführen.",
   "msg_run_in_progress": "Berechnung läuft…",
   "msg_run_column_selected": "Berechnung A (ausgewählt)",
   "msg_run_column_compare": "Berechnung B",
@@ -336,7 +324,6 @@
   "msg_select_run_compare": "Zweite abgeschlossene Berechnung auswählen, um Parameter und Metadaten zu vergleichen.",
   "msg_select_run_details": "Berechnung auswählen, um Details anzuzeigen",
   "msg_select_run_for_details": "Berechnung auswählen, um Export-Artefakte anzuzeigen.",
-  "msg_settings_future": "Anwendungseinstellungen (zukünftig)",
   "msg_unsaved_draft_found": "Nicht gespeicherter Entwurf gefunden. Frühere Arbeit wiederherstellen?",
   "msg_validation_errors_count": "Fehler",
   "msg_validation_warnings_count": "Warnung(en)",
@@ -359,6 +346,5 @@
   "tool_draw_calc_area": "Berechnungsgebiet setzen",
   "label_calc_area": "Berechnungsgebiet",
   "action_clear_calc_area": "Berechnungsgebiet löschen",
-  "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung.",
-  "tooltip_set_calc_area": "Berechnungsgebiet setzen"
+  "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung."
 }
