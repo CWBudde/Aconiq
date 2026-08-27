@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	overpass "github.com/MeKo-Christian/go-overpass"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	overpass "github.com/cwbudde/go-overpass"
 )
 
 const (

@@ -91,22 +91,16 @@ Partly addressed by `b96e319` (Phase QR-1): the `bin/noise` → `bin/aconiq` ren
 `go-ci.yml` and `CONTRIBUTING.md`, the `mkdir -p docs/api` step before the OpenAPI export, the
 `treefmt` install, the `golangci-lint-action` v6 → v7 bump (v6 pins the v1 line, which refuses a
 `go 1.25.0` target and cannot read the v2 `.golangci.yml`), and the Go 1.24+ → 1.25+ correction
-are done. What follows is what remains.
+are done.
 
-- [ ] **Fix the `go-overpass` module path.** `backend/go.mod:7` requires
-      `github.com/cwbudde/go-overpass v0.0.0-20251224010608-5fb9afa66cb9`, but that pseudo-version
-      declares itself `github.com/MeKo-Christian/go-overpass` — which is what
-      `backend/internal/io/osmimport/osmimport.go:11` imports. Go refuses the mismatch and the
-      whole module graph fails to resolve.
-      The repository has since moved **back**: `github.com/MeKo-Christian/go-overpass` now 301s to
-      `github.com/CWBudde/go-overpass`, and the tagged `v0.1.0` (2026-04-18) declares
-      `module github.com/cwbudde/go-overpass`. So the fix is to bump the `require` to `v0.1.0` and
-      change the **import** to `github.com/cwbudde/go-overpass` — verified that `overpass.New`
-      resolves under that path at that version — then `go mod tidy`.
-      `NOTICE:13` still names `MeKo-Christian/go-overpass` and becomes the stale side of the
-      rename; fix it with the rest of `NOTICE` in Priority 5.
-      _Blocks:_ `go build`, `go vet`, `golangci-lint`, and the test packages `cmd/aconiq`,
-      `internal/app/cli` (4 111 test LOC), `internal/api/httpv1` (1 096), `internal/io/osmimport`.
+The `go-overpass` module-path mismatch that broke whole-graph resolution is also fixed: the
+`require` is now `github.com/cwbudde/go-overpass v0.1.0` and the import in
+`internal/io/osmimport/osmimport.go` matches it. `go build ./...` and `go vet ./...` are green
+again, and `internal/app/cli`, `internal/api/httpv1`, `cmd/aconiq` and `internal/io/osmimport`
+compile and run their tests for the first time in months. Two consequences are now visible and
+are tracked below: the real `golangci-lint` finding count over the _whole_ tree, and one genuinely
+failing test in `internal/app/cli`. What follows is what remains.
+
 - [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
       `github.com/cwbudde/go-absolute-database v0.1.0`, which **404s** on GitHub — it resolves here
       only from a warm local module cache, so a fresh clone and every CI runner fail even after the
@@ -122,9 +116,14 @@ are done. What follows is what remains.
       `"tsc --noEmit"` against a solution-file `tsconfig.json` (`{"files": [], "references": […]}`),
       which checks **zero files** and exits 0. Change to `"tsc -b --noEmit"`; `tsc -b` currently
       reports 62 errors.
-- [ ] **Triage the 207 hidden lint findings.** `golangci-lint` aborts on the typecheck error and
-      reports 1 issue; run over the compiling subset it reports 207
-      (`goconst` 101, `wsl_v5` 36, `cyclop` 24, `gocognit` 7, `gosec` 2, `unused` 1, …).
+- [ ] **Triage the lint findings the broken build was hiding.** While `golangci-lint` aborted on
+      the typecheck error it reported 1 issue. Over the now-compiling tree it reports several
+      hundred, dominated by `wsl_v5` (120), `noinlineerr` (41), `goconst`, `cyclop` (20 functions
+      over the limit of 15), `perfsprint` (11), `predeclared` (5), `revive` (4), `unparam` (3),
+      `unused` (2), `nolintlint` (2), `tagliatelle` (2), `unconvert` (2), `staticcheck` (1),
+      `nilnil` (1), `prealloc` (1), `recvcheck` (1). Decide per linter: fix, or disable with a
+      recorded reason. `just lint` is currently red, so it cannot be a merge gate until this is
+      triaged.
 - [ ] **Guard the unguarded fixture tests.** `backend/internal/io/soundplanimport/absresults_test.go:9`
       hardcodes `interopDir = "../../../../interoperability/…"` with no existence check; 8 tests
       `t.Fatalf` on a clean checkout. Route through the existing `testProjectDir(t)` helper
@@ -466,9 +465,9 @@ be traced to the binary that produced it has no evidentiary value.
       including the security-advisory link.
 - [ ] `CONTRIBUTING.md:2` says "Go 1.24+"; `backend/go.mod:3` requires `go 1.25.0`.
 - [ ] Regenerate `NOTICE` from `just license-report`. It lists
-      `go-absolute-database — MIT (local replace)` when no `replace` directive exists, still names
-      `github.com/MeKo-Christian/go-overpass` (stale once P0 lands), and omits `mousetrap`,
-      `go-isatty`, `go-strftime`.
+      `go-absolute-database — MIT (local replace)` when no `replace` directive exists, and omits
+      `mousetrap`, `go-isatty`, `go-strftime`. (The stale `go-overpass` entry was corrected by hand
+      when P0 landed; the file has still never been generated from the actual module graph.)
 - [ ] Record standard-internal data versions — the Schall 03 data-pack version and hash, the
       per-module coefficient-table version — so identical provenance implies identical numbers.
       Do **not** put them in `input_hashes`: `projectfs.Store.hashInputs` defines that map as

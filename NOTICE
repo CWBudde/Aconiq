@@ -10,8 +10,8 @@ MIT License
 ────────────────────────────────────────────────────────────────────────────────
 
 github.com/Dadido3/go-typst          — MIT
-github.com/MeKo-Christian/go-overpass — MIT
 github.com/cwbudde/go-citygml        — MIT
+github.com/cwbudde/go-overpass       — MIT
 github.com/dustin/go-humanize        — MIT
 github.com/gogama/flatgeobuf         — MIT
 github.com/smasher164/xid            — MIT
