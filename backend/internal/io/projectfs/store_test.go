@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 )
@@ -401,5 +402,63 @@ func TestCreateRunInputHashErrors(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing input file error")
+	}
+}
+
+// Provenance must name the tool that produced it. The version is stamped at
+// link time and falls back to the embedded build info, so this asserts that it
+// is present and not the old hardcoded placeholder rather than a fixed value
+// that only `just build` could supply.
+func TestCreateRunWritesToolIdentityIntoProvenance(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Provenance Project", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	run, provenance, err := store.CreateRun(CreateRunSpec{
+		Standard: project.StandardRef{ID: "dummy-freefield", Version: "v1"},
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	if provenance.ToolName != buildinfo.Name {
+		t.Fatalf("provenance tool name = %q, want %q", provenance.ToolName, buildinfo.Name)
+	}
+
+	if strings.TrimSpace(provenance.ToolVersion) == "" {
+		t.Fatal("provenance tool version must not be empty")
+	}
+
+	if provenance.ToolVersion != buildinfo.Version() {
+		t.Fatalf("provenance tool version = %q, want %q", provenance.ToolVersion, buildinfo.Version())
+	}
+
+	payload, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance file: %v", err)
+	}
+
+	var persisted struct {
+		ToolName    string `json:"tool_name"`
+		ToolVersion string `json:"tool_version"`
+	}
+
+	err = json.Unmarshal(payload, &persisted)
+	if err != nil {
+		t.Fatalf("decode provenance file: %v", err)
+	}
+
+	if persisted.ToolName != buildinfo.Name || strings.TrimSpace(persisted.ToolVersion) == "" {
+		t.Fatalf("provenance.json carries no usable tool identity: %+v", persisted)
 	}
 }

@@ -3,7 +3,9 @@ Copyright (c) 2026 Aconiq Contributors
 
 This product is licensed under the MIT License. See LICENSE for the full text.
 
-This product includes third-party software with the following licenses:
+This product includes third-party software with the following licenses.
+Regenerate the list below from `just license-report`, which sweeps the Linux,
+Windows and macOS builds so that platform-specific dependencies are covered.
 
 ────────────────────────────────────────────────────────────────────────────────
 MIT License
@@ -15,6 +17,8 @@ github.com/cwbudde/go-citygml           — MIT
 github.com/cwbudde/go-overpass          — MIT
 github.com/dustin/go-humanize           — MIT
 github.com/gogama/flatgeobuf            — MIT
+github.com/mattn/go-isatty              — MIT
+github.com/ncruces/go-strftime          — MIT
 github.com/smasher164/xid               — MIT
 github.com/wroge/wgs84                  — MIT
 modernc.org/libc                        — MIT
@@ -24,10 +28,11 @@ Apache-2.0
 ────────────────────────────────────────────────────────────────────────────────
 
 github.com/google/flatbuffers           — Apache-2.0
+github.com/inconshreveable/mousetrap    — Apache-2.0
 github.com/spf13/cobra                  — Apache-2.0
 
 ────────────────────────────────────────────────────────────────────────────────
-BSD-3-Clause / BSD-2-Clause
+BSD-3-Clause
 ────────────────────────────────────────────────────────────────────────────────
 
 github.com/google/uuid                  — BSD-3-Clause
@@ -40,17 +45,15 @@ modernc.org/mathutil                    — BSD-3-Clause
 modernc.org/memory                      — BSD-3-Clause
 modernc.org/sqlite                      — BSD-3-Clause
 
-────────────────────────────────────────────────────────────────────────────────
-ISC
-────────────────────────────────────────────────────────────────────────────────
-
-github.com/davecgh/go-spew              — ISC
+modernc.org/mathutil is excluded from the automated report (its licence file is
+not machine-detectable) and is therefore listed here from a manual reading of
+its LICENSE.
 
 ────────────────────────────────────────────────────────────────────────────────
 Test-only dependencies (not included in release binaries)
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/google/go-cmp                — BSD-3-Clause
+github.com/davecgh/go-spew              — ISC
 github.com/pmezard/go-difflib           — BSD-3-Clause
 github.com/stretchr/testify             — MIT
 gopkg.in/yaml.v3                        — MIT + Apache-2.0

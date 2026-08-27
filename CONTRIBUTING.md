@@ -49,7 +49,7 @@ If you are contributing to a normative standards module (under `backend/internal
 
 ## Reporting issues
 
-Use [GitHub Issues](https://github.com/aconiq/backend/issues) to report bugs, request features, or ask questions about conformance.
+Use [GitHub Issues](https://github.com/cwbudde/Aconiq/issues) to report bugs, request features, or ask questions about conformance.
 
 ## License
 

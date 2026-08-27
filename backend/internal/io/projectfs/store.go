@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -14,14 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 )
 
 const (
-	toolName    = "aconiq"
-	toolVersion = "dev"
-
 	// Fallbacks written by Init and applied by CreateRun when the caller leaves
 	// the scenario or standard profile unset.
 	defaultScenarioID      = "default"
@@ -294,8 +293,8 @@ func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID s
 		Metadata:      cloneStringMap(spec.Metadata),
 		InputHashes:   inputHashes,
 		GeneratedAt:   now,
-		ToolName:      toolName,
-		ToolVersion:   toolVersion,
+		ToolName:      buildinfo.Name,
+		ToolVersion:   buildinfo.Version(),
 	}
 
 	err = writeJSONFile(filepath.Join(s.root, filepath.FromSlash(provRelPath)), provenance)
@@ -365,6 +364,9 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 
 	slices.Sort(resolved)
 
+	// The same input may be listed more than once; hash it once.
+	resolved = slices.Compact(resolved)
+
 	hashes := make(map[string]string, len(resolved))
 	for _, p := range resolved {
 		absPath := p
@@ -372,7 +374,7 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 			absPath = filepath.Join(s.root, p)
 		}
 
-		content, err := os.ReadFile(absPath)
+		sum, err := hashFile(absPath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return nil, domainerrors.New(domainerrors.KindUserInput, "projectfs.hashInputs", "input file does not exist: "+p, err)
@@ -381,11 +383,33 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 			return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.hashInputs", "read input file: "+p, err)
 		}
 
-		sum := sha256.Sum256(content)
-		hashes[filepath.ToSlash(p)] = hex.EncodeToString(sum[:])
+		hashes[filepath.ToSlash(p)] = sum
 	}
 
 	return hashes, nil
+}
+
+// hashFile streams a file through SHA-256.
+//
+// Inputs are untrusted third-party files of unbounded size, so the content is
+// never materialised in memory: a terrain raster or point cloud that happens to
+// be larger than the available RAM must hash, not OOM.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err //nolint:wrapcheck // caller classifies and wraps
+	}
+
+	defer f.Close()
+
+	h := sha256.New()
+
+	_, err = io.Copy(h, f)
+	if err != nil {
+		return "", err //nolint:wrapcheck // caller classifies and wraps
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func writeRunLog(path string, lines []string) error {

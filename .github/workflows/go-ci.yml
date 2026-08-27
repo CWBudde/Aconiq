@@ -36,8 +36,14 @@ jobs:
   go-ci:
     runs-on: ubuntu-latest
     steps:
+      # Full history and tags: `just build` stamps the version, commit and
+      # build date into the binary with `git describe --tags`, which reports
+      # only the bare commit on the default shallow checkout.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -106,8 +112,13 @@ jobs:
           path: license-report.csv
           retention-days: 30
 
+      # `just build` is the single source of truth for the -ldflags that stamp
+      # version/commit/date into the binary (see internal/buildinfo).
       - name: Build CLI
         run: just build
+
+      - name: Verify version stamp
+        run: bin/aconiq --version
 
       - name: Generate OpenAPI spec
         run: |

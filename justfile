@@ -50,9 +50,24 @@ test-coverage:
 update-golden:
     cd backend && UPDATE_GOLDEN=1 go test ./...
 
+# Release identity stamped into the binary by `build`. Kept in one place so the
+# local build and the CI build (which calls this same recipe) agree.
+#
+# `git describe` needs tags; until the repo has any it falls back to the short
+# commit, and a plain `go build ./...` falls back further to the module build
+# info embedded by the toolchain (see internal/buildinfo).
+ldflags_pkg := "github.com/aconiq/backend/internal/buildinfo"
+
 # Build the CLI
 build:
-    cd backend && go build -o ../bin/aconiq ./cmd/aconiq
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version="$(git describe --tags --dirty --always 2>/dev/null || echo dev)"
+    commit="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+    date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cd backend && go build \
+      -ldflags "-X {{ ldflags_pkg }}.version=${version} -X {{ ldflags_pkg }}.commit=${commit} -X {{ ldflags_pkg }}.date=${date}" \
+      -o ../bin/aconiq ./cmd/aconiq
 
 # Build the WebAssembly computation kernel (outputs to frontend/public/)
 wasm-build:
@@ -69,17 +84,43 @@ govulncheck:
 
 # Check dependency licenses for policy violations (restricted, forbidden, unknown)
 license-check:
-    cd backend && go-licenses check ./... \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+    # GOROOT: see the comment on `license-report`.
+    export GOROOT="$(go env GOROOT)"
+    go-licenses check ./... \
       --ignore github.com/aconiq/backend \
       --ignore modernc.org/mathutil \
       --disallowed_types=restricted,forbidden,unknown
 
-# Generate a CSV report of all dependency licenses
+# Generate a CSV report of all dependency licenses.
+#
+# The report is swept over the three target platforms because `go-licenses`
+# only sees packages that survive build-tag selection for the current GOOS:
+# github.com/inconshreveable/mousetrap is Windows-only, and modernc.org/sqlite
+# pulls go-isatty and go-strftime in on non-Linux targets. A Linux-only report
+# silently omits them, which is how they went missing from NOTICE.
+#
+# GOROOT is exported because go-licenses classifies a package as standard
+# library by comparing its source path against the GOROOT compiled into the
+# binary; when the active toolchain lives in the module cache (a `toolchain`
+# directive in go.mod), that comparison fails and every std package is reported
+# as an error instead.
 license-report:
-    cd backend && go-licenses report ./... \
-      --ignore github.com/aconiq/backend \
-      --ignore modernc.org/mathutil \
-      2>/dev/null
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+    # Evaluate GOROOT from inside the module: the `toolchain` directive in
+    # go.mod can switch the active toolchain, and only then does `go env`
+    # report the GOROOT that go-licenses has to match.
+    export GOROOT="$(go env GOROOT)"
+    for goos in linux windows darwin; do
+      GOOS="${goos}" GOARCH=amd64 go-licenses report ./... \
+        --ignore github.com/aconiq/backend \
+        --ignore modernc.org/mathutil \
+        2>/dev/null
+    done | sort -u
 
 # This recipe is the single source of truth for .github/workflows/go-ci.yml:
 # every gate in that workflow invokes one of the recipes listed below. The

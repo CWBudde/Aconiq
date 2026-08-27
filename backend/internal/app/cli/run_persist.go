@@ -223,8 +223,8 @@ func persistCnossosRoadRunOutputs(
 		"output_hash":            outputHash,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
-		"model_version":          cnossosindustry.BuiltinModelVersion,
-		"reporting_precision_db": cnossosindustry.ReportingPrecisionDB,
+		"model_version":          cnossosroad.BuiltinModelVersion,
+		"reporting_precision_db": cnossosroad.ReportingPrecisionDB,
 		"receiver_mode":          receiverMode,
 	}
 
@@ -335,8 +335,10 @@ func persistRLS19RoadRunOutputs(
 		"output_hash":  outputHash,
 		"source_count": sourceCount,
 		"sources_with_feature_acoustics_overrides": sourceOverrideCount,
-		"receiver_count":         len(outputs),
-		"data_pack_version":      rls19road.BuiltinDataPackVersion,
+		"receiver_count": len(outputs),
+		// RLS-19 has no model version of its own: the data pack it evaluates is
+		// the only thing that versions its results.
+		"model_version":          rls19road.BuiltinDataPackVersion,
 		"reporting_precision_db": rls19road.ReportingPrecisionDB,
 		"receiver_mode":          receiverMode,
 	}
@@ -561,6 +563,7 @@ func persistBUFAircraftRunOutputs(
 		"output_hash":    outputHash,
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
+		"model_version":  bufaircraft.BuiltinModelVersion,
 		"receiver_mode":  receiverMode,
 	}
 
@@ -670,6 +673,7 @@ func persistCnossosIndustryRunOutputs(
 		"output_hash":    outputHash,
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
+		"model_version":  cnossosindustry.BuiltinModelVersion,
 		"receiver_mode":  receiverMode,
 	}
 
@@ -723,6 +727,7 @@ func persistISO9613RunOutputs(
 		"output_hash":    outputHash,
 		"source_count":   sourceCount,
 		"receiver_count": len(outputs),
+		"model_version":  iso9613.BuiltinModelVersion,
 		"receiver_mode":  receiverMode,
 		"indicator":      iso9613.IndicatorLpAeqDW,
 	}

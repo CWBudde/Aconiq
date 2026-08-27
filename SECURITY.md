@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in Aconiq, please report it responsibly.
 
-**Do not open a public issue.** Instead, send details to the maintainers via a [GitHub Security Advisory](https://github.com/aconiq/backend/security/advisories/new) or by contacting the repository owner directly.
+**Do not open a public issue.** Instead, send details to the maintainers via a [GitHub Security Advisory](https://github.com/cwbudde/Aconiq/security/advisories/new) or by contacting the repository owner directly.
 
 Please include:
 

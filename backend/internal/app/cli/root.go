@@ -8,6 +8,7 @@ import (
 
 	"github.com/aconiq/backend/internal/app/config"
 	"github.com/aconiq/backend/internal/app/logging"
+	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +65,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:           "aconiq",
 		Short:         "Environmental noise modeling CLI",
+		Version:       buildinfo.Version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -84,6 +86,11 @@ func newRootCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	// `--version` must report the same identity that lands in provenance.json,
+	// so it prints commit and build date next to the version rather than the
+	// bare version cobra defaults to.
+	rootCmd.SetVersionTemplate(buildinfo.String() + "\n")
 
 	rootCmd.PersistentFlags().StringVar(&projectPath, "project", "", "Path to project directory (defaults to current working directory)")
 	rootCmd.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "Path to cache directory (defaults to <project>/.noise/cache)")
