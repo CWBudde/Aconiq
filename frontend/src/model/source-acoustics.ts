@@ -115,11 +115,15 @@ export function setFeatureProperty(
     nextProperties[key] = value;
   }
 
-  return {
-    ...feature,
-    properties:
-      Object.keys(nextProperties).length > 0 ? nextProperties : undefined,
-  };
+  const next: ModelFeature = { ...feature };
+  if (Object.keys(nextProperties).length > 0) {
+    next.properties = nextProperties;
+  } else {
+    // Drop the key entirely rather than assigning `undefined`
+    // (ModelFeature.properties is "absent or a value").
+    Reflect.deleteProperty(next, "properties");
+  }
+  return next;
 }
 
 export function getRLS19ReviewRequired(feature: ModelFeature): boolean {

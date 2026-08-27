@@ -49,7 +49,14 @@ async function loadWasmExecScript(): Promise<void> {
 async function loadKernel(): Promise<AconiqKernel> {
   await loadWasmExecScript();
 
-  const go = new window.Go();
+  const GoRuntime = window.Go;
+  if (!GoRuntime) {
+    throw new Error(
+      "wasm_exec.js was loaded but did not define window.Go. Re-run `just wasm-build` to regenerate a matching wasm_exec.js.",
+    );
+  }
+
+  const go = new GoRuntime();
   const wasmUrl = `${import.meta.env.BASE_URL}aconiq.wasm`;
 
   let result: WebAssembly.WebAssemblyInstantiatedSource;
@@ -68,17 +75,22 @@ async function loadKernel(): Promise<AconiqKernel> {
   // All JS exports are registered synchronously before the scheduler yields.
   void go.run(result.instance);
 
-  if (!window.aconiq) {
-    throw new Error("WASM kernel loaded but window.aconiq was not registered.");
+  // Captured once: `window.aconiq` is undefined until the Go module registers
+  // its exports, so narrowing it here is what keeps the returned methods safe.
+  const exports = window.aconiq;
+  if (!exports) {
+    throw new Error(
+      "WASM kernel not initialised: the Go module ran but did not register window.aconiq. Load the kernel via getKernel() and make sure public/aconiq.wasm is the current build (`just wasm-build`).",
+    );
   }
 
   return {
     async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
-      const json = await window.aconiq.rls19Road(JSON.stringify(req));
+      const json = await exports.rls19Road(JSON.stringify(req));
       return JSON.parse(json) as ReceiverOutput[];
     },
     defaultConfig(): PropagationConfig {
-      return JSON.parse(window.aconiq.defaultConfig()) as PropagationConfig;
+      return JSON.parse(exports.defaultConfig()) as PropagationConfig;
     },
   };
 }

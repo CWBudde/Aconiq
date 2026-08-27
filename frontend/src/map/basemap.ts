@@ -1,4 +1,4 @@
-import type { StyleSpecification } from "maplibre-gl";
+import type { RasterLayerSpecification, StyleSpecification } from "maplibre-gl";
 
 /**
  * Available basemap styles.
@@ -10,8 +10,15 @@ import type { StyleSpecification } from "maplibre-gl";
 function createRasterStyle(
   name: string,
   backgroundColor: string,
-  rasterPaint?: NonNullable<StyleSpecification["layers"]>[number]["paint"],
+  rasterPaint?: RasterLayerSpecification["paint"],
 ): StyleSpecification {
+  const rasterLayer: RasterLayerSpecification = {
+    id: "osm-raster",
+    type: "raster",
+    source: "osm",
+    paint: rasterPaint ?? {},
+  };
+
   return {
     version: 8,
     name,
@@ -31,12 +38,7 @@ function createRasterStyle(
           "background-color": backgroundColor,
         },
       },
-      {
-        id: "osm-raster",
-        type: "raster",
-        source: "osm",
-        paint: rasterPaint ?? {},
-      },
+      rasterLayer,
     ],
   };
 }

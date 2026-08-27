@@ -85,10 +85,12 @@ function normalizeFeature(
 
   const id = raw.id != null ? String(raw.id) : createFeatureId();
 
+  const normalizedProps = normalizeProperties(props);
+
   const feature: ModelFeature = {
     id,
     kind,
-    properties: normalizeProperties(props),
+    ...(normalizedProps !== undefined && { properties: normalizedProps }),
     geometry: {
       type: geomType as GeometryType,
       coordinates: raw.geometry.coordinates as Geometry["coordinates"],

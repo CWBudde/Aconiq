@@ -413,8 +413,9 @@ export default function ExportPage() {
   );
 
   // Auto-select first.
-  if (!selectedRun && runsWithExports.length > 0 && !isLoading) {
-    setSelectedRunId(runsWithExports[0].id);
+  const firstRunWithExports = runsWithExports[0];
+  if (!selectedRun && firstRunWithExports && !isLoading) {
+    setSelectedRunId(firstRunWithExports.id);
   }
 
   if (isLoading) {

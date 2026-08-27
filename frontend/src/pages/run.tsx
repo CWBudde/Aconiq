@@ -187,13 +187,19 @@ function parseTimeline(lines: string[], status: RunStatus): TimelineStep[] {
   const steps: TimelineStep[] = LOG_STAGES.map((stage, i) => {
     const ts = matched.get(stage.key);
     const done = matched.has(stage.key);
+    const prevStage = LOG_STAGES[i - 1];
     const nextStage = LOG_STAGES[i + 1];
     const active =
       !done &&
       status === "running" &&
-      (i === 0 || matched.has(LOG_STAGES[i - 1].key)) &&
+      (!prevStage || matched.has(prevStage.key)) &&
       (!nextStage || !matched.has(nextStage.key));
-    return { label: stage.label, timestamp: ts, done, active };
+    return {
+      label: stage.label,
+      ...(ts !== undefined && { timestamp: ts }),
+      done,
+      active,
+    };
   });
 
   return steps;
@@ -887,7 +893,7 @@ function RunSetupDialog({
                     <SelectContent>
                       {standards?.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {getStandardLabel(s)}
+                          {getStandardLabel(s.id)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -966,7 +972,7 @@ function RunSetupDialog({
             {selectedProfile && selectedProfile.parameters.length > 0 ? (
               <section className="space-y-4">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  {m.section_parameters()}
+                  {m.label_section_parameters()}
                 </h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   {selectedProfile.parameters.map((param) => (
@@ -1134,8 +1140,9 @@ export default function RunPage() {
   );
 
   // Auto-select first visible run if current selection isn't visible.
-  if (!selectedRun && filteredRuns.length > 0 && !isLoading) {
-    setSelectedRunId(filteredRuns[0].id);
+  const firstFilteredRun = filteredRuns[0];
+  if (!selectedRun && firstFilteredRun && !isLoading) {
+    setSelectedRunId(firstFilteredRun.id);
   }
 
   const hasRuns = runs.length > 0;

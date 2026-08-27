@@ -7,6 +7,44 @@ import { BASEMAP_STYLES } from "./basemap";
 import { useMapStore } from "./map-store";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
+/**
+ * How long to wait for the map's `load` event before giving up and showing the
+ * "map unavailable" fallback. A WebGL context that is created but never paints
+ * (blocked GPU, software rasterizer, remote session) never fires `load`.
+ *
+ * `load` only fires after the style *and* the first render complete, so a slow
+ * network produces the same signal as a broken GPU. The threshold is therefore
+ * deliberately generous, and a timeout is treated as a per-mount condition
+ * rather than session-wide evidence that WebGL is unusable: remounting (a route
+ * change or basemap switch) retries.
+ */
+const MAP_LOAD_TIMEOUT_MS = 15000;
+
+const MAP_TIMEOUT_MESSAGE =
+  "The map did not finish loading. WebGL rendering may be blocked or unavailable in this browser.";
+
+const MAP_UNAVAILABLE_MESSAGE = "Map rendering is unavailable in this browser.";
+
+/**
+ * Session-scoped kill switch for WebGL map rendering.
+ *
+ * Module-level (not React state and not the zustand map store) on purpose: it
+ * must survive MapView unmount/remount — a basemap switch or a route change
+ * recreates the component — while still resetting on a full page reload.
+ *
+ * Set only when `new maplibregl.Map()` throws, which is the one signal that is
+ * genuinely permanent for the session: the browser cannot give us a WebGL
+ * context at all, so every remount would fail identically. A load timeout is
+ * not such a signal (it also fires on a slow network), and neither is
+ * `webglcontextlost`, which is transient by definition — there is a
+ * `webglcontextrestored` handler below that expects to recover from it.
+ */
+let webglDisabledForSession = false;
+
+function disableWebGLForSession(): void {
+  webglDisabledForSession = true;
+}
+
 /** Layers that are interactive (click/hover targets) */
 const INTERACTIVE_LAYERS = [
   LAYER_IDS.sourcesPoint,
@@ -39,7 +77,9 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
-  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(
+    webglDisabledForSession ? MAP_UNAVAILABLE_MESSAGE : null,
+  );
   const basemap = useMapStore((s) => s.basemap);
 
   // Initialize map
@@ -57,7 +97,8 @@ export function MapView({
         attributionControl: {},
       });
     } catch {
-      setMapError("Map rendering is unavailable in this browser.");
+      disableWebGLForSession();
+      setMapError(MAP_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -85,10 +126,9 @@ export function MapView({
 
     const fallbackTimer = window.setTimeout(() => {
       if (!mapRef.current) {
-        disableWebGLForSession();
-        setFallbackMode(true);
+        setMapError(MAP_TIMEOUT_MESSAGE);
       }
-    }, 4000);
+    }, MAP_LOAD_TIMEOUT_MS);
 
     return () => {
       window.clearTimeout(fallbackTimer);

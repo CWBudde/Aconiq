@@ -765,8 +765,9 @@ export default function ResultsPage() {
   );
 
   // Auto-select first completed run if selection is invalid.
-  if (!selectedRun && completedRuns.length > 0 && !isLoading) {
-    setSelectedRunId(completedRuns[0].id);
+  const firstCompletedRun = completedRuns[0];
+  if (!selectedRun && firstCompletedRun && !isLoading) {
+    setSelectedRunId(firstCompletedRun.id);
   }
 
   if (isLoading) {

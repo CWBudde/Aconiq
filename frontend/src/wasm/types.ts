@@ -33,17 +33,30 @@ export interface Barrier {
   height_m: number;
 }
 
-// SurfaceType string values from Go constants.
+// SurfaceType string values from Go constants. Keep in sync with
+// backend/internal/standards/rls19/road/model.go (SurfaceNotSpecified ...
+// SurfaceUnpavedOrDamaged) and with RLS19_SURFACE_TYPES in
+// src/model/source-acoustics.ts. Each value has its own DStrO correction row in
+// rls19/road/tables.go, so omitting one here is a numeric defect, not a
+// cosmetic one.
 export type SurfaceType =
   | "" // not specified
-  | "SMA"
+  | "SMA" // generic alias: SMA 5/8 at <=60, SMA 8/11 at >60
+  | "SMA-5-8"
+  | "SMA-8-11"
   | "AB"
-  | "OPA"
-  | "Pflaster"
+  | "OPA" // generic alias: OPA PA 11
+  | "OPA-11"
+  | "OPA-8"
+  | "Pflaster" // generic alias: sonstiges Pflaster
+  | "Pflaster-eben"
+  | "Pflaster-sonstig"
   | "Beton"
   | "LOA"
+  | "SMA-LA-8"
   | "DSH-V"
-  | "Gussasphalt"
+  | "Gussasphalt" // generic alias: laermarmer Gussasphalt
+  | "Gussasphalt-nicht-geriffelt"
   | "beschaedigt";
 
 // JunctionType is a Go int — serializes as a number (0=none, 1=signalized, 2=roundabout, 3=other).

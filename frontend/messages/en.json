@@ -190,6 +190,7 @@
   "option_source": "Source",
   "option_building": "Building",
   "option_barrier": "Barrier",
+  "option_receiver": "Receiver",
   "option_source_type_point": "Point",
   "option_source_type_line": "Line",
   "option_source_type_area": "Area",

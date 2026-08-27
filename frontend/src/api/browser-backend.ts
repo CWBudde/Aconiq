@@ -367,11 +367,12 @@ function getPolygonBBox(
   let maxY = Number.NEGATIVE_INFINITY;
   for (const ring of rings) {
     for (const pos of ring) {
-      if (pos.length >= 2) {
-        minX = Math.min(minX, pos[0]);
-        minY = Math.min(minY, pos[1]);
-        maxX = Math.max(maxX, pos[0]);
-        maxY = Math.max(maxY, pos[1]);
+      const [x, y] = pos;
+      if (x !== undefined && y !== undefined) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
       }
     }
   }
@@ -412,6 +413,16 @@ export function buildRoadSources(
   for (const feature of features) {
     if (feature.kind !== "source" || feature.sourceType !== "line") continue;
     const centerlines = toLineStrings(feature.geometry.coordinates);
+    const junctionType = resolveJunctionType(feature);
+    const junctionDistanceM = getFeatureNumber(
+      feature,
+      "junction_distance_m",
+      "road_junction_distance_m",
+    );
+    const reflectionSurchargeDb = getFeatureNumber(
+      feature,
+      "reflection_surcharge_db",
+    );
     centerlines.forEach((centerline, index) => {
       if (centerline.length < 2) return;
       sources.push({
@@ -458,16 +469,15 @@ export function buildRoadSources(
           0,
           "road_gradient_percent",
         ),
-        junction_type: resolveJunctionType(feature),
-        junction_distance_m: getFeatureNumber(
-          feature,
-          "junction_distance_m",
-          "road_junction_distance_m",
-        ),
-        reflection_surcharge_db: getFeatureNumber(
-          feature,
-          "reflection_surcharge_db",
-        ),
+        // Optional on RoadSource: omit the key entirely rather than assigning
+        // an explicit `undefined`.
+        ...(junctionType !== undefined && { junction_type: junctionType }),
+        ...(junctionDistanceM !== undefined && {
+          junction_distance_m: junctionDistanceM,
+        }),
+        ...(reflectionSurchargeDb !== undefined && {
+          reflection_surcharge_db: reflectionSurchargeDb,
+        }),
         traffic_day: {
           pkw_per_hour: resolveFeatureNumber(
             feature,
@@ -543,35 +553,34 @@ function resolveFeatureNumber(
   return parseNumber(params, keys[0] ?? "", fallback);
 }
 
+/**
+ * Validates an arbitrary (user- or OSM-supplied) string against the RLS-19
+ * surface list, returning `undefined` when it is not a known surface.
+ *
+ * `RLS19_SURFACE_TYPES` mirrors the Go `rls19/road.SurfaceType` constants, so a
+ * value that survives this check is a valid `SurfaceType` by construction.
+ */
+function toSurfaceType(
+  value: string | undefined,
+): RoadSource["surface_type"] | undefined {
+  if (value === undefined) return undefined;
+  return RLS19_SURFACE_TYPES.find(
+    (entry): entry is RoadSource["surface_type"] & typeof entry =>
+      entry === value,
+  );
+}
+
 function resolveSurfaceType(
   feature: ModelFeature,
   params: Record<string, string>,
 ): RoadSource["surface_type"] {
-  const featureValue = getFeatureString(
-    feature,
-    "surface_type",
-    "road_surface_type",
+  return (
+    toSurfaceType(
+      getFeatureString(feature, "surface_type", "road_surface_type"),
+    ) ??
+    toSurfaceType(params["surface_type"]) ??
+    "SMA"
   );
-  if (
-    featureValue &&
-    RLS19_SURFACE_TYPES.includes(
-      featureValue as (typeof RLS19_SURFACE_TYPES)[number],
-    )
-  ) {
-    return featureValue;
-  }
-
-  const paramValue = params["surface_type"];
-  if (
-    paramValue &&
-    RLS19_SURFACE_TYPES.includes(
-      paramValue as (typeof RLS19_SURFACE_TYPES)[number],
-    )
-  ) {
-    return paramValue;
-  }
-
-  return "SMA";
 }
 
 function resolveJunctionType(
@@ -708,12 +717,20 @@ function makeArtifact(
   };
 }
 
+// Receiver values are an open Record, and stored runs are replayed from
+// localStorage, so an indicator can legitimately be absent (e.g. a run written
+// by an older build). Render it as an empty cell instead of throwing, matching
+// how buildReceiverCSV already handles missing indicators.
+function formatIndicator(values: Record<string, number>, key: string): string {
+  return values[key]?.toFixed(1) ?? "";
+}
+
 function browserExportHTML(run: RunSummary, table: ReceiverTable): string {
   const previewRows = table.records.slice(0, 20);
   const rowHtml = previewRows
     .map(
       (record) =>
-        `<tr><td>${record.id}</td><td>${record.x.toFixed(2)}</td><td>${record.y.toFixed(2)}</td><td>${record.values.LrDay.toFixed(1)}</td><td>${record.values.LrNight.toFixed(1)}</td></tr>`,
+        `<tr><td>${record.id}</td><td>${record.x.toFixed(2)}</td><td>${record.y.toFixed(2)}</td><td>${formatIndicator(record.values, "LrDay")}</td><td>${formatIndicator(record.values, "LrNight")}</td></tr>`,
     )
     .join("");
   return `<!doctype html>
@@ -749,7 +766,7 @@ function browserExportMarkdown(run: RunSummary, table: ReceiverTable): string {
     .slice(0, 10)
     .map(
       (record) =>
-        `| ${record.id} | ${record.x.toFixed(2)} | ${record.y.toFixed(2)} | ${record.values.LrDay.toFixed(1)} | ${record.values.LrNight.toFixed(1)} |`,
+        `| ${record.id} | ${record.x.toFixed(2)} | ${record.y.toFixed(2)} | ${formatIndicator(record.values, "LrDay")} | ${formatIndicator(record.values, "LrNight")} |`,
     )
     .join("\n");
   return `# Aconiq Export
@@ -1009,42 +1026,47 @@ out geom;`;
     const finishedAt = nowISO();
     const createdAt = finishedAt;
 
+    const receiversJSONArtifact = makeArtifact(
+      runId,
+      "receivers-json",
+      "run.result.receiver_table_json",
+      `${basePath}/results/receivers.json`,
+      createdAt,
+    );
+    const receiversCSVArtifact = makeArtifact(
+      runId,
+      "receivers-csv",
+      "run.result.receiver_table_csv",
+      `${basePath}/results/receivers.csv`,
+      createdAt,
+    );
+    const rasterMetaArtifact = makeArtifact(
+      runId,
+      "raster-meta",
+      "run.result.raster_metadata",
+      `${basePath}/results/rls19-road.json`,
+      createdAt,
+    );
+    const rasterBinArtifact = makeArtifact(
+      runId,
+      "raster-bin",
+      "run.result.raster_binary",
+      `${basePath}/results/rls19-road.bin`,
+      createdAt,
+    );
+    const summaryArtifact = makeArtifact(
+      runId,
+      "summary",
+      "run.result.summary",
+      `${basePath}/results/run-summary.json`,
+      createdAt,
+    );
     const artifacts: ArtifactRef[] = [
-      makeArtifact(
-        runId,
-        "receivers-json",
-        "run.result.receiver_table_json",
-        `${basePath}/results/receivers.json`,
-        createdAt,
-      ),
-      makeArtifact(
-        runId,
-        "receivers-csv",
-        "run.result.receiver_table_csv",
-        `${basePath}/results/receivers.csv`,
-        createdAt,
-      ),
-      makeArtifact(
-        runId,
-        "raster-meta",
-        "run.result.raster_metadata",
-        `${basePath}/results/rls19-road.json`,
-        createdAt,
-      ),
-      makeArtifact(
-        runId,
-        "raster-bin",
-        "run.result.raster_binary",
-        `${basePath}/results/rls19-road.bin`,
-        createdAt,
-      ),
-      makeArtifact(
-        runId,
-        "summary",
-        "run.result.summary",
-        `${basePath}/results/run-summary.json`,
-        createdAt,
-      ),
+      receiversJSONArtifact,
+      receiversCSVArtifact,
+      rasterMetaArtifact,
+      rasterBinArtifact,
+      summaryArtifact,
     ];
 
     const run: RunSummary = {
@@ -1075,32 +1097,32 @@ out geom;`;
     };
 
     const artifactMap: Record<string, StoredArtifactContent> = {
-      [artifacts[0].id]: {
-        kind: artifacts[0].kind,
+      [receiversJSONArtifact.id]: {
+        kind: receiversJSONArtifact.kind,
         mimeType: "application/json",
         encoding: "json",
         value: receiverTable,
       },
-      [artifacts[1].id]: {
-        kind: artifacts[1].kind,
+      [receiversCSVArtifact.id]: {
+        kind: receiversCSVArtifact.kind,
         mimeType: "text/csv",
         encoding: "text",
         value: receiverCSV,
       },
-      [artifacts[2].id]: {
-        kind: artifacts[2].kind,
+      [rasterMetaArtifact.id]: {
+        kind: rasterMetaArtifact.kind,
         mimeType: "application/json",
         encoding: "json",
         value: rasterMetadata,
       },
-      [artifacts[3].id]: {
-        kind: artifacts[3].kind,
+      [rasterBinArtifact.id]: {
+        kind: rasterBinArtifact.kind,
         mimeType: "application/octet-stream",
         encoding: "text",
         value: outputHash,
       },
-      [artifacts[4].id]: {
-        kind: artifacts[4].kind,
+      [summaryArtifact.id]: {
+        kind: summaryArtifact.kind,
         mimeType: "application/json",
         encoding: "json",
         value: { ...summary, output_hash: outputHash },
@@ -1150,35 +1172,39 @@ out geom;`;
       ],
     };
 
+    const bundleArtifact = makeArtifact(
+      runId,
+      `export-bundle-${storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1}`,
+      "export.bundle",
+      `${exportBase}/export-summary.json`,
+      exportedAt,
+    );
+    const contextArtifact = makeArtifact(
+      runId,
+      `export-context-${Date.now()}`,
+      "export.report_context_json",
+      `${exportBase}/report/report-context.json`,
+      exportedAt,
+    );
+    const markdownArtifact = makeArtifact(
+      runId,
+      `export-markdown-${Date.now()}`,
+      "export.report_markdown",
+      `${exportBase}/report/report.md`,
+      exportedAt,
+    );
+    const htmlArtifact = makeArtifact(
+      runId,
+      `export-html-${Date.now()}`,
+      "export.report_html",
+      `${exportBase}/report/report.html`,
+      exportedAt,
+    );
     const exportArtifacts: ArtifactRef[] = [
-      makeArtifact(
-        runId,
-        `export-bundle-${storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1}`,
-        "export.bundle",
-        `${exportBase}/export-summary.json`,
-        exportedAt,
-      ),
-      makeArtifact(
-        runId,
-        `export-context-${Date.now()}`,
-        "export.report_context_json",
-        `${exportBase}/report/report-context.json`,
-        exportedAt,
-      ),
-      makeArtifact(
-        runId,
-        `export-markdown-${Date.now()}`,
-        "export.report_markdown",
-        `${exportBase}/report/report.md`,
-        exportedAt,
-      ),
-      makeArtifact(
-        runId,
-        `export-html-${Date.now()}`,
-        "export.report_html",
-        `${exportBase}/report/report.html`,
-        exportedAt,
-      ),
+      bundleArtifact,
+      contextArtifact,
+      markdownArtifact,
+      htmlArtifact,
     ];
 
     const nextStoredRun: StoredRun = {
@@ -1189,26 +1215,26 @@ out geom;`;
       log: storedRun.log,
       artifacts: {
         ...storedRun.artifacts,
-        [exportArtifacts[0].id]: {
-          kind: exportArtifacts[0].kind,
+        [bundleArtifact.id]: {
+          kind: bundleArtifact.kind,
           mimeType: "application/json",
           encoding: "json",
           value: bundleSummary,
         },
-        [exportArtifacts[1].id]: {
-          kind: exportArtifacts[1].kind,
+        [contextArtifact.id]: {
+          kind: contextArtifact.kind,
           mimeType: "application/json",
           encoding: "json",
           value: context,
         },
-        [exportArtifacts[2].id]: {
-          kind: exportArtifacts[2].kind,
+        [markdownArtifact.id]: {
+          kind: markdownArtifact.kind,
           mimeType: "text/markdown",
           encoding: "text",
           value: markdown,
         },
-        [exportArtifacts[3].id]: {
-          kind: exportArtifacts[3].kind,
+        [htmlArtifact.id]: {
+          kind: htmlArtifact.kind,
           mimeType: "text/html",
           encoding: "text",
           value: html,
@@ -1274,10 +1300,15 @@ export function overpassWayToFeature(
   }
 
   if (tags["building"]) {
-    const ring = geometry.map((point) => [point.lon, point.lat]);
+    const ring: [number, number][] = geometry.map((point) => [
+      point.lon,
+      point.lat,
+    ]);
     if (ring.length < 3) return null;
     const first = ring[0];
     const last = ring[ring.length - 1];
+    // Unreachable given the length check above; keeps the indexed access sound.
+    if (!first || !last) return null;
     if (first[0] !== last[0] || first[1] !== last[1]) {
       ring.push([first[0], first[1]]);
     }

@@ -190,6 +190,7 @@
   "option_source": "Quelle",
   "option_building": "Gebäude",
   "option_barrier": "Hindernis",
+  "option_receiver": "Empfänger",
   "option_source_type_point": "Punkt",
   "option_source_type_line": "Linie",
   "option_source_type_area": "Fläche",

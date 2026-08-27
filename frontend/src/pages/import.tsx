@@ -140,7 +140,7 @@ export default function ImportPage() {
         west,
         north,
         east,
-        overpass_endpoint: osmEndpoint || undefined,
+        ...(osmEndpoint ? { overpass_endpoint: osmEndpoint } : {}),
       },
       {
         onSuccess: (collection) => {
