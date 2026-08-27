@@ -1,35 +1,46 @@
-# PLAN.md — Implementation Plan for Aconiq Environmental Noise System
+# PLAN.md — Aconiq Roadmap
 
-Status: 28 March 2026
+Status: 27 August 2026
 
-This plan is organized for execution rather than historical phase order.
+This file tracks **what is still ahead**. Completed work is recorded in git history, in
+`docs/conformance/`, and in the per-module baseline notes under `docs/`. Nothing here is a
+status report.
 
-- The active roadmap comes first and contains all unfinished or mixed-status work.
-- Completed phases and the completed portions of mixed phases are compacted into a shipped baseline later in the document.
-- Original phase numbers are retained in parentheses for traceability where useful.
+Ordering principle: correctness and evidence come before features. A calculation that is wrong
+by 23 dB is not improved by a nicer report template.
+
+The "Phase QR" (quality remediation) block added in `9ec398d` has been absorbed here. Its
+sub-phases map onto the new numbering as: QR-1 → Priority 0, QR-2 → Priorities 2 and 4,
+QR-3 → Priority 1.8, QR-4 → Priority 3, QR-5 → Priority 7, QR-6 → Priorities 5 and 9. Commit
+messages referencing `QR-N` remain resolvable through this table.
 
 ## Strategic positioning
 
-Aconiq is an auditable, deterministic noise calculation and automation platform, not a GUI clone of CadnaA, SoundPLAN, or IMMI. Core differentiators:
+Aconiq is an auditable, deterministic noise calculation and automation platform, not a GUI clone
+of CadnaA, SoundPLAN, or IMMI. Core differentiators:
 
 - Deterministic, reproducible runs with artifact provenance and golden-test regression.
 - CLI-first plus local API for automation, CI/CD integration, and batch workflows.
 - Open standards modules as plug-ins with explicit compliance boundaries per norm.
 - Offline-first project format with full traceability from inputs to standard/profile to outputs.
 
-The path to DACH adoption runs through four gates:
+The path to DACH adoption runs through four gates, in order:
 
-1. Legal clarity and compliance boundaries.
-2. Real-world CRS and interoperability support.
-3. Believable normative validation per standard.
+1. **Numbers that are right, and demonstrably so.** Currently the weakest link.
+2. Legal clarity and compliance boundaries.
+3. Real-world CRS and interoperability support.
 4. DACH-specific assessment and reporting workflows.
 
 ## Clarifications
 
-- Offline-only is acceptable for the near-term MVP. The CLI is primary; the local API and browser GUI are secondary.
-- Input data support now includes GeoJSON, GeoPackage, FlatGeobuf, CSV, CityGML, OSM/Overpass, and GeoTIFF terrain.
-- All named standards remain long-term targets, but they do not all carry the same delivery priority.
-- The frontend stack remains React + TypeScript + Vite + Bun + shadcn/ui, but frontend polish is not on the critical path.
+- Offline-only is acceptable for the near-term MVP. The CLI is primary; the local API and
+  browser GUI are secondary.
+- Input data support covers GeoJSON, GeoPackage, FlatGeobuf, CSV, CityGML, OSM/Overpass, and
+  GeoTIFF terrain.
+- All named standards remain long-term targets, but they do not all carry the same delivery
+  priority — and, per the tier table below, they do not all carry the same evidence.
+- The frontend stack remains React + TypeScript + Vite + Bun + shadcn/ui. Frontend _polish_ is
+  not on the critical path; frontend _correctness_ is, because the shipped Run page throws.
 
 ## Guiding principles
 
@@ -37,399 +48,794 @@ The path to DACH adoption runs through four gates:
 - Treat quality assurance as a product feature, not a cleanup task.
 - Publish conformance boundaries, tolerances, known deviations, and evidence per normative module.
 - Keep the project format local-first; multiuser/server remains optional future work.
+- **Never let a module's name assert more than its evidence supports.**
 
 ## Working definitions
 
-- Project: folder with manifest, inputs, and artifacts.
-- Scenario: input model plus standard selection plus parameters.
-- Run: concrete calculation of one scenario against one receiver set with a fixed standard version/profile.
-- Standards module: implementation of emission, propagation, indicators, and tables for a specific standard and version/profile.
+- **Project**: folder with manifest, inputs, and artifacts.
+- **Scenario**: input model plus standard selection plus parameters.
+- **Run**: one calculation of one scenario against one receiver set with a fixed standard
+  version/profile.
+- **Standards module**: implementation of emission, propagation, indicators, and tables for a
+  specific standard and version/profile.
+- **Evidence tier** (new, see Priority 4): how much a module's output may be relied upon.
+
+## Standards evidence tiers
+
+The registry currently exposes 13 standards as peers. They are not peers. This table is the
+target state; Priority 4 makes the code express it.
+
+| Module                                | Target tier            | Reality today                                                              |
+| ------------------------------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; **propagation defect, P1.1**      |
+| `schall03`                            | normative              | Real Anlage-2 tables and Gl. 1–36 — **but the CLI does not call them, P2** |
+| `iso9613`                             | normative              | Table 2/3 verbatim correct; **three defects, P1.2–P1.4**                   |
+| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                           |
+| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                      |
+| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands           |
+| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                             |
+| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                              |
+| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                 |
+| `dummy-freefield`                     | test fixture           | Intentional                                                                |
 
 ---
 
-## Active roadmap
+# Gate 1 — Trustworthy build and numbers
 
-### Priority 0 — Repository quality and integrity remediation (Phase QR)
+## Priority 0 — Restore the build and the safety net
 
-Status: new phase, added after a full-repo quality review (build/test/lint plus architecture, code-quality, testing, docs/CI, and domain-correctness passes). The engine, standards, assessment, and frontend tracks are far more advanced than the top-level docs claim, but the review surfaced a broken CI pipeline, a standards-integrity problem, and one determinism-policy violation that outrank the feature roadmap below. Fix these before shipping new standards work.
+Nothing else on this roadmap is verifiable until this is done. Every automated gate the project
+owns is currently blind.
 
-Why now: CI cannot currently pass, the top-level docs actively mislead contributors and agents, and several modules emit non-normative numbers while registered as peers of validated standards — an integrity risk in a regulatory noise tool. These are correctness/trust issues, not polish.
+Partly addressed by `b96e319` (Phase QR-1): the `bin/noise` → `bin/aconiq` rename in
+`go-ci.yml` and `CONTRIBUTING.md`, the `mkdir -p docs/api` step before the OpenAPI export, the
+`treefmt` install, the `golangci-lint-action` v6 → v7 bump (v6 pins the v1 line, which refuses a
+`go 1.25.0` target and cannot read the v2 `.golangci.yml`), and the Go 1.24+ → 1.25+ correction
+are done. What follows is what remains.
 
-Review baseline (verified locally): `go vet`, `golangci-lint`, and `go test` are clean on every buildable package; all buildable tests pass. The only hard failures are the private-module build blocker and the stale CI references below.
+- [ ] **Fix the `go-overpass` module path.** `backend/go.mod:7` requires
+      `github.com/cwbudde/go-overpass v0.0.0-20251224010608-5fb9afa66cb9`, but that pseudo-version
+      declares itself `github.com/MeKo-Christian/go-overpass` — which is what
+      `backend/internal/io/osmimport/osmimport.go:11` imports. Go refuses the mismatch and the
+      whole module graph fails to resolve.
+      The repository has since moved **back**: `github.com/MeKo-Christian/go-overpass` now 301s to
+      `github.com/CWBudde/go-overpass`, and the tagged `v0.1.0` (2026-04-18) declares
+      `module github.com/cwbudde/go-overpass`. So the fix is to bump the `require` to `v0.1.0` and
+      change the **import** to `github.com/cwbudde/go-overpass` — verified that `overpass.New`
+      resolves under that path at that version — then `go mod tidy`.
+      `NOTICE:13` still names `MeKo-Christian/go-overpass` and becomes the stale side of the
+      rename; fix it with the rest of `NOTICE` in Priority 5.
+      _Blocks:_ `go build`, `go vet`, `golangci-lint`, and the test packages `cmd/aconiq`,
+      `internal/app/cli` (4 111 test LOC), `internal/api/httpv1` (1 096), `internal/io/osmimport`.
+- [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
+      `github.com/cwbudde/go-absolute-database v0.1.0`, which **404s** on GitHub — it resolves here
+      only from a warm local module cache, so a fresh clone and every CI runner fail even after the
+      `go-overpass` fix above. It is imported by exactly one file,
+      `internal/io/soundplanimport/absresults.go`, whose reverse chain is `soundplanimport` →
+      `internal/app/cli` (import/compare) → `cmd/aconiq`. Gate SoundPLAN `.abs` reading behind a
+      build tag or an interface, or mirror/vendor the module and add `GOPRIVATE` plus a token step
+      in CI. Note that aggregate commands blame more packages than actually depend on it — one
+      unfetchable module poisons whole-graph resolution.
+- [ ] **Run `just fmt` and commit.** 5 files are unformatted on `main`, including `.golangci.yml`.
+      Note `treefmt --fail-on-change` _rewrites_ files — it is not a read-only check.
+- [ ] **Fix the frontend typecheck no-op.** `frontend/package.json:11` is
+      `"tsc --noEmit"` against a solution-file `tsconfig.json` (`{"files": [], "references": […]}`),
+      which checks **zero files** and exits 0. Change to `"tsc -b --noEmit"`; `tsc -b` currently
+      reports 62 errors.
+- [ ] **Triage the 207 hidden lint findings.** `golangci-lint` aborts on the typecheck error and
+      reports 1 issue; run over the compiling subset it reports 207
+      (`goconst` 101, `wsl_v5` 36, `cyclop` 24, `gocognit` 7, `gosec` 2, `unused` 1, …).
+- [ ] **Guard the unguarded fixture tests.** `backend/internal/io/soundplanimport/absresults_test.go:9`
+      hardcodes `interopDir = "../../../../interoperability/…"` with no existence check; 8 tests
+      `t.Fatalf` on a clean checkout. Route through the existing `testProjectDir(t)` helper
+      (`soundplanimport_test.go:12-22` shows the correct pattern).
+- [ ] **Pin every CI tool version.** `golangci-lint-action` is now v7 but still `version: latest`;
+      `gofumpt@latest`, `gci@latest`, `treefmt/v2@latest`, `go-licenses@latest`,
+      `bun-version: latest` ×2. `.trunk/trunk.yaml` pins all 14 of its tools — the discipline
+      exists, just not where it runs.
+- [ ] **Add `-race` and `govulncheck` to CI.** `just test-race` exists (`justfile:33`) and no
+      workflow calls it, on a codebase whose thesis is determinism. No CVE scanning exists at all.
+- [ ] **Reconcile `just ci` with `go-ci.yml`.** The workflow hand-rolls a different, non-equivalent
+      step list, so "run `just ci` locally" does not reproduce the gate. Make the workflow call the
+      recipe, or document precisely where they differ and why.
+- [ ] Add `backend/wasm` (a committed 3.2 MB binary, the largest tracked file by 19×),
+      `.trunk/`, `playwright-report/`, `test-results/` to `.gitignore`; `git rm --cached backend/wasm`.
+- [ ] Untrack `frontend/tsconfig.app.tsbuildinfo`. It is a TypeScript **incremental build
+      artifact** committed to git, so it churns on every `tsc -b` and — worse — a stale committed
+      copy can make `tsc -b` believe the project is already up to date and skip checking on a
+      fresh clone. That compounds the typecheck no-op above. `git rm --cached` it and gitignore
+      `*.tsbuildinfo`.
+- [ ] Delete the empty `backend/cmd/noise/` directory (`.gitkeep` only, leftover from the rename)
+      and the empty root `.codex` file.
+- [ ] Settle on one frontend package manager. `frontend/bun.lock`, `frontend/package-lock.json` and
+      a root `package-lock.json` all exist and have drifted; `just fe-*` uses Bun. Delete the npm
+      lockfiles or switch deliberately.
 
-#### QR-1 — Unbreak the build and CI (blocker)
+## Priority 1 — Fix known numeric defects
 
-- [ ] Fix the golangci-lint toolchain mismatch (this is the *first* failing CI step, before modules are even resolved). `go-ci.yml` uses `golangci-lint-action@v6` with `version: latest`, which resolves to golangci-lint v1.64.8 (built with go1.24); it refuses go.mod's `go 1.25.0` target with `can't load config: the Go language version (go1.24) ... is lower than the targeted Go version (1.25.0)`. `.golangci.yml` is also v2-format config, which needs golangci-lint v2 (i.e. `golangci-lint-action@v7+`). Bump the action/version to a go1.25-built v2 release (or lower the go.mod target).
-- [ ] Make the tree build without private-repo credentials. `backend/go.mod` requires `github.com/cwbudde/go-absolute-database v0.1.0`, imported **only** by `internal/io/soundplanimport/absresults.go`; it is unfetchable without auth. Real dependency chain: `soundplanimport` → `internal/app/cli` (import/compare) → `cmd/aconiq`. Aggregate commands (`go build ./...`, `go vet ./...`, `just test`) additionally report `internal/api/httpv1` and `internal/io/osmimport` as failing, but those packages do **not** import the private module — they fail only because one unfetchable module poisons whole-graph resolution, not because they depend on it. Gate SoundPLAN `.abs` reading behind a build tag or an interface (or vendor/mirror the module and set `GOPRIVATE` + a token step in CI).
-- [ ] Fix stale binary name in CI: `.github/workflows/go-ci.yml` runs `bin/noise openapi …`, but `just build` now produces `bin/aconiq` (rename noise→aconiq, commit `f3c37be`). Also `mkdir -p docs/api` before the openapi step (the output dir does not exist). Fix the same `bin/noise` reference in `CONTRIBUTING.md`.
-- [ ] Install the formatters the format gate needs in CI: `go-ci.yml` runs `just check-formatted` (→ `treefmt`) but only installs `gofumpt` and `gci`; `treefmt`, `shfmt`, `shellcheck`, and `prettier` are absent, so the gate errors out.
-- [ ] Reconcile `just ci` with the GitHub workflow (the workflow hand-rolls a different, non-equivalent step list) so "run `just ci` locally" actually matches the gate — or document the difference.
+Found by review against normative sources. The Schall 03 items were checked against
+`docs/bimsch16_anl2_neu-1.pdf` (the actual Anlage 2 text, present locally, gitignored).
+Each fixes to a small number of lines; the _consequence_ is that every affected golden file must
+be regenerated and every conformance table re-derived.
 
-#### QR-2 — Standards integrity: separate normative from preview/fabricated modules (blocker)
+### 1.1 RLS-19: line-source contributions normalised by total road length — CRITICAL
 
-- [ ] Stop presenting non-normative modules as peers of validated standards. Review verdicts: RLS-19 road and ISO 9613-2 are genuine; Schall 03 is genuine in structure but ships preview emission data (`datapack.go`, self-labeled `baseline-preview-no-normative-tables`); `cnossos/{road,rail,industry,aircraft}`, `bub/{road,rail,industry}`, and `buf/aircraft` use invented coefficients unrelated to the named standards (e.g. `cnossos/road/emission.go` base levels 35/39/42/37 dB with no octave bands; `buf/aircraft/emission.go` is byte-identical to `cnossos/aircraft/emission.go`; CNOSSOS defines no aircraft method).
-- [ ] Extend the existing provenance normativity signal rather than re-create it. Each module already exposes `ProvenanceMetadata` (including a free-text `compliance_boundary`, e.g. `iso9613-engineering-octaveband`, `baseline-preview-expanded-road-contract`), which `buildRunProvenanceMetadata` (`run_options.go:373`) merges into `ProvenanceManifest.Metadata`, and `run_phase8_test.go` verifies it is persisted. Gaps to close: promote this to a machine-readable `normativity` enum (validated / preview / non-normative) at the standard **descriptor** level, and surface it into run logs and result/report output (currently only in provenance metadata) so the three tiers are distinguishable everywhere, not just in `provenance.json`.
-- [ ] Hard-gate the non-normative modules behind an explicit `--experimental` (or non-normative-acknowledgement) flag so they cannot silently produce authoritative-looking dBA values; and remove or rename `cnossos/aircraft`/`buf/aircraft`.
-- [ ] Replace the "reads more like a method implementation than a compact heuristic" styling/comments with an unmistakable non-normative banner in code and output for any module not backed by real coefficient tables.
-- [ ] Record standard-internal data versions (Schall 03 data-pack version/hash, per-module coefficient-table version) so identical provenance guarantees identical numbers. Do **not** put these in `input_hashes`: `projectfs.Store.hashInputs` defines that map as input-file path → SHA-256 and `reporting.inputFilesFromHashes` renders every entry as an "Input files" row, so non-file, non-hash values there would produce misleading reports. Add a dedicated standard-data digest field (or keep versions in provenance metadata), and only include a coefficient artifact in `input_hashes` when it is an actual hashed input file.
+`backend/internal/standards/rls19/road/propagation.go:458`
 
-#### QR-3 — Determinism and numerical-stability policy compliance
+```go
+lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)   // wrong
+lengthWeight := 10 * math.Log10(seg.LengthM)               // right (l₀ = 1 m)
+```
 
-- [ ] Fix the determinism-policy violation in Schall 03: four sites range directly over the `PerHeight map[int]…` map while accumulating energy (`compute.go:78`, `compute.go:260`, `reflection.go:238`, `reflection.go:296`). Iterate over sorted keys so the float sum order is stable (the neighboring `EnergeticSumLevels` already documents deterministic ordering).
-- [ ] Implement the mandated stable summation (`docs/policies/determinism.md`): no pairwise/compensated (Kahan/Neumaier) summation exists anywhere today. Route energetic dB sums and line-source integration (RLS-19 Teilstückverfahren, CNOSSOS line integration) through a shared compensated-summation helper.
-- [ ] Add a real worker-count determinism test against a genuine standard (today only `dummy/freefield` runs on the engine's parallel path, so the determinism guarantee is untested for real compute), or document that genuine standards are single-threaded by design.
+`emission.LmEDay` is a **length-related** level in dB(A)/m — `emission.go:70` subtracts 30 dB
+precisely to convert veh/h ÷ km/h into per-metre. Dividing by `totalLength` makes
+Σ 10^(w/10) = 1, so the entire road radiates as if it were 1 m long.
 
-#### QR-4 — Test suite: validate correctness, not just self-consistency
+Error = −10·lg(L_road / 1 m): **−20 dB at 100 m, −23 dB at 200 m, −30 dB at 1 km.**
 
-- [ ] Replace self-recorded "conformance" snapshots with real reference values. `internal/qa/acceptance/rls19_test20/testdata/ci_safe_suite.json` and the `qa/acceptance/testdata/*` CNOSSOS/BEB/BUB/BUF goldens assert the implementation against its own output at 1e-6 dB tolerance — a regression snapshot, not conformance. Encode published RLS-19 TEST-20 / CNOSSOS worked-example values with realistic (~0.1 dB) tolerances (follow the iso9613/schall03 pattern, which do genuine reference validation).
-- [ ] Add hand-calculated absolute-value assertions per module for cnossos/bub/buf/beb (currently only monotonicity / code-equals-code checks).
-- [ ] Add tests for the untested policy-bearing packages: `domain/project` (manifest round-trip) and `domain/errors` (user-input vs internal classification, which drives CLI exit codes). Also `app/config`, `app/logging`.
-- [ ] De-flake `engine/runner_test.go:76` `TestCancellationLeavesConsistentState` (40 ms sleep-then-cancel is timing-dependent); drive cancellation off a deterministic signal.
-- [ ] Add fuzz targets for the importer parsers (GeoJSON, CSV, CityGML, FGB, GPKG, OSM) — untrusted input with only one fuzz target in the repo today — and add `testing.B` benchmarks for the compute hot path to match the advertised `bench` workflow.
+Two independent confirmations it is a bug and not a convention: splitting one 200 m source into
+two 100 m sources changes the answer by ~3 dB (the result depends on how the user chops the
+geometry), and the parking path in the same package (`parking.go:200`) uses a total sound power
+with no such normalisation and produces sane absolute levels.
 
-#### QR-5 — Architecture and code-quality debt
+- [ ] Fix `propagation.go:458` and the reflected path at `propagation.go:538-539`.
+- [ ] Regenerate all 24 RLS-19 `ci_safe` fixtures and re-derive
+      `docs/conformance/rls19-konformitaetserklaerung.md`.
+- [ ] Add an absolute-level regression test, not a relational one — every existing RLS-19
+      propagation test ("near > far", "day > night", "doubling adds 3 dB") passes under this bug.
 
-- [ ] Introduce one `Standard` compute interface and make the engine the single execution path. Today the engine (`engine/runner.go`, ~728 lines of chunking/caching/determinism) is wired only to `dummy/freefield`; every real standard is dispatched through a ~555-line hardcoded `switch` in `run_pipeline.go` and never inherits the engine's infrastructure. Adding a standard requires editing four files in lockstep (`registry.go`, the switch, `run_extract.go`, `run_options.go`), and the default arm admits the registry and executor can disagree.
-- [ ] Break up the `app/cli` god-package (~12k non-test LOC). Split the 3,087-line `run_extract.go` (10 near-identical `extract*Sources` functions) and the 707-line `executeRunCommand` in `run_pipeline.go`; move generic GeoJSON geometry parsing into `geo/modelgeojson`, and per-standard extract/options/persist next to each standard.
-- [ ] Extract a shared in-process application/service layer so `app/cli` and `api/httpv1` share it, replacing the current subprocess exec in `httpv1/handler.go` (`os.Executable()` + rebuilt argv) — prerequisite for a credible library/WASM story.
-- [ ] Consolidate the duplicated `energySumDB` (5+ divergent copies across standards, with a `-900` guard present in some and missing in others) into one helper with one defined empty/invalid convention; name the `-999.0`/`-900` "silence" sentinel (40 sites) as a documented constant; reconcile with `schall03.EnergeticSumLevels` (which uses `-Inf`).
-- [ ] Factor shared propagation primitives (spherical divergence, ISO 9613-1 air absorption, ground geometry) into a common kernel; 9 packages reimplement `propagation.go` and none reuse `iso9613`.
-- [ ] Relocate the result container (`report/results` — `Raster`, `ReceiverTable`) out of `report/`; it is imported by 12 compute modules, making compute depend on a package named `report`.
-- [ ] Push the error taxonomy (`domain/errors`) into the domain: it is used only at the CLI/API boundary (19 files), so classification is retrofitted rather than carried from the source; add package-level sentinel/typed errors for recurring conditions (currently 690 inline `errors.New` strings, 0 sentinels).
-- [ ] Propagate `cmd.Context()` into `engineRunner.Run` (`run_pipeline.go`, `bench.go`) and thread `ctx` through `report/export/gpkg.go` (7× `context.Background()`) so CLI cancellation reaches long-running work; stop silently discarding cache/state write errors (`runner.go:411,462`).
+### 1.2 ISO 9613-2: broadband L_WA replicated into all 8 bands — +7.0 dB on the default path
 
-#### QR-6 — Documentation and repo hygiene
+`backend/internal/standards/iso9613/octaveband.go:27-34` sets all 8 bands to `L_WA`;
+`propagation.go:116` then energy-sums them **and adds A-weighting again**:
+Σ 10^(0.1·A_j) = 4.997 → **+6.99 dB**.
 
-- [ ] Rewrite `AGENTS.md` to match reality. It claims "Phase 6 / engine not implemented / standards not implemented / frontend deferred" while the repo has ~13 standards modules, a working engine, an HTTP API, a WASM target, assessment layers, and a full React frontend with e2e. Point agents at PLAN.md as the live status; consider generating the package/CLI tables from the tree to prevent re-drift.
-- [ ] Reconcile `NOTICE` with `go.mod`: wrong owner for go-overpass (`MeKo-Christian` vs `cwbudde`), a "local replace" claim for go-absolute-database that does not exist, and several modules missing. Regenerate from `just license-report`.
-- [ ] Fix doc inconsistencies: Go version (`CONTRIBUTING.md` says 1.24+, `go.mod` pins 1.25.0); "all linters enabled" (`.golangci.yml` disables ~20 — say "default: all with tuned disables"); README/AGENTS descriptions of empty `scripts/` and `examples/`.
-- [ ] Remove committed artifacts and clutter: the 3.28 MB compiled `backend/wasm` binary, `backend/cmd/noise/.gitkeep` (dead post-rename placeholder), `frontend/tsconfig.app.tsbuildinfo` (build cache), and the empty root `.codex` file; gitignore build outputs. Consolidate on one frontend package manager (both `frontend/bun.lock` and `frontend/package-lock.json` plus a root `package-lock.json` exist — lockfile drift).
-- [ ] Introduce versioning/CHANGELOG (see Priority 9) so `SECURITY.md`'s "latest release on main" language becomes true.
+The doc comment cites ISO 9613-2 Note 1 ("use the 500 Hz attenuation terms when only the
+A-weighted sound power is known") — which requires a **single** band evaluated at 500 Hz with
+**no** re-weighting.
 
-### Priority 1 — ISO 9613-2 residual work
+This is the default path, not a corner case: `model.go:184` makes
+`iso9613_sound_power_level_db` the only import parameter and `OctaveBandLevels` is nil by
+default. Both committed goldens use it.
 
-Status: the octave-band point-source workflow is implemented and documented. The remaining items are geometry-driven extensions and secondary use cases.
+- [ ] Implement Note 1 as a single 500 Hz band, or require octave-band input.
+- [ ] Regenerate `qa/acceptance/testdata/iso9613/*.golden.json`.
 
-Why now: TA Lärm is already implemented as an assessment layer, so ISO 9613-2 is the main remaining propagation track needed for a complete industrial workflow.
+### 1.3 ISO 9613-2: sign error in A_m at 63 Hz
 
-Shipped already:
+`backend/internal/standards/iso9613/ground.go:62` returns `3 * q`; Table 3 gives `−3q`.
+The `default:` branch on the next line correctly returns `−3*q*(1-gm)` — the two branches
+disagree in sign within one function. Error 6q dB in the 63 Hz band; A-weighted impact usually
+< 0.1 dB, but the band output is wrong and it matters for low-frequency-dominated sources.
 
-- [x] Typed inputs, deterministic point-source octave-band attenuation chain, import/run mapping, exported indicators, provenance, tests, and golden scenarios.
-- [x] Normative attenuation terms implemented for A_atm, A_gr, simplified ground, A_bar with precomputed geometry, and C_met.
-- [x] ISO 9613-2 conformance declaration, tolerances, embedded reference data decisions, synthetic validation cases, and acceptance-runner comparison rules.
+- [ ] Fix the sign.
 
-Open work:
+### 1.4 ISO 9613-2: C_met applied once, post-summation, from the farthest source
 
-- [ ] Extract the shared barrier-intersection/ray-geometry logic from RLS-19 into a common package and wire automatic barrier detection for ISO 9613-2 diffraction inputs.
-- [ ] Add reflections via image sources for enclosed industrial-yard cases once building geometry is readily available. This becomes more valuable when the SoundPlan import path below delivers richer building data.
-- [ ] Add line and area source subdivision for extended industrial sources such as conveyor belts, cooling towers, and facades.
-- [ ] Add spatial ground zones so the per-region G values come from polygon geometry instead of a single global ground factor.
+`iso9613/compute.go:52-66` takes `max(d_p)` over all sources and `sources[0].SourceHeightM`,
+computes one C*met, and subtracts it from the already energy-summed `L_AT(DW)`. Eq. 6 applies
+C_met per source–receiver path \_before* summation. Near sources are over-corrected by up to
+C₀ dB. Currently masked because `c0_met` defaults to 0.
 
-### Priority 2 — Remaining Schall 03 closure work
+- [ ] Move C_met inside the per-source loop.
+- [ ] `iso9613/barrier.go:6-23` — `pathDifference` is ≥ 0 for any input, so a receiver with clear
+      line of sight over a low barrier still gets full A_bar. Require z < 0 when the line of sight
+      clears the screen, or reject inconsistent `BarrierGeometry`.
 
-Status: the normative computation core is complete; the remaining gaps are verification and one input-path extension.
+### 1.5 Schall 03: Gl. 14 misreads the reference length d₀ = 1 m as a path length
 
-Why now: Schall 03 itself is no longer the blocker, but its remaining open items affect reporting confidence and the completeness of the conformance story.
+`backend/internal/standards/schall03/propagation.go:150-153`
 
-Done already, compacted:
+```go
+val := 4.8 - (2.0*hm/d)*(17.0+300.0*dp/d)   // dp = land path length, wrong
+val := 4.8 - (2.0*hm/d)*(17.0+300.0/d)      // d₀ = 1 m per Gl. 11
+```
 
-- [x] All normative formulas Gl. 1-36, all tables 1-18, and all source types are implemented.
-- [x] Strecke, Straßenbahnen, Rangierbahnhöfe, reflections, and barrier diffraction were delivered across former sub-phases 20 through 20d.
-- [x] `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` is the full normative entry point.
-- [x] The permanently slow section exception from Nr. 5.3.2 is implemented.
-- [x] The BImSchV source-document audit from former Phase 37 is complete and pins corrected normative table values in tests.
-- [x] Conformance declaration and CI-safe suite already exist.
+Gl. 14 (PDF p. 24) reads `A_gr,B = [4,8 − (2·h_m/d)·(17 + 300·d₀/d)] ≥ 0 dB`, and its variable
+list contains only `h_m`, `d`, `S` — **d_p does not appear in Gl. 14** (it appears only in
+Gl. 16, the water term). The code substitutes a land path length of tens to hundreds of metres
+for a 1 m constant.
 
-Open work:
+With h_m = 2 m: **+4.0 dB at 100 m, +4.5 dB at 250 m, +1.2 dB at 1000 m** too loud. Ground
+damping is the only ground term in Schall 03, so the code effectively zeroes it at normal
+assessment distances. Affects direct paths (`compute.go:100,279`), reflected paths
+(`reflection.go:257,315`) and yard sources (`rangierbahnhof.go`).
 
-- [x] **Task B — End-to-end export golden test.** `TestExportGoldenSnapshot` in `schall03_test.go` golden-tests `receivers.json`, raster metadata, CSV row count, and raster binary size through the full `ComputeReceiverOutputs` + `ExportResultBundle` pipeline.
+- [ ] Fix Gl. 14 and drop the `dp` parameter.
+- [ ] Document that `h_m` is hard-coded to `(hg+hr)/2` (`compute.go:82`) whereas Gl. 15 defines
+      `h_m = S/d`. Defensible as a flat-ground special case, but it is not currently listed among
+      the conformance document's known limitations.
 
-- [x] **Task C — Barrier diffraction acceptance scenarios.** Extended `scenarioFile` with `Walls` and `Barriers` fields; `computeSnapshots` now calls `ComputeNormativeReceiverLevelsWithScene` when scene elements are present. Added `b1_single_barrier` (basic screening, ~11 dB reduction) and `b2_barrier_with_wall` (barrier+reflection interaction) to the CI-safe suite (v3). Also added JSON tags to `BarrierSegment` and `ReflectingWall` structs for serialization.
+### 1.6 Schall 03: Tabelle 6 Rollgeräusche speed-factor row shifted by one band
 
-- [x] **Task A — Section 9 measurement-based vehicle data (Nr. 9.1–9.3).** Section 9 of Schall 03 allows replacing Beiblatt 1–3 spectra with measured pass-by data (per DIN EN ISO 3095). The existing `DataPack` emission model is too coarse for this (single base spectrum + corrections). Add a `MeasuredVehicle` struct that provides octave-band spectra per Teilquelle (m = 1..11) for a custom Fz category, plus the Table 19/20 wheel/rail roughness-split parameters and Table 20 measurement-condition correction factors. This slots into the emission pipeline as an alternative to the Beiblatt lookup: when a segment's `VehicleInput.Fz` references a measured category number (≥ 100), the emission code uses the measured spectra instead. Subsections to implement: Nr. 9.1.1 (vehicles), 9.1.2 (components), 9.1.4 (track types), 9.1.5 (bridges), 9.1.6 (rail/wheel mitigation), 9.2.1–9.2.2 (evaluation of measurement results), and validation of the 2 dB / 4 dB significance thresholds.
+`backend/internal/standards/schall03/tables.go:31`
 
-### Priority 3 — 16. BImSchV scope completion
+```go
+B: BeiblattSpectrum{-5, -5, 0, 10, 25, 25, 25, 25},      // wrong — a −5 was dropped
+B: BeiblattSpectrum{-5, -5, -5, 0, 10, 25, 25, 25},      // Tabelle 6, Zeile 2 (PDF p. 15)
+```
 
-Status: a usable first assessment layer exists, but scope definition and broader workflow coverage remain open.
+The speed term is `b_f·lg(v/v₀)` (`emission_v2.go:193`), so the per-band error is `Δb·lg(v/100)`:
+**+3.1 dB at 1000 Hz for 160 km/h, −3.3 dB for 60 km/h.** 1000 Hz dominates A-weighted rail
+rolling noise, so A-weighted error is roughly ±2–3 dB. It vanishes at exactly v₀ = 100 km/h,
+which is why the unit tests miss it.
 
-Why now: RLS-19 and Schall 03 already emit the core indicators. The remaining work is about making the regulatory layer explicit, reviewable, and aligned with report generation.
+- [ ] Fix the row. Tabellen 7, 9 and 17 were checked against the PDF and are exact — no change.
+- [ ] Add a speed-sweep test at v ≠ 100 km/h so a shifted row cannot pass again.
 
-Shipped already:
+### 1.7 Schall 03: remaining defects
 
-- [x] RLS-19 and Schall 03 result flow into the assessment layer.
-- [x] Threshold tables per area category and time period are implemented.
-- [x] Combined road-plus-rail assessment is implemented where required.
-- [x] Anspruch auf Lärmschutzmaßnahmen is determined.
-- [x] Structured per-receiver assessment results, German-language text blocks, report integration, export-bundle integration, and verification coverage exist.
-- [x] Current workflow supports explicit receivers that carry an area-category property.
+- [ ] **Tabelle 7 c1 double-counted on bridges** (`emission_v2.go:202` and `:204`). The Festlegungen to
+      Tabelle 9 (PDF p. 17) state Tabelle 7 Zeile 1–4 corrections are _nicht anzusetzen_ when a
+      bridge correction applies. For "Brücke mit fester Fahrbahn" the code adds K*Br = +4 \_and*
+      c1 = +7 dB → **+8 dB at 500 Hz**.
+- [ ] **D_refl applied to every barrier with no d_s ≤ 5 m test** (`barrier.go:134-136`,
+      `barrier_scene.go:295`). Gl. 20 defines D_refl only for reflective walls at d_s ≤ 5 m with an
+      absorbing base. There is no distance check and no reflective/absorbing flag in
+      `BarrierSegment`, so **every** barrier loses up to 3 dB of insertion loss.
+- [ ] **Reflected-path directivity computed for the wrong direction** (`reflection.go:512-520`,
+      `:590-598`). The code uses source → its own mirror image, which is perpendicular to the wall
+      by construction and independent of the receiver; Gl. 28 requires the direction toward the
+      reflection point. For a wall parallel to the track this always yields sin²δ = 1 → +1.73 dB
+      where the correct value reaches −6.58 dB. **Worst case 8.3 dB.** Use
+      `firstGeom.ReflectionPoint − pt`.
+- [ ] **`energeticTotalSpectrum` sums dB arithmetically** (`barrier_scene.go:436-446`) in a
+      function documented as "the A-weighted energetic sum". No 10^(x/10), no A-weighting. This is
+      the only arithmetic-dB sum in `standards/`. It ranks candidate lateral-diffraction paths, so
+      it can select the wrong dominant path.
+- [ ] **Lateral diffraction climbs over the barrier top** (`barrier_scene.go:393-413`).
+      `lateralPathAbar` computes the plan-view detour around the barrier _endpoint_ but sets
+      `dhS = barrierTopH − sourceH`, adding a full vertical climb to a path that goes _around_ a
+      vertical edge. `z` is over-estimated, so lateral attenuation is over-estimated, and since
+      `ComputePathBarrierAttenuation:507-511` takes the per-band minimum, the lateral path is then
+      almost never selected. Both halves are wrong and partly cancel.
+- [ ] **`e` computed as a chord, not a polyline** (`ComputeBarrierGeometryFromEdges:266-269`).
+      Bild 6 defines `e = e₁+e₂+e₃…` along the diffracted path; the code keeps the outermost two
+      hull edges and uses the straight distance. `z` is under-estimated.
+- [ ] **Spurious 50 km/h speed floor on Eisenbahn segments** (`resolveEffectiveSpeed`, `model.go:372-380`, floor at `:375`). The 70 km/h
+      floor in Personenbahnhöfen is normative (PDF p. 15); the general 50 km/h floor is the
+      Straßenbahn rule from Nr. 5.3.2, already applied separately at `emission_v2.go:82-88`.
+      For a 30 km/h approach: **+2.2 dB at 1000 Hz, +5.5 dB at 2000 Hz.**
+      _Medium confidence — verify against Nr. 4.3 before changing._
 
-Open work:
+### 1.8 Determinism defects
+
+- [ ] **Map iteration order determines summation order.** `compute.go:78`, `compute.go:260`,
+      `reflection.go:238`, `reflection.go:296` all do
+      `for h, spectrum := range emission.PerHeight` (a `map[int]BeiblattSpectrum`) and accumulate
+      floats. Magnitude ~1 ULP, but it is a direct violation of `docs/policies/determinism.md`
+      ("Map iteration order must never influence numeric results"). Iterate a fixed `[]int{1,2,3}`.
+- [ ] **No compensated summation anywhere**, despite `determinism.md` §3 requiring "a stable
+      strategy (for example pairwise or compensated summation)" for sensitive reductions. Every
+      reduction in `standards/` is a plain `sum +=`. Decide: implement Kahan/Neumaier in the shared
+      acoustics core (Priority 7.1), or amend the policy to match reality.
+- [ ] `10*log10(flow + 1)` guards (`cnossos/road/emission.go:86`, `cnossos/rail/emission.go:40`,
+      `bub/road/emission.go:43`) add a spurious **+3.0 dB at 1 veh/h**. Use an explicit
+      zero-flow branch.
+- [ ] `cnossos/road/emission.go:330` does not filter the `−999` sentinel that
+      `emissionForVehicleClass:56` returns, whereas `cnossos/industry` and `rls19` do. Harmless
+      today (10⁻⁹⁹·⁹) but inconsistent — fold into the shared `EnergySum` (Priority 7.1).
+
+### 1.9 RLS-19 items that could not be verified
+
+The RLS-19 text is not in the repo, so these were **not** checked and are not asserted as bugs.
+
+- [ ] Obtain the FGSV RLS-19 text and Korrekturblatt 2/2020, then verify: Tabelle 2 percentages;
+      Tabelle 3 coefficients; Eq. 7a–7c gradient corrections (the Lkw `/10` vs Pkw `/100` divisors
+      look asymmetric — up to 8–9 dB at 12 % grade); Eq. 9 `min(2h/w, 1.6)`; Eq. 15's constant 80;
+      Tabelle 8 reflection losses 0.5/3.0/5.0 dB; Tabelle 6/7 parking values.
+
+## Priority 2 — Make the CLI run the normative code
+
+This is the largest single credibility gap in the repository, and it is not a code-quality issue:
+it is a mismatch between what the conformance declaration says and what the binary does.
+
+`backend/internal/app/cli/run_pipeline.go:435` calls `schall03.ComputeReceiverOutputs`, which
+uses `BuiltinDataPack()` (`datapack.go:56-101`): invented spectra
+`{73,76,80,84,87,85,81,76}`, a scalar `GroundAttenuationDB: 1.2`, an
+`AirAbsorptionBandFactor` of `{0.3…2.4}`. The code is candid — `datapack.go:11-13` says
+"repo-safe placeholders until a legally safe normative pack is provided out-of-repo", and
+`indicators.go:102` stamps every run `compliance_boundary: "baseline-preview-no-normative-tables"`.
+
+Meanwhile `ComputeNormativeReceiverLevels` / `…WithScene` — the real Anlage-2 chain — is reached
+from exactly one caller outside the package: `qa/acceptance/schall03/runner.go:293,297`.
+
+- [ ] Wire `run_pipeline.go` to `ComputeNormativeReceiverLevelsWithScene` when the model carries
+      the required inputs, falling back to the data pack only with an explicit, logged opt-in.
+- [ ] Resolve the contradiction inside `schall03/indicators.go`: line 8 names the model
+      `phase20-normative-eisenbahn-strecke-v1` while line 102 stamps
+      `baseline-preview-no-normative-tables`. The run manifest currently asserts both.
+- [ ] Reconcile `docs/conformance/schall03-konformitaetserklaerung.md`, which checkmarks 20
+      normative features the CLI path does not reach.
+- [ ] Delete the three mutually inconsistent Schienenbonus statements in that document
+      ("K_S = −5 dB nur für den Streckenanteil", "K_S = +5 dB (Schienenbonus retained für
+      Straßenbahnen)", vs the code's `kSStrecke = 0.0`). **The code is legally correct** — the
+      bonus was abolished in 2015 for Eisenbahnen and 2019 for Straßenbahnen. "+5 dB" is wrong in
+      both sign and substance and should not survive review.
+- [ ] Decide and document the data-pack story: is the out-of-repo normative pack a real
+      distribution mechanism, or should the normative tables (an amtliches Werk, per the project's
+      own legal note) simply be embedded?
+
+## Priority 3 — Establish real validation evidence
+
+Today: **0 % of the numerical output is validated against an independent reference.** All 69
+`*.golden.*` files are snapshots of the code that produces them, generated by
+`qa/acceptance/rls19_test20/runner_test.go:126-171` and
+`qa/acceptance/schall03/runner.go:361-395`, compared at **1e-6 dB** — a bit-identity check
+wearing conformance vocabulary. That is why a 23 dB error survived.
+
+The single highest-value change on this entire roadmap is already 90 % built.
+
+- [ ] **Assert on the SoundPLAN deltas.** `backend/internal/app/cli/compare_test.go:13-80` runs
+      `init → import --from-soundplan → compare` against a real reference project (77 receivers,
+      4 raster runs) and computes `MeanAbsDeltaDB`, `MaxAbsDeltaDB`, `P95AbsDeltaDB`,
+      `ToleranceExceeding` (`compare.go:27-33`). The test asserts row counts and non-empty IDs and
+      **never reads a single delta field**. No test anywhere in the repo does. Add the assertions.
+- [ ] Get reference data into CI — submodule or Git LFS, licence permitting — so the comparison
+      runs. Today `interoperability/` is gitignored, 53 SoundPLAN tests skip silently in CI and 9
+      hard-fail. Move the fixture path behind `ACONIQ_SOUNDPLAN_FIXTURES` and remove the customer
+      project name from tracked source (`absresults_test.go:9`, `soundplanimport_test.go:15`,
+      `import_soundplan_test.go:197`).
+- [ ] Make a full-suite skip a failure. A suite where every test skips is worse than a red one.
+      `rls19_test20/runner_test.go:44-63` already shows the right pattern (skip _with a reason_,
+      surfaced in the report).
+- [ ] Replace the `(to be filled from conformance report)` placeholders in
+      `docs/conformance/rls19-konformitaetserklaerung.md:110-145` — all 20 TEST-20 task rows and
+      every Max-delta column are blank, under a document titled _Konformitätserklärung_. Either
+      populate with measured deltas or state plainly that validation has not been performed.
+- [ ] Set tolerances that mean something: ~0.5 dB against a reference tool, not 1e-6 dB against
+      yourself. Keep the 1e-6 dB comparison, but rename it what it is — a determinism check.
+- [ ] Add clause-cited formula tests to the scaffold modules, or delete the tautological ones.
+      `cnossos/road/road_test.go:177-183` asserts `terms.GeometricDB == geometricDivergence(100)`
+      — the function compared against a direct call to its own helper. It cannot fail. Same shape
+      at `cnossos/rail:139,143`, `cnossos/industry:129`, `bub/road:178`, `beb/exposure:228`.
+- [ ] Fuzz the parsers that actually take untrusted input — GeoJSON, CSV, GeoTIFF, WKB, SoundPLAN.
+      The only fuzz target today is `geo/geometry_fuzz_test.go:8` on point-segment distance.
+- [ ] Add tests for `internal/domain/errors` (the taxonomy that decides CLI exit codes, 0 %) and
+      `internal/app/config` (0 %).
+- [ ] De-flake `TestCancellationLeavesConsistentState` (`engine/runner_test.go:76`). It races a
+      40 ms `time.Sleep` against 600 receivers at a 2 ms `ComputeDelay` and asserts the run was
+      cancelled; on a loaded runner the work can finish first. Drive cancellation off a
+      deterministic signal from inside the compute callback.
+
+## Priority 4 — Honest standards labelling
+
+Decided: add an evidence tier and relabel; do not rename packages or delete modules.
+
+- [ ] Add `EvidenceTier` (`normative` | `preview` | `scaffold`) to `framework.StandardDescriptor`
+      (`standards/framework/framework.go:57`) and populate it per the tier table above.
+- [ ] Surface it where a user cannot miss it: a one-line banner from `aconiq run`, a field in
+      `provenance.json` and `run-summary.json`, a row in every report and export bundle, and a
+      column in `aconiq status`.
+- [ ] Rewrite the `Descriptor()` strings that currently assert conformance —
+      e.g. `cnossos/road/model.go:192` "CNOSSOS-EU road preview module with expanded typed source
+      schema and deterministic indicators." There is not one CNOSSOS coefficient in the tree:
+      no octave bands, no `A_R/B_R/A_P/B_P`, no roughness or contact-filter spectra, no
+      `Agr,H/Agr,F`, no `Adiff` with Fresnel/C_f, no favourable-condition probability `p`, no NPD
+      curves, no ECAC Doc 29 flight profiles.
+- [ ] Build on the normativity signal that already exists rather than a parallel one. Every module
+      returns `ProvenanceMetadata` carrying a free-text `compliance_boundary`
+      (`iso9613-engineering-octaveband`, `baseline-preview-expanded-road-contract`, …), which
+      `buildRunProvenanceMetadata` (`run_options.go:373`) merges into the manifest and
+      `run_phase8_test.go` asserts is persisted. The new tier should be the machine-readable form
+      of that string and the free text derived from it — not maintained alongside it.
+- [ ] Gate the scaffold tier behind an explicit `--experimental` acknowledgement so it cannot
+      silently emit authoritative-looking dB(A) values.
+- [ ] Rename or remove `cnossos/aircraft` and `buf/aircraft`. **CNOSSOS-EU defines no aircraft
+      method at all** — Directive 2015/996 Annex II covers road, rail and industry; aircraft noise
+      is ECAC Doc 29. The package name asserts a method the named standard does not contain, which
+      no relabelling of the description string fixes.
+- [ ] Move the honest disclosures out of `docs/phaseNN-*.md` (named after internal sprint numbers)
+      into `docs/conformance/`, where someone evaluating the tool will look. Add a short CNOSSOS
+      declaration saying what the module is and is not.
+- [ ] Make `run_pipeline.go`'s `default:` branch unreachable. It currently returns "standard %q is
+      registered but not wired in run pipeline yet"; `bub-rail` and `bub-industry` are registered
+      (`standards/standards.go:24-25`) and unreachable. The registry must not offer what the
+      executor cannot run.
+
+---
+
+# Gate 2 — Trustworthy product
+
+## Priority 5 — Provenance integrity and release engineering
+
+For a tool whose output is intended to support planning-approval files, an artifact that cannot
+be traced to the binary that produced it has no evidentiary value.
+
+- [ ] **`toolVersion = "dev"` is hardcoded** at `backend/internal/io/projectfs/store.go:23`.
+      Every `provenance.json` ever written claims `"tool_version": "dev"`. Inject version, commit
+      and build date via `-ldflags -X` in `just build` and CI, with a `debug.ReadBuildInfo()`
+      fallback.
+- [ ] Add `aconiq --version`. There is no version command and no `Version:` field on the root
+      cobra command (`app/cli/root.go:90-100`).
+- [ ] **Fix the wrong model version in cnossos-road provenance.**
+      `run_persist.go:226-227` writes `cnossosindustry.BuiltinModelVersion` ("phase12-preview-v2")
+      and `cnossosindustry.ReportingPrecisionDB` into every **cnossos-road** run summary; the
+      correct constant is `cnossosroad.*` ("phase10-preview-v2").
+- [ ] Unify the four different provenance schemas this produced: `model_version` present in 6
+      `persist*` functions, absent in `persistBUFAircraftRunOutputs:558`,
+      `persistCnossosIndustryRunOutputs:667` and `persistISO9613RunOutputs:720`, and renamed
+      `data_pack_version` in `persistRLS19RoadRunOutputs:339`.
+- [ ] Rename the `phaseNN-preview-vN` model versions. Internal sprint numbers leak into artifacts
+      that are meant to be read by third parties.
+- [ ] Start tagging releases. `git tag` is empty; there is no `CHANGELOG.md`, no goreleaser, no
+      release workflow. `SECURITY.md` asks reporters for "the version(s) affected" and promises
+      fixes "in the latest release" — neither exists.
+- [ ] Fix the dead links: `CONTRIBUTING.md:52` and `SECURITY.md:7` point at
+      `github.com/aconiq/backend`; the remote is `github.com:cwbudde/Aconiq`. Both 404 —
+      including the security-advisory link.
+- [ ] `CONTRIBUTING.md:2` says "Go 1.24+"; `backend/go.mod:3` requires `go 1.25.0`.
+- [ ] Regenerate `NOTICE` from `just license-report`. It lists
+      `go-absolute-database — MIT (local replace)` when no `replace` directive exists, still names
+      `github.com/MeKo-Christian/go-overpass` (stale once P0 lands), and omits `mousetrap`,
+      `go-isatty`, `go-strftime`.
+- [ ] Record standard-internal data versions — the Schall 03 data-pack version and hash, the
+      per-module coefficient-table version — so identical provenance implies identical numbers.
+      Do **not** put them in `input_hashes`: `projectfs.Store.hashInputs` defines that map as
+      input-file path → SHA-256 and `reporting.inputFilesFromHashes` renders every entry as an
+      "Input files" row, so non-file entries there produce misleading reports. Add a dedicated
+      standard-data digest field, and only put a coefficient artifact in `input_hashes` when it
+      genuinely is a hashed input file.
+- [ ] Define versioning and changelog process (SemVer + `CHANGELOG.md`), publish CLI binaries via
+      GitHub Releases, enable Issues with templates, and add release-tag golden-test gates.
+
+## Priority 6 — Security hardening
+
+The threat model is untrusted third-party files plus a local API a browser talks to. Both are
+currently open.
+
+- [ ] **GeoTIFF: unrecoverable OOM from a ~250-byte upload.**
+      `backend/internal/geo/terrain/geotiff.go:249` never validates `bps`; `getUint` returns 0 for
+      a missing `BitsPerSample`, so `bytesPerSample == 0` and the guard
+      `if len(raw) < n*bytesPerSample` (`:454`) compares against 0 and **fails open**.
+      `make([]float64, n)` at `:458` then runs with attacker-controlled `n` — `2^40` = 8 TiB →
+      `runtime.throw`, uncatchable. Reachable unauthenticated and cross-origin via
+      `POST /api/v1/import/terrain` (`handler.go:785`) and fatally in `cmd/wasm/main.go:96`.
+      Validate `bps ∈ {8,16,32,64}` and `width*height <= maxPixels` with overflow-safe arithmetic
+      before any allocation. Same class at `:376`, `:597`, `:141-154`.
+- [ ] **Local API is unauthenticated and CSRF-open.** No auth, no CSRF token, no `Host` validation.
+      `handleRunCreate` (`handler.go:322`) decodes JSON without checking `Content-Type`, so a
+      cross-origin `fetch` with `text/plain` is CORS-safelisted, skips preflight, and executes
+      `exec.CommandContext` with attacker-chosen `--model`/`--param`/`--input`. DNS rebinding
+      bypasses the origin check entirely. The comment at `cors.go:17` is incorrect for both shapes.
+      Add a Host allowlist, reject non-`application/json` bodies, and mint a session token at
+      `serve` startup.
+- [ ] **No request size limits.** `ParseMultipartForm`'s argument is `maxMemory`, not a cap
+      (`handler.go:736-743,781`); the remainder spills to unbounded temp files, then `io.ReadAll`.
+      There are **zero** occurrences of `http.MaxBytesReader` or `io.LimitReader` in the backend.
+- [ ] **Arbitrary file read.** `handler.go:519` builds a path by raw string concatenation with no
+      `Clean` and no containment check; a shared project whose manifest sets
+      `log_path: "../../../../etc/passwd"` reads it over HTTP. Use `filepath.IsLocal()` +
+      `os.OpenInRoot`. `:577` cleans but still does not constrain.
+- [ ] **SSRF by design.** `overpass_endpoint` (`handler.go:715` → `osmimport.go:41-54`) is taken
+      from the request body with no scheme/host validation. Allowlist it or drop it from the API.
+- [ ] **GeoPackage SQL injection into a read-write handle.** `gpkgimport.go:155,178` build
+      `"SELECT * FROM "+tableName`; the `//nolint:gosec` justification ("comes from
+      `gpkg_geometry_columns` metadata") is backwards — that metadata is in the attacker's file.
+      `sql.Open("sqlite", path)` (`:25,85`) opens READWRITE|CREATE and `ATTACH` is compiled in.
+      Whitelist `^[A-Za-z_][A-Za-z0-9_]*$`, quote it, and open `?mode=ro&immutable=1`.
+- [ ] **WKB decoder.** `wkb.go:167-170,198-201` allocate from a 4-byte count before bounds
+      checking (68 GB from a 17-byte blob) and `:204` recurses with no depth cap (fatal stack
+      exhaustion at ~18 MB). `readPoints` at `:218-224` already does this correctly — copy it.
+- [ ] Bound the remaining O(n²) and unvalidated-length paths: `gridmap.go:328-338`,
+      `modelgeojson/validate.go:355-380`, `fgbimport.go:167,191,225`, `citygmlimport.go:62`
+      (nesting depth only — XXE and billion-laughs are already safe under Go's `xml.Decoder`),
+      `store.go:365-377`, `gridmap.go:87` / `railops.go:155`.
+- [ ] Stop neutering gosec: `.golangci.yml` exclusion presets suppress G304 (47 hits) and G301
+      (44 hits); the 17 G115 integer-overflow hits concentrate in `geotiff.go`.
+- [ ] Add a CI guard that hard-fails on any tracked `interoperability/` path, and write the
+      data-handling policy that currently does not exist. 4.1 GB of third-party project data is
+      protected by a single `.gitignore` line. _(Verified: nothing proprietary has ever been
+      committed on any branch — this is about keeping it that way.)_
+
+## Priority 7 — Architecture: make standards actually pluggable
+
+`AGENTS.md` claims standards are plug-in modules. `framework.StandardDescriptor` carries only
+metadata — no compute contract of any kind. Dispatch is a **562-line `switch`** at
+`run_pipeline.go:143`, carrying `//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx`.
+Adding a standard means editing ~8 CLI files (`run_extract.go` 28 hardcoded standard IDs,
+`run_options.go` 25, `run_persist.go` 20, `run_pipeline.go` 10, `compare.go` 9, …).
+That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
+
+- [ ] **Extract a shared acoustics core** (`internal/acoustics`). `energySumDB` exists in **9
+      copies with 3 different semantics**: `rls19/road/emission.go:147` skips `level <= -900`,
+      `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf` and returns NaN
+      on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the same
+      `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
+      This also lands the compensated-summation item from P1.8.
+- [ ] **Unify the four Schall 03 normative propagation kernels** —
+      `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
+      ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
+      first. A correction to a normative equation currently has to be applied four times.
+- [ ] **Define `framework.Module`** — `Descriptor()` / `BindInputs()` / `Compute(ctx, …)` — register
+      implementations instead of bare descriptors, and delete the switch.
+- [ ] **Move the run pipeline out of `app/cli`** into `internal/engine` (or `internal/app/run`) as
+      `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
+      own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
+      used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
+- [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
+      real standards run single-threaded from the CLI, bypassing chunking, caching and
+      cancellation — which makes the "identical output regardless of worker count" guarantee
+      vacuous for everything a user would actually run. Parameterise on a
+      `Kernel func(ctx, []Receiver) ([]ReceiverResult, error)`.
+- [ ] Include the resolved standard tuple in the chunk cache key (`runner.go:549-573` omits it) —
+      harmless only while the engine is single-standard.
+- [ ] **Thread `cmd.Context()` end to end.** `run_pipeline.go:192` and `bench.go:395` pass
+      `context.Background()`, so Ctrl-C during a long grid calculation does nothing; the engine's
+      full `context.Canceled` handling (`runner.go:210-244`) is unreachable. **No `Compute*` in any
+      standards module takes a context** — 10 modules, zero cancellation. `report/export/gpkg.go`
+      calls `context.Background()` 7 times on the export path for the same reason.
+- [ ] Fix the feeder-goroutine leak: `runner.go:346-389` returns on error without cancelling, so
+      if every worker has exited the feeder blocks forever on `jobs <- chunk`. Use
+      `errgroup.WithContext` or `defer cancel()`.
+- [ ] Collapse the mechanical duplication — ~4 300 non-test LOC, about 9 % of the backend:
+  - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
+        are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
+        `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
+  - [ ] Lift `ExportResultBundle` (12 copies), `PeriodLevels`/`ReceiverIndicators`/`ComputeLden`
+        (8 copies of the END directive's defining formula), `ComputeReceiverOutputs` (12),
+        `ProvenanceMetadata` (10) and `geometricDivergence` (8) into `framework`.
+  - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
+  - [ ] Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`
+        (`run_extract.go:1673,1913`, 239 LOC each, identical but for the type prefix). The
+        `//nolint:dupl` claim that "the source/output types differ" is false:
+        `run_options.go:1178-1184` converts between them with a direct type conversion because
+        the structs are identical.
+  - [ ] Consolidate 7 copies of `writeJSONFile`/`writeJSON`.
+  - [ ] Remove the 12 illegitimate `//nolint:dupl` directives (of 20 total; the 8 in
+        `schall03/beiblatt1.go` are genuine — those are coefficient tables).
+- [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
+      so compute currently depends on the reporting tree.
+- [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
+      `app` struct.
+- [ ] Give `domain/errors` real reach into the domain. It appears in 20 files, essentially all at
+      the CLI/API boundary, so classification is retrofitted at the edge instead of carried from
+      where the failure occurs. There are 690 inline `errors.New` strings in non-test code and zero
+      package-level sentinels; add typed/sentinel errors for the recurring conditions and classify
+      at the source. This is what makes the exit-code taxonomy testable (Priority 3).
+- [ ] Fix the reachable panic on user input: `report/export/conversion.go:14` `mustUint16` is
+      called with the user-supplied project CRS's EPSG code (`geotiff.go:337,345`).
+- [ ] Split the god files: `run_extract.go` (3 087 lines), `run_options.go` (1 604),
+      `run_persist.go` (1 147), `api/httpv1/handler.go` (1 137), `report/reporting/report.go`
+      (1 082), `app/cli/export.go` (1 005). The first two already violate the project's own
+      configured `revive file-length-limit: 1500` — undetected because that package does not compile.
+- [ ] Delete dead code: `newPlaceholderCommand` (`root.go:107`), `mustFinite`
+      (`cnossos/road/emission.go:344`), the unused `cfg` param (`cnossos/industry/propagation.go:126`),
+      `schall03`'s unexported-candidate `Beiblatt3RetarderRangierenLevel` and `OctaveBands`, and the
+      never-called `roundToWholeDB` (`schall03/indicators.go:38`).
+
+## Priority 8 — Frontend correctness
+
+Not "deferred polish" — the shipped Run page throws on its default path. All four crashes would
+have been caught by the typecheck gate fixed in Priority 0.
+
+- [ ] `src/pages/run.tsx:969` — `m.section_parameters()` does not exist; the catalog has
+      `label_section_parameters` (`messages/en.json:120`). Any standard with parameters throws.
+- [ ] `src/map/map-view.tsx:88-89` — `disableWebGLForSession()` and `setFallbackMode()` are
+      **defined nowhere**, inside a 4 s `setTimeout` that fires on any slow tile load.
+- [ ] `src/map/new-feature-dialog.tsx:136` — `m.option_receiver()` does not exist.
+- [ ] `src/pages/run.tsx:890` — `getStandardLabel(s)` passed a descriptor object where the
+      signature takes a string; the `?? standardId` fallback renders an object into JSX.
+- [ ] **`calcArea` is marked dirty but never persisted** — silent data loss.
+      `use-autosave.ts:70` saves only `{features, receivers}` while `model-store.ts:238` sets
+      `dirty: true` on `setCalcArea`, and `calcArea` is missing from the effect deps
+      (`use-autosave.ts:81`), so a pending timer writes a stale draft and calls `markClean()`.
+- [ ] **The map is destroyed and rebuilt on every model edit.** `map-view.tsx:103` deps include
+      `center`/`zoom`, and `pages/map.tsx:126-129` re-memoizes `workspaceView` on every store
+      change. Pan/zoom is lost, layers re-added, the broken timer re-armed. The `eslint-disable`
+      at `:102` claims the opposite of what the code does.
+- [ ] Fix render-phase `setState` at `pages/export.tsx:417` and `pages/results.tsx:769`; the
+      global Ctrl+Z that hijacks text inputs (`map/undo-redo-bar.tsx:20`); object URLs revoked
+      while still rendered (`api/browser-backend.ts:281-284`); silently swallowed layer errors
+      (`map/model-layers.tsx:55-57,74-76`); `loadReceivers` bypassing the command stack
+      (`model-store.ts:225`); `CommandStack` never unsubscribing (`model-store.ts:44`).
+- [ ] **Move the WASM kernel off the main thread.** `backend/cmd/wasm/main.go:47-72` calls
+      `road.ComputeReceiverOutputs` synchronously inside the Promise executor — the Promise is
+      cosmetic and there is no `Worker` anywhere in `src/`. A grid run freezes the UI.
+- [ ] Write the missing `frontend/scripts/generate-api-client.mjs` that `package.json:12` already
+      declares, or delete the script entry. The client is hand-written and drifting —
+      `/api/v1/import/terrain` (`handler.go:230`) has no binding.
+- [ ] Fix the bundle budget: `dist/assets/map-*.js` is 1 214 KB against a 750 KB limit
+      (`scripts/check-bundle-size.mjs:14`), so `bun run bundle-check` — and therefore `just ci` via
+      `fe-ci` — fails on a real build. Move budgets to gzip.
+- [ ] Delete dead frontend code: `src/api/client.ts` (189 lines, used by nothing),
+      `src/map/legend.tsx` (never rendered), `ValidationPanel` (unreachable — `pages/map.tsx:119`
+      never calls `setShowValidation(true)`), 58 unused message keys.
+- [ ] Test the untested half: `src/map/` has 1 test across 17 files; `run.tsx` + `results.tsx` +
+      `export.tsx` are 2 597 lines with zero. Run axe against real pages, not the hand-written
+      fixture in `src/ui/a11y.test.tsx`. Add `role="dialog"`, focus trap and Escape handling to
+      `FeatureEditor`/`FeaturePopup`.
+- [ ] Fix `feature-editor.tsx:26-36`, which calls `m.option_source()` at module scope, freezing
+      labels at import time. `draw-toolbar.tsx:23` shows the correct pattern.
+- [ ] Adopt the E2E suite or delete it: `e2e/smoke.spec.ts` + `playwright.config.ts` + `just fe-e2e`
+      exist, no workflow runs them, and root `package.json` declares `@axe-core/playwright` but not
+      `@playwright/test`.
+- [ ] Add `backend/**` to `frontend-ci.yml`'s path filter (a WASM API change never triggers
+      frontend CI) and gate `gh-pages.yml` on both CI workflows — it currently deploys to
+      production Pages on every push to `main` with no test gate.
+
+## Priority 9 — Documentation truth
+
+- [ ] **Rewrite `AGENTS.md`.** It is loaded into every AI agent session via `CLAUDE.md` and is
+      wrong on every structural claim: "Currently at Phase 6", "the React/TypeScript frontend is
+      deferred", "`engine/` — not yet implemented", "`standards/` — not yet implemented",
+      "`scripts/` CI/build automation" (contains only `.gitkeep`), a package table missing 14
+      packages, and 7 CLI commands where `root.go:90-100` registers 10.
+- [ ] Fix `README.md`: it references `goal.md`, which does not exist; lists ISO 9613-2,
+      GeoPackage, FlatGeobuf, CSV and GeoTIFF as "deferred" though all five ship; omits
+      `aconiq compare`, `aconiq bench`, and two API endpoints.
+- [ ] Make `PLAN.md` the single status source and have `AGENTS.md` link to it rather than restate it.
+- [ ] Resolve the two competing lint stacks. `.trunk/trunk.yaml` is invoked by nothing yet holds
+      `osv-scanner`, `trivy`, `trufflehog`, `checkov`, `gokart`, `actionlint` — exactly the security
+      coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module. Either promote those
+      scanners into `go-ci.yml` or drop trunk.
+- [ ] Stop claiming "all linters enabled". `AGENTS.md` and `README.md` both say it; `.golangci.yml`
+      disables roughly 20. "Defaults plus tuned disables" is accurate and just as short.
+- [ ] `.golangci.yml:87-88` disables `wrapcheck` for all of `internal/` (the whole codebase), so
+      the error-wrapping policy is unenforced; `:31` disables `sqlclosecheck` claiming "no SQL in
+      this project" while `io/gpkgimport` and `report/export/gpkg.go` both use `modernc.org/sqlite`.
+
+---
+
+# Gate 3 — Feature roadmap
+
+Everything below was already on the roadmap and remains open. It is deliberately behind Gates 1
+and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
+
+## Priority 10 — ISO 9613-2 geometry extensions
+
+- [ ] Extract the shared barrier-intersection/ray-geometry logic from RLS-19 into a common package
+      and wire automatic barrier detection for ISO 9613-2 diffraction inputs. _(Overlaps P7's
+      acoustics-core extraction — do them together.)_
+- [ ] Add reflections via image sources for enclosed industrial-yard cases, once building geometry
+      is readily available from the SoundPLAN import path.
+- [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,
+      cooling towers, facades).
+- [ ] Add spatial ground zones so per-region G values come from polygon geometry instead of a
+      single global ground factor.
+- [ ] Implement the ISO 9613-1 analytical α model to replace nearest-row Table 2 lookup
+      (`iso9613/atmospheric.go:27-46`), which snaps to one of 6 points using an undocumented
+      `dt/10, dh/50` weighting. At 4 kHz the table spans 22.9–88.8 dB/km. The deviation _is_
+      honestly disclosed at `docs/conformance/iso9613-konformitaetserklaerung.md:84` — implementing
+      the ~20-line formula is cheaper than maintaining the caveat.
+- [ ] Fix the "7 reference rows" comment (`atmospheric.go:12`) and its echo in the conformance
+      doc — there are 6, matching the standard.
+- [ ] `schall03/propagation.go:169-178` — `directivityDI`'s doc comment defines δ against the
+      perpendicular to the track axis; Gl. 8 defines it against the Gleisachse. The inlined callers
+      use the correct convention, so this is currently dead code with an inverted contract worth
+      8.3 dB if anyone calls it. Fix or delete.
+
+## Priority 11 — 16. BImSchV scope completion
 
 - [ ] Define the exact 16. BImSchV scope Aconiq claims to support.
 - [ ] Clarify which sections and annexes are covered and which are intentionally excluded.
-- [ ] Decide whether workflow coverage should expand beyond the current explicit-receiver model to support the reporting and onboarding scenarios planned later in this roadmap.
+- [ ] Decide whether workflow coverage should expand beyond the current explicit-receiver model to
+      support the reporting and onboarding scenarios below.
 
-### Priority 4 — DACH reporting and report verification (former Phase 25 plus reporting residuals)
+## Priority 12 — DACH reporting and report verification
 
-Goal: move from generic report/export capability to authority-facing German report packages that are deterministic, reviewable, and CI-checked.
+Goal: move from generic report/export capability to authority-facing German report packages that
+are deterministic, reviewable, and CI-checked.
 
-Why now: most of the technical core exists. The remaining gap is turning those artifacts into practitioner-ready Gutachten outputs.
-
-Already shipped into the baseline:
-
-- [x] Offline Markdown/HTML templating and required report sections.
-- [x] Typst PDF export via `aconiq export --pdf`.
-- [x] Deterministic font/asset strategy and sufficient report context for current exports.
-
-Open work:
-
-- [ ] Decide whether a DOCX report/export path is required or whether Typst/PDF remains the only supported report target.
-- [ ] Define DACH report template requirements for:
-  - [ ] TA Lärm Gutachten.
-  - [ ] 16. BImSchV Gutachten.
-  - [ ] Generic Schallimmissionsprognose.
-- [ ] Implement Typst templates for DACH reports:
-  - [ ] Cover page, table of contents, and standard sections such as Aufgabenstellung, Grundlagen, Beurteilungsgrundlagen, Berechnungsverfahren, Ergebnisse, and Beurteilung.
+- [ ] Decide whether a DOCX path is required or whether Typst/PDF remains the only target.
+- [ ] Define DACH report template requirements for TA Lärm Gutachten, 16. BImSchV Gutachten, and
+      generic Schallimmissionsprognose.
+- [ ] Implement Typst templates:
+  - [ ] Cover page, table of contents, and the standard sections — Aufgabenstellung, Grundlagen,
+        Beurteilungsgrundlagen, Berechnungsverfahren, Ergebnisse, Beurteilung.
   - [ ] Embedded result tables, maps, and contour plots.
-  - [ ] Provenance/reproducibility section with standard version, data-pack version, and input hashes.
-- [ ] Add German-language assessment text generation:
-  - [ ] Threshold comparison tables with pass/fail per receiver and area.
-  - [ ] Condition text blocks such as Auflagen and Nebenbestimmungen suggestions where appropriate.
-- [ ] Add PDF golden/snapshot checks in CI, including metadata validation and selected page text/image probes.
-- [ ] Add end-to-end report/export checks for Schall 03 and for the common report/export paths generally.
-
-Research that feeds this priority:
-
+  - [ ] Provenance section with standard version, data-pack version, evidence tier (P4) and input
+        hashes.
+- [ ] German-language assessment text generation: threshold comparison tables with pass/fail per
+      receiver and area; Auflagen / Nebenbestimmungen suggestion blocks where appropriate.
+- [ ] Add PDF golden/snapshot checks in CI, including metadata validation and selected page
+      text/image probes. Note `aconiq export --pdf` shells out to an external `typst` binary
+      (`report/reporting/report_typst.go:49-63`) — an undeclared runtime dependency for an
+      "offline-first" product, and the reason no real PDF is produced in any test today.
+- [ ] Add end-to-end report/export checks for Schall 03 and the common report/export paths.
+- [ ] Embed report templates with `//go:embed` and `template.Must` at package level;
+      `report/reporting/report.go:825-1077` holds ~250 lines of Markdown/HTML in string constants
+      and re-parses them on every call.
 - [ ] Define a template/versioning policy for backward-compatible report styles.
-- [ ] Survey published Gutachten examples to pin down the minimum structure expected in practice.
+- [ ] Survey published Gutachten to pin down the minimum structure expected in practice.
 
-### Priority 5 — QA hardening and conformance packaging (former Phases 27 and 29)
+## Priority 13 — SoundPLAN import and cross-validation
 
-Goal: turn correctness, reproducibility, and conformance evidence into maintained product assets rather than ad hoc one-off validation work.
+Parsers and the comparison harness are in place; the remaining work is model mapping and turning
+the comparison into evidence (the assertion itself is Priority 3).
 
-Why now: as more modules move from preview to claimable conformance, the QA and packaging layer becomes part of the product itself.
+- [ ] Convert SoundPLAN rail geometry into Aconiq `TrackSegment` and `TrainOperation` structures.
+- [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
+- [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
+      internal model.
+- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline.
+- [ ] Extend raster comparison from decoded values to fully validated spatial alignment —
+      direction/anchor ambiguity remains for some GM variants.
+- [ ] Generate a cross-validation report artifact with tables, deviation distribution, map overlay,
+      and provenance.
+- [ ] Add unit tests for all parsers.
+- [ ] Research: how stable is the binary `.geo` format across SoundPLAN versions? Are there XML /
+      ASCII export options easier to parse? Can SoundPLAN export via CadnaA-compatible exchange?
+      Confirm and document the legal interoperability position for parsing the proprietary format.
 
-Open work — QA hardening:
+## Priority 14 — QA hardening and conformance packaging
 
-- [ ] Expand `internal/qa/` with:
-  - [ ] Loaders for standard test tasks.
-  - [ ] Result comparison with tolerances and outlier reports.
-  - [ ] Snapshot exporter for debugging.
-- [ ] Expand fuzz/property tests:
-  - [ ] Geometry robustness.
-  - [ ] Numeric monotonicity properties where applicable.
+- [ ] Expand `internal/qa/` with loaders for standard test tasks, result comparison with tolerances
+      and outlier reports, and a snapshot exporter for debugging.
+- [ ] Expand fuzz/property tests: geometry robustness, numeric monotonicity where applicable.
 - [ ] Add numeric drift tracking across commits.
-- [ ] Add a repro-bundle export that captures run, inputs, standard, and profile in one package.
-
-Open work — conformance packages:
-
-- [ ] Define the conformance package structure per standards module:
-  - [ ] Supported scope and sub-scope.
-  - [ ] Tolerance rules and comparison methodology.
-  - [ ] Reference test cases with provenance, source version, and license status.
-  - [ ] Known deviations with rationale.
-  - [ ] Machine-readable conformance report JSON.
-- [ ] Publish a full RLS-19 conformance package, leveraging TEST-20.
-- [ ] Publish a Schall 03 conformance package.
-- [ ] Publish an ISO 9613-2 conformance package.
-- [ ] Publish conformance packages for the CNOSSOS family: Road, Rail, Industry, and Aircraft.
+- [ ] Add a repro-bundle export capturing run, inputs, standard, and profile in one package.
+- [ ] Define the conformance package structure per module: supported scope and sub-scope;
+      tolerance rules and comparison methodology; reference cases with provenance, source version
+      and licence status; known deviations with rationale; machine-readable conformance JSON.
+- [ ] Publish conformance packages for RLS-19 (leveraging TEST-20), Schall 03, and ISO 9613-2.
+      For the CNOSSOS family, publish a scope statement instead until real coefficients exist (P4).
 - [ ] Automate conformance-report generation in CI with per-module pass/fail gating where practical.
 
-### Priority 6 — SoundPlan import and cross-validation (former Phase 36)
+## Priority 15 — Performance and scaling
 
-Status: Steps 1 and 2 are complete; Step 3 now includes receiver-level comparison plus GM metadata-aligned raster receivers with heuristic fallback when metadata is missing.
+- [ ] Optimize the tiled compute pipeline: spatial index tuning and candidate pruning. Note
+      `engine/runner.go:161-169` currently builds a spatial index and **discards it**
+      (`_, err := buildSourceIndex(cfg)`), and `computeOrLoadChunk` iterates all sources per
+      receiver — the `prepare` progress stage is theatre.
+- [ ] Throttle `writeRunState`: `runner.go:411` does a `MarshalIndent` + `MkdirAll` + `WriteFile`
+      per completed chunk with the error discarded — ~7 800 synchronous writes on a 1 M-receiver
+      raster.
+- [ ] Compare numeric drift across worker and topology variants inside the benchmark flow.
+- [ ] Optional, non-normative: `algo-fft` / `algo-dsp` post-processing pipelines; `algo-pde` for
+      research-only wave and low-frequency experiments; WebAssembly delivery for interactive demos.
 
-Goal: import SoundPlan projects, map them into Aconiq, run the same calculations, and compare outputs to build practitioner trust and reduce migration friction.
+## Priority 16 — Examples and DACH onboarding
 
-Why now: this is one of the highest-value interoperability and trust-building efforts once the core normative tracks are stable enough.
+- [ ] Synthetic, licence-safe example projects: RLS-19 road corridor in a 16. BImSchV context;
+      Schall 03 rail section; ISO 9613-2 industrial point source in a TA Lärm context; combined
+      road-plus-rail.
+- [ ] Each example ships input data, run config, expected outputs, and a step-by-step README.
+- [ ] German-language getting-started guide.
+- [ ] CI jobs that keep example projects green across releases.
 
-Format findings already established:
+## Priority 17 — Community
 
-- `Project.sp` and `*.res` are INI-style metadata files.
-- `*.geo` files are custom tagged binary geometry files covering rail, buildings, barriers, terrain, and calculation areas.
-- `*.abs` files hold result, receiver, and emission data tables.
-- `*.dgm`, `*.ntd`, `*.ets`, `*.esn`, and `Höhen.txt` remain relevant auxiliary formats.
+- [ ] Keep a public roadmap — this file, or a GitHub project board.
+- [ ] Documentation site: getting started (EN + DE), project format specification, standards-module
+      overview with status and conformance boundaries, QA/acceptance process and tolerances.
+- [ ] German-language community presence — blog post, conference talk, or Fachzeitschrift article.
 
-Completed so far, compacted:
-
-- [x] `Project.sp` parser with Windows-1252 support and extraction of project metadata, enabled standards, calculation parameters, assessment periods, and geometric defaults.
-- [x] `.res` parser extracting run metadata, geometry references, assessment definitions, and command strings.
-- [x] Reverse-engineering of `.geo` structure sufficiently far to implement parsers for `GeoRail.geo`, `GeoObjs.geo`, `GeoWand.geo`, `GeoTmp.geo`, and `CalcArea.geo`.
-- [x] Result `.abs` parsing for single-point result families, including group results, partial results, receiver metadata, train type catalog, and run-subdirectory loading.
-
-Open work — remaining parser coverage:
-
-- [x] In `GeoObjs.geo`, extract building heights from `:D\xa0` records and attach address anchors from type `0x03e9` / `:D1` name records to buildings.
-- [x] In `GeoWand.geo`, extract barrier material and absorption properties from `:D!` records.
-- [x] In `GeoTmp.geo`, extract digital ground model data from `.dgm` binaries.
-- [x] Add the fallback import path for `Höhen.txt` elevation points.
-- [x] Implement `.abs` parsing for RRAI and RRAD emission data.
-- [x] Implement grid-map parsing for `RRLK*` and `RRLK*.GM`:
-  - [x] Extract currently reliable metadata such as discovered layer names, file size, linked assessment periods, and run statistics.
-  - [x] Decode the current fixture's GM cell stream into per-row active-cell spans plus elevation/day/night values.
-  - [x] Extract raster metadata such as origin, spacing, and dimensions from explicit SoundPLAN payload metadata rather than heuristics.
-  - [x] Extract raster level values.
-- [x] Implement `.ntd` parsing for immission point tables.
-
-Open work — model mapping:
-
-- [x] Define mapping from SoundPlan standard IDs to Aconiq standards modules:
-  - [x] `20490` to `schall03`.
-  - [x] `10490` to `rls19`.
-  - [x] `30000` to `iso9613`.
-  - [x] Unsupported standards must emit clear warnings.
-- [ ] Convert SoundPlan rail geometry into Aconiq `TrackSegment` and `TrainOperation` structures.
-- [ ] Map SoundPlan track parameters and train types to Aconiq emission model fields and Fz categories.
-- [ ] Convert SoundPlan buildings, barriers, terrain, receivers, and calculation areas into the Aconiq internal model.
-- [ ] Determine SoundPlan project CRS and route it through the Phase 18 CRS pipeline.
-
-Open work — workflow and validation:
-
-- [x] Implement `aconiq import --from-soundplan <project-dir>`.
-- [x] Implement a comparison mode such as `aconiq compare` that can:
-  - [x] Compare per-receiver levels.
-  - [x] Produce raster difference data and per-cell deltas through a first heuristic scanline alignment.
-  - [x] Compute summary statistics such as mean, max, P95, and tolerance exceedances.
-  - [x] Support configurable tolerance thresholds, for example ±0.5 dB for conformance and ±1.0 dB for informational comparison.
-- [ ] Generate a cross-validation report artifact with tables, deviation distribution, map overlay, and provenance.
-- [ ] Add unit tests for all parsers.
-- [x] Add an integration test around `interoperability/Schienenprojekt - Schall 03/` to verify geometry extraction and parameter mapping.
-- [x] Add a cross-validation acceptance test for import, run, and compare.
-- [x] Document format findings in `docs/research/soundplan-format.md`.
-
-Refined execution slices:
-
-- [x] Slice A — import preparation layer:
-  - [x] Add a single project-bundle loader that parses the currently supported SoundPlan inputs.
-  - [x] Add explicit SoundPlan standard-ID to Aconiq-standard mapping with deterministic warnings for unsupported IDs.
-  - [x] Add `Höhen.txt` terrain fallback loading.
-  - [x] Add a structured import-report JSON artifact describing discovered files, parser coverage, warnings, and unresolved fields.
-- [x] Slice B — geometry-to-model conversion:
-  - [x] Convert rail tracks into normalized line-source GeoJSON features with explicit placeholder/default properties.
-  - [x] Derive imported rail speed, dominant train names, train-class and traction heuristics, bridge flags, and day/night trains per hour from `RRAI` and `RRAD` where available.
-  - [x] Convert buildings into normalized building polygons with height handling decisions documented.
-  - [x] Convert barriers into normalized barrier lines with height handling decisions documented.
-  - [x] Convert receivers into normalized receiver points using project/run defaults for receiver height.
-  - [x] Convert calc area into import metadata for future grid/run setup.
-- [x] Slice C — CLI integration:
-  - [x] Add `aconiq import --from-soundplan <project-dir>`.
-  - [x] Persist normalized model, dump, validation report, and SoundPlan import report under `.noise/model/`.
-  - [x] Surface unsupported standards and unresolved mappings as non-fatal warnings in CLI output.
-  - [x] Add `aconiq compare` receiver validation against `RREC` and heuristic raster validation against decoded `RRLK*.GM` runs.
-- [ ] Slice D — validation loop:
-  - [x] Add integration coverage for the sample Schall 03 project bundle and normalized model output.
-  - [x] Add first run-level comparison for single-point receiver results.
-  - [x] Surface SoundPLAN raster/grid runs in import and compare reports via `RRLK*.GM` metadata parsing.
-  - [x] Upgrade raster reporting from metadata-only to decoded value/range reporting with active-cell row spans.
-  - [ ] Extend comparison from decoded SoundPLAN raster values to fully validated spatial alignment in all cases (direction/anchor ambiguity remains for some GM variants).
-
-Research and legal questions that remain attached to this priority:
-
-- [ ] How stable is the binary `.geo` format across SoundPlan versions?
-- [ ] Are there XML, text, or ASCII export options from SoundPlan that are easier to parse than `.geo`?
-- [ ] Can SoundPlan export via better-documented intermediate formats such as CadnaA-compatible exchange?
-- [ ] Confirm and document the legal interoperability position for parsing the proprietary format.
-
-### Priority 7 — Performance and scaling (former Phase 28)
-
-Goal: keep city-scale workloads practical without weakening determinism.
-
-Shipped already:
-
-- [x] Broader cache keys and reuse for equivalent workloads.
-- [x] Per-run and shared keyed chunk cache on disk.
-- [x] Cache retention/cleanup policy and stale-cache invalidation.
-- [x] `aconiq bench` with standard scenarios, runtime/memory/IO/drift output, summary persistence, warm-cache reuse, and benchmark-suite cleanup support.
-
-Open work:
-
-- [ ] Optimize the tiled compute pipeline:
-  - [ ] Spatial index tuning.
-  - [ ] Candidate pruning.
-- [ ] Compare numeric drift across multiple worker and topology variants inside the benchmark flow.
-
-Optional, advanced, non-normative work under this priority:
-
-- [ ] `algo-fft` and `algo-dsp` for non-normative post-processing pipelines.
-- [ ] `algo-pde` for research-only wave and low-frequency propagation experiments.
-- [ ] WebAssembly delivery for interactive research/demo modules.
-
-### Priority 8 — Example projects and DACH onboarding (former Phase 30)
-
-Goal: make adoption easier by giving new users complete, license-safe, runnable examples.
-
-Why now: reproducible examples can offset the lack of commercial training/support and make the standards/assessment story concrete.
-
-Open work:
-
-- [ ] Create synthetic, license-safe example projects for:
-  - [ ] RLS-19 road corridor in a 16. BImSchV context.
-  - [ ] Schall 03 rail section.
-  - [ ] ISO 9613-2 industrial point source in a TA Lärm context.
-  - [ ] Combined road-plus-rail scenario.
-- [ ] Ensure each example includes input data, run config, expected outputs, and a step-by-step README.
-- [ ] Add a German-language getting-started guide.
-- [ ] Add CI jobs that keep example projects green across releases.
-
-### Priority 9 — Community and release engineering (former Phase 31)
-
-Goal: make the project visibly maintainable and adoptable from outside the core development circle.
-
-Open work:
-
-- [ ] Define versioning and changelog process, including SemVer and `CHANGELOG.md`.
-- [ ] Build release binaries, at least for the CLI, via GitHub Releases.
-- [ ] Enable GitHub Issues with templates for bug, feature request, and conformance questions.
-- [ ] Keep a public roadmap, either in this file or via a GitHub project board.
-- [ ] Build the documentation site with:
-  - [ ] Getting started in English and German.
-  - [ ] Project format specification.
-  - [ ] Standards-module overview, status, and conformance boundaries.
-  - [ ] QA/acceptance process and tolerances.
-- [ ] Add release-tag golden-test gates in CI.
-- [ ] Establish German-language community presence, for example via a blog post, conference talk, or Fachzeitschrift article.
+---
 
 ## Deferred and optional tracks
 
-### Deferred frontend hardening (former Phase 32)
+### Deferred frontend features
 
-Goal: keep the already-built frontend foundation viable without pulling focus from the normative and reporting roadmap.
+Distinct from Priority 8, which is correctness. These are genuinely optional.
 
-Deferred from earlier phases:
-
-- [ ] WebSocket support for progress streaming. SSE already works, so this is optional.
+- [ ] WebSocket progress streaming (SSE already works).
 - [ ] TypeScript client-generation pipeline for frontend API types.
-- [ ] Headless E2E smoke flow on the API side: import to validate to run to export.
+- [ ] Headless E2E smoke flow on the API side: import → validate → run → export.
 - [ ] Box select and multi-select on the map.
 - [ ] Contour overlays and labels on the result map.
 - [ ] Contribution breakdown per receiver or selected result.
-- [ ] Run-to-run diff layer.
-- [ ] Scenario change-set summary for model and parameter differences.
-- [ ] Performance guardrails for large feature counts, such as clustering or tile fallback.
-- [ ] Building-footprint/import pipelines beyond GeoJSON.
+- [ ] Run-to-run diff layer; scenario change-set summary for model and parameter differences.
+- [ ] Performance guardrails for large feature counts — clustering or tile fallback.
+- [ ] Building-footprint import pipelines beyond GeoJSON.
+- [ ] Per-source acoustics: UI coverage for editing/clearing/restoring overrides; surface overrides
+      and inferred review flags in popups or run-setup summaries; decide whether further
+      OSM-derived defaults are deterministic enough to enable; define follow-on source-editing
+      scopes for other standards.
 
-Per-source acoustics hardening:
+### Tiling and PMTiles
 
-- [ ] UI-level interaction coverage for editing, clearing, and restoring per-source acoustic overrides.
-- [ ] Surface per-source acoustic overrides and inferred review flags in popups or run-setup summaries.
-- [ ] Decide whether additional OSM-derived defaults are deterministic enough to enable.
-- [ ] Define follow-on source-editing scopes for other standards/modules.
+- [ ] Evaluate vector tiles for model and result delivery; evaluate an end-to-end PMTiles pipeline;
+      define storage and size budgets.
 
-### Tiling and PMTiles (former Phase 33)
-
-- [ ] Evaluate vector tiles for model and result delivery.
-- [ ] Evaluate an end-to-end PMTiles pipeline.
-- [ ] Define storage and size budgets.
-
-### Desktop packaging (former Phase 34)
+### Desktop packaging
 
 - [ ] Make the API runnable in-process with no external port requirement.
 - [ ] Embed frontend assets into the Go binary.
-- [ ] Define build targets for `web` versus `wails`.
-- [ ] Add smoke tests for desktop builds.
+- [ ] Define build targets for `web` versus `wails`; add smoke tests for desktop builds.
 - [ ] Re-check Wails v3 maturity and define fallback options.
 
-### Project format v2 (former Phase 35)
+### Project format v2
 
 - [ ] Map the data model to PostGIS with geometry storage and indexes.
 - [ ] Store artifacts in object storage for rasters, tiles, and reports.
@@ -438,88 +844,39 @@ Per-source acoustics hardening:
 
 ---
 
-## Shipped baseline (compacted)
-
-This section keeps the completed work visible without forcing the active roadmap to scroll past finished material.
-
-### Core platform and workflow foundations (former Phases 1-9)
-
-- [x] Repository layout, compliance preflight docs, target platforms, definition of done, risk register, and offline-only MVP constraints.
-- [x] Go module/package structure, config/logging/error layers, Cobra CLI skeleton, shared flags, and testability.
-- [x] CI for lint/test/format, determinism policy, and golden-test conventions.
-- [x] Project lifecycle with manifest v1, project/run domain model, JSON-first storage, `aconiq init`, `aconiq status`, provenance, and migrations.
-- [x] GeoJSON import, feature schemas, validation, and debug model exports.
-- [x] Geometry primitives, spatial indexing, receiver-set models, raster/table result containers, and export skeleton.
-- [x] Generic deterministic run pipeline with chunking, worker pool, progress events, cancellation/cleanup, and disk-backed cache.
-- [x] Non-normative `dummy/freefield` E2E runs, golden demo coverage, and standards plugin/profile/provenance framework.
-- [x] Early technical investigations around geometry libraries, CRS strategy, GeoTIFF writing, and contour generation.
-
-### Preview standards baselines and Germany mapping track (former Phases 10-16)
-
-- [x] CNOSSOS Road baseline: `docs/phase10-cnossos-road-baseline.md`.
-- [x] CNOSSOS Rail baseline: `docs/phase11-cnossos-rail-baseline.md`.
-- [x] CNOSSOS Industry baseline: `docs/phase12-cnossos-industry-baseline.md`.
-- [x] CNOSSOS Aircraft baseline: `docs/phase13-cnossos-aircraft-baseline.md`.
-- [x] BUB Road baseline: `docs/phase14-bub-road-baseline.md`.
-- [x] BUF Aircraft baseline: `docs/phase15-buf-aircraft-baseline.md`.
-- [x] BEB Exposure baseline: `docs/phase16-beb-exposure-baseline.md`.
-
-### CRS, import, and export foundations (former Phases 18, 24, 26, and the completed import-format work)
-
-- [x] Pure-Go CRS transformation pipeline based on `github.com/wroge/wgs84`, covering the main DACH EPSG and Gauss-Krüger cases, with import/export integration and comprehensive tests.
-- [x] GeoTIFF/COG raster export, GeoPackage vector export, contour generation/export, and export-format matrix.
-- [x] GeoPackage, FlatGeobuf, CSV traffic/time-table importers.
-- [x] Terrain/DTM import from GeoTIFF with bilinear interpolation and runtime loading.
-- [x] OSM/Overpass import via `aconiq import --from-osm`.
-- [x] CityGML import hardening with attribute preservation, structured import reporting, and documented decisions.
-
-### Assessment and conformance foundations already shipped (former Phases 20 shipped scope, 22, and 37)
-
-- [x] Legal and compliance close-out is complete, including CI license scanning and finalized compliance boundaries.
-- [x] RLS-19 conformance closure is complete, including the Eq. 16 multi-diffraction shielding work and full reconciliation against the authoritative source documents.
-- [x] Schall 03 normative core, reflections, barrier diffraction, and BImSchV conformance audit.
-- [x] TA Lärm assessment layer complete, including thresholds, Teilzeiten, Lr computation, load assessment, receiver assessment logic, export envelope, report text blocks, golden scenarios, and conformance declaration.
-- [x] Existing conformance declarations for RLS-19, ISO 9613-2, Schall 03, and TA Lärm are already in the repository.
-
-### API and frontend foundation (former shipped portions of Phases 23 and 32)
-
-- [x] `aconiq serve` with HTTP API v1, health/status/runs/standards endpoints, SSE events, and OpenAPI.
-- [x] React/TypeScript/Vite/Bun frontend scaffold with shadcn/ui baseline, SPA routing, TanStack Query, and Zustand.
-- [x] MapLibre workspace with basemap, model/result layers, legend, interactions, and coordinate display.
-- [x] Model editing for sources, buildings, barriers, and receivers, plus validation overlay, import assistant, and undo/redo.
-- [x] Run configuration and execution UX, explicit receiver authoring, and per-source acoustics editing foundation.
-- [x] Results analysis with raster rendering, receiver tables, scenario comparison, export center, and frontend QA coverage.
-
-### Partially complete but materially shipped regulatory workflow (former Phase 23)
-
-- [x] Initial 16. BImSchV assessment workflow for explicit receivers with area-category properties.
-- [x] Per-receiver threshold comparison, combined road/rail handling, German assessment text, export-bundle JSON, and report integration.
-
----
-
 ## Research backlog
 
 ### Standards and validation data
 
-- [ ] CNOSSOS Road/Rail/Industry/Aircraft: collect license-safe validation cases and define tolerances.
-- [ ] BUB/BUF/BEB: obtain current documents/annexes and define exact input requirements per module.
-- [ ] Schall 03: acquire license-safe verification cases and clarify redistribution rights for normative tables.
+- [ ] **RLS-19: obtain the FGSV text and Korrekturblatt 2/2020.** Blocks verification of seven
+      coefficient sets (see Priority 1.9) that currently have no normative cross-check.
+- [ ] CNOSSOS Road/Rail/Industry/Aircraft: obtain the JRC reference report coefficient sets and
+      worked examples, and decide whether real implementations are on the roadmap at all (P4).
+- [ ] BUB/BUF/BEB: obtain current documents and annexes; define exact input requirements per module.
+- [ ] Schall 03: clarify redistribution rights for the normative tables. The project's own note
+      holds that Schall 03 coefficients are an amtliches Werk and can be embedded directly — if so,
+      the out-of-repo data-pack mechanism (P2) may be unnecessary.
 - [ ] TA Lärm: survey published Gutachten for structural conventions and assessment patterns.
 - [ ] 16. BImSchV: clarify combined assessment rules for road plus rail.
 
 ### GIS, CRS, and format research
 
-- [ ] GeoTIFF export: settle the long-term dependency strategy for writing, given that the existing reader is pure Go.
+- [ ] GeoTIFF export: settle the long-term dependency strategy for writing, given a pure-Go reader.
 - [ ] Contour generation: define the preferred algorithm and quality requirements.
+- [ ] Decide whether NTv2 (BeTA2007) datum shifts are needed. `geo/crs.go` uses Helmert
+      (`wgs84.DHDN2001GK`), which gives ~1 m on DHDN→ETRS89 — irrelevant for noise, relevant if
+      cadastral interoperability is ever claimed.
 
 ### Determinism and tolerances
 
-- [ ] Standardize numeric tolerances per standard and test suite.
-- [ ] Define the stable summation strategy and document where it must apply.
+- [ ] Standardize numeric tolerances per standard and test suite — and stop presenting 1e-6 dB
+      determinism checks as conformance tolerances.
+- [ ] Define the stable summation strategy and document exactly where it must apply, or amend
+      `docs/policies/determinism.md` §3 to match what is implemented (see P1.8).
 
 ### UX and workflow questions
 
 - [ ] Define DTO-generation strategy and backward-compatibility policy.
-- [ ] Define which exports are must-have versus deferred, for example GeoTIFF, CSV, PNG, and report artifacts.
+- [ ] Define which exports are must-have versus deferred — GeoTIFF, CSV, PNG, report artifacts.
 - [ ] Define map-layer performance thresholds and tile-fallback triggers.
 - [ ] Define the accessibility baseline for map-heavy interactions.
