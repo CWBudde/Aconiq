@@ -1,6 +1,6 @@
 # PLAN.md — Aconiq Roadmap
 
-Status: 27 August 2026
+Status: 28 August 2026
 
 This file tracks **what is still ahead**. Completed work is recorded in git history, in
 `docs/conformance/`, and in the per-module baseline notes under `docs/`. Nothing here is a
@@ -11,8 +11,8 @@ by 23 dB is not improved by a nicer report template.
 
 The "Phase QR" (quality remediation) block added in `9ec398d` has been absorbed here. Its
 sub-phases map onto the new numbering as: QR-1 → Priority 0, QR-2 → Priorities 2 and 4,
-QR-3 → Priority 1.8, QR-4 → Priority 3, QR-5 → Priority 7, QR-6 → Priorities 5 and 9. Commit
-messages referencing `QR-N` remain resolvable through this table.
+QR-3 → Priority 1 (determinism), QR-4 → Priority 3, QR-5 → Priority 7, QR-6 → Priorities 5
+and 9. Commit messages referencing `QR-N` remain resolvable through this table.
 
 ## Strategic positioning
 
@@ -65,18 +65,18 @@ The path to DACH adoption runs through four gates, in order:
 The registry currently exposes 13 standards as peers. They are not peers. This table is the
 target state; Priority 4 makes the code express it.
 
-| Module                                | Target tier            | Reality today                                                              |
-| ------------------------------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; **propagation defect, P1.1**      |
-| `schall03`                            | normative              | Real Anlage-2 tables and Gl. 1–36 — **but the CLI does not call them, P2** |
-| `iso9613`                             | normative              | Table 2/3 verbatim correct; **three defects, P1.2–P1.4**                   |
-| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                           |
-| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                      |
-| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands           |
-| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                             |
-| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                              |
-| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                 |
-| `dummy-freefield`                     | test fixture           | Intentional                                                                |
+| Module                                | Target tier            | Reality today                                                                    |
+| ------------------------------------- | ---------------------- | -------------------------------------------------------------------------------- |
+| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`)      |
+| `schall03`                            | normative              | Anlage-2 tables correct after `bbc2350` — **but the CLI does not call them, P2** |
+| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                      |
+| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                                 |
+| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                            |
+| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands                 |
+| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                                   |
+| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                                    |
+| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                       |
+| `dummy-freefield`                     | test fixture           | Intentional                                                                      |
 
 ---
 
@@ -187,6 +187,14 @@ commit messages; the consequences each one exposed are open items below.
       `e2e/*.spec.ts` into vitest's default include, so `vitest.config.ts` now pins
       `include: ["src/**/*.{test,spec}.{ts,tsx}"]`; the unit-test count is unchanged at 112.
 
+- [x] **Lint debt pass** (`4b0566c`). The three exclusions that switched a linter off across the
+      whole backend are gone and the 293 findings they hid are fixed rather than re-suppressed:
+      `wrapcheck` (190 sites wrapped, zero `//nolint` escapes), gosec **G301** (54 `MkdirAll`
+      sites `0o755` → `0o750`; it sat inside the `legacy` preset's EXC0009 bundled with G302/G307
+      and was not separable, so `legacy` was replayed as four explicit rules), and `goconst`
+      (509 → 0, of which 49 by fixing code). **No linter is switched off across the entire backend
+      any more.** The remaining hidden counts are named and bounded in the open item below.
+
 ### Open
 
 - [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
@@ -228,44 +236,25 @@ commit messages; the consequences each one exposed are open items below.
       Note `frontend-ci` is currently green but `fe-bundle-check` is not part of it — the map
       bundle is over budget (Priority 8), so requiring `frontend-ci` does not yet gate bundle size.
 
-- [ ] **Pay down the debts a green `just lint` hides.** Partly paid on 2026-08-28 — 293 findings
-      converted from config-hidden to fixed code, 557 still hidden. Audit in `docs/lint-triage.md`.
-
-      Done:
-
-      - **`wrapcheck` is enforced.** The blanket `path: internal/` exclusion is deleted and all
-        190 sites are wrapped as `fmt.Errorf("<operation>: %w", err)`, with **zero
-        `//nolint:wrapcheck` escapes** — no site turned out to be a sentinel pass-through. Origin
-        of the 190: 115 in-module cross-package, 62 stdlib, 13 `flatgeobuf`. The earlier
-        "sequence it after `domain/errors`" plan was wrong: `%w` preserves the
-        `errors.As(&AppError)` classification the CLI exit codes rely on, so P7 can still convert
-        these to typed errors on top of the wrapping.
-      - **gosec G301 is enforced.** All 54 `os.MkdirAll(…, 0o755)` sites became `0o750` (44
-        non-test, 10 test). G301 was inside the `legacy` preset's EXC0009, bundled with G302/G307
-        under one regex and therefore not separable; `legacy` was dropped and replayed as four
-        explicit rules (EXC0004, EXC0005, EXC0008, EXC0009-minus-G301), so only G301 changed.
-      - **`goconst` is enabled again** with `ignore-tests: true` and `min-occurrences: 3`.
-        509 → 216 by dropping tests, 216 → 167 by fixing 49 findings in code, 167 → 0 by three
-        exclusion rules scoped by path **and** string value.
-
-      Remaining, with today's uncapped counts:
+- [ ] **The debts a green `just lint` still hides.** 293 findings were converted from
+      config-hidden to fixed code in `4b0566c`; 557 remain hidden. Audit in `docs/lint-triage.md`.
+      Today's uncapped counts:
 
       - `goconst` **167** excluded. 39 are the OpenAPI keyword set and are permanent; the other
         128 are owned by the Priority 7 parameter-descriptor refactor (99) and typed response
-        payloads (29). Named and bounded now, but not fixed.
-      - gosec **G304 97** (47 non-test) still hidden by the exclusion presets. Reason unchanged —
-        opening a user-named path is what a file-format toolchain does — but the count doubled
-        from 47 while suppressed, which is the same drift that made G301 worth fixing. Nobody has
-        re-litigated it on current evidence.
+        payloads (29). Named and bounded, but not fixed.
+      - gosec **G304 97** (47 non-test) still hidden by the exclusion presets. See Priority 6 —
+        the verdict was taken at 47 and has not been re-litigated at 97.
       - `wsl_v5` **196** (was 120) and `noinlineerr` **94** (was 41) still disabled; both are
         style opinions this project has declined in writing and the reasons still hold.
         `noinlineerr` grew partly because the `wrapcheck` work introduces exactly the
         `if err := f(); err != nil` form it objects to.
       - `gocyclo` **3** still disabled as redundant with `cyclop`.
 
-      What did change structurally: **no linter is switched off across the entire backend any
-      more.** Every remaining exclusion names a rule the project argued about in writing, or a
-      path and a string value.
+      Every remaining exclusion names a rule the project argued about in writing, or a path and a
+      string value. `.golangci.yml`'s disable list currently holds **19** linters — PLAN.md said 20
+      and before that 21, which is why neither `AGENTS.md` nor `docs/policies/formatting.md` now
+      quotes a number.
 
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
@@ -296,170 +285,60 @@ commit messages; the consequences each one exposed are open items below.
 
 ## Priority 1 — Fix known numeric defects
 
-Found by review against normative sources. The Schall 03 items were checked against
-`docs/bimsch16_anl2_neu-1.pdf` (the actual Anlage 2 text, present locally, gitignored).
-Each fixes to a small number of lines; the _consequence_ is that every affected golden file must
-be regenerated and every conformance table re-derived.
+The twelve defects found by review against normative sources are fixed (`4142444`, `775c7f5`,
+`bbc2350`). Each was re-verified against the source text before the change, every affected golden
+was regenerated, and the per-item magnitudes are recorded in those commit messages and in the
+conformance declarations. What remains here is what those fixes did not settle.
 
-### 1.1 RLS-19: line-source contributions normalised by total road length — CRITICAL
+### 1.1 Schall 03: two findings raised by the Gl. 14 work, both needing a judgement call
 
-`backend/internal/standards/rls19/road/propagation.go:458`
+- [ ] **The 50 km/h speed floor does not belong on Eisenbahn segments.** Previously recorded as
+      medium confidence; the PDF now settles it. The substitute speed is **Nr. 5.3.2**
+      (Straßenbahnen, p. 21): "Ist die Streckenhöchstgeschwindigkeit geringer als 50 km/h, wird
+      ersatzweise mit einer Geschwindigkeit von v = 50 km/h gerechnet." **Nr. 4.3** (Eisenbahnen,
+      p. 15) prescribes no floor beyond the 70 km/h in Personenbahnhöfen. `resolveEffectiveSpeed`
+      (`model.go`) applies `max(v, 50)` unconditionally, so slow Eisenbahn segments compute too
+      loud — **+2.2 dB at 1000 Hz, +5.5 dB at 2000 Hz** for a 30 km/h approach. Second finding:
+      even for Straßenbahnen, Nr. 5.3.2 scopes the substitution to Weichen, Kreuzungen and
+      Haltestellen (each ± 25 m), not the whole segment. Both are recorded as open deviations in
+      `docs/conformance/schall03-konformitaetserklaerung.md`.
+- [ ] **`FahrbahnartFesteFahrbahn = iota` makes the wrong value the default.** `0` is the zero
+      value of `FahrbahnartType` while Schwellengleis is `-1`, so a `TrackSegment` whose JSON omits
+      `fahrbahn` silently receives Feste Fahrbahn corrections (+7/+3 dB Schiene, +1 dB Reflexion) —
+      contradicting the comment in `sumC1ForTeilquelle` that Schwellengleis is the default.
+      `a1_full_chain.scenario.json` is the one fixture that sets `"fahrbahn": 0` explicitly, and
+      whether that was intended is unclear. Decide the intended default, then either renumber the
+      constants or require the field.
 
-```go
-lengthWeight := 10 * math.Log10(seg.LengthM/totalLength)   // wrong
-lengthWeight := 10 * math.Log10(seg.LengthM)               // right (l₀ = 1 m)
-```
+### 1.2 Schall 03 still has the `+1` flow guard
 
-`emission.LmEDay` is a **length-related** level in dB(A)/m — `emission.go:70` subtracts 30 dB
-precisely to convert veh/h ÷ km/h into per-metre. Dividing by `totalLength` makes
-Σ 10^(w/10) = 1, so the entire road radiates as if it were 1 m long.
+- [ ] `schall03/emission.go` computes `10*log10(trainsPerHour + 1)`, the same spurious **+3.0 dB at
+      1 train/h** that was fixed in `cnossos/road`, `cnossos/rail` and `bub/road` (`ac33895`). It
+      was outside that change's fence. Use the same explicit zero-flow branch and `-999` sentinel.
 
-Error = −10·lg(L_road / 1 m): **−20 dB at 100 m, −23 dB at 200 m, −30 dB at 1 km.**
+### 1.3 Compensated summation — a policy decision, not a defect
 
-Two independent confirmations it is a bug and not a convention: splitting one 200 m source into
-two 100 m sources changes the answer by ~3 dB (the result depends on how the user chops the
-geometry), and the parking path in the same package (`parking.go:200`) uses a total sound power
-with no such normalisation and produces sane absolute levels.
+- [ ] `docs/policies/determinism.md` §3 requires "a stable strategy (for example pairwise or
+      compensated summation)" for sensitive reductions. Every reduction in `standards/` is a plain
+      `sum +=`. The map-iteration half of this is now fixed everywhere it was reported. Decide:
+      implement Kahan/Neumaier in the shared acoustics core (Priority 7.1), or amend the policy to
+      match reality. Do not leave the policy asserting something the code does not do.
 
-- [ ] Fix `propagation.go:458` and the reflected path at `propagation.go:538-539`.
-- [ ] Regenerate all 24 RLS-19 `ci_safe` fixtures and re-derive
-      `docs/conformance/rls19-konformitaetserklaerung.md`.
-- [ ] Add an absolute-level regression test, not a relational one — every existing RLS-19
-      propagation test ("near > far", "day > night", "doubling adds 3 dB") passes under this bug.
+### 1.4 The fixture set has blind spots the fixes exposed
 
-### 1.2 ISO 9613-2: broadband L_WA replicated into all 8 bands — +7.0 dB on the default path
+Five of the twelve defects moved **no golden at all**, not because they are harmless but because no
+fixture exercises them: the lateral-diffraction path is never per-band dominant in any scenario,
+every scene has at most two diffraction edges, and no fixture combines a bridge with Feste
+Fahrbahn. Two more were invisible for structural reasons — the Tabelle 6 speed-factor error
+vanishes at exactly v₀ = 100 km/h, and the acceptance runner decoded `c0_met` and then discarded
+it, so ISO 9613-2's C_met was never exercised by any fixture at all.
 
-`backend/internal/standards/iso9613/octaveband.go:27-34` sets all 8 bands to `L_WA`;
-`propagation.go:116` then energy-sums them **and adds A-weighting again**:
-Σ 10^(0.1·A_j) = 4.997 → **+6.99 dB**.
+- [ ] Add fixtures that cover the cases the current set cannot see: a dominant lateral-diffraction
+      path, a three-or-more-edge barrier scene, a bridge with Feste Fahrbahn, non-`v₀` train
+      speeds, and a non-zero `c0_met`. Without these, the same class of defect can land again and
+      the suite will stay green.
 
-The doc comment cites ISO 9613-2 Note 1 ("use the 500 Hz attenuation terms when only the
-A-weighted sound power is known") — which requires a **single** band evaluated at 500 Hz with
-**no** re-weighting.
-
-This is the default path, not a corner case: `model.go:184` makes
-`iso9613_sound_power_level_db` the only import parameter and `OctaveBandLevels` is nil by
-default. Both committed goldens use it.
-
-- [ ] Implement Note 1 as a single 500 Hz band, or require octave-band input.
-- [ ] Regenerate `qa/acceptance/testdata/iso9613/*.golden.json`.
-
-### 1.3 ISO 9613-2: sign error in A_m at 63 Hz
-
-`backend/internal/standards/iso9613/ground.go:62` returns `3 * q`; Table 3 gives `−3q`.
-The `default:` branch on the next line correctly returns `−3*q*(1-gm)` — the two branches
-disagree in sign within one function. Error 6q dB in the 63 Hz band; A-weighted impact usually
-< 0.1 dB, but the band output is wrong and it matters for low-frequency-dominated sources.
-
-- [ ] Fix the sign.
-
-### 1.4 ISO 9613-2: C_met applied once, post-summation, from the farthest source
-
-`iso9613/compute.go:52-66` takes `max(d_p)` over all sources and `sources[0].SourceHeightM`,
-computes one C*met, and subtracts it from the already energy-summed `L_AT(DW)`. Eq. 6 applies
-C_met per source–receiver path \_before* summation. Near sources are over-corrected by up to
-C₀ dB. Currently masked because `c0_met` defaults to 0.
-
-- [ ] Move C_met inside the per-source loop.
-- [ ] `iso9613/barrier.go:6-23` — `pathDifference` is ≥ 0 for any input, so a receiver with clear
-      line of sight over a low barrier still gets full A_bar. Require z < 0 when the line of sight
-      clears the screen, or reject inconsistent `BarrierGeometry`.
-
-### 1.5 Schall 03: Gl. 14 misreads the reference length d₀ = 1 m as a path length
-
-`backend/internal/standards/schall03/propagation.go:150-153`
-
-```go
-val := 4.8 - (2.0*hm/d)*(17.0+300.0*dp/d)   // dp = land path length, wrong
-val := 4.8 - (2.0*hm/d)*(17.0+300.0/d)      // d₀ = 1 m per Gl. 11
-```
-
-Gl. 14 (PDF p. 24) reads `A_gr,B = [4,8 − (2·h_m/d)·(17 + 300·d₀/d)] ≥ 0 dB`, and its variable
-list contains only `h_m`, `d`, `S` — **d_p does not appear in Gl. 14** (it appears only in
-Gl. 16, the water term). The code substitutes a land path length of tens to hundreds of metres
-for a 1 m constant.
-
-With h_m = 2 m: **+4.0 dB at 100 m, +4.5 dB at 250 m, +1.2 dB at 1000 m** too loud. Ground
-damping is the only ground term in Schall 03, so the code effectively zeroes it at normal
-assessment distances. Affects direct paths (`compute.go:100,279`), reflected paths
-(`reflection.go:257,315`) and yard sources (`rangierbahnhof.go`).
-
-- [ ] Fix Gl. 14 and drop the `dp` parameter.
-- [ ] Document that `h_m` is hard-coded to `(hg+hr)/2` (`compute.go:82`) whereas Gl. 15 defines
-      `h_m = S/d`. Defensible as a flat-ground special case, but it is not currently listed among
-      the conformance document's known limitations.
-
-### 1.6 Schall 03: Tabelle 6 Rollgeräusche speed-factor row shifted by one band
-
-`backend/internal/standards/schall03/tables.go:31`
-
-```go
-B: BeiblattSpectrum{-5, -5, 0, 10, 25, 25, 25, 25},      // wrong — a −5 was dropped
-B: BeiblattSpectrum{-5, -5, -5, 0, 10, 25, 25, 25},      // Tabelle 6, Zeile 2 (PDF p. 15)
-```
-
-The speed term is `b_f·lg(v/v₀)` (`emission_v2.go:193`), so the per-band error is `Δb·lg(v/100)`:
-**+3.1 dB at 1000 Hz for 160 km/h, −3.3 dB for 60 km/h.** 1000 Hz dominates A-weighted rail
-rolling noise, so A-weighted error is roughly ±2–3 dB. It vanishes at exactly v₀ = 100 km/h,
-which is why the unit tests miss it.
-
-- [ ] Fix the row. Tabellen 7, 9 and 17 were checked against the PDF and are exact — no change.
-- [ ] Add a speed-sweep test at v ≠ 100 km/h so a shifted row cannot pass again.
-
-### 1.7 Schall 03: remaining defects
-
-- [ ] **Tabelle 7 c1 double-counted on bridges** (`emission_v2.go:202` and `:204`). The Festlegungen to
-      Tabelle 9 (PDF p. 17) state Tabelle 7 Zeile 1–4 corrections are _nicht anzusetzen_ when a
-      bridge correction applies. For "Brücke mit fester Fahrbahn" the code adds K*Br = +4 \_and*
-      c1 = +7 dB → **+8 dB at 500 Hz**.
-- [ ] **D_refl applied to every barrier with no d_s ≤ 5 m test** (`barrier.go:134-136`,
-      `barrier_scene.go:295`). Gl. 20 defines D_refl only for reflective walls at d_s ≤ 5 m with an
-      absorbing base. There is no distance check and no reflective/absorbing flag in
-      `BarrierSegment`, so **every** barrier loses up to 3 dB of insertion loss.
-- [ ] **Reflected-path directivity computed for the wrong direction** (`reflection.go:512-520`,
-      `:590-598`). The code uses source → its own mirror image, which is perpendicular to the wall
-      by construction and independent of the receiver; Gl. 28 requires the direction toward the
-      reflection point. For a wall parallel to the track this always yields sin²δ = 1 → +1.73 dB
-      where the correct value reaches −6.58 dB. **Worst case 8.3 dB.** Use
-      `firstGeom.ReflectionPoint − pt`.
-- [ ] **`energeticTotalSpectrum` sums dB arithmetically** (`barrier_scene.go:436-446`) in a
-      function documented as "the A-weighted energetic sum". No 10^(x/10), no A-weighting. This is
-      the only arithmetic-dB sum in `standards/`. It ranks candidate lateral-diffraction paths, so
-      it can select the wrong dominant path.
-- [ ] **Lateral diffraction climbs over the barrier top** (`barrier_scene.go:393-413`).
-      `lateralPathAbar` computes the plan-view detour around the barrier _endpoint_ but sets
-      `dhS = barrierTopH − sourceH`, adding a full vertical climb to a path that goes _around_ a
-      vertical edge. `z` is over-estimated, so lateral attenuation is over-estimated, and since
-      `ComputePathBarrierAttenuation:507-511` takes the per-band minimum, the lateral path is then
-      almost never selected. Both halves are wrong and partly cancel.
-- [ ] **`e` computed as a chord, not a polyline** (`ComputeBarrierGeometryFromEdges:266-269`).
-      Bild 6 defines `e = e₁+e₂+e₃…` along the diffracted path; the code keeps the outermost two
-      hull edges and uses the straight distance. `z` is under-estimated.
-- [ ] **Spurious 50 km/h speed floor on Eisenbahn segments** (`resolveEffectiveSpeed`, `model.go:372-380`, floor at `:375`). The 70 km/h
-      floor in Personenbahnhöfen is normative (PDF p. 15); the general 50 km/h floor is the
-      Straßenbahn rule from Nr. 5.3.2, already applied separately at `emission_v2.go:82-88`.
-      For a 30 km/h approach: **+2.2 dB at 1000 Hz, +5.5 dB at 2000 Hz.**
-      _Medium confidence — verify against Nr. 4.3 before changing._
-
-### 1.8 Determinism defects
-
-- [ ] **Map iteration order determines summation order.** `compute.go:78`, `compute.go:260`,
-      `reflection.go:238`, `reflection.go:296` all do
-      `for h, spectrum := range emission.PerHeight` (a `map[int]BeiblattSpectrum`) and accumulate
-      floats. Magnitude ~1 ULP, but it is a direct violation of `docs/policies/determinism.md`
-      ("Map iteration order must never influence numeric results"). Iterate a fixed `[]int{1,2,3}`.
-- [ ] **No compensated summation anywhere**, despite `determinism.md` §3 requiring "a stable
-      strategy (for example pairwise or compensated summation)" for sensitive reductions. Every
-      reduction in `standards/` is a plain `sum +=`. Decide: implement Kahan/Neumaier in the shared
-      acoustics core (Priority 7.1), or amend the policy to match reality.
-- [ ] `10*log10(flow + 1)` guards (`cnossos/road/emission.go:86`, `cnossos/rail/emission.go:40`,
-      `bub/road/emission.go:43`) add a spurious **+3.0 dB at 1 veh/h**. Use an explicit
-      zero-flow branch.
-- [ ] `cnossos/road/emission.go:330` does not filter the `−999` sentinel that
-      `emissionForVehicleClass:56` returns, whereas `cnossos/industry` and `rls19` do. Harmless
-      today (10⁻⁹⁹·⁹) but inconsistent — fold into the shared `EnergySum` (Priority 7.1).
-
-### 1.9 RLS-19 items that could not be verified
+### 1.5 RLS-19 items that could not be verified
 
 The RLS-19 text is not in the repo, so these were **not** checked and are not asserted as bugs.
 
@@ -501,45 +380,51 @@ from exactly one caller outside the package: `qa/acceptance/schall03/runner.go:2
 
 ## Priority 3 — Establish real validation evidence
 
-Today: **0 % of the numerical output is validated against an independent reference.** All 69
-`*.golden.*` files are snapshots of the code that produces them, generated by
-`qa/acceptance/rls19_test20/runner_test.go:126-171` and
-`qa/acceptance/schall03/runner.go:361-395`, compared at **1e-6 dB** — a bit-identity check
-wearing conformance vocabulary. That is why a 23 dB error survived.
+**The comparison now asserts, and it fails.** `compare_test.go` ran the whole
+`init → import --from-soundplan → compare` pipeline against the reference project and never read a
+single delta field. It does now (`ac33895`), and against the real fixture Aconiq reads
+systematically high on **every one** of the 54 matched receivers:
 
-The single highest-value change on this entire roadmap is already 90 % built.
+| indicator | mean abs | p95 abs | max abs | exceeding |
+| --------- | -------- | ------- | ------- | --------- |
+| LrDay     | 25.110   | 38.903  | 40.789  | 54 / 54   |
+| LrNight   | 23.329   | 36.789  | 38.657  | 54 / 54   |
 
-- [ ] **Assert on the SoundPLAN deltas.** `backend/internal/app/cli/compare_test.go:13-80` runs
-      `init → import --from-soundplan → compare` against a real reference project (77 receivers,
-      4 raster runs) and computes `MeanAbsDeltaDB`, `MaxAbsDeltaDB`, `P95AbsDeltaDB`,
-      `ToleranceExceeding` (`compare.go:27-33`). The test asserts row counts and non-empty IDs and
-      **never reads a single delta field**. No test anywhere in the repo does. Add the assertions.
+This is the single most important number in this file. Note the shape of it: ~25 dB high, on a
+Schall 03 rail project, which is exactly what Priority 2 predicts — the CLI does not call the
+normative Anlage-2 chain at all, it calls `BuiltinDataPack()`'s invented spectra. **Priority 2 is
+now the prime suspect for this delta and should be done before anything is concluded from it.**
+
+- [ ] **Fix receiver matching before tightening any tolerance.** All 54 matches fell back to the
+      `ordinal` strategy (`distance_m = -1`): coordinate matching at 0.5 m tolerance matched
+      _nothing_, so pairs are matched by list position rather than geometry, and two Aconiq
+      receivers were paired to SoundPLAN records both labelled `Hauptstraße 4`. 23 of the 77 Aconiq
+      receivers are unmatched and 0 SoundPLAN ones are. The comparison is not merely inaccurate —
+      it is comparing arbitrary pairs. Suspect the CRS pipeline (Priority 13) first.
+- [ ] Then tighten the thresholds. What is in the test today is a deliberately loose regression
+      bound (mean*abs ≤ 30 dB, max_abs ≤ 45 dB) labelled in the source as \_not* a tolerance, sitting
+      alongside exact self-consistency assertions that do hold the compare command to a real
+      standard. Once matching and Priority 2 are fixed, this must come down by a large factor.
 - [ ] Get reference data into CI — submodule or Git LFS, licence permitting — so the comparison
-      runs. Today `interoperability/` is gitignored, 53 SoundPLAN tests skip silently in CI and 9
-      hard-fail. Move the fixture path behind `ACONIQ_SOUNDPLAN_FIXTURES` and remove the customer
-      project name from tracked source (`absresults_test.go:9`, `soundplanimport_test.go:15`,
-      `import_soundplan_test.go:197`).
-- [ ] Make a full-suite skip a failure. A suite where every test skips is worse than a red one.
-      `rls19_test20/runner_test.go:44-63` already shows the right pattern (skip _with a reason_,
-      surfaced in the report).
+      runs. Today `interoperability/` is gitignored and the SoundPLAN tests skip in CI. Move the
+      fixture path behind `ACONIQ_SOUNDPLAN_FIXTURES` and remove the customer project name from
+      tracked source (`absresults_test.go`, `soundplanimport_test.go`, `import_soundplan_test.go`).
+- [ ] Extend the all-skip guard to the Schall 03 acceptance runner. `acceptance.ResolveSuiteSkip`
+      and `ACONIQ_STRICT_ACCEPTANCE=1` are wired into `rls19_test20` (`ac33895`); the Schall 03
+      report type has no `SkippedCount` field and was left alone.
 - [ ] Replace the `(to be filled from conformance report)` placeholders in
-      `docs/conformance/rls19-konformitaetserklaerung.md:110-145` — all 20 TEST-20 task rows and
-      every Max-delta column are blank, under a document titled _Konformitätserklärung_. Either
-      populate with measured deltas or state plainly that validation has not been performed.
+      `docs/conformance/rls19-konformitaetserklaerung.md` — all 20 TEST-20 task rows and every
+      Max-delta column are blank, under a document titled _Konformitätserklärung_. The document now
+      states plainly that they stay empty until the official task set is run, which is honest but
+      not evidence.
 - [ ] Set tolerances that mean something: ~0.5 dB against a reference tool, not 1e-6 dB against
       yourself. Keep the 1e-6 dB comparison, but rename it what it is — a determinism check.
-- [ ] Add clause-cited formula tests to the scaffold modules, or delete the tautological ones.
-      `cnossos/road/road_test.go:177-183` asserts `terms.GeometricDB == geometricDivergence(100)`
-      — the function compared against a direct call to its own helper. It cannot fail. Same shape
-      at `cnossos/rail:139,143`, `cnossos/industry:129`, `bub/road:178`, `beb/exposure:228`.
-- [ ] Fuzz the parsers that actually take untrusted input — GeoJSON, CSV, GeoTIFF, WKB, SoundPLAN.
-      The only fuzz target today is `geo/geometry_fuzz_test.go:8` on point-segment distance.
-- [ ] Add tests for `internal/domain/errors` (the taxonomy that decides CLI exit codes, 0 %) and
-      `internal/app/config` (0 %).
-- [ ] De-flake `TestCancellationLeavesConsistentState` (`engine/runner_test.go:76`). It races a
-      40 ms `time.Sleep` against 600 receivers at a 2 ms `ComputeDelay` and asserts the run was
-      cancelled; on a loaded runner the work can finish first. Drive cancellation off a
-      deterministic signal from inside the compute callback.
+- [ ] Fuzz the remaining parser. Five targets landed with `a8f3bc2` — GeoTIFF, WKB/GeoPackage,
+      GeoJSON, CityGML and the SoundPLAN `.GM` grid — and `FuzzParseGeoTIFF` found a real
+      negative-IFD-offset bug on its first run. CSV is still unfuzzed. `FuzzReadFGB` was
+      deliberately not added: `gogama/flatgeobuf` reads vtables without validation, so it would
+      find library panics this repo cannot fix. Decide whether to run `flatbuffers.Verify` per
+      feature buffer or add a scoped `recover()` in `ReadWithCRS`, then add the target.
 
 ## Priority 4 — Honest standards labelling
 
@@ -582,109 +467,69 @@ Decided: add an evidence tier and relabel; do not rename packages or delete modu
 
 ## Priority 5 — Provenance integrity and release engineering
 
-For a tool whose output is intended to support planning-approval files, an artifact that cannot
-be traced to the binary that produced it has no evidentiary value.
+Build identity, the provenance schema and the dead links are done (`0a3b11a`): `internal/buildinfo`
+is stamped via `-ldflags -X` with a `debug.ReadBuildInfo()` fallback, `aconiq --version` exists, the
+cnossos-road run summary no longer carries cnossos-**industry** constants, all eleven `persist*`
+functions agree on `model_version`, and `NOTICE` is regenerated from a `just license-report` that
+now actually works (it was failing on the toolchain GOROOT and only ever seeing one GOOS).
 
-- [ ] **`toolVersion = "dev"` is hardcoded** at `backend/internal/io/projectfs/store.go:23`.
-      Every `provenance.json` ever written claims `"tool_version": "dev"`. Inject version, commit
-      and build date via `-ldflags -X` in `just build` and CI, with a `debug.ReadBuildInfo()`
-      fallback.
-- [ ] Add `aconiq --version`. There is no version command and no `Version:` field on the root
-      cobra command (`app/cli/root.go:90-100`).
-- [ ] **Fix the wrong model version in cnossos-road provenance.**
-      `run_persist.go:226-227` writes `cnossosindustry.BuiltinModelVersion` ("phase12-preview-v2")
-      and `cnossosindustry.ReportingPrecisionDB` into every **cnossos-road** run summary; the
-      correct constant is `cnossosroad.*` ("phase10-preview-v2").
-- [ ] Unify the four different provenance schemas this produced: `model_version` present in 6
-      `persist*` functions, absent in `persistBUFAircraftRunOutputs:558`,
-      `persistCnossosIndustryRunOutputs:667` and `persistISO9613RunOutputs:720`, and renamed
-      `data_pack_version` in `persistRLS19RoadRunOutputs:339`.
+What is left is release process, which is a set of decisions rather than defects.
+
 - [ ] Rename the `phaseNN-preview-vN` model versions. Internal sprint numbers leak into artifacts
       that are meant to be read by third parties.
 - [ ] Start tagging releases. `git tag` is empty; there is no `CHANGELOG.md`, no goreleaser, no
       release workflow. `SECURITY.md` asks reporters for "the version(s) affected" and promises
-      fixes "in the latest release" — neither exists.
-- [ ] Fix the dead links: `CONTRIBUTING.md:52` and `SECURITY.md:7` point at
-      `github.com/aconiq/backend`; the remote is `github.com:cwbudde/Aconiq`. Both 404 —
-      including the security-advisory link.
-- [x] `CONTRIBUTING.md` now says "Go 1.25+", matching `backend/go.mod` (`b96e319`).
-- [ ] Regenerate `NOTICE` from `just license-report`. It still omits `mousetrap`, `go-isatty` and
-      `go-strftime`. Two false claims were corrected by hand as P0 landed — the stale `go-overpass`
-      entry, and `go-absolute-database` being listed as "MIT (local replace)" under a heading
-      "Internal dependencies (MeKo-Tech)" when `backend/go.mod` has no `replace` directive and the
-      module is not in that namespace — but the file has still never been generated from the
-      actual module graph, which is the only thing that stops it drifting again.
+      fixes "in the latest release" — neither exists. Note the build stamp now uses
+      `git describe --tags`, so the first tag immediately improves every artifact's provenance.
 - [ ] Record standard-internal data versions — the Schall 03 data-pack version and hash, the
       per-module coefficient-table version — so identical provenance implies identical numbers.
       Do **not** put them in `input_hashes`: `projectfs.Store.hashInputs` defines that map as
       input-file path → SHA-256 and `reporting.inputFilesFromHashes` renders every entry as an
       "Input files" row, so non-file entries there produce misleading reports. Add a dedicated
       standard-data digest field, and only put a coefficient artifact in `input_hashes` when it
-      genuinely is a hashed input file.
+      genuinely is a hashed input file. Entangled with the Priority 2 data-pack decision.
 - [ ] Define versioning and changelog process (SemVer + `CHANGELOG.md`), publish CLI binaries via
       GitHub Releases, enable Issues with templates, and add release-tag golden-test gates.
 
 ## Priority 6 — Security hardening
 
-The threat model is untrusted third-party files plus a local API a browser talks to. Both are
-currently open.
+The threat model is untrusted third-party files plus a local API a browser talks to. **The file
+half is closed** (`a8f3bc2`): every allocation the GeoTIFF, GeoPackage/WKB, FlatGeobuf, GeoJSON,
+CityGML and SoundPLAN decoders make is now bounded before it happens, with a regression test per
+bound and five fuzz targets. The GeoTIFF OOM turned out to be reachable from an **86-byte** input,
+and a deflate bomb that was not in this list was found and closed alongside it.
 
-- [ ] **GeoTIFF: unrecoverable OOM from a ~250-byte upload.**
-      `backend/internal/geo/terrain/geotiff.go:249` never validates `bps`; `getUint` returns 0 for
-      a missing `BitsPerSample`, so `bytesPerSample == 0` and the guard
-      `if len(raw) < n*bytesPerSample` (`:454`) compares against 0 and **fails open**.
-      `make([]float64, n)` at `:458` then runs with attacker-controlled `n` — `2^40` = 8 TiB →
-      `runtime.throw`, uncatchable. Reachable unauthenticated and cross-origin via
-      `POST /api/v1/import/terrain` (`handler.go:785`) and fatally in `cmd/wasm/main.go:96`.
-      Validate `bps ∈ {8,16,32,64}` and `width*height <= maxPixels` with overflow-safe arithmetic
-      before any allocation. Same class at `:376`, `:597`, `:141-154`.
+**The API half is untouched and is now the whole of this priority.**
+
 - [ ] **Local API is unauthenticated and CSRF-open.** No auth, no CSRF token, no `Host` validation.
-      `handleRunCreate` (`handler.go:322`) decodes JSON without checking `Content-Type`, so a
-      cross-origin `fetch` with `text/plain` is CORS-safelisted, skips preflight, and executes
-      `exec.CommandContext` with attacker-chosen `--model`/`--param`/`--input`. DNS rebinding
-      bypasses the origin check entirely. The comment at `cors.go:17` is incorrect for both shapes.
-      Add a Host allowlist, reject non-`application/json` bodies, and mint a session token at
-      `serve` startup.
-- [ ] **No request size limits.** `ParseMultipartForm`'s argument is `maxMemory`, not a cap
-      (`handler.go:736-743,781`); the remainder spills to unbounded temp files, then `io.ReadAll`.
-      There are **zero** occurrences of `http.MaxBytesReader` or `io.LimitReader` in the backend.
+      `handleRunCreate` decodes JSON without checking `Content-Type`, so a cross-origin `fetch`
+      with `text/plain` is CORS-safelisted, skips preflight, and executes `exec.CommandContext`
+      with attacker-chosen `--model`/`--param`/`--input`. DNS rebinding bypasses the origin check
+      entirely. The comment at `cors.go:17` is incorrect for both shapes. Add a Host allowlist,
+      reject non-`application/json` bodies, and mint a session token at `serve` startup.
+- [ ] **No request size limits.** `ParseMultipartForm`'s argument is `maxMemory`, not a cap; the
+      remainder spills to unbounded temp files, then `io.ReadAll`. There are **zero** occurrences
+      of `http.MaxBytesReader` or `io.LimitReader` in `api/httpv1`. This is also the standing G120
+      finding.
 - [ ] **Arbitrary file read.** `handler.go:519` builds a path by raw string concatenation with no
       `Clean` and no containment check; a shared project whose manifest sets
       `log_path: "../../../../etc/passwd"` reads it over HTTP. Use `filepath.IsLocal()` +
       `os.OpenInRoot`. `:577` cleans but still does not constrain.
-- [ ] **SSRF by design.** `overpass_endpoint` (`handler.go:715` → `osmimport.go:41-54`) is taken
-      from the request body with no scheme/host validation. Allowlist it or drop it from the API.
-- [ ] **GeoPackage SQL injection into a read-write handle.** `gpkgimport.go:155,178` build
-      `"SELECT * FROM "+tableName`; the `//nolint:gosec` justification ("comes from
-      `gpkg_geometry_columns` metadata") is backwards — that metadata is in the attacker's file.
-      `sql.Open("sqlite", path)` (`:25,85`) opens READWRITE|CREATE and `ATTACH` is compiled in.
-      Whitelist `^[A-Za-z_][A-Za-z0-9_]*$`, quote it, and open `?mode=ro&immutable=1`.
-- [ ] **WKB decoder.** `wkb.go:167-170,198-201` allocate from a 4-byte count before bounds
-      checking (68 GB from a 17-byte blob) and `:204` recurses with no depth cap (fatal stack
-      exhaustion at ~18 MB). `readPoints` at `:218-224` already does this correctly — copy it.
-- [ ] Bound the remaining O(n²) and unvalidated-length paths: `gridmap.go:328-338`,
-      `modelgeojson/validate.go:355-380`, `fgbimport.go:167,191,225`, `citygmlimport.go:62`
-      (nesting depth only — XXE and billion-laughs are already safe under Go's `xml.Decoder`),
-      `store.go:365-377`, `gridmap.go:87` / `railops.go:155`.
-- [ ] Stop neutering gosec. **G301 is done (2026-08-28):** it was not suppressed by this project's
-      config at all but bundled with G302/G307 inside the `legacy` preset's EXC0009 regex, so it
-      could not be split out; `legacy` was dropped and replayed as four explicit rules minus G301,
-      and all 54 `MkdirAll(0o755)` sites became `0o750`. Enforcement proven with a deliberate
-      probe. **G304 is still suppressed and the count doubled while nobody looked: 47 → 97** (50
-      test, 47 non-test). G304 is arguably the product — the tool opens paths the user names — but
-      that verdict was taken at 47 and has not been re-examined at 97.
-      **Correction (27 August 2026):** the earlier claim that "17 G115 integer-overflow hits
-      concentrate in `geotiff.go`" is wrong. `geo/terrain/geotiff.go` carries 13 explicit,
-      individually justified `//nolint:gosec` directives, all confirmed still live by
-      `nolintlint`; that is correct handling, not suppression. A gosec-only run over the whole
-      tree surfaces no unhandled G115. See `docs/lint-triage.md`.
-      The 8 kept gosec findings do include two worth judgement: **G702** at
-      `api/httpv1/handler.go:456` (the HTTP handler shells out to `aconiq` with request-controlled
-      argv — no shell involved, so not classic injection, but a real exposure surface that the
-      Priority 7 "move the run pipeline out of `app/cli`" item would remove outright) and **G120**
-      at `:743` (`ParseMultipartForm` bounds memory only, the body is unbounded — same defect as
-      the "no request size limits" item above). **G202** at `report/export/gpkg.go:207` is a
-      false positive: `sanitizeColumnName` is a strict `[a-z0-9_]` allow-list.
+- [ ] **SSRF by design.** `overpass_endpoint` (`handler.go` → `osmimport.go`) is taken from the
+      request body with no scheme/host validation. Allowlist it or drop it from the API.
+- [ ] Re-examine the gosec **G304** suppression on current evidence. It was judged acceptable at 47
+      findings and now stands at 97 (50 test, 47 non-test) — the same drift that made G301 worth
+      fixing. Opening a user-named path is arguably what a file-format toolchain does, but nobody
+      has re-litigated the verdict at the new count. The other two kept findings still worth
+      judgement are **G702** at `api/httpv1/handler.go:456` (the HTTP handler shells out to
+      `aconiq` with request-controlled argv — no shell involved, so not classic injection, but an
+      exposure surface that Priority 7's "move the run pipeline out of `app/cli`" removes outright)
+      and **G120**, folded into the size-limit item above. **G202** at
+      `report/export/gpkg.go:207` is a false positive: `sanitizeColumnName` is a strict allow-list.
+- [ ] Add `flatbuffers.Verify` per feature buffer, or a scoped `recover()` in
+      `fgbimport.ReadWithCRS`. `gogama/flatgeobuf` reads vtables without validation, so a corrupt
+      vtable can panic inside the library before any of the bounds added in `a8f3bc2` are reached.
+      This is what blocks a `FuzzReadFGB` target (Priority 3).
 - [ ] Add a CI guard that hard-fails on any tracked `interoperability/` path, and write the
       data-handling policy that currently does not exist. 4.1 GB of third-party project data is
       protected by a single `.gitignore` line. _(Verified: nothing proprietary has ever been
@@ -704,7 +549,7 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
       `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf` and returns NaN
       on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the same
       `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
-      This also lands the compensated-summation item from P1.8.
+      This also lands the compensated-summation item from P1.3.
 - [ ] **Unify the four Schall 03 normative propagation kernels** —
       `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
       ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
@@ -768,116 +613,72 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
 
 ## Priority 8 — Frontend correctness
 
-Not "deferred polish" — the shipped Run page throws on its default path. All four crashes would
-have been caught by the typecheck gate fixed in Priority 0.
+The shipped crashes and the correctness defects behind them are fixed (`be19871`, `e55e366`,
+`ad47eaa`): the `calcArea` autosave data loss, the map being destroyed and rebuilt on every model
+edit, three render-phase `setState` sites, the global Ctrl+Z hijacking text inputs, object URLs
+revoked while still rendered, swallowed layer errors, `loadReceivers` bypassing the command stack,
+`CommandStack` never unsubscribing, four module-scope message calls freezing labels at import time,
+and the bundle budget, which is now measured in gzipped bytes against a real build (map chunk
+314.3 KB gz against a 400 KB budget) and enforced in `frontend-ci.yml`. `gh-pages.yml` no longer
+deploys to production Pages with no test gate. Unit tests went 112 → 132.
 
-All four shipped crashes listed here are now fixed — see the Priority 0 Landed entry. Two of
-them left a decision behind:
+Three items on the old list turned out to rest on false premises and are recorded in `ad47eaa`
+rather than here: the "receiver" case was not missing, `ValidationPanel` was an unfinished feature
+rather than dead code and has been wired up, and "58 unused message keys" was 38, of which ~24 were
+un-wired i18n whose English text is hardcoded in the pages — deleting those would have cemented an
+English-only UI, so they were wired up instead.
 
-- [ ] **Decide whether the map's load-timeout fallback is wanted at all.** `map-view.tsx` called
-      two functions that were defined nowhere, so there was no behaviour to restore — only a
-      choice. `mapRef.current` is assigned solely inside `m.on("load", …)`, and `load` fires only
-      after the style _and_ first paint complete, so the timer cannot distinguish a blocked GPU
-      from a slow network. As wired it now sets a per-mount error at 15 s (was 4 s), and the
-      session-wide WebGL kill switch fires only when `new maplibregl.Map()` throws — the one
-      signal that is genuinely permanent. `webglcontextlost` deliberately does **not** trip it,
-      since there is a `webglcontextrestored` handler that expects recovery. Open question: is a
-      timeout-driven fallback worth keeping, and should the "Map unavailable" panel offer a retry?
-      Nothing currently clears the session flag.
-- [ ] **Add a "receiver" case wherever `option_source|building|barrier` are handled.**
-      `option_receiver` was simply missing from `messages/{en,de}.json` and has been added, which
-      suggests the receiver branch of that dialog was never exercised. Worth a test.
-- [ ] **`calcArea` is marked dirty but never persisted** — silent data loss.
-      `use-autosave.ts:70` saves only `{features, receivers}` while `model-store.ts:238` sets
-      `dirty: true` on `setCalcArea`, and `calcArea` is missing from the effect deps
-      (`use-autosave.ts:81`), so a pending timer writes a stale draft and calls `markClean()`.
-- [ ] **The map is destroyed and rebuilt on every model edit.** `map-view.tsx:103` deps include
-      `center`/`zoom`, and `pages/map.tsx:126-129` re-memoizes `workspaceView` on every store
-      change. Pan/zoom is lost, layers re-added, the fallback timer re-armed. (The stale
-      `eslint-disable` and the "only re-create on basemap change" comment that contradicted the
-      deps array were removed in `e55e366`; the deps themselves are unchanged.)
-- [ ] Fix render-phase `setState` at `pages/export.tsx:417`, `pages/results.tsx:769` **and
-      `pages/run.tsx:1138`** (a third instance of the same "auto-select first run" shape, found
-      while fixing the type errors — the index access is now sound but the write is still in the
-      render body; the fix is a `useEffect` or deriving `selectedRun ?? firstRun` instead of
-      storing it); the
-      global Ctrl+Z that hijacks text inputs (`map/undo-redo-bar.tsx:20`); object URLs revoked
-      while still rendered (`api/browser-backend.ts:281-284`); silently swallowed layer errors
-      (`map/model-layers.tsx:55-57,74-76`); `loadReceivers` bypassing the command stack
-      (`model-store.ts:225`); `CommandStack` never unsubscribing (`model-store.ts:44`).
-- [ ] **Move the WASM kernel off the main thread.** `backend/cmd/wasm/main.go:47-72` calls
+### Decisions this work left open
+
+- [ ] **Is the map's load-timeout fallback wanted at all?** `map-view.tsx` called two functions that
+      were defined nowhere, so there was no behaviour to restore — only a choice. `mapRef.current`
+      is assigned solely inside `m.on("load", …)`, and `load` fires only after the style _and_
+      first paint complete, so the timer cannot distinguish a blocked GPU from a slow network. As
+      wired it sets a per-mount error at 15 s, and the session-wide WebGL kill switch fires only
+      when `new maplibregl.Map()` throws — the one signal that is genuinely permanent.
+      `webglcontextlost` deliberately does **not** trip it, since a `webglcontextrestored` handler
+      expects recovery. Should the "Map unavailable" panel offer a retry? Nothing clears the flag.
+- [ ] **Adopt the E2E suite or delete it — all 6 specs fail.** The tooling half is fixed:
+      `frontend/e2e/` and `playwright.config.ts` are Bun-native, type-checked and linted, and
+      `just fe-e2e` starts Vite and drives Chromium correctly. The assertions have bit-rotted,
+      because no workflow has ever run them. Two causes: `vite.config.ts` sets `base: "/Aconiq/"`
+      and `routes.tsx` passes `basename: import.meta.env.BASE_URL`, but the config's `baseURL` is
+      `http://localhost:5173` and every spec navigates to a bare `/map`; and the index route
+      redirects to `/welcome`, not `/map`. Both axe checks fail as a consequence rather than on
+      their own merits, so the accessibility baseline is still entirely unmeasured.
+- [ ] Write the missing `frontend/scripts/generate-api-client.mjs` that `package.json` already
+      declares, or delete the script entry. The client is hand-written and drifting —
+      `/api/v1/import/terrain` has no binding.
+
+### Still open
+
+- [ ] **Move the WASM kernel off the main thread.** `backend/cmd/wasm/main.go` calls
       `road.ComputeReceiverOutputs` synchronously inside the Promise executor — the Promise is
       cosmetic and there is no `Worker` anywhere in `src/`. A grid run freezes the UI.
-- [ ] **Stop the frontend/backend `SurfaceType` list from drifting again.** The typecheck fix
-      exposed a live numeric defect: `src/wasm/types.ts` declared 10 of the 18 Go
-      `rls19/road.SurfaceType` constants, missing `SMA-5-8`, `SMA-8-11`, `OPA-11`, `OPA-8`,
-      `Pflaster-eben`, `Pflaster-sonstig`, `SMA-LA-8` and `Gussasphalt-nicht-geriffelt`. These are
-      not aliases — each has its own DStrO row in `rls19/road/tables.go`, and the spread is large
-      (`Pflaster-sonstig` +5…+7 dB vs `Pflaster-eben` +1…+3 dB; `OPA-8` −5.5 dB). Narrowing an
-      incoming surface against the stale union would have silently downgraded all eight to the
-      `"SMA"` fallback and changed the computed emission. The union has been completed, but it is
-      now the **third** hand-maintained copy of the same list (Go constants,
-      `model/source-acoustics.ts:RLS19_SURFACE_TYPES`, `wasm/types.ts`). Generate them from the Go
-      constants, or at minimum add a test that fails when the three diverge.
-- [ ] Write the missing `frontend/scripts/generate-api-client.mjs` that `package.json:12` already
-      declares, or delete the script entry. The client is hand-written and drifting —
-      `/api/v1/import/terrain` (`handler.go:230`) has no binding.
-- [ ] Fix the bundle budget: `dist/assets/map-*.js` is 1 214 KB against a 750 KB limit
-      (`scripts/check-bundle-size.mjs:14`), so `bun run bundle-check` — and therefore `just ci` via
-      `fe-ci` — fails on a real build. Move budgets to gzip.
-- [ ] Delete dead frontend code: the `APIClient` class in `src/api/client.ts` (never
-      instantiated — only re-exported from `api/index.ts`; **the rest of the module is live**, six
-      files import its types, so do not delete the file), `src/map/legend.tsx` (never rendered),
-      `ValidationPanel` (unreachable — `pages/map.tsx:119` never calls `setShowValidation(true)`),
-      58 unused message keys. Note the header bug fixed in `e55e366` was inside that unused class,
-      which is how it survived.
-- [ ] Test the untested half: `src/map/` has 1 test across 17 files; `run.tsx` + `results.tsx` +
-      `export.tsx` are 2 597 lines with zero. Run axe against real pages, not the hand-written
+- [ ] Test the untested half: `src/map/` is thin on tests and `run.tsx` + `results.tsx` +
+      `export.tsx` are ~2 600 lines with zero. Run axe against real pages, not the hand-written
       fixture in `src/ui/a11y.test.tsx`. Add `role="dialog"`, focus trap and Escape handling to
-      `FeatureEditor`/`FeaturePopup`.
-- [ ] Fix `feature-editor.tsx:26-36`, which calls `m.option_source()` at module scope, freezing
-      labels at import time. `draw-toolbar.tsx:23` shows the correct pattern.
-- [ ] **Adopt the E2E suite or delete it — all 6 specs fail.** The tooling half is fixed (see
-      Priority 0): `frontend/e2e/smoke.spec.ts` + `frontend/playwright.config.ts` are Bun-native,
-      type-checked and linted, and `just fe-e2e` starts Vite and drives Chromium correctly. The
-      assertions have bit-rotted, because no workflow has ever run them. Two causes: `vite.config.ts:8`
-      sets `base: "/Aconiq/"` and `routes.tsx:32` passes `basename: import.meta.env.BASE_URL`, but the
-      config's `baseURL` is `http://localhost:5173` and every spec navigates to a bare `/map` or
-      `/import`; and `routes.tsx:20` redirects the index route to `/welcome`, not `/map`, so
-      `expect(page).toHaveURL(/\/map/)` receives `/Aconiq/welcome`. Both axe checks fail as a
-      consequence rather than on their own merits — they never reach a rendered page, so the
-      accessibility baseline is still entirely unmeasured. Decide whether to fix the specs and add a
-      CI job, or delete the suite and its two dependencies.
-- [ ] Add `backend/**` to `frontend-ci.yml`'s path filter (a WASM API change never triggers
-      frontend CI) and gate `gh-pages.yml` on both CI workflows — it currently deploys to
-      production Pages on every push to `main` with no test gate.
+      `FeatureEditor`/`FeaturePopup`. The map-rebuild fix in `ad47eaa` also has no test — it needs
+      a real WebGL context, and `map.test.tsx` stubs `MapView` out entirely.
+- [ ] `settings.tsx` has a hardcoded English paragraph with no message key. Small, but it is the
+      same class of defect as the ~24 keys that were wired up.
 
 ## Priority 9 — Documentation truth
 
-- [ ] **Rewrite `AGENTS.md`.** It is loaded into every AI agent session via `CLAUDE.md` and is
-      wrong on every structural claim: "Currently at Phase 6", "the React/TypeScript frontend is
-      deferred", "`engine/` — not yet implemented", "`standards/` — not yet implemented",
-      "`scripts/` CI/build automation" (contains only `.gitkeep`), a package table missing 14
-      packages, and 7 CLI commands where `root.go:90-100` registers 10.
-- [ ] Fix `README.md`: it references `goal.md`, which does not exist; lists ISO 9613-2,
-      GeoPackage, FlatGeobuf, CSV and GeoTIFF as "deferred" though all five ship; omits
-      `aconiq compare`, `aconiq bench`, and two API endpoints.
-- [ ] Make `PLAN.md` the single status source and have `AGENTS.md` link to it rather than restate it.
+`AGENTS.md` and `README.md` are rewritten and every structural claim in them was checked against
+the repository (`1257365`). `AGENTS.md` now defers all status to this file, carries a 29-row
+package table and all ten CLI commands, and describes the standards modules by evidence tier rather
+than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
+`docs/policies/formatting.md`, which also carried it — `README.md` never did.
+
+- [ ] **`backend/README.md` is now the worst stale-status file in the repo.** It carries a
+      phase-by-phase "Phase 3 Baseline … Phase 23 Initial Slice" changelog and a "Planned package
+      structure" list for packages that all exist. It was not in this priority's original scope and
+      is untouched. Either fold it into the root `README.md` or cut it to a build note.
 - [ ] Resolve the two competing lint stacks. `.trunk/trunk.yaml` is invoked by nothing yet holds
       `osv-scanner`, `trivy`, `trufflehog`, `checkov`, `gokart`, `actionlint` — exactly the security
-      coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module. Either promote those
-      scanners into `go-ci.yml` or drop trunk.
-- [ ] Stop claiming "all linters enabled". `AGENTS.md` and `README.md` both say it; `.golangci.yml`
-      disables **20** linters outright (21 before `goconst` came back on 2026-08-28) and excludes
-      four more rules by path or string value. "Defaults plus tuned disables" is accurate and just
-      as short. Unchanged by the 2026-08-28 lint debt pass — the claim is still wrong.
-- [x] `.golangci.yml` disabled `wrapcheck` for all of `internal/` — the whole backend — so the
-      error-wrapping policy was unenforced. **Done 2026-08-28:** the exclusion and its
-      `FIXME(lint-triage)` are deleted, all 190 findings are fixed with `fmt.Errorf("…: %w", err)`
-      and no `//nolint:wrapcheck` was needed anywhere. The `sqlclosecheck` half was already done:
-      the "no SQL in this project" claim was false, and the linter is re-enabled at 0 findings
-      (`0a13e80`). The `cmd/` and `_test.go` exclusions still list `wrapcheck` and are unchanged —
-      both are legitimate.
+      coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module, and `golangci-lint`
+      2.11.4 against CI's 2.12.2. Either promote those scanners into `go-ci.yml` or drop trunk.
 
 ---
 
@@ -1087,7 +888,7 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] Standardize numeric tolerances per standard and test suite — and stop presenting 1e-6 dB
       determinism checks as conformance tolerances.
 - [ ] Define the stable summation strategy and document exactly where it must apply, or amend
-      `docs/policies/determinism.md` §3 to match what is implemented (see P1.8).
+      `docs/policies/determinism.md` §3 to match what is implemented (see P1.3).
 
 ### UX and workflow questions
 
