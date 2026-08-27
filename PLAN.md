@@ -85,21 +85,48 @@ target state; Priority 4 makes the code express it.
 ## Priority 0 — Restore the build and the safety net
 
 Nothing else on this roadmap is verifiable until this is done. Every automated gate the project
-owns is currently blind.
+owns was blind for months: one unresolvable module poisons whole-graph resolution, and
+`golangci-lint` aborts an entire run on a single typecheck error.
 
-Partly addressed by `b96e319` (Phase QR-1): the `bin/noise` → `bin/aconiq` rename in
-`go-ci.yml` and `CONTRIBUTING.md`, the `mkdir -p docs/api` step before the OpenAPI export, the
-`treefmt` install, the `golangci-lint-action` v6 → v7 bump (v6 pins the v1 line, which refuses a
-`go 1.25.0` target and cannot read the v2 `.golangci.yml`), and the Go 1.24+ → 1.25+ correction
-are done.
+### Landed
 
-The `go-overpass` module-path mismatch that broke whole-graph resolution is also fixed: the
-`require` is now `github.com/cwbudde/go-overpass v0.1.0` and the import in
-`internal/io/osmimport/osmimport.go` matches it. `go build ./...` and `go vet ./...` are green
-again, and `internal/app/cli`, `internal/api/httpv1`, `cmd/aconiq` and `internal/io/osmimport`
-compile and run their tests for the first time in months. Two consequences are now visible and
-are tracked below: the real `golangci-lint` finding count over the _whole_ tree, and one genuinely
-failing test in `internal/app/cli`. What follows is what remains.
+Kept as a checklist only because these are the gates everything else depends on. Detail is in the
+commit messages; the consequences each one exposed are open items below.
+
+- [x] **Module-path mismatch fixed** (`622a8ce`). `go.mod` required `cwbudde/go-overpass` at a
+      pseudo-version whose own `go.mod` declared the path as `MeKo-Christian/go-overpass`.
+      Upstream moved _back_ to `cwbudde`, so the fix was `require` → `v0.1.0` plus a matching
+      import, not the reverse. `go build` and `go vet` are green; `internal/app/cli`,
+      `internal/api/httpv1`, `cmd/aconiq` and `internal/io/osmimport` compile and test again.
+- [x] **The one test the restored build exposed** (`804ec3d`). The heuristic raster receiver test
+      in `internal/app/cli` asserted a geometrically unreachable `x = 0` — the zero value returned
+      alongside `ok=false`. The test was wrong, not the code, so raster comparison output is
+      unchanged. The boundary weakness it revealed is tracked under Priority 13.
+- [x] **CI tooling breakers** (`b96e319`, Phase QR-1): `bin/noise` → `bin/aconiq` in `go-ci.yml`
+      and `CONTRIBUTING.md`, `mkdir -p docs/api` before the OpenAPI export, the `treefmt` install,
+      `golangci-lint-action` v6 → v7 (v6 pins the v1 line, which refuses a `go 1.25.0` target and
+      cannot read the v2 `.golangci.yml`), and the Go 1.24+ → 1.25+ correction.
+- [x] **Formatting** (`0a234e2`). Five files were unformatted on `main`, so `check-formatted` went
+      red before any other gate could run. `just check-formatted` now exits 0.
+- [x] **Frontend typecheck no-op fixed** (`f2b60f7`). See the open item below for the 55 errors it
+      turned out to be hiding.
+- [x] **Lint triage** (`0a13e80`). 542 → 112, audited in `docs/lint-triage.md`. See below — the
+      reduction was configuration, not fixes.
+- [x] **Unguarded fixture tests** (`bda9767`). Eight tests in `io/soundplanimport` hard-failed on a
+      clean checkout over a gitignored fixture; they now skip with the resolved path and reason.
+- [x] **CI tool versions pinned** (`e183c68`), matched to the local toolbox so `just go-ci` and CI
+      agree on what "passing" means.
+- [x] **`-race` and `govulncheck` wired into CI** (`e183c68`, `73f06c7`), as separate parallel jobs
+      since both are slow and independent.
+- [x] **`just ci` reconciled with `go-ci.yml`** (`e183c68`). Every gate now invokes a `just`
+      recipe; the two remaining non-recipe steps produce artifacts rather than gate, and say so in
+      both places.
+- [x] **Repository hygiene** (`91ffcc1`): `backend/wasm` (3.28 MB and orphaned — the real build
+      target is `frontend/public/aconiq.wasm`), the committed `tsbuildinfo`, the empty
+      `backend/cmd/noise/` and root `.codex`, plus gitignores for `.trunk/`, `playwright-report/`
+      and `test-results/`.
+
+### Open
 
 - [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
       `github.com/cwbudde/go-absolute-database v0.1.0`, which is unreachable for anyone but the
@@ -118,13 +145,6 @@ failing test in `internal/app/cli`. What follows is what remains.
       Verify afterwards with
       `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
       which must succeed against a cold cache.
-      Landed 27 August 2026 (commits on `main`, see git log): `just fmt` (formatting is now clean and
-      `just check-formatted` exits 0); the frontend typecheck no-op; the lint triage; the unguarded
-      fixture tests; CI tool-version pinning; `-race` and `govulncheck` in CI; `just ci` reconciled with
-      `go-ci.yml`; and the repository-hygiene items (`backend/wasm`, `tsbuildinfo`, `.trunk/`,
-      `playwright-report/`, `test-results/`, `backend/cmd/noise/`, the empty `.codex`). What each of
-      those turned up, and what is left, is below.
-
 - [ ] **Fix the 55 remaining frontend type errors.** The typecheck gate is now honest —
       `frontend/package.json` runs `tsc -b --force --noEmit` instead of `tsc --noEmit`, which
       checked **zero** files because `tsconfig.json` is a solution file with `"files": []` and
@@ -519,11 +539,13 @@ be traced to the binary that produced it has no evidentiary value.
 - [ ] Fix the dead links: `CONTRIBUTING.md:52` and `SECURITY.md:7` point at
       `github.com/aconiq/backend`; the remote is `github.com:cwbudde/Aconiq`. Both 404 —
       including the security-advisory link.
-- [ ] `CONTRIBUTING.md:2` says "Go 1.24+"; `backend/go.mod:3` requires `go 1.25.0`.
-- [ ] Regenerate `NOTICE` from `just license-report`. It lists
-      `go-absolute-database — MIT (local replace)` when no `replace` directive exists, and omits
-      `mousetrap`, `go-isatty`, `go-strftime`. (The stale `go-overpass` entry was corrected by hand
-      when P0 landed; the file has still never been generated from the actual module graph.)
+- [x] `CONTRIBUTING.md` now says "Go 1.25+", matching `backend/go.mod` (`b96e319`).
+- [ ] Regenerate `NOTICE` from `just license-report`. It still omits `mousetrap`, `go-isatty` and
+      `go-strftime`. Two false claims were corrected by hand as P0 landed — the stale `go-overpass`
+      entry, and `go-absolute-database` being listed as "MIT (local replace)" under a heading
+      "Internal dependencies (MeKo-Tech)" when `backend/go.mod` has no `replace` directive and the
+      module is not in that namespace — but the file has still never been generated from the
+      actual module graph, which is the only thing that stops it drifting again.
 - [ ] Record standard-internal data versions — the Schall 03 data-pack version and hash, the
       per-module coefficient-table version — so identical provenance implies identical numbers.
       Do **not** put them in `input_hashes`: `projectfs.Store.hashInputs` defines that map as
@@ -739,9 +761,11 @@ have been caught by the typecheck gate fixed in Priority 0.
       scanners into `go-ci.yml` or drop trunk.
 - [ ] Stop claiming "all linters enabled". `AGENTS.md` and `README.md` both say it; `.golangci.yml`
       disables roughly 20. "Defaults plus tuned disables" is accurate and just as short.
-- [ ] `.golangci.yml:87-88` disables `wrapcheck` for all of `internal/` (the whole codebase), so
-      the error-wrapping policy is unenforced; `:31` disables `sqlclosecheck` claiming "no SQL in
-      this project" while `io/gpkgimport` and `report/export/gpkg.go` both use `modernc.org/sqlite`.
+- [ ] `.golangci.yml` disables `wrapcheck` for all of `internal/` — the whole backend — so the
+      error-wrapping policy is unenforced. Removing the exclusion costs 190 findings, so sequence
+      it after the `domain/errors` work in Priority 7; a `FIXME(lint-triage)` in the config carries
+      the count. (The `sqlclosecheck` half of this item is done: the "no SQL in this project"
+      claim was false, and the linter is re-enabled at 0 findings — `0a13e80`.)
 
 ---
 
