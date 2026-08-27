@@ -125,6 +125,12 @@ commit messages; the consequences each one exposed are open items below.
       target is `frontend/public/aconiq.wasm`), the committed `tsbuildinfo`, the empty
       `backend/cmd/noise/` and root `.codex`, plus gitignores for `.trunk/`, `playwright-report/`
       and `test-results/`.
+- [x] **The 55 frontend type errors the honest typecheck exposed** (`be19871`). All fixed; the
+      project type-checks clean. Four were the shipped crashes predicted in Priority 8
+      (`run.tsx:969`, `run.tsx:890`, `map-view.tsx:88-89`, `new-feature-dialog.tsx:136`), and the
+      rest were `noUncheckedIndexedAccess` / `exactOptionalPropertyTypes` fallout plus a missing
+      `window.Go` ambient declaration. No `!`, `as`, or `@ts-ignore` was used to close any of
+      them. Two latent defects fell out of the work and are recorded below.
 
 ### Open
 
@@ -145,27 +151,15 @@ commit messages; the consequences each one exposed are open items below.
       Verify afterwards with
       `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
       which must succeed against a cold cache.
-- [ ] **Fix the 55 remaining frontend type errors.** The typecheck gate is now honest —
-      `frontend/package.json` runs `tsc -b --force --noEmit` instead of `tsc --noEmit`, which
-      checked **zero** files because `tsconfig.json` is a solution file with `"files": []` and
-      plain `tsc` does not follow project references. `--force` is deliberate: `tsc -b` writes
-      `tsconfig.app.tsbuildinfo` and will skip on a stale one, which is the same class of silent
-      pass. **Consequence: `frontend-ci.yml` is now red.** 62 errors were found, 7 fixed, 55 open.
-      By cause: **43 are `noUncheckedIndexedAccess` fallout** (guarded array access TS cannot
-      narrow, e.g. `arr.length > 0 && arr[0].id`), **10 are `exactOptionalPropertyTypes` fallout**
-      (`prop: T | undefined` against a required `prop: T`), **4 are a missing `window.Go` ambient
-      declaration** in `src/wasm/kernel.ts`, and **5 are the genuine bugs already listed under
-      Priority 8** — all four predicted ones were caught, which is the evidence the gate works.
-      37 of the 55 sit in `src/api/browser-backend.ts` alone. The cheapest next batch is the three
-      identical `arr[0]` sites at `pages/export.tsx:417`, `pages/results.tsx:769` and
-      `pages/run.tsx:1138`: hoist `const first = arr[0]` and test `first`. Two need a type-model
-      decision rather than a fix — `ModelFeature.properties` (`model/normalize.ts:88`,
-      `model/source-acoustics.ts:118`) and how a missing indicator renders
-      (`browser-backend.ts:716,752`).
-- [ ] **Note: `frontend/package.json`'s `build` script is `tsc -b && vite build`**, so it already
-      type-checked and already reports the same 55 errors. Either frontend CI has been red and
-      nobody acted on it, or something masked it. Worth confirming which before trusting any
-      historical green.
+- [ ] **`frontend-ci.yml` is still red — on `bun run lint`, not on types.** `eslint .` reports
+      **49 problems** (48 errors, 1 warning). That is down from 58 at the commit before the
+      typecheck fix, because typing `window.Go`/`window.aconiq` removed all 9 `no-unsafe-*`
+      findings, but it was never green. The residue is 29 `restrict-template-expressions`,
+      9 `no-unnecessary-condition`, 6 `require-await` and 5 singletons — none of it introduced by
+      the type-error work. `bun run bundle-check` also fails (`map-*.js` is 1 208 KB against a
+      750 KB budget), which is the separate Priority 8 item below. Note the `build` script is
+      `tsc -b && vite build`, so it always type-checked too: frontend CI has simply been red and
+      unactioned, not masked.
 - [ ] **Work the 112 lint findings that remain after triage.** Full audit in `docs/lint-triage.md`.
       Be clear about what the triage did: **542 → 112, and every one of those 430 came from
       disabling linters, not from fixing code.** `goconst` (266, dominated by JSON output keys in
@@ -699,13 +693,22 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
 Not "deferred polish" — the shipped Run page throws on its default path. All four crashes would
 have been caught by the typecheck gate fixed in Priority 0.
 
-- [ ] `src/pages/run.tsx:969` — `m.section_parameters()` does not exist; the catalog has
-      `label_section_parameters` (`messages/en.json:120`). Any standard with parameters throws.
-- [ ] `src/map/map-view.tsx:88-89` — `disableWebGLForSession()` and `setFallbackMode()` are
-      **defined nowhere**, inside a 4 s `setTimeout` that fires on any slow tile load.
-- [ ] `src/map/new-feature-dialog.tsx:136` — `m.option_receiver()` does not exist.
-- [ ] `src/pages/run.tsx:890` — `getStandardLabel(s)` passed a descriptor object where the
-      signature takes a string; the `?? standardId` fallback renders an object into JSX.
+All four shipped crashes listed here are now fixed — see the Priority 0 Landed entry. Two of
+them left a decision behind:
+
+- [ ] **Decide whether the map's load-timeout fallback is wanted at all.** `map-view.tsx` called
+      two functions that were defined nowhere, so there was no behaviour to restore — only a
+      choice. `mapRef.current` is assigned solely inside `m.on("load", …)`, and `load` fires only
+      after the style _and_ first paint complete, so the timer cannot distinguish a blocked GPU
+      from a slow network. As wired it now sets a per-mount error at 15 s (was 4 s), and the
+      session-wide WebGL kill switch fires only when `new maplibregl.Map()` throws — the one
+      signal that is genuinely permanent. `webglcontextlost` deliberately does **not** trip it,
+      since there is a `webglcontextrestored` handler that expects recovery. Open question: is a
+      timeout-driven fallback worth keeping, and should the "Map unavailable" panel offer a retry?
+      Nothing currently clears the session flag.
+- [ ] **Add a "receiver" case wherever `option_source|building|barrier` are handled.**
+      `option_receiver` was simply missing from `messages/{en,de}.json` and has been added, which
+      suggests the receiver branch of that dialog was never exercised. Worth a test.
 - [ ] **`calcArea` is marked dirty but never persisted** — silent data loss.
       `use-autosave.ts:70` saves only `{features, receivers}` while `model-store.ts:238` sets
       `dirty: true` on `setCalcArea`, and `calcArea` is missing from the effect deps
@@ -714,7 +717,11 @@ have been caught by the typecheck gate fixed in Priority 0.
       `center`/`zoom`, and `pages/map.tsx:126-129` re-memoizes `workspaceView` on every store
       change. Pan/zoom is lost, layers re-added, the broken timer re-armed. The `eslint-disable`
       at `:102` claims the opposite of what the code does.
-- [ ] Fix render-phase `setState` at `pages/export.tsx:417` and `pages/results.tsx:769`; the
+- [ ] Fix render-phase `setState` at `pages/export.tsx:417`, `pages/results.tsx:769` **and
+      `pages/run.tsx:1138`** (a third instance of the same "auto-select first run" shape, found
+      while fixing the type errors — the index access is now sound but the write is still in the
+      render body; the fix is a `useEffect` or deriving `selectedRun ?? firstRun` instead of
+      storing it); the
       global Ctrl+Z that hijacks text inputs (`map/undo-redo-bar.tsx:20`); object URLs revoked
       while still rendered (`api/browser-backend.ts:281-284`); silently swallowed layer errors
       (`map/model-layers.tsx:55-57,74-76`); `loadReceivers` bypassing the command stack
@@ -722,6 +729,17 @@ have been caught by the typecheck gate fixed in Priority 0.
 - [ ] **Move the WASM kernel off the main thread.** `backend/cmd/wasm/main.go:47-72` calls
       `road.ComputeReceiverOutputs` synchronously inside the Promise executor — the Promise is
       cosmetic and there is no `Worker` anywhere in `src/`. A grid run freezes the UI.
+- [ ] **Stop the frontend/backend `SurfaceType` list from drifting again.** The typecheck fix
+      exposed a live numeric defect: `src/wasm/types.ts` declared 10 of the 18 Go
+      `rls19/road.SurfaceType` constants, missing `SMA-5-8`, `SMA-8-11`, `OPA-11`, `OPA-8`,
+      `Pflaster-eben`, `Pflaster-sonstig`, `SMA-LA-8` and `Gussasphalt-nicht-geriffelt`. These are
+      not aliases — each has its own DStrO row in `rls19/road/tables.go`, and the spread is large
+      (`Pflaster-sonstig` +5…+7 dB vs `Pflaster-eben` +1…+3 dB; `OPA-8` −5.5 dB). Narrowing an
+      incoming surface against the stale union would have silently downgraded all eight to the
+      `"SMA"` fallback and changed the computed emission. The union has been completed, but it is
+      now the **third** hand-maintained copy of the same list (Go constants,
+      `model/source-acoustics.ts:RLS19_SURFACE_TYPES`, `wasm/types.ts`). Generate them from the Go
+      constants, or at minimum add a test that fails when the three diverge.
 - [ ] Write the missing `frontend/scripts/generate-api-client.mjs` that `package.json:12` already
       declares, or delete the script entry. The client is hand-written and drifting —
       `/api/v1/import/terrain` (`handler.go:230`) has no binding.
