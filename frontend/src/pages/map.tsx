@@ -76,7 +76,7 @@ function WorkspaceStart() {
               </p>
             ) : project.isError ? (
               <p className="text-sm text-destructive">
-                {project.error?.message ?? "Unknown error"}
+                {project.error.message}
               </p>
             ) : project.data ? (
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">

@@ -104,9 +104,7 @@ export default function StatusPage() {
             {m.status_loading_project()}
           </p>
         ) : project.isError ? (
-          <p className="text-sm text-destructive">
-            {project.error?.message ?? "Unknown error"}
-          </p>
+          <p className="text-sm text-destructive">{project.error.message}</p>
         ) : (
           <ProjectSection data={project.data ?? null} />
         )}

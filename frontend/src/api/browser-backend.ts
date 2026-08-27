@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/require-await --
+   These methods implement the same async `Backend` interface as the HTTP
+   client. Several are synchronous in-memory lookups, but they must stay
+   `async` so that a thrown error surfaces as a rejected promise, exactly as
+   it does on the HTTP path. */
 import type {
   ArtifactRef,
   HealthResponse,
@@ -265,7 +270,8 @@ function readState(): BrowserBackendState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialState();
-    const parsed = JSON.parse(raw) as BrowserBackendState;
+    // Untrusted localStorage content: treat every field as possibly absent.
+    const parsed = JSON.parse(raw) as Partial<BrowserBackendState>;
     return {
       ...initialState(),
       ...parsed,
@@ -301,12 +307,12 @@ function parseNumber(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function readArtifact<T>(artifactId: string): T {
+function readArtifact(artifactId: string): unknown {
   const state = readState();
   for (const storedRun of state.runs) {
     const artifact = storedRun.artifacts[artifactId];
     if (!artifact) continue;
-    return artifact.value as T;
+    return artifact.value;
   }
   throw new Error(`Artifact ${artifactId} not found`);
 }
@@ -750,7 +756,7 @@ function browserExportHTML(run: RunSummary, table: ReceiverTable): string {
   <body>
     <h1>Aconiq Export</h1>
     <p class="meta">Run ${run.id} · ${run.standard_id} / ${run.version}${run.profile ? ` / ${run.profile}` : ""}</p>
-    <p>Receiver preview (${previewRows.length} of ${table.records.length})</p>
+    <p>Receiver preview (${String(previewRows.length)} of ${String(table.records.length)})</p>
     <table>
       <thead>
         <tr><th>ID</th><th>X</th><th>Y</th><th>LrDay</th><th>LrNight</th></tr>
@@ -812,7 +818,7 @@ export const browserBackend = {
       project_id: state.projectId,
       name:
         features.length > 0
-          ? `${state.projectName} (${features.length} features)`
+          ? `${state.projectName} (${String(features.length)} features)`
           : state.projectName,
       project_path: state.projectPath,
       manifest_version: 1,
@@ -850,7 +856,7 @@ export const browserBackend = {
   },
 
   async getArtifactContent<T>(artifactId: string): Promise<T> {
-    return readArtifact<T>(artifactId);
+    return readArtifact(artifactId) as T;
   },
 
   getArtifactURL(artifactId: string): string {
@@ -881,12 +887,13 @@ export const browserBackend = {
     overpass_endpoint?: string;
   }): Promise<GeoJSONFeatureCollection> {
     const endpoint = req.overpass_endpoint || DEFAULT_OSM_ENDPOINT;
+    const bbox = [req.south, req.west, req.north, req.east].join(",");
     const query = `[out:json][timeout:25];
 (
-  way["highway"](${req.south},${req.west},${req.north},${req.east});
-  way["railway"~"^(rail|tram)$"](${req.south},${req.west},${req.north},${req.east});
-  way["building"](${req.south},${req.west},${req.north},${req.east});
-  way["barrier"~"^(wall|fence)$"](${req.south},${req.west},${req.north},${req.east});
+  way["highway"](${bbox});
+  way["railway"~"^(rail|tram)$"](${bbox});
+  way["building"](${bbox});
+  way["barrier"~"^(wall|fence)$"](${bbox});
 );
 out geom;`;
 
@@ -1087,8 +1094,8 @@ out geom;`;
       lines: [
         `${startedAt} run started`,
         `${startedAt} model=browser`,
-        `${startedAt} rls19_road_sources=${sources.length}`,
-        `${startedAt} receivers=${gridReceivers.length}`,
+        `${startedAt} rls19_road_sources=${String(sources.length)}`,
+        `${startedAt} receivers=${String(gridReceivers.length)}`,
         `${startedAt} stage=compute`,
         `${finishedAt} output_hash=${outputHash}`,
         `${finishedAt} persisted=browser`,
@@ -1172,30 +1179,31 @@ out geom;`;
       ],
     };
 
+    const exportStamp = String(Date.now());
     const bundleArtifact = makeArtifact(
       runId,
-      `export-bundle-${storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1}`,
+      `export-bundle-${String(storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1)}`,
       "export.bundle",
       `${exportBase}/export-summary.json`,
       exportedAt,
     );
     const contextArtifact = makeArtifact(
       runId,
-      `export-context-${Date.now()}`,
+      `export-context-${exportStamp}`,
       "export.report_context_json",
       `${exportBase}/report/report-context.json`,
       exportedAt,
     );
     const markdownArtifact = makeArtifact(
       runId,
-      `export-markdown-${Date.now()}`,
+      `export-markdown-${exportStamp}`,
       "export.report_markdown",
       `${exportBase}/report/report.md`,
       exportedAt,
     );
     const htmlArtifact = makeArtifact(
       runId,
-      `export-html-${Date.now()}`,
+      `export-html-${exportStamp}`,
       "export.report_html",
       `${exportBase}/report/report.html`,
       exportedAt,
@@ -1253,6 +1261,7 @@ export function overpassWayToFeature(
   const geometry = sanitizeOverpassGeometry(way.geometry);
   if (geometry.length < 2) return null;
   const tags = way.tags ?? {};
+  const featureId = `osm-way-${String(way.id)}`;
   const properties: Record<string, unknown> = {
     osm_id: String(way.id),
   };
@@ -1275,7 +1284,7 @@ export function overpassWayToFeature(
       speed == null || surfaceType == null;
     return {
       type: "Feature",
-      id: `osm-way-${way.id}`,
+      id: featureId,
       properties,
       geometry: {
         type: "LineString",
@@ -1290,7 +1299,7 @@ export function overpassWayToFeature(
     properties["railway"] = tags["railway"];
     return {
       type: "Feature",
-      id: `osm-way-${way.id}`,
+      id: featureId,
       properties,
       geometry: {
         type: "LineString",
@@ -1320,7 +1329,7 @@ export function overpassWayToFeature(
     properties["height_m"] = parseTagHeight(tags["height"]) ?? 9;
     return {
       type: "Feature",
-      id: `osm-way-${way.id}`,
+      id: featureId,
       properties,
       geometry: {
         type: "Polygon",
@@ -1335,7 +1344,7 @@ export function overpassWayToFeature(
     properties["height_m"] = parseTagHeight(tags["height"]) ?? 2;
     return {
       type: "Feature",
-      id: `osm-way-${way.id}`,
+      id: featureId,
       properties,
       geometry: {
         type: "LineString",
@@ -1386,10 +1395,12 @@ function mapOSMSurfaceToRLS19(
 }
 
 function sanitizeOverpassGeometry(
-  geometry: OverpassPoint[] | undefined,
+  // The elements come from an untrusted Overpass response, so a null hole is
+  // possible despite what `OverpassWay` declares.
+  geometry: (OverpassPoint | null | undefined)[] | undefined,
 ): OverpassPoint[] {
   if (!geometry) return [];
-  return geometry.filter((point) => {
+  return geometry.filter((point): point is OverpassPoint => {
     return (
       point != null && Number.isFinite(point.lon) && Number.isFinite(point.lat)
     );

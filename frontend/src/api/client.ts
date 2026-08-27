@@ -165,13 +165,20 @@ export class APIClient {
   }
 
   private async requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
+    // `HeadersInit` is a union of `Headers`, entry pairs and a plain record;
+    // spreading it only merged correctly for the record form. `new Headers`
+    // normalizes all three. Passing `headers` after `...init` also stops the
+    // spread from dropping the merge — `init.headers` used to replace it
+    // wholesale, so `Accept` was lost on every call that set its own headers.
+    const headers = new Headers(init?.headers);
+    if (!headers.has("Accept")) {
+      headers.set("Accept", "application/json");
+    }
+
     const response = await this.fetchImpl(this.baseURL + path, {
-      headers: {
-        Accept: "application/json",
-        ...(init?.headers ?? {}),
-      },
       method: "GET",
       ...init,
+      headers,
     });
 
     if (!response.ok) {

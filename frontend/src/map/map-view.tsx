@@ -138,8 +138,7 @@ export function MapView({
       setMap(null);
       m.remove();
     };
-    // Only re-create the map on basemap change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Rebuilds the map on a basemap, viewport or error-state change.
   }, [basemap, mapError, center, zoom]);
 
   // Feature click handler

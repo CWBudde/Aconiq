@@ -36,6 +36,16 @@ export default tseslint.config(
       ],
     },
   },
+  // Build scripts run under Node and sit outside every tsconfig `include`, so
+  // the type-aware rules have no program to work from. Lint them with the
+  // syntax-only rules rather than pulling them into the app's tsconfig.
+  {
+    files: ["scripts/**/*.{js,mjs,cjs}"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   // Relax rules for shadcn/ui generated components (vendor-like code)
   {
     files: ["src/ui/components/**", "src/ui/hooks/**"],
