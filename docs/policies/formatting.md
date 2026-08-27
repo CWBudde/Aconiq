@@ -11,7 +11,9 @@ Status date: 2026-03-06
 ## Enforcement
 
 - CI executes `just check-formatted` (treefmt with `--fail-on-change`).
-- Linting: `just lint` runs golangci-lint v2 with all linters enabled.
+- Linting: `just lint` runs golangci-lint v2 with defaults plus a tuned disable list and
+  path/text-scoped exclusions (see `.golangci.yml` and `docs/lint-triage.md`) — not "all linters
+  enabled".
 
 ## Local Workflow
 
