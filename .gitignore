@@ -12,11 +12,16 @@ bin/
 coverage.out
 *.test
 
+# Build artifacts
+*.wasm
+frontend/public/wasm_exec.js
+
 # Node/Bun
 node_modules/
 frontend/**/dist/
 frontend/**/.vite/
 frontend/**/.cache/
+*.tsbuildinfo
 
 # Logs and temp
 *.log
@@ -26,6 +31,13 @@ tmp/
 # AI Agents
 .claude/
 .serena/
+
+# Tooling
+.trunk/
+
+# Test output
+playwright-report/
+test-results/
 
 # Local research downloads
 docs/research/external/**
