@@ -1,25 +1,48 @@
 package soundplanimport
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// testProjectDir returns the path to the sample SoundPlan project.
-// Tests that need the real project files are skipped if the directory
-// does not exist (e.g. in CI without the test data).
+// interopProjectRelPath locates the sample SoundPlan project relative to this
+// package. The directory holds third-party project data, is not checked into
+// the repository and is therefore absent on a fresh clone.
+var interopProjectRelPath = filepath.Join("..", "..", "..", "..", "interoperability", "Schienenprojekt - Schall 03")
+
+// testProjectDir returns the path to the sample SoundPlan project. Tests that
+// need the real project files are skipped — with the resolved path and the
+// reason — when the fixture is not available (e.g. a fresh checkout or CI
+// without the test data). Every test in this package that reads the sample
+// project must obtain its path here so a missing fixture never fails the suite.
 func testProjectDir(t *testing.T) string {
 	t.Helper()
 
-	dir := filepath.Join("..", "..", "..", "..", "interoperability", "Schienenprojekt - Schall 03")
+	var reason string
 
-	_, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		t.Skip("sample SoundPlan project not available")
+	info, err := os.Stat(interopProjectRelPath)
+
+	switch {
+	case err != nil:
+		reason = fmt.Sprintf("stat failed: %v", err)
+	case !info.IsDir():
+		reason = "path exists but is not a directory"
+	default:
+		return interopProjectRelPath
 	}
 
-	return dir
+	abs, absErr := filepath.Abs(interopProjectRelPath)
+	if absErr != nil {
+		abs = interopProjectRelPath
+	}
+
+	t.Skipf("SoundPlan sample project fixture not available at %s (%s); "+
+		"place the 'Schienenprojekt - Schall 03' SoundPlan project under the "+
+		"repository-root 'interoperability/' directory to enable this test", abs, reason)
+
+	return ""
 }
 
 // ---------------------------------------------------------------------------

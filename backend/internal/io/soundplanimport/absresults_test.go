@@ -5,11 +5,10 @@ import (
 	"testing"
 )
 
-// interopDir is the path to the SoundPlan sample project.
-const interopDir = "../../../../interoperability/Schienenprojekt - Schall 03"
-
 func TestParseTrainTypes(t *testing.T) {
-	path := filepath.Join(interopDir, "TS03.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "TS03.abs")
 
 	types, err := ParseTrainTypes(path)
 	if err != nil {
@@ -39,7 +38,9 @@ func TestParseTrainTypes(t *testing.T) {
 }
 
 func TestParseRailEmissions(t *testing.T) {
-	path := filepath.Join(interopDir, "RSPS0011", "RRAI0011.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RSPS0011", "RRAI0011.abs")
 
 	emissions, err := ParseRailEmissions(path)
 	if err != nil {
@@ -75,7 +76,9 @@ func TestParseRailEmissions(t *testing.T) {
 }
 
 func TestParseTrainEmissions(t *testing.T) {
-	path := filepath.Join(interopDir, "RSPS0011", "RRAD0011.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RSPS0011", "RRAD0011.abs")
 
 	emissions, err := ParseTrainEmissions(path)
 	if err != nil {
@@ -111,7 +114,9 @@ func TestParseTrainEmissions(t *testing.T) {
 }
 
 func TestParseGroupResults(t *testing.T) {
-	path := filepath.Join(interopDir, "RSPS0011", "RGRP0011.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RSPS0011", "RGRP0011.abs")
 
 	groups, err := ParseGroupResults(path)
 	if err != nil {
@@ -147,7 +152,9 @@ func TestParseGroupResults(t *testing.T) {
 }
 
 func TestParseReceiverResults(t *testing.T) {
-	path := filepath.Join(interopDir, "RSPS0011", "RREC0011.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RSPS0011", "RREC0011.abs")
 
 	recs, err := ParseReceiverResults(path)
 	if err != nil {
@@ -184,7 +191,9 @@ func TestParseReceiverResults(t *testing.T) {
 }
 
 func TestParsePartialResults(t *testing.T) {
-	path := filepath.Join(interopDir, "RSPS0011", "RMPA0011.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RSPS0011", "RMPA0011.abs")
 
 	parts, err := ParsePartialResults(path)
 	if err != nil {
@@ -217,7 +226,9 @@ func TestParsePartialResults(t *testing.T) {
 }
 
 func TestLoadRunResults(t *testing.T) {
-	resultDir := filepath.Join(interopDir, "RSPS0011")
+	dir := testProjectDir(t)
+
+	resultDir := filepath.Join(dir, "RSPS0011")
 
 	results, err := LoadRunResults(resultDir)
 	if err != nil {
@@ -263,7 +274,9 @@ func TestExtractRunSuffix(t *testing.T) {
 func TestParseGridMapRailEmissions(t *testing.T) {
 	// RRLK directories contain grid-map calculation results.
 	// They use the same RRAI/RRAD format but for grid calculations.
-	path := filepath.Join(interopDir, "RRLK0022", "RRAI0022.abs")
+	dir := testProjectDir(t)
+
+	path := filepath.Join(dir, "RRLK0022", "RRAI0022.abs")
 
 	emissions, err := ParseRailEmissions(path)
 	if err != nil {
