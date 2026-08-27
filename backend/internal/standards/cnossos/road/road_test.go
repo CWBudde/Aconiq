@@ -167,23 +167,47 @@ func TestPropagationIncreasesWithSourceLength(t *testing.T) {
 func TestAttenuationTermsExposePropagationComponents(t *testing.T) {
 	t.Parallel()
 
-	cfg := DefaultPropagationConfig()
-	terms := attenuationTerms(100, cfg)
+	// Expected values are derived by hand, not by calling the helpers under
+	// test:
+	//
+	//   Adiv = 20 lg(d) + 11         (CNOSSOS-EU, Directive (EU) 2015/996,
+	//                                 Annex II, geometrical divergence)
+	//        = 20 lg(100) + 11 = 51.0 dB
+	//   Aatm = alpha * d / 1000      (scaffold linear air-absorption model)
+	//        = 0.7 * 100 / 1000 = 0.07 dB
+	//
+	// The ground and barrier terms are the scaffold's fixed defaults; they
+	// are not CNOSSOS values and are pinned here only as a regression guard
+	// on DefaultPropagationConfig (see PLAN.md Priority 4 - this module has
+	// no real CNOSSOS coefficients yet).
+	const (
+		wantDistanceM   = 100.0
+		wantGeometricDB = 51.0
+		wantAirDB       = 0.07
+		wantGroundDB    = 1.5
+		wantBarrierDB   = 0.0
+	)
 
-	if math.Abs(terms.DistanceM-100) > 1e-9 {
-		t.Fatalf("unexpected effective distance: %#v", terms)
+	terms := attenuationTerms(wantDistanceM, DefaultPropagationConfig())
+
+	if math.Abs(terms.DistanceM-wantDistanceM) > 1e-9 {
+		t.Fatalf("effective distance = %v, want %v", terms.DistanceM, wantDistanceM)
 	}
 
-	if math.Abs(terms.GeometricDB-geometricDivergence(100)) > 1e-9 {
-		t.Fatalf("unexpected geometric term: %#v", terms)
+	if math.Abs(terms.GeometricDB-wantGeometricDB) > 1e-9 {
+		t.Fatalf("geometric term = %v, want %v", terms.GeometricDB, wantGeometricDB)
 	}
 
-	if math.Abs(terms.AirDB-airAbsorption(100, cfg)) > 1e-9 {
-		t.Fatalf("unexpected air term: %#v", terms)
+	if math.Abs(terms.AirDB-wantAirDB) > 1e-9 {
+		t.Fatalf("air term = %v, want %v", terms.AirDB, wantAirDB)
 	}
 
-	if terms.GroundDB != cfg.GroundAttenuationDB || terms.BarrierDB != cfg.BarrierAttenuationDB {
-		t.Fatalf("unexpected fixed propagation terms: %#v", terms)
+	if math.Abs(terms.GroundDB-wantGroundDB) > 1e-9 {
+		t.Fatalf("ground term = %v, want %v", terms.GroundDB, wantGroundDB)
+	}
+
+	if math.Abs(terms.BarrierDB-wantBarrierDB) > 1e-9 {
+		t.Fatalf("barrier term = %v, want %v", terms.BarrierDB, wantBarrierDB)
 	}
 }
 
@@ -367,5 +391,80 @@ func sampleSource() RoadSource {
 			HeavyVehiclesPerHour:      30,
 			PoweredTwoWheelersPerHour: 5,
 		},
+	}
+}
+
+func TestEmissionFlowTermUsesTenLogQ(t *testing.T) {
+	t.Parallel()
+
+	// Only light vehicles, on a configuration where every correction other
+	// than the road-category term is exactly zero:
+	//
+	//   speed 50 km/h -> 9 * lg(50 / 50)          =  0 dB
+	//   dense asphalt                             =  0 dB
+	//   gradient 0 %, no junction                 =  0 dB
+	//   temperature 20 degC, no studded tyres     =  0 dB
+	//   urban major, light vehicles               = +0.2 dB
+	//
+	// so L = 35.0 (base) + 10 lg(Q) + 0.2.
+	//
+	// The base level and the corrections are scaffold constants, not CNOSSOS
+	// coefficients (PLAN.md Priority 4). What this test pins normatively is
+	// the *shape* of the flow term: 10 lg(Q), not the 10 lg(Q + 1) shift that
+	// used to add a spurious +3.0 dB at Q = 1 veh/h.
+	source := func(lightPerHour float64) RoadSource {
+		return RoadSource{
+			ID:                "flow-test",
+			RoadCategory:      CategoryUrbanMajor,
+			SurfaceType:       SurfaceDenseAsphalt,
+			SpeedKPH:          50,
+			GradientPercent:   0,
+			JunctionType:      JunctionNone,
+			JunctionDistanceM: 0,
+			TemperatureC:      20,
+			StuddedTyreShare:  0,
+			Centerline:        []geo.Point2D{{X: -50, Y: 0}, {X: 50, Y: 0}},
+			TrafficDay:        TrafficPeriod{LightVehiclesPerHour: lightPerHour},
+		}
+	}
+
+	cases := []struct {
+		flow float64
+		want float64
+	}{
+		{flow: 1, want: 35.2},   // 10 lg(1) = 0; the old +1 shift gave 38.21
+		{flow: 10, want: 45.2},  // 10 lg(10) = 10
+		{flow: 100, want: 55.2}, // 10 lg(100) = 20
+	}
+
+	for _, tc := range cases {
+		emission, err := ComputeEmission(source(tc.flow))
+		if err != nil {
+			t.Fatalf("compute emission at %v veh/h: %v", tc.flow, err)
+		}
+
+		if math.Abs(emission.Lday-tc.want) > 1e-9 {
+			t.Fatalf("Lday at %v veh/h = %v, want %v", tc.flow, emission.Lday, tc.want)
+		}
+	}
+}
+
+func TestEmissionIsSilentWithoutTraffic(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.TrafficDay = TrafficPeriod{}
+
+	emission, err := ComputeEmission(source)
+	if err != nil {
+		t.Fatalf("compute emission: %v", err)
+	}
+
+	if emission.Lday != silenceDB {
+		t.Fatalf("Lday without traffic = %v, want the silence sentinel %v", emission.Lday, silenceDB)
+	}
+
+	if emission.Lnight <= 0 {
+		t.Fatalf("expected the remaining periods to stay audible: %#v", emission)
 	}
 }

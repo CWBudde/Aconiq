@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/qa/acceptance"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 )
 
@@ -146,13 +147,15 @@ func Run(opts Options) (Report, error) {
 	}
 
 	if skipReason != "" {
+		skipStatus, resolvedReason, _ := acceptance.ResolveSuiteSkip(0, 0, skipReason)
+
 		return finalizeReport(Report{
 			SuiteName:   "rls19-test20",
 			StandardID:  rls19road.StandardID,
 			Mode:        mode,
-			Status:      taskStatusSkipped,
+			Status:      skipStatus,
 			GeneratedAt: generatedAt,
-			SkipReason:  skipReason,
+			SkipReason:  resolvedReason,
 		}, opts)
 	}
 
@@ -180,6 +183,15 @@ func Run(opts Options) (Report, error) {
 	report.TaskCount = len(report.Tasks)
 	report.Status, report.PassedCount, report.FailedCount, report.SkippedCount = summarizeTaskStatuses(report.Tasks)
 	report.CategoryCoverage = summarizeCategoryCoverage(report.Tasks)
+
+	// A suite that skipped every task carries no evidence. Make that state
+	// explicit in the report instead of emitting a bare "skipped" status, and
+	// let ACONIQ_STRICT_ACCEPTANCE escalate it to a failure where the fixtures
+	// are supposed to be present.
+	if skipStatus, resolvedReason, apply := acceptance.ResolveSuiteSkip(report.TaskCount, report.SkippedCount, report.SkipReason); apply {
+		report.Status = skipStatus
+		report.SkipReason = resolvedReason
+	}
 
 	return finalizeReport(report, opts)
 }

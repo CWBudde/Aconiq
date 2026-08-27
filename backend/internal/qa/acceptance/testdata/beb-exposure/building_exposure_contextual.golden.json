@@ -1,8 +1,8 @@
 {
   "buildings": [
     {
-      "Lden": 66.085727,
-      "Lnight": 58.496883,
+      "Lden": 66.034437,
+      "Lnight": 58.429241,
       "affected_dwellings_lden": 3.6,
       "affected_dwellings_lnight": 3.6,
       "affected_persons_lden": 7.2,
@@ -14,8 +14,8 @@
       "y": -7.5
     },
     {
-      "Lden": 55.830328,
-      "Lnight": 48.241484,
+      "Lden": 55.779038,
+      "Lnight": 48.173842,
       "affected_dwellings_lden": 6,
       "affected_dwellings_lnight": 0,
       "affected_persons_lden": 12,

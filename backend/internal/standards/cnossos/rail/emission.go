@@ -8,6 +8,16 @@ type periodEmission struct {
 	Lnight   float64
 }
 
+const (
+	// silenceDB is the sentinel level used for "no acoustic contribution".
+	// It matches the convention used by cnossos/industry and rls19.
+	silenceDB = -999.0
+
+	// silenceThresholdDB is the cut-off below which a level is treated as the
+	// silence sentinel and dropped from an energy sum.
+	silenceThresholdDB = -900.0
+)
+
 // ComputeEmission computes period emissions for one rail source.
 //
 // This preview implementation separates rolling, traction, braking, and track
@@ -26,6 +36,13 @@ func ComputeEmission(source RailSource) (periodEmission, error) {
 }
 
 func emissionForPeriod(source RailSource, traffic TrafficPeriod) float64 {
+	// A period without trains emits nothing. Without this branch the flow
+	// term collapses to 0 dB and the four component base levels are still
+	// summed, so an empty period would report roughly 44 dB.
+	if traffic.TrainsPerHour <= 0 {
+		return silenceDB
+	}
+
 	flow := trainFlowCorrection(traffic.TrainsPerHour)
 
 	return energySumDB([]float64{
@@ -36,8 +53,19 @@ func emissionForPeriod(source RailSource, traffic TrafficPeriod) float64 {
 	})
 }
 
+// trainFlowCorrection converts an hourly train flow into the 10 lg(Q) energy
+// term of the emission sum.
+//
+// The zero-flow case is handled by an explicit branch rather than by the
+// 10 lg(Q + 1) shift that was used before: the shift adds a spurious +3.0 dB
+// at Q = 1 train/h. Callers must treat the returned silence sentinel as "no
+// contribution"; energySumDB drops it.
 func trainFlowCorrection(trainsPerHour float64) float64 {
-	return 10 * math.Log10(trainsPerHour+1)
+	if trainsPerHour <= 0 {
+		return silenceDB
+	}
+
+	return 10 * math.Log10(trainsPerHour)
 }
 
 func rollingEmission(source RailSource, flow float64) float64 {
@@ -165,7 +193,7 @@ func energySumDB(levels []float64) float64 {
 	sum := 0.0
 
 	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) {
+		if math.IsNaN(level) || math.IsInf(level, 0) || level <= silenceThresholdDB {
 			continue
 		}
 
@@ -173,7 +201,7 @@ func energySumDB(levels []float64) float64 {
 	}
 
 	if sum <= 0 {
-		return -999.0
+		return silenceDB
 	}
 
 	return 10 * math.Log10(sum)

@@ -8,6 +8,33 @@ type periodEmission struct {
 	Lnight   float64
 }
 
+const (
+	// silenceDB is the sentinel level used for "no acoustic contribution".
+	// It matches the convention used by cnossos/industry and rls19.
+	silenceDB = -999.0
+
+	// silenceThresholdDB is the cut-off below which a level is treated as the
+	// silence sentinel and dropped from an energy sum.
+	silenceThresholdDB = -900.0
+)
+
+// flowCorrection converts an hourly vehicle flow into the 10 lg(Q) energy term
+// of a vehicle-class emission.
+//
+// The zero-flow case is handled by an explicit branch rather than by the
+// 10 lg(Q + 1) shift that was used before: the shift adds a spurious +3.0 dB
+// at Q = 1 veh/h and never falls below the class base level, so an empty
+// vehicle class could not be distinguished from a very quiet one. The silence
+// sentinel propagates through the class emission and is dropped by
+// energySumDB.
+func flowCorrection(flowPerHour float64) float64 {
+	if flowPerHour <= 0 {
+		return silenceDB
+	}
+
+	return 10 * math.Log10(flowPerHour)
+}
+
 // ComputeEmission computes period emissions for one BUB road source.
 func ComputeEmission(source RoadSource) (periodEmission, error) {
 	err := source.Validate()
@@ -39,23 +66,43 @@ func emissionForPeriod(source RoadSource, traffic TrafficPeriod) float64 {
 }
 
 func lightVehicleEmission(flowPerHour float64, speedKPH float64, surfaceCorr float64, functionCorr float64, junctionCorr float64, temperatureCorr float64, studdedTyreCorr float64) float64 {
+	if flowPerHour <= 0 {
+		return silenceDB
+	}
+
 	speedCorr := lightSpeedCorrection(speedKPH)
-	return 35.0 + 10*math.Log10(flowPerHour+1) + speedCorr + surfaceCorr + functionCorr + junctionCorr + temperatureCorr + studdedTyreCorr
+
+	return 35.0 + flowCorrection(flowPerHour) + speedCorr + surfaceCorr + functionCorr + junctionCorr + temperatureCorr + studdedTyreCorr
 }
 
 func mediumVehicleEmission(flowPerHour float64, speedKPH float64, surfaceCorr float64, functionCorr float64, junctionCorr float64, temperatureCorr float64, gradientCorr float64) float64 {
+	if flowPerHour <= 0 {
+		return silenceDB
+	}
+
 	speedCorr := mediumSpeedCorrection(speedKPH)
-	return 39.0 + 10*math.Log10(flowPerHour+1) + speedCorr + surfaceCorr + functionCorr + junctionCorr + 0.5*temperatureCorr + 0.6*gradientCorr
+
+	return 39.0 + flowCorrection(flowPerHour) + speedCorr + surfaceCorr + functionCorr + junctionCorr + 0.5*temperatureCorr + 0.6*gradientCorr
 }
 
 func heavyVehicleEmission(flowPerHour float64, speedKPH float64, surfaceCorr float64, functionCorr float64, junctionCorr float64, temperatureCorr float64, gradientCorr float64) float64 {
+	if flowPerHour <= 0 {
+		return silenceDB
+	}
+
 	speedCorr := heavySpeedCorrection(speedKPH)
-	return 42.5 + 10*math.Log10(flowPerHour+1) + speedCorr + surfaceCorr + functionCorr + junctionCorr + 0.25*temperatureCorr + gradientCorr
+
+	return 42.5 + flowCorrection(flowPerHour) + speedCorr + surfaceCorr + functionCorr + junctionCorr + 0.25*temperatureCorr + gradientCorr
 }
 
 func poweredTwoWheelerEmission(flowPerHour float64, speedKPH float64, surfaceCorr float64, functionCorr float64, junctionCorr float64) float64 {
+	if flowPerHour <= 0 {
+		return silenceDB
+	}
+
 	speedCorr := ptwSpeedCorrection(speedKPH)
-	return 33.5 + 10*math.Log10(flowPerHour+1) + speedCorr + 0.5*surfaceCorr + functionCorr + 0.5*junctionCorr
+
+	return 33.5 + flowCorrection(flowPerHour) + speedCorr + 0.5*surfaceCorr + functionCorr + 0.5*junctionCorr
 }
 
 func lightSpeedCorrection(speedKPH float64) float64 {
@@ -175,7 +222,7 @@ func energySumDB(levels []float64) float64 {
 	sum := 0.0
 
 	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) {
+		if math.IsNaN(level) || math.IsInf(level, 0) || level <= silenceThresholdDB {
 			continue
 		}
 
@@ -183,7 +230,7 @@ func energySumDB(levels []float64) float64 {
 	}
 
 	if sum <= 0 {
-		return -999.0
+		return silenceDB
 	}
 
 	return 10 * math.Log10(sum)

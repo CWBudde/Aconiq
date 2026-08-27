@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/aconiq/backend/internal/qa/acceptance"
 	"github.com/aconiq/backend/internal/qa/golden"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 )
@@ -42,7 +44,8 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 }
 
 func TestRunLocalSuiteModeSkipsWithExplicitReason(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the strict-mode switch is process-wide environment state.
+	t.Setenv(acceptance.StrictSuiteEnv, "0")
 
 	report, err := Run(Options{
 		Mode:          ModeLocalSuite,
@@ -59,6 +62,62 @@ func TestRunLocalSuiteModeSkipsWithExplicitReason(t *testing.T) {
 
 	if report.SkipReason == "" {
 		t.Fatalf("expected explicit skip reason, got %#v", report)
+	}
+}
+
+// TestRunLocalSuiteModeFailsUnderStrictAcceptance covers the other half of the
+// policy: where the local fixtures are supposed to be installed, a suite that
+// produced no evidence must be red rather than a silent green.
+func TestRunLocalSuiteModeFailsUnderStrictAcceptance(t *testing.T) {
+	// Not parallel: the strict-mode switch is process-wide environment state.
+	t.Setenv(acceptance.StrictSuiteEnv, "1")
+
+	report, err := Run(Options{
+		Mode:          ModeLocalSuite,
+		LocalSuiteDir: filepath.Join(t.TempDir(), "missing"),
+		OutputDir:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("run local suite mode: %v", err)
+	}
+
+	if report.Status != acceptance.StatusFailed {
+		t.Fatalf("status = %q, want %q under %s=1", report.Status, acceptance.StatusFailed, acceptance.StrictSuiteEnv)
+	}
+
+	if !strings.Contains(report.SkipReason, acceptance.StrictSuiteEnv) {
+		t.Fatalf("skip reason = %q, want it to explain the escalation", report.SkipReason)
+	}
+}
+
+// TestCISafeSuiteExecutesTasks is the anti-silent-green guard for the
+// repo-authored suite: it ships in testdata/ and is always available, so an
+// all-skipped or empty run means the suite stopped checking anything.
+func TestCISafeSuiteExecutesTasks(t *testing.T) {
+	t.Parallel()
+
+	report, err := Run(Options{
+		Mode:      ModeCISafe,
+		OutputDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("run ci-safe suite: %v", err)
+	}
+
+	if report.TaskCount == 0 {
+		t.Fatal("the CI-safe suite executed no tasks at all")
+	}
+
+	if report.SkippedCount == report.TaskCount {
+		t.Fatalf("every one of the %d CI-safe tasks skipped: %s", report.TaskCount, report.SkipReason)
+	}
+
+	if report.PassedCount == 0 {
+		t.Fatalf("the CI-safe suite produced no passing task: %#v", report)
+	}
+
+	if report.SkipReason != "" {
+		t.Fatalf("a suite that executed tasks must not carry a skip reason: %q", report.SkipReason)
 	}
 }
 

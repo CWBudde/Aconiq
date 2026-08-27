@@ -352,6 +352,15 @@ func (r *Runner) computeChunks(
 	sharedChunksDir string,
 	statePath string,
 ) (map[int][]ReceiverResult, int, error) {
+	// computeCtx lets the result loop stop the workers on the first failure.
+	// It is always cancelled before this function returns, and the result
+	// channel is drained to completion, so no worker goroutine outlives the
+	// call - a worker that kept running would still be writing chunk files
+	// into the cache directory after Run has already reported the run as
+	// canceled.
+	computeCtx, cancelCompute := context.WithCancel(ctx)
+	defer cancelCompute()
+
 	jobs := make(chan receiverChunk)
 	resultsCh := make(chan chunkComputeResult, len(chunks))
 
@@ -361,7 +370,7 @@ func (r *Runner) computeChunks(
 	for range workerCount {
 		wg.Go(func() {
 			for chunk := range jobs {
-				res, fromCache, err := computeOrLoadChunk(ctx, cfg, chunk, ffSources, runChunksDir, sharedChunksDir)
+				res, fromCache, err := computeOrLoadChunk(computeCtx, cfg, chunk, ffSources, runChunksDir, sharedChunksDir)
 				resultsCh <- chunkComputeResult{chunkIndex: chunk.Index, results: res, fromCache: fromCache, err: err}
 
 				if err != nil {
@@ -376,7 +385,7 @@ func (r *Runner) computeChunks(
 
 		for _, chunk := range chunks {
 			select {
-			case <-ctx.Done():
+			case <-computeCtx.Done():
 				return
 			case jobs <- chunk:
 			}
@@ -388,17 +397,58 @@ func (r *Runner) computeChunks(
 		close(resultsCh)
 	}()
 
-	received := make(map[int][]ReceiverResult, len(chunks))
+	received, usedCached, firstErr := r.collectChunkResults(cfg, len(chunks), resultsCh, cancelCompute, statePath)
+	if firstErr != nil {
+		if errors.Is(firstErr, context.Canceled) {
+			return received, usedCached, context.Canceled
+		}
+
+		return received, usedCached, firstErr
+	}
+
+	if ctx.Err() != nil {
+		return received, usedCached, context.Canceled
+	}
+
+	return received, usedCached, nil
+}
+
+// collectChunkResults drains resultsCh to completion and returns the collected
+// chunk results plus the first failure it saw.
+//
+// The channel is always drained fully, even after a failure: the workers must
+// have finished before the caller returns, otherwise a cancelled run would
+// still have goroutines writing chunk files into the cache directory. On the
+// first failure the compute context is cancelled so that the remaining workers
+// unwind promptly.
+func (r *Runner) collectChunkResults(
+	cfg RunConfig,
+	totalChunks int,
+	resultsCh <-chan chunkComputeResult,
+	cancelCompute context.CancelFunc,
+	statePath string,
+) (map[int][]ReceiverResult, int, error) {
+	received := make(map[int][]ReceiverResult, totalChunks)
 	usedCached := 0
 	completed := 0
 
+	var firstErr error
+
 	for result := range resultsCh {
 		if result.err != nil {
-			if errors.Is(result.err, context.Canceled) {
-				return received, usedCached, context.Canceled
+			if firstErr == nil {
+				firstErr = result.err
+
+				cancelCompute()
 			}
 
-			return received, usedCached, result.err
+			continue
+		}
+
+		if firstErr != nil {
+			// Still unwinding: collect nothing more and do not advance the
+			// persisted progress state.
+			continue
 		}
 
 		received[result.chunkIndex] = result.results
@@ -407,22 +457,18 @@ func (r *Runner) computeChunks(
 		}
 
 		completed++
-		r.emit(cfg.RunID, "compute", "chunk_done", result.chunkIndex, completed, len(chunks))
+		r.emit(cfg.RunID, "compute", "chunk_done", result.chunkIndex, completed, totalChunks)
 		_ = writeRunState(statePath, RunState{
 			RunID:           cfg.RunID,
 			Status:          RunStateRunning,
 			UpdatedAt:       time.Now().UTC(),
-			TotalChunks:     len(chunks),
+			TotalChunks:     totalChunks,
 			CompletedChunks: completed,
 			Message:         "compute",
 		})
 	}
 
-	if ctx.Err() != nil {
-		return received, usedCached, context.Canceled
-	}
-
-	return received, usedCached, nil
+	return received, usedCached, firstErr
 }
 
 func computeOrLoadChunk(
@@ -518,6 +564,10 @@ func computeChunkResults(
 
 		level := freefield.ComputeReceiverLevelDB(receiver.Point, ffSources)
 		results = append(results, ReceiverResult{ReceiverID: receiver.ID, LevelDB: level})
+
+		if cfg.OnReceiverComputed != nil {
+			cfg.OnReceiverComputed(receiver.ID)
+		}
 	}
 
 	return results, nil

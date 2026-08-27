@@ -29,6 +29,17 @@ type RunConfig struct {
 	ComputeDelay     time.Duration
 	SourceIndexCellM float64
 	DeterminismTag   string
+
+	// OnReceiverComputed, when non-nil, is invoked once per receiver right
+	// after its level has been evaluated, with the receiver ID.
+	//
+	// It exists so tests can drive cancellation (and similar observations)
+	// off a deterministic point inside the compute loop instead of racing a
+	// wall-clock sleep against the workers. It is called from every worker
+	// goroutine, so an implementation must be safe for concurrent use, and it
+	// must not influence the computed values - the determinism policy in
+	// docs/policies/determinism.md applies unchanged.
+	OnReceiverComputed func(receiverID string)
 }
 
 // ReceiverResult stores one computed indicator value.

@@ -143,25 +143,67 @@ func TestPropagationIncreasesWithSourceLength(t *testing.T) {
 func TestAttenuationTermsExposeMappingComponents(t *testing.T) {
 	t.Parallel()
 
+	// Expected values are derived by hand, not by calling the helpers under
+	// test:
+	//
+	//   Adiv   = 20 lg(d) + 11 = 20 lg(50) + 11 = 44.979400... dB
+	//   Aatm   = 0.7 * 50 / 1000 = 0.035 dB
+	//   Aground = 1.2 dB                     (DefaultPropagationConfig)
+	//   Acanyon = 1.5 dB                     (set on cfg below)
+	//   Aintersection = min(3.0, 30 / 20) = 1.5 dB
+	//
+	// BUB has no published emission/propagation coefficient set in this
+	// module yet (PLAN.md Priority 4), so these are scaffold constants
+	// pinned as a regression guard, not normative values.
 	cfg := DefaultPropagationConfig()
 	cfg.UrbanCanyonDB = 1.5
 	cfg.IntersectionDensityPerKM = 30
 
+	wantGeometricDB := 20*math.Log10(50) + 11.0
+
 	terms := attenuationTerms(50, cfg)
-	if terms.DistanceM != 50 {
-		t.Fatalf("unexpected distance term: %#v", terms)
+
+	if math.Abs(terms.DistanceM-50) > 1e-9 {
+		t.Fatalf("distance term = %v, want 50", terms.DistanceM)
 	}
 
-	if terms.GeometricDB <= 0 || terms.AirDB <= 0 || terms.GroundDB <= 0 {
-		t.Fatalf("expected positive attenuation components: %#v", terms)
+	if math.Abs(terms.GeometricDB-wantGeometricDB) > 1e-9 {
+		t.Fatalf("geometric term = %v, want %v", terms.GeometricDB, wantGeometricDB)
 	}
 
-	if terms.UrbanCanyonDB != 1.5 {
-		t.Fatalf("unexpected urban canyon term: %#v", terms)
+	if math.Abs(terms.AirDB-0.035) > 1e-9 {
+		t.Fatalf("air term = %v, want 0.035", terms.AirDB)
 	}
 
-	if terms.IntersectionDB <= 0 {
-		t.Fatalf("expected positive intersection term: %#v", terms)
+	if math.Abs(terms.GroundDB-1.2) > 1e-9 {
+		t.Fatalf("ground term = %v, want 1.2", terms.GroundDB)
+	}
+
+	if math.Abs(terms.UrbanCanyonDB-1.5) > 1e-9 {
+		t.Fatalf("urban canyon term = %v, want 1.5", terms.UrbanCanyonDB)
+	}
+
+	if math.Abs(terms.IntersectionDB-1.5) > 1e-9 {
+		t.Fatalf("intersection term = %v, want 1.5", terms.IntersectionDB)
+	}
+}
+
+func TestIntersectionEffectSaturatesAtThreeDecibels(t *testing.T) {
+	t.Parallel()
+
+	// min(3.0, density / 20): 60 /km is the saturation point, anything above
+	// it must stay clamped at 3.0 dB.
+	cfg := DefaultPropagationConfig()
+	cfg.IntersectionDensityPerKM = 60
+
+	if got := attenuationTerms(50, cfg).IntersectionDB; math.Abs(got-3.0) > 1e-9 {
+		t.Fatalf("intersection term at 60 /km = %v, want 3.0", got)
+	}
+
+	cfg.IntersectionDensityPerKM = 500
+
+	if got := attenuationTerms(50, cfg).IntersectionDB; math.Abs(got-3.0) > 1e-9 {
+		t.Fatalf("intersection term at 500 /km = %v, want 3.0 (clamped)", got)
 	}
 }
 
@@ -383,5 +425,90 @@ func sampleSource() RoadSource {
 			HeavyVehiclesPerHour:      30,
 			PoweredTwoWheelersPerHour: 5,
 		},
+	}
+}
+
+func TestEmissionFlowTermScalesByDecade(t *testing.T) {
+	t.Parallel()
+
+	// Scaling every vehicle class by ten must raise the period level by
+	// exactly 10 lg(10) = 10.0 dB, because the flow term is the only thing
+	// that changes and it enters each class emission additively before the
+	// energy sum.
+	//
+	// The old 10 lg(Q + 1) form failed this: it gave 7.404 dB for the 1 -> 10
+	// step and a spurious +3.0 dB at Q = 1 veh/h.
+	low := sampleSource()
+	low.TrafficDay = TrafficPeriod{
+		LightVehiclesPerHour:      90,
+		MediumVehiclesPerHour:     12,
+		HeavyVehiclesPerHour:      9,
+		PoweredTwoWheelersPerHour: 3,
+	}
+
+	high := sampleSource()
+	high.TrafficDay = TrafficPeriod{
+		LightVehiclesPerHour:      900,
+		MediumVehiclesPerHour:     120,
+		HeavyVehiclesPerHour:      90,
+		PoweredTwoWheelersPerHour: 30,
+	}
+
+	lowEmission, err := ComputeEmission(low)
+	if err != nil {
+		t.Fatalf("compute low-flow emission: %v", err)
+	}
+
+	highEmission, err := ComputeEmission(high)
+	if err != nil {
+		t.Fatalf("compute high-flow emission: %v", err)
+	}
+
+	if delta := highEmission.Lday - lowEmission.Lday; math.Abs(delta-10.0) > 1e-9 {
+		t.Fatalf("decade flow delta = %v dB, want 10.0", delta)
+	}
+}
+
+func TestEmissionDropsSilentVehicleClasses(t *testing.T) {
+	t.Parallel()
+
+	// A vehicle class with zero flow must contribute nothing. Under the old
+	// 10 lg(Q + 1) form it still contributed its full base level, so an
+	// empty class raised the period level.
+	lightOnly := sampleSource()
+	lightOnly.TrafficDay = TrafficPeriod{LightVehiclesPerHour: 900}
+
+	withEmptyClasses := sampleSource()
+	withEmptyClasses.TrafficDay = TrafficPeriod{
+		LightVehiclesPerHour:      900,
+		MediumVehiclesPerHour:     0,
+		HeavyVehiclesPerHour:      0,
+		PoweredTwoWheelersPerHour: 0,
+	}
+
+	lightEmission, err := ComputeEmission(lightOnly)
+	if err != nil {
+		t.Fatalf("compute light-only emission: %v", err)
+	}
+
+	emptyEmission, err := ComputeEmission(withEmptyClasses)
+	if err != nil {
+		t.Fatalf("compute emission with empty classes: %v", err)
+	}
+
+	if math.Abs(lightEmission.Lday-emptyEmission.Lday) > 1e-12 {
+		t.Fatalf("empty classes changed the level: %v vs %v", lightEmission.Lday, emptyEmission.Lday)
+	}
+
+	silent := sampleSource()
+	silent.TrafficDay = TrafficPeriod{}
+
+	silentEmission, err := ComputeEmission(silent)
+	if err != nil {
+		t.Fatalf("compute silent emission: %v", err)
+	}
+
+	if silentEmission.Lday != silenceDB {
+		t.Fatalf("Lday without traffic = %v, want the silence sentinel %v", silentEmission.Lday, silenceDB)
 	}
 }

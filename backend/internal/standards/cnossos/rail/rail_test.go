@@ -128,20 +128,57 @@ func TestRailPropagationIncreasesWithSourceLength(t *testing.T) {
 func TestRailAttenuationTermsExposePropagationComponents(t *testing.T) {
 	t.Parallel()
 
-	source := sampleSource()
-	cfg := DefaultPropagationConfig()
-	terms := attenuationTerms(source, 100, cfg)
+	// Expected values are derived by hand, not by calling the helpers under
+	// test:
+	//
+	//   Adiv = 20 lg(d) + 11        (CNOSSOS-EU, Directive (EU) 2015/996,
+	//                                Annex II, geometrical divergence)
+	//        = 20 lg(100) + 11 = 51.0 dB
+	//   Aatm = alpha * d / 1000     (scaffold linear air-absorption model)
+	//        = 0.7 * 100 / 1000 = 0.07 dB
+	//
+	// The ground, bridge, and curve terms come from the scaffold's own
+	// defaults and from sampleSource (no bridge, curve radius 400 m):
+	//
+	//   Aground = 1.2 dB            (DefaultPropagationConfig)
+	//   Abridge = 0 dB              (OnBridge == false)
+	//   Acurve  = (500 - 400) / 500 * 5.0 = 1.0 dB
+	//
+	// These are scaffold constants, not CNOSSOS coefficients (PLAN.md
+	// Priority 4); they are pinned as a regression guard only.
+	const (
+		wantDistanceM   = 100.0
+		wantGeometricDB = 51.0
+		wantAirDB       = 0.07
+		wantGroundDB    = 1.2
+		wantBridgeDB    = 0.0
+		wantCurveDB     = 1.0
+	)
 
-	if math.Abs(terms.DistanceM-100) > 1e-9 {
-		t.Fatalf("unexpected effective distance: %#v", terms)
+	terms := attenuationTerms(sampleSource(), wantDistanceM, DefaultPropagationConfig())
+
+	if math.Abs(terms.DistanceM-wantDistanceM) > 1e-9 {
+		t.Fatalf("effective distance = %v, want %v", terms.DistanceM, wantDistanceM)
 	}
 
-	if math.Abs(terms.GeometricDB-geometricDivergence(100)) > 1e-9 {
-		t.Fatalf("unexpected geometric term: %#v", terms)
+	if math.Abs(terms.GeometricDB-wantGeometricDB) > 1e-9 {
+		t.Fatalf("geometric term = %v, want %v", terms.GeometricDB, wantGeometricDB)
 	}
 
-	if math.Abs(terms.AirDB-airAbsorption(100, cfg)) > 1e-9 {
-		t.Fatalf("unexpected air term: %#v", terms)
+	if math.Abs(terms.AirDB-wantAirDB) > 1e-9 {
+		t.Fatalf("air term = %v, want %v", terms.AirDB, wantAirDB)
+	}
+
+	if math.Abs(terms.GroundDB-wantGroundDB) > 1e-9 {
+		t.Fatalf("ground term = %v, want %v", terms.GroundDB, wantGroundDB)
+	}
+
+	if math.Abs(terms.BridgeDB-wantBridgeDB) > 1e-9 {
+		t.Fatalf("bridge term = %v, want %v", terms.BridgeDB, wantBridgeDB)
+	}
+
+	if math.Abs(terms.CurveDB-wantCurveDB) > 1e-9 {
+		t.Fatalf("curve term = %v, want %v", terms.CurveDB, wantCurveDB)
 	}
 }
 
@@ -359,5 +396,55 @@ func sampleSource() RailSource {
 		TrafficDay:     TrafficPeriod{TrainsPerHour: 12},
 		TrafficEvening: TrafficPeriod{TrainsPerHour: 8},
 		TrafficNight:   TrafficPeriod{TrainsPerHour: 5},
+	}
+}
+
+func TestRailEmissionFlowTermScalesByDecade(t *testing.T) {
+	t.Parallel()
+
+	// The flow term is the only thing that varies between these two sources,
+	// and it enters every component additively before the energy sum, so a
+	// tenfold flow must raise the level by exactly 10 lg(10) = 10.0 dB.
+	//
+	// The old 10 lg(Q + 1) form failed this: it gave
+	// 10 lg(11) - 10 lg(2) = 7.404 dB and a spurious +3.0 dB at Q = 1.
+	low := sampleSource()
+	low.TrafficDay = TrafficPeriod{TrainsPerHour: 1}
+
+	high := sampleSource()
+	high.TrafficDay = TrafficPeriod{TrainsPerHour: 10}
+
+	lowEmission, err := ComputeEmission(low)
+	if err != nil {
+		t.Fatalf("compute low-flow emission: %v", err)
+	}
+
+	highEmission, err := ComputeEmission(high)
+	if err != nil {
+		t.Fatalf("compute high-flow emission: %v", err)
+	}
+
+	if delta := highEmission.Lday - lowEmission.Lday; math.Abs(delta-10.0) > 1e-9 {
+		t.Fatalf("decade flow delta = %v dB, want 10.0", delta)
+	}
+}
+
+func TestRailEmissionIsSilentWithoutTrains(t *testing.T) {
+	t.Parallel()
+
+	source := sampleSource()
+	source.TrafficDay = TrafficPeriod{}
+
+	emission, err := ComputeEmission(source)
+	if err != nil {
+		t.Fatalf("compute emission: %v", err)
+	}
+
+	if emission.Lday != silenceDB {
+		t.Fatalf("Lday without trains = %v, want the silence sentinel %v", emission.Lday, silenceDB)
+	}
+
+	if emission.Lnight <= 0 {
+		t.Fatalf("expected the remaining periods to stay audible: %#v", emission)
 	}
 }

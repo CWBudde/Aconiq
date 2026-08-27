@@ -117,17 +117,49 @@ func TestPropagationDecreasesWithDistance(t *testing.T) {
 func TestAttenuationTermsExposePropagationComponents(t *testing.T) {
 	t.Parallel()
 
+	// Receiver at (10, 0) height 4 m, point source at (0, 0) height 6 m, so
+	// the slant distance is hypot(10, 4-6) = sqrt(104) m. Expected values are
+	// derived by hand, not by calling the helpers under test:
+	//
+	//   d    = sqrt(10^2 + 2^2) = sqrt(104) = 10.198039... m
+	//   Adiv = 20 lg(d) + 11 = 10 lg(104) + 11   (CNOSSOS-EU, Directive
+	//                                             (EU) 2015/996, Annex II)
+	//        = 31.170333... dB
+	//   Aatm = 0.7 * d / 1000 = 0.007138... dB   (scaffold linear model)
+	//
+	// The ground, screening, and facade terms are the scaffold's fixed
+	// defaults, not CNOSSOS coefficients (PLAN.md Priority 4); the area term
+	// is zero because the source is a point source.
 	receiver := geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 10, Y: 0}, HeightM: 4}
-	source := samplePointSource()
-	cfg := DefaultPropagationConfig()
-	terms := attenuationTerms(receiver, source, cfg)
 
-	if terms.DistanceM <= 0 {
-		t.Fatalf("unexpected distance term: %#v", terms)
+	wantDistanceM := math.Sqrt(104)
+	wantGeometricDB := 10*math.Log10(104) + 11.0
+	wantAirDB := 0.7 * wantDistanceM / 1000.0
+
+	terms := attenuationTerms(receiver, samplePointSource(), DefaultPropagationConfig())
+
+	if math.Abs(terms.DistanceM-wantDistanceM) > 1e-9 {
+		t.Fatalf("distance term = %v, want %v", terms.DistanceM, wantDistanceM)
 	}
 
-	if math.Abs(terms.AirDB-airAbsorption(terms.DistanceM, cfg)) > 1e-9 {
-		t.Fatalf("unexpected air term: %#v", terms)
+	if math.Abs(terms.GeometricDB-wantGeometricDB) > 1e-9 {
+		t.Fatalf("geometric term = %v, want %v", terms.GeometricDB, wantGeometricDB)
+	}
+
+	if math.Abs(terms.AirDB-wantAirDB) > 1e-9 {
+		t.Fatalf("air term = %v, want %v", terms.AirDB, wantAirDB)
+	}
+
+	if math.Abs(terms.GroundDB-1.0) > 1e-9 {
+		t.Fatalf("ground term = %v, want 1.0", terms.GroundDB)
+	}
+
+	if math.Abs(terms.ScreeningDB) > 1e-9 || math.Abs(terms.FacadeDB) > 1e-9 {
+		t.Fatalf("expected zero screening and facade defaults: %#v", terms)
+	}
+
+	if math.Abs(terms.AreaDB) > 1e-9 {
+		t.Fatalf("area term = %v, want 0 for a point source", terms.AreaDB)
 	}
 }
 

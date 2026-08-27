@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/aconiq/backend/internal/geo"
 )
@@ -91,11 +90,23 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 	runner := NewRunner(nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	go func() {
-		time.Sleep(40 * time.Millisecond)
-		cancel()
-	}()
+	// Cancellation is driven off a deterministic signal from inside the
+	// compute loop rather than a wall-clock sleep: the run is cancelled once
+	// the workers have evaluated exactly cancelAfterReceivers receivers.
+	//
+	// That count is far below the 600 receivers in the run, so there is
+	// always work left for the cancellation to abort, no matter how fast or
+	// how loaded the machine is. The previous version raced a 40 ms sleep
+	// against the whole run and could observe a completed run instead.
+	const cancelAfterReceivers = 50
+
+	var (
+		computed  int64
+		cancelled bool
+		mu        sync.Mutex
+	)
 
 	_, err := runner.Run(ctx, RunConfig{
 		RunID:        "cancel-test",
@@ -105,8 +116,27 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 		Receivers:    receivers,
 		Sources:      sources,
 		DisableCache: false,
-		ComputeDelay: 2 * time.Millisecond,
+		OnReceiverComputed: func(string) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			computed++
+			if computed >= cancelAfterReceivers && !cancelled {
+				cancelled = true
+
+				cancel()
+			}
+		},
 	})
+
+	mu.Lock()
+	sawCancelSignal := cancelled
+	mu.Unlock()
+
+	if !sawCancelSignal {
+		t.Fatal("compute callback never reached the cancellation point")
+	}
+
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}

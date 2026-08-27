@@ -220,13 +220,49 @@ func TestSummaryBandsAggregateEstimatedCounts(t *testing.T) {
 		t.Fatalf("compute outputs: %v", err)
 	}
 
-	totalBandPersons := 0.0
-	for _, band := range summary.LdenBands {
-		totalBandPersons += band.EstimatedPersons
+	// The occupancy estimate is derived independently from the config and
+	// the sample building, not read back from the computation:
+	//
+	//   floors    = ceil(HeightM / FloorHeightM) = ceil(9 / 3) = 3
+	//   dwellings = floors * DwellingsPerFloor   = 3 * 1   = 3
+	//   persons   = dwellings * PersonsPerDwelling = 3 * 2.2 = 6.6
+	const (
+		wantDwellings = 3.0
+		wantPersons   = 6.6
+	)
+
+	if math.Abs(outputs[0].Indicators.EstimatedDwellings-wantDwellings) > 1e-9 {
+		t.Fatalf("estimated dwellings = %.6f, want %.6f", outputs[0].Indicators.EstimatedDwellings, wantDwellings)
 	}
 
-	if math.Abs(totalBandPersons-outputs[0].Indicators.EstimatedPersons) > 1e-9 {
-		t.Fatalf("expected Lden band totals to match estimated persons: got %.6f want %.6f", totalBandPersons, outputs[0].Indicators.EstimatedPersons)
+	if math.Abs(outputs[0].Indicators.EstimatedPersons-wantPersons) > 1e-9 {
+		t.Fatalf("estimated persons = %.6f, want %.6f", outputs[0].Indicators.EstimatedPersons, wantPersons)
+	}
+
+	// Every band is a disjoint slice of the same population, so the band
+	// totals must partition it exactly once - for persons and for dwellings,
+	// and for the Lden and Lnight band sets alike.
+	totalLdenPersons, totalLdenDwellings := 0.0, 0.0
+	for _, band := range summary.LdenBands {
+		totalLdenPersons += band.EstimatedPersons
+		totalLdenDwellings += band.EstimatedDwellings
+	}
+
+	totalLnightPersons := 0.0
+	for _, band := range summary.LnightBands {
+		totalLnightPersons += band.EstimatedPersons
+	}
+
+	if math.Abs(totalLdenPersons-wantPersons) > 1e-9 {
+		t.Fatalf("Lden band persons = %.6f, want %.6f", totalLdenPersons, wantPersons)
+	}
+
+	if math.Abs(totalLdenDwellings-wantDwellings) > 1e-9 {
+		t.Fatalf("Lden band dwellings = %.6f, want %.6f", totalLdenDwellings, wantDwellings)
+	}
+
+	if math.Abs(totalLnightPersons-wantPersons) > 1e-9 {
+		t.Fatalf("Lnight band persons = %.6f, want %.6f", totalLnightPersons, wantPersons)
 	}
 }
 
