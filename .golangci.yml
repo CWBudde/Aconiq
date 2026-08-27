@@ -6,6 +6,12 @@ run:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  # `just lint` is a required status check, so the run must report every finding
+  # rather than a readable summary of them. golangci-lint defaults to reporting
+  # one issue per line; during the complexity pass that hid two real findings
+  # behind others flagged on the same line, which made the backlog look smaller
+  # than it was. The tree is at zero with this off, so it costs nothing today.
+  uniq-by-line: false
 
 linters:
   default: all

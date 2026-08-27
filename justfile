@@ -13,12 +13,16 @@ check-formatted:
     treefmt --allow-missing-formatter --fail-on-change
 
 # Run linters (from backend/)
+# No --timeout flag: a CLI flag silently overrides `run.timeout` in
+# .golangci.yml, and the two disagreed (2m here vs 5m there). The config is the
+# single source of truth, so a slow cold run in CI fails on findings rather than
+# on a timeout that only this file knew about.
 lint:
-    cd backend && golangci-lint run --timeout=2m ./...
+    cd backend && golangci-lint run ./...
 
 # Run linters with auto-fix
 lint-fix:
-    cd backend && golangci-lint run --fix --timeout=2m ./...
+    cd backend && golangci-lint run --fix ./...
 
 # Run go vet (compiler-adjacent checks not covered by golangci-lint)
 vet:

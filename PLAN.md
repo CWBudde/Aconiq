@@ -118,6 +118,12 @@ commit messages; the consequences each one exposed are open items below.
       unauthenticated caller could choose arbitrary `--input`/`--model` paths, and the terrain
       upload's request body was unbounded. See `docs/lint-triage.md` for the per-finding record,
       including two verdicts the pass disproved.
+- [x] **Lint gate hardened.** `issues.uniq-by-line` is now off, so a finding can no longer hide
+      behind another on the same line — the default that made the complexity backlog look smaller
+      than it was. Dropped the justfile's `--timeout=2m`, which silently overrode
+      `.golangci.yml`'s `timeout: 5m`: a cold CI run must fail on findings, not on a timeout only
+      the justfile knew about. Verified the gate actually trips by planting a deliberate finding
+      (`just lint` exits 1). Both changes are free today — the tree is at 0 either way.
 - [x] **Lint complexity pass.** 54 → **0**. The triage's own verdict ("do not restructure these
       individually — they dissolve once Priority 7 lands") turned out to be wrong: these were long
       _procedural_ functions, not structurally coupled ones, and extracting named helpers resolved
@@ -180,13 +186,33 @@ commit messages; the consequences each one exposed are open items below.
       Verify afterwards with
       `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
       which must succeed against a cold cache.
-- [ ] **Make `just lint` a hard merge gate.** `golangci-lint` is at **0 issues** across
-      `backend/...`, so the gate can be turned on; `go-ci.yml` should fail the build on any new
-      finding. Then start paying down the two standing debts the green run hides: `wrapcheck` is
-      excluded for all of `internal/`, i.e. the entire backend, so the error-wrapping policy is
-      unenforced (removing that exclusion costs 190 findings, and should be sequenced after the
-      `domain/errors` work in Priority 7), and 430 of the original 542 findings were removed by
-      switching linters off rather than by fixing code. Per-linter reasons in `docs/lint-triage.md`.
+- [ ] **Turn on branch protection for `main`.** This is the last step of the lint merge gate and
+      the only one that cannot be done from the repo: it needs admin on `CWBudde/Aconiq`, and
+      `main` currently has **no protection at all**. The CI side is done — `just lint` is a
+      `go-ci.yml` step and exits non-zero on any finding. Required status checks should be
+      `go-ci`, `go-race`, `govulncheck` and `frontend-ci`:
+
+      ```bash
+      gh api -X PUT repos/CWBudde/Aconiq/branches/main/protection \
+        -H "Accept: application/vnd.github+json" \
+        -F "required_status_checks[strict]=true" \
+        -F "required_status_checks[contexts][]=go-ci" \
+        -F "required_status_checks[contexts][]=go-race" \
+        -F "required_status_checks[contexts][]=govulncheck" \
+        -F "required_status_checks[contexts][]=frontend-ci" \
+        -F "enforce_admins=false" \
+        -F "required_pull_request_reviews=" \
+        -F "restrictions="
+      ```
+
+      Note `frontend-ci` is currently green but `fe-bundle-check` is not part of it — the map
+      bundle is over budget (Priority 8), so requiring `frontend-ci` does not yet gate bundle size.
+
+- [ ] **Pay down the debts a green `just lint` hides.** `wrapcheck` is excluded for all of
+      `internal/`, i.e. the entire backend, so the error-wrapping policy is unenforced; removing
+      that exclusion costs 190 findings and should be sequenced after the `domain/errors` work in
+      Priority 7. Separately, 430 of the original 542 findings were removed by switching linters
+      off rather than by fixing code. Per-linter reasons in `docs/lint-triage.md`.
 - [ ] **Finish the frontend package-manager consolidation.** `frontend/package-lock.json` is
       deleted — nothing referenced it (both workflows use `oven-sh/setup-bun` and
       `bun install --frozen-lockfile`; a repo-wide grep for `npm ci`/`npm install`/`package-lock`
