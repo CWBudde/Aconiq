@@ -4,8 +4,10 @@ package citygmlimport
 
 import (
 	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 
@@ -14,6 +16,48 @@ import (
 	"github.com/cwbudde/go-citygml/helpers"
 	"github.com/cwbudde/go-citygml/types"
 )
+
+// maxXMLNestingDepth bounds element nesting in an untrusted CityGML document.
+//
+// Go's xml.Decoder is safe against XXE and entity expansion, but it keeps one
+// stack entry per open element and imposes no depth limit, so a document that
+// is nothing but opening tags turns a small upload into a large allocation and
+// a deep walk through the scanner. Real CityGML nests around a dozen levels
+// (CityModel > cityObjectMember > Building > boundedBy > WallSurface >
+// lodNMultiSurface > MultiSurface > surfaceMember > Polygon > exterior >
+// LinearRing > posList); 256 leaves an order of magnitude of headroom.
+const maxXMLNestingDepth = 256
+
+// checkXMLNestingDepth walks the document's tokens and rejects it when element
+// nesting exceeds maxXMLNestingDepth. It runs before the CityGML parser so the
+// deep document is never handed to a decoder that would keep it in memory.
+// Malformed XML is not reported here; the parser produces the better message.
+func checkXMLNestingDepth(data []byte) error {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+
+	depth := 0
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			return nil
+		}
+
+		switch tok.(type) {
+		case xml.StartElement:
+			depth++
+			if depth > maxXMLNestingDepth {
+				return fmt.Errorf("citygml: element nesting deeper than %d levels", maxXMLNestingDepth)
+			}
+		case xml.EndElement:
+			depth--
+		}
+	}
+}
 
 // SkipReason describes why a building was excluded from the import.
 type SkipReason string
@@ -59,6 +103,11 @@ func Read(data []byte) (modelgeojson.FeatureCollection, error) {
 
 // ReadWithCRS reads a CityGML document and also extracts the CRS from the document's srsName.
 func ReadWithCRS(data []byte) (ReadResult, error) {
+	err := checkXMLNestingDepth(data)
+	if err != nil {
+		return ReadResult{}, err
+	}
+
 	doc, err := citygml.Read(bytes.NewReader(data), citygml.Options{})
 	if err != nil {
 		return ReadResult{}, fmt.Errorf("citygml: %w", err)

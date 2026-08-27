@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -116,6 +115,9 @@ func buildRailOperationSummary(rail RailEmission, linked []TrainEmission, typeBy
 	classSeen := make(map[string]struct{})
 	tractionSeen := make(map[string]struct{})
 	trainNames := make([]string, 0, len(linked))
+	// Membership set for trainNames: a linear scan per train makes this loop
+	// quadratic in the number of trains the imported file declares.
+	nameSeen := make(map[string]struct{}, len(linked))
 
 	for _, train := range linked {
 		summary.DayTrainCount += train.NDay
@@ -128,7 +130,9 @@ func buildRailOperationSummary(rail RailEmission, linked []TrainEmission, typeBy
 		}
 
 		name := strings.TrimSpace(train.Trainname)
-		if name != "" && !slices.Contains(trainNames, name) {
+		if _, dup := nameSeen[name]; name != "" && !dup {
+			nameSeen[name] = struct{}{}
+
 			trainNames = append(trainNames, name)
 		}
 

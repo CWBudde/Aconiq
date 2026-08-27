@@ -6,11 +6,100 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"unicode"
 
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	_ "modernc.org/sqlite" // register sqlite driver
 )
+
+// maxIdentifierLength bounds a layer name before it is embedded in a query.
+// SQLite has no practical identifier length limit, but no real GeoPackage
+// layer name approaches this.
+const maxIdentifierLength = 255
+
+// openReadOnly opens a GeoPackage for reading only.
+//
+// The file is untrusted third-party input, so the handle must not be able to
+// modify it: the default DSN would open READWRITE|CREATE. "mode=ro" downgrades
+// the connection to read-only and "immutable=1" additionally tells SQLite the
+// file cannot change, which disables locking and ignores any -wal/-shm
+// sidecars a hostile file might point at.
+func openReadOnly(path string) (*sql.DB, error) {
+	dsn, err := readOnlyDSN(path)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("gpkg: open %q: %w", path, err)
+	}
+
+	return db, nil
+}
+
+// readOnlyDSN builds a SQLite URI DSN for path. The path is percent-encoded so
+// that a file name containing "?" or "#" cannot inject URI parameters.
+func readOnlyDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("gpkg: resolve %q: %w", path, err)
+	}
+
+	slashed := filepath.ToSlash(abs)
+	if !strings.HasPrefix(slashed, "/") {
+		// Windows drive-letter paths need a leading slash to keep the drive
+		// letter out of the URI authority.
+		slashed = "/" + slashed
+	}
+
+	u := url.URL{
+		Scheme:   "file",
+		Path:     slashed,
+		RawQuery: "mode=ro&immutable=1",
+	}
+
+	return u.String(), nil
+}
+
+// quoteIdentifier validates and quotes a table name for interpolation into a
+// query.
+//
+// Layer names come from gpkg_contents and gpkg_geometry_columns, which are
+// tables *inside the untrusted file*, so they are attacker-controlled. The
+// allowlist below admits the characters that appear in real layer names
+// (including non-ASCII letters, spaces, dots and dashes) and rejects
+// everything a statement could be broken out with: quotes, brackets,
+// semicolons, whitespace other than a plain space, and control characters.
+// The result is additionally double-quoted with embedded quotes doubled, so
+// even an allowlisted name cannot terminate the identifier early.
+func quoteIdentifier(name string) (string, error) {
+	if name == "" || len(name) > maxIdentifierLength {
+		return "", fmt.Errorf("gpkg: invalid table name %q", name)
+	}
+
+	for i, r := range name {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return "", fmt.Errorf("gpkg: refusing table name %q: must start with a letter or underscore", name)
+			}
+
+			continue
+		}
+
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.' || r == ' ' {
+			continue
+		}
+
+		return "", fmt.Errorf("gpkg: refusing table name %q: invalid character %q", name, r)
+	}
+
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`, nil
+}
 
 // LayerInfo describes one feature layer in a GeoPackage.
 type LayerInfo struct {
@@ -22,9 +111,9 @@ type LayerInfo struct {
 
 // ListLayers returns all feature layers in the GeoPackage.
 func ListLayers(path string) ([]LayerInfo, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openReadOnly(path)
 	if err != nil {
-		return nil, fmt.Errorf("gpkg: open %q: %w", path, err)
+		return nil, err
 	}
 
 	defer db.Close()
@@ -82,9 +171,14 @@ func ReadLayer(path string, layerName string) (modelgeojson.FeatureCollection, e
 // ReadLayerWithCRS reads features from a named layer and also extracts the CRS
 // from the GeoPackage spatial_ref_sys table.
 func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
-	db, err := sql.Open("sqlite", path)
+	quotedTable, err := quoteIdentifier(layerName)
 	if err != nil {
-		return ReadResult{}, fmt.Errorf("gpkg: open %q: %w", path, err)
+		return ReadResult{}, err
+	}
+
+	db, err := openReadOnly(path)
+	if err != nil {
+		return ReadResult{}, err
 	}
 
 	defer db.Close()
@@ -98,12 +192,12 @@ func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
 
 	epsg := querySRSID(ctx, db, layerName)
 
-	colNames, err := queryColumnNames(ctx, db, layerName)
+	colNames, err := queryColumnNames(ctx, db, layerName, quotedTable)
 	if err != nil {
 		return ReadResult{}, err
 	}
 
-	features, err := queryFeatures(ctx, db, layerName, colNames, geomCol)
+	features, err := queryFeatures(ctx, db, layerName, quotedTable, colNames, geomCol)
 	if err != nil {
 		return ReadResult{}, err
 	}
@@ -150,9 +244,9 @@ func queryGeomColumn(ctx context.Context, db *sql.DB, tableName string) (string,
 }
 
 // queryColumnNames retrieves the column names for a layer by querying one row with LIMIT 0.
-func queryColumnNames(ctx context.Context, db *sql.DB, tableName string) ([]string, error) {
-	//nolint:gosec,unqueryvet // table name comes from gpkg_geometry_columns metadata; SELECT * needed to discover dynamic column list
-	rows, err := db.QueryContext(ctx, "SELECT * FROM "+tableName+" LIMIT 0")
+func queryColumnNames(ctx context.Context, db *sql.DB, tableName, quotedTable string) ([]string, error) {
+	//nolint:gosec,unqueryvet // quotedTable passed through quoteIdentifier; SELECT * needed to discover the dynamic column list
+	rows, err := db.QueryContext(ctx, "SELECT * FROM "+quotedTable+" LIMIT 0")
 	if err != nil {
 		return nil, fmt.Errorf("gpkg: get column names for %q: %w", tableName, err)
 	}
@@ -173,9 +267,9 @@ func queryColumnNames(ctx context.Context, db *sql.DB, tableName string) ([]stri
 }
 
 // queryFeatures scans all features from a table.
-func queryFeatures(ctx context.Context, db *sql.DB, tableName string, colNames []string, geomCol string) ([]modelgeojson.GeoJSONFeature, error) {
-	//nolint:gosec,unqueryvet // table name comes from gpkg_geometry_columns metadata; SELECT * needed for dynamic column scan
-	rows, err := db.QueryContext(ctx, "SELECT * FROM "+tableName)
+func queryFeatures(ctx context.Context, db *sql.DB, tableName, quotedTable string, colNames []string, geomCol string) ([]modelgeojson.GeoJSONFeature, error) {
+	//nolint:gosec,unqueryvet // quotedTable passed through quoteIdentifier; SELECT * needed for the dynamic column scan
+	rows, err := db.QueryContext(ctx, "SELECT * FROM "+quotedTable)
 	if err != nil {
 		return nil, fmt.Errorf("gpkg: query layer %q: %w", tableName, err)
 	}

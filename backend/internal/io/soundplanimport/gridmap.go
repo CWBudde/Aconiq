@@ -327,15 +327,19 @@ func decodeGridMapRows(payload []byte, pointsTotal int) ([][]gridMapCellRecord, 
 	}
 
 	spans := splitGridMapNonZeroSpansFromPayload(payload, start)
+
+	// Suffix sums of the span lengths. Re-summing the tail for every candidate
+	// start is quadratic in the number of spans, which an untrusted .GM payload
+	// controls directly.
+	suffix := make([]int, len(spans)+1)
+	for i, row := range slices.Backward(spans) {
+		suffix[i] = suffix[i+1] + len(row)
+	}
+
 	startSpan := -1
 
 	for i := range spans {
-		sum := 0
-		for _, row := range spans[i:] {
-			sum += len(row)
-		}
-
-		if sum == pointsTotal {
+		if suffix[i] == pointsTotal {
 			startSpan = i
 			break
 		}

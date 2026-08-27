@@ -183,9 +183,7 @@ func validateLineStringGeometry(coords any, id string, report *ValidationReport)
 		return nil, false
 	}
 
-	if hasSelfIntersection(line, false) {
-		addError(report, "geometry.linestring.self_intersection", id, "LineString has self-intersections")
-	}
+	checkSelfIntersection(line, false, "geometry.linestring.self_intersection", id, "LineString has self-intersections", report)
 
 	return line, true
 }
@@ -205,9 +203,7 @@ func validateMultiLineStringGeometry(coords any, id string, report *ValidationRe
 			return nil, false
 		}
 
-		if hasSelfIntersection(line, false) {
-			addError(report, "geometry.multilinestring.self_intersection", id, "MultiLineString member has self-intersections")
-		}
+		checkSelfIntersection(line, false, "geometry.multilinestring.self_intersection", id, "MultiLineString member has self-intersections", report)
 
 		points = append(points, line...)
 	}
@@ -225,9 +221,7 @@ func validatePolygonGeometry(coords any, id string, report *ValidationReport) ([
 	points := make([]point2, 0)
 
 	for idx, ring := range rings {
-		if hasSelfIntersection(ring, true) {
-			addError(report, "geometry.polygon.self_intersection", id, fmt.Sprintf("polygon ring %d has self-intersections", idx))
-		}
+		checkSelfIntersection(ring, true, "geometry.polygon.self_intersection", id, fmt.Sprintf("polygon ring %d has self-intersections", idx), report)
 
 		points = append(points, ring...)
 	}
@@ -252,9 +246,8 @@ func validateMultiPolygonGeometry(coords any, id string, report *ValidationRepor
 		}
 
 		for ringIdx, ring := range rings {
-			if hasSelfIntersection(ring, true) {
-				addError(report, "geometry.multipolygon.self_intersection", id, fmt.Sprintf("multipolygon polygon %d ring %d has self-intersections", polyIdx, ringIdx))
-			}
+			checkSelfIntersection(ring, true, "geometry.multipolygon.self_intersection", id,
+				fmt.Sprintf("multipolygon polygon %d ring %d has self-intersections", polyIdx, ringIdx), report)
 
 			points = append(points, ring...)
 		}
@@ -382,6 +375,31 @@ func coordinateBounds(points []point2) (float64, float64, float64, float64) {
 	}
 
 	return minX, minY, maxX, maxY
+}
+
+// maxSelfIntersectionPoints bounds the exhaustive self-intersection check.
+//
+// The check compares every pair of segments, so its cost grows with the square
+// of the vertex count. 10,000 points is about 5*10^7 segment-pair tests, which
+// runs in well under a second; 200,000 points -- an unremarkable size for a
+// machine-generated GeoJSON upload -- would be 2*10^10 and would hang the
+// import. Geometries above the limit are reported as unchecked rather than
+// rejected, so a legitimate very dense line still imports.
+const maxSelfIntersectionPoints = 10000
+
+// checkSelfIntersection runs the self-intersection test within its cost bound
+// and records the outcome on the report.
+func checkSelfIntersection(points []point2, closed bool, code, id, message string, report *ValidationReport) {
+	if len(points) > maxSelfIntersectionPoints {
+		addWarning(report, code+".skipped", id,
+			fmt.Sprintf("self-intersection check skipped: %d points exceed the limit of %d", len(points), maxSelfIntersectionPoints))
+
+		return
+	}
+
+	if hasSelfIntersection(points, closed) {
+		addError(report, code, id, message)
+	}
 }
 
 func hasSelfIntersection(points []point2, closed bool) bool {

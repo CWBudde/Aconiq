@@ -26,6 +26,13 @@ const (
 	wkbHeaderSize         = 5 // 1 byte order + 4 type
 	float64Size           = 8
 	uint32Size            = 4
+
+	// maxWKBNestingDepth bounds recursion through nested WKB collections.
+	// A GeoPackage geometry is at most MultiPolygon -> Polygon, i.e. two
+	// levels; 32 leaves ample room for producer quirks while keeping a
+	// malicious blob from exhausting the goroutine stack (which is a fatal,
+	// uncatchable runtime error, not a recoverable one).
+	maxWKBNestingDepth = 32
 )
 
 // DecodeGPKGBlob decodes a GeoPackage geometry blob into a GeoJSON-compatible
@@ -62,7 +69,7 @@ func DecodeGPKGBlob(blob []byte) (geomType string, coords any, err error) {
 		return "", nil, nil
 	}
 
-	geomType, coords, _, err = decodeWKB(wkbData)
+	geomType, coords, _, err = decodeWKB(wkbData, 0)
 
 	return geomType, coords, err
 }
@@ -84,7 +91,11 @@ func envelopeSizeFromFlags(flags byte) (int, error) {
 	}
 }
 
-func decodeWKB(data []byte) (geomType string, coords any, consumed int, err error) {
+func decodeWKB(data []byte, depth int) (geomType string, coords any, consumed int, err error) {
+	if depth > maxWKBNestingDepth {
+		return "", nil, 0, fmt.Errorf("wkb: nesting deeper than %d levels", maxWKBNestingDepth)
+	}
+
 	if len(data) < wkbHeaderSize {
 		return "", nil, 0, fmt.Errorf("wkb: data too short for header: %d bytes", len(data))
 	}
@@ -97,7 +108,7 @@ func decodeWKB(data []byte) (geomType string, coords any, consumed int, err erro
 	wkbType := order.Uint32(data[1:5])
 	offset := wkbHeaderSize
 
-	geomType, coords, consumed, err = decodeWKBGeometry(data, offset, wkbType, order)
+	geomType, coords, consumed, err = decodeWKBGeometry(data, offset, wkbType, order, depth)
 
 	return geomType, coords, consumed, err
 }
@@ -113,7 +124,7 @@ func byteOrderFromByte(b byte) (binary.ByteOrder, error) {
 	}
 }
 
-func decodeWKBGeometry(data []byte, offset int, wkbType uint32, order binary.ByteOrder) (string, any, int, error) {
+func decodeWKBGeometry(data []byte, offset int, wkbType uint32, order binary.ByteOrder, depth int) (string, any, int, error) {
 	switch wkbType {
 	case wkbPoint:
 		return decodePoint(data, offset, order)
@@ -122,11 +133,11 @@ func decodeWKBGeometry(data []byte, offset int, wkbType uint32, order binary.Byt
 	case wkbPolygon:
 		return decodePolygon(data, offset, order)
 	case wkbMultiPoint:
-		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPoint, data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPoint, data, offset, order, depth)
 	case wkbMultiLineString:
-		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiLineString, data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiLineString, data, offset, order, depth)
 	case wkbMultiPolygon:
-		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPolygon, data, offset, order)
+		return decodeMultiGeometry(modelgeojson.GeometryTypeMultiPolygon, data, offset, order, depth)
 	default:
 		return "", nil, 0, fmt.Errorf("wkb: unsupported geometry type %d", wkbType)
 	}
@@ -169,6 +180,13 @@ func decodePolygon(data []byte, offset int, order binary.ByteOrder) (string, any
 	numRings := int(order.Uint32(data[offset:]))
 	offset += uint32Size
 
+	// Each ring carries at least its own 4-byte point count, so a ring count
+	// the remaining bytes cannot possibly cover is rejected before the count
+	// is used to size an allocation. This mirrors the check in readPoints.
+	if numRings > (len(data)-offset)/uint32Size {
+		return "", nil, 0, fmt.Errorf("wkb: Polygon declares %d rings, more than the remaining %d bytes allow", numRings, len(data)-offset)
+	}
+
 	rings := make([]any, 0, numRings)
 
 	for range numRings {
@@ -192,7 +210,7 @@ func decodePolygon(data []byte, offset int, order binary.ByteOrder) (string, any
 	return modelgeojson.GeometryTypePolygon, rings, offset, nil
 }
 
-func decodeMultiGeometry(geomType string, data []byte, offset int, order binary.ByteOrder) (string, any, int, error) {
+func decodeMultiGeometry(geomType string, data []byte, offset int, order binary.ByteOrder, depth int) (string, any, int, error) {
 	if len(data) < offset+uint32Size {
 		return "", nil, 0, fmt.Errorf("wkb: %s count too short", geomType)
 	}
@@ -200,10 +218,20 @@ func decodeMultiGeometry(geomType string, data []byte, offset int, order binary.
 	numParts := int(order.Uint32(data[offset:]))
 	offset += uint32Size
 
+	// Each part carries at least a full WKB header, so a part count the
+	// remaining bytes cannot cover is rejected before it sizes an allocation.
+	if numParts > (len(data)-offset)/wkbHeaderSize {
+		return "", nil, 0, fmt.Errorf("wkb: %s declares %d parts, more than the remaining %d bytes allow", geomType, numParts, len(data)-offset)
+	}
+
 	parts := make([]any, 0, numParts)
 
 	for range numParts {
-		_, partCoords, n, err := decodeWKB(data[offset:])
+		if offset > len(data) {
+			return "", nil, 0, fmt.Errorf("wkb: %s part offset beyond data", geomType)
+		}
+
+		_, partCoords, n, err := decodeWKB(data[offset:], depth+1)
 		if err != nil {
 			return "", nil, 0, fmt.Errorf("wkb: %s part: %w", geomType, err)
 		}
@@ -217,9 +245,11 @@ func decodeMultiGeometry(geomType string, data []byte, offset int, order binary.
 }
 
 func readPoints(data []byte, numPoints int, order binary.ByteOrder) ([]any, int, error) {
+	// numPoints comes from a 32-bit field, so the product fits an int on the
+	// platforms this decoder builds for and cannot wrap into a passing check.
 	needed := numPoints * 2 * float64Size
 
-	if len(data) < needed {
+	if numPoints < 0 || len(data) < needed {
 		return nil, 0, fmt.Errorf("wkb: not enough data for %d points", numPoints)
 	}
 

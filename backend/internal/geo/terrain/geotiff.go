@@ -54,6 +54,84 @@ const (
 	sampleFormatFloat = 3
 )
 
+// Resource limits for untrusted GeoTIFF input.
+//
+// A TIFF header is a handful of bytes that declares how much data the decoder
+// should allocate, so every allocation derived from it has to be bounded before
+// it is made. The numbers below are policy choices: generous enough for any
+// real digital terrain model, small enough that a malformed header cannot
+// request an allocation the runtime cannot refuse.
+const (
+	// maxRasterDimension caps ImageWidth and ImageLength individually.
+	// 2^20 samples per side is a 1000 km edge at 1 m resolution.
+	maxRasterDimension = 1 << 20
+
+	// maxRasterPixels caps width*height. At 8 bytes per decoded sample this is
+	// a 2 GiB elevation grid, well beyond any tile the engine loads in practice.
+	maxRasterPixels = 1 << 28
+
+	// maxIFDEntries caps the entries in a single image file directory. Classic
+	// TIFF encodes the count in 16 bits; BigTIFF uses 64 bits, so the cap is
+	// what keeps a BigTIFF IFD count from driving the entry allocation.
+	maxIFDEntries = 1 << 16
+
+	// maxTagValueCount caps the element count of a single IFD entry, such as
+	// StripOffsets or TileOffsets. A raster with more strips than it has rows,
+	// or more tiles than a 16x16-tiled maxRasterPixels image, is malformed.
+	maxTagValueCount = 1 << 20
+
+	// maxCompressionRatio bounds the declared raster payload against the size
+	// of the file that declares it. DEFLATE cannot expand data by much more
+	// than 1000:1, so a header promising more than this is lying no matter what
+	// the pixel-count limit allows. This is what keeps a few-hundred-byte
+	// upload from sizing a gigabyte-scale buffer.
+	maxCompressionRatio = 1024
+
+	// decompressionSlackBytes is added to the expected payload size when
+	// bounding decompressed strip/tile data. Some encoders pad the final strip
+	// to a full strip height, so the decoded stream may legitimately exceed the
+	// image payload by a little; it may never exceed it by orders of magnitude
+	// (which is what a deflate bomb would do).
+	decompressionSlackBytes = 1 << 20
+)
+
+// bitsPerSampleSupported reports whether bps is a sample width the pixel
+// decoders understand. Anything else -- including a missing BitsPerSample tag,
+// which reads back as 0 -- must be rejected before sizing an allocation.
+func bitsPerSampleSupported(bps uint64) bool {
+	switch bps {
+	case 8, 16, 32, 64:
+		return true
+	default:
+		return false
+	}
+}
+
+// validateRasterGeometry rejects a raster header whose declared geometry would
+// drive an unreasonable allocation. It runs before any allocation derived from
+// width, height, or bits-per-sample, and uses uint64 arithmetic throughout so
+// that no intermediate can overflow or go negative.
+func validateRasterGeometry(width, height, bps uint64) error {
+	if width == 0 || height == 0 {
+		return errors.New("missing or zero image dimensions")
+	}
+
+	if width > maxRasterDimension || height > maxRasterDimension {
+		return fmt.Errorf("image dimensions %dx%d exceed the per-side limit of %d", width, height, maxRasterDimension)
+	}
+
+	if !bitsPerSampleSupported(bps) {
+		return fmt.Errorf("unsupported or missing BitsPerSample: %d", bps)
+	}
+
+	// Both factors are at most 2^20 here, so the product cannot overflow.
+	if width*height > maxRasterPixels {
+		return fmt.Errorf("image has %d pixels, exceeding the limit of %d", width*height, maxRasterPixels)
+	}
+
+	return nil
+}
+
 type ifdEntry struct {
 	tag      uint16
 	dataType uint16
@@ -124,23 +202,27 @@ func parseGeoTIFF(data []byte) (*gridModel, error) {
 }
 
 func readIFD(data []byte, order binary.ByteOrder, offset uint64, bigtiff bool) ([]ifdEntry, error) {
-	if int(offset) >= len(data) { //nolint:gosec // TIFF IFD offset bounded by file size
+	// Compared in uint64: an offset near 2^63 would become a negative int and
+	// slip past a signed comparison, then index the slice out of range.
+	if offset >= uint64(len(data)) {
 		return nil, errors.New("IFD offset beyond file")
 	}
 
-	pos := int(offset) //nolint:gosec // TIFF IFD offset bounded by file size
+	pos := int(offset) //nolint:gosec // bounded by len(data) above
 
 	var (
 		numEntries int
 		entrySize  int
 	)
 
+	var rawCount uint64
+
 	if bigtiff {
 		if pos+8 > len(data) {
 			return nil, errors.New("truncated BigTIFF IFD count")
 		}
 
-		numEntries = int(order.Uint64(data[pos : pos+8])) //nolint:gosec // BigTIFF entry count bounded by file size
+		rawCount = order.Uint64(data[pos : pos+8])
 		pos += 8
 		entrySize = 20
 	} else {
@@ -148,9 +230,21 @@ func readIFD(data []byte, order binary.ByteOrder, offset uint64, bigtiff bool) (
 			return nil, errors.New("truncated IFD count")
 		}
 
-		numEntries = int(order.Uint16(data[pos : pos+2]))
+		rawCount = uint64(order.Uint16(data[pos : pos+2]))
 		pos += 2
 		entrySize = 12
+	}
+
+	// Bound the count before it sizes an allocation: it is attacker-controlled
+	// (64 bits wide in BigTIFF) and the entries it promises must actually fit
+	// in the remaining bytes of the file.
+	if rawCount > maxIFDEntries {
+		return nil, fmt.Errorf("IFD declares %d entries, exceeding the limit of %d", rawCount, maxIFDEntries)
+	}
+
+	numEntries = int(rawCount)
+	if numEntries > (len(data)-pos)/entrySize {
+		return nil, fmt.Errorf("IFD declares %d entries but only %d bytes remain", numEntries, len(data)-pos)
 	}
 
 	entries := make([]ifdEntry, 0, numEntries)
@@ -189,7 +283,15 @@ func parseIFDEntry(data []byte, order binary.ByteOrder, pos int, bigtiff bool) (
 		valueBytes = data[pos+8 : pos+12]
 	}
 
-	totalSize := count * typeSize(dataType)
+	elemSize := typeSize(dataType)
+
+	// count is attacker-controlled (32 or 64 bits wide); reject a product that
+	// would wrap before it is used as a length or an end offset.
+	if count > math.MaxUint64/elemSize {
+		return ifdEntry{}, fmt.Errorf("tag %d: value count %d overflows", tag, count)
+	}
+
+	totalSize := count * elemSize
 
 	var maxInline uint64
 	if bigtiff {
@@ -212,7 +314,7 @@ func parseIFDEntry(data []byte, order binary.ByteOrder, pos int, bigtiff bool) (
 		}
 
 		end := offset + totalSize
-		if end > uint64(len(data)) {
+		if end < offset || end > uint64(len(data)) {
 			return ifdEntry{}, fmt.Errorf("tag %d: data offset %d+%d exceeds file size %d", tag, offset, totalSize, len(data))
 		}
 
@@ -245,12 +347,14 @@ func buildGrid(data []byte, order binary.ByteOrder, entries []ifdEntry) (*gridMo
 
 	width := getUint(tags, tagImageWidth, order)
 	height := getUint(tags, tagImageLength, order)
+	bps := getUint(tags, tagBitsPerSample, order)
 
-	if width == 0 || height == 0 {
-		return nil, errors.New("missing or zero image dimensions")
+	// Must happen before anything sized by these values is allocated.
+	err := validateRasterGeometry(width, height, bps)
+	if err != nil {
+		return nil, err
 	}
 
-	bps := getUint(tags, tagBitsPerSample, order)
 	sampleFmt := getUint(tags, tagSampleFormat, order)
 
 	if sampleFmt == 0 {
@@ -268,13 +372,22 @@ func buildGrid(data []byte, order binary.ByteOrder, entries []ifdEntry) (*gridMo
 		readErr   error
 	)
 
-	//nolint:gosec // TIFF dimensions bounded by uint16/uint32, safe on 64-bit
-	iWidth, iHeight, iBps, iSampleFmt, iCompression := int(width), int(height), int(bps), int(sampleFmt), int(compression)
+	//nolint:gosec // dimensions and bits-per-sample validated by validateRasterGeometry
+	iWidth, iHeight, iBps, iSampleFmt := int(width), int(height), int(bps), int(sampleFmt)
+	iCompression := int(compression)
+
+	// Bounded by maxRasterPixels * 8, i.e. 2 GiB.
+	payloadBytes := iWidth * iHeight * (iBps / 8)
+
+	// Division rather than multiplication so the comparison cannot overflow.
+	if payloadBytes/maxCompressionRatio > len(data) {
+		return nil, fmt.Errorf("header declares %d bytes of pixel data, implausible for a %d byte file", payloadBytes, len(data))
+	}
 
 	if _, hasTiles := tags[tagTileOffsets]; hasTiles {
 		rawPixels, readErr = readTiledData(data, order, tags, iWidth, iHeight, iBps/8)
 	} else {
-		rawPixels, readErr = readStrippedData(data, order, tags, iCompression)
+		rawPixels, readErr = readStrippedData(data, order, tags, iCompression, payloadBytes)
 	}
 
 	if readErr != nil {
@@ -318,7 +431,7 @@ func buildGrid(data []byte, order binary.ByteOrder, entries []ifdEntry) (*gridMo
 	return g, nil
 }
 
-func readStrippedData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry, compression int) ([]byte, error) {
+func readStrippedData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry, compression, payloadBytes int) ([]byte, error) {
 	offsets, err := getUintSlice(tags, tagStripOffsets, order)
 	if err != nil {
 		return nil, fmt.Errorf("strip offsets: %w", err)
@@ -333,21 +446,23 @@ func readStrippedData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEn
 		return nil, fmt.Errorf("strip offsets (%d) != byte counts (%d)", len(offsets), len(counts))
 	}
 
+	budget := payloadBytes + decompressionSlackBytes
+
 	var result []byte
 
 	for i := range offsets {
-		off := int(offsets[i]) //nolint:gosec // TIFF strip offsets bounded by file size
-		cnt := int(counts[i])  //nolint:gosec // TIFF strip byte counts bounded by file size
-
-		if off+cnt > len(data) {
-			return nil, fmt.Errorf("strip %d: offset %d + count %d exceeds file size", i, off, cnt)
+		chunk, sliceErr := sliceChunk(data, offsets[i], counts[i])
+		if sliceErr != nil {
+			return nil, fmt.Errorf("strip %d: %w", i, sliceErr)
 		}
 
-		chunk := data[off : off+cnt]
-
-		decoded, decErr := decompressChunk(chunk, compression)
+		decoded, decErr := decompressChunk(chunk, compression, budget-len(result))
 		if decErr != nil {
 			return nil, fmt.Errorf("strip %d: %w", i, decErr)
+		}
+
+		if len(result)+len(decoded) > budget {
+			return nil, fmt.Errorf("strip %d: decoded pixel data exceeds the %d byte budget", i, budget)
 		}
 
 		result = append(result, decoded...)
@@ -356,13 +471,33 @@ func readStrippedData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEn
 	return result, nil
 }
 
-func readTiledData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry, imgWidth, imgHeight, bytesPerSample int) ([]byte, error) {
-	tileW := int(getUint(tags, tagTileWidth, order))  //nolint:gosec // TIFF tile dimensions bounded by uint16/uint32
-	tileH := int(getUint(tags, tagTileLength, order)) //nolint:gosec // TIFF tile dimensions bounded by uint16/uint32
+// sliceChunk bounds-checks an attacker-controlled (offset, count) pair against
+// the file before converting it to int. The comparison is done in uint64 so a
+// count near 2^63 cannot become a negative int and slip past the check.
+func sliceChunk(data []byte, offset, count uint64) ([]byte, error) {
+	size := uint64(len(data))
 
-	if tileW == 0 || tileH == 0 {
+	if offset > size || count > size-offset {
+		return nil, fmt.Errorf("offset %d + count %d exceeds file size %d", offset, count, size)
+	}
+
+	return data[offset : offset+count], nil
+}
+
+func readTiledData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry, imgWidth, imgHeight, bytesPerSample int) ([]byte, error) {
+	rawTileW := getUint(tags, tagTileWidth, order)
+	rawTileH := getUint(tags, tagTileLength, order)
+
+	if rawTileW == 0 || rawTileH == 0 {
 		return nil, errors.New("missing tile dimensions")
 	}
+
+	if rawTileW > maxRasterDimension || rawTileH > maxRasterDimension {
+		return nil, fmt.Errorf("tile dimensions %dx%d exceed the per-side limit of %d", rawTileW, rawTileH, maxRasterDimension)
+	}
+
+	tileW := int(rawTileW)
+	tileH := int(rawTileH)
 
 	compression := int(getUint(tags, tagCompression, order)) //nolint:gosec // TIFF compression code bounded by uint16
 
@@ -379,7 +514,10 @@ func readTiledData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry
 	tilesAcross := (imgWidth + tileW - 1) / tileW
 	tilesDown := (imgHeight + tileH - 1) / tileH
 	rowBytes := imgWidth * bytesPerSample
+	// imgWidth, imgHeight and bytesPerSample all passed validateRasterGeometry,
+	// so this product is bounded by maxRasterPixels * 8.
 	result := make([]byte, imgHeight*rowBytes)
+	tileBudget := tileW*tileH*bytesPerSample + decompressionSlackBytes
 
 	for ty := range tilesDown {
 		for tx := range tilesAcross {
@@ -389,14 +527,12 @@ func readTiledData(data []byte, order binary.ByteOrder, tags map[uint16]ifdEntry
 				return nil, fmt.Errorf("tile index %d out of range", idx)
 			}
 
-			off := int(offsets[idx]) //nolint:gosec // TIFF tile offsets bounded by file size
-			cnt := int(counts[idx])  //nolint:gosec // TIFF tile byte counts bounded by file size
-
-			if off+cnt > len(data) {
-				return nil, fmt.Errorf("tile %d: offset exceeds file size", idx)
+			chunk, sliceErr := sliceChunk(data, offsets[idx], counts[idx])
+			if sliceErr != nil {
+				return nil, fmt.Errorf("tile %d: %w", idx, sliceErr)
 			}
 
-			decoded, decErr := decompressChunk(data[off:off+cnt], compression)
+			decoded, decErr := decompressChunk(chunk, compression, tileBudget)
 			if decErr != nil {
 				return nil, fmt.Errorf("tile %d: %w", idx, decErr)
 			}
@@ -435,7 +571,14 @@ func copyTileToImage(dst, src []byte, tx, ty, tileW, tileH, imgWidth, imgHeight,
 	}
 }
 
-func decompressChunk(chunk []byte, compression int) ([]byte, error) {
+// decompressChunk expands one strip or tile. limitBytes bounds the decoded
+// output so that a highly compressible payload (a deflate bomb) cannot expand
+// past the size the validated raster geometry accounts for.
+func decompressChunk(chunk []byte, compression, limitBytes int) ([]byte, error) {
+	if limitBytes < 0 {
+		limitBytes = 0
+	}
+
 	switch compression {
 	case compressionNone:
 		return chunk, nil
@@ -447,9 +590,14 @@ func decompressChunk(chunk []byte, compression int) ([]byte, error) {
 
 		defer r.Close()
 
-		out, err := io.ReadAll(r)
+		// Read one byte past the limit so an oversized stream is detectable.
+		out, err := io.ReadAll(io.LimitReader(r, int64(limitBytes)+1))
 		if err != nil {
 			return nil, fmt.Errorf("deflate read: %w", err)
+		}
+
+		if len(out) > limitBytes {
+			return nil, fmt.Errorf("deflate output exceeds the %d byte budget", limitBytes)
 		}
 
 		return out, nil
@@ -459,6 +607,16 @@ func decompressChunk(chunk []byte, compression int) ([]byte, error) {
 }
 
 func decodePixels(raw []byte, order binary.ByteOrder, width, height, bps, sampleFmt int) ([]float64, error) {
+	// Resolving the decoder first pins bps to one of the supported widths, so
+	// bytesPerSample below is at least 2. That matters: when BitsPerSample is
+	// missing the tag reads back as 0, and a zero bytesPerSample turns the
+	// "enough pixel data?" guard into a comparison against 0 that any width and
+	// height would pass.
+	decode, err := pixelDecoder(sampleFmt, bps)
+	if err != nil {
+		return nil, err
+	}
+
 	n := width * height
 	bytesPerSample := bps / 8
 
@@ -467,25 +625,30 @@ func decodePixels(raw []byte, order binary.ByteOrder, width, height, bps, sample
 	}
 
 	grid := make([]float64, n)
+	decode(grid, raw, order, n)
 
+	return grid, nil
+}
+
+// pixelDecoder returns the sample decoder for a (sample format, bits per
+// sample) pair, or an error when the combination is unsupported.
+func pixelDecoder(sampleFmt, bps int) (func([]float64, []byte, binary.ByteOrder, int), error) {
 	switch {
 	case sampleFmt == sampleFormatFloat && bps == 32:
-		decodeFloat32(grid, raw, order, n)
+		return decodeFloat32, nil
 	case sampleFmt == sampleFormatFloat && bps == 64:
-		decodeFloat64(grid, raw, order, n)
+		return decodeFloat64, nil
 	case sampleFmt == sampleFormatInt && bps == 16:
-		decodeInt16(grid, raw, order, n)
+		return decodeInt16, nil
 	case sampleFmt == sampleFormatUInt && bps == 16:
-		decodeUint16(grid, raw, order, n)
+		return decodeUint16, nil
 	case sampleFmt == sampleFormatInt && bps == 32:
-		decodeInt32(grid, raw, order, n)
+		return decodeInt32, nil
 	case sampleFmt == sampleFormatUInt && bps == 32:
-		decodeUint32(grid, raw, order, n)
+		return decodeUint32, nil
 	default:
 		return nil, fmt.Errorf("unsupported sample format %d with %d bits per sample", sampleFmt, bps)
 	}
-
-	return grid, nil
 }
 
 func decodeFloat32(grid []float64, raw []byte, order binary.ByteOrder, n int) {
@@ -605,8 +768,24 @@ func getUintSlice(tags map[uint16]ifdEntry, tag uint16, order binary.ByteOrder) 
 		return nil, fmt.Errorf("tag %d not found", tag)
 	}
 
-	result := make([]uint64, e.count)
+	switch e.dataType {
+	case tiffTypeShort, tiffTypeLong, tiffTypeLong8:
+	default:
+		return nil, fmt.Errorf("unsupported type %d for uint slice", e.dataType)
+	}
+
+	// e.count is attacker-controlled; bound it and confirm the entry actually
+	// carries that many elements before sizing the result slice.
+	if e.count > maxTagValueCount {
+		return nil, fmt.Errorf("tag %d declares %d values, exceeding the limit of %d", tag, e.count, maxTagValueCount)
+	}
+
 	elemSize := typeSize(e.dataType)
+	if uint64(len(e.data)) < e.count*elemSize {
+		return nil, fmt.Errorf("tag %d: %d values need %d bytes, entry has %d", tag, e.count, e.count*elemSize, len(e.data))
+	}
+
+	result := make([]uint64, e.count)
 
 	for i := range e.count {
 		off := i * elemSize
@@ -618,8 +797,6 @@ func getUintSlice(tags map[uint16]ifdEntry, tag uint16, order binary.ByteOrder) 
 			result[i] = uint64(order.Uint32(e.data[off : off+4]))
 		case tiffTypeLong8:
 			result[i] = order.Uint64(e.data[off : off+8])
-		default:
-			return nil, fmt.Errorf("unsupported type %d for uint slice", e.dataType)
 		}
 	}
 

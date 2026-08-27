@@ -15,6 +15,56 @@ import (
 	"github.com/gogama/flatgeobuf/flatgeobuf/flat"
 )
 
+// Sizes of the FlatBuffers vector elements the geometry decoders read. A
+// FlatGeobuf file is untrusted input and the reader library does not run a
+// FlatBuffers verifier, so every vector length taken from the buffer is
+// checked against the buffer's own size before it is used to size a slice or
+// to index into the data.
+const (
+	xyElemBytes    = 8 // float64 coordinate
+	endsElemBytes  = 4 // uint32 ring/part end index
+	partsElemBytes = 4 // uoffset to a nested geometry
+)
+
+// xyPairCount returns the number of coordinate pairs the geometry's xy vector
+// holds, rejecting a declared length the underlying buffer cannot contain.
+func xyPairCount(geom *flat.Geometry) (int, error) {
+	n := geom.XyLength()
+
+	bufLen := len(geom.Table().Bytes)
+	if n < 0 || n > bufLen/xyElemBytes {
+		return 0, fmt.Errorf("xy vector declares %d values, more than the %d byte buffer can hold", n, bufLen)
+	}
+
+	return n / 2, nil
+}
+
+// endsCount returns the length of the geometry's ends vector, rejecting a
+// declared length the underlying buffer cannot contain.
+func endsCount(geom *flat.Geometry) (int, error) {
+	n := geom.EndsLength()
+
+	bufLen := len(geom.Table().Bytes)
+	if n < 0 || n > bufLen/endsElemBytes {
+		return 0, fmt.Errorf("ends vector declares %d values, more than the %d byte buffer can hold", n, bufLen)
+	}
+
+	return n, nil
+}
+
+// partsCount returns the length of the geometry's parts vector, rejecting a
+// declared length the underlying buffer cannot contain.
+func partsCount(geom *flat.Geometry) (int, error) {
+	n := geom.PartsLength()
+
+	bufLen := len(geom.Table().Bytes)
+	if n < 0 || n > bufLen/partsElemBytes {
+		return 0, fmt.Errorf("parts vector declares %d values, more than the %d byte buffer can hold", n, bufLen)
+	}
+
+	return n, nil
+}
+
 // ReadResult holds the result of reading a FlatGeobuf file.
 type ReadResult struct {
 	Collection modelgeojson.FeatureCollection
@@ -139,18 +189,38 @@ func geometryToGeoJSON(geom *flat.Geometry, headerType flat.GeometryType) (strin
 	case flat.GeometryTypePoint:
 		return modelgeojson.GeometryTypePoint, decodePoint(geom), nil
 	case flat.GeometryTypeLineString:
-		return modelgeojson.GeometryTypeLineString, decodeCoordSequence(geom, 0, geom.XyLength()/2), nil
+		return decodeWhole(modelgeojson.GeometryTypeLineString, geom, decodeLineString)
 	case flat.GeometryTypePolygon:
-		return modelgeojson.GeometryTypePolygon, decodePolygon(geom), nil
+		return decodeWhole(modelgeojson.GeometryTypePolygon, geom, decodePolygon)
 	case flat.GeometryTypeMultiPoint:
-		return modelgeojson.GeometryTypeMultiPoint, decodeMultiPoint(geom), nil
+		return decodeWhole(modelgeojson.GeometryTypeMultiPoint, geom, decodeMultiPoint)
 	case flat.GeometryTypeMultiLineString:
-		return modelgeojson.GeometryTypeMultiLineString, decodeMultiLineString(geom), nil
+		return decodeWhole(modelgeojson.GeometryTypeMultiLineString, geom, decodeMultiLineString)
 	case flat.GeometryTypeMultiPolygon:
-		return modelgeojson.GeometryTypeMultiPolygon, decodeMultiPolygon(geom), nil
+		return decodeWhole(modelgeojson.GeometryTypeMultiPolygon, geom, decodeMultiPolygon)
 	default:
 		return "", nil, fmt.Errorf("unsupported geometry type: %s", gt)
 	}
+}
+
+// decodeWhole adapts a coordinate decoder to the (type, coords, error) shape
+// geometryToGeoJSON returns.
+func decodeWhole(geomType string, geom *flat.Geometry, decode func(*flat.Geometry) ([]any, error)) (string, any, error) {
+	coords, err := decode(geom)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return geomType, coords, nil
+}
+
+func decodeLineString(geom *flat.Geometry) ([]any, error) {
+	total, err := xyPairCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
+	return decodeCoordSequence(geom, 0, total)
 }
 
 func decodePoint(geom *flat.Geometry) []any {
@@ -163,7 +233,19 @@ func decodePoint(geom *flat.Geometry) []any {
 
 // decodeCoordSequence extracts a slice of [x, y] coordinate pairs from xy array.
 // start and end are in coordinate-pair counts (not xy-index).
-func decodeCoordSequence(geom *flat.Geometry, start, end int) []any {
+func decodeCoordSequence(geom *flat.Geometry, start, end int) ([]any, error) {
+	total, err := xyPairCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
+	// start and end derive from the file's ends vector, so the range has to be
+	// validated against the coordinates actually present before it sizes an
+	// allocation or indexes into the xy vector.
+	if start < 0 || end < start || end > total {
+		return nil, fmt.Errorf("coordinate range [%d,%d) outside the %d coordinate pairs available", start, end, total)
+	}
+
 	pts := make([]any, 0, end-start)
 
 	for i := start; i < end; i++ {
@@ -172,16 +254,28 @@ func decodeCoordSequence(geom *flat.Geometry, start, end int) []any {
 		pts = append(pts, []any{x, y})
 	}
 
-	return pts
+	return pts, nil
 }
 
-func decodePolygon(geom *flat.Geometry) []any {
-	numEnds := geom.EndsLength()
-	totalPairs := geom.XyLength() / 2
+func decodePolygon(geom *flat.Geometry) ([]any, error) {
+	numEnds, err := endsCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPairs, err := xyPairCount(geom)
+	if err != nil {
+		return nil, err
+	}
 
 	if numEnds == 0 {
 		// Single ring: all coordinates form one ring.
-		return []any{decodeCoordSequence(geom, 0, totalPairs)}
+		ring, ringErr := decodeCoordSequence(geom, 0, totalPairs)
+		if ringErr != nil {
+			return nil, ringErr
+		}
+
+		return []any{ring}, nil
 	}
 
 	rings := make([]any, 0, numEnds)
@@ -189,33 +283,57 @@ func decodePolygon(geom *flat.Geometry) []any {
 
 	for i := range numEnds {
 		end := int(geom.Ends(i))
-		rings = append(rings, decodeCoordSequence(geom, start, end))
+
+		ring, ringErr := decodeCoordSequence(geom, start, end)
+		if ringErr != nil {
+			return nil, fmt.Errorf("ring %d: %w", i, ringErr)
+		}
+
+		rings = append(rings, ring)
 		start = end
 	}
 
-	return rings
+	return rings, nil
 }
 
-func decodeMultiPoint(geom *flat.Geometry) []any {
-	n := geom.XyLength() / 2
+func decodeMultiPoint(geom *flat.Geometry) ([]any, error) {
+	n, err := xyPairCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
 	pts := make([]any, 0, n)
 
 	for i := range n {
 		pts = append(pts, []any{geom.Xy(i * 2), geom.Xy(i*2 + 1)})
 	}
 
-	return pts
+	return pts, nil
 }
 
-func decodeMultiLineString(geom *flat.Geometry) []any {
-	if geom.PartsLength() > 0 {
+func decodeMultiLineString(geom *flat.Geometry) ([]any, error) {
+	numParts, err := partsCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
+	if numParts > 0 {
 		return decodePartsCoords(geom)
 	}
 
 	// Use ends array to split coordinate sequences into linestrings.
-	numEnds := geom.EndsLength()
+	numEnds, err := endsCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
 	if numEnds == 0 {
-		return []any{decodeCoordSequence(geom, 0, geom.XyLength()/2)}
+		line, lineErr := decodeLineString(geom)
+		if lineErr != nil {
+			return nil, lineErr
+		}
+
+		return []any{line}, nil
 	}
 
 	lines := make([]any, 0, numEnds)
@@ -223,18 +341,33 @@ func decodeMultiLineString(geom *flat.Geometry) []any {
 
 	for i := range numEnds {
 		end := int(geom.Ends(i))
-		lines = append(lines, decodeCoordSequence(geom, start, end))
+
+		line, lineErr := decodeCoordSequence(geom, start, end)
+		if lineErr != nil {
+			return nil, fmt.Errorf("linestring %d: %w", i, lineErr)
+		}
+
+		lines = append(lines, line)
 		start = end
 	}
 
-	return lines
+	return lines, nil
 }
 
-func decodeMultiPolygon(geom *flat.Geometry) []any {
-	n := geom.PartsLength()
+func decodeMultiPolygon(geom *flat.Geometry) ([]any, error) {
+	n, err := partsCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
 	if n == 0 {
 		// Fallback: treat as single polygon.
-		return []any{decodePolygon(geom)}
+		poly, polyErr := decodePolygon(geom)
+		if polyErr != nil {
+			return nil, polyErr
+		}
+
+		return []any{poly}, nil
 	}
 
 	polys := make([]any, 0, n)
@@ -245,14 +378,23 @@ func decodeMultiPolygon(geom *flat.Geometry) []any {
 			continue
 		}
 
-		polys = append(polys, decodePolygon(part))
+		poly, polyErr := decodePolygon(part)
+		if polyErr != nil {
+			return nil, fmt.Errorf("polygon %d: %w", i, polyErr)
+		}
+
+		polys = append(polys, poly)
 	}
 
-	return polys
+	return polys, nil
 }
 
-func decodePartsCoords(geom *flat.Geometry) []any {
-	n := geom.PartsLength()
+func decodePartsCoords(geom *flat.Geometry) ([]any, error) {
+	n, err := partsCount(geom)
+	if err != nil {
+		return nil, err
+	}
+
 	parts := make([]any, 0, n)
 	part := new(flat.Geometry)
 
@@ -261,10 +403,15 @@ func decodePartsCoords(geom *flat.Geometry) []any {
 			continue
 		}
 
-		parts = append(parts, decodeCoordSequence(part, 0, part.XyLength()/2))
+		coords, coordErr := decodeLineString(part)
+		if coordErr != nil {
+			return nil, fmt.Errorf("part %d: %w", i, coordErr)
+		}
+
+		parts = append(parts, coords)
 	}
 
-	return parts
+	return parts, nil
 }
 
 func readProperties(feat *flat.Feature, hdr *flat.Header) (map[string]any, error) {
