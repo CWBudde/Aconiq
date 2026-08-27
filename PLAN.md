@@ -131,6 +131,22 @@ commit messages; the consequences each one exposed are open items below.
       rest were `noUncheckedIndexedAccess` / `exactOptionalPropertyTypes` fallout plus a missing
       `window.Go` ambient declaration. No `!`, `as`, or `@ts-ignore` was used to close any of
       them. Two latent defects fell out of the work and are recorded below.
+- [x] **The 49 `eslint .` findings** (`e55e366`). `bun run lint` passes, so **`frontend-ci.yml`
+      is green** — it runs typecheck, lint, test and build, and not `bundle-check`, which still
+      fails on the chunk budget in Priority 8. Most of the 29 `restrict-template-expressions`
+      findings were `String(...)` wraps, but three groups were fixed by hoisting a duplicated
+      expression instead (the Overpass bbox appeared four times in one query, the OSM feature id
+      four times in one function, `Date.now()` three times in one export). Two
+      `no-unnecessary-condition` findings were pointing at type lies rather than dead guards, and
+      the guard was the correct half in both: `readState` cast untrusted `localStorage` JSON to a
+      complete `BrowserBackendState`, and `sanitizeOverpassGeometry` declared a non-nullable
+      element type while filtering an untrusted Overpass response. `no-misused-spread` was a real
+      bug — in `api/client.ts`, `...init` came after the header merge and replaced `headers`
+      wholesale, dropping `Accept: application/json` from every request that set headers of its
+      own. `require-await` is disabled file-wide in `browser-backend.ts` with a reason: those
+      methods must stay `async` so a synchronous `throw` reaches callers as a rejected promise.
+      `scripts/check-bundle-size.mjs` had never been linted at all — it sits outside every
+      tsconfig, so the project service failed to parse it.
 
 ### Open
 
@@ -151,15 +167,6 @@ commit messages; the consequences each one exposed are open items below.
       Verify afterwards with
       `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
       which must succeed against a cold cache.
-- [ ] **`frontend-ci.yml` is still red — on `bun run lint`, not on types.** `eslint .` reports
-      **49 problems** (48 errors, 1 warning). That is down from 58 at the commit before the
-      typecheck fix, because typing `window.Go`/`window.aconiq` removed all 9 `no-unsafe-*`
-      findings, but it was never green. The residue is 29 `restrict-template-expressions`,
-      9 `no-unnecessary-condition`, 6 `require-await` and 5 singletons — none of it introduced by
-      the type-error work. `bun run bundle-check` also fails (`map-*.js` is 1 208 KB against a
-      750 KB budget), which is the separate Priority 8 item below. Note the `build` script is
-      `tsc -b && vite build`, so it always type-checked too: frontend CI has simply been red and
-      unactioned, not masked.
 - [ ] **Work the 112 lint findings that remain after triage.** Full audit in `docs/lint-triage.md`.
       Be clear about what the triage did: **542 → 112, and every one of those 430 came from
       disabling linters, not from fixing code.** `goconst` (266, dominated by JSON output keys in
@@ -715,8 +722,9 @@ them left a decision behind:
       (`use-autosave.ts:81`), so a pending timer writes a stale draft and calls `markClean()`.
 - [ ] **The map is destroyed and rebuilt on every model edit.** `map-view.tsx:103` deps include
       `center`/`zoom`, and `pages/map.tsx:126-129` re-memoizes `workspaceView` on every store
-      change. Pan/zoom is lost, layers re-added, the broken timer re-armed. The `eslint-disable`
-      at `:102` claims the opposite of what the code does.
+      change. Pan/zoom is lost, layers re-added, the fallback timer re-armed. (The stale
+      `eslint-disable` and the "only re-create on basemap change" comment that contradicted the
+      deps array were removed in `e55e366`; the deps themselves are unchanged.)
 - [ ] Fix render-phase `setState` at `pages/export.tsx:417`, `pages/results.tsx:769` **and
       `pages/run.tsx:1138`** (a third instance of the same "auto-select first run" shape, found
       while fixing the type errors — the index access is now sound but the write is still in the
@@ -746,9 +754,12 @@ them left a decision behind:
 - [ ] Fix the bundle budget: `dist/assets/map-*.js` is 1 214 KB against a 750 KB limit
       (`scripts/check-bundle-size.mjs:14`), so `bun run bundle-check` — and therefore `just ci` via
       `fe-ci` — fails on a real build. Move budgets to gzip.
-- [ ] Delete dead frontend code: `src/api/client.ts` (189 lines, used by nothing),
-      `src/map/legend.tsx` (never rendered), `ValidationPanel` (unreachable — `pages/map.tsx:119`
-      never calls `setShowValidation(true)`), 58 unused message keys.
+- [ ] Delete dead frontend code: the `APIClient` class in `src/api/client.ts` (never
+      instantiated — only re-exported from `api/index.ts`; **the rest of the module is live**, six
+      files import its types, so do not delete the file), `src/map/legend.tsx` (never rendered),
+      `ValidationPanel` (unreachable — `pages/map.tsx:119` never calls `setShowValidation(true)`),
+      58 unused message keys. Note the header bug fixed in `e55e366` was inside that unused class,
+      which is how it survived.
 - [ ] Test the untested half: `src/map/` has 1 test across 17 files; `run.tsx` + `results.tsx` +
       `export.tsx` are 2 597 lines with zero. Run axe against real pages, not the hand-written
       fixture in `src/ui/a11y.test.tsx`. Add `role="dialog"`, focus trap and Escape handling to
