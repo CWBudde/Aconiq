@@ -102,53 +102,109 @@ are tracked below: the real `golangci-lint` finding count over the _whole_ tree,
 failing test in `internal/app/cli`. What follows is what remains.
 
 - [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
-      `github.com/cwbudde/go-absolute-database v0.1.0`, which **404s** on GitHub — it resolves here
-      only from a warm local module cache, so a fresh clone and every CI runner fail even after the
-      `go-overpass` fix above. It is imported by exactly one file,
-      `internal/io/soundplanimport/absresults.go`, whose reverse chain is `soundplanimport` →
-      `internal/app/cli` (import/compare) → `cmd/aconiq`. Gate SoundPLAN `.abs` reading behind a
-      build tag or an interface, or mirror/vendor the module and add `GOPRIVATE` plus a token step
-      in CI. Note that aggregate commands blame more packages than actually depend on it — one
-      unfetchable module poisons whole-graph resolution.
-- [ ] **Run `just fmt` and commit.** 5 files are unformatted on `main`, including `.golangci.yml`.
-      Note `treefmt --fail-on-change` _rewrites_ files — it is not a read-only check.
-- [ ] **Fix the frontend typecheck no-op.** `frontend/package.json:11` is
-      `"tsc --noEmit"` against a solution-file `tsconfig.json` (`{"files": [], "references": […]}`),
-      which checks **zero files** and exits 0. Change to `"tsc -b --noEmit"`; `tsc -b` currently
-      reports 62 errors.
-- [ ] **Triage the lint findings the broken build was hiding.** While `golangci-lint` aborted on
-      the typecheck error it reported 1 issue. Over the now-compiling tree it reports several
-      hundred, dominated by `wsl_v5` (120), `noinlineerr` (41), `goconst`, `cyclop` (20 functions
-      over the limit of 15), `perfsprint` (11), `predeclared` (5), `revive` (4), `unparam` (3),
-      `unused` (2), `nolintlint` (2), `tagliatelle` (2), `unconvert` (2), `staticcheck` (1),
-      `nilnil` (1), `prealloc` (1), `recvcheck` (1). Decide per linter: fix, or disable with a
-      recorded reason. `just lint` is currently red, so it cannot be a merge gate until this is
-      triaged.
-- [ ] **Guard the unguarded fixture tests.** `backend/internal/io/soundplanimport/absresults_test.go:9`
-      hardcodes `interopDir = "../../../../interoperability/…"` with no existence check; 8 tests
-      `t.Fatalf` on a clean checkout. Route through the existing `testProjectDir(t)` helper
-      (`soundplanimport_test.go:12-22` shows the correct pattern).
-- [ ] **Pin every CI tool version.** `golangci-lint-action` is now v7 but still `version: latest`;
-      `gofumpt@latest`, `gci@latest`, `treefmt/v2@latest`, `go-licenses@latest`,
-      `bun-version: latest` ×2. `.trunk/trunk.yaml` pins all 14 of its tools — the discipline
-      exists, just not where it runs.
-- [ ] **Add `-race` and `govulncheck` to CI.** `just test-race` exists (`justfile:33`) and no
-      workflow calls it, on a codebase whose thesis is determinism. No CVE scanning exists at all.
-- [ ] **Reconcile `just ci` with `go-ci.yml`.** The workflow hand-rolls a different, non-equivalent
-      step list, so "run `just ci` locally" does not reproduce the gate. Make the workflow call the
-      recipe, or document precisely where they differ and why.
-- [ ] Add `backend/wasm` (a committed 3.2 MB binary, the largest tracked file by 19×),
-      `.trunk/`, `playwright-report/`, `test-results/` to `.gitignore`; `git rm --cached backend/wasm`.
-- [ ] Untrack `frontend/tsconfig.app.tsbuildinfo`. It is a TypeScript **incremental build
-      artifact** committed to git, so it churns on every `tsc -b` and — worse — a stale committed
-      copy can make `tsc -b` believe the project is already up to date and skip checking on a
-      fresh clone. That compounds the typecheck no-op above. `git rm --cached` it and gitignore
-      `*.tsbuildinfo`.
-- [ ] Delete the empty `backend/cmd/noise/` directory (`.gitkeep` only, leftover from the rename)
-      and the empty root `.codex` file.
-- [ ] Settle on one frontend package manager. `frontend/bun.lock`, `frontend/package-lock.json` and
-      a root `package-lock.json` all exist and have drifted; `just fe-*` uses Bun. Delete the npm
-      lockfiles or switch deliberately.
+      `github.com/cwbudde/go-absolute-database v0.1.0`, which is unreachable for anyone but the
+      author, so a fresh clone and every CI runner still fail even after the `go-overpass` fix
+      above. It resolves on a developer machine only from a warm module cache.
+      **Diagnosed 27 August 2026 — the module is not missing, it is private.** The repository
+      exists at `github.com/CWBudde/go-absolute-database`, tag `v0.1.0` is pushed
+      (`626c41e`), and `gh repo view` reports `"visibility": "PRIVATE"`. The other two
+      first-party dependencies, `go-overpass` and `go-citygml`, are both public — this one is the
+      sole exception. So the earlier framing (vendor the module, or gate `.abs` reading behind a
+      build tag) solves a problem that does not exist; a build tag would not even work, since the
+      unresolvable `require` poisons whole-graph resolution regardless of which files compile.
+      **Action: make `CWBudde/go-absolute-database` public.** It is already MIT-licensed
+      (`Copyright (c) 2026 Christian Budde`), ~3 500 LOC, and depends only on cobra and
+      `golang.org/x/crypto`. Nothing in Aconiq changes; `NOTICE` has already been corrected.
+      Verify afterwards with
+      `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
+      which must succeed against a cold cache.
+      Landed 27 August 2026 (commits on `main`, see git log): `just fmt` (formatting is now clean and
+      `just check-formatted` exits 0); the frontend typecheck no-op; the lint triage; the unguarded
+      fixture tests; CI tool-version pinning; `-race` and `govulncheck` in CI; `just ci` reconciled with
+      `go-ci.yml`; and the repository-hygiene items (`backend/wasm`, `tsbuildinfo`, `.trunk/`,
+      `playwright-report/`, `test-results/`, `backend/cmd/noise/`, the empty `.codex`). What each of
+      those turned up, and what is left, is below.
+
+- [ ] **Fix the 55 remaining frontend type errors.** The typecheck gate is now honest —
+      `frontend/package.json` runs `tsc -b --force --noEmit` instead of `tsc --noEmit`, which
+      checked **zero** files because `tsconfig.json` is a solution file with `"files": []` and
+      plain `tsc` does not follow project references. `--force` is deliberate: `tsc -b` writes
+      `tsconfig.app.tsbuildinfo` and will skip on a stale one, which is the same class of silent
+      pass. **Consequence: `frontend-ci.yml` is now red.** 62 errors were found, 7 fixed, 55 open.
+      By cause: **43 are `noUncheckedIndexedAccess` fallout** (guarded array access TS cannot
+      narrow, e.g. `arr.length > 0 && arr[0].id`), **10 are `exactOptionalPropertyTypes` fallout**
+      (`prop: T | undefined` against a required `prop: T`), **4 are a missing `window.Go` ambient
+      declaration** in `src/wasm/kernel.ts`, and **5 are the genuine bugs already listed under
+      Priority 8** — all four predicted ones were caught, which is the evidence the gate works.
+      37 of the 55 sit in `src/api/browser-backend.ts` alone. The cheapest next batch is the three
+      identical `arr[0]` sites at `pages/export.tsx:417`, `pages/results.tsx:769` and
+      `pages/run.tsx:1138`: hoist `const first = arr[0]` and test `first`. Two need a type-model
+      decision rather than a fix — `ModelFeature.properties` (`model/normalize.ts:88`,
+      `model/source-acoustics.ts:118`) and how a missing indicator renders
+      (`browser-backend.ts:716,752`).
+- [ ] **Note: `frontend/package.json`'s `build` script is `tsc -b && vite build`**, so it already
+      type-checked and already reports the same 55 errors. Either frontend CI has been red and
+      nobody acted on it, or something masked it. Worth confirming which before trusting any
+      historical green.
+- [ ] **Work the 112 lint findings that remain after triage.** Full audit in `docs/lint-triage.md`.
+      Be clear about what the triage did: **542 → 112, and every one of those 430 came from
+      disabling linters, not from fixing code.** `goconst` (266, dominated by JSON output keys in
+      `map[string]any` literals — hoisting them hides the output contract), `wsl_v5` (120, pure
+      whitespace), `noinlineerr` (41, forbids the idiomatic `if err := f(); err != nil`) and
+      `gocyclo` (3, duplicates `cyclop`'s metric) are now off, each with a recorded reason.
+      `sqlclosecheck` was re-**enabled**: its disable comment claimed "no SQL in this project"
+      while `io/gpkgimport` and `report/export/gpkg.go` both use `modernc.org/sqlite` — it
+      measures 0 findings, so the guard is free. `gomodguard` was migrated to `gomodguard_v2`.
+      Of the 112: ~26 are real defects with `file:line` in the doc, and the other ~53 plus the
+      complexity findings are Priority 7 itself (16 of the worst 20 are in `app/cli`;
+      `newExportCommand` is cognitive complexity **90**). **`just lint` cannot become a merge gate
+      until Priority 7 lands** or a deliberately temporary, documented complexity exclusion is
+      added. Note also `wrapcheck` is excluded for all of `internal/`, i.e. the entire backend, so
+      the error-wrapping policy is unenforced; removing that exclusion costs 190 findings, and it
+      should be sequenced after the `domain/errors` work in Priority 7.
+- [ ] **Finish the frontend package-manager consolidation.** `frontend/package-lock.json` is
+      deleted — nothing referenced it (both workflows use `oven-sh/setup-bun` and
+      `bun install --frozen-lockfile`; a repo-wide grep for `npm ci`/`npm install`/`package-lock`
+      returns nothing outside this file). It had drifted from `bun.lock` on three resolved
+      versions. **The root `package.json` and root `package-lock.json` must not simply be
+      deleted**: the root `package.json` is not a workspace root — it has no `name`, `private`,
+      `version` or `workspaces`, only `{"devDependencies": {"@axe-core/playwright": "…"}}` — and
+      that lockfile is the only pin for `@axe-core/playwright`, which `e2e/smoke.spec.ts` imports
+      and which is absent from `frontend/bun.lock`. The clean fix is a small restructure: move
+      `@axe-core/playwright` into `frontend/package.json` devDependencies, relocate
+      `playwright.config.ts` and `e2e/` under `frontend/`, switch `just fe-e2e` from
+      `npx playwright test` to `bunx playwright test`, then delete both root files. Pairs with the
+      "adopt the E2E suite or delete it" item in Priority 8.
+- [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
+      **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
+      `GO-2026-5970`, reachable via `reporting.renderTypstSource`) and `backend/go.mod` gained
+      `toolchain go1.26.6`, which clears the seven reachable standard-library advisories
+      (`GO-2026-6218` net/url, `GO-2026-6091` html/template, `GO-2026-6090` crypto/tls,
+      `GO-2026-6089` net/http, `GO-2026-6088` encoding/xml, `GO-2026-5972` encoding/asn1,
+      `GO-2026-5026` net/http). Before the toolchain line there was none at all, so `setup-go`
+      with `go-version-file` would have built CI against a 1.25.x standard library — older, and
+      more exposed, than any developer's local toolchain. Since stdlib advisories land on their
+      own schedule, this job will go red on its own; decide whether that blocks merges or opens an
+      issue.
+- [ ] **`just check-formatted` mutates the working tree.** It runs `treefmt --fail-on-change`,
+      which formats in place _and then_ reports. So the CI "check" step rewrites files, and
+      running it locally silently reformats unrelated work. Make it operate on a copy, or use a
+      genuinely read-only check.
+- [ ] **`treefmt` cannot be installed with `go install`.** Every version fails: the module zip
+      contains a test fixture whose path has an emoji, which is not a valid module file path, and
+      `proxy.golang.org` 404s for all `treefmt/v2` `.info`/`.zip` requests. The workflow now uses
+      the release tarball. The old `go install` step was therefore already broken on a clean
+      runner, independently of the module blocker.
+- [ ] **CI installed only the Go formatters.** `treefmt --allow-missing-formatter` skips silently,
+      so markdown, YAML, JSON and TypeScript were never format-checked in CI even when the step
+      passed. `shfmt` and `prettier` are now installed too. Watch for a backlog surfacing.
+- [ ] **Reconcile the three-way `golangci-lint` skew.** CI and the local toolbox are now both
+      pinned to 2.12.2; `.trunk/trunk.yaml` still pins 2.11.4. Related to the "resolve the two
+      competing lint stacks" item in Priority 9.
+- [ ] **Switch `just fe-e2e` and `playwright.config.ts` from `npx` to `bunx`.** `just fe-e2e` runs
+      `npx playwright test` while everything else uses Bun, and `@playwright/test` is not declared
+      anywhere — so it relies on an on-the-fly npm download. `playwright.config.ts:30` starts the
+      dev server with `cd frontend && npx vite` for the same reason.
 
 ## Priority 1 — Fix known numeric defects
 
@@ -521,7 +577,20 @@ currently open.
       (nesting depth only — XXE and billion-laughs are already safe under Go's `xml.Decoder`),
       `store.go:365-377`, `gridmap.go:87` / `railops.go:155`.
 - [ ] Stop neutering gosec: `.golangci.yml` exclusion presets suppress G304 (47 hits) and G301
-      (44 hits); the 17 G115 integer-overflow hits concentrate in `geotiff.go`.
+      (44 hits, all `MkdirAll(0o755)`). Decide each explicitly rather than suppressing silently —
+      G304 is arguably the product (the tool opens paths the user names), G301 is a real choice.
+      **Correction (27 August 2026):** the earlier claim that "17 G115 integer-overflow hits
+      concentrate in `geotiff.go`" is wrong. `geo/terrain/geotiff.go` carries 13 explicit,
+      individually justified `//nolint:gosec` directives, all confirmed still live by
+      `nolintlint`; that is correct handling, not suppression. A gosec-only run over the whole
+      tree surfaces no unhandled G115. See `docs/lint-triage.md`.
+      The 8 kept gosec findings do include two worth judgement: **G702** at
+      `api/httpv1/handler.go:456` (the HTTP handler shells out to `aconiq` with request-controlled
+      argv — no shell involved, so not classic injection, but a real exposure surface that the
+      Priority 7 "move the run pipeline out of `app/cli`" item would remove outright) and **G120**
+      at `:743` (`ParseMultipartForm` bounds memory only, the body is unbounded — same defect as
+      the "no request size limits" item above). **G202** at `report/export/gpkg.go:207` is a
+      false positive: `sanitizeColumnName` is a strict `[a-z0-9_]` allow-list.
 - [ ] Add a CI guard that hard-fails on any tracked `interoperability/` path, and write the
       data-handling policy that currently does not exist. 4.1 GB of third-party project data is
       protected by a single `.gitignore` line. _(Verified: nothing proprietary has ever been

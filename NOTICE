@@ -1,4 +1,4 @@
-Aconiq — Environmental Noise Modeling System
+Aconiq                                  — Environmental Noise Modeling System
 Copyright (c) 2026 Aconiq Contributors
 
 This product is licensed under the MIT License. See LICENSE for the full text.
@@ -9,53 +9,48 @@ This product includes third-party software with the following licenses:
 MIT License
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/Dadido3/go-typst          — MIT
-github.com/cwbudde/go-citygml        — MIT
-github.com/cwbudde/go-overpass       — MIT
-github.com/dustin/go-humanize        — MIT
-github.com/gogama/flatgeobuf         — MIT
-github.com/smasher164/xid            — MIT
-github.com/wroge/wgs84               — MIT
-modernc.org/libc                     — MIT
+github.com/Dadido3/go-typst             — MIT
+github.com/cwbudde/go-absolute-database — MIT
+github.com/cwbudde/go-citygml           — MIT
+github.com/cwbudde/go-overpass          — MIT
+github.com/dustin/go-humanize           — MIT
+github.com/gogama/flatgeobuf            — MIT
+github.com/smasher164/xid               — MIT
+github.com/wroge/wgs84                  — MIT
+modernc.org/libc                        — MIT
 
 ────────────────────────────────────────────────────────────────────────────────
 Apache-2.0
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/google/flatbuffers        — Apache-2.0
-github.com/spf13/cobra               — Apache-2.0
+github.com/google/flatbuffers           — Apache-2.0
+github.com/spf13/cobra                  — Apache-2.0
 
 ────────────────────────────────────────────────────────────────────────────────
 BSD-3-Clause / BSD-2-Clause
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/google/uuid               — BSD-3-Clause
-github.com/remyoudompheng/bigfft     — BSD-3-Clause
-github.com/spf13/pflag               — BSD-3-Clause
-golang.org/x/exp                     — BSD-3-Clause
-golang.org/x/sys                     — BSD-3-Clause
-golang.org/x/text                    — BSD-3-Clause
-modernc.org/mathutil                 — BSD-3-Clause
-modernc.org/memory                   — BSD-3-Clause
-modernc.org/sqlite                   — BSD-3-Clause
+github.com/google/uuid                  — BSD-3-Clause
+github.com/remyoudompheng/bigfft        — BSD-3-Clause
+github.com/spf13/pflag                  — BSD-3-Clause
+golang.org/x/exp                        — BSD-3-Clause
+golang.org/x/sys                        — BSD-3-Clause
+golang.org/x/text                       — BSD-3-Clause
+modernc.org/mathutil                    — BSD-3-Clause
+modernc.org/memory                      — BSD-3-Clause
+modernc.org/sqlite                      — BSD-3-Clause
 
 ────────────────────────────────────────────────────────────────────────────────
 ISC
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/davecgh/go-spew           — ISC
+github.com/davecgh/go-spew              — ISC
 
 ────────────────────────────────────────────────────────────────────────────────
 Test-only dependencies (not included in release binaries)
 ────────────────────────────────────────────────────────────────────────────────
 
-github.com/google/go-cmp             — BSD-3-Clause
-github.com/pmezard/go-difflib        — BSD-3-Clause
-github.com/stretchr/testify          — MIT
-gopkg.in/yaml.v3                     — MIT + Apache-2.0
-
-────────────────────────────────────────────────────────────────────────────────
-Internal dependencies (MeKo-Tech)
-────────────────────────────────────────────────────────────────────────────────
-
-github.com/cwbudde/go-absolute-database — MIT (local replace)
+github.com/google/go-cmp                — BSD-3-Clause
+github.com/pmezard/go-difflib           — BSD-3-Clause
+github.com/stretchr/testify             — MIT
+gopkg.in/yaml.v3                        — MIT + Apache-2.0
