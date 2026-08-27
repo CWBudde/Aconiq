@@ -166,6 +166,26 @@ commit messages; the consequences each one exposed are open items below.
       methods must stay `async` so a synchronous `throw` reaches callers as a rejected promise.
       `scripts/check-bundle-size.mjs` had never been linted at all — it sits outside every
       tsconfig, so the project service failed to parse it.
+- [x] **Frontend package-manager consolidation finished.** The repo had a second, npm-managed
+      island at the root — `package.json`/`package-lock.json` pinning `@axe-core/playwright`, an
+      untracked `node_modules/`, `playwright.config.ts` starting the dev server with
+      `cd frontend && npx vite`, and `just fe-e2e` running `npx playwright test` — while every
+      workflow and every `fe-*` recipe uses Bun. `just fe-e2e` worked on one machine only because
+      that root `node_modules/` happened to exist and `npx` fell back to an unpinned npm download.
+      `@axe-core/playwright` moved into `frontend/package.json`, `playwright.config.ts` and `e2e/`
+      moved under `frontend/`, `fe-e2e` became `cd frontend && bun run test:e2e`, and both root
+      files are gone. Two claims in the item as written were already stale: `@playwright/test`
+      **was** declared in `frontend/package.json` and pinned in `bun.lock`, and a
+      `"test:e2e": "playwright test"` script already existed — `@axe-core/playwright` was the sole
+      genuinely root-only dependency.
+      Moving the suite under `frontend/` put it inside `eslint .`'s reach for the first time, so
+      rather than adding an ignore, a `tsconfig.e2e.json` now covers `e2e/` and
+      `playwright.config.ts`: the suite is type-checked and type-aware-linted, where previously it
+      was checked by **nothing** (no tsconfig included it, and no eslint config exists at the
+      root). That immediately caught one real `exactOptionalPropertyTypes` violation —
+      `workers: process.env.CI ? 1 : undefined` is now a conditional spread. The move also pulled
+      `e2e/*.spec.ts` into vitest's default include, so `vitest.config.ts` now pins
+      `include: ["src/**/*.{test,spec}.{ts,tsx}"]`; the unit-test count is unchanged at 112.
 
 ### Open
 
@@ -213,19 +233,6 @@ commit messages; the consequences each one exposed are open items below.
       that exclusion costs 190 findings and should be sequenced after the `domain/errors` work in
       Priority 7. Separately, 430 of the original 542 findings were removed by switching linters
       off rather than by fixing code. Per-linter reasons in `docs/lint-triage.md`.
-- [ ] **Finish the frontend package-manager consolidation.** `frontend/package-lock.json` is
-      deleted — nothing referenced it (both workflows use `oven-sh/setup-bun` and
-      `bun install --frozen-lockfile`; a repo-wide grep for `npm ci`/`npm install`/`package-lock`
-      returns nothing outside this file). It had drifted from `bun.lock` on three resolved
-      versions. **The root `package.json` and root `package-lock.json` must not simply be
-      deleted**: the root `package.json` is not a workspace root — it has no `name`, `private`,
-      `version` or `workspaces`, only `{"devDependencies": {"@axe-core/playwright": "…"}}` — and
-      that lockfile is the only pin for `@axe-core/playwright`, which `e2e/smoke.spec.ts` imports
-      and which is absent from `frontend/bun.lock`. The clean fix is a small restructure: move
-      `@axe-core/playwright` into `frontend/package.json` devDependencies, relocate
-      `playwright.config.ts` and `e2e/` under `frontend/`, switch `just fe-e2e` from
-      `npx playwright test` to `bunx playwright test`, then delete both root files. Pairs with the
-      "adopt the E2E suite or delete it" item in Priority 8.
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
       `GO-2026-5970`, reachable via `reporting.renderTypstSource`) and `backend/go.mod` gained
@@ -252,10 +259,6 @@ commit messages; the consequences each one exposed are open items below.
 - [ ] **Reconcile the three-way `golangci-lint` skew.** CI and the local toolbox are now both
       pinned to 2.12.2; `.trunk/trunk.yaml` still pins 2.11.4. Related to the "resolve the two
       competing lint stacks" item in Priority 9.
-- [ ] **Switch `just fe-e2e` and `playwright.config.ts` from `npx` to `bunx`.** `just fe-e2e` runs
-      `npx playwright test` while everything else uses Bun, and `@playwright/test` is not declared
-      anywhere — so it relies on an on-the-fly npm download. `playwright.config.ts:30` starts the
-      dev server with `cd frontend && npx vite` for the same reason.
 
 ## Priority 1 — Fix known numeric defects
 
@@ -796,9 +799,17 @@ them left a decision behind:
       `FeatureEditor`/`FeaturePopup`.
 - [ ] Fix `feature-editor.tsx:26-36`, which calls `m.option_source()` at module scope, freezing
       labels at import time. `draw-toolbar.tsx:23` shows the correct pattern.
-- [ ] Adopt the E2E suite or delete it: `e2e/smoke.spec.ts` + `playwright.config.ts` + `just fe-e2e`
-      exist, no workflow runs them, and root `package.json` declares `@axe-core/playwright` but not
-      `@playwright/test`.
+- [ ] **Adopt the E2E suite or delete it — all 6 specs fail.** The tooling half is fixed (see
+      Priority 0): `frontend/e2e/smoke.spec.ts` + `frontend/playwright.config.ts` are Bun-native,
+      type-checked and linted, and `just fe-e2e` starts Vite and drives Chromium correctly. The
+      assertions have bit-rotted, because no workflow has ever run them. Two causes: `vite.config.ts:8`
+      sets `base: "/Aconiq/"` and `routes.tsx:32` passes `basename: import.meta.env.BASE_URL`, but the
+      config's `baseURL` is `http://localhost:5173` and every spec navigates to a bare `/map` or
+      `/import`; and `routes.tsx:20` redirects the index route to `/welcome`, not `/map`, so
+      `expect(page).toHaveURL(/\/map/)` receives `/Aconiq/welcome`. Both axe checks fail as a
+      consequence rather than on their own merits — they never reach a rendered page, so the
+      accessibility baseline is still entirely unmeasured. Decide whether to fix the specs and add a
+      CI job, or delete the suite and its two dependencies.
 - [ ] Add `backend/**` to `frontend-ci.yml`'s path filter (a WASM API change never triggers
       frontend CI) and gate `gh-pages.yml` on both CI workflows — it currently deploys to
       production Pages on every push to `main` with no test gate.

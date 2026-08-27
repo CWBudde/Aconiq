@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 /**
  * Smoke E2E test: verifies the app shell loads and the primary navigation works.
- * Run with: npx playwright test
+ * Run with: just fe-e2e
  */
 
 test.describe("App shell", () => {

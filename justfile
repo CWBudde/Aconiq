@@ -152,7 +152,7 @@ fe-bundle-check:
 
 # Run E2E tests with Playwright (starts Vite dev server automatically)
 fe-e2e:
-    npx playwright test
+    cd frontend && bun run test:e2e
 
 # Run all frontend checks (typecheck, lint, test, build, bundle-check)
 fe-ci: fe-typecheck fe-lint fe-test fe-build fe-bundle-check
