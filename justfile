@@ -20,6 +20,10 @@ lint:
 lint-fix:
     cd backend && golangci-lint run --fix --timeout=2m ./...
 
+# Run go vet (compiler-adjacent checks not covered by golangci-lint)
+vet:
+    cd backend && go vet ./...
+
 # Ensure go.mod is tidy
 check-tidy:
     cd backend && go mod tidy
@@ -55,6 +59,10 @@ wasm-build:
 fe-build-wasm: wasm-build
     cd frontend && VITE_WASM_MODE=true bun run build
 
+# Scan dependencies and the Go standard library for known vulnerabilities (CVEs)
+govulncheck:
+    cd backend && govulncheck ./...
+
 # Check dependency licenses for policy violations (restricted, forbidden, unknown)
 license-check:
     cd backend && go-licenses check ./... \
@@ -69,8 +77,26 @@ license-report:
       --ignore modernc.org/mathutil \
       2>/dev/null
 
-# Run all checks (formatting, linting, tests, tidiness)
-ci: check-formatted test lint check-tidy license-check fe-ci
+# This recipe is the single source of truth for .github/workflows/go-ci.yml:
+# every gate in that workflow invokes one of the recipes listed below. The
+# workflow splits them over three parallel jobs (go-ci / go-race / govulncheck)
+# to keep wall-clock time down; running them in sequence here is the local
+# equivalent.
+#
+# The workflow additionally does two things that have no local counterpart and
+# are therefore deliberately absent from this recipe:
+#   - `just license-report` + artifact upload (a report, not a gate)
+#   - `bin/aconiq openapi` + artifact upload (publishes the spec for consumers)
+
+# Run the full Go CI gate (mirrors .github/workflows/go-ci.yml)
+go-ci: check-formatted vet lint test test-race check-tidy govulncheck license-check build
+
+# Note: `fe-bundle-check` (pulled in via fe-ci) is not run by
+# .github/workflows/frontend-ci.yml, so this recipe is a superset of the
+# frontend gate.
+
+# Run all checks (Go + frontend)
+ci: go-ci fe-ci
 
 # Start dev environment: backend API server + frontend Vite dev server in parallel.
 # Requires a project at the repo root (run `bin/aconiq init .` first if needed).

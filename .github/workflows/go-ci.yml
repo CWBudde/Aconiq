@@ -5,6 +5,33 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
+# Every gate below is invoked through a `just` recipe so that the justfile stays
+# the single source of truth: `just go-ci` runs exactly the same set of checks
+# locally. The recipes are split over three jobs that run in parallel, because
+# `test-race` and `govulncheck` are slow and independent of the rest.
+#
+# The only steps that are not `just` recipes are the two artifact-producing ones
+# (license report, OpenAPI spec). They publish CI artifacts rather than gate the
+# build, so they have no local equivalent — see the comment on the `go-ci`
+# recipe in the justfile.
+#
+# Tool versions are pinned exactly (same house style as .trunk/trunk.yaml) and
+# match the versions used for local development, so CI and `just go-ci` agree on
+# what "passing" means. Bump them deliberately, together with the local toolbox.
+env:
+  JUST_VERSION: 1.42.4
+  GOLANGCI_LINT_VERSION: v2.12.2
+  GOFUMPT_VERSION: v0.10.0
+  GCI_VERSION: v0.14.0
+  SHFMT_VERSION: v3.12.0
+  TREEFMT_VERSION: 2.5.0
+  PRETTIER_VERSION: 3.8.0
+  GO_LICENSES_VERSION: v1.6.0
+  GOVULNCHECK_VERSION: v1.7.0
+
 jobs:
   go-ci:
     runs-on: ubuntu-latest
@@ -18,31 +45,44 @@ jobs:
           go-version-file: backend/go.mod
 
       - name: Install just
-        uses: extractions/setup-just@v2
-
-      # golangci-lint-action@v7 installs golangci-lint v2, matching the v2
-      # .golangci.yml config. v6 pins the v1 line (v1.64.8, built with go1.24),
-      # which refuses go.mod's `go 1.25.0` target with a config-load error.
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: extractions/setup-just@v4.0.0
         with:
-          version: latest
-          working-directory: backend
-          args: --timeout=2m
-          skip-cache: false
+          just-version: ${{ env.JUST_VERSION }}
+
+      # golangci-lint-action >= v8 installs the golangci-lint v2 line, which is
+      # what the v2 .golangci.yml config requires. `install-only` makes the
+      # action a pure installer so the lint invocation itself stays in the
+      # justfile (`just lint`) instead of being duplicated in `args:`.
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
 
       - name: Install formatters
         run: |
-          go install mvdan.cc/gofumpt@latest
-          go install github.com/daixiang0/gci@latest
-          go install github.com/numtide/treefmt/v2@latest
+          set -euo pipefail
+          go install "mvdan.cc/gofumpt@${GOFUMPT_VERSION}"
+          go install "github.com/daixiang0/gci@${GCI_VERSION}"
+          go install "mvdan.cc/sh/v3/cmd/shfmt@${SHFMT_VERSION}"
+          npm install --global "prettier@${PRETTIER_VERSION}"
+          # treefmt cannot be installed with `go install`: the module zip is
+          # rejected by the Go toolchain because a test fixture path contains an
+          # emoji, which is not a valid module file path. Use the release
+          # tarball instead.
+          mkdir -p "${HOME}/.local/bin"
+          curl -sSfL "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C "${HOME}/.local/bin" treefmt
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
       - name: Check formatting
         run: just check-formatted
 
       - name: Go vet
-        working-directory: backend
-        run: go vet ./...
+        run: just vet
+
+      - name: Lint
+        run: just lint
 
       - name: Go tests
         run: just test
@@ -51,7 +91,7 @@ jobs:
         run: just check-tidy
 
       - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
+        run: go install "github.com/google/go-licenses@${GO_LICENSES_VERSION}"
 
       - name: Check dependency licenses
         run: just license-check
@@ -80,3 +120,49 @@ jobs:
           name: openapi-spec
           path: docs/api/openapi.v1.json
           retention-days: 30
+
+  # Race detector runs in its own job: a `-race` build is several times slower
+  # than a plain `go test`, so running it alongside the main job rather than
+  # inside it keeps total wall-clock time roughly unchanged.
+  go-race:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Go tests (race detector)
+        run: just test-race
+
+  # CVE scanning. Separate job for the same reason as go-race: independent of
+  # every other gate, so there is no reason to serialise it behind them.
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Install govulncheck
+        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Scan for known vulnerabilities
+        run: just govulncheck
