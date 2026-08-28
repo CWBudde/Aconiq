@@ -346,5 +346,21 @@
   "tool_draw_calc_area": "Berechnungsgebiet setzen",
   "label_calc_area": "Berechnungsgebiet",
   "action_clear_calc_area": "Berechnungsgebiet löschen",
-  "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung."
+  "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung.",
+  "label_evidence_tier": "Evidenzstufe",
+  "evidence_tier_normative": "Normativ",
+  "evidence_tier_normative_desc": "Normativ: beruht auf der veröffentlichten Struktur, den Koeffizienten und Tabellen der Norm.",
+  "evidence_tier_preview": "Vorschau",
+  "evidence_tier_preview_desc": "Vorschau: die Logik ist plausibel, verarbeitet aber Eingangspegel in Vorschauqualität. Ergebnisse vor der Verwendung prüfen.",
+  "evidence_tier_scaffold": "Gerüst",
+  "evidence_tier_scaffold_desc": "Gerüst: keine normativen Koeffizienten, erfundene Grundpegel. Nicht für Beurteilungen verwendbar.",
+  "evidence_tier_test_fixture": "Testvorlage",
+  "evidence_tier_test_fixture_desc": "Testvorlage: ein bewusst nicht normativer Platzhalter für Tests.",
+  "evidence_tier_unknown": "Unbekannte Stufe",
+  "evidence_tier_unknown_desc": "Diese Version kennt die für diese Norm gemeldete Evidenzstufe nicht.",
+  "msg_evidence_tier_scaffold_warning": "Dieses Modul ist ein Gerüst: Es enthält keine normativen Koeffizienten, seine Grundpegel sind erfunden. Die Ausgabe ist nicht für Beurteilungen verwendbar.",
+  "label_experimental_opt_in": "Verstanden — dieses Gerüst-Modul trotzdem berechnen",
+  "msg_experimental_opt_in_help": "Die Pegel dieser Berechnung sind keine Umsetzung der genannten Norm und dürfen nicht für Beurteilungen verwendet werden.",
+  "tooltip_experimental_opt_in_required": "Bestätigen Sie den Gerüst-Hinweis, bevor Sie die Berechnung starten.",
+  "msg_experimental_opt_in_required_error": "Die Berechnung wurde abgelehnt: Diese Norm erfordert eine ausdrückliche Bestätigung, bevor sie Pegel ausgeben darf."
 }

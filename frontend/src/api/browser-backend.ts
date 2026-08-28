@@ -64,6 +64,13 @@ export type BrowserRunSpec = {
   profile: string;
   params: Record<string, string>;
   receiverMode: "auto-grid" | "custom";
+  /**
+   * The caller acknowledges that the selected standard is scaffold tier. It is
+   * derived from the tier of the standard being run, never carried over from a
+   * previous choice, and reaches the API as `experimental`. Browser mode runs
+   * only `rls19-road`, which is normative, so it is never set there.
+   */
+  experimental?: boolean;
 };
 
 type OverpassPoint = {
@@ -89,6 +96,9 @@ const BROWSER_STANDARDS: StandardDescriptor[] = [
     id: "rls19-road",
     description:
       "RLS-19 road noise computed locally in the browser via WebAssembly.",
+    // The browser kernel is the same Go module compiled to WASM, so it sits at
+    // the same evidence tier the API registry reports for it.
+    evidence_tier: "normative",
     default_version: "2019",
     versions: [
       {

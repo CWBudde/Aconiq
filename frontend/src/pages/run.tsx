@@ -41,6 +41,15 @@ import type {
   ProfileInfo,
   RunSummary,
 } from "@/api/client";
+import {
+  EvidenceTierBadge,
+  EvidenceTierWarning,
+} from "@/ui/evidence-tier-badge";
+import {
+  asAPIRequestError,
+  ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
+} from "@/api/api-error";
+import { isScaffoldTier } from "@/api/evidence-tier";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -747,6 +756,45 @@ function ParameterField({
 }
 
 // ---------------------------------------------------------------------------
+// Run creation failure
+// ---------------------------------------------------------------------------
+
+/**
+ * The API refuses a run against a scaffold-tier standard that the request did
+ * not acknowledge. The UI gates that ahead of the request, so reaching this
+ * means the two disagree — a tier that changed server-side, or a standards
+ * list this dialog cached before it did. The server's own words are shown
+ * rather than a generic failure, because they name the standard and the tier.
+ */
+function RunCreateError({ error }: { error: Error }) {
+  const apiError = asAPIRequestError(error);
+  const optInRequired =
+    apiError?.code === ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED;
+
+  return (
+    <div
+      role="alert"
+      data-testid="run-create-error"
+      data-error-code={apiError?.code}
+      className="flex items-start gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive"
+    >
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <div className="space-y-1">
+        {optInRequired ? (
+          <p className="font-medium">
+            {m.msg_experimental_opt_in_required_error()}
+          </p>
+        ) : null}
+        <span>{error.message}</span>
+        {apiError?.hint !== undefined ? (
+          <p className="text-xs">{apiError.hint}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Run setup dialog
 // ---------------------------------------------------------------------------
 
@@ -800,6 +848,28 @@ function RunSetupDialog({
     [selectedVersion, effectiveProfile],
   );
 
+  // A scaffold module carries no normative coefficients, so the API refuses to
+  // run one until the request says so. The tier of the standard actually
+  // selected decides that — never the checkbox, which only records that the
+  // user was told.
+  const requiresExperimentalOptIn = isScaffoldTier(
+    selectedStandard?.evidence_tier,
+  );
+
+  // The acknowledgement is stored as the standard it was given for, not as a
+  // flag: it is an acknowledgement of one choice, not a preference. Changing
+  // the standard clears it outright, so switching away and back asks again,
+  // and the identity check keeps a stale tick from surviving a standards list
+  // that reloads under it.
+  const [acknowledgedStandardId, setAcknowledgedStandardId] = useState<
+    string | null
+  >(null);
+  const experimentalAcknowledged =
+    acknowledgedStandardId !== null &&
+    acknowledgedStandardId === effectiveStandardId;
+  const experimentalOptInMissing =
+    requiresExperimentalOptIn && !experimentalAcknowledged;
+
   const profileKey = `${effectiveStandardId}/${effectiveVersion}/${effectiveProfile}`;
   const [lastProfileKey, setLastProfileKey] = useState<string>("");
 
@@ -814,6 +884,7 @@ function RunSetupDialog({
     setProfile("");
     setParams({});
     setLastProfileKey("");
+    setAcknowledgedStandardId(null);
   }
 
   function handleVersionChange(v: string) {
@@ -830,6 +901,8 @@ function RunSetupDialog({
   }
 
   function handleSubmit() {
+    if (experimentalOptInMissing) return;
+
     createRun.mutate(
       {
         standardId: effectiveStandardId,
@@ -837,6 +910,9 @@ function RunSetupDialog({
         profile: effectiveProfile,
         params,
         receiverMode,
+        // Derived from the tier of the standard being run, so a normative one
+        // can never inherit an opt-in from an earlier selection.
+        ...(requiresExperimentalOptIn ? { experimental: true } : {}),
       },
       {
         onSuccess: (run) => {
@@ -848,6 +924,8 @@ function RunSetupDialog({
   }
 
   function handleClose() {
+    // A reopened dialog is a fresh decision, not a resumed one.
+    setAcknowledgedStandardId(null);
     onClose();
   }
 
@@ -874,10 +952,7 @@ function RunSetupDialog({
             <span>{m.msg_api_error_standards()}</span>
           </div>
         ) : createRun.isError ? (
-          <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{createRun.error.message}</span>
-          </div>
+          <RunCreateError error={createRun.error} />
         ) : (
           <div className="space-y-6">
             {/* Standard / Version / Profile */}
@@ -900,7 +975,10 @@ function RunSetupDialog({
                     <SelectContent>
                       {standards?.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {getStandardLabel(s.id)}
+                          <span className="flex items-center gap-2">
+                            <span>{getStandardLabel(s.id)}</span>
+                            <EvidenceTierBadge tier={s.evidence_tier} />
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -953,12 +1031,20 @@ function RunSetupDialog({
               </div>
 
               {selectedStandard ? (
-                <p className="text-xs text-muted-foreground">
-                  {getStandardDescription(
-                    selectedStandard.id,
-                    selectedStandard.description,
-                  )}
-                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">
+                      {getStandardLabel(selectedStandard.id)}
+                    </span>
+                    <EvidenceTierBadge tier={selectedStandard.evidence_tier} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {getStandardDescription(
+                      selectedStandard.id,
+                      selectedStandard.description,
+                    )}
+                  </p>
+                </div>
               ) : null}
 
               {selectedProfile ? (
@@ -1079,6 +1165,41 @@ function RunSetupDialog({
                 <span>{m.msg_determinism_hint_dialog()}</span>
               </div>
             ) : null}
+
+            {/* Sits immediately above the run action: a scaffold module has no
+                normative coefficients, so nothing it produces may be read as
+                an assessment result. */}
+            <EvidenceTierWarning tier={selectedStandard?.evidence_tier} />
+
+            {/* The deliberate acknowledgement the API demands before a
+                scaffold-tier standard may emit levels. It sits with the
+                warning it acknowledges, and gates the run action. */}
+            {requiresExperimentalOptIn ? (
+              <div className="flex items-start gap-2.5 rounded-md border border-amber-400 bg-amber-50/60 p-3 dark:border-amber-600 dark:bg-amber-950/60">
+                <input
+                  id="experimental-opt-in"
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
+                  checked={experimentalAcknowledged}
+                  onChange={(e) => {
+                    setAcknowledgedStandardId(
+                      e.target.checked ? effectiveStandardId : null,
+                    );
+                  }}
+                />
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="experimental-opt-in"
+                    className="text-xs font-medium text-amber-900 dark:text-amber-100"
+                  >
+                    {m.label_experimental_opt_in()}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {m.msg_experimental_opt_in_help()}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1089,9 +1210,15 @@ function RunSetupDialog({
             </Button>
             <Button
               onClick={handleSubmit}
+              title={
+                experimentalOptInMissing
+                  ? m.tooltip_experimental_opt_in_required()
+                  : undefined
+              }
               disabled={
                 !selectedProfile ||
                 createRun.isPending ||
+                experimentalOptInMissing ||
                 (IS_WASM_MODE &&
                   receiverMode === "custom" &&
                   receiverCount === 0)

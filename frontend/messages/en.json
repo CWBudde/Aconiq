@@ -346,5 +346,21 @@
   "tool_draw_calc_area": "Set Calculation Area",
   "label_calc_area": "Calculation Area",
   "action_clear_calc_area": "Clear Calculation Area",
-  "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent."
+  "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent.",
+  "label_evidence_tier": "Evidence tier",
+  "evidence_tier_normative": "Normative",
+  "evidence_tier_normative_desc": "Normative: built on the published structure, coefficients and tables of the standard.",
+  "evidence_tier_preview": "Preview",
+  "evidence_tier_preview_desc": "Preview: the logic is sound, but it consumes preview-grade input levels. Check results before relying on them.",
+  "evidence_tier_scaffold": "Scaffold",
+  "evidence_tier_scaffold_desc": "Scaffold: no normative coefficients and invented base levels. Not usable for assessment.",
+  "evidence_tier_test_fixture": "Test fixture",
+  "evidence_tier_test_fixture_desc": "Test fixture: an intentional, explicitly non-normative placeholder used for testing.",
+  "evidence_tier_unknown": "Unknown tier",
+  "evidence_tier_unknown_desc": "This build does not recognise the evidence tier reported for this standard.",
+  "msg_evidence_tier_scaffold_warning": "This module is a scaffold: it carries no normative coefficients and its base levels are invented. Its output is not usable for assessment.",
+  "label_experimental_opt_in": "I understand — run this scaffold standard anyway",
+  "msg_experimental_opt_in_help": "The levels this run produces are not an implementation of the standard it names and must not be used for assessment.",
+  "tooltip_experimental_opt_in_required": "Acknowledge the scaffold warning before starting this run.",
+  "msg_experimental_opt_in_required_error": "The run was refused: this standard needs an explicit acknowledgement before it may emit levels."
 }

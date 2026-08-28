@@ -67,6 +67,16 @@ export interface CreateRunRequest {
   receiver_mode?: "auto-grid" | "custom";
   params?: Record<string, string>;
   input_paths?: string[];
+  /**
+   * Acknowledges that the selected standard is scaffold tier: it carries no
+   * normative coefficients, its base levels are invented and it has no octave
+   * bands. The API refuses a run against such a standard without it, with
+   * error code `experimental_opt_in_required`.
+   *
+   * Omitted rather than sent as `false`, matching the Go struct's
+   * `json:"experimental,omitempty"`.
+   */
+  experimental?: boolean;
 }
 
 export interface RunLog {
@@ -103,6 +113,14 @@ export interface StandardDescriptor {
   description: string;
   default_version: string;
   versions: VersionInfo[];
+  /**
+   * How much a module's output can be trusted: `normative`, `preview`,
+   * `scaffold` or `test-fixture`. Optional and deliberately typed as a plain
+   * string — older backends omit the field, and newer ones may report a tier
+   * this build does not know yet. Narrow it with `parseEvidenceTier` rather
+   * than comparing raw strings.
+   */
+  evidence_tier?: string;
 }
 
 export interface ReceiverRecord {
