@@ -198,6 +198,28 @@ fe-e2e:
 # Run all frontend checks (typecheck, lint, test, build, bundle-check)
 fe-ci: fe-typecheck fe-lint fe-test fe-build fe-bundle-check
 
+# --- Release ---
+
+# Releases are driven by .github/workflows/release.yml on a `v*` tag; the two
+# recipes below are the local dry runs for the config that workflow uses. The
+# process itself — SemVer rules, tagging, the pre-tag checklist — lives in
+# docs/policies/releases.md.
+#
+# Both need goreleaser >= v2.6 locally. An older binary rejects the config as
+# having unknown fields rather than as being too new for it; the workflow pins
+# the version it uses in GORELEASER_VERSION.
+
+# Validate .goreleaser.yaml without building anything
+release-check:
+    goreleaser check
+
+# Outputs to bin/dist/ (see the `dist` key in .goreleaser.yaml); --snapshot
+# already implies --skip=publish, so nothing leaves the machine.
+
+# Build the release artifacts locally, without tagging or publishing
+release-snapshot:
+    goreleaser release --snapshot --clean
+
 # --- General ---
 
 # Clean build artifacts

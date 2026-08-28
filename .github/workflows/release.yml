@@ -1,0 +1,114 @@
+name: Release
+
+# Tags are the release trigger and the only one: pushing `vX.Y.Z` builds,
+# checksums and publishes the CLI binaries. Nothing else in this repository
+# publishes an artifact a third party can download.
+#
+# A tag push does not match Go CI's `branches: ["**"]` trigger, so the commit
+# being released is not re-gated by it. The `verify` job below is that gate,
+# and it is deliberately not a copy of Go CI: it runs the two things that only
+# matter at release time — the full test suite, and the golden-snapshot check
+# that is the sole mechanism distinguishing a refactor from a silent
+# recalibration of the computed dB values. See docs/policies/releases.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# Tool versions are pinned exactly, same house style as go-ci.yml and
+# .trunk/trunk.yaml. Bump them deliberately.
+env:
+  JUST_VERSION: 1.42.4
+  GORELEASER_VERSION: v2.18.0
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history and tags: `just build` stamps the version into the binary
+      # with `git describe --tags`, and the stamp is what this job checks.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Go tests
+        run: just test
+
+      # The release-tag golden gate. `just update-golden` re-runs the suite with
+      # UPDATE_GOLDEN=1, so any snapshot that no longer matches is rewritten
+      # rather than failing; the working tree is then the report. A dirty tree
+      # here means a computed value moved, which under the versioning policy is
+      # either an intended change that must already carry a `numeric` changelog
+      # entry and the matching version bump, or a regression. Either way the tag
+      # does not ship until a human has ruled on it.
+      - name: Golden-snapshot gate
+        run: |
+          set -euo pipefail
+          just update-golden
+          if ! git diff --exit-code; then
+            echo "::error::Golden snapshots changed at release time. A computed value moved since these snapshots were last accepted. Resolve it before tagging — see docs/policies/releases.md."
+            exit 1
+          fi
+
+      - name: Build CLI
+        run: just build
+
+      # The stamp is the point of tagging at all: it is what `aconiq --version`
+      # prints and what lands in the `tool_version` field of every
+      # provenance.json. Release a binary that does not carry it and every
+      # artifact it produces is untraceable again.
+      - name: Verify version stamp matches the tag
+        run: |
+          set -euo pipefail
+          stamped="$(bin/aconiq --version)"
+          echo "${stamped}"
+          case "${stamped}" in
+            "aconiq ${GITHUB_REF_NAME} "*) ;;
+            *)
+              echo "::error::Version stamp '${stamped}' does not report tag ${GITHUB_REF_NAME}."
+              exit 1
+              ;;
+          esac
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the GitHub Release and uploading its assets.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      # All seven targets (linux/darwin/windows on amd64+arm64, plus js/wasm)
+      # cross-compile from this one runner because every build is
+      # CGO_ENABLED=0 — see the comment in .goreleaser.yaml.
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,176 @@
+# GoReleaser configuration for the Aconiq CLI.
+#
+# Driven by .github/workflows/release.yml on a `v*` tag. The release process,
+# the SemVer rules it encodes and the pre-tag checklist are documented in
+# docs/policies/releases.md — read that before changing anything here.
+#
+# Validate locally with `just release-check`; build the artifacts without
+# publishing with `just release-snapshot`.
+#
+# Requires GoReleaser >= v2.6 for the `archives[].ids` and `archives[].formats`
+# keys (both were named differently before). The release workflow pins the exact
+# version in GORELEASER_VERSION; an older local binary reports these as unknown
+# fields rather than as a version mismatch, so check yours before believing it.
+version: 2
+
+project_name: aconiq
+
+# The repository root is not the Go module root: the module lives in backend/.
+# Every build below therefore sets `dir: backend` and names its main package
+# relative to it.
+#
+# `dist` is redirected into bin/ because the repository .gitignore covers `bin/`
+# but not a top-level `dist/`, and `--clean` must not be able to touch tracked
+# files. `just clean` removes bin/ wholesale, so it cleans this too.
+dist: bin/dist
+
+before:
+  hooks:
+    # `go -C backend` rather than a `dir:` key: before-hooks are plain command
+    # strings and always run from the repository root.
+    - go -C backend mod download
+
+builds:
+  # The CLI. This is the primary artifact.
+  #
+  # CGO_ENABLED=0 on every target: the only dependency that would otherwise
+  # want a C toolchain is modernc.org/sqlite (GeoPackage import and export),
+  # which is a pure-Go translation rather than a binding. That is what lets all
+  # six targets cross-compile from one Linux runner and ship as static,
+  # dependency-free binaries — the property an offline-first tool needs.
+  - id: aconiq
+    binary: aconiq
+    dir: backend
+    main: ./cmd/aconiq
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    # These three -X targets must stay in sync with the `build` recipe in the
+    # justfile, which is the single source of truth for the local build stamp.
+    # `just build` uses `git describe --tags --dirty --always`; on a tag that is
+    # exactly the tag, so {{ .Tag }} (v-prefixed) is the matching value and
+    # `aconiq --version` reads the same either way. -s -w is the only
+    # difference: released binaries are stripped, local ones are not.
+    ldflags:
+      - -s -w
+      - -X github.com/aconiq/backend/internal/buildinfo.version={{ .Tag }}
+      - -X github.com/aconiq/backend/internal/buildinfo.commit={{ printf "%.12s" .FullCommit }}
+      - -X github.com/aconiq/backend/internal/buildinfo.date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  # The WebAssembly compute kernel the browser UI runs. Published so the WASM
+  # build of the frontend can be reproduced against a released kernel instead of
+  # a working tree. The matching wasm_exec.js is deliberately not shipped: it
+  # belongs to the Go toolchain, and the release notes name the toolchain
+  # version so a consumer can take the right one.
+  - id: aconiq-wasm
+    binary: aconiq
+    dir: backend
+    main: ./cmd/wasm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - js
+    goarch:
+      - wasm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aconiq/backend/internal/buildinfo.version={{ .Tag }}
+      - -X github.com/aconiq/backend/internal/buildinfo.commit={{ printf "%.12s" .FullCommit }}
+      - -X github.com/aconiq/backend/internal/buildinfo.date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # The licence and attribution files travel inside the archive, and so do the
+  # conformance and scope declarations: they are what tell the recipient what
+  # this binary's dB values are worth, so they must not be reachable only from
+  # the web.
+  - id: aconiq
+    ids:
+      - aconiq
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - CHANGELOG.md
+      - SECURITY.md
+      - src: docs/conformance/*.md
+        dst: docs/conformance
+
+  - id: aconiq-wasm
+    ids:
+      - aconiq-wasm
+    name_template: "{{ .ProjectName }}-kernel_{{ .Version }}_wasm"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - NOTICE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+# GoReleaser does not write the changelog. CHANGELOG.md is curated by hand — see
+# docs/policies/releases.md — and a generated list of commit subjects alongside
+# it would be a second, worse answer to the same question.
+changelog:
+  disable: true
+
+release:
+  draft: false
+  # Tags carrying a SemVer pre-release part (v0.2.0-rc.1) are marked as
+  # pre-releases; plain version tags are not.
+  prerelease: auto
+  name_template: "aconiq {{ .Tag }}"
+  header: |
+    Aconiq {{ .Tag }} — environmental noise modeling, CLI-first and offline-first.
+
+    The curated list of changes for this release is in
+    [CHANGELOG.md](https://github.com/cwbudde/Aconiq/blob/{{ .Tag }}/CHANGELOG.md).
+  footer: |
+    ## Verifying a download
+
+    ```
+    sha256sum -c checksums.txt --ignore-missing
+    ./aconiq --version
+    ```
+
+    `aconiq --version` must report `{{ .Tag }}`. That same string is written to
+    the `tool_version` field of every `provenance.json` the binary produces, so
+    it is what makes an archived result traceable back to this release.
+
+    ## What the numbers are worth
+
+    Standards modules ship at different evidence tiers, and the tier is stamped
+    into every run's provenance and report. Only `normative`-tier modules
+    (`rls19-road`, `schall03`, `iso9613`) carry real normative structure and
+    coefficients; `scaffold`-tier modules require `--experimental` and their
+    output carries no accuracy claim whatsoever. The declarations shipped in
+    `docs/conformance/` inside each archive state the boundary per module.
+
+    The `aconiq-kernel_*_wasm` archive needs the `wasm_exec.js` belonging to the
+    Go toolchain this release was built with, which is not redistributed here.
+    That toolchain is pinned in
+    [backend/go.mod](https://github.com/cwbudde/Aconiq/blob/{{ .Tag }}/backend/go.mod);
+    the release workflow builds with exactly the version named there.
