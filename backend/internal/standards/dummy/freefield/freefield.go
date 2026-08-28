@@ -80,6 +80,7 @@ func Descriptor() framework.StandardDescriptor {
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
 		Description:    "Non-normative free-field demonstrator for offline E2E verification.",
+		EvidenceTier:   framework.EvidenceTierTestFixture,
 		DefaultVersion: "v0",
 		Versions: []framework.Version{
 			{

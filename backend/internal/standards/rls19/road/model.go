@@ -403,6 +403,7 @@ func Descriptor() framework.StandardDescriptor {
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
 		Description:    "RLS-19 road noise (16. BImSchV planning track): Lr day/night with TEST-20 emission/propagation chain.",
+		EvidenceTier:   framework.EvidenceTierNormative,
 		DefaultVersion: "2019",
 		Versions: []framework.Version{
 			{

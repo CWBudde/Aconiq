@@ -109,7 +109,10 @@ func trafficFlowCorrection(vehiclesPerHour float64) float64 {
 }
 
 // roadCategoryCorrections holds the per-category, per-vehicle-class emission
-// correction terms. Values must match the CNOSSOS road baseline exactly.
+// correction terms of this scaffold module. The values are this project's own
+// preview baseline, kept stable so results stay reproducible; they are not
+// CNOSSOS-EU coefficients, and no coefficient from Directive 2015/996 Annex II
+// exists in this package. See docs/conformance/cnossos-umfangserklaerung.md.
 var roadCategoryCorrections = map[string]map[vehicleClass]float64{
 	CategoryUrbanMotorway: {
 		vehicleClassLight:              0.6,

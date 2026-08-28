@@ -1,6 +1,9 @@
 package framework
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolveVersionProfileDefaults(t *testing.T) {
 	t.Parallel()
@@ -8,6 +11,7 @@ func TestResolveVersionProfileDefaults(t *testing.T) {
 	d := StandardDescriptor{
 		Context:        StandardContextPlanning,
 		ID:             "dummy",
+		EvidenceTier:   EvidenceTierTestFixture,
 		DefaultVersion: "v1",
 		Versions: []Version{
 			{
@@ -40,6 +44,141 @@ func TestResolveVersionProfileDefaults(t *testing.T) {
 
 	if resolved.Profile != "default" {
 		t.Fatalf("expected profile default, got %s", resolved.Profile)
+	}
+
+	if resolved.EvidenceTier != EvidenceTierTestFixture {
+		t.Fatalf("expected evidence tier %q, got %q", EvidenceTierTestFixture, resolved.EvidenceTier)
+	}
+}
+
+// descriptorWithTier builds a minimal valid descriptor carrying the given tier.
+func descriptorWithTier(tier EvidenceTier) StandardDescriptor {
+	return StandardDescriptor{
+		Context:        StandardContextPlanning,
+		ID:             "dummy",
+		EvidenceTier:   tier,
+		DefaultVersion: "v1",
+		Versions: []Version{
+			{
+				Name:           "v1",
+				DefaultProfile: "default",
+				Profiles: []Profile{
+					{
+						Name:                 "default",
+						SupportedSourceTypes: []string{"point"},
+						SupportedIndicators:  []string{"Ldummy"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestValidateRejectsMissingOrUnknownEvidenceTier(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		tier EvidenceTier
+	}{
+		{name: "empty", tier: ""},
+		{name: "unknown", tier: "provisional"},
+		{name: "wrong case", tier: "Normative"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := descriptorWithTier(testCase.tier).Validate()
+			if err == nil {
+				t.Fatalf("expected error for evidence tier %q", testCase.tier)
+			}
+
+			if !strings.Contains(err.Error(), "evidence_tier") {
+				t.Fatalf("expected evidence_tier error, got %v", err)
+			}
+
+			if !strings.Contains(err.Error(), "dummy") {
+				t.Fatalf("expected the standard id in the error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateAcceptsEveryEvidenceTier(t *testing.T) {
+	t.Parallel()
+
+	for _, tier := range []EvidenceTier{
+		EvidenceTierNormative,
+		EvidenceTierPreview,
+		EvidenceTierScaffold,
+		EvidenceTierTestFixture,
+	} {
+		err := descriptorWithTier(tier).Validate()
+		if err != nil {
+			t.Fatalf("validate tier %q: %v", tier, err)
+		}
+	}
+}
+
+func TestResolveVersionProfilePropagatesEvidenceTier(t *testing.T) {
+	t.Parallel()
+
+	for _, tier := range []EvidenceTier{
+		EvidenceTierNormative,
+		EvidenceTierPreview,
+		EvidenceTierScaffold,
+		EvidenceTierTestFixture,
+	} {
+		resolved, err := descriptorWithTier(tier).ResolveVersionProfile("", "")
+		if err != nil {
+			t.Fatalf("resolve tier %q: %v", tier, err)
+		}
+
+		if resolved.EvidenceTier != tier {
+			t.Fatalf("expected resolved tier %q, got %q", tier, resolved.EvidenceTier)
+		}
+	}
+}
+
+func TestEvidenceTierOptInAndHeadline(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		tier    EvidenceTier
+		optIn   bool
+		prefix  string
+		nonZero bool
+	}{
+		{tier: EvidenceTierNormative, optIn: false, prefix: "normative", nonZero: true},
+		{tier: EvidenceTierPreview, optIn: false, prefix: "preview", nonZero: true},
+		{tier: EvidenceTierScaffold, optIn: true, prefix: "scaffold", nonZero: true},
+		{tier: EvidenceTierTestFixture, optIn: false, prefix: "test fixture", nonZero: true},
+		{tier: "unknown", optIn: false, prefix: "", nonZero: false},
+	}
+
+	for _, testCase := range cases {
+		if got := testCase.tier.RequiresExperimentalOptIn(); got != testCase.optIn {
+			t.Fatalf("tier %q opt-in: expected %v, got %v", testCase.tier, testCase.optIn, got)
+		}
+
+		headline := testCase.tier.Headline()
+		if !testCase.nonZero {
+			if headline != "" {
+				t.Fatalf("tier %q: expected empty headline, got %q", testCase.tier, headline)
+			}
+
+			continue
+		}
+
+		if !strings.HasPrefix(headline, testCase.prefix) {
+			t.Fatalf("tier %q headline %q does not start with %q", testCase.tier, headline, testCase.prefix)
+		}
+
+		if strings.Contains(headline, "\n") {
+			t.Fatalf("tier %q headline must stay on one line: %q", testCase.tier, headline)
+		}
 	}
 }
 

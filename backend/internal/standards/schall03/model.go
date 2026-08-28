@@ -528,6 +528,7 @@ func Descriptor() framework.StandardDescriptor {
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
 		Description:    "Schall 03 planning-track rail baseline with typed inputs, octave-band handling, deterministic line integration, explicit compliance-boundary metadata, and a data-pack shaped coefficient boundary.",
+		EvidenceTier:   framework.EvidenceTierNormative,
 		DefaultVersion: "phase18-baseline-preview",
 		Versions: []framework.Version{
 			{

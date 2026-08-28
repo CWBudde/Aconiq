@@ -90,7 +90,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextMapping,
 		ID:             StandardID,
-		Description:    "BUB industry mapping baseline with typed point and area sources and deterministic indicators.",
+		Description:    "Scaffold industry mapping module, an alias over the cnossos-industry scaffold: typed point and area sources with deterministic indicators only, with no BUB or CNOSSOS-EU coefficients and no octave bands; the intended target is the BUB mapping directive, which it does not implement.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2021-preview",
 		Versions: []framework.Version{{
 			Name:           "2021-preview",

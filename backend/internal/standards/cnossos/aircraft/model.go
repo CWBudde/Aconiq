@@ -240,7 +240,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
-		Description:    "CNOSSOS-EU aircraft preview module with typed flight-track sources and deterministic indicators.",
+		Description:    "Scaffold aircraft module: typed flight-track sources with deterministic indicators only, with no NPD curves and no ECAC Doc 29 flight profiles; CNOSSOS-EU (Directive 2015/996 Annex II) defines no aircraft method at all and covers road, rail and industry only, so this id names a method its standard does not contain.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2020-preview",
 		Versions: []framework.Version{
 			{

@@ -91,7 +91,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextMapping,
 		ID:             StandardID,
-		Description:    "BUB rail mapping baseline with typed rail line sources and deterministic indicators.",
+		Description:    "Scaffold rail mapping module, an alias over the cnossos-rail scaffold: typed rail line sources and deterministic indicators only, with no BUB or CNOSSOS-EU coefficients, spectra or octave bands; the intended target is the BUB mapping directive, which it does not implement.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2021-preview",
 		Versions: []framework.Version{{
 			Name:           "2021-preview",

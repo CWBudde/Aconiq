@@ -202,7 +202,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
-		Description:    "CNOSSOS-EU industry preview module with typed point/area sources and deterministic indicators.",
+		Description:    "Scaffold industry module: typed point and area sources with deterministic indicators only, with no CNOSSOS-EU source or propagation coefficients and no octave bands; the intended target is Directive 2015/996 Annex II industry, which it does not implement.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2020-preview",
 		Versions: []framework.Version{
 			{

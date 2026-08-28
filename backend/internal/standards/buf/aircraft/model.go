@@ -240,7 +240,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextMapping,
 		ID:             StandardID,
-		Description:    "BUF aircraft mapping baseline with typed flight-track sources and deterministic indicators.",
+		Description:    "Scaffold aircraft mapping module, a near-copy of cnossos-aircraft: typed flight-track sources with deterministic indicators only, with no NPD curves, no ECAC Doc 29 flight profiles and no BUF procedure; CNOSSOS-EU (Directive 2015/996 Annex II) defines no aircraft method at all and covers road, rail and industry only.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2021-preview",
 		Versions: []framework.Version{
 			{

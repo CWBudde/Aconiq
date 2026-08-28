@@ -216,7 +216,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextMapping,
 		ID:             StandardID,
-		Description:    "BUB road mapping baseline with typed source schema, mapping context metadata, and deterministic indicators.",
+		Description:    "Scaffold road mapping module, a re-parameterised clone of the cnossos-road scaffold: typed sources and deterministic indicators only, with no BUB or CNOSSOS-EU coefficients and no octave bands; the intended target is the BUB mapping directive, which it does not implement.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2020-preview",
 		Versions: []framework.Version{
 			{

@@ -12,6 +12,51 @@ import (
 // ParameterKind defines the scalar type accepted for one run parameter.
 type ParameterKind string
 
+// EvidenceTier states how far the output of a standards module may be trusted.
+// It is the machine-readable form of the disclosure the module owes its users,
+// and every registered descriptor must declare one.
+type EvidenceTier string
+
+const (
+	// EvidenceTierNormative marks a module that implements the tables and
+	// equations of the standard it names, within the boundary declared under
+	// docs/conformance/.
+	EvidenceTierNormative EvidenceTier = "normative"
+	// EvidenceTierPreview marks a module whose own logic is sound but whose
+	// input levels are produced by modules that are not themselves normative.
+	EvidenceTierPreview EvidenceTier = "preview"
+	// EvidenceTierScaffold marks a module that carries no normative
+	// coefficients: its structure is a placeholder and its levels are invented.
+	EvidenceTierScaffold EvidenceTier = "scaffold"
+	// EvidenceTierTestFixture marks an intentional non-normative demonstrator
+	// that exists to exercise the run pipeline end to end.
+	EvidenceTierTestFixture EvidenceTier = "test-fixture"
+)
+
+// RequiresExperimentalOptIn reports whether a run against this tier must be
+// acknowledged explicitly before the module may emit level values.
+func (t EvidenceTier) RequiresExperimentalOptIn() bool {
+	return t == EvidenceTierScaffold
+}
+
+// Headline returns the one-line disclosure sentence for this tier, suitable for
+// verbatim use in a CLI banner or a report row. An unknown tier yields the empty
+// string; descriptor validation rejects such tiers before they can reach here.
+func (t EvidenceTier) Headline() string {
+	switch t {
+	case EvidenceTierNormative:
+		return "normative — implements the named standard's tables and equations; see docs/conformance/ for the declared boundary."
+	case EvidenceTierPreview:
+		return "preview — the aggregation logic is sound but it consumes preview-grade input levels; not for assessment."
+	case EvidenceTierScaffold:
+		return "scaffold — no normative coefficients; base levels are invented and there are no octave bands. Not an implementation of the named standard and not usable for assessment."
+	case EvidenceTierTestFixture:
+		return "test fixture — an intentional non-normative demonstrator; its numbers mean nothing outside tests."
+	default:
+		return ""
+	}
+}
+
 const (
 	StandardContextPlanning = "planning"
 	StandardContextMapping  = "mapping"
@@ -59,6 +104,7 @@ type StandardDescriptor struct {
 	Context        string
 	ID             string
 	Description    string
+	EvidenceTier   EvidenceTier
 	DefaultVersion string
 	Versions       []Version
 }
@@ -68,6 +114,7 @@ type ResolvedProfile struct {
 	Context              string
 	StandardID           string
 	StandardDescription  string
+	EvidenceTier         EvidenceTier
 	Version              string
 	Profile              string
 	SupportedSourceTypes []string
@@ -123,6 +170,7 @@ func (d StandardDescriptor) ResolveVersionProfile(versionName string, profileNam
 		Context:              d.Context,
 		StandardID:           d.ID,
 		StandardDescription:  d.Description,
+		EvidenceTier:         d.EvidenceTier,
 		Version:              resolvedVersion.Name,
 		Profile:              resolvedProfile.Name,
 		SupportedSourceTypes: append([]string(nil), resolvedProfile.SupportedSourceTypes...),
@@ -193,6 +241,16 @@ func (d StandardDescriptor) Validate() error {
 	case StandardContextPlanning, StandardContextMapping:
 	default:
 		return fmt.Errorf("standard %q context must be %q or %q", d.ID, StandardContextPlanning, StandardContextMapping)
+	}
+
+	switch d.EvidenceTier {
+	case EvidenceTierNormative, EvidenceTierPreview, EvidenceTierScaffold, EvidenceTierTestFixture:
+	default:
+		return fmt.Errorf(
+			"standard %q evidence_tier %q must be one of %q, %q, %q, %q",
+			d.ID, d.EvidenceTier,
+			EvidenceTierNormative, EvidenceTierPreview, EvidenceTierScaffold, EvidenceTierTestFixture,
+		)
 	}
 
 	if strings.TrimSpace(d.DefaultVersion) == "" {

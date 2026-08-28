@@ -166,6 +166,7 @@ func Descriptor() framework.StandardDescriptor {
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
 		Description:    "ISO 9613-2 octave-band engineering method for point-source industrial noise calculations.",
+		EvidenceTier:   framework.EvidenceTierNormative,
 		DefaultVersion: "1996-octaveband",
 		Versions: []framework.Version{
 			{

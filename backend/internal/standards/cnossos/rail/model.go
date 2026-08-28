@@ -186,7 +186,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
-		Description:    "CNOSSOS-EU rail preview module with typed source schema and deterministic indicators.",
+		Description:    "Scaffold rail module: a typed source schema and deterministic indicators only, with no CNOSSOS-EU rolling or traction source terms, no roughness or contact-filter spectra and no octave bands; the intended target is Directive 2015/996 Annex II rail, which it does not implement.",
+		EvidenceTier:   framework.EvidenceTierScaffold,
 		DefaultVersion: "2020-preview",
 		Versions: []framework.Version{
 			{

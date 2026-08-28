@@ -269,7 +269,8 @@ func Descriptor() framework.StandardDescriptor {
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextMapping,
 		ID:             StandardID,
-		Description:    "BEB exposure baseline using building footprints plus BUB road or BUF aircraft mapping levels for affected persons and dwellings.",
+		Description:    "Exposure aggregation over building footprints for affected persons and dwellings; the arithmetic is sound but the input levels come from the scaffold-tier bub-road or buf-aircraft modules, so the counts are not fit for assessment.",
+		EvidenceTier:   framework.EvidenceTierPreview,
 		DefaultVersion: "2021-preview",
 		Versions: []framework.Version{
 			{
