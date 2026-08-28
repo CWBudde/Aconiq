@@ -2,6 +2,18 @@
 
 Status date: 2026-03-08
 
+> **Historical baseline note (28 August 2026).** This file records the Phase
+> 13 delivery as it was written on the status date above, and is kept
+> unchanged as history. **It is not the current scope statement.**
+> `cnossos-aircraft` carries the evidence tier `scaffold`: it holds no NPD
+> curves, no ECAC Doc 29 flight profiles, no octave bands, and no propagation
+> geometry. **CNOSSOS-EU defines no aircraft method at all** — Directive (EU)
+> 2015/996 Annex II covers road, rail and industry, and aircraft noise is ECAC
+> Doc 29 — so the standard ID names a method the named standard does not
+> contain. The binding description of what this module does and does not
+> contain is
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md).
+
 ## Goal
 
 Phase 13 brings the first planning-track CNOSSOS aircraft module online:
@@ -140,6 +152,13 @@ Irish END/Directive 2015/996 aircraft-noise framework. The evidence is suitable
 for attributable external benchmarking at the public reference-total level.
 
 ## Compliance Boundary
+
+> **Superseded — read
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md)
+> instead.** Calling the module a "CNOSSOS aircraft preview implementation"
+> states something that cannot exist: CNOSSOS-EU contains no aircraft method.
+> The section below is retained unchanged as a record of how the boundary was
+> stated in March 2026.
 
 This Phase 13 baseline should be read as:
 

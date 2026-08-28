@@ -2,6 +2,15 @@
 
 Status date: 2026-03-08
 
+> **Historical baseline note (28 August 2026).** This file records the Phase
+> 14 delivery as it was written on the status date above, and is kept
+> unchanged as history. **It is not the current scope statement.** `bub-road`
+> carries the evidence tier `scaffold`: it is a re-parameterised clone of the
+> CNOSSOS road scaffold and holds no coefficient from the BUB method, no
+> octave bands, and no propagation geometry. The binding description of what
+> this module does and does not contain is
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md).
+
 ## Goal
 
 Phase 14 brings the first Germany mapping-track BUB module online:
@@ -132,6 +141,13 @@ For the shipped baseline:
   shared preview rules
 
 ## Compliance Boundary
+
+> **Superseded — read
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md)
+> instead.** Calling the module a "BUB road preview implementation" overstates
+> it: it is a re-parameterised clone of the CNOSSOS road scaffold and carries
+> no BUB coefficient. The section below is retained unchanged as a record of
+> how the boundary was stated in March 2026.
 
 This Phase 14 baseline should be read as:
 

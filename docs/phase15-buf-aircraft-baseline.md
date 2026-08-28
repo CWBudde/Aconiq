@@ -2,6 +2,17 @@
 
 Status date: 2026-03-08
 
+> **Historical baseline note (28 August 2026).** This file records the Phase
+> 15 delivery as it was written on the status date above, and is kept
+> unchanged as history. **It is not the current scope statement.**
+> `buf-aircraft` carries the evidence tier `scaffold`: it is a near-copy of
+> `cnossos/aircraft` — two of its six files are byte-identical, and the only
+> difference in the computational path is one constant — and holds no
+> coefficient from the BUF method, no NPD curves, and no ECAC Doc 29 flight
+> profiles. The binding description of what this module does and does not
+> contain is
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md).
+
 ## Goal
 
 Phase 15 brings the first Germany mapping-track BUF module online:
@@ -132,6 +143,13 @@ For the shipped baseline:
 - analytical `Lden` checks use the shared preview tolerance conventions
 
 ## Compliance Boundary
+
+> **Superseded — read
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md)
+> instead.** Calling the module a "BUF aircraft preview implementation"
+> overstates it: it is a near-copy of the CNOSSOS aircraft scaffold and
+> carries no BUF coefficient. The section below is retained unchanged as a
+> record of how the boundary was stated in March 2026.
 
 This Phase 15 baseline should be read as:
 

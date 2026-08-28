@@ -208,7 +208,14 @@ Standards are plug-in modules under `internal/standards/`, registered centrally 
 - The `cnossos-*` modules, `bub-*` and `buf-aircraft` are **scaffolds**: no directive coefficients, invented base levels, no octave bands. `bub-rail`/`bub-industry` are aliases over `cnossos/*` and `buf-aircraft` is a near-copy of `cnossos/aircraft`. Do not describe them as implementations of CNOSSOS-EU or of the German mapping directives.
 - `dummy-freefield` is an intentional test fixture and explicitly non-normative.
 
-`PLAN.md`'s "Standards evidence tiers" table is authoritative and current; read it before writing anything that characterises a module. Published conformance boundaries live in `docs/conformance/`, per-module baselines in `docs/phase*-baseline.md`.
+The tier is not a documentation convention — it is a field the code carries and enforces:
+
+- `framework.StandardDescriptor` has an `EvidenceTier` field (`internal/standards/framework`), with the values `normative`, `preview`, `scaffold` and `test-fixture`. `StandardDescriptor.Validate()` **requires** it, so a module that declares no tier cannot be registered. Adding a standards module means choosing a tier and defending it.
+- Scaffold-tier standards require an explicit `--experimental` opt-in on `aconiq run`. Without it the run is refused rather than quietly emitting authoritative-looking dB(A) values.
+- The tier travels with the result: it is stamped into `provenance.json` and `run-summary.json`, printed by `aconiq run` and `aconiq status`, carried into generated reports and export bundles, and exposed on `GET /api/v1/standards`. A consumer that never reads the docs still sees it.
+- The tier is the machine-readable form of the `compliance_boundary` string each module already returns in its `ProvenanceMetadata` — derive the free text from the tier, do not maintain a second, parallel signal.
+
+`PLAN.md`'s "Standards evidence tiers" table is authoritative and current; read it before writing anything that characterises a module. Published boundaries live in `docs/conformance/`: `*-konformitaetserklaerung.md` for the normative modules, and `cnossos-umfangserklaerung.md` (the `cnossos-*`, `bub-*` and `buf-aircraft` scaffolds) plus `beb-umfangserklaerung.md` (`beb-exposure`) — scope statements, explicitly not conformance declarations. The `docs/phase*-baseline.md` files are historical delivery notes; where they disagree with a conformance or scope document, the document in `docs/conformance/` wins.
 
 **Normative outputs must only come from normative modules** — DSP/FFT-based tools are non-normative post-processing only.
 
@@ -226,7 +233,7 @@ Standards are plug-in modules under `internal/standards/`, registered centrally 
 
 **Floating-point:** Keep calculations at `float64`. Apply rounding only at defined output boundaries. Document rounding rules per standards module. Use stable (pairwise/compensated) summation for sensitive reductions.
 
-**Language:** Technical content — commit messages, PR titles and bodies, code comments, documentation — is written in English. German appears only where it is the subject matter: conformance declarations in `docs/conformance/`, and the German-language summary strings the assessment modules emit.
+**Language:** Technical content — commit messages, PR titles and bodies, code comments, documentation — is written in English. German appears only where it is the subject matter: the conformance declarations and scope statements in `docs/conformance/`, and the German-language summary strings the assessment modules emit.
 
 ## Module Name
 

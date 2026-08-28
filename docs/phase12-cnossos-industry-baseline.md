@@ -2,6 +2,15 @@
 
 Status date: 2026-03-08
 
+> **Historical baseline note (28 August 2026).** This file records the Phase
+> 12 delivery as it was written on the status date above, and is kept
+> unchanged as history. **It is not the current scope statement.**
+> `cnossos-industry` carries the evidence tier `scaffold`: it holds no
+> CNOSSOS-EU coefficient, no octave bands, and no propagation geometry; every
+> correction term applied to the user-supplied sound power level is invented.
+> The binding description of what this module does and does not contain is
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md).
+
 ## Goal
 
 Phase 12 brings the first planning-track CNOSSOS industry module online:
@@ -122,6 +131,13 @@ strategic noise mapping outputs. The evidence is suitable for attributable
 external benchmarking at the public reference-total and exposure-share level.
 
 ## Compliance Boundary
+
+> **Superseded — read
+> [`conformance/cnossos-umfangserklaerung.md`](conformance/cnossos-umfangserklaerung.md)
+> instead.** Calling the module a "CNOSSOS industry preview implementation"
+> overstates it: there is not one CNOSSOS-EU coefficient in the module. The
+> section below is retained unchanged as a record of how the boundary was
+> stated in March 2026.
 
 This Phase 12 baseline should be read as:
 

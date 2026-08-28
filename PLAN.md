@@ -58,12 +58,15 @@ The path to DACH adoption runs through four gates, in order:
   version/profile.
 - **Standards module**: implementation of emission, propagation, indicators, and tables for a
   specific standard and version/profile.
-- **Evidence tier** (new, see Priority 4): how much a module's output may be relied upon.
+- **Evidence tier**: how much a module's output may be relied upon. A required descriptor field
+  since Priority 4; see the tier table above.
 
 ## Standards evidence tiers
 
-The registry currently exposes 13 standards as peers. They are not peers. This table is the
-target state; Priority 4 makes the code express it.
+The registry exposes 13 standards. They are not peers, and since Priority 4 the code says so:
+`EvidenceTier` is a required field on `framework.StandardDescriptor`, enforced by `Validate()`, so
+an unlabelled module cannot be registered at all. This table is the declared state, and
+`internal/standards/standards_test.go` pins it value by value.
 
 | Module                                | Target tier            | Reality today                                                                |
 | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
@@ -75,8 +78,16 @@ target state; Priority 4 makes the code express it.
 | `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands             |
 | `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                               |
 | `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                                |
-| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                   |
+| `buf-aircraft`                        | **scaffold**           | Same compute path as `cnossos/aircraft`; seven descriptor defaults differ    |
 | `dummy-freefield`                     | test fixture           | Intentional                                                                  |
+
+Two claims in this table were overstated and are corrected above. `bub-rail`/`bub-industry` are
+aliases for all _acoustic_ purposes but carry their own descriptor and `ExportResultBundle`, and
+`buf-aircraft` is byte-identical to `cnossos/aircraft` only in `compute.go`/`emission.go` — seven
+descriptor default parameter values differ, and those do move numbers for imported sources.
+Scaffold-tier modules now require an explicit `--experimental` opt-in on `aconiq run`; the
+boundaries are published in `docs/conformance/cnossos-umfangserklaerung.md` and
+`docs/conformance/beb-umfangserklaerung.md`.
 
 ---
 
@@ -491,38 +502,58 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
 
 ## Priority 4 — Honest standards labelling
 
-Decided: add an evidence tier and relabel; do not rename packages or delete modules.
+**Closed.** The registry no longer offers 13 standards as peers. `framework.EvidenceTier`
+(`normative` | `preview` | `scaffold` | `test-fixture`) is a **required** field on
+`StandardDescriptor`, enforced by `Validate()` — which `NewRegistry` calls — so a module cannot be
+registered without a deliberate tier decision, and `standards_test.go` pins the assignment and the
+registry's exact membership in both directions.
 
-- [ ] Add `EvidenceTier` (`normative` | `preview` | `scaffold`) to `framework.StandardDescriptor`
-      (`standards/framework/framework.go:57`) and populate it per the tier table above.
-- [ ] Surface it where a user cannot miss it: a one-line banner from `aconiq run`, a field in
-      `provenance.json` and `run-summary.json`, a row in every report and export bundle, and a
-      column in `aconiq status`.
-- [ ] Rewrite the `Descriptor()` strings that currently assert conformance —
-      e.g. `cnossos/road/model.go:192` "CNOSSOS-EU road preview module with expanded typed source
-      schema and deterministic indicators." There is not one CNOSSOS coefficient in the tree:
-      no octave bands, no `A_R/B_R/A_P/B_P`, no roughness or contact-filter spectra, no
-      `Agr,H/Agr,F`, no `Adiff` with Fresnel/C_f, no favourable-condition probability `p`, no NPD
-      curves, no ECAC Doc 29 flight profiles.
-- [ ] Build on the normativity signal that already exists rather than a parallel one. Every module
-      returns `ProvenanceMetadata` carrying a free-text `compliance_boundary`
-      (`iso9613-engineering-octaveband`, `baseline-preview-expanded-road-contract`, …), which
-      `buildRunProvenanceMetadata` (`run_options.go:373`) merges into the manifest and
-      `run_phase8_test.go` asserts is persisted. The new tier should be the machine-readable form
-      of that string and the free text derived from it — not maintained alongside it.
-- [ ] Gate the scaffold tier behind an explicit `--experimental` acknowledgement so it cannot
-      silently emit authoritative-looking dB(A) values.
-- [ ] Rename or remove `cnossos/aircraft` and `buf/aircraft`. **CNOSSOS-EU defines no aircraft
-      method at all** — Directive 2015/996 Annex II covers road, rail and industry; aircraft noise
-      is ECAC Doc 29. The package name asserts a method the named standard does not contain, which
-      no relabelling of the description string fixes.
-- [ ] Move the honest disclosures out of `docs/phaseNN-*.md` (named after internal sprint numbers)
-      into `docs/conformance/`, where someone evaluating the tool will look. Add a short CNOSSOS
-      declaration saying what the module is and is not.
-- [ ] Make `run_pipeline.go`'s `default:` branch unreachable. It currently returns "standard %q is
-      registered but not wired in run pipeline yet"; `bub-rail` and `bub-industry` are registered
-      (`standards/standards.go:24-25`) and unreachable. The registry must not offer what the
-      executor cannot run.
+The tier is derived once, from the resolved descriptor, and carried into every artifact a third
+party reads: `provenance.json` (stamped centrally in `buildRunProvenanceMetadata`, so the ten
+per-module `ProvenanceMetadata` functions were not touched and the free-text `compliance_boundary`
+they return now has a machine-readable companion rather than a competitor), `run-summary.json`, the
+`aconiq run` banner and `run.log`, the `--json` run payload, `aconiq status`, the Markdown/HTML/Typst
+reports, the export bundle summary, and `GET /api/v1/standards`. Reports and the export summary read
+the **as-run** tier from provenance rather than re-resolving it, so a later re-tiering cannot rewrite
+what an archived bundle says; `aconiq status` deliberately reports the _current_ tier and says so.
+
+Scaffold-tier standards — eight of the thirteen — are gated behind `--experimental`, refused before
+`CreateRun` so a refused run persists nothing. The API gates in the handler rather than parsing the
+subprocess's exit code, so the refusal carries a real error envelope; both sites call the same
+`RequiresExperimentalOptIn()`, so they cannot disagree.
+
+Three things fell out of the work:
+
+- **`bub-rail` and `bub-industry` are wired into the run pipeline.** They were registered and
+  unreachable — `run_pipeline.go`'s `default:` branch. Wiring them cost less than deregistering them
+  would have cost in trust, and it removed duplication rather than adding it: the shared
+  rail/industry options and persist paths were factored, three now-unused `//nolint:dupl`
+  suppressions went with them, and `run_persist.go` lost 63 lines net while gaining a parameter and
+  a key. `TestEveryRegisteredStandardCompletesARun` drives every registered ID end to end, so the
+  `default:` branch cannot silently acquire a new occupant.
+- **The aircraft modules keep their IDs.** Renaming `cnossos-aircraft` / `buf-aircraft` would break
+  every manifest that names them, and the package name is not the only place the disclosure can
+  live. CNOSSOS-EU defines no aircraft method at all — Directive 2015/996 Annex II is road, rail and
+  industry; aircraft is ECAC Doc 29 — and that now appears in the descriptor strings, in the scope
+  declaration, and behind the `--experimental` gate. Revisit only if a real ECAC Doc 29 module is
+  ever built, at which point the rename has a destination.
+- **`docs/conformance/` is where the disclosures live now.** The honest limitations were buried in
+  `docs/phase1[0-6]-*-baseline.md`, named after internal sprint numbers. They are lifted into two
+  German scope statements — explicitly _not_ Konformitätserklärungen — with the phase files left as
+  historical baselines carrying a pointer.
+
+### Open
+
+- [ ] **The frontend needs the tier to reach WASM mode honestly.** `browser-backend.ts` hardcodes a
+      single `rls19-road` descriptor and now hardcodes its tier alongside it. That is correct today
+      and is a second place the tier is declared, which is exactly the duplication the descriptor
+      field exists to prevent. It should come from the WASM kernel.
+- [ ] **`Headline()` is English-only.** The CLI banner and the report row are English, but the
+      reports are the artifact a German authority reads, and the assessment modules already emit
+      German. Decide whether the report row should be localised, and against which message source.
+- [ ] **The tier is not yet a release-provenance input.** Priority 5 wants standard-internal data
+      versions recorded so identical provenance implies identical numbers; the tier belongs in that
+      same digest rather than only in the metadata map.
 
 ---
 
@@ -852,7 +883,9 @@ the comparison into evidence (the assertion itself is Priority 3).
       tolerance rules and comparison methodology; reference cases with provenance, source version
       and licence status; known deviations with rationale; machine-readable conformance JSON.
 - [ ] Publish conformance packages for RLS-19 (leveraging TEST-20), Schall 03, and ISO 9613-2.
-      For the CNOSSOS family, publish a scope statement instead until real coefficients exist (P4).
+      The CNOSSOS-family scope statement is published
+      (`docs/conformance/cnossos-umfangserklaerung.md`, P4); what is missing is the machine-readable
+      conformance JSON and the CI gating alongside it.
 - [ ] Automate conformance-report generation in CI with per-module pass/fail gating where practical.
 
 ## Priority 15 — Performance and scaling

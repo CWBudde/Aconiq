@@ -2,6 +2,16 @@
 
 Status date: 2026-03-08
 
+> **Historical baseline note (28 August 2026).** This file records the Phase
+> 16 delivery as it was written on the status date above, and is kept
+> unchanged as history. **It is not the current scope statement.**
+> `beb-exposure` carries the evidence tier `preview`: its aggregation logic is
+> sound, but the levels it aggregates come from `bub-road` or `buf-aircraft`,
+> which are both `scaffold`. Every exposure count it emits is only as good as
+> those levels, which is to say not usable. The binding description of what
+> this module does and does not contain is
+> [`conformance/beb-umfangserklaerung.md`](conformance/beb-umfangserklaerung.md).
+
 ## Goal
 
 Phase 16 brings the first Germany mapping-track BEB exposure module online:
@@ -141,6 +151,13 @@ For the shipped baseline:
 - summary totals are sums of raw building-level outputs
 
 ## Compliance Boundary
+
+> **Superseded — read
+> [`conformance/beb-umfangserklaerung.md`](conformance/beb-umfangserklaerung.md)
+> instead.** Calling the module a "BEB preview implementation" omits the
+> decisive fact: it consumes scaffold-grade input levels, so its counts carry
+> no evidentiary value. The section below is retained unchanged as a record of
+> how the boundary was stated in March 2026.
 
 This Phase 16 baseline should be read as:
 
