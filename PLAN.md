@@ -494,12 +494,6 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
       not evidence.
 - [ ] Set tolerances that mean something: ~0.5 dB against a reference tool, not 1e-6 dB against
       yourself. Keep the 1e-6 dB comparison, but rename it what it is — a determinism check.
-- [ ] Fuzz the remaining parser. Five targets landed with `a8f3bc2` — GeoTIFF, WKB/GeoPackage,
-      GeoJSON, CityGML and the SoundPLAN `.GM` grid — and `FuzzParseGeoTIFF` found a real
-      negative-IFD-offset bug on its first run. CSV is still unfuzzed. `FuzzReadFGB` was
-      deliberately not added: `gogama/flatgeobuf` reads vtables without validation, so it would
-      find library panics this repo cannot fix. Decide whether to run `flatbuffers.Verify` per
-      feature buffer or add a scoped `recover()` in `ReadWithCRS`, then add the target.
 
 ## Priority 4 — Honest standards labelling
 
@@ -552,9 +546,8 @@ Three things fell out of the work:
 - [ ] **`Headline()` is English-only.** The CLI banner and the report row are English, but the
       reports are the artifact a German authority reads, and the assessment modules already emit
       German. Decide whether the report row should be localised, and against which message source.
-- [ ] **The tier is not yet a release-provenance input.** Priority 5 wants standard-internal data
-      versions recorded so identical provenance implies identical numbers; the tier belongs in that
-      same digest rather than only in the metadata map.
+      (The third item — folding the tier into the standard-data digest — is closed: the evidence tier is
+      an input to the `standard_data` hash, so re-tiering a module moves the digest. See Priority 5.)
 
 ---
 
@@ -562,73 +555,94 @@ Three things fell out of the work:
 
 ## Priority 5 — Provenance integrity and release engineering
 
-Build identity, the provenance schema and the dead links are done (`0a3b11a`): `internal/buildinfo`
-is stamped via `-ldflags -X` with a `debug.ReadBuildInfo()` fallback, `aconiq --version` exists, the
-cnossos-road run summary no longer carries cnossos-**industry** constants, all eleven `persist*`
-functions agree on `model_version`, and `NOTICE` is regenerated from a `just license-report` that
-now actually works (it was failing on the toolchain GOROOT and only ever seeing one GOOS).
+**Closed, except the tag itself.** Build identity landed earlier (`0a3b11a`); this pass closed the
+rest. `provenance.json` carries a `standard_data` digest — SHA-256 per named coefficient table plus
+an overall digest, with the evidence tier as an input to the hash, so re-tiering a module moves it
+and two runs whose digests agree used byte-identical coefficient data. It is a dedicated field, not
+an `input_hashes` entry, for the reason this file already gave: that map is input-file path →
+SHA-256 and every entry renders as an "Input files" row. The encoding is reflection-based rather
+than JSON because RLS-19's Tabelle 4 stores `NaN` for "nicht anwendbar", which `encoding/json`
+refuses outright, and because a table holding unexported fields would otherwise encode as `{}`.
+Digests for all three normative modules are pinned by tests.
 
-What is left is release process, which is a set of decisions rather than defects.
+The `phaseNN` model versions are gone. `phase18-baseline-preview` → `2014-anlage2` is a user-visible
+`--version` value; the rest were `phaseNN-preview-vN` → `baseline-preview-<subject>-vN`, appearing
+only in artifacts. No golden moved — no snapshot had ever captured a model version.
 
-- [ ] Rename the `phaseNN-preview-vN` model versions. Internal sprint numbers leak into artifacts
-      that are meant to be read by third parties.
-- [ ] Start tagging releases. `git tag` is empty; there is no `CHANGELOG.md`, no goreleaser, no
-      release workflow. `SECURITY.md` asks reporters for "the version(s) affected" and promises
-      fixes "in the latest release" — neither exists. Note the build stamp now uses
-      `git describe --tags`, so the first tag immediately improves every artifact's provenance.
-- [ ] Record standard-internal data versions — the Schall 03 data-pack version and hash, the
-      per-module coefficient-table version — so identical provenance implies identical numbers.
-      Do **not** put them in `input_hashes`: `projectfs.Store.hashInputs` defines that map as
-      input-file path → SHA-256 and `reporting.inputFilesFromHashes` renders every entry as an
-      "Input files" row, so non-file entries there produce misleading reports. Add a dedicated
-      standard-data digest field, and only put a coefficient artifact in `input_hashes` when it
-      genuinely is a hashed input file. Entangled with the Priority 2 data-pack decision.
-- [ ] Define versioning and changelog process (SemVer + `CHANGELOG.md`), publish CLI binaries via
-      GitHub Releases, enable Issues with templates, and add release-tag golden-test gates.
+Release engineering exists: `CHANGELOG.md`, `docs/policies/releases.md`, `.goreleaser.yaml`,
+`.github/workflows/release.yml` and issue templates. The versioning rule is the decision worth
+knowing about, and it is not stock SemVer: **a change to a `normative`-tier module's computed levels
+is a breaking change**, regardless of direction or size, and including changes that are unambiguously
+corrections — an archived run is evidence someone may hold under a permit application. Scaffold- and
+test-fixture-tier numbers get the opposite rule and carry no stability promise at all. That is
+enforceable rather than aspirational because the release workflow runs `just update-golden` and
+fails on a dirty tree.
+
+### Open
+
+- [ ] **Cut the first release.** Everything needed is in place and `git tag` is still empty, which
+      is deliberate — tagging is a maintainer decision, not an agent's. Until a tag exists,
+      `SECURITY.md`'s "supported version" is `main` and every artifact's `tool_version` is a
+      `git describe` string rather than something a reader can resolve to a download.
+- [ ] **Enable Issues on the repository.** The templates are committed; the setting is a GitHub
+      admin action nobody in the repository can perform.
 
 ## Priority 6 — Security hardening
 
-The threat model is untrusted third-party files plus a local API a browser talks to. **The file
-half is closed** (`a8f3bc2`): every allocation the GeoTIFF, GeoPackage/WKB, FlatGeobuf, GeoJSON,
-CityGML and SoundPLAN decoders make is now bounded before it happens, with a regression test per
-bound and five fuzz targets. The GeoTIFF OOM turned out to be reachable from an **86-byte** input,
-and a deflate bomb that was not in this list was found and closed alongside it.
+**Closed.** The threat model was untrusted third-party files plus a local API a browser talks to.
+The file half closed in `a8f3bc2`; both remaining halves closed in this pass.
 
-**The API half is untouched and is now the whole of this priority.**
+**The API.** Three controls now sit in front of the router: a `Host` allowlist (loopback plus the
+host part of `--listen`), which is what closes DNS rebinding — the attacker's own name still travels
+in the `Host` header, which is exactly what an Origin check cannot see; a media-type requirement on
+every body-reading endpoint, which closes the CORS simple-request path that let a cross-origin
+`text/plain` `fetch` reach `exec.CommandContext` with attacker-chosen argv; and a required
+`X-Aconiq-Client` header on every state-changing method, whose value is never checked because its
+presence is the proof a preflight happened. A bearer token (`--api-token`, `ACONIQ_API_TOKEN`) is
+opt-in on top: the three controls close the browser vectors, and a mandatory token answers a
+different threat model. Request bodies are bounded per endpoint; both file-serving handlers go
+through `filepath.IsLocal` + `os.OpenInRoot`; `overpass_endpoint` is an https allowlist.
 
-- [ ] **Local API is unauthenticated and CSRF-open.** No auth, no CSRF token, no `Host` validation.
-      `handleRunCreate` decodes JSON without checking `Content-Type`, so a cross-origin `fetch`
-      with `text/plain` is CORS-safelisted, skips preflight, and executes `exec.CommandContext`
-      with attacker-chosen `--model`/`--param`/`--input`. DNS rebinding bypasses the origin check
-      entirely. The comment at `cors.go:17` is incorrect for both shapes. Add a Host allowlist,
-      reject non-`application/json` bodies, and mint a session token at `serve` startup.
-- [ ] **No request size limits.** `ParseMultipartForm`'s argument is `maxMemory`, not a cap; the
-      remainder spills to unbounded temp files, then `io.ReadAll`. There are **zero** occurrences
-      of `http.MaxBytesReader` or `io.LimitReader` in `api/httpv1`. This is also the standing G120
-      finding.
-- [ ] **Arbitrary file read.** `handler.go:519` builds a path by raw string concatenation with no
-      `Clean` and no containment check; a shared project whose manifest sets
-      `log_path: "../../../../etc/passwd"` reads it over HTTP. Use `filepath.IsLocal()` +
-      `os.OpenInRoot`. `:577` cleans but still does not constrain.
-- [ ] **SSRF by design.** `overpass_endpoint` (`handler.go` → `osmimport.go`) is taken from the
-      request body with no scheme/host validation. Allowlist it or drop it from the API.
-- [ ] Re-examine the gosec **G304** suppression on current evidence. It was judged acceptable at 47
-      findings and now stands at 97 (50 test, 47 non-test) — the same drift that made G301 worth
-      fixing. Opening a user-named path is arguably what a file-format toolchain does, but nobody
-      has re-litigated the verdict at the new count. The other two kept findings still worth
-      judgement are **G702** at `api/httpv1/handler.go:456` (the HTTP handler shells out to
-      `aconiq` with request-controlled argv — no shell involved, so not classic injection, but an
-      exposure surface that Priority 7's "move the run pipeline out of `app/cli`" removes outright)
-      and **G120**, folded into the size-limit item above. **G202** at
-      `report/export/gpkg.go:207` is a false positive: `sanitizeColumnName` is a strict allow-list.
-- [ ] Add `flatbuffers.Verify` per feature buffer, or a scoped `recover()` in
-      `fgbimport.ReadWithCRS`. `gogama/flatgeobuf` reads vtables without validation, so a corrupt
-      vtable can panic inside the library before any of the bounds added in `a8f3bc2` are reached.
-      This is what blocks a `FuzzReadFGB` target (Priority 3).
-- [ ] Add a CI guard that hard-fails on any tracked `interoperability/` path, and write the
-      data-handling policy that currently does not exist. 4.1 GB of third-party project data is
-      protected by a single `.gitignore` line. _(Verified: nothing proprietary has ever been
-      committed on any branch — this is about keeping it that way.)_
+Two premises in the old text were wrong and are worth recording. `MaxBytesReader` was **not** absent
+— the terrain upload had one; the real defect was narrower and worse, that `ParseMultipartForm` was
+handed the 50 MB _body_ cap as its _maxMemory_ argument, so a 50 MB upload buffered whole in RAM.
+And no gosec finding was removed: G120 had to stay suppressed because gosec does not model
+`MaxBytesReader` and reports the call whatever its argument.
+
+**G304: verdict re-litigated, and it stands.** The case for reopening was that the count had doubled
+from 47 to 97. Both prior measurements undercounted — golangci-lint caps at three findings per rule
+unless `max-same-issues: 0` is set. The true figure is 108, of which **47 are non-test, exactly the
+number when the rule was first waved through**. All growth is in `_test.go` files, covered by a
+separate exclusion that was never part of the question. That is a growing test suite, not creeping
+exposure, and the opposite of G301. Recorded with the evidence and with what would overturn it in
+`docs/lint-triage.md`. **G702** at the run executor stands unchanged and is removed outright by
+Priority 7's "move the run pipeline out of `app/cli`".
+
+**FlatGeobuf.** The `Verify`-versus-`recover()` question answered itself: flatbuffers v23.5.26 ships
+no verifier — `grep "Verif"` over its `go/` package returns nothing — and the generated flatgeobuf
+tables carry no per-table helpers either. So a per-element `recover()`, scoped to one header-field
+read and one feature decode, producing typed errors, and re-panicking untouched when the raise site
+is Aconiq's own code. `FuzzReadFGB` then found three crashers, **none of them a vtable panic** — all
+three were unbounded allocations, including a 65-byte input requesting 1 TiB. The premise that the
+target would only find unfixable library panics was simply false.
+
+### Open
+
+- [ ] **Report the three `gogama/flatgeobuf` v1.0.0 bugs upstream.** `DataRem`,
+      `FileReader.readFeature` and `PropReader.ReadBinary` each size a `make` from an unvalidated
+      file field. All three are worked around on our side; they are still library bugs, and the
+      workaround is code this repo would rather not own.
+- [ ] **Write the data-handling policy.** The CI guard that refuses any tracked
+      `interoperability/` path is in place (`just check-no-third-party-data`, mirrored by
+      `.github/workflows/repo-hygiene.yml`), but the policy the guard enforces is still unwritten:
+      what may be stored there, who may hold it, and what happens if it leaks.
+- [ ] **A token and `EventSource` do not compose.** A browser cannot set headers on an SSE
+      connection, so `/api/v1/events` is unreachable when `--api-token` is set; the same applies to
+      the bare URL handed to the DOM by `getArtifactContentURL`. Nothing uses either today, so
+      nothing is broken — but a query-parameter or cookie escape hatch is needed before they are.
+- [ ] **`--listen 0.0.0.0:8080` now serves loopback only.** A wildcard bind names no host to add to
+      the allowlist. This is deliberate and documented in `serve --help`, but if binding a real
+      interface is wanted, it needs an explicit `--allowed-hosts` flag.
 
 ## Priority 7 — Architecture: make standards actually pluggable
 
