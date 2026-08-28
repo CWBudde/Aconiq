@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/qa/acceptance"
 	schall03 "github.com/aconiq/backend/internal/standards/schall03"
 )
 
@@ -18,8 +19,9 @@ const (
 	// ModeCISafe runs the repo-authored synthetic suite that ships in testdata/.
 	ModeCISafe = "ci-safe"
 
-	statusPassed = "passed"
-	statusFailed = "failed"
+	statusPassed  = acceptance.StatusPassed
+	statusFailed  = acceptance.StatusFailed
+	statusSkipped = acceptance.StatusSkipped
 )
 
 // Options controls a Run invocation.
@@ -42,9 +44,11 @@ type Report struct {
 	TaskCount        int                       `json:"task_count"`
 	PassedCount      int                       `json:"passed_count"`
 	FailedCount      int                       `json:"failed_count"`
+	SkippedCount     int                       `json:"skipped_count"`
 	Tasks            []TaskResult              `json:"tasks"`
 	CategoryCoverage map[string]CategoryStatus `json:"category_coverage,omitempty"`
 	ReportPath       string                    `json:"report_path,omitempty"`
+	SkipReason       string                    `json:"skip_reason,omitempty"`
 }
 
 // TaskResult holds the outcome of a single conformance scenario.
@@ -63,11 +67,12 @@ type TaskResult struct {
 	Actual        []ReceiverSnapshot `json:"actual,omitempty"`
 }
 
-// CategoryStatus summarizes pass/fail counts for one task category.
+// CategoryStatus summarizes pass/fail/skip counts for one task category.
 type CategoryStatus struct {
 	TaskCount int `json:"task_count"`
 	PassCount int `json:"pass_count"`
 	FailCount int `json:"fail_count"`
+	SkipCount int `json:"skip_count"`
 }
 
 // ReceiverSnapshot is one row in an expected or actual output file.
@@ -196,10 +201,22 @@ func buildReport(suite suiteManifest, mode string, generatedAt time.Time, tasks 
 		case statusFailed:
 			report.FailedCount++
 			report.Status = statusFailed
+		case statusSkipped:
+			report.SkippedCount++
 		}
 	}
 
 	report.CategoryCoverage = buildCategoryCoverage(tasks)
+
+	// A suite that skipped every task carries no evidence, so reporting it as
+	// passed is worse than reporting it as red: nobody notices that the
+	// conformance claim stopped being checked. Make the state explicit, and let
+	// ACONIQ_STRICT_ACCEPTANCE escalate it to a failure where the expected
+	// snapshots are supposed to be present.
+	if skipStatus, resolvedReason, apply := acceptance.ResolveSuiteSkip(report.TaskCount, report.SkippedCount, report.SkipReason); apply {
+		report.Status = skipStatus
+		report.SkipReason = resolvedReason
+	}
 
 	return report
 }
@@ -216,6 +233,8 @@ func buildCategoryCoverage(tasks []TaskResult) map[string]CategoryStatus {
 			cs.PassCount++
 		case statusFailed:
 			cs.FailCount++
+		case statusSkipped:
+			cs.SkipCount++
 		}
 
 		coverage[task.Category] = cs
@@ -250,7 +269,7 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 	result.ReceiverCount = len(actual)
 
 	if task.ExpectedPath == "" {
-		result.Status = "skipped"
+		result.Status = statusSkipped
 		result.Details = "no expected snapshot configured"
 
 		return result, nil
