@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/report/reporting"
 )
 
 func TestExportGeneratesReportBundle(t *testing.T) {
@@ -80,6 +81,10 @@ func TestExportGeneratesReportBundle(t *testing.T) {
 
 	if projectCRS, ok := summary["project_crs"].(string); !ok || projectCRS != "EPSG:25832" {
 		t.Fatalf("expected project_crs=EPSG:25832, got %v", summary["project_crs"])
+	}
+
+	if tier, ok := summary["evidence_tier"].(string); !ok || tier == "" {
+		t.Fatalf("expected a non-empty evidence_tier in the export summary, got %#v", summary["evidence_tier"])
 	}
 
 	copiedFiles := anySliceToStrings(summary["copied_files"])
@@ -275,6 +280,145 @@ func TestExportRejectsPDFWithSkipReport(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "--pdf cannot be used together with --skip-report") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestExportCarriesEvidenceTierFromProvenance pins the tier the bundle reports to
+// the tier the run itself recorded, and checks that a scaffold-tier run is called
+// out in the generated report.
+func TestExportCarriesEvidenceTierFromProvenance(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase20Tier", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield")
+
+	stampProvenanceEvidenceTier(t, projectDir, "scaffold")
+
+	mustRunCLI(t, "--project", projectDir, "export")
+
+	bundleDir := latestExportBundleDir(t, projectDir)
+
+	summaryPayload, err := os.ReadFile(filepath.Join(bundleDir, "export-summary.json"))
+	if err != nil {
+		t.Fatalf("read export summary: %v", err)
+	}
+
+	var summary map[string]any
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
+		t.Fatalf("decode export summary: %v", err)
+	}
+
+	if summary["evidence_tier"] != "scaffold" {
+		t.Fatalf("unexpected evidence_tier in export summary: %#v", summary["evidence_tier"])
+	}
+
+	reportMarkdown, err := os.ReadFile(filepath.Join(bundleDir, "report.md"))
+	if err != nil {
+		t.Fatalf("read report markdown: %v", err)
+	}
+
+	reportText := string(reportMarkdown)
+	if !strings.Contains(reportText, "- Evidence tier: scaffold") {
+		t.Fatalf("expected the evidence tier row in the report: %s", reportText)
+	}
+
+	if !strings.Contains(reportText, "scaffold-tier standards module") {
+		t.Fatalf("expected the scaffold disclosure note in the report: %s", reportText)
+	}
+}
+
+// TestExportReportsUnknownEvidenceTierWithoutProvenanceMetadata covers runs whose
+// provenance predates the evidence-tier disclosure: the export must still succeed
+// and must not invent a tier.
+func TestExportReportsUnknownEvidenceTierWithoutProvenanceMetadata(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase8", "model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase20NoTier", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield")
+
+	stampProvenanceEvidenceTier(t, projectDir, "")
+
+	mustRunCLI(t, "--project", projectDir, "export")
+
+	bundleDir := latestExportBundleDir(t, projectDir)
+
+	summaryPayload, err := os.ReadFile(filepath.Join(bundleDir, "export-summary.json"))
+	if err != nil {
+		t.Fatalf("read export summary: %v", err)
+	}
+
+	var summary map[string]any
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
+		t.Fatalf("decode export summary: %v", err)
+	}
+
+	if summary["evidence_tier"] != reporting.UnknownEvidenceTier {
+		t.Fatalf("unexpected evidence_tier in export summary: %#v", summary["evidence_tier"])
+	}
+}
+
+// stampProvenanceEvidenceTier rewrites the evidence tier in every run provenance
+// file of a project. An empty tier removes the key, which reproduces provenance
+// written before the tier was disclosed.
+func stampProvenanceEvidenceTier(t *testing.T, projectDir string, tier string) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(projectDir, ".noise", "runs", "*", "provenance.json"))
+	if err != nil {
+		t.Fatalf("glob provenance files: %v", err)
+	}
+
+	if len(matches) == 0 {
+		t.Fatal("expected at least one provenance file")
+	}
+
+	for _, path := range matches {
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read provenance %s: %v", path, err)
+		}
+
+		var provenance map[string]any
+
+		err = json.Unmarshal(payload, &provenance)
+		if err != nil {
+			t.Fatalf("decode provenance %s: %v", path, err)
+		}
+
+		metadata, ok := provenance["metadata"].(map[string]any)
+		if !ok {
+			metadata = map[string]any{}
+		}
+
+		if tier == "" {
+			delete(metadata, reporting.ProvenanceEvidenceTierKey)
+		} else {
+			metadata[reporting.ProvenanceEvidenceTierKey] = tier
+		}
+
+		provenance["metadata"] = metadata
+
+		updated, err := json.MarshalIndent(provenance, "", "  ")
+		if err != nil {
+			t.Fatalf("encode provenance %s: %v", path, err)
+		}
+
+		err = os.WriteFile(path, updated, 0o600)
+		if err != nil {
+			t.Fatalf("write provenance %s: %v", path, err)
+		}
 	}
 }
 

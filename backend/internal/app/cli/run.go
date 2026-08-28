@@ -15,6 +15,7 @@ func newRunCommand() *cobra.Command {
 		receiverMode    string
 		rawParams       []string
 		inputPaths      []string
+		experimental    bool
 	)
 
 	cmd := &cobra.Command{
@@ -30,6 +31,7 @@ func newRunCommand() *cobra.Command {
 				receiverMode:    receiverMode,
 				rawParams:       rawParams,
 				inputPaths:      inputPaths,
+				experimental:    experimental,
 			})
 		},
 	}
@@ -43,6 +45,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&receiverMode, "receiver-mode", receiverModeAutoGrid, "Receiver mode: auto-grid or custom")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter key=value (repeatable)")
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
+	cmd.Flags().BoolVar(&experimental, "experimental", false, "Acknowledge that a scaffold-tier standard emits invented levels and run it anyway")
 
 	return cmd
 }

@@ -26,6 +26,7 @@ type exportSummary struct {
 	ProjectID            string              `json:"project_id"`
 	ProjectCRS           string              `json:"project_crs,omitempty"`
 	RunID                string              `json:"run_id"`
+	EvidenceTier         string              `json:"evidence_tier"`
 	ExportedAt           time.Time           `json:"exported_at"`
 	OutputDirectory      string              `json:"output_directory"`
 	CopiedFiles          []string            `json:"copied_files"`
@@ -135,6 +136,7 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 		ProjectID:       proj.ProjectID,
 		ProjectCRS:      proj.CRS,
 		RunID:           run.ID,
+		EvidenceTier:    evidenceTierFromProvenance(staged.provenancePath),
 		ExportedAt:      nowUTC(),
 		OutputDirectory: bundleDir,
 		CopiedFiles:     dedupeAndSort(staged.copiedFiles),
@@ -185,6 +187,41 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 	writeExportSummaryText(cmd, run.ID, bundleDir, summaryPath, summary, opts.emitSampleResults)
 
 	return nil
+}
+
+// evidenceTierFromProvenance reads the evidence tier the run recorded in its own
+// provenance metadata, under the same key the generated report reads, so the
+// bundle summary can never disagree with the report inside the bundle. The
+// bundle summary must state the tier the run actually
+// ran at, so it is read from provenance rather than resolved against the current
+// registry: a standard that has since been retired, renamed or re-tiered would
+// otherwise be reported under a tier the run never used. Every failure path —
+// no provenance copied into the bundle, an unreadable or malformed file, or
+// provenance predating the disclosure — yields the unknown marker rather than an
+// error, because a missing tier must not stop an export.
+func evidenceTierFromProvenance(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return reporting.UnknownEvidenceTier
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return reporting.UnknownEvidenceTier
+	}
+
+	var parsed project.ProvenanceManifest
+
+	err = json.Unmarshal(payload, &parsed)
+	if err != nil {
+		return reporting.UnknownEvidenceTier
+	}
+
+	tier := strings.TrimSpace(parsed.Metadata[reporting.ProvenanceEvidenceTierKey])
+	if tier == "" {
+		return reporting.UnknownEvidenceTier
+	}
+
+	return tier
 }
 
 // persistExportBundle writes the export summary and records the bundle plus the

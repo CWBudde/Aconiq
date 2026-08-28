@@ -12,6 +12,8 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/standards"
+	"github.com/aconiq/backend/internal/standards/framework"
 	"github.com/spf13/cobra"
 )
 
@@ -62,26 +64,53 @@ func runStatusCommand(cmd *cobra.Command, limit, tailLines int) error {
 		limit = 10
 	}
 
+	tiers := registeredEvidenceTiers()
+
 	if state.Config.JSONLogs {
-		return writeStatusJSON(cmd, store.Root(), proj, latestRun, hasLatest, limit)
+		return writeStatusJSON(cmd, store.Root(), proj, latestRun, hasLatest, limit, tiers)
 	}
 
 	writeStatusSummary(cmd.OutOrStdout(), store.Root(), proj, latestRun, hasLatest)
-	writeStatusRuns(cmd.OutOrStdout(), proj, limit)
+	writeStatusRuns(cmd.OutOrStdout(), proj, limit, tiers)
 
 	return writeStatusLogTail(cmd, store.Root(), latestRun, hasLatest, tailLines)
 }
 
 type statusRunEntry struct {
-	ID              string `json:"id"`
-	Status          string `json:"status"`
-	ScenarioID      string `json:"scenario"`
-	StandardID      string `json:"standard"`
-	StandardVersion string `json:"standard_version"`
-	StandardProfile string `json:"standard_profile"`
-	StartedAt       string `json:"started_at"`
-	FinishedAt      string `json:"finished_at"`
-	LogPath         string `json:"log_path"`
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	ScenarioID string `json:"scenario"`
+	StandardID string `json:"standard"`
+	// StandardEvidenceTier reports the tier the module carries *now*, not the
+	// tier it carried when the run executed: the manifest stores only the
+	// standard reference, and the as-run tier lives in the run's
+	// provenance.json. A run whose standard is no longer registered reports an
+	// empty tier.
+	StandardEvidenceTier string `json:"standard_evidence_tier"`
+	StandardVersion      string `json:"standard_version"`
+	StandardProfile      string `json:"standard_profile"`
+	StartedAt            string `json:"started_at"`
+	FinishedAt           string `json:"finished_at"`
+	LogPath              string `json:"log_path"`
+}
+
+// registeredEvidenceTiers maps every currently registered standard ID to its
+// evidence tier. An unbuildable registry yields no tiers rather than failing
+// status, which must keep working for projects it cannot fully describe.
+func registeredEvidenceTiers() map[string]framework.EvidenceTier {
+	registry, err := standards.NewRegistry()
+	if err != nil {
+		return nil
+	}
+
+	descriptors := registry.List()
+
+	tiers := make(map[string]framework.EvidenceTier, len(descriptors))
+	for _, descriptor := range descriptors {
+		tiers[descriptor.ID] = descriptor.EvidenceTier
+	}
+
+	return tiers
 }
 
 func writeStatusJSON(
@@ -91,21 +120,23 @@ func writeStatusJSON(
 	latest project.Run,
 	hasLatest bool,
 	limit int,
+	tiers map[string]framework.EvidenceTier,
 ) error {
 	runs := make([]statusRunEntry, 0, len(proj.Runs))
 
 	start := max(len(proj.Runs)-limit, 0)
 	for _, r := range proj.Runs[start:] {
 		runs = append(runs, statusRunEntry{
-			ID:              r.ID,
-			Status:          r.Status,
-			ScenarioID:      r.ScenarioID,
-			StandardID:      r.Standard.ID,
-			StandardVersion: r.Standard.Version,
-			StandardProfile: r.Standard.Profile,
-			StartedAt:       r.StartedAt.Format(time.RFC3339),
-			FinishedAt:      r.FinishedAt.Format(time.RFC3339),
-			LogPath:         r.LogPath,
+			ID:                   r.ID,
+			Status:               r.Status,
+			ScenarioID:           r.ScenarioID,
+			StandardID:           r.Standard.ID,
+			StandardEvidenceTier: string(tiers[r.Standard.ID]),
+			StandardVersion:      r.Standard.Version,
+			StandardProfile:      r.Standard.Profile,
+			StartedAt:            r.StartedAt.Format(time.RFC3339),
+			FinishedAt:           r.FinishedAt.Format(time.RFC3339),
+			LogPath:              r.LogPath,
 		})
 	}
 
@@ -141,7 +172,9 @@ func writeStatusSummary(out io.Writer, root string, proj project.Project, latest
 	}
 }
 
-func writeStatusRuns(out io.Writer, proj project.Project, limit int) {
+// writeStatusRuns renders the run table. The tier column reports the module's
+// current tier, not the tier as of the run; see statusRunEntry.
+func writeStatusRuns(out io.Writer, proj project.Project, limit int, tiers map[string]framework.EvidenceTier) {
 	_, _ = fmt.Fprintln(out, "")
 	_, _ = fmt.Fprintln(out, "Runs:")
 
@@ -156,18 +189,30 @@ func writeStatusRuns(out io.Writer, proj project.Project, limit int) {
 	for _, run := range proj.Runs[start:] {
 		_, _ = fmt.Fprintf(
 			out,
-			"  - %s status=%s scenario=%s standard=%s@%s/%s started=%s finished=%s log=%s\n",
+			"  - %s status=%s scenario=%s standard=%s@%s/%s tier=%s started=%s finished=%s log=%s\n",
 			run.ID,
 			run.Status,
 			run.ScenarioID,
 			run.Standard.ID,
 			run.Standard.Version,
 			run.Standard.Profile,
+			statusTierLabel(tiers[run.Standard.ID]),
 			run.StartedAt.Format(time.RFC3339),
 			run.FinishedAt.Format(time.RFC3339),
 			run.LogPath,
 		)
 	}
+}
+
+// statusTierLabel renders the tier for the human run table. A run against a
+// standard that is no longer registered still needs a printable value, and
+// "unknown" says so without asserting a tier the registry cannot confirm.
+func statusTierLabel(tier framework.EvidenceTier) string {
+	if tier == "" {
+		return "unknown"
+	}
+
+	return string(tier)
 }
 
 func writeStatusLogTail(cmd *cobra.Command, root string, latest project.Run, hasLatest bool, tailLines int) error {

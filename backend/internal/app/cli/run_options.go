@@ -9,12 +9,15 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
+	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
+	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	"github.com/aconiq/backend/internal/standards/framework"
 	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -27,6 +30,10 @@ const (
 	receiverModeAutoGrid  = "auto-grid"
 	receiverModeCustom    = "custom"
 	explicitReceiverSetID = "explicit-manual"
+
+	// evidenceTierKey names the tier field in provenance metadata, run
+	// summaries and JSON command output alike, so the three never drift apart.
+	evidenceTierKey = "evidence_tier"
 )
 
 type dummyRunOptions struct {
@@ -267,6 +274,16 @@ type cnossosIndustryRunOptions struct {
 	MinDistanceM            float64
 }
 
+// bub-rail and bub-industry are alias modules over the cnossos-rail and
+// cnossos-industry scaffolds: their source, propagation and output types are Go
+// type aliases of the CNOSSOS ones, so a run of either carries exactly the same
+// options. Only the published parameter schema differs, which is why each still
+// gets its own parser below.
+type (
+	bubRailRunOptions     = cnossosRailRunOptions
+	bubIndustryRunOptions = cnossosIndustryRunOptions
+)
+
 type iso9613RunOptions struct {
 	GridResolutionM         float64
 	GridPaddingM            float64
@@ -313,12 +330,17 @@ func parseKeyValueFlags(values []string) (map[string]string, error) {
 	return params, nil
 }
 
-func buildRunProvenanceMetadata(standardID string, params map[string]string, receiverMode string) map[string]string {
+// buildRunProvenanceMetadata assembles the provenance metadata for one run.
+// The evidence tier is stamped centrally rather than by every module, so that
+// the machine-readable tier and the free-text compliance_boundary a module may
+// contribute stay independent of one another.
+func buildRunProvenanceMetadata(resolved framework.ResolvedProfile, params map[string]string, receiverMode string) map[string]string {
 	metadata := map[string]string{
 		"receiver_mode": receiverMode,
+		evidenceTierKey: string(resolved.EvidenceTier),
 	}
 
-	switch standardID {
+	switch resolved.StandardID {
 	case cnossosroad.StandardID:
 		return mergeMetadata(metadata, cnossosroad.ProvenanceMetadata(params))
 	case cnossosrail.StandardID:
@@ -494,38 +516,11 @@ func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions
 	return options, nil
 }
 
-func parseCnossosRailRunOptions(params map[string]string) (cnossosRailRunOptions, error) {
-	options := cnossosRailRunOptions{}
-
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosRailRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseCnossosRailRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosRailRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
+// fillSharedRailRunOptions fills every rail run option that cnossos-rail and
+// bub-rail declare alike. The two parameter schemas differ only in
+// rail_track_type, which each caller resolves for itself.
+func fillSharedRailRunOptions(scope string, params map[string]string, options *cnossosRailRunOptions) error {
+	err := parseFiniteFloatParams(scope, params, []floatParam{
 		{"grid_resolution_m", &options.GridResolutionM},
 		{"grid_padding_m", &options.GridPaddingM},
 		{"receiver_height_m", &options.ReceiverHeightM},
@@ -540,38 +535,62 @@ func parseCnossosRailRunOptions(params map[string]string) (cnossosRailRunOptions
 		{"bridge_correction_db", &options.BridgeCorrectionDB},
 		{"curve_squeal_db", &options.CurveSquealDB},
 		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return cnossosRailRunOptions{}, err
-		}
+	})
+	if err != nil {
+		return err
 	}
 
-	var err error
+	err = assignStringParams(scope, params, []stringParam{
+		{"rail_traction_type", &options.TractionType},
+		{"rail_track_roughness_class", &options.TrackRoughnessClass},
+	})
+	if err != nil {
+		return err
+	}
 
-	options.TractionType, err = getString("rail_traction_type")
+	rawOnBridge, err := stringParamValue(scope, params, "rail_on_bridge")
+	if err != nil {
+		return err
+	}
+
+	options.OnBridge, err = strconv.ParseBool(rawOnBridge)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindUserInput, scope, fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
+	}
+
+	return nil
+}
+
+func parseCnossosRailRunOptions(params map[string]string) (cnossosRailRunOptions, error) {
+	const scope = "cli.parseCnossosRailRunOptions"
+
+	options := cnossosRailRunOptions{}
+
+	err := fillSharedRailRunOptions(scope, params, &options)
 	if err != nil {
 		return cnossosRailRunOptions{}, err
 	}
 
-	options.TrackType, err = getString("rail_track_type")
+	options.TrackType, err = stringParamValue(scope, params, "rail_track_type")
 	if err != nil {
 		return cnossosRailRunOptions{}, err
 	}
 
-	options.TrackRoughnessClass, err = getString("rail_track_roughness_class")
-	if err != nil {
-		return cnossosRailRunOptions{}, err
-	}
+	return options, nil
+}
 
-	rawOnBridge, ok := params["rail_on_bridge"]
-	if !ok {
-		return cnossosRailRunOptions{}, domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosRailRunOptions", `normalized parameter "rail_on_bridge" missing`, nil)
-	}
+// parseBUBRailRunOptions parses the bub-rail schema, which publishes no
+// rail_track_type although the aliased rail source model still requires one.
+// The run therefore starts from ballasted track, which a feature's own
+// rail_track_type property still overrides.
+func parseBUBRailRunOptions(params map[string]string) (bubRailRunOptions, error) {
+	const scope = "cli.parseBUBRailRunOptions"
 
-	options.OnBridge, err = strconv.ParseBool(strings.TrimSpace(rawOnBridge))
+	options := bubRailRunOptions{TrackType: bubrail.TrackTypeBallasted}
+
+	err := fillSharedRailRunOptions(scope, params, &options)
 	if err != nil {
-		return cnossosRailRunOptions{}, domainerrors.New(domainerrors.KindUserInput, "cli.parseCnossosRailRunOptions", fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
+		return bubRailRunOptions{}, err
 	}
 
 	return options, nil
@@ -1030,50 +1049,12 @@ func (o bufAircraftRunOptions) PropagationConfig() bufaircraft.PropagationConfig
 	}
 }
 
-func parseCnossosIndustryRunOptions(params map[string]string) (cnossosIndustryRunOptions, error) {
-	options := cnossosIndustryRunOptions{}
-
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosIndustryRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseCnossosIndustryRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseCnossosIndustryRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	var err error
-
-	options.SourceCategory, err = getString("industry_source_category")
-	if err != nil {
-		return cnossosIndustryRunOptions{}, err
-	}
-
-	options.EnclosureState, err = getString("industry_enclosure_state")
-	if err != nil {
-		return cnossosIndustryRunOptions{}, err
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
+// fillSharedIndustryRunOptions fills every industry run option that
+// cnossos-industry and bub-industry declare alike. The two parameter schemas
+// differ only in industry_source_category and industry_enclosure_state, which
+// each caller resolves for itself.
+func fillSharedIndustryRunOptions(scope string, params map[string]string, options *cnossosIndustryRunOptions) error {
+	return parseFiniteFloatParams(scope, params, []floatParam{
 		{"grid_resolution_m", &options.GridResolutionM},
 		{"grid_padding_m", &options.GridPaddingM},
 		{"receiver_height_m", &options.ReceiverHeightM},
@@ -1089,11 +1070,46 @@ func parseCnossosIndustryRunOptions(params map[string]string) (cnossosIndustryRu
 		{"screening_attenuation_db", &options.ScreeningAttenuationDB},
 		{"facade_reflection_db", &options.FacadeReflectionDB},
 		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return cnossosIndustryRunOptions{}, err
-		}
+	})
+}
+
+func parseCnossosIndustryRunOptions(params map[string]string) (cnossosIndustryRunOptions, error) {
+	const scope = "cli.parseCnossosIndustryRunOptions"
+
+	options := cnossosIndustryRunOptions{}
+
+	err := assignStringParams(scope, params, []stringParam{
+		{"industry_source_category", &options.SourceCategory},
+		{"industry_enclosure_state", &options.EnclosureState},
+	})
+	if err != nil {
+		return cnossosIndustryRunOptions{}, err
+	}
+
+	err = fillSharedIndustryRunOptions(scope, params, &options)
+	if err != nil {
+		return cnossosIndustryRunOptions{}, err
+	}
+
+	return options, nil
+}
+
+// parseBUBIndustryRunOptions parses the bub-industry schema, which publishes
+// neither industry_source_category nor industry_enclosure_state although the
+// aliased industry source model still requires both. The run therefore starts
+// from an open process source, which a feature's own industry_source_category
+// and industry_enclosure_state properties still override.
+func parseBUBIndustryRunOptions(params map[string]string) (bubIndustryRunOptions, error) {
+	const scope = "cli.parseBUBIndustryRunOptions"
+
+	options := bubIndustryRunOptions{
+		SourceCategory: bubindustry.CategoryProcess,
+		EnclosureState: bubindustry.EnclosureOpen,
+	}
+
+	err := fillSharedIndustryRunOptions(scope, params, &options)
+	if err != nil {
+		return bubIndustryRunOptions{}, err
 	}
 
 	return options, nil

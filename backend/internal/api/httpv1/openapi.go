@@ -458,6 +458,11 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
+						"experimental": map[string]any{
+							"type":        "boolean",
+							"default":     false,
+							"description": "Required for scaffold-tier standards: they carry no normative coefficients, their base levels are invented and they have no octave bands, so a run must acknowledge that before it may emit levels. Requests without it are rejected with error code experimental_opt_in_required.",
+						},
 					},
 				},
 				"ImportOSMRequest": map[string]any{
@@ -554,10 +559,19 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 				"StandardDescriptor": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []string{"id", "description", "default_version", "versions"},
+					"required":             []string{"id", "description", evidenceTierField, "default_version", "versions"},
 					"properties": map[string]any{
-						"id":              map[string]any{"type": "string"},
-						"description":     map[string]any{"type": "string"},
+						"id":          map[string]any{"type": "string"},
+						"description": map[string]any{"type": "string"},
+						evidenceTierField: map[string]any{
+							"type": "string",
+							"description": "How far this module's output may be trusted. " +
+								"`normative` implements the named standard's tables and equations within the boundary declared under docs/conformance/; " +
+								"`preview` has sound logic but consumes preview-grade input levels; " +
+								"`scaffold` carries no normative coefficients and its levels are invented; " +
+								"`test-fixture` is a non-normative demonstrator. Only `normative` output is usable for assessment.",
+							"enum": []string{"normative", "preview", "scaffold", "test-fixture"},
+						},
 						"default_version": map[string]any{"type": "string"},
 						"versions": map[string]any{
 							"type":  "array",

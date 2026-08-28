@@ -219,7 +219,7 @@ func TestRunCnossosRoadProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase10", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-road")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-road", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -317,7 +317,7 @@ func TestRunCnossosRailProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase11", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-rail")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-rail", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -411,7 +411,7 @@ func TestRunBUBRoadProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase14", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "bub-road")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "bub-road", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -509,7 +509,7 @@ func TestRunCnossosAircraftProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase13", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-aircraft")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-aircraft", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -603,7 +603,7 @@ func TestRunBUFAircraftProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase15", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "buf-aircraft")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "buf-aircraft", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -800,7 +800,7 @@ func TestRunCnossosIndustryProducesOutputs(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase12", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-industry")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "cnossos-industry", "--experimental")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {

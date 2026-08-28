@@ -27,6 +27,9 @@ import (
 
 const (
 	apiVersion = "v1"
+	// evidenceTierField is the JSON member the evidence tier travels under, in
+	// responses, in error details and in the OpenAPI document alike.
+	evidenceTierField = "evidence_tier"
 )
 
 // apiError.Code values. They are part of the HTTP API contract: clients switch
@@ -36,6 +39,9 @@ const (
 	errorCodeBadRequest    = "bad_request"
 	errorCodeNotFound      = "not_found"
 	errorCodeInternalError = "internal_error"
+	// errorCodeExperimentalOptInRequired answers a run request that targets a
+	// scaffold-tier standard without acknowledging what that tier means.
+	errorCodeExperimentalOptInRequired = "experimental_opt_in_required"
 )
 
 type Handler struct {
@@ -111,12 +117,14 @@ type createRunRequest struct {
 	ReceiverMode    string            `json:"receiver_mode,omitempty"`
 	Params          map[string]string `json:"params,omitempty"`
 	InputPaths      []string          `json:"input_paths,omitempty"`
+	Experimental    bool              `json:"experimental,omitempty"`
 }
 
 type standardResponse struct {
 	Context        string            `json:"context"`
 	ID             string            `json:"id"`
 	Description    string            `json:"description"`
+	EvidenceTier   string            `json:"evidence_tier"`
 	DefaultVersion string            `json:"default_version"`
 	Versions       []versionResponse `json:"versions"`
 }
@@ -349,6 +357,11 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if gateErr, blocked := h.experimentalOptInGate(req); blocked {
+		writeAPIError(w, http.StatusBadRequest, gateErr)
+		return
+	}
+
 	before, err := h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)
@@ -377,6 +390,48 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, summarizeRun(after, after.Runs[len(after.Runs)-1]))
+}
+
+// experimentalOptInGate refuses a run against a scaffold-tier standard that the
+// caller has not acknowledged, before the executor is reached. Rejecting here
+// rather than reading the refusal back out of the run command's exit code keeps
+// the answer a first-class envelope — code, details and hint — and costs no
+// process: the caller learns which standard and which tier blocked the request
+// instead of receiving a subprocess's stderr as prose.
+//
+// The gate applies the same framework predicate the run command applies, so the
+// two cannot disagree about what a tier requires. It is a fast path, not the
+// authority: a handler built without a registry cannot resolve a tier at all,
+// and a request naming an unknown standard is left for the run command to
+// reject in its own words. Both fall through to the run command, which gates
+// again before it persists anything.
+func (h Handler) experimentalOptInGate(req createRunRequest) (apiError, bool) {
+	if req.Experimental || h.registry == nil || req.StandardID == "" {
+		return apiError{}, false
+	}
+
+	resolved, err := h.registry.Resolve(req.StandardID, req.StandardVersion, req.StandardProfile)
+	if err != nil {
+		return apiError{}, false
+	}
+
+	if !resolved.EvidenceTier.RequiresExperimentalOptIn() {
+		return apiError{}, false
+	}
+
+	return apiError{
+		Code: errorCodeExperimentalOptInRequired,
+		Message: fmt.Sprintf(
+			"standard %q is evidence tier %q: it carries no normative coefficients, its base levels are invented and it has no octave bands, "+
+				"so the levels it would emit are not an implementation of the standard it names and must not be used for assessment",
+			resolved.StandardID, resolved.EvidenceTier,
+		),
+		Details: map[string]any{
+			"standard_id":     resolved.StandardID,
+			evidenceTierField: string(resolved.EvidenceTier),
+		},
+		Hint: `Set "experimental": true in the request body to acknowledge that and run it anyway.`,
+	}, true
 }
 
 func summarizeRun(proj project.Project, run project.Run) runSummaryResponse {
@@ -519,47 +574,6 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
 
-		args := []string{"--project", projectRoot, "run"}
-		if req.ScenarioID != "" {
-			args = append(args, "--scenario", req.ScenarioID)
-		}
-
-		if req.StandardID != "" {
-			args = append(args, "--standard", req.StandardID)
-		}
-
-		if req.StandardVersion != "" {
-			args = append(args, "--standard-version", req.StandardVersion)
-		}
-
-		if req.StandardProfile != "" {
-			args = append(args, "--standard-profile", req.StandardProfile)
-		}
-
-		if req.ModelPath != "" {
-			args = append(args, "--model", req.ModelPath)
-		}
-
-		if req.ReceiverMode != "" {
-			args = append(args, "--receiver-mode", req.ReceiverMode)
-		}
-
-		paramKeys := make([]string, 0, len(req.Params))
-		for key := range req.Params {
-			paramKeys = append(paramKeys, key)
-		}
-
-		slices.Sort(paramKeys)
-
-		for _, key := range paramKeys {
-			value := req.Params[key]
-			args = append(args, "--param", fmt.Sprintf("%s=%s", key, value))
-		}
-
-		for _, inputPath := range req.InputPaths {
-			args = append(args, "--input", inputPath)
-		}
-
 		// G702 reports the taint from the request body to argv. The flow is real,
 		// but every field that reaches args is constrained by
 		// createRunRequest.validate before the handler calls this executor:
@@ -567,7 +581,7 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 		// must be relative and inside the project. There is no shell — argv is
 		// passed as a slice.
 		//nolint:gosec // request fields are validated by createRunRequest.validate
-		cmd := exec.CommandContext(ctx, executable, args...)
+		cmd := exec.CommandContext(ctx, executable, runCommandArgs(projectRoot, req)...)
 
 		var stderr bytes.Buffer
 
@@ -591,6 +605,50 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 
 		return nil
 	}
+}
+
+// runCommandArgs turns a validated request into argv for `aconiq run`. Optional
+// fields are omitted rather than passed empty, so the run command applies its
+// own defaults.
+func runCommandArgs(projectRoot string, req createRunRequest) []string {
+	args := []string{"--project", projectRoot, "run"}
+
+	for _, flag := range []struct {
+		name  string
+		value string
+	}{
+		{"--scenario", req.ScenarioID},
+		{"--standard", req.StandardID},
+		{"--standard-version", req.StandardVersion},
+		{"--standard-profile", req.StandardProfile},
+		{"--model", req.ModelPath},
+		{"--receiver-mode", req.ReceiverMode},
+	} {
+		if flag.value != "" {
+			args = append(args, flag.name, flag.value)
+		}
+	}
+
+	if req.Experimental {
+		args = append(args, "--experimental")
+	}
+
+	paramKeys := make([]string, 0, len(req.Params))
+	for key := range req.Params {
+		paramKeys = append(paramKeys, key)
+	}
+
+	slices.Sort(paramKeys)
+
+	for _, key := range paramKeys {
+		args = append(args, "--param", fmt.Sprintf("%s=%s", key, req.Params[key]))
+	}
+
+	for _, inputPath := range req.InputPaths {
+		args = append(args, "--input", inputPath)
+	}
+
+	return args
 }
 
 func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
@@ -769,6 +827,7 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 			Context:        d.Context,
 			ID:             d.ID,
 			Description:    d.Description,
+			EvidenceTier:   string(d.EvidenceTier),
 			DefaultVersion: d.DefaultVersion,
 			Versions:       versions,
 		})

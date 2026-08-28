@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -217,6 +219,81 @@ func TestOpenAPIEndpoint(t *testing.T) {
 			t.Fatalf("expected %s path in openapi document", required)
 		}
 	}
+
+	assertOpenAPIDeclaresEvidenceTier(t, payload)
+}
+
+// assertOpenAPIDeclaresEvidenceTier checks that the hand-built spec documents the
+// evidence tier a consumer receives from GET /api/v1/standards, including the
+// enum of accepted tiers.
+func assertOpenAPIDeclaresEvidenceTier(t *testing.T, payload map[string]any) {
+	t.Helper()
+
+	components, ok := payload["components"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected openapi components object")
+	}
+
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected openapi schemas object")
+	}
+
+	descriptor, ok := schemas["StandardDescriptor"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected StandardDescriptor schema")
+	}
+
+	required := anySliceToStrings(descriptor["required"])
+	if !slices.Contains(required, "evidence_tier") {
+		t.Fatalf("expected evidence_tier to be required, got %#v", descriptor["required"])
+	}
+
+	properties, ok := descriptor["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected StandardDescriptor properties object")
+	}
+
+	tier, ok := properties["evidence_tier"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected evidence_tier property, got %#v", properties["evidence_tier"])
+	}
+
+	if tier["type"] != "string" {
+		t.Fatalf("unexpected evidence_tier type: %#v", tier["type"])
+	}
+
+	if description, isText := tier["description"].(string); !isText || description == "" {
+		t.Fatalf("expected evidence_tier description, got %#v", tier["description"])
+	}
+
+	enum := anySliceToStrings(tier["enum"])
+	for _, expected := range []string{"normative", "preview", "scaffold", "test-fixture"} {
+		if !slices.Contains(enum, expected) {
+			t.Fatalf("expected %q in the evidence_tier enum, got %#v", expected, enum)
+		}
+	}
+}
+
+// anySliceToStrings flattens a decoded JSON array into its string members.
+func anySliceToStrings(value any) []string {
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	texts := make([]string, 0, len(items))
+
+	for _, item := range items {
+		text, isText := item.(string)
+		if !isText {
+			continue
+		}
+
+		texts = append(texts, text)
+	}
+
+	return texts
 }
 
 func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
@@ -468,13 +545,23 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 		t.Fatal("expected at least one standard")
 	}
 
+	validTiers := []string{"normative", "preview", "scaffold", "test-fixture"}
+
 	found := false
 	foundSchall03 := false
 	foundISO9613 := false
 
 	for _, s := range response {
+		if !slices.Contains(validTiers, s.EvidenceTier) {
+			t.Fatalf("%s: unexpected evidence tier %q", s.ID, s.EvidenceTier)
+		}
+
 		if s.ID == "rls19-road" {
 			found = true
+
+			if s.EvidenceTier != "normative" {
+				t.Fatalf("rls19-road: unexpected evidence tier %q", s.EvidenceTier)
+			}
 
 			if len(s.Versions) == 0 {
 				t.Fatal("rls19-road: expected at least one version")
@@ -499,6 +586,14 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 			if s.Context != "planning" {
 				t.Fatalf("schall03: unexpected context %q", s.Context)
 			}
+		}
+
+		if s.ID == "cnossos-road" && s.EvidenceTier != "scaffold" {
+			t.Fatalf("cnossos-road: unexpected evidence tier %q", s.EvidenceTier)
+		}
+
+		if s.ID == "dummy-freefield" && s.EvidenceTier != "test-fixture" {
+			t.Fatalf("dummy-freefield: unexpected evidence tier %q", s.EvidenceTier)
 		}
 
 		if s.ID == "iso9613" {
@@ -1080,4 +1175,152 @@ func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(se
 		_ = body.Close()
 		return nil, errors.New("timed out waiting for sse events")
 	}
+}
+
+// The API refuses a scaffold-tier run that the caller has not acknowledged, and
+// it refuses it before the executor is reached: no process is spawned, so no
+// run can be persisted. The refusal names the standard and the tier rather than
+// handing back a subprocess's prose.
+func TestCreateRunEndpointRejectsScaffoldStandardWithoutExperimental(t *testing.T) {
+	t.Parallel()
+
+	store, registry := runGateFixture(t)
+
+	executed := false
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock:    time.Now,
+		registry: &registry,
+		runExecutor: func(_ context.Context, _ createRunRequest) error {
+			executed = true
+
+			return nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if executed {
+		t.Fatal("run executor was reached for an unacknowledged scaffold-tier standard")
+	}
+
+	var response errorResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "experimental_opt_in_required" {
+		t.Fatalf("error code = %q, want %q", response.Error.Code, "experimental_opt_in_required")
+	}
+
+	if response.Error.Details["standard_id"] != "cnossos-road" {
+		t.Fatalf("error details standard_id = %v, want cnossos-road", response.Error.Details["standard_id"])
+	}
+
+	if response.Error.Details["evidence_tier"] != "scaffold" {
+		t.Fatalf("error details evidence_tier = %v, want scaffold", response.Error.Details["evidence_tier"])
+	}
+
+	if !strings.Contains(response.Error.Hint, "experimental") {
+		t.Fatalf("error hint does not name the field that proceeds: %q", response.Error.Hint)
+	}
+}
+
+// With the acknowledgement given the request runs, and the executor sees the
+// flag it has to forward to the run command.
+func TestCreateRunEndpointRunsScaffoldStandardWithExperimental(t *testing.T) {
+	t.Parallel()
+
+	store, registry := runGateFixture(t)
+
+	var got createRunRequest
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock:    time.Now,
+		registry: &registry,
+		runExecutor: func(_ context.Context, req createRunRequest) error {
+			got = req
+
+			_, _, err := store.CreateRun(projectfs.CreateRunSpec{
+				ScenarioID: "default",
+				Standard: project.StandardRef{
+					ID:      "cnossos-road",
+					Version: "0.1.0-preview",
+					Profile: "default",
+				},
+				Status: project.RunStatusCompleted,
+			})
+
+			return err
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road", "experimental": true}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if !got.Experimental {
+		t.Fatal("executor did not receive the experimental opt-in")
+	}
+}
+
+// Only the scaffold tier is gated: a normative standard reaches the executor
+// with no acknowledgement at all.
+func TestCreateRunEndpointDoesNotGateNormativeStandards(t *testing.T) {
+	t.Parallel()
+
+	store, registry := runGateFixture(t)
+
+	executed := false
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock:    time.Now,
+		registry: &registry,
+		runExecutor: func(_ context.Context, _ createRunRequest) error {
+			executed = true
+
+			return nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "rls19-road"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if !executed {
+		t.Fatal("a normative standard was gated")
+	}
+}
+
+func runGateFixture(t *testing.T) (projectfs.Store, framework.Registry) {
+	t.Helper()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Run Gate Test", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	registry, err := standards.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+
+	return store, registry
 }

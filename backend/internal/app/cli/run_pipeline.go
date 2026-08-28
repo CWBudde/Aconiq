@@ -15,6 +15,8 @@ import (
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
+	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
+	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
@@ -22,6 +24,7 @@ import (
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
+	"github.com/aconiq/backend/internal/standards/framework"
 	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -37,6 +40,25 @@ type runCommandRequest struct {
 	receiverMode    string
 	rawParams       []string
 	inputPaths      []string
+	experimental    bool
+}
+
+// requireExperimentalOptIn refuses a run against a standard whose tier demands
+// an explicit acknowledgement unless the operator gave one. The message carries
+// the whole disclosure — which standard, which tier, why the tier exists and
+// which flag proceeds — because domainerrors.AppError has no separate hint
+// field and this text is all the user gets.
+func requireExperimentalOptIn(resolved framework.ResolvedProfile, experimental bool) error {
+	if experimental || !resolved.EvidenceTier.RequiresExperimentalOptIn() {
+		return nil
+	}
+
+	return domainerrors.New(domainerrors.KindUserInput, "cli.run", fmt.Sprintf(
+		"standard %q is evidence tier %q: it carries no normative coefficients, its base levels are invented and it has no octave bands, "+
+			"so the levels it would emit are not an implementation of the standard it names and must not be used for assessment; "+
+			"pass --experimental to acknowledge that and run it anyway",
+		resolved.StandardID, resolved.EvidenceTier,
+	), nil)
 }
 
 //nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // This preserves the existing per-standard run orchestration while keeping newRunCommand thin.
@@ -71,6 +93,20 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
 	}
 
+	// A tier whose levels are invented may not be run by accident. The gate sits
+	// ahead of store.CreateRun so that a refused run leaves the project exactly
+	// as it found it: no manifest entry, no run directory, no log.
+	err = requireExperimentalOptIn(resolvedStandard, req.experimental)
+	if err != nil {
+		return err
+	}
+
+	// How far the numbers about to be produced may be trusted is stated before
+	// the run starts, not buried in the artifacts it leaves behind.
+	if !state.Config.JSONLogs {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Evidence tier: %s\n", resolvedStandard.EvidenceTier.Headline())
+	}
+
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
 		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
@@ -96,7 +132,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		ReceiverMode:  req.receiverMode,
 		ReceiverSetID: receiverSetID(req.receiverMode),
 		Parameters:    resolvedParams,
-		Metadata:      buildRunProvenanceMetadata(resolvedStandard.StandardID, resolvedParams, req.receiverMode),
+		Metadata:      buildRunProvenanceMetadata(resolvedStandard, resolvedParams, req.receiverMode),
 		InputPaths:    combinedInputs,
 		Status:        project.RunStatusRunning,
 		LogLines: []string{
@@ -110,6 +146,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	logLines := []string{
 		run.StartedAt.Format(time.RFC3339) + " run started",
 		fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
+		fmt.Sprintf("%s evidence_tier=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.EvidenceTier),
 		fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
 		fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
 	}
@@ -208,7 +245,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, runErr)
 		}
 
-		persisted, err = persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators))
+		persisted, err = persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators), resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -252,7 +289,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -293,7 +330,95 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistCnossosRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		if err != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
+			return finalizeRunFailure(store, run, logLines, err)
+		}
+	case bubrail.StandardID:
+		// bub-rail is an alias module over cnossos-rail: its source, receiver and
+		// output types are Go type aliases of the CNOSSOS ones, so extraction and
+		// receiver building are reused verbatim. Only the parameter schema, the
+		// compute entry point and the exported result bundle are its own.
+		options, parseErr := parseBUBRailRunOptions(resolvedParams)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		railSources, extractErr := extractCnossosRailSources(model, options, resolvedStandard.SupportedSourceTypes)
+		if extractErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUB rail sources: %v", nowUTC().Format(time.RFC3339), extractErr))
+			return finalizeRunFailure(store, run, logLines, extractErr)
+		}
+
+		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+			return buildCnossosRailReceivers(railSources, options)
+		})
+		if receiverErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
+			return finalizeRunFailure(store, run, logLines, receiverErr)
+		}
+
+		sourceCount = len(railSources)
+		receiverCount = len(receivers)
+
+		logLines = append(logLines, fmt.Sprintf("%s bub_rail_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+		if req.receiverMode == receiverModeCustom {
+			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+		} else {
+			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+		}
+
+		receiverOutputs, computeErr := bubrail.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
+		if computeErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s bub rail compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
+			return finalizeRunFailure(store, run, logLines, computeErr)
+		}
+
+		persisted, outputHash, finishedAt, err = persistBUBRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		if err != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
+			return finalizeRunFailure(store, run, logLines, err)
+		}
+	case bubindustry.StandardID:
+		// bub-industry is an alias module over cnossos-industry, on the same terms
+		// as bub-rail above.
+		options, parseErr := parseBUBIndustryRunOptions(resolvedParams)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		industrySources, extractErr := extractCnossosIndustrySources(model, options, resolvedStandard.SupportedSourceTypes)
+		if extractErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUB industry sources: %v", nowUTC().Format(time.RFC3339), extractErr))
+			return finalizeRunFailure(store, run, logLines, extractErr)
+		}
+
+		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+			return buildCnossosIndustryReceivers(industrySources, options)
+		})
+		if receiverErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
+			return finalizeRunFailure(store, run, logLines, receiverErr)
+		}
+
+		sourceCount = len(industrySources)
+		receiverCount = len(receivers)
+
+		logLines = append(logLines, fmt.Sprintf("%s bub_industry_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
+		if req.receiverMode == receiverModeCustom {
+			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
+		} else {
+			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
+		}
+
+		receiverOutputs, computeErr := bubindustry.ComputeReceiverOutputs(receivers, industrySources, options.PropagationConfig())
+		if computeErr != nil {
+			logLines = append(logLines, fmt.Sprintf("%s bub industry compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
+			return finalizeRunFailure(store, run, logLines, computeErr)
+		}
+
+		persisted, outputHash, finishedAt, err = persistBUBIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -334,7 +459,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUBRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistBUBRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -401,7 +526,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, sourceOverrideCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, sourceOverrideCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -438,6 +563,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			sourceCount,
 			req.receiverMode,
 			schall03Result.Engine,
+			resolvedStandard.EvidenceTier,
 		)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
@@ -525,7 +651,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, err)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBEBExposureRunOutputs(runDir, buildingOutputs, summary, sourceCount)
+		persisted, outputHash, finishedAt, err = persistBEBExposureRunOutputs(runDir, buildingOutputs, summary, sourceCount, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -566,7 +692,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUFAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistBUFAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -607,7 +733,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistCnossosAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -648,7 +774,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistCnossosIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -689,12 +815,15 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistISO9613RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		persisted, outputHash, finishedAt, err = persistISO9613RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
 		}
 	default:
+		// Unreachable: every ID the registry offers has a case above, and
+		// TestEveryRegisteredStandardCompletesARun fails the moment one does not.
+		// The branch stays as the defensive fallback for that test being wrong.
 		runErr := domainerrors.New(
 			domainerrors.KindUserInput,
 			"cli.run",
@@ -738,6 +867,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			"standard":         run.Standard.ID,
 			"standard_version": run.Standard.Version,
 			"standard_profile": run.Standard.Profile,
+			evidenceTierKey:    string(resolvedStandard.EvidenceTier),
 			"provenance_path":  provenance.ManifestPath,
 			"results_path":     relativePath(store.Root(), filepath.Join(runDir, "results")),
 		})

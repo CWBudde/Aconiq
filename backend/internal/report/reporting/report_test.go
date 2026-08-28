@@ -51,6 +51,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			"grid_resolution_m": "10",
 			"min_distance_m":    "1",
 		},
+		"metadata": map[string]string{
+			"evidence_tier": "scaffold",
+		},
 		"input_hashes": map[string]string{
 			".noise/model/model.normalized.geojson": "abc123",
 			"traffic/road.geojson":                  "def456",
@@ -178,6 +181,19 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		}
 	}
 
+	for _, row := range []string{
+		"- Standard profile: eu-default",
+		"- Evidence tier: scaffold",
+	} {
+		if !strings.Contains(markdownText, row) {
+			t.Fatalf("expected markdown to contain row %q: %s", row, markdownText)
+		}
+	}
+
+	if !strings.Contains(markdownText, "scaffold-tier standards module") {
+		t.Fatalf("expected the scaffold disclosure note in markdown: %s", markdownText)
+	}
+
 	if !strings.Contains(markdownText, "Lden | 50.000 | 52.667 | 55.000") {
 		t.Fatalf("expected receiver stats row in markdown: %s", markdownText)
 	}
@@ -196,6 +212,14 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("expected assessment section in html report")
 	}
 
+	if !strings.Contains(htmlText, "<li>Evidence tier: scaffold</li>") {
+		t.Fatalf("expected evidence tier row in html report: %s", htmlText)
+	}
+
+	if !strings.Contains(htmlText, "scaffold-tier standards module") {
+		t.Fatalf("expected the scaffold disclosure note in html report: %s", htmlText)
+	}
+
 	typstSource, err := os.ReadFile(report.TypstPath)
 	if err != nil {
 		t.Fatalf("read typst report: %v", err)
@@ -207,6 +231,14 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 
 	if !strings.Contains(string(typstSource), "[== 16. BImSchV assessment]") {
 		t.Fatalf("expected assessment section in typst source")
+	}
+
+	if !strings.Contains(string(typstSource), "[Evidence tier: #report.EvidenceTier]") {
+		t.Fatalf("expected evidence tier row in typst source")
+	}
+
+	if !strings.Contains(string(typstSource), "\"EvidenceTier\": \"scaffold\"") {
+		t.Fatalf("expected evidence tier value in typst source: %s", typstSource)
 	}
 
 	payload, err := os.ReadFile(report.ContextPath)
@@ -233,6 +265,55 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 
 	if assessment["law"] != "16. BImSchV" {
 		t.Fatalf("unexpected assessment law: %#v", assessment["law"])
+	}
+
+	if context["evidence_tier"] != "scaffold" {
+		t.Fatalf("unexpected evidence tier in context: %#v", context["evidence_tier"])
+	}
+}
+
+func TestBuildRunReportReportsUnknownEvidenceTierWithoutProvenance(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir: bundleDir,
+		Project:   project.Project{ProjectID: "proj-4", Name: "NoProvenance"},
+		Run:       project.Run{ID: "run-4", ScenarioID: "default", Status: "completed"},
+	})
+	if err != nil {
+		t.Fatalf("build report: %v", err)
+	}
+
+	markdown, err := os.ReadFile(report.MarkdownPath)
+	if err != nil {
+		t.Fatalf("read markdown: %v", err)
+	}
+
+	markdownText := string(markdown)
+	if !strings.Contains(markdownText, "- Evidence tier: "+UnknownEvidenceTier) {
+		t.Fatalf("expected the unknown evidence tier row, got: %s", markdownText)
+	}
+
+	if strings.Contains(markdownText, "scaffold-tier standards module") {
+		t.Fatalf("unexpected scaffold disclosure for an unknown tier: %s", markdownText)
+	}
+
+	payload, err := os.ReadFile(report.ContextPath)
+	if err != nil {
+		t.Fatalf("read report context: %v", err)
+	}
+
+	var context map[string]any
+
+	err = json.Unmarshal(payload, &context)
+	if err != nil {
+		t.Fatalf("decode context json: %v", err)
+	}
+
+	if context["evidence_tier"] != UnknownEvidenceTier {
+		t.Fatalf("unexpected evidence tier in context: %#v", context["evidence_tier"])
 	}
 }
 

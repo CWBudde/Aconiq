@@ -17,10 +17,21 @@ import (
 
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 const (
 	defaultReportTitle = "Aconiq Run Report"
+
+	// ProvenanceEvidenceTierKey is the provenance metadata key under which a run
+	// records the evidence tier of the standards module it used.
+	ProvenanceEvidenceTierKey = "evidence_tier"
+
+	// UnknownEvidenceTier is reported wherever a run's provenance carries no
+	// evidence tier, which is the case for runs written before the tier was
+	// disclosed. It is deliberately not one of the tier values: a bundle must
+	// never imply a tier it does not know.
+	UnknownEvidenceTier = "(unknown)"
 )
 
 type QASuiteStatus struct {
@@ -85,6 +96,7 @@ type reportContext struct {
 	StandardContext string          `json:"standard_context,omitempty"`
 	StandardVersion string          `json:"standard_version"`
 	StandardProfile string          `json:"standard_profile,omitempty"`
+	EvidenceTier    string          `json:"evidence_tier"`
 	Parameters      []kvPairView    `json:"parameters"`
 	Maps            []rasterMapView `json:"maps"`
 	ReceiverUnit    string          `json:"receiver_unit,omitempty"`
@@ -340,12 +352,19 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 		return err
 	}
 
+	ctx.EvidenceTier = UnknownEvidenceTier
+
 	if hasProvenance {
 		if provenance.Standard.ID != "" {
 			ctx.StandardID = provenance.Standard.ID
 			ctx.StandardContext = provenance.Standard.Context
 			ctx.StandardVersion = provenance.Standard.Version
 			ctx.StandardProfile = provenance.Standard.Profile
+		}
+
+		tier := strings.TrimSpace(provenance.Metadata[ProvenanceEvidenceTierKey])
+		if tier != "" {
+			ctx.EvidenceTier = tier
 		}
 
 		ctx.InputFiles = inputFilesFromHashes(provenance.InputHashes)
@@ -359,8 +378,13 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 	return nil
 }
 
-// appendContextNotes appends the explanatory notes for missing report sections, in fixed order.
+// appendContextNotes appends the evidence-tier disclosure and the explanatory
+// notes for missing report sections, in fixed order.
 func appendContextNotes(ctx *reportContext) {
+	if ctx.EvidenceTier == string(framework.EvidenceTierScaffold) {
+		ctx.Notes = append(ctx.Notes, "This run used a scaffold-tier standards module: it carries no normative coefficients, its base levels are invented, and its levels are not usable for assessment.")
+	}
+
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
 	}
@@ -876,6 +900,7 @@ Generated: {{.GeneratedAt}}
 - Standard context: {{.StandardContext}}
 - Standard version: {{.StandardVersion}}
 - Standard profile: {{.StandardProfile}}
+- Evidence tier: {{.EvidenceTier}}
 {{if .Parameters}}
 - Parameters:
 {{range .Parameters}}  - ` + "`" + `{{.Key}}={{.Value}}` + "`" + `
@@ -1016,6 +1041,7 @@ const htmlTemplate = `<!doctype html>
     <li>Standard context: {{.StandardContext}}</li>
     <li>Standard version: {{.StandardVersion}}</li>
     <li>Standard profile: {{.StandardProfile}}</li>
+    <li>Evidence tier: {{.EvidenceTier}}</li>
   </ul>
   <table>
     <thead><tr><th>Parameter</th><th>Value</th></tr></thead>

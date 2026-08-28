@@ -147,6 +147,7 @@ const reportTypstTemplate = `
     [Standard context: #report.StandardContext],
     [Standard version: #report.StandardVersion],
     [Standard profile: #report.StandardProfile],
+    [Evidence tier: #report.EvidenceTier],
   ))
 
   for entry in report.Parameters [

@@ -14,6 +14,7 @@ import (
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	"github.com/aconiq/backend/internal/standards/framework"
 	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -27,87 +28,120 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name    string
-		want    string
-		persist func(runDir string) (persistedRunOutputs, string, error)
+		name     string
+		want     string
+		wantTier framework.EvidenceTier
+		persist  func(runDir string) (persistedRunOutputs, string, error)
 	}{
 		{
-			name: "cnossos-road",
-			want: cnossosroad.BuiltinModelVersion,
+			name:     "cnossos-road",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosroad.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "cnossos-rail",
-			want: cnossosrail.BuiltinModelVersion,
+			name:     "cnossos-rail",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosrail.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosRailRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistCnossosRailRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "cnossos-aircraft",
-			want: cnossosaircraft.BuiltinModelVersion,
+			name:     "cnossos-aircraft",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosaircraft.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistCnossosAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "cnossos-industry",
-			want: cnossosindustry.BuiltinModelVersion,
+			name:     "cnossos-industry",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosindustry.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosIndustryRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistCnossosIndustryRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+
+				return out, hash, err
+			},
+		},
+		// bub-rail and bub-industry version nothing of their own: they alias the
+		// CNOSSOS scaffolds and delegate every number to them, so the CNOSSOS
+		// model version is the one their summaries must name.
+		{
+			name:     "bub-rail",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosrail.BuiltinModelVersion,
+			persist: func(runDir string) (persistedRunOutputs, string, error) {
+				out, hash, _, err := persistBUBRailRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "bub-road",
-			want: bubroad.BuiltinModelVersion,
+			name:     "bub-industry",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     cnossosindustry.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUBRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistBUBIndustryRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "buf-aircraft",
-			want: bufaircraft.BuiltinModelVersion,
+			name:     "bub-road",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     bubroad.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUFAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistBUBRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "iso9613",
-			want: iso9613.BuiltinModelVersion,
+			name:     "buf-aircraft",
+			wantTier: framework.EvidenceTierScaffold,
+			want:     bufaircraft.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistISO9613RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistBUFAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "schall03-normative",
-			want: schall03.NormativeModelVersion,
+			name:     "iso9613",
+			wantTier: framework.EvidenceTierNormative,
+			want:     iso9613.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EngineNormative)
+				out, hash, _, err := persistISO9613RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierNormative)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "schall03-preview",
-			want: schall03.PreviewModelVersion,
+			name:     "schall03-normative",
+			wantTier: framework.EvidenceTierNormative,
+			want:     schall03.NormativeModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EnginePreview)
+				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EngineNormative, framework.EvidenceTierNormative)
+
+				return out, hash, err
+			},
+		},
+		{
+			name:     "schall03-preview",
+			wantTier: framework.EvidenceTierNormative,
+			want:     schall03.PreviewModelVersion,
+			persist: func(runDir string) (persistedRunOutputs, string, error) {
+				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EnginePreview, framework.EvidenceTierNormative)
 
 				return out, hash, err
 			},
@@ -115,24 +149,26 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 		{
 			// RLS-19 carries no model version of its own; its data pack is what
 			// versions the result. The key must still be the unified one.
-			name: "rls19-road",
-			want: rls19road.BuiltinDataPackVersion,
+			name:     "rls19-road",
+			wantTier: framework.EvidenceTierNormative,
+			want:     rls19road.BuiltinDataPackVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistRLS19RoadRunOutputs(runDir, nil, 0, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistRLS19RoadRunOutputs(runDir, nil, 0, 0, 0, 0, receiverModeCustom, framework.EvidenceTierNormative)
 
 				return out, hash, err
 			},
 		},
 		{
-			name: "beb-exposure",
-			want: bebexposure.BuiltinModelVersion,
+			name:     "beb-exposure",
+			wantTier: framework.EvidenceTierPreview,
+			want:     bebexposure.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
 				outputs := []bebexposure.BuildingExposureOutput{{
 					Building:               bebexposure.BuildingUnit{ID: "b1", UsageType: "residential", HeightM: 10},
 					RepresentativeReceiver: geo.PointReceiver{ID: "b1-r", HeightM: 4},
 				}}
 
-				out, hash, _, err := persistBEBExposureRunOutputs(runDir, outputs, bebexposure.Summary{BuildingCount: 1}, 0)
+				out, hash, _, err := persistBEBExposureRunOutputs(runDir, outputs, bebexposure.Summary{BuildingCount: 1}, 0, framework.EvidenceTierPreview)
 
 				return out, hash, err
 			},
@@ -161,6 +197,13 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 				t.Fatalf("model_version = %v, want %q", got, testCase.want)
 			}
 
+			// A summary that names a model version but not an evidence tier
+			// would let the reader assume the numbers are as trustworthy as the
+			// standard the module is named after.
+			if summary["evidence_tier"] != string(testCase.wantTier) {
+				t.Fatalf("evidence_tier = %v, want %q", summary["evidence_tier"], testCase.wantTier)
+			}
+
 			if _, stale := summary["data_pack_version"]; stale && testCase.name == "rls19-road" {
 				t.Fatal("rls19-road still writes the old data_pack_version key")
 			}
@@ -175,7 +218,7 @@ func TestPersistCnossosRoadRunOutputsUsesRoadConstants(t *testing.T) {
 
 	runDir := t.TempDir()
 
-	persisted, _, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+	persisted, _, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 	if err != nil {
 		t.Fatalf("persist cnossos road outputs: %v", err)
 	}
@@ -237,7 +280,7 @@ func TestPersistSchall03RunOutputsStampsOnlyTheEngineThatRan(t *testing.T) {
 		t.Run(testCase.engine, func(t *testing.T) {
 			t.Parallel()
 
-			persisted, _, _, err := persistSchall03RunOutputs(t.TempDir(), nil, 0, 0, 0, receiverModeCustom, testCase.engine)
+			persisted, _, _, err := persistSchall03RunOutputs(t.TempDir(), nil, 0, 0, 0, receiverModeCustom, testCase.engine, framework.EvidenceTierNormative)
 			if err != nil {
 				t.Fatalf("persist schall03 outputs: %v", err)
 			}
