@@ -18,7 +18,7 @@ func TestMapStandardID(t *testing.T) {
 		version string
 		profile string
 	}{
-		{20490, schall03.StandardID, true, "phase18-baseline-preview", "rail-planning-preview"},
+		{20490, schall03.StandardID, true, "2014-anlage2", "rail-planning-preview"},
 		{10490, rls19road.StandardID, true, "2019", "default"},
 		{30000, iso9613.StandardID, true, "1996-octaveband", "point-source"},
 		{99999, "", false, "", ""},

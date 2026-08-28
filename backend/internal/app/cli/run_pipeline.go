@@ -121,6 +121,11 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	relModelPath := relativePath(store.Root(), resolvedModelPath)
 	combinedInputs := mergeInputPaths(append([]string{relModelPath}, req.inputPaths...))
 
+	standardData, err := buildRunStandardData(resolvedStandard)
+	if err != nil {
+		return err
+	}
+
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
 		ScenarioID: req.scenarioID,
 		Standard: project.StandardRef{
@@ -133,6 +138,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		ReceiverSetID: receiverSetID(req.receiverMode),
 		Parameters:    resolvedParams,
 		Metadata:      buildRunProvenanceMetadata(resolvedStandard, resolvedParams, req.receiverMode),
+		StandardData:  standardData,
 		InputPaths:    combinedInputs,
 		Status:        project.RunStatusRunning,
 		LogLines: []string{
@@ -238,7 +244,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			Receivers:      receivers,
 			Sources:        engineSources,
 			DisableCache:   options.DisableCache,
-			DeterminismTag: "phase8-dummy-freefield",
+			DeterminismTag: "dummy-freefield",
 		})
 		if runErr != nil {
 			logLines = append(logLines, fmt.Sprintf("%s engine failed: %v", nowUTC().Format(time.RFC3339), runErr))

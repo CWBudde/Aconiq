@@ -55,6 +55,12 @@ anyone who ran an earlier working tree holds results those changes invalidate.
   Langsamfahr flags, water fraction and wall surfaces.
 - `aconiq compare --param`, so a comparison can select the same engine and options as the run it
   compares against.
+- A standard-data digest in `provenance.json` and in generated reports: a SHA-256 over every
+  coefficient table a standards module carries, per table and overall, with the evidence tier as an
+  input to the hash. Two runs whose digests agree used byte-identical coefficient data; re-tiering a
+  module moves the digest, because it changes what the numbers mean. It is a dedicated field, not an
+  `input_hashes` entry — that map is input-file path to SHA-256, and a non-file entry there renders
+  as a bogus "Input files" row in every report.
 - Determinism policy is now testable rather than aspirational: reductions whose term count scales
   with model size use Neumaier compensated summation, and fixed-length reductions are documented as
   exempt (`docs/policies/determinism.md`).
@@ -67,6 +73,13 @@ anyone who ran an earlier working tree holds results those changes invalidate.
   described as implementations of CNOSSOS-EU or of the German mapping directives. Their scope
   statements live in `docs/conformance/cnossos-umfangserklaerung.md` and
   `beb-umfangserklaerung.md` — explicitly not conformance declarations.
+- **Flag value change:** the Schall 03 standard version is renamed from `phase18-baseline-preview`
+  to `2014-anlage2`. A script passing the old value to `aconiq run --version` must be updated. The
+  bundled model versions of the preview and scaffold modules are likewise renamed from
+  `phaseNN-preview-vN` to `baseline-preview-<subject>-vN`; those appear in `provenance.json` and
+  `run-summary.json` rather than on the command line. Internal sprint numbers had been leaking into
+  artifacts meant to be read by third parties, and no scaffold's model version now names a standard
+  it does not implement.
 - Run-summary provenance is unified on a single `model_version` key across every standard-backed
   persist path; RLS-19's `data_pack_version` was renamed to match.
 - Schall 03 model versions are renamed away from internal sprint numbers:

@@ -32,6 +32,13 @@ const (
 	// disclosed. It is deliberately not one of the tier values: a bundle must
 	// never imply a tier it does not know.
 	UnknownEvidenceTier = "(unknown)"
+
+	// NoStandardData is reported for a run whose standards module carries no
+	// coefficient data at all — dummy-freefield computes from its parameters
+	// alone — and for runs written before the digest was recorded. Rendering it
+	// keeps the provenance row honest instead of leaving it blank, which a
+	// reader could mistake for a missing value rather than an absent one.
+	NoStandardData = "(none)"
 )
 
 type QASuiteStatus struct {
@@ -92,23 +99,32 @@ type reportContext struct {
 	ModelFeatureCnt string          `json:"model_feature_count,omitempty"`
 	CountsByKind    []kindCountView `json:"counts_by_kind,omitempty"`
 
-	StandardID      string          `json:"standard_id"`
-	StandardContext string          `json:"standard_context,omitempty"`
-	StandardVersion string          `json:"standard_version"`
-	StandardProfile string          `json:"standard_profile,omitempty"`
-	EvidenceTier    string          `json:"evidence_tier"`
-	Parameters      []kvPairView    `json:"parameters"`
-	Maps            []rasterMapView `json:"maps"`
-	ReceiverUnit    string          `json:"receiver_unit,omitempty"`
-	Indicators      []indicatorView `json:"indicators"`
-	Assessment      *assessmentView `json:"assessment,omitempty"`
-	QASuites        []qaSuiteView   `json:"qa_suites"`
-	Notes           []string        `json:"notes,omitempty"`
+	StandardID      string `json:"standard_id"`
+	StandardContext string `json:"standard_context,omitempty"`
+	StandardVersion string `json:"standard_version"`
+	StandardProfile string `json:"standard_profile,omitempty"`
+	EvidenceTier    string `json:"evidence_tier"`
+
+	StandardDataDigest string                  `json:"standard_data_digest"`
+	StandardDataTables []standardDataTableView `json:"standard_data_tables"`
+
+	Parameters   []kvPairView    `json:"parameters"`
+	Maps         []rasterMapView `json:"maps"`
+	ReceiverUnit string          `json:"receiver_unit,omitempty"`
+	Indicators   []indicatorView `json:"indicators"`
+	Assessment   *assessmentView `json:"assessment,omitempty"`
+	QASuites     []qaSuiteView   `json:"qa_suites"`
+	Notes        []string        `json:"notes,omitempty"`
 }
 
 type inputFileView struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
+}
+
+type standardDataTableView struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
 }
 
 type kindCountView struct {
@@ -159,6 +175,8 @@ type provenanceEnvelope struct {
 	Parameters  map[string]string   `json:"parameters"`
 	Metadata    map[string]string   `json:"metadata"`
 	InputHashes map[string]string   `json:"input_hashes"`
+
+	StandardData *project.StandardDataRef `json:"standard_data"`
 }
 
 type runSummaryEnvelope struct {
@@ -353,6 +371,8 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 	}
 
 	ctx.EvidenceTier = UnknownEvidenceTier
+	ctx.StandardDataDigest = NoStandardData
+	ctx.StandardDataTables = []standardDataTableView{}
 
 	if hasProvenance {
 		if provenance.Standard.ID != "" {
@@ -367,6 +387,8 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 			ctx.EvidenceTier = tier
 		}
 
+		applyStandardData(ctx, provenance.StandardData)
+
 		ctx.InputFiles = inputFilesFromHashes(provenance.InputHashes)
 		ctx.Parameters = kvPairsFromMap(provenance.Parameters)
 	}
@@ -376,6 +398,41 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 	}
 
 	return nil
+}
+
+// applyStandardData renders the standard-data digest, which identifies the
+// coefficient tables that produced the run's numbers.
+//
+// It is deliberately kept out of the "Input files" table: that table is built
+// from provenance input_hashes, which is defined as input-file path to SHA-256,
+// and an embedded coefficient table is not a file anyone supplied.
+func applyStandardData(ctx *reportContext, ref *project.StandardDataRef) {
+	if ref == nil || strings.TrimSpace(ref.Digest) == "" {
+		return
+	}
+
+	algorithm := strings.TrimSpace(ref.Algorithm)
+	if algorithm == "" {
+		ctx.StandardDataDigest = ref.Digest
+	} else {
+		ctx.StandardDataDigest = algorithm + ":" + ref.Digest
+	}
+
+	tables := make([]standardDataTableView, 0, len(ref.Tables))
+	for _, table := range ref.Tables {
+		name := strings.TrimSpace(table.Name)
+		if name == "" {
+			continue
+		}
+
+		tables = append(tables, standardDataTableView{Name: name, Digest: strings.TrimSpace(table.Digest)})
+	}
+
+	sort.Slice(tables, func(i, j int) bool {
+		return tables[i].Name < tables[j].Name
+	})
+
+	ctx.StandardDataTables = tables
 }
 
 // appendContextNotes appends the evidence-tier disclosure and the explanatory
@@ -621,7 +678,7 @@ func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {
 	if len(in) == 0 {
 		return []qaSuiteView{
 			{
-				Name:    "phase20-baseline",
+				Name:    "acceptance-baseline",
 				Status:  "not_configured",
 				Details: "No QA suite artifacts were found for this run.",
 			},
@@ -655,7 +712,7 @@ func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {
 	if len(out) == 0 {
 		return []qaSuiteView{
 			{
-				Name:    "phase20-baseline",
+				Name:    "acceptance-baseline",
 				Status:  "not_configured",
 				Details: "No QA suite artifacts were found for this run.",
 			},
@@ -901,7 +958,11 @@ Generated: {{.GeneratedAt}}
 - Standard version: {{.StandardVersion}}
 - Standard profile: {{.StandardProfile}}
 - Evidence tier: {{.EvidenceTier}}
-{{if .Parameters}}
+- Standard data digest: {{.StandardDataDigest}}
+{{if .StandardDataTables}}
+- Standard data tables:
+{{range .StandardDataTables}}  - ` + "`" + `{{.Name}}` + "`" + ` (sha256={{.Digest}})
+{{end}}{{end}}{{if .Parameters}}
 - Parameters:
 {{range .Parameters}}  - ` + "`" + `{{.Key}}={{.Value}}` + "`" + `
 {{end}}{{else}}
@@ -1042,7 +1103,14 @@ const htmlTemplate = `<!doctype html>
     <li>Standard version: {{.StandardVersion}}</li>
     <li>Standard profile: {{.StandardProfile}}</li>
     <li>Evidence tier: {{.EvidenceTier}}</li>
+    <li>Standard data digest: <code>{{.StandardDataDigest}}</code></li>
   </ul>
+  {{if .StandardDataTables}}
+  <table>
+    <thead><tr><th>Standard data table</th><th>SHA-256</th></tr></thead>
+    <tbody>{{range .StandardDataTables}}<tr><td><code>{{.Name}}</code></td><td><code>{{.Digest}}</code></td></tr>{{end}}</tbody>
+  </table>
+  {{end}}
   <table>
     <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
     <tbody>{{range .Parameters}}<tr><td><code>{{.Key}}</code></td><td><code>{{.Value}}</code></td></tr>{{end}}</tbody>

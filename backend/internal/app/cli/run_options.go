@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
 	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
@@ -363,6 +364,77 @@ func buildRunProvenanceMetadata(resolved framework.ResolvedProfile, params map[s
 		return mergeMetadata(metadata, schall03.ProvenanceMetadata(params))
 	default:
 		return metadata
+	}
+}
+
+// buildRunStandardData assembles the standard-data digest for one run.
+//
+// The digest answers a question the parameter and metadata maps cannot: which
+// coefficient tables produced these numbers. It is recorded as its own
+// provenance field rather than as an entry in input_hashes, which is defined as
+// input-file path to SHA-256 and is rendered as an "Input files" table in
+// reports; an embedded coefficient table is not a file the user supplied.
+//
+// A module that carries no coefficient data at all — dummy-freefield computes
+// from its parameters alone — yields the zero value, and the field is omitted
+// from the manifest rather than written empty.
+func buildRunStandardData(resolved framework.ResolvedProfile) (project.StandardDataRef, error) {
+	data, ok := standardDataForID(resolved.StandardID)
+	if !ok {
+		return project.StandardDataRef{}, nil
+	}
+
+	digest, err := data.Digest(resolved.StandardID, resolved.EvidenceTier)
+	if err != nil {
+		return project.StandardDataRef{}, domainerrors.New(domainerrors.KindInternal, "cli.buildRunStandardData", "compute standard data digest", err)
+	}
+
+	if digest.IsZero() {
+		return project.StandardDataRef{}, nil
+	}
+
+	tables := make([]project.StandardDataTableRef, 0, len(digest.Tables))
+	for _, table := range digest.Tables {
+		tables = append(tables, project.StandardDataTableRef{Name: table.Name, Digest: table.Digest})
+	}
+
+	return project.StandardDataRef{
+		Algorithm:    digest.Algorithm,
+		Digest:       digest.Digest,
+		EvidenceTier: string(digest.EvidenceTier),
+		Tables:       tables,
+	}, nil
+}
+
+// standardDataForID returns the coefficient data one module carries. The second
+// result is false for a module that carries none.
+//
+// bub-rail and bub-industry are aliases over the cnossos rail and industry
+// packages and share their coefficients, so they share their tables too.
+func standardDataForID(standardID string) (framework.StandardData, bool) {
+	switch standardID {
+	case cnossosroad.StandardID:
+		return cnossosroad.StandardData(), true
+	case cnossosrail.StandardID, bubrail.StandardID:
+		return cnossosrail.StandardData(), true
+	case cnossosindustry.StandardID, bubindustry.StandardID:
+		return cnossosindustry.StandardData(), true
+	case cnossosaircraft.StandardID:
+		return cnossosaircraft.StandardData(), true
+	case bubroad.StandardID:
+		return bubroad.StandardData(), true
+	case bufaircraft.StandardID:
+		return bufaircraft.StandardData(), true
+	case bebexposure.StandardID:
+		return bebexposure.StandardData(), true
+	case iso9613.StandardID:
+		return iso9613.StandardData(), true
+	case rls19road.StandardID:
+		return rls19road.StandardData(), true
+	case schall03.StandardID:
+		return schall03.StandardData(), true
+	default:
+		return framework.StandardData{}, false
 	}
 }
 

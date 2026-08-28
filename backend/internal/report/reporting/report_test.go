@@ -58,6 +58,15 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 			".noise/model/model.normalized.geojson": "abc123",
 			"traffic/road.geojson":                  "def456",
 		},
+		"standard_data": map[string]any{
+			"algorithm":     "sha256",
+			"digest":        "d00d",
+			"evidence_tier": "scaffold",
+			"tables": []map[string]string{
+				{"name": "preview-road/speed-corrections", "digest": "cafe"},
+				{"name": "preview-road/base-levels", "digest": "beef"},
+			},
+		},
 	}
 
 	err = writeJSONFile(provenancePath, provenance)
@@ -184,6 +193,8 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 	for _, row := range []string{
 		"- Standard profile: eu-default",
 		"- Evidence tier: scaffold",
+		"- Standard data digest: sha256:d00d",
+		"`preview-road/base-levels` (sha256=beef)",
 	} {
 		if !strings.Contains(markdownText, row) {
 			t.Fatalf("expected markdown to contain row %q: %s", row, markdownText)
@@ -216,6 +227,14 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("expected evidence tier row in html report: %s", htmlText)
 	}
 
+	if !strings.Contains(htmlText, "<li>Standard data digest: <code>sha256:d00d</code></li>") {
+		t.Fatalf("expected standard data digest row in html report: %s", htmlText)
+	}
+
+	if !strings.Contains(htmlText, "<td><code>preview-road/speed-corrections</code></td><td><code>cafe</code></td>") {
+		t.Fatalf("expected standard data table row in html report: %s", htmlText)
+	}
+
 	if !strings.Contains(htmlText, "scaffold-tier standards module") {
 		t.Fatalf("expected the scaffold disclosure note in html report: %s", htmlText)
 	}
@@ -239,6 +258,14 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 
 	if !strings.Contains(string(typstSource), "\"EvidenceTier\": \"scaffold\"") {
 		t.Fatalf("expected evidence tier value in typst source: %s", typstSource)
+	}
+
+	if !strings.Contains(string(typstSource), "[Standard data digest: #report.StandardDataDigest]") {
+		t.Fatalf("expected standard data digest row in typst source")
+	}
+
+	if !strings.Contains(string(typstSource), "\"StandardDataDigest\": \"sha256:d00d\"") {
+		t.Fatalf("expected standard data digest value in typst source: %s", typstSource)
 	}
 
 	payload, err := os.ReadFile(report.ContextPath)
@@ -269,6 +296,22 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 
 	if context["evidence_tier"] != "scaffold" {
 		t.Fatalf("unexpected evidence tier in context: %#v", context["evidence_tier"])
+	}
+
+	if context["standard_data_digest"] != "sha256:d00d" {
+		t.Fatalf("unexpected standard data digest in context: %#v", context["standard_data_digest"])
+	}
+
+	// The tables are rendered sorted by name regardless of the order the
+	// manifest listed them in, so a digest mismatch is attributable.
+	tables, ok := context["standard_data_tables"].([]any)
+	if !ok || len(tables) != 2 {
+		t.Fatalf("expected two standard data tables in context, got %#v", context["standard_data_tables"])
+	}
+
+	first, ok := tables[0].(map[string]any)
+	if !ok || first["name"] != "preview-road/base-levels" {
+		t.Fatalf("standard data tables are not sorted by name: %#v", tables)
 	}
 }
 
@@ -317,6 +360,84 @@ func TestBuildRunReportReportsUnknownEvidenceTierWithoutProvenance(t *testing.T)
 	}
 }
 
+// TestBuildRunReportRendersAbsentStandardDataCleanly covers a run against a
+// module that carries no coefficient data at all, such as dummy-freefield. The
+// row must say so rather than render blank, which a reader could mistake for a
+// missing value rather than an absent one.
+func TestBuildRunReportRendersAbsentStandardDataCleanly(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+	provenancePath := filepath.Join(bundleDir, "provenance.json")
+
+	err := writeJSONFile(provenancePath, map[string]any{
+		"standard": map[string]any{
+			"id":      "dummy-freefield",
+			"version": "v0",
+			"profile": "default",
+		},
+		"metadata":     map[string]string{"evidence_tier": "test-fixture"},
+		"input_hashes": map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("write provenance: %v", err)
+	}
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir:      bundleDir,
+		Project:        project.Project{ProjectID: "proj-5", Name: "NoStandardData"},
+		Run:            project.Run{ID: "run-5", ScenarioID: "default", Status: "completed"},
+		ProvenancePath: provenancePath,
+	})
+	if err != nil {
+		t.Fatalf("build report: %v", err)
+	}
+
+	markdown, err := os.ReadFile(report.MarkdownPath)
+	if err != nil {
+		t.Fatalf("read markdown: %v", err)
+	}
+
+	markdownText := string(markdown)
+	if !strings.Contains(markdownText, "- Standard data digest: "+NoStandardData) {
+		t.Fatalf("expected the absent standard data row, got: %s", markdownText)
+	}
+
+	if strings.Contains(markdownText, "- Standard data tables:") {
+		t.Fatalf("unexpected standard data table list for a module carrying none: %s", markdownText)
+	}
+
+	html, err := os.ReadFile(report.HTMLPath)
+	if err != nil {
+		t.Fatalf("read html: %v", err)
+	}
+
+	if !strings.Contains(string(html), "<li>Standard data digest: <code>"+NoStandardData+"</code></li>") {
+		t.Fatalf("expected the absent standard data row in html: %s", html)
+	}
+
+	payload, err := os.ReadFile(report.ContextPath)
+	if err != nil {
+		t.Fatalf("read report context: %v", err)
+	}
+
+	var context map[string]any
+
+	err = json.Unmarshal(payload, &context)
+	if err != nil {
+		t.Fatalf("decode context json: %v", err)
+	}
+
+	if context["standard_data_digest"] != NoStandardData {
+		t.Fatalf("unexpected standard data digest in context: %#v", context["standard_data_digest"])
+	}
+
+	tables, ok := context["standard_data_tables"].([]any)
+	if !ok || len(tables) != 0 {
+		t.Fatalf("expected an empty standard data table list, got %#v", context["standard_data_tables"])
+	}
+}
+
 func TestBuildRunReportUsesDefaultQABaseline(t *testing.T) {
 	t.Parallel()
 
@@ -337,7 +458,7 @@ func TestBuildRunReportUsesDefaultQABaseline(t *testing.T) {
 	}
 
 	text := string(markdown)
-	if !strings.Contains(text, "phase20-baseline") {
+	if !strings.Contains(text, "acceptance-baseline") {
 		t.Fatalf("expected default QA suite row, got: %s", text)
 	}
 }

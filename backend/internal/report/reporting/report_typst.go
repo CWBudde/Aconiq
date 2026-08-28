@@ -148,7 +148,14 @@ const reportTypstTemplate = `
     [Standard version: #report.StandardVersion],
     [Standard profile: #report.StandardProfile],
     [Evidence tier: #report.EvidenceTier],
+    [Standard data digest: #report.StandardDataDigest],
   ))
+
+  if report.StandardDataTables.len() > 0 [
+    #for entry in report.StandardDataTables [
+      - #entry.Name (sha256=#entry.Digest)
+    ]
+  ]
 
   for entry in report.Parameters [
     - #entry.Key: #entry.Value

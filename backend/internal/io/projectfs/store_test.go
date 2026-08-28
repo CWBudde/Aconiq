@@ -462,3 +462,138 @@ func TestCreateRunWritesToolIdentityIntoProvenance(t *testing.T) {
 		t.Fatalf("provenance.json carries no usable tool identity: %+v", persisted)
 	}
 }
+
+func TestCreateRunPersistsStandardDataOutsideInputHashes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("", "")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	inputPath := filepath.Join(root, "input.geojson")
+
+	err = os.WriteFile(inputPath, []byte(`{"type":"FeatureCollection","features":[]}`), 0o600)
+	if err != nil {
+		t.Fatalf("write input file: %v", err)
+	}
+
+	standardData := project.StandardDataRef{
+		Algorithm:    "sha256",
+		Digest:       "aaaa",
+		EvidenceTier: "normative",
+		Tables: []project.StandardDataTableRef{
+			{Name: "anlage2/tabelle-06-geschwindigkeitsfaktor", Digest: "bbbb"},
+		},
+	}
+
+	run, _, err := store.CreateRun(CreateRunSpec{
+		ScenarioID:   "default",
+		Standard:     project.StandardRef{ID: "schall03", Version: "2014-anlage2", Profile: "rail-planning-preview"},
+		StandardData: standardData,
+		InputPaths:   []string{"input.geojson"},
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	// The spec is the caller's; mutating it afterwards must not reach the file.
+	standardData.Digest = "mutated"
+	standardData.Tables[0].Digest = "mutated"
+
+	payload, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance: %v", err)
+	}
+
+	var written project.ProvenanceManifest
+
+	err = json.Unmarshal(payload, &written)
+	if err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+
+	if written.StandardData == nil {
+		t.Fatal("expected standard_data in the written provenance")
+	}
+
+	if written.StandardData.Digest != "aaaa" || written.StandardData.Algorithm != "sha256" {
+		t.Fatalf("unexpected standard data: %#v", written.StandardData)
+	}
+
+	if len(written.StandardData.Tables) != 1 || written.StandardData.Tables[0].Digest != "bbbb" {
+		t.Fatalf("unexpected standard data tables: %#v", written.StandardData.Tables)
+	}
+
+	// input_hashes is defined as input-file path to SHA-256; a coefficient
+	// table is not a file anyone supplied and must never appear there.
+	if len(written.InputHashes) != 1 {
+		t.Fatalf("expected only the input file in input_hashes, got %#v", written.InputHashes)
+	}
+
+	if _, ok := written.InputHashes["input.geojson"]; !ok {
+		t.Fatalf("expected the input file in input_hashes, got %#v", written.InputHashes)
+	}
+}
+
+func TestMergeRunProvenanceMetadataKeepsStandardData(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("", "")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	run, _, err := store.CreateRun(CreateRunSpec{
+		ScenarioID: "default",
+		Standard:   project.StandardRef{ID: "schall03", Version: "2014-anlage2", Profile: "rail-planning-preview"},
+		StandardData: project.StandardDataRef{
+			Algorithm:    "sha256",
+			Digest:       "aaaa",
+			EvidenceTier: "normative",
+			Tables:       []project.StandardDataTableRef{{Name: "anlage2/tabelle-09-bruecken", Digest: "bbbb"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	err = store.MergeRunProvenanceMetadata(run.ID, map[string]string{"schall03_engine": "normative"})
+	if err != nil {
+		t.Fatalf("merge provenance metadata: %v", err)
+	}
+
+	payload, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance: %v", err)
+	}
+
+	var written project.ProvenanceManifest
+
+	err = json.Unmarshal(payload, &written)
+	if err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+
+	if written.Metadata["schall03_engine"] != "normative" {
+		t.Fatalf("expected the merged engine key, got %#v", written.Metadata)
+	}
+
+	if written.StandardData == nil || written.StandardData.Digest != "aaaa" {
+		t.Fatalf("the merge dropped the standard data digest: %#v", written.StandardData)
+	}
+}

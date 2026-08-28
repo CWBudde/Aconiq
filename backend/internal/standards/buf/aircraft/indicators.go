@@ -4,7 +4,7 @@ import "math"
 
 const (
 	// BuiltinModelVersion identifies the current bundled preview coefficient set.
-	BuiltinModelVersion = "phase15-preview-v2"
+	BuiltinModelVersion = "baseline-preview-aircraft-mapping-v2"
 
 	// ReportingPrecisionDB documents the intended reporting boundary for exported
 	// indicators. Internal computation remains float64 without intermediate rounding.

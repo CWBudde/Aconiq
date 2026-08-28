@@ -63,4 +63,34 @@ Core entities in v1:
 - normalized run parameters
 - optional module-specific metadata (for example data-pack version or reporting precision)
 - input file hashes
+- the standard-data digest (`standard_data`)
 - generation timestamp and tool identity
+
+### `standard_data`
+
+`standard_data` identifies which module, at which evidence tier, with which
+coefficient tables produced the run:
+
+```json
+"standard_data": {
+  "algorithm": "sha256",
+  "digest": "<hex>",
+  "evidence_tier": "normative",
+  "tables": [{ "name": "anlage2/tabelle-09-bruecken", "digest": "<hex>" }]
+}
+```
+
+The top-level `digest` covers the standard ID, the evidence tier and every
+table below it, so two runs whose digests agree used byte-identical coefficient
+data. The per-table digests make a mismatch attributable to one table rather
+than to the whole module. Table entries are sorted by name and every map is
+hashed with its keys sorted, so the digest is independent of Go map iteration
+order.
+
+The field is omitted for a module that carries no coefficient data at all —
+`dummy-freefield` computes from its run parameters alone.
+
+Coefficient tables are deliberately **not** entries in `input_hashes`: that map
+is defined as input-file path to SHA-256, and every entry in it is rendered as
+an "Input files" row in generated reports. Only a coefficient artifact that
+genuinely is a hashed file on disk belongs there.

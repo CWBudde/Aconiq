@@ -2,7 +2,7 @@ package exposure
 
 const (
 	// BuiltinModelVersion identifies the current bundled preview aggregation model.
-	BuiltinModelVersion = "phase16-preview-v2"
+	BuiltinModelVersion = "baseline-preview-exposure-aggregation-v2"
 
 	// ReportingPrecisionCount documents the intended reporting boundary for exported
 	// aggregation counts. Internal computation remains float64 without intermediate rounding.

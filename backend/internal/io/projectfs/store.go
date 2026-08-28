@@ -40,6 +40,7 @@ type CreateRunSpec struct {
 	ReceiverSetID string
 	Parameters    map[string]string
 	Metadata      map[string]string
+	StandardData  project.StandardDataRef
 	InputPaths    []string
 	Status        string
 	LogLines      []string
@@ -328,6 +329,7 @@ func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID s
 		ReceiverSetID: spec.ReceiverSetID,
 		Parameters:    cloneStringMap(spec.Parameters),
 		Metadata:      cloneStringMap(spec.Metadata),
+		StandardData:  cloneStandardData(spec.StandardData),
 		InputHashes:   inputHashes,
 		GeneratedAt:   now,
 		ToolName:      buildinfo.Name,
@@ -511,4 +513,18 @@ func buildID(prefix string) string {
 	}
 
 	return fmt.Sprintf("%s-%s", prefix, hex.EncodeToString(buf))
+}
+
+// cloneStandardData deep-copies the standard-data digest so a later mutation of
+// the caller's spec cannot reach the persisted manifest. A module carrying no
+// coefficient data yields no record at all rather than an empty one.
+func cloneStandardData(ref project.StandardDataRef) *project.StandardDataRef {
+	if ref.IsZero() {
+		return nil
+	}
+
+	cloned := ref
+	cloned.Tables = append([]project.StandardDataTableRef(nil), ref.Tables...)
+
+	return &cloned
 }
