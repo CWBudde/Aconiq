@@ -14,8 +14,15 @@ import (
 
 // --- FlatGeobuf test file helpers ---
 
-// buildHeader creates a FlatBuffer-encoded Header with the given geometry type and columns.
+// buildHeader creates a FlatBuffer-encoded Header with the given geometry type
+// and columns, declaring no spatial index.
 func buildHeader(geomType flat.GeometryType, columns []testColumn, featureCount int) *flat.Header {
+	return buildHeaderNodeSize(geomType, columns, featureCount, 0)
+}
+
+// buildHeaderNodeSize is buildHeader with an explicit packed R-tree node size.
+// A non-zero size declares that an index section follows the header.
+func buildHeaderNodeSize(geomType flat.GeometryType, columns []testColumn, featureCount int, nodeSize uint16) *flat.Header {
 	bldr := flatbuffers.NewBuilder(256)
 
 	// Build column offsets.
@@ -39,7 +46,7 @@ func buildHeader(geomType flat.GeometryType, columns []testColumn, featureCount 
 	flat.HeaderStart(bldr)
 	flat.HeaderAddGeometryType(bldr, geomType)
 	flat.HeaderAddColumns(bldr, colsVec)
-	flat.HeaderAddIndexNodeSize(bldr, 0)
+	flat.HeaderAddIndexNodeSize(bldr, nodeSize)
 	flat.HeaderAddFeaturesCount(bldr, uint64(featureCount))
 	hdrOff := flat.HeaderEnd(bldr)
 

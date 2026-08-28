@@ -198,6 +198,40 @@ fe-e2e:
 # Run all frontend checks (typecheck, lint, test, build, bundle-check)
 fe-ci: fe-typecheck fe-lint fe-test fe-build fe-bundle-check
 
+# Refuse tracked interoperability/ paths
+#
+# interoperability/ holds licensed third-party reference material -- standards
+# documents and vendor project bundles -- that must never leave the machines
+# entitled to it. Today the only thing keeping it out of the repository is one
+# line in .gitignore, which does not cover a file added with `git add -f`, one
+# that was already tracked when the rule landed, or a branch that predates it.
+# Mirrored by .github/workflows/repo-hygiene.yml, which calls this recipe.
+check-no-third-party-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tracked="$(git ls-files -- interoperability/)"
+    if [ -z "${tracked}" ]; then
+      echo "No tracked paths under interoperability/."
+      exit 0
+    fi
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+      echo "::error title=Third-party data committed::interoperability/ must not be tracked by git"
+    fi
+    echo "These paths under interoperability/ are tracked in this commit:"
+    echo "${tracked}" | sed 's/^/  /'
+    echo
+    echo "To fix it, from the repository root:"
+    echo
+    echo "  git rm -r --cached interoperability/"
+    echo "  git commit -m 'chore: untrack interoperability/'"
+    echo
+    echo "That removes the files from the index while leaving them on disk. If the"
+    echo "commit that added them has already been pushed, untracking is not enough:"
+    echo "the content is still reachable from the earlier commits, so rewrite the"
+    echo "branch (git rebase -i, or git filter-repo for anything older) before"
+    echo "merging, and treat the material as disclosed if the branch was public."
+    exit 1
+
 # --- Release ---
 
 # Releases are driven by .github/workflows/release.yml on a `v*` tag; the two

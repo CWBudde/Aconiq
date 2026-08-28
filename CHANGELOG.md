@@ -165,6 +165,23 @@ with results produced after them.
 - `overpass_endpoint` is allowlisted. Taken from a request body with no validation, it made the API
   a general-purpose HTTP client for anyone who could reach it — internal addresses and cloud
   metadata services included.
+- Three unbounded allocations in FlatGeobuf import, all reachable from a small file and all
+  originating in `gogama/flatgeobuf` sizing `make` from unvalidated header and length fields: a
+  **65-byte** input requested 1 TiB through `DataRem`, a **116-byte** input reached 4.2 GB RSS
+  through `readFeature`'s 32-bit length prefix — roughly 36-million-fold amplification — and a
+  property length prefix inside a valid file asked for 4 GiB through `PropReader.ReadBinary`. The
+  parser now bounds every length against the bytes actually left in the file, and the header's
+  feature count is an integrity check after the fact rather than an allocation size. All three were
+  found by the new `FuzzReadFGB`.
+- FlatGeobuf import survives a corrupt flatbuffer vtable. The pinned flatbuffers release ships no
+  verifier, so a per-element guard converts a library fault into a typed error naming the feature
+  index; it re-panics untouched if the fault came from Aconiq's own code.
+- CSV import is bounded on columns, records and total properties. A CSV row costs a few bytes on
+  disk and becomes one map entry per column, so the cost follows columns times rows and no single
+  one of those limits bounds it.
+- CI refuses any tracked path under `interoperability/`. Roughly 4 GB of licensed third-party
+  material was protected by a single `.gitignore` line, which does not cover a force-added file, a
+  file already tracked when the rule landed, or a branch that predates it.
 - Reachable vulnerabilities in dependencies were cleared, and `govulncheck` now runs as a CI gate.
 - Dependency license scanning (`just license-check`) fails the build on restricted, forbidden or
   unknown licenses.

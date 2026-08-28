@@ -1,0 +1,37 @@
+name: Repo Hygiene
+
+# Deliberately a workflow of its own rather than a step inside Go CI.
+#
+# What it guards is not a Go gate: it is the boundary between this repository
+# and the licensed third-party material it is developed against. Keeping it
+# separate means it cannot be skipped by a path filter (Frontend CI has one),
+# cannot be masked by an unrelated Go failure earlier in the job, needs none of
+# Go CI's toolchain setup, and reports as its own status check so it can be
+# required on its own. It finishes in seconds.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-third-party-data:
+    runs-on: ubuntu-latest
+    steps:
+      # No fetch-depth here: `git ls-files` reads the index, not history, so the
+      # default shallow checkout is enough and keeps the job fast.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The check itself lives in the justfile so a developer can run exactly
+      # what CI runs, as AGENTS.md requires of every gate. Installing just costs
+      # a few seconds and is still far cheaper than Go CI's toolchain setup.
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.42.4
+
+      - name: Refuse tracked interoperability/ paths
+        run: just check-no-third-party-data
