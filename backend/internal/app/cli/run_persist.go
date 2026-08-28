@@ -379,6 +379,7 @@ func persistSchall03RunOutputs(
 	gridHeight int,
 	sourceCount int,
 	receiverMode string,
+	engine string,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
@@ -393,11 +394,18 @@ func persistSchall03RunOutputs(
 		"output_hash":            outputHash,
 		"source_count":           sourceCount,
 		"receiver_count":         len(outputs),
-		"model_version":          schall03.BuiltinModelVersion,
-		"data_pack_version":      schall03.BuiltinDataPackVersion,
+		"model_version":          schall03.ModelVersionForEngine(engine),
+		"compliance_boundary":    schall03.ComplianceBoundaryForEngine(engine),
+		schall03.ParamEngine:     engine,
 		"reporting_precision_db": schall03.ReportingPrecisionDB,
 		"band_model":             "octave-63Hz-8000Hz",
 		"receiver_mode":          receiverMode,
+	}
+
+	// The data pack exists only on the preview path; the normative chain reads
+	// Beiblatt 1/2 and the Anlage-2 tables directly.
+	if engine != schall03.EngineNormative {
+		summary["data_pack_version"] = schall03.BuiltinDataPackVersion
 	}
 
 	if receiverMode == receiverModeCustom {

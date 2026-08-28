@@ -2,15 +2,85 @@ package schall03
 
 import "math"
 
+// ParamEngine is the run parameter selecting the computation chain.
+const ParamEngine = "schall03_engine"
+
+// Engine names select which computation chain a Schall 03 run uses.  They are
+// distinct chains, not variants of one: only EngineNormative reaches the
+// Anlage-2 tables, and only EnginePreview reads BuiltinDataPack.
 const (
-	// BuiltinModelVersion identifies the bundled normative coefficient set for
-	// the phase20 Eisenbahn Strecke implementation.
-	BuiltinModelVersion = "phase20-normative-eisenbahn-strecke-v1"
+	// EngineAuto runs the normative chain when the model carries normative
+	// track data, and fails otherwise rather than silently degrading.
+	EngineAuto = "auto"
+	// EngineNormative runs Gl. 1-2 (emission, Beiblatt 1/2) + Gl. 8-16
+	// (propagation) + Gl. 33-34 (assessment).
+	EngineNormative = "normative"
+	// EnginePreview runs the placeholder data-pack chain.  Its coefficients are
+	// invented and its output must not be presented as a Schall 03 result.
+	EnginePreview = "preview"
+)
+
+const (
+	// NormativeModelVersion identifies the Anlage-2 Strecke implementation:
+	// Beiblatt 1/2 emission spectra, Tabelle 7/8/15/18 corrections, and the
+	// Gl. 8-16 propagation chain.
+	NormativeModelVersion = "anlage2-2014-strecke-v1"
+
+	// PreviewModelVersion identifies the placeholder data-pack chain.  It is
+	// deliberately named for what it is; nothing about it is normative.
+	PreviewModelVersion = "baseline-preview-datapack-v1"
+
+	// ComplianceBoundaryNormative marks output produced from the Anlage-2
+	// tables.  See docs/conformance/schall03-konformitaetserklaerung.md for the
+	// scope this covers and the deviations it does not.
+	ComplianceBoundaryNormative = "anlage2-2014-strecke-eisenbahn-strassenbahn"
+
+	// ComplianceBoundaryPreview marks output produced from invented spectra.
+	ComplianceBoundaryPreview = "baseline-preview-no-normative-tables"
 
 	// ReportingPrecisionDB documents the intended reporting boundary for this
 	// module. Internal computation remains float64 without intermediate rounding.
 	ReportingPrecisionDB = 0.1
 )
+
+// ModelVersionForEngine returns the model version stamped for one engine.
+func ModelVersionForEngine(engine string) string {
+	if engine == EngineNormative {
+		return NormativeModelVersion
+	}
+
+	return PreviewModelVersion
+}
+
+// ComplianceBoundaryForEngine returns the compliance boundary for one engine.
+func ComplianceBoundaryForEngine(engine string) string {
+	if engine == EngineNormative {
+		return ComplianceBoundaryNormative
+	}
+
+	return ComplianceBoundaryPreview
+}
+
+// ResolvedProvenanceMetadata returns the metadata that only becomes knowable
+// once the engine is resolved, which happens after the model is loaded.  It is
+// merged into the run provenance by the caller.
+//
+// The data-pack version is stamped only on the preview path: the normative
+// chain never reads a data pack, and recording one there would reintroduce
+// exactly the contradiction this split removes.
+func ResolvedProvenanceMetadata(engine string) map[string]string {
+	metadata := map[string]string{
+		ParamEngine:           engine,
+		"model_version":       ModelVersionForEngine(engine),
+		"compliance_boundary": ComplianceBoundaryForEngine(engine),
+	}
+
+	if engine != EngineNormative {
+		metadata["data_pack_version"] = BuiltinDataPackVersion
+	}
+
+	return metadata
+}
 
 // NormativeReceiverLevels holds the unrounded L_pAeq and L_r planning period
 // levels computed via the normative Gl. 1-2 (emission) + Gl. 8-16 (propagation)
@@ -91,20 +161,25 @@ func (levels PeriodLevels) ToReceiverIndicators() ReceiverIndicators {
 	return ReceiverIndicators(levels)
 }
 
-// ProvenanceMetadata returns Schall 03 baseline metadata for run provenance.
+// ProvenanceMetadata returns the Schall 03 run metadata that is knowable
+// before the model is read.
+//
+// It deliberately stamps neither model_version nor compliance_boundary: both
+// depend on which engine the run resolves to, and the previous version asserted
+// a normative model version alongside a preview compliance boundary in the same
+// manifest.  The caller merges ResolvedProvenanceMetadata once the engine is
+// known.
 func ProvenanceMetadata(params map[string]string) map[string]string {
 	metadata := map[string]string{
-		"model_version":          BuiltinModelVersion,
-		"data_pack_version":      BuiltinDataPackVersion,
 		"reporting_precision_db": "0.1",
 		"reporting_rounding":     "round-half-away-from-zero at report boundary",
 		"indicator_order":        IndicatorLrDay + "," + IndicatorLrNight,
-		"compliance_boundary":    "baseline-preview-no-normative-tables",
 		"band_model":             "octave-63Hz-8000Hz",
 	}
 
 	for _, key := range []string{
 		"receiver_height_m",
+		ParamEngine,
 		"rail_train_class",
 		"rail_traction_type",
 		"rail_track_type",

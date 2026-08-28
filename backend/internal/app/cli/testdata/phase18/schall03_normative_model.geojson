@@ -1,0 +1,46 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rail-1",
+        "kind": "source",
+        "source_type": "line",
+        "elevation_m": 0,
+        "schall03_fahrbahn": "schwellengleis",
+        "schall03_strecke_max_kph": 160,
+        "schall03_operations": [
+          {
+            "zugart": "Nahverkehrszug-ET",
+            "trains_per_hour_day": 4,
+            "trains_per_hour_night": 1
+          },
+          {
+            "zugart": "Gueterzug-E-Lok",
+            "speed_kph": 100,
+            "trains_per_hour_day": 1,
+            "trains_per_hour_night": 2
+          }
+        ]
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 0], [200, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "noise-barrier-1",
+        "kind": "barrier",
+        "height_m": 3,
+        "schall03_reflective": false
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 12], [200, 12]]
+      }
+    }
+  ]
+}

@@ -255,6 +255,43 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 	return s.persistRun(proj, spec, scenarioID, std)
 }
 
+// MergeRunProvenanceMetadata merges extra metadata into an existing run's
+// provenance manifest.
+//
+// Some provenance facts only become knowable after the run's model has been
+// read — which engine a standard resolved to, for instance — and CreateRun runs
+// before that. Rather than let the manifest assert a guess, the run pipeline
+// leaves those keys out at creation and merges them here once resolved.
+// Existing keys are overwritten; nothing else in the manifest is touched.
+func (s Store) MergeRunProvenanceMetadata(runID string, extra map[string]string) error {
+	if len(extra) == 0 {
+		return nil
+	}
+
+	provRelPath := filepath.ToSlash(filepath.Join(".noise", "runs", runID, "provenance.json"))
+	provPath := filepath.Join(s.root, filepath.FromSlash(provRelPath))
+
+	payload, err := os.ReadFile(provPath)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.MergeRunProvenanceMetadata", "read run provenance", err)
+	}
+
+	var provenance project.ProvenanceManifest
+
+	err = json.Unmarshal(payload, &provenance)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.MergeRunProvenanceMetadata", "decode run provenance", err)
+	}
+
+	if provenance.Metadata == nil {
+		provenance.Metadata = make(map[string]string, len(extra))
+	}
+
+	maps.Copy(provenance.Metadata, extra)
+
+	return writeJSONFile(provPath, provenance)
+}
+
 func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID string, std project.StandardRef) (project.Run, project.ProvenanceManifest, error) {
 	now := time.Now().UTC()
 	runID := buildID("run")

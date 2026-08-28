@@ -65,18 +65,18 @@ The path to DACH adoption runs through four gates, in order:
 The registry currently exposes 13 standards as peers. They are not peers. This table is the
 target state; Priority 4 makes the code express it.
 
-| Module                                | Target tier            | Reality today                                                               |
-| ------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
-| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`) |
-| `schall03`                            | normative              | Anlage-2 tables correct — **but the CLI does not call them, P2**            |
-| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                 |
-| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                            |
-| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                       |
-| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands            |
-| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                              |
-| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                               |
-| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                  |
-| `dummy-freefield`                     | test fixture           | Intentional                                                                 |
+| Module                                | Target tier            | Reality today                                                                |
+| ------------------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
+| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`)  |
+| `schall03`                            | normative              | Anlage-2 tables correct, and `aconiq run` now calls them (`schall03_engine`) |
+| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                  |
+| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                             |
+| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                        |
+| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands             |
+| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                               |
+| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                                |
+| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                   |
+| `dummy-freefield`                     | test fixture           | Intentional                                                                  |
 
 ---
 
@@ -381,34 +381,59 @@ The RLS-19 text is not in the repo, so these were **not** checked and are not as
 
 ## Priority 2 — Make the CLI run the normative code
 
-This is the largest single credibility gap in the repository, and it is not a code-quality issue:
-it is a mismatch between what the conformance declaration says and what the binary does.
+**Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
+The gap this priority described was not a code-quality issue but a mismatch between what the
+conformance declaration claimed and what the binary did: `run_pipeline.go` called
+`ComputeReceiverOutputs`, whose `BuiltinDataPack()` supplies invented spectra
+(`{73,76,80,84,87,85,81,76}`, a scalar `GroundAttenuationDB: 1.2`), while the real Anlage-2 chain
+was reached from exactly one caller outside the package — the acceptance runner.
 
-`backend/internal/app/cli/run_pipeline.go:435` calls `schall03.ComputeReceiverOutputs`, which
-uses `BuiltinDataPack()` (`datapack.go:56-101`): invented spectra
-`{73,76,80,84,87,85,81,76}`, a scalar `GroundAttenuationDB: 1.2`, an
-`AirAbsorptionBandFactor` of `{0.3…2.4}`. The code is candid — `datapack.go:11-13` says
-"repo-safe placeholders until a legally safe normative pack is provided out-of-repo", and
-`indicators.go:102` stamps every run `compliance_boundary: "baseline-preview-no-normative-tables"`.
+The two chains are now named and separated by a `schall03_engine` run parameter. `auto` (the
+default) resolves to the normative chain when the model carries `schall03_operations` and **fails
+otherwise** rather than degrading silently; `preview` is an explicit opt-in that logs a warning and
+stamps `baseline-preview-no-normative-tables`. Normative inputs come from a `schall03_*` GeoJSON
+vocabulary (Zugart or Fz composition, Fahrbahnart, Streckenhöchstgeschwindigkeit, Tabelle 8 surface
+measures, bridge type, station and Langsamfahr flags, water fraction), documented in
+`docs/geojson-schema-v1.md`. The vocabulary is strings, deliberately: the enum ordinals are table
+row positions and P1.2 already renumbered them once.
 
-Meanwhile `ComputeNormativeReceiverLevels` / `…WithScene` — the real Anlage-2 chain — is reached
-from exactly one caller outside the package: `qa/acceptance/schall03/runner.go:293,297`.
+Three consequences fell out of the work:
 
-- [ ] Wire `run_pipeline.go` to `ComputeNormativeReceiverLevelsWithScene` when the model carries
-      the required inputs, falling back to the data pack only with an explicit, logged opt-in.
-- [ ] Resolve the contradiction inside `schall03/indicators.go`: line 8 names the model
-      `phase20-normative-eisenbahn-strecke-v1` while line 102 stamps
-      `baseline-preview-no-normative-tables`. The run manifest currently asserts both.
-- [ ] Reconcile `docs/conformance/schall03-konformitaetserklaerung.md`, which checkmarks 20
-      normative features the CLI path does not reach.
-- [ ] Delete the three mutually inconsistent Schienenbonus statements in that document
-      ("K_S = −5 dB nur für den Streckenanteil", "K_S = +5 dB (Schienenbonus retained für
-      Straßenbahnen)", vs the code's `kSStrecke = 0.0`). **The code is legally correct** — the
-      bonus was abolished in 2015 for Eisenbahnen and 2019 for Straßenbahnen. "+5 dB" is wrong in
-      both sign and substance and should not survive review.
-- [ ] Decide and document the data-pack story: is the out-of-repo normative pack a real
-      distribution mechanism, or should the normative tables (an amtliches Werk, per the project's
-      own legal note) simply be embedded?
+- The provenance contradiction is gone, and not by picking one side. `model_version` and
+  `compliance_boundary` are no longer stamped at `CreateRun` time, because the engine is not known
+  until the model is read; `projectfs.Store.MergeRunProvenanceMetadata` completes the manifest once
+  it is. `phase20-normative-eisenbahn-strecke-v1` — which was being stamped on preview runs — is
+  replaced by `anlage2-2014-strecke-v1` and `baseline-preview-datapack-v1`.
+- The data-pack question is answered: the out-of-repo pack is **not** the distribution mechanism
+  for the normative tables and never was. Anlage 2 is an amtliches Werk under §5 UrhG and its
+  coefficients are already embedded (`beiblatt1.go`, `beiblatt2.go`, `beiblatt3.go`, the Tabellen).
+  `LoadDataPack` stays only so an operator can substitute measured data behind the preview boundary.
+- The Schienenbonus statements in `docs/conformance/schall03-konformitaetserklaerung.md` are
+  reconciled with the code. "+5 dB retained für Straßenbahnen" and "−5 dB nur für den
+  Streckenanteil" were both wrong; K_S = 0 dB on both sides since 2015 / 2019. Gl. 35-36 keeps the
+  term on the Strecke side only, at value zero.
+
+### Open
+
+- [ ] **`aconiq compare` still runs the preview chain, by explicit opt-in.** The SoundPLAN import
+      produces the `rail_*` preview vocabulary only, so `compare_test.go` and `cmdoutput_test.go`
+      now pass `--param schall03_engine=preview` rather than reaching it by accident. The ~25 dB
+      delta in Priority 3 is therefore still a preview-chain number and P2 no longer explains it.
+      Mapping SoundPLAN rail geometry onto `TrackSegment`/`TrainOperation` is Priority 13, and it
+      is now the blocker for the only real validation evidence this project has.
+- [ ] **Rangier- und Umschlagbahnhöfe are library-only.** `rangierbahnhof.go` and the whole
+      Beiblatt 3 source catalogue have no GeoJSON representation and no run-pipeline branch, so
+      Gl. 35-36 combined assessment is unreachable from a run. The conformance declaration now says
+      so under "Reachability from the CLI"; it needs a `schall03_yard_*` vocabulary to stop being
+      true.
+- [ ] **Buildings do not shield.** A `building` feature can opt into acting as a reflector
+      (`schall03_reflecting_wall`), but is never turned into a `BarrierSegment`, so a receiver
+      behind a building is computed as if the building were absent. Reflection alone is the wrong
+      half to ship on by default, which is why the reflector role is opt-in — but the shielding
+      half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
+- [ ] **No terrain on the Schall 03 propagation path.** `elevation_m` is per segment and h_m falls
+      back to the flat-ground special case (deviation 4 in the conformance declaration), even when
+      the project carries a DTM the RLS-19 path already reads.
 
 ## Priority 3 — Establish real validation evidence
 
@@ -427,9 +452,11 @@ whole of that, because the shift sat on the data-pack path the CLI runs. A 1 dB 
 25 dB error is a rounding correction, not progress.
 
 This is the single most important number in this file. Note the shape of it: ~25 dB high, on a
-Schall 03 rail project, which is exactly what Priority 2 predicts — the CLI does not call the
-normative Anlage-2 chain at all, it calls `BuiltinDataPack()`'s invented spectra. **Priority 2 is
-now the prime suspect for this delta and should be done before anything is concluded from it.**
+Schall 03 rail project, measured against `BuiltinDataPack()`'s invented spectra. Priority 2 has
+since wired the CLI to the normative Anlage-2 chain, but **the comparison still does not reach
+it**: the SoundPLAN import produces only the preview `rail_*` vocabulary, so `compare` now opts
+into the preview engine explicitly. **The delta above is a preview-chain number and nothing should
+be concluded from it. Priority 13's `TrackSegment` mapping is what makes it measurable.**
 
 - [ ] **Fix receiver matching before tightening any tolerance.** All 54 matches fell back to the
       `ordinal` strategy (`distance_m = -1`): coordinate matching at 0.5 m tolerance matched
@@ -786,6 +813,10 @@ Parsers and the comparison harness are in place; the remaining work is model map
 the comparison into evidence (the assertion itself is Priority 3).
 
 - [ ] Convert SoundPLAN rail geometry into Aconiq `TrackSegment` and `TrainOperation` structures.
+      **This is now the blocker for Priority 3.** Since Priority 2, `aconiq run` reaches the
+      normative chain whenever the model carries `schall03_operations` — but the SoundPLAN import
+      writes only the preview `rail_*` properties, so `compare` opts into the preview engine and
+      the 25 dB delta it reports says nothing about the normative code.
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.

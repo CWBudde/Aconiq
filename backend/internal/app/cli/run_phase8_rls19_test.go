@@ -559,11 +559,11 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
-	modelPath := testdataPath(t, "phase18", "schall03_rail_model.geojson")
+	modelPath := testdataPath(t, "phase18", "schall03_normative_model.geojson")
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase18", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
-	mustRunCLI(t, "--project", projectDir, "run", "--standard", "schall03")
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "schall03", "--param", "grid_resolution_m=25")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -640,16 +640,113 @@ func TestRunSchall03ProducesOutputsAndProvenanceMetadata(t *testing.T) {
 		t.Fatalf("decode provenance: %v", err)
 	}
 
-	if provenance.Metadata["model_version"] != schall03.BuiltinModelVersion {
+	if provenance.Metadata["schall03_engine"] != schall03.EngineNormative {
+		t.Fatalf("expected the normative engine to be resolved: %#v", provenance.Metadata)
+	}
+
+	if provenance.Metadata["model_version"] != schall03.NormativeModelVersion {
 		t.Fatalf("unexpected model_version: %#v", provenance.Metadata)
 	}
 
-	if provenance.Metadata["data_pack_version"] != schall03.BuiltinDataPackVersion {
-		t.Fatalf("unexpected data_pack_version: %#v", provenance.Metadata)
+	if provenance.Metadata["compliance_boundary"] != schall03.ComplianceBoundaryNormative {
+		t.Fatalf("unexpected compliance boundary: %#v", provenance.Metadata)
 	}
 
-	if provenance.Metadata["compliance_boundary"] != "baseline-preview-no-normative-tables" {
+	// The normative chain reads Beiblatt 1/2 directly; recording a data-pack
+	// version here would assert a coefficient source the run never opened.
+	if _, stale := provenance.Metadata["data_pack_version"]; stale {
+		t.Fatalf("normative run still records a data_pack_version: %#v", provenance.Metadata)
+	}
+}
+
+// A model that carries only the preview rail_* vocabulary has no Zugart and no
+// Fz composition, so there is nothing for the Anlage-2 tables to compute from.
+// The run must say so rather than quietly falling back to invented spectra.
+func TestRunSchall03AutoRefusesModelWithoutNormativeTrackData(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase18", "schall03_rail_model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase18", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+
+	err := runCLI("--project", projectDir, "run", "--standard", "schall03")
+	if err == nil {
+		t.Fatal("expected the run to fail without normative track data")
+	}
+
+	for _, want := range []string{"schall03_operations", "schall03_engine=preview"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error message does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// The preview data pack stays reachable, but only on purpose and only under a
+// compliance boundary that says what it is.
+func TestRunSchall03PreviewEngineIsOptInAndLabelled(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase18", "schall03_rail_model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Phase18", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "schall03", "--param", "schall03_engine=preview")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	if len(proj.Runs) == 0 {
+		t.Fatal("expected one run")
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.Status != project.RunStatusCompleted {
+		t.Fatalf("expected completed run status, got %q", run.Status)
+	}
+
+	provenancePayload, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance: %v", err)
+	}
+
+	var provenance struct {
+		Metadata map[string]string `json:"metadata"`
+	}
+
+	err = json.Unmarshal(provenancePayload, &provenance)
+	if err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+
+	if provenance.Metadata["schall03_engine"] != schall03.EnginePreview {
+		t.Fatalf("expected the preview engine to be resolved: %#v", provenance.Metadata)
+	}
+
+	if provenance.Metadata["model_version"] != schall03.PreviewModelVersion {
+		t.Fatalf("unexpected model_version: %#v", provenance.Metadata)
+	}
+
+	if provenance.Metadata["compliance_boundary"] != schall03.ComplianceBoundaryPreview {
 		t.Fatalf("unexpected compliance boundary: %#v", provenance.Metadata)
+	}
+
+	logPayload, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(run.LogPath)))
+	if err != nil {
+		t.Fatalf("read run.log: %v", err)
+	}
+
+	if !strings.Contains(string(logPayload), "WARNING schall03_engine=preview") {
+		t.Fatalf("run.log carries no preview warning:\n%s", logPayload)
 	}
 }
 

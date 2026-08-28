@@ -144,6 +144,7 @@ type rls19RoadRunOptions struct {
 }
 
 type schall03RunOptions struct {
+	Engine                string
 	GridResolutionM       float64
 	GridPaddingM          float64
 	ReceiverHeightM       float64
@@ -647,37 +648,31 @@ func fillSchall03RunOptions(options *schall03RunOptions, params map[string]strin
 		}
 	}
 
-	var err error
+	for _, item := range []struct {
+		key    string
+		target *string
+	}{
+		{"rail_traction_type", &options.TractionType},
+		{"rail_train_class", &options.TrainClass},
+		{"rail_track_type", &options.TrackType},
+		{"rail_track_form", &options.TrackForm},
+		{"rail_track_roughness_class", &options.TrackRoughnessClass},
+		{schall03.ParamEngine, &options.Engine},
+	} {
+		value, err := getString(item.key)
+		if err != nil {
+			return err
+		}
 
-	options.TractionType, err = getString("rail_traction_type")
+		*item.target = value
+	}
+
+	onBridge, err := parseRailOnBridge(params)
 	if err != nil {
 		return err
 	}
 
-	options.TrainClass, err = getString("rail_train_class")
-	if err != nil {
-		return err
-	}
-
-	options.TrackType, err = getString("rail_track_type")
-	if err != nil {
-		return err
-	}
-
-	options.TrackForm, err = getString("rail_track_form")
-	if err != nil {
-		return err
-	}
-
-	options.TrackRoughnessClass, err = getString("rail_track_roughness_class")
-	if err != nil {
-		return err
-	}
-
-	options.OnBridge, err = parseRailOnBridge(params)
-	if err != nil {
-		return err
-	}
+	options.OnBridge = onBridge
 
 	return nil
 }

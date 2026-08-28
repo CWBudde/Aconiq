@@ -619,3 +619,59 @@ func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources [
 
 	return outputs, nil
 }
+
+// ComputeNormativeReceiverOutputs runs the normative Anlage-2 chain for every
+// receiver in order and returns the same ReceiverOutput shape the preview
+// data-pack path produces, so both paths share one persistence layer.
+//
+// A receiver that collects no acoustic energy at all — every segment silent
+// for that planning period — yields math.Inf(-1) from the level chain.  That
+// value cannot be marshalled to JSON, so it is mapped to the silenceDB
+// sentinel the rest of the tree already uses for "no contribution".
+func ComputeNormativeReceiverOutputs(
+	receivers []geo.PointReceiver,
+	segments []TrackSegment,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+) ([]ReceiverOutput, error) {
+	if len(receivers) == 0 {
+		return nil, errors.New("at least one receiver is required")
+	}
+
+	if len(segments) == 0 {
+		return nil, errors.New("at least one TrackSegment is required")
+	}
+
+	outputs := make([]ReceiverOutput, 0, len(receivers))
+
+	for _, receiver := range receivers {
+		levels, err := ComputeNormativeReceiverLevelsWithScene(
+			ReceiverInput{ID: receiver.ID, Point: receiver.Point, HeightM: receiver.HeightM},
+			segments,
+			walls,
+			barriers,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
+		}
+
+		outputs = append(outputs, ReceiverOutput{
+			Receiver: receiver,
+			Indicators: ReceiverIndicators{
+				LrDay:   finiteOrSilence(levels.LrDay),
+				LrNight: finiteOrSilence(levels.LrNight),
+			},
+		})
+	}
+
+	return outputs, nil
+}
+
+// finiteOrSilence replaces a -Inf level with the silenceDB sentinel.
+func finiteOrSilence(level float64) float64 {
+	if math.IsInf(level, -1) {
+		return silenceDB
+	}
+
+	return level
+}

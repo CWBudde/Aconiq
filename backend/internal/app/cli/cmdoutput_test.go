@@ -272,7 +272,9 @@ func TestCompareJSONOutput(t *testing.T) {
 
 	cmd := newRootCommand()
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--json", "--project", projectDir, "compare", "--standard", schall03.StandardID})
+	// See TestCompareSoundPlanReceivers: SoundPLAN models carry no normative
+	// track data yet (PLAN.md Priority 13), so the preview chain is opted into.
+	cmd.SetArgs([]string{"--json", "--project", projectDir, "compare", "--standard", schall03.StandardID, "--param", "schall03_engine=preview"})
 
 	err := cmd.Execute()
 	if err != nil {

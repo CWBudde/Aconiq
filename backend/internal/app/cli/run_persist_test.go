@@ -95,10 +95,19 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "schall03",
-			want: schall03.BuiltinModelVersion,
+			name: "schall03-normative",
+			want: schall03.NormativeModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom)
+				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EngineNormative)
+
+				return out, hash, err
+			},
+		},
+		{
+			name: "schall03-preview",
+			want: schall03.PreviewModelVersion,
+			persist: func(runDir string) (persistedRunOutputs, string, error) {
+				out, hash, _, err := persistSchall03RunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, schall03.EnginePreview)
 
 				return out, hash, err
 			},
@@ -207,4 +216,50 @@ func readRunSummary(t *testing.T, path string) map[string]any {
 	}
 
 	return summary
+}
+
+// The Schall 03 run summary must describe the chain that actually ran: the
+// normative chain reads Beiblatt 1/2 and never touches a data pack, so
+// stamping a data-pack version there would assert a coefficient source the run
+// did not use.
+func TestPersistSchall03RunOutputsStampsOnlyTheEngineThatRan(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		engine                 string
+		wantModelVersion       string
+		wantComplianceBoundary string
+		wantDataPackVersionKey bool
+	}{
+		{schall03.EngineNormative, schall03.NormativeModelVersion, schall03.ComplianceBoundaryNormative, false},
+		{schall03.EnginePreview, schall03.PreviewModelVersion, schall03.ComplianceBoundaryPreview, true},
+	} {
+		t.Run(testCase.engine, func(t *testing.T) {
+			t.Parallel()
+
+			persisted, _, _, err := persistSchall03RunOutputs(t.TempDir(), nil, 0, 0, 0, receiverModeCustom, testCase.engine)
+			if err != nil {
+				t.Fatalf("persist schall03 outputs: %v", err)
+			}
+
+			summary := readRunSummary(t, persisted.SummaryPath)
+
+			if summary["model_version"] != testCase.wantModelVersion {
+				t.Fatalf("model_version = %v, want %q", summary["model_version"], testCase.wantModelVersion)
+			}
+
+			if summary["compliance_boundary"] != testCase.wantComplianceBoundary {
+				t.Fatalf("compliance_boundary = %v, want %q", summary["compliance_boundary"], testCase.wantComplianceBoundary)
+			}
+
+			if summary["schall03_engine"] != testCase.engine {
+				t.Fatalf("schall03_engine = %v, want %q", summary["schall03_engine"], testCase.engine)
+			}
+
+			_, hasDataPack := summary["data_pack_version"]
+			if hasDataPack != testCase.wantDataPackVersionKey {
+				t.Fatalf("data_pack_version present = %v, want %v: %v", hasDataPack, testCase.wantDataPackVersionKey, summary)
+			}
+		})
+	}
 }

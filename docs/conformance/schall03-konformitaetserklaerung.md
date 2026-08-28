@@ -6,7 +6,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 
 - Name: Aconiq
 - Module: `schall03`
-- Version: `phase20d-normative-barrier-diffraction-v1`
+- Module version: `anlage2-2014-strecke-v1` (stamped as `model_version` on every normative run)
 - License: MIT
 
 ## Standard
@@ -71,7 +71,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 **Assessment (Gl. 37–38)**
 
 - Gl. 37–38 for Straßenbahnen use the same formula structure as Gl. 33–34; supported via the existing Beurteilungspegel pipeline
-- K_S = +5 dB (Schienenbonus retained for Straßenbahnen per current 16. BImSchV)
+- K_S = 0 dB. The Schienenbonus was abolished by the 11. BImSchG-Änderungsgesetz (BGBl. 2013 I S. 1943), effective 2019-01-01 for Straßenbahnen — the same amendment that removed it for Eisenbahnen in 2015.
 
 ### Unterstützt (Phase 20b — Nr. 4.8 Rangier- und Umschlagbahnhöfe)
 
@@ -103,7 +103,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 #### Beurteilung
 
 - Gl. 35–36: Kombinierter Beurteilungspegel (Rangierbahnhof + Strecke) ✓
-- Schienenbonus K_S = −5 dB nur für den Streckenanteil (nicht für Rangierbahnhofanteil) ✓
+- Gl. 35–36 addieren K_S ausschließlich zum Streckenanteil, nicht zum Rangierbahnhofanteil ✓. Der Wert ist K_S = 0 dB: der Schienenbonus wurde durch das 11. BImSchG-Änderungsgesetz (BGBl. 2013 I S. 1943) abgeschafft — für Eisenbahnen zum 01.01.2015, für Straßenbahnen zum 01.01.2019. Die Termstruktur bleibt erhalten, der Zuschlag ist null.
 
 #### Software-Version
 
@@ -140,6 +140,47 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 #### Software-Version
 
 `phase20d-normative-barrier-diffraction-v1`
+
+## Reachability from the CLI
+
+Everything checkmarked above is library behaviour. What a user gets from
+`aconiq run --standard schall03` depends on which of two chains the run
+resolves to, and the two are not variants of one another.
+
+| `schall03_engine` | Chain                                                              | `compliance_boundary`                         |
+| ----------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| `auto` (default)  | Normative when the model carries `schall03_operations`; else fails | `anlage2-2014-strecke-eisenbahn-strassenbahn` |
+| `normative`       | Same, but fails rather than resolving anything else                | `anlage2-2014-strecke-eisenbahn-strassenbahn` |
+| `preview`         | `BuiltinDataPack()` — invented spectra, **not** Schall 03          | `baseline-preview-no-normative-tables`        |
+
+The resolved engine, model version and compliance boundary are written to
+`provenance.json` and `run-summary.json` for every run; the preview chain also
+writes a warning line to `run.log`. Before 28 August 2026 the CLI reached the
+preview chain unconditionally while stamping a normative-sounding model version
+beside a preview compliance boundary, so this document's checkmarks described
+code no `aconiq run` invocation could reach. See PLAN.md Priority 2.
+
+### Reachable from the CLI today
+
+- Eisenbahn and Straßenbahn Strecken: full emission chain, propagation chain,
+  barrier diffraction and reflection, driven from GeoJSON `source` features
+  carrying `schall03_operations` (see `docs/geojson-schema-v1.md`).
+- Shielding from `barrier` features; reflection from `barrier` features marked
+  `schall03_reflective` and from `building` features marked
+  `schall03_reflecting_wall`.
+
+### Library-only, not reachable from the CLI
+
+- **Rangier- und Umschlagbahnhöfe (Nr. 4.8, Phase 20b).** `rangierbahnhof.go`
+  and the Beiblatt 3 tables have no GeoJSON representation and no run-pipeline
+  branch; Gl. 35–36 combined assessment is therefore unreachable from a run.
+- **Buildings as shielding obstacles.** A `building` feature can act as a
+  reflector on request but is never turned into a `BarrierSegment`, so a
+  receiver behind a building is computed as if the building were absent. Adding
+  reflection without shielding would be the wrong half to ship by default,
+  which is why the reflector role is opt-in.
+- **Measured vehicle data (Nr. 9).** `measured_vehicle.go` accepts it; no input
+  format carries it.
 
 ### Not yet supported (deferred)
 

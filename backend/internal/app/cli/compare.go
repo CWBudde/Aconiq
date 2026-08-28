@@ -90,13 +90,22 @@ func newCompareCommand() *cobra.Command {
 		modelPath       string
 		scenarioID      string
 		toleranceDB     float64
+		rawParams       []string
 	)
 
 	cmd := &cobra.Command{
 		Use:   commandNameCompare,
 		Short: "Run a comparison against imported SoundPLAN receiver results",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runCompare(cmd, standardID, standardVersion, standardProfile, modelPath, scenarioID, toleranceDB)
+			return runCompare(cmd, compareRequest{
+				standardID:      standardID,
+				standardVersion: standardVersion,
+				standardProfile: standardProfile,
+				modelPath:       modelPath,
+				scenarioID:      scenarioID,
+				toleranceDB:     toleranceDB,
+				rawParams:       rawParams,
+			})
 		},
 	}
 
@@ -106,8 +115,20 @@ func newCompareCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
 	cmd.Flags().Float64Var(&toleranceDB, "tolerance-db", 0.5, "Absolute delta threshold for tolerance exceedance counting")
+	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter as key=value, repeatable; forwarded to the underlying run")
 
 	return cmd
+}
+
+// compareRequest carries the compare command's flags.
+type compareRequest struct {
+	standardID      string
+	standardVersion string
+	standardProfile string
+	modelPath       string
+	scenarioID      string
+	toleranceDB     float64
+	rawParams       []string
 }
 
 // validateCompareFlags rejects compare flag values the command cannot honour.
@@ -167,8 +188,8 @@ func compareRunModelPath(root string, modelPath string, prep *rasterComparePrepa
 	return modelPath
 }
 
-func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile, modelPath, scenarioID string, toleranceDB float64) error {
-	if err := validateCompareFlags(standardID, toleranceDB); err != nil {
+func runCompare(cmd *cobra.Command, req compareRequest) error {
+	if err := validateCompareFlags(req.standardID, req.toleranceDB); err != nil {
 		return err
 	}
 
@@ -191,7 +212,7 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 	resultRunDirs := inputs.resultRunDirs
 	soundPlanReceivers := inputs.receivers
 
-	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, modelPath)
+	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, req.modelPath)
 	if err != nil {
 		return err
 	}
@@ -200,15 +221,16 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		defer cleanupRasterComparePreparation(rasterPrep)
 	}
 
-	runModelPath := compareRunModelPath(store.Root(), modelPath, rasterPrep, hasRasterPrep)
+	runModelPath := compareRunModelPath(store.Root(), req.modelPath, rasterPrep, hasRasterPrep)
 
 	run, err := executeCompareRun(cmd, runCommandRequest{
-		scenarioID:      scenarioID,
-		standardID:      standardID,
-		standardVersion: standardVersion,
-		standardProfile: standardProfile,
+		scenarioID:      req.scenarioID,
+		standardID:      req.standardID,
+		standardVersion: req.standardVersion,
+		standardProfile: req.standardProfile,
 		modelPath:       runModelPath,
 		receiverMode:    receiverModeCustom,
+		rawParams:       req.rawParams,
 	})
 	if err != nil {
 		return err
@@ -219,12 +241,12 @@ func runCompare(cmd *cobra.Command, standardID, standardVersion, standardProfile
 		return domainerrors.New(domainerrors.KindInternal, "cli.compare", "load run receiver outputs", err)
 	}
 
-	report, err := compareSoundPlanReceiverTables(filterOutSyntheticRasterReceivers(receiverTable), soundPlanReceivers, toleranceDB, importReport.SourcePath, strings.Join(resultRunDirs, ","), run.ID, standardID, standardVersion, standardProfile)
+	report, err := compareSoundPlanReceiverTables(filterOutSyntheticRasterReceivers(receiverTable), soundPlanReceivers, req.toleranceDB, importReport.SourcePath, strings.Join(resultRunDirs, ","), run.ID, req.standardID, req.standardVersion, req.standardProfile)
 	if err != nil {
 		return err
 	}
 
-	report.Raster, _, err = finalizeSoundPlanRasterCompare(store.Root(), rasterPrep, receiverTable, toleranceDB)
+	report.Raster, _, err = finalizeSoundPlanRasterCompare(store.Root(), rasterPrep, receiverTable, req.toleranceDB)
 	if err != nil {
 		return err
 	}

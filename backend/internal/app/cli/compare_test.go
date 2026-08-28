@@ -20,7 +20,11 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "CompareSoundPLAN", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--from-soundplan", soundPlanDir)
-	mustRunCLI(t, "--project", projectDir, "compare")
+	// The SoundPLAN import produces the preview rail_* vocabulary only; mapping
+	// its rail geometry onto TrackSegment/TrainOperation is PLAN.md Priority 13.
+	// Until that lands, the deltas below are the preview chain's, so the opt-in
+	// is stated here rather than reached by default.
+	mustRunCLI(t, "--project", projectDir, "compare", "--param", "schall03_engine=preview")
 
 	reportPath := filepath.Join(projectDir, ".noise", "artifacts", "soundplan-receiver-compare.json")
 

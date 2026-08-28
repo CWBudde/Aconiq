@@ -9,8 +9,19 @@ import (
 )
 
 // DataPack holds coefficient-like preview data behind a replaceable boundary.
-// The bundled values remain repo-safe placeholders until a legally safe
-// normative pack is provided out-of-repo.
+//
+// The out-of-repo data pack is not the distribution mechanism for the normative
+// tables and never will be. Anlage 2 zu §4 der 16. BImSchV is an amtliches Werk
+// under §5 UrhG, so its coefficients are embedded directly — Beiblatt 1 in
+// beiblatt1.go, Beiblatt 2 in beiblatt2.go, Beiblatt 3 in beiblatt3.go, and
+// Tabellen 7/8/9/11/15/16/17/18 alongside them. The normative chain
+// (ComputeNormativeReceiverLevels*) reads those and never opens a DataPack.
+//
+// What remains here is a preview chain whose spectra are invented placeholders.
+// It is reachable only through an explicit --param schall03_engine=preview and
+// is stamped ComplianceBoundaryPreview wherever its output goes. LoadDataPack
+// stays so an operator can substitute their own measured data behind the same
+// boundary; it does not make that data normative.
 type DataPack struct {
 	Version            string              `json:"version"`
 	ComplianceBoundary string              `json:"compliance_boundary"`
@@ -51,7 +62,7 @@ const BuiltinDataPackVersion = "builtin-schall03-preview-v2"
 func BuiltinDataPack() DataPack {
 	return DataPack{
 		Version:            BuiltinDataPackVersion,
-		ComplianceBoundary: "baseline-preview-no-normative-tables",
+		ComplianceBoundary: ComplianceBoundaryPreview,
 		Emission: EmissionDataPack{
 			BaseRollingSpectrum: OctaveSpectrum{73, 76, 80, 84, 87, 85, 81, 76},
 			TractionSpectra: map[string]OctaveSpectrum{

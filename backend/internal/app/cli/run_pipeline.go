@@ -412,37 +412,33 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return parseErr
 		}
 
-		railSources, extractErr := extractSchall03Sources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract Schall 03 rail sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
+		schall03Result, computeErr := computeSchall03Run(model, options, resolvedStandard.SupportedSourceTypes, req.receiverMode)
+		logLines = append(logLines, schall03Result.LogLines...)
 
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildSchall03Receivers(railSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(railSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s schall03_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
 		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s schall03 compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
+			logLines = append(logLines, fmt.Sprintf("%s schall03 run failed: %v", nowUTC().Format(time.RFC3339), computeErr))
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistSchall03RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode)
+		// Which chain ran is only knowable here, so the manifest is completed
+		// rather than guessed at CreateRun time.
+		err = store.MergeRunProvenanceMetadata(run.ID, schall03.ResolvedProvenanceMetadata(schall03Result.Engine))
+		if err != nil {
+			logLines = append(logLines, fmt.Sprintf("%s failed to record resolved engine in provenance: %v", nowUTC().Format(time.RFC3339), err))
+			return finalizeRunFailure(store, run, logLines, err)
+		}
+
+		sourceCount = schall03Result.SourceCount
+
+		persisted, outputHash, finishedAt, err = persistSchall03RunOutputs(
+			runDir,
+			schall03Result.Outputs,
+			schall03Result.GridWidth,
+			schall03Result.GridHeight,
+			sourceCount,
+			req.receiverMode,
+			schall03Result.Engine,
+		)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
