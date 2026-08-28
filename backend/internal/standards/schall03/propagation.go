@@ -197,11 +197,16 @@ func agrW(dw, dp float64) float64 {
 //
 //	D_I = 10·lg(0.22 + 1.27·sin²(δ))
 //
-// δ is the angle between the perpendicular to the track axis and the
-// source-to-receiver direction.
-func directivityDI(delta float64) float64 {
-	sinD := math.Sin(delta)
-	return 10.0 * math.Log10(0.22+1.27*sinD*sinD)
+// δ is the angle between the Gleisachse and the source-to-receiver direction,
+// which is the convention Gl. 8 uses: a receiver abeam of the track has δ = 90°
+// and the maximum D_I of +1.73 dB, one in line with the track has δ = 0° and
+// the minimum of -6.58 dB.
+//
+// The argument is sin²(δ) rather than δ because that is what every caller
+// holds: normativeSinDelta2 derives it from the dot product of the
+// source→receiver vector with the track vector, and never forms the angle.
+func directivityDI(sinDelta2 float64) float64 {
+	return 10.0 * math.Log10(0.22+1.27*sinDelta2)
 }
 
 // solidAngleDOmega computes the solid-angle correction per Gl. 9.

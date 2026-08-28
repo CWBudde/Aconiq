@@ -79,7 +79,7 @@ func normativeSubsegmentContrib(
 	receiver ReceiverInput,
 	dp, stepLen, sinDelta2, waterFractionW float64,
 ) float64 {
-	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	dI := directivityDI(sinDelta2)
 	log10Step := math.Log10(stepLen)
 
 	// Gl. 13: A_gr = A_gr,B + A_gr,W
@@ -266,7 +266,7 @@ func normativeSubsegmentContribWithBarriers(
 		return normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW)
 	}
 
-	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	dI := directivityDI(sinDelta2)
 	log10Step := math.Log10(stepLen)
 
 	dLand := (1.0 - waterFractionW) * dp

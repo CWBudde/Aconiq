@@ -77,7 +77,7 @@ func TestReflectedDirectivityUsesReflectionPoint(t *testing.T) {
 	}
 
 	// The two differ by several dB of D_I — this is what the defect cost.
-	diDelta := directivityDI(math.Asin(math.Sqrt(badSd2))) - directivityDI(math.Asin(math.Sqrt(sd2)))
+	diDelta := directivityDI(badSd2) - directivityDI(sd2)
 	if diDelta < 3.0 {
 		t.Errorf("expected the wrong direction to over-predict D_I by > 3 dB, got %.3f dB", diDelta)
 	}

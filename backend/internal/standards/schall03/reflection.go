@@ -228,7 +228,7 @@ func ReflectedSubsegmentContrib(
 	dp, stepLen, sinDelta2, waterFractionW float64,
 	dRho float64,
 ) float64 {
-	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	dI := directivityDI(sinDelta2)
 	log10Step := math.Log10(stepLen)
 
 	dLand := (1.0 - waterFractionW) * dp
@@ -288,7 +288,7 @@ func ReflectedSubsegmentContribWithBarriers(
 		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho)
 	}
 
-	dI := 10.0 * math.Log10(0.22+1.27*sinDelta2)
+	dI := directivityDI(sinDelta2)
 	log10Step := math.Log10(stepLen)
 
 	dLand := (1.0 - waterFractionW) * dp

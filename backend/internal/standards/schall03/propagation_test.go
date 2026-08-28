@@ -119,16 +119,16 @@ func TestDirectivityDIGl8(t *testing.T) {
 	t.Parallel()
 
 	// D_I = 10·lg(0.22 + 1.27·sin²(δ))
-	// δ=90° (perpendicular): D_I = 10·lg(0.22+1.27) = 10·lg(1.49) = 1.73 dB
-	got90 := directivityDI(math.Pi / 2)
+	// δ=90° (abeam of the track, sin²δ=1): D_I = 10·lg(0.22+1.27) = 10·lg(1.49) = 1.73 dB
+	got90 := directivityDI(1.0)
 	almostEqualProp(t, got90, 1.73, 0.01, "D_I at 90°")
 
-	// δ=0° (along track): D_I = 10·lg(0.22) = -6.58 dB
-	got0 := directivityDI(0)
+	// δ=0° (in line with the track, sin²δ=0): D_I = 10·lg(0.22) = -6.58 dB
+	got0 := directivityDI(0.0)
 	almostEqualProp(t, got0, -6.58, 0.01, "D_I at 0°")
 
-	// δ=30°: sin²(30°)=0.25 → D_I = 10·lg(0.22 + 1.27·0.25) = 10·lg(0.5375) = -2.70 dB
-	got30 := directivityDI(math.Pi / 6)
+	// δ=30°: sin²δ=0.25 → D_I = 10·lg(0.22 + 1.27·0.25) = 10·lg(0.5375) = -2.70 dB
+	got30 := directivityDI(0.25)
 	almostEqualProp(t, got30, -2.70, 0.01, "D_I at 30°")
 }
 
