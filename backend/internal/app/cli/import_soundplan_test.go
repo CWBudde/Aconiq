@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/qa/fixtures"
 )
 
 func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
@@ -195,15 +195,5 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 func soundPlanInteropPath(t *testing.T) string {
 	t.Helper()
 
-	_, filePath, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-
-	path := filepath.Join(filepath.Dir(filePath), "..", "..", "..", "..", "interoperability", "Schienenprojekt - Schall 03")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Skip("sample SoundPLAN project not available")
-	}
-
-	return path
+	return fixtures.SoundPLANProjectDir(t)
 }

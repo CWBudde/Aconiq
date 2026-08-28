@@ -1,48 +1,20 @@
 package soundplanimport
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/aconiq/backend/internal/qa/fixtures"
 )
 
-// interopProjectRelPath locates the sample SoundPlan project relative to this
-// package. The directory holds third-party project data, is not checked into
-// the repository and is therefore absent on a fresh clone.
-var interopProjectRelPath = filepath.Join("..", "..", "..", "..", "interoperability", "Schienenprojekt - Schall 03")
-
-// testProjectDir returns the path to the sample SoundPlan project. Tests that
-// need the real project files are skipped — with the resolved path and the
-// reason — when the fixture is not available (e.g. a fresh checkout or CI
-// without the test data). Every test in this package that reads the sample
-// project must obtain its path here so a missing fixture never fails the suite.
+// testProjectDir returns the path to the sample SoundPLAN project. Every test
+// in this package that reads the real project files must obtain its path here
+// so a missing fixture skips rather than fails, and so the location of
+// third-party project data is decided in exactly one place.
 func testProjectDir(t *testing.T) string {
 	t.Helper()
 
-	var reason string
-
-	info, err := os.Stat(interopProjectRelPath)
-
-	switch {
-	case err != nil:
-		reason = fmt.Sprintf("stat failed: %v", err)
-	case !info.IsDir():
-		reason = "path exists but is not a directory"
-	default:
-		return interopProjectRelPath
-	}
-
-	abs, absErr := filepath.Abs(interopProjectRelPath)
-	if absErr != nil {
-		abs = interopProjectRelPath
-	}
-
-	t.Skipf("SoundPlan sample project fixture not available at %s (%s); "+
-		"place the 'Schienenprojekt - Schall 03' SoundPlan project under the "+
-		"repository-root 'interoperability/' directory to enable this test", abs, reason)
-
-	return ""
+	return fixtures.SoundPLANProjectDir(t)
 }
 
 // ---------------------------------------------------------------------------

@@ -2,11 +2,15 @@
 
 Status: working note for Priority 6. This document records the currently verified file coverage, the remaining gaps, and the staging plan for `aconiq import --from-soundplan`.
 
-## Sample project in repo
+## Sample project
 
-Reference fixture:
-
-- `interoperability/Schienenprojekt - Schall 03/`
+The reference fixture is a third-party SoundPLAN rail project. It is **not** in
+the repository and never will be: `interoperability/` is gitignored and holds
+licensed third-party data. Tests locate it through
+`internal/qa/fixtures.SoundPLANProjectDir`, which reads
+`ACONIQ_SOUNDPLAN_FIXTURES` if it is set and otherwise looks for the single
+directory under a repository-root `interoperability/` that contains a
+`Project.sp`. Tests skip when it is absent.
 
 Observed files in that fixture:
 
