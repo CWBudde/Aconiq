@@ -135,14 +135,33 @@ with results produced after them.
   GeoPackage/WKB, FlatGeobuf, GeoJSON, CityGML and SoundPLAN — with a regression test per bound and
   five fuzz targets. The GeoTIFF out-of-memory condition was reachable from an **86-byte** input,
   and a deflate bomb found alongside it was closed at the same time.
+- The local HTTP API is no longer reachable from a hostile web page. A `Host` allowlist closes DNS
+  rebinding, which an origin check cannot see; every endpoint that reads a body requires a real
+  media type, closing the CORS simple-request path that let a cross-origin `text/plain` `fetch`
+  reach the run executor and its request-controlled argv; and every state-changing method must
+  carry an `X-Aconiq-Client` header, which a simple request cannot set, forcing a preflight. An
+  opt-in bearer token (`aconiq serve --api-token`, env `ACONIQ_API_TOKEN`) sits on top for machines
+  where other local processes are not trusted.
+- Every API request body is bounded, per endpoint. The terrain upload's `ParseMultipartForm` was
+  being handed the 50 MB *body* cap as its *maxMemory* argument, so a 50 MB upload was buffered
+  whole in RAM; it now gets a real memory share, with the body capped separately.
+- Arbitrary file read over HTTP is closed. Two handlers built paths from manifest values without
+  containment, so a shared project whose manifest set `log_path: "../../../../etc/passwd"` served
+  that file. Both now go through `filepath.IsLocal` plus `os.OpenInRoot`, which also defeats
+  symlinks planted inside the project.
+- `overpass_endpoint` is allowlisted. Taken from a request body with no validation, it made the API
+  a general-purpose HTTP client for anyone who could reach it — internal addresses and cloud
+  metadata services included.
 - Reachable vulnerabilities in dependencies were cleared, and `govulncheck` now runs as a CI gate.
 - Dependency license scanning (`just license-check`) fails the build on restricted, forbidden or
   unknown licenses.
 
 ### Known limitations
 
-- The local HTTP API is unauthenticated and CSRF-open. Run `aconiq serve` only on a trusted machine
-  and leave it bound to loopback. See `SECURITY.md` and Priority 6 in `PLAN.md`.
+- The local HTTP API is unauthenticated by default. The browser-borne vectors are closed (see
+  `Security` above), but any process on the same machine can reach it unless you start it with
+  `--api-token`. `--listen 0.0.0.0:8080` now serves loopback only, because a wildcard bind names no
+  host to add to the allowlist — bind the address you mean instead.
 - `cnossos-*`, `bub-*` and `buf-aircraft` are scaffolds: no directive coefficients, invented base
   levels, no octave bands. They require `--experimental` and their output carries no accuracy
   claim.

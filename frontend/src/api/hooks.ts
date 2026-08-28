@@ -4,6 +4,7 @@ import { browserBackend, type BrowserRunSpec } from "./browser-backend";
 import { IS_WASM_MODE, apiURL } from "./mode";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
+import { apiHeaders } from "./client";
 import type {
   CreateRunRequest,
   HealthResponse,
@@ -18,7 +19,7 @@ import type { GeoJSONFeatureCollection } from "@/model/types";
 
 async function fetchJSON<T>(path: string): Promise<T> {
   const response = await fetch(apiURL(path), {
-    headers: { Accept: "application/json" },
+    headers: apiHeaders(),
   });
 
   if (!response.ok) {
@@ -55,7 +56,7 @@ export function useProjectStatus() {
         return browserBackend.getProjectStatus();
       }
       const response = await fetch(apiURL("/api/v1/project/status"), {
-        headers: { Accept: "application/json" },
+        headers: apiHeaders(),
       });
 
       if (response.status === 404) {
@@ -147,10 +148,7 @@ export function useImportFromOSM() {
       }
       const response = await fetch(apiURL("/api/v1/import/osm"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(req),
       });
       if (!response.ok) {
@@ -195,10 +193,7 @@ export function useCreateRun() {
 
       const response = await fetch(apiURL("/api/v1/runs"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: apiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(buildCreateRunRequest(spec)),
       });
       if (!response.ok) {

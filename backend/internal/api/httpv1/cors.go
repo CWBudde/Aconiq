@@ -14,8 +14,14 @@ import (
 // Callers can supply additional explicit origins via allowedOrigins.
 //
 // This is intentionally simple: no credentials, no wildcard-domain matching,
-// localhost-only. CSRF risk is low because browsers block cross-site requests
-// to loopback addresses unless CORS headers are present.
+// localhost-only. What it is *not* is a CSRF control. A browser does not block
+// a cross-site request to a loopback address; it blocks the attacker from
+// *reading the response*, and it does not even do that for a simple request,
+// which needs no preflight and so never consults this allowlist. And an origin
+// allowlist is blind to DNS rebinding, where the request genuinely originates
+// from the attacker's page but arrives labelled same-origin. The controls that
+// close both shapes live in security.go — the Host allowlist, the media-type
+// requirement and the custom header this middleware advertises below.
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -23,7 +29,9 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			if origin != "" && isAllowedOrigin(origin, allowedOrigins) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
+				// The custom header must be advertised, or the browser fails the
+				// preflight that requiring it is meant to force.
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, "+ClientHeaderName)
 				w.Header().Set("Access-Control-Max-Age", "86400")
 				// Vary: Origin tells caches that the response differs by origin.
 				w.Header().Add("Vary", "Origin")

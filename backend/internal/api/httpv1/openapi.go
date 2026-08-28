@@ -11,9 +11,15 @@ import (
 const OpenAPIVersion = "3.1.0"
 
 // BuildOpenAPISpec assembles the declarative OpenAPI document.
-//
-//nolint:funlen,maintidx
 func BuildOpenAPISpec(serverURL string) map[string]any {
+	spec := buildOpenAPIPaths(serverURL)
+	applyTransportContract(spec)
+
+	return spec
+}
+
+//nolint:funlen,maintidx
+func buildOpenAPIPaths(serverURL string) map[string]any {
 	server := "http://127.0.0.1:8080"
 	if serverURL != "" {
 		server = serverURL
@@ -22,12 +28,26 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 	return map[string]any{
 		"openapi": OpenAPIVersion,
 		"info": map[string]any{
-			"title":       "Aconiq Local API",
-			"version":     "v1",
-			"description": "Local-first API used by the Aconiq frontend and local integrations.",
+			"title":   "Aconiq Local API",
+			"version": "v1",
+			"description": "Local-first API used by the Aconiq frontend and local integrations.\n\n" +
+				"Every request is checked before it is routed. Its `Host` header must name a loopback " +
+				"address or the host part of `aconiq serve --listen`; anything else is refused with " +
+				"`forbidden_host`, which is what closes DNS rebinding. Every state-changing method must " +
+				"carry a non-empty `" + ClientHeaderName + "` header — a header a CORS simple request " +
+				"cannot set, so requiring it forces a preflight — and must send its body as the media " +
+				"type the endpoint parses. Bearer authentication is optional and off unless the server " +
+				"was started with `--api-token`.",
 		},
 		"servers": []map[string]any{
 			{"url": server},
+		},
+		// An empty requirement alongside the scheme is how OpenAPI spells
+		// "optional": the token is enforced only when the server was started
+		// with one.
+		"security": []map[string]any{
+			{},
+			{"bearerAuth": []string{}},
 		},
 		"paths": map[string]any{
 			"/api/v1/health": map[string]any{
@@ -330,6 +350,15 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 			},
 		},
 		"components": map[string]any{
+			"securitySchemes": map[string]any{
+				"bearerAuth": map[string]any{
+					"type":   "http",
+					"scheme": "bearer",
+					"description": "Opt-in. `aconiq serve --api-token` (or the ACONIQ_API_TOKEN environment " +
+						"variable) makes every request present this token; started without one, the API " +
+						"takes no credential and relies on the transport controls described above.",
+				},
+			},
 			"schemas": map[string]any{
 				"APIError": map[string]any{
 					"type":                 "object",
@@ -470,11 +499,19 @@ func BuildOpenAPISpec(serverURL string) map[string]any {
 					"additionalProperties": false,
 					"required":             []string{"south", "west", "north", "east"},
 					"properties": map[string]any{
-						"south":             map[string]any{"type": "number"},
-						"west":              map[string]any{"type": "number"},
-						"north":             map[string]any{"type": "number"},
-						"east":              map[string]any{"type": "number"},
-						"overpass_endpoint": map[string]any{"type": "string"},
+						"south": map[string]any{"type": "number"},
+						"west":  map[string]any{"type": "number"},
+						"north": map[string]any{"type": "number"},
+						"east":  map[string]any{"type": "number"},
+						"overpass_endpoint": map[string]any{
+							"type":   "string",
+							"format": "uri",
+							"description": "Optional Overpass server. It arrives in a request body, so it is " +
+								"constrained rather than trusted: https only, and only a known Overpass host. " +
+								"Anything else is refused with error code `overpass_endpoint_not_allowed`, whose " +
+								"details.allowed_hosts lists what is accepted. Omit it to use the default server.",
+							"examples": allowedOverpassEndpointURLs(),
+						},
 					},
 				},
 				"TerrainInfo": map[string]any{
@@ -609,6 +646,89 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 	}
 
 	return nil
+}
+
+// applyTransportContract stamps the security middleware's answers onto every
+// operation.
+//
+// The middleware is cross-cutting — it runs before routing, so its refusals can
+// appear on any path — and documenting it per operation by hand is exactly the
+// kind of duplication that drifts. Adding it here the way the middleware adds it
+// to a request keeps handler.go and this document in step by construction.
+func applyTransportContract(spec map[string]any) {
+	paths, ok := spec["paths"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	for _, item := range paths {
+		operations, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		for method, operation := range operations {
+			typed, ok := operation.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			applyOperationTransportContract(typed, method)
+		}
+	}
+}
+
+func applyOperationTransportContract(operation map[string]any, method string) {
+	responses, ok := operation["responses"].(map[string]any)
+	if !ok {
+		responses = map[string]any{}
+		operation["responses"] = responses
+	}
+
+	responses["401"] = openapiErrorResponse(
+		"Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token.",
+	)
+	responses["403"] = openapiErrorResponse(
+		"Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing " +
+			"request arrived without the " + ClientHeaderName + " header (`client_header_required`), or the project " +
+			"manifest named a path outside the project root (`forbidden_path`).",
+	)
+
+	if method == "get" {
+		return
+	}
+
+	responses["413"] = openapiErrorResponse("Request body exceeds this endpoint's limit (`request_too_large`)")
+	responses["415"] = openapiErrorResponse(
+		"Request body was not sent as the media type this endpoint parses (`unsupported_media_type`)",
+	)
+
+	parameters, _ := operation["parameters"].([]map[string]any)
+	operation["parameters"] = append(parameters, clientHeaderParameter())
+}
+
+// clientHeaderParameter documents the custom header required on every
+// state-changing method.
+func clientHeaderParameter() map[string]any {
+	return map[string]any{
+		"name":     ClientHeaderName,
+		"in":       "header",
+		"required": true,
+		"description": "Any non-empty value. A CORS simple request cannot set a custom header, so requiring " +
+			"one forces a preflight, which the origin allowlist then answers or does not. The value is never read.",
+		"schema": map[string]any{"type": "string", "minLength": 1},
+	}
+}
+
+// allowedOverpassEndpointURLs renders the Overpass allowlist as the URLs a
+// caller may actually send, so the document does not restate the list by hand.
+func allowedOverpassEndpointURLs() []string {
+	urls := make([]string, 0, len(allowedOverpassHosts))
+	for _, host := range allowedOverpassHosts {
+		urls = append(urls, "https://"+host+"/api/interpreter")
+	}
+
+	return urls
 }
 
 func methodNotAllowedResponse() map[string]any {

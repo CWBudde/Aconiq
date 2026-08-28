@@ -34,7 +34,7 @@ func TestHealthEndpoint(t *testing.T) {
 	fixedTime := time.Date(2026, 3, 6, 9, 0, 0, 0, time.UTC)
 	handler := NewHandler(store, func() time.Time { return fixedTime })
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -74,7 +74,7 @@ func TestProjectStatusEndpoint(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/project/status", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/project/status", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -107,7 +107,7 @@ func TestProjectStatusReturnsNotFoundWhenProjectNotInitialized(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/project/status", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/project/status", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -132,7 +132,7 @@ func TestMethodNotAllowedReturnsStandardizedError(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/health", nil)
+	req := newAPIRequest(http.MethodPost, "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -157,7 +157,7 @@ func TestUnknownRouteReturnsStandardizedNotFound(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/nope", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/nope", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -183,7 +183,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 
 	handler := NewHandler(store, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/openapi.json", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -312,7 +312,7 @@ func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/runs", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/runs", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -362,7 +362,7 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
+	req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
 		"standard_id": "rls19-road",
 		"receiver_mode": "custom"
 	}`))
@@ -427,7 +427,7 @@ func TestCreateRunEndpointRejectsArgumentInjection(t *testing.T) {
 				},
 			})
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(tc.body))
+			req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 
 			rec := httptest.NewRecorder()
@@ -468,7 +468,7 @@ func TestCreateRunEndpointAcceptsRelativeInputPaths(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
+	req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{
 		"standard_id": "rls19-road",
 		"receiver_mode": "auto-grid",
 		"model_path": ".noise/model/normalized.geojson",
@@ -500,7 +500,7 @@ func TestRunLogEndpointReturnsNotFoundForUnknownRun(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/runs/run-nope/log", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/runs/run-nope/log", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -530,7 +530,7 @@ func TestStandardsEndpointReturnsRegisteredStandards(t *testing.T) {
 	}
 
 	handler := NewHandlerWithRegistry(store, nil, registry)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/standards", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/standards", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -631,7 +631,7 @@ func TestStandardsEndpointReturnsUnavailableWithoutRegistry(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/standards", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/standards", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -757,7 +757,7 @@ func TestImportOSMEndpointRejectsBadMethod(t *testing.T) {
 	}
 
 	handler := NewHandler(store, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/import/osm", nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/import/osm", nil)
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -784,7 +784,7 @@ func TestImportOSMEndpointRejectsBadBBoxSouthGeNorth(t *testing.T) {
 
 	handler := NewHandler(store, nil)
 	body := strings.NewReader(`{"south":52.5,"west":13.3,"north":52.0,"east":13.5}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -812,7 +812,7 @@ func TestImportOSMEndpointRejectsBadBBoxWestGeEast(t *testing.T) {
 
 	handler := NewHandler(store, nil)
 	body := strings.NewReader(`{"south":52.0,"west":13.5,"north":52.5,"east":13.3}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -840,7 +840,7 @@ func TestImportOSMEndpointRejectsOutOfRangeCoordinates(t *testing.T) {
 
 	handler := NewHandler(store, nil)
 	body := strings.NewReader(`{"south":-91.0,"west":13.3,"north":52.5,"east":13.5}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -868,7 +868,7 @@ func TestImportOSMEndpointRejectsMalformedBody(t *testing.T) {
 
 	handler := NewHandler(store, nil)
 	body := strings.NewReader(`not-json`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -910,7 +910,7 @@ func TestImportTerrainEndpoint(t *testing.T) {
 
 	body, contentType := createMultipartFile(t, "file", "terrain.tif", geotiffData)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/terrain", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/terrain", body)
 	req.Header.Set("Content-Type", contentType)
 
 	rec := httptest.NewRecorder()
@@ -971,7 +971,7 @@ func TestImportTerrainRejectsBadExtension(t *testing.T) {
 
 	body, contentType := createMultipartFile(t, "file", "terrain.png", []byte("not a tiff"))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/terrain", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/terrain", body)
 	req.Header.Set("Content-Type", contentType)
 
 	rec := httptest.NewRecorder()
@@ -999,7 +999,7 @@ func TestImportTerrainRejectsInvalidGeoTIFF(t *testing.T) {
 
 	body, contentType := createMultipartFile(t, "file", "terrain.tif", []byte("not valid tiff data"))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/import/terrain", body)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/terrain", body)
 	req.Header.Set("Content-Type", contentType)
 
 	rec := httptest.NewRecorder()
@@ -1197,7 +1197,7 @@ func TestCreateRunEndpointRejectsScaffoldStandardWithoutExperimental(t *testing.
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road"}`))
+	req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road"}`))
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -1261,7 +1261,7 @@ func TestCreateRunEndpointRunsScaffoldStandardWithExperimental(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road", "experimental": true}`))
+	req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "cnossos-road", "experimental": true}`))
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
@@ -1294,7 +1294,7 @@ func TestCreateRunEndpointDoesNotGateNormativeStandards(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "rls19-road"}`))
+	req := newAPIRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"standard_id": "rls19-road"}`))
 	req.Header.Set("Content-Type", "application/json")
 
 	handler.ServeHTTP(httptest.NewRecorder(), req)
@@ -1323,4 +1323,19 @@ func runGateFixture(t *testing.T) (projectfs.Store, framework.Registry) {
 	}
 
 	return store, registry
+}
+
+// newAPIRequest builds a request that satisfies the transport-level controls in
+// security.go, so a test that is about an endpoint's own behaviour does not have
+// to restate them. Tests that are about the controls build their requests with
+// httptest.NewRequest directly, in security_test.go.
+func newAPIRequest(method, target string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	req.Host = testHost
+
+	if !isSafeMethod(method) {
+		req.Header.Set(ClientHeaderName, "handler-test")
+	}
+
+	return req
 }

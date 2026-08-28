@@ -42,6 +42,16 @@ const (
 	// errorCodeExperimentalOptInRequired answers a run request that targets a
 	// scaffold-tier standard without acknowledging what that tier means.
 	errorCodeExperimentalOptInRequired = "experimental_opt_in_required"
+
+	// The transport-level controls in security.go. They are refusals to route,
+	// not endpoint answers, so they can appear on any path.
+	errorCodeForbiddenHost              = "forbidden_host"
+	errorCodeUnauthorized               = "unauthorized"
+	errorCodeClientHeaderRequired       = "client_header_required"
+	errorCodeUnsupportedMediaType       = "unsupported_media_type"
+	errorCodeRequestTooLarge            = "request_too_large"
+	errorCodeForbiddenPath              = "forbidden_path"
+	errorCodeOverpassEndpointNotAllowed = "overpass_endpoint_not_allowed"
 )
 
 type Handler struct {
@@ -193,14 +203,29 @@ func NewHandlerWithRegistry(store projectfs.Store, clock func() time.Time, regis
 	})
 }
 
+// ServeOptions configures the handler `aconiq serve` mounts.
+type ServeOptions struct {
+	// CORSOrigins holds extra allowed origins beyond localhost/127.0.0.1
+	// (nil is fine for local use).
+	CORSOrigins []string
+	// ListenAddr is the address the server was told to bind. Its host part joins
+	// the Host allowlist, so a server bound to a named or LAN address stays
+	// reachable under that name while DNS rebinding does not.
+	ListenAddr string
+	// APIToken, when non-empty, must be presented as a bearer token on every
+	// request. Empty means the transport controls stand alone.
+	APIToken string
+}
+
 // NewServeHandler builds a handler suitable for `aconiq serve` with CORS enabled.
-// corsOrigins holds extra allowed origins beyond localhost/127.0.0.1 (nil is fine for local use).
-func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, corsOrigins []string) http.Handler {
+func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, opts ServeOptions) http.Handler {
 	return newHandlerWithOptions(store, handlerOptions{
-		clock:       clock,
-		sseInterval: 2 * time.Second,
-		registry:    &registry,
-		corsOrigins: corsOrigins,
+		clock:        clock,
+		sseInterval:  2 * time.Second,
+		registry:     &registry,
+		corsOrigins:  opts.CORSOrigins,
+		allowedHosts: hostsFromListenAddr(opts.ListenAddr),
+		apiToken:     opts.APIToken,
 	})
 }
 
@@ -210,6 +235,8 @@ type handlerOptions struct {
 	registry     *framework.Registry
 	corsOrigins  []string // extra allowed origins beyond localhost/127.0.0.1
 	corsDisabled bool     // set true for same-origin deployments (Wails etc.)
+	allowedHosts []string // extra Host header values beyond loopback
+	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
 }
 
@@ -248,11 +275,20 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
 	mux.HandleFunc("/", handler.handleNotFound)
 
+	// The security middleware sits inside CORS so that a refusal still carries
+	// the CORS headers a browser needs in order to read the envelope, and so
+	// that a preflight is answered before the state-changing-method controls
+	// (which a preflight, being an OPTIONS, cannot satisfy).
+	guarded := securityMiddleware(securityOptions{
+		allowedHosts: opts.allowedHosts,
+		apiToken:     opts.apiToken,
+	})(mux)
+
 	if opts.corsDisabled {
-		return mux
+		return guarded
 	}
 
-	return corsMiddleware(opts.corsOrigins)(mux)
+	return corsMiddleware(opts.corsOrigins)(guarded)
 }
 
 func (h Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -337,17 +373,11 @@ func (h Handler) handleRunsList(w http.ResponseWriter, _ *http.Request) {
 func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 	var req createRunRequest
 
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    errorCodeBadRequest,
-			Message: "request body must be valid JSON",
-		})
-
+	if !decodeJSONBody(w, r, maxRunCreateBodyBytes, &req) {
 		return
 	}
 
-	err = req.validate()
+	err := req.validate()
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
@@ -690,15 +720,9 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absLogPath := h.store.Root() + "/" + strings.ReplaceAll(logPath, "\\", "/")
-
-	raw, readErr := os.ReadFile(absLogPath)
+	raw, readErr := readProjectFile(h.store.Root(), logPath)
 	if readErr != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    errorCodeInternalError,
-			Message: "failed to read run log",
-		})
-
+		writeProjectFileError(w, readErr, "failed to read run log")
 		return
 	}
 
@@ -748,15 +772,9 @@ func (h Handler) handleArtifactContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absPath := filepath.Join(h.store.Root(), filepath.FromSlash(artifactPath))
-
-	raw, readErr := os.ReadFile(absPath)
+	raw, readErr := readProjectFile(h.store.Root(), artifactPath)
 	if readErr != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    errorCodeInternalError,
-			Message: "failed to read artifact file",
-		})
-
+		writeProjectFileError(w, readErr, "failed to read artifact file")
 		return
 	}
 
@@ -843,13 +861,12 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 
 	var req importOSMRequest
 
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    errorCodeBadRequest,
-			Message: "failed to decode request body: " + err.Error(),
-		})
+	if !decodeJSONBody(w, r, maxImportOSMBodyBytes, &req) {
+		return
+	}
 
+	if endpointErr := validateOverpassEndpoint(req.OverpassEndpoint); endpointErr != nil {
+		writeAPIError(w, http.StatusBadRequest, *endpointErr)
 		return
 	}
 
@@ -908,10 +925,12 @@ func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fc)
 }
 
-const maxTerrainUploadBytes = 50 << 20 // 50 MB
-
 func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	if !requireContentType(w, r, mediaTypeMultipart) {
 		return
 	}
 
@@ -920,9 +939,17 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 	// without MaxBytesReader.
 	r.Body = http.MaxBytesReader(w, r.Body, maxTerrainUploadBytes)
 
-	//nolint:gosec // G120: the body is bounded by the MaxBytesReader above
-	err := r.ParseMultipartForm(maxTerrainUploadBytes)
+	// G120 does not model MaxBytesReader, so it reports this call whatever the
+	// argument is. The body above it is bounded, the in-memory share is
+	// maxTerrainMemoryBytes, and the spill-to-disk remainder cannot outlive the
+	// capped body — which is what the rule is actually asking for.
+	//nolint:gosec // G120: bounded by the MaxBytesReader on the line above
+	err := r.ParseMultipartForm(maxTerrainMemoryBytes)
 	if err != nil {
+		if writeRequestTooLarge(w, err, maxTerrainUploadBytes) {
+			return
+		}
+
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
 			Message: "failed to parse multipart form: " + err.Error(),
@@ -953,13 +980,26 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := io.ReadAll(file)
+	if header.Size > maxTerrainUploadBytes {
+		writeTooLarge(w, maxTerrainUploadBytes)
+		return
+	}
+
+	// The body cap above already bounds the part, but a part is not the body:
+	// bounding the read itself keeps the guarantee local to the allocation it
+	// protects rather than to a MaxBytesReader three statements away.
+	data, err := io.ReadAll(io.LimitReader(file, maxTerrainUploadBytes+1))
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
 			Message: "failed to read uploaded file: " + err.Error(),
 		})
 
+		return
+	}
+
+	if len(data) > maxTerrainUploadBytes {
+		writeTooLarge(w, maxTerrainUploadBytes)
 		return
 	}
 

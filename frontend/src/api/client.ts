@@ -1,3 +1,41 @@
+/**
+ * The custom request header the local API requires on every state-changing
+ * method. A CORS simple request cannot carry a custom header, so sending one
+ * forces a preflight, which is what makes a cross-site write visible to the
+ * server's origin allowlist. The server never reads the value — only its
+ * presence counts.
+ */
+export const CLIENT_HEADER_NAME = "X-Aconiq-Client";
+
+const CLIENT_HEADER_VALUE = "aconiq-web";
+
+/**
+ * Optional bearer token, matching `aconiq serve --api-token`. Empty unless the
+ * server was started with one, in which case every request must present it.
+ */
+const API_TOKEN = import.meta.env.VITE_API_TOKEN ?? "";
+
+/**
+ * Headers every request to the local API carries. `extra` wins over the
+ * defaults, so a caller can set its own Content-Type without restating the
+ * rest.
+ */
+export function apiHeaders(
+  extra?: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    [CLIENT_HEADER_NAME]: CLIENT_HEADER_VALUE,
+    ...extra,
+  };
+
+  if (API_TOKEN !== "") {
+    headers.Authorization = `Bearer ${API_TOKEN}`;
+  }
+
+  return headers;
+}
+
 export interface APIError {
   code: string;
   message: string;
