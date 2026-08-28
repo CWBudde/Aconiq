@@ -308,7 +308,7 @@ all** — so `//nolint` directives are still honoured but no preset or rule is. 
 
 | Rule | Count | Where                                                                   | Why it does not reach `just lint`                                |
 | ---- | ----: | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| G304 |    97 | 50 in `_test.go`, 47 in non-test code                                   | Exclusion presets. **Still hidden — the count doubled from 47.** |
+| G304 |    97 | 50 in `_test.go`, 47 in non-test code                                   | Exclusion presets. Still hidden. (The "doubled from 47" reading of this row was wrong — see below.) |
 | G115 |    10 | `geo/terrain/terrain_test.go` ×6, `io/gpkgimport` ×3, `io/fgbimport` ×1 | The `_test\.go` exclusion rule                                   |
 | G101 |     4 | `io/osmimport/osmimport_test.go`                                        | The `_test\.go` exclusion rule                                   |
 | G703 |     1 | `io/soundplanimport/terrain_text_test.go:80`                            | The `_test\.go` exclusion rule                                   |
@@ -327,11 +327,41 @@ Two corrections to attributions that were assumed rather than checked:
   should be handled. (A `//nolint` on parsed-from-file offsets deserves a periodic re-read to
   confirm the bounds claims still hold, but the mechanism is correct.)
 
-**G304 remains the honest embarrassment here.** 97 findings, 47 of them in non-test code, still
-invisible. The reason has not changed — this is a file-format toolchain and opening a path the user
-named is the product — but the number has doubled since it was first waved through, which is what
-happens to a suppressed rule in a growing codebase. G301, whose count grew the same way, turned out
-to be worth fixing; nobody has re-litigated G304 on the evidence.
+**G304 remains hidden, and it should stay that way. Re-litigated on the evidence.**
+
+The case for reopening it was that the count had doubled from 47 to 97 — the same drift that made
+G301 worth fixing. Measured properly, that case does not survive.
+
+Re-run today with `max-issues-per-linter: 0` and `max-same-issues: 0`, which the earlier runs did
+not set (golangci-lint defaults to reporting at most 3 findings per rule, so any run without them
+undercounts silently):
+
+| Rule | Total | Non-test | In `_test.go` |
+| ---- | ----: | -------: | ------------: |
+| G304 |   108 |   **47** |            61 |
+| G115 |    13 |        0 |            13 |
+| G101 |     4 |        0 |             4 |
+| G104 |     1 |        0 |             1 |
+| G306 |     1 |        0 |             1 |
+| G404 |     1 |        0 |             1 |
+| G602 |     1 |        0 |             1 |
+
+**The non-test count is 47. It was 47 when the verdict was made. It has not moved.** Every one of
+the additional findings is in a `_test.go` file, and test files are excluded by a separate rule that
+was never part of the G304 question. The growth is a growing test suite, not creeping exposure — the
+opposite of G301, whose 44 findings were all in production `os.MkdirAll` calls.
+
+So the original reasoning stands unchanged and now has numbers behind it: this is a file-format
+toolchain, opening a path the caller named is the product, and 47 unactionable findings would drown
+the ones that matter. The path-traversal question G304 gestures at is real, but it belongs to the
+untrusted surface — the HTTP API — and that surface no longer relies on gosec to catch it: both
+file-serving handlers go through `filepath.IsLocal` plus `os.OpenInRoot`, which confines the read
+by construction and defeats symlinks besides.
+
+What would change this verdict: a non-test G304 count that grows without the API's containment
+growing with it, or a code path that opens a caller-named file on behalf of a *remote* caller
+rather than a local operator. Neither is true today. Re-measure before overturning it, and set the
+two `max-*` keys when you do.
 
 **G301 is resolved and now enforced** — see the debt pass below.
 
