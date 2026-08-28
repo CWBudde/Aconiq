@@ -1,0 +1,30 @@
+name: Feature or standards coverage
+description: Something Aconiq should do, or a standard it should cover
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `PLAN.md` is the roadmap and records what is already planned, in what
+        order, and why. Please check it first — if your request is already
+        there, a comment on its priority is more useful than a new issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that you cannot do today? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: standard
+    attributes:
+      label: Which standard or regulation, if any
+      description: |
+        For standards coverage, name the document, edition and the clauses that
+        matter. Say whether the text is publicly available — a module cannot be
+        implemented from a standard nobody working on it can read.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: Another tool, a manual step, a workaround. This is usually the most informative field.

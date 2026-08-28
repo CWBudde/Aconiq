@@ -1,0 +1,59 @@
+name: Numeric defect
+description: A computed level is wrong, or disagrees with a standard or a reference tool
+labels: ["numeric"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for anything that changes a dB value. It is the most important
+        class of defect this project has, and it needs more than a stack trace.
+
+        Before filing: check the evidence tier of the module you ran. Only
+        `normative`-tier modules (`rls19-road`, `schall03`, `iso9613`) make an
+        accuracy claim at all. `scaffold`-tier modules use invented base levels
+        and implement no directive coefficients, so a disagreement there is
+        expected and documented in `docs/conformance/`, not a defect.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The full output of `aconiq --version`, or the `tool_version` field from your `provenance.json`.
+      placeholder: aconiq v0.1.0 (commit 0cfb763a1b2c, built 2026-08-28T10:00:00Z)
+    validations:
+      required: true
+  - type: input
+    id: standard
+    attributes:
+      label: Standard, version and profile
+      description: As passed to `aconiq run`, or as recorded in `provenance.json`.
+      placeholder: schall03 / 2014 / anlage2
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected value, and where it comes from
+      description: |
+        Name the source: a clause or equation number in the standard, a worked
+        example, or a reference tool and its version. "SoundPLAN says 62.3 dB"
+        and "Anlage 2 Gl. 14 gives 62.3 dB" are both useful, and they are
+        different kinds of evidence — say which one this is.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Value Aconiq produced
+      description: Include the receiver, the indicator and the magnitude of the difference.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: |
+        The smallest model that shows it, plus the exact command. Attach the
+        input if you can share it. If the data is licensed or confidential, say
+        so and describe the geometry instead — do not attach it.
+    validations:
+      required: true

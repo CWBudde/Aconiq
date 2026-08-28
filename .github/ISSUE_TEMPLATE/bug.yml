@@ -1,0 +1,46 @@
+name: Bug
+description: A crash, a wrong file, a failing command — anything that is not a computed level
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a **computed dB value** is wrong, use the "Numeric defect" template
+        instead — it asks for the evidence that report needs.
+
+        If this is a security vulnerability, do not open an issue at all. See
+        `SECURITY.md`.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The full output of `aconiq --version`.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: Linux 6.8 / macOS 15 arm64 / Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the exact command and the full error output. `--json` output is more useful than a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: The smallest input and command sequence that shows it.
+    validations:
+      required: true

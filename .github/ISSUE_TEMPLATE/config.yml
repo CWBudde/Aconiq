@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/cwbudde/Aconiq/security/advisories/new
+    about: Do not open a public issue. Report privately — see SECURITY.md.
+  - name: Roadmap and known open work
+    url: https://github.com/cwbudde/Aconiq/blob/main/PLAN.md
+    about: PLAN.md is the single source of truth for status. Many known gaps are already recorded there.
