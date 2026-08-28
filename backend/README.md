@@ -31,12 +31,12 @@ cd backend && go test ./internal/geo/... -run TestFunctionName
 This file deliberately carries no package list, no command list and no status.
 Those drifted here once already and now live in exactly one place each:
 
-| For                                              | Read                                    |
-| ------------------------------------------------ | --------------------------------------- |
-| Package layout, CLI surface, API routes, policies | `AGENTS.md` at the repository root      |
-| What is done, in progress and open                | `PLAN.md` — the single status source    |
-| What each standards module may be claimed to do   | `docs/conformance/`                     |
-| Project format, schemas, result containers        | `docs/`                                 |
+| For                                               | Read                                 |
+| ------------------------------------------------- | ------------------------------------ |
+| Package layout, CLI surface, API routes, policies | `AGENTS.md` at the repository root   |
+| What is done, in progress and open                | `PLAN.md` — the single status source |
+| What each standards module may be claimed to do   | `docs/conformance/`                  |
+| Project format, schemas, result containers        | `docs/`                              |
 
 Per-phase delivery notes from earlier milestones are kept as
 `docs/phase*-baseline.md`. They are historical: where they disagree with a

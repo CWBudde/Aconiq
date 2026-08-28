@@ -306,14 +306,14 @@ because the G301 decision was taken against it.
 `gosec` run standalone with `linters.default: none`, `enable: [gosec]` and **no exclusions block at
 all** — so `//nolint` directives are still honoured but no preset or rule is. 114 findings survive:
 
-| Rule | Count | Where                                                                   | Why it does not reach `just lint`                                |
-| ---- | ----: | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Rule | Count | Where                                                                   | Why it does not reach `just lint`                                                                   |
+| ---- | ----: | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | G304 |    97 | 50 in `_test.go`, 47 in non-test code                                   | Exclusion presets. Still hidden. (The "doubled from 47" reading of this row was wrong — see below.) |
-| G115 |    10 | `geo/terrain/terrain_test.go` ×6, `io/gpkgimport` ×3, `io/fgbimport` ×1 | The `_test\.go` exclusion rule                                   |
-| G101 |     4 | `io/osmimport/osmimport_test.go`                                        | The `_test\.go` exclusion rule                                   |
-| G703 |     1 | `io/soundplanimport/terrain_text_test.go:80`                            | The `_test\.go` exclusion rule                                   |
-| G404 |     1 | `geo/geometry_property_test.go:12`                                      | The `_test\.go` exclusion rule                                   |
-| G306 |     1 | `io/soundplanimport/terrain_text_test.go:80`                            | The `_test\.go` exclusion rule                                   |
+| G115 |    10 | `geo/terrain/terrain_test.go` ×6, `io/gpkgimport` ×3, `io/fgbimport` ×1 | The `_test\.go` exclusion rule                                                                      |
+| G101 |     4 | `io/osmimport/osmimport_test.go`                                        | The `_test\.go` exclusion rule                                                                      |
+| G703 |     1 | `io/soundplanimport/terrain_text_test.go:80`                            | The `_test\.go` exclusion rule                                                                      |
+| G404 |     1 | `geo/geometry_property_test.go:12`                                      | The `_test\.go` exclusion rule                                                                      |
+| G306 |     1 | `io/soundplanimport/terrain_text_test.go:80`                            | The `_test\.go` exclusion rule                                                                      |
 
 Two corrections to attributions that were assumed rather than checked:
 
@@ -359,7 +359,7 @@ file-serving handlers go through `filepath.IsLocal` plus `os.OpenInRoot`, which 
 by construction and defeats symlinks besides.
 
 What would change this verdict: a non-test G304 count that grows without the API's containment
-growing with it, or a code path that opens a caller-named file on behalf of a *remote* caller
+growing with it, or a code path that opens a caller-named file on behalf of a _remote_ caller
 rather than a local operator. Neither is true today. Re-measure before overturning it, and set the
 two `max-*` keys when you do.
 
