@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/numeric"
 )
 
 type periodEmission struct {
@@ -131,12 +132,16 @@ func ringArea(ring []geo.Point2D) float64 {
 		return 0
 	}
 
-	sum := 0.0
+	// The shoelace terms alternate in sign and their count scales with the
+	// ring, which is the cancellation-prone shape docs/policies/determinism.md
+	// §3 requires a compensated reduction for.
+	var sum numeric.CompensatedSum
+
 	for i := range len(ring) - 1 {
-		sum += ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y
+		sum.Add(ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y)
 	}
 
-	return 0.5 * sum
+	return 0.5 * sum.Sum()
 }
 
 func energySumDB(levels []float64) float64 {

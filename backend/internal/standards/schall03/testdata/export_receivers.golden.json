@@ -8,8 +8,8 @@
       "height_m": 4,
       "id": "r-near",
       "values": {
-        "LrDay": 77.703629,
-        "LrNight": 74.023861
+        "LrDay": 77.034161,
+        "LrNight": 72.262948
       },
       "x": 0,
       "y": 25
@@ -18,8 +18,8 @@
       "height_m": 4,
       "id": "r-far",
       "values": {
-        "LrDay": 67.852951,
-        "LrNight": 64.173183
+        "LrDay": 67.183483,
+        "LrNight": 62.412271
       },
       "x": 0,
       "y": 100

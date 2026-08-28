@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_50m",
+      "x": 0,
+      "y": 50,
+      "height_m": 4,
+      "LpAeqDay": 73.733877,
+      "LpAeqNight": 69.754476,
+      "LrDay": 73.733877,
+      "LrNight": 69.754476
+    }
+  ]
+}

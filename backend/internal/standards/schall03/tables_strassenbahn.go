@@ -16,13 +16,14 @@ type SFahrbahnartType int
 
 const (
 	// SFahrbahnSchwellengleis is the reference track type (Schwellengleis im
-	// Schotterbett); no c1 correction is applied.  Intentionally set to a
-	// value that does not match any entry in C1StrassenbahnTable.
-	SFahrbahnSchwellengleis SFahrbahnartType = iota - 1
-
-	SFahrbahnStrassenbuendig // Strassenbuendiger Bahnkoerper und feste Fahrbahn
-	SFahrbahnGruenTief       // Begruentter Bahnkoerper, tief liegende Vegetationsebene
-	SFahrbahnGruenHoch       // Begruentter Bahnkoerper, hoch liegende Vegetationsebene
+	// Schotterbett); Nr. 5.4 references Beiblatt 2 to it and Tabelle 15 lists
+	// the deviations, so it carries no c1 correction and must be the zero
+	// value — otherwise a TrackSegment whose JSON omits "s_fahrbahn" would
+	// silently collect the straßenbündig row (+8 dB at 1000 Hz).
+	SFahrbahnSchwellengleis  SFahrbahnartType = iota // Schwellengleis (reference)
+	SFahrbahnStrassenbuendig                         // Strassenbuendiger Bahnkoerper und feste Fahrbahn
+	SFahrbahnGruenTief                               // Begruentter Bahnkoerper, tief liegende Vegetationsebene
+	SFahrbahnGruenHoch                               // Begruentter Bahnkoerper, hoch liegende Vegetationsebene
 )
 
 // SC1Entry holds the c1 correction for one Strassenbahn Fahrbahnart (Table 15).

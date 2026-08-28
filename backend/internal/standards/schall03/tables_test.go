@@ -377,3 +377,51 @@ func TestCurveCorrectionStrassenbahnNonRolling(t *testing.T) {
 		}
 	}
 }
+
+// TestFahrbahnartZeroValueIsSchwellengleis pins the JSON default for
+// TrackSegment.Fahrbahn.  Beiblatt 1's acoustic data are referenced to
+// Schwellengleise (Nr. 4.4), so a segment that omits "fahrbahn" must receive no
+// Tabelle 7 correction at all — not the Feste-Fahrbahn row.
+func TestFahrbahnartZeroValueIsSchwellengleis(t *testing.T) {
+	t.Parallel()
+
+	var zero FahrbahnartType
+
+	if zero != FahrbahnartSchwellengleis {
+		t.Fatalf("zero FahrbahnartType = %d, want FahrbahnartSchwellengleis (%d)",
+			zero, FahrbahnartSchwellengleis)
+	}
+
+	for _, m := range []int{1, 2, 7, 9, 11} {
+		for f := range NumBeiblattOctaveBands {
+			got := sumC1ForTeilquelle(zero, m, f)
+			if got != 0 {
+				t.Errorf("sumC1ForTeilquelle(zero, m=%d, f=%d) = %v, want 0", m, f, got)
+			}
+		}
+	}
+}
+
+// TestSFahrbahnartZeroValueIsSchwellengleis is the Straßenbahn counterpart:
+// Nr. 5.4 references Beiblatt 2 to Schwellengleise im Schotterbett, so an
+// omitted "s_fahrbahn" must not silently pick up the Tabelle 15
+// straßenbündig row (+8 dB at 1000 Hz).
+func TestSFahrbahnartZeroValueIsSchwellengleis(t *testing.T) {
+	t.Parallel()
+
+	var zero SFahrbahnartType
+
+	if zero != SFahrbahnSchwellengleis {
+		t.Fatalf("zero SFahrbahnartType = %d, want SFahrbahnSchwellengleis (%d)",
+			zero, SFahrbahnSchwellengleis)
+	}
+
+	for _, m := range []int{1, 2} {
+		for f := range NumBeiblattOctaveBands {
+			got := sumC1StrassenbahnForTeilquelle(zero, m, f)
+			if got != 0 {
+				t.Errorf("sumC1StrassenbahnForTeilquelle(zero, m=%d, f=%d) = %v, want 0", m, f, got)
+			}
+		}
+	}
+}

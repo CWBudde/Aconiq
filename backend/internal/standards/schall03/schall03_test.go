@@ -487,3 +487,99 @@ func testdataPath(t *testing.T, parts ...string) string {
 
 	return filepath.Join(all...)
 }
+
+// TestEmissionFlowCorrectionHasNoPlusOneShift pins Gl. 2's flow term to
+// 10 lg(n) rather than the 10 lg(n + 1) shift the preview data-pack chain used
+// to carry.  The shift added a spurious +3.0 dB at one train per hour, which is
+// the same defect that was removed from cnossos/road, cnossos/rail and
+// bub/road.
+func TestEmissionFlowCorrectionHasNoPlusOneShift(t *testing.T) {
+	t.Parallel()
+
+	base := RailSource{
+		ID: "track-1",
+		TrackCenterline: []geo.Point2D{
+			{X: -50, Y: 0},
+			{X: 50, Y: 0},
+		},
+		TrainClass:      TrainClassMixed,
+		AverageSpeedKPH: 100,
+		Infrastructure: RailInfrastructure{
+			TractionType:        TractionElectric,
+			TrackType:           TrackTypeBallasted,
+			TrackForm:           TrackFormMainline,
+			TrackRoughnessClass: RoughnessStandard,
+		},
+	}
+
+	one := base
+	one.TrafficDay = TrafficPeriod{TrainsPerHour: 1}
+	one.TrafficNight = TrafficPeriod{TrainsPerHour: 1}
+
+	ten := base
+	ten.TrafficDay = TrafficPeriod{TrainsPerHour: 10}
+	ten.TrafficNight = TrafficPeriod{TrainsPerHour: 10}
+
+	oneEmission, err := ComputeEmission(one)
+	if err != nil {
+		t.Fatalf("compute emission at 1 train/h: %v", err)
+	}
+
+	tenEmission, err := ComputeEmission(ten)
+	if err != nil {
+		t.Fatalf("compute emission at 10 trains/h: %v", err)
+	}
+
+	// Ten times the traffic is exactly +10 dB once the shift is gone.
+	got := tenEmission.DaySpectrum[0] - oneEmission.DaySpectrum[0]
+	if math.Abs(got-10) > 1e-9 {
+		t.Errorf("level difference 1 → 10 trains/h = %f dB, want 10", got)
+	}
+}
+
+// TestEmissionZeroFlowIsSilent pins the explicit zero-flow branch: a period
+// without trains must emit nothing rather than collapsing the flow term to
+// 10 lg(0 + 1) = 0 dB and reporting the bare base spectrum.
+func TestEmissionZeroFlowIsSilent(t *testing.T) {
+	t.Parallel()
+
+	source := RailSource{
+		ID: "track-1",
+		TrackCenterline: []geo.Point2D{
+			{X: -50, Y: 0},
+			{X: 50, Y: 0},
+		},
+		TrainClass:      TrainClassMixed,
+		AverageSpeedKPH: 100,
+		Infrastructure: RailInfrastructure{
+			TractionType:        TractionElectric,
+			TrackType:           TrackTypeBallasted,
+			TrackForm:           TrackFormMainline,
+			TrackRoughnessClass: RoughnessStandard,
+		},
+		TrafficDay:   TrafficPeriod{TrainsPerHour: 8},
+		TrafficNight: TrafficPeriod{TrainsPerHour: 0},
+	}
+
+	emission, err := ComputeEmission(source)
+	if err != nil {
+		t.Fatalf("compute emission: %v", err)
+	}
+
+	for band, level := range emission.NightSpectrum {
+		if level > silenceThresholdDB {
+			t.Errorf("night band %d = %f dB, want the silence sentinel", band, level)
+		}
+	}
+
+	levels, err := ComputeReceiverPeriodLevels(
+		geo.Point2D{X: 0, Y: 25}, []RailSource{source}, DefaultPropagationConfig(),
+	)
+	if err != nil {
+		t.Fatalf("compute receiver levels: %v", err)
+	}
+
+	if levels.LrNight > silenceThresholdDB {
+		t.Errorf("LrNight = %f dB with no night trains, want the silence sentinel", levels.LrNight)
+	}
+}

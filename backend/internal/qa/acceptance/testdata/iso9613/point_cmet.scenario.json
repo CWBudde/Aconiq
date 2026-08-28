@@ -1,0 +1,38 @@
+{
+  "sources": [
+    {
+      "id": "stack-near",
+      "point": { "x": 0, "y": 0 },
+      "source_height_m": 5,
+      "sound_power_level_db": 110,
+      "directivity_correction_db": 0,
+      "tonality_correction_db": 0,
+      "impulsivity_correction_db": 0
+    },
+    {
+      "id": "stack-tall",
+      "point": { "x": 0, "y": 0 },
+      "source_height_m": 30,
+      "sound_power_level_db": 110,
+      "directivity_correction_db": 0,
+      "tonality_correction_db": 0,
+      "impulsivity_correction_db": 0
+    }
+  ],
+  "receivers": [
+    { "id": "r_60m", "point": { "x": 60, "y": 0 }, "height_m": 4 },
+    { "id": "r_150m", "point": { "x": 150, "y": 0 }, "height_m": 4 },
+    { "id": "r_400m", "point": { "x": 400, "y": 0 }, "height_m": 4 },
+    { "id": "r_1000m", "point": { "x": 1000, "y": 0 }, "height_m": 4 }
+  ],
+  "grid_width": 4,
+  "grid_height": 1,
+  "propagation_config": {
+    "ground_factor": 0.5,
+    "air_temperature_c": 10,
+    "relative_humidity_percent": 70,
+    "meteorology_assumption": "downwind-or-moderate-inversion",
+    "c0_met": 3.0,
+    "min_distance_m": 1
+  }
+}

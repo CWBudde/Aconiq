@@ -1,10 +1,10 @@
 {
   "segments": [
     {
-      "id": "ice1_barrier_wall_track",
+      "id": "ice1_three_edge_track",
       "track_centerline": [
-        {"x": -100, "y": 0},
-        {"x": 100, "y": 0}
+        {"x": -200, "y": 0},
+        {"x": 200, "y": 0}
       ],
       "elevation_m": 0,
       "fahrbahn": 0,
@@ -28,25 +28,29 @@
   ],
   "receivers": [
     {
-      "id": "r_barrier_wall",
-      "point": {"x": 0, "y": 30},
+      "id": "r_behind_three_edges",
+      "point": {"x": 0, "y": 40},
       "height_m": 3.5
     }
   ],
   "barriers": [
     {
-      "a": {"x": -100, "y": 15},
-      "b": {"x": 100, "y": 15},
-      "top_height_m": 4,
+      "a": {"x": -300, "y": 8},
+      "b": {"x": 300, "y": 8},
+      "top_height_m": 5,
       "base_height_m": 0
-    }
-  ],
-  "walls": [
+    },
     {
-      "a": {"x": -100, "y": 40},
-      "b": {"x": 100, "y": 40},
-      "height_m": 15,
-      "surface": 0
+      "a": {"x": -300, "y": 16},
+      "b": {"x": 300, "y": 16},
+      "top_height_m": 8,
+      "base_height_m": 0
+    },
+    {
+      "a": {"x": -300, "y": 24},
+      "b": {"x": 300, "y": 24},
+      "top_height_m": 7.5,
+      "base_height_m": 0
     }
   ]
 }

@@ -7,11 +7,6 @@ import (
 	"slices"
 )
 
-// FahrbahnartSchwellengleis represents the reference track type (Schwellengleis)
-// which carries no c1 corrections.  It is intentionally set to a value that
-// does not match any entry in C1FahrbahnartTable.
-const FahrbahnartSchwellengleis FahrbahnartType = -1
-
 // SurfaceCondType identifies active surface condition measures for Table 8.
 type SurfaceCondType int
 

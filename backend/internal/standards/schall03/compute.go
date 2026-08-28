@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/numeric"
 )
 
 // heightAboveSO maps Teilquelle height index h to metres above Schienenoberkante.
@@ -24,7 +25,12 @@ var teilquelleHeightIndices = [3]int{1, 2, 3}
 // buildVehicleInputs converts a TrainOperation into VehicleInput records for
 // one planning period using the provided trains-per-hour value.
 func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float64) StreckeEmissionInput {
-	effectiveSpeed := resolveEffectiveSpeed(seg.StreckeMaxKPH, op.SpeedKPH, seg.IsStation)
+	// The mode is derived from the first Fz of the composition, the same
+	// convention ComputeStreckeEmission uses to pick between Tabelle 7 and
+	// Tabelle 15.  It decides which speed rule applies: Nr. 4.3 for
+	// Eisenbahnen, Nr. 5.3.2 for Straßenbahnen.
+	isStrassenbahn := len(op.FzComposition) > 0 && IsStrassenbahnFz(op.FzComposition[0].Fz)
+	effectiveSpeed := resolveEffectiveSpeed(seg.StreckeMaxKPH, op.SpeedKPH, seg.IsStation, isStrassenbahn)
 
 	vehicles := make([]VehicleInput, 0, len(op.FzComposition))
 	for _, fc := range op.FzComposition {
@@ -134,7 +140,7 @@ func normativeLineSourceLpAeq(
 	receiver ReceiverInput,
 	waterFractionW float64,
 ) float64 {
-	var total float64
+	var total numeric.CompensatedSum
 
 	for i := range len(centerline) - 1 {
 		a := centerline[i]
@@ -165,15 +171,15 @@ func normativeLineSourceLpAeq(
 			}
 
 			sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
-			total += normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW)
+			total.Add(normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW))
 		}
 	}
 
-	if total <= 0 {
+	if total.Sum() <= 0 {
 		return math.Inf(-1)
 	}
 
-	return 10 * math.Log10(total)
+	return 10 * math.Log10(total.Sum())
 }
 
 // ComputeNormativeReceiverLevels computes L_pAeq and L_r for one receiver
@@ -192,7 +198,7 @@ func ComputeNormativeReceiverLevels(
 		return NormativeReceiverLevels{}, err
 	}
 
-	var daySum, nightSum float64
+	var daySum, nightSum numeric.CompensatedSum
 
 	for si, seg := range segments {
 		err = seg.Validate()
@@ -209,7 +215,7 @@ func ComputeNormativeReceiverLevels(
 			dayLp := normativeLineSourceLpAeq(dayEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
 
 			if !math.IsInf(dayLp, -1) {
-				daySum += math.Pow(10, 0.1*dayLp)
+				daySum.Add(math.Pow(10, 0.1*dayLp))
 			}
 
 			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
@@ -220,19 +226,19 @@ func ComputeNormativeReceiverLevels(
 			nightLp := normativeLineSourceLpAeq(nightEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
 
 			if !math.IsInf(nightLp, -1) {
-				nightSum += math.Pow(10, 0.1*nightLp)
+				nightSum.Add(math.Pow(10, 0.1*nightLp))
 			}
 		}
 	}
 
 	lpAeqDay := math.Inf(-1)
-	if daySum > 0 {
-		lpAeqDay = 10 * math.Log10(daySum)
+	if daySum.Sum() > 0 {
+		lpAeqDay = 10 * math.Log10(daySum.Sum())
 	}
 
 	lpAeqNight := math.Inf(-1)
-	if nightSum > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum)
+	if nightSum.Sum() > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum.Sum())
 	}
 
 	const ks = 0.0 // K_S abolished for Eisenbahnen since 2015
@@ -327,7 +333,7 @@ func normativeLineSourceLpAeqWithBarriers(
 		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW)
 	}
 
-	var total float64
+	var total numeric.CompensatedSum
 
 	for i := range len(centerline) - 1 {
 		a := centerline[i]
@@ -358,17 +364,17 @@ func normativeLineSourceLpAeqWithBarriers(
 			}
 
 			sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
-			total += normativeSubsegmentContribWithBarriers(
+			total.Add(normativeSubsegmentContribWithBarriers(
 				emission, elevationM, receiver, pt, dp, stepLen, sd2, waterFractionW, barriers,
-			)
+			))
 		}
 	}
 
-	if total <= 0 {
+	if total.Sum() <= 0 {
 		return math.Inf(-1)
 	}
 
-	return 10 * math.Log10(total)
+	return 10 * math.Log10(total.Sum())
 }
 
 // addDirectWithBarriersAndReflected computes the direct line-source contribution
@@ -380,13 +386,13 @@ func addDirectWithBarriersAndReflected(
 	receiver ReceiverInput,
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
-	sum *float64,
+	sum *numeric.CompensatedSum,
 ) {
 	lp := normativeLineSourceLpAeqWithBarriers(
 		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers,
 	)
 	if !math.IsInf(lp, -1) {
-		*sum += math.Pow(10, 0.1*lp)
+		sum.Add(math.Pow(10, 0.1*lp))
 	}
 
 	// Reflected paths (walls) with barrier attenuation on reflected paths.
@@ -398,7 +404,7 @@ func addDirectWithBarriersAndReflected(
 		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers,
 	)
 	if !math.IsInf(reflLp, -1) {
-		*sum += math.Pow(10, 0.1*reflLp)
+		sum.Add(math.Pow(10, 0.1*reflLp))
 	}
 }
 
@@ -433,7 +439,7 @@ func ComputeNormativeReceiverLevelsWithScene(
 		}
 	}
 
-	var daySum, nightSum float64
+	var daySum, nightSum numeric.CompensatedSum
 
 	for si, seg := range segments {
 		err = seg.Validate()
@@ -459,13 +465,13 @@ func ComputeNormativeReceiverLevelsWithScene(
 	}
 
 	lpAeqDay := math.Inf(-1)
-	if daySum > 0 {
-		lpAeqDay = 10 * math.Log10(daySum)
+	if daySum.Sum() > 0 {
+		lpAeqDay = 10 * math.Log10(daySum.Sum())
 	}
 
 	lpAeqNight := math.Inf(-1)
-	if nightSum > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum)
+	if nightSum.Sum() > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum.Sum())
 	}
 
 	const ks = 0.0
@@ -485,11 +491,11 @@ func addDirectAndReflected(
 	seg TrackSegment,
 	receiver ReceiverInput,
 	walls []ReflectingWall,
-	sum *float64,
+	sum *numeric.CompensatedSum,
 ) {
 	lp := normativeLineSourceLpAeq(emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
 	if !math.IsInf(lp, -1) {
-		*sum += math.Pow(10, 0.1*lp)
+		sum.Add(math.Pow(10, 0.1*lp))
 	}
 
 	if len(walls) == 0 {
@@ -500,7 +506,7 @@ func addDirectAndReflected(
 		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls,
 	)
 	if !math.IsInf(reflLp, -1) {
-		*sum += math.Pow(10, 0.1*reflLp)
+		sum.Add(math.Pow(10, 0.1*reflLp))
 	}
 }
 
@@ -527,7 +533,7 @@ func ComputeNormativeReceiverLevelsWithWalls(
 		}
 	}
 
-	var daySum, nightSum float64
+	var daySum, nightSum numeric.CompensatedSum
 
 	for si, seg := range segments {
 		err = seg.Validate()
@@ -553,13 +559,13 @@ func ComputeNormativeReceiverLevelsWithWalls(
 	}
 
 	lpAeqDay := math.Inf(-1)
-	if daySum > 0 {
-		lpAeqDay = 10 * math.Log10(daySum)
+	if daySum.Sum() > 0 {
+		lpAeqDay = 10 * math.Log10(daySum.Sum())
 	}
 
 	lpAeqNight := math.Inf(-1)
-	if nightSum > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum)
+	if nightSum.Sum() > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum.Sum())
 	}
 
 	const ks = 0.0

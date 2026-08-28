@@ -7,7 +7,7 @@
         {"x": 100, "y": 0}
       ],
       "elevation_m": 0,
-      "fahrbahn": -1,
+      "fahrbahn": 0,
       "surface": 0,
       "bridge_type": 0,
       "curve_radius_m": 0,

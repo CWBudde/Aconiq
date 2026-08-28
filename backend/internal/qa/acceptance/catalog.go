@@ -3,6 +3,8 @@ package acceptance
 import (
 	"path/filepath"
 	"sort"
+
+	"github.com/aconiq/backend/internal/standards/iso9613"
 )
 
 // Fixture describes one deterministic acceptance case.
@@ -115,7 +117,7 @@ func acceptanceFixturesCnossosRailIndustryISO() []Fixture {
 		},
 		{
 			Name:             "iso9613-synthetic-point-preview",
-			StandardID:       "iso9613",
+			StandardID:       iso9613.StandardID,
 			Description:      "Repo-authored synthetic ISO 9613 preview scenario stressing point-source height, directivity, and meteorology inputs for the narrow point-source scope.",
 			EvidenceClass:    evidenceClassSynthetic,
 			Provenance:       provenanceSynthetic,
@@ -124,12 +126,21 @@ func acceptanceFixturesCnossosRailIndustryISO() []Fixture {
 		},
 		{
 			Name:             "iso9613-synthetic-point-contextual",
-			StandardID:       "iso9613",
+			StandardID:       iso9613.StandardID,
 			Description:      "Repo-authored synthetic ISO 9613 preview scenario stressing contextual propagation differences from ground factor, favorable-weather inputs, and barrier attenuation.",
 			EvidenceClass:    evidenceClassSynthetic,
 			Provenance:       provenanceSynthetic,
 			ScenarioPath:     fixturePath("iso9613", "point_contextual.scenario.json"),
 			ExpectedJSONPath: fixturePath("iso9613", "point_contextual.golden.json"),
+		},
+		{
+			Name:             "iso9613-synthetic-point-cmet",
+			StandardID:       iso9613.StandardID,
+			Description:      "Repo-authored synthetic ISO 9613 scenario with a non-zero c0_met, the only fixture that exercises the Eq. 6 long-term meteorological correction across the 10(h_s + h_r) threshold.",
+			EvidenceClass:    evidenceClassSynthetic,
+			Provenance:       provenanceSynthetic,
+			ScenarioPath:     fixturePath("iso9613", "point_cmet.scenario.json"),
+			ExpectedJSONPath: fixturePath("iso9613", "point_cmet.golden.json"),
 		},
 	}
 }

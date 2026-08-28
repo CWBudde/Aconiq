@@ -1,26 +1,24 @@
 {
   "segments": [
     {
-      "id": "ic_over_water",
+      "id": "eisenbahn_40kph",
       "track_centerline": [
-        {"x": 0, "y": 0},
-        {"x": 100, "y": 0}
+        {"x": -150, "y": 0},
+        {"x": 150, "y": 0}
       ],
       "elevation_m": 0,
       "fahrbahn": 0,
       "surface": 0,
       "bridge_type": 0,
       "curve_radius_m": 0,
-      "strecke_max_kph": 200,
-      "water_body_fraction_w": 1.0,
+      "strecke_max_kph": 40,
       "operations": [
         {
-          "train_type": "IC-Zug-E-Lok",
+          "train_type": "Nahverkehrszug-ET",
           "fz_composition": [
-            {"fz": 7, "count": 1},
-            {"fz": 9, "count": 12}
+            {"fz": 5, "count": 1}
           ],
-          "speed_kph": 200,
+          "speed_kph": 160,
           "trains_per_hour_day": 4,
           "trains_per_hour_night": 1
         }
@@ -29,9 +27,9 @@
   ],
   "receivers": [
     {
-      "id": "r_50m",
-      "point": {"x": 50, "y": 50},
-      "height_m": 4.0
+      "id": "r_30m",
+      "point": {"x": 0, "y": 30},
+      "height_m": 3.5
     }
   ]
 }

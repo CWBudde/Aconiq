@@ -69,7 +69,13 @@ func SpeedFactorBForTeilquelle(m int) BeiblattSpectrum {
 type FahrbahnartType int
 
 const (
-	FahrbahnartFesteFahrbahn            FahrbahnartType = iota // Feste Fahrbahn
+	// FahrbahnartSchwellengleis is the reference track type.  Nr. 4.4: the
+	// acoustic data in Beiblatt 1 apply to Schwellengleise, and Tabelle 7 lists
+	// the deviations from that reference — so Schwellengleis carries no c1
+	// correction and must be the zero value, or a TrackSegment whose JSON omits
+	// "fahrbahn" would silently collect Feste-Fahrbahn corrections.
+	FahrbahnartSchwellengleis           FahrbahnartType = iota // Schwellengleis (reference)
+	FahrbahnartFesteFahrbahn                                   // Feste Fahrbahn
 	FahrbahnartFesteFahrbahnMitAbsorber                        // Feste Fahrbahn mit Absorber
 	FahrbahnartBahnuebergang                                   // Bahnuebergang
 )

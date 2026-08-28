@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_behind_short_barrier",
+      "x": 0,
+      "y": 25,
+      "height_m": 3.5,
+      "LpAeqDay": 67.694771,
+      "LpAeqNight": 61.674171,
+      "LrDay": 67.694771,
+      "LrNight": 61.674171
+    }
+  ]
+}

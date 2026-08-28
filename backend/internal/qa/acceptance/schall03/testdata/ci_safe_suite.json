@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "phase20-v3",
+  "suite_version": "phase20-v4",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -75,6 +75,46 @@
       "description": "ICE-1-Zug at 250 km/h with 4 m barrier at 15 m plus hard reflecting wall at 40 m — barrier+reflection interaction",
       "scenario_path": "ci_safe/b2_barrier_with_wall.scenario.json",
       "expected_path": "ci_safe/b2_barrier_with_wall.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "e3_langsame_strecke",
+      "category": "emission",
+      "description": "Nahverkehrszug-ET on a 40 km/h Eisenbahn line: Nr. 4.3 prescribes no substitute speed outside Personenbahnhoefen, so the segment must be computed at 40 km/h",
+      "scenario_path": "ci_safe/e3_langsame_strecke.scenario.json",
+      "expected_path": "ci_safe/e3_langsame_strecke.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "e4_bruecke_feste_fahrbahn",
+      "category": "emission",
+      "description": "IC-Zug on bridge type 3 with Feste Fahrbahn: Nr. 4.6 suppresses the Tabelle 7 Zeile 1-4 corrections so K_Br is not stacked on c1",
+      "scenario_path": "ci_safe/e4_bruecke_feste_fahrbahn.scenario.json",
+      "expected_path": "ci_safe/e4_bruecke_feste_fahrbahn.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "s3_langsamfahrstelle",
+      "category": "emission",
+      "description": "Strassenbahn Niederflur-ET on a 25 km/h Langsamfahrstelle: Nr. 5.3.2 exception computes v = 30 km/h instead of the 50 km/h substitute",
+      "scenario_path": "ci_safe/s3_langsamfahrstelle.scenario.json",
+      "expected_path": "ci_safe/s3_langsamfahrstelle.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b3_lateral_diffraction",
+      "category": "propagation",
+      "description": "ICE-1-Zug behind a 16 m long, 12 m high barrier: the lateral path around the barrier end is per-band cheaper than the top path (Gl. 18)",
+      "scenario_path": "ci_safe/b3_lateral_diffraction.scenario.json",
+      "expected_path": "ci_safe/b3_lateral_diffraction.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b4_three_edge_barriers",
+      "category": "propagation",
+      "description": "ICE-1-Zug behind three staggered barriers (5 m, 8 m, 7.5 m): three diffraction edges survive the rubber band, exercising e = e1 + e2 (Bild 6)",
+      "scenario_path": "ci_safe/b4_three_edge_barriers.scenario.json",
+      "expected_path": "ci_safe/b4_three_edge_barriers.expected.json",
       "tolerance_db": 0.0001
     }
   ]

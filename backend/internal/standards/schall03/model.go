@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/numeric"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
 
@@ -126,12 +127,18 @@ func (s OctaveSpectrum) EnergeticTotal() float64 {
 }
 
 // EnergeticSumLevels adds dB levels in deterministic input order.
+//
+// The reduction is compensated (numeric.CompensatedSum) because the caller's
+// term count is not bounded: lineSourceSpectrumAtReceiver feeds it one level
+// per integration subsegment, so a long line source produces thousands of terms
+// spanning many orders of magnitude.
 func EnergeticSumLevels(levels ...float64) float64 {
 	if len(levels) == 0 {
 		return math.Inf(-1)
 	}
 
-	sum := 0.0
+	var sum numeric.CompensatedSum
+
 	hasFinite := false
 
 	for _, level := range levels {
@@ -143,15 +150,16 @@ func EnergeticSumLevels(levels ...float64) float64 {
 			continue
 		}
 
-		sum += math.Pow(10, level/10)
+		sum.Add(math.Pow(10, level/10))
+
 		hasFinite = true
 	}
 
-	if !hasFinite || sum <= 0 {
+	if !hasFinite || sum.Sum() <= 0 {
 		return math.Inf(-1)
 	}
 
-	return 10 * math.Log10(sum)
+	return 10 * math.Log10(sum.Sum())
 }
 
 // SumSpectra sums multiple spectra band-by-band using canonical band order.
@@ -269,12 +277,13 @@ func (s RailSource) Validate() error {
 }
 
 func sourceSegmentLengthM(centerline []geo.Point2D) float64 {
-	total := 0.0
+	var total numeric.CompensatedSum
+
 	for i := range len(centerline) - 1 {
-		total += geo.Distance(centerline[i], centerline[i+1])
+		total.Add(geo.Distance(centerline[i], centerline[i+1]))
 	}
 
-	return total
+	return total.Sum()
 }
 
 func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod) error {
@@ -365,19 +374,32 @@ func (op TrainOperation) Validate() error {
 	return nil
 }
 
-// resolveEffectiveSpeed determines the effective speed per Nr. 4.3:
-//   - v = min(streckeMax, fahrzeugMax)
-//   - v >= 50 km/h (minimum for free-field Eisenbahn Strecke)
-//   - v >= 70 km/h if isStation (Haltestelle minimum)
-func resolveEffectiveSpeed(streckeMax, fahrzeugMax float64, isStation bool) float64 {
+// resolveEffectiveSpeed determines the effective speed v_Fz.
+//
+// Nr. 4.3 (Eisenbahnen): the starting point is the vehicle-borne maximum speed;
+// where the permitted track speed is lower, that one is used.  Inside
+// Personenbahnhöfen (innerhalb der Einfahrsignale) and at Haltepunkten bzw.
+// Haltestellen (Bahnsteiglänge zuzüglich auf jeder Seite 100 m) the free-line
+// speed applies, but at least 70 km/h.  Nr. 4.3 prescribes **no** substitute
+// speed below that, so a slow Eisenbahn line is computed at its real speed.
+//
+// Nr. 5.3.2 (Straßenbahnen) is the section that carries a 50 km/h substitute
+// speed, together with its "dauerhaft v ≤ 30 km/h" exception.  Both are applied
+// by ComputeStreckeEmission, which can only do so while it still sees the real
+// track speed — so nothing is clamped here for Straßenbahn segments, and the
+// Eisenbahn-only 70 km/h station floor does not reach them either.
+func resolveEffectiveSpeed(streckeMax, fahrzeugMax float64, isStation, isStrassenbahn bool) float64 {
 	v := math.Min(streckeMax, fahrzeugMax)
 
-	minSpeed := 50.0
-	if isStation {
-		minSpeed = 70.0
+	if isStrassenbahn {
+		return v
 	}
 
-	return math.Max(v, minSpeed)
+	if isStation {
+		return math.Max(v, 70)
+	}
+
+	return v
 }
 
 // TrackSegment describes one normative track segment for emission computation.

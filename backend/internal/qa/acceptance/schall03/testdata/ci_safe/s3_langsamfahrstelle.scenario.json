@@ -1,10 +1,10 @@
 {
   "segments": [
     {
-      "id": "niederflur_track",
+      "id": "tram_langsamfahrstelle",
       "track_centerline": [
-        {"x": 0, "y": 0},
-        {"x": 200, "y": 0}
+        {"x": -80, "y": 0},
+        {"x": 80, "y": 0}
       ],
       "elevation_m": 0,
       "fahrbahn": 0,
@@ -12,24 +12,25 @@
       "surface": 0,
       "bridge_type": 0,
       "curve_radius_m": 0,
-      "strecke_max_kph": 80,
+      "strecke_max_kph": 25,
+      "permanently_slow": true,
       "operations": [
         {
-          "train_type": "Niederflur-ET",
+          "train_type": "Strassenbahn-Niederflur",
           "fz_composition": [
-            {"fz": 21, "count": 1}
+            {"fz": 21, "count": 2}
           ],
-          "speed_kph": 60,
+          "speed_kph": 70,
           "trains_per_hour_day": 10,
-          "trains_per_hour_night": 5
+          "trains_per_hour_night": 4
         }
       ]
     }
   ],
   "receivers": [
     {
-      "id": "r_25m",
-      "point": {"x": 100, "y": 25},
+      "id": "r_20m",
+      "point": {"x": 0, "y": 20},
       "height_m": 3.5
     }
   ]

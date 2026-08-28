@@ -65,18 +65,18 @@ The path to DACH adoption runs through four gates, in order:
 The registry currently exposes 13 standards as peers. They are not peers. This table is the
 target state; Priority 4 makes the code express it.
 
-| Module                                | Target tier            | Reality today                                                                    |
-| ------------------------------------- | ---------------------- | -------------------------------------------------------------------------------- |
-| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`)      |
-| `schall03`                            | normative              | Anlage-2 tables correct after `bbc2350` — **but the CLI does not call them, P2** |
-| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                      |
-| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                                 |
-| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                            |
-| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands                 |
-| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                                   |
-| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                                    |
-| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                       |
-| `dummy-freefield`                     | test fixture           | Intentional                                                                      |
+| Module                                | Target tier            | Reality today                                                               |
+| ------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
+| `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`) |
+| `schall03`                            | normative              | Anlage-2 tables correct — **but the CLI does not call them, P2**            |
+| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                 |
+| `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                            |
+| `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                       |
+| `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands            |
+| `bub-road`                            | **scaffold**           | Re-parameterised clone of the CNOSSOS scaffold                              |
+| `bub-rail`, `bub-industry`            | **scaffold**           | Pure aliases over `cnossos/*`                                               |
+| `buf-aircraft`                        | **scaffold**           | Byte-identical copy of `cnossos/aircraft` bar one constant                  |
+| `dummy-freefield`                     | test fixture           | Intentional                                                                 |
 
 ---
 
@@ -286,57 +286,89 @@ commit messages; the consequences each one exposed are open items below.
 ## Priority 1 — Fix known numeric defects
 
 The twelve defects found by review against normative sources are fixed (`4142444`, `775c7f5`,
-`bbc2350`). Each was re-verified against the source text before the change, every affected golden
-was regenerated, and the per-item magnitudes are recorded in those commit messages and in the
-conformance declarations. What remains here is what those fixes did not settle.
+`bbc2350`), and so are the four items their review left open: the Eisenbahn substitute speed, the
+Fahrbahnart zero value, the `+1` flow guard, and the compensated-summation policy gap. Each was
+re-verified against the source text before the change, every affected golden was regenerated, and
+the per-item magnitudes are recorded in those commit messages and in the conformance declarations.
+What remains here is what those fixes did not settle.
 
-### 1.1 Schall 03: two findings raised by the Gl. 14 work, both needing a judgement call
+The `+1` flow guard is gone: `schall03/emission.go` computed `10 lg(n + 1)`, the same spurious
++3.0 dB at 1 train/h that `ac33895` removed from `cnossos/road`, `cnossos/rail` and `bub/road`. It
+now uses `10 lg(n)` with an explicit zero-flow branch returning the `-999` silence sentinel. This
+sits on the data-pack path, which is the path the CLI actually runs (Priority 2), so it moves real
+output: the preview goldens dropped 0.4–1.0 dB.
 
-- [ ] **The 50 km/h speed floor does not belong on Eisenbahn segments.** Previously recorded as
-      medium confidence; the PDF now settles it. The substitute speed is **Nr. 5.3.2**
-      (Straßenbahnen, p. 21): "Ist die Streckenhöchstgeschwindigkeit geringer als 50 km/h, wird
-      ersatzweise mit einer Geschwindigkeit von v = 50 km/h gerechnet." **Nr. 4.3** (Eisenbahnen,
-      p. 15) prescribes no floor beyond the 70 km/h in Personenbahnhöfen. `resolveEffectiveSpeed`
-      (`model.go`) applies `max(v, 50)` unconditionally, so slow Eisenbahn segments compute too
-      loud — **+2.2 dB at 1000 Hz, +5.5 dB at 2000 Hz** for a 30 km/h approach. Second finding:
-      even for Straßenbahnen, Nr. 5.3.2 scopes the substitution to Weichen, Kreuzungen and
-      Haltestellen (each ± 25 m), not the whole segment. Both are recorded as open deviations in
-      `docs/conformance/schall03-konformitaetserklaerung.md`.
-- [ ] **`FahrbahnartFesteFahrbahn = iota` makes the wrong value the default.** `0` is the zero
-      value of `FahrbahnartType` while Schwellengleis is `-1`, so a `TrackSegment` whose JSON omits
-      `fahrbahn` silently receives Feste Fahrbahn corrections (+7/+3 dB Schiene, +1 dB Reflexion) —
-      contradicting the comment in `sumC1ForTeilquelle` that Schwellengleis is the default.
-      `a1_full_chain.scenario.json` is the one fixture that sets `"fahrbahn": 0` explicitly, and
-      whether that was intended is unclear. Decide the intended default, then either renumber the
-      constants or require the field.
+### 1.1 Schall 03: the substitute-speed extent, the only judgement call still open
 
-### 1.2 Schall 03 still has the `+1` flow guard
+The Eisenbahn half is closed. `resolveEffectiveSpeed` applied `max(v, 50)` unconditionally, which
+Nr. 4.3 does not prescribe — it requires only the 70 km/h im Bereich von Personenbahnhöfen und
+Haltepunkten. The floor now applies to Straßenbahn segments only, where Nr. 5.3.2 puts it, and the
+70 km/h station rule no longer reaches Straßenbahn segments either. Two consequences fell out: the
+double clamp had made the Nr. 5.3.2 "dauerhaft v ≤ 30 km/h" exception unreachable (`buildVehicleInputs`
+raised the speed to 50 before `ComputeStreckeEmission` could test it against 50), and the
+Fahrbahnart zero value is now Schwellengleis on both the Eisenbahn and the Straßenbahn side.
 
-- [ ] `schall03/emission.go` computes `10*log10(trainsPerHour + 1)`, the same spurious **+3.0 dB at
-      1 train/h** that was fixed in `cnossos/road`, `cnossos/rail` and `bub/road` (`ac33895`). It
-      was outside that change's fence. Use the same explicit zero-flow branch and `-999` sentinel.
+- [ ] **Decide whether to model the ± 25 m extent of the Nr. 5.3.2 substitution.** Nr. 5.3.2 scopes
+      the 50 km/h substitute speed to Weichen, Kreuzungen and Haltestellen an Strecken (each plus
+      25 m on either side); Aconiq applies it to the whole segment below 50 km/h unless
+      `permanently_slow` is set. Partial substitution needs the caller to split the segment, so the
+      question is whether Aconiq should split automatically from Weichen/Haltestellen geometry it
+      does not currently carry. Recorded as an open deviation in
+      `docs/conformance/schall03-konformitaetserklaerung.md`; Anmerkung 1 to Nr. 5.3.2 argues for
+      the current whole-segment reading, so this is not obviously a defect.
 
-### 1.3 Compensated summation — a policy decision, not a defect
+### 1.2 Fixture format change from the Fahrbahnart renumbering
 
-- [ ] `docs/policies/determinism.md` §3 requires "a stable strategy (for example pairwise or
-      compensated summation)" for sensitive reductions. Every reduction in `standards/` is a plain
-      `sum +=`. The map-iteration half of this is now fixed everywhere it was reported. Decide:
-      implement Kahan/Neumaier in the shared acoustics core (Priority 7.1), or amend the policy to
-      match reality. Do not leave the policy asserting something the code does not do.
+`FahrbahnartType` and `SFahrbahnartType` are renumbered so Schwellengleis — the Nr. 4.4 / Nr. 5.4
+reference type, carrying no c1 correction — is the zero value. Previously the zero value was Feste
+Fahrbahn and straßenbündiger Bahnkörper, so an omitted `fahrbahn` / `s_fahrbahn` silently added
++7/+3 dB Schiene and +1 dB Reflexion, respectively up to +8 dB at 1000 Hz. All nine CI-safe
+scenarios were renumbered; `a1_full_chain.scenario.json`, the one fixture that set `0` where its
+siblings set `-1`, was set to `1` so it keeps exercising Feste Fahrbahn, and its expected snapshot
+is unchanged, which confirms the reading.
 
-### 1.4 The fixture set has blind spots the fixes exposed
+- [ ] **The wire format is unversioned.** `TrackSegment` JSON is read straight from scenario files
+      with no schema version, so a file written against the old numbering is silently misread. Any
+      project format carrying `fahrbahn` needs a migration entry, or the field needs to become a
+      string enum. Nothing outside `internal/standards/schall03` and the acceptance fixtures reads
+      it today, which is why the renumber was safe now and will not be later.
 
-Five of the twelve defects moved **no golden at all**, not because they are harmless but because no
-fixture exercises them: the lateral-diffraction path is never per-band dominant in any scenario,
-every scene has at most two diffraction edges, and no fixture combines a bridge with Feste
-Fahrbahn. Two more were invisible for structural reasons — the Tabelle 6 speed-factor error
-vanishes at exactly v₀ = 100 km/h, and the acceptance runner decoded `c0_met` and then discarded
-it, so ISO 9613-2's C_met was never exercised by any fixture at all.
+### 1.3 Compensated summation — decided: implement, and say where
 
-- [ ] Add fixtures that cover the cases the current set cannot see: a dominant lateral-diffraction
-      path, a three-or-more-edge barrier scene, a bridge with Feste Fahrbahn, non-`v₀` train
-      speeds, and a non-zero `c0_met`. Without these, the same class of defect can land again and
-      the suite will stay green.
+`docs/policies/determinism.md` §3 asked for "a stable strategy (for example pairwise or compensated
+summation)" without saying which reductions it meant, and every reduction in `standards/` was a
+plain `sum +=`. Resolved by narrowing the policy to a testable rule and then satisfying it:
+`internal/numeric.CompensatedSum` (Neumaier) is now used wherever the term count scales with model
+size — the Schall 03 subsegment integrators and their reflected-path twins, `EnergeticSumLevels`,
+`sourceSegmentLengthM`, RLS-19's `polylineLength` — and wherever terms alternate in sign
+(`cnossos/industry`'s shoelace area). Fixed-length reductions (eight octave bands, the vehicle
+classes of a train, a correction-table row) are exempt and the policy now says so. Every golden
+stayed byte-identical, which is the expected result: the change buys accuracy headroom, not a
+different answer.
+
+### 1.4 Fixture blind spots — closed
+
+Six fixtures were added for the cases the suite could not see. Each was verified to reach the path
+it claims: `TestLateralDiffractionCanDominate` and `TestThreeDiffractionEdgesAreSelected` pin the
+two barrier geometries, and the b1 geometry was re-checked to confirm its lateral A_bar is capped
+at 20 dB in every band, so the assertion is not vacuous.
+
+| fixture                     | closes                                                    |
+| --------------------------- | --------------------------------------------------------- |
+| `b3_lateral_diffraction`    | lateral path per-band cheaper than the top path (Gl. 18)  |
+| `b4_three_edge_barriers`    | three diffraction edges survive the rubber band (Bild 6)  |
+| `e4_bruecke_feste_fahrbahn` | bridge combined with Feste Fahrbahn (Nr. 4.6 suppression) |
+| `e3_langsame_strecke`       | 40 km/h Eisenbahn line — non-`v₀`, no substitute speed    |
+| `s3_langsamfahrstelle`      | Nr. 5.3.2 `permanently_slow` exception, end to end        |
+| `iso9613/point_cmet`        | non-zero `c0_met` across the 10(h_s + h_r) threshold      |
+
+The ISO 9613-2 fixture places two sources (5 m and 30 m) over four receivers from 60 m to 1000 m,
+so C_met is exactly zero at the near receiver, active for one source only at 150 m, and active for
+both further out. `LpAeq_LT` and `LpAeq_DW` now differ in the golden, which they did not in any
+previous fixture.
+
+- [ ] The suite still has no fixture where an intermediate barrier is _reflective_
+      (`BarrierSegment.Reflective`), so Gl. 20's D_refl is exercised only by unit tests.
 
 ### 1.5 RLS-19 items that could not be verified
 
@@ -387,8 +419,12 @@ systematically high on **every one** of the 54 matched receivers:
 
 | indicator | mean abs | p95 abs | max abs | exceeding |
 | --------- | -------- | ------- | ------- | --------- |
-| LrDay     | 25.110   | 38.903  | 40.789  | 54 / 54   |
-| LrNight   | 23.329   | 36.789  | 38.657  | 54 / 54   |
+| LrDay     | 24.052   | 37.859  | 39.745  | 54 / 54   |
+| LrNight   | 22.630   | 36.098  | 37.965  | 54 / 54   |
+
+Down from 25.110 / 23.329: removing the `10 lg(n + 1)` flow shift (Priority 1.2) accounts for the
+whole of that, because the shift sat on the data-pack path the CLI runs. A 1 dB improvement on a
+25 dB error is a rounding correction, not progress.
 
 This is the single most important number in this file. Note the shape of it: ~25 dB high, on a
 Schall 03 rail project, which is exactly what Priority 2 predicts — the CLI does not call the

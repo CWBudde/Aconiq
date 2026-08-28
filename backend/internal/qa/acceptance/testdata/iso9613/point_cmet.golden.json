@@ -1,0 +1,39 @@
+{
+  "grid_height": 1,
+  "grid_width": 4,
+  "receiver_count": 4,
+  "receivers": [
+    {
+      "LpAeq_DW": 67.467173,
+      "LpAeq_LT": 67.467173,
+      "height_m": 4,
+      "id": "r_60m",
+      "x": 60,
+      "y": 0
+    },
+    {
+      "LpAeq_DW": 59.633211,
+      "LpAeq_LT": 59.065419,
+      "height_m": 4,
+      "id": "r_150m",
+      "x": 150,
+      "y": 0
+    },
+    {
+      "LpAeq_DW": 50.945794,
+      "LpAeq_LT": 49.604509,
+      "height_m": 4,
+      "id": "r_400m",
+      "x": 400,
+      "y": 0
+    },
+    {
+      "LpAeq_DW": 42.18616,
+      "LpAeq_LT": 39.800015,
+      "height_m": 4,
+      "id": "r_1000m",
+      "x": 1000,
+      "y": 0
+    }
+  ]
+}

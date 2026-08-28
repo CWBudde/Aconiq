@@ -1,0 +1,14 @@
+{
+  "receivers": [
+    {
+      "id": "r_behind_three_edges",
+      "x": 0,
+      "y": 40,
+      "height_m": 3.5,
+      "LpAeqDay": 47.413635,
+      "LpAeqNight": 41.393035,
+      "LrDay": 47.413635,
+      "LrNight": 41.393035
+    }
+  ]
+}

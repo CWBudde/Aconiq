@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/numeric"
 )
 
 // WallSurfaceType identifies the acoustic surface category of a reflecting
@@ -488,7 +489,7 @@ func ComputeReflectedLineSourceLpAeq(
 		return math.Inf(-1)
 	}
 
-	var total float64
+	var total numeric.CompensatedSum
 
 	for i := range len(centerline) - 1 {
 		a := centerline[i]
@@ -536,19 +537,19 @@ func ComputeReflectedLineSourceLpAeq(
 					reflDist = 1
 				}
 
-				total += ReflectedSubsegmentContrib(
+				total.Add(ReflectedSubsegmentContrib(
 					emission, elevationM, receiver,
 					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
-				)
+				))
 			}
 		}
 	}
 
-	if total <= 0 {
+	if total.Sum() <= 0 {
 		return math.Inf(-1)
 	}
 
-	return 10 * math.Log10(total)
+	return 10 * math.Log10(total.Sum())
 }
 
 // ComputeReflectedLineSourceLpAeqWithBarriers is like
@@ -572,7 +573,7 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 		return ComputeReflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls)
 	}
 
-	var total float64
+	var total numeric.CompensatedSum
 
 	for i := range len(centerline) - 1 {
 		a := centerline[i]
@@ -615,21 +616,21 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 					reflDist = 1
 				}
 
-				total += ReflectedSubsegmentContribWithBarriers(
+				total.Add(ReflectedSubsegmentContribWithBarriers(
 					emission, elevationM, receiver,
 					firstGeom.ImageSource,
 					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
 					barriers,
-				)
+				))
 			}
 		}
 	}
 
-	if total <= 0 {
+	if total.Sum() <= 0 {
 		return math.Inf(-1)
 	}
 
-	return 10 * math.Log10(total)
+	return 10 * math.Log10(total.Sum())
 }
 
 // FresnelCheck implements Gl. 27 to determine whether a reflecting surface is

@@ -616,3 +616,102 @@ func TestLateralDiffractionLongBarrierHigherThanShort(t *testing.T) {
 		t.Errorf("longer barrier should have higher lateral attenuation: short=%g, long=%g", sumShort, sumLong)
 	}
 }
+
+// TestLateralDiffractionCanDominate pins the geometry behind the
+// b3_lateral_diffraction acceptance fixture: a short but very tall barrier, for
+// which going around the end is cheaper than going over the top.  Priority 1.4
+// in PLAN.md recorded that no fixture made the lateral path per-band dominant,
+// so a defect on that path could not move a golden.
+func TestLateralDiffractionCanDominate(t *testing.T) {
+	t.Parallel()
+
+	barrier := schall03.BarrierSegment{
+		A:          geo.Point2D{X: -8, Y: 10},
+		B:          geo.Point2D{X: 8, Y: 10},
+		TopHeightM: 12,
+	}
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 0, Y: 25}
+
+	const (
+		sourceHeightM   = 0.0
+		receiverHeightM = 3.5
+	)
+
+	totalDist := geo.Distance(source, receiver)
+
+	crossings := schall03.FindBarrierCrossings(source, receiver, []schall03.BarrierSegment{barrier})
+	if len(crossings) != 1 {
+		t.Fatalf("crossings = %d, want 1", len(crossings))
+	}
+
+	edges := schall03.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDist, crossings)
+
+	geom := schall03.ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalDist)
+	topAbar := schall03.ComputeAbar(geom, schall03.BeiblattSpectrum{})
+
+	latAbar, ok := schall03.ComputeLateralDiffraction(
+		source, receiver, sourceHeightM, receiverHeightM, barrier,
+	)
+	if !ok {
+		t.Fatal("no lateral diffraction path exists for this geometry")
+	}
+
+	dominated := false
+
+	for f := range schall03.NumBeiblattOctaveBands {
+		if latAbar[f] < topAbar[f] {
+			dominated = true
+		}
+	}
+
+	if !dominated {
+		t.Errorf("lateral A_bar never undercuts top A_bar: lateral=%v top=%v", latAbar, topAbar)
+	}
+}
+
+// TestThreeDiffractionEdgesAreSelected pins the geometry behind the
+// b4_three_edge_barriers acceptance fixture.  Every scene in the suite had at
+// most two diffraction edges, so the multi-edge branch of
+// schall03.ComputeBarrierGeometryFromEdges (Bild 6, e = e₁ + e₂ + …) was never reached
+// with more than two.
+func TestThreeDiffractionEdgesAreSelected(t *testing.T) {
+	t.Parallel()
+
+	barriers := []schall03.BarrierSegment{
+		{A: geo.Point2D{X: -300, Y: 8}, B: geo.Point2D{X: 300, Y: 8}, TopHeightM: 5},
+		{A: geo.Point2D{X: -300, Y: 16}, B: geo.Point2D{X: 300, Y: 16}, TopHeightM: 8},
+		{A: geo.Point2D{X: -300, Y: 24}, B: geo.Point2D{X: 300, Y: 24}, TopHeightM: 7.5},
+	}
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 0, Y: 40}
+
+	const (
+		sourceHeightM   = 0.0
+		receiverHeightM = 3.5
+	)
+
+	totalDist := geo.Distance(source, receiver)
+
+	crossings := schall03.FindBarrierCrossings(source, receiver, barriers)
+
+	var obstructing []schall03.BarrierCrossing
+
+	for _, c := range crossings {
+		if schall03.IsObstructing(c, sourceHeightM, receiverHeightM, totalDist) {
+			obstructing = append(obstructing, c)
+		}
+	}
+
+	edges := schall03.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDist, obstructing)
+	if len(edges) < 3 {
+		t.Fatalf("selected %d diffraction edges, want at least 3", len(edges))
+	}
+
+	geom := schall03.ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalDist)
+	if geom.E <= 0 {
+		t.Errorf("multi-edge run length e = %v, want > 0", geom.E)
+	}
+}

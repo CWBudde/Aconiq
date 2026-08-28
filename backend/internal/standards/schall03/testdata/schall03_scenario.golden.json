@@ -4,32 +4,32 @@
   "receiver_count": 4,
   "receivers": [
     {
-      "LrDay": 90.333868,
-      "LrNight": 86.951632,
+      "LrDay": 89.90409,
+      "LrNight": 85.953707,
       "height_m": 4,
       "id": "rx-1",
       "x": 0,
       "y": 20
     },
     {
-      "LrDay": 87.806218,
-      "LrNight": 84.511259,
+      "LrDay": 87.342806,
+      "LrNight": 83.453702,
       "height_m": 4,
       "id": "rx-2",
       "x": 0,
       "y": 40
     },
     {
-      "LrDay": 88.223675,
-      "LrNight": 85.066926,
+      "LrDay": 87.705038,
+      "LrNight": 83.915718,
       "height_m": 4,
       "id": "rx-3",
       "x": 0,
       "y": 60
     },
     {
-      "LrDay": 90.140835,
-      "LrNight": 87.080251,
+      "LrDay": 89.582289,
+      "LrNight": 85.864451,
       "height_m": 4,
       "id": "rx-4",
       "x": 0,

@@ -110,11 +110,12 @@ func TestSpeedDetermination(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name        string
-		streckeMax  float64
-		fahrzeugMax float64
-		isStation   bool
-		want        float64
+		name           string
+		streckeMax     float64
+		fahrzeugMax    float64
+		isStation      bool
+		isStrassenbahn bool
+		want           float64
 	}{
 		{
 			name:       "normal",
@@ -127,9 +128,11 @@ func TestSpeedDetermination(t *testing.T) {
 			want: 160,
 		},
 		{
-			name:       "minimum 50",
+			// Nr. 4.3 prescribes no substitute speed for Eisenbahnen outside
+			// Personenbahnhöfe; a 30 km/h line stays at 30 km/h.
+			name:       "eisenbahn keeps speeds below 50",
 			streckeMax: 30, fahrzeugMax: 160, isStation: false,
-			want: 50,
+			want: 30,
 		},
 		{
 			name:       "station min 70",
@@ -141,16 +144,24 @@ func TestSpeedDetermination(t *testing.T) {
 			streckeMax: 50, fahrzeugMax: 160, isStation: true,
 			want: 70,
 		},
+		{
+			// The 70 km/h floor is Nr. 4.3 (Personenbahnhöfe, Eisenbahn).
+			// Straßenbahn Haltestellen fall under Nr. 5.3.2, whose substitute
+			// speed is 50 km/h and is applied in ComputeStreckeEmission.
+			name:       "strassenbahn station keeps track speed",
+			streckeMax: 30, fahrzeugMax: 70, isStation: true, isStrassenbahn: true,
+			want: 30,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := resolveEffectiveSpeed(tc.streckeMax, tc.fahrzeugMax, tc.isStation)
+			got := resolveEffectiveSpeed(tc.streckeMax, tc.fahrzeugMax, tc.isStation, tc.isStrassenbahn)
 			if got != tc.want {
-				t.Errorf("resolveEffectiveSpeed(%v, %v, %v) = %v, want %v",
-					tc.streckeMax, tc.fahrzeugMax, tc.isStation, got, tc.want)
+				t.Errorf("resolveEffectiveSpeed(%v, %v, %v, %v) = %v, want %v",
+					tc.streckeMax, tc.fahrzeugMax, tc.isStation, tc.isStrassenbahn, got, tc.want)
 			}
 		})
 	}

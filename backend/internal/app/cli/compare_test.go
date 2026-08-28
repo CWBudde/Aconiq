@@ -121,8 +121,13 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 // These record what `aconiq compare` actually produces against the reference
 // SoundPLAN project, measured on 2026-08-28 with the fixture present locally:
 //
-//	LrDay    mean_abs 25.110  p95_abs 38.903  max_abs 40.789  exceedances 54/54
-//	LrNight  mean_abs 23.329  p95_abs 36.789  max_abs 38.657  exceedances 54/54
+//	LrDay    mean_abs 24.052  p95_abs 37.859  max_abs 39.745  exceedances 54/54
+//	LrNight  mean_abs 22.630  p95_abs 36.098  max_abs 37.965  exceedances 54/54
+//
+// The previous measurement was LrDay 25.110 / LrNight 23.329. Removing the
+// spurious 10 lg(n + 1) flow shift from schall03/emission.go (PLAN.md 1.2)
+// accounts for the whole of the improvement; the shift sat on the data-pack
+// path, which is the path the CLI runs.
 //
 // Aconiq reads systematically ~25 dB HIGH against SoundPLAN over all 54
 // matched receivers, and every single receiver exceeds the 0.5 dB tolerance.

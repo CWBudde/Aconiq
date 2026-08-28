@@ -654,3 +654,85 @@ func TestCustomAxleCount(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildVehicleInputsKeepsSlowStrassenbahnSpeed pins the hand-off between
+// Nr. 4.3 and Nr. 5.3.2.  buildVehicleInputs must not pre-clamp a Straßenbahn
+// segment to 50 km/h: ComputeStreckeEmission owns the Nr. 5.3.2 substitution,
+// including the "dauerhaft v ≤ 30 km/h" exception, and can only apply it when
+// it still sees the real track speed.
+func TestBuildVehicleInputsKeepsSlowStrassenbahnSpeed(t *testing.T) {
+	t.Parallel()
+
+	seg := TrackSegment{
+		ID:              "tram-1",
+		StreckeMaxKPH:   25,
+		PermanentlySlow: true,
+	}
+	op := TrainOperation{
+		TrainType:     "custom",
+		FzComposition: []FzCount{{Fz: 21, Count: 1}},
+		SpeedKPH:      70,
+	}
+
+	input := buildVehicleInputs(seg, op, 4)
+	if input.SpeedKPH != 25 {
+		t.Fatalf("SpeedKPH = %v, want the unclamped track speed 25", input.SpeedKPH)
+	}
+
+	slow, err := ComputeStreckeEmission(input)
+	if err != nil {
+		t.Fatalf("compute emission for permanently slow section: %v", err)
+	}
+
+	// Nr. 5.3.2 exception: the section is computed at v = 30 km/h.
+	atThirty := input
+	atThirty.SpeedKPH = 30
+
+	want, err := ComputeStreckeEmission(atThirty)
+	if err != nil {
+		t.Fatalf("compute emission at 30 km/h: %v", err)
+	}
+
+	for _, h := range teilquelleHeightIndices {
+		for f := range NumBeiblattOctaveBands {
+			if !almostEqual(slow.PerHeight[h][f], want.PerHeight[h][f]) {
+				t.Errorf("h=%d band %d: permanently slow section gave %.3f dB, want %.3f dB",
+					h, f, slow.PerHeight[h][f], want.PerHeight[h][f])
+			}
+		}
+	}
+
+	// Without the exception the same section is substituted to 50 km/h and is
+	// therefore louder.
+	notExempt := input
+	notExempt.PermanentlySlow = false
+
+	clamped, err := ComputeStreckeEmission(notExempt)
+	if err != nil {
+		t.Fatalf("compute emission without the exception: %v", err)
+	}
+
+	if clamped.PerHeight[1][4] <= slow.PerHeight[1][4] {
+		t.Errorf("expected the 50 km/h substitution to be louder: got %.3f dB vs %.3f dB",
+			clamped.PerHeight[1][4], slow.PerHeight[1][4])
+	}
+}
+
+// TestBuildVehicleInputsKeepsSlowEisenbahnSpeed pins Nr. 4.3: outside
+// Personenbahnhöfen the standard prescribes no substitute speed at all, so a
+// 30 km/h Eisenbahn segment must be computed at 30 km/h.
+func TestBuildVehicleInputsKeepsSlowEisenbahnSpeed(t *testing.T) {
+	t.Parallel()
+
+	seg := TrackSegment{ID: "rail-1", StreckeMaxKPH: 30}
+	op := TrainOperation{
+		TrainType:     "custom",
+		FzComposition: []FzCount{{Fz: 1, Count: 1}},
+		SpeedKPH:      160,
+	}
+
+	input := buildVehicleInputs(seg, op, 4)
+	if input.SpeedKPH != 30 {
+		t.Fatalf("SpeedKPH = %v, want 30", input.SpeedKPH)
+	}
+}

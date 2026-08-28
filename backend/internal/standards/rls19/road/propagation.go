@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/numeric"
 )
 
 // PropagationConfig defines parameters for the RLS-19 propagation model.
@@ -136,14 +137,17 @@ func SplitLineIntoSegments(line []geo.Point2D, elevations []float64, targetLengt
 }
 
 // polylineLength computes the total length of a polyline.
+//
+// The reduction is compensated because the vertex count scales with the model,
+// per docs/policies/determinism.md §3.
 func polylineLength(line []geo.Point2D) float64 {
-	total := 0.0
+	var total numeric.CompensatedSum
 
 	for i := 1; i < len(line); i++ {
-		total += dist2D(line[i-1], line[i])
+		total.Add(dist2D(line[i-1], line[i]))
 	}
 
-	return total
+	return total.Sum()
 }
 
 // interpolateAlongPolyline finds the point at a given distance along a polyline.

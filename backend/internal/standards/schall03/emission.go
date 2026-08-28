@@ -2,6 +2,16 @@ package schall03
 
 import "math"
 
+const (
+	// silenceDB is the sentinel level used for "no acoustic contribution".
+	// It matches the convention used by cnossos/*, bub/road and rls19.
+	silenceDB = -999.0
+
+	// silenceThresholdDB is the cut-off below which a level is treated as the
+	// silence sentinel.
+	silenceThresholdDB = -900.0
+)
+
 type periodEmission struct {
 	DaySpectrum   OctaveSpectrum
 	NightSpectrum OctaveSpectrum
@@ -32,7 +42,15 @@ func ComputeEmissionWithDataPack(source RailSource, pack DataPack) (periodEmissi
 }
 
 func emissionSpectrumForPeriod(source RailSource, traffic TrafficPeriod, pack DataPack) OctaveSpectrum {
-	flowCorrection := 10 * math.Log10(traffic.TrainsPerHour+1)
+	// A period without trains emits nothing.  Without this branch the flow term
+	// collapses to 10 lg(0 + 1) = 0 dB and the base, traction, roughness, train
+	// class and track form spectra are still summed, so an empty period would
+	// report the full bare spectrum.
+	if traffic.TrainsPerHour <= 0 {
+		return silentSpectrum()
+	}
+
+	flowCorrection := trainFlowCorrection(traffic.TrainsPerHour)
 	speedCorrection := rollingSpeedCorrection(source.AverageSpeedKPH, pack.Emission.SpeedModel)
 
 	lengthCorrection := 0.0
@@ -51,6 +69,29 @@ func emissionSpectrumForPeriod(source RailSource, traffic TrafficPeriod, pack Da
 	}
 
 	return spectrum
+}
+
+// silentSpectrum returns the per-band silence sentinel.  EnergeticSumLevels
+// keeps it out of any sum in practice: 10^(-999/10) is 1e-100, a hundred orders
+// of magnitude below any real contribution.
+func silentSpectrum() OctaveSpectrum {
+	var spectrum OctaveSpectrum
+	for i := range spectrum {
+		spectrum[i] = silenceDB
+	}
+
+	return spectrum
+}
+
+// trainFlowCorrection converts an hourly train flow into the 10 lg(n) energy
+// term of Gl. 2.
+//
+// The zero-flow case is handled by an explicit branch in the caller rather than
+// by the 10 lg(n + 1) shift that was used before: the shift adds a spurious
+// +3.0 dB at n = 1 train/h and still misstates every other flow. This is the
+// same correction that was applied to cnossos/road, cnossos/rail and bub/road.
+func trainFlowCorrection(trainsPerHour float64) float64 {
+	return 10 * math.Log10(trainsPerHour)
 }
 
 func rollingSpeedCorrection(speedKPH float64, model SpeedModel) float64 {

@@ -1,6 +1,6 @@
 # Determinism Policy
 
-Status date: 2026-03-06
+Status date: 2026-08-28
 
 Goal: unchanged inputs, standard/profile, and runtime config must produce reproducible outputs.
 
@@ -19,8 +19,17 @@ Goal: unchanged inputs, standard/profile, and runtime config must produce reprod
 
 3. Summation strategy
 
-- For numerically sensitive reductions, use a stable strategy (for example pairwise or compensated summation).
-- Chosen strategy must be consistent across worker counts.
+- A reduction is **numerically sensitive** when either of these holds:
+  - its term count scales with model size (integration over line-source subsegments, over
+    polyline vertices, over polygon ring edges, over segments × operations), or
+  - its terms alternate in sign, so terms can cancel (the shoelace area sum).
+- Sensitive reductions must accumulate through `internal/numeric.CompensatedSum` (Neumaier
+  compensated summation). Fixed-length reductions — the eight octave bands of a spectrum, the
+  vehicle classes of a train, the entries of a correction table — are exempt: their error is
+  bounded by a term count the model cannot grow.
+- The chosen strategy must be consistent across worker counts. `CompensatedSum` depends only on
+  the order terms are added in, so it is as deterministic as the loop feeding it; the fixed
+  partition order required below is what makes that order stable.
 
 4. Tolerances
 
