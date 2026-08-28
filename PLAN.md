@@ -480,12 +480,13 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
       alongside exact self-consistency assertions that do hold the compare command to a real
       standard. Once matching and Priority 2 are fixed, this must come down by a large factor.
 - [ ] Get reference data into CI — submodule or Git LFS, licence permitting — so the comparison
-      runs. Today `interoperability/` is gitignored and the SoundPLAN tests skip in CI. Move the
-      fixture path behind `ACONIQ_SOUNDPLAN_FIXTURES` and remove the customer project name from
-      tracked source (`absresults_test.go`, `soundplanimport_test.go`, `import_soundplan_test.go`).
-- [ ] Extend the all-skip guard to the Schall 03 acceptance runner. `acceptance.ResolveSuiteSkip`
-      and `ACONIQ_STRICT_ACCEPTANCE=1` are wired into `rls19_test20` (`ac33895`); the Schall 03
-      report type has no `SkippedCount` field and was left alone.
+      runs. Today `interoperability/` is gitignored and the SoundPLAN tests skip in CI. The
+      plumbing for it is in place: `internal/qa/fixtures.SoundPLANProjectDir` is the single place
+      that resolves the fixture, honours `ACONIQ_SOUNDPLAN_FIXTURES` so CI can mount the data
+      anywhere, and discovers it locally by looking for the one directory under
+      `interoperability/` containing a `Project.sp` — which is what removed the customer project
+      name from tracked source. What is left is the licence question and the CI wiring itself.
+
 - [ ] Replace the `(to be filled from conformance report)` placeholders in
       `docs/conformance/rls19-konformitaetserklaerung.md` — all 20 TEST-20 task rows and every
       Max-delta column are blank, under a document titled _Konformitätserklärung_. The document now
@@ -765,10 +766,6 @@ package table and all ten CLI commands, and describes the standards modules by e
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
-- [ ] **`backend/README.md` is now the worst stale-status file in the repo.** It carries a
-      phase-by-phase "Phase 3 Baseline … Phase 23 Initial Slice" changelog and a "Planned package
-      structure" list for packages that all exist. It was not in this priority's original scope and
-      is untouched. Either fold it into the root `README.md` or cut it to a build note.
 - [ ] Resolve the two competing lint stacks. `.trunk/trunk.yaml` is invoked by nothing yet holds
       `osv-scanner`, `trivy`, `trufflehog`, `checkov`, `gokart`, `actionlint` — exactly the security
       coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module, and `golangci-lint`
@@ -797,12 +794,6 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
       `dt/10, dh/50` weighting. At 4 kHz the table spans 22.9–88.8 dB/km. The deviation _is_
       honestly disclosed at `docs/conformance/iso9613-konformitaetserklaerung.md:84` — implementing
       the ~20-line formula is cheaper than maintaining the caveat.
-- [ ] Fix the "7 reference rows" comment (`atmospheric.go:12`) and its echo in the conformance
-      doc — there are 6, matching the standard.
-- [ ] `schall03/propagation.go:169-178` — `directivityDI`'s doc comment defines δ against the
-      perpendicular to the track axis; Gl. 8 defines it against the Gleisachse. The inlined callers
-      use the correct convention, so this is currently dead code with an inverted contract worth
-      8.3 dB if anyone calls it. Fix or delete.
 
 ## Priority 11 — 16. BImSchV scope completion
 
