@@ -218,29 +218,49 @@ commit messages; the consequences each one exposed are open items below.
       credentials. All three first-party dependencies — `go-absolute-database`, `go-overpass`
       and `go-citygml` — are public now.
 
+- [x] **Branch protection is on for `main`.** Enabled 29 August 2026 — but as a repository
+      **ruleset** (`default-branch`, id `21682143`, enforcement `active`, condition
+      `~DEFAULT_BRANCH`), not through the classic branch-protection API this item's recipe used.
+      The `gh api .../branches/main/protection` snippet is therefore obsolete: that endpoint
+      still answers **404**, which means "no classic protection", not "unprotected" — check
+      `gh api repos/CWBudde/Aconiq/rules/branches/main` instead.
+      The ruleset requires all four contexts — `go-ci`, `go-race`, `govulncheck`, `frontend-ci`,
+      each matching a real job id in `go-ci.yml`/`frontend-ci.yml`, so every one of them can
+      actually report — plus a pull request (0 approvals, squash/rebase only), and it blocks
+      deletion and force-pushes. There are **no bypass actors**, so it binds the owner too.
+      One deliberate divergence from the recipe above: `strict_required_status_checks_policy` is
+      **false**, so a branch need not be rebased onto the tip of `main` before merging.
+      The stale caveat this item carried is now wrong in the other direction: `bundle-check`
+      **is** a `frontend-ci` step ("Bundle size budget"), so requiring `frontend-ci` does gate
+      bundle size.
+
 ### Open
 
-- [ ] **Turn on branch protection for `main`.** This is the last step of the lint merge gate and
-      the only one that cannot be done from the repo: it needs admin on `CWBudde/Aconiq`, and
-      `main` currently has **no protection at all**. The CI side is done — `just lint` is a
-      `go-ci.yml` step and exits non-zero on any finding. Required status checks should be
-      `go-ci`, `go-race`, `govulncheck` and `frontend-ci`:
+- [ ] **The merge gate is on and currently red, so nothing can merge.** Two of the four
+      required checks fail on `main` as of 29 August 2026, and with the ruleset active that
+      blocks every pull request. Neither is a real regression — `go-ci` (lint included) and
+      `go-race` both pass now — but the gate is only as useful as the checks behind it.
 
-      ```bash
-      gh api -X PUT repos/CWBudde/Aconiq/branches/main/protection \
-        -H "Accept: application/vnd.github+json" \
-        -F "required_status_checks[strict]=true" \
-        -F "required_status_checks[contexts][]=go-ci" \
-        -F "required_status_checks[contexts][]=go-race" \
-        -F "required_status_checks[contexts][]=govulncheck" \
-        -F "required_status_checks[contexts][]=frontend-ci" \
-        -F "enforce_admins=false" \
-        -F "required_pull_request_reviews=" \
-        -F "restrictions="
-      ```
+      - **`govulncheck` fails on a toolchain mismatch, not a CVE.** It never gets as far as
+        scanning: `loading packages: ... fips140only_go1.26.go:7:9: file requires newer Go
+        version go1.26 (application built with go1.25)`. The cause is that all three jobs use
+        `actions/setup-go` with `go-version-file: backend/go.mod`, which installs the **`go`
+        directive** (1.25.0) and ignores the `toolchain` line (go1.26.6). `govulncheck` is then
+        compiled with 1.25, while `just govulncheck` runs against a module whose toolchain pulls
+        1.26.6 stdlib sources it cannot parse. Fix in the workflow (install the toolchain
+        version for at least the `govulncheck` job), not by relaxing the requirement.
+      - **`frontend-ci` fails at the Typecheck step** — the 55 TypeScript errors the
+        previously no-op typecheck hid. Tracked under Priority 8; it is now a merge blocker
+        rather than a background debt.
 
-      Note `frontend-ci` is currently green but `fe-bundle-check` is not part of it — the map
-      bundle is over budget (Priority 8), so requiring `frontend-ci` does not yet gate bundle size.
+- [ ] **`frontend-ci` is a required check _and_ path-filtered — a merge deadlock.** Its
+      `pull_request` trigger is scoped to `frontend/**`, `backend/**` and its own workflow file.
+      A pull request touching none of those (a `PLAN.md`- or `docs/`-only change, which this
+      repository produces constantly) never starts the workflow, so the required `frontend-ci`
+      context never reports and GitHub holds the PR **pending forever**. `go-ci.yml` has no
+      paths filter and is unaffected. Resolve it the standard way — drop the paths filter, or
+      add a same-named no-op job for the non-matching case — before the first docs-only PR
+      hits it.
 
 - [ ] **The debts a green `just lint` still hides.** 293 findings were converted from
       config-hidden to fixed code in `4b0566c`; 557 remain hidden. Audit in `docs/lint-triage.md`.
