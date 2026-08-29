@@ -9,6 +9,13 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Keep these three options in sync with the `compile:i18n` script in
+    // package.json. The plugin only generates src/i18n/ when Vite runs, but
+    // `tsc` needs those modules to exist beforehand — and the directory is
+    // gitignored, so on a fresh clone (every CI run) nothing has produced it
+    // yet. `typecheck` and `build` therefore invoke the paraglide CLI first,
+    // and it has to be told the same project, outdir and strategy this plugin
+    // uses or the two would generate different runtimes.
     paraglideVitePlugin({
       project: "./project.inlang",
       outdir: "./src/i18n",

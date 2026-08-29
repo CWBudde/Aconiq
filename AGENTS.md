@@ -6,6 +6,8 @@ This file provides guidance to AI agents (Claude Code, Codex etc.) when working 
 
 `PLAN.md` is the single source of truth for project status and open work. It is forward-only: it records what is still ahead, not what is done. Completed work is recorded in git history, in `docs/conformance/`, and in the per-module baseline notes under `docs/`.
 
+The one exception is a priority's **`### Landed`** checklist. Where the completed items are load-bearing for everything after them — the build and the CI gates, above all — they stay as a short `- [x]` list, because a reader has to know which gates already hold before trusting the open items underneath. Those entries are checklist lines, not retrospectives: name the change, cite the commit, and add only what changes future behaviour, such as a constraint that is still live or a belief the work proved wrong. The detail belongs in the commit message. An entry that reads like a delivery report has outgrown this file.
+
 Do not restate status here, and do not infer it from this file. Read `PLAN.md`.
 
 ## Project Overview

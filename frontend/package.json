@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "compile:i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/i18n --strategy localStorage preferredLanguage baseLocale",
+    "build": "bun run compile:i18n && tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --force --noEmit",
+    "typecheck": "bun run compile:i18n && tsc -b --force --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "test": "vitest run",

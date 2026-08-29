@@ -5,18 +5,25 @@ name: Frontend CI
 # hand in src/wasm/types.ts, which src/wasm/surface-types.test.ts checks against
 # the Go constants. Without it a backend-only change could break the frontend
 # without ever running frontend CI.
+#
+# The `pull_request` trigger deliberately carries no paths filter, unlike the
+# `push` one. `frontend-ci` is a required status check in the `default-branch`
+# ruleset, and a workflow skipped by path filtering never reports its check at
+# all — GitHub leaves the required context pending and the pull request can
+# never merge. A docs-only pull request would deadlock on exactly that. Pushes
+# keep the filter, because no merge gate depends on them.
+#
+# Pushes are scoped to `main` (i.e. after a merge) for the same reason as in
+# go-ci.yml: with `branches: ["**"]` every pull request ran this workflow twice
+# on the same commit, once per event.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
       - "frontend/**"
       - "backend/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - ".github/workflows/frontend-ci.yml"
 
 jobs:
   frontend-ci:

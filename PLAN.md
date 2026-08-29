@@ -206,41 +206,40 @@ commit messages; the consequences each one exposed are open items below.
       (509 → 0, of which 49 by fixing code). **No linter is switched off across the entire backend
       any more.** The remaining hidden counts are named and bounded in the open item below.
 
-- [x] **The tree builds without private-repo credentials.** The blocker was never a missing
-      module. `github.com/cwbudde/go-absolute-database` existed and was tagged, but the repository
-      was **private**, so a fresh clone and every CI runner failed whole-graph resolution — which
-      is also why gating `.abs` reading behind a build tag would not have helped. The repository
-      is now public (MIT, `Copyright (c) 2026 Christian Budde`) and `backend/go.mod` requires
-      `v0.1.2`, which adds positional parsing of the column definition's autoinc block, corrects
-      Currency, GUID, Bytes and TimeStamp decoding against the engine, and decodes Extended
-      (80-bit) columns. Verified against a cold cache — an empty `GOMODCACHE` and
-      `GOPROXY=https://proxy.golang.org,direct` fetch `v0.1.2.zip` with 200 OK and no
-      credentials. All three first-party dependencies — `go-absolute-database`, `go-overpass`
-      and `go-citygml` — are public now.
+- [x] **The tree builds without private-repo credentials** (`1cbda38`).
+      `github.com/cwbudde/go-absolute-database` was private, not missing — which is why gating
+      `.abs` reading behind a build tag would not have helped, since an unresolvable `require`
+      poisons whole-graph resolution regardless. The repository is public now and `go.mod`
+      requires `v0.1.2`. Cold-cache `go mod download` against the public proxy succeeds without
+      credentials; all three first-party dependencies are public.
+
+- [x] **Branch protection is on for `main`.** Enabled as a repository **ruleset**
+      (`default-branch`, id `21682143`), not through the classic branch-protection API. That
+      matters for anyone checking it: `gh api .../branches/main/protection` still answers
+      **404**, which means "no classic protection", not "unprotected" — read
+      `gh api repos/CWBudde/Aconiq/rules/branches/main` instead. It requires all four checks and
+      a pull request, blocks deletion and force-pushes, and has no bypass actors, so it binds the
+      owner too. `strict_required_status_checks_policy` is deliberately off.
+
+- [x] **The merge gate is green again** (`48b63b2`). Both checks that failed the moment the
+      ruleset went live were infrastructure, not debt. Two traps worth not rediscovering:
+      `actions/setup-go` resolves `go-version-file` to go.mod's `go` directive and **ignores
+      `toolchain`**, which bites only binaries built by `go install tool@version` (everything run
+      inside `backend/` re-execs under `GOTOOLCHAIN=auto`); and `frontend/src/i18n/` is gitignored
+      Paraglide output that only the Vite plugin generated, so `tsc` in CI saw nothing until a
+      `compile:i18n` CLI step was added. That step's project, outdir and strategy must stay in
+      sync with `paraglideVitePlugin` in `vite.config.ts`. The frontend carries **no** residual
+      type debt — the old "55 TypeScript errors" framing was wrong, and Priority 8 inherits none.
+
+- [x] **`frontend-ci` no longer deadlocks on path filtering** (`48b63b2`, `585f2e0`). A required
+      check that is skipped by path filtering never reports, so a docs-only pull request would
+      have waited forever; its `pull_request` trigger is now unfiltered. `push` was narrowed to
+      `[main]` in `go-ci.yml`, `frontend-ci.yml` and `repo-hygiene.yml`, which also ended every
+      workflow running twice per pull request. The deadlock fix is **not yet exercised**: PR #5
+      touches `frontend/`, so it would have run under the old filter too — the first genuinely
+      docs-only pull request is the real test.
 
 ### Open
-
-- [ ] **Turn on branch protection for `main`.** This is the last step of the lint merge gate and
-      the only one that cannot be done from the repo: it needs admin on `CWBudde/Aconiq`, and
-      `main` currently has **no protection at all**. The CI side is done — `just lint` is a
-      `go-ci.yml` step and exits non-zero on any finding. Required status checks should be
-      `go-ci`, `go-race`, `govulncheck` and `frontend-ci`:
-
-      ```bash
-      gh api -X PUT repos/CWBudde/Aconiq/branches/main/protection \
-        -H "Accept: application/vnd.github+json" \
-        -F "required_status_checks[strict]=true" \
-        -F "required_status_checks[contexts][]=go-ci" \
-        -F "required_status_checks[contexts][]=go-race" \
-        -F "required_status_checks[contexts][]=govulncheck" \
-        -F "required_status_checks[contexts][]=frontend-ci" \
-        -F "enforce_admins=false" \
-        -F "required_pull_request_reviews=" \
-        -F "restrictions="
-      ```
-
-      Note `frontend-ci` is currently green but `fe-bundle-check` is not part of it — the map
-      bundle is over budget (Priority 8), so requiring `frontend-ci` does not yet gate bundle size.
 
 - [ ] **The debts a green `just lint` still hides.** 293 findings were converted from
       config-hidden to fixed code in `4b0566c`; 557 remain hidden. Audit in `docs/lint-triage.md`.
@@ -273,6 +272,13 @@ commit messages; the consequences each one exposed are open items below.
       more exposed, than any developer's local toolchain. Since stdlib advisories land on their
       own schedule, this job will go red on its own; decide whether that blocks merges or opens an
       issue.
+      Note what adding that `toolchain` line actually did, since this item half-anticipated it:
+      commands run inside `backend/` do re-exec under go1.26.6, but `setup-go` still installs
+      1.25.0 from the `go` directive, and govulncheck — built by `go install`, which resolves in
+      its own module — stayed on 1.25 and could no longer parse the very standard library it was
+      meant to scan. That broke the job outright until the fix recorded above. It is now a
+      required status check, so "goes red on its own" means "blocks every merge until someone
+      acts", which is the sharper form of the decision this item asks for.
 - [ ] **`just check-formatted` mutates the working tree.** It runs `treefmt --fail-on-change`,
       which formats in place _and then_ reports. So the CI "check" step rewrites files, and
       running it locally silently reformats unrelated work. Make it operate on a copy, or use a
