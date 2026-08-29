@@ -234,33 +234,43 @@ commit messages; the consequences each one exposed are open items below.
       **is** a `frontend-ci` step ("Bundle size budget"), so requiring `frontend-ci` does gate
       bundle size.
 
+- [x] **The merge gate is green again.** Both required checks that failed the moment the
+      ruleset went live are fixed, and neither turned out to be the debt it looked like.
+
+      - **`govulncheck` was a toolchain mismatch, not a CVE.** `actions/setup-go` resolves
+        `go-version-file: backend/go.mod` to the **`go` directive** (1.25.0) and ignores
+        `toolchain` (go1.26.6). Everything run inside `backend/` re-execs itself under
+        `GOTOOLCHAIN=auto`, so only binaries built by `go install tool@version` — which resolves
+        in the tool's own module — keep the older compiler. govulncheck built with 1.25 then
+        died in `loading packages` on 1.26 standard-library sources before scanning anything.
+        Its install step now reads the `toolchain` line out of `backend/go.mod` and builds with
+        it. Verified locally: govulncheck v1.7.0 built under go1.26.6 reports **0 vulnerabilities**
+        (16 exist in required modules, none reachable), so the check had never been hiding a
+        finding.
+      - **`frontend-ci` was missing a code-generation step, not carrying type debt.** All 32
+        errors were `Cannot find module '@/i18n/messages'` / `'@/i18n/runtime'`.
+        `frontend/src/i18n/` is Paraglide output and is gitignored in full, and Paraglide ran
+        **only** as a Vite plugin — so the directory existed on any machine that had run
+        `vite dev` or `vite build`, and never in CI, where `tsc` runs before Vite ever does.
+        `bun run compile:i18n` now invokes the paraglide CLI directly, and `typecheck` and
+        `build` both run it first. Verified by deleting `frontend/src/i18n/` and running
+        `just fe-ci` from scratch: typecheck, lint, test, build and bundle-check all pass.
+        The earlier "55 TypeScript errors the no-op typecheck hid" framing was wrong — there is
+        no residual type debt, and Priority 8 does not inherit any.
+
+      The two options the CLI compile step duplicates (project, outdir, strategy) must stay in
+      sync with `paraglideVitePlugin` in `vite.config.ts`, or the CLI and the plugin generate
+      different runtimes; there is a comment at the plugin saying so.
+
+- [x] **`frontend-ci` no longer deadlocks on path filtering.** It was a required check whose
+      `pull_request` trigger was scoped to `frontend/**`, `backend/**` and its own workflow file,
+      so a `PLAN.md`- or `docs/`-only pull request would never have started it, never reported
+      the required context, and stayed pending forever. The `pull_request` trigger now carries
+      no paths filter, so the check always reports; `push` keeps its filter, because no merge
+      gate depends on push runs. The cost is that a docs-only pull request runs the full
+      frontend suite.
+
 ### Open
-
-- [ ] **The merge gate is on and currently red, so nothing can merge.** Two of the four
-      required checks fail on `main` as of 29 August 2026, and with the ruleset active that
-      blocks every pull request. Neither is a real regression — `go-ci` (lint included) and
-      `go-race` both pass now — but the gate is only as useful as the checks behind it.
-
-      - **`govulncheck` fails on a toolchain mismatch, not a CVE.** It never gets as far as
-        scanning: `loading packages: ... fips140only_go1.26.go:7:9: file requires newer Go
-        version go1.26 (application built with go1.25)`. The cause is that all three jobs use
-        `actions/setup-go` with `go-version-file: backend/go.mod`, which installs the **`go`
-        directive** (1.25.0) and ignores the `toolchain` line (go1.26.6). `govulncheck` is then
-        compiled with 1.25, while `just govulncheck` runs against a module whose toolchain pulls
-        1.26.6 stdlib sources it cannot parse. Fix in the workflow (install the toolchain
-        version for at least the `govulncheck` job), not by relaxing the requirement.
-      - **`frontend-ci` fails at the Typecheck step** — the 55 TypeScript errors the
-        previously no-op typecheck hid. Tracked under Priority 8; it is now a merge blocker
-        rather than a background debt.
-
-- [ ] **`frontend-ci` is a required check _and_ path-filtered — a merge deadlock.** Its
-      `pull_request` trigger is scoped to `frontend/**`, `backend/**` and its own workflow file.
-      A pull request touching none of those (a `PLAN.md`- or `docs/`-only change, which this
-      repository produces constantly) never starts the workflow, so the required `frontend-ci`
-      context never reports and GitHub holds the PR **pending forever**. `go-ci.yml` has no
-      paths filter and is unaffected. Resolve it the standard way — drop the paths filter, or
-      add a same-named no-op job for the non-matching case — before the first docs-only PR
-      hits it.
 
 - [ ] **The debts a green `just lint` still hides.** 293 findings were converted from
       config-hidden to fixed code in `4b0566c`; 557 remain hidden. Audit in `docs/lint-triage.md`.
@@ -293,6 +303,13 @@ commit messages; the consequences each one exposed are open items below.
       more exposed, than any developer's local toolchain. Since stdlib advisories land on their
       own schedule, this job will go red on its own; decide whether that blocks merges or opens an
       issue.
+      Note what adding that `toolchain` line actually did, since this item half-anticipated it:
+      commands run inside `backend/` do re-exec under go1.26.6, but `setup-go` still installs
+      1.25.0 from the `go` directive, and govulncheck — built by `go install`, which resolves in
+      its own module — stayed on 1.25 and could no longer parse the very standard library it was
+      meant to scan. That broke the job outright until the fix recorded above. It is now a
+      required status check, so "goes red on its own" means "blocks every merge until someone
+      acts", which is the sharper form of the decision this item asks for.
 - [ ] **`just check-formatted` mutates the working tree.** It runs `treefmt --fail-on-change`,
       which formats in place _and then_ reports. So the CI "check" step rewrites files, and
       running it locally silently reformats unrelated work. Make it operate on a copy, or use a

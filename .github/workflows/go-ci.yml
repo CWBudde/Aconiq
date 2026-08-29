@@ -172,8 +172,23 @@ jobs:
         with:
           just-version: ${{ env.JUST_VERSION }}
 
+      # `go install tool@version` resolves in the tool's own module, so it is
+      # built by whatever compiler setup-go installed — and setup-go reads only
+      # go.mod's `go` directive (1.25.0), ignoring `toolchain` (go1.26.6). Every
+      # command run *inside* backend/ upgrades itself per GOTOOLCHAIN=auto, so
+      # only the installed binaries are left behind: govulncheck built with 1.25
+      # cannot load a module whose toolchain compiles the 1.26 standard library,
+      # and dies with "file requires newer Go version go1.26 (application built
+      # with go1.25)" before it scans anything. Build it with the module's own
+      # toolchain. The version is read from go.mod so there is no second place to
+      # bump; if another `go install`-ed tool ever fails the same way, give it
+      # the same treatment.
       - name: Install govulncheck
-        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+        run: |
+          set -euo pipefail
+          toolchain="$(sed -n 's/^toolchain //p' backend/go.mod)"
+          GOTOOLCHAIN="${toolchain:-auto}" \
+            go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 
       - name: Scan for known vulnerabilities
         run: just govulncheck
