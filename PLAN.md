@@ -206,78 +206,38 @@ commit messages; the consequences each one exposed are open items below.
       (509 → 0, of which 49 by fixing code). **No linter is switched off across the entire backend
       any more.** The remaining hidden counts are named and bounded in the open item below.
 
-- [x] **The tree builds without private-repo credentials.** The blocker was never a missing
-      module. `github.com/cwbudde/go-absolute-database` existed and was tagged, but the repository
-      was **private**, so a fresh clone and every CI runner failed whole-graph resolution — which
-      is also why gating `.abs` reading behind a build tag would not have helped. The repository
-      is now public (MIT, `Copyright (c) 2026 Christian Budde`) and `backend/go.mod` requires
-      `v0.1.2`, which adds positional parsing of the column definition's autoinc block, corrects
-      Currency, GUID, Bytes and TimeStamp decoding against the engine, and decodes Extended
-      (80-bit) columns. Verified against a cold cache — an empty `GOMODCACHE` and
-      `GOPROXY=https://proxy.golang.org,direct` fetch `v0.1.2.zip` with 200 OK and no
-      credentials. All three first-party dependencies — `go-absolute-database`, `go-overpass`
-      and `go-citygml` — are public now.
+- [x] **The tree builds without private-repo credentials** (`1cbda38`).
+      `github.com/cwbudde/go-absolute-database` was private, not missing — which is why gating
+      `.abs` reading behind a build tag would not have helped, since an unresolvable `require`
+      poisons whole-graph resolution regardless. The repository is public now and `go.mod`
+      requires `v0.1.2`. Cold-cache `go mod download` against the public proxy succeeds without
+      credentials; all three first-party dependencies are public.
 
-- [x] **Branch protection is on for `main`.** Enabled 29 August 2026 — but as a repository
-      **ruleset** (`default-branch`, id `21682143`, enforcement `active`, condition
-      `~DEFAULT_BRANCH`), not through the classic branch-protection API this item's recipe used.
-      The `gh api .../branches/main/protection` snippet is therefore obsolete: that endpoint
-      still answers **404**, which means "no classic protection", not "unprotected" — check
-      `gh api repos/CWBudde/Aconiq/rules/branches/main` instead.
-      The ruleset requires all four contexts — `go-ci`, `go-race`, `govulncheck`, `frontend-ci`,
-      each matching a real job id in `go-ci.yml`/`frontend-ci.yml`, so every one of them can
-      actually report — plus a pull request (0 approvals, squash/rebase only), and it blocks
-      deletion and force-pushes. There are **no bypass actors**, so it binds the owner too.
-      One deliberate divergence from the recipe above: `strict_required_status_checks_policy` is
-      **false**, so a branch need not be rebased onto the tip of `main` before merging.
-      The stale caveat this item carried is now wrong in the other direction: `bundle-check`
-      **is** a `frontend-ci` step ("Bundle size budget"), so requiring `frontend-ci` does gate
-      bundle size.
+- [x] **Branch protection is on for `main`.** Enabled as a repository **ruleset**
+      (`default-branch`, id `21682143`), not through the classic branch-protection API. That
+      matters for anyone checking it: `gh api .../branches/main/protection` still answers
+      **404**, which means "no classic protection", not "unprotected" — read
+      `gh api repos/CWBudde/Aconiq/rules/branches/main` instead. It requires all four checks and
+      a pull request, blocks deletion and force-pushes, and has no bypass actors, so it binds the
+      owner too. `strict_required_status_checks_policy` is deliberately off.
 
-- [x] **The merge gate is green again.** Both required checks that failed the moment the
-      ruleset went live are fixed, and neither turned out to be the debt it looked like.
+- [x] **The merge gate is green again** (`48b63b2`). Both checks that failed the moment the
+      ruleset went live were infrastructure, not debt. Two traps worth not rediscovering:
+      `actions/setup-go` resolves `go-version-file` to go.mod's `go` directive and **ignores
+      `toolchain`**, which bites only binaries built by `go install tool@version` (everything run
+      inside `backend/` re-execs under `GOTOOLCHAIN=auto`); and `frontend/src/i18n/` is gitignored
+      Paraglide output that only the Vite plugin generated, so `tsc` in CI saw nothing until a
+      `compile:i18n` CLI step was added. That step's project, outdir and strategy must stay in
+      sync with `paraglideVitePlugin` in `vite.config.ts`. The frontend carries **no** residual
+      type debt — the old "55 TypeScript errors" framing was wrong, and Priority 8 inherits none.
 
-      - **`govulncheck` was a toolchain mismatch, not a CVE.** `actions/setup-go` resolves
-        `go-version-file: backend/go.mod` to the **`go` directive** (1.25.0) and ignores
-        `toolchain` (go1.26.6). Everything run inside `backend/` re-execs itself under
-        `GOTOOLCHAIN=auto`, so only binaries built by `go install tool@version` — which resolves
-        in the tool's own module — keep the older compiler. govulncheck built with 1.25 then
-        died in `loading packages` on 1.26 standard-library sources before scanning anything.
-        Its install step now reads the `toolchain` line out of `backend/go.mod` and builds with
-        it. Verified locally: govulncheck v1.7.0 built under go1.26.6 reports **0 vulnerabilities**
-        (16 exist in required modules, none reachable), so the check had never been hiding a
-        finding.
-      - **`frontend-ci` was missing a code-generation step, not carrying type debt.** All 32
-        errors were `Cannot find module '@/i18n/messages'` / `'@/i18n/runtime'`.
-        `frontend/src/i18n/` is Paraglide output and is gitignored in full, and Paraglide ran
-        **only** as a Vite plugin — so the directory existed on any machine that had run
-        `vite dev` or `vite build`, and never in CI, where `tsc` runs before Vite ever does.
-        `bun run compile:i18n` now invokes the paraglide CLI directly, and `typecheck` and
-        `build` both run it first. Verified by deleting `frontend/src/i18n/` and running
-        `just fe-ci` from scratch: typecheck, lint, test, build and bundle-check all pass.
-        The earlier "55 TypeScript errors the no-op typecheck hid" framing was wrong — there is
-        no residual type debt, and Priority 8 does not inherit any.
-
-      The two options the CLI compile step duplicates (project, outdir, strategy) must stay in
-      sync with `paraglideVitePlugin` in `vite.config.ts`, or the CLI and the plugin generate
-      different runtimes; there is a comment at the plugin saying so.
-
-- [x] **`frontend-ci` no longer deadlocks on path filtering.** It was a required check whose
-      `pull_request` trigger was scoped to `frontend/**`, `backend/**` and its own workflow file,
-      so a `PLAN.md`- or `docs/`-only pull request would never have started it, never reported
-      the required context, and stayed pending forever. The `pull_request` trigger now carries
-      no paths filter, so the check always reports; `push` keeps its filter, because no merge
-      gate depends on push runs. The cost is that a docs-only pull request runs the full
-      frontend suite. Note the fix is **not yet exercised in anger**: PR #5, which carried it,
-      touches `frontend/`, so it would have triggered the workflow under the old filter too.
-      The first genuinely docs-only pull request is the real test — and is exactly what would
-      have hung before.
-      While here, `push` was narrowed from `branches: ["**"]` to `[main]` in `go-ci.yml`,
-      `frontend-ci.yml` and `repo-hygiene.yml`. Every pull request had been running all three
-      twice on the same commit, once for the push event and once for the pull-request event —
-      visible on PR #5 as two passes per required check. Branches are covered by the
-      `pull_request` trigger, and the ruleset requires a pull request regardless; the trade is
-      that a branch pushed without an open pull request now gets no CI until one exists.
+- [x] **`frontend-ci` no longer deadlocks on path filtering** (`48b63b2`, `585f2e0`). A required
+      check that is skipped by path filtering never reports, so a docs-only pull request would
+      have waited forever; its `pull_request` trigger is now unfiltered. `push` was narrowed to
+      `[main]` in `go-ci.yml`, `frontend-ci.yml` and `repo-hygiene.yml`, which also ended every
+      workflow running twice per pull request. The deadlock fix is **not yet exercised**: PR #5
+      touches `frontend/`, so it would have run under the old filter too — the first genuinely
+      docs-only pull request is the real test.
 
 ### Open
 
