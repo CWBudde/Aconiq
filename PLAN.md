@@ -268,7 +268,16 @@ commit messages; the consequences each one exposed are open items below.
       the required context, and stayed pending forever. The `pull_request` trigger now carries
       no paths filter, so the check always reports; `push` keeps its filter, because no merge
       gate depends on push runs. The cost is that a docs-only pull request runs the full
-      frontend suite.
+      frontend suite. Note the fix is **not yet exercised in anger**: PR #5, which carried it,
+      touches `frontend/`, so it would have triggered the workflow under the old filter too.
+      The first genuinely docs-only pull request is the real test — and is exactly what would
+      have hung before.
+      While here, `push` was narrowed from `branches: ["**"]` to `[main]` in `go-ci.yml`,
+      `frontend-ci.yml` and `repo-hygiene.yml`. Every pull request had been running all three
+      twice on the same commit, once for the push event and once for the pull-request event —
+      visible on PR #5 as two passes per required check. Branches are covered by the
+      `pull_request` trigger, and the ruleset requires a pull request regardless; the trade is
+      that a branch pushed without an open pull request now gets no CI until one exists.
 
 ### Open
 

@@ -12,9 +12,13 @@ name: Frontend CI
 # all — GitHub leaves the required context pending and the pull request can
 # never merge. A docs-only pull request would deadlock on exactly that. Pushes
 # keep the filter, because no merge gate depends on them.
+#
+# Pushes are scoped to `main` (i.e. after a merge) for the same reason as in
+# go-ci.yml: with `branches: ["**"]` every pull request ran this workflow twice
+# on the same commit, once per event.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
       - "frontend/**"
       - "backend/**"

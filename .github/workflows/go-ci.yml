@@ -1,8 +1,14 @@
 name: Go CI
 
+# Pushes only run CI for `main` (i.e. after a merge). Any other branch is
+# covered by the `pull_request` trigger, and the `default-branch` ruleset
+# requires a pull request anyway — so `branches: ["**"]` here meant every
+# workflow ran twice per pull request, once for the push and once for the PR,
+# on the same commit. The trade is that a branch pushed without an open pull
+# request gets no CI until the pull request exists.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 permissions:
