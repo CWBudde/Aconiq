@@ -16,7 +16,7 @@ require (
 require github.com/wroge/wgs84 v1.1.7
 
 require (
-	github.com/cwbudde/go-absolute-database v0.1.1
+	github.com/cwbudde/go-absolute-database v0.1.2
 	github.com/stretchr/testify v1.8.4
 )
 

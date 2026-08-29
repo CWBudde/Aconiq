@@ -206,25 +206,20 @@ commit messages; the consequences each one exposed are open items below.
       (509 → 0, of which 49 by fixing code). **No linter is switched off across the entire backend
       any more.** The remaining hidden counts are named and bounded in the open item below.
 
+- [x] **The tree builds without private-repo credentials.** The blocker was never a missing
+      module. `github.com/cwbudde/go-absolute-database` existed and was tagged, but the repository
+      was **private**, so a fresh clone and every CI runner failed whole-graph resolution — which
+      is also why gating `.abs` reading behind a build tag would not have helped. The repository
+      is now public (MIT, `Copyright (c) 2026 Christian Budde`) and `backend/go.mod` requires
+      `v0.1.2`, which adds positional parsing of the column definition's autoinc block, corrects
+      Currency, GUID, Bytes and TimeStamp decoding against the engine, and decodes Extended
+      (80-bit) columns. Verified against a cold cache — an empty `GOMODCACHE` and
+      `GOPROXY=https://proxy.golang.org,direct` fetch `v0.1.2.zip` with 200 OK and no
+      credentials. All three first-party dependencies — `go-absolute-database`, `go-overpass`
+      and `go-citygml` — are public now.
+
 ### Open
 
-- [ ] **Make the tree buildable without private-repo credentials.** `backend/go.mod` requires
-      `github.com/cwbudde/go-absolute-database v0.1.0`, which is unreachable for anyone but the
-      author, so a fresh clone and every CI runner still fail even after the `go-overpass` fix
-      above. It resolves on a developer machine only from a warm module cache.
-      **Diagnosed 27 August 2026 — the module is not missing, it is private.** The repository
-      exists at `github.com/CWBudde/go-absolute-database`, tag `v0.1.0` is pushed
-      (`626c41e`), and `gh repo view` reports `"visibility": "PRIVATE"`. The other two
-      first-party dependencies, `go-overpass` and `go-citygml`, are both public — this one is the
-      sole exception. So the earlier framing (vendor the module, or gate `.abs` reading behind a
-      build tag) solves a problem that does not exist; a build tag would not even work, since the
-      unresolvable `require` poisons whole-graph resolution regardless of which files compile.
-      **Action: make `CWBudde/go-absolute-database` public.** It is already MIT-licensed
-      (`Copyright (c) 2026 Christian Budde`), ~3 500 LOC, and depends only on cobra and
-      `golang.org/x/crypto`. Nothing in Aconiq changes; `NOTICE` has already been corrected.
-      Verify afterwards with
-      `GOFLAGS=-mod=mod GOMODCACHE=$(mktemp -d) go mod download github.com/cwbudde/go-absolute-database`,
-      which must succeed against a cold cache.
 - [ ] **Turn on branch protection for `main`.** This is the last step of the lint merge gate and
       the only one that cannot be done from the repo: it needs admin on `CWBudde/Aconiq`, and
       `main` currently has **no protection at all**. The CI side is done — `just lint` is a
