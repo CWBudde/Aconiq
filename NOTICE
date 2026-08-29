@@ -38,6 +38,7 @@ BSD-3-Clause
 github.com/google/uuid                  — BSD-3-Clause
 github.com/remyoudompheng/bigfft        — BSD-3-Clause
 github.com/spf13/pflag                  — BSD-3-Clause
+golang.org/x/crypto                     — BSD-3-Clause
 golang.org/x/exp                        — BSD-3-Clause
 golang.org/x/sys                        — BSD-3-Clause
 golang.org/x/text                       — BSD-3-Clause
