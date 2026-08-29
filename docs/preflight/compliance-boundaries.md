@@ -67,6 +67,37 @@ Modules without a conformance declaration must not be presented as normatively v
 - No third-party basemap or dataset is vendored unless terms permit it.
 - Report templates and generated PDFs use only bundled or open-source fonts and assets.
 
+### 6. Interoperability with proprietary formats
+
+Aconiq imports SoundPLAN projects. SoundPLAN stores its result tables, catalogues, address lists
+and attribute tables as ComponentAce Absolute Database (`.abs`) files, a format with no public
+specification, so the reader in `backend/internal/io/soundplanimport` sits on
+`github.com/cwbudde/go-absolute-database` — a reverse-engineered implementation maintained as a
+separate MIT project. Its `docs/provenance.md` is the authoritative record and must stay current;
+what follows is the boundary as it applies here.
+
+- **The legal basis is interoperability, and it is threefold.** A data file format is not
+  protected by copyright (CJEU C-406/10, _SAS Institute v World Programming_). Observing,
+  studying and decompiling a lawfully obtained program to achieve interoperability is permitted
+  (Directive 2009/24/EC Arts. 5(3) and 6; §69d(3), §69e UrhG), and contrary contract terms are
+  void (§69g(2) UrhG). Redistribution is a separate question, answered by shipping none of
+  anyone else's code.
+- **Compete on function, never on expression.** Art. 6(2)(c) forbids using what reverse
+  engineering reveals to build a program substantially similar _in its expression_. Aconiq
+  competes with SoundPLAN on function, which _SAS v WPL_ expressly permits. No vendor code,
+  header, binary, resource or documentation may enter this repository, and none has.
+- **Read users' own files; never redistribute vendors' shipped datasets.** Reading a `.abs` file
+  that a user's own SoundPLAN installation wrote is interoperability. Extracting and
+  redistributing the reference catalogues SoundPLAN _ships_ — emission tables, train-type data,
+  correction factors — is a different act that copyright and the sui generis database right
+  (§§87a–87b UrhG, Directive 96/9/EC) may well reach, and Art. 6 does not help with it. Where
+  Aconiq needs such values it takes them from the normative standard, under the rules in §2
+  above, not from a vendor's bundled database.
+- **Real SoundPLAN project files are personal data.** They carry addresses and identifiable
+  project detail. They are never committed, never uploaded, never pasted into an issue, a CI log
+  or a model context, and never used as fixtures in this repository. The rules in §4 above apply
+  to them in full.
+
 ## License scanning details
 
 ### Ignored packages in `go-licenses` scanning
