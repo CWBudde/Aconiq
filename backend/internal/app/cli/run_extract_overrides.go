@@ -69,6 +69,25 @@ func overrideBool(target *bool, keys ...string) propertyOverride {
 	}
 }
 
+// overrideFloatFound is overrideFloat for a field whose caller also needs to
+// know whether the property was present, because an absent value and a decoded
+// zero mean different things downstream.
+func overrideFloatFound(target *float64, found *bool, keys ...string) propertyOverride {
+	return func(properties map[string]any) error {
+		value, ok, err := propertyFloat(properties, keys...)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			*target = value
+			*found = true
+		}
+
+		return nil
+	}
+}
+
 // applyPropertyOverrides applies overrides in order against an arbitrary
 // property map, which is what RLS-19 needs: it decodes against a feature's
 // properties merged with one directional source's overrides.
@@ -76,10 +95,22 @@ func overrideBool(target *bool, keys ...string) propertyOverride {
 // The wrapping is the shape every extractor here already produced. It names the
 // feature but not the key, because the decode error already carries the key.
 func applyPropertyOverrides(properties map[string]any, scope, featureID string, overrides []propertyOverride) error {
+	err := decodeOverrides(properties, overrides)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindValidation, scope, fmt.Sprintf("feature %q", featureID), err)
+	}
+
+	return nil
+}
+
+// decodeOverrides applies overrides in order and returns the first decode error
+// undecorated, for callers that wrap it themselves — the geometry-resolving
+// closures do, because their caller already adds the same scope and feature.
+func decodeOverrides(properties map[string]any, overrides []propertyOverride) error {
 	for _, override := range overrides {
 		err := override(properties)
 		if err != nil {
-			return domainerrors.New(domainerrors.KindValidation, scope, fmt.Sprintf("feature %q", featureID), err)
+			return err
 		}
 	}
 

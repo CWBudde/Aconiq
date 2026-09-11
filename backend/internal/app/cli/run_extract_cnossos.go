@@ -14,225 +14,60 @@ import (
 )
 
 func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunOptions, supportedSourceTypes []string) ([]cnossosroad.RoadSource, error) {
-	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
-	for _, sourceType := range supportedSourceTypes {
-		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
-		if trimmed == "" {
-			continue
-		}
-
-		allowedSourceType[trimmed] = struct{}{}
-	}
-
-	sources := make([]cnossosroad.RoadSource, 0)
-
-	for featureIndex, feature := range model.Features {
-		if feature.Kind != modelgeojson.FeatureKindSource {
-			continue
-		}
-
-		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
-		if normalizedSourceType != "" {
-			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
-				return nil, domainerrors.New(
-					domainerrors.KindValidation,
-					"cli.extractCnossosRoadSources",
-					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
-					nil,
-				)
-			}
-		}
-
-		lines, err := lineStringsFromFeature(feature)
-		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-		}
-
-		baseID := strings.TrimSpace(feature.ID)
-		if baseID == "" {
-			baseID = fmt.Sprintf("road-source-%03d", featureIndex)
-		}
-
-		for lineIndex, line := range lines {
-			sourceID := baseID
-			if len(lines) > 1 {
-				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
-			}
-
-			source, buildErr := buildCnossosRoadSource(feature, options, sourceID, line)
-			if buildErr != nil {
-				return nil, buildErr
-			}
-
-			sources = append(sources, source)
-		}
-	}
-
-	if len(sources) == 0 {
-		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRoadSources", "model does not contain any supported line source features", nil)
-	}
-
-	return sources, nil
+	return extractSources(model, supportedSourceTypes, sourceExtraction[cnossosroad.RoadSource, []geo.Point2D]{
+		scope:        "cli.extractCnossosRoadSources",
+		idPrefix:     "road-source-%03d",
+		emptyMessage: msgNoLineSourceFeatures,
+		parts:        lineStringsFromFeature,
+		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
+			return buildCnossosRoadSource(feature, options, sourceID, line)
+		},
+	})
 }
 
 func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunOptions, supportedSourceTypes []string) ([]cnossosrail.RailSource, error) {
-	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
-	for _, sourceType := range supportedSourceTypes {
-		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
-		if trimmed == "" {
-			continue
-		}
-
-		allowedSourceType[trimmed] = struct{}{}
-	}
-
-	sources := make([]cnossosrail.RailSource, 0)
-
-	for featureIndex, feature := range model.Features {
-		if feature.Kind != modelgeojson.FeatureKindSource {
-			continue
-		}
-
-		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
-		if normalizedSourceType != "" {
-			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
-				return nil, domainerrors.New(
-					domainerrors.KindValidation,
-					"cli.extractCnossosRailSources",
-					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
-					nil,
-				)
-			}
-		}
-
-		lines, err := lineStringsFromFeature(feature)
-		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", fmt.Sprintf("feature %q", feature.ID), err)
-		}
-
-		baseID := strings.TrimSpace(feature.ID)
-		if baseID == "" {
-			baseID = fmt.Sprintf("rail-source-%03d", featureIndex)
-		}
-
-		for lineIndex, line := range lines {
-			sourceID := baseID
-			if len(lines) > 1 {
-				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
-			}
-
-			source := cnossosrail.RailSource{
-				ID:                   sourceID,
-				TrackCenterline:      line,
-				TractionType:         options.TractionType,
-				TrackType:            options.TrackType,
-				TrackRoughnessClass:  options.TrackRoughnessClass,
-				AverageTrainSpeedKPH: options.AverageTrainSpeedKPH,
-				BrakingShare:         options.BrakingShare,
-				CurveRadiusM:         options.CurveRadiusM,
-				OnBridge:             options.OnBridge,
-				TrafficDay:           cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficDayTrainsPerHour},
-				TrafficEvening:       cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficEveningTrainsPerHour},
-				TrafficNight:         cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficNightTrainsPerHour},
-			}
-
-			overrideErr := applyFeatureOverrides(feature, "cli.extractCnossosRailSources", []propertyOverride{
-				overrideString(&source.TractionType, "rail_traction_type"),
-				overrideString(&source.TrackType, "rail_track_type"),
-				overrideString(&source.TrackRoughnessClass, "rail_track_roughness_class"),
-				overrideFloat(&source.AverageTrainSpeedKPH, "rail_average_train_speed_kph"),
-				overrideFloat(&source.BrakingShare, "rail_braking_share"),
-				overrideFloat(&source.CurveRadiusM, "rail_curve_radius_m"),
-				overrideBool(&source.OnBridge, "rail_on_bridge"),
-				overrideFloat(&source.TrafficDay.TrainsPerHour, "traffic_day_trains_per_hour"),
-				overrideFloat(&source.TrafficEvening.TrainsPerHour, "traffic_evening_trains_per_hour"),
-				overrideFloat(&source.TrafficNight.TrainsPerHour, "traffic_night_trains_per_hour"),
-			})
-			if overrideErr != nil {
-				return nil, overrideErr
-			}
-
-			sources = append(sources, source)
-		}
-	}
-
-	if len(sources) == 0 {
-		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosRailSources", "model does not contain any supported line source features", nil)
-	}
-
-	return sources, nil
+	return extractSources(model, supportedSourceTypes, sourceExtraction[cnossosrail.RailSource, []geo.Point2D]{
+		scope:        "cli.extractCnossosRailSources",
+		idPrefix:     "rail-source-%03d",
+		emptyMessage: msgNoLineSourceFeatures,
+		parts:        lineStringsFromFeature,
+		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (cnossosrail.RailSource, error) {
+			return buildCnossosRailSource(feature, options, sourceID, line)
+		},
+	})
 }
 
 func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAircraftRunOptions, supportedSourceTypes []string) ([]cnossosaircraft.AircraftSource, error) {
-	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
-	for _, sourceType := range supportedSourceTypes {
-		trimmed := strings.ToLower(strings.TrimSpace(sourceType))
-		if trimmed == "" {
-			continue
-		}
+	return extractSources(model, supportedSourceTypes, aircraftSourceExtraction(
+		options, "cli.extractCnossosAircraftSources", "aircraft-source-%03d", cnossosaircraft.StandardID,
+	))
+}
 
-		allowedSourceType[trimmed] = struct{}{}
-	}
+// aircraftSourceExtraction builds the spec both aircraft standards run. The
+// track heights are decoded per feature, before the geometry call, because
+// they feed it.
+func aircraftSourceExtraction(options cnossosAircraftRunOptions, scope, idPrefix, standardID string) sourceExtraction[cnossosaircraft.AircraftSource, []geo.Point3D] {
+	return sourceExtraction[cnossosaircraft.AircraftSource, []geo.Point3D]{
+		scope:        scope,
+		idPrefix:     idPrefix,
+		emptyMessage: msgNoLineSourceFeatures,
+		parts: func(feature modelgeojson.Feature) ([][]geo.Point3D, error) {
+			trackOptions := options
 
-	sources := make([]cnossosaircraft.AircraftSource, 0)
-
-	for featureIndex, feature := range model.Features {
-		if feature.Kind != modelgeojson.FeatureKindSource {
-			continue
-		}
-
-		normalizedSourceType := strings.ToLower(strings.TrimSpace(feature.SourceType))
-		if normalizedSourceType != "" {
-			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
-				return nil, domainerrors.New(
-					domainerrors.KindValidation,
-					"cli.extractCnossosAircraftSources",
-					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
-					nil,
-				)
-			}
-		}
-
-		trackOptions := options
-
-		trackErr := applyFeatureOverrides(feature, "cli.extractCnossosAircraftSources", []propertyOverride{
-			overrideFloat(&trackOptions.TrackStartHeightM, "track_start_height_m"),
-			overrideFloat(&trackOptions.TrackEndHeightM, "track_end_height_m"),
-		})
-		if trackErr != nil {
-			return nil, trackErr
-		}
-
-		tracks, err := flightTracksFromFeature(feature, cnossosaircraft.StandardID, trackOptions.TrackStartHeightM, trackOptions.TrackEndHeightM)
-		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
-		}
-
-		baseID := strings.TrimSpace(feature.ID)
-		if baseID == "" {
-			baseID = fmt.Sprintf("aircraft-source-%03d", featureIndex)
-		}
-
-		for trackIndex, track := range tracks {
-			sourceID := baseID
-			if len(tracks) > 1 {
-				sourceID = fmt.Sprintf("%s-%02d", baseID, trackIndex+1)
+			err := decodeOverrides(feature.Properties, []propertyOverride{
+				overrideFloat(&trackOptions.TrackStartHeightM, "track_start_height_m"),
+				overrideFloat(&trackOptions.TrackEndHeightM, "track_end_height_m"),
+			})
+			if err != nil {
+				return nil, err
 			}
 
-			source, buildErr := buildCnossosAircraftSource(feature, options, sourceID, track)
-			if buildErr != nil {
-				return nil, buildErr
-			}
-
-			sources = append(sources, source)
-		}
+			return flightTracksFromFeature(feature, standardID, trackOptions.TrackStartHeightM, trackOptions.TrackEndHeightM)
+		},
+		build: func(feature modelgeojson.Feature, sourceID string, track []geo.Point3D) (cnossosaircraft.AircraftSource, error) {
+			return buildAircraftSource(feature, options, scope, sourceID, track)
+		},
 	}
-
-	if len(sources) == 0 {
-		return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", "model does not contain any supported line source features", nil)
-	}
-
-	return sources, nil
 }
 
 func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndustryRunOptions, supportedSourceTypes []string) ([]cnossosindustry.IndustrySource, error) {
@@ -378,6 +213,10 @@ func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]fu
 // buildCnossosRoadSource merges the run options with one feature's property
 // overrides into a single road source. Split out of extractCnossosRoadSources
 // to keep the extraction loop under the length limit.
+//
+// See buildBUBRoadSource for why dupl matches the two and why they stay apart.
+//
+//nolint:dupl // paired with buildBUBRoadSource; distinct source models and deliberately different decode orders
 func buildCnossosRoadSource(feature modelgeojson.Feature, options cnossosRoadRunOptions, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
 	source := cnossosroad.RoadSource{
 		ID:                sourceID,
@@ -439,9 +278,13 @@ func buildCnossosRoadSource(feature modelgeojson.Feature, options cnossosRoadRun
 	return source, nil
 }
 
-// buildCnossosAircraftSource merges the run options with one feature's
-// property overrides into a single aircraft source.
-func buildCnossosAircraftSource(feature modelgeojson.Feature, options cnossosAircraftRunOptions, sourceID string, track []geo.Point3D) (cnossosaircraft.AircraftSource, error) {
+// buildAircraftSource merges the run options with one feature's property
+// overrides into a single aircraft source.
+//
+// It serves both cnossos-aircraft and buf-aircraft, whose source structs are
+// field-for-field identical but are separate Go types, so the BUF path maps
+// the result across rather than converting it.
+func buildAircraftSource(feature modelgeojson.Feature, options cnossosAircraftRunOptions, scope, sourceID string, track []geo.Point3D) (cnossosaircraft.AircraftSource, error) {
 	source := cnossosaircraft.AircraftSource{
 		ID:         sourceID,
 		SourceType: cnossosaircraft.SourceTypeLine,
@@ -463,7 +306,7 @@ func buildCnossosAircraftSource(feature modelgeojson.Feature, options cnossosAir
 		MovementNight:         cnossosaircraft.MovementPeriod{MovementsPerHour: options.MovementNightPerHour},
 	}
 
-	overrideErr := applyFeatureOverrides(feature, "cli.extractCnossosAircraftSources", []propertyOverride{
+	overrideErr := applyFeatureOverrides(feature, scope, []propertyOverride{
 		overrideString(&source.Airport.AirportID, "airport_id"),
 		overrideString(&source.Airport.RunwayID, "runway_id"),
 		overrideString(&source.OperationType, "aircraft_operation_type"),
@@ -480,6 +323,43 @@ func buildCnossosAircraftSource(feature modelgeojson.Feature, options cnossosAir
 	})
 	if overrideErr != nil {
 		return cnossosaircraft.AircraftSource{}, overrideErr
+	}
+
+	return source, nil
+}
+
+// buildCnossosRailSource merges the run options with one feature's property
+// overrides into a single rail source.
+func buildCnossosRailSource(feature modelgeojson.Feature, options cnossosRailRunOptions, sourceID string, line []geo.Point2D) (cnossosrail.RailSource, error) {
+	source := cnossosrail.RailSource{
+		ID:                   sourceID,
+		TrackCenterline:      line,
+		TractionType:         options.TractionType,
+		TrackType:            options.TrackType,
+		TrackRoughnessClass:  options.TrackRoughnessClass,
+		AverageTrainSpeedKPH: options.AverageTrainSpeedKPH,
+		BrakingShare:         options.BrakingShare,
+		CurveRadiusM:         options.CurveRadiusM,
+		OnBridge:             options.OnBridge,
+		TrafficDay:           cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficDayTrainsPerHour},
+		TrafficEvening:       cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficEveningTrainsPerHour},
+		TrafficNight:         cnossosrail.TrafficPeriod{TrainsPerHour: options.TrafficNightTrainsPerHour},
+	}
+
+	overrideErr := applyFeatureOverrides(feature, "cli.extractCnossosRailSources", []propertyOverride{
+		overrideString(&source.TractionType, "rail_traction_type"),
+		overrideString(&source.TrackType, "rail_track_type"),
+		overrideString(&source.TrackRoughnessClass, "rail_track_roughness_class"),
+		overrideFloat(&source.AverageTrainSpeedKPH, "rail_average_train_speed_kph"),
+		overrideFloat(&source.BrakingShare, "rail_braking_share"),
+		overrideFloat(&source.CurveRadiusM, "rail_curve_radius_m"),
+		overrideBool(&source.OnBridge, "rail_on_bridge"),
+		overrideFloat(&source.TrafficDay.TrainsPerHour, "traffic_day_trains_per_hour"),
+		overrideFloat(&source.TrafficEvening.TrainsPerHour, "traffic_evening_trains_per_hour"),
+		overrideFloat(&source.TrafficNight.TrainsPerHour, "traffic_night_trains_per_hour"),
+	})
+	if overrideErr != nil {
+		return cnossosrail.RailSource{}, overrideErr
 	}
 
 	return source, nil
