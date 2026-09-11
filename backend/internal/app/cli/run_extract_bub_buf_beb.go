@@ -18,7 +18,9 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 		scope:        "cli.extractBUBRoadSources",
 		idPrefix:     "bub-road-source-%03d",
 		emptyMessage: msgNoLineSourceFeatures,
-		parts:        lineStringsFromFeature,
+		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+			return lineStringsFromFeature(feature, bubroad.StandardID)
+		},
 		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (bubroad.RoadSource, error) {
 			return buildBUBRoadSource(feature, options, sourceID, line)
 		},
@@ -78,7 +80,7 @@ func extractBEBBuildings(model modelgeojson.Model, options bebExposureRunOptions
 			continue
 		}
 
-		polygons, err := polygonsFromFeature(feature)
+		polygons, err := polygonsFromFeature(feature, bebexposure.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBEBBuildings", fmt.Sprintf("feature %q", feature.ID), err)
 		}

@@ -379,7 +379,7 @@ func extractRLS19Barriers(model modelgeojson.Model) ([]rls19road.Barrier, error)
 			continue
 		}
 
-		lines, err := lineStringsFromFeature(feature)
+		lines, err := lineStringsFromFeature(feature, rls19road.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q", feature.ID), err)
 		}
@@ -430,7 +430,7 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 			continue
 		}
 
-		polygons, err := polygonsFromFeature(feature)
+		polygons, err := polygonsFromFeature(feature, rls19road.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Buildings", fmt.Sprintf("feature %q", feature.ID), err)
 		}

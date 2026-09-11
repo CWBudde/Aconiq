@@ -41,7 +41,7 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 			)
 		}
 
-		points, err := sourcePointsFromFeature(feature)
+		points, err := sourcePointsFromFeature(feature, iso9613.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
 		}

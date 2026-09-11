@@ -11,7 +11,9 @@ func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions
 		scope:        "cli.extractSchall03Sources",
 		idPrefix:     "schall03-source-%03d",
 		emptyMessage: msgNoLineSourceFeatures,
-		parts:        lineStringsFromFeature,
+		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+			return lineStringsFromFeature(feature, schall03.StandardID)
+		},
 		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (schall03.RailSource, error) {
 			return buildSchall03RailSource(feature, options, sourceID, line)
 		},

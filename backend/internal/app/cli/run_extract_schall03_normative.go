@@ -143,7 +143,7 @@ func appendSchall03Segments(
 		return err
 	}
 
-	lines, err := lineStringsFromFeature(feature)
+	lines, err := lineStringsFromFeature(feature, schall03.StandardID)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("feature %q", feature.ID), err)
 	}
@@ -431,7 +431,7 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 		return validationErrorf("barrier feature %q requires height_m > 0", feature.ID)
 	}
 
-	lines, err := lineStringsFromFeature(feature)
+	lines, err := lineStringsFromFeature(feature, schall03.StandardID)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("barrier feature %q", feature.ID), err)
 	}
@@ -517,7 +517,7 @@ func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeo
 		return err
 	}
 
-	polygons, err := polygonsFromFeature(feature)
+	polygons, err := polygonsFromFeature(feature, schall03.StandardID)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), err)
 	}

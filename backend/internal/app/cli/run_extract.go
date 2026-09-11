@@ -22,7 +22,9 @@ func extractDummySources(model modelgeojson.Model, emissionDB float64, supported
 		scope:        "cli.extractDummySources",
 		idPrefix:     "source-%03d",
 		emptyMessage: "model does not contain any supported source features",
-		parts:        sourcePointsFromFeature,
+		parts: func(feature modelgeojson.Feature) ([]geo.Point2D, error) {
+			return sourcePointsFromFeature(feature, freefield.StandardID)
+		},
 		build: func(_ modelgeojson.Feature, sourceID string, point geo.Point2D) (freefield.Source, error) {
 			return freefield.Source{
 				ID:         sourceID,

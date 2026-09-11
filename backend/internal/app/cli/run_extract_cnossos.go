@@ -18,7 +18,9 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 		scope:        "cli.extractCnossosRoadSources",
 		idPrefix:     "road-source-%03d",
 		emptyMessage: msgNoLineSourceFeatures,
-		parts:        lineStringsFromFeature,
+		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+			return lineStringsFromFeature(feature, cnossosroad.StandardID)
+		},
 		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
 			return buildCnossosRoadSource(feature, options, sourceID, line)
 		},
@@ -30,7 +32,9 @@ func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunO
 		scope:        "cli.extractCnossosRailSources",
 		idPrefix:     "rail-source-%03d",
 		emptyMessage: msgNoLineSourceFeatures,
-		parts:        lineStringsFromFeature,
+		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+			return lineStringsFromFeature(feature, cnossosrail.StandardID)
+		},
 		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (cnossosrail.RailSource, error) {
 			return buildCnossosRailSource(feature, options, sourceID, line)
 		},
@@ -182,7 +186,7 @@ func buildCnossosIndustrySource(feature modelgeojson.Feature, options cnossosInd
 func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]func(*cnossosindustry.IndustrySource), error) {
 	switch sourceType {
 	case cnossosindustry.SourceTypePoint:
-		points, err := sourcePointsFromFeature(feature)
+		points, err := sourcePointsFromFeature(feature, cnossosindustry.StandardID)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +198,7 @@ func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]fu
 
 		return parts, nil
 	case cnossosindustry.SourceTypeArea:
-		polygons, err := polygonsFromFeature(feature)
+		polygons, err := polygonsFromFeature(feature, cnossosindustry.StandardID)
 		if err != nil {
 			return nil, err
 		}
