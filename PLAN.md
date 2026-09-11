@@ -298,7 +298,15 @@ commit messages; the consequences each one exposed are open items below.
       runner, independently of the module blocker.
 - [ ] **CI installed only the Go formatters.** `treefmt --allow-missing-formatter` skips silently,
       so markdown, YAML, JSON and TypeScript were never format-checked in CI even when the step
-      passed. `shfmt` and `prettier` are now installed too. Watch for a backlog surfacing.
+      passed. `shfmt` and `prettier` are now installed too. No backlog surfaced — but a sharper
+      problem did: **nothing pins the formatters locally.** `go-ci.yml` pins
+      `PRETTIER_VERSION: 3.8.0`; a developer's `just fmt` uses whatever `prettier` is on `PATH`.
+      Measured 2026-09-11: prettier 3.9.6 rewrites four frontend files that 3.8.0 considers
+      correctly formatted, so running the project's own documented formatting command produced a
+      diff CI rejected, and `just check-formatted` reported a backlog that does not exist. The
+      failure is silent in both directions and `just fmt` is the workflow we tell people to use.
+      Pin the formatter toolchain for local use as well — a devbox/mise/nix entry, or at minimum a
+      version check in the recipe that fails loudly on a mismatch instead of reformatting the tree.
 - [ ] **Reconcile the three-way `golangci-lint` skew.** CI and the local toolbox are now both
       pinned to 2.12.2; `.trunk/trunk.yaml` still pins 2.11.4. Related to the "resolve the two
       competing lint stacks" item in Priority 9.
