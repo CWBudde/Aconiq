@@ -444,8 +444,8 @@ func buildHeuristicRasterReceivers(
 		return nil, nil, nil
 	}
 
-	minX, minY, maxX, maxY := calcAreaBounds(area)
-	yPositions := heuristicRasterRowCenters(minY, maxY, gridResolutionM, len(rows))
+	bounds := calcAreaBounds(area)
+	yPositions := heuristicRasterRowCenters(bounds.MinY, bounds.MaxY, gridResolutionM, len(rows))
 
 	receivers := make([]heuristicRasterReceiver, 0, countGridMapCells(rows))
 	ids := make([]string, 0, countGridMapCells(rows))
@@ -460,8 +460,8 @@ func buildHeuristicRasterReceivers(
 
 		left, right, ok := calcAreaHorizontalSpan(area, y)
 		if !ok || right <= left {
-			left = minX
-			right = maxX
+			left = bounds.MinX
+			right = bounds.MaxX
 
 			warnings = append(warnings, fmt.Sprintf("row %d could not be intersected with CalcArea; fell back to bounding box span", rowIndex))
 		}
@@ -602,13 +602,11 @@ func metadataAlignedRowCenters(meta soundplanimport.GridMapMetadata, rowCount in
 }
 
 func minYFromArea(area *soundplanimport.CalcArea) float64 {
-	_, minY, _, _ := calcAreaBounds(area) //nolint:dogsled // only one bound is needed here
-	return minY
+	return calcAreaBounds(area).MinY
 }
 
 func maxYFromArea(area *soundplanimport.CalcArea) float64 {
-	_, _, _, maxY := calcAreaBounds(area) //nolint:dogsled // only one bound is needed here
-	return maxY
+	return calcAreaBounds(area).MaxY
 }
 
 func rasterSpanOverlapScore(values []float64, minY, maxY float64) float64 {
@@ -701,20 +699,32 @@ func heuristicRowXPositions(left, right, resolutionM float64, count int) []float
 	return xs
 }
 
-func calcAreaBounds(area *soundplanimport.CalcArea) (float64, float64, float64, float64) {
-	minX := area.Points[0].X
-	minY := area.Points[0].Y
-	maxX := area.Points[0].X
-	maxY := area.Points[0].Y
+// areaBounds is the axis-aligned envelope of a calculation area. Named fields
+// rather than four positional float64 results, so a caller that needs one bound
+// names it instead of counting blanks.
+type areaBounds struct {
+	MinX float64
+	MinY float64
+	MaxX float64
+	MaxY float64
+}
 
-	for _, point := range area.Points[1:] {
-		minX = math.Min(minX, point.X)
-		minY = math.Min(minY, point.Y)
-		maxX = math.Max(maxX, point.X)
-		maxY = math.Max(maxY, point.Y)
+func calcAreaBounds(area *soundplanimport.CalcArea) areaBounds {
+	bounds := areaBounds{
+		MinX: area.Points[0].X,
+		MinY: area.Points[0].Y,
+		MaxX: area.Points[0].X,
+		MaxY: area.Points[0].Y,
 	}
 
-	return minX, minY, maxX, maxY
+	for _, point := range area.Points[1:] {
+		bounds.MinX = math.Min(bounds.MinX, point.X)
+		bounds.MinY = math.Min(bounds.MinY, point.Y)
+		bounds.MaxX = math.Max(bounds.MaxX, point.X)
+		bounds.MaxY = math.Max(bounds.MaxY, point.Y)
+	}
+
+	return bounds
 }
 
 func calcAreaHorizontalSpan(area *soundplanimport.CalcArea, y float64) (float64, float64, bool) {

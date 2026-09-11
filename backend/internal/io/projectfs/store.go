@@ -436,7 +436,9 @@ func (s Store) hashInputs(paths []string) (map[string]string, error) {
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", err //nolint:wrapcheck // caller classifies and wraps
+		// Wrapped with %w so the caller's errors.Is(err, os.ErrNotExist)
+		// classification still sees through. The caller adds the path.
+		return "", fmt.Errorf("open input file: %w", err)
 	}
 
 	defer func() { _ = f.Close() }()
@@ -445,7 +447,7 @@ func hashFile(path string) (string, error) {
 
 	_, err = io.Copy(h, f)
 	if err != nil {
-		return "", err //nolint:wrapcheck // caller classifies and wraps
+		return "", fmt.Errorf("read input file: %w", err)
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil

@@ -117,7 +117,78 @@ func persistReceiverTableOnly(
 	}, nil
 }
 
-//nolint:funlen // The dummy export persists both table and raster outputs in one place for parity with the legacy flow.
+// buildDummyReceiverTable maps engine results onto the receiver set. Every
+// receiver must have a result; a missing one is an internal inconsistency.
+func buildDummyReceiverTable(receivers []geo.PointReceiver, levelByReceiver map[string]float64, indicator string) (results.ReceiverTable, error) {
+	table := results.ReceiverTable{
+		IndicatorOrder: []string{indicator},
+		Unit:           dummyResultUnit,
+		Records:        make([]results.ReceiverRecord, 0, len(receivers)),
+	}
+
+	for _, receiver := range receivers {
+		level, ok := levelByReceiver[receiver.ID]
+		if !ok {
+			return results.ReceiverTable{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "missing result for receiver "+receiver.ID, nil)
+		}
+
+		table.Records = append(table.Records, results.ReceiverRecord{
+			ID:      receiver.ID,
+			X:       receiver.Point.X,
+			Y:       receiver.Point.Y,
+			HeightM: receiver.HeightM,
+			Values: map[string]float64{
+				indicator: level,
+			},
+		})
+	}
+
+	return table, nil
+}
+
+// persistDummyRaster writes the grid raster. Receivers are laid out row-major
+// in the order the grid produced them.
+func persistDummyRaster(
+	resultsDir string,
+	receivers []geo.PointReceiver,
+	levelByReceiver map[string]float64,
+	gridWidth int,
+	gridHeight int,
+	indicator string,
+) (results.RasterPersistence, error) {
+	raster, err := results.NewRaster(results.RasterMetadata{
+		Width:     gridWidth,
+		Height:    gridHeight,
+		Bands:     1,
+		NoData:    -9999,
+		Unit:      dummyResultUnit,
+		BandNames: []string{indicator},
+	})
+	if err != nil {
+		return results.RasterPersistence{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "build raster", err)
+	}
+
+	for receiverIndex, receiver := range receivers {
+		level := levelByReceiver[receiver.ID]
+		x := receiverIndex % gridWidth
+		y := receiverIndex / gridWidth
+
+		err := raster.Set(x, y, 0, level)
+		if err != nil {
+			return results.RasterPersistence{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "set raster value", err)
+		}
+	}
+
+	rasterBasePath := filepath.Join(resultsDir, strings.ToLower(indicator))
+
+	rasterPersistence, err := results.SaveRaster(rasterBasePath, raster)
+	if err != nil {
+		return results.RasterPersistence{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save raster", err)
+	}
+
+	return rasterPersistence, nil
+}
+
 func persistDummyRunOutputs(
 	runDir string,
 	runOutput engine.RunOutput,
@@ -139,26 +210,9 @@ func persistDummyRunOutputs(
 		levelByReceiver[receiverResult.ReceiverID] = receiverResult.LevelDB
 	}
 
-	table := results.ReceiverTable{
-		IndicatorOrder: []string{indicator},
-		Unit:           dummyResultUnit,
-		Records:        make([]results.ReceiverRecord, 0, len(receivers)),
-	}
-	for _, receiver := range receivers {
-		level, ok := levelByReceiver[receiver.ID]
-		if !ok {
-			return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "missing result for receiver "+receiver.ID, nil)
-		}
-
-		table.Records = append(table.Records, results.ReceiverRecord{
-			ID:      receiver.ID,
-			X:       receiver.Point.X,
-			Y:       receiver.Point.Y,
-			HeightM: receiver.HeightM,
-			Values: map[string]float64{
-				indicator: level,
-			},
-		})
+	table, err := buildDummyReceiverTable(receivers, levelByReceiver, indicator)
+	if err != nil {
+		return persistedRunOutputs{}, err
 	}
 
 	receiverJSONPath := filepath.Join(resultsDir, "receivers.json")
@@ -199,35 +253,9 @@ func persistDummyRunOutputs(
 		}, nil
 	}
 
-	raster, err := results.NewRaster(results.RasterMetadata{
-		Width:     gridWidth,
-		Height:    gridHeight,
-		Bands:     1,
-		NoData:    -9999,
-		Unit:      dummyResultUnit,
-		BandNames: []string{indicator},
-	})
+	rasterPersistence, err := persistDummyRaster(resultsDir, receivers, levelByReceiver, gridWidth, gridHeight, indicator)
 	if err != nil {
-		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "build raster", err)
-	}
-
-	for receiverIndex, receiver := range receivers {
-		level := levelByReceiver[receiver.ID]
-		x := receiverIndex % gridWidth
-
-		y := receiverIndex / gridWidth
-
-		err := raster.Set(x, y, 0, level)
-		if err != nil {
-			return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "set raster value", err)
-		}
-	}
-
-	rasterBasePath := filepath.Join(resultsDir, strings.ToLower(indicator))
-
-	rasterPersistence, err := results.SaveRaster(rasterBasePath, raster)
-	if err != nil {
-		return persistedRunOutputs{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "save raster", err)
+		return persistedRunOutputs{}, err
 	}
 
 	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)

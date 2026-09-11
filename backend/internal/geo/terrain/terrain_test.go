@@ -76,7 +76,6 @@ func buildMinimalGeoTIFF(width, height int, pixels []float32, originX, originY, 
 	return buf
 }
 
-//nolint:unparam // pixelSizeX is always 10 in current tests but the parameter is part of the GeoTIFF contract
 func writeTestGeoTIFF(t *testing.T, width, height int, pixels []float32, originX, originY, pixelSizeX, pixelSizeY float64) string {
 	t.Helper()
 
@@ -150,6 +149,45 @@ func TestElevationAt_PixelCenters(t *testing.T) {
 
 	// Query at pixel center (1,1) = world (110, 190).
 	elev, ok = m.ElevationAt(110, 190)
+	if !ok {
+		t.Fatal("expected point inside bounds")
+	}
+
+	if elev != 104 {
+		t.Errorf("expected 104.0 at pixel (1,1), got %f", elev)
+	}
+}
+
+// GeoTIFF carries the X and Y pixel scales in separate ModelPixelScale slots,
+// so a square-pixel-only suite cannot tell the two apart. This pins the
+// anisotropic case: 20 m in X, 5 m in Y.
+func TestLoad_AnisotropicPixelScale(t *testing.T) {
+	// 3x3 grid, origin at (100, 200).
+	// Row 0: 100, 101, 102
+	// Row 1: 103, 104, 105
+	// Row 2: 106, 107, 108
+	pixels := []float32{100, 101, 102, 103, 104, 105, 106, 107, 108}
+	path := writeTestGeoTIFF(t, 3, 3, pixels, 100, 200, 20, 5)
+
+	m, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Origin is the pixel center at (100, 200). Half a pixel is 10 m in X and
+	// 2.5 m in Y, so the envelope is asymmetric.
+	bounds := m.Bounds()
+	if bounds[0] != 90 || bounds[2] != 150 {
+		t.Errorf("expected X bounds [90, 150], got [%f, %f]", bounds[0], bounds[2])
+	}
+
+	if bounds[1] != 187.5 || bounds[3] != 202.5 {
+		t.Errorf("expected Y bounds [187.5, 202.5], got [%f, %f]", bounds[1], bounds[3])
+	}
+
+	// Pixel center (1,1) sits at world (120, 195): one X step of 20 m and one
+	// Y step of 5 m from the origin.
+	elev, ok := m.ElevationAt(120, 195)
 	if !ok {
 		t.Fatal("expected point inside bounds")
 	}

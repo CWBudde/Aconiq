@@ -279,12 +279,12 @@ func queryFeatures(ctx context.Context, db *sql.DB, tableName, quotedTable strin
 	var features []modelgeojson.GeoJSONFeature
 
 	for rows.Next() {
-		feature, scanErr := scanFeature(rows, colNames, geomCol)
+		feature, ok, scanErr := scanFeature(rows, colNames, geomCol)
 		if scanErr != nil {
 			return nil, scanErr
 		}
 
-		if feature != nil {
+		if ok {
 			features = append(features, *feature)
 		}
 	}
@@ -297,7 +297,10 @@ func queryFeatures(ctx context.Context, db *sql.DB, tableName, quotedTable strin
 	return features, nil
 }
 
-func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojson.GeoJSONFeature, error) {
+// scanFeature converts one result row into a feature. The second result
+// reports whether the row yielded one: rows without a usable geometry are
+// skipped, which is an outcome rather than an absent value or an error.
+func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojson.GeoJSONFeature, bool, error) {
 	values := make([]any, len(colNames))
 	ptrs := make([]any, len(colNames))
 
@@ -307,7 +310,7 @@ func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojs
 
 	scanErr := rows.Scan(ptrs...)
 	if scanErr != nil {
-		return nil, fmt.Errorf("gpkg: scan row: %w", scanErr)
+		return nil, false, fmt.Errorf("gpkg: scan row: %w", scanErr)
 	}
 
 	var (
@@ -324,16 +327,16 @@ func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojs
 		if col == geomCol {
 			blob, ok := val.([]byte)
 			if !ok || len(blob) == 0 {
-				return nil, nil //nolint:nilnil // nil feature signals "skip row"
+				return nil, false, nil
 			}
 
 			gt, c, err := DecodeGPKGBlob(blob)
 			if err != nil {
-				return nil, fmt.Errorf("gpkg: decode geometry for column %q: %w", col, err)
+				return nil, false, fmt.Errorf("gpkg: decode geometry for column %q: %w", col, err)
 			}
 
 			if gt == "" {
-				return nil, nil //nolint:nilnil // nil feature signals "skip row" (empty geometry)
+				return nil, false, nil
 			}
 
 			geomType = gt
@@ -350,7 +353,7 @@ func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojs
 	}
 
 	if geomType == "" {
-		return nil, nil //nolint:nilnil // nil feature signals "skip row" (no geometry column found)
+		return nil, false, nil
 	}
 
 	return &modelgeojson.GeoJSONFeature{
@@ -361,7 +364,7 @@ func scanFeature(rows *sql.Rows, colNames []string, geomCol string) (*modelgeojs
 			Type:        geomType,
 			Coordinates: coords,
 		},
-	}, nil
+	}, true, nil
 }
 
 func formatID(val any) string {

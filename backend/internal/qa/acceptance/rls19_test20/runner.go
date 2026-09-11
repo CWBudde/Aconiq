@@ -367,15 +367,15 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 	}
 
 	result.Expected = expected.Receivers
-	maxDelta, compareErr := compareSnapshots(expected.Receivers, result.Actual, task.Tolerance.AbsoluteDB)
+	maxDelta, mismatch := compareSnapshots(expected.Receivers, result.Actual, task.Tolerance.AbsoluteDB)
 
 	result.MaxAbsDeltaDB = round6(maxDelta)
-	if compareErr != nil {
+	if mismatch != "" {
 		// A failed comparison is reported as task failure, not as a hard execution error.
 		result.Status = taskStatusFailed
-		result.Details = compareErr.Error()
+		result.Details = mismatch
 
-		return result, nil //nolint:nilerr
+		return result, nil
 	}
 
 	result.Status = taskStatusPassed
@@ -411,16 +411,19 @@ func snapshotsFromOutputs(outputs []rls19road.ReceiverOutput) []ReceiverSnapshot
 	return out
 }
 
-func compareSnapshots(expected []ReceiverSnapshot, actual []ReceiverSnapshot, tolerance float64) (float64, error) {
+// compareSnapshots reports the largest absolute delta and, when the comparison
+// fails, a human-readable reason. A failed comparison is a task result, not a
+// Go error: it is recorded in the task's Status and Details.
+func compareSnapshots(expected []ReceiverSnapshot, actual []ReceiverSnapshot, tolerance float64) (float64, string) {
 	if len(expected) != len(actual) {
-		return 0, fmt.Errorf("receiver count mismatch: expected %d, got %d", len(expected), len(actual))
+		return 0, fmt.Sprintf("receiver count mismatch: expected %d, got %d", len(expected), len(actual))
 	}
 
 	maxDelta := 0.0
 
 	for i := range expected {
 		if expected[i].ID != actual[i].ID {
-			return maxDelta, fmt.Errorf("receiver[%d] id mismatch: expected %q, got %q", i, expected[i].ID, actual[i].ID)
+			return maxDelta, fmt.Sprintf("receiver[%d] id mismatch: expected %q, got %q", i, expected[i].ID, actual[i].ID)
 		}
 
 		for _, pair := range []struct {
@@ -440,12 +443,12 @@ func compareSnapshots(expected []ReceiverSnapshot, actual []ReceiverSnapshot, to
 			}
 
 			if delta > tolerance {
-				return maxDelta, fmt.Errorf("receiver %q %s exceeded tolerance: expected %.6f, got %.6f, tolerance %.6f", expected[i].ID, pair.name, pair.expected, pair.actual, tolerance)
+				return maxDelta, fmt.Sprintf("receiver %q %s exceeded tolerance: expected %.6f, got %.6f, tolerance %.6f", expected[i].ID, pair.name, pair.expected, pair.actual, tolerance)
 			}
 		}
 	}
 
-	return maxDelta, nil
+	return maxDelta, ""
 }
 
 func writeReportArtifact(outputDir string, mode string, report Report) (string, error) {

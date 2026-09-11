@@ -246,12 +246,12 @@ func readFeatures(src io.Reader, avail int64, hdr *flat.Header, fields headerFie
 
 		flatFeature := flat.GetSizePrefixedRootAsFeature(buf, 0)
 
-		feat, convertErr := decodeFeature(flatFeature, hdr, fields.geometryType, index)
+		feat, ok, convertErr := decodeFeature(flatFeature, hdr, fields.geometryType, index)
 		if convertErr != nil {
 			return nil, fmt.Errorf("fgb: feature %d: %w", index, convertErr)
 		}
 
-		if feat != nil {
+		if ok {
 			features = append(features, *feat)
 		}
 
@@ -367,7 +367,7 @@ func readHeaderFields(hdr *flat.Header) (fields headerFields, err error) {
 //
 // The guard is deliberately per feature rather than around the whole read: it
 // must not be able to absorb a fault raised anywhere else in the pipeline.
-func decodeFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.GeometryType, index int) (result *modelgeojson.GeoJSONFeature, err error) {
+func decodeFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.GeometryType, index int) (result *modelgeojson.GeoJSONFeature, ok bool, err error) {
 	defer func() {
 		rec := recover()
 		if rec == nil {
@@ -375,6 +375,7 @@ func decodeFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.Geo
 		}
 
 		result = nil
+		ok = false
 		err = &CorruptFeatureError{Index: index, Site: libraryFaultSite(rec), Value: rec}
 	}()
 
@@ -435,24 +436,27 @@ func panicSite() string {
 	}
 }
 
-func convertFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.GeometryType, index int) (*modelgeojson.GeoJSONFeature, error) {
+// convertFeature converts one feature. The second result reports whether the
+// feature yielded one: a feature without a usable geometry is skipped, which is
+// an outcome rather than an absent value or an error.
+func convertFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.GeometryType, index int) (*modelgeojson.GeoJSONFeature, bool, error) {
 	geom := new(flat.Geometry)
 	if feat.Geometry(geom) == nil {
-		return nil, nil //nolint:nilnil // skip features without geometry
+		return nil, false, nil
 	}
 
 	geomType, coords, err := geometryToGeoJSON(geom, headerGeomType)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if geomType == "" {
-		return nil, nil //nolint:nilnil // skip empty geometry
+		return nil, false, nil
 	}
 
 	props, err := readProperties(feat, hdr)
 	if err != nil {
-		return nil, fmt.Errorf("read properties: %w", err)
+		return nil, false, fmt.Errorf("read properties: %w", err)
 	}
 
 	featureID := extractID(props, index)
@@ -465,7 +469,7 @@ func convertFeature(feat *flat.Feature, hdr *flat.Header, headerGeomType flat.Ge
 			Type:        geomType,
 			Coordinates: coords,
 		},
-	}, nil
+	}, true, nil
 }
 
 func geometryToGeoJSON(geom *flat.Geometry, headerType flat.GeometryType) (string, any, error) {

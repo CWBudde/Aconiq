@@ -45,7 +45,7 @@ type resolved struct {
 	date    string
 }
 
-//nolint:gochecknoglobals // Resolving the embedded build info once is the point.
+// current resolves the embedded build info once; doing it once is the point.
 var current = sync.OnceValue(resolve)
 
 // Version returns the release version, for example "v0.4.1" or
