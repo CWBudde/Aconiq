@@ -875,6 +875,97 @@ Two of the six rows are style opinions this project has declined in writing and 
 `goconst` and the complexity `//nolint`s are both waiting on Priority 7. G304 has a written
 overturn condition and is re-measured, not re-argued, each time someone asks.
 
+## Extraction pass — 2026-09-12
+
+**The twelve complexity directives were not hiding complex code — they were hiding twenty copies of
+the same eight-line block.** `app/cli`'s ten extraction functions each repeated a hand-unrolled
+property-override decoder 5 to 20 times. One block costs +2 cyclomatic, +3 cognitive and 3
+statements, so twenty of them is the whole of what tripped `funlen` (stock `statements: 40`, the
+binding limit), `maintidx`, `cyclop` and `gocognit`. The extraction loop itself was never the
+problem: `extractDummySources` used the same skeleton with **no directive at all**, and
+`run_extract_schall03_normative.go` was already a fully table-driven extractor with none either.
+
+Making the override list data cleared every threshold at once. `propertyOverride` wraps the existing
+`propertyString`/`propertyFloat`/`propertyBool`, so no decoding semantics changed, and the overrides
+point into a source literal already seeded from the run options — which is what collapses the
+statement count, one literal instead of twenty declarations.
+
+### What the tables exposed underneath
+
+With the decode blocks gone, `dupl` immediately flagged the extraction loops across seven standards.
+They had been identical all along; the blocks were hiding it. `sourceExtraction` now names what
+actually differs — error scope, generated-ID prefix, empty-result message, how a feature's geometry
+splits into parts, how one part becomes a source — and `extractSources` runs the rest once.
+
+Two duplications it exposed could not be dissolved the same way:
+
+- **The aircraft pair collapsed.** `cnossosaircraft.AircraftSource` and `bufaircraft.AircraftSource`
+  are field-for-field identical, so one builder serves both and the BUF path maps the result across.
+  This corrects `PLAN.md`'s claim that the old directive's reason — "the source/output types differ"
+  — was false. It was **true**: the two are distinct Go types whose nested `AirportRef` and
+  `MovementPeriod` are declared per package, and the compiler rejects a conversion between them. The
+  line `PLAN.md` cited converts the _options_ type, which is a different thing.
+- **The road pair could not.** `bubroad.RoadSource` and `cnossosroad.RoadSource` differ by one field
+  (`road_function_class` against `road_category`), and their override tables are ordered differently
+  on purpose: CNOSSOS decodes the three PTW periods last, BUB interleaves each with its period,
+  which decides which error a feature carrying two malformed properties reports. `dupl` compares
+  tokens and sees neither difference. This is the **one suppression this pass adds** — a `//nolint:dupl`
+  on each of the two builders, cross-referencing the other and naming the structural fix: `bub/road`
+  should share `cnossos/road`'s source model the way `bub/rail` and `bub/industry` already alias
+  `cnossos`, which Priority 7 owns. It replaces two wholesale directives covering eight linters.
+
+### Corrections to this document's own record
+
+The `//nolint` table above says `dupl` **13, of which P7 calls all but 8 illegitimate**. Measured
+across the two passes: 2 were deleted in `0e00155`, the 3 in `run_persist.go` remain and are Part
+1's, the 8 in `schall03/beiblatt1.go` are genuine coefficient tables, and this pass added 2. The P7
+item's arithmetic — "remove the 12 illegitimate of 20 total" — never matched the tree.
+
+### Two defects the refactor surfaced
+
+- The three geometry helpers each hardcoded one standard in their unsupported-geometry message
+  regardless of caller, so `lineStringsFromFeature` told Schall 03, BUB road, RLS-19 and CNOSSOS rail
+  users that "cnossos-road supports LineString/MultiLineString only". Fixed by threading
+  `standardID`, as `0e00155` had already done for the aircraft pair.
+- `extractCnossosIndustrySources`' source-type switch has no `default` arm, so a type that is in the
+  standard's `SupportedSourceTypes` but is neither point nor area silently yields no sources. That
+  behaviour is preserved and now stated in a comment rather than implied by an absence; it is
+  tracked in `PLAN.md` rather than changed inside a behaviour-preserving pass.
+
+### What made this verifiable
+
+The suite looked like a strong oracle and was not, in two specific places. Nine
+`TestExtract…UsesFeatureProperties` tests assert merged field values, but every one decodes
+_successfully_ — so nothing pinned which error a feature with two malformed properties reports,
+which is exactly what reordering a table would change. And every feature in every fixture under
+`internal/app/cli/testdata` carries an explicit `"id"`, so the `fmt.Sprintf("road-source-%03d", …)`
+fallbacks were reached by **nothing at all**, despite those IDs landing in every receiver table and
+provenance file.
+
+Both holes were closed **before** any production code changed, so the assertions capture the old
+behaviour by construction: 21 precedence cases bracketing each extractor's table from both ends, and
+11 generated-ID cases, each with a skipped receiver feature first so the `%03d` index is pinned as
+the model feature position rather than a counter over emitted sources. They stay in the tree.
+
+### Where this leaves `just lint`, measured 2026-09-12
+
+| Still hidden  | Findings | Was (2026-09-11) | Mechanism                                  |
+| ------------- | -------: | ---------------: | ------------------------------------------ |
+| `goconst`     |  **140** |              164 | three named, path+value-scoped rules       |
+| `noinlineerr` |  **109** |              103 | `linters.disable`; declined in writing     |
+| gosec G304    |   **47** |               47 | one explicit named rule                    |
+| `//nolint`    |   **33** |               63 | in-source directives                       |
+| `gocyclo`     |    **5** |                4 | `linters.disable`; redundant with `cyclop` |
+
+**334, from 381.** The composition is what matters: `//nolint` **63 → 33** across two passes, and
+`app/cli` specifically **18 → 10**. Every extraction function is clean. `goconst` fell 24 without
+being targeted — the repeated scope strings and empty-result messages went with the blocks that
+carried them. `noinlineerr` 103 → 109 and `gocyclo` 4 → 5 are drift, not regression.
+
+What is left in `app/cli` is 4 one-off `gosec`, the 3 `dupl` in `run_persist.go`, the 2 road-pair
+`dupl`, and `executeRunCommand` — every one of them owned by the `framework.Module` work, not by an
+absence of effort.
+
 ## Reproducing these numbers
 
 ```bash
