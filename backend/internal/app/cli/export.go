@@ -554,8 +554,8 @@ func findRunForExport(runs []project.Run, runID string) (project.Run, error) {
 	return project.Run{}, fmt.Errorf("run %q not found", runID)
 }
 
-func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
-	_, err := os.Stat(srcPath)
+func copyFileIfExists(srcPath string, dstPath string) (copied bool, err error) {
+	_, err = os.Stat(srcPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -573,13 +573,17 @@ func copyFileIfExists(srcPath string, dstPath string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("open export source %s: %w", srcPath, err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		return false, fmt.Errorf("create export bundle file %s: %w", dstPath, err)
 	}
-	defer dst.Close()
+	defer func() {
+		if cerr := dst.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close export bundle file %s: %w", dstPath, cerr)
+		}
+	}()
 
 	_, err = io.Copy(dst, src)
 	if err != nil {

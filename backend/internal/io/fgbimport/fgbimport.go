@@ -126,7 +126,7 @@ func ReadWithCRS(path string) (ReadResult, error) {
 		return ReadResult{}, fmt.Errorf("fgb: open %q: %w", path, err)
 	}
 
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return readAll(f)
 }

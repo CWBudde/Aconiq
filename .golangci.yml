@@ -73,15 +73,27 @@ linters:
 
   exclusions:
     generated: lax
-    # `legacy` dropped: it bundled gosec G301 (dir perms > 0750) in with G302
-    # and G307 (file perms > 0600) under one EXC0009 pattern, so keeping the
-    # preset meant G301 stayed silently excluded too. The four rules below
-    # replay everything else `legacy` provided (EXC0004, EXC0005, EXC0008,
-    # and EXC0009's G302/G307) so nothing else changes — only G301 becomes
-    # enforced. Measured 2026-08-28: with those four rules deleted the tree is
-    # also at 0, i.e. none of them fires today. They are insurance, not dead
-    # weight — do not "simplify" them away.
-    presets: [comments, common-false-positives, std-error-handling]
+    # No presets. A preset hides a set nobody in this repo has enumerated, which
+    # is the failure mode `legacy` demonstrated: it bundled gosec G301 (dir
+    # perms > 0750) in with G302 and G307 (file perms > 0600) under one EXC0009
+    # pattern, so keeping the preset meant G301 stayed silently excluded too.
+    # `legacy` was dropped on 2026-08-28 and replayed as the first four rules
+    # below (EXC0004, EXC0005, EXC0008, EXC0009's G302/G307), which is why only
+    # G301 changed.
+    #
+    # `comments`, `common-false-positives` and `std-error-handling` went the same
+    # way on 2026-09-11 for the same reason. Measured with `presets: []` and
+    # nothing replayed, the three of them hid exactly 88 findings: errcheck 41
+    # (all unchecked `Close`) and gosec 47 (all G304). The errcheck 41 appeared
+    # in no table and had no verdict — several were on export write paths, where
+    # a swallowed `Close` error means a truncated file reported as success — so
+    # they were fixed in code rather than re-excluded, and errcheck is now
+    # enforced with nothing hidden. G304 keeps its exclusion, but as the named
+    # rule at the end of this list rather than as a side effect of a preset.
+    #
+    # The first four rules fire nowhere today (measured 2026-08-28, re-measured
+    # 2026-09-11). They are insurance, not dead weight — do not "simplify" them
+    # away.
 
     rules:
       # Replaces `legacy` preset's EXC0004: common govet false positives.
@@ -159,6 +171,27 @@ linters:
       - linters: [goconst]
         path: (internal/app/cli/|internal/api/httpv1/|internal/report/export/)
         text: "string `(command|error|finished_at|kind|model_version|output_hash|path|receiver_count|receiver_mode|reporting_precision_db|run_id|scenario_id|source_count|standard_id|started_at|status|time|type)`"
+
+      # gosec G304 (file inclusion via variable). Formerly hidden inside the
+      # `common-false-positives` preset; named here so the suppression is
+      # greppable and so the rest of that preset is not taken on trust.
+      #
+      # Aconiq is a file-format toolchain: opening a path the caller named is
+      # the product, and all 47 non-test findings are exactly that. The
+      # path-traversal question G304 gestures at is real but belongs to the
+      # untrusted surface, and that surface does not rely on gosec to catch it —
+      # both file-serving handlers go through `filepath.IsLocal` plus
+      # `os.OpenInRoot`, which confines the read by construction and defeats
+      # symlinks besides.
+      #
+      # Re-litigated on measured evidence (docs/lint-triage.md): the non-test
+      # count is 47 and has not moved since the verdict was first taken; all
+      # growth is in `_test.go` files. What would overturn it: a non-test count
+      # that grows without the API's containment growing with it, or a path that
+      # opens a caller-named file on behalf of a *remote* caller rather than a
+      # local operator. Re-measure before overturning it.
+      - linters: [gosec]
+        text: "G304"
 
 formatters:
   enable:

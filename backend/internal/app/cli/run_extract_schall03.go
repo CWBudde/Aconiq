@@ -9,7 +9,7 @@ import (
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
-//nolint:gocognit,gocyclo,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
+//nolint:gocognit,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
 func extractSchall03Sources(model modelgeojson.Model, options schall03RunOptions, supportedSourceTypes []string) ([]schall03.RailSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {

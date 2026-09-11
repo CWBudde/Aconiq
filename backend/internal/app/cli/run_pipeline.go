@@ -61,7 +61,7 @@ func requireExperimentalOptIn(resolved framework.ResolvedProfile, experimental b
 	), nil)
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // This preserves the existing per-standard run orchestration while keeping newRunCommand thin.
+//nolint:gocognit,cyclop,dupl,funlen,maintidx // This preserves the existing per-standard run orchestration while keeping newRunCommand thin.
 func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {

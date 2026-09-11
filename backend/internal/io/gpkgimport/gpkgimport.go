@@ -116,7 +116,7 @@ func ListLayers(path string) ([]LayerInfo, error) {
 		return nil, err
 	}
 
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -125,7 +125,7 @@ func ListLayers(path string) ([]LayerInfo, error) {
 		return nil, fmt.Errorf("gpkg: query gpkg_contents: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var layers []LayerInfo
 
@@ -181,7 +181,7 @@ func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
 		return ReadResult{}, err
 	}
 
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -251,7 +251,7 @@ func queryColumnNames(ctx context.Context, db *sql.DB, tableName, quotedTable st
 		return nil, fmt.Errorf("gpkg: get column names for %q: %w", tableName, err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	names, err := rows.Columns()
 	if err != nil {
@@ -274,7 +274,7 @@ func queryFeatures(ctx context.Context, db *sql.DB, tableName, quotedTable strin
 		return nil, fmt.Errorf("gpkg: query layer %q: %w", tableName, err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var features []modelgeojson.GeoJSONFeature
 

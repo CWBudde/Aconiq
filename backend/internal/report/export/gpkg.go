@@ -18,8 +18,8 @@ import (
 
 // ExportReceiverGeoPackage writes a receiver table as an OGC GeoPackage
 // with attributed point features.
-func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) error {
-	err := table.Validate()
+func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) (err error) {
+	err = table.Validate()
 	if err != nil {
 		return fmt.Errorf("validate receiver table: %w", err)
 	}
@@ -36,7 +36,12 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 	if err != nil {
 		return fmt.Errorf("open gpkg database: %w", err)
 	}
-	defer db.Close()
+
+	defer func() {
+		if cerr := db.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close gpkg database: %w", cerr)
+		}
+	}()
 
 	err = initGeoPackage(db, crs, srsID)
 	if err != nil {
@@ -57,8 +62,8 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 }
 
 // ExportContourGeoPackage writes contour lines as an OGC GeoPackage.
-func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o750)
+func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) (err error) {
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
@@ -69,7 +74,12 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 	if err != nil {
 		return fmt.Errorf("open gpkg database: %w", err)
 	}
-	defer db.Close()
+
+	defer func() {
+		if cerr := db.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close gpkg database: %w", cerr)
+		}
+	}()
 
 	err = initGeoPackage(db, crs, srsID)
 	if err != nil {
@@ -282,7 +292,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 	if err != nil {
 		return fmt.Errorf("prepare insert statement for table receivers: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, record := range table.Records {
 		geomBlob := encodeGPKGPoint(record.X, record.Y, record.HeightM, 0)
@@ -362,7 +372,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 	if err != nil {
 		return fmt.Errorf("prepare insert statement for table contours: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, c := range contours {
 		if len(c.Points) < 2 {
@@ -493,8 +503,8 @@ type ModelFeature struct {
 
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
 // as an OGC GeoPackage with mixed geometry types.
-func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o750)
+func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) (err error) {
+	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
 	}
@@ -505,7 +515,12 @@ func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs str
 	if err != nil {
 		return fmt.Errorf("open gpkg database: %w", err)
 	}
-	defer db.Close()
+
+	defer func() {
+		if cerr := db.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close gpkg database: %w", cerr)
+		}
+	}()
 
 	err = initGeoPackage(db, crs, srsID)
 	if err != nil {
@@ -585,7 +600,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 	if err != nil {
 		return fmt.Errorf("prepare insert statement for table model_features: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, f := range features {
 		geomBlob, err := parseModelGeometry(f.GeometryType, f.Coordinates, srsID)

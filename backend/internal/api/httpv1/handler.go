@@ -968,7 +968,7 @@ func (h Handler) handleImportTerrain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".tif" && ext != ".tiff" {

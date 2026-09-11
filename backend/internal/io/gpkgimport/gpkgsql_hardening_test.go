@@ -79,7 +79,7 @@ func TestOpenReadOnly_RefusesWrites(t *testing.T) {
 		t.Fatalf("openReadOnly: %v", err)
 	}
 
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err = db.ExecContext(context.Background(), `CREATE TABLE injected (x INTEGER)`)
 	if err == nil {
@@ -109,7 +109,7 @@ func TestOpenReadOnly_DoesNotCreateMissingFiles(t *testing.T) {
 		t.Fatalf("openReadOnly: %v", err)
 	}
 
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	err = db.PingContext(context.Background())
 	if err == nil {

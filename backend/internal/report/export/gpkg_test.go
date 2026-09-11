@@ -40,7 +40,7 @@ func TestExportReceiverGeoPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify application_id.
 	var appID int
@@ -148,7 +148,7 @@ func TestExportContourGeoPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var count int
 
@@ -188,7 +188,7 @@ func TestExportContourGeoPackageEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var count int
 
@@ -228,7 +228,7 @@ func TestExportModelFeaturesGeoPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify application_id.
 	var appID int
@@ -326,7 +326,7 @@ func TestExportModelFeaturesGeoPackageEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var count int
 

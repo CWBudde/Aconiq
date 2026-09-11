@@ -439,7 +439,7 @@ func hashFile(path string) (string, error) {
 		return "", err //nolint:wrapcheck // caller classifies and wraps
 	}
 
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 
