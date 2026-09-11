@@ -88,6 +88,51 @@ func overrideFloatFound(target *float64, found *bool, keys ...string) propertyOv
 	}
 }
 
+// overrideFloats fills every target from one key. RLS-19's road_speed_kph sets
+// all four vehicle-class speeds at once, which the per-class keys then refine,
+// so it has to sit in the table rather than beside it.
+func overrideFloats(targets []*float64, keys ...string) propertyOverride {
+	return func(properties map[string]any) error {
+		value, ok, err := propertyFloat(properties, keys...)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			for _, target := range targets {
+				*target = value
+			}
+		}
+
+		return nil
+	}
+}
+
+// overrideParsed fills target from the first key that carries a string, run
+// through parse. The parse happens inside the table so a value the parser
+// rejects is reported in decode order rather than after every later key.
+func overrideParsed[T any](target *T, parse func(string) (T, error), keys ...string) propertyOverride {
+	return func(properties map[string]any) error {
+		value, ok, err := propertyString(properties, keys...)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			return nil
+		}
+
+		parsed, parseErr := parse(value)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		*target = parsed
+
+		return nil
+	}
+}
+
 // applyPropertyOverrides applies overrides in order against an arbitrary
 // property map, which is what RLS-19 needs: it decodes against a feature's
 // properties merged with one directional source's overrides.
