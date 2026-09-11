@@ -54,8 +54,8 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 }
 
 // SaveReceiverTableCSV writes receiver table as CSV.
-func SaveReceiverTableCSV(path string, table ReceiverTable) error {
-	err := table.Validate()
+func SaveReceiverTableCSV(path string, table ReceiverTable) (err error) {
+	err = table.Validate()
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,12 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) error {
 	if err != nil {
 		return fmt.Errorf("create receiver table csv %s: %w", path, err)
 	}
-	defer file.Close()
+
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close receiver table csv %s: %w", path, cerr)
+		}
+	}()
 
 	writer := csv.NewWriter(file)
 	header := make([]string, 0, len(table.IndicatorOrder)+4)

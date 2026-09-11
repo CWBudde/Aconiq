@@ -667,7 +667,7 @@ func TestEventsEndpointStreamsProjectStatusAndHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request events: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -717,7 +717,7 @@ func TestEventsEndpointReportsMissingProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request events: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	eventData, err := waitForSSEEventData(resp.Body, 1500*time.Millisecond, func(seen map[string]string) bool {
 		return seen["project_status"] != ""

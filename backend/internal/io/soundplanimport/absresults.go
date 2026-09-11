@@ -123,7 +123,7 @@ func ParseReceiverResults(path string) ([]ReceiverResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("soundplan: open RREC: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader, err := db.OpenTable()
 	if err != nil {
@@ -189,7 +189,7 @@ func ParseGroupResults(path string) ([]GroupResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("soundplan: open RGRP: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader, err := db.OpenTable()
 	if err != nil {
@@ -226,7 +226,7 @@ func ParsePartialResults(path string) ([]PartialResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("soundplan: open RMPA: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader, err := db.OpenTable()
 	if err != nil {
@@ -279,7 +279,7 @@ func ParseTrainTypes(path string) ([]TrainType, error) {
 	if err != nil {
 		return nil, fmt.Errorf("soundplan: open TS03: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader, err := db.OpenTable()
 	if err != nil {
@@ -368,7 +368,7 @@ func readAbsTable[T any](path, label string, mapRow func(absdb.Record, map[strin
 	if err != nil {
 		return nil, fmt.Errorf("soundplan: open %s: %w", label, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader, err := db.OpenTable()
 	if err != nil {

@@ -102,7 +102,7 @@ func validateRLS19DirectionalSurfaceTypes(feature modelgeojson.Feature, directio
 // is the count of source features that had at least one per-source acoustic
 // override (any key listed in rls19AcousticOverrideKeys).
 //
-//nolint:gocognit,gocyclo,cyclop,funlen,maintidx // The override-merging rules are intentionally explicit and were preserved during extraction.
+//nolint:gocognit,cyclop,funlen,maintidx // The override-merging rules are intentionally explicit and were preserved during extraction.
 func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptions, supportedSourceTypes []string) ([]rls19road.RoadSource, int, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {

@@ -11,7 +11,7 @@ import (
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 )
 
-//nolint:gocognit,gocyclo,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
+//nolint:gocognit,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
 func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, supportedSourceTypes []string) ([]bubroad.RoadSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -308,7 +308,7 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 	return sources, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
+//nolint:gocognit,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
 func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunOptions, supportedSourceTypes []string) ([]bufaircraft.AircraftSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {

@@ -32,7 +32,7 @@ func writeTypst(path string, ctx reportContext) error {
 	return nil
 }
 
-func writePDF(path string, ctx reportContext, generatedAt time.Time, opts BuildOptions) error {
+func writePDF(path string, ctx reportContext, generatedAt time.Time, opts BuildOptions) (err error) {
 	source, err := renderTypstSource(ctx)
 	if err != nil {
 		return err
@@ -42,7 +42,12 @@ func writePDF(path string, ctx reportContext, generatedAt time.Time, opts BuildO
 	if err != nil {
 		return fmt.Errorf("create report pdf %s: %w", path, err)
 	}
-	defer out.Close()
+
+	defer func() {
+		if cerr := out.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close report pdf %s: %w", path, cerr)
+		}
+	}()
 
 	compiler := opts.PDFCompiler
 	if compiler == nil {

@@ -757,7 +757,7 @@ func readCSVRecords(absPath string) ([]csvimport.Record, error) {
 		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.import", "open traffic CSV: "+absPath, err)
 	}
 
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	records, err := csvimport.ReadTable(f)
 	if err != nil {

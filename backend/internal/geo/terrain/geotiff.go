@@ -146,7 +146,7 @@ func readGeoTIFF(path string) (*gridModel, error) {
 		return nil, fmt.Errorf("open geotiff %s: %w", path, err)
 	}
 
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
@@ -588,7 +588,7 @@ func decompressChunk(chunk []byte, compression, limitBytes int) ([]byte, error) 
 			return nil, fmt.Errorf("deflate init: %w", err)
 		}
 
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		// Read one byte past the limit so an oversized stream is detectable.
 		out, err := io.ReadAll(io.LimitReader(r, int64(limitBytes)+1))

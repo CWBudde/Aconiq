@@ -12,7 +12,7 @@ import (
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 )
 
-//nolint:gocognit,gocyclo,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
+//nolint:gocognit,cyclop,funlen,maintidx // Extracted from the former monolithic run command without changing per-feature override behavior.
 func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunOptions, supportedSourceTypes []string) ([]cnossosroad.RoadSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -279,7 +279,7 @@ func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunO
 	return sources, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,funlen // Extracted from the former monolithic run command without changing per-feature override behavior.
+//nolint:gocognit,cyclop,funlen // Extracted from the former monolithic run command without changing per-feature override behavior.
 func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunOptions, supportedSourceTypes []string) ([]cnossosrail.RailSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -460,7 +460,7 @@ func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunO
 	return sources, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
+//nolint:gocognit,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
 func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAircraftRunOptions, supportedSourceTypes []string) ([]cnossosaircraft.AircraftSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -700,7 +700,7 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 	return sources, nil
 }
 
-//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx // Industry source extraction mirrors the previous explicit geometry/source-type branching.
+//nolint:gocognit,cyclop,dupl,funlen,maintidx // Industry source extraction mirrors the previous explicit geometry/source-type branching.
 func extractCnossosIndustrySources(model modelgeojson.Model, options cnossosIndustryRunOptions, supportedSourceTypes []string) ([]cnossosindustry.IndustrySource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {

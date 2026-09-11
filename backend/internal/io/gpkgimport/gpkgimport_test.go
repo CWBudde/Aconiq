@@ -171,7 +171,7 @@ func createTestGPKG(t *testing.T) string {
 		t.Fatalf("create test gpkg: %v", err)
 	}
 
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err = db.Exec(`CREATE TABLE gpkg_contents (
 		table_name TEXT NOT NULL,

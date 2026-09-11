@@ -1,6 +1,6 @@
 # Lint Triage
 
-Status: 2026-08-28 · `golangci-lint` 2.12.2 · config `/.golangci.yml` · entry point `just lint`
+Status: 2026-09-11 · `golangci-lint` 2.12.2 · config `/.golangci.yml` · entry point `just lint`
 
 ## Why this document exists
 
@@ -15,25 +15,34 @@ in the follow-up lists below.
 
 ## Headline numbers
 
-|                                             | Issues     |
-| ------------------------------------------- | ---------- |
-| Before triage (2026-08-27)                  | **542**    |
-| After config changes                        | **112**    |
-| After the resolution pass                   | **54**     |
-| After the complexity pass                   | **0**      |
-| Removed by disabling linters                | 430 (79 %) |
-| Removed by fixing code                      | 112        |
-| **Debt pass (2026-08-28) — newly enforced** |            |
-| `wrapcheck` findings fixed in code          | **190**    |
-| gosec G301 sites fixed in code              | **54**     |
-| `goconst` findings fixed in code            | **49**     |
-| `goconst` findings named-excluded           | **167**    |
-| Still hidden after the debt pass            | **557**    |
+|                                                   | Issues     |
+| ------------------------------------------------- | ---------- |
+| Before triage (2026-08-27)                        | **542**    |
+| After config changes                              | **112**    |
+| After the resolution pass                         | **54**     |
+| After the complexity pass                         | **0**      |
+| Removed by disabling linters                      | 430 (79 %) |
+| Removed by fixing code                            | 112        |
+| **Debt pass (2026-08-28) — newly enforced**       |            |
+| `wrapcheck` findings fixed in code                | **190**    |
+| gosec G301 sites fixed in code                    | **54**     |
+| `goconst` findings fixed in code                  | **49**     |
+| `goconst` findings named-excluded                 | **167**    |
+| Still hidden after the debt pass                  | **557**    |
+| **Audit pass (2026-09-11) — re-measured**         |            |
+| `errcheck` findings the presets hid               | **41**     |
+| `errcheck` findings fixed in code                 | **41**     |
+| `wsl_v5` findings that turned out not to exist    | **196**    |
+| `//nolint` directives, counted for the first time | **63**     |
+| Still hidden after the audit pass                 | **381**    |
 
 The 542 → 112 step was configuration only. The 112 → 54 and 54 → 0 steps are the resolution pass
 and the complexity pass recorded at the end of this document, and both were code. The 2026-08-28
 debt pass is recorded in [Debt pass — 2026-08-28](#debt-pass--2026-08-28); it converted 293
-config-hidden findings into fixed code and left 557 hidden.
+config-hidden findings into fixed code and left 557 hidden. The 2026-08-28 numbers were then
+audited — see [Audit pass — 2026-09-11](#audit-pass--2026-09-11) — which fixed a further 41
+findings, found that 196 of the 557 had never existed, and counted the 63 in-source `//nolint`
+directives no table here had included.
 
 **Be clear about what happened at the original triage: the reduction was entirely configuration.**
 No Go source was touched. Three linters (`goconst`, `wsl_v5`, `noinlineerr`) accounted for 427 of
@@ -45,6 +54,11 @@ addressed.
 green is still partly bought: 196 `wsl_v5`, 167 `goconst`, 97 gosec G304 and 94 `noinlineerr`
 findings are excluded rather than absent. Each has a reason recorded below, and every one of those
 reasons is a judgement that a future reader is entitled to overturn.
+
+> **Two corrections, 2026-09-11.** The `wsl_v5` row above is wrong: `wsl_v5` is not disabled and
+> hides nothing — see [Audit pass — 2026-09-11](#audit-pass--2026-09-11). And the list is short by
+> one: the exclusion presets were hiding 41 `errcheck` findings that no table here ever named.
+> They are fixed in code and `errcheck` is now enforced with nothing hidden.
 
 ## Baseline distribution (before)
 
@@ -70,13 +84,13 @@ backend — which PLAN.md Priority 7 already identifies as the root architectura
 > the document reasons from them. Re-measured uncapped against the 2026-08-28 tree
 > (`max-issues-per-linter: 0`, `max-same-issues: 0`, `uniq-by-line: false`):
 >
-> | Linter        | 2026-08-27 | 2026-08-28 | Note                                                       |
-> | ------------- | ---------: | ---------: | ---------------------------------------------------------- |
-> | `goconst`     |        266 |    **509** | 216 of them non-test; the codebase grew                    |
-> | `wsl_v5`      |        120 |    **196** | still disabled                                             |
-> | `noinlineerr` |         41 |     **94** | still disabled; it _grew_ during the debt pass — why below |
-> | `gocyclo`     |          3 |          3 | unchanged; still disabled as redundant with `cyclop`       |
-> | `wrapcheck`   |        190 |        190 | the 2026-08-27 estimate was exact; all 190 now fixed       |
+> | Linter        | 2026-08-27 | 2026-08-28 | Note                                                            |
+> | ------------- | ---------: | ---------: | --------------------------------------------------------------- |
+> | `goconst`     |        266 |    **509** | 216 of them non-test; the codebase grew                         |
+> | `wsl_v5`      |        120 |    **196** | **Wrong — see the 2026-09-11 audit pass. It is enabled, at 0.** |
+> | `noinlineerr` |         41 |     **94** | still disabled; it _grew_ during the debt pass — why below      |
+> | `gocyclo`     |          3 |          3 | unchanged; still disabled as redundant with `cyclop`            |
+> | `wrapcheck`   |        190 |        190 | the 2026-08-27 estimate was exact; all 190 now fixed            |
 >
 > The `noinlineerr` growth from 41 → 94 is not codebase drift alone. Converting a bare
 > `return f()` into the wrapped two-step form `if err := f(); err != nil { return fmt.Errorf(…) }`
@@ -91,13 +105,13 @@ backend — which PLAN.md Priority 7 already identifies as the root architectura
 Counts are as of 2026-08-28, re-measured uncapped. The 2026-08-27 figure is shown after the arrow
 where it changed, because the reasoning below was written against it.
 
-| Linter        |     Count | Decision    | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------- | --------: | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `goconst`     | 266 → 509 | ~~Disable~~ | **Superseded:** re-enabled with tuning on 2026-08-28 — see below. 49 fixed in code, 167 named-excluded, the rest removed by `ignore-tests`.                                                                                                                                                                                                                                                                                                                       |
-| `wsl_v5`      | 120 → 196 | **Disable** | Pure whitespace and statement-cuddling style. It cannot detect a defect by construction: every finding is "add or remove a blank line". At 196 findings it would dominate every review diff while catching nothing. `wsl` (v1) was already disabled in favour of `wsl_v5`; both are now off, and the now-dead `wsl_v5` settings block was removed. **Reason stands.**                                                                                             |
-| `noinlineerr` |   41 → 94 | **Disable** | Forbids `if err := f(); err != nil { … }`. That form is idiomatic Go, is used throughout the standard library, and is _better_ than the alternative because it scopes `err` to the branch that handles it. Adopting the linter would mean 94 mechanical rewrites that each widen a variable's scope. This is a minority style opinion, not a correctness rule. **Reason stands** — but note the count more than doubled, and the `wrapcheck` work is part of why. |
-| `gocyclo`     |         3 | **Disable** | Redundant. `cyclop` computes the same cyclomatic metric and is already enabled with an explicit `max-complexity: 15`. Keeping both means the same function is reported twice under two different thresholds. `cyclop` is the single cyclomatic gate. **Reason stands.**                                                                                                                                                                                           |
-| `gomodguard`  |         0 | **Disable** | Deprecated since golangci-lint v2.12.0; see the migration note below.                                                                                                                                                                                                                                                                                                                                                                                             |
+| Linter        |             Count | Decision    | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------- | ----------------: | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `goconst`     |         266 → 509 | ~~Disable~~ | **Superseded:** re-enabled with tuning on 2026-08-28 — see below. 49 fixed in code, 167 named-excluded, the rest removed by `ignore-tests`.                                                                                                                                                                                                                                                                                                                                                                |
+| `wsl_v5`      | 120 → 196 → **0** | ~~Disable~~ | Pure whitespace and statement-cuddling style. It cannot detect a defect by construction: every finding is "add or remove a blank line". At 196 findings it would dominate every review diff while catching nothing. `wsl` (v1) was already disabled in favour of `wsl_v5`. **Superseded 2026-09-11:** `4b0566c` removed `wsl_v5` from `linters.disable` along with its settings block, so it has been _enforced_ ever since, and it reports 0. The reasoning below was never acted on; see the audit pass. |
+| `noinlineerr` |           41 → 94 | **Disable** | Forbids `if err := f(); err != nil { … }`. That form is idiomatic Go, is used throughout the standard library, and is _better_ than the alternative because it scopes `err` to the branch that handles it. Adopting the linter would mean 94 mechanical rewrites that each widen a variable's scope. This is a minority style opinion, not a correctness rule. **Reason stands** — but note the count more than doubled, and the `wrapcheck` work is part of why.                                          |
+| `gocyclo`     |                 3 | **Disable** | Redundant. `cyclop` computes the same cyclomatic metric and is already enabled with an explicit `max-complexity: 15`. Keeping both means the same function is reported twice under two different thresholds. `cyclop` is the single cyclomatic gate. **Reason stands.**                                                                                                                                                                                                                                    |
+| `gomodguard`  |                 0 | **Disable** | Deprecated since golangci-lint v2.12.0; see the migration note below.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 #### `goconst` in detail
 
@@ -585,14 +599,14 @@ The 2026-08-27 passes ended green, and the closing section below admitted the gr
 bought: `wrapcheck` off for the whole backend, 430 findings removed by switching linters off, gosec
 G301 suppressed by a preset. This pass paid down three of those and left the rest, honestly named.
 
-| Item                     | Was                                    | Now                                                     |
-| ------------------------ | -------------------------------------- | ------------------------------------------------------- |
-| `wrapcheck`              | excluded for `internal/` — 190 hidden  | **enforced**; all 190 fixed in code, 0 suppressions     |
-| gosec G301               | hidden inside the `legacy` preset — 54 | **enforced**; all 54 sites changed to `0o750`           |
-| `goconst`                | disabled — 509 hidden                  | **enabled, tuned**; 49 fixed, 167 named-excluded        |
-| `wsl_v5` / `noinlineerr` | disabled — 120 / 41 hidden             | still disabled — 196 / 94 hidden. Reasons unchanged     |
-| `gocyclo`                | disabled — 3 hidden                    | still disabled, redundant with `cyclop`                 |
-| gosec G304               | hidden by the presets — 47             | still hidden — **97**. Reason unchanged, number doubled |
+| Item                     | Was                                    | Now                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wrapcheck`              | excluded for `internal/` — 190 hidden  | **enforced**; all 190 fixed in code, 0 suppressions                                                                                                                                      |
+| gosec G301               | hidden inside the `legacy` preset — 54 | **enforced**; all 54 sites changed to `0o750`                                                                                                                                            |
+| `goconst`                | disabled — 509 hidden                  | **enabled, tuned**; 49 fixed, 167 named-excluded                                                                                                                                         |
+| `wsl_v5` / `noinlineerr` | disabled — 120 / 41 hidden             | `noinlineerr` still disabled — 94 hidden. `wsl_v5` was **enabled** by this commit and reports 0; the "196 hidden" claim in this table was wrong from the day it was written (2026-09-11) |
+| `gocyclo`                | disabled — 3 hidden                    | still disabled, redundant with `cyclop`                                                                                                                                                  |
+| gosec G304               | hidden by the presets — 47             | still hidden — **97**. Reason unchanged, number doubled                                                                                                                                  |
 
 ### `wrapcheck` — resolved
 
@@ -679,8 +693,11 @@ keyword set) is the one exclusion here that is genuinely permanent.
 
 ### What this pass did not touch
 
-- **`wsl_v5`, 196 findings, still disabled.** Pure whitespace and cuddling style; it cannot detect
-  a defect by construction. The reason stands at 196 exactly as it stood at 120.
+- ~~**`wsl_v5`, 196 findings, still disabled.**~~ **Corrected 2026-09-11 — this was never true.**
+  This commit's own diff removed `wsl_v5` from `linters.disable` and deleted its settings block, so
+  the pass did touch it: it enabled it. Measured standalone on 2026-09-11 it reports **0**. The 196
+  was measured against the old settings block, which is why the number vanished rather than being
+  paid down. 196 of the 557 below never existed.
 - **`noinlineerr`, 94 findings, still disabled.** It forbids the idiomatic
   `if err := f(); err != nil`. The reason stands. The count grew from 41, and part of that growth
   is this pass's own doing — see the note under the baseline distribution.
@@ -691,6 +708,11 @@ keyword set) is the one exclusion here that is genuinely permanent.
   47 of the 97 are in non-test code.
 
 ## Where this leaves `just lint`
+
+> **Superseded 2026-09-11.** The table below was wrong in both directions: it counted 196 `wsl_v5`
+> findings that do not exist, and it omitted 41 `errcheck` findings that did. The current statement
+> is in [Audit pass — 2026-09-11](#audit-pass--2026-09-11). The prose is kept because the
+> reasoning above is built on it.
 
 **Green, and the green means more than it did yesterday.** `golangci-lint` reports 0 issues across
 `backend/...` with `wrapcheck` enforced, `goconst` enabled and gosec G301 enforced. `just lint` is a
@@ -717,6 +739,141 @@ The one thing that is no longer true of this config: **no linter is switched off
 backend any more.** Every remaining exclusion names either a rule the project has argued about in
 writing, or a path and a string value. That was the specific failure mode the `wrapcheck` exclusion
 represented, and it is gone.
+
+## Audit pass — 2026-09-11
+
+`golangci-lint` 2.12.2. Every row of the hidden-debt table above was re-measured from `backend/`
+with the standalone recipe at the end of this document — `linters.default: none`, one `enable:`
+entry, no `exclusions`, and all three of `max-issues-per-linter: 0`, `max-same-issues: 0`,
+`uniq-by-line: false`. Two of the five rows did not survive contact with a measurement.
+
+### `wsl_v5` was never disabled
+
+`4b0566c` — the debt pass — removed `- wsl_v5` from `linters.disable` and deleted its settings
+block, while its commit message, its summary table and this document all continued to say "still
+disabled — 196 hidden". `golangci-lint linters` puts it under **Enabled**, and a standalone run
+reports **0 issues**. It has been enforced since 2026-08-28.
+
+The 196 was measured before the settings block was removed, so the number did not get paid down —
+it evaporated when `wsl_v5`'s default check set replaced the configured one. Nothing was fixed and
+nothing is hidden; the debt was simply never what the table said it was. **196 of the advertised 557
+did not exist.** The only line in the repo that was telling the truth is the `wsl` comment in
+`.golangci.yml`: "superseded by `wsl_v5`, which is enabled."
+
+The lesson is narrower than "re-measure": a linter's row here has to be measured after a config
+change lands, not before it, because a settings block is part of what the number measures.
+
+### `errcheck` — 41 findings the presets hid, now fixed and enforced
+
+The debt pass closed with the claim that **"no linter is switched off across the entire backend any
+more. Every remaining exclusion names either a rule the project has argued about in writing, or a
+path and a string value."** That claim did not hold, because `exclusions.presets` was still in the
+config and nobody had enumerated what the three presets it named actually cover.
+
+Measured by running the full config with `presets: []` and nothing replayed, the three presets
+(`comments`, `common-false-positives`, `std-error-handling`) hid exactly **88 findings**:
+
+| Linter   | Count | Detail                                                              |
+| -------- | ----: | ------------------------------------------------------------------- |
+| gosec    |    47 | all G304, all non-test — the row this document already argued about |
+| errcheck |    41 | all unchecked `Close`, in no table and with no verdict              |
+
+`comments` and the non-G304 half of `common-false-positives` hide nothing at all today.
+
+The 41 are not a style opinion. Of them, **11 are on write paths**, where `Close` is the last
+chance to observe a flush failure and swallowing it means a truncated or unflushed output file
+reported to the user as a successful export — in a tool whose entire product is auditable output
+files:
+
+| Site                                     | What it writes                                 |
+| ---------------------------------------- | ---------------------------------------------- |
+| `report/export/gpkg.go:39,72,508`        | the three GeoPackage export databases          |
+| `report/reporting/report_typst.go:45`    | the PDF the Typst compiler writes into         |
+| `report/results/receiver_table_io.go:72` | the receiver-table CSV                         |
+| `app/cli/export.go:582`                  | the destination of the export-bundle file copy |
+
+Those now use a named error return and a deferred close that reports the close error when no
+earlier error has won:
+
+```go
+defer func() {
+    if cerr := out.Close(); cerr != nil && err == nil {
+        err = fmt.Errorf("close report pdf %s: %w", path, cerr)
+    }
+}()
+```
+
+The wording matches the `wrapcheck` pass's `fmt.Errorf("<operation>: %w", err)` convention, so
+`errors.As(&AppError)` still sees through to the classification the CLI exit codes rely on.
+
+The remaining 30 — read-only `os.Open`/`os.OpenInRoot` handles, `sql.Rows`, `sql.Stmt`, read-only
+SQLite handles in the importers, HTTP response bodies, and 11 sites in `_test.go` files — became
+`defer func() { _ = f.Close() }()`. A discarded close on a read handle is a deliberate choice and is
+now written down as one. **Zero `//nolint:errcheck` escapes were needed**, and no errcheck exclusion
+replaced the preset: measured standalone across `./...`, including test files, errcheck reports 0.
+
+Note what was _not_ done: the `_test\.go` exclusion rule does not list `errcheck`, and adding it
+would have closed 11 of the 41 by recreating exactly the blanket suppression this pass exists to
+remove.
+
+Enforcement was proven, not assumed. A throwaway `os.Create` + `defer f.Close()` probe was planted
+in `internal/report/export`, produced the expected errcheck finding, and was removed.
+
+### `exclusions.presets` is gone
+
+With errcheck at 0, the only thing the presets still hid was gosec G304. The presets are replaced by
+a single explicit rule carrying the re-litigated verdict and its named overturn conditions, the same
+treatment `legacy` got on 2026-08-28. The claim the debt pass made is now true of the config as
+written: nothing is suppressed by a set nobody in this repo has enumerated.
+
+The four `legacy` replay rules were re-measured and still fire nowhere. They stay as insurance.
+
+### `//nolint` — the debt no table here has ever counted
+
+Every hidden-debt table in this document counts config-level suppression only. There are also **63
+`//nolint` directives** in `backend/internal` and `backend/cmd`, each of which hides at least one
+finding from a linter that is otherwise enforced:
+
+| Directive                                  | Count | Where, and who owns it                                                                           |
+| ------------------------------------------ | ----: | ------------------------------------------------------------------------------------------------ |
+| `gocognit,cyclop[,dupl],funlen[,maintidx]` |    12 | `app/cli/run_extract_*.go`, `run_pipeline.go:64` — PLAN.md Priority 7                            |
+| `gosec` (incl. two `gosec,unqueryvet`)     |    18 | 13 in `geo/terrain/geotiff.go`, individually justified; `nolintlint` checks them                 |
+| `dupl`                                     |    13 | 8 in `schall03/beiblatt1.go` are legitimate (coefficient tables); P7 calls the rest illegitimate |
+| `nilnil`                                   |     7 |                                                                                                  |
+| remainder                                  |    13 | `wrapcheck` 2, `nilerr` 2, `dogsled` 2, and 7 singletons                                         |
+
+The first row is the one worth knowing about: it is why the complexity hotspot list above does not
+contain the worst functions in the codebase. `run_pipeline.go`'s dispatch switch is suppressed
+wholesale, so it never appears in a count, and the same is true of eleven extraction functions in
+`app/cli`. The list is not a census of the complexity in this repo; it is a census of the complexity
+that is not already exempted.
+
+This pass counts them and leaves them. Unpicking them is the Priority 7 refactor, and verifying the
+`//nolint:dupl` claims is a Priority 7 item in its own right.
+
+One mechanical cleanup was taken: nine of those directive lists named `gocyclo`, which is disabled,
+so the entry silenced nothing and `nolintlint` cannot flag it as unused. `gocyclo` was stripped from
+all nine. `just lint` is unchanged at 0.
+
+### Where this leaves `just lint`, measured 2026-09-11
+
+| Still hidden  | Findings | Mechanism                            | Owner                                                                |
+| ------------- | -------: | ------------------------------------ | -------------------------------------------------------------------- |
+| `goconst`     |  **164** | three named, path+value-scoped rules | 39 permanent (OpenAPI); the rest PLAN.md Priority 7                  |
+| `noinlineerr` |  **103** | `linters.disable`                    | Declined in writing; reason stands                                   |
+| `//nolint`    |   **63** | in-source directives                 | Mostly Priority 7; 18 individually justified                         |
+| gosec G304    |   **47** | one explicit named rule              | Verdict re-litigated 2026-08-28 and stands; non-test count unchanged |
+| `gocyclo`     |    **4** | `linters.disable`                    | Redundant with `cyclop`; reason stands                               |
+| `errcheck`    |    **0** | —                                    | Fixed in this pass                                                   |
+
+**381, not 557.** The drop is not a pass of work: 196 of it is a number that was never real, 41 of
+it is the one category this pass actually fixed, and 63 of it is a category that was always there
+and was never counted. `goconst` 167 → 164, `noinlineerr` 94 → 103 and `gocyclo` 3 → 4 are codebase
+drift, and the G304 non-test count is still 47, exactly where it was when the verdict was taken.
+
+Two of the six rows are style opinions this project has declined in writing and are stable.
+`goconst` and the complexity `//nolint`s are both waiting on Priority 7. G304 has a written
+overturn condition and is re-measured, not re-argued, each time someone asks.
 
 ## Reproducing these numbers
 

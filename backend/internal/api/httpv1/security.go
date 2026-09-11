@@ -372,7 +372,7 @@ func readProjectFile(root, relPath string) ([]byte, error) {
 		return nil, fmt.Errorf("open %s inside project root: %w", rel, err)
 	}
 
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(file)
 	if err != nil {

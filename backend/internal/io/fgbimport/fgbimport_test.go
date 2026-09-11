@@ -164,7 +164,7 @@ func createTestFGB(t *testing.T, geomType flat.GeometryType, columns []testColum
 		t.Fatalf("create test fgb: %v", err)
 	}
 
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	hdr := buildHeader(geomType, columns, len(features))
 	w := flatgeobuf.NewFileWriter(f)

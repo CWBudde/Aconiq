@@ -142,6 +142,13 @@ commit messages; the consequences each one exposed are open items below.
       snapshots byte-identical, the 843-test inventory unchanged, and the two normative lookup
       tables re-checked value by value. This also lands P7's "split the god files" for
       `run_extract.go` (3 087 → 89 lines) and `run_options.go`.
+- [x] **Lint audit pass.** `exclusions.presets` is gone: the three presets were hiding 41
+      `errcheck` findings (all unchecked `Close`, 11 on export write paths) that no audit had ever
+      named. Fixed in code, zero `//nolint` escapes, `errcheck` now enforced at 0 across `./...`
+      including tests. gosec G304 keeps its exclusion as one explicit named rule. The gate's
+      composition is therefore what `docs/lint-triage.md` claims it is — nothing is suppressed by a
+      set nobody enumerated. Also corrected: `wsl_v5` has been enforced since `4b0566c`, not
+      disabled.
 - [x] **Unguarded fixture tests** (`bda9767`). Eight tests in `io/soundplanimport` hard-failed on a
       clean checkout over a gitignored fixture; they now skip with the resolved path and reason.
 - [x] **CI tool versions pinned** (`e183c68`), matched to the local toolbox so `just go-ci` and CI
@@ -241,25 +248,26 @@ commit messages; the consequences each one exposed are open items below.
 
 ### Open
 
-- [ ] **The debts a green `just lint` still hides.** 293 findings were converted from
-      config-hidden to fixed code in `4b0566c`; 557 remain hidden. Audit in `docs/lint-triage.md`.
-      Today's uncapped counts:
-
-      - `goconst` **167** excluded. 39 are the OpenAPI keyword set and are permanent; the other
-        128 are owned by the Priority 7 parameter-descriptor refactor (99) and typed response
-        payloads (29). Named and bounded, but not fixed.
-      - gosec **G304 97** (47 non-test) still hidden by the exclusion presets. See Priority 6 —
-        the verdict was taken at 47 and has not been re-litigated at 97.
-      - `wsl_v5` **196** (was 120) and `noinlineerr` **94** (was 41) still disabled; both are
-        style opinions this project has declined in writing and the reasons still hold.
-        `noinlineerr` grew partly because the `wrapcheck` work introduces exactly the
-        `if err := f(); err != nil` form it objects to.
-      - `gocyclo` **3** still disabled as redundant with `cyclop`.
-
-      Every remaining exclusion names a rule the project argued about in writing, or a path and a
-      string value. `.golangci.yml`'s disable list currently holds **19** linters — PLAN.md said 20
-      and before that 21, which is why neither `AGENTS.md` nor `docs/policies/formatting.md` now
-      quotes a number.
+- [ ] **The debts a green `just lint` still hides.** **381**, re-measured 2026-09-11 and audited in
+      `docs/lint-triage.md`, which carries the per-rule table. The previous figure of 557 was wrong
+      in both directions, and how it was wrong matters more than the delta. `wsl_v5` **196 → 0**:
+      it was never disabled. `4b0566c` removed it from `linters.disable` along with its settings
+      block, so it has been enforced since 2026-08-28 while its own commit message,
+      `docs/lint-triage.md` and this file all went on saying it was off; the 196 was measured
+      against the old settings block and evaporated with it, so nothing was fixed and nothing is
+      hidden. `errcheck` **41 → 0** was the opposite failure: all unchecked `Close`, 11 of them on
+      export write paths where a swallowed close means a truncated file reported as a successful
+      export, hidden inside `exclusions.presets` and named by no table here. They are fixed in
+      code, `exclusions.presets` is gone, and gosec G304 is now the one explicitly named exclusion
+      rather than a side effect of a preset. `//nolint` **63** is the category no audit had counted:
+      12 are wholesale complexity suppressions in `app/cli` — `run_pipeline.go`'s dispatch switch
+      and eleven extraction functions — which is why the worst functions in the codebase appear in
+      no complexity count. What is left is `goconst` **164** (39 permanent, the rest Priority 7),
+      `noinlineerr` **103** and `gocyclo` **4** (both declined in writing), gosec **G304 47**
+      non-test (unmoved since the verdict was taken), and those 63 directives, most of which
+      Priority 7 owns. Every suppression now names a rule, a path or a string value; no preset, and
+      no linter switched off across the backend. `.golangci.yml`'s disable list holds **19**
+      linters, which is why neither `AGENTS.md` nor `docs/policies/formatting.md` quotes a number.
 
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears

@@ -256,7 +256,7 @@ func readTail(path string, lines int) ([]string, error) {
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.readTail", "open run log: "+path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	all := make([]string, 0, lines)
 
