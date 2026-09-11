@@ -257,7 +257,7 @@ func TestDecodeFeature_TurnsLibraryFaultIntoTypedError(t *testing.T) {
 
 	hdr := buildHeader(flat.GeometryTypePoint, nil, 1)
 
-	_, err := decodeFeature(&feat, hdr, flat.GeometryTypePoint, 3)
+	_, _, err := decodeFeature(&feat, hdr, flat.GeometryTypePoint, 3)
 	if err == nil {
 		t.Fatal("expected an error for a feature with a vtable outside the buffer")
 	}

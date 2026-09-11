@@ -85,12 +85,12 @@ func readTable(r io.Reader, lim limits) ([]Record, error) {
 	csvReader := csv.NewReader(r)
 	csvReader.TrimLeadingSpace = true
 
-	hdr, err := readHeader(csvReader, lim)
+	hdr, ok, err := readHeader(csvReader, lim)
 	if err != nil {
 		return nil, err
 	}
 
-	if hdr == nil {
+	if !ok {
 		return nil, nil
 	}
 
@@ -137,23 +137,24 @@ func readTable(r io.Reader, lim limits) ([]Record, error) {
 	return records, nil
 }
 
-// readHeader reads and validates the first row. It returns a nil header for an
-// empty input, which is not an error.
-func readHeader(csvReader *csv.Reader, lim limits) (*header, error) {
+// readHeader reads and validates the first row. The second result reports
+// whether there was a header at all: an empty input is an outcome, not an
+// error, and not an absent value either.
+func readHeader(csvReader *csv.Reader, lim limits) (*header, bool, error) {
 	names, err := csvReader.Read()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, nil //nolint:nilnil // an empty table is not an error
+			return nil, false, nil
 		}
 
-		return nil, fmt.Errorf("read csv header: %w", err)
+		return nil, false, fmt.Errorf("read csv header: %w", err)
 	}
 
 	// The width is bounded before it sizes anything: encoding/csv holds the
 	// whole header row in memory anyway, but every subsequent row allocates a
 	// map from this count.
 	if len(names) > lim.columns {
-		return nil, fmt.Errorf("csv: header declares %d columns, more than the %d supported", len(names), lim.columns)
+		return nil, false, fmt.Errorf("csv: header declares %d columns, more than the %d supported", len(names), lim.columns)
 	}
 
 	hdr := &header{names: make([]string, len(names)), fidIndex: -1}
@@ -170,10 +171,10 @@ func readHeader(csvReader *csv.Reader, lim limits) (*header, error) {
 	}
 
 	if hdr.fidIndex < 0 {
-		return nil, errors.New("csv: no feature_id column found")
+		return nil, false, errors.New("csv: no feature_id column found")
 	}
 
-	return hdr, nil
+	return hdr, true, nil
 }
 
 // properties converts one row into its typed property map. row is guaranteed

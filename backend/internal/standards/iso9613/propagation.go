@@ -33,31 +33,41 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 // Validate checks propagation inputs for sane ranges.
-//
-//nolint:cyclop // Validation functions check each field independently.
 func (cfg PropagationConfig) Validate() error {
-	if math.IsNaN(cfg.GroundFactor) || math.IsInf(cfg.GroundFactor, 0) || cfg.GroundFactor < 0 || cfg.GroundFactor > 1 {
-		return errors.New("ground_factor must be finite and within [0,1]")
+	// Each row carries its own predicate and message: the bounds differ per
+	// field and so does the wording, which is user-visible.
+	for _, check := range []struct {
+		value   float64
+		valid   func(float64) bool
+		message string
+	}{
+		{cfg.GroundFactor, withinInclusive(0, 1), "ground_factor must be finite and within [0,1]"},
+		{cfg.AirTemperatureC, isFinite, "air_temperature_c must be finite"},
+		{cfg.RelativeHumidityPercent, withinInclusive(0, 100), "relative_humidity_percent must be finite and within [0,100]"},
+	} {
+		if !check.valid(check.value) {
+			return errors.New(check.message)
+		}
 	}
 
-	if math.IsNaN(cfg.AirTemperatureC) || math.IsInf(cfg.AirTemperatureC, 0) {
-		return errors.New("air_temperature_c must be finite")
-	}
-
-	if math.IsNaN(cfg.RelativeHumidityPercent) || math.IsInf(cfg.RelativeHumidityPercent, 0) || cfg.RelativeHumidityPercent < 0 || cfg.RelativeHumidityPercent > 100 {
-		return errors.New("relative_humidity_percent must be finite and within [0,100]")
-	}
-
+	// Checked here, not with the rest of the numeric fields: this is where the
+	// original sequence of ifs tested it, and the order decides which error a
+	// config with several invalid fields reports.
 	if cfg.MeteorologyAssumption != MeteorologyDownwind {
 		return fmt.Errorf("meteorology_assumption must be %q", MeteorologyDownwind)
 	}
 
-	if math.IsNaN(cfg.C0) || math.IsInf(cfg.C0, 0) || cfg.C0 < 0 {
-		return errors.New("c0 must be finite and >= 0")
-	}
-
-	if math.IsNaN(cfg.MinDistanceM) || math.IsInf(cfg.MinDistanceM, 0) || cfg.MinDistanceM <= 0 {
-		return errors.New("min_distance_m must be finite and > 0")
+	for _, check := range []struct {
+		value   float64
+		valid   func(float64) bool
+		message string
+	}{
+		{cfg.C0, atLeast(0), "c0 must be finite and >= 0"},
+		{cfg.MinDistanceM, greaterThan(0), "min_distance_m must be finite and > 0"},
+	} {
+		if !check.valid(check.value) {
+			return errors.New(check.message)
+		}
 	}
 
 	if cfg.Barrier != nil {
@@ -68,6 +78,23 @@ func (cfg PropagationConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// isFinite reports whether v is a real number: not NaN and not infinite.
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+func withinInclusive(minimum, maximum float64) func(float64) bool {
+	return func(v float64) bool { return isFinite(v) && v >= minimum && v <= maximum }
+}
+
+func atLeast(minimum float64) func(float64) bool {
+	return func(v float64) bool { return isFinite(v) && v >= minimum }
+}
+
+func greaterThan(minimum float64) func(float64) bool {
+	return func(v float64) bool { return isFinite(v) && v > minimum }
 }
 
 func effectiveDistance(distanceM float64, cfg PropagationConfig) float64 {

@@ -361,51 +361,73 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	return sources, overrideCount, nil
 }
 
-//nolint:nestif // The input decoding keeps the fallback precedence explicit for directional source specs.
+// extractRLS19DirectionalSourceSpecs reads the explicit rls19_directional_sources
+// array when the feature carries one, and otherwise derives one spec per line
+// geometry. The fallback precedence is unchanged; it is now expressed as an
+// early return rather than as nesting.
 func extractRLS19DirectionalSourceSpecs(feature modelgeojson.Feature) ([]rls19DirectionalSourceSpec, error) {
 	rawDirectionalSources, ok := feature.Properties["rls19_directional_sources"]
-	if ok && rawDirectionalSources != nil {
-		items, ok := rawDirectionalSources.([]any)
-		if !ok || len(items) == 0 {
-			return nil, fmt.Errorf("property %q must be a non-empty array", "rls19_directional_sources")
-		}
-
-		specs := make([]rls19DirectionalSourceSpec, 0, len(items))
-		for idx, item := range items {
-			properties, ok := item.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("property %q[%d] must be an object", "rls19_directional_sources", idx)
-			}
-
-			geometryValue, ok := properties["centerline"]
-			if !ok || geometryValue == nil {
-				if fallback, exists := properties["coordinates"]; exists && fallback != nil {
-					geometryValue = fallback
-				} else {
-					return nil, fmt.Errorf("property %q[%d] requires centerline or coordinates", "rls19_directional_sources", idx)
-				}
-			}
-
-			geometry, err := parseRLS19LineGeometry(geometryValue, properties)
-			if err != nil {
-				return nil, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
-			}
-
-			idHint, _, err := propertyString(properties, "id", "direction_id", "direction")
-			if err != nil {
-				return nil, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
-			}
-
-			specs = append(specs, rls19DirectionalSourceSpec{
-				IDHint:    idHint,
-				Geometry:  geometry,
-				Overrides: properties,
-			})
-		}
-
-		return specs, nil
+	if !ok || rawDirectionalSources == nil {
+		return rls19FallbackDirectionalSourceSpecs(feature)
 	}
 
+	items, ok := rawDirectionalSources.([]any)
+	if !ok || len(items) == 0 {
+		return nil, fmt.Errorf("property %q must be a non-empty array", "rls19_directional_sources")
+	}
+
+	specs := make([]rls19DirectionalSourceSpec, 0, len(items))
+
+	for idx, item := range items {
+		spec, err := parseRLS19DirectionalSourceSpec(item, idx)
+		if err != nil {
+			return nil, err
+		}
+
+		specs = append(specs, spec)
+	}
+
+	return specs, nil
+}
+
+// parseRLS19DirectionalSourceSpec decodes one entry of the
+// rls19_directional_sources array. idx only appears in the error messages.
+func parseRLS19DirectionalSourceSpec(item any, idx int) (rls19DirectionalSourceSpec, error) {
+	properties, ok := item.(map[string]any)
+	if !ok {
+		return rls19DirectionalSourceSpec{}, fmt.Errorf("property %q[%d] must be an object", "rls19_directional_sources", idx)
+	}
+
+	geometryValue, ok := properties["centerline"]
+	if !ok || geometryValue == nil {
+		fallback, exists := properties["coordinates"]
+		if !exists || fallback == nil {
+			return rls19DirectionalSourceSpec{}, fmt.Errorf("property %q[%d] requires centerline or coordinates", "rls19_directional_sources", idx)
+		}
+
+		geometryValue = fallback
+	}
+
+	geometry, err := parseRLS19LineGeometry(geometryValue, properties)
+	if err != nil {
+		return rls19DirectionalSourceSpec{}, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
+	}
+
+	idHint, _, err := propertyString(properties, "id", "direction_id", "direction")
+	if err != nil {
+		return rls19DirectionalSourceSpec{}, fmt.Errorf("property %q[%d]: %w", "rls19_directional_sources", idx, err)
+	}
+
+	return rls19DirectionalSourceSpec{
+		IDHint:    idHint,
+		Geometry:  geometry,
+		Overrides: properties,
+	}, nil
+}
+
+// rls19FallbackDirectionalSourceSpecs derives one spec per line geometry for a
+// feature that declares no explicit directional sources.
+func rls19FallbackDirectionalSourceSpecs(feature modelgeojson.Feature) ([]rls19DirectionalSourceSpec, error) {
 	geometries, err := rls19LineGeometriesFromFeature(feature)
 	if err != nil {
 		return nil, err

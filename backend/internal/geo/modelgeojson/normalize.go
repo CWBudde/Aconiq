@@ -19,28 +19,29 @@ func Normalize(data []byte, projectCRS string, sourcePath string) (Model, error)
 }
 
 // buildCRSPipeline builds a transform pipeline if import and project CRS differ.
-// Returns nil pipeline when no transform is needed.
-func buildCRSPipeline(projCRS, impCRS string) (*geo.TransformPipeline, error) {
+// The second result reports whether a transform is needed at all; "no transform
+// needed" is an outcome, not an absent value, so it is reported as one.
+func buildCRSPipeline(projCRS, impCRS string) (*geo.TransformPipeline, bool, error) {
 	if impCRS == "" || projCRS == "" || strings.EqualFold(impCRS, projCRS) {
-		return nil, nil //nolint:nilnil // nil pipeline means no transform needed
+		return nil, false, nil
 	}
 
 	from, err := geo.ParseCRS(impCRS)
 	if err != nil {
-		return nil, fmt.Errorf("parse import CRS %q: %w", impCRS, err)
+		return nil, false, fmt.Errorf("parse import CRS %q: %w", impCRS, err)
 	}
 
 	to, err := geo.ParseCRS(projCRS)
 	if err != nil {
-		return nil, fmt.Errorf("parse project CRS %q: %w", projCRS, err)
+		return nil, false, fmt.Errorf("parse project CRS %q: %w", projCRS, err)
 	}
 
 	p, err := geo.BuildTransformPipeline(to, from)
 	if err != nil {
-		return nil, fmt.Errorf("build CRS transform %s -> %s: %w", impCRS, projCRS, err)
+		return nil, false, fmt.Errorf("build CRS transform %s -> %s: %w", impCRS, projCRS, err)
 	}
 
-	return &p, nil
+	return &p, true, nil
 }
 
 // NormalizeWithCRS decodes raw GeoJSON and maps it into the normalized project model.
@@ -60,12 +61,10 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 	projCRS := strings.TrimSpace(projectCRS)
 	impCRS := strings.TrimSpace(importCRS)
 
-	pipeline, err := buildCRSPipeline(projCRS, impCRS)
+	pipeline, transformApplied, err := buildCRSPipeline(projCRS, impCRS)
 	if err != nil {
 		return Model{}, err
 	}
-
-	transformApplied := pipeline != nil
 
 	features := make([]Feature, 0, len(collection.Features))
 	for idx, raw := range collection.Features {

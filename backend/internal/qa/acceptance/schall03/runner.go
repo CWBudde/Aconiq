@@ -284,14 +284,14 @@ func runTask(task taskManifest, suiteDir string) (TaskResult, error) {
 
 	result.Expected = expected.Receivers
 
-	maxDelta, compareErr := compareSnapshots(expected.Receivers, actual, task.ToleranceDB)
+	maxDelta, mismatch := compareSnapshots(expected.Receivers, actual, task.ToleranceDB)
 	result.MaxAbsDeltaDB = round6(maxDelta)
 
-	if compareErr != nil {
+	if mismatch != "" {
 		result.Status = statusFailed
-		result.Details = compareErr.Error()
+		result.Details = mismatch
 
-		return result, nil //nolint:nilerr // compareErr is intentionally encoded in result.Status, not surfaced as a Go error
+		return result, nil
 	}
 
 	result.Status = statusPassed
@@ -335,16 +335,19 @@ func computeSnapshots(scenario scenarioFile) ([]ReceiverSnapshot, error) {
 	return out, nil
 }
 
-func compareSnapshots(expected, actual []ReceiverSnapshot, tolerance float64) (float64, error) {
+// compareSnapshots reports the largest absolute delta and, when the comparison
+// fails, a human-readable reason. A mismatch is a result of the comparison, not
+// a Go error: it is recorded in the task's Status and Details.
+func compareSnapshots(expected, actual []ReceiverSnapshot, tolerance float64) (float64, string) {
 	if len(expected) != len(actual) {
-		return 0, fmt.Errorf("receiver count mismatch: expected %d, got %d", len(expected), len(actual))
+		return 0, fmt.Sprintf("receiver count mismatch: expected %d, got %d", len(expected), len(actual))
 	}
 
 	maxDelta := 0.0
 
 	for i := range expected {
 		if expected[i].ID != actual[i].ID {
-			return maxDelta, fmt.Errorf("receiver[%d] id mismatch: expected %q, got %q", i, expected[i].ID, actual[i].ID)
+			return maxDelta, fmt.Sprintf("receiver[%d] id mismatch: expected %q, got %q", i, expected[i].ID, actual[i].ID)
 		}
 
 		for _, pair := range []struct {
@@ -363,7 +366,7 @@ func compareSnapshots(expected, actual []ReceiverSnapshot, tolerance float64) (f
 			}
 
 			if delta > tolerance {
-				return maxDelta, fmt.Errorf(
+				return maxDelta, fmt.Sprintf(
 					"receiver %q %s exceeded tolerance: expected %.6f, got %.6f, delta %.6f > tolerance %.6f",
 					expected[i].ID, pair.name, pair.expected, pair.actual, delta, tolerance,
 				)
@@ -371,7 +374,7 @@ func compareSnapshots(expected, actual []ReceiverSnapshot, tolerance float64) (f
 		}
 	}
 
-	return maxDelta, nil
+	return maxDelta, ""
 }
 
 // WriteGoldenSnapshots computes and writes the expected snapshot files for all
