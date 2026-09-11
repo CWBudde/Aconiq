@@ -142,13 +142,12 @@ commit messages; the consequences each one exposed are open items below.
       snapshots byte-identical, the 843-test inventory unchanged, and the two normative lookup
       tables re-checked value by value. This also lands P7's "split the god files" for
       `run_extract.go` (3 087 → 89 lines) and `run_options.go`.
-- [x] **Lint audit pass.** `exclusions.presets` is gone: the three presets were hiding 41
-      `errcheck` findings (all unchecked `Close`, 11 on export write paths) that no audit had ever
-      named. Fixed in code, zero `//nolint` escapes, `errcheck` now enforced at 0 across `./...`
-      including tests. gosec G304 keeps its exclusion as one explicit named rule. The gate's
-      composition is therefore what `docs/lint-triage.md` claims it is — nothing is suppressed by a
-      set nobody enumerated. Also corrected: `wsl_v5` has been enforced since `4b0566c`, not
-      disabled.
+- [x] **Lint audit pass** (`7babf60`). `exclusions.presets` is gone; the 41 `errcheck` findings it
+      hid are fixed in code, so `errcheck` is enforced at 0 with no exclusion. gosec G304 keeps its
+      exclusion as one explicit named rule. The gate's composition is now what
+      `docs/lint-triage.md` says it is — nothing is suppressed by a set nobody enumerated. Two
+      beliefs it disproved: `wsl_v5` has been enforced since `4b0566c`, not disabled, and a
+      preset's contents count as debt even when no table names them.
 - [x] **Unguarded fixture tests** (`bda9767`). Eight tests in `io/soundplanimport` hard-failed on a
       clean checkout over a gitignored fixture; they now skip with the resolved path and reason.
 - [x] **CI tool versions pinned** (`e183c68`), matched to the local toolbox so `just go-ci` and CI
