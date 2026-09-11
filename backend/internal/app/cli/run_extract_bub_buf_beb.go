@@ -359,7 +359,7 @@ func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunO
 			}
 		}
 
-		tracks, err := flightTracksFromFeatureBUF(feature, trackOptions)
+		tracks, err := flightTracksFromFeature(feature, bufaircraft.StandardID, trackOptions.TrackStartHeightM, trackOptions.TrackEndHeightM)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractBUFAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
 		}

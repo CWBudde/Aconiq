@@ -355,7 +355,11 @@ func TestImportTerrainRejectsUploadOverTheCap(t *testing.T) {
 	var tail strings.Builder
 
 	tailWriter := multipart.NewWriter(&tail)
-	tailWriter.SetBoundary(writer.Boundary()) //nolint:errcheck // the boundary comes from the writer itself
+
+	err = tailWriter.SetBoundary(writer.Boundary())
+	if err != nil {
+		t.Fatalf("set multipart boundary: %v", err)
+	}
 
 	err = tailWriter.Close()
 	if err != nil {

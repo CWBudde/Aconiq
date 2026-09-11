@@ -511,7 +511,7 @@ func extractCnossosAircraftSources(model modelgeojson.Model, options cnossosAirc
 			}
 		}
 
-		tracks, err := flightTracksFromFeature(feature, trackOptions)
+		tracks, err := flightTracksFromFeature(feature, cnossosaircraft.StandardID, trackOptions.TrackStartHeightM, trackOptions.TrackEndHeightM)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractCnossosAircraftSources", fmt.Sprintf("feature %q", feature.ID), err)
 		}

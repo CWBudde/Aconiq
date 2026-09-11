@@ -104,10 +104,15 @@ func polygonsFromFeature(feature modelgeojson.Feature) ([][][]geo.Point2D, error
 	}
 }
 
-func flightTracksFromFeature(feature modelgeojson.Feature, options cnossosAircraftRunOptions) ([][]geo.Point3D, error) {
+// flightTracksFromFeature decodes a flight track geometry. Points without an
+// explicit Z are interpolated linearly between startHeightM and endHeightM.
+//
+// standardID only names the standard in the unsupported-geometry message, which
+// is user-visible and differs between cnossos-aircraft and buf-aircraft.
+func flightTracksFromFeature(feature modelgeojson.Feature, standardID string, startHeightM, endHeightM float64) ([][]geo.Point3D, error) {
 	switch feature.GeometryType {
 	case modelgeojson.GeometryTypeLineString:
-		line, err := parseFlightTrackCoordinates(feature.Coordinates, options)
+		line, err := parseFlightTrackCoordinates(feature.Coordinates, startHeightM, endHeightM)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +126,7 @@ func flightTracksFromFeature(feature modelgeojson.Feature, options cnossosAircra
 
 		lines := make([][]geo.Point3D, 0, len(rawLines))
 		for _, rawLine := range rawLines {
-			line, err := parseFlightTrackCoordinates(rawLine, options)
+			line, err := parseFlightTrackCoordinates(rawLine, startHeightM, endHeightM)
 			if err != nil {
 				return nil, err
 			}
@@ -131,43 +136,11 @@ func flightTracksFromFeature(feature modelgeojson.Feature, options cnossosAircra
 
 		return lines, nil
 	default:
-		return nil, fmt.Errorf("unsupported source geometry type %q (cnossos-aircraft supports LineString/MultiLineString only)", feature.GeometryType)
+		return nil, fmt.Errorf("unsupported source geometry type %q (%s supports LineString/MultiLineString only)", feature.GeometryType, standardID)
 	}
 }
 
-func flightTracksFromFeatureBUF(feature modelgeojson.Feature, options bufAircraftRunOptions) ([][]geo.Point3D, error) {
-	switch feature.GeometryType {
-	case modelgeojson.GeometryTypeLineString:
-		line, err := parseFlightTrackCoordinatesBUF(feature.Coordinates, options)
-		if err != nil {
-			return nil, err
-		}
-
-		return [][]geo.Point3D{line}, nil
-	case modelgeojson.GeometryTypeMultiLineString:
-		rawLines, ok := feature.Coordinates.([]any)
-		if !ok {
-			return nil, errors.New("geometry MultiLineString coordinates must be an array")
-		}
-
-		lines := make([][]geo.Point3D, 0, len(rawLines))
-		for _, rawLine := range rawLines {
-			line, err := parseFlightTrackCoordinatesBUF(rawLine, options)
-			if err != nil {
-				return nil, err
-			}
-
-			lines = append(lines, line)
-		}
-
-		return lines, nil
-	default:
-		return nil, fmt.Errorf("unsupported source geometry type %q (buf-aircraft supports LineString/MultiLineString only)", feature.GeometryType)
-	}
-}
-
-//nolint:dupl // Aircraft track interpolation is kept separate because the option types differ.
-func parseFlightTrackCoordinates(value any, options cnossosAircraftRunOptions) ([]geo.Point3D, error) {
+func parseFlightTrackCoordinates(value any, startHeightM, endHeightM float64) ([]geo.Point3D, error) {
 	rawPoints, ok := value.([]any)
 	if !ok {
 		return nil, errors.New("line coordinates must be an array")
@@ -192,42 +165,7 @@ func parseFlightTrackCoordinates(value any, options cnossosAircraftRunOptions) (
 				fraction = float64(i) / float64(lastIndex)
 			}
 
-			z = options.TrackStartHeightM + fraction*(options.TrackEndHeightM-options.TrackStartHeightM)
-		}
-
-		points = append(points, geo.Point3D{X: xy.X, Y: xy.Y, Z: z})
-	}
-
-	return points, nil
-}
-
-//nolint:dupl // Aircraft track interpolation is kept separate because the option types differ.
-func parseFlightTrackCoordinatesBUF(value any, options bufAircraftRunOptions) ([]geo.Point3D, error) {
-	rawPoints, ok := value.([]any)
-	if !ok {
-		return nil, errors.New("line coordinates must be an array")
-	}
-
-	if len(rawPoints) < 2 {
-		return nil, errors.New("line coordinates must contain at least 2 points")
-	}
-
-	points := make([]geo.Point3D, 0, len(rawPoints))
-
-	lastIndex := len(rawPoints) - 1
-	for i, rawPoint := range rawPoints {
-		xy, z, hasZ, err := parsePointCoordinate3D(rawPoint)
-		if err != nil {
-			return nil, err
-		}
-
-		if !hasZ {
-			fraction := 0.0
-			if lastIndex > 0 {
-				fraction = float64(i) / float64(lastIndex)
-			}
-
-			z = options.TrackStartHeightM + fraction*(options.TrackEndHeightM-options.TrackStartHeightM)
+			z = startHeightM + fraction*(endHeightM-startHeightM)
 		}
 
 		points = append(points, geo.Point3D{X: xy.X, Y: xy.Y, Z: z})
