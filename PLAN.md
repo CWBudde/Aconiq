@@ -247,26 +247,40 @@ commit messages; the consequences each one exposed are open items below.
 
 ### Open
 
-- [ ] **The debts a green `just lint` still hides.** **381**, re-measured 2026-09-11 and audited in
-      `docs/lint-triage.md`, which carries the per-rule table. The previous figure of 557 was wrong
-      in both directions, and how it was wrong matters more than the delta. `wsl_v5` **196 → 0**:
-      it was never disabled. `4b0566c` removed it from `linters.disable` along with its settings
-      block, so it has been enforced since 2026-08-28 while its own commit message,
-      `docs/lint-triage.md` and this file all went on saying it was off; the 196 was measured
-      against the old settings block and evaporated with it, so nothing was fixed and nothing is
-      hidden. `errcheck` **41 → 0** was the opposite failure: all unchecked `Close`, 11 of them on
-      export write paths where a swallowed close means a truncated file reported as a successful
-      export, hidden inside `exclusions.presets` and named by no table here. They are fixed in
-      code, `exclusions.presets` is gone, and gosec G304 is now the one explicitly named exclusion
-      rather than a side effect of a preset. `//nolint` **63** is the category no audit had counted:
-      12 are wholesale complexity suppressions in `app/cli` — `run_pipeline.go`'s dispatch switch
-      and eleven extraction functions — which is why the worst functions in the codebase appear in
-      no complexity count. What is left is `goconst` **164** (39 permanent, the rest Priority 7),
-      `noinlineerr` **103** and `gocyclo` **4** (both declined in writing), gosec **G304 47**
-      non-test (unmoved since the verdict was taken), and those 63 directives, most of which
-      Priority 7 owns. Every suppression now names a rule, a path or a string value; no preset, and
-      no linter switched off across the backend. `.golangci.yml`'s disable list holds **19**
-      linters, which is why neither `AGENTS.md` nor `docs/policies/formatting.md` quotes a number.
+- [ ] **The debts a green `just lint` still hides.** **334**, re-measured 2026-09-12 and audited in
+      `docs/lint-triage.md`, which carries the per-rule table. Two passes have run against the
+      557 this item opened with, and what each did matters more than the delta.
+
+      The **audit pass** (`7babf60`) made the number honest rather than smaller: `wsl_v5` **196 → 0**
+      because it had never been disabled — `4b0566c` removed it from `linters.disable` along with
+      its settings block, so it has been enforced since 2026-08-28 while its own commit message,
+      `docs/lint-triage.md` and this file all went on saying it was off. `errcheck` **41 → 0** was
+      the opposite failure: all unchecked `Close`, 11 on export write paths where a swallowed close
+      means a truncated file reported as a successful export, hidden inside `exclusions.presets` and
+      named by no table here. They are fixed in code, `exclusions.presets` is gone, and gosec G304 is
+      now an explicitly named rule rather than a side effect of a preset. It also counted the **63
+      `//nolint` directives** no audit had ever included.
+
+      The **paydown passes** (`4bb2867`, and the extraction pass) took those 63 to **33**, in code
+      and without narrowing anything into a smaller suppression. Every one-off directive is gone.
+      In `app/cli` specifically, **18 → 10**: all ten wholesale complexity suppressions on the
+      extraction functions are gone, because they were never hiding complex code — they were hiding
+      twenty copies of one hand-unrolled property decoder per function, which is the entire reason
+      `funlen`, `maintidx`, `cyclop` and `gocognit` fired. `extractDummySources` used the same loop
+      with no directive at all, which is what proved it. `goconst` fell **164 → 140** untargeted,
+      the repeated scope strings going with the blocks that carried them.
+
+      What is left is `goconst` **140** (39 permanent, the rest Priority 7), `noinlineerr` **109**
+      and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
+      verdict was taken), and **33** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
+      tables, and 7 in `app/cli` that the `framework.Module` work owns outright. The one suppression
+      the extraction pass added is the road-builder `dupl` pair, which replaced two wholesale
+      directives covering eight linters and names its structural fix in Priority 7.
+
+      **This item closes when Priority 7's `framework.Module` work lands**, which is what removes the
+      remaining `app/cli` directives. Nothing here is suppressed because nobody got round to it.
+      `.golangci.yml`'s disable list holds **19** linters, which is why neither `AGENTS.md` nor
+      `docs/policies/formatting.md` quotes a number.
 
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
@@ -708,14 +722,25 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
         (8 copies of the END directive's defining formula), `ComputeReceiverOutputs` (12),
         `ProvenanceMetadata` (10) and `geometricDivergence` (8) into `framework`.
   - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
-  - [ ] Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`
-        (`run_extract.go:1673,1913`, 239 LOC each, identical but for the type prefix). The
-        `//nolint:dupl` claim that "the source/output types differ" is false:
-        `run_options.go:1178-1184` converts between them with a direct type conversion because
-        the structs are identical.
+  - [x] ~~Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`.~~ Done in the
+        extraction pass: one `buildAircraftSource` serves both, and the BUF path maps the result
+        across. **This item's premise was wrong** — the old directive's "the source/output types
+        differ" was _true_. `cnossosaircraft.AircraftSource` and `bufaircraft.AircraftSource` are
+        field-for-field identical but are distinct Go types whose nested `AirportRef` and
+        `MovementPeriod` are declared per package, so the compiler rejects a conversion between
+        them; the line cited above converts the _options_ type, which is a different thing. The
+        mapping disappears when `buf/aircraft` becomes an alias package, above.
   - [ ] Consolidate 7 copies of `writeJSONFile`/`writeJSON`.
-  - [ ] Remove the 12 illegitimate `//nolint:dupl` directives (of 20 total; the 8 in
-        `schall03/beiblatt1.go` are genuine — those are coefficient tables).
+  - [ ] `//nolint:dupl` — **the arithmetic here never matched the tree.** Not 12 illegitimate of
+        20: measured across both lint passes there are 13, of which the 8 in
+        `schall03/beiblatt1.go` are genuine coefficient tables. 2 were deleted in `0e00155`, 3 in
+        `run_persist.go` remain and go with the generic persist below, and the extraction pass
+        added 2 — one on each road builder. Those two are real duplication with a real fix:
+        `bub/road` should share `cnossos/road`'s source model the way `bub/rail` and `bub/industry`
+        already alias `cnossos`. The two differ by one field (`road_function_class` against
+        `road_category`) and their override tables are ordered differently on purpose, so they
+        cannot be merged inside `app/cli` without changing which error a feature carrying two
+        malformed properties reports.
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
@@ -731,6 +756,11 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
       `run_persist.go` (1 147), `api/httpv1/handler.go` (1 137), `report/reporting/report.go`
       (1 082), `app/cli/export.go` (1 005). The first two already violate the project's own
       configured `revive file-length-limit: 1500` — undetected because that package does not compile.
+- [ ] `extractCnossosIndustrySources` silently drops a supported source type. Its geometry switch
+      has no `default` arm, so a type listed in the standard's `SupportedSourceTypes` that is
+      neither `point` nor `area` yields no sources and no error. Preserved and documented by the
+      extraction pass rather than changed inside a behaviour-preserving refactor; decide whether it
+      should be an error.
 - [ ] Delete dead code: `newPlaceholderCommand` (`root.go:107`), `mustFinite`
       (`cnossos/road/emission.go:344`), the unused `cfg` param (`cnossos/industry/propagation.go:126`),
       `schall03`'s unexported-candidate `Beiblatt3RetarderRangierenLevel` and `OctaveBands`, and the

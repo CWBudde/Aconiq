@@ -101,8 +101,8 @@ func validateRLS19DirectionalSurfaceTypes(feature modelgeojson.Feature, directio
 // deterministic extraction regardless of worker count. The second return value
 // is the count of source features that had at least one per-source acoustic
 // override (any key listed in rls19AcousticOverrideKeys).
-//
-//nolint:gocognit,cyclop,funlen,maintidx // The override-merging rules are intentionally explicit and were preserved during extraction.
+const rls19RoadScope = "cli.extractRLS19RoadSources"
+
 func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptions, supportedSourceTypes []string) ([]rls19road.RoadSource, int, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -127,7 +127,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			if _, ok := allowedSourceType[normalizedSourceType]; !ok {
 				return nil, 0, domainerrors.New(
 					domainerrors.KindValidation,
-					"cli.extractRLS19RoadSources",
+					rls19RoadScope,
 					fmt.Sprintf("feature %q source_type %q is not supported by selected standard/profile", feature.ID, feature.SourceType),
 					nil,
 				)
@@ -136,12 +136,12 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 		directionalSources, err := extractRLS19DirectionalSourceSpecs(feature)
 		if err != nil {
-			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+			return nil, 0, domainerrors.New(domainerrors.KindValidation, rls19RoadScope, fmt.Sprintf("feature %q", feature.ID), err)
 		}
 
 		err = validateRLS19DirectionalSurfaceTypes(feature, directionalSources, options.SurfaceType)
 		if err != nil {
-			return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+			return nil, 0, domainerrors.New(domainerrors.KindValidation, rls19RoadScope, fmt.Sprintf("feature %q", feature.ID), err)
 		}
 
 		baseID := strings.TrimSpace(feature.ID)
@@ -149,31 +149,19 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			baseID = fmt.Sprintf("rls19-road-source-%03d", featureIndex)
 		}
 
-		if rls19FeatureHasAcousticOverrides(feature) {
+		if rls19FeatureCarriesAcousticOverride(feature, directionalSources) {
 			overrideCount++
-		} else {
-			for _, spec := range directionalSources {
-				if rls19PropertiesHaveAcousticOverrides(spec.Overrides) {
-					overrideCount++
-					break
-				}
-			}
 		}
 
 		seenSourceIDs := make(map[string]struct{}, len(directionalSources))
 
 		for lineIndex, directional := range directionalSources {
-			sourceID := baseID
-			if directional.IDHint != "" {
-				sourceID = fmt.Sprintf("%s-%s", baseID, normalizeDirectionalSourceID(directional.IDHint, lineIndex))
-			} else if len(directionalSources) > 1 {
-				sourceID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
-			}
+			sourceID := rls19DirectionalSourceID(baseID, directional, lineIndex, len(directionalSources))
 
 			if _, exists := seenSourceIDs[sourceID]; exists {
 				return nil, 0, domainerrors.New(
 					domainerrors.KindValidation,
-					"cli.extractRLS19RoadSources",
+					rls19RoadScope,
 					fmt.Sprintf("feature %q contains duplicate directional source id %q", feature.ID, sourceID),
 					nil,
 				)
@@ -181,173 +169,9 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 
 			seenSourceIDs[sourceID] = struct{}{}
 
-			properties := mergedProperties(feature.Properties, directional.Overrides)
-
-			surfaceType, err := resolveRLS19SurfaceType(properties, options.SurfaceType)
-			if err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			}
-
-			laneCount, err := resolveRLS19LaneCount(properties)
-			if err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-			}
-
-			speedPkwKPH := options.SpeedPkwKPH
-			speedLkw1KPH := options.SpeedLkw1KPH
-			speedLkw2KPH := options.SpeedLkw2KPH
-			speedKradKPH := options.SpeedKradKPH
-
-			{
-				value, ok, err := propertyFloat(properties, "road_speed_kph")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					speedPkwKPH = value
-					speedLkw1KPH = value
-					speedLkw2KPH = value
-					speedKradKPH = value
-				}
-			}
-
-			for _, item := range []struct {
-				keys   []string
-				target *float64
-			}{
-				{[]string{"speed_pkw_kph"}, &speedPkwKPH},
-				{[]string{"speed_lkw1_kph"}, &speedLkw1KPH},
-				{[]string{"speed_lkw2_kph"}, &speedLkw2KPH},
-				{[]string{"speed_krad_kph"}, &speedKradKPH},
-			} {
-				{
-					value, ok, err := propertyFloat(properties, item.keys...)
-					if err != nil {
-						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-					} else if ok {
-						*item.target = value
-					}
-				}
-			}
-
-			gradientPercent := options.GradientPercent
-
-			{
-				value, ok, err := propertyFloat(properties, "gradient_percent", "road_gradient_percent")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					gradientPercent = value
-				}
-			}
-
-			junctionDistanceM := 0.0
-
-			{
-				value, ok, err := propertyFloat(properties, "junction_distance_m", "road_junction_distance_m")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					junctionDistanceM = value
-				}
-			}
-
-			buildingHeightM := 0.0
-			streetWidthM := 0.0
-
-			{
-				value, ok, err := propertyFloat(properties, "building_height_m")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					buildingHeightM = value
-				}
-			}
-
-			{
-				value, ok, err := propertyFloat(properties, "street_width_m")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					streetWidthM = value
-				}
-			}
-
-			junctionType := rls19road.JunctionNone
-
-			{
-				value, ok, err := propertyString(properties, "junction_type", "road_junction_type")
-				if err != nil {
-					return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					parsed, err := rls19road.ParseJunctionType(value)
-					if err != nil {
-						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-					}
-
-					junctionType = parsed
-				}
-			}
-
-			trafficDay := rls19road.TrafficInput{
-				PkwPerHour:  options.TrafficDayPkw,
-				Lkw1PerHour: options.TrafficDayLkw1,
-				Lkw2PerHour: options.TrafficDayLkw2,
-				KradPerHour: options.TrafficDayKrad,
-			}
-			trafficNight := rls19road.TrafficInput{
-				PkwPerHour:  options.TrafficNightPkw,
-				Lkw1PerHour: options.TrafficNightLkw1,
-				Lkw2PerHour: options.TrafficNightLkw2,
-				KradPerHour: options.TrafficNightKrad,
-			}
-
-			for _, item := range []struct {
-				keys   []string
-				target *float64
-			}{
-				{[]string{"traffic_day_pkw"}, &trafficDay.PkwPerHour},
-				{[]string{"traffic_day_lkw1"}, &trafficDay.Lkw1PerHour},
-				{[]string{"traffic_day_lkw2"}, &trafficDay.Lkw2PerHour},
-				{[]string{"traffic_day_krad"}, &trafficDay.KradPerHour},
-				{[]string{"traffic_night_pkw"}, &trafficNight.PkwPerHour},
-				{[]string{"traffic_night_lkw1"}, &trafficNight.Lkw1PerHour},
-				{[]string{"traffic_night_lkw2"}, &trafficNight.Lkw2PerHour},
-				{[]string{"traffic_night_krad"}, &trafficNight.KradPerHour},
-			} {
-				{
-					value, ok, err := propertyFloat(properties, item.keys...)
-					if err != nil {
-						return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
-					} else if ok {
-						*item.target = value
-					}
-				}
-			}
-
-			source := rls19road.RoadSource{
-				ID:                   sourceID,
-				Centerline:           directional.Geometry.Centerline,
-				CenterlineElevations: directional.Geometry.CenterlineElevations,
-				LaneCount:            laneCount,
-				SurfaceType:          rls19road.SurfaceType(surfaceType),
-				Speeds: rls19road.SpeedInput{
-					PkwKPH:  speedPkwKPH,
-					Lkw1KPH: speedLkw1KPH,
-					Lkw2KPH: speedLkw2KPH,
-					KradKPH: speedKradKPH,
-				},
-				GradientPercent:   gradientPercent,
-				JunctionType:      junctionType,
-				JunctionDistanceM: junctionDistanceM,
-				BuildingHeightM:   buildingHeightM,
-				StreetWidthM:      streetWidthM,
-				TrafficDay:        trafficDay,
-				TrafficNight:      trafficNight,
-			}
-
-			err = source.Validate()
-			if err != nil {
-				return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", fmt.Sprintf("feature %q", feature.ID), err)
+			source, buildErr := buildRLS19RoadSource(feature, options, sourceID, directional)
+			if buildErr != nil {
+				return nil, 0, buildErr
 			}
 
 			sources = append(sources, source)
@@ -355,7 +179,7 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 	}
 
 	if len(sources) == 0 {
-		return nil, 0, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19RoadSources", "model does not contain any supported line source features", nil)
+		return nil, 0, domainerrors.New(domainerrors.KindValidation, rls19RoadScope, "model does not contain any supported line source features", nil)
 	}
 
 	return sources, overrideCount, nil
@@ -555,7 +379,7 @@ func extractRLS19Barriers(model modelgeojson.Model) ([]rls19road.Barrier, error)
 			continue
 		}
 
-		lines, err := lineStringsFromFeature(feature)
+		lines, err := lineStringsFromFeature(feature, rls19road.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q", feature.ID), err)
 		}
@@ -606,7 +430,7 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 			continue
 		}
 
-		polygons, err := polygonsFromFeature(feature)
+		polygons, err := polygonsFromFeature(feature, rls19road.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Buildings", fmt.Sprintf("feature %q", feature.ID), err)
 		}
@@ -659,4 +483,130 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 	}
 
 	return buildings, nil
+}
+
+// buildRLS19RoadSource merges the run options with one feature's properties and
+// one directional source's overrides into a single road source.
+//
+// The table order is behaviour: road_speed_kph fans out to all four vehicle
+// classes and must precede the per-class keys that refine it, and junction_type
+// is parsed inside the table so a value the parser rejects is reported before
+// the traffic keys rather than after them.
+func buildRLS19RoadSource(feature modelgeojson.Feature, options rls19RoadRunOptions, sourceID string, directional rls19DirectionalSourceSpec) (rls19road.RoadSource, error) {
+	properties := mergedProperties(feature.Properties, directional.Overrides)
+
+	surfaceType, err := resolveRLS19SurfaceType(properties, options.SurfaceType)
+	if err != nil {
+		return rls19road.RoadSource{}, rls19RoadFeatureError(feature, err)
+	}
+
+	laneCount, err := resolveRLS19LaneCount(properties)
+	if err != nil {
+		return rls19road.RoadSource{}, rls19RoadFeatureError(feature, err)
+	}
+
+	source := rls19road.RoadSource{
+		ID:                   sourceID,
+		Centerline:           directional.Geometry.Centerline,
+		CenterlineElevations: directional.Geometry.CenterlineElevations,
+		LaneCount:            laneCount,
+		SurfaceType:          rls19road.SurfaceType(surfaceType),
+		Speeds: rls19road.SpeedInput{
+			PkwKPH:  options.SpeedPkwKPH,
+			Lkw1KPH: options.SpeedLkw1KPH,
+			Lkw2KPH: options.SpeedLkw2KPH,
+			KradKPH: options.SpeedKradKPH,
+		},
+		GradientPercent:   options.GradientPercent,
+		JunctionType:      rls19road.JunctionNone,
+		JunctionDistanceM: 0,
+		BuildingHeightM:   0,
+		StreetWidthM:      0,
+		TrafficDay: rls19road.TrafficInput{
+			PkwPerHour:  options.TrafficDayPkw,
+			Lkw1PerHour: options.TrafficDayLkw1,
+			Lkw2PerHour: options.TrafficDayLkw2,
+			KradPerHour: options.TrafficDayKrad,
+		},
+		TrafficNight: rls19road.TrafficInput{
+			PkwPerHour:  options.TrafficNightPkw,
+			Lkw1PerHour: options.TrafficNightLkw1,
+			Lkw2PerHour: options.TrafficNightLkw2,
+			KradPerHour: options.TrafficNightKrad,
+		},
+	}
+
+	overrideErr := applyPropertyOverrides(properties, rls19RoadScope, feature.ID, []propertyOverride{
+		overrideFloats([]*float64{
+			&source.Speeds.PkwKPH,
+			&source.Speeds.Lkw1KPH,
+			&source.Speeds.Lkw2KPH,
+			&source.Speeds.KradKPH,
+		}, "road_speed_kph"),
+		overrideFloat(&source.Speeds.PkwKPH, "speed_pkw_kph"),
+		overrideFloat(&source.Speeds.Lkw1KPH, "speed_lkw1_kph"),
+		overrideFloat(&source.Speeds.Lkw2KPH, "speed_lkw2_kph"),
+		overrideFloat(&source.Speeds.KradKPH, "speed_krad_kph"),
+		overrideFloat(&source.GradientPercent, "gradient_percent", "road_gradient_percent"),
+		overrideFloat(&source.JunctionDistanceM, "junction_distance_m", "road_junction_distance_m"),
+		overrideFloat(&source.BuildingHeightM, "building_height_m"),
+		overrideFloat(&source.StreetWidthM, "street_width_m"),
+		overrideParsed(&source.JunctionType, rls19road.ParseJunctionType, "junction_type", "road_junction_type"),
+		overrideFloat(&source.TrafficDay.PkwPerHour, "traffic_day_pkw"),
+		overrideFloat(&source.TrafficDay.Lkw1PerHour, "traffic_day_lkw1"),
+		overrideFloat(&source.TrafficDay.Lkw2PerHour, "traffic_day_lkw2"),
+		overrideFloat(&source.TrafficDay.KradPerHour, "traffic_day_krad"),
+		overrideFloat(&source.TrafficNight.PkwPerHour, "traffic_night_pkw"),
+		overrideFloat(&source.TrafficNight.Lkw1PerHour, "traffic_night_lkw1"),
+		overrideFloat(&source.TrafficNight.Lkw2PerHour, "traffic_night_lkw2"),
+		overrideFloat(&source.TrafficNight.KradPerHour, "traffic_night_krad"),
+	})
+	if overrideErr != nil {
+		return rls19road.RoadSource{}, overrideErr
+	}
+
+	err = source.Validate()
+	if err != nil {
+		return rls19road.RoadSource{}, rls19RoadFeatureError(feature, err)
+	}
+
+	return source, nil
+}
+
+// rls19RoadFeatureError is the wrapping every failure in this extractor uses.
+func rls19RoadFeatureError(feature modelgeojson.Feature, err error) error {
+	return domainerrors.New(domainerrors.KindValidation, rls19RoadScope, fmt.Sprintf("feature %q", feature.ID), err)
+}
+
+// rls19FeatureCarriesAcousticOverride reports whether a feature contributes to
+// the per-source override count: either it carries an acoustic key itself, or
+// at least one of its directional sources does. A feature counts once however
+// many of its directional sources match.
+func rls19FeatureCarriesAcousticOverride(feature modelgeojson.Feature, directionalSources []rls19DirectionalSourceSpec) bool {
+	if rls19FeatureHasAcousticOverrides(feature) {
+		return true
+	}
+
+	for _, spec := range directionalSources {
+		if rls19PropertiesHaveAcousticOverrides(spec.Overrides) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rls19DirectionalSourceID names one directional source. An explicit id hint
+// wins; otherwise a feature emitting more than one source suffixes by position,
+// and a feature emitting exactly one keeps the feature's own ID.
+func rls19DirectionalSourceID(baseID string, directional rls19DirectionalSourceSpec, lineIndex, total int) string {
+	if directional.IDHint != "" {
+		return fmt.Sprintf("%s-%s", baseID, normalizeDirectionalSourceID(directional.IDHint, lineIndex))
+	}
+
+	if total > 1 {
+		return fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
+	}
+
+	return baseID
 }

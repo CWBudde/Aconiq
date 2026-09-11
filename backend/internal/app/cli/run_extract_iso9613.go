@@ -9,7 +9,6 @@ import (
 	"github.com/aconiq/backend/internal/standards/iso9613"
 )
 
-//nolint:gocognit,cyclop,funlen // Point-source override handling is intentionally explicit.
 func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, supportedSourceTypes []string) ([]iso9613.PointSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
@@ -42,7 +41,7 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 			)
 		}
 
-		points, err := sourcePointsFromFeature(feature)
+		points, err := sourcePointsFromFeature(feature, iso9613.StandardID)
 		if err != nil {
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
 		}
@@ -58,70 +57,28 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 				sourceID = fmt.Sprintf("%s-%02d", baseID, pointIndex+1)
 			}
 
-			sourceHeightM := options.SourceHeightM
-
-			{
-				value, ok, err := featurePropertyFloat(feature, "iso9613_source_height_m")
-				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					sourceHeightM = value
-				}
-			}
-
-			soundPowerLevelDB := options.SoundPowerLevelDB
-
-			{
-				value, ok, err := featurePropertyFloat(feature, "iso9613_sound_power_level_db")
-				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					soundPowerLevelDB = value
-				}
-			}
-
-			directivityCorrectionDB := options.DirectivityCorrectionDB
-
-			{
-				value, ok, err := featurePropertyFloat(feature, "iso9613_directivity_correction_db")
-				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					directivityCorrectionDB = value
-				}
-			}
-
-			tonalityCorrectionDB := options.TonalityCorrectionDB
-
-			{
-				value, ok, err := featurePropertyFloat(feature, "iso9613_tonality_correction_db")
-				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					tonalityCorrectionDB = value
-				}
-			}
-
-			impulsivityCorrectionDB := options.ImpulsivityCorrectionDB
-
-			{
-				value, ok, err := featurePropertyFloat(feature, "iso9613_impulsivity_correction_db")
-				if err != nil {
-					return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Sources", fmt.Sprintf("feature %q", feature.ID), err)
-				} else if ok {
-					impulsivityCorrectionDB = value
-				}
-			}
-
-			sources = append(sources, iso9613.PointSource{
+			source := iso9613.PointSource{
 				ID:                      sourceID,
 				Point:                   point,
-				SourceHeightM:           sourceHeightM,
-				SoundPowerLevelDB:       soundPowerLevelDB,
-				DirectivityCorrectionDB: directivityCorrectionDB,
-				TonalityCorrectionDB:    tonalityCorrectionDB,
-				ImpulsivityCorrectionDB: impulsivityCorrectionDB,
+				SourceHeightM:           options.SourceHeightM,
+				SoundPowerLevelDB:       options.SoundPowerLevelDB,
+				DirectivityCorrectionDB: options.DirectivityCorrectionDB,
+				TonalityCorrectionDB:    options.TonalityCorrectionDB,
+				ImpulsivityCorrectionDB: options.ImpulsivityCorrectionDB,
+			}
+
+			overrideErr := applyFeatureOverrides(feature, "cli.extractISO9613Sources", []propertyOverride{
+				overrideFloat(&source.SourceHeightM, "iso9613_source_height_m"),
+				overrideFloat(&source.SoundPowerLevelDB, "iso9613_sound_power_level_db"),
+				overrideFloat(&source.DirectivityCorrectionDB, "iso9613_directivity_correction_db"),
+				overrideFloat(&source.TonalityCorrectionDB, "iso9613_tonality_correction_db"),
+				overrideFloat(&source.ImpulsivityCorrectionDB, "iso9613_impulsivity_correction_db"),
 			})
+			if overrideErr != nil {
+				return nil, overrideErr
+			}
+
+			sources = append(sources, source)
 		}
 	}
 

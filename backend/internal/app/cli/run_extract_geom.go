@@ -11,7 +11,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
 
-func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error) {
+func sourcePointsFromFeature(feature modelgeojson.Feature, standardID string) ([]geo.Point2D, error) {
 	switch feature.GeometryType {
 	case modelgeojson.GeometryTypePoint:
 		point, err := parsePointCoordinate(feature.Coordinates)
@@ -38,11 +38,11 @@ func sourcePointsFromFeature(feature modelgeojson.Feature) ([]geo.Point2D, error
 
 		return points, nil
 	default:
-		return nil, fmt.Errorf("unsupported source geometry type %q (dummy-freefield supports Point/MultiPoint only)", feature.GeometryType)
+		return nil, fmt.Errorf("unsupported source geometry type %q (%s supports Point/MultiPoint only)", feature.GeometryType, standardID)
 	}
 }
 
-func lineStringsFromFeature(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
+func lineStringsFromFeature(feature modelgeojson.Feature, standardID string) ([][]geo.Point2D, error) {
 	switch feature.GeometryType {
 	case modelgeojson.GeometryTypeLineString:
 		line, err := parseLineStringCoordinates(feature.Coordinates)
@@ -69,11 +69,11 @@ func lineStringsFromFeature(feature modelgeojson.Feature) ([][]geo.Point2D, erro
 
 		return lines, nil
 	default:
-		return nil, fmt.Errorf("unsupported source geometry type %q (cnossos-road supports LineString/MultiLineString only)", feature.GeometryType)
+		return nil, fmt.Errorf("unsupported source geometry type %q (%s supports LineString/MultiLineString only)", feature.GeometryType, standardID)
 	}
 }
 
-func polygonsFromFeature(feature modelgeojson.Feature) ([][][]geo.Point2D, error) {
+func polygonsFromFeature(feature modelgeojson.Feature, standardID string) ([][][]geo.Point2D, error) {
 	switch feature.GeometryType {
 	case modelgeojson.GeometryTypePolygon:
 		polygon, err := parsePolygonCoordinates(feature.Coordinates)
@@ -100,7 +100,7 @@ func polygonsFromFeature(feature modelgeojson.Feature) ([][][]geo.Point2D, error
 
 		return polygons, nil
 	default:
-		return nil, fmt.Errorf("unsupported source geometry type %q (cnossos-industry supports Point/MultiPoint/Polygon/MultiPolygon only)", feature.GeometryType)
+		return nil, fmt.Errorf("unsupported source geometry type %q (%s supports Point/MultiPoint/Polygon/MultiPolygon only)", feature.GeometryType, standardID)
 	}
 }
 
