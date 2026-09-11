@@ -21,10 +21,42 @@ import (
 // which is what makes the default and the override read as one thing.
 type propertyOverride func(properties map[string]any) error
 
+// overrideString fills target from the first key that carries a string.
+func overrideString(target *string, keys ...string) propertyOverride {
+	return func(properties map[string]any) error {
+		value, ok, err := propertyString(properties, keys...)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			*target = value
+		}
+
+		return nil
+	}
+}
+
 // overrideFloat fills target from the first key that carries a number.
 func overrideFloat(target *float64, keys ...string) propertyOverride {
 	return func(properties map[string]any) error {
 		value, ok, err := propertyFloat(properties, keys...)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			*target = value
+		}
+
+		return nil
+	}
+}
+
+// overrideBool fills target from the first key that carries a bool.
+func overrideBool(target *bool, keys ...string) propertyOverride {
+	return func(properties map[string]any) error {
+		value, ok, err := propertyBool(properties, keys...)
 		if err != nil {
 			return err
 		}
