@@ -308,7 +308,7 @@ func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, 
 	return sources, nil
 }
 
-//nolint:gocognit,cyclop,dupl,funlen,maintidx // CNOSSOS and BUF aircraft extraction stay separate because the source/output types differ.
+//nolint:gocognit,cyclop,funlen,maintidx // Aircraft extraction override handling is still written out by hand here.
 func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunOptions, supportedSourceTypes []string) ([]bufaircraft.AircraftSource, error) {
 	allowedSourceType := make(map[string]struct{}, len(supportedSourceTypes))
 	for _, sourceType := range supportedSourceTypes {
