@@ -309,3 +309,67 @@ func TestResolveSchall03Engine(t *testing.T) {
 		})
 	}
 }
+
+const tramTrackWithFeatures = `{
+	"id": "tram-1",
+	"kind": "source",
+	"source_type": "line",
+	"geometry_type": "LineString",
+	"coordinates": [[0, 0], [400, 0]],
+	"properties": {
+		"schall03_strecke_max_kph": 25,
+		"schall03_track_features": [
+			{"kind": "haltestelle", "x": 200, "y": 0},
+			{"kind": "weiche", "x": 350, "y": 2}
+		],
+		"schall03_operations": [
+			{"zugart": "Niederflur-ET", "trains_per_hour_day": 10, "trains_per_hour_night": 4}
+		]
+	}
+}`
+
+// The Nr. 5.3.2 substitution is only scoped correctly when the caller can say
+// where the Weichen, Kreuzungen and Haltestellen are, so the property has to
+// reach the segment through the CLI, not only through the fixture format.
+func TestExtractSchall03NormativeSceneReadsTrackFeatures(t *testing.T) {
+	t.Parallel()
+
+	model := decodeNormativeModel(t, "["+tramTrackWithFeatures+"]")
+
+	scene, err := extractSchall03NormativeScene(model, []string{"line"})
+	if err != nil {
+		t.Fatalf("extract normative scene: %v", err)
+	}
+
+	if len(scene.Segments) != 1 {
+		t.Fatalf("got %d segments, want 1", len(scene.Segments))
+	}
+
+	features := scene.Segments[0].Features
+	if len(features) != 2 {
+		t.Fatalf("got %d track features, want 2", len(features))
+	}
+
+	if features[0].Kind != schall03.TrackFeatureHaltestelle || features[0].Point.X != 200 {
+		t.Fatalf("unexpected first feature: %+v", features[0])
+	}
+
+	if features[1].Kind != schall03.TrackFeatureWeiche || features[1].Point.Y != 2 {
+		t.Fatalf("unexpected second feature: %+v", features[1])
+	}
+}
+
+func TestExtractSchall03NormativeSceneRejectsAnUnknownTrackFeature(t *testing.T) {
+	t.Parallel()
+
+	model := decodeNormativeModel(t, "["+strings.Replace(tramTrackWithFeatures, `"haltestelle"`, `"bahnsteig"`, 1)+"]")
+
+	_, err := extractSchall03NormativeScene(model, []string{"line"})
+	if err == nil {
+		t.Fatal("expected an error for an unknown track feature kind")
+	}
+
+	if !strings.Contains(err.Error(), "haltestelle") {
+		t.Fatalf("expected the error to name the accepted kinds, got %q", err)
+	}
+}

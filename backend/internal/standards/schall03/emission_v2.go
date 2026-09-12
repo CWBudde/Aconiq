@@ -35,6 +35,13 @@ type StreckeEmissionInput struct {
 	CurveRadiusM    float64         // 0 = straight, >0 = curved
 	PermanentlySlow bool            // Nr. 5.3.2: section permanently at ≤ 30 km/h (Straßenbahn only)
 
+	// SubstitutionSuppressed marks a stretch lying outside every Nr. 5.3.2
+	// Weichen-, Kreuzungs- and Haltestellenbereich, where the real track speed
+	// applies instead of the 50 km/h substitute.  It is set by the speed-zone
+	// split and only ever for a segment that declares track features; the zero
+	// value keeps the whole-segment reading.
+	SubstitutionSuppressed bool
+
 	// MeasuredVehicles provides Section 9 measurement-based vehicle categories
 	// (Fz >= 100) that extend the standard Beiblatt 1-3 lookup table.
 	// When a VehicleInput references an Fz in this slice, its measured spectra
@@ -60,6 +67,31 @@ type StreckeEmissionResult struct {
 // v0 is the reference speed in km/h.
 const v0 = 100.0
 
+// strassenbahnSubstituteSpeed applies the Nr. 5.3.2 speed rules:
+//
+//   - Default: a Straßenbahn below 50 km/h is computed at the 50 km/h
+//     substitute speed.
+//   - Exception: a section permanently at v ≤ 30 km/h (r > 200 m, carrying no
+//     Weichen, Kreuzungen or Haltestellen) uses 30 km/h instead.
+//   - Scope: Nr. 5.3.2 puts the substitution at Weichen, Kreuzungen and
+//     Haltestellen an Strecken plus 25 m on either side.  A segment declaring
+//     those features is split into zones beforehand, so the stretches between
+//     them arrive with the substitution suppressed and keep their real speed.
+//
+// Eisenbahn input is returned unchanged: Nr. 4.3 prescribes no substitute
+// speed.
+func strassenbahnSubstituteSpeed(input StreckeEmissionInput, isStrassenbahn bool) float64 {
+	if !isStrassenbahn || input.SpeedKPH >= 50 || input.SubstitutionSuppressed {
+		return input.SpeedKPH
+	}
+
+	if input.PermanentlySlow {
+		return 30
+	}
+
+	return 50
+}
+
 // ComputeStreckeEmission computes the normative emission per Gl. 1-2 of
 // Anlage 2 zu §4 der 16. BImSchV (Schall 03).
 func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult, error) {
@@ -71,18 +103,7 @@ func ComputeStreckeEmission(input StreckeEmissionInput) (*StreckeEmissionResult,
 	// Detect mode from first vehicle.
 	isStrassenbahn := len(input.Vehicles) > 0 && IsStrassenbahnFz(input.Vehicles[0].Fz)
 
-	// Apply speed clamp per Nr. 5.3.2:
-	//   - Default: Straßenbahn minimum speed is 50 km/h.
-	//   - Exception: sections permanently at ≤ 30 km/h (r > 200 m, no switches/
-	//     stations/crossings) use v = 30 km/h instead of clamping to 50.
-	effectiveSpeed := input.SpeedKPH
-	if isStrassenbahn && effectiveSpeed < 50 {
-		if input.PermanentlySlow {
-			effectiveSpeed = 30
-		} else {
-			effectiveSpeed = 50
-		}
-	}
+	effectiveSpeed := strassenbahnSubstituteSpeed(input, isStrassenbahn)
 
 	fzMap := buildFzMap()
 

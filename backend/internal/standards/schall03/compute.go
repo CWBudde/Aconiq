@@ -24,7 +24,13 @@ var teilquelleHeightIndices = [3]int{1, 2, 3}
 
 // buildVehicleInputs converts a TrainOperation into VehicleInput records for
 // one planning period using the provided trains-per-hour value.
-func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float64) StreckeEmissionInput {
+//
+// It takes a speedZonePart rather than a bare TrackSegment so that a stretch
+// lying between two Nr. 5.3.2 zones carries its substitution suppression into
+// the emission computation.
+func buildVehicleInputs(part speedZonePart, op TrainOperation, trainsPerHour float64) StreckeEmissionInput {
+	seg := part.segment
+
 	// The mode is derived from the first Fz of the composition, the same
 	// convention ComputeStreckeEmission uses to pick between Tabelle 7 and
 	// Tabelle 15.  It decides which speed rule applies: Nr. 4.3 for
@@ -50,7 +56,24 @@ func buildVehicleInputs(seg TrackSegment, op TrainOperation, trainsPerHour float
 		BridgeMitig:     seg.BridgeMitig,
 		CurveRadiusM:    seg.CurveRadiusM,
 		PermanentlySlow: seg.PermanentlySlow,
+
+		SubstitutionSuppressed: part.substitutionSuppressed,
 	}
+}
+
+// prepareSpeedZoneParts validates every segment against its own index and then
+// expands it into the homogeneous stretches the Nr. 5.3.2 speed substitution
+// needs.  Validation runs over the caller's list so error messages keep naming
+// the segment the caller passed, not the part it was cut into.
+func prepareSpeedZoneParts(segments []TrackSegment) ([]speedZonePart, error) {
+	for si := range segments {
+		err := segments[si].Validate()
+		if err != nil {
+			return nil, fmt.Errorf("segment[%d]: %w", si, err)
+		}
+	}
+
+	return splitSegmentsForSpeedZones(segments)
 }
 
 // normativeSinDelta2 computes sin²(δ) where δ is the angle between the
@@ -200,14 +223,16 @@ func ComputeNormativeReceiverLevels(
 
 	var daySum, nightSum numeric.CompensatedSum
 
-	for si, seg := range segments {
-		err = seg.Validate()
-		if err != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("segment[%d]: %w", si, err)
-		}
+	parts, err := prepareSpeedZoneParts(segments)
+	if err != nil {
+		return NormativeReceiverLevels{}, err
+	}
+
+	for _, part := range parts {
+		seg := part.segment
 
 		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourDay))
+			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
@@ -218,7 +243,7 @@ func ComputeNormativeReceiverLevels(
 				daySum.Add(math.Pow(10, 0.1*dayLp))
 			}
 
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
+			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}
@@ -441,21 +466,23 @@ func ComputeNormativeReceiverLevelsWithScene(
 
 	var daySum, nightSum numeric.CompensatedSum
 
-	for si, seg := range segments {
-		err = seg.Validate()
-		if err != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("segment[%d]: %w", si, err)
-		}
+	parts, err := prepareSpeedZoneParts(segments)
+	if err != nil {
+		return NormativeReceiverLevels{}, err
+	}
+
+	for _, part := range parts {
+		seg := part.segment
 
 		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourDay))
+			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
 
 			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, &daySum)
 
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
+			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}
@@ -535,21 +562,23 @@ func ComputeNormativeReceiverLevelsWithWalls(
 
 	var daySum, nightSum numeric.CompensatedSum
 
-	for si, seg := range segments {
-		err = seg.Validate()
-		if err != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("segment[%d]: %w", si, err)
-		}
+	parts, err := prepareSpeedZoneParts(segments)
+	if err != nil {
+		return NormativeReceiverLevels{}, err
+	}
+
+	for _, part := range parts {
+		seg := part.segment
 
 		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourDay))
+			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
 
 			addDirectAndReflected(dayEmission, seg, receiver, walls, &daySum)
 
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(seg, op, op.TrainsPerHourNight))
+			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}

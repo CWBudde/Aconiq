@@ -1,0 +1,24 @@
+{
+  "receivers": [
+    {
+      "id": "r_at_stop",
+      "x": 0,
+      "y": 20,
+      "height_m": 3.5,
+      "LpAeqDay": 56.422255,
+      "LpAeqNight": 52.442855,
+      "LrDay": 56.422255,
+      "LrNight": 52.442855
+    },
+    {
+      "id": "r_between_stops",
+      "x": 150,
+      "y": 20,
+      "height_m": 3.5,
+      "LpAeqDay": 53.136716,
+      "LpAeqNight": 49.157316,
+      "LrDay": 53.136716,
+      "LrNight": 49.157316
+    }
+  ]
+}

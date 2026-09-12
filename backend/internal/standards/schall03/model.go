@@ -417,6 +417,7 @@ type TrackSegment struct {
 	StreckeMaxKPH      float64          `json:"strecke_max_kph"`                 // track speed limit
 	WaterBodyFractionW float64          `json:"water_body_fraction_w,omitempty"` // Gl. 16: fraction of source–receiver path over water, 0–1
 	PermanentlySlow    bool             `json:"permanently_slow,omitempty"`      // Nr. 5.3.2: Straßenbahn section permanently at ≤ 30 km/h
+	Features           []TrackFeature   `json:"features,omitempty"`              // Nr. 5.3.2: Weichen, Kreuzungen and Haltestellen the substitute speed is scoped to
 	Operations         []TrainOperation `json:"operations"`
 }
 
@@ -441,7 +442,36 @@ func (seg TrackSegment) Validate() error {
 		return err
 	}
 
+	err = seg.validateTrackFeatures()
+	if err != nil {
+		return err
+	}
+
 	return seg.validateOperations()
+}
+
+// validateTrackFeatures checks the Nr. 5.3.2 track features and their one
+// contradiction with the permanently-slow exception.
+func (seg TrackSegment) validateTrackFeatures() error {
+	for i, feature := range seg.Features {
+		err := feature.Validate()
+		if err != nil {
+			return fmt.Errorf("TrackSegment %q: features[%d]: %w", seg.ID, i, err)
+		}
+	}
+
+	// Nr. 5.3.2 grants the "dauerhaft v ≤ 30 km/h" exception to sections that
+	// carry no Weichen, Kreuzungen or Haltestellen, so a segment claiming both
+	// is describing two different stretches of track and has to be split by the
+	// caller.
+	if seg.PermanentlySlow && len(seg.Features) > 0 {
+		return fmt.Errorf(
+			"TrackSegment %q: permanently_slow excludes Weichen, Kreuzungen and Haltestellen, but %d feature(s) are declared",
+			seg.ID, len(seg.Features),
+		)
+	}
+
+	return nil
 }
 
 func (seg TrackSegment) validateGeometry() error {

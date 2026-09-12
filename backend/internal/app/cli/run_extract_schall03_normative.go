@@ -26,6 +26,7 @@ const (
 	propSchall03StreckeMaxKPH   = "schall03_strecke_max_kph"
 	propSchall03WaterFraction   = "schall03_water_body_fraction"
 	propSchall03PermanentlySlow = "schall03_permanently_slow"
+	propSchall03TrackFeatures   = "schall03_track_features"
 
 	propSchall03Reflective     = "schall03_reflective"
 	propSchall03BaseHeight     = "schall03_base_height_m"
@@ -190,7 +191,82 @@ func parseSchall03SegmentTemplate(feature modelgeojson.Feature) (schall03.TrackS
 		return segment, err
 	}
 
-	return segment, parseSchall03TrackFlags(feature, &segment)
+	err = parseSchall03TrackFlags(feature, &segment)
+	if err != nil {
+		return segment, err
+	}
+
+	return segment, parseSchall03TrackFeatures(feature, &segment)
+}
+
+// parseSchall03TrackFeatures decodes the optional schall03_track_features array
+// — the Weichen, Kreuzungen and Haltestellen that Nr. 5.3.2 scopes the 50 km/h
+// substitute speed to.  A track that declares none keeps the whole-segment
+// reading.
+func parseSchall03TrackFeatures(feature modelgeojson.Feature, segment *schall03.TrackSegment) error {
+	raw, ok := feature.Properties[propSchall03TrackFeatures]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	entries, entriesOK := raw.([]any)
+	if !entriesOK {
+		return validationErrorf("feature %q property %q must be an array", feature.ID, propSchall03TrackFeatures)
+	}
+
+	features := make([]schall03.TrackFeature, 0, len(entries))
+
+	for index, entry := range entries {
+		object, objectOK := entry.(map[string]any)
+		if !objectOK {
+			return validationErrorf(
+				"feature %q property %q[%d] must be an object",
+				feature.ID, propSchall03TrackFeatures, index,
+			)
+		}
+
+		parsed, err := parseSchall03TrackFeature(feature.ID, index, object)
+		if err != nil {
+			return err
+		}
+
+		features = append(features, parsed)
+	}
+
+	segment.Features = features
+
+	return nil
+}
+
+func parseSchall03TrackFeature(featureID string, index int, object map[string]any) (schall03.TrackFeature, error) {
+	where := fmt.Sprintf("feature %q property %q[%d]", featureID, propSchall03TrackFeatures, index)
+
+	kind, _, err := propertyString(object, "kind")
+	if err != nil {
+		return schall03.TrackFeature{}, validationErrorf("%s: %v", where, err)
+	}
+
+	x, _, err := propertyFloat(object, "x")
+	if err != nil {
+		return schall03.TrackFeature{}, validationErrorf("%s: %v", where, err)
+	}
+
+	y, _, err := propertyFloat(object, "y")
+	if err != nil {
+		return schall03.TrackFeature{}, validationErrorf("%s: %v", where, err)
+	}
+
+	parsed := schall03.TrackFeature{
+		Kind:  schall03.TrackFeatureKind(kind),
+		Point: geo.Point2D{X: x, Y: y},
+	}
+
+	err = parsed.Validate()
+	if err != nil {
+		return schall03.TrackFeature{}, validationErrorf("%s: %v", where, err)
+	}
+
+	return parsed, nil
 }
 
 // parseSchall03TrackEnums resolves the Tabelle 7 / 15 / 8 vocabularies.

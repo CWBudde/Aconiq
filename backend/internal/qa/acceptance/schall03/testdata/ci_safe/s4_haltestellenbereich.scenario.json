@@ -1,0 +1,44 @@
+{
+  "segments": [
+    {
+      "id": "tram_haltestellenbereich",
+      "track_centerline": [
+        {"x": -200, "y": 0},
+        {"x": 200, "y": 0}
+      ],
+      "elevation_m": 0,
+      "fahrbahn": "schwellengleis",
+      "s_fahrbahn": "schwellengleis",
+      "surface": "none",
+      "bridge_type": 0,
+      "curve_radius_m": 0,
+      "strecke_max_kph": 25,
+      "features": [
+        {"kind": "haltestelle", "point": {"x": 0, "y": 0}}
+      ],
+      "operations": [
+        {
+          "train_type": "Strassenbahn-Niederflur",
+          "fz_composition": [
+            {"fz": 21, "count": 2}
+          ],
+          "speed_kph": 70,
+          "trains_per_hour_day": 10,
+          "trains_per_hour_night": 4
+        }
+      ]
+    }
+  ],
+  "receivers": [
+    {
+      "id": "r_at_stop",
+      "point": {"x": 0, "y": 20},
+      "height_m": 3.5
+    },
+    {
+      "id": "r_between_stops",
+      "point": {"x": 150, "y": 20},
+      "height_m": 3.5
+    }
+  ]
+}
