@@ -46,6 +46,21 @@ export function loadDraft(): ModelDraft | null {
   }
 }
 
+/**
+ * Writes the draft; returns whether it was stored. The one writer: the
+ * debounced autosave and a successful project save both go through here, so
+ * a draft can never be shaped differently depending on who wrote it.
+ */
+export function writeDraft(draft: ModelDraft): boolean {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    return true;
+  } catch {
+    // Storage full or unavailable — the draft is best-effort.
+    return false;
+  }
+}
+
 /** Removes the saved draft from localStorage. */
 export function discardDraft(): void {
   try {
@@ -92,19 +107,8 @@ export function useAutosave(): void {
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          DRAFT_KEY,
-          JSON.stringify({
-            features,
-            receivers,
-            calcArea,
-          } satisfies ModelDraft),
-        );
-        if (!backend.capabilities.runsAgainstSavedModel) markClean();
-      } catch {
-        // Storage full or unavailable — skip silently.
-      }
+      const written = writeDraft({ features, receivers, calcArea });
+      if (written && !backend.capabilities.runsAgainstSavedModel) markClean();
     }, SAVE_DELAY_MS);
 
     return () => {

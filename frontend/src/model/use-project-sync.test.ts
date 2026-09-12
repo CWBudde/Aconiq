@@ -4,7 +4,8 @@ import { APIRequestError, ERROR_CODE_MODEL_INVALID } from "@/api/api-error";
 import type { ModelSaveRequest } from "@/api/client";
 import { useModelStore } from "./model-store";
 import type { ModelFeature, ModelReceiver } from "./types";
-import { useProjectSync } from "./use-project-sync";
+import { loadDraft, writeDraft } from "./use-autosave";
+import { projectSyncStore, useProjectSync } from "./use-project-sync";
 
 const state = vi.hoisted(() => {
   const value: {
@@ -48,8 +49,8 @@ vi.mock("@/api/hooks", () => ({
       state.requests.push(req);
       return state.respond();
     },
-    isPending: state.isPending,
   }),
+  useIsSavingModel: () => state.isPending,
 }));
 
 const feature: ModelFeature = {
@@ -72,6 +73,8 @@ beforeEach(() => {
   state.requests = [];
   state.respond = () => Promise.resolve({ featureCount: 0, warnings: [] });
   useModelStore.getState().reset();
+  projectSyncStore.setState({ error: null, inFlight: false });
+  localStorage.clear();
 });
 
 describe("useProjectSync", () => {
@@ -219,5 +222,86 @@ describe("useProjectSync", () => {
     });
 
     expect(state.requests).toHaveLength(1);
+  });
+
+  it("rewrites the draft with the saved snapshot so draft and project agree", async () => {
+    useModelStore.getState().addFeature(feature);
+    // A draft from before the save, as the autosave would have left it.
+    writeDraft({ features: [], receivers: [], calcArea: null });
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    // Without this, "Restore draft" after a reload offered the older model.
+    expect(loadDraft()?.features.map((f) => f.id)).toEqual(["s1"]);
+  });
+
+  it("leaves the draft alone when the save is refused", async () => {
+    useModelStore.getState().addFeature(feature);
+    writeDraft({ features: [], receivers: [], calcArea: null });
+    state.respond = () => Promise.reject(new Error("Request failed: 500"));
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(loadDraft()?.features).toEqual([]);
+  });
+
+  describe("shared across surfaces", () => {
+    it("shows one instance's failure on every instance", async () => {
+      useModelStore.getState().addFeature(feature);
+      const refused = new Error("Request failed: 500");
+      state.respond = () => Promise.reject(refused);
+      const header = renderHook(() => useProjectSync());
+      const dialog = renderHook(() => useProjectSync());
+
+      await act(async () => {
+        await header.result.current.save();
+      });
+
+      expect(header.result.current.status).toBe("error");
+      expect(dialog.result.current.status).toBe("error");
+      expect(dialog.result.current.error).toBe(refused);
+
+      state.respond = () => Promise.resolve({ featureCount: 1, warnings: [] });
+      await act(async () => {
+        await dialog.result.current.save();
+      });
+      expect(header.result.current.status).toBe("clean");
+      expect(header.result.current.error).toBeNull();
+    });
+
+    it("holds the in-flight guard across instances", async () => {
+      useModelStore.getState().addFeature(feature);
+      let resolve: (() => void) | undefined;
+      state.respond = () =>
+        new Promise((r) => {
+          resolve = () => {
+            r({ featureCount: 0, warnings: [] });
+          };
+        });
+      const header = renderHook(() => useProjectSync());
+      const dialog = renderHook(() => useProjectSync());
+
+      let first: Promise<void> | undefined;
+      act(() => {
+        first = header.result.current.save();
+      });
+      // The dialog's inline button, pressed while the header's save runs.
+      await act(async () => {
+        await dialog.result.current.save();
+      });
+      expect(state.requests).toHaveLength(1);
+
+      await act(async () => {
+        resolve?.();
+        await first;
+      });
+      expect(useModelStore.getState().dirty).toBe(false);
+    });
   });
 });

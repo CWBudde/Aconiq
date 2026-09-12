@@ -79,8 +79,8 @@ vi.mock("@/api/hooks", () => ({
       state.savedModels.push(req);
       return Promise.resolve({ featureCount: 0, warnings: [] });
     },
-    isPending: false,
   }),
+  useIsSavingModel: () => false,
 }));
 
 const sampleFeature: ModelFeature = {

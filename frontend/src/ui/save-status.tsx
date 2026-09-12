@@ -19,25 +19,27 @@ import { m } from "@/i18n/messages";
  * persistence and nothing needs saying.
  */
 export function SaveStatus() {
-  const { enabled, status, error, save } = useProjectSync();
+  const { enabled, status, dirty, error, save } = useProjectSync();
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   // Ctrl+S / Cmd+S. `preventDefault` runs whenever the shortcut is ours to
   // handle, dirty or not: a workspace must never pop the browser's save-page
-  // dialog, and a clean one has simply nothing to do.
+  // dialog, and a clean one has simply nothing to do. The save follows
+  // `dirty`, not `status`: after a failed save the status is "error" while
+  // the model is still unsaved, and the shortcut is the retry.
   useEffect(() => {
     if (!enabled) return;
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() !== "s") return;
       e.preventDefault();
-      if (status === "dirty") void save();
+      if (dirty && status !== "saving") void save();
     };
     window.addEventListener("keydown", handler);
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [enabled, status, save]);
+  }, [enabled, status, dirty, save]);
 
   if (!enabled) return null;
 
@@ -47,7 +49,7 @@ export function SaveStatus() {
     <div
       data-testid="save-status"
       data-status={status}
-      className="flex items-center gap-2 text-xs"
+      className="mr-2 flex items-center gap-2 text-xs"
     >
       {/* One live region for every state, so a transition is announced. */}
       <span

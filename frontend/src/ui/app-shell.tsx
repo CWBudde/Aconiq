@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex flex-1 items-center justify-between">
             <PageTitle />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
               <SaveStatus />
               <LanguageToggle />
               <ThemeToggle />

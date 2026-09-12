@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
 import { backend } from "./backend";
 import type { OsmImportRequest, RunSpec } from "./backend";
 import type { ModelSaveRequest, RasterMetadata, ReceiverTable } from "./client";
@@ -98,13 +98,27 @@ export function useCreateExport() {
   });
 }
 
+/**
+ * Keyed so that "is a save in flight?" can be asked from anywhere
+ * (`useIsSavingModel`), not only by the component that started it.
+ */
+export const MODEL_SAVE_MUTATION_KEY = ["model", "save"] as const;
+
 export function useSaveModel() {
   return useMutation({
+    mutationKey: MODEL_SAVE_MUTATION_KEY,
     mutationFn: (req: ModelSaveRequest) => backend.saveModel(req),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
     },
   });
+}
+
+/** True while any `useSaveModel` mutation is running, whichever surface started it. */
+export function useIsSavingModel(): boolean {
+  return (
+    useIsMutating({ mutationKey: MODEL_SAVE_MUTATION_KEY }, queryClient) > 0
+  );
 }
 
 export function getArtifactContentURL(artifactId: string): string {

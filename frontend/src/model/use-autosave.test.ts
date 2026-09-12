@@ -5,6 +5,7 @@ import {
   loadDraft,
   discardDraft,
   useAutosave,
+  writeDraft,
   DRAFT_KEY,
 } from "./use-autosave";
 import { useModelStore } from "./model-store";
@@ -117,6 +118,33 @@ describe("draft utilities", () => {
     );
     discardDraft();
     expect(hasDraft()).toBe(false);
+  });
+
+  it("writeDraft stores what loadDraft reads back", () => {
+    expect(
+      writeDraft({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+        calcArea: sampleCalcArea,
+      }),
+    ).toBe(true);
+    expect(loadDraft()).toEqual({
+      features: [sampleFeature],
+      receivers: [sampleReceiver],
+      calcArea: sampleCalcArea,
+    });
+  });
+
+  it("writeDraft reports a failed write instead of throwing", () => {
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("storage full");
+      });
+    expect(writeDraft({ features: [], receivers: [], calcArea: null })).toBe(
+      false,
+    );
+    spy.mockRestore();
   });
 
   it("hasDraft/loadDraft/discardDraft handle localStorage unavailability gracefully", () => {

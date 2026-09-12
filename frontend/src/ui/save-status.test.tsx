@@ -143,6 +143,19 @@ describe("SaveStatus", () => {
     expect(sync.save).toHaveBeenCalledTimes(1);
   });
 
+  it("retries on Ctrl+S after a failed save", () => {
+    setSync({
+      status: "error",
+      dirty: true,
+      error: new Error("Request failed: 500"),
+    });
+    render(<SaveStatus />);
+    pressCtrlS();
+    // The model is still unsaved in the error state; the shortcut must not
+    // go dead just because the status word changed.
+    expect(sync.save).toHaveBeenCalledTimes(1);
+  });
+
   it("swallows Ctrl+S when clean without saving", () => {
     render(<SaveStatus />);
     const event = pressCtrlS();
