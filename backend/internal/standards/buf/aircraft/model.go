@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
@@ -14,10 +15,10 @@ const (
 	// StandardID identifies the BUF aircraft module entry in the standards registry.
 	StandardID = "buf-aircraft"
 
-	IndicatorLday     = "Lday"
-	IndicatorLevening = "Levening"
-	IndicatorLnight   = "Lnight"
-	IndicatorLden     = "Lden"
+	IndicatorLday     = acoustics.IndicatorLday
+	IndicatorLevening = acoustics.IndicatorLevening
+	IndicatorLnight   = acoustics.IndicatorLnight
+	IndicatorLden     = acoustics.IndicatorLden
 )
 
 const (
