@@ -52,4 +52,6 @@ All commands are available via `just` from the repo root:
 | `just fe-test`      | Run Vitest tests         |
 | `just fe-ci`        | All checks (CI)          |
 
-See `../PLAN.md` Phase 23a-23h for the full frontend roadmap.
+See `../PLAN.md` Phase 23a-23h for the full frontend roadmap, and
+`../docs/frontend-design-system.md` for the colour tokens, contrast contract,
+type scale, radius cap and fonts.

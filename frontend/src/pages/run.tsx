@@ -8,15 +8,14 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
-  XCircle,
-  Clock,
   RefreshCw,
   StopCircle,
-  ChevronRight,
   Terminal,
   Info,
 } from "lucide-react";
+import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
+import { Checkbox } from "@/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +33,15 @@ import {
 } from "@/ui/components/select";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
+import { Switch } from "@/ui/components/switch";
+import { Callout } from "@/ui/callout";
+import { CopyButton } from "@/ui/copy-field";
+import { EmptyState } from "@/ui/empty-state";
+import { formatDurationBetween, formatTime } from "@/ui/format";
+import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
+import { PageHeader, SectionHeading } from "@/ui/page-header";
+import { StatusBadge, type RunStatus } from "@/ui/status-badge";
+import { statusLabel } from "@/ui/run-status";
 import { useCreateRun, useStandards, useRuns, useRunLog } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import type {
@@ -73,74 +81,16 @@ function getStandardDescription(standardId: string, fallback: string): string {
   return STANDARD_DESCRIPTIONS[standardId]?.() ?? fallback;
 }
 
-function formatDuration(startedAt: string, finishedAt: string): string {
-  const start = new Date(startedAt).getTime();
-  const end = new Date(finishedAt).getTime();
-  const ms = end - start;
-  if (ms < 1000) return `${String(ms)}ms`;
-  if (ms < 60_000) return `${String(Math.round(ms / 1000))}s`;
-  return `${String(Math.floor(ms / 60_000))}m ${String(Math.round((ms % 60_000) / 1000))}s`;
+function isFinished(run: RunSummary): boolean {
+  return run.status !== "running" && run.status !== "pending";
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Status badge
-// ---------------------------------------------------------------------------
-
-type RunStatus = RunSummary["status"];
-
-// Labels are held as functions, not resolved strings: calling a message at
-// module scope freezes it to the locale active at import time.
-const statusConfig: Record<
-  RunStatus,
-  {
-    label: () => string;
-    icon: React.ComponentType<{ className?: string }>;
-    className: string;
-  }
-> = {
-  pending: {
-    label: m.status_badge_pending,
-    icon: Clock,
-    className: "text-muted-foreground bg-muted",
-  },
-  running: {
-    label: m.status_badge_running,
-    icon: Loader2,
-    className: "text-blue-600 bg-blue-50 dark:bg-blue-950",
-  },
-  completed: {
-    label: m.status_badge_completed,
-    icon: CheckCircle2,
-    className: "text-green-600 bg-green-50 dark:bg-green-950",
-  },
-  failed: {
-    label: m.status_badge_failed,
-    icon: XCircle,
-    className: "text-destructive bg-destructive/10",
-  },
-};
-
-function StatusBadge({ status }: { status: RunStatus }) {
-  const cfg = statusConfig[status];
-  const Icon = cfg.icon;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}
-    >
-      <Icon
-        className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`}
-      />
-      {cfg.label()}
-    </span>
-  );
+/** "13:05:07 · 12 sec" for a finished run, the start time alone otherwise. */
+function runTiming(run: RunSummary): string {
+  const started = formatTime(run.started_at);
+  return isFinished(run)
+    ? `${started} · ${formatDurationBetween(run.started_at, run.finished_at)}`
+    : started;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,23 +185,23 @@ function ProgressTimeline({
             <div
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
                 step.done
-                  ? "border-green-500 bg-green-500 text-white"
+                  ? "border-success bg-success text-success-foreground"
                   : step.active
-                    ? "border-blue-500 bg-blue-500 text-white"
+                    ? "border-info bg-info text-info-foreground"
                     : "border-border bg-muted text-muted-foreground"
               }`}
             >
               {step.done ? (
-                <CheckCircle2 className="h-3 w-3" />
+                <CheckCircle2 aria-hidden="true" className="h-3 w-3" />
               ) : step.active ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
               ) : (
                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
               )}
             </div>
             {i < steps.length - 1 ? (
               <div
-                className={`mt-0.5 w-px flex-1 ${step.done ? "bg-green-300 dark:bg-green-800" : "bg-border"}`}
+                className={`mt-0.5 w-px flex-1 ${step.done ? "bg-success/40" : "bg-border"}`}
                 style={{ minHeight: "12px" }}
               />
             ) : null}
@@ -284,8 +234,8 @@ function LogViewer({ lines }: { lines: string[] }) {
     <div className="rounded-md border bg-muted/30">
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Terminal className="h-3.5 w-3.5" />
-          {m.label_log()} ({String(lines.length)} lines)
+          <Terminal aria-hidden="true" className="h-3.5 w-3.5" />
+          {m.label_log()} ({m.msg_log_line_count({ count: lines.length })})
         </div>
         {lines.length > 20 ? (
           <Button
@@ -330,17 +280,6 @@ const ARTIFACT_KIND_LABELS: Record<string, () => string> = {
 };
 
 function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
-  const [copied, setCopied] = useState<string | null>(null);
-
-  function copyPath(path: string) {
-    void navigator.clipboard.writeText(path).then(() => {
-      setCopied(path);
-      setTimeout(() => {
-        setCopied(null);
-      }, 1500);
-    });
-  }
-
   if (artifacts.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -350,12 +289,12 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
   }
 
   return (
-    <div className="space-y-1">
+    <ul className="m-0 list-none space-y-1 p-0">
       {artifacts.map((a) => {
         const label = ARTIFACT_KIND_LABELS[a.kind]?.() ?? a.kind;
         const filename = a.path.split("/").pop() ?? a.path;
         return (
-          <div
+          <li
             key={a.id}
             className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2"
           >
@@ -368,22 +307,16 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
                 {filename}
               </p>
             </div>
-            <Button
+            <CopyButton
+              text={a.path}
+              label={m.action_copy_path()}
               variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 px-2 text-xs"
-              onClick={() => {
-                copyPath(a.path);
-              }}
-            >
-              {copied === a.path
-                ? m.status_path_copied()
-                : m.action_copy_path()}
-            </Button>
-          </div>
+              className="h-6 shrink-0"
+            />
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -432,14 +365,17 @@ function RunFilterBar({
           onChange({ ...filters, status: v === "_all" ? "" : v });
         }}
       >
-        <SelectTrigger className="h-7 w-32 text-xs">
+        <SelectTrigger
+          className="h-7 w-32 text-xs"
+          aria-label={m.label_status_field()}
+        >
           <SelectValue placeholder={m.label_status_field()} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="_all">{m.label_status_filter()}</SelectItem>
           {statuses.map((s) => (
             <SelectItem key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {statusLabel(s)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -451,7 +387,10 @@ function RunFilterBar({
           onChange({ ...filters, standardId: v === "_all" ? "" : v });
         }}
       >
-        <SelectTrigger className="h-7 w-36 text-xs">
+        <SelectTrigger
+          className="h-7 w-36 text-xs"
+          aria-label={m.label_standard_select()}
+        >
           <SelectValue placeholder={m.label_standard_select()} />
         </SelectTrigger>
         <SelectContent>
@@ -471,7 +410,10 @@ function RunFilterBar({
             onChange({ ...filters, scenarioId: v === "_all" ? "" : v });
           }}
         >
-          <SelectTrigger className="h-7 w-32 text-xs">
+          <SelectTrigger
+            className="h-7 w-32 text-xs"
+            aria-label={m.label_scenarios_field()}
+          >
             <SelectValue placeholder={m.label_scenarios_field()} />
           </SelectTrigger>
           <SelectContent>
@@ -505,16 +447,24 @@ function RunFilterBar({
 // Run detail panel
 // ---------------------------------------------------------------------------
 
+function LoadingLine() {
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+      {m.status_loading()}
+    </div>
+  );
+}
+
 function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
   const { data: log, isLoading: logLoading } = useRunLog(
     run.id,
     run.status === "running" || run.status === "pending",
   );
   const lines = log?.lines ?? [];
-  const isRunning = run.status === "running";
 
   return (
-    <div className="flex flex-col gap-5 overflow-y-auto p-5">
+    <div className="flex flex-col gap-5 p-5">
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
@@ -539,31 +489,24 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           ) : null}
         </p>
         <p className="text-xs text-muted-foreground">
-          {m.label_started()} {formatTime(run.started_at)}
-          {run.status !== "running" && run.status !== "pending"
-            ? ` · ${formatDuration(run.started_at, run.finished_at)}`
-            : null}
+          {m.label_started()} {runTiming(run)}
         </p>
       </div>
 
       {/* Determinism hint for completed runs */}
       {run.status === "completed" ? (
-        <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{m.msg_determinism_hint()}</span>
-        </div>
+        <Callout variant="neutral" icon={Info}>
+          {m.msg_determinism_hint()}
+        </Callout>
       ) : null}
 
       {/* Progress timeline */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_progress()}
-        </h4>
+        </SectionHeading>
         {logLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {m.status_loading()}
-          </div>
+          <LoadingLine />
         ) : (
           <ProgressTimeline lines={lines} status={run.status} />
         )}
@@ -571,45 +514,35 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
 
       {/* Log viewer */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_logs()}
-        </h4>
-        {logLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {m.status_loading()}
-          </div>
-        ) : (
-          <LogViewer lines={lines} />
-        )}
+        </SectionHeading>
+        {logLoading ? <LoadingLine /> : <LogViewer lines={lines} />}
       </section>
 
       {/* Artifacts */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_artifacts()}
-        </h4>
+        </SectionHeading>
         <ArtifactLinks artifacts={run.artifacts} />
       </section>
 
-      {/* Actions */}
+      {/* Actions. Neither backend can cancel a run (the API has no endpoint
+          and the kernel completes inside `startRun`), so the control is
+          disabled rather than offered and then refused on click. */}
       <section className="flex gap-2">
         <Button
           variant="outline"
           size="sm"
-          disabled={!isRunning}
-          title={
-            isRunning ? m.tooltip_cancel_run() : m.tooltip_cancel_not_running()
-          }
-          onClick={() => {
-            alert(m.alert_cancel_not_supported());
-          }}
+          disabled
+          title={m.alert_cancel_not_supported()}
         >
-          <StopCircle className="mr-1.5 h-3.5 w-3.5" />
-          Cancel
+          <StopCircle aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+          {m.action_cancel()}
         </Button>
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
           {m.action_retry()}
         </Button>
       </section>
@@ -618,52 +551,23 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Run list item
-// ---------------------------------------------------------------------------
-
-function RunListItem({
-  run,
-  selected,
-  onClick,
-}: {
-  run: RunSummary;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-        selected ? "bg-muted/60" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <StatusBadge status={run.status} />
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {run.id}
-          </span>
-        </div>
-        <p className="mt-0.5 truncate text-sm">
-          {run.standard_id}
-          {run.version ? ` / ${run.version}` : ""}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {formatTime(run.started_at)}
-          {run.status !== "running" && run.status !== "pending"
-            ? ` · ${formatDuration(run.started_at, run.finished_at)}`
-            : null}
-        </p>
-      </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Parameter editor (shared with setup dialog)
 // ---------------------------------------------------------------------------
+
+function ParameterLabel({
+  id,
+  param,
+}: {
+  id: string;
+  param: ParameterDefinition;
+}) {
+  return (
+    <Label htmlFor={id}>
+      {param.name}
+      {param.required ? <span className="ml-1 text-destructive">*</span> : null}
+    </Label>
+  );
+}
 
 function ParameterField({
   param,
@@ -675,16 +579,14 @@ function ParameterField({
   onChange: (v: string) => void;
 }) {
   const id = `param-${param.name}`;
+  const description = param.description ? (
+    <p className="text-xs text-muted-foreground">{param.description}</p>
+  ) : null;
 
   if (param.enum && param.enum.length > 0) {
     return (
       <div className="space-y-1">
-        <Label htmlFor={id}>
-          {param.name}
-          {param.required ? (
-            <span className="ml-1 text-destructive">*</span>
-          ) : null}
-        </Label>
+        <ParameterLabel id={id} param={param} />
         <Select value={value} onValueChange={onChange}>
           <SelectTrigger id={id}>
             <SelectValue />
@@ -697,9 +599,7 @@ function ParameterField({
             ))}
           </SelectContent>
         </Select>
-        {param.description ? (
-          <p className="text-xs text-muted-foreground">{param.description}</p>
-        ) : null}
+        {description}
       </div>
     );
   }
@@ -707,24 +607,17 @@ function ParameterField({
   if (param.kind === "bool") {
     return (
       <div className="space-y-1">
-        <Label htmlFor={id}>
-          {param.name}
-          {param.required ? (
-            <span className="ml-1 text-destructive">*</span>
-          ) : null}
-        </Label>
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger id={id}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">true</SelectItem>
-            <SelectItem value="false">false</SelectItem>
-          </SelectContent>
-        </Select>
-        {param.description ? (
-          <p className="text-xs text-muted-foreground">{param.description}</p>
-        ) : null}
+        <div className="flex h-10 items-center gap-3">
+          <Switch
+            id={id}
+            checked={value === "true"}
+            onCheckedChange={(checked) => {
+              onChange(checked ? "true" : "false");
+            }}
+          />
+          <ParameterLabel id={id} param={param} />
+        </div>
+        {description}
       </div>
     );
   }
@@ -735,12 +628,7 @@ function ParameterField({
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id}>
-        {param.name}
-        {param.required ? (
-          <span className="ml-1 text-destructive">*</span>
-        ) : null}
-      </Label>
+      <ParameterLabel id={id} param={param} />
       <Input
         id={id}
         type={inputType}
@@ -752,9 +640,7 @@ function ParameterField({
         min={param.min}
         max={param.max}
       />
-      {param.description ? (
-        <p className="text-xs text-muted-foreground">{param.description}</p>
-      ) : null}
+      {description}
     </div>
   );
 }
@@ -776,25 +662,18 @@ function RunCreateError({ error }: { error: Error }) {
     apiError?.code === ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED;
 
   return (
-    <div
-      role="alert"
+    <Callout
+      variant="destructive"
+      icon={AlertCircle}
       data-testid="run-create-error"
       data-error-code={apiError?.code}
-      className="flex items-start gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive"
+      title={
+        optInRequired ? m.msg_experimental_opt_in_required_error() : undefined
+      }
     >
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-      <div className="space-y-1">
-        {optInRequired ? (
-          <p className="font-medium">
-            {m.msg_experimental_opt_in_required_error()}
-          </p>
-        ) : null}
-        <span>{error.message}</span>
-        {apiError?.hint !== undefined ? (
-          <p className="text-xs">{apiError.hint}</p>
-        ) : null}
-      </div>
-    </div>
+      <p>{error.message}</p>
+      {apiError?.hint !== undefined ? <p>{apiError.hint}</p> : null}
+    </Callout>
   );
 }
 
@@ -810,6 +689,47 @@ function defaultParams(profile: ProfileInfo): Record<string, string> {
     out[p.name] = p.default_value ?? "";
   }
   return out;
+}
+
+function ReceiverModeButton({
+  mode,
+  current,
+  onSelect,
+  icon: Icon,
+  title,
+  description,
+}: {
+  mode: ReceiverMode;
+  current: ReceiverMode;
+  onSelect: (mode: ReceiverMode) => void;
+  icon: typeof Grid2x2;
+  title: string;
+  description: string;
+}) {
+  const selected = mode === current;
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={() => {
+        onSelect(mode);
+      }}
+      className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+        selected
+          ? "border-primary bg-primary/5"
+          : "border-border hover:bg-muted/50"
+      }`}
+    >
+      <Icon
+        aria-hidden="true"
+        className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+      />
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    </button>
+  );
 }
 
 function RunSetupDialog({
@@ -953,22 +873,24 @@ function RunSetupDialog({
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2
+              aria-hidden="true"
+              className="h-6 w-6 animate-spin text-muted-foreground"
+            />
           </div>
         ) : error ? (
-          <div className="flex items-center gap-2 rounded-md border border-destructive/50 p-4 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{m.msg_api_error_standards()}</span>
-          </div>
+          <Callout variant="destructive" icon={AlertCircle}>
+            {m.msg_api_error_standards()}
+          </Callout>
         ) : createRun.isError ? (
           <RunCreateError error={createRun.error} />
         ) : (
           <div className="space-y-6">
             {/* Standard / Version / Profile */}
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <SectionHeading variant="eyebrow">
                 {m.label_standard()}
-              </h3>
+              </SectionHeading>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="standard">{m.label_standard()}</Label>
@@ -1059,12 +981,9 @@ function RunSetupDialog({
               {selectedProfile ? (
                 <div className="flex flex-wrap gap-2">
                   {selectedProfile.supported_indicators.map((ind) => (
-                    <span
-                      key={ind}
-                      className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium"
-                    >
+                    <Badge key={ind} variant="secondary">
                       {ind}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               ) : null}
@@ -1073,9 +992,9 @@ function RunSetupDialog({
             {/* Parameters */}
             {selectedProfile && selectedProfile.parameters.length > 0 ? (
               <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                <SectionHeading variant="eyebrow">
                   {m.label_section_parameters()}
-                </h3>
+                </SectionHeading>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   {selectedProfile.parameters.map((param) => (
                     <ParameterField
@@ -1093,84 +1012,57 @@ function RunSetupDialog({
 
             {/* Receiver set */}
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <SectionHeading variant="eyebrow">
                 {m.label_receivers()}
-              </h3>
+              </SectionHeading>
               <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReceiverMode("auto-grid");
-                  }}
-                  className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
-                    receiverMode === "auto-grid"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:bg-muted/50"
-                  }`}
-                >
-                  <Grid2x2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {m.label_receiver_auto_grid()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {m.msg_receiver_auto_grid_desc()}
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReceiverMode("custom");
-                  }}
-                  className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
-                    receiverMode === "custom"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:bg-muted/50"
-                  }`}
-                >
-                  <Settings2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {m.label_receiver_custom_set()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {m.msg_receiver_custom_set_desc()}
-                    </p>
-                  </div>
-                </button>
+                <ReceiverModeButton
+                  mode="auto-grid"
+                  current={receiverMode}
+                  onSelect={setReceiverMode}
+                  icon={Grid2x2}
+                  title={m.label_receiver_auto_grid()}
+                  description={m.msg_receiver_auto_grid_desc()}
+                />
+                <ReceiverModeButton
+                  mode="custom"
+                  current={receiverMode}
+                  onSelect={setReceiverMode}
+                  icon={Settings2}
+                  title={m.label_receiver_custom_set()}
+                  description={m.msg_receiver_custom_set_desc()}
+                />
               </div>
               {/* The calculation area is not part of the saved model
                   (`modelToGeoJSON` leaves it out), so a backend auto-grid
                   cannot honour it: say so instead of claiming it is active. */}
               {receiverMode === "auto-grid" && calcArea ? (
                 backend.capabilities.runsAgainstSavedModel ? (
-                  <div
+                  <Callout
+                    variant="warning"
+                    icon={AlertCircle}
                     data-testid="calc-area-not-in-project"
-                    className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
                   >
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{m.msg_calc_area_not_in_project()}</span>
-                  </div>
+                    {m.msg_calc_area_not_in_project()}
+                  </Callout>
                 ) : (
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                  <p className="text-xs text-info">
                     {m.msg_calc_area_active()}
                   </p>
                 )
               ) : null}
-              {receiverMode === "custom" && receiverCount === 0 ? (
-                !backend.capabilities.runsAgainstSavedModel ? (
-                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{m.msg_no_explicit_receivers()}</span>
-                  </div>
-                ) : null
+              {receiverMode === "custom" &&
+              receiverCount === 0 &&
+              !backend.capabilities.runsAgainstSavedModel ? (
+                <Callout variant="warning" icon={AlertCircle}>
+                  {m.msg_no_explicit_receivers()}
+                </Callout>
               ) : null}
               {receiverMode === "custom" && receiverCount > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {String(receiverCount)} receiver
-                  {receiverCount !== 1 ? "s" : ""} placed.
+                  {receiverCount === 1
+                    ? m.msg_receivers_placed_one({ count: receiverCount })
+                    : m.msg_receivers_placed_other({ count: receiverCount })}
                 </p>
               ) : null}
               {receiverMode === "custom" &&
@@ -1183,10 +1075,9 @@ function RunSetupDialog({
 
             {/* Determinism hint */}
             {selectedProfile ? (
-              <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{m.msg_determinism_hint_dialog()}</span>
-              </div>
+              <Callout variant="neutral" icon={Info}>
+                {m.msg_determinism_hint_dialog()}
+              </Callout>
             ) : null}
 
             {/* Sits immediately above the run action: a scaffold module has no
@@ -1196,43 +1087,46 @@ function RunSetupDialog({
 
             {/* The deliberate acknowledgement the API demands before a
                 scaffold-tier standard may emit levels. It sits with the
-                warning it acknowledges, and gates the run action. */}
+                warning it acknowledges, and gates the run action. The warning
+                above is the live region; this box is a plain group, so a
+                reader is not interrupted twice for one fact. */}
             {requiresExperimentalOptIn ? (
-              <div className="flex items-start gap-2.5 rounded-md border border-amber-400 bg-amber-50/60 p-3 dark:border-amber-600 dark:bg-amber-950/60">
-                <input
-                  id="experimental-opt-in"
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
-                  checked={experimentalAcknowledged}
-                  onChange={(e) => {
-                    setAcknowledgedStandardId(
-                      e.target.checked ? effectiveStandardId : null,
-                    );
-                  }}
-                />
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="experimental-opt-in"
-                    className="text-xs font-medium text-amber-900 dark:text-amber-100"
-                  >
-                    {m.label_experimental_opt_in()}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {m.msg_experimental_opt_in_help()}
-                  </p>
+              <Callout variant="warning" role="group">
+                <div className="flex items-start gap-2.5">
+                  <Checkbox
+                    id="experimental-opt-in"
+                    className="mt-0.5"
+                    checked={experimentalAcknowledged}
+                    onCheckedChange={(checked) => {
+                      setAcknowledgedStandardId(
+                        checked === true ? effectiveStandardId : null,
+                      );
+                    }}
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="experimental-opt-in"
+                      className="text-xs font-medium"
+                    >
+                      {m.label_experimental_opt_in()}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {m.msg_experimental_opt_in_help()}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              </Callout>
             ) : null}
 
             {/* The run reads the project's copy of the model, so unsaved
                 edits would not be in it. Gates the run action. */}
             {unsavedChanges ? (
-              <div
+              <Callout
+                variant="warning"
+                icon={AlertCircle}
                 data-testid="unsaved-changes-callout"
-                className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
               >
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <div className="flex flex-1 flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="flex-1">
                     {m.msg_unsaved_changes_before_run()}
                     {projectSync.status === "error"
@@ -1252,7 +1146,7 @@ function RunSetupDialog({
                       : m.action_save_to_project()}
                   </Button>
                 </div>
-              </div>
+              </Callout>
             ) : null}
           </div>
         )}
@@ -1279,7 +1173,7 @@ function RunSetupDialog({
                   receiverCount === 0)
               }
             >
-              <Play className="mr-2 h-4 w-4" />
+              <Play aria-hidden="true" className="mr-2 h-4 w-4" />
               {createRun.isPending
                 ? m.status_starting_run()
                 : m.action_start_run()}
@@ -1337,94 +1231,93 @@ export default function RunPage() {
   const hasRuns = runs.length > 0;
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b px-5 py-3">
-        <div>
-          <h2 className="text-sm font-semibold">{m.page_title_runs()}</h2>
-          {hasRunning ? (
-            <p className="text-xs text-blue-600">
-              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+      <PageHeader
+        className="border-b px-5 py-3"
+        title={m.page_title_runs()}
+        description={
+          hasRunning ? (
+            <span className="inline-flex items-center gap-1 text-xs text-info">
+              <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
               {m.msg_run_in_progress()}
-            </p>
+            </span>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              {String(runs.length)} run{runs.length !== 1 ? "s" : ""}
-            </p>
-          )}
-        </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setDialogOpen(true);
-          }}
-        >
-          <Play className="mr-1.5 h-3.5 w-3.5" />
-          {m.action_new_run()}
-        </Button>
-      </div>
+            <span className="text-xs">
+              {runs.length === 1
+                ? m.msg_run_count_one({ count: runs.length })
+                : m.msg_run_count_other({ count: runs.length })}
+            </span>
+          )
+        }
+        actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              setDialogOpen(true);
+            }}
+          >
+            <Play aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+            {m.action_new_run()}
+          </Button>
+        }
+      />
 
       {/* Body */}
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2
+            aria-hidden="true"
+            className="h-6 w-6 animate-spin text-muted-foreground"
+          />
         </div>
       ) : error ? (
-        <div className="flex flex-1 items-center justify-center p-8">
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" />
+        <div className="flex flex-1 items-start justify-center p-8">
+          <Callout variant="destructive" icon={AlertCircle}>
             {m.msg_api_error_run()}
-          </div>
+          </Callout>
         </div>
       ) : !hasRuns ? (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <Play className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              {m.msg_no_runs_empty_state()}
-            </p>
-          </div>
-        </div>
+        <EmptyState icon={Play} title={m.msg_no_runs_empty_state()} />
       ) : (
-        <div className="flex flex-1 overflow-hidden">
-          {/* Run list */}
-          <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
+        <MasterDetail
+          listLabel={m.page_title_runs()}
+          header={
             <RunFilterBar runs={runs} filters={filters} onChange={setFilters} />
-            <div className="overflow-y-auto">
-              {filteredRuns.length === 0 ? (
-                <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  {m.msg_no_runs_match_filters()}
-                </p>
-              ) : null}
-              {filteredRuns.map((run) => (
-                <RunListItem
-                  key={run.id}
-                  run={run}
-                  selected={run.id === selectedRun?.id}
-                  onClick={() => {
-                    setSelectedRunId(run.id);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Detail panel */}
-          <div className="flex-1 overflow-hidden">
-            {selectedRun ? (
-              <RunDetail
-                run={selectedRun}
-                onRetry={() => {
-                  setDialogOpen(true);
-                }}
-              />
+          }
+          list={
+            filteredRuns.length === 0 ? (
+              <EmptyState compact title={m.msg_no_runs_match_filters()} />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                {m.msg_select_run_details()}
-              </div>
-            )}
-          </div>
-        </div>
+              <ItemList>
+                {filteredRuns.map((run) => (
+                  <ListItem
+                    key={run.id}
+                    selected={run.id === selectedRun?.id}
+                    onSelect={() => {
+                      setSelectedRunId(run.id);
+                    }}
+                    badge={<StatusBadge status={run.status} />}
+                    code={run.id}
+                    title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                    meta={runTiming(run)}
+                  />
+                ))}
+              </ItemList>
+            )
+          }
+        >
+          {selectedRun ? (
+            <RunDetail
+              run={selectedRun}
+              onRetry={() => {
+                setDialogOpen(true);
+              }}
+            />
+          ) : (
+            <EmptyState title={m.msg_select_run_details()} />
+          )}
+        </MasterDetail>
       )}
 
       <RunSetupDialog

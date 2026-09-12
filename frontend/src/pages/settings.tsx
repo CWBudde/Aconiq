@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Sun,
   Layers3,
+  type LucideIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { backend } from "@/api/backend";
@@ -30,7 +31,11 @@ import {
 } from "@/i18n/runtime";
 import { DRAFT_KEY, discardDraft, hasDraft } from "@/model/use-autosave";
 import { Button } from "@/ui/components/button";
+import { Card } from "@/ui/components/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
+import { Callout } from "@/ui/callout";
 import { FormField } from "@/ui/form-field";
+import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { useTheme } from "@/ui/theme-provider";
 import { cn } from "@/ui/lib/utils";
 
@@ -45,7 +50,7 @@ type CategoryId =
 
 type Category = {
   id: CategoryId;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   title: () => string;
   description: () => string;
 };
@@ -59,89 +64,57 @@ function SettingsCard({
   children,
   className,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   title: string;
   description: string;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "flex h-full flex-col rounded-2xl border bg-card p-5 shadow-sm",
-        className,
-      )}
-    >
+    <Card className={cn("flex h-full flex-col p-5", className)}>
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Icon className="h-5 w-5" aria-hidden />
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Icon className="size-5" aria-hidden="true" />
         </div>
-        <div className="space-y-1">
-          <h3 className="text-base font-semibold">{title}</h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
-        </div>
+        <SectionHeading description={description}>{title}</SectionHeading>
       </div>
       <div className="mt-5 flex-1">{children}</div>
-    </section>
+    </Card>
   );
 }
 
 function PreferencePill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border bg-muted/40 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+    <div className="rounded-md border bg-muted/40 px-3 py-2">
+      <div className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1 font-medium">{value}</div>
+      <div className="mt-1 text-sm font-medium">{value}</div>
     </div>
   );
 }
 
-function CategoryButton({
-  category,
-  active,
-  onClick,
-}: {
-  category: Category;
-  active: boolean;
-  onClick: () => void;
-}) {
+// A vertical, card-like tab: Radix owns the `tab` role, the selected state
+// and the arrow-key navigation; the trigger only restyles the strip's
+// horizontal defaults into a stacked list.
+function CategoryTab({ category }: { category: Category }) {
   const Icon = category.icon;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      role="tab"
-      aria-selected={active}
-      aria-controls={`settings-panel-${category.id}`}
-      id={`settings-tab-${category.id}`}
-      className={cn(
-        "group flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-colors",
-        active
-          ? "border-primary/30 bg-primary/8 shadow-sm"
-          : "border-transparent hover:border-border hover:bg-muted/40",
-      )}
+    <TabsTrigger
+      value={category.id}
+      className="group h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-md border border-transparent p-3 text-left hover:border-border hover:bg-muted/40 data-[state=active]:border-primary/30 data-[state=active]:bg-primary/10 data-[state=active]:shadow-sm"
     >
-      <div
-        className={cn(
-          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-          active
-            ? "border-primary/20 bg-primary text-primary-foreground"
-            : "border-border bg-background text-foreground",
-        )}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </div>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-medium">{category.title()}</span>
-        </div>
-        <p className="text-sm leading-5 text-muted-foreground">
+      <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-foreground group-data-[state=active]:border-primary/20 group-data-[state=active]:bg-primary group-data-[state=active]:text-primary-foreground">
+        <Icon aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 space-y-1">
+        <span className="block font-medium">{category.title()}</span>
+        <span className="block text-sm font-normal text-muted-foreground">
           {category.description()}
-        </p>
-      </div>
-    </button>
+        </span>
+      </span>
+    </TabsTrigger>
   );
 }
 
@@ -171,32 +144,25 @@ function AppSettings({
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/10 via-card to-card p-6 shadow-sm">
+      <Card className="p-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Settings className="h-3.5 w-3.5" aria-hidden />
-              {m.settings_category_app()}
-            </div>
-            <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {m.settings_category_app()}
-            </h3>
-          </div>
-
+          <PageHeader
+            title={m.settings_category_app()}
+            description={m.settings_category_app_desc()}
+          />
           <div className="grid gap-2 sm:grid-cols-3 lg:w-[28rem]">
             <PreferencePill label={m.label_current()} value={themeLabel} />
             <PreferencePill label={m.language()} value={localeLabel} />
             <PreferencePill label={m.section_runtime()} value={runtimeLabel} />
           </div>
         </div>
-      </section>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <SettingsCard
           icon={Sun}
           title={m.section_appearance()}
           description={m.msg_settings_appearance_help()}
-          className="border-primary/10"
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <Button
@@ -206,7 +172,7 @@ function AppSettings({
                 setTheme("light");
               }}
             >
-              <Sun className="h-4 w-4" aria-hidden />
+              <Sun aria-hidden="true" />
               {m.theme_option_light()}
             </Button>
             <Button
@@ -216,7 +182,7 @@ function AppSettings({
                 setTheme("dark");
               }}
             >
-              <Moon className="h-4 w-4" aria-hidden />
+              <Moon aria-hidden="true" />
               {m.theme_option_dark()}
             </Button>
             <Button
@@ -226,7 +192,7 @@ function AppSettings({
                 setTheme("system");
               }}
             >
-              <Monitor className="h-4 w-4" aria-hidden />
+              <Monitor aria-hidden="true" />
               {m.theme_option_system()}
             </Button>
           </div>
@@ -265,11 +231,11 @@ function AppSettings({
           description={m.msg_settings_storage_help()}
         >
           <div className="space-y-4">
-            <div className="rounded-xl border bg-background p-4">
-              <p className="text-sm font-medium text-foreground">
+            <div className="rounded-md border p-4">
+              <p className="text-sm font-medium">
                 {draftPresent ? m.msg_draft_present() : m.msg_draft_absent()}
               </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <p className="mt-2 text-sm text-muted-foreground">
                 {m.msg_settings_storage_note()}
               </p>
               <p className="mt-3 font-mono text-xs text-muted-foreground">
@@ -298,8 +264,8 @@ function AppSettings({
               <PreferencePill label={m.label_current()} value={runtimeLabel} />
               <PreferencePill label={m.language()} value={localeLabel} />
             </div>
-            <div className="rounded-xl border bg-background p-4 text-sm text-muted-foreground">
-              <p className="leading-6">{m.msg_settings_storage_summary()}</p>
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              <p>{m.msg_settings_storage_summary()}</p>
               <p className="mt-3 font-mono text-xs text-foreground">
                 {localeStorageKey} · {DRAFT_KEY} · aconiq-theme
               </p>
@@ -329,21 +295,12 @@ function AdvancedSettings({
   const effectiveApiBaseUrl = apiBaseUrl || "same-origin";
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-amber-200/70 bg-gradient-to-br from-amber-50 via-card to-card p-6 shadow-sm dark:border-amber-900/40 dark:from-amber-950/20">
+    <Card className="p-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-            {m.settings_category_advanced()}
-          </div>
-          <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {m.settings_category_advanced()}
-          </h3>
-          <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-            {m.settings_category_advanced_desc()}
-          </p>
-        </div>
-
+        <PageHeader
+          title={m.settings_category_advanced()}
+          description={m.settings_category_advanced_desc()}
+        />
         <div className="grid gap-2 sm:grid-cols-2 lg:w-[30rem]">
           <PreferencePill
             label={m.label_api_base_url()}
@@ -372,48 +329,33 @@ function AdvancedSettings({
             }}
             placeholder={m.placeholder_api_endpoint()}
           />
-          <div className="rounded-2xl border bg-background p-4">
-            <p className="text-sm font-medium text-foreground">
-              {m.msg_api_endpoint_current()}
-            </p>
-            <p className="mt-2 break-all font-mono text-sm text-muted-foreground">
+          <Callout variant="neutral" title={m.msg_api_endpoint_current()}>
+            <p className="break-all font-mono text-foreground">
               {effectiveApiBaseUrl}
             </p>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              {m.msg_api_endpoint_note()}
-            </p>
-          </div>
+            <p className="mt-2">{m.msg_api_endpoint_note()}</p>
+          </Callout>
         </div>
 
-        <div className="space-y-3 rounded-2xl border bg-muted/30 p-4">
-          <p className="text-sm font-medium text-foreground">
-            {m.msg_api_endpoint_current()}
-          </p>
-          <div className="rounded-xl border bg-background px-3 py-2 font-mono text-xs text-foreground">
-            {effectiveApiBaseUrl}
-          </div>
-          <div className="space-y-2 pt-2">
-            <Button
-              className="w-full"
-              onClick={onSave}
-              disabled={
-                apiBaseUrlDraft.trim().replace(/\/$/, "") === apiBaseUrl
-              }
-            >
-              {m.action_save_changes()}
-            </Button>
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={onReset}
-              disabled={!hasOverride}
-            >
-              {m.action_reset_to_default()}
-            </Button>
-          </div>
+        <div className="space-y-2 self-start rounded-md border p-4">
+          <Button
+            className="w-full"
+            onClick={onSave}
+            disabled={apiBaseUrlDraft.trim().replace(/\/$/, "") === apiBaseUrl}
+          >
+            {m.action_save_changes()}
+          </Button>
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={onReset}
+            disabled={!hasOverride}
+          >
+            {m.action_reset_to_default()}
+          </Button>
         </div>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -421,28 +363,21 @@ function PlannedCategory({ category }: { category: Category }) {
   const Icon = category.icon;
 
   return (
-    <section className="rounded-3xl border bg-card/90 p-6 shadow-sm">
+    <Card className="p-6">
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-muted text-foreground">
-          <Icon className="h-5 w-5" aria-hidden />
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+          <Icon className="size-5" aria-hidden="true" />
         </div>
-        <div className="space-y-2">
-          <h3 className="text-2xl font-semibold tracking-tight">
-            {category.title()}
-          </h3>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            {category.description()}
-          </p>
-        </div>
+        <PageHeader
+          title={category.title()}
+          description={category.description()}
+        />
       </div>
 
-      <div className="mt-6 rounded-2xl border border-dashed bg-muted/30 p-6">
-        <p className="text-sm leading-6 text-muted-foreground">
-          This category is reserved for future settings in the product and will
-          live here once those controls are defined.
-        </p>
-      </div>
-    </section>
+      <Callout variant="neutral" className="mt-6 border-dashed">
+        {m.msg_settings_category_planned()}
+      </Callout>
+    </Card>
   );
 }
 
@@ -516,14 +451,12 @@ export default function SettingsPage() {
     },
   ];
 
+  const findCategory = (id: string | null) =>
+    categories.find((category) => category.id === id);
+
   const searchParams = new URLSearchParams(location.search);
-  const requestedCategory = searchParams.get(CATEGORY_QUERY_KEY);
-  const activeCategory = categories.some(
-    (category) => category.id === requestedCategory,
-  )
-    ? (requestedCategory as CategoryId)
-    : "app";
-  const active = categories.find((category) => category.id === activeCategory);
+  const activeCategory: CategoryId =
+    findCategory(searchParams.get(CATEGORY_QUERY_KEY))?.id ?? "app";
 
   function setActiveCategory(categoryId: CategoryId) {
     const nextParams = new URLSearchParams(location.search);
@@ -560,83 +493,69 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="relative flex flex-1 overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.16),transparent_35%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.08),transparent_30%)]"
-      />
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      {/* The active category lives in the URL, so the tabs are controlled:
+          a trigger navigates, and the route decides what is selected. */}
+      <Tabs
+        value={activeCategory}
+        onValueChange={(value) => {
+          const category = findCategory(value);
+          if (category) setActiveCategory(category.id);
+        }}
+        orientation="vertical"
+        className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]"
+      >
+        <Card className="self-start p-3">
+          <div className="px-3 pb-3 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {m.section_settings_categories()}
+          </div>
+          <TabsList className="flex h-auto flex-col items-stretch gap-1 bg-transparent p-0 text-foreground">
+            {categories.map((category) => (
+              <CategoryTab key={category.id} category={category} />
+            ))}
+          </TabsList>
+        </Card>
 
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="rounded-3xl border bg-card/80 p-3 shadow-sm">
-            <div className="px-3 pb-3 pt-2">
-              <div className="text-xs font-medium uppercase tracking-[0.25em] text-muted-foreground">
-                {m.section_settings_categories()}
-              </div>
-            </div>
-            <div
-              className="space-y-2"
-              role="tablist"
-              aria-orientation="vertical"
-            >
-              {categories.map((category) => (
-                <CategoryButton
-                  key={category.id}
-                  category={category}
-                  active={activeCategory === category.id}
-                  onClick={() => {
-                    setActiveCategory(category.id);
-                  }}
-                />
-              ))}
-            </div>
-          </aside>
-
-          <main className="min-w-0">
-            {active?.id === "app" ? (
-              <div
-                role="tabpanel"
-                id={`settings-panel-${active.id}`}
-                aria-labelledby={`settings-tab-${active.id}`}
+        {/* A div, not <main>: the shell already provides the document's
+            one main landmark and a nested one fails axe. */}
+        <div className="min-w-0">
+          <TabsContent value="app" className="mt-0">
+            <AppSettings
+              theme={theme}
+              setTheme={setTheme}
+              draftPresent={draftPresent}
+              setDraftPresent={setDraftPresent}
+              locale={locale}
+              runtimeLabel={runtimeLabel}
+              themeLabel={themeLabel}
+              localeLabel={localeLabel}
+            />
+          </TabsContent>
+          <TabsContent value="advanced" className="mt-0">
+            <AdvancedSettings
+              apiBaseUrl={visibleApiBaseUrl}
+              apiBaseUrlDraft={apiBaseUrlDraft}
+              setApiBaseUrlDraft={setApiBaseUrlDraft}
+              onSave={saveApiBaseUrl}
+              onReset={resetApiBaseUrl}
+              hasOverride={apiBaseUrlOverridePresent}
+            />
+          </TabsContent>
+          {categories
+            .filter(
+              (category) => category.id !== "app" && category.id !== "advanced",
+            )
+            .map((category) => (
+              <TabsContent
+                key={category.id}
+                value={category.id}
+                className="mt-0"
               >
-                <AppSettings
-                  theme={theme}
-                  setTheme={setTheme}
-                  draftPresent={draftPresent}
-                  setDraftPresent={setDraftPresent}
-                  locale={locale}
-                  runtimeLabel={runtimeLabel}
-                  themeLabel={themeLabel}
-                  localeLabel={localeLabel}
-                />
-              </div>
-            ) : active?.id === "advanced" ? (
-              <div
-                role="tabpanel"
-                id={`settings-panel-${active.id}`}
-                aria-labelledby={`settings-tab-${active.id}`}
-              >
-                <AdvancedSettings
-                  apiBaseUrl={visibleApiBaseUrl}
-                  apiBaseUrlDraft={apiBaseUrlDraft}
-                  setApiBaseUrlDraft={setApiBaseUrlDraft}
-                  onSave={saveApiBaseUrl}
-                  onReset={resetApiBaseUrl}
-                  hasOverride={apiBaseUrlOverridePresent}
-                />
-              </div>
-            ) : active ? (
-              <div
-                role="tabpanel"
-                id={`settings-panel-${active.id}`}
-                aria-labelledby={`settings-tab-${active.id}`}
-              >
-                <PlannedCategory category={active} />
-              </div>
-            ) : null}
-          </main>
+                <PlannedCategory category={category} />
+              </TabsContent>
+            ))}
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 }

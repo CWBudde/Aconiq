@@ -4,6 +4,7 @@ import {
   FlaskConical,
   ShieldCheck,
   TriangleAlert,
+  type LucideIcon,
 } from "lucide-react";
 import {
   isScaffoldTier,
@@ -11,6 +12,9 @@ import {
   type ResolvedEvidenceTier,
 } from "@/api/evidence-tier";
 import { m } from "@/i18n/messages";
+import { Callout } from "@/ui/callout";
+import { Badge, type BadgeProps } from "@/ui/components/badge";
+import { cn } from "@/ui/lib/utils";
 
 /**
  * Evidence tier badges.
@@ -19,13 +23,13 @@ import { m } from "@/i18n/messages";
  * own icon and its own border treatment, so the tier survives greyscale,
  * colour-blind vision and a high-contrast theme.
  *
- * | tier         | word         | icon      | border |
- * | ------------ | ------------ | --------- | ------ |
- * | normative    | Normative    | shield    | solid  |
- * | preview      | Preview      | flask     | solid  |
- * | scaffold     | Scaffold     | triangle  | solid, heavy, upper case |
- * | test-fixture | Test fixture | beaker    | dashed |
- * | unknown      | Unknown tier | question  | dotted |
+ * | tier         | word         | icon      | badge variant / border            |
+ * | ------------ | ------------ | --------- | --------------------------------- |
+ * | normative    | Normative    | shield    | secondary, solid                  |
+ * | preview      | Preview      | flask     | info, solid                       |
+ * | scaffold     | Scaffold     | triangle  | warning, solid, heavy, upper case |
+ * | test-fixture | Test fixture | beaker    | outline, dashed                   |
+ * | unknown      | Unknown tier | question  | outline, dotted                   |
  *
  * Labels are held as functions, not resolved strings: calling a message at
  * module scope freezes it to the locale active at import time.
@@ -35,8 +39,9 @@ const tierConfig: Record<
   {
     label: () => string;
     title: () => string;
-    icon: React.ComponentType<{ className?: string }>;
-    className: string;
+    icon: LucideIcon;
+    variant: NonNullable<BadgeProps["variant"]>;
+    className?: string;
   }
 > = {
   normative: {
@@ -44,34 +49,34 @@ const tierConfig: Record<
     title: m.evidence_tier_normative_desc,
     icon: ShieldCheck,
     // Unremarkable on purpose: normative is the baseline, not an award.
-    className: "border-border bg-muted text-muted-foreground",
+    variant: "secondary",
   },
   preview: {
     label: m.evidence_tier_preview,
     title: m.evidence_tier_preview_desc,
     icon: FlaskConical,
-    className:
-      "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200",
+    variant: "info",
   },
   scaffold: {
     label: m.evidence_tier_scaffold,
     title: m.evidence_tier_scaffold_desc,
     icon: TriangleAlert,
-    className:
-      "border-amber-500 bg-amber-100 text-amber-900 font-semibold uppercase tracking-wide dark:border-amber-500 dark:bg-amber-950 dark:text-amber-100",
+    variant: "warning",
+    className: "font-semibold uppercase tracking-wide",
   },
   "test-fixture": {
     label: m.evidence_tier_test_fixture,
     title: m.evidence_tier_test_fixture_desc,
     icon: Beaker,
-    className: "border-dashed border-border bg-muted/50 text-muted-foreground",
+    variant: "outline",
+    className: "border-dashed text-muted-foreground",
   },
   unknown: {
     label: m.evidence_tier_unknown,
     title: m.evidence_tier_unknown_desc,
     icon: CircleQuestionMark,
-    className:
-      "border-dotted border-border bg-transparent text-muted-foreground",
+    variant: "outline",
+    className: "border-dotted text-muted-foreground",
   },
 };
 
@@ -95,16 +100,17 @@ export function EvidenceTierBadge({
   const Icon = cfg.icon;
 
   return (
-    <span
+    <Badge
+      variant={cfg.variant}
       data-testid="evidence-tier-badge"
       data-tier={resolved}
       title={cfg.title()}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.className} ${className ?? ""}`}
+      className={cn(cfg.className, className)}
     >
-      <Icon className="h-3 w-3 shrink-0" />
+      <Icon aria-hidden="true" className="shrink-0" />
       <span className="sr-only">{m.label_evidence_tier()}: </span>
       {cfg.label()}
-    </span>
+    </Badge>
   );
 }
 
@@ -116,13 +122,10 @@ export function EvidenceTierBadge({
 export function EvidenceTierWarning({ tier }: { tier: string | undefined }) {
   if (!isScaffoldTier(tier)) return null;
 
+  // The warning variant of `Callout` carries `role="alert"` itself.
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100"
-    >
-      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span>{m.msg_evidence_tier_scaffold_warning()}</span>
-    </div>
+    <Callout variant="warning" icon={TriangleAlert}>
+      {m.msg_evidence_tier_scaffold_warning()}
+    </Callout>
   );
 }

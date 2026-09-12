@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/ui/components/button";
+import { Card } from "@/ui/components/card";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
+import { Callout } from "@/ui/callout";
+import { KeyValueList } from "@/ui/key-value-list";
+import { PageHeader } from "@/ui/page-header";
 import { useModelStore } from "@/model/model-store";
 import { normalizeGeoJSON } from "@/model/normalize";
 import { validateModel } from "@/model/validate";
@@ -24,6 +29,47 @@ import { m } from "@/i18n/messages";
 type ImportStep = "upload" | "preview" | "done";
 type ImportSource = "file" | "osm";
 
+const IMPORT_SOURCES: readonly ImportSource[] = ["file", "osm"];
+
+function isImportSource(value: string): value is ImportSource {
+  return (IMPORT_SOURCES as readonly string[]).includes(value);
+}
+
+/** How many validation errors the preview lists before it summarises the rest. */
+const PREVIEW_ERROR_LIMIT = 5;
+
+function BBoxField({
+  id,
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Input
+        id={id}
+        type="number"
+        step="any"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+        }}
+        placeholder={placeholder}
+      />
+      <Label htmlFor={id} className="text-center text-xs text-muted-foreground">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
 export default function ImportPage() {
   const [step, setStep] = useState<ImportStep>("upload");
   const [source, setSource] = useState<ImportSource>("file");
@@ -35,7 +81,9 @@ export default function ImportPage() {
   const loadFeatures = useModelStore((s) => s.loadFeatures);
   const navigate = useNavigate();
 
-  // OSM form state
+  // OSM form state. The bounding box is held as text so a half-typed value
+  // survives a re-render; `toFixed` here writes an input value, not a display
+  // string, so it stays outside the locale-aware formatters.
   const [osmSouth, setOsmSouth] = useState("");
   const [osmWest, setOsmWest] = useState("");
   const [osmNorth, setOsmNorth] = useState("");
@@ -147,7 +195,9 @@ export default function ImportPage() {
           handleNormalizeAndPreview(collection);
         },
         onError: (err: unknown) => {
-          setError(err instanceof Error ? err.message : "OSM fetch failed");
+          setError(
+            err instanceof Error ? err.message : m.error_osm_fetch_failed(),
+          );
         },
       },
     );
@@ -170,230 +220,196 @@ export default function ImportPage() {
     void navigate("/map");
   }, [navigate]);
 
+  const countByKind = (kind: ModelFeature["kind"]) =>
+    String(features.filter((f) => f.kind === kind).length);
+
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       <div className="w-full max-w-lg">
         {step === "upload" ? (
           <div className="flex flex-col gap-4">
-            {/* Source toggle */}
-            <div className="flex gap-2">
-              <Button
-                variant={source === "file" ? "default" : "ghost"}
-                onClick={() => {
-                  setSource("file");
-                  setError(null);
-                }}
-              >
-                {m.action_import_from_file()}
-              </Button>
-              <Button
-                variant={source === "osm" ? "default" : "ghost"}
-                onClick={() => {
-                  setSource("osm");
-                  setError(null);
-                }}
-              >
-                {m.action_import_from_osm()}
-              </Button>
-            </div>
+            <Tabs
+              value={source}
+              onValueChange={(value) => {
+                if (!isImportSource(value)) return;
+                setSource(value);
+                setError(null);
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="file">
+                  {m.action_import_from_file()}
+                </TabsTrigger>
+                <TabsTrigger value="osm">
+                  {m.action_import_from_osm()}
+                </TabsTrigger>
+              </TabsList>
 
-            {source === "file" ? (
-              <div
-                className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed p-12 text-center"
-                onDrop={handleDrop}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                }}
-              >
-                <FileInput className="h-10 w-10 text-muted-foreground" />
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {m.heading_import_geojson()}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {m.msg_drag_or_click()}
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    fileRef.current?.click();
+              <TabsContent value="file">
+                <div
+                  className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed p-12 text-center"
+                  onDrop={handleDrop}
+                  onDragOver={(e) => {
+                    e.preventDefault();
                   }}
                 >
-                  {m.action_choose_file()}
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".geojson,.json"
-                  className="hidden"
-                  onChange={handleInputChange}
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 rounded-lg border p-6">
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {m.heading_import_from_osm()}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {m.msg_import_osm_description()}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUseCurrentLocation}
-                  disabled={geolocating}
-                  className="self-start"
-                >
-                  <LocateFixed className="mr-2 h-4 w-4" />
-                  {geolocating
-                    ? m.status_locating()
-                    : m.action_use_current_location()}
-                </Button>
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      type="number"
-                      step="any"
-                      value={osmSouth}
-                      onChange={(e) => {
-                        setOsmSouth(e.target.value);
-                      }}
-                      placeholder="52.49"
-                    />
-                    <Label className="text-center text-xs text-muted-foreground">
-                      {m.label_south()}
-                    </Label>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      type="number"
-                      step="any"
-                      value={osmWest}
-                      onChange={(e) => {
-                        setOsmWest(e.target.value);
-                      }}
-                      placeholder="13.35"
-                    />
-                    <Label className="text-center text-xs text-muted-foreground">
-                      {m.label_west()}
-                    </Label>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      type="number"
-                      step="any"
-                      value={osmNorth}
-                      onChange={(e) => {
-                        setOsmNorth(e.target.value);
-                      }}
-                      placeholder="52.52"
-                    />
-                    <Label className="text-center text-xs text-muted-foreground">
-                      {m.label_north()}
-                    </Label>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      type="number"
-                      step="any"
-                      value={osmEast}
-                      onChange={(e) => {
-                        setOsmEast(e.target.value);
-                      }}
-                      placeholder="13.40"
-                    />
-                    <Label className="text-center text-xs text-muted-foreground">
-                      {m.label_east()}
-                    </Label>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">
-                    {m.label_overpass_endpoint_optional()}
-                  </Label>
-                  <Input
-                    type="text"
-                    value={osmEndpoint}
-                    onChange={(e) => {
-                      setOsmEndpoint(e.target.value);
+                  <FileInput
+                    className="size-10 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <PageHeader
+                    className="justify-center text-center"
+                    title={m.heading_import_geojson()}
+                    description={m.msg_drag_or_click()}
+                  />
+                  <Button
+                    onClick={() => {
+                      fileRef.current?.click();
                     }}
-                    placeholder="https://overpass-api.de/api/interpreter"
+                  >
+                    {m.action_choose_file()}
+                  </Button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".geojson,.json"
+                    className="hidden"
+                    onChange={handleInputChange}
                   />
                 </div>
-                <Button
-                  onClick={handleOSMFetch}
-                  disabled={osmMutation.isPending}
-                >
-                  {osmMutation.isPending
-                    ? m.status_fetching()
-                    : m.action_fetch_from_osm()}
-                </Button>
-              </div>
-            )}
+              </TabsContent>
 
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <TabsContent value="osm">
+                <Card className="flex flex-col gap-4 p-6">
+                  <PageHeader
+                    title={m.heading_import_from_osm()}
+                    description={m.msg_import_osm_description()}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUseCurrentLocation}
+                    disabled={geolocating}
+                    className="self-start"
+                  >
+                    <LocateFixed aria-hidden="true" />
+                    {geolocating
+                      ? m.status_locating()
+                      : m.action_use_current_location()}
+                  </Button>
+                  <div className="grid grid-cols-4 gap-3">
+                    <BBoxField
+                      id="osm-south"
+                      label={m.label_south()}
+                      value={osmSouth}
+                      placeholder="52.49"
+                      onChange={setOsmSouth}
+                    />
+                    <BBoxField
+                      id="osm-west"
+                      label={m.label_west()}
+                      value={osmWest}
+                      placeholder="13.35"
+                      onChange={setOsmWest}
+                    />
+                    <BBoxField
+                      id="osm-north"
+                      label={m.label_north()}
+                      value={osmNorth}
+                      placeholder="52.52"
+                      onChange={setOsmNorth}
+                    />
+                    <BBoxField
+                      id="osm-east"
+                      label={m.label_east()}
+                      value={osmEast}
+                      placeholder="13.40"
+                      onChange={setOsmEast}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label
+                      htmlFor="osm-endpoint"
+                      className="text-xs text-muted-foreground"
+                    >
+                      {m.label_overpass_endpoint_optional()}
+                    </Label>
+                    <Input
+                      id="osm-endpoint"
+                      type="text"
+                      value={osmEndpoint}
+                      onChange={(e) => {
+                        setOsmEndpoint(e.target.value);
+                      }}
+                      placeholder="https://overpass-api.de/api/interpreter"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleOSMFetch}
+                    disabled={osmMutation.isPending}
+                  >
+                    {osmMutation.isPending
+                      ? m.status_fetching()
+                      : m.action_fetch_from_osm()}
+                  </Button>
+                </Card>
+              </TabsContent>
+            </Tabs>
+
+            {error ? <Callout variant="destructive">{error}</Callout> : null}
           </div>
         ) : null}
 
         {step === "preview" && report ? (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">
-              {m.heading_import_preview()}
-            </h2>
-            <div className="rounded-md border p-4 text-sm">
+            <PageHeader title={m.heading_import_preview()} />
+            <Card className="space-y-3 p-4 text-sm">
               <p>
                 {String(features.length)} {m.msg_features_normalized()}
               </p>
               {skippedCount > 0 ? (
-                <p className="text-yellow-600">
+                <p className="text-warning">
                   {String(skippedCount)} {m.msg_features_skipped()}
                 </p>
               ) : null}
-              <div className="mt-2 space-y-1">
-                <p>
-                  {m.label_sources()}:{" "}
-                  {String(features.filter((f) => f.kind === "source").length)}
-                </p>
-                <p>
-                  {m.label_buildings()}:{" "}
-                  {String(features.filter((f) => f.kind === "building").length)}
-                </p>
-                <p>
-                  {m.label_barriers()}:{" "}
-                  {String(features.filter((f) => f.kind === "barrier").length)}
-                </p>
-              </div>
-            </div>
+              <KeyValueList
+                items={[
+                  { label: m.label_sources(), value: countByKind("source") },
+                  {
+                    label: m.label_buildings(),
+                    value: countByKind("building"),
+                  },
+                  { label: m.label_barriers(), value: countByKind("barrier") },
+                ]}
+              />
+            </Card>
 
             {report.errors.length > 0 ? (
-              <div className="rounded-md border border-destructive/50 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-                  <XCircle className="h-4 w-4" />
-                  {String(report.errors.length)} {m.status_validation_errors()}
-                </div>
-                <ul className="mt-2 space-y-1 text-xs">
-                  {report.errors.slice(0, 5).map((e, i) => (
+              <Callout
+                variant="destructive"
+                icon={XCircle}
+                title={`${String(report.errors.length)} ${m.status_validation_errors()}`}
+              >
+                <ul className="space-y-1">
+                  {report.errors.slice(0, PREVIEW_ERROR_LIMIT).map((e, i) => (
                     <li key={i}>{e.message}</li>
                   ))}
-                  {report.errors.length > 5 ? (
+                  {report.errors.length > PREVIEW_ERROR_LIMIT ? (
                     <li className="text-muted-foreground">
-                      ...and {String(report.errors.length - 5)} more
+                      {m.msg_and_more({
+                        count: report.errors.length - PREVIEW_ERROR_LIMIT,
+                      })}
                     </li>
                   ) : null}
                 </ul>
-              </div>
+              </Callout>
             ) : null}
 
             {report.warnings.length > 0 ? (
-              <div className="rounded-md border border-yellow-500/50 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-yellow-600">
-                  <AlertTriangle className="h-4 w-4" />
-                  {String(report.warnings.length)}{" "}
-                  {m.status_validation_warnings()}
-                </div>
-              </div>
+              <Callout variant="warning" icon={AlertTriangle}>
+                {String(report.warnings.length)}{" "}
+                {m.status_validation_warnings()}
+              </Callout>
             ) : null}
 
             <div className="flex gap-2">
@@ -414,13 +430,12 @@ export default function ImportPage() {
 
         {step === "done" ? (
           <div className="flex flex-col items-center gap-4 text-center">
-            <CheckCircle2 className="h-10 w-10 text-green-500" />
-            <h2 className="text-lg font-semibold">
-              {m.status_import_complete()}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {String(features.length)} {m.msg_import_complete_description()}
-            </p>
+            <CheckCircle2 className="size-10 text-success" aria-hidden="true" />
+            <PageHeader
+              className="justify-center text-center"
+              title={m.status_import_complete()}
+              description={`${String(features.length)} ${m.msg_import_complete_description()}`}
+            />
             <Button onClick={handleGoToMap}>{m.action_go_to_map()}</Button>
           </div>
         ) : null}

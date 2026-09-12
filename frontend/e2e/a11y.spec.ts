@@ -20,15 +20,18 @@ import type { Route } from "./app";
  *
  * - WCAG 2.0 A/AA (`wcag2a`, `wcag2aa`) must be clean. There is no allow-list
  *   for it; nothing fires today and nothing may start to.
- * - axe's `best-practice` rules are gated by KNOWN_VIOLATIONS below. That set
- *   is where the structural defects scheduled for PLAN.md Priority 8 Phase B
- *   ("Structural a11y in one PR") show up — WCAG alone does not see a nested
- *   `<main>` or a rail without a `<nav>` landmark.
+ * - axe's `best-practice` rules are gated by KNOWN_VIOLATIONS below. WCAG
+ *   alone does not see a nested `<main>`, a rail without a `<nav>` landmark
+ *   or a skipped heading level; the best-practice set does.
  *
  * KNOWN_VIOLATIONS is checked in both directions: a rule outside the list
  * fails the route, and a listed rule that no longer fires fails it too, so the
  * list has to be pruned in the same change that fixes the defect. An allow-list
  * that outlives its defect is a lie.
+ *
+ * Beyond axe, every route asserts `<html lang>` matches the locale under
+ * test: index.html hardcodes `lang="en"` and src/main.tsx corrects it at
+ * startup, which no axe rule can see (`html-has-lang` only wants a value).
  *
  * The map route with an empty model shows the workspace-start panel rather
  * than the map canvas; the baseline covers what renders.
@@ -38,40 +41,23 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa"] as const;
 const BEST_PRACTICE_TAG = "best-practice";
 
 /**
- * Best-practice rules that fire today, per route. Each entry names the Phase B
- * item that removes it. All observed with `just fe-e2e` on this tree; none is
- * speculative.
+ * Best-practice rules that fire today, per route. Empty on every route since
+ * the Phase B structural pass (one top-level `<main>`, the rail inside a
+ * labelled `<nav>`, contiguous heading levels). A route acquires an entry only
+ * with a defect observed under `just fe-e2e` and a comment naming the change
+ * that will remove it; nothing here may be speculative.
  */
-const SHELL_VIOLATIONS: readonly string[] = [
-  // Phase B "nested <main>": SidebarInset (ui/components/sidebar.tsx) renders a
-  // <main> and app-shell.tsx wraps the page in a second one inside it. PLAN.md
-  // names settings.tsx, which adds a third, but the pair is in the shell and
-  // fires on every route.
-  "landmark-no-duplicate-main",
-  // Phase B "nested <main>": the inner <main> is not a top-level landmark.
-  "landmark-main-is-top-level",
-  // Phase B "nested <main>": two main landmarks without distinguishing labels.
-  "landmark-unique",
-  // Phase B "<nav aria-label> in app-shell.tsx": the sidebar header and the
-  // rail links sit outside every landmark until the rail becomes a <nav>.
-  "region",
-];
+const NONE: readonly string[] = [];
 
 const KNOWN_VIOLATIONS: Record<Route, readonly string[]> = {
-  "/welcome": SHELL_VIOLATIONS,
-  "/map": SHELL_VIOLATIONS,
-  "/import": SHELL_VIOLATIONS,
-  "/run": SHELL_VIOLATIONS,
-  "/results": SHELL_VIOLATIONS,
-  "/export": SHELL_VIOLATIONS,
-  "/status": SHELL_VIOLATIONS,
-  "/settings": [
-    ...SHELL_VIOLATIONS,
-    // Phase B "heading-level skip": settings.tsx goes from the shell <h1>
-    // straight to <h3> section headings. (PLAN.md cites run.tsx, whose
-    // h2 -> h4 skip only renders once runs exist; the empty model shows none.)
-    "heading-order",
-  ],
+  "/welcome": NONE,
+  "/map": NONE,
+  "/import": NONE,
+  "/run": NONE,
+  "/results": NONE,
+  "/export": NONE,
+  "/status": NONE,
+  "/settings": NONE,
 };
 
 function summarize(route: Route, violations: Result[]): string {
@@ -94,6 +80,8 @@ for (const locale of LOCALES) {
         // waiting for its first link pins the baseline to the same DOM every
         // run rather than to whichever state axe happened to catch.
         await navLink(page, message(locale, "nav_map")).waitFor();
+
+        await expect(page.locator("html")).toHaveAttribute("lang", locale);
 
         const results = await new AxeBuilder({ page })
           .withTags([...WCAG_TAGS, BEST_PRACTICE_TAG])

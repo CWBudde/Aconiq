@@ -1,12 +1,13 @@
 import { MousePointer, Circle, Minus, Pentagon, Crop, X } from "lucide-react";
 import { Button } from "@/ui/components/button";
+import { Separator } from "@/ui/components/separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/ui/components/tooltip";
 import type { DrawMode } from "./use-draw";
-import { cn } from "@/ui/lib/utils";
+import { MapPanel } from "./map-panel";
 import { m } from "@/i18n/messages";
 
 interface DrawToolbarProps {
@@ -34,61 +35,69 @@ export function DrawToolbar({
   const isDrawing = activeMode !== "static";
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex flex-col gap-1 rounded-md border bg-background p-1 shadow-md">
+    <MapPanel
+      position="top-left"
+      role="toolbar"
+      aria-orientation="vertical"
+      aria-label={m.label_draw_tools()}
+      className="flex flex-col gap-1 p-1"
+    >
       {modelTools.map(({ mode, icon: Icon, label }) => (
         <Tooltip key={mode}>
           <TooltipTrigger asChild>
             <Button
               variant={activeMode === mode ? "default" : "ghost"}
               size="icon"
-              className={cn("h-8 w-8")}
+              className="size-8"
+              aria-pressed={activeMode === mode}
               onClick={() => {
                 onModeChange(mode);
               }}
               aria-label={label()}
             >
-              <Icon className="h-4 w-4" />
+              <Icon aria-hidden="true" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right">{label()}</TooltipContent>
         </Tooltip>
       ))}
-      <div className="my-1 border-t" />
+      <Separator className="my-1" />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant={activeMode === "calc-area" ? "default" : "ghost"}
             size="icon"
-            className="h-8 w-8"
+            className="size-8"
+            aria-pressed={activeMode === "calc-area"}
             onClick={() => {
               onModeChange("calc-area");
             }}
             aria-label={m.tool_draw_calc_area()}
           >
-            <Crop className="h-4 w-4" />
+            <Crop aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="right">{m.tool_draw_calc_area()}</TooltipContent>
       </Tooltip>
       {isDrawing ? (
         <>
-          <div className="my-1 border-t" />
+          <Separator className="my-1" />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-destructive"
+                className="size-8 text-destructive"
                 onClick={onCancel}
                 aria-label={m.action_cancel_drawing()}
               >
-                <X className="h-4 w-4" />
+                <X aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">{m.tooltip_cancel()}</TooltipContent>
           </Tooltip>
         </>
       ) : null}
-    </div>
+    </MapPanel>
   );
 }

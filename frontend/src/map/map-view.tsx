@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Button } from "@/ui/components/button";
+import { Card } from "@/ui/components/card";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
 import { useMapStore } from "./map-store";
@@ -227,13 +228,13 @@ export function MapView({
       <div className="relative flex flex-1">
         {mapError ? (
           <div className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center">
-            <div className="max-w-md space-y-2 rounded-2xl border bg-card p-6 shadow-sm">
+            <Card className="max-w-md space-y-2 p-6">
               <p className="text-lg font-semibold">Map unavailable</p>
               <p className="text-sm text-muted-foreground">{mapError}</p>
               <Button variant="outline" size="sm" onClick={retryMapInit}>
                 Retry
               </Button>
-            </div>
+            </Card>
           </div>
         ) : (
           <div ref={containerRef} className="absolute inset-0" />

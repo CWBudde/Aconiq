@@ -880,39 +880,36 @@ Landed; the gates below hold and every later phase builds on them:
 
 ### Phase B — Design system foundation
 
-- [ ] **Semantic tokens**: add `--success/--warning/--info` (+ `-foreground`) to `globals.css`,
-      expose via `@theme inline`; raise dark-mode `--destructive` lightness for text contrast
-      (≈2.5:1 today). Then purge Tailwind palette classes and the 32 `dark:` patches from `pages/`
-      and `map/`. Self-host IBM Plex (`index.html:6-9` loads Google Fonts in an offline-first tool).
-      Document one type scale (11/12/13/14/16/20) and cap radius at `rounded-lg`.
-- [ ] **Missing primitives**: `badge`, `alert`, `tabs`, `checkbox`, `switch`, `radio-group`, `card`,
-      `scroll-area`, `resizable`, `sonner`, `textarea`. Replaces the raw `<button>` tab strips
-      (`results.tsx:675-693`, `settings.tsx:112-118`), the `accent-amber-600` checkbox
-      (`run.tsx:1179`), the boolean rendered as a `true/false` Select (`run.tsx:712-720`) and the
-      `window.alert` at `run.tsx:601`.
-- [ ] **Shared components** (each replaces ≥3 copies): `StatusBadge` (byte-identical in `run.tsx`
-      and `results.tsx`), `Callout` (~14 copies), `PageHeader`/`SectionHeading` (four recipes),
-      `KeyValueList` (the `<dl>` in `status.tsx`, `map.tsx`, `welcome.tsx`), `EmptyState`,
-      `MasterDetail` + `ListItem` (three copies), `CopyField`, `MapPanel`, and
-      `ui/format.ts` with locale-aware `formatLevel`/`formatDateTime`/`formatDuration`
-      (`toFixed(1)` renders "45.3 dB(A)" in German today).
-- [ ] **Structural a11y in one PR**, driven by the axe baseline in `e2e/a11y.spec.ts`:
-      `<nav aria-label>` + `aria-current` + skip link in `app-shell.tsx` (`region`, all routes);
-      one `<main>` — `SidebarInset` renders one and `app-shell.tsx:149` wraps the page in a second,
-      `settings.tsx:595` adds a third (`landmark-no-duplicate-main`, `landmark-main-is-top-level`,
-      `landmark-unique`, all routes); set `document.documentElement.lang` from the locale (stays
-      `en` under `de`; axe cannot see it, so add a DOM assertion to the E2E suite); the `h1`→`h3`
-      skip on `/settings` (`heading-order`) and the `h2`→`h4` skip in `run.tsx:559`, which only
-      renders once runs exist; `prefers-reduced-motion` rule; one `useGlobalShortcut` hook with the
-      `isTextEntryTarget` guard (the sidebar's Ctrl+B lacks it). Prune `KNOWN_VIOLATIONS` as each
-      lands. The dark-mode `--destructive` contrast is not covered — the suite runs in the light
-      colour scheme; add a `colorScheme: "dark"` variant with the token work.
+Landed; the gates below hold and the pages are built on them:
+
+- [x] Semantic tokens `success`/`warning`/`info` (+ `-foreground`) beside `destructive`, with
+      `tokens.test.ts` measuring every text/surface pair at ≥ 4.5:1 in both themes — dark
+      `--destructive` was 2.1:1 (`4125c6a`). IBM Plex is self-hosted (`b079903`); the type scale is
+      six steps, 11–20 px, and `rounded-lg` is the largest radius, so `text-2xl`+ and `rounded-xl`+
+      emit no CSS by design (`f0bc32a`, `docs/frontend-design-system.md`); `prefers-reduced-motion`
+      collapses animation (`055838f`); the axe baseline also runs under `colorScheme: "dark"`
+      (`3edb89c`).
+- [x] The eleven missing shadcn primitives with a Toaster mounted once (`7c5219f`, `831bde8`), and
+      the shared `StatusBadge`, `Callout`, `PageHeader`/`SectionHeading`, `KeyValueList`,
+      `EmptyState`, `MasterDetail`/`ListItem`, `CopyButton`/`CopyField`, `MapPanel` and the
+      locale-aware `ui/format.ts` (`3b8943a`, `4c23505`, `1c0effb`).
+- [x] Every page and map panel sits on those components: no Tailwind palette class and no `dark:`
+      patch is left outside `ui/components/`, the tab strips are `Tabs`, the checkbox and the
+      boolean parameter are `Checkbox`/`Switch`, and `window.alert` is gone (`001c7e7`,
+      `ac9e965`, `4cec7f3`, `5dbac60`, `062c178`, `7f9d17d`, `9f4c5d9`, `0c533f1`). The populated
+      map workspace carries an `sr-only` `<h2>`, so `waitForPage` in `e2e/app.ts` holds for every
+      route state. Still hardcoded: the "Map unavailable"/"Retry" strings in `map-view.tsx`,
+      because `map-view.test.tsx` mocks the messages module to `""` — Phase E.
+- [x] One `<main>`, a labelled `<nav>` with `aria-current`, a skip link, `<html lang>` from the
+      locale, contiguous headings and one `useGlobalShortcut` hook with the text-entry guard
+      (`9935196`, `887ab91`, `21c3111`). `KNOWN_VIOLATIONS` in `e2e/a11y.spec.ts` is empty on every
+      route and stays two-way, so a best-practice regression fails the suite.
 
 ### Phase C — Information architecture and pages
 
 - [ ] **Target IA**: `/` project (Welcome and Status merged: open/create, mode chip, health,
       validation summary); `/model` map always mounted, empty state as overlay with "Import…" and
-      "Start drawing" (`map.tsx:30-35` hides the map and the draw tools until content exists);
+      "Start drawing" (`map.tsx:36-40` hides the map and the draw tools until content exists);
       `/run`; `/results/:runId`; `/export/:runId`; `/settings` with two categories (General,
       Connection — five of seven today are "reserved" placeholders). Header mode chip and a
       `<ModeGate>` with one disabled+tooltip treatment.
@@ -926,23 +923,25 @@ Landed; the gates below hold and every later phase builds on them:
       run dialog says so (`msg_calc_area_not_in_project`) instead of claiming the area is active.
       Add a grid extent to the run request (bounds in the project CRS, or a `calc_area` feature in
       the model schema), then drop that notice and gate the run on the area being saved.
-- [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:428-461`),
-      PDF section, planned settings, "Phase 24+" strings (`en.json:315`). Replace every CLI hand-off
-      (`results.tsx:463`, `export.tsx:204-208`, `en.json:305`) with one "Copy CLI command" affordance.
-- [ ] **Refit run/results/export** onto `MasterDetail`/`Tabs`/`DataTable`; split `run.tsx` into
-      `pages/run/{page,setup-dialog,detail,timeline}.tsx`; extract `useRunSetupSelection`
-      (standard→version→profile→params cascade, removes the render-phase `setState` at
-      `run.tsx:876-879`) and `useSelectedRun`. Add `standards-meta.ts`: human labels, German
+- [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:434-440`),
+      PDF section, planned settings, "Phase 24+" strings (`en.json:312`). Replace every CLI hand-off
+      (`msg_raster_not_implemented` at `results.tsx:434`, `en.json:310`) with the "Copy CLI
+      command" `CopyField` the export page already has (`export.tsx:179-207`).
+- [ ] **Split run/results/export**: they sit on `MasterDetail`/`Tabs` since Phase B, but `run.tsx`
+      is still ~1,330 lines; split it into `pages/run/{page,setup-dialog,detail,timeline}.tsx`;
+      extract `useRunSetupSelection` (standard→version→profile→params cascade) and
+      `useSelectedRun`. Add `standards-meta.ts`: human labels, German
       directive names, parameters grouped with units (today `traffic_day_lkw1` is shown raw and only
-      one standard ID has a label, `run.tsx:59-73`). Gate the run dialog on
+      one standard ID has a label, `run.tsx:67-76`). Gate the run dialog on
       `validateModel(...).errors.length === 0`. Confirm destructive actions (delete feature, discard
       draft, import-replaces-model) — no `AlertDialog` exists anywhere. Add a delete-run action
       (`Backend.deleteRun`): browser mode now caps stored runs at 20 and tells the user on a quota
       error that older runs may need deleting, but offers no way to do it.
-- [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`), header buttons with
-      `aria-sort` and `scope="col"` (today `onClick` on `<th>`), hoist `SortIcon`/`RunColumn` out of
-      their parents, one RFC-4180 CSV builder in `model/` (`results.tsx:202` does not escape quotes;
-      `browser-backend.ts:783` is a second builder), `results.test.tsx` written alongside.
+- [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`); the sortable
+      header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
+      `SortIcon`/`RunColumn` out of their parents, one RFC-4180 CSV builder in `model/`
+      (`results.tsx:156-166` does not escape quotes; `browser-backend.ts:783` is a second builder),
+      `results.test.tsx` written alongside.
 - [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
       ask replace-vs-merge before `loadFeatures`; link preview errors to features. UI import drops
       `kind: "receiver"` features (`normalize.ts:12` lists only source/building/barrier) and
@@ -961,14 +960,14 @@ Landed; the gates below hold and every later phase builds on them:
       change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
       `CommandStack` first so drags do not become one step per mousemove.
 - [ ] **Editor completeness**: derive `sourceType` from geometry (the select at
-      `feature-editor.tsx:217-222` can contradict it); add Parkplatz (`rls19_parking_*`) and rail
+      `feature-editor.tsx:220-242` can contradict it); add Parkplatz (`rls19_parking_*`) and rail
       (`schall03_*`) field groups — `validate.ts` flags missing parking fields the UI cannot set;
       table-drive the 16 near-identical `PropertyNumberField` blocks; show the feature's own issues
       inline; `role="dialog"`, focus trap and Escape handling.
 - [ ] **Results on the map**: `ResultLayers` (raster image source + contours), legend from
       `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
       row↔map highlight from the receiver table. Until it lands, hide the result toggles in
-      `layer-control.tsx:63-70`.
+      `layer-control.tsx:74-76`.
 - [ ] **CRS and basemap**: guard `fitBounds` (`model-layers.tsx:91` throws on EPSG:25832 input);
       proj4 with 25832/25833 on import and a UTM readout in the coordinate display; tile-error →
       `OFFLINE_STYLE` with a notice; basemap picker; tile URL in Connection settings
@@ -979,9 +978,9 @@ Landed; the gates below hold and every later phase builds on them:
 ### Phase E — i18n and German
 
 - [ ] Validation messages become codes + params (`validate.ts:43-437` is English-only and rendered
-      verbatim); add the ~50 missing keys (`run.tsx:287,605,717`, `export.tsx:134,204-208`,
-      `layer-control.tsx:38`, `data-table.tsx:28`, shadcn `sr-only` texts, the hardcoded paragraph
-      at `settings.tsx:441`); strip trailing colons from `label_*` keys (`Min::` today); paraglide
+      verbatim); add the keys still missing after Phase B (the "Map unavailable"/"Retry" strings in
+      `map-view.tsx`, whose test mocks the messages module to `""` and has to stop first, and the
+      shadcn `sr-only` texts); strip trailing colons from `label_*` keys (`Min::` today); paraglide
       plural variants for `run{s}`; language switch without `location.reload()`; enable
       `react/jsx-no-literals` for `pages/`, `map/`, `ui/`.
 - [ ] German terminology and register pass: Immissionsort, Schallquelle,

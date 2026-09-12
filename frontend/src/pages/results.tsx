@@ -7,17 +7,15 @@ import {
   AlertCircle,
   Download,
   Info,
-  ChevronRight,
   ChevronUp,
   ChevronDown,
   SlidersHorizontal,
   Crosshair,
-  CheckCircle2,
-  XCircle,
-  Clock,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
+import { Card } from "@/ui/components/card";
 import { Input } from "@/ui/components/input";
+import { Label } from "@/ui/components/label";
 import {
   Select,
   SelectContent,
@@ -25,6 +23,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/components/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
+import { Callout } from "@/ui/callout";
+import { EmptyState } from "@/ui/empty-state";
+import {
+  formatCoordinate,
+  formatDurationBetween,
+  formatLevel,
+  formatNumber,
+  formatTime,
+} from "@/ui/format";
+import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
+import { PageHeader, SectionHeading } from "@/ui/page-header";
+import { StatusBadge } from "@/ui/status-badge";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
@@ -33,71 +44,17 @@ import { m } from "@/i18n/messages";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDuration(startedAt: string, finishedAt: string): string {
-  const start = new Date(startedAt).getTime();
-  const end = new Date(finishedAt).getTime();
-  const ms = end - start;
-  if (ms < 1000) return `${String(ms)}ms`;
-  if (ms < 60_000) return `${String(Math.round(ms / 1000))}s`;
-  return `${String(Math.floor(ms / 60_000))}m ${String(Math.round((ms % 60_000) / 1000))}s`;
+/** "13:05:07 · 12 sec": when the run started and how long it took. */
+function runTiming(run: RunSummary): string {
+  return `${formatTime(run.started_at)} · ${formatDurationBetween(run.started_at, run.finished_at)}`;
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Status badge (re-implemented locally)
-// ---------------------------------------------------------------------------
-
-type RunStatus = RunSummary["status"];
-
-const statusConfig: Record<
-  RunStatus,
-  {
-    label: () => string;
-    icon: React.ComponentType<{ className?: string }>;
-    className: string;
-  }
-> = {
-  pending: {
-    label: m.status_badge_pending,
-    icon: Clock,
-    className: "text-muted-foreground bg-muted",
-  },
-  running: {
-    label: m.status_badge_running,
-    icon: Loader2,
-    className: "text-blue-600 bg-blue-50 dark:bg-blue-950",
-  },
-  completed: {
-    label: m.status_badge_completed,
-    icon: CheckCircle2,
-    className: "text-green-600 bg-green-50 dark:bg-green-950",
-  },
-  failed: {
-    label: m.status_badge_failed,
-    icon: XCircle,
-    className: "text-destructive bg-destructive/10",
-  },
-};
-
-function StatusBadge({ status }: { status: RunStatus }) {
-  const cfg = statusConfig[status];
-  const Icon = cfg.icon;
+function LoadingLine({ text }: { text: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}
-    >
-      <Icon
-        className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`}
-      />
-      {cfg.label()}
-    </span>
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+      {text}
+    </div>
   );
 }
 
@@ -180,14 +137,22 @@ function ReceiversTab({ run }: { run: RunSummary }) {
   }
 
   function SortIcon({ col }: { col: string }) {
-    if (sortCol !== col) return <ChevronUp className="h-3 w-3 opacity-30" />;
+    if (sortCol !== col)
+      return <ChevronUp aria-hidden="true" className="h-3 w-3 opacity-30" />;
     return sortDir === "asc" ? (
-      <ChevronUp className="h-3 w-3" />
+      <ChevronUp aria-hidden="true" className="h-3 w-3" />
     ) : (
-      <ChevronDown className="h-3 w-3" />
+      <ChevronDown aria-hidden="true" className="h-3 w-3" />
     );
   }
 
+  // The level formatter wants a unit; a table that names none falls back to
+  // the bare number rather than printing a dangling space.
+  function level(value: number): string {
+    return unit === "" ? formatNumber(value) : formatLevel(value, unit);
+  }
+
+  // Raw values, not the locale-formatted ones: the CSV is for other tools.
   function downloadCSV() {
     if (!data) return;
     const headers = ["id", "x", "y", "height_m", ...indicators];
@@ -212,29 +177,30 @@ function ReceiversTab({ run }: { run: RunSummary }) {
 
   if (!artifact) {
     return (
-      <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        {m.msg_no_raster_artifacts()}
-      </div>
+      <Callout variant="neutral" icon={Info}>
+        {m.msg_no_receiver_artifacts()}
+      </Callout>
     );
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {m.status_loading_receiver_table()}
-      </div>
-    );
+    return <LoadingLine text={m.status_loading_receiver_table()} />;
   }
 
   if (error || !data) {
     return (
-      <div className="flex items-center gap-2 text-sm text-destructive">
-        <AlertCircle className="h-4 w-4" />
+      <Callout variant="destructive" icon={AlertCircle}>
         {m.error_load_receiver_table()}
-      </div>
+      </Callout>
     );
+  }
+
+  const columns = ["id", "x", "y", "height_m", ...indicators];
+
+  function columnLabel(col: string): string {
+    if (col === "height_m") return m.table_header_height_m();
+    if (indicators.includes(col) && unit !== "") return `${col} (${unit})`;
+    return col;
   }
 
   return (
@@ -242,42 +208,30 @@ function ReceiversTab({ run }: { run: RunSummary }) {
       {/* Indicator summary cards */}
       {summaryCards.length > 0 ? (
         <div className="flex flex-wrap gap-3">
-          {summaryCards.map(({ ind, min, max, mean }) => (
-            <div
-              key={ind}
-              className="min-w-[140px] rounded-lg border bg-card p-3 shadow-sm"
-            >
-              <p className="font-mono text-xs font-semibold text-muted-foreground">
-                {ind}
-              </p>
-              <div className="mt-1 space-y-0.5 text-xs">
-                <p>
-                  <span className="text-muted-foreground">
-                    {m.label_min()}:
-                  </span>{" "}
-                  <span className="font-medium">
-                    {min.toFixed(1)} {unit}
-                  </span>
+          {summaryCards.map(({ ind, min, max, mean }) => {
+            const stats: Array<[string, number]> = [
+              [m.label_min(), min],
+              [m.label_max(), max],
+              [m.label_mean(), mean],
+            ];
+            return (
+              <Card key={ind} className="min-w-36 p-3">
+                <p className="font-mono text-xs font-semibold text-muted-foreground">
+                  {ind}
                 </p>
-                <p>
-                  <span className="text-muted-foreground">
-                    {m.label_max()}:
-                  </span>{" "}
-                  <span className="font-medium">
-                    {max.toFixed(1)} {unit}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground">
-                    {m.label_mean()}:
-                  </span>{" "}
-                  <span className="font-medium">
-                    {mean.toFixed(1)} {unit}
-                  </span>
-                </p>
-              </div>
-            </div>
-          ))}
+                <dl className="mt-1 space-y-0.5 text-xs">
+                  {stats.map(([label, value]) => (
+                    <div key={label} className="flex gap-1">
+                      <dt className="text-muted-foreground">{label}:</dt>
+                      <dd className="font-medium tabular-nums">
+                        {level(value)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
+            );
+          })}
         </div>
       ) : null}
 
@@ -285,6 +239,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
       <div className="flex items-center gap-3">
         <Input
           className="h-8 w-64 text-xs"
+          aria-label={m.label_filter_receiver_id()}
           placeholder={m.label_filter_receiver_id()}
           value={filter}
           onChange={(e) => {
@@ -297,7 +252,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
         </span>
         <div className="ml-auto">
           <Button variant="outline" size="sm" onClick={downloadCSV}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
+            <Download aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
             {m.action_download_csv()}
           </Button>
         </div>
@@ -308,18 +263,29 @@ function ReceiversTab({ run }: { run: RunSummary }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-muted/50">
-              {["id", "x", "y", "height_m", ...indicators].map((col) => (
+              {columns.map((col) => (
                 <th
                   key={col}
-                  className="cursor-pointer whitespace-nowrap px-3 py-2 text-left font-semibold text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    toggleSort(col);
-                  }}
+                  scope="col"
+                  aria-sort={
+                    sortCol === col
+                      ? sortDir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : undefined
+                  }
+                  className="whitespace-nowrap px-3 py-2 text-left font-semibold text-muted-foreground"
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {col === "height_m" ? m.table_header_height_m() : col}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleSort(col);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {columnLabel(col)}
                     <SortIcon col={col} />
-                  </span>
+                  </button>
                 </th>
               ))}
             </tr>
@@ -331,12 +297,18 @@ function ReceiversTab({ run }: { run: RunSummary }) {
                 className="border-b last:border-0 hover:bg-muted/30"
               >
                 <td className="px-3 py-1.5 font-mono">{r.id}</td>
-                <td className="px-3 py-1.5">{r.x.toFixed(2)}</td>
-                <td className="px-3 py-1.5">{r.y.toFixed(2)}</td>
-                <td className="px-3 py-1.5">{r.height_m.toFixed(1)}</td>
+                <td className="px-3 py-1.5 tabular-nums">
+                  {formatCoordinate(r.x)}
+                </td>
+                <td className="px-3 py-1.5 tabular-nums">
+                  {formatCoordinate(r.y)}
+                </td>
+                <td className="px-3 py-1.5 tabular-nums">
+                  {formatNumber(r.height_m)}
+                </td>
                 {indicators.map((ind) => (
-                  <td key={ind} className="px-3 py-1.5">
-                    {(r.values[ind] ?? 0).toFixed(1)}
+                  <td key={ind} className="px-3 py-1.5 tabular-nums">
+                    {formatNumber(r.values[ind] ?? 0)}
                   </td>
                 ))}
               </tr>
@@ -344,7 +316,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
             {sortedRecords.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4 + indicators.length}
+                  colSpan={columns.length}
                   className="px-3 py-6 text-center text-muted-foreground"
                 >
                   {m.msg_no_records_match_filter()}
@@ -366,25 +338,19 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
   const { data, isLoading, error } = useRasterMetadata(artifact.id);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {m.status_loading_raster_metadata()}
-      </div>
-    );
+    return <LoadingLine text={m.status_loading_raster_metadata()} />;
   }
 
   if (error || !data) {
     return (
-      <div className="flex items-center gap-2 text-sm text-destructive">
-        <AlertCircle className="h-4 w-4" />
+      <Callout variant="destructive" icon={AlertCircle}>
         {m.error_load_raster_metadata()}
-      </div>
+      </Callout>
     );
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <Card className="p-4">
       <p className="mb-3 font-mono text-xs font-semibold text-muted-foreground">
         {artifact.path.split("/").pop()}
       </p>
@@ -422,7 +388,7 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
       {/* Rendering controls (placeholder) */}
       <div className="space-y-3 rounded-md border bg-muted/30 p-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-          <SlidersHorizontal className="h-3.5 w-3.5" />
+          <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
           {m.section_rendering_controls()}
         </div>
         <div className="grid grid-cols-2 gap-3 opacity-50">
@@ -431,7 +397,10 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
               {m.label_color_ramp()}
             </p>
             <Select disabled>
-              <SelectTrigger className="h-7 text-xs">
+              <SelectTrigger
+                className="h-7 text-xs"
+                aria-label={m.label_color_ramp()}
+              >
                 <SelectValue placeholder="Viridis" />
               </SelectTrigger>
               <SelectContent>
@@ -449,11 +418,13 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
               <Input
                 disabled
                 className="h-7 text-xs"
+                aria-label={m.label_min()}
                 placeholder={m.label_min()}
               />
               <Input
                 disabled
                 className="h-7 text-xs"
+                aria-label={m.label_max()}
                 placeholder={m.label_max()}
               />
             </div>
@@ -465,11 +436,10 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
       </div>
 
       {/* Receiver probe placeholder */}
-      <div className="mt-3 flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        <Crosshair className="h-3.5 w-3.5 shrink-0" />
+      <Callout variant="neutral" icon={Crosshair} className="mt-3">
         {m.label_receiver_probe_tool()}
-      </div>
-    </div>
+      </Callout>
+    </Card>
   );
 }
 
@@ -480,10 +450,9 @@ function RasterTab({ run }: { run: RunSummary }) {
 
   if (rasterArtifacts.length === 0) {
     return (
-      <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
+      <Callout variant="neutral" icon={Info}>
         {m.msg_no_raster_artifacts()}
-      </div>
+      </Callout>
     );
   }
 
@@ -500,6 +469,45 @@ function RasterTab({ run }: { run: RunSummary }) {
 // Compare tab
 // ---------------------------------------------------------------------------
 
+function RunColumn({ run, label }: { run: RunSummary; label: string }) {
+  return (
+    <Card className="flex-1 p-4">
+      <SectionHeading variant="eyebrow" className="mb-1">
+        {label}
+      </SectionHeading>
+      <p className="font-mono text-xs">{run.id}</p>
+      <div className="mt-2 space-y-0.5 text-xs">
+        <p>
+          <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
+          <span className="font-mono">{run.standard_id}</span>
+        </p>
+        <p>
+          <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
+          <span className="font-mono">{run.version}</span>
+        </p>
+        {run.profile ? (
+          <p>
+            <span className="text-muted-foreground">{m.label_profile()}:</span>{" "}
+            <span className="font-mono">{run.profile}</span>
+          </p>
+        ) : null}
+        <p>
+          <span className="text-muted-foreground">{m.label_started()}</span>{" "}
+          {formatTime(run.started_at)}
+        </p>
+        <p>
+          <span className="text-muted-foreground">{m.label_duration()}</span>{" "}
+          {formatDurationBetween(run.started_at, run.finished_at)}
+        </p>
+        <p>
+          <span className="text-muted-foreground">{m.label_artifacts()}</span>{" "}
+          {String(run.artifacts.length)}
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 function CompareTab({
   run,
   allCompletedRuns,
@@ -511,63 +519,20 @@ function CompareTab({
   const otherRuns = allCompletedRuns.filter((r) => r.id !== run.id);
   const compareRun = otherRuns.find((r) => r.id === compareRunId) ?? null;
 
-  function RunColumn({ r, label }: { r: RunSummary; label: string }) {
-    return (
-      <div className="flex-1 rounded-lg border bg-card p-4 shadow-sm">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-        <p className="font-mono text-xs">{r.id}</p>
-        <div className="mt-2 space-y-0.5 text-xs">
-          <p>
-            <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
-            <span className="font-mono">{r.standard_id}</span>
-          </p>
-          <p>
-            <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
-            <span className="font-mono">{r.version}</span>
-          </p>
-          {r.profile ? (
-            <p>
-              <span className="text-muted-foreground">
-                {m.label_profile()}:
-              </span>{" "}
-              <span className="font-mono">{r.profile}</span>
-            </p>
-          ) : null}
-          <p>
-            <span className="text-muted-foreground">{m.label_started()}:</span>{" "}
-            {formatTime(r.started_at)}
-          </p>
-          <p>
-            <span className="text-muted-foreground">{m.label_duration()}:</span>{" "}
-            {formatDuration(r.started_at, r.finished_at)}
-          </p>
-          <p>
-            <span className="text-muted-foreground">
-              {m.label_artifacts()}:
-            </span>{" "}
-            {String(r.artifacts.length)}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
       {/* Run B selector */}
       <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground">
+        <Label htmlFor="compare-run" className="text-sm text-muted-foreground">
           {m.label_compare_with()}:
-        </p>
+        </Label>
         <Select
           value={compareRunId || "_none"}
           onValueChange={(v) => {
             setCompareRunId(v === "_none" ? "" : v);
           }}
         >
-          <SelectTrigger className="h-8 w-64 text-xs">
+          <SelectTrigger id="compare-run" className="h-8 w-64 text-xs">
             <SelectValue placeholder={m.placeholder_compare_run()} />
           </SelectTrigger>
           <SelectContent>
@@ -589,19 +554,17 @@ function CompareTab({
       {compareRun ? (
         <>
           <div className="flex gap-4">
-            <RunColumn r={run} label={m.msg_run_column_selected()} />
-            <RunColumn r={compareRun} label={m.msg_run_column_compare()} />
+            <RunColumn run={run} label={m.msg_run_column_selected()} />
+            <RunColumn run={compareRun} label={m.msg_run_column_compare()} />
           </div>
-          <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <Callout variant="neutral" icon={Info}>
             {m.msg_run_to_run_diff_deferred()}
-          </div>
+          </Callout>
         </>
       ) : (
-        <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-          <GitCompare className="mt-0.5 h-4 w-4 shrink-0" />
+        <Callout variant="neutral" icon={GitCompare}>
           {m.msg_select_run_compare()}
-        </div>
+        </Callout>
       )}
     </div>
   );
@@ -611,7 +574,13 @@ function CompareTab({
 // Run detail (right panel)
 // ---------------------------------------------------------------------------
 
-type ResultTab = "receivers" | "raster" | "compare";
+const RESULT_TABS = ["receivers", "raster", "compare"] as const;
+
+type ResultTab = (typeof RESULT_TABS)[number];
+
+function isResultTab(value: string): value is ResultTab {
+  return (RESULT_TABS as readonly string[]).includes(value);
+}
 
 function RunResultDetail({
   run,
@@ -622,26 +591,8 @@ function RunResultDetail({
 }) {
   const [tab, setTab] = useState<ResultTab>("receivers");
 
-  const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
-    {
-      id: "receivers",
-      label: m.tab_receivers(),
-      icon: <Table2 className="h-3.5 w-3.5" />,
-    },
-    {
-      id: "raster",
-      label: m.tab_raster(),
-      icon: <BarChart3 className="h-3.5 w-3.5" />,
-    },
-    {
-      id: "compare",
-      label: m.tab_compare(),
-      icon: <GitCompare className="h-3.5 w-3.5" />,
-    },
-  ];
-
   return (
-    <div className="flex flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Run header */}
       <div className="border-b px-5 py-3">
         <div className="flex items-center gap-2">
@@ -666,83 +617,47 @@ function RunResultDetail({
           ) : null}
         </p>
         <p className="text-xs text-muted-foreground">
-          Started {formatTime(run.started_at)} ·{" "}
-          {formatDuration(run.started_at, run.finished_at)}
+          {m.label_started()} {runTiming(run)}
         </p>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b px-4 py-1.5">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => {
-              setTab(t.id);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              tab === t.id
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-5">
-        {tab === "receivers" ? <ReceiversTab run={run} /> : null}
-        {tab === "raster" ? <RasterTab run={run} /> : null}
-        {tab === "compare" ? (
-          <CompareTab run={run} allCompletedRuns={allCompletedRuns} />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Run list item (left panel)
-// ---------------------------------------------------------------------------
-
-function ResultRunListItem({
-  run,
-  selected,
-  onClick,
-}: {
-  run: RunSummary;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-        selected ? "bg-muted/60" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <StatusBadge status={run.status} />
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {run.id}
-          </span>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (isResultTab(value)) setTab(value);
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="border-b px-4 py-1.5">
+          <TabsList className="h-8">
+            <TabsTrigger value="receivers" className="text-xs">
+              <Table2 aria-hidden="true" />
+              {m.tab_receivers()}
+            </TabsTrigger>
+            <TabsTrigger value="raster" className="text-xs">
+              <BarChart3 aria-hidden="true" />
+              {m.tab_raster()}
+            </TabsTrigger>
+            <TabsTrigger value="compare" className="text-xs">
+              <GitCompare aria-hidden="true" />
+              {m.tab_compare()}
+            </TabsTrigger>
+          </TabsList>
         </div>
-        <p className="mt-0.5 truncate text-sm">
-          {run.standard_id}
-          {run.version ? ` / ${run.version}` : ""}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {formatTime(run.started_at)} ·{" "}
-          {formatDuration(run.started_at, run.finished_at)}
-        </p>
-      </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <TabsContent value="receivers" className="mt-0 p-5">
+            <ReceiversTab run={run} />
+          </TabsContent>
+          <TabsContent value="raster" className="mt-0 p-5">
+            <RasterTab run={run} />
+          </TabsContent>
+          <TabsContent value="compare" className="mt-0 p-5">
+            <CompareTab run={run} allCompletedRuns={allCompletedRuns} />
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
   );
 }
 
@@ -770,71 +685,81 @@ export default function ResultsPage() {
     [completedRuns, selectedRunId],
   );
 
-  if (isLoading) {
+  // The heading stays above both transient states so every state of the page
+  // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
+  if (isLoading || error) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <div className="flex items-center gap-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4" />
-          {m.msg_api_error_results()}
-        </div>
+      <div className="flex flex-1 flex-col">
+        <PageHeader
+          className="border-b px-4 py-3"
+          title={m.page_title_results()}
+        />
+        {error ? (
+          <div className="flex flex-1 items-start justify-center p-8">
+            <Callout variant="destructive" icon={AlertCircle}>
+              {m.msg_api_error_results()}
+            </Callout>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2
+              aria-hidden="true"
+              className="h-6 w-6 animate-spin text-muted-foreground"
+            />
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Left panel */}
-      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">{m.page_title_results()}</h2>
-          <p className="text-xs text-muted-foreground">
-            {String(completedRuns.length)}{" "}
-            {completedRuns.length === 1
-              ? m.msg_completed_runs()
-              : m.msg_completed_runs_plural()}
-          </p>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {completedRuns.length === 0 ? (
-            <div className="px-4 py-6 text-center">
-              <BarChart3 className="mx-auto h-8 w-8 text-muted-foreground" />
-              <p className="mt-2 text-xs text-muted-foreground">
-                {m.msg_no_completed_runs()}
-              </p>
-            </div>
-          ) : (
-            completedRuns.map((run) => (
-              <ResultRunListItem
+    <MasterDetail
+      listLabel={m.page_title_results()}
+      header={
+        <PageHeader
+          className="border-b px-4 py-3"
+          title={m.page_title_results()}
+          description={
+            <span className="text-xs">
+              {String(completedRuns.length)}{" "}
+              {completedRuns.length === 1
+                ? m.msg_completed_runs()
+                : m.msg_completed_runs_plural()}
+            </span>
+          }
+        />
+      }
+      list={
+        completedRuns.length === 0 ? (
+          <EmptyState
+            compact
+            icon={BarChart3}
+            title={m.msg_no_completed_runs()}
+          />
+        ) : (
+          <ItemList>
+            {completedRuns.map((run) => (
+              <ListItem
                 key={run.id}
-                run={run}
                 selected={run.id === selectedRun?.id}
-                onClick={() => {
+                onSelect={() => {
                   setSelectedRunId(run.id);
                 }}
+                badge={<StatusBadge status={run.status} />}
+                code={run.id}
+                title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                meta={runTiming(run)}
               />
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Right panel */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {selectedRun ? (
-          <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {m.msg_select_completed_run_details()}
-          </div>
-        )}
-      </div>
-    </div>
+            ))}
+          </ItemList>
+        )
+      }
+    >
+      {selectedRun ? (
+        <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
+      ) : (
+        <EmptyState title={m.msg_select_completed_run_details()} />
+      )}
+    </MasterDetail>
   );
 }

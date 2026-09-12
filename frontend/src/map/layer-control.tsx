@@ -5,6 +5,7 @@ import {
   RESULT_LAYER_GROUPS,
   type LayerGroup,
 } from "./layers";
+import { MapPanel } from "./map-panel";
 import { useMapStore } from "./map-store";
 import { useMap } from "./use-map";
 import { m } from "@/i18n/messages";
@@ -35,12 +36,16 @@ function LayerToggle({ group }: { group: LayerGroup }) {
       size="sm"
       className="h-7 justify-start gap-2 px-2 text-xs"
       onClick={handleToggle}
-      aria-label={`${visible ? "Hide" : "Show"} ${group.label()}`}
+      aria-label={
+        visible
+          ? m.action_hide_layer({ label: group.label() })
+          : m.action_show_layer({ label: group.label() })
+      }
     >
       {visible ? (
-        <Eye className="h-3.5 w-3.5" />
+        <Eye className="size-3.5" aria-hidden="true" />
       ) : (
-        <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+        <EyeOff className="size-3.5 text-muted-foreground" aria-hidden="true" />
       )}
       <span className={visible ? "" : "text-muted-foreground"}>
         {group.label()}
@@ -49,9 +54,16 @@ function LayerToggle({ group }: { group: LayerGroup }) {
   );
 }
 
+// Sits beside MapLibre's navigation control, which owns the top-right corner.
 export function LayerControl() {
   return (
-    <div className="absolute top-2 right-12 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
+    <MapPanel
+      position="top-right"
+      inset="right-12 top-2"
+      translucent
+      role="group"
+      aria-label={m.label_layers()}
+    >
       <div className="mb-1 text-xs font-medium text-muted-foreground">
         {m.section_model()}
       </div>
@@ -68,6 +80,6 @@ export function LayerControl() {
           <LayerToggle key={g.id} group={g} />
         ))}
       </div>
-    </div>
+    </MapPanel>
   );
 }
