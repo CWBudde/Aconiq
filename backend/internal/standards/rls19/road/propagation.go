@@ -305,8 +305,8 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		return PeriodLevels{}, errors.New("receiver is not finite")
 	}
 
-	if len(sources) == 0 {
-		return PeriodLevels{}, errors.New("at least one source is required")
+	if len(sources) == 0 && len(cfg.ParkingSources) == 0 {
+		return PeriodLevels{}, errors.New("at least one road source or parking source is required")
 	}
 
 	// Absolute receiver Z = terrain elevation + height above ground.
@@ -332,7 +332,10 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	}
 
 	if len(cfg.ParkingSources) > 0 {
-		err := appendParkingContributions(&dayContrib, &nightContrib, cfg.ParkingSources, receiver, receiverZ, effectiveCfg)
+		err := appendParkingContributions(
+			&dayContrib, &nightContrib, cfg.ParkingSources,
+			receiver, receiverZ, effectiveBarriers, effectiveCfg,
+		)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
@@ -452,13 +455,7 @@ func appendSegmentContributions(
 		terrainLoss = terrainShield.InsertionLoss
 	}
 
-	// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z).
-	// Ground effect and barrier shielding are not additive — only the larger applies.
-	totalShielding := math.Max(barrierLoss, terrainLoss)
-	if totalShielding > 0 {
-		att.BarrierShielding = totalShielding
-		att.Total = att.GeometricDivergence + att.AirAbsorption + math.Max(att.GroundMeteorological, totalShielding)
-	}
+	att = applyShielding(att, math.Max(barrierLoss, terrainLoss))
 
 	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
 	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
@@ -480,6 +477,24 @@ func appendSegmentContributions(
 		seg.MidPoint, sourceZ, receiver, receiverZ,
 		effectiveCfg,
 	)
+}
+
+// applyShielding folds an insertion loss into a free-field attenuation per
+// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z). Ground effect and
+// shielding are not additive — only the larger of the two applies.
+//
+// Both the road Teilstück path and the Parkplatz path go through here, so they
+// cannot combine the same two terms differently.
+func applyShielding(att AttenuationComponents, insertionLoss float64) AttenuationComponents {
+	if insertionLoss <= 0 {
+		return att
+	}
+
+	att.BarrierShielding = insertionLoss
+	att.Total = att.GeometricDivergence + att.AirAbsorption +
+		math.Max(att.GroundMeteorological, insertionLoss)
+
+	return att
 }
 
 // buildingBarriers returns the combined list of explicit barriers and barriers

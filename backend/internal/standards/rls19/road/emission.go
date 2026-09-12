@@ -62,7 +62,7 @@ func emissionForPeriod(source RoadSource, traffic TrafficInput) float64 {
 	}
 
 	if sum <= 0 {
-		return -999.0
+		return silenceDB
 	}
 
 	// E7/EG: convert the Eq. 4 sum to dB(A)/m and add the
@@ -148,7 +148,7 @@ func energySumDB(levels []float64) float64 {
 	sum := 0.0
 
 	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) || level <= -900 {
+		if math.IsNaN(level) || math.IsInf(level, 0) || level <= silenceThresholdDB {
 			continue
 		}
 
@@ -156,7 +156,7 @@ func energySumDB(levels []float64) float64 {
 	}
 
 	if sum <= 0 {
-		return -999.0
+		return silenceDB
 	}
 
 	return 10 * math.Log10(sum)

@@ -23,9 +23,9 @@ func TestComputeParkingEmission_Pkw(t *testing.T) {
 		Center:                 geo.Point2D{X: 0, Y: 0},
 		AreaM2:                 2000,
 		NumSpaces:              100,
-		VehicleType:            ParkingPkw,
-		MovementsPerSpaceDay:   0.5,
-		MovementsPerSpaceNight: 0.1,
+		LotType:                ParkingLotPkw,
+		MovementsPerSpaceDay:   MovementRate(0.5),
+		MovementsPerSpaceNight: MovementRate(0.1),
 	}
 
 	result, err := ComputeParkingEmission(source)
@@ -53,9 +53,9 @@ func TestComputeParkingEmission_LkwOmnibus(t *testing.T) {
 		Center:                 geo.Point2D{X: 0, Y: 0},
 		AreaM2:                 5000,
 		NumSpaces:              50,
-		VehicleType:            ParkingLkwOmnibus,
-		MovementsPerSpaceDay:   0.3,
-		MovementsPerSpaceNight: 0.05,
+		LotType:                ParkingLotLkwOmnibus,
+		MovementsPerSpaceDay:   MovementRate(0.3),
+		MovementsPerSpaceNight: MovementRate(0.05),
 	}
 
 	result, err := ComputeParkingEmission(source)
@@ -85,9 +85,9 @@ func TestComputeParkingEmission_Motorrad(t *testing.T) {
 		Center:                 geo.Point2D{X: 0, Y: 0},
 		AreaM2:                 300,
 		NumSpaces:              30,
-		VehicleType:            ParkingMotorrad,
-		MovementsPerSpaceDay:   1.0,
-		MovementsPerSpaceNight: 0.2,
+		LotType:                ParkingLotMotorrad,
+		MovementsPerSpaceDay:   MovementRate(1.0),
+		MovementsPerSpaceNight: MovementRate(0.2),
 	}
 
 	result, err := ComputeParkingEmission(source)
@@ -109,31 +109,49 @@ func TestComputeParkingEmission_Motorrad(t *testing.T) {
 	}
 }
 
-func TestDefaultMovementsPerHour_PR(t *testing.T) {
+func TestDefaultMovementsPerHour(t *testing.T) {
 	t.Parallel()
 
-	got := DefaultMovementsPerHour(ParkingFacilityPR, TimePeriodDay)
-	if !almostEqual(got, 0.3, 1e-9) {
-		t.Fatalf("P+R day: want 0.3, got %g", got)
+	tests := []struct {
+		name     string
+		facility ParkingFacilityType
+		period   TimePeriod
+		want     float64
+	}{
+		{name: "P+R day", facility: ParkingFacilityPR, period: TimePeriodDay, want: 0.3},
+		{name: "P+R night", facility: ParkingFacilityPR, period: TimePeriodNight, want: 0.06},
+		{name: "Tank- und Rastanlagen day", facility: ParkingFacilityTankRast, period: TimePeriodDay, want: 1.5},
+		{name: "Tank- und Rastanlagen night", facility: ParkingFacilityTankRast, period: TimePeriodNight, want: 0.8},
 	}
 
-	got = DefaultMovementsPerHour(ParkingFacilityPR, TimePeriodNight)
-	if !almostEqual(got, 0.06, 1e-9) {
-		t.Fatalf("P+R night: want 0.06, got %g", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := DefaultMovementsPerHour(tt.facility, tt.period)
+			if err != nil {
+				t.Fatalf("DefaultMovementsPerHour(%q): %v", tt.facility, err)
+			}
+
+			if !almostEqual(got, tt.want, 1e-9) {
+				t.Fatalf("DefaultMovementsPerHour(%q): want %g, got %g", tt.facility, tt.want, got)
+			}
+		})
 	}
 }
 
-func TestDefaultMovementsPerHour_TankRast(t *testing.T) {
+// TestDefaultMovementsPerHourRejectsUnknownFacility closes the second silent
+// zero on this path: the switch this replaced returned 0 for anything it did
+// not recognise, and a rate of 0 is the silence sentinel. Tabelle 7 carries two
+// rows only, so an ordinary public car park has no standard rate at all.
+func TestDefaultMovementsPerHourRejectsUnknownFacility(t *testing.T) {
 	t.Parallel()
 
-	got := DefaultMovementsPerHour(ParkingFacilityTankRast, TimePeriodDay)
-	if !almostEqual(got, 1.5, 1e-9) {
-		t.Fatalf("TankRast day: want 1.5, got %g", got)
-	}
-
-	got = DefaultMovementsPerHour(ParkingFacilityTankRast, TimePeriodNight)
-	if !almostEqual(got, 0.8, 1e-9) {
-		t.Fatalf("TankRast night: want 0.8, got %g", got)
+	for _, facility := range []ParkingFacilityType{ParkingFacilityNotSpecified, "not-a-facility"} {
+		got, err := DefaultMovementsPerHour(facility, TimePeriodDay)
+		if err == nil {
+			t.Errorf("DefaultMovementsPerHour(%q) = %g, want an error", facility, got)
+		}
 	}
 }
 
@@ -145,9 +163,9 @@ func TestParkingSource_Validate(t *testing.T) {
 		Center:                 geo.Point2D{X: 0, Y: 0},
 		AreaM2:                 1000,
 		NumSpaces:              50,
-		VehicleType:            ParkingPkw,
-		MovementsPerSpaceDay:   0.3,
-		MovementsPerSpaceNight: 0.06,
+		LotType:                ParkingLotPkw,
+		MovementsPerSpaceDay:   MovementRate(0.3),
+		MovementsPerSpaceNight: MovementRate(0.06),
 	}
 
 	err := valid.Validate()
@@ -202,7 +220,7 @@ func TestParkingSource_Validate(t *testing.T) {
 
 	// Negative day movements.
 	s = valid
-	s.MovementsPerSpaceDay = -0.1
+	s.MovementsPerSpaceDay = MovementRate(-0.1)
 
 	err = s.Validate()
 	if err == nil {
@@ -211,7 +229,7 @@ func TestParkingSource_Validate(t *testing.T) {
 
 	// Negative night movements.
 	s = valid
-	s.MovementsPerSpaceNight = -0.1
+	s.MovementsPerSpaceNight = MovementRate(-0.1)
 
 	err = s.Validate()
 	if err == nil {
@@ -252,22 +270,14 @@ func TestComputeReceiverLevels_ParkingOnlyEndToEnd(t *testing.T) {
 		ElevationM:             0,
 		AreaM2:                 1000,
 		NumSpaces:              100,
-		VehicleType:            ParkingPkw,
-		MovementsPerSpaceDay:   0.5,
-		MovementsPerSpaceNight: 0.1,
+		LotType:                ParkingLotPkw,
+		MovementsPerSpaceDay:   MovementRate(0.5),
+		MovementsPerSpaceNight: MovementRate(0.1),
 	}}
 
-	// Dummy road source far away with zero traffic so it emits -999 dB
-	// (ignored in energetic summation) but satisfies the "at least one source"
-	// requirement. Only the parking contribution matters.
-	silentSource := RoadSource{
-		ID:          "silent",
-		SurfaceType: SurfaceGussasphaltStandard,
-		Speeds:      SpeedInput{PkwKPH: 50, Lkw1KPH: 50, Lkw2KPH: 50, KradKPH: 50},
-		Centerline:  []geo.Point2D{{X: -1, Y: 1000}, {X: 1, Y: 1000}},
-	}
-
-	result, err := ComputeReceiverLevels(receiver, []RoadSource{silentSource}, nil, cfgWithParking)
+	// No road source at all: a lot is a source in its own right, and the
+	// "at least one source" guard used to force a silent dummy road in here.
+	result, err := ComputeReceiverLevels(receiver, nil, nil, cfgWithParking)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -312,9 +322,9 @@ func TestComputeReceiverLevels_ParkingSourceIncreasesLevel(t *testing.T) {
 		Center:                 geo.Point2D{X: 0, Y: 5},
 		AreaM2:                 5000,
 		NumSpaces:              500,
-		VehicleType:            ParkingPkw,
-		MovementsPerSpaceDay:   1.0,
-		MovementsPerSpaceNight: 0.3,
+		LotType:                ParkingLotPkw,
+		MovementsPerSpaceDay:   MovementRate(1.0),
+		MovementsPerSpaceNight: MovementRate(0.3),
 	}}
 
 	withParking, err := ComputeReceiverLevels(receiver, []RoadSource{source}, nil, cfgWithParking)
