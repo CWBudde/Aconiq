@@ -7,7 +7,7 @@
         { "x": 80, "y": 0 }
       ],
       "surface_type": "dense_asphalt",
-      "road_function_class": "urban_main",
+      "road_category": "urban_main",
       "speed_kph": 60,
       "gradient_percent": 0,
       "junction_type": "none",

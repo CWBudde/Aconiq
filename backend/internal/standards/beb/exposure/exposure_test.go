@@ -431,7 +431,7 @@ func sampleRoad() road.RoadSource {
 		ID:                "r-1",
 		Centerline:        []geo.Point2D{{X: -100, Y: 0}, {X: 100, Y: 0}},
 		SurfaceType:       road.SurfaceDenseAsphalt,
-		RoadFunctionClass: road.FunctionUrbanMain,
+		RoadCategory:      road.FunctionUrbanMain,
 		SpeedKPH:          60,
 		JunctionType:      road.JunctionNone,
 		JunctionDistanceM: 0,

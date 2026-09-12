@@ -1,12 +1,10 @@
 package road
 
 import (
-	"errors"
 	"fmt"
 	"math"
-	"strings"
 
-	"github.com/aconiq/backend/internal/geo"
+	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
 
@@ -39,48 +37,34 @@ const (
 	JunctionRoundabout   = "roundabout"
 )
 
-var allowedSurfaceTypes = map[string]struct{}{
-	SurfaceDenseAsphalt:  {},
-	SurfacePorousAsphalt: {},
-	SurfaceConcrete:      {},
-	SurfaceCobblestone:   {},
-}
-
 var allowedFunctionClasses = map[string]struct{}{
 	FunctionUrbanMain:  {},
 	FunctionUrbanLocal: {},
 	FunctionRuralMain:  {},
 }
 
-var allowedJunctionTypes = map[string]struct{}{
-	JunctionNone:         {},
-	JunctionTrafficLight: {},
-	JunctionRoundabout:   {},
-}
+// The BUB road source model is cnossos/road's, the way bub/rail and
+// bub/industry take theirs from cnossos/rail and cnossos/industry. The two
+// modules describe a road segment with the same fields and hold every one of
+// them to the same rules; only the emission math below them differs, and the
+// vocabulary the classification field carries, which RoadCategory holds as a
+// function class here and ValidateSource checks accordingly.
+type (
+	TrafficPeriod = cnossosroad.TrafficPeriod
+	RoadSource    = cnossosroad.RoadSource
+)
 
-// TrafficPeriod stores hourly flow split by light/heavy classes.
-type TrafficPeriod struct {
-	LightVehiclesPerHour      float64 `json:"light_vehicles_per_hour"`
-	MediumVehiclesPerHour     float64 `json:"medium_vehicles_per_hour,omitempty"`
-	HeavyVehiclesPerHour      float64 `json:"heavy_vehicles_per_hour"`
-	PoweredTwoWheelersPerHour float64 `json:"powered_two_wheelers_per_hour,omitempty"`
-}
+// ValidateSource validates one BUB road source schema payload. It is a
+// function rather than a method because the source model is shared: the method
+// on it validates against the CNOSSOS road categories, which is not the
+// vocabulary a BUB source is classified by.
+func ValidateSource(source RoadSource) error {
+	err := source.ValidateClassifiedBy("road_function_class", allowedFunctionClasses)
+	if err != nil {
+		return fmt.Errorf("validate road source: %w", err)
+	}
 
-// RoadSource describes one BUB road mapping source segment.
-type RoadSource struct {
-	ID                string        `json:"id"`
-	Centerline        []geo.Point2D `json:"centerline"`
-	SurfaceType       string        `json:"surface_type"`
-	RoadFunctionClass string        `json:"road_function_class"`
-	SpeedKPH          float64       `json:"speed_kph"`
-	GradientPercent   float64       `json:"gradient_percent,omitempty"`
-	JunctionType      string        `json:"junction_type"`
-	JunctionDistanceM float64       `json:"junction_distance_m,omitempty"`
-	TemperatureC      float64       `json:"temperature_c,omitempty"`
-	StuddedTyreShare  float64       `json:"studded_tyre_share,omitempty"`
-	TrafficDay        TrafficPeriod `json:"traffic_day"`
-	TrafficEvening    TrafficPeriod `json:"traffic_evening"`
-	TrafficNight      TrafficPeriod `json:"traffic_night"`
+	return nil
 }
 
 // finite reports whether v is neither NaN nor infinite.
@@ -96,113 +80,6 @@ func finitePositive(v float64) bool {
 // finiteNonNegative reports whether v is finite and greater than or equal to zero.
 func finiteNonNegative(v float64) bool {
 	return finite(v) && v >= 0
-}
-
-// Validate validates one BUB road source schema payload.
-func (s RoadSource) Validate() error {
-	if err := s.validateGeometry(); err != nil {
-		return err
-	}
-
-	if err := s.validateClassification(); err != nil {
-		return err
-	}
-
-	if err := s.validateAcoustics(); err != nil {
-		return err
-	}
-
-	return s.validateTraffic()
-}
-
-func (s RoadSource) validateGeometry() error {
-	if strings.TrimSpace(s.ID) == "" {
-		return errors.New("road source id is required")
-	}
-
-	if len(s.Centerline) < 2 {
-		return fmt.Errorf("road source %q centerline must contain at least 2 points", s.ID)
-	}
-
-	for i, point := range s.Centerline {
-		if !point.IsFinite() {
-			return fmt.Errorf("road source %q centerline point[%d] is not finite", s.ID, i)
-		}
-	}
-
-	return nil
-}
-
-func (s RoadSource) validateClassification() error {
-	if _, ok := allowedSurfaceTypes[strings.TrimSpace(s.SurfaceType)]; !ok {
-		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
-	}
-
-	if _, ok := allowedFunctionClasses[strings.TrimSpace(s.RoadFunctionClass)]; !ok {
-		return fmt.Errorf("road source %q has unsupported road_function_class %q", s.ID, s.RoadFunctionClass)
-	}
-
-	return nil
-}
-
-func (s RoadSource) validateAcoustics() error {
-	if !finitePositive(s.SpeedKPH) {
-		return fmt.Errorf("road source %q speed_kph must be finite and > 0", s.ID)
-	}
-
-	if !finite(s.GradientPercent) {
-		return fmt.Errorf("road source %q gradient_percent must be finite", s.ID)
-	}
-
-	if _, ok := allowedJunctionTypes[strings.TrimSpace(s.JunctionType)]; !ok {
-		return fmt.Errorf("road source %q has unsupported junction_type %q", s.ID, s.JunctionType)
-	}
-
-	if !finiteNonNegative(s.JunctionDistanceM) {
-		return fmt.Errorf("road source %q junction_distance_m must be finite and >= 0", s.ID)
-	}
-
-	if !finite(s.TemperatureC) {
-		return fmt.Errorf("road source %q temperature_c must be finite", s.ID)
-	}
-
-	if !finite(s.StuddedTyreShare) || s.StuddedTyreShare < 0 || s.StuddedTyreShare > 1 {
-		return fmt.Errorf("road source %q studded_tyre_share must be within [0,1]", s.ID)
-	}
-
-	return nil
-}
-
-func (s RoadSource) validateTraffic() error {
-	if err := validateTrafficPeriod(s.ID, "day", s.TrafficDay); err != nil {
-		return err
-	}
-
-	if err := validateTrafficPeriod(s.ID, "evening", s.TrafficEvening); err != nil {
-		return err
-	}
-
-	return validateTrafficPeriod(s.ID, "night", s.TrafficNight)
-}
-
-func validateTrafficPeriod(sourceID string, period string, traffic TrafficPeriod) error {
-	if !finiteNonNegative(traffic.LightVehiclesPerHour) {
-		return fmt.Errorf("road source %q traffic_%s light_vehicles_per_hour must be finite and >= 0", sourceID, period)
-	}
-
-	if !finiteNonNegative(traffic.MediumVehiclesPerHour) {
-		return fmt.Errorf("road source %q traffic_%s medium_vehicles_per_hour must be finite and >= 0", sourceID, period)
-	}
-
-	if !finiteNonNegative(traffic.HeavyVehiclesPerHour) {
-		return fmt.Errorf("road source %q traffic_%s heavy_vehicles_per_hour must be finite and >= 0", sourceID, period)
-	}
-
-	if !finiteNonNegative(traffic.PoweredTwoWheelersPerHour) {
-		return fmt.Errorf("road source %q traffic_%s powered_two_wheelers_per_hour must be finite and >= 0", sourceID, period)
-	}
-
-	return nil
 }
 
 // Descriptor returns the standards-framework descriptor for BUB road.
