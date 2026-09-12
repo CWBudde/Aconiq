@@ -6,6 +6,8 @@ import {
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
 } from "@/api/api-error";
 import RunPage from "./run";
+import { useModelStore } from "@/model/model-store";
+import type { ModelFeature } from "@/model/types";
 import { m } from "@/i18n/messages";
 
 /**
@@ -21,19 +23,29 @@ const state = vi.hoisted(() => {
     standards: unknown[];
     runSpecs: Record<string, unknown>[];
     createRunError: Error | null;
-  } = { standards: [], runSpecs: [], createRunError: null };
+    runsAgainstSavedModel: boolean;
+    savedModels: unknown[];
+  } = {
+    standards: [],
+    runSpecs: [],
+    createRunError: null,
+    runsAgainstSavedModel: true,
+    savedModels: [],
+  };
   return value;
 });
 
 // Explicit capabilities rather than whatever the env selects: the dialog's
-// receiver messaging and submit guard branch on them.
+// receiver messaging, submit guard and unsaved-changes gate branch on them.
 vi.mock("@/api/backend", () => ({
   backend: {
-    capabilities: {
-      kind: "http",
-      canExport: false,
-      runsAgainstSavedModel: true,
-      runsChangeExternally: true,
+    get capabilities() {
+      return {
+        kind: state.runsAgainstSavedModel ? "http" : "browser",
+        canExport: false,
+        runsAgainstSavedModel: state.runsAgainstSavedModel,
+        runsChangeExternally: state.runsAgainstSavedModel,
+      };
     },
   },
 }));
@@ -54,7 +66,29 @@ vi.mock("@/api/hooks", () => ({
     isError: state.createRunError !== null,
     error: state.createRunError,
   }),
+  // A project is always loaded here; `useProjectSync` runs for real on top
+  // of these so the gate is tested through the hook, not around it.
+  useProjectStatus: () => ({
+    data: { name: "Demo", crs: "EPSG:25832", scenario_count: 1, run_count: 0 },
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+  useSaveModel: () => ({
+    mutateAsync: (req: unknown) => {
+      state.savedModels.push(req);
+      return Promise.resolve({ featureCount: 0, warnings: [] });
+    },
+    isPending: false,
+  }),
 }));
+
+const sampleFeature: ModelFeature = {
+  id: "s1",
+  kind: "source",
+  sourceType: "point",
+  geometry: { type: "Point", coordinates: [10, 51] },
+};
 
 function standard(
   id: string,
@@ -130,6 +164,9 @@ beforeEach(() => {
   state.standards = [];
   state.runSpecs = [];
   state.createRunError = null;
+  state.runsAgainstSavedModel = true;
+  state.savedModels = [];
+  useModelStore.getState().reset();
 });
 
 describe("RunPage evidence tiers", () => {
@@ -314,5 +351,54 @@ describe("RunPage run creation errors", () => {
     expect(alert).not.toHaveTextContent(
       m.msg_experimental_opt_in_required_error(),
     );
+  });
+});
+
+describe("RunPage unsaved changes", () => {
+  function unsavedCallout(): HTMLElement | null {
+    return screen.queryByTestId("unsaved-changes-callout");
+  }
+
+  it("gates the run action while the workspace differs from the project", () => {
+    useModelStore.getState().addFeature(sampleFeature);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(unsavedCallout()).toHaveTextContent(
+      m.msg_unsaved_changes_before_run(),
+    );
+    expect(startRunButton()).toBeDisabled();
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
+  });
+
+  it("does not gate a clean workspace", () => {
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(unsavedCallout()).toBeNull();
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("does not gate in browser mode, where runs read the store directly", () => {
+    state.runsAgainstSavedModel = false;
+    useModelStore.getState().addFeature(sampleFeature);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(unsavedCallout()).toBeNull();
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("saves from the callout and then lets the run start", async () => {
+    useModelStore.getState().addFeature(sampleFeature);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_save_to_project() }),
+    );
+
+    expect(await screen.findByText(m.action_start_run())).toBeEnabled();
+    expect(state.savedModels).toHaveLength(1);
+    expect(state.savedModels[0]).toMatchObject({ crs: "EPSG:4326" });
+    expect(useModelStore.getState().dirty).toBe(false);
+    expect(unsavedCallout()).toBeNull();
   });
 });

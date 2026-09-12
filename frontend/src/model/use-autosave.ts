@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { backend } from "@/api/backend";
 import { useModelStore } from "@/model/model-store";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 
@@ -55,9 +56,22 @@ export function discardDraft(): void {
 }
 
 /**
- * Debounced autosave: when the model becomes dirty, saves the model to
- * localStorage after a short delay and calls `markClean()`. Also installs
- * a `beforeunload` guard while there are unsaved changes.
+ * Debounced autosave: when the model becomes dirty, writes the model to
+ * localStorage after a short delay. Also installs a `beforeunload` guard while
+ * `dirty` is set.
+ *
+ * The draft is written in both modes — it is crash recovery. Whether the
+ * write also calls `markClean()` depends on what the project is:
+ *
+ * - When the backend runs against the saved model (`aconiq serve`), the
+ *   project is the server's copy, and `dirty` means "differs from that copy".
+ *   A localStorage draft changes nothing there, so the write must not clear
+ *   the flag; only a successful `saveModel` does (`useProjectSync`). Marking
+ *   clean here was what let the header claim a synced state the server had
+ *   never seen.
+ * - When runs read the in-memory store directly (browser mode), the draft is
+ *   the only persistence there is — it *is* the project — so the write is
+ *   the save, and clearing the flag here is honest.
  *
  * Every piece of state that sets `dirty` must be both written here and listed
  * in the effect's dependencies. `calcArea` was neither: setting one marked the
@@ -87,7 +101,7 @@ export function useAutosave(): void {
             calcArea,
           } satisfies ModelDraft),
         );
-        markClean();
+        if (!backend.capabilities.runsAgainstSavedModel) markClean();
       } catch {
         // Storage full or unavailable — skip silently.
       }

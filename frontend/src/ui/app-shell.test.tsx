@@ -33,6 +33,10 @@ vi.mock("@/ui/language-toggle", () => ({
   LanguageToggle: () => <div data-testid="language-toggle" />,
 }));
 
+vi.mock("@/ui/save-status", () => ({
+  SaveStatus: () => <div data-testid="save-status" />,
+}));
+
 describe("AppShell", () => {
   it("shows only Import in the workspace rail when no project is loaded", () => {
     mockProjectStatus = {

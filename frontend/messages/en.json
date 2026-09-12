@@ -362,5 +362,14 @@
   "label_experimental_opt_in": "I understand — run this scaffold standard anyway",
   "msg_experimental_opt_in_help": "The levels this run produces are not an implementation of the standard it names and must not be used for assessment.",
   "tooltip_experimental_opt_in_required": "Acknowledge the scaffold warning before starting this run.",
-  "msg_experimental_opt_in_required_error": "The run was refused: this standard needs an explicit acknowledgement before it may emit levels."
+  "msg_experimental_opt_in_required_error": "The run was refused: this standard needs an explicit acknowledgement before it may emit levels.",
+  "status_saved_to_project": "Saved to project",
+  "action_save_to_project": "Save to project",
+  "status_saving": "Saving…",
+  "msg_save_failed": "Saving to the project failed",
+  "action_show_details": "Show details",
+  "dialog_title_model_invalid": "Model invalid",
+  "dialog_desc_model_invalid": "The project refused the model. Fix the findings below and save again.",
+  "label_feature_id": "Feature ID",
+  "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first."
 }

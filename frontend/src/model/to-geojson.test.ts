@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { featuresToGeoJSON, featuresToSourceGroups } from "./to-geojson";
-import type { ModelFeature } from "./types";
+import {
+  featuresToGeoJSON,
+  featuresToSourceGroups,
+  modelToGeoJSON,
+} from "./to-geojson";
+import type { ModelFeature, ModelReceiver } from "./types";
 
 const src: ModelFeature = {
   id: "s1",
@@ -39,6 +43,12 @@ const bar: ModelFeature = {
   },
 };
 
+const rcv: ModelReceiver = {
+  id: "r1",
+  heightM: 4,
+  geometry: { type: "Point", coordinates: [10.5, 51.5] },
+};
+
 describe("featuresToGeoJSON", () => {
   it("produces a valid FeatureCollection", () => {
     const fc = featuresToGeoJSON([src, bld]);
@@ -74,5 +84,29 @@ describe("featuresToSourceGroups", () => {
     const groups = featuresToSourceGroups([src]);
     expect(groups.buildings.features).toHaveLength(0);
     expect(groups.barriers.features).toHaveLength(0);
+  });
+});
+
+describe("modelToGeoJSON", () => {
+  it("puts features first and receivers after them in one collection", () => {
+    const fc = modelToGeoJSON({ features: [src, bld], receivers: [rcv] });
+    expect(fc.type).toBe("FeatureCollection");
+    expect(fc.features.map((f) => f.id)).toEqual(["s1", "b1", "r1"]);
+    expect(fc.features[2]?.properties).toEqual({
+      kind: "receiver",
+      height_m: 4,
+    });
+  });
+
+  it("produces an empty collection for an empty model", () => {
+    expect(modelToGeoJSON({ features: [], receivers: [] }).features).toEqual(
+      [],
+    );
+  });
+
+  it("keeps the feature properties the map payload carries", () => {
+    const fc = modelToGeoJSON({ features: [src], receivers: [] });
+    expect(fc.features[0]?.properties["source_type"]).toBe("point");
+    expect(fc.features[0]?.properties["surface_type"]).toBe("SMA");
   });
 });

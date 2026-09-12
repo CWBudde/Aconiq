@@ -362,5 +362,14 @@
   "label_experimental_opt_in": "Verstanden — dieses Gerüst-Modul trotzdem berechnen",
   "msg_experimental_opt_in_help": "Die Pegel dieser Berechnung sind keine Umsetzung der genannten Norm und dürfen nicht für Beurteilungen verwendet werden.",
   "tooltip_experimental_opt_in_required": "Bestätigen Sie den Gerüst-Hinweis, bevor Sie die Berechnung starten.",
-  "msg_experimental_opt_in_required_error": "Die Berechnung wurde abgelehnt: Diese Norm erfordert eine ausdrückliche Bestätigung, bevor sie Pegel ausgeben darf."
+  "msg_experimental_opt_in_required_error": "Die Berechnung wurde abgelehnt: Diese Norm erfordert eine ausdrückliche Bestätigung, bevor sie Pegel ausgeben darf.",
+  "status_saved_to_project": "Im Projekt gespeichert",
+  "action_save_to_project": "Im Projekt speichern",
+  "status_saving": "Wird gespeichert…",
+  "msg_save_failed": "Speichern fehlgeschlagen",
+  "action_show_details": "Details anzeigen",
+  "dialog_title_model_invalid": "Modell ungültig",
+  "dialog_desc_model_invalid": "Das Projekt hat das Modell abgelehnt. Beheben Sie die aufgeführten Befunde und speichern Sie erneut.",
+  "label_feature_id": "Objekt-ID",
+  "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst."
 }

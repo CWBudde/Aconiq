@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useModelStore } from "@/model/model-store";
+import { useProjectSync } from "@/model/use-project-sync";
 import {
   Play,
   Settings2,
@@ -821,6 +822,11 @@ function RunSetupDialog({
   const createRun = useCreateRun();
   const receiverCount = useModelStore((s) => s.receivers.length);
   const calcArea = useModelStore((s) => s.calcArea);
+  // Where a run reads the saved model, starting one with unsaved edits would
+  // silently compute the project's older copy. The same save the header
+  // offers is offered here, so the user need not leave the dialog.
+  const projectSync = useProjectSync();
+  const unsavedChanges = projectSync.enabled && projectSync.dirty;
 
   const firstStandard = standards?.[0];
 
@@ -901,7 +907,7 @@ function RunSetupDialog({
   }
 
   function handleSubmit() {
-    if (experimentalOptInMissing) return;
+    if (experimentalOptInMissing || unsavedChanges) return;
 
     createRun.mutate(
       {
@@ -1201,6 +1207,37 @@ function RunSetupDialog({
                 </div>
               </div>
             ) : null}
+
+            {/* The run reads the project's copy of the model, so unsaved
+                edits would not be in it. Gates the run action. */}
+            {unsavedChanges ? (
+              <div
+                data-testid="unsaved-changes-callout"
+                className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+              >
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  <span className="flex-1">
+                    {m.msg_unsaved_changes_before_run()}
+                    {projectSync.status === "error"
+                      ? ` ${m.msg_save_failed()}.`
+                      : null}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={projectSync.status === "saving"}
+                    onClick={() => {
+                      void projectSync.save();
+                    }}
+                  >
+                    {projectSync.status === "saving"
+                      ? m.status_saving()
+                      : m.action_save_to_project()}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1220,6 +1257,7 @@ function RunSetupDialog({
                 !selectedProfile ||
                 createRun.isPending ||
                 experimentalOptInMissing ||
+                unsavedChanges ||
                 (!backend.capabilities.runsAgainstSavedModel &&
                   receiverMode === "custom" &&
                   receiverCount === 0)

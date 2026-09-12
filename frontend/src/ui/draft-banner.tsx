@@ -25,12 +25,15 @@ export function DraftBanner() {
 
   if (!visible) return null;
 
+  // The draft is not removed after a restore. `loadModel` marks the model
+  // dirty, so the autosave rewrites the draft within its delay; discarding it
+  // here left a window in which a reload lost the restored model, because
+  // nothing had marked it unsaved and so nothing re-saved it.
   function handleRestore() {
     const draft = loadDraft();
     if (draft) {
       loadModel(draft);
     }
-    discardDraft();
     setVisible(false);
   }
 
