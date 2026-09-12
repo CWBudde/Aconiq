@@ -293,6 +293,12 @@ func TestGradientCorrection_EquationValues(t *testing.T) {
 		{name: "Eq7c Lkw2 downhill clamped", gradient: -12, group: Lkw2, speedKPH: 80, want: (-12.0 + 4.0) / -8.0 * 80.0 / 10.0},
 		{name: "Eq7c Lkw2 uphill", gradient: 5, group: Lkw2, speedKPH: 70, want: (5.0 - 2.0) / 10.0 * (70.0 + 10.0) / 10.0},
 
+		// Anmerkung to Section 3.3.3: Kraeder use Eq. 7c, evaluated at v_Pkw.
+		// The caller supplies v_Pkw for Krad (see baseEmissionSpeed).
+		{name: "Krad follows Eq7c downhill", gradient: -10, group: Krad, speedKPH: 100, want: (-10.0 + 4.0) / -8.0 * 100.0 / 10.0},
+		{name: "Krad follows Eq7c uphill", gradient: 5, group: Krad, speedKPH: 100, want: (5.0 - 2.0) / 10.0 * (100.0 + 10.0) / 10.0},
+		{name: "Krad uses the Lkw dead band", gradient: -5, group: Krad, speedKPH: 100, want: (-5.0 + 4.0) / -8.0 * 100.0 / 10.0},
+
 		// Dead band -4 % .. +2 % (Lkw) and -6 % .. +2 % (Pkw).
 		{name: "Lkw2 dead band", gradient: -4, group: Lkw2, speedKPH: 70, want: 0},
 		{name: "Pkw dead band", gradient: 2, group: Pkw, speedKPH: 100, want: 0},

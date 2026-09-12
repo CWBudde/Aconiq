@@ -128,7 +128,10 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 //
 // RLS-19 Section 3.3.6, Equations 7a / 7b / 7c.
 // Gradients outside [–12 %, +12 %] are clamped to the boundary values.
-// Krad is treated identically to Pkw (Eq. 7a with Pkw speed).
+//
+// Kräder follow the Anmerkung to Section 3.3.3: the Längsneigungskorrektur is
+// Eq. 7c (the Lkw2 form), evaluated at v_Pkw. The caller supplies v_Pkw for
+// Krad — see baseEmissionSpeed.
 func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float64) float64 {
 	g := gradientPercent
 	if g > 12 {
@@ -140,7 +143,7 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float
 	}
 
 	switch vg {
-	case Pkw, Krad:
+	case Pkw:
 		// Eq. 7a
 		if g < -6 {
 			return (g + 6) / (-6) * (90 - math.Min(speedKPH, 70)) / 20
@@ -164,7 +167,7 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float
 
 		return 0
 
-	case Lkw2:
+	case Lkw2, Krad:
 		// Eq. 7c
 		if g < -4 {
 			return (g + 4) / (-8) * speedKPH / 10
