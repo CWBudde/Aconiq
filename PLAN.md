@@ -812,7 +812,7 @@ editing several of its files rather than one package of its own.
       `schall03`'s unexported-candidate `Beiblatt3RetarderRangierenLevel` and `OctaveBands`, and the
       never-called `roundToWholeDB` (`schall03/indicators.go:38`).
 
-## Priority 8 — Frontend correctness
+## Priority 8 — Frontend correctness and rework
 
 The shipped crashes and the correctness defects behind them are fixed (`be19871`, `e55e366`,
 `ad47eaa`): the `calcArea` autosave data loss, the map being destroyed and rebuilt on every model
@@ -829,40 +829,167 @@ rather than dead code and has been wired up, and "58 unused message keys" was 38
 un-wired i18n whose English text is hardcoded in the pages — deleting those would have cemented an
 English-only UI, so they were wired up instead.
 
-### Decisions this work left open
+A six-lens review (architecture, UX, visual system, map editing, a11y + i18n, code quality) rated the
+frontend ≈ 4/10 overall. The foundations hold — oklch tokens, shadcn primitives, the command-stack
+model store, paraglide plumbing, strict TypeScript and ESLint — and are kept. The product layer on
+top does not close the loop: in API mode the drawn model never reaches the backend, results never
+reach the map, geometry cannot be edited after creation, three visual dialects coexist across eight
+pages, and ~50 strings bypass i18n. The rework below is ordered so that contracts land before
+components and components before pages; a phase is not started until the one above it is green.
 
-- [ ] **Is the map's load-timeout fallback wanted at all?** `map-view.tsx` called two functions that
-      were defined nowhere, so there was no behaviour to restore — only a choice. `mapRef.current`
-      is assigned solely inside `m.on("load", …)`, and `load` fires only after the style _and_
-      first paint complete, so the timer cannot distinguish a blocked GPU from a slow network. As
-      wired it sets a per-mount error at 15 s, and the session-wide WebGL kill switch fires only
-      when `new maplibregl.Map()` throws — the one signal that is genuinely permanent.
-      `webglcontextlost` deliberately does **not** trip it, since a `webglcontextrestored` handler
-      expects recovery. Should the "Map unavailable" panel offer a retry? Nothing clears the flag.
-- [ ] **Adopt the E2E suite or delete it — all 6 specs fail.** The tooling half is fixed:
-      `frontend/e2e/` and `playwright.config.ts` are Bun-native, type-checked and linted, and
-      `just fe-e2e` starts Vite and drives Chromium correctly. The assertions have bit-rotted,
-      because no workflow has ever run them. Two causes: `vite.config.ts` sets `base: "/Aconiq/"`
-      and `routes.tsx` passes `basename: import.meta.env.BASE_URL`, but the config's `baseURL` is
-      `http://localhost:5173` and every spec navigates to a bare `/map`; and the index route
-      redirects to `/welcome`, not `/map`. Both axe checks fail as a consequence rather than on
-      their own merits, so the accessibility baseline is still entirely unmeasured.
-- [ ] Write the missing `frontend/scripts/generate-api-client.mjs` that `package.json` already
-      declares, or delete the script entry. The client is hand-written and drifting —
-      `/api/v1/import/terrain` has no binding.
+One belief this review corrected: `run.tsx` is not untested. `run.test.tsx` drives the setup dialog
+through Radix in 15 tests and is the template for page tests. `results.tsx` and `export.tsx` have
+none.
 
-### Still open
+Decisions taken up front: the API-mode model contract is a new `POST /api/v1/model` (backend work is
+in scope); the route structure changes to the target IA below; the German UI uses the Sie/impersonal
+register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutzwand, Norm).
 
-- [ ] **Move the WASM kernel off the main thread.** `backend/cmd/wasm/main.go` calls
-      `road.ComputeReceiverOutputs` synchronously inside the Promise executor — the Promise is
-      cosmetic and there is no `Worker` anywhere in `src/`. A grid run freezes the UI.
-- [ ] Test the untested half: `src/map/` is thin on tests and `run.tsx` + `results.tsx` +
-      `export.tsx` are ~2 600 lines with zero. Run axe against real pages, not the hand-written
-      fixture in `src/ui/a11y.test.tsx`. Add `role="dialog"`, focus trap and Escape handling to
-      `FeatureEditor`/`FeaturePopup`. The map-rebuild fix in `ad47eaa` also has no test — it needs
-      a real WebGL context, and `map.test.tsx` stubs `MapView` out entirely.
-- [ ] `settings.tsx` has a hardcoded English paragraph with no message key. Small, but it is the
-      same class of defect as the ~24 keys that were wired up.
+### Phase A — Contracts and robustness (unblocks everything)
+
+- [ ] **Close the API-mode loop with `POST /api/v1/model`.** `hooks.ts` POSTs only `/import/osm`
+      and `/runs`; `handler.go:266-275` has no model endpoint, so features drawn, receivers placed
+      and the calc area are invisible to an API run (`run.tsx:1154-1158` admits it). The endpoint
+      accepts normalized GeoJSON (the `aconiq import` contract) and writes `.noise/model/`; keep
+      `handler.go` and `openapi.go` in sync. Frontend: a "Save to project" action with sync state in
+      the header, and `dirty` meaning "differs from the project" — today `use-autosave.ts:90` marks
+      clean after writing localStorage.
+- [ ] **One `Backend` interface, selected once.** Define `{ getRuns, startRun, getRunLog, export…,
+  capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in `api/mode.ts`.
+      Replace the 23 `IS_WASM_MODE` branches in pages and hooks with capability flags
+      (`canExport`, `canPickReceivers`, `canCancel`). Route every non-OK response through
+      `api-error.ts` (`fetchJSON` and `useImportFromOSM` hand-roll `Error` today).
+- [ ] **Delete dead state and barrels**: `stores/ui-store.ts` (no consumers), `map-store`
+      selection fields (never written), `api/index.ts`, `model/index.ts`, `map/index.ts`,
+      `ui/data-table.tsx` (until Phase C reuses it), `CONTOUR_LAYERS`. Move `Point2D`/`ParkingSource`
+      from `wasm/types.ts` into `model/` so the domain layer stops importing kernel transport types.
+- [ ] **Run progress and polling**: `useRunLog` needs `refetchInterval` while `status === "running"`,
+      or one SSE subscription to `/api/v1/events` in `root-layout.tsx` that invalidates; `useRuns`
+      polls at 3 s and 5 s on one key regardless of activity.
+- [ ] **Browser-mode persistence**: `browser-backend.ts:291` writes every run artifact to
+      localStorage with no try/catch and no cap; move to IndexedDB, version the persisted JSON (also
+      `use-autosave.ts:28-31`), guard on read, surface quota errors. `draft-banner.tsx:28-35`
+      restores then discards the draft before anything re-saves it.
+- [ ] **Adopt or delete the E2E suite** — all 6 specs failed on the last run
+      (`test-results/.last-run.json`): `baseURL` ignores `base: "/Aconiq/"`, `/` redirects to
+      `/welcome`. Repair, then run axe on every route in both locales: this is the accessibility
+      baseline every later phase is measured against.
+- [ ] **Map load-timeout fallback**: keep the 15 s per-mount error and the session WebGL kill
+      switch (the timer cannot tell a blocked GPU from a slow network, and only a throwing
+      `new maplibregl.Map()` is genuinely permanent); add a retry to the "Map unavailable" panel,
+      since nothing clears the flag today. `webglcontextlost` must not set `mapError`
+      (`map-view.tsx:122-128`), or `webglcontextrestored` can never recover.
+
+### Phase B — Design system foundation
+
+- [ ] **Semantic tokens**: add `--success/--warning/--info` (+ `-foreground`) to `globals.css`,
+      expose via `@theme inline`; raise dark-mode `--destructive` lightness for text contrast
+      (≈2.5:1 today). Then purge Tailwind palette classes and the 32 `dark:` patches from `pages/`
+      and `map/`. Self-host IBM Plex (`index.html:6-9` loads Google Fonts in an offline-first tool).
+      Document one type scale (11/12/13/14/16/20) and cap radius at `rounded-lg`.
+- [ ] **Missing primitives**: `badge`, `alert`, `tabs`, `checkbox`, `switch`, `radio-group`, `card`,
+      `scroll-area`, `resizable`, `sonner`, `textarea`. Replaces the raw `<button>` tab strips
+      (`results.tsx:675-693`, `settings.tsx:112-118`), the `accent-amber-600` checkbox
+      (`run.tsx:1179`), the boolean rendered as a `true/false` Select (`run.tsx:712-720`) and the
+      `window.alert` at `run.tsx:601`.
+- [ ] **Shared components** (each replaces ≥3 copies): `StatusBadge` (byte-identical in `run.tsx`
+      and `results.tsx`), `Callout` (~14 copies), `PageHeader`/`SectionHeading` (four recipes),
+      `KeyValueList` (the `<dl>` in `status.tsx`, `map.tsx`, `welcome.tsx`), `EmptyState`,
+      `MasterDetail` + `ListItem` (three copies), `CopyField`, `MapPanel`, and
+      `ui/format.ts` with locale-aware `formatLevel`/`formatDateTime`/`formatDuration`
+      (`toFixed(1)` renders "45.3 dB(A)" in German today).
+- [ ] **Structural a11y in one PR**: `<nav aria-label>` + `aria-current` + skip link in
+      `app-shell.tsx`; remove the nested `<main>` in `settings.tsx:594`; set
+      `document.documentElement.lang` from the locale; `prefers-reduced-motion` rule; fix the
+      `h2`→`h4` skip in `run.tsx:555`; one `useGlobalShortcut` hook with the `isTextEntryTarget`
+      guard (the sidebar's Ctrl+B lacks it).
+
+### Phase C — Information architecture and pages
+
+- [ ] **Target IA**: `/` project (Welcome and Status merged: open/create, mode chip, health,
+      validation summary); `/model` map always mounted, empty state as overlay with "Import…" and
+      "Start drawing" (`map.tsx:30-35` hides the map and the draw tools until content exists);
+      `/run`; `/results/:runId`; `/export/:runId`; `/settings` with two categories (General,
+      Connection — five of seven today are "reserved" placeholders). Header mode chip and a
+      `<ModeGate>` with one disabled+tooltip treatment.
+- [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:428-461`),
+      PDF section, planned settings, "Phase 24+" strings (`en.json:315`). Replace every CLI hand-off
+      (`results.tsx:463`, `export.tsx:204-208`, `en.json:305`) with one "Copy CLI command" affordance.
+- [ ] **Refit run/results/export** onto `MasterDetail`/`Tabs`/`DataTable`; split `run.tsx` into
+      `pages/run/{page,setup-dialog,detail,timeline}.tsx`; extract `useRunSetupSelection`
+      (standard→version→profile→params cascade, removes the render-phase `setState` at
+      `run.tsx:876-879`) and `useSelectedRun`. Add `standards-meta.ts`: human labels, German
+      directive names, parameters grouped with units (today `traffic_day_lkw1` is shown raw and only
+      one standard ID has a label, `run.tsx:59-73`). Gate the run dialog on
+      `validateModel(...).errors.length === 0`. Confirm destructive actions (delete feature, discard
+      draft, import-replaces-model) — no `AlertDialog` exists anywhere.
+- [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`), header buttons with
+      `aria-sort` and `scope="col"` (today `onClick` on `<th>`), hoist `SortIcon`/`RunColumn` out of
+      their parents, one RFC-4180 CSV builder in `model/` (`results.tsx:202` does not escape quotes;
+      `browser-backend.ts:783` is a second builder), `results.test.tsx` written alongside.
+- [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
+      ask replace-vs-merge before `loadFeatures`; link preview errors to features.
+
+### Phase D — Map workspace
+
+- [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
+      (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
+      edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);
+      move the coordinate display off the undo bar's corner; dock the editor as a `MapPanel` beside
+      the map instead of over the layer control.
+- [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
+      change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
+      `CommandStack` first so drags do not become one step per mousemove.
+- [ ] **Editor completeness**: derive `sourceType` from geometry (the select at
+      `feature-editor.tsx:217-222` can contradict it); add Parkplatz (`rls19_parking_*`) and rail
+      (`schall03_*`) field groups — `validate.ts` flags missing parking fields the UI cannot set;
+      table-drive the 16 near-identical `PropertyNumberField` blocks; show the feature's own issues
+      inline; `role="dialog"`, focus trap and Escape handling.
+- [ ] **Results on the map**: `ResultLayers` (raster image source + contours), legend from
+      `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
+      row↔map highlight from the receiver table. Until it lands, hide the result toggles in
+      `layer-control.tsx:63-70`.
+- [ ] **CRS and basemap**: guard `fitBounds` (`model-layers.tsx:91` throws on EPSG:25832 input);
+      proj4 with 25832/25833 on import and a UTM readout in the coordinate display; tile-error →
+      `OFFLINE_STYLE` with a notice; basemap picker; tile URL in Connection settings
+      (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
+- [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
+      feature list, so the map is not mouse-only.
+
+### Phase E — i18n and German
+
+- [ ] Validation messages become codes + params (`validate.ts:43-437` is English-only and rendered
+      verbatim); add the ~50 missing keys (`run.tsx:287,605,717`, `export.tsx:134,204-208`,
+      `layer-control.tsx:38`, `data-table.tsx:28`, shadcn `sr-only` texts, the hardcoded paragraph
+      at `settings.tsx:441`); strip trailing colons from `label_*` keys (`Min::` today); paraglide
+      plural variants for `run{s}`; language switch without `location.reload()`; enable
+      `react/jsx-no-literals` for `pages/`, `map/`, `ui/`.
+- [ ] German terminology and register pass: Immissionsort, Schallquelle,
+      Schallschirm/Lärmschutzwand, "Norm" consistently; Sie/impersonal register throughout (mixed
+      du/Sie today); welcome copy aligned between `de.json` and `en.json`.
+
+### Phase F — Tests, types and the kernel boundary
+
+- [ ] Measure coverage (`@vitest/coverage-v8`, floor in `fe-ci`); `hooks.test.ts` against mocked
+      `fetch`; a `browserBackend.startRun` test with a stubbed kernel compared to a backend golden;
+      tests for `use-draw` and `model-layers` (the map-rebuild fix in `ad47eaa` still has no test —
+      it needs a real WebGL context, and `map.test.tsx` stubs `MapView` out entirely).
+- [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
+      delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
+      `package.json` declares (`/api/v1/import/terrain` has no binding today). Found while checking:
+      `StandardDescriptor.context` (`handler.go:134`) is absent from the OpenAPI schema although it
+      sets `additionalProperties: false` — a backend defect to fix in the same PR.
+- [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
+      `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
+      WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
+      `road.ComputeReceiverOutputs` synchronously inside the Promise executor and there is no
+      `Worker` anywhere in `src/`, so a grid run freezes the UI.
+
+### Order and gates
+
+A before B before C; D and E can run in parallel with C once B is green; the coverage floor from F
+starts with B so every refit adds tests. Each phase ends with `just fe-ci` green, the E2E suite
+green, and axe clean on every route in `de` and `en`.
 
 ## Priority 9 — Documentation truth
 
