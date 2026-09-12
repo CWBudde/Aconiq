@@ -31,6 +31,15 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    // The accessibility baseline runs a second time under the dark colour
+    // scheme. The ThemeProvider defaults to "system", so the emulated scheme
+    // selects the `.dark` token set and axe sees the dark palette. The other
+    // specs are not colour-dependent and run once.
+    {
+      name: "chromium-dark",
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+      testMatch: /a11y\.spec\.ts/,
+    },
   ],
 
   // Start the Vite dev server automatically. It runs in WASM mode on purpose:
