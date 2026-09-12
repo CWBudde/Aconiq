@@ -374,5 +374,6 @@
   "label_feature_id": "Feature ID",
   "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
   "nav_primary_label": "Main navigation",
-  "action_skip_to_content": "Skip to content"
+  "action_skip_to_content": "Skip to content",
+  "msg_copy_failed": "Copying to the clipboard failed"
 }
