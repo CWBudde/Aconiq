@@ -21,7 +21,8 @@ type Building struct {
 	HeightM   float64       `json:"height_m"`  // top of building above ground [m]
 
 	// ReflectionLossDB is the energy loss per reflection [dB].
-	// Defaults to 1.0 dB when zero or unset.
+	// When zero or unset it falls back to the RLS-19 Tabelle 8 facade row,
+	// 0.5 dB — see Reflector.effectiveLoss.
 	ReflectionLossDB float64 `json:"reflection_loss_db,omitempty"`
 }
 

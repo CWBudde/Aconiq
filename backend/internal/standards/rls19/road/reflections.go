@@ -15,7 +15,8 @@ type ReflectorType int
 
 const (
 	// ReflectorTypeUnspecified means no typed surface class is set; the
-	// Reflector falls back to ReflectionLossDB (or 1.0 dB if unset).
+	// Reflector falls back to ReflectionLossDB, or — if that is unset too — to
+	// the Tabelle 8 facade row, 0.5 dB.
 	ReflectorTypeUnspecified ReflectorType = iota
 
 	// ReflectorTypeFacadeOrReflecting is a schallharte Fassade oder Wand
@@ -58,9 +59,10 @@ type Reflector struct {
 	// When non-zero, the typed loss value takes precedence over ReflectionLossDB.
 	Type ReflectorType `json:"type,omitempty"`
 
-	// ReflectionLossDB is the explicit energy loss per reflection [dB].
-	// Used only when Type is ReflectorTypeUnspecified.
-	// Defaults to 1.0 dB when zero or unset (backward-compatible default).
+	// ReflectionLossDB is a deliberate override of the Tabelle 8 value, in dB
+	// per reflection. It applies only when Type is ReflectorTypeUnspecified.
+	// When it is zero or unset the loss falls back to the Tabelle 8 facade row
+	// (0.5 dB) — see effectiveLoss.
 	ReflectionLossDB float64 `json:"reflection_loss_db,omitempty"`
 }
 
@@ -94,7 +96,13 @@ func (r Reflector) Validate() error {
 // effectiveLoss returns the per-reflection loss D_RV [dB].
 //
 // Priority: typed surface class (Tabelle 8) > explicit ReflectionLossDB >
-// backward-compatible default of 1.0 dB.
+// the Tabelle 8 default.
+//
+// The default is the "Gebäudefassaden und reflektierende Lärmschutzwände" row,
+// 0.5 dB. RLS-19 Tabelle 8 has only three rows — 0.5, 3.0 and 5.0 dB — so an
+// untyped reflector has to land on one of them, and the facade row is both the
+// commonest untyped case and the conservative one: it is the smallest loss in
+// the table, hence the highest resulting level.
 func (r Reflector) effectiveLoss() float64 {
 	switch r.Type {
 	case ReflectorTypeFacadeOrReflecting:
@@ -106,7 +114,7 @@ func (r Reflector) effectiveLoss() float64 {
 	}
 
 	if r.ReflectionLossDB <= 0 {
-		return 1.0
+		return 0.5
 	}
 
 	return r.ReflectionLossDB

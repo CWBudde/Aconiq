@@ -76,7 +76,7 @@
     },
     "standard_data": {
       "algorithm": "sha256",
-      "digest": "4fb974186f5dc1431576bf90a53d0fc4016b6ed2acc5a2f7d5611ac8c1375214",
+      "digest": "5fc3295e87754a6e22a51844adf25c77f6e42ef364cfa74a5dc71a3fe5f30a24",
       "evidence_tier": "normative",
       "tables": [
         {
@@ -112,7 +112,7 @@
           "name": "rls19/tabelle-07-parkbewegungen"
         },
         {
-          "digest": "17d70a832e075a546779e2f6c594807068da460d9049fb95226b6f669f01f334",
+          "digest": "cfb0d53b5c3b1a77c35b66513c519d550803cf6c7499698b797350da31fced14",
           "name": "rls19/tabelle-08-reflexionsverluste"
         }
       ]
