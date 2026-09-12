@@ -70,7 +70,9 @@ type TrafficPeriod struct {
 	PoweredTwoWheelersPerHour float64 `json:"powered_two_wheelers_per_hour,omitempty"`
 }
 
-// RoadSource describes one road source segment.
+// RoadSource describes one road source segment. bub/road shares this model
+// rather than restating it — see ValidateClassifiedBy for the one field the
+// two modules read differently.
 type RoadSource struct {
 	ID                string        `json:"id"`
 	Centerline        []geo.Point2D `json:"centerline"`
@@ -102,13 +104,24 @@ func finiteNonNegative(v float64) bool {
 	return finite(v) && v >= 0
 }
 
-// Validate validates one road source schema payload.
+// Validate validates one road source schema payload against the CNOSSOS road
+// categories.
 func (s RoadSource) Validate() error {
+	return s.ValidateClassifiedBy("road_category", allowedRoadCategories)
+}
+
+// ValidateClassifiedBy validates one road source for a module that shares this
+// source model but classifies its segments by its own vocabulary. bub/road
+// does: its sources carry a road function class in the same field, so it
+// passes the property name its schema and its error messages use, together
+// with the values it accepts. Everything else a road source has to satisfy is
+// the same for both, which is what makes the shared model honest.
+func (s RoadSource) ValidateClassifiedBy(classificationProperty string, allowedClassifications map[string]struct{}) error {
 	if err := s.validateGeometry(); err != nil {
 		return err
 	}
 
-	if err := s.validateClassification(); err != nil {
+	if err := s.validateClassification(classificationProperty, allowedClassifications); err != nil {
 		return err
 	}
 
@@ -137,13 +150,13 @@ func (s RoadSource) validateGeometry() error {
 	return nil
 }
 
-func (s RoadSource) validateClassification() error {
+func (s RoadSource) validateClassification(classificationProperty string, allowedClassifications map[string]struct{}) error {
 	if !isAllowedSurfaceType(s.SurfaceType) {
 		return fmt.Errorf("road source %q has unsupported surface_type %q", s.ID, s.SurfaceType)
 	}
 
-	if _, ok := allowedRoadCategories[strings.TrimSpace(s.RoadCategory)]; !ok {
-		return fmt.Errorf("road source %q has unsupported road_category %q", s.ID, s.RoadCategory)
+	if _, ok := allowedClassifications[strings.TrimSpace(s.RoadCategory)]; !ok {
+		return fmt.Errorf("road source %q has unsupported %s %q", s.ID, classificationProperty, s.RoadCategory)
 	}
 
 	return nil

@@ -18,14 +18,14 @@ func TestRoadSourceValidate(t *testing.T) {
 
 	source := sampleSource()
 
-	err := source.Validate()
+	err := ValidateSource(source)
 	if err != nil {
 		t.Fatalf("valid source failed validation: %v", err)
 	}
 
-	source.RoadFunctionClass = "nope"
+	source.RoadCategory = "nope"
 
-	err = source.Validate()
+	err = ValidateSource(source)
 	if err == nil {
 		t.Fatal("expected invalid function class")
 	}
@@ -33,7 +33,7 @@ func TestRoadSourceValidate(t *testing.T) {
 	source = sampleSource()
 	source.JunctionType = "nope"
 
-	err = source.Validate()
+	err = ValidateSource(source)
 	if err == nil {
 		t.Fatal("expected invalid junction type")
 	}
@@ -69,7 +69,7 @@ func TestEmissionUsesRoadContext(t *testing.T) {
 	base := sampleSource()
 	contextual := sampleSource()
 	contextual.SurfaceType = SurfaceCobblestone
-	contextual.RoadFunctionClass = FunctionRuralMain
+	contextual.RoadCategory = FunctionRuralMain
 	contextual.JunctionType = JunctionTrafficLight
 	contextual.JunctionDistanceM = 15
 	contextual.TemperatureC = -5
@@ -397,7 +397,7 @@ func sampleSource() RoadSource {
 	return RoadSource{
 		ID:                "bub-road-1",
 		SurfaceType:       SurfaceDenseAsphalt,
-		RoadFunctionClass: FunctionUrbanMain,
+		RoadCategory:      FunctionUrbanMain,
 		SpeedKPH:          60,
 		JunctionType:      JunctionNone,
 		JunctionDistanceM: 0,

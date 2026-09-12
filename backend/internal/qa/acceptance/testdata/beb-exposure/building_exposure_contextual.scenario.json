@@ -16,7 +16,7 @@
         { "x": 140, "y": -5 }
       ],
       "surface_type": "cobblestone",
-      "road_function_class": "urban_main",
+      "road_category": "urban_main",
       "speed_kph": 40,
       "junction_type": "traffic_light",
       "junction_distance_m": 10,

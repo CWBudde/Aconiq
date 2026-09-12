@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
-	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
@@ -13,18 +12,70 @@ import (
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
 )
 
+// bubRoadDecodeOrder is the order bub-road decodes its road source properties
+// in: the classification second, the junction type before the speed, and each
+// powered-two-wheeler count with its own period rather than all three last.
+var bubRoadDecodeOrder = []roadProperty{
+	roadPropertySurfaceType,
+	roadPropertyClassification,
+	roadPropertyJunctionType,
+	roadPropertySpeedKPH,
+	roadPropertyGradientPercent,
+	roadPropertyJunctionDistanceM,
+	roadPropertyTemperatureC,
+	roadPropertyStuddedTyreShare,
+	roadPropertyTrafficDayLight,
+	roadPropertyTrafficDayMedium,
+	roadPropertyTrafficDayHeavy,
+	roadPropertyTrafficDayPTW,
+	roadPropertyTrafficEveningLight,
+	roadPropertyTrafficEveningMedium,
+	roadPropertyTrafficEveningHeavy,
+	roadPropertyTrafficEveningPTW,
+	roadPropertyTrafficNightLight,
+	roadPropertyTrafficNightMedium,
+	roadPropertyTrafficNightHeavy,
+	roadPropertyTrafficNightPTW,
+}
+
 func extractBUBRoadSources(model modelgeojson.Model, options bubRoadRunOptions, supportedSourceTypes []string) ([]bubroad.RoadSource, error) {
-	return extractSources(model, supportedSourceTypes, sourceExtraction[bubroad.RoadSource, []geo.Point2D]{
-		scope:        "cli.extractBUBRoadSources",
-		idPrefix:     "bub-road-source-%03d",
-		emptyMessage: msgNoLineSourceFeatures,
-		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
-			return lineStringsFromFeature(feature, bubroad.StandardID)
-		},
-		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (bubroad.RoadSource, error) {
-			return buildBUBRoadSource(feature, options, sourceID, line)
-		},
-	})
+	return extractSources(model, supportedSourceTypes, roadSourceExtraction(bubRoadSourceOptions(options), roadSourceSpec{
+		scope:                  "cli.extractBUBRoadSources",
+		idPrefix:               "bub-road-source-%03d",
+		standardID:             bubroad.StandardID,
+		classificationProperty: "road_function_class",
+		decodeOrder:            bubRoadDecodeOrder,
+	}))
+}
+
+// bubRoadSourceOptions restates the BUB road run options as the CNOSSOS ones
+// the shared builder seeds a source from. The two option sets carry the same
+// source defaults under the same names, except the classification, which BUB
+// parameterises as a function class; the propagation terms each standard adds
+// of its own are not part of a source and are left behind here.
+func bubRoadSourceOptions(options bubRoadRunOptions) cnossosRoadRunOptions {
+	return cnossosRoadRunOptions{
+		RoadCategory:            options.RoadFunctionClass,
+		SurfaceType:             options.SurfaceType,
+		SpeedKPH:                options.SpeedKPH,
+		GradientPercent:         options.GradientPercent,
+		JunctionType:            options.JunctionType,
+		JunctionDistanceM:       options.JunctionDistanceM,
+		TemperatureC:            options.TemperatureC,
+		StuddedTyreShare:        options.StuddedTyreShare,
+		TrafficDayLightVPH:      options.TrafficDayLightVPH,
+		TrafficDayMediumVPH:     options.TrafficDayMediumVPH,
+		TrafficDayHeavyVPH:      options.TrafficDayHeavyVPH,
+		TrafficDayPTWVPH:        options.TrafficDayPTWVPH,
+		TrafficEveningLightVPH:  options.TrafficEveningLightVPH,
+		TrafficEveningMediumVPH: options.TrafficEveningMediumVPH,
+		TrafficEveningHeavyVPH:  options.TrafficEveningHeavyVPH,
+		TrafficEveningPTWVPH:    options.TrafficEveningPTWVPH,
+		TrafficNightLightVPH:    options.TrafficNightLightVPH,
+		TrafficNightMediumVPH:   options.TrafficNightMediumVPH,
+		TrafficNightHeavyVPH:    options.TrafficNightHeavyVPH,
+		TrafficNightPTWVPH:      options.TrafficNightPTWVPH,
+	}
 }
 
 func extractBUFAircraftSources(model modelgeojson.Model, options bufAircraftRunOptions, supportedSourceTypes []string) ([]bufaircraft.AircraftSource, error) {
@@ -150,80 +201,4 @@ func optionalFloat(value float64, present bool) *float64 {
 	}
 
 	return &value
-}
-
-// buildBUBRoadSource merges the run options with one feature's property
-// overrides into a single road source.
-//
-// dupl matches this against buildCnossosRoadSource, and cannot see either of
-// the two things that keep them apart: bubroad.RoadSource and
-// cnossosroad.RoadSource are distinct types differing in one field
-// (road_function_class against road_category), and the override tables are
-// ordered differently on purpose — CNOSSOS decodes all three PTW periods last,
-// BUB interleaves each with its period, which decides which error a feature
-// carrying two malformed properties reports. Merging them here would change
-// that. The duplication is real and its fix is structural: bub/road should
-// share cnossos/road's source model, the way bub/rail and bub/industry already
-// alias cnossos, which PLAN.md Priority 7 owns.
-//
-//nolint:dupl // see above; the two road source models differ by one field and the decode orders differ deliberately
-func buildBUBRoadSource(feature modelgeojson.Feature, options bubRoadRunOptions, sourceID string, line []geo.Point2D) (bubroad.RoadSource, error) {
-	source := bubroad.RoadSource{
-		ID:                sourceID,
-		Centerline:        line,
-		SurfaceType:       options.SurfaceType,
-		RoadFunctionClass: options.RoadFunctionClass,
-		SpeedKPH:          options.SpeedKPH,
-		GradientPercent:   options.GradientPercent,
-		JunctionType:      options.JunctionType,
-		JunctionDistanceM: options.JunctionDistanceM,
-		TemperatureC:      options.TemperatureC,
-		StuddedTyreShare:  options.StuddedTyreShare,
-		TrafficDay: bubroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficDayLightVPH,
-			MediumVehiclesPerHour:     options.TrafficDayMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficDayHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficDayPTWVPH,
-		},
-		TrafficEvening: bubroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficEveningLightVPH,
-			MediumVehiclesPerHour:     options.TrafficEveningMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficEveningHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficEveningPTWVPH,
-		},
-		TrafficNight: bubroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficNightLightVPH,
-			MediumVehiclesPerHour:     options.TrafficNightMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficNightHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficNightPTWVPH,
-		},
-	}
-
-	overrideErr := applyFeatureOverrides(feature, "cli.extractBUBRoadSources", []propertyOverride{
-		overrideString(&source.SurfaceType, "road_surface_type"),
-		overrideString(&source.RoadFunctionClass, "road_function_class"),
-		overrideString(&source.JunctionType, "road_junction_type"),
-		overrideFloat(&source.SpeedKPH, "road_speed_kph"),
-		overrideFloat(&source.GradientPercent, "road_gradient_percent"),
-		overrideFloat(&source.JunctionDistanceM, "road_junction_distance_m"),
-		overrideFloat(&source.TemperatureC, "road_temperature_c"),
-		overrideFloat(&source.StuddedTyreShare, "road_studded_tyre_share"),
-		overrideFloat(&source.TrafficDay.LightVehiclesPerHour, "traffic_day_light_vph"),
-		overrideFloat(&source.TrafficDay.MediumVehiclesPerHour, "traffic_day_medium_vph"),
-		overrideFloat(&source.TrafficDay.HeavyVehiclesPerHour, "traffic_day_heavy_vph"),
-		overrideFloat(&source.TrafficDay.PoweredTwoWheelersPerHour, "traffic_day_ptw_vph"),
-		overrideFloat(&source.TrafficEvening.LightVehiclesPerHour, "traffic_evening_light_vph"),
-		overrideFloat(&source.TrafficEvening.MediumVehiclesPerHour, "traffic_evening_medium_vph"),
-		overrideFloat(&source.TrafficEvening.HeavyVehiclesPerHour, "traffic_evening_heavy_vph"),
-		overrideFloat(&source.TrafficEvening.PoweredTwoWheelersPerHour, "traffic_evening_ptw_vph"),
-		overrideFloat(&source.TrafficNight.LightVehiclesPerHour, "traffic_night_light_vph"),
-		overrideFloat(&source.TrafficNight.MediumVehiclesPerHour, "traffic_night_medium_vph"),
-		overrideFloat(&source.TrafficNight.HeavyVehiclesPerHour, "traffic_night_heavy_vph"),
-		overrideFloat(&source.TrafficNight.PoweredTwoWheelersPerHour, "traffic_night_ptw_vph"),
-	})
-	if overrideErr != nil {
-		return bubroad.RoadSource{}, overrideErr
-	}
-
-	return source, nil
 }

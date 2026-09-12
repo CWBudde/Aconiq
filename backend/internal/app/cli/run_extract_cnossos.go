@@ -13,18 +13,182 @@ import (
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 )
 
+// cnossosRoadDecodeOrder is the order cnossos-road decodes its road source
+// properties in: the classification second, the speed before the junction type,
+// and all three powered-two-wheeler counts after every other period count.
+var cnossosRoadDecodeOrder = []roadProperty{
+	roadPropertySurfaceType,
+	roadPropertyClassification,
+	roadPropertySpeedKPH,
+	roadPropertyGradientPercent,
+	roadPropertyJunctionType,
+	roadPropertyJunctionDistanceM,
+	roadPropertyTemperatureC,
+	roadPropertyStuddedTyreShare,
+	roadPropertyTrafficDayLight,
+	roadPropertyTrafficDayMedium,
+	roadPropertyTrafficDayHeavy,
+	roadPropertyTrafficEveningLight,
+	roadPropertyTrafficEveningMedium,
+	roadPropertyTrafficEveningHeavy,
+	roadPropertyTrafficNightLight,
+	roadPropertyTrafficNightMedium,
+	roadPropertyTrafficNightHeavy,
+	roadPropertyTrafficDayPTW,
+	roadPropertyTrafficEveningPTW,
+	roadPropertyTrafficNightPTW,
+}
+
 func extractCnossosRoadSources(model modelgeojson.Model, options cnossosRoadRunOptions, supportedSourceTypes []string) ([]cnossosroad.RoadSource, error) {
-	return extractSources(model, supportedSourceTypes, sourceExtraction[cnossosroad.RoadSource, []geo.Point2D]{
-		scope:        "cli.extractCnossosRoadSources",
-		idPrefix:     "road-source-%03d",
+	return extractSources(model, supportedSourceTypes, roadSourceExtraction(options, roadSourceSpec{
+		scope:                  "cli.extractCnossosRoadSources",
+		idPrefix:               "road-source-%03d",
+		standardID:             cnossosroad.StandardID,
+		classificationProperty: "road_category",
+		decodeOrder:            cnossosRoadDecodeOrder,
+	}))
+}
+
+// roadProperty names one property a road source can be overridden by.
+//
+// cnossos-road and bub-road accept the same twenty properties and fill the
+// same fields from them — bub/road shares cnossos/road's source model — but
+// they decode them in different orders, and the order is behaviour: the first
+// decode error is the one the user sees, so a feature carrying two malformed
+// properties reports whichever its standard reads first. Each standard
+// therefore supplies its order as data, in the decode-order table above its
+// own extractor, and TestExtractOverrideErrorPrecedence pins both.
+type roadProperty int
+
+const (
+	roadPropertySurfaceType roadProperty = iota
+	roadPropertyClassification
+	roadPropertySpeedKPH
+	roadPropertyGradientPercent
+	roadPropertyJunctionType
+	roadPropertyJunctionDistanceM
+	roadPropertyTemperatureC
+	roadPropertyStuddedTyreShare
+	roadPropertyTrafficDayLight
+	roadPropertyTrafficDayMedium
+	roadPropertyTrafficDayHeavy
+	roadPropertyTrafficDayPTW
+	roadPropertyTrafficEveningLight
+	roadPropertyTrafficEveningMedium
+	roadPropertyTrafficEveningHeavy
+	roadPropertyTrafficEveningPTW
+	roadPropertyTrafficNightLight
+	roadPropertyTrafficNightMedium
+	roadPropertyTrafficNightHeavy
+	roadPropertyTrafficNightPTW
+	roadPropertyCount
+)
+
+// roadSourceSpec is everything one road standard contributes to the shared
+// build: the scope its errors are reported under, the format its fallback
+// source IDs are numbered with, the standard named in a geometry error, the
+// property its classification arrives under — road_category for cnossos-road,
+// road_function_class for bub-road, both filling RoadCategory — and the order
+// it decodes in.
+type roadSourceSpec struct {
+	scope                  string
+	idPrefix               string
+	standardID             string
+	classificationProperty string
+	decodeOrder            []roadProperty
+}
+
+// roadSourceExtraction builds the spec both road standards run.
+func roadSourceExtraction(options cnossosRoadRunOptions, spec roadSourceSpec) sourceExtraction[cnossosroad.RoadSource, []geo.Point2D] {
+	return sourceExtraction[cnossosroad.RoadSource, []geo.Point2D]{
+		scope:        spec.scope,
+		idPrefix:     spec.idPrefix,
 		emptyMessage: msgNoLineSourceFeatures,
 		parts: func(feature modelgeojson.Feature) ([][]geo.Point2D, error) {
-			return lineStringsFromFeature(feature, cnossosroad.StandardID)
+			return lineStringsFromFeature(feature, spec.standardID)
 		},
 		build: func(feature modelgeojson.Feature, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
-			return buildCnossosRoadSource(feature, options, sourceID, line)
+			return buildRoadSource(feature, options, spec, sourceID, line)
 		},
-	})
+	}
+}
+
+// buildRoadSource merges the run options with one feature's property overrides
+// into a single road source.
+func buildRoadSource(feature modelgeojson.Feature, options cnossosRoadRunOptions, spec roadSourceSpec, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
+	source := cnossosroad.RoadSource{
+		ID:                sourceID,
+		Centerline:        line,
+		RoadCategory:      options.RoadCategory,
+		SurfaceType:       options.SurfaceType,
+		SpeedKPH:          options.SpeedKPH,
+		GradientPercent:   options.GradientPercent,
+		JunctionType:      options.JunctionType,
+		JunctionDistanceM: options.JunctionDistanceM,
+		TemperatureC:      options.TemperatureC,
+		StuddedTyreShare:  options.StuddedTyreShare,
+		TrafficDay: cnossosroad.TrafficPeriod{
+			LightVehiclesPerHour:      options.TrafficDayLightVPH,
+			MediumVehiclesPerHour:     options.TrafficDayMediumVPH,
+			HeavyVehiclesPerHour:      options.TrafficDayHeavyVPH,
+			PoweredTwoWheelersPerHour: options.TrafficDayPTWVPH,
+		},
+		TrafficEvening: cnossosroad.TrafficPeriod{
+			LightVehiclesPerHour:      options.TrafficEveningLightVPH,
+			MediumVehiclesPerHour:     options.TrafficEveningMediumVPH,
+			HeavyVehiclesPerHour:      options.TrafficEveningHeavyVPH,
+			PoweredTwoWheelersPerHour: options.TrafficEveningPTWVPH,
+		},
+		TrafficNight: cnossosroad.TrafficPeriod{
+			LightVehiclesPerHour:      options.TrafficNightLightVPH,
+			MediumVehiclesPerHour:     options.TrafficNightMediumVPH,
+			HeavyVehiclesPerHour:      options.TrafficNightHeavyVPH,
+			PoweredTwoWheelersPerHour: options.TrafficNightPTWVPH,
+		},
+	}
+
+	overrideErr := applyFeatureOverrides(feature, spec.scope, roadSourceOverrides(&source, spec))
+	if overrideErr != nil {
+		return cnossosroad.RoadSource{}, overrideErr
+	}
+
+	return source, nil
+}
+
+// roadSourceOverrides returns one override per property, in the order the spec
+// decodes them. The table is indexed by property rather than written in an
+// order, so neither standard's order is the one the code happens to be written
+// in and a reordering of either is a one-line change to its own table.
+func roadSourceOverrides(source *cnossosroad.RoadSource, spec roadSourceSpec) []propertyOverride {
+	table := [roadPropertyCount]propertyOverride{
+		roadPropertySurfaceType:          overrideString(&source.SurfaceType, "road_surface_type"),
+		roadPropertyClassification:       overrideString(&source.RoadCategory, spec.classificationProperty),
+		roadPropertySpeedKPH:             overrideFloat(&source.SpeedKPH, "road_speed_kph"),
+		roadPropertyGradientPercent:      overrideFloat(&source.GradientPercent, "road_gradient_percent"),
+		roadPropertyJunctionType:         overrideString(&source.JunctionType, "road_junction_type"),
+		roadPropertyJunctionDistanceM:    overrideFloat(&source.JunctionDistanceM, "road_junction_distance_m"),
+		roadPropertyTemperatureC:         overrideFloat(&source.TemperatureC, "road_temperature_c"),
+		roadPropertyStuddedTyreShare:     overrideFloat(&source.StuddedTyreShare, "road_studded_tyre_share"),
+		roadPropertyTrafficDayLight:      overrideFloat(&source.TrafficDay.LightVehiclesPerHour, "traffic_day_light_vph"),
+		roadPropertyTrafficDayMedium:     overrideFloat(&source.TrafficDay.MediumVehiclesPerHour, "traffic_day_medium_vph"),
+		roadPropertyTrafficDayHeavy:      overrideFloat(&source.TrafficDay.HeavyVehiclesPerHour, "traffic_day_heavy_vph"),
+		roadPropertyTrafficDayPTW:        overrideFloat(&source.TrafficDay.PoweredTwoWheelersPerHour, "traffic_day_ptw_vph"),
+		roadPropertyTrafficEveningLight:  overrideFloat(&source.TrafficEvening.LightVehiclesPerHour, "traffic_evening_light_vph"),
+		roadPropertyTrafficEveningMedium: overrideFloat(&source.TrafficEvening.MediumVehiclesPerHour, "traffic_evening_medium_vph"),
+		roadPropertyTrafficEveningHeavy:  overrideFloat(&source.TrafficEvening.HeavyVehiclesPerHour, "traffic_evening_heavy_vph"),
+		roadPropertyTrafficEveningPTW:    overrideFloat(&source.TrafficEvening.PoweredTwoWheelersPerHour, "traffic_evening_ptw_vph"),
+		roadPropertyTrafficNightLight:    overrideFloat(&source.TrafficNight.LightVehiclesPerHour, "traffic_night_light_vph"),
+		roadPropertyTrafficNightMedium:   overrideFloat(&source.TrafficNight.MediumVehiclesPerHour, "traffic_night_medium_vph"),
+		roadPropertyTrafficNightHeavy:    overrideFloat(&source.TrafficNight.HeavyVehiclesPerHour, "traffic_night_heavy_vph"),
+		roadPropertyTrafficNightPTW:      overrideFloat(&source.TrafficNight.PoweredTwoWheelersPerHour, "traffic_night_ptw_vph"),
+	}
+
+	overrides := make([]propertyOverride, 0, len(spec.decodeOrder))
+	for _, property := range spec.decodeOrder {
+		overrides = append(overrides, table[property])
+	}
+
+	return overrides
 }
 
 func extractCnossosRailSources(model modelgeojson.Model, options cnossosRailRunOptions, supportedSourceTypes []string) ([]cnossosrail.RailSource, error) {
@@ -212,74 +376,6 @@ func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]fu
 	default:
 		return nil, nil
 	}
-}
-
-// buildCnossosRoadSource merges the run options with one feature's property
-// overrides into a single road source. Split out of extractCnossosRoadSources
-// to keep the extraction loop under the length limit.
-//
-// See buildBUBRoadSource for why dupl matches the two and why they stay apart.
-//
-//nolint:dupl // paired with buildBUBRoadSource; distinct source models and deliberately different decode orders
-func buildCnossosRoadSource(feature modelgeojson.Feature, options cnossosRoadRunOptions, sourceID string, line []geo.Point2D) (cnossosroad.RoadSource, error) {
-	source := cnossosroad.RoadSource{
-		ID:                sourceID,
-		Centerline:        line,
-		RoadCategory:      options.RoadCategory,
-		SurfaceType:       options.SurfaceType,
-		SpeedKPH:          options.SpeedKPH,
-		GradientPercent:   options.GradientPercent,
-		JunctionType:      options.JunctionType,
-		JunctionDistanceM: options.JunctionDistanceM,
-		TemperatureC:      options.TemperatureC,
-		StuddedTyreShare:  options.StuddedTyreShare,
-		TrafficDay: cnossosroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficDayLightVPH,
-			MediumVehiclesPerHour:     options.TrafficDayMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficDayHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficDayPTWVPH,
-		},
-		TrafficEvening: cnossosroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficEveningLightVPH,
-			MediumVehiclesPerHour:     options.TrafficEveningMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficEveningHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficEveningPTWVPH,
-		},
-		TrafficNight: cnossosroad.TrafficPeriod{
-			LightVehiclesPerHour:      options.TrafficNightLightVPH,
-			MediumVehiclesPerHour:     options.TrafficNightMediumVPH,
-			HeavyVehiclesPerHour:      options.TrafficNightHeavyVPH,
-			PoweredTwoWheelersPerHour: options.TrafficNightPTWVPH,
-		},
-	}
-
-	overrideErr := applyFeatureOverrides(feature, "cli.extractCnossosRoadSources", []propertyOverride{
-		overrideString(&source.SurfaceType, "road_surface_type"),
-		overrideString(&source.RoadCategory, "road_category"),
-		overrideFloat(&source.SpeedKPH, "road_speed_kph"),
-		overrideFloat(&source.GradientPercent, "road_gradient_percent"),
-		overrideString(&source.JunctionType, "road_junction_type"),
-		overrideFloat(&source.JunctionDistanceM, "road_junction_distance_m"),
-		overrideFloat(&source.TemperatureC, "road_temperature_c"),
-		overrideFloat(&source.StuddedTyreShare, "road_studded_tyre_share"),
-		overrideFloat(&source.TrafficDay.LightVehiclesPerHour, "traffic_day_light_vph"),
-		overrideFloat(&source.TrafficDay.MediumVehiclesPerHour, "traffic_day_medium_vph"),
-		overrideFloat(&source.TrafficDay.HeavyVehiclesPerHour, "traffic_day_heavy_vph"),
-		overrideFloat(&source.TrafficEvening.LightVehiclesPerHour, "traffic_evening_light_vph"),
-		overrideFloat(&source.TrafficEvening.MediumVehiclesPerHour, "traffic_evening_medium_vph"),
-		overrideFloat(&source.TrafficEvening.HeavyVehiclesPerHour, "traffic_evening_heavy_vph"),
-		overrideFloat(&source.TrafficNight.LightVehiclesPerHour, "traffic_night_light_vph"),
-		overrideFloat(&source.TrafficNight.MediumVehiclesPerHour, "traffic_night_medium_vph"),
-		overrideFloat(&source.TrafficNight.HeavyVehiclesPerHour, "traffic_night_heavy_vph"),
-		overrideFloat(&source.TrafficDay.PoweredTwoWheelersPerHour, "traffic_day_ptw_vph"),
-		overrideFloat(&source.TrafficEvening.PoweredTwoWheelersPerHour, "traffic_evening_ptw_vph"),
-		overrideFloat(&source.TrafficNight.PoweredTwoWheelersPerHour, "traffic_night_ptw_vph"),
-	})
-	if overrideErr != nil {
-		return cnossosroad.RoadSource{}, overrideErr
-	}
-
-	return source, nil
 }
 
 // buildAircraftSource merges the run options with one feature's property

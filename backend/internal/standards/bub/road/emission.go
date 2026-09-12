@@ -37,7 +37,7 @@ func flowCorrection(flowPerHour float64) float64 {
 
 // ComputeEmission computes period emissions for one BUB road source.
 func ComputeEmission(source RoadSource) (periodEmission, error) {
-	err := source.Validate()
+	err := ValidateSource(source)
 	if err != nil {
 		return periodEmission{}, err
 	}
@@ -51,7 +51,9 @@ func ComputeEmission(source RoadSource) (periodEmission, error) {
 
 func emissionForPeriod(source RoadSource, traffic TrafficPeriod) float64 {
 	surfaceCorr := surfaceCorrection(source.SurfaceType)
-	functionCorr := roadFunctionCorrection(source.RoadFunctionClass)
+	// RoadCategory is the shared source model's classification field; a BUB
+	// source carries a function class in it. See ValidateSource.
+	functionCorr := roadFunctionCorrection(source.RoadCategory)
 	junctionCorr := junctionCorrection(source.JunctionType, source.JunctionDistanceM)
 	temperatureCorr := temperatureCorrection(source.TemperatureC)
 	studdedTyreCorr := studdedTyreCorrection(source.StuddedTyreShare)

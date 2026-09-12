@@ -144,7 +144,7 @@ func TestExtractBUBRoadSourcesUsesFeatureProperties(t *testing.T) {
 	}
 
 	source := sources[0]
-	if source.SurfaceType != bubroad.SurfaceCobblestone || source.RoadFunctionClass != bubroad.FunctionRuralMain || source.SpeedKPH != 35 {
+	if source.SurfaceType != bubroad.SurfaceCobblestone || source.RoadCategory != bubroad.FunctionRuralMain || source.SpeedKPH != 35 {
 		t.Fatalf("unexpected BUB road overrides: %#v", source)
 	}
 
