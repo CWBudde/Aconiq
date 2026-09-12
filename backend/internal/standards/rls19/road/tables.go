@@ -85,7 +85,15 @@ var surfaceCorrectionTable = map[SurfaceType]SurfaceCorrectionEntry{
 // SurfaceCorrection returns the DStrO correction for a given surface type
 // and vehicle group at the given speed. Returns 0 if the surface is unknown
 // or if the selected Table 4 cell is not applicable for that speed range.
+//
+// Kräder carry no Straßendeckschichtkorrektur at all: the Anmerkung to
+// Section 3.3.3 prescribes "als Korrektur für den Straßendeckschichttyp ist ein
+// Wert von 0 anzusetzen", for every surface type including Pflasterbeläge.
 func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float64 {
+	if vg == Krad {
+		return 0
+	}
+
 	entry, ok := surfaceCorrectionTable[st]
 	if !ok {
 		return 0
@@ -107,7 +115,7 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 	}
 
 	correction := entry.LkwHigh
-	if vg == Pkw || vg == Krad {
+	if vg == Pkw {
 		correction = entry.PkwHigh
 		if speedKPH <= 60 {
 			correction = entry.PkwLow

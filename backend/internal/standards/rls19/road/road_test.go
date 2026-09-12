@@ -217,8 +217,11 @@ func TestSurfaceCorrection(t *testing.T) {
 		{name: "Paving rough alias 30", surface: SurfacePaving, group: Pkw, speedKPH: 30, want: 5.0},
 		{name: "Paving rough 40", surface: SurfacePavingOther, group: Lkw1, speedKPH: 40, want: 6.0},
 		{name: "Paving rough 50", surface: SurfacePavingOther, group: Pkw, speedKPH: 50, want: 7.0},
-		{name: "Krad uses Pkw band", surface: SurfaceAB, group: Krad, speedKPH: 50, want: -2.7},
-		{name: "Legacy damaged surface", surface: SurfaceUnpavedOrDamaged, group: Krad, speedKPH: 50, want: 3.0},
+		{name: "Legacy damaged surface", surface: SurfaceUnpavedOrDamaged, group: Lkw2, speedKPH: 50, want: 2.0},
+		// Anmerkung to Section 3.3.3: D_SD is 0 for Kraeder, whatever the surface.
+		{name: "Krad ignores banded surface", surface: SurfaceAB, group: Krad, speedKPH: 50, want: 0.0},
+		{name: "Krad ignores paving surcharge", surface: SurfacePavingOther, group: Krad, speedKPH: 30, want: 0.0},
+		{name: "Krad ignores legacy fallback", surface: SurfaceUnpavedOrDamaged, group: Krad, speedKPH: 50, want: 0.0},
 		{name: "Unknown surface", surface: "unknown", group: Pkw, speedKPH: 50, want: 0.0},
 	}
 

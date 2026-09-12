@@ -2,18 +2,18 @@
   "standard": "rls19-road",
   "fixture": "phase17/rls19_road_model.geojson",
   "files": {
-    "receivers.csv": "sha256:5f15a492518577156c95b50ff7419c99eed637028d5f472c88589881b7978b13 bytes=9566",
-    "receivers.json": "sha256:d980c611adb7f2ee4bfaadaea963739dba127d5c46c25b4ea1fd1fc5a72f752c bytes=19289",
-    "rls19-road.bin": "sha256:f7d08f6c051879d4b22c5422eb7556f3f7ef1988722d9312383e85551d20ce57 bytes=2720",
+    "receivers.csv": "sha256:880e60a2d767f9d9dc43aecc0dc6c2cfe2388f93e976342ae5f09324282a2e6c bytes=9584",
+    "receivers.json": "sha256:a1cae05d2e71cf5ce084549a00181e72eb8f7fe6a7ed8012722e358f41a724cc bytes=19307",
+    "rls19-road.bin": "sha256:3013a2624c445cd516728be869c6093dfec4730045a29258dc4ef3ba829faafa bytes=2720",
     "rls19-road.json": "sha256:5536bbbdae0c643edfd410d2d57d5706aa676e158b80d2c33209fcc28fe77c80 bytes=218",
-    "run-summary.json": "sha256:e1b94113eea74a0513ea06cf3df43bd96c3cd0142b496f2c1592bfe6ea5e2c1a bytes=344"
+    "run-summary.json": "sha256:ff5bfd2041c42b6861a32b7f05a6e62a831780bd9857f7e56018a6ea8a44c3a3 bytes=344"
   },
   "run_summary": {
     "evidence_tier": "normative",
     "grid_height": 10,
     "grid_width": 17,
     "model_version": "builtin-rls19-2019-v1",
-    "output_hash": "97ee4b7a4996604dbd033852491267b6cc2bd089d32a8ebf3e53237d7c39030c",
+    "output_hash": "fcf4068048fee299f1ce2ad579957406ee3cbe6181d9479749e40184b91e3905",
     "receiver_count": 170,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,
