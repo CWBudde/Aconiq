@@ -76,7 +76,7 @@
     },
     "standard_data": {
       "algorithm": "sha256",
-      "digest": "3746dbf29a3285935f440dfebef75a4c86ed0ec5793f3b3fb3637aaa03bf1699",
+      "digest": "4fb974186f5dc1431576bf90a53d0fc4016b6ed2acc5a2f7d5611ac8c1375214",
       "evidence_tier": "normative",
       "tables": [
         {
@@ -100,7 +100,7 @@
           "name": "rls19/tabelle-03-grundemission"
         },
         {
-          "digest": "170571c79bcb4780db2c36939d7d6ccb3837da1e22769ce817c5951c2c25c585",
+          "digest": "e2d50aad980a2336bcd2f87576bd979e8dfa37b761ee6e11d2277a0afd92fdca",
           "name": "rls19/tabelle-04-fahrbahnkorrektur"
         },
         {

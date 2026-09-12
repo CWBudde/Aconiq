@@ -72,11 +72,11 @@ var surfaceCorrectionTable = map[SurfaceType]SurfaceCorrectionEntry{
 	SurfacePaving:              pavingSurfaceCorrection(5.0, 6.0, 7.0),
 	SurfacePavingEven:          pavingSurfaceCorrection(1.0, 2.0, 3.0),
 	SurfacePavingOther:         pavingSurfaceCorrection(5.0, 6.0, 7.0),
-	SurfaceConcrete:            bandedSurfaceCorrection(-1.4, -1.4, -2.3, -2.3),
+	SurfaceConcrete:            bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -1.4, notApplicableSurfaceCorrection(), -2.3),
 	SurfaceLOA:                 bandedSurfaceCorrection(-3.2, notApplicableSurfaceCorrection(), -1.0, notApplicableSurfaceCorrection()),
 	SurfaceSMALA8:              bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -2.8, notApplicableSurfaceCorrection(), -4.6),
 	SurfaceDSHV:                bandedSurfaceCorrection(-3.9, -2.8, -0.9, -2.3),
-	SurfaceGussasphalt:         bandedSurfaceCorrection(-2.0, -2.0, -1.5, -1.5),
+	SurfaceGussasphalt:         bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -2.0, notApplicableSurfaceCorrection(), -1.5),
 	SurfaceGussasphaltStandard: bandedSurfaceCorrection(0.0, 0.0, 0.0, 0.0),
 	// Legacy non-normative fallback retained until this input category is revisited.
 	SurfaceUnpavedOrDamaged: legacyVehicleSurfaceCorrection([4]float64{4.0, 4.0, 2.0, 3.0}),
