@@ -35,7 +35,13 @@ import { useTheme } from "@/ui/theme-provider";
 import { cn } from "@/ui/lib/utils";
 
 type CategoryId =
-  "app" | "project" | "model" | "map" | "runs" | "results" | "advanced";
+  | "app"
+  | "project"
+  | "model"
+  | "map"
+  | "runs"
+  | "results"
+  | "advanced";
 
 type Category = {
   id: CategoryId;
