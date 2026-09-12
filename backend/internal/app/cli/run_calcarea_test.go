@@ -247,6 +247,44 @@ func TestOversizedGridNamesTheExtentItCameFrom(t *testing.T) {
 	}
 }
 
+// A drawn calculation area puts an extent nobody could compute two gestures
+// away. The refusal has to come from the grid's dimensions, because by the time
+// Generate returns a slice to count, the memory is already gone: without the
+// check this test does not fail, it exhausts the machine.
+func TestOversizedGridIsRefusedBeforeItIsBuilt(t *testing.T) {
+	t.Parallel()
+
+	impossible := geo.BBox{MinX: 0, MinY: 0, MaxX: 1e9, MaxY: 1e9}
+	options := calcAreaTestOptions(0)
+	options.GridResolutionM = 1
+
+	receivers, _, _, err := buildDummyReceivers(calcAreaTestSources(), &impossible, options)
+	if err == nil {
+		t.Fatal("expected the over-cap refusal")
+	}
+
+	if receivers != nil {
+		t.Fatalf("a refused grid must hand back nothing, got %d receivers", len(receivers))
+	}
+
+	if !strings.Contains(err.Error(), "receiver grid too large") {
+		t.Fatalf("unexpected refusal: %v", err)
+	}
+
+	// Reported from the count, not from a materialised slice, so it can name a
+	// size no slice could reach. The trailing digits are lost to float64 at this
+	// magnitude, which is the right trade for a number whose only job is to tell
+	// the user their area is orders of magnitude too big.
+	if !strings.Contains(err.Error(), "1000000002000000000") {
+		t.Fatalf("the refusal should state the grid's full size: %v", err)
+	}
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindUserInput {
+		t.Fatalf("expected a KindUserInput error, got %v", err)
+	}
+}
+
 // TestCustomReceiverModeIgnoresTheCalcArea: no grid is built in custom mode, so
 // a model carrying both a drawn area and explicit receivers uses the receivers.
 func TestCustomReceiverModeIgnoresTheCalcArea(t *testing.T) {

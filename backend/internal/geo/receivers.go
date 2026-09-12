@@ -76,6 +76,38 @@ func (g GridReceiverSet) Validate() error {
 	return nil
 }
 
+// gridBoundTolerance is how far past an extent's maximum a sample may still
+// land and count. It absorbs the rounding error of an accumulated step, so a
+// grid whose last row misses the edge by 1e-12 keeps that row. CellCount and
+// Generate share it: a count derived from a different bound than the loop uses
+// would not be a count of what the loop produces.
+const gridBoundTolerance = 1e-9
+
+// CellCount reports how many receivers Generate would produce, derived from the
+// extent and the resolution rather than by iterating — so a grid too large to
+// hold can be refused before it is built. Generate allocates every receiver
+// before its caller sees a single one, and a drawn calculation area makes a
+// 100 km extent at 10 m spacing (about 10^8 receivers) two gestures away.
+//
+// The result is a float64 because an extent and a resolution can describe more
+// cells than an int holds, and a guard that overflows is not a guard.
+//
+// Drift over hundreds of thousands of accumulated steps can put this one row or
+// column away from what Generate's loop emits. That only matters to a caller
+// comparing against a threshold, and only within one receiver of it, which is
+// why an oversized grid is still refused on the generated length afterwards.
+func (g GridReceiverSet) CellCount() (float64, error) {
+	err := g.Validate()
+	if err != nil {
+		return 0, err
+	}
+
+	cols := math.Floor((g.Extent.MaxX-g.Extent.MinX+gridBoundTolerance)/g.Resolution) + 1
+	rows := math.Floor((g.Extent.MaxY-g.Extent.MinY+gridBoundTolerance)/g.Resolution) + 1
+
+	return cols * rows, nil
+}
+
 // Generate creates deterministic point receivers from the grid definition.
 func (g GridReceiverSet) Generate() ([]PointReceiver, error) {
 	err := g.Validate()
@@ -86,8 +118,8 @@ func (g GridReceiverSet) Generate() ([]PointReceiver, error) {
 	points := make([]PointReceiver, 0)
 	index := 0
 
-	for y := g.Extent.MinY; y <= g.Extent.MaxY+1e-9; y += g.Resolution {
-		for x := g.Extent.MinX; x <= g.Extent.MaxX+1e-9; x += g.Resolution {
+	for y := g.Extent.MinY; y <= g.Extent.MaxY+gridBoundTolerance; y += g.Resolution {
+		for x := g.Extent.MinX; x <= g.Extent.MaxX+gridBoundTolerance; x += g.Resolution {
 			points = append(points, PointReceiver{
 				ID:      fmt.Sprintf("%s-%06d", g.ID, index),
 				Point:   Point2D{X: x, Y: y},

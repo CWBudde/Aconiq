@@ -54,6 +54,19 @@ func buildReceiversFromPoints(
 		HeightM:    receiverHeightM,
 	}
 
+	// Counted before the grid is built, not after. Generate materialises every
+	// receiver it describes, so a cap applied to its result is a cap on a
+	// slice that already exists: a drawn calculation area spanning a hundred
+	// kilometres exhausts memory long before anything gets to refuse it.
+	cells, err := grid.CellCount()
+	if err != nil {
+		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "size receiver grid", err)
+	}
+
+	if cells > float64(maxDummyReceivers) {
+		return nil, 0, 0, gridTooLargeError(operation, cells, extentSource)
+	}
+
 	receivers, err := grid.Generate()
 	if err != nil {
 		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "generate receiver grid", err)
@@ -63,14 +76,11 @@ func buildReceiversFromPoints(
 		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "receiver grid is empty", nil)
 	}
 
+	// The count above can sit a row or a column away from what the loop emits
+	// once accumulated rounding exceeds the step tolerance, so the generated
+	// length stays the authority on the boundary itself.
 	if len(receivers) > maxDummyReceivers {
-		// Naming the extent matters now that a user can trigger this by
-		// drawing, where before it took a pathological source extent. This
-		// message reaches them: KindUserInput exits the CLI with code 2, which
-		// the API maps to a 400 whose envelope the run dialog renders.
-		return nil, 0, 0, domainerrors.New(domainerrors.KindUserInput, operation, fmt.Sprintf(
-			"receiver grid too large (%d > %d); the extent came from %s", len(receivers), maxDummyReceivers, extentSource,
-		), nil)
+		return nil, 0, 0, gridTooLargeError(operation, float64(len(receivers)), extentSource)
 	}
 
 	width, height, err := inferGridShape(receivers)
@@ -79,6 +89,20 @@ func buildReceiversFromPoints(
 	}
 
 	return receivers, width, height, nil
+}
+
+// gridTooLargeError refuses a receiver grid that exceeds the cap. Naming the
+// extent matters now that a user can trigger this by drawing, where before it
+// took a pathological source extent. This message reaches them: KindUserInput
+// exits the CLI with code 2, which the API maps to a 400 whose envelope the run
+// dialog renders.
+//
+// count is a float64 so the refusal can state a size no int could hold, which is
+// exactly the case a refusal before allocation exists for.
+func gridTooLargeError(operation string, count float64, extentSource string) error {
+	return domainerrors.New(domainerrors.KindUserInput, operation, fmt.Sprintf(
+		"receiver grid too large (%.0f > %d); the extent came from %s", count, maxDummyReceivers, extentSource,
+	), nil)
 }
 
 // gridExtentCalcArea and gridExtentSource name which extent a grid was built
