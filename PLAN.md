@@ -270,62 +270,25 @@ commit messages; the consequences each one exposed are open items below.
       advisory with no fixed version has to be handled by not reaching the symbol, written up in
       that policy.
 
+- [x] **The lint debt is down to what is declared** (`8884ea3`, and the run-module dispatch).
+      **244** findings are still suppressed, every one named and defended in
+      `docs/lint-triage.md`: `goconst` 62 (39 permanent, 23 owned by Priority 7's typed response
+      payloads), `noinlineerr` 104 and `gocyclo` 4 (both declined in writing), gosec G304 47
+      non-test, and 27 `//nolint` directives — 18 named `gosec`, 8 genuine `dupl` coefficient
+      tables in `schall03/beiblatt1.go`, one `tagliatelle`. From 557 when this item opened, and the
+      reduction was code rather than configuration: no linter is disabled tree-wide and no
+      exclusion rule was added to close it.
+      **`internal/app/cli` no longer carries a single complexity or duplication suppression.** Its
+      four remaining directives are `gosec`, each naming its rule and its reason.
+      Live constraint: `.golangci.yml`'s disable list holds 19 linters, and the per-rule table in
+      `docs/lint-triage.md` is the only place a count belongs — neither `AGENTS.md` nor
+      `docs/policies/formatting.md` quotes one, on purpose.
+
 ### Open
 
-- [ ] **The debts a green `just lint` still hides.** **246**, re-measured 2026-09-12 and audited in
-      `docs/lint-triage.md`, which carries the per-rule table. Four passes have run against the
-      557 this item opened with, and what each did matters more than the delta.
-
-      The **audit pass** (`7babf60`) made the number honest rather than smaller: `wsl_v5` **196 → 0**
-          because it had never been disabled — `4b0566c` removed it from `linters.disable` along with
-          its settings block, so it has been enforced since 2026-08-28 while its own commit message,
-          `docs/lint-triage.md` and this file all went on saying it was off. `errcheck` **41 → 0** was
-          the opposite failure: all unchecked `Close`, 11 on export write paths where a swallowed close
-          means a truncated file reported as a successful export, hidden inside `exclusions.presets` and
-          named by no table here. They are fixed in code, `exclusions.presets` is gone, and gosec G304 is
-          now an explicitly named rule rather than a side effect of a preset. It also counted the **63
-          `//nolint` directives** no audit had ever included.
-
-          The **paydown passes** (`4bb2867`, and the extraction pass) took those 63 to **33**, in code
-          and without narrowing anything into a smaller suppression. Every one-off directive is gone.
-          In `app/cli` specifically, **18 → 10**: all ten wholesale complexity suppressions on the
-          extraction functions are gone, because they were never hiding complex code — they were hiding
-          twenty copies of one hand-unrolled property decoder per function, which is the entire reason
-          `funlen`, `maintidx`, `cyclop` and `gocognit` fired. `extractDummySources` used the same loop
-          with no directive at all, which is what proved it. `goconst` fell **164 → 140** untargeted,
-          the repeated scope strings going with the blocks that carried them.
-
-          The **parameter-binding pass** deleted the `goconst` group 2 exclusion outright rather than
-          narrowing it, taking `goconst` ~~140~~ **62**. The 79 findings it was hiding are fixed in
-          code: each run-parameter name is now written once, in `run_params.go`'s `runParams` binding
-          table for the CLI and in a per-module parameter table for `schall03` and `iso9613`, and the
-          schema, parse and provenance sites all derive from it.
-          `TestRunOptionsCoverParameterSchema` pins the two against each other in both directions. It
-          also found `beb-exposure` declaring `lateral_offset_m` and binding it nowhere, so
-          `--param lateral_offset_m=…` was accepted and dropped; that is fixed.
-
-          The **END indicator pass** took the last three `dupl` directives out of `run_persist.go`
-          without narrowing anything: they were never a persist problem. Six modules each declared
-          their own copy of the END day/evening/night types, so the one persist path had to be
-          written once per type, and three of those copies were close enough for `dupl` to fire.
-          `internal/acoustics` owns the model now — the types, the directive's Lden weighting and the
-          bundle the six modules reporting that set publish — and eight persist clones are one
-          table-driven function. No golden moved.
-
-          What is left is `goconst` **62** (39 permanent, 23 Priority 7), `noinlineerr` **104**
-          and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
-          verdict was taken), and **28** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
-          tables in `schall03/beiblatt1.go`, one `tagliatelle`, and **one** in `app/cli`: the
-          five-linter directive on `executeRunCommand`. Two corrections to the numbers this item used
-          to quote: the directive count was **31**, not 33, before this pass — PR #11 removed the
-          road-builder `dupl` pair without updating either this file or `docs/lint-triage.md` — and
-          of the 7 said to be owned by `framework.Module`, 4 were the `app/cli` `gosec` directives
-          already counted among the 18.
-
-          **This item closes when Priority 7's `framework.Module` work lands.** That one directive on
-          `executeRunCommand` is all that is left of it. Nothing here is suppressed because nobody got
-          round to it. `.golangci.yml`'s disable list holds **19** linters, which is why neither
-          `AGENTS.md` nor `docs/policies/formatting.md` quotes a number.
+Nothing. Every gate this priority set out to restore is green, required, and reproducible from
+a `just` recipe, and the debt each one exposed is either fixed or named and defended in
+`docs/lint-triage.md`. New work belongs under the priority it serves.
 
 ## Priority 1 — Fix known numeric defects
 
@@ -679,16 +642,17 @@ target would only find unfixable library panics was simply false.
 
 ## Priority 7 — Architecture: make standards actually pluggable
 
-`AGENTS.md` claims standards are plug-in modules. `framework.StandardDescriptor` carries only
-metadata — no compute contract of any kind. Dispatch is a **562-line `switch`** at
-`run_pipeline.go:143`, carrying `//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx`.
-Adding a standard means editing ~8 CLI files (`run_extract.go` 28 hardcoded standard IDs,
-`run_options.go` ~~25~~ **35**, `run_persist.go` 20, `run_pipeline.go` 10, `compare.go` 9, …).
-That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
-`run_options.go` grew by one more standard-ID switch in the parameter-binding pass —
-`runOptionParamKeys`, which feeds `TestRunOptionsCoverParameterSchema`. That is a deliberate
-trade: the switch is the price of making the schema/parse agreement testable, and
-`framework.Module` subsumes it along with the other nine.
+`AGENTS.md` claims standards are plug-in modules. The dispatch is now one: `runModuleTable` in
+`app/cli` maps a standard id onto a `runModule`, nine of the thirteen built from a single generic
+`receiverRunModule[Opt, Src, Out]`, and `TestRunModuleTableMatchesTheRegistry` pins the table
+against the registry in both directions. The 562-line `switch` and its five-linter suppression are
+gone, and `run_pipeline.go` is 238 lines rather than 887.
+
+What is not done is the half that makes the claim true. `framework.StandardDescriptor` still
+carries only metadata: the contract lives in `app/cli` because the halves it binds do — option
+parsing, extraction and persistence are all `app/cli` files, and `framework` cannot import them
+without a cycle. `internal/app/cli` is 13 014 non-test LOC, and adding a standard still means
+editing several of its files rather than one package of its own.
 
 - [ ] **Finish the shared acoustics core.** `internal/acoustics` exists and owns the END indicator
       model — the day/evening/night types, the directive's Lden weighting and the bundle the six
@@ -703,17 +667,23 @@ trade: the switch is the price of making the schema/parse agreement testable, an
       `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
       ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
       first. A correction to a normative equation currently has to be applied four times.
-- [ ] **Define `framework.Module`** — `Descriptor()` / `BindInputs()` / `Compute(ctx, …)` — register
-      implementations instead of bare descriptors, and delete the switch.
-      Its output oracle is in place: `run_results_digest_test.go` runs every registered standard
-      end to end twice and pins a SHA-256 over every file under `.noise/runs/<id>/results/`, plus
-      the normalized `run-summary.json` and `provenance.json`, against
-      `testdata/digest/<standard>.golden.json`. Only four fields are normalized away
+- [ ] **Move the module contract into `framework` and register implementations.** The dispatch
+      exists and the switch is gone; what is still CLI-side is the contract. A standard's four
+      halves — its options (`run_options.go`), its extraction (`run_extract_*.go`), its compute
+      (its own package) and its persistence (`run_persist.go`) — are bound in `runModuleTable`
+      instead of in the module itself, so `standards.NewRegistry` still registers bare descriptors.
+      This bullet and "move the run pipeline out of `app/cli`" below are one piece of work in two
+      orders: move the per-standard halves into `internal/standards/modules`, and the contract
+      follows them into `framework`.
+      The output oracle stays what it is: `run_results_digest_test.go` runs every registered
+      standard end to end twice and pins a SHA-256 over every file under
+      `.noise/runs/<id>/results/`, plus the normalized `run-summary.json` and `provenance.json`,
+      against `testdata/digest/<standard>.golden.json`. Only four fields are normalized away
       (`created_at`, `run_id`, `generated_at`, `tool_version`) and each must still be present, so
       the harness cannot quietly stop pinning something. **Do not regenerate those goldens during
-      the module move** — a diff there is the refactor changing output, not a snapshot needing an
-      update. The acceptance fixtures do not cover this: they import the standards packages
-      directly and never reach the CLI run path.
+      the move** — a diff there is the refactor changing output, not a snapshot needing an update.
+      The acceptance fixtures do not cover this: they import the standards packages directly and
+      never reach the CLI run path.
 - [ ] **Move the run pipeline out of `app/cli`** into `internal/engine` (or `internal/app/run`) as
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
@@ -774,10 +744,11 @@ trade: the switch is the price of making the schema/parse agreement testable, an
       at the source. This is what makes the exit-code taxonomy testable (Priority 3).
 - [ ] Fix the reachable panic on user input: `report/export/conversion.go:14` `mustUint16` is
       called with the user-supplied project CRS's EPSG code (`geotiff.go:337,345`).
-- [ ] Split the god files: `run_extract.go` (3 087 lines), `run_options.go` (1 604),
-      `run_persist.go` (1 147), `api/httpv1/handler.go` (1 137), `report/reporting/report.go`
-      (1 082), `app/cli/export.go` (1 005). The first two already violate the project's own
-      configured `revive file-length-limit: 1500` — undetected because that package does not compile.
+- [ ] Split the god files. Re-measured: `api/httpv1/handler.go` (1 358), `app/cli/export.go`
+      (1 244), `report/reporting/report.go` (1 192), `run_options.go` (1 016), `run_persist.go`
+      (914). `run_extract.go` and `run_pipeline.go` are done — 3 087 → 36 and 887 → 238 — and
+      nothing now exceeds the project's own configured `revive file-length-limit: 1500`, so the
+      remaining question is readability rather than a breached limit.
 - [ ] `extractCnossosIndustrySources` silently drops a supported source type. Its geometry switch
       has no `default` arm, so a type listed in the standard's `SupportedSourceTypes` that is
       neither `point` nor `area` yields no sources and no error. Preserved and documented by the
