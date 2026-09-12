@@ -377,14 +377,33 @@ previous fixture.
 - [ ] The suite still has no fixture where an intermediate barrier is _reflective_
       (`BarrierSegment.Reflective`), so Gl. 20's D_refl is exercised only by unit tests.
 
-### 1.5 RLS-19 items that could not be verified
+### 1.5 RLS-19 — checked against the text
 
-The RLS-19 text is not in the repo, so these were **not** checked and are not asserted as bugs.
+The premise this section used to carry, that the RLS-19 text is unavailable, was wrong: the FGSV
+PDFs sit under `interoperability/RLS-19/` (gitignored — local reference material, never checked
+in), and the 2019 edition there already incorporates Korrekturblatt 2/2020. Tabellen 2–8 and
+Eqs. 7a–7c, 8, 9, 10, 12–15 have now been read against the module. Five defects were found and
+fixed; `docs/conformance/rls19-konformitaetserklaerung.md` rows C2–C6 carry them with magnitudes.
 
-- [ ] Obtain the FGSV RLS-19 text and Korrekturblatt 2/2020, then verify: Tabelle 2 percentages;
-      Tabelle 3 coefficients; Eq. 7a–7c gradient corrections (the Lkw `/10` vs Pkw `/100` divisors
-      look asymmetric — up to 8–9 dB at 12 % grade); Eq. 9 `min(2h/w, 1.6)`; Eq. 15's constant 80;
-      Tabelle 8 reflection losses 0.5/3.0/5.0 dB; Tabelle 6/7 parking values.
+Two constraints for the next pass over this or any other scanned standard. `pdftotext -layout` is
+not sufficient evidence — it drops terms from stacked fractions and flattens the crossed-out cells
+of Tabelle 4a, and two of the five defects were invisible in the extraction while one apparent
+discrepancy turned out to be an extraction artefact. Render the page and read it. And extracted
+text stays in a scratchpad: RLS-19 is FGSV-published and not clearly amtliches Werk, so cite
+section and equation numbers rather than copying table text into the repo, which is what the
+`no-third-party-data` gate protects.
+
+- [ ] **Quiet zero values on the Parkplatz path (§3.4).** `ParkingSource.VehicleType` is
+      `vehicle_type,omitempty`, so an omitted field silently means Pkw and `D_P,PT = 0` instead of
+      the +5 dB Motorrad or +10 dB Lkw/Omnibus surcharge; an omitted `movements_per_space_*`
+      passes `Validate()` as 0 and yields the −999 dB silence sentinel rather than an error. Both
+      are the same class as the 1.0 dB reflector default that `e687227` removed: an input omission
+      producing a plausible-looking wrong answer. Fixing either needs an explicit unset sentinel
+      and a validation error, so it is a format decision, not a one-line change.
+- [ ] **An out-of-band Tabelle 4a cell is indistinguishable from "no correction".**
+      `SurfaceCorrection` returns 0 both for a surface/speed pair the table does not cover — OPA at
+      50 km/h, say, after `17faa16` also Beton below 60 km/h — and for a surface that genuinely has
+      no correction. A modeller who picks an inapplicable pairing gets silence, not a warning.
 
 ## Priority 2 — Make the CLI run the normative code
 
