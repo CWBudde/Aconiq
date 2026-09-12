@@ -854,7 +854,7 @@ register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutz
 
 ### Phase A — Contracts and robustness
 
-Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase builds on them:
+Landed (`061524e`…`fb80e87`); the gates below hold and every later phase builds on them:
 
 - [x] `POST /api/v1/model` replaces the project model through `projectfs.Store.SaveModel`, the
       same path `aconiq import` uses; refused models write nothing; `openapi.go`, `README.md` and
