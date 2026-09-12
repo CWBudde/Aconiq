@@ -851,40 +851,29 @@ Decisions taken up front: the API-mode model contract is a new `POST /api/v1/mod
 in scope); the route structure changes to the target IA below; the German UI uses the Sie/impersonal
 register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutzwand, Norm).
 
-### Phase A — Contracts and robustness (unblocks everything)
+### Phase A — Contracts and robustness
 
-- [ ] **Close the API-mode loop with `POST /api/v1/model`.** `hooks.ts` POSTs only `/import/osm`
-      and `/runs`; `handler.go:266-275` has no model endpoint, so features drawn, receivers placed
-      and the calc area are invisible to an API run (`run.tsx:1154-1158` admits it). The endpoint
-      accepts normalized GeoJSON (the `aconiq import` contract) and writes `.noise/model/`; keep
-      `handler.go` and `openapi.go` in sync. Frontend: a "Save to project" action with sync state in
-      the header, and `dirty` meaning "differs from the project" — today `use-autosave.ts:90` marks
-      clean after writing localStorage.
-- [ ] **One `Backend` interface, selected once.** Define `{ getRuns, startRun, getRunLog, export…,
-capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in `api/mode.ts`.
-      Replace the 23 `IS_WASM_MODE` branches in pages and hooks with capability flags
-      (`canExport`, `canPickReceivers`, `canCancel`). Route every non-OK response through
-      `api-error.ts` (`fetchJSON` and `useImportFromOSM` hand-roll `Error` today).
-- [ ] **Delete dead state and barrels**: `stores/ui-store.ts` (no consumers), `map-store`
-      selection fields (never written), `api/index.ts`, `model/index.ts`, `map/index.ts`,
-      `ui/data-table.tsx` (until Phase C reuses it), `CONTOUR_LAYERS`. Move `Point2D`/`ParkingSource`
-      from `wasm/types.ts` into `model/` so the domain layer stops importing kernel transport types.
-- [ ] **Run progress and polling**: `useRunLog` needs `refetchInterval` while `status === "running"`,
-      or one SSE subscription to `/api/v1/events` in `root-layout.tsx` that invalidates; `useRuns`
-      polls at 3 s and 5 s on one key regardless of activity.
-- [ ] **Browser-mode persistence**: `browser-backend.ts:291` writes every run artifact to
-      localStorage with no try/catch and no cap; move to IndexedDB, version the persisted JSON (also
-      `use-autosave.ts:28-31`), guard on read, surface quota errors. `draft-banner.tsx:28-35`
-      restores then discards the draft before anything re-saves it.
-- [ ] **Adopt or delete the E2E suite** — all 6 specs failed on the last run
-      (`test-results/.last-run.json`): `baseURL` ignores `base: "/Aconiq/"`, `/` redirects to
-      `/welcome`. Repair, then run axe on every route in both locales: this is the accessibility
-      baseline every later phase is measured against.
-- [ ] **Map load-timeout fallback**: keep the 15 s per-mount error and the session WebGL kill
-      switch (the timer cannot tell a blocked GPU from a slow network, and only a throwing
-      `new maplibregl.Map()` is genuinely permanent); add a retry to the "Map unavailable" panel,
-      since nothing clears the flag today. `webglcontextlost` must not set `mapError`
-      (`map-view.tsx:122-128`), or `webglcontextrestored` can never recover.
+Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase builds on them:
+
+- [x] `POST /api/v1/model` replaces the project model through `projectfs.Store.SaveModel`, the
+      same path `aconiq import` uses; refused models write nothing; `openapi.go`, `README.md` and
+      `AGENTS.md` list it. Residual: `persistSoundPlanArtifacts` (`import_soundplan.go`) still
+      writes the three model files itself because it adds a fourth ref in the same save.
+- [x] One `Backend` interface (`api/backend.ts`) selected once; pages and hooks branch on
+      `capabilities` (`canExport`, `runsAgainstSavedModel`, `runsChangeExternally`), never on the
+      mode; every non-OK response goes through `api-error.ts`. "Save to project" lives in the header
+      with Ctrl+S; `dirty` means "differs from the project", so imports and restored drafts start
+      dirty and only a successful save clears it; the run dialog refuses to start on unsaved changes.
+- [x] Runs poll by activity (2 s while a run is pending or running, 15 s idle, never in browser
+      mode); the run log polls while running and is invalidated from the runs list on completion.
+- [x] Browser-mode runs live in IndexedDB as one versioned document with a 20-run cap and quota
+      eviction; the draft document is versioned too. The map's lost WebGL context recovers, and the
+      "Map unavailable" panel has Retry.
+- [x] The E2E suite runs in WASM mode under `/Aconiq/` (`just fe-e2e`, `frontend-e2e` job) and
+      carries the axe baseline: every route in `de` and `en` is clean under `wcag2a`/`wcag2aa`, and
+      the `best-practice` findings are pinned per route in `KNOWN_VIOLATIONS`
+      (`e2e/a11y.spec.ts`) in both directions — an entry that stops firing fails the test, so the
+      list is pruned as Phase B lands.
 
 ### Phase B — Design system foundation
 
@@ -904,11 +893,17 @@ capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in
       `MasterDetail` + `ListItem` (three copies), `CopyField`, `MapPanel`, and
       `ui/format.ts` with locale-aware `formatLevel`/`formatDateTime`/`formatDuration`
       (`toFixed(1)` renders "45.3 dB(A)" in German today).
-- [ ] **Structural a11y in one PR**: `<nav aria-label>` + `aria-current` + skip link in
-      `app-shell.tsx`; remove the nested `<main>` in `settings.tsx:594`; set
-      `document.documentElement.lang` from the locale; `prefers-reduced-motion` rule; fix the
-      `h2`→`h4` skip in `run.tsx:555`; one `useGlobalShortcut` hook with the `isTextEntryTarget`
-      guard (the sidebar's Ctrl+B lacks it).
+- [ ] **Structural a11y in one PR**, driven by the axe baseline in `e2e/a11y.spec.ts`:
+      `<nav aria-label>` + `aria-current` + skip link in `app-shell.tsx` (`region`, all routes);
+      one `<main>` — `SidebarInset` renders one and `app-shell.tsx:149` wraps the page in a second,
+      `settings.tsx:595` adds a third (`landmark-no-duplicate-main`, `landmark-main-is-top-level`,
+      `landmark-unique`, all routes); set `document.documentElement.lang` from the locale (stays
+      `en` under `de`; axe cannot see it, so add a DOM assertion to the E2E suite); the `h1`→`h3`
+      skip on `/settings` (`heading-order`) and the `h2`→`h4` skip in `run.tsx:555`, which only
+      renders once runs exist; `prefers-reduced-motion` rule; one `useGlobalShortcut` hook with the
+      `isTextEntryTarget` guard (the sidebar's Ctrl+B lacks it). Prune `KNOWN_VIOLATIONS` as each
+      lands. The dark-mode `--destructive` contrast is not covered — the suite runs in the light
+      colour scheme; add a `colorScheme: "dark"` variant with the token work.
 
 ### Phase C — Information architecture and pages
 
@@ -997,9 +992,9 @@ capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in
 
 ### Order and gates
 
-A before B before C; D and E can run in parallel with C once B is green; the coverage floor from F
-starts with B so every refit adds tests. Each phase ends with `just fe-ci` green, the E2E suite
-green, and axe clean on every route in `de` and `en`.
+B before C; D and E can run in parallel with C once B is green; the coverage floor from F starts
+with B so every refit adds tests. Each phase ends with `just fe-ci` and `just fe-e2e` green, which
+includes the axe baseline on every route in `de` and `en`.
 
 ## Priority 9 — Documentation truth
 
