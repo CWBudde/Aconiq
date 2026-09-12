@@ -83,7 +83,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		return err
 	}
 
-	return reportRunCompletion(cmd, state, prepared)
+	return reportRunCompletion(cmd, state, prepared, result)
 }
 
 // prepareRun turns the request into a run the project knows about: it resolves
@@ -273,16 +273,20 @@ func completeRun(prepared preparedRun, result runModuleResult) error {
 
 // reportRunCompletion writes what the operator sees, in whichever form they
 // asked for.
-func reportRunCompletion(cmd *cobra.Command, state commandState, prepared preparedRun) error {
+func reportRunCompletion(cmd *cobra.Command, state commandState, prepared preparedRun, result runModuleResult) error {
 	run := prepared.run
 	resultsPath := relativePath(prepared.store.Root(), filepath.Join(prepared.runDir, "results"))
 
+	// output_hash belongs in the completion event: it is how an operator ties a
+	// structured log line back to the results on disk, and determinism is only
+	// auditable if the hash travels with every record of a run.
 	state.Logger.Info(
 		"run completed",
 		"run_id", run.ID,
 		"status", project.RunStatusCompleted,
 		"standard_id", run.Standard.ID,
 		"provenance", prepared.provenance.ManifestPath,
+		"output_hash", result.outputHash,
 	)
 
 	if state.Config.JSONLogs {
