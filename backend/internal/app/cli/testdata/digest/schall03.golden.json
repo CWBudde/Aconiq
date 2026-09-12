@@ -1,0 +1,164 @@
+{
+  "standard": "schall03",
+  "fixture": "phase18/schall03_normative_model.geojson",
+  "files": {
+    "receivers.csv": "sha256:678eeef7a3ff0392b82d23d982e70f7dc7d4fd2569b5e62de285e6a78db9c51b bytes=10817",
+    "receivers.json": "sha256:1875b6083d22958653ea873d1b4a9c936d570c1813ecb3eb63773e9e6af73bb0 bytes=21623",
+    "run-summary.json": "sha256:137115fc2bb6b45cc700e276113ff1d64a8d409312153ce30377f45aa07eb28c bytes=432",
+    "schall03.bin": "sha256:e4cc0ed26c1212985ce763d0b93de0a3937bb7c22399b500edafcef70ea2c76d bytes=3024",
+    "schall03.json": "sha256:0409cae53196f33b411a25f8836420c0f2c99bfa44df5c6fb1fad2465d2117b9 bytes=215"
+  },
+  "run_summary": {
+    "band_model": "octave-63Hz-8000Hz",
+    "compliance_boundary": "anlage2-2014-strecke-eisenbahn-strassenbahn",
+    "evidence_tier": "normative",
+    "grid_height": 7,
+    "grid_width": 27,
+    "model_version": "anlage2-2014-strecke-v1",
+    "output_hash": "6266d15698191a89f0a0ca16e3bd62c2b2b716ba914de318421cec8700b5c9d1",
+    "receiver_count": 189,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "schall03_engine": "normative",
+    "source_count": 1,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "1a5384d4785ee9040af2d0a95cc692057c31f8a15d8851ee9c94e24a1f6ab84e"
+    },
+    "metadata": {
+      "band_model": "octave-63Hz-8000Hz",
+      "compliance_boundary": "anlage2-2014-strecke-eisenbahn-strassenbahn",
+      "evidence_tier": "normative",
+      "indicator_order": "LrDay,LrNight",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.bridge_correction_db": "2",
+      "key_parameter.curve_correction_db": "4",
+      "key_parameter.ground_attenuation_db": "1.2",
+      "key_parameter.min_distance_m": "3",
+      "key_parameter.rail_average_train_speed_kph": "100",
+      "key_parameter.rail_track_form": "mainline",
+      "key_parameter.rail_track_roughness_class": "standard",
+      "key_parameter.rail_track_type": "ballasted",
+      "key_parameter.rail_traction_type": "electric",
+      "key_parameter.rail_train_class": "mixed",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.schall03_engine": "auto",
+      "key_parameter.slab_track_correction_db": "1.5",
+      "key_parameter.traffic_day_trains_per_hour": "8",
+      "key_parameter.traffic_night_trains_per_hour": "4",
+      "model_version": "anlage2-2014-strecke-v1",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1",
+      "reporting_rounding": "round-half-away-from-zero at report boundary",
+      "schall03_engine": "normative"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "bridge_correction_db": "2",
+      "curve_correction_db": "4",
+      "grid_padding_m": "30",
+      "grid_resolution_m": "10",
+      "ground_attenuation_db": "1.2",
+      "min_distance_m": "3",
+      "rail_average_train_speed_kph": "100",
+      "rail_curve_radius_m": "500",
+      "rail_on_bridge": "false",
+      "rail_track_form": "mainline",
+      "rail_track_roughness_class": "standard",
+      "rail_track_type": "ballasted",
+      "rail_traction_type": "electric",
+      "rail_train_class": "mixed",
+      "receiver_height_m": "4",
+      "schall03_engine": "auto",
+      "slab_track_correction_db": "1.5",
+      "traffic_day_trains_per_hour": "8",
+      "traffic_night_trains_per_hour": "4"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "schall03",
+      "profile": "rail-planning-preview",
+      "version": "2014-anlage2"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "d7b679d5dac4560fd2acbb9f41714d5f36b9c4fe4cf9fd2a6e7a322fae714e6b",
+      "evidence_tier": "normative",
+      "tables": [
+        {
+          "digest": "68c1b8bd61467566f54a829b889cc77d0cccfdc927f7dec56349a61efcda9f9e",
+          "name": "anlage2/beiblatt1-fahrzeugkategorien"
+        },
+        {
+          "digest": "bd3a98692517ffbdc5a043684c60730dc3901058c1b7f34ef454eb7f73819da0",
+          "name": "anlage2/beiblatt1-kesselwagen"
+        },
+        {
+          "digest": "27b878b191da1ae726291b6770ac0a12e5c24e92490bf071e7385aa5c3da4f41",
+          "name": "anlage2/beiblatt1-zugarten"
+        },
+        {
+          "digest": "e10364e28f3f30d9a0036a44f05128844b0260d699585c3957247a340f3273b9",
+          "name": "anlage2/beiblatt2-fahrzeugkategorien-strassenbahn"
+        },
+        {
+          "digest": "7f1ca4c5e28a4546c2c21c87e8b7bcc1e958284888b02f6f5d43a64d93bca09d",
+          "name": "anlage2/beiblatt2-zugarten-strassenbahn"
+        },
+        {
+          "digest": "0cfaff3e83be1de720eb11db02639caef8f211bd074cd3b5fadfc55e4d28c079",
+          "name": "anlage2/beiblatt3-gleisbremsen"
+        },
+        {
+          "digest": "9b05bb2c9fd4450befda6a498d1e2c535da5aca85522a4c56df30a1c9e725021",
+          "name": "anlage2/beiblatt3-rangierquellen"
+        },
+        {
+          "digest": "3edc95b56cc95340d2c49d96dc53dbd8b49ebc7bc64e52c64568dfd1ed4a8cae",
+          "name": "anlage2/oktavband-mittenfrequenzen"
+        },
+        {
+          "digest": "86a1f3e086cda28eea69177dcbc1ae62c4bc25ba998557fababdb1596401cd2c",
+          "name": "anlage2/tabelle-06-geschwindigkeitsfaktor"
+        },
+        {
+          "digest": "7461bbc26a39a2b75fa90513f59c857dc161644c6d99a6b362d3fcb4e5f18665",
+          "name": "anlage2/tabelle-07-fahrbahnart"
+        },
+        {
+          "digest": "c8cc7c5e3a1c10a98838d1799cd3b0710b08bd7d7b61abc3e19369b45282b420",
+          "name": "anlage2/tabelle-08-fahrbahnzustand"
+        },
+        {
+          "digest": "fca1c9c421f2464ef765fdd3ee475a02fc2f52c64c4afcd14c0056694012900e",
+          "name": "anlage2/tabelle-09-bruecken"
+        },
+        {
+          "digest": "9de913399239e657e773cc5a045ba157d7f6fbe678ae7e3bd4951a6f35097700",
+          "name": "anlage2/tabelle-11-kurven"
+        },
+        {
+          "digest": "cdc7e5ba57d23cdd7dff2a9ee320537873679903fb6e2b28c73801e4add5003f",
+          "name": "anlage2/tabelle-15-fahrbahnart-strassenbahn"
+        },
+        {
+          "digest": "3f1e8f2a36d4c49cf4addc6e4f8b787c03c81d836e1b76fe388e31b6509ac413",
+          "name": "anlage2/tabelle-16-bruecken-strassenbahn"
+        },
+        {
+          "digest": "ded5d688c395f234c8695ab6b35196f8b5e0499ff898d59f9ed23a29e375cbf8",
+          "name": "anlage2/tabelle-17-luftabsorption"
+        },
+        {
+          "digest": "ba6494a8ac35f7d0d49a0f7d80ec47714dcaaaa8b7e6374ac56f9b19f1470088",
+          "name": "preview/datapack"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

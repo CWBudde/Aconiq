@@ -1,0 +1,122 @@
+{
+  "standard": "rls19-road",
+  "fixture": "phase17/rls19_road_model.geojson",
+  "files": {
+    "receivers.csv": "sha256:5f15a492518577156c95b50ff7419c99eed637028d5f472c88589881b7978b13 bytes=9566",
+    "receivers.json": "sha256:d980c611adb7f2ee4bfaadaea963739dba127d5c46c25b4ea1fd1fc5a72f752c bytes=19289",
+    "rls19-road.bin": "sha256:f7d08f6c051879d4b22c5422eb7556f3f7ef1988722d9312383e85551d20ce57 bytes=2720",
+    "rls19-road.json": "sha256:5536bbbdae0c643edfd410d2d57d5706aa676e158b80d2c33209fcc28fe77c80 bytes=218",
+    "run-summary.json": "sha256:e1b94113eea74a0513ea06cf3df43bd96c3cd0142b496f2c1592bfe6ea5e2c1a bytes=344"
+  },
+  "run_summary": {
+    "evidence_tier": "normative",
+    "grid_height": 10,
+    "grid_width": 17,
+    "model_version": "builtin-rls19-2019-v1",
+    "output_hash": "97ee4b7a4996604dbd033852491267b6cc2bd089d32a8ebf3e53237d7c39030c",
+    "receiver_count": 170,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "source_count": 2,
+    "sources_with_feature_acoustics_overrides": 0,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "b4027b865bd9c2b4c25e9a69029ed4b4d6e66df4828d5be925c1b2e5bc97087b"
+    },
+    "metadata": {
+      "data_pack_version": "builtin-rls19-2019-v1",
+      "evidence_tier": "normative",
+      "indicator_order": "LrDay,LrNight",
+      "key_parameter.min_distance_m": "3",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.segment_length_m": "1",
+      "key_parameter.surface_type": "SMA",
+      "key_parameter.traffic_day_krad": "10",
+      "key_parameter.traffic_day_lkw1": "40",
+      "key_parameter.traffic_day_lkw2": "60",
+      "key_parameter.traffic_day_pkw": "900",
+      "key_parameter.traffic_night_krad": "2",
+      "key_parameter.traffic_night_lkw1": "10",
+      "key_parameter.traffic_night_lkw2": "20",
+      "key_parameter.traffic_night_pkw": "200",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1",
+      "reporting_rounding": "round-half-away-from-zero at report boundary"
+    },
+    "parameters": {
+      "gradient_percent": "0",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "min_distance_m": "3",
+      "receiver_height_m": "4",
+      "segment_length_m": "1",
+      "speed_krad_kph": "100",
+      "speed_lkw1_kph": "100",
+      "speed_lkw2_kph": "80",
+      "speed_pkw_kph": "100",
+      "surface_type": "SMA",
+      "traffic_day_krad": "10",
+      "traffic_day_lkw1": "40",
+      "traffic_day_lkw2": "60",
+      "traffic_day_pkw": "900",
+      "traffic_night_krad": "2",
+      "traffic_night_lkw1": "10",
+      "traffic_night_lkw2": "20",
+      "traffic_night_pkw": "200"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "rls19-road",
+      "profile": "default",
+      "version": "2019"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "3746dbf29a3285935f440dfebef75a4c86ed0ec5793f3b3fb3637aaa03bf1699",
+      "evidence_tier": "normative",
+      "tables": [
+        {
+          "digest": "0bfcc62eb97d35a22947871ef1641b52a1b154f68767729a8aaa2bf2fb0108ff",
+          "name": "rls19/ausbreitungskonstanten"
+        },
+        {
+          "digest": "f50319bb5de76d90d23c2e93e7291ec42bef217c7f3aa77d25504cd4826173ae",
+          "name": "rls19/data-pack-version"
+        },
+        {
+          "digest": "fac1907825b628c1f60119e2ee8a4bfc97b890ade79e7b6bf32daaff4f99d299",
+          "name": "rls19/parkplatz-fahrzeugzuschlaege"
+        },
+        {
+          "digest": "42e03ed6cc62f8a1d5fe3fcde8fd7264261608ec09d444fc63c973344c5e0447",
+          "name": "rls19/tabelle-02-verkehrsmengen"
+        },
+        {
+          "digest": "8ece046316e1b5f753cc9e33ff1c5b41b3856d2cc4f99c94b05c282361832465",
+          "name": "rls19/tabelle-03-grundemission"
+        },
+        {
+          "digest": "170571c79bcb4780db2c36939d7d6ccb3837da1e22769ce817c5951c2c25c585",
+          "name": "rls19/tabelle-04-fahrbahnkorrektur"
+        },
+        {
+          "digest": "b80cca4c4e170c75946b1a686991537f3f161ec408ea7ae516c2eab3a3b1fd16",
+          "name": "rls19/tabelle-05-knotenpunktkorrektur"
+        },
+        {
+          "digest": "c8f676166734de23f0bc135fecf99c86633e2d998c1369c18416276e1004c033",
+          "name": "rls19/tabelle-07-parkbewegungen"
+        },
+        {
+          "digest": "17d70a832e075a546779e2f6c594807068da460d9049fb95226b6f669f01f334",
+          "name": "rls19/tabelle-08-reflexionsverluste"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

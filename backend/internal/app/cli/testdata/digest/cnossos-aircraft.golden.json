@@ -1,0 +1,139 @@
+{
+  "standard": "cnossos-aircraft",
+  "fixture": "phase13/aircraft_model.geojson",
+  "files": {
+    "cnossos-aircraft.bin": "sha256:d93c67585e0eb96e0c651e6b1202f423c7d85371256751443dc25ea2a0466ea5 bytes=6032",
+    "cnossos-aircraft.json": "sha256:8026f8169b202dcb948874d6c5060346a9636b371c81d3d4029875a5113d4245 bytes=222",
+    "receivers.csv": "sha256:39399c459c3c6bb9ca35a97e5031ac1ef294af0e93c1f49cfb9ec7c906ae5335 bytes=35258",
+    "receivers.json": "sha256:dce447b3cab29cba47b1f07edb8bf022ffcc90d7f47af39abfd0c0d9eeb96dc7 bytes=62816",
+    "run-summary.json": "sha256:ce78f0455690f49c4c5f9fa8716fb7a1bd56e1559e02577c2305971db5c70cec bytes=305"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 13,
+    "grid_width": 29,
+    "model_version": "baseline-preview-aircraft-v2",
+    "output_hash": "28cb1859c4515fc7bdad236b93e07519d1c79de03ffe7c7b1d73f2b9f73c3638",
+    "receiver_count": 377,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "c3d23d4ef463f6c7abc8ea05961e17b1f151697ca01404e51b4b548df0fa5d6a"
+    },
+    "metadata": {
+      "compliance_boundary": "baseline-preview-expanded-cnossos-aircraft-contract",
+      "emission_model": "class-operation-procedure-thrust-components",
+      "evidence_tier": "scaffold",
+      "indicator_order": "Lday,Levening,Lnight,Lden",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.aircraft_class": "narrow_body",
+      "key_parameter.aircraft_operation_type": "departure",
+      "key_parameter.aircraft_procedure_type": "standard_sid",
+      "key_parameter.aircraft_thrust_mode": "takeoff",
+      "key_parameter.airport_id": "APT",
+      "key_parameter.approach_correction_db": "1.5",
+      "key_parameter.bank_angle_deg": "0",
+      "key_parameter.climb_correction_db": "2.5",
+      "key_parameter.engine_state_factor": "1",
+      "key_parameter.grid_padding_m": "100",
+      "key_parameter.grid_resolution_m": "25",
+      "key_parameter.ground_attenuation_db": "0.8",
+      "key_parameter.lateral_directivity_db": "0",
+      "key_parameter.lateral_offset_m": "0",
+      "key_parameter.min_slant_distance_m": "20",
+      "key_parameter.movement_day_per_hour": "10",
+      "key_parameter.movement_evening_per_hour": "5",
+      "key_parameter.movement_night_per_hour": "2",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.reference_power_level_db": "108",
+      "key_parameter.runway_id": "RWY",
+      "key_parameter.track_end_height_m": "300",
+      "key_parameter.track_start_height_m": "30",
+      "model_version": "baseline-preview-aircraft-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "aircraft_class": "narrow_body",
+      "aircraft_operation_type": "departure",
+      "aircraft_procedure_type": "standard_sid",
+      "aircraft_thrust_mode": "takeoff",
+      "airport_id": "APT",
+      "approach_correction_db": "1.5",
+      "bank_angle_deg": "0",
+      "climb_correction_db": "2.5",
+      "engine_state_factor": "1",
+      "grid_padding_m": "100",
+      "grid_resolution_m": "25",
+      "ground_attenuation_db": "0.8",
+      "lateral_directivity_db": "0",
+      "lateral_offset_m": "0",
+      "min_slant_distance_m": "20",
+      "movement_day_per_hour": "10",
+      "movement_evening_per_hour": "5",
+      "movement_night_per_hour": "2",
+      "receiver_height_m": "4",
+      "reference_power_level_db": "108",
+      "runway_id": "RWY",
+      "track_end_height_m": "300",
+      "track_start_height_m": "30"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "cnossos-aircraft",
+      "profile": "airport-vicinity",
+      "version": "2020-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "6e3b23ccca2911a4640a8bf8169361eccb88132140bb5b497f6d74c33b6fdfde",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "cbcd06b169223c484d8574c47c2b67dc463d6d16f7c0ad5356fc53185b109d64",
+          "name": "preview-aircraft/bank-angle-samples"
+        },
+        {
+          "digest": "3a79d6f72de9c27e9e0b2c2de8f0fdf6996fe34ef771c94a5c5b65378a9969ea",
+          "name": "preview-aircraft/class-corrections"
+        },
+        {
+          "digest": "e98a0579eaf1e3f87dc5823cf46d553cc3a8c48d0bdfed815c949018684978c4",
+          "name": "preview-aircraft/lateral-offset-samples"
+        },
+        {
+          "digest": "68364360d6bbc4c026ec5cfe22d24fb5e21ce0aa87b7c30db654d0bda545ba4a",
+          "name": "preview-aircraft/model-version"
+        },
+        {
+          "digest": "553115c3ea65683be69b3635725a754b4bad2779baf1f38a4a15514a7ce5f800",
+          "name": "preview-aircraft/operation-corrections"
+        },
+        {
+          "digest": "b764fc9f6d1e4cb2b4e39c22ab53f23f6864ddd93345803d7636a825ae755ff8",
+          "name": "preview-aircraft/operation-mode-adjustments"
+        },
+        {
+          "digest": "ad2836cf6cbe638c7f011ed29a335da77fea245c3e1d4b0b946989ce646d5a97",
+          "name": "preview-aircraft/procedure-corrections"
+        },
+        {
+          "digest": "865278ca8c65d2030c14b61e16316586492f3b31dcd987165c01ae6227f78ab9",
+          "name": "preview-aircraft/propagation-defaults"
+        },
+        {
+          "digest": "75827e50bfd9f3530da694c0029bcc2479219c7391dcfe83b99b6f278f025d0b",
+          "name": "preview-aircraft/thrust-mode-corrections"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

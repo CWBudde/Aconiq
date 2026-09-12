@@ -1,0 +1,167 @@
+{
+  "standard": "cnossos-road",
+  "fixture": "phase10/road_model.geojson",
+  "files": {
+    "cnossos-road.bin": "sha256:b9ead54ab25ee05f7e4b9bb65e07852542497cfababbddbde751d623d96a0f87 bytes=2640",
+    "cnossos-road.json": "sha256:86beacc56057d4df0a71ea110bc8daa6977544d6073792532fefc383a60d13c0 bytes=218",
+    "receivers.csv": "sha256:ba5310bcdbc4812c0247ba9f86e7efd91de77c6f64f85ed8e9bec607aa672dac bytes=15428",
+    "receivers.json": "sha256:584cf0b5dbc209c95420e11f43aae713f0d22105b8c8cae02bec658d741fc663 bytes=27510",
+    "run-summary.json": "sha256:ea05c182e756cf370a864f7f3fec2cef52d242a087bfc3d53dfb433b069d02d7 bytes=301"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 11,
+    "grid_width": 15,
+    "model_version": "baseline-preview-road-v2",
+    "output_hash": "41402460485f5fcfae6e8ddc8fa5bfd0580748440a660b551ae74f6da75c9cd0",
+    "receiver_count": 165,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "4a64edca4a12c7fc0c11a4524ef903a2c4e0b386ef295b485e65d5849a538414"
+    },
+    "metadata": {
+      "compliance_boundary": "baseline-preview-expanded-road-contract",
+      "emission_model": "vehicle-class-components-with-road-context",
+      "evidence_tier": "scaffold",
+      "indicator_order": "Lday,Levening,Lnight,Lden",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.barrier_attenuation_db": "0",
+      "key_parameter.ground_attenuation_db": "1.5",
+      "key_parameter.min_distance_m": "3",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.road_category": "urban_major",
+      "key_parameter.road_gradient_percent": "0",
+      "key_parameter.road_junction_distance_m": "0",
+      "key_parameter.road_junction_type": "none",
+      "key_parameter.road_speed_kph": "70",
+      "key_parameter.road_studded_tyre_share": "0",
+      "key_parameter.road_surface_type": "dense_asphalt",
+      "key_parameter.road_temperature_c": "20",
+      "key_parameter.traffic_day_heavy_vph": "90",
+      "key_parameter.traffic_day_light_vph": "900",
+      "key_parameter.traffic_day_medium_vph": "120",
+      "key_parameter.traffic_day_ptw_vph": "40",
+      "key_parameter.traffic_evening_heavy_vph": "45",
+      "key_parameter.traffic_evening_light_vph": "500",
+      "key_parameter.traffic_evening_medium_vph": "60",
+      "key_parameter.traffic_evening_ptw_vph": "20",
+      "key_parameter.traffic_night_heavy_vph": "30",
+      "key_parameter.traffic_night_light_vph": "250",
+      "key_parameter.traffic_night_medium_vph": "30",
+      "key_parameter.traffic_night_ptw_vph": "5",
+      "model_version": "baseline-preview-road-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "barrier_attenuation_db": "0",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "ground_attenuation_db": "1.5",
+      "min_distance_m": "3",
+      "receiver_height_m": "4",
+      "road_category": "urban_major",
+      "road_gradient_percent": "0",
+      "road_junction_distance_m": "0",
+      "road_junction_type": "none",
+      "road_speed_kph": "70",
+      "road_studded_tyre_share": "0",
+      "road_surface_type": "dense_asphalt",
+      "road_temperature_c": "20",
+      "traffic_day_heavy_vph": "90",
+      "traffic_day_light_vph": "900",
+      "traffic_day_medium_vph": "120",
+      "traffic_day_ptw_vph": "40",
+      "traffic_evening_heavy_vph": "45",
+      "traffic_evening_light_vph": "500",
+      "traffic_evening_medium_vph": "60",
+      "traffic_evening_ptw_vph": "20",
+      "traffic_night_heavy_vph": "30",
+      "traffic_night_light_vph": "250",
+      "traffic_night_medium_vph": "30",
+      "traffic_night_ptw_vph": "5"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "cnossos-road",
+      "profile": "default",
+      "version": "2020-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "8b3566d436af48f89a437bdbebce9439096229ce39f1c085b8b8bba30c98a388",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "ba911732c2ee5d63c3fc4d97375c60998a4be70bc9da7764134440d05396a6a9",
+          "name": "preview-road/base-levels"
+        },
+        {
+          "digest": "d979287b3ac55bfcf9c63a71cc78bda430d131f7fd6953192360ff615c9958c3",
+          "name": "preview-road/gradient-correction-samples"
+        },
+        {
+          "digest": "d7b22ef52be75c38c1a453bedb3f82cd1732b61fe62239907e1bdb577c7d0fcd",
+          "name": "preview-road/high-speed-multipliers"
+        },
+        {
+          "digest": "7cea774948a5a9d9df82fb3c0f998680c6ad61b790e634514a0f100c8e3ae308",
+          "name": "preview-road/high-speed-offsets"
+        },
+        {
+          "digest": "e302e09d2129e089159c533e8bf9d4c8ab9ea81424549b83b7e84d82e39114e5",
+          "name": "preview-road/junction-corrections"
+        },
+        {
+          "digest": "1bf2c23119f30e26ca633e93ab9b80e64edf453c6610888d1445fd0b1cccdbf1",
+          "name": "preview-road/junction-distance-samples"
+        },
+        {
+          "digest": "cedf95dafc8d49d2b751796c40ef7ebfaa4af303111f9c8744f9b3e0f69309aa",
+          "name": "preview-road/low-speed-corrections"
+        },
+        {
+          "digest": "83dc415a1824c4097b4304ab5424c2a621963974bd69e19995a58a454d889790",
+          "name": "preview-road/mid-speed-multipliers"
+        },
+        {
+          "digest": "b7e5b417b8a2131a0684dda3aff8fe3b6b64aef9310fb688b27e74712f85e63b",
+          "name": "preview-road/model-version"
+        },
+        {
+          "digest": "a200ce3162b9762bca49e6bf775cae34fd0f57b22e6b7221752f8a45918a7ebc",
+          "name": "preview-road/propagation-defaults"
+        },
+        {
+          "digest": "f893ef9d7936a9c137444a0723efa887dfb15628d2ff015090e3c0faee4d0e03",
+          "name": "preview-road/road-category-corrections"
+        },
+        {
+          "digest": "631bb13acad24b61662f3bfd186c61fa50858a7a9e5a195f5855e0e57c387101",
+          "name": "preview-road/speed-correction-samples"
+        },
+        {
+          "digest": "3094a1a624cec986cdfd3f228ee4a824c4e807631ad71b4de9bfc6d0131bc863",
+          "name": "preview-road/studded-tyre-corrections"
+        },
+        {
+          "digest": "2cb0eb35834cc4fd187048ae947f92cbba718a29552bfb520272da42b051e758",
+          "name": "preview-road/surface-corrections"
+        },
+        {
+          "digest": "2c2b4221dba94b475ee4fb71df9b64682b57cdf1fcc8c6a4b20cf9a24fd2482d",
+          "name": "preview-road/temperature-correction-samples"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

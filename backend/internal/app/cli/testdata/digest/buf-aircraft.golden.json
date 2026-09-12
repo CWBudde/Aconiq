@@ -1,0 +1,138 @@
+{
+  "standard": "buf-aircraft",
+  "fixture": "phase15/aircraft_model.geojson",
+  "files": {
+    "buf-aircraft.bin": "sha256:7c4b244834840eed22656ac31152cef463ab65e934e99d0e46dc4ad2beb7e89d bytes=6032",
+    "buf-aircraft.json": "sha256:dc73e148bb706521da45c2acda452cd8fc7f80f232102f21feb272ecede4c51a bytes=218",
+    "receivers.csv": "sha256:019c4ce01b8d44a377c9560693a105dcca39c55aeb2a894d2e568ec3ed4cf31b bytes=35215",
+    "receivers.json": "sha256:06e723575605155151e786716ee3c7b5e846a1b1f0893ed346b8d375b07de6b0 bytes=62773",
+    "run-summary.json": "sha256:53f4ebde7b79181bb193c193b34a628932de361203d8c2fd4d06bbc397f2c93f bytes=284"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 13,
+    "grid_width": 29,
+    "model_version": "baseline-preview-aircraft-mapping-v2",
+    "output_hash": "53a4ea07f0c68e8208ff3592e7377fbf7eb38152528104edeca8edf53ad62d6c",
+    "receiver_count": 377,
+    "receiver_mode": "auto-grid",
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "c3d23d4ef463f6c7abc8ea05961e17b1f151697ca01404e51b4b548df0fa5d6a"
+    },
+    "metadata": {
+      "compliance_boundary": "baseline-preview-expanded-buf-aircraft-contract",
+      "emission_model": "class-operation-procedure-thrust-components",
+      "evidence_tier": "scaffold",
+      "indicator_order": "Lday,Levening,Lnight,Lden",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.aircraft_class": "narrow_body",
+      "key_parameter.aircraft_operation_type": "departure",
+      "key_parameter.aircraft_procedure_type": "standard_sid",
+      "key_parameter.aircraft_thrust_mode": "takeoff",
+      "key_parameter.airport_id": "DE-APT",
+      "key_parameter.approach_correction_db": "1.5",
+      "key_parameter.bank_angle_deg": "0",
+      "key_parameter.climb_correction_db": "2.5",
+      "key_parameter.engine_state_factor": "1",
+      "key_parameter.grid_padding_m": "100",
+      "key_parameter.grid_resolution_m": "25",
+      "key_parameter.ground_attenuation_db": "0.8",
+      "key_parameter.lateral_directivity_db": "1",
+      "key_parameter.lateral_offset_m": "0",
+      "key_parameter.min_slant_distance_m": "20",
+      "key_parameter.movement_day_per_hour": "12",
+      "key_parameter.movement_evening_per_hour": "6",
+      "key_parameter.movement_night_per_hour": "2",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.reference_power_level_db": "110",
+      "key_parameter.runway_id": "RWY",
+      "key_parameter.track_end_height_m": "250",
+      "key_parameter.track_start_height_m": "20",
+      "model_version": "baseline-preview-aircraft-mapping-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "aircraft_class": "narrow_body",
+      "aircraft_operation_type": "departure",
+      "aircraft_procedure_type": "standard_sid",
+      "aircraft_thrust_mode": "takeoff",
+      "airport_id": "DE-APT",
+      "approach_correction_db": "1.5",
+      "bank_angle_deg": "0",
+      "climb_correction_db": "2.5",
+      "engine_state_factor": "1",
+      "grid_padding_m": "100",
+      "grid_resolution_m": "25",
+      "ground_attenuation_db": "0.8",
+      "lateral_directivity_db": "1",
+      "lateral_offset_m": "0",
+      "min_slant_distance_m": "20",
+      "movement_day_per_hour": "12",
+      "movement_evening_per_hour": "6",
+      "movement_night_per_hour": "2",
+      "receiver_height_m": "4",
+      "reference_power_level_db": "110",
+      "runway_id": "RWY",
+      "track_end_height_m": "250",
+      "track_start_height_m": "20"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "mapping",
+      "id": "buf-aircraft",
+      "profile": "strategic-mapping",
+      "version": "2021-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "61ce8a8edf0fde1bc0bc3e3def6d7d9547ddb8a31917eeb3dae25e243882695f",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "58a168c253241f3f5b4bb5527e37c8e7e89811876d29951355368346a7c36fc9",
+          "name": "preview-aircraft-mapping/bank-angle-samples"
+        },
+        {
+          "digest": "f534b1645d5abd0df9f5d74a8125a7b913e61d2741913d124b49c1cb1f8189ee",
+          "name": "preview-aircraft-mapping/class-corrections"
+        },
+        {
+          "digest": "bd7c3b8312f1d70c75e974193f62a53b86da443c40734916eaa7b063675f58f7",
+          "name": "preview-aircraft-mapping/lateral-offset-samples"
+        },
+        {
+          "digest": "b22249361d0a8f42851899d3ef97e6a852fa1460867ad417e5c84025acf272d1",
+          "name": "preview-aircraft-mapping/model-version"
+        },
+        {
+          "digest": "682185ebb749fb12649d3f50e31ee6b46233eff1c2fb3627de98289e8fc5c63c",
+          "name": "preview-aircraft-mapping/operation-corrections"
+        },
+        {
+          "digest": "762fa0c9abd19b30672bdf0964cbacbd55f64e3012d941a55cc2de2752e5f16d",
+          "name": "preview-aircraft-mapping/operation-mode-adjustments"
+        },
+        {
+          "digest": "d24767d0ae2dff050c1fe47d396d52bfba78eb38b379d1de523f502667f9def4",
+          "name": "preview-aircraft-mapping/procedure-corrections"
+        },
+        {
+          "digest": "2d19abef28a57444cf29ed7aca499903baeed1cfb675519084dd916d4d097c60",
+          "name": "preview-aircraft-mapping/propagation-defaults"
+        },
+        {
+          "digest": "396c4134f7d956a5f6cff20030d6c0743d7b0a417dbfa5a97b731b9e82a8088a",
+          "name": "preview-aircraft-mapping/thrust-mode-corrections"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}
