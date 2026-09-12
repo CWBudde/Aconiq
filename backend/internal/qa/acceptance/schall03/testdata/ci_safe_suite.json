@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "schall03-ci-safe-v4",
+  "suite_version": "schall03-ci-safe-v6",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -110,11 +110,27 @@
       "tolerance_db": 0.0001
     },
     {
+      "name": "b5_reflective_barrier",
+      "category": "propagation",
+      "description": "ICE-1-Zug behind a reflective 3 m wall 2 m from the track plus two absorbing walls: the source-side diffraction edge sits at d_s = 3.61 m, so Gl. 20's D_refl = 3 dB applies",
+      "scenario_path": "ci_safe/b5_reflective_barrier.scenario.json",
+      "expected_path": "ci_safe/b5_reflective_barrier.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
       "name": "b4_three_edge_barriers",
       "category": "propagation",
       "description": "ICE-1-Zug behind three staggered barriers (5 m, 8 m, 7.5 m): three diffraction edges survive the rubber band, exercising e = e1 + e2 (Bild 6)",
       "scenario_path": "ci_safe/b4_three_edge_barriers.scenario.json",
       "expected_path": "ci_safe/b4_three_edge_barriers.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "s4_haltestellenbereich",
+      "category": "emission",
+      "description": "25 km/h Strassenbahn line with one Haltestelle: Nr. 5.3.2's 50 km/h substitute speed covers only the stop plus 25 m either side, so the receiver at the stop is louder than the one between stops",
+      "scenario_path": "ci_safe/s4_haltestellenbereich.scenario.json",
+      "expected_path": "ci_safe/s4_haltestellenbereich.expected.json",
       "tolerance_db": 0.0001
     }
   ]

@@ -417,6 +417,7 @@ type TrackSegment struct {
 	StreckeMaxKPH      float64          `json:"strecke_max_kph"`                 // track speed limit
 	WaterBodyFractionW float64          `json:"water_body_fraction_w,omitempty"` // Gl. 16: fraction of source–receiver path over water, 0–1
 	PermanentlySlow    bool             `json:"permanently_slow,omitempty"`      // Nr. 5.3.2: Straßenbahn section permanently at ≤ 30 km/h
+	Features           []TrackFeature   `json:"features,omitempty"`              // Nr. 5.3.2: Weichen, Kreuzungen and Haltestellen the substitute speed is scoped to
 	Operations         []TrainOperation `json:"operations"`
 }
 
@@ -436,7 +437,41 @@ func (seg TrackSegment) Validate() error {
 		return err
 	}
 
+	err = seg.validateTrackEnums()
+	if err != nil {
+		return err
+	}
+
+	err = seg.validateTrackFeatures()
+	if err != nil {
+		return err
+	}
+
 	return seg.validateOperations()
+}
+
+// validateTrackFeatures checks the Nr. 5.3.2 track features and their one
+// contradiction with the permanently-slow exception.
+func (seg TrackSegment) validateTrackFeatures() error {
+	for i, feature := range seg.Features {
+		err := feature.Validate()
+		if err != nil {
+			return fmt.Errorf("TrackSegment %q: features[%d]: %w", seg.ID, i, err)
+		}
+	}
+
+	// Nr. 5.3.2 grants the "dauerhaft v ≤ 30 km/h" exception to sections that
+	// carry no Weichen, Kreuzungen or Haltestellen, so a segment claiming both
+	// is describing two different stretches of track and has to be split by the
+	// caller.
+	if seg.PermanentlySlow && len(seg.Features) > 0 {
+		return fmt.Errorf(
+			"TrackSegment %q: permanently_slow excludes Weichen, Kreuzungen and Haltestellen, but %d feature(s) are declared",
+			seg.ID, len(seg.Features),
+		)
+	}
+
+	return nil
 }
 
 func (seg TrackSegment) validateGeometry() error {
@@ -473,6 +508,32 @@ func (seg TrackSegment) validateInfrastructure() error {
 	if math.IsNaN(seg.WaterBodyFractionW) || math.IsInf(seg.WaterBodyFractionW, 0) ||
 		seg.WaterBodyFractionW < 0 || seg.WaterBodyFractionW > 1 {
 		return fmt.Errorf("TrackSegment %q: WaterBodyFractionW must be in [0, 1]", seg.ID)
+	}
+
+	return nil
+}
+
+// validateTrackEnums range-checks the three enum-valued track properties.
+//
+// The JSON wire format names them (vocabulary.go), so a decoded segment is
+// always in range.  A segment built in Go code is not, and an out-of-range
+// ordinal falls through every table lookup to "no correction" — which is the
+// same silence PLAN.md 1.2 describes for a misread ordinal, only reached from
+// the other side.
+func (seg TrackSegment) validateTrackEnums() error {
+	if int(seg.Fahrbahn) < 0 || int(seg.Fahrbahn) >= len(fahrbahnartNames) {
+		return fmt.Errorf("TrackSegment %q: Fahrbahn %d is out of range, expected one of %s",
+			seg.ID, int(seg.Fahrbahn), strings.Join(FahrbahnartNames(), ", "))
+	}
+
+	if int(seg.SFahrbahn) < 0 || int(seg.SFahrbahn) >= len(sFahrbahnartNames) {
+		return fmt.Errorf("TrackSegment %q: SFahrbahn %d is out of range, expected one of %s",
+			seg.ID, int(seg.SFahrbahn), strings.Join(SFahrbahnartNames(), ", "))
+	}
+
+	if int(seg.Surface) < 0 || int(seg.Surface) >= len(surfaceCondNames) {
+		return fmt.Errorf("TrackSegment %q: Surface %d is out of range, expected one of %s",
+			seg.ID, int(seg.Surface), strings.Join(SurfaceCondNames(), ", "))
 	}
 
 	return nil

@@ -278,3 +278,51 @@ func TestTrackSegmentValidate(t *testing.T) {
 		t.Error("expected error for no operations, got nil")
 	}
 }
+
+// An out-of-range enum ordinal falls through every table lookup to "no
+// correction", so it has to be refused rather than computed.
+func TestTrackSegmentValidateRejectsOutOfRangeEnums(t *testing.T) {
+	t.Parallel()
+
+	base := TrackSegment{
+		ID: "seg-enum",
+		TrackCenterline: []geo.Point2D{
+			{X: 0, Y: 0},
+			{X: 100, Y: 0},
+		},
+		StreckeMaxKPH: 200,
+		Operations: []TrainOperation{
+			{
+				TrainType:          "custom",
+				FzComposition:      []FzCount{{Fz: 7, Count: 1}},
+				SpeedKPH:           160,
+				TrainsPerHourDay:   6,
+				TrainsPerHourNight: 3,
+			},
+		},
+	}
+
+	err := base.Validate()
+	if err != nil {
+		t.Fatalf("baseline segment must validate: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		apply func(*TrackSegment)
+	}{
+		{"Fahrbahn too high", func(s *TrackSegment) { s.Fahrbahn = FahrbahnartType(len(FahrbahnartNames())) }},
+		{"Fahrbahn negative", func(s *TrackSegment) { s.Fahrbahn = FahrbahnartType(-1) }},
+		{"SFahrbahn too high", func(s *TrackSegment) { s.SFahrbahn = SFahrbahnartType(len(SFahrbahnartNames())) }},
+		{"SFahrbahn negative", func(s *TrackSegment) { s.SFahrbahn = SFahrbahnartType(-1) }},
+		{"Surface too high", func(s *TrackSegment) { s.Surface = SurfaceCondType(len(SurfaceCondNames())) }},
+		{"Surface negative", func(s *TrackSegment) { s.Surface = SurfaceCondType(-1) }},
+	} {
+		bad := base
+		tc.apply(&bad)
+
+		if bad.Validate() == nil {
+			t.Errorf("%s: expected a validation error, got nil", tc.name)
+		}
+	}
+}

@@ -127,6 +127,14 @@ On a `source` feature with `source_type: line`:
   the effective Eisenbahn speed to at least 70 km/h.
 - `schall03_permanently_slow`: boolean, Nr. 5.3.2 exception for Straßenbahn
   sections permanently at v ≤ 30 km/h.
+- `schall03_track_features`: array of the Nr. 5.3.2 track features the 50 km/h
+  substitute speed is scoped to. Each entry is an object with `kind`
+  (`weiche`, `kreuzung` or `haltestelle`) and the coordinates `x` and `y`. Each
+  feature is projected onto the track centerline and substitutes the speed over
+  25 m on either side; a track that declares none keeps the substitution over
+  its whole length. A feature more than 25 m from the centerline is rejected,
+  and the array cannot be combined with `schall03_permanently_slow`, whose
+  exception presupposes a section carrying none of these features.
 - `schall03_water_body_fraction`: 0–1, the share of the source–receiver path
   crossing water (Gl. 16).
 - `elevation_m`: track elevation, shared with the preview path.

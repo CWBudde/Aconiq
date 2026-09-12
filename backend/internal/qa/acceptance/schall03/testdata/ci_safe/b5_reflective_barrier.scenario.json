@@ -1,10 +1,10 @@
 {
   "segments": [
     {
-      "id": "ice1_barrier_wall_track",
+      "id": "ice1_reflective_barrier_track",
       "track_centerline": [
-        {"x": -100, "y": 0},
-        {"x": 100, "y": 0}
+        {"x": -200, "y": 0},
+        {"x": 200, "y": 0}
       ],
       "elevation_m": 0,
       "fahrbahn": "schwellengleis",
@@ -28,25 +28,30 @@
   ],
   "receivers": [
     {
-      "id": "r_barrier_wall",
-      "point": {"x": 0, "y": 30},
+      "id": "r_behind_reflective_barrier",
+      "point": {"x": 0, "y": 40},
       "height_m": 3.5
     }
   ],
   "barriers": [
     {
-      "a": {"x": -100, "y": 15},
-      "b": {"x": 100, "y": 15},
-      "top_height_m": 4,
-      "base_height_m": 0
-    }
-  ],
-  "walls": [
+      "a": {"x": -300, "y": 2},
+      "b": {"x": 300, "y": 2},
+      "top_height_m": 3,
+      "base_height_m": 0,
+      "reflective": true
+    },
     {
-      "a": {"x": -100, "y": 40},
-      "b": {"x": 100, "y": 40},
-      "height_m": 15,
-      "surface": "hard"
+      "a": {"x": -300, "y": 10},
+      "b": {"x": 300, "y": 10},
+      "top_height_m": 5,
+      "base_height_m": 0
+    },
+    {
+      "a": {"x": -300, "y": 20},
+      "b": {"x": 300, "y": 20},
+      "top_height_m": 6,
+      "base_height_m": 0
     }
   ]
 }

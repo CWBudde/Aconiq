@@ -7,8 +7,8 @@
         {"x": 60, "y": 0}
       ],
       "elevation_m": 6,
-      "fahrbahn": 1,
-      "surface": 0,
+      "fahrbahn": "feste-fahrbahn",
+      "surface": "none",
       "bridge_type": 3,
       "bridge_mitig": false,
       "curve_radius_m": 0,

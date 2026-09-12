@@ -674,7 +674,7 @@ func TestBuildVehicleInputsKeepsSlowStrassenbahnSpeed(t *testing.T) {
 		SpeedKPH:      70,
 	}
 
-	input := buildVehicleInputs(seg, op, 4)
+	input := buildVehicleInputs(speedZonePart{segment: seg}, op, 4)
 	if input.SpeedKPH != 25 {
 		t.Fatalf("SpeedKPH = %v, want the unclamped track speed 25", input.SpeedKPH)
 	}
@@ -731,7 +731,7 @@ func TestBuildVehicleInputsKeepsSlowEisenbahnSpeed(t *testing.T) {
 		SpeedKPH:      160,
 	}
 
-	input := buildVehicleInputs(seg, op, 4)
+	input := buildVehicleInputs(speedZonePart{segment: seg}, op, 4)
 	if input.SpeedKPH != 30 {
 		t.Fatalf("SpeedKPH = %v, want 30", input.SpeedKPH)
 	}

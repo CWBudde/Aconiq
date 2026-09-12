@@ -305,40 +305,31 @@ now uses `10 lg(n)` with an explicit zero-flow branch returning the `-999` silen
 sits on the data-pack path, which is the path the CLI actually runs (Priority 2), so it moves real
 output: the preview goldens dropped 0.4–1.0 dB.
 
-### 1.1 Schall 03: the substitute-speed extent, the only judgement call still open
+### 1.1 Schall 03: the Nr. 5.3.2 substitute speed — closed
 
-The Eisenbahn half is closed. `resolveEffectiveSpeed` applied `max(v, 50)` unconditionally, which
-Nr. 4.3 does not prescribe — it requires only the 70 km/h im Bereich von Personenbahnhöfen und
-Haltepunkten. The floor now applies to Straßenbahn segments only, where Nr. 5.3.2 puts it, and the
-70 km/h station rule no longer reaches Straßenbahn segments either. Two consequences fell out: the
-double clamp had made the Nr. 5.3.2 "dauerhaft v ≤ 30 km/h" exception unreachable (`buildVehicleInputs`
-raised the speed to 50 before `ComputeStreckeEmission` could test it against 50), and the
-Fahrbahnart zero value is now Schwellengleis on both the Eisenbahn and the Straßenbahn side.
+The Eisenbahn half was closed first: `resolveEffectiveSpeed` applied `max(v, 50)` unconditionally,
+which Nr. 4.3 does not prescribe. The Straßenbahn half is now closed too — a `TrackSegment` can
+declare the Weichen, Kreuzungen und Haltestellen the substitution is scoped to, and the compute path
+splits it at their ±25 m zone boundaries.
 
-- [ ] **Decide whether to model the ± 25 m extent of the Nr. 5.3.2 substitution.** Nr. 5.3.2 scopes
-      the 50 km/h substitute speed to Weichen, Kreuzungen and Haltestellen an Strecken (each plus
-      25 m on either side); Aconiq applies it to the whole segment below 50 km/h unless
-      `permanently_slow` is set. Partial substitution needs the caller to split the segment, so the
-      question is whether Aconiq should split automatically from Weichen/Haltestellen geometry it
-      does not currently carry. Recorded as an open deviation in
-      `docs/conformance/schall03-konformitaetserklaerung.md`; Anmerkung 1 to Nr. 5.3.2 argues for
-      the current whole-segment reading, so this is not obviously a defect.
+One live constraint follows from that and governs anything built on top: the split is **opt-in**. A
+segment declaring no features keeps the substitution over its whole length, because reading silence
+as "no substitution" would lower levels for every existing model without the modeller having said
+so. Declaring features is what buys the normative extent. `permanently_slow` and declared features
+are mutually exclusive. See `docs/conformance/schall03-konformitaetserklaerung.md` deviation 6.
 
-### 1.2 Fixture format change from the Fahrbahnart renumbering
+### 1.2 Schall 03 wire format: ordinals are refused — closed
 
-`FahrbahnartType` and `SFahrbahnartType` are renumbered so Schwellengleis — the Nr. 4.4 / Nr. 5.4
-reference type, carrying no c1 correction — is the zero value. Previously the zero value was Feste
-Fahrbahn and straßenbündiger Bahnkörper, so an omitted `fahrbahn` / `s_fahrbahn` silently added
-+7/+3 dB Schiene and +1 dB Reflexion, respectively up to +8 dB at 1000 Hz. All nine CI-safe
-scenarios were renumbered; `a1_full_chain.scenario.json`, the one fixture that set `0` where its
-siblings set `-1`, was set to `1` so it keeps exercising Feste Fahrbahn, and its expected snapshot
-is unchanged, which confirms the reading.
+`FahrbahnartType`, `SFahrbahnartType`, `SurfaceCondType` and `WallSurfaceType` are renumbered so the
+reference row carrying no correction is the zero value. The hazard that created — a file written
+against the old numbering being silently misread — is closed by refusing ordinals on the wire
+entirely: all four are read and written as names from `schall03/vocabulary.go`, and a bare JSON
+number is an error naming the accepted values.
 
-- [ ] **The wire format is unversioned.** `TrackSegment` JSON is read straight from scenario files
-      with no schema version, so a file written against the old numbering is silently misread. Any
-      project format carrying `fahrbahn` needs a migration entry, or the field needs to become a
-      string enum. Nothing outside `internal/standards/schall03` and the acceptance fixtures reads
-      it today, which is why the renumber was safe now and will not be later.
+The live constraint: **these enums are ordinals of Anlage 2 tables and move when a reference row
+moves, so no wire format may carry them.** That is why no schema-version field or migration entry
+was needed here, and why a new table-backed enum must join the vocabulary rather than being
+serialised as an int.
 
 ### 1.3 Compensated summation — decided: implement, and say where
 
@@ -355,15 +346,17 @@ different answer.
 
 ### 1.4 Fixture blind spots — closed
 
-Six fixtures were added for the cases the suite could not see. Each was verified to reach the path
-it claims: `TestLateralDiffractionCanDominate` and `TestThreeDiffractionEdgesAreSelected` pin the
-two barrier geometries, and the b1 geometry was re-checked to confirm its lateral A_bar is capped
-at 20 dB in every band, so the assertion is not vacuous.
+Seven fixtures were added for the cases the suite could not see. Each was verified to reach the path
+it claims: `TestLateralDiffractionCanDominate`, `TestThreeDiffractionEdgesAreSelected` and
+`TestReflectiveBarrierReachesDrefl` pin the three barrier geometries, and the b1 geometry was
+re-checked to confirm its lateral A_bar is capped at 20 dB in every band, so the assertion is not
+vacuous.
 
 | fixture                     | closes                                                    |
 | --------------------------- | --------------------------------------------------------- |
 | `b3_lateral_diffraction`    | lateral path per-band cheaper than the top path (Gl. 18)  |
 | `b4_three_edge_barriers`    | three diffraction edges survive the rubber band (Bild 6)  |
+| `b5_reflective_barrier`     | reflective source-side edge at d_s ≤ 5 m — Gl. 20 D_refl  |
 | `e4_bruecke_feste_fahrbahn` | bridge combined with Feste Fahrbahn (Nr. 4.6 suppression) |
 | `e3_langsame_strecke`       | 40 km/h Eisenbahn line — non-`v₀`, no substitute speed    |
 | `s3_langsamfahrstelle`      | Nr. 5.3.2 `permanently_slow` exception, end to end        |
@@ -374,8 +367,14 @@ so C_met is exactly zero at the near receiver, active for one source only at 150
 both further out. `LpAeq_LT` and `LpAeq_DW` now differ in the golden, which they did not in any
 previous fixture.
 
-- [ ] The suite still has no fixture where an intermediate barrier is _reflective_
-      (`BarrierSegment.Reflective`), so Gl. 20's D_refl is exercised only by unit tests.
+This entry previously asked for an _intermediate_ reflective barrier, which would have produced a
+byte-identical golden: `multiEdgeGeometry` reads `first.Barrier` alone, so only the
+nearest-to-source surviving diffraction edge can carry D_refl. `b5_reflective_barrier` therefore
+puts the reflective wall 2 m from the track (d_s = 3.61 m, inside Gl. 20's 5 m limit) and leaves the
+walls behind it absorbing. Two further traps are load-bearing for any future D_refl fixture: D_refl
+is read only on the top-diffraction branch, and `ComputePathBarrierAttenuation` takes the per-band
+minimum against the lateral Gl. 18 path, whose D_z caps at 20 dB — so a scene screened much harder
+than this one hides the correction behind that cap.
 
 ### 1.5 RLS-19 — checked against the text
 
