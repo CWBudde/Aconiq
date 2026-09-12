@@ -905,14 +905,30 @@ Two duplications it exposed could not be dissolved the same way:
   — was false. It was **true**: the two are distinct Go types whose nested `AirportRef` and
   `MovementPeriod` are declared per package, and the compiler rejects a conversion between them. The
   line `PLAN.md` cited converts the _options_ type, which is a different thing.
-- **The road pair could not.** `bubroad.RoadSource` and `cnossosroad.RoadSource` differ by one field
-  (`road_function_class` against `road_category`), and their override tables are ordered differently
-  on purpose: CNOSSOS decodes the three PTW periods last, BUB interleaves each with its period,
-  which decides which error a feature carrying two malformed properties reports. `dupl` compares
-  tokens and sees neither difference. This is the **one suppression this pass adds** — a `//nolint:dupl`
-  on each of the two builders, cross-referencing the other and naming the structural fix: `bub/road`
-  should share `cnossos/road`'s source model the way `bub/rail` and `bub/industry` already alias
-  `cnossos`, which Priority 7 owns. It replaces two wholesale directives covering eight linters.
+- **The road pair could not, inside `app/cli`.** `bubroad.RoadSource` and `cnossosroad.RoadSource`
+  differed by one field (`road_function_class` against `road_category`), and their override tables
+  are ordered differently on purpose: CNOSSOS decodes the three PTW periods last, BUB interleaves
+  each with its period, which decides which error a feature carrying two malformed properties
+  reports. `dupl` compares tokens and sees neither difference. This was the **one suppression this
+  pass adds** — a `//nolint:dupl` on each of the two builders, cross-referencing the other and
+  naming the structural fix, which the follow-up below carried out.
+
+### Follow-up: the road pair dissolved
+
+Both road directives are gone. The fix is the one they named: `bub/road` now shares
+`cnossos/road`'s `RoadSource` and `TrafficPeriod` as aliases, the way `bub/rail` and `bub/industry`
+already take theirs from `cnossos`, so one builder in `app/cli` seeds both standards from one
+property table. What the two disagree about is passed in as data — the scope, the fallback ID
+format, the property the classification arrives under, and the decode order — and the table is
+indexed by property rather than written in one standard's order.
+
+Two things that fell out of it are worth knowing before touching either module again. The shared
+`RoadSource.Validate` checks the CNOSSOS categories, so a BUB source is validated through
+`bubroad.ValidateSource`, which supplies its own vocabulary and the property name its errors use;
+calling the method directly on a BUB source rejects every valid one. And the shared struct's JSON
+tag for that field is `road_category` for both, which moved the scenario fixtures that decode a
+source from JSON — the CLI parameter is still `road_function_class`, and no artifact carries the
+struct's own schema.
 
 ### Corrections to this document's own record
 
@@ -962,9 +978,10 @@ the model feature position rather than a counter over emitted sources. They stay
 being targeted — the repeated scope strings and empty-result messages went with the blocks that
 carried them. `noinlineerr` 103 → 109 and `gocyclo` 4 → 5 are drift, not regression.
 
-What is left in `app/cli` is 4 one-off `gosec`, the 3 `dupl` in `run_persist.go`, the 2 road-pair
-`dupl`, and `executeRunCommand` — every one of them owned by the `framework.Module` work, not by an
-absence of effort.
+What is left in `app/cli` is 4 one-off `gosec`, the 3 `dupl` in `run_persist.go` and
+`executeRunCommand` — every one of them owned by the `framework.Module` work, not by an absence of
+effort. The 2 road-pair `dupl` counted in that table are gone with the follow-up above, taking
+`//nolint` to **31** and `app/cli` to **8**.
 
 ## Reproducing these numbers
 

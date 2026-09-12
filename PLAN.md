@@ -743,13 +743,14 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
   - [ ] `//nolint:dupl` — **the arithmetic here never matched the tree.** Not 12 illegitimate of
         20: measured across both lint passes there are 13, of which the 8 in
         `schall03/beiblatt1.go` are genuine coefficient tables. 2 were deleted in `0e00155`, 3 in
-        `run_persist.go` remain and go with the generic persist below, and the extraction pass
-        added 2 — one on each road builder. Those two are real duplication with a real fix:
-        `bub/road` should share `cnossos/road`'s source model the way `bub/rail` and `bub/industry`
-        already alias `cnossos`. The two differ by one field (`road_function_class` against
-        `road_category`) and their override tables are ordered differently on purpose, so they
-        cannot be merged inside `app/cli` without changing which error a feature carrying two
-        malformed properties reports.
+        `run_persist.go` remain and go with the generic persist below. The extraction pass added 2
+        — one on each road builder — and `f444266` removed them by doing what they named:
+        `bub/road` now takes `RoadSource` and `TrafficPeriod` from `cnossos/road` as aliases, and
+        one builder in `app/cli` serves both standards from one property table, with the decode
+        order and the classification property supplied per standard as data. Note for anything
+        touching `bub/road`: the shared `RoadSource.Validate` checks the CNOSSOS categories, so BUB
+        sources go through `bubroad.ValidateSource`, and the struct's JSON tag for that field is
+        `road_category` for both (the CLI parameter is still `road_function_class`).
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
