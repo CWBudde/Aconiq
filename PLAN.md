@@ -928,7 +928,9 @@ capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in
       directive names, parameters grouped with units (today `traffic_day_lkw1` is shown raw and only
       one standard ID has a label, `run.tsx:59-73`). Gate the run dialog on
       `validateModel(...).errors.length === 0`. Confirm destructive actions (delete feature, discard
-      draft, import-replaces-model) — no `AlertDialog` exists anywhere.
+      draft, import-replaces-model) — no `AlertDialog` exists anywhere. Add a delete-run action
+      (`Backend.deleteRun`): browser mode now caps stored runs at 20 and tells the user on a quota
+      error that older runs may need deleting, but offers no way to do it.
 - [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`), header buttons with
       `aria-sort` and `scope="col"` (today `onClick` on `<th>`), hoist `SortIcon`/`RunColumn` out of
       their parents, one RFC-4180 CSV builder in `model/` (`results.tsx:202` does not escape quotes;
