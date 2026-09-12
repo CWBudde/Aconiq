@@ -8,7 +8,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import { useProjectStatus } from "@/api";
+import { useProjectStatus } from "@/api/hooks";
 import {
   Sidebar,
   SidebarContent,

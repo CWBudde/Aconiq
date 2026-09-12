@@ -21,7 +21,7 @@ let mockProjectStatus: {
   data: null,
 };
 
-vi.mock("@/api", () => ({
+vi.mock("@/api/hooks", () => ({
   useProjectStatus: () => mockProjectStatus,
 }));
 

@@ -20,13 +20,13 @@ import {
   getFeatureString,
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
+import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
   Building,
   ComputeRequest,
-  Point2D,
   PointReceiver,
   ReceiverOutput,
   RoadSource,
