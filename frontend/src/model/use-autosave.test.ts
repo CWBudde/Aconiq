@@ -7,6 +7,7 @@ import {
   useAutosave,
   writeDraft,
   DRAFT_KEY,
+  DRAFT_VERSION,
 } from "./use-autosave";
 import { useModelStore } from "./model-store";
 import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
@@ -106,6 +107,63 @@ describe("draft utilities", () => {
   it("loadDraft returns null on corrupt data", () => {
     localStorage.setItem(DRAFT_KEY, "not-valid-json{{{");
     expect(loadDraft()).toBeNull();
+  });
+
+  describe("draft versions", () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it("writeDraft stamps the current version", () => {
+      writeDraft({ features: [], receivers: [], calcArea: null });
+      const stored = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "") as {
+        version: number;
+      };
+      expect(stored.version).toBe(DRAFT_VERSION);
+    });
+
+    it("loadDraft accepts the current version", () => {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          version: DRAFT_VERSION,
+          features: [sampleFeature],
+          receivers: [sampleReceiver],
+          calcArea: sampleCalcArea,
+        }),
+      );
+      expect(loadDraft()).toEqual({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+        calcArea: sampleCalcArea,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("loadDraft still accepts an unversioned object", () => {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ features: [sampleFeature], receivers: [] }),
+      );
+      expect(loadDraft()?.features).toHaveLength(1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a newer version", { version: 2, features: [sampleFeature] }],
+      ["a version of the wrong type", { version: "1", features: [] }],
+      ["a non-object shape", "a string"],
+    ])("loadDraft refuses %s and warns", (_name, draft) => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      expect(loadDraft()).toBeNull();
+      expect(warn).toHaveBeenCalledOnce();
+    });
   });
 
   it("discardDraft removes the entry", () => {

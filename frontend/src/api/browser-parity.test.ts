@@ -30,7 +30,8 @@ vi.mock("@/wasm/kernel", async () => {
   return { getKernel: load };
 });
 
-import { browserBackend } from "./browser-backend";
+import { browserBackend, resetBrowserBackendForTests } from "./browser-backend";
+import { clearPersistedState } from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
 import { normalizeGeoJSON } from "@/model/normalize";
 import type {
@@ -130,8 +131,9 @@ function round6(value: number): number {
 }
 
 describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
+  beforeEach(async () => {
+    await clearPersistedState();
+    resetBrowserBackendForTests();
     useModelStore.setState({ features: [], receivers: [], calcArea: null });
   });
 

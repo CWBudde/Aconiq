@@ -4,6 +4,13 @@ import { useModelStore } from "@/model/model-store";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 
 export const DRAFT_KEY = "aconiq.model.draft";
+/**
+ * Stamped into every draft written. Bump it when the draft's shape changes
+ * incompatibly; `loadDraft` refuses a version it does not know rather than
+ * guessing at the fields, and still accepts the two shapes that predate the
+ * stamp.
+ */
+export const DRAFT_VERSION = 1;
 const SAVE_DELAY_MS = 2000;
 
 /** Returns true if a saved draft exists in localStorage. */
@@ -28,12 +35,24 @@ export function loadDraft(): ModelDraft | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as
       | ModelFeature[]
-      | Partial<ModelDraft>
+      | (Partial<ModelDraft> & { version?: unknown })
       | null;
+    // The oldest drafts were a bare feature array.
     if (Array.isArray(parsed)) {
       return { features: parsed, receivers: [], calcArea: null };
     }
-    if (parsed === null || typeof parsed !== "object") return null;
+    if (parsed === null || typeof parsed !== "object") {
+      console.warn("Ignoring a saved draft that is not an object");
+      return null;
+    }
+    // Drafts written before the version stamp carry no `version` key; those
+    // are read as version 1, which has the same fields.
+    if ("version" in parsed && parsed.version !== DRAFT_VERSION) {
+      console.warn(
+        `Ignoring a saved draft with version ${String(parsed.version)}, expected ${String(DRAFT_VERSION)}`,
+      );
+      return null;
+    }
     return {
       features: Array.isArray(parsed.features) ? parsed.features : [],
       receivers: Array.isArray(parsed.receivers) ? parsed.receivers : [],
@@ -53,7 +72,10 @@ export function loadDraft(): ModelDraft | null {
  */
 export function writeDraft(draft: ModelDraft): boolean {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ version: DRAFT_VERSION, ...draft }),
+    );
     return true;
   } catch {
     // Storage full or unavailable — the draft is best-effort.

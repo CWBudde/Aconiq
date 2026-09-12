@@ -38,8 +38,33 @@ import type {
   ReceiverOutput,
   RoadSource,
 } from "@/wasm/types";
+import {
+  BrowserStorageError,
+  isBrowserStorageError,
+  loadPersistedState,
+  savePersistedState,
+} from "./browser-storage";
 
-const STORAGE_KEY = "aconiq.browser_backend.v1";
+/**
+ * Where browser-mode runs lived before they moved to IndexedDB. Read once, on
+ * the first load that finds IndexedDB empty, and removed after a successful
+ * copy; never written again.
+ */
+const LEGACY_STORAGE_KEY = "aconiq.browser_backend.v1";
+/**
+ * The shape of the persisted document is `{ version, state }`. Bump the
+ * version when `BrowserBackendState` changes incompatibly, and teach
+ * `decodePersisted` the old shape or let it start fresh — a document at an
+ * unknown version is never guessed at.
+ */
+export const PERSISTED_STATE_VERSION = 1;
+/**
+ * Runs kept per browser profile, newest first. Every run stores its receiver
+ * table twice (JSON and CSV) plus an export bundle on request, so an unbounded
+ * list would eventually exhaust the origin's quota on a run that had already
+ * completed. Twenty runs of a typical model stay well inside it.
+ */
+export const MAX_STORED_RUNS = 20;
 const DEFAULT_PROJECT_ID = "browser-project";
 const DEFAULT_PROJECT_NAME = "Aconiq Browser Project";
 const DEFAULT_PROJECT_PATH = "browser://local-storage";
@@ -263,25 +288,244 @@ function initialState(): BrowserBackendState {
   };
 }
 
-function readState(): BrowserBackendState {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStoredRun(value: unknown): value is StoredRun {
+  if (!isRecord(value)) return false;
+  const { run, log, artifacts } = value;
+  return (
+    isRecord(run) &&
+    typeof run["id"] === "string" &&
+    typeof run["started_at"] === "string" &&
+    Array.isArray(run["artifacts"]) &&
+    isRecord(log) &&
+    isRecord(artifacts)
+  );
+}
+
+/**
+ * Turns an untrusted stored state into a usable one. Every field may be
+ * absent — a document written by an older build is the normal case, not the
+ * exception — so each falls back to its default, and a run entry that is not
+ * a run is dropped rather than left to throw later from inside a page.
+ */
+function decodeState(value: unknown): BrowserBackendState {
+  if (!isRecord(value)) {
+    throw new BrowserStorageError(
+      "corrupt",
+      "Stored browser-mode state is not an object",
+    );
+  }
+  const defaults = initialState();
+  const text = (key: keyof BrowserBackendState, fallback: string): string => {
+    const field = value[key];
+    return typeof field === "string" ? field : fallback;
+  };
+  const runs = Array.isArray(value["runs"]) ? value["runs"] : [];
+  return {
+    projectId: text("projectId", defaults.projectId),
+    projectName: text("projectName", defaults.projectName),
+    projectPath: text("projectPath", defaults.projectPath),
+    crs: text("crs", defaults.crs),
+    runs: runs.filter(isStoredRun),
+  };
+}
+
+function decodePersisted(value: unknown): BrowserBackendState {
+  if (!isRecord(value)) {
+    throw new BrowserStorageError(
+      "corrupt",
+      "Stored browser-mode document is not an object",
+    );
+  }
+  if (value["version"] !== PERSISTED_STATE_VERSION) {
+    throw new BrowserStorageError(
+      "corrupt",
+      `Stored browser-mode document has version ${String(value["version"])}, expected ${String(PERSISTED_STATE_VERSION)}`,
+    );
+  }
+  return decodeState(value["state"]);
+}
+
+/**
+ * Copies the pre-IndexedDB localStorage document across, once. A copy that
+ * cannot be written stays in localStorage and is offered again on the next
+ * load; a copy that cannot be read is left alone too, so nothing is destroyed
+ * on the way.
+ */
+async function migrateLegacyState(): Promise<BrowserBackendState | null> {
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialState();
-    // Untrusted localStorage content: treat every field as possibly absent.
-    const parsed = JSON.parse(raw) as Partial<BrowserBackendState>;
-    return {
-      ...initialState(),
-      ...parsed,
-      runs: parsed.runs ?? [],
-    };
+    raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
   } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  let legacy: BrowserBackendState;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    legacy = decodeState(parsed);
+  } catch (error) {
+    console.warn(
+      "Ignoring unreadable browser-mode runs left in localStorage",
+      error,
+    );
+    return null;
+  }
+  try {
+    await savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: legacy,
+    });
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch (error) {
+    console.warn(
+      "Browser-mode runs could not be moved from localStorage to IndexedDB; keeping the localStorage copy",
+      error,
+    );
+  }
+  return legacy;
+}
+
+/**
+ * A corrupt or unavailable store never blocks the UI: the backend starts
+ * fresh in memory and warns. The corrupt document is left in place until the
+ * next successful write replaces it, so a bug in the guard cannot erase data
+ * a later build could still have read.
+ */
+async function loadState(): Promise<BrowserBackendState> {
+  let stored: unknown;
+  try {
+    stored = await loadPersistedState();
+  } catch (error) {
+    console.warn(
+      "Browser-mode runs cannot be persisted in this browser; they will be kept in memory for this session only",
+      error,
+    );
+    return initialState();
+  }
+  if (stored === null) {
+    return (await migrateLegacyState()) ?? initialState();
+  }
+  try {
+    return decodePersisted(stored);
+  } catch (error) {
+    console.warn(
+      "Ignoring unreadable stored browser-mode runs; the next completed run replaces them",
+      error,
+    );
     return initialState();
   }
 }
 
-function writeState(state: BrowserBackendState): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  pruneURLCache(state);
+/**
+ * In-memory copy of the persisted state. Every async method awaits
+ * `ensureLoaded()` before touching it, and every write goes through
+ * `persist()`, which updates this copy before the store — so the cache is
+ * never behind what the UI was just told, even if the store is.
+ */
+let state: BrowserBackendState | null = null;
+let loadPromise: Promise<BrowserBackendState> | null = null;
+
+function ensureLoaded(): Promise<BrowserBackendState> {
+  if (state !== null) return Promise.resolve(state);
+  loadPromise ??= loadState().then(
+    (loaded) => {
+      state = loaded;
+      return loaded;
+    },
+    (error: unknown) => {
+      loadPromise = null;
+      throw error;
+    },
+  );
+  return loadPromise;
+}
+
+async function persist(next: BrowserBackendState): Promise<void> {
+  state = next;
+  pruneURLCache(next);
+  await savePersistedState({ version: PERSISTED_STATE_VERSION, state: next });
+}
+
+/**
+ * Stores a new or updated run. On a quota failure the oldest *other* run is
+ * evicted and the write retried once; if that still fails the run stays in
+ * memory — its results remain viewable for this session — and the caller gets
+ * an error whose message says so, because the computation has already
+ * succeeded and the dialogs render `error.message`.
+ */
+async function persistRun(
+  current: BrowserBackendState,
+  storedRun: StoredRun,
+  what: "run" | "export",
+): Promise<void> {
+  const next = setRun(current, storedRun);
+  try {
+    await persist(next);
+    return;
+  } catch (error) {
+    if (!isBrowserStorageError(error, "quota")) throw storeFailure(what, error);
+  }
+  const evicted = evictOldestRun(next, storedRun.run.id);
+  if (evicted !== null) {
+    try {
+      await persist(evicted);
+      return;
+    } catch (error) {
+      if (!isBrowserStorageError(error, "quota")) {
+        throw storeFailure(what, error);
+      }
+    }
+    // The eviction never reached the store, so it must not reach the list
+    // either: the user would see a run vanish alongside an error about a
+    // different one.
+    state = next;
+  }
+  throw new BrowserStorageError(
+    "quota",
+    `The ${what} completed but could not be stored: the browser's storage quota is exhausted. Its results stay available until this page is reloaded; older runs may need deleting to free space.`,
+  );
+}
+
+function storeFailure(what: "run" | "export", error: unknown): Error {
+  if (!isBrowserStorageError(error)) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+  return new BrowserStorageError(
+    error.reason,
+    `The ${what} completed but could not be stored (${error.message}). Its results stay available until this page is reloaded.`,
+    { cause: error },
+  );
+}
+
+/** Drops the oldest run other than `keepId`; `null` when there is none. */
+function evictOldestRun(
+  current: BrowserBackendState,
+  keepId: string,
+): BrowserBackendState | null {
+  // `setRun` keeps the list newest first, so the victim is the last entry
+  // that is not the run being written.
+  const runs = [...current.runs];
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    if (runs[index]?.run.id === keepId) continue;
+    runs.splice(index, 1);
+    return { ...current, runs };
+  }
+  return null;
+}
+
+/**
+ * Forgets the in-memory state so the next call loads from the store again.
+ * The object-URL cache is deliberately kept: it is keyed by artifact id, and
+ * an id never names two payloads, so a URL minted before the reset is still
+ * right after it.
+ */
+export function resetBrowserBackendForTests(): void {
+  state = null;
+  loadPromise = null;
 }
 
 /**
@@ -324,26 +568,49 @@ function parseNumber(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function readArtifact(artifactId: string): unknown {
-  const state = readState();
-  for (const storedRun of state.runs) {
+function findArtifact(
+  current: BrowserBackendState,
+  artifactId: string,
+): StoredArtifactContent {
+  for (const storedRun of current.runs) {
     const artifact = storedRun.artifacts[artifactId];
-    if (!artifact) continue;
-    return artifact.value;
+    if (artifact) return artifact;
   }
   throw new Error(`Artifact ${artifactId} not found`);
 }
 
+/**
+ * Replaces or inserts a run and keeps the list newest first, capped at
+ * `MAX_STORED_RUNS`; whatever falls off the end is the oldest.
+ */
 function setRun(
-  state: BrowserBackendState,
+  current: BrowserBackendState,
   storedRun: StoredRun,
 ): BrowserBackendState {
-  const nextRuns = state.runs.filter(
+  const nextRuns = current.runs.filter(
     (entry) => entry.run.id !== storedRun.run.id,
   );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
-  return { ...state, runs: nextRuns };
+  return { ...current, runs: nextRuns.slice(0, MAX_STORED_RUNS) };
+}
+
+/**
+ * Run ids are minted from the highest id still stored, not from the list
+ * length: once the cap evicts runs the length stops growing, and an id would
+ * be reused — and `setRun` would then silently replace an older run with the
+ * new one, while every artifact id derived from the run id would name two
+ * payloads.
+ */
+function nextRunID(current: BrowserBackendState): string {
+  let highest = 0;
+  for (const entry of current.runs) {
+    const match = /^run-(\d+)$/.exec(entry.run.id);
+    if (match?.[1] !== undefined) {
+      highest = Math.max(highest, Number.parseInt(match[1], 10));
+    }
+  }
+  return `run-${formatRunIndex(highest)}`;
 }
 
 // Exported for the receiver-grid extent test: a Parkplatz is an extended
@@ -806,7 +1073,7 @@ function makeArtifact(
 }
 
 // Receiver values are an open Record, and stored runs are replayed from
-// localStorage, so an indicator can legitimately be absent (e.g. a run written
+// IndexedDB, so an indicator can legitimately be absent (e.g. a run written
 // by an older build). Render it as an empty cell instead of throwing, matching
 // how buildReceiverCSV already handles missing indicators.
 function formatIndicator(values: Record<string, number>, key: string): string {
@@ -871,8 +1138,8 @@ ${previewRows}
 `;
 }
 
-function findRunByID(state: BrowserBackendState, runId: string): StoredRun {
-  const storedRun = state.runs.find((entry) => entry.run.id === runId);
+function findRunByID(current: BrowserBackendState, runId: string): StoredRun {
+  const storedRun = current.runs.find((entry) => entry.run.id === runId);
   if (!storedRun) {
     throw new Error(`Run ${runId} not found`);
   }
@@ -897,23 +1164,23 @@ export const browserBackend = {
   },
 
   async getProjectStatus(): Promise<ProjectStatusResponse> {
-    const state = readState();
+    const current = await ensureLoaded();
     const features = useModelStore.getState().features;
-    const lastRun = state.runs
+    const lastRun = current.runs
       .map((entry) => entry.run)
       .sort((a, b) => b.started_at.localeCompare(a.started_at))[0];
 
     return {
-      project_id: state.projectId,
+      project_id: current.projectId,
       name:
         features.length > 0
-          ? `${state.projectName} (${String(features.length)} features)`
-          : state.projectName,
-      project_path: state.projectPath,
+          ? `${current.projectName} (${String(features.length)} features)`
+          : current.projectName,
+      project_path: current.projectPath,
       manifest_version: 1,
-      crs: state.crs,
+      crs: current.crs,
       scenario_count: 1,
-      run_count: state.runs.length,
+      run_count: current.runs.length,
       ...(lastRun
         ? {
             last_run: {
@@ -935,37 +1202,46 @@ export const browserBackend = {
   },
 
   async getRuns(): Promise<RunSummary[]> {
-    return readState()
-      .runs.map((entry) => entry.run)
+    const current = await ensureLoaded();
+    return current.runs
+      .map((entry) => entry.run)
       .sort((a, b) => b.started_at.localeCompare(a.started_at));
   },
 
   async getRunLog(runId: string): Promise<RunLog> {
-    return findRunByID(readState(), runId).log;
+    return findRunByID(await ensureLoaded(), runId).log;
   },
 
   async getArtifactContent<T>(artifactId: string): Promise<T> {
-    return readArtifact(artifactId) as T;
+    return findArtifact(await ensureLoaded(), artifactId).value as T;
   },
 
+  /**
+   * Synchronous because pages put the result straight into `<iframe src>`
+   * and `<a href>`. It reads the in-memory state only, which is populated by
+   * the first async call — and an artifact id can only come from one of
+   * those (`getRuns`, `startRun`, `createExport`), so by the time a page
+   * holds an id to ask about, the state is loaded. The throw below guards
+   * the assumption; it is not a path the UI reaches.
+   */
   getArtifactURL(artifactId: string): string {
     const cached = urlCache.get(artifactId);
     if (cached) return cached;
-    const state = readState();
-    for (const storedRun of state.runs) {
-      const content = storedRun.artifacts[artifactId];
-      if (!content) continue;
-      const body =
-        content.encoding === "json"
-          ? JSON.stringify(content.value, null, 2)
-          : String(content.value);
-      const url = URL.createObjectURL(
-        new Blob([body], { type: content.mimeType }),
+    if (state === null) {
+      throw new Error(
+        `Artifact ${artifactId} requested before the browser backend loaded its stored runs`,
       );
-      urlCache.set(artifactId, url);
-      return url;
     }
-    throw new Error(`Artifact ${artifactId} not found`);
+    const content = findArtifact(state, artifactId);
+    const body =
+      content.encoding === "json"
+        ? JSON.stringify(content.value, null, 2)
+        : String(content.value);
+    const url = URL.createObjectURL(
+      new Blob([body], { type: content.mimeType }),
+    );
+    urlCache.set(artifactId, url);
+    return url;
   },
 
   async importFromOSM(
@@ -1079,8 +1355,7 @@ out geom;`;
     }
 
     const startedAt = nowISO();
-    const stateBefore = readState();
-    const runId = `run-${formatRunIndex(stateBefore.runs.length)}`;
+    const runId = nextRunID(await ensureLoaded());
     const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
 
     const request: ComputeRequest = {
@@ -1231,14 +1506,17 @@ out geom;`;
       },
     };
 
-    const nextState = setRun(readState(), { run, log, artifacts: artifactMap });
-    writeState(nextState);
+    await persistRun(
+      await ensureLoaded(),
+      { run, log, artifacts: artifactMap },
+      "run",
+    );
     return run;
   },
 
   async createExport(runId: string): Promise<RunSummary> {
-    const state = readState();
-    const storedRun = findRunByID(state, runId);
+    const current = await ensureLoaded();
+    const storedRun = findRunByID(current, runId);
     const tableArtifact = storedRun.run.artifacts.find(
       (artifact) => artifact.kind === "run.result.receiver_table_json",
     );
@@ -1345,7 +1623,7 @@ out geom;`;
       },
     };
 
-    writeState(setRun(state, nextStoredRun));
+    await persistRun(current, nextStoredRun, "export");
     return nextStoredRun.run;
   },
 
