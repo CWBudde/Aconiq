@@ -376,13 +376,13 @@ is read only on the top-diffraction branch, and `ComputePathBarrierAttenuation` 
 minimum against the lateral Gl. 18 path, whose D_z caps at 20 dB — so a scene screened much harder
 than this one hides the correction behind that cap.
 
-### 1.5 RLS-19 — checked against the text
+### 1.5 RLS-19 — closed
 
 The premise this section used to carry, that the RLS-19 text is unavailable, was wrong: the FGSV
 PDFs sit under `interoperability/RLS-19/` (gitignored — local reference material, never checked
 in), and the 2019 edition there already incorporates Korrekturblatt 2/2020. Tabellen 2–8 and
-Eqs. 7a–7c, 8, 9, 10, 12–15 have now been read against the module. Five defects were found and
-fixed; `docs/conformance/rls19-konformitaetserklaerung.md` rows C2–C6 carry them with magnitudes.
+Eqs. 7a–7c, 8, 9, 10, 12–15 have been read against the module. Seven defects were found and fixed;
+`docs/conformance/rls19-konformitaetserklaerung.md` rows C2–C8 carry them with magnitudes.
 
 Two constraints for the next pass over this or any other scanned standard. `pdftotext -layout` is
 not sufficient evidence — it drops terms from stacked fractions and flattens the crossed-out cells
@@ -392,17 +392,28 @@ text stays in a scratchpad: RLS-19 is FGSV-published and not clearly amtliches W
 section and equation numbers rather than copying table text into the repo, which is what the
 `no-third-party-data` gate protects.
 
-- [ ] **Quiet zero values on the Parkplatz path (§3.4).** `ParkingSource.VehicleType` is
-      `vehicle_type,omitempty`, so an omitted field silently means Pkw and `D_P,PT = 0` instead of
-      the +5 dB Motorrad or +10 dB Lkw/Omnibus surcharge; an omitted `movements_per_space_*`
-      passes `Validate()` as 0 and yields the −999 dB silence sentinel rather than an error. Both
-      are the same class as the 1.0 dB reflector default that `e687227` removed: an input omission
-      producing a plausible-looking wrong answer. Fixing either needs an explicit unset sentinel
-      and a validation error, so it is a format decision, not a one-line change.
-- [ ] **An out-of-band Tabelle 4a cell is indistinguishable from "no correction".**
-      `SurfaceCorrection` returns 0 both for a surface/speed pair the table does not cover — OPA at
-      50 km/h, say, after `17faa16` also Beton below 60 km/h — and for a surface that genuinely has
-      no correction. A modeller who picks an inapplicable pairing gets silence, not a warning.
+Two live constraints follow from the last two fixes and govern anything built on top.
+
+**A table cell that does not exist is not a zero.** `SurfaceCorrection` collapsed three unrelated
+causes to `0` — Kräder, an unknown surface, and a cell Tabelle 4a crosses out — and the NaN that
+distinguished the third was thrown away on the way out. `lookupSurfaceCorrection` now returns
+`(value, ok)` and `RoadSource.Validate` refuses an out-of-band pairing; nine of the seventeen
+surfaces can produce that error. The rule generalises: a lookup that can fail must say so to its
+caller rather than pick a plausible number, and the refusal must be decided by the **same** lookup
+the compute path reads, or the two drift.
+
+**An omitted field is not a default, and a table ordinal is not a wire format.** The Parkplatz path
+had both failures at once: `vehicle_type` was a Tabelle 6 ordinal tagged `omitempty`, so an
+omission meant Pkw at 0 dB, and an omitted movement rate meant `N = 0`, which is the silence
+sentinel. Both Parkplatztypen are now named strings with an explicit unset value that `Validate`
+refuses, and the rates are pointers so an explicit `0` stays legal while an omission does not.
+This is P1.2's rule reaching a second module: **a new table-backed enum joins a string vocabulary
+rather than being serialised as an int**, and a field whose zero value is a legitimate input needs
+a representation for "not stated".
+
+Closing the parking half required making the path reachable at all — it was library-only while the
+conformance declaration called it implemented — so `aconiq run` now accepts `rls19_parking_*` on an
+`area` source feature. What that exposed is tracked under Priority 2.
 
 ## Priority 2 — Make the CLI run the normative code
 
@@ -456,6 +467,16 @@ Three consequences fell out of the work:
       behind a building is computed as if the building were absent. Reflection alone is the wrong
       half to ship on by default, which is why the reflector role is opt-in — but the shielding
       half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
+- [ ] **Parkplatz sources take no reflections.** A §3.4 lot is shielded on the same Eq. 11 chain a
+      road Teilstück is, but the §3.6 mirrored paths are not applied to it: that machinery is built
+      around source lines and the active-Teilstück rule of Bild 14, so it is not a reuse. Declared
+      under "Reachability from the CLI" in the conformance document. Closing it means the two
+      propagation paths becoming one, which is where they should have been.
+- [ ] **Browser mode computes no Parkplätze.** `browser-backend.ts` hardcodes
+      `supported_source_types: ["line"]` for `rls19-road` and builds no parking sources, so the same
+      model gives different answers in the browser and from the CLI. The WASM kernel already accepts
+      them — `computeRequest.Config` is a `road.PropagationConfig` — so this is a JS-side extraction
+      gap, not a kernel one, and there is no parity test that would catch the next one.
 - [ ] **No terrain on the Schall 03 propagation path.** `elevation_m` is per segment and h_m falls
       back to the flat-ground special case (deviation 4 in the conformance declaration), even when
       the project carries a DTM the RLS-19 path already reads.
