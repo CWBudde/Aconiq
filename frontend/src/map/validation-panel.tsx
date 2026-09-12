@@ -39,13 +39,19 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
         {allIssues.map((issue, i) => (
           <li key={i} className="flex items-start gap-2 px-3 py-2">
             {issue.level === "error" ? (
-              <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+              <XCircle
+                aria-hidden="true"
+                className="mt-0.5 size-3.5 shrink-0 text-destructive"
+              />
             ) : (
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 size-3.5 shrink-0 text-warning"
+              />
             )}
             <div className="min-w-0 flex-1">
               <p className="text-xs">{issue.message}</p>
-              <p className="font-mono text-[10px] text-muted-foreground">
+              <p className="font-mono text-2xs text-muted-foreground">
                 {issue.code}
               </p>
             </div>
@@ -53,7 +59,7 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-2xs"
                 onClick={() => {
                   onSelectFeature(issue.featureId);
                 }}

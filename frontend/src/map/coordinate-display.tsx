@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { formatCoordinate } from "@/ui/format";
+import { MapPanel } from "./map-panel";
 import { useMap } from "./use-map";
 
 interface Coords {
@@ -26,10 +28,15 @@ export function CoordinateDisplay() {
   if (!coords) return null;
 
   return (
-    <div className="absolute bottom-2 right-2 z-10 rounded-md border bg-background/90 px-2 py-1 shadow-sm backdrop-blur-sm">
-      <span className="text-[10px] font-mono tabular-nums text-muted-foreground">
-        {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+    <MapPanel
+      position="bottom-right"
+      inset="bottom-2 right-2"
+      translucent
+      className="px-2 py-1"
+    >
+      <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+        {formatCoordinate(coords.lat, 6)}, {formatCoordinate(coords.lng, 6)}
       </span>
-    </div>
+    </MapPanel>
   );
 }

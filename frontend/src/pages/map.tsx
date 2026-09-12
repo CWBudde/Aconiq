@@ -3,9 +3,15 @@ import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 import { Link } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
+import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
+import { Card } from "@/ui/components/card";
+import { Callout } from "@/ui/callout";
+import { KeyValueList } from "@/ui/key-value-list";
+import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { useProjectStatus } from "@/api/hooks";
 import { MapView } from "@/map/map-view";
+import { MapPanel } from "@/map/map-panel";
 import { LayerControl } from "@/map/layer-control";
 import { CoordinateDisplay } from "@/map/coordinate-display";
 import { FeaturePopup } from "@/map/feature-popup";
@@ -37,23 +43,52 @@ export default function MapPage() {
   return <MapWorkspace />;
 }
 
-function WorkspaceStart() {
+function ProjectSummary() {
   const project = useProjectStatus();
 
+  if (project.isLoading) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {m.status_loading_project()}
+      </p>
+    );
+  }
+  if (project.isError) {
+    return <Callout variant="destructive">{project.error.message}</Callout>;
+  }
+  if (!project.data) {
+    return (
+      <Callout variant="neutral" title={m.msg_no_project_yet()}>
+        {m.msg_no_project_yet_help()}
+      </Callout>
+    );
+  }
+  return (
+    <KeyValueList
+      items={[
+        { label: m.label_name_field(), value: project.data.name },
+        { label: m.label_crs_field(), value: project.data.crs, mono: true },
+        {
+          label: m.label_scenarios_field(),
+          value: String(project.data.scenario_count),
+        },
+        { label: m.label_runs_field(), value: String(project.data.run_count) },
+      ]}
+    />
+  );
+}
+
+function WorkspaceStart() {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
-        <section className="rounded-3xl border bg-card p-8 shadow-sm">
+        <Card className="p-8">
           <div className="max-w-2xl space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground">
-              {m.section_workspace()}
-            </div>
-            <h2 className="text-3xl font-semibold tracking-tight">
-              {m.heading_map_workspace()}
-            </h2>
-            <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-              {m.msg_map_workspace_description()}
-            </p>
+            <Badge variant="outline">{m.section_workspace()}</Badge>
+            <PageHeader
+              title={m.heading_map_workspace()}
+              description={m.msg_map_workspace_description()}
+            />
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -64,48 +99,14 @@ function WorkspaceStart() {
               <Link to="/status">{m.nav_status()}</Link>
             </Button>
           </div>
-        </section>
+        </Card>
 
-        <section className="rounded-3xl border bg-card p-6 shadow-sm">
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {m.section_project()}
-            </h3>
-            {project.isLoading ? (
-              <p className="text-sm text-muted-foreground">
-                {m.status_loading_project()}
-              </p>
-            ) : project.isError ? (
-              <p className="text-sm text-destructive">
-                {project.error.message}
-              </p>
-            ) : project.data ? (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">
-                  {m.label_name_field()}
-                </dt>
-                <dd>{project.data.name}</dd>
-                <dt className="text-muted-foreground">{m.label_crs_field()}</dt>
-                <dd className="font-mono">{project.data.crs}</dd>
-                <dt className="text-muted-foreground">
-                  {m.label_scenarios_field()}
-                </dt>
-                <dd>{String(project.data.scenario_count)}</dd>
-                <dt className="text-muted-foreground">
-                  {m.label_runs_field()}
-                </dt>
-                <dd>{String(project.data.run_count)}</dd>
-              </dl>
-            ) : (
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <p className="text-sm font-medium">{m.msg_no_project_yet()}</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {m.msg_no_project_yet_help()}
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+        <Card className="space-y-3 p-6">
+          <SectionHeading variant="eyebrow">
+            {m.section_project()}
+          </SectionHeading>
+          <ProjectSummary />
+        </Card>
       </div>
     </div>
   );
@@ -183,6 +184,9 @@ function MapWorkspace() {
 
   return (
     <TooltipProvider>
+      {/* The map canvas carries no visible heading; the page outline still
+          needs one under the shell's h1, and the E2E helper waits for it. */}
+      <h2 className="sr-only">{m.nav_map()}</h2>
       <MapView
         center={workspaceView.center}
         zoom={workspaceView.zoom}
@@ -205,18 +209,23 @@ function MapWorkspace() {
         />
         <UndoRedoBar />
         {calcArea ? (
-          <div className="absolute bottom-14 right-3 z-10 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-800 shadow-sm dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200">
-            <span>{m.label_calc_area()}</span>
+          <MapPanel
+            position="bottom-right"
+            inset="bottom-14"
+            translucent
+            className="flex items-center gap-1 py-1 pl-1 pr-1"
+          >
+            <Badge variant="info">{m.label_calc_area()}</Badge>
             <Button
               variant="ghost"
               size="icon"
-              className="h-4 w-4 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900"
+              className="size-6"
               onClick={clearCalcArea}
               aria-label={m.action_clear_calc_area()}
             >
-              <X className="h-3 w-3" />
+              <X aria-hidden="true" />
             </Button>
-          </div>
+          </MapPanel>
         ) : null}
         <ValidationToggle
           open={showValidation}
@@ -225,9 +234,16 @@ function MapWorkspace() {
           }}
         />
         {showValidation ? (
-          <div className="absolute bottom-14 left-3 z-10 w-80 rounded-md border bg-background shadow-md">
+          <MapPanel
+            position="bottom-left"
+            inset="bottom-14 left-3"
+            width="w-80"
+            className="p-0"
+            role="region"
+            aria-label={m.label_validation()}
+          >
             <ValidationPanel onSelectFeature={handleSelectFromValidation} />
-          </div>
+          </MapPanel>
         ) : null}
       </MapView>
       <NewFeatureDialog
@@ -266,15 +282,14 @@ function ValidationToggle({
       onClick={onToggle}
     >
       <ShieldAlert
+        aria-hidden="true"
         className={
-          report.errors.length > 0
-            ? "h-3.5 w-3.5 text-destructive"
-            : "h-3.5 w-3.5"
+          report.errors.length > 0 ? "size-3.5 text-destructive" : "size-3.5"
         }
       />
       {m.label_validation()}
       {issueCount > 0 ? (
-        <span className="rounded-full bg-secondary px-1.5 py-0.5 tabular-nums">
+        <span className="rounded-full bg-secondary px-1.5 py-0.5 text-2xs tabular-nums">
           {String(issueCount)}
         </span>
       ) : null}
