@@ -118,6 +118,71 @@ func extractExplicitReceivers(model modelgeojson.Model) ([]geo.PointReceiver, er
 	return receivers, nil
 }
 
+// calcAreaExtent returns the extent of the model's calculation area, if it has
+// one. The area is a model feature rather than a run setting, so `aconiq run`
+// and POST /api/v1/runs honour it through the same file.
+//
+// The resulting extent is deliberately not stamped into provenance metadata.
+// The model file is already hashed into the run's InputPaths and therefore into
+// provenance.json's input_hashes, so the recorded inputs pin the extent
+// already; a metadata field would restate a derived value and churn the golden
+// snapshots under internal/qa/golden/testdata/ for nothing.
+//
+// Validation has already established that a model carries at most one
+// calculation area and that its geometry is a Polygon, so the errors below
+// describe a model that reached here without being validated.
+func calcAreaExtent(model modelgeojson.Model) (*geo.BBox, error) {
+	var extent *geo.BBox
+
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindCalcArea {
+			continue
+		}
+
+		rings, err := parsePolygonCoordinates(feature.Coordinates)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.calcAreaExtent",
+				fmt.Sprintf("calculation area %q: %v", feature.ID, err), nil)
+		}
+
+		bbox, ok := geo.BBoxFromPolygon(rings)
+		if !ok {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.calcAreaExtent",
+				fmt.Sprintf("calculation area %q has no finite extent", feature.ID), nil)
+		}
+
+		extent = &bbox
+
+		break
+	}
+
+	return extent, nil
+}
+
+// resolveGridReceivers resolves a module's receiver set, reading the model's
+// calculation area first so that an automatic grid is built over what the user
+// drew rather than over whatever happens to emit. The extent is returned so the
+// caller can record it in the run log.
+//
+// Custom receiver mode never reaches buildGrid, so a model carrying both a
+// drawn area and explicit receivers uses the receivers and ignores the area.
+func resolveGridReceivers(
+	model modelgeojson.Model,
+	receiverMode string,
+	buildGrid func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error),
+) ([]geo.PointReceiver, int, int, *geo.BBox, error) {
+	calcArea, err := calcAreaExtent(model)
+	if err != nil {
+		return nil, 0, 0, nil, err
+	}
+
+	receivers, gridWidth, gridHeight, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+		return buildGrid(calcArea)
+	})
+
+	return receivers, gridWidth, gridHeight, calcArea, err
+}
+
 func resolveReceiverSet(
 	mode string,
 	model modelgeojson.Model,
