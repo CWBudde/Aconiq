@@ -104,6 +104,7 @@ func newRootCommand() *cobra.Command {
 		newValidateCommand(),
 		newRunCommand(),
 		newStatusCommand(),
+		newDeleteRunCommand(),
 		newExportCommand(),
 		newServeCommand(),
 		newOpenAPICommand(),

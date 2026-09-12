@@ -268,9 +268,56 @@ func openapiRunPathItems() map[string]any {
 		},
 	}
 
+	maps.Copy(items, openapiRunResourcePathItems())
 	maps.Copy(items, openapiArtifactPathItems())
 
 	return items
+}
+
+// openapiRunResourcePathItems describes the single-run resource. Go 1.22 routing
+// gives the more specific /api/v1/runs/{id}/log precedence over this pattern.
+func openapiRunResourcePathItems() map[string]any {
+	return map[string]any{
+		"/api/v1/runs/{id}": map[string]any{
+			"delete": map[string]any{
+				"summary":     "Delete a run",
+				"operationId": "deleteRun",
+				"description": "Removes the run from the manifest, drops every artifact ref belonging to it, and " +
+					"deletes `.noise/runs/{id}/`. Export bundles under `.noise/exports/` are deliberately kept on " +
+					"disk — a bundle may already have been delivered — and the ones whose refs were dropped are " +
+					"listed in `retained_paths`. A run that is still `pending` or `running` is refused: its " +
+					"directory is being written.",
+				"parameters": []map[string]any{
+					{
+						"name":        "id",
+						"in":          "path",
+						"required":    true,
+						"description": "Run ID",
+						"schema":      map[string]any{"type": "string"},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "The run was deleted; the body says what was removed and what was kept",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/DeleteRunResponse",
+								},
+							},
+						},
+					},
+					"400": openapiErrorResponse("Missing or malformed run ID"),
+					"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
+					"405": methodNotAllowedResponse(),
+					"409": openapiErrorResponse(
+						"The run is still pending or running (`" + errorCodeRunNotFinished + "`). Nothing was removed.",
+					),
+					"500": openapiErrorResponse("Failed to update the manifest or remove the run directory"),
+				},
+			},
+		},
+	}
 }
 
 // openapiArtifactPathItems describes the artifact content and event-stream
@@ -532,6 +579,7 @@ func openapiSchemas() map[string]any {
 		openapiErrorSchemas(),
 		openapiProjectSchemas(),
 		openapiRunSchemas(),
+		openapiRunDeleteSchemas(),
 		openapiStandardSchemas(),
 		openapiModelSchemas(),
 	} {
@@ -750,6 +798,31 @@ func openapiRunSchemas() map[string]any {
 						"Anything else is refused with error code `overpass_endpoint_not_allowed`, whose " +
 						"details.allowed_hosts lists what is accepted. Omit it to use the default server.",
 					"examples": allowedOverpassEndpointURLs(),
+				},
+			},
+		},
+	}
+}
+
+// openapiRunDeleteSchemas describes what a run delete answers with.
+func openapiRunDeleteSchemas() map[string]any {
+	return map[string]any{
+		"DeleteRunResponse": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"run_id", "removed_paths", "retained_paths"},
+			"properties": map[string]any{
+				"run_id": map[string]any{"type": "string"},
+				"removed_paths": map[string]any{
+					"type":        "array",
+					"description": "Project-relative paths that were deleted. Always present, empty rather than null.",
+					"items":       map[string]any{"type": "string"},
+				},
+				"retained_paths": map[string]any{
+					"type": "array",
+					"description": "Files whose manifest refs were dropped but whose bytes were deliberately left " +
+						"in place — export bundles. Always present, empty rather than null.",
+					"items": map[string]any{"type": "string"},
 				},
 			},
 		},

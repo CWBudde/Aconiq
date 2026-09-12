@@ -51,6 +51,9 @@ const (
 	// be able to tell "no project" from "no model", and the two want different
 	// hints.
 	errorCodeModelNotFound = "model_not_found"
+	// errorCodeRunNotFinished answers a delete of a run that is still pending or
+	// running: its directory is being written by a live `aconiq run`.
+	errorCodeRunNotFinished = "run_not_finished"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -286,6 +289,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/project/status", handler.handleProjectStatus)
 	mux.HandleFunc("/api/v1/standards", handler.handleStandards)
 	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
+	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
@@ -1140,7 +1144,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 

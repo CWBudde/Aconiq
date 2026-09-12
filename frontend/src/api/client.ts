@@ -150,6 +150,25 @@ export interface RunLog {
   lines: string[];
 }
 
+/**
+ * Response of `DELETE /api/v1/runs/{id}` (schema `DeleteRunResponse`). Both
+ * arrays are always present, empty rather than null.
+ *
+ * A run that is still `pending` or `running` is refused with 409 and error code
+ * `run_not_finished` — its directory is still being written.
+ */
+export interface DeleteRunResponse {
+  run_id: string;
+  /** Project-relative paths that were deleted. */
+  removed_paths: string[];
+  /**
+   * Files whose manifest refs were dropped but whose bytes were deliberately
+   * left in place — export bundles. A bundle may already have been delivered,
+   * so deleting a run never deletes one.
+   */
+  retained_paths: string[];
+}
+
 export interface ParameterDefinition {
   name: string;
   kind: "string" | "bool" | "int" | "float";
