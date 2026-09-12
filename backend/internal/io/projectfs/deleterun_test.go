@@ -209,3 +209,62 @@ func TestDeleteRunRejectsATraversingIdentifier(t *testing.T) {
 		}
 	}
 }
+
+// `aconiq export --out` writes bundles wherever it is pointed. Classifying by
+// artifact kind keeps those bundles; classifying by path would have dropped
+// them from the report while leaving the bytes behind unmentioned.
+func TestDeleteRunKeepsExportBundlesOutsideTheDefaultDirectory(t *testing.T) {
+	t.Parallel()
+
+	store, run := mustDeleteRunFixture(t, project.RunStatusCompleted)
+
+	bundlePath := "gutachten/2026-03/export-summary.json"
+	addRunArtifact(t, store, run.ID, "artifact-export", "export.bundle", bundlePath)
+
+	result, err := store.DeleteRun(run.ID)
+	if err != nil {
+		t.Fatalf("delete run: %v", err)
+	}
+
+	if !slices.Contains(result.RetainedPaths, bundlePath) {
+		t.Errorf("expected the bundle among the retained paths, got %#v", result.RetainedPaths)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(store.Root(), filepath.FromSlash(bundlePath))); statErr != nil {
+		t.Errorf("the export bundle should have been kept: %v", statErr)
+	}
+}
+
+// A bundle written into the run's own directory cannot be kept and removed at
+// once, so the delete is refused rather than silently taking the bundle with it.
+func TestDeleteRunRefusesAnExportInsideTheRunDirectory(t *testing.T) {
+	t.Parallel()
+
+	store, run := mustDeleteRunFixture(t, project.RunStatusCompleted)
+
+	bundlePath := ".noise/runs/" + run.ID + "/exports/bundle-1/export-summary.json"
+	addRunArtifact(t, store, run.ID, "artifact-export", "export.bundle", bundlePath)
+
+	_, err := store.DeleteRun(run.ID)
+	if !errors.Is(err, ErrExportInsideRun) {
+		t.Fatalf("expected ErrExportInsideRun, got %v", err)
+	}
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindUserInput {
+		t.Fatalf("expected a user-input refusal, got %v", err)
+	}
+
+	proj, loadErr := store.Load()
+	if loadErr != nil {
+		t.Fatalf("load project: %v", loadErr)
+	}
+
+	if len(proj.Runs) != 1 {
+		t.Fatalf("the refusal must change nothing, got %d runs", len(proj.Runs))
+	}
+
+	if _, statErr := os.Stat(filepath.Join(store.Root(), filepath.FromSlash(bundlePath))); statErr != nil {
+		t.Errorf("the export bundle must still be there: %v", statErr)
+	}
+}

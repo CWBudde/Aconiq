@@ -64,7 +64,7 @@ func (h Handler) handleRunDelete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// writeDeleteRunError answers the store's two named refusals in their own
+// writeDeleteRunError answers the store's named refusals in their own
 // words. Both would otherwise land in writeDomainError's generic buckets, where
 // "still running" would read as a bad request and "no such run" would advise
 // the caller to initialise a project that is already there.
@@ -74,6 +74,12 @@ func writeDeleteRunError(w http.ResponseWriter, runID string, err error) {
 		writeAPIError(w, http.StatusNotFound, apiError{
 			Code:    errorCodeNotFound,
 			Message: fmt.Sprintf("run %q not found", runID),
+		})
+	case stderrors.Is(err, projectfs.ErrExportInsideRun):
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    errorCodeExportInsideRun,
+			Message: fmt.Sprintf("run %q holds export bundles inside its own directory and cannot be deleted", runID),
+			Hint:    "Move the export bundle out of .noise/runs/, then delete the run.",
 		})
 	case stderrors.Is(err, projectfs.ErrRunNotFinished):
 		writeAPIError(w, http.StatusConflict, apiError{

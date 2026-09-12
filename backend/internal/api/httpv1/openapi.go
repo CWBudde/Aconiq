@@ -311,7 +311,9 @@ func openapiRunResourcePathItems() map[string]any {
 					"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
 					"405": methodNotAllowedResponse(),
 					"409": openapiErrorResponse(
-						"The run is still pending or running (`" + errorCodeRunNotFinished + "`). Nothing was removed.",
+						"The run is still pending or running (`" + errorCodeRunNotFinished +
+							"`), or it holds export bundles inside its own directory (`" + errorCodeExportInsideRun +
+							"`). Nothing was removed.",
 					),
 					"500": openapiErrorResponse("Failed to update the manifest or remove the run directory"),
 				},

@@ -54,6 +54,9 @@ const (
 	// errorCodeRunNotFinished answers a delete of a run that is still pending or
 	// running: its directory is being written by a live `aconiq run`.
 	errorCodeRunNotFinished = "run_not_finished"
+	// errorCodeExportInsideRun answers a delete whose export bundle sits inside
+	// the run directory: the bundle is kept, so the directory cannot go.
+	errorCodeExportInsideRun = "export_inside_run"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.

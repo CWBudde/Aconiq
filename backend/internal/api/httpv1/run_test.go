@@ -98,6 +98,37 @@ func TestDeleteRunEndpointRefusesARunningRun(t *testing.T) {
 	assertErrorCode(t, deleteRun(t, handler, run.ID), http.StatusConflict, errorCodeRunNotFinished)
 }
 
+// An export bundle inside the run directory cannot be kept and removed at once.
+// The store refuses; the API owes that its own code, because the hint is to move
+// the bundle, not to wait for the run to finish.
+func TestDeleteRunEndpointRefusesAnExportInsideTheRun(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Delete Run With Nested Export")
+	run := seedRun(t, store, project.RunStatusCompleted)
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	proj.Artifacts = append(proj.Artifacts, project.ArtifactRef{
+		ID:    "artifact-export",
+		RunID: run.ID,
+		Kind:  "export.bundle",
+		Path:  ".noise/runs/" + run.ID + "/exports/bundle-1/export-summary.json",
+	})
+
+	err = store.Save(proj)
+	if err != nil {
+		t.Fatalf("save project: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+
+	assertErrorCode(t, deleteRun(t, handler, run.ID), http.StatusConflict, errorCodeExportInsideRun)
+}
+
 func TestDeleteRunEndpointReportsAnUnknownRun(t *testing.T) {
 	t.Parallel()
 
