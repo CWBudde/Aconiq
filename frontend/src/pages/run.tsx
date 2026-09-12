@@ -34,7 +34,7 @@ import {
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import { useCreateRun, useStandards, useRuns, useRunLog } from "@/api/hooks";
-import { IS_WASM_MODE } from "@/api/mode";
+import { backend } from "@/api/backend";
 import type {
   ArtifactRef,
   ParameterDefinition,
@@ -1138,7 +1138,7 @@ function RunSetupDialog({
                 </p>
               ) : null}
               {receiverMode === "custom" && receiverCount === 0 ? (
-                IS_WASM_MODE ? (
+                !backend.capabilities.runsAgainstSavedModel ? (
                   <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>{m.msg_no_explicit_receivers()}</span>
@@ -1151,7 +1151,8 @@ function RunSetupDialog({
                   {receiverCount !== 1 ? "s" : ""} placed.
                 </p>
               ) : null}
-              {receiverMode === "custom" && !IS_WASM_MODE ? (
+              {receiverMode === "custom" &&
+              backend.capabilities.runsAgainstSavedModel ? (
                 <p className="text-xs text-muted-foreground">
                   {m.msg_api_mode_reads_explicit_receivers()}
                 </p>
@@ -1219,7 +1220,7 @@ function RunSetupDialog({
                 !selectedProfile ||
                 createRun.isPending ||
                 experimentalOptInMissing ||
-                (IS_WASM_MODE &&
+                (!backend.capabilities.runsAgainstSavedModel &&
                   receiverMode === "custom" &&
                   receiverCount === 0)
               }

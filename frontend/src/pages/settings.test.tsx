@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { API_BASE_URL_OVERRIDE_KEY } from "@/api/mode";
@@ -6,6 +6,18 @@ import { DRAFT_KEY } from "@/model/use-autosave";
 import { ThemeProvider } from "@/ui/theme-provider";
 import SettingsPage from "./settings";
 import { m } from "@/i18n/messages";
+
+// The runtime label comes from the selected backend; pin it rather than
+// depending on the env the test runner happens to have.
+vi.mock("@/api/backend", () => ({
+  backend: {
+    capabilities: {
+      kind: "http",
+      canExport: false,
+      runsAgainstSavedModel: true,
+    },
+  },
+}));
 
 function LocationProbe() {
   const location = useLocation();

@@ -25,6 +25,18 @@ const state = vi.hoisted(() => {
   return value;
 });
 
+// Explicit capabilities rather than whatever the env selects: the dialog's
+// receiver messaging and submit guard branch on them.
+vi.mock("@/api/backend", () => ({
+  backend: {
+    capabilities: {
+      kind: "http",
+      canExport: false,
+      runsAgainstSavedModel: true,
+    },
+  },
+}));
+
 vi.mock("@/api/hooks", () => ({
   useStandards: () => ({
     data: state.standards,

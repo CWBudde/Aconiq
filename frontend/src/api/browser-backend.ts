@@ -3,9 +3,12 @@
    client. Several are synchronous in-memory lookups, but they must stay
    `async` so that a thrown error surfaces as a rejected promise, exactly as
    it does on the HTTP path. */
+import type { Backend, OsmImportRequest, RunSpec } from "./backend";
 import type {
   ArtifactRef,
   HealthResponse,
+  ModelSaveRequest,
+  ModelSaveResponse,
   ProjectStatusResponse,
   RasterMetadata,
   ReceiverTable,
@@ -58,21 +61,6 @@ type BrowserBackendState = {
   projectPath: string;
   crs: string;
   runs: StoredRun[];
-};
-
-export type BrowserRunSpec = {
-  standardId: string;
-  version: string;
-  profile: string;
-  params: Record<string, string>;
-  receiverMode: "auto-grid" | "custom";
-  /**
-   * The caller acknowledges that the selected standard is scaffold tier. It is
-   * derived from the tier of the standard being run, never carried over from a
-   * previous choice, and reaches the API as `experimental`. Browser mode runs
-   * only `rls19-road`, which is normative, so it is never set there.
-   */
-  experimental?: boolean;
 };
 
 type OverpassPoint = {
@@ -888,6 +876,12 @@ function findRunByID(state: BrowserBackendState, runId: string): StoredRun {
 }
 
 export const browserBackend = {
+  capabilities: {
+    kind: "browser",
+    canExport: true,
+    runsAgainstSavedModel: false,
+  },
+
   async getHealth(): Promise<HealthResponse> {
     await getKernel();
     return {
@@ -969,13 +963,9 @@ export const browserBackend = {
     throw new Error(`Artifact ${artifactId} not found`);
   },
 
-  async importFromOSM(req: {
-    south: number;
-    west: number;
-    north: number;
-    east: number;
-    overpass_endpoint?: string;
-  }): Promise<GeoJSONFeatureCollection> {
+  async importFromOSM(
+    req: OsmImportRequest,
+  ): Promise<GeoJSONFeatureCollection> {
     const endpoint = req.overpass_endpoint || DEFAULT_OSM_ENDPOINT;
     const bbox = [req.south, req.west, req.north, req.east].join(",");
     const query = `[out:json][timeout:25];
@@ -1012,7 +1002,11 @@ out geom;`;
     return { type: "FeatureCollection", features };
   },
 
-  async startRun(spec: BrowserRunSpec): Promise<RunSummary> {
+  async startRun(spec: RunSpec): Promise<RunSummary> {
+    // Load the kernel before reading the model, so a kernel that cannot load
+    // is the failure reported, not a model finding it would never compute.
+    const kernel = await getKernel();
+
     if (spec.standardId !== "rls19-road") {
       throw new Error(
         `Standard ${spec.standardId} is not available in browser mode`,
@@ -1084,7 +1078,6 @@ out geom;`;
     const runId = `run-${formatRunIndex(stateBefore.runs.length)}`;
     const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
 
-    const kernel = await getKernel();
     const request: ComputeRequest = {
       receivers: gridReceivers,
       sources,
@@ -1350,7 +1343,21 @@ out geom;`;
     writeState(setRun(state, nextStoredRun));
     return nextStoredRun.run;
   },
-};
+
+  /**
+   * In browser mode the model store is the project: a run reads it directly,
+   * so there is nothing to write. Nothing is written, so no path is reported.
+   */
+  async saveModel(req: ModelSaveRequest): Promise<ModelSaveResponse> {
+    return {
+      normalized_path: "",
+      dump_path: "",
+      validation_report_path: "",
+      feature_count: req.model.features.length,
+      warnings: [],
+    };
+  },
+} satisfies Backend;
 
 export function overpassWayToFeature(
   way: OverpassWay,

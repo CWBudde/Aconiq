@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { BrowserRunSpec } from "./browser-backend";
+import type { RunSpec } from "./backend";
 import { buildCreateRunRequest } from "./hooks";
 
-const baseSpec: BrowserRunSpec = {
+const baseSpec: RunSpec = {
   standardId: "rls19-road",
   version: "2019",
   profile: "default",
