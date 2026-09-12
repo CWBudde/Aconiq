@@ -1,14 +1,35 @@
+/*
+ * Fonts are self-hosted: this is an offline-first tool and must not fetch
+ * anything at runtime. Vite copies the woff2 files into dist/assets. Plain CSS
+ * imports have to precede Tailwind's own @import.
+ */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Aconiq design tokens
+ * Aconiq design tokens — see docs/frontend-design-system.md.
  *
  * Aesthetic: refined utilitarian — clean engineering tool with subtle warmth.
  * Accent: muted teal (environmental/acoustic resonance).
  * Neutrals: warm slate grays, not clinical blue-grays.
+ *
+ * Contrast contract (enforced by tokens.test.ts, both themes):
+ *   - destructive/success/warning/info read as text on background and card
+ *     at >= 4.5:1, so `text-warning`, `border-warning/30`, `bg-warning/10`
+ *     work without a per-page palette patch;
+ *   - every -foreground reaches >= 4.5:1 on its solid colour, for filled
+ *     badges and buttons (`bg-success text-success-foreground`);
+ *   - foreground on background/card, muted-foreground on background and
+ *     primary-foreground on primary stay >= 4.5:1.
  */
 
 :root {
@@ -35,8 +56,19 @@
   --accent: oklch(0.94 0.01 195);
   --accent-foreground: oklch(0.22 0.01 260);
 
+  /* Semantic states: solids dark enough to read as text on the light
+     surfaces, with a near-white foreground for filled use. */
   --destructive: oklch(0.55 0.22 27);
-  --destructive-foreground: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --success: oklch(0.5 0.11 160);
+  --success-foreground: oklch(0.98 0 0);
+
+  --warning: oklch(0.52 0.11 70);
+  --warning-foreground: oklch(0.98 0 0);
+
+  --info: oklch(0.52 0.12 240);
+  --info-foreground: oklch(0.98 0 0);
 
   --border: oklch(0.905 0.005 260);
   --input: oklch(0.905 0.005 260);
@@ -83,8 +115,19 @@
   --accent: oklch(0.25 0.02 195);
   --accent-foreground: oklch(0.93 0.005 260);
 
-  --destructive: oklch(0.42 0.16 25);
-  --destructive-foreground: oklch(0.65 0.22 25);
+  /* Semantic states: solids light enough to read as text on the dark
+     surfaces, with the ink foreground for filled use. */
+  --destructive: oklch(0.68 0.18 25);
+  --destructive-foreground: oklch(0.15 0.01 260);
+
+  --success: oklch(0.72 0.14 160);
+  --success-foreground: oklch(0.15 0.01 260);
+
+  --warning: oklch(0.78 0.14 80);
+  --warning-foreground: oklch(0.15 0.01 260);
+
+  --info: oklch(0.72 0.12 240);
+  --info-foreground: oklch(0.15 0.01 260);
 
   --border: oklch(0.28 0.01 260);
   --input: oklch(0.28 0.01 260);
@@ -104,6 +147,27 @@
   --sidebar-accent-foreground: oklch(0.93 0.005 260);
   --sidebar-border: oklch(0.28 0.01 260);
   --sidebar-ring: oklch(0.65 0.12 195);
+}
+
+/*
+ * Type scale. The default Tailwind scale is cleared so the only sizes in the
+ * app are 11/12/13/14/16/20 px: `text-2xl` and up produce no CSS.
+ * 1rem = 16px.
+ */
+@theme {
+  --text-*: initial;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
 }
 
 @theme inline {
@@ -126,6 +190,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -134,10 +204,14 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  /* Radius cap: `rounded-lg` is the largest step; `rounded-xl` and up
+     produce no CSS. `rounded-full` and `rounded-none` are static and stay. */
+  --radius-*: initial;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -154,5 +228,19 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Honour the OS "reduce motion" preference: collapse every animation and
+   transition to a single instant frame instead of removing them, so
+   `animationend`/`transitionend` handlers still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
