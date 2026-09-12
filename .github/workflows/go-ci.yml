@@ -24,19 +24,13 @@ permissions:
 # build, so they have no local equivalent — see the comment on the `go-ci`
 # recipe in the justfile.
 #
-# Tool versions are pinned exactly (same house style as .trunk/trunk.yaml) and
-# match the versions used for local development, so CI and `just go-ci` agree on
-# what "passing" means. Bump them deliberately, together with the local toolbox.
-env:
-  JUST_VERSION: 1.42.4
-  GOLANGCI_LINT_VERSION: v2.12.2
-  GOFUMPT_VERSION: v0.10.0
-  GCI_VERSION: v0.14.0
-  SHFMT_VERSION: v3.12.0
-  TREEFMT_VERSION: 2.5.0
-  PRETTIER_VERSION: 3.8.0
-  GO_LICENSES_VERSION: v1.6.0
-  GOVULNCHECK_VERSION: v1.7.0
+# Tool versions live in tools.versions at the repo root — one file, read by this
+# workflow and by `just install-tools`, so CI and a developer's machine cannot
+# drift. `just check-tools` verifies an installation against it, and `just fmt`
+# refuses to run when the formatters do not match.
+#
+# The `toolchain` composite action below exports those pins into the job and
+# installs the groups a job needs.
 
 jobs:
   go-ci:
@@ -56,6 +50,14 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
+      # One installation recipe for CI and for developers, so the awkward cases
+      # (treefmt's release tarball, prettier out of npm rather than globally)
+      # are encoded once, in scripts/install-tools.sh.
+      - name: Pinned toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          install: format licenses
+
       - name: Install just
         uses: extractions/setup-just@v4.0.0
         with:
@@ -71,22 +73,6 @@ jobs:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           install-only: true
 
-      - name: Install formatters
-        run: |
-          set -euo pipefail
-          go install "mvdan.cc/gofumpt@${GOFUMPT_VERSION}"
-          go install "github.com/daixiang0/gci@${GCI_VERSION}"
-          go install "mvdan.cc/sh/v3/cmd/shfmt@${SHFMT_VERSION}"
-          npm install --global "prettier@${PRETTIER_VERSION}"
-          # treefmt cannot be installed with `go install`: the module zip is
-          # rejected by the Go toolchain because a test fixture path contains an
-          # emoji, which is not a valid module file path. Use the release
-          # tarball instead.
-          mkdir -p "${HOME}/.local/bin"
-          curl -sSfL "https://github.com/numtide/treefmt/releases/download/v${TREEFMT_VERSION}/treefmt_${TREEFMT_VERSION}_linux_amd64.tar.gz" \
-            | tar -xz -C "${HOME}/.local/bin" treefmt
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
       - name: Check formatting
         run: just check-formatted
 
@@ -101,9 +87,6 @@ jobs:
 
       - name: Check tidy
         run: just check-tidy
-
-      - name: Install go-licenses
-        run: go install "github.com/google/go-licenses@${GO_LICENSES_VERSION}"
 
       - name: Check dependency licenses
         run: just license-check
@@ -152,6 +135,9 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Install just
         uses: extractions/setup-just@v4.0.0
         with:
@@ -173,28 +159,20 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
+      # The installer builds govulncheck with the toolchain backend/go.mod
+      # names, which is load-bearing: setup-go reads only the `go` directive and
+      # ignores `toolchain`, so a govulncheck built by the older compiler cannot
+      # load a module whose toolchain compiles a newer standard library, and
+      # dies before it scans anything.
+      - name: Pinned toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          install: vuln
+
       - name: Install just
         uses: extractions/setup-just@v4.0.0
         with:
           just-version: ${{ env.JUST_VERSION }}
-
-      # `go install tool@version` resolves in the tool's own module, so it is
-      # built by whatever compiler setup-go installed — and setup-go reads only
-      # go.mod's `go` directive (1.25.0), ignoring `toolchain` (go1.26.6). Every
-      # command run *inside* backend/ upgrades itself per GOTOOLCHAIN=auto, so
-      # only the installed binaries are left behind: govulncheck built with 1.25
-      # cannot load a module whose toolchain compiles the 1.26 standard library,
-      # and dies with "file requires newer Go version go1.26 (application built
-      # with go1.25)" before it scans anything. Build it with the module's own
-      # toolchain. The version is read from go.mod so there is no second place to
-      # bump; if another `go install`-ed tool ever fails the same way, give it
-      # the same treatment.
-      - name: Install govulncheck
-        run: |
-          set -euo pipefail
-          toolchain="$(sed -n 's/^toolchain //p' backend/go.mod)"
-          GOTOOLCHAIN="${toolchain:-auto}" \
-            go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 
       - name: Scan for known vulnerabilities
         run: just govulncheck

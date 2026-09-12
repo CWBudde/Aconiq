@@ -44,9 +44,17 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 | Command                | What it does                                                        |
 | ---------------------- | ------------------------------------------------------------------- |
 | `just fmt`             | Format everything via treefmt (Go, shell, markdown, YAML, JSON, TS) |
-| `just check-formatted` | The CI formatting gate                                              |
+| `just check-formatted` | The CI formatting gate — read-only                                  |
+| `just check-tools`     | Verify the installed toolchain against `tools.versions`             |
+| `just install-tools`   | Install the toolchain at exactly those versions                     |
 
-> `just check-formatted` runs `treefmt --fail-on-change`, which **formats in place and then reports**. It is not read-only: running it rewrites files, including unrelated work in your tree. Check `git status` afterwards. (Tracked in `PLAN.md`.)
+> `just check-formatted` does not touch your tree: it mirrors the files a commit could contain into
+> a temporary directory, formats the copy, and diffs. `treefmt --fail-on-change` — which formats in
+> place and _then_ reports — is deliberately not used as a check.
+>
+> Both recipes refuse to run when the formatters do not match `tools.versions`, because treefmt runs
+> whatever is on `PATH`: a different prettier or gofumpt rewrites files the pinned one considers
+> correct, and a missing one is skipped without a word. `just install-tools` installs the pins.
 
 ### Frontend
 
@@ -84,10 +92,11 @@ frontend/         React/TypeScript UI (Vite + Bun), plus the WASM kernel client
 docs/             Specs, policies, ADRs, conformance declarations, research notes
 interoperability/ Reference material per standard (GTA, ISO 9613-2, RLS-19, Schall 03, TA Lärm)
 examples/         Reserved for license-safe sample projects — currently empty
-scripts/          Reserved — currently empty; the justfile is the task runner
+scripts/          Shell behind the justfile: toolchain install/check, the read-only format gate
 justfile          Task runner (just) — primary entry point for dev commands
 .golangci.yml     golangci-lint v2 config (defaults plus tuned disables and exclusions)
 treefmt.toml      Multi-language formatter config (gofumpt, gci, shfmt, prettier)
+tools.versions    Pinned tool versions — read by the justfile and by every CI workflow
 PLAN.md           Roadmap and the single status source
 ```
 
@@ -227,7 +236,7 @@ The tier is not a documentation convention — it is a field the code carries an
 
 **Determinism:** Same inputs + standard/profile → identical outputs regardless of worker count. Map iteration must never influence numeric results. Partial results merge in fixed order (no "first finished wins"). See `docs/policies/determinism.md`.
 
-**Formatting:** Enforced via `just fmt` (treefmt: gofumpt + gci + shfmt + prettier). `just check-formatted` is the CI gate — and it writes; see the caveat above.
+**Formatting:** Enforced via `just fmt` (treefmt: gofumpt + gci + shfmt + shellcheck + prettier), at the versions `tools.versions` pins. `just check-formatted` is the CI gate and is read-only; see the note above.
 
 **Linting:** `just lint` runs golangci-lint v2 with `default: all` **minus a tuned disable list**, plus path- and text-scoped exclusion rules. It is not "all linters enabled". Every disable and exclusion is justified in `.golangci.yml` itself and in `docs/lint-triage.md` — keep the two in sync. `issues.uniq-by-line` is deliberately off so a finding cannot hide behind another on the same line. Leave the tree with no findings; fix issues before committing rather than adding suppressions.
 

@@ -34,10 +34,13 @@ jobs:
       # The check itself lives in the justfile so a developer can run exactly
       # what CI runs, as AGENTS.md requires of every gate. Installing just costs
       # a few seconds and is still far cheaper than Go CI's toolchain setup.
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Install just
         uses: extractions/setup-just@v4.0.0
         with:
-          just-version: 1.42.4
+          just-version: ${{ env.JUST_VERSION }}
 
       - name: Refuse tracked interoperability/ paths
         run: just check-no-third-party-data

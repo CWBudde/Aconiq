@@ -24,9 +24,6 @@ concurrency:
 # deliberately. `workflow_run` fires when *any one* listed workflow finishes, not
 # when both pass, and Frontend CI is path-filtered — so a push touching neither
 # tree would leave the deploy waiting on a workflow that never ran.
-env:
-  JUST_VERSION: 1.42.4
-
 jobs:
   frontend-checks:
     runs-on: ubuntu-latest
@@ -34,11 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          # Keep in sync with .github/workflows/frontend-ci.yml.
-          bun-version: 1.3.7
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         working-directory: frontend
@@ -66,6 +65,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
 
       - name: Install just
         uses: extractions/setup-just@v4.0.0
@@ -99,12 +101,13 @@ jobs:
       - name: Copy wasm_exec.js
         run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
 
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          # Pinned exactly (house style, cf. .trunk/trunk.yaml); keep in sync
-          # with .github/workflows/frontend-ci.yml.
-          bun-version: 1.3.7
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install frontend dependencies
         working-directory: frontend
