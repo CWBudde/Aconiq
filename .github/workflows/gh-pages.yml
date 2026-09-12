@@ -89,17 +89,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-
-      - name: Build WASM kernel
-        working-directory: backend
-        run: GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
-
-      - name: Copy wasm_exec.js
-        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
+      - name: Build the WASM kernel
+        uses: ./.github/actions/wasm-kernel
 
       - name: Pinned tool versions
         uses: ./.github/actions/toolchain

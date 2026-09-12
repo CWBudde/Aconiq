@@ -207,8 +207,20 @@ fe-lint-fix:
     cd frontend && bun run lint:fix
 
 # Run frontend tests
+#
+# The browser-CLI parity suites need frontend/public/aconiq.wasm, which is a
+# gitignored build output, and skip with a reason when it is absent. Use
+# `fe-test-wasm` to build it and require them to run.
 fe-test:
     cd frontend && bun run test
+
+# Run frontend tests with the browser-CLI parity suites required to run.
+#
+# ACONIQ_REQUIRE_WASM turns a missing kernel from a skip into a failure, which is
+# what `.github/workflows/frontend-ci.yml` sets: a parity suite that quietly
+# checked nothing would be a silent green.
+fe-test-wasm: wasm-build
+    cd frontend && ACONIQ_REQUIRE_WASM=1 bun run test
 
 # Check JS bundle size budgets (requires a prior fe-build)
 fe-bundle-check:
@@ -219,7 +231,7 @@ fe-e2e:
     cd frontend && bun run test:e2e
 
 # Run all frontend checks (typecheck, lint, test, build, bundle-check)
-fe-ci: fe-typecheck fe-lint fe-test fe-build fe-bundle-check
+fe-ci: fe-typecheck fe-lint fe-test-wasm fe-build fe-bundle-check
 
 # Refuse tracked interoperability/ paths
 #

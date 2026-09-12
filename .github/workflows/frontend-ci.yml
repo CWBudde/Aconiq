@@ -1,10 +1,13 @@
 name: Frontend CI
 
-# `backend/**` is in the filter because the frontend depends on the Go tree: the
-# WASM kernel is built from backend/cmd/wasm and its call contract is mirrored by
-# hand in src/wasm/types.ts, which src/wasm/surface-types.test.ts checks against
-# the Go constants. Without it a backend-only change could break the frontend
-# without ever running frontend CI.
+# `backend/**` is in the filter because the frontend depends on the Go tree, and
+# since the parity tests landed it depends on it by compiling it: this job builds
+# the WASM kernel from backend/cmd/wasm and runs it. src/wasm/kernel-parity
+# checks the kernel against the CI-safe acceptance goldens, and
+# src/api/browser-parity checks the browser run path against goldens the Go tree
+# writes from GeoJSON models both targets read. A backend-only change can move
+# either, so without this filter it could break the frontend without ever running
+# frontend CI.
 #
 # The `pull_request` trigger deliberately carries no paths filter, unlike the
 # `push` one. `frontend-ci` is a required status check in the `default-branch`
@@ -32,6 +35,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Before the Bun steps: `bun run test` runs the browser-CLI parity suites,
+      # which load this artifact. ACONIQ_REQUIRE_WASM below turns a missing one
+      # from a skip into a failure, so the build cannot be quietly lost.
+      - name: Build the WASM kernel
+        uses: ./.github/actions/wasm-kernel
+
       - name: Pinned tool versions
         uses: ./.github/actions/toolchain
 
@@ -54,6 +63,12 @@ jobs:
 
       - name: Test
         working-directory: frontend
+        env:
+          # Refuse to let the parity suites skip. Locally a missing kernel is a
+          # skip, because it is a gitignored build output and a fresh checkout
+          # has none; here its absence means the step above silently did
+          # nothing, which is the one outcome that must be red.
+          ACONIQ_REQUIRE_WASM: "1"
         run: bun run test
 
       - name: Build
