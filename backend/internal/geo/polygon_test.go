@@ -118,17 +118,47 @@ func TestPolygonCentroid(t *testing.T) {
 			want: Point2D{X: 0.5, Y: 0.5},
 		},
 		{
-			// Holes are ignored by design: the exterior ring is what positions
-			// an area source.
-			name: "hole does not move the centroid",
+			// A hole centred on the exterior removes area symmetrically, so the
+			// Flächenschwerpunkt does not move. This is the case that made the
+			// old exterior-only implementation look correct.
+			name: "a centred hole leaves the centroid where it was",
 			rings: [][]Point2D{
 				unitSquare[0],
 				closedRing(
-					Point2D{X: 0.1, Y: 0.1}, Point2D{X: 0.2, Y: 0.1},
-					Point2D{X: 0.2, Y: 0.2}, Point2D{X: 0.1, Y: 0.2},
+					Point2D{X: 0.4, Y: 0.4}, Point2D{X: 0.6, Y: 0.4},
+					Point2D{X: 0.6, Y: 0.6}, Point2D{X: 0.4, Y: 0.6},
 				),
 			},
 			want: Point2D{X: 0.5, Y: 0.5},
+		},
+		{
+			// An off-centre hole does move it, away from the removed area.
+			// Exterior: A = 1 at (0.5, 0.5). Hole: A = 0.04 at (0.1, 0.1).
+			// C_x = (1·0.5 − 0.04·0.1) / 0.96 = 0.496 / 0.96 = 0.51666…, same
+			// in y — the centroid moves away from the corner the hole removes.
+			name: "an off-centre hole shifts the centroid away from it",
+			rings: [][]Point2D{
+				unitSquare[0],
+				closedRing(
+					Point2D{X: 0, Y: 0}, Point2D{X: 0.2, Y: 0},
+					Point2D{X: 0.2, Y: 0.2}, Point2D{X: 0, Y: 0.2},
+				),
+			},
+			want: Point2D{X: 0.5166666666666667, Y: 0.5166666666666667},
+		},
+		{
+			// A hole wound the same way as its exterior is still a hole: ring
+			// position decides, not winding, so PolygonCentroid and PolygonArea
+			// agree on which ring is which.
+			name: "a hole is identified by position, not winding",
+			rings: [][]Point2D{
+				unitSquare[0],
+				closedRing(
+					Point2D{X: 0, Y: 0}, Point2D{X: 0, Y: 0.2},
+					Point2D{X: 0.2, Y: 0.2}, Point2D{X: 0.2, Y: 0},
+				),
+			},
+			want: Point2D{X: 0.5166666666666667, Y: 0.5166666666666667},
 		},
 	}
 

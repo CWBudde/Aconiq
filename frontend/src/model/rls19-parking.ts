@@ -50,11 +50,7 @@ function normalizeVocabulary(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-/** Rings of a single GeoJSON Polygon, or null when the geometry is not one. */
-export function parkingPolygonRings(feature: ModelFeature): Point2D[][] | null {
-  if (feature.geometry.type !== "Polygon") return null;
-
-  const rings = feature.geometry.coordinates as unknown;
+function parseRings(rings: unknown): Point2D[][] | null {
   if (!Array.isArray(rings) || rings.length === 0) return null;
 
   const parsed: Point2D[][] = [];
@@ -76,15 +72,83 @@ export function parkingPolygonRings(feature: ModelFeature): Point2D[][] | null {
   return parsed;
 }
 
+/**
+ * Every polygon part of a feature, or null when the geometry is neither a
+ * Polygon nor a MultiPolygon. Mirrors `polygonsFromFeature` on the Go side: a
+ * Polygon is one part, a MultiPolygon is one part per member.
+ */
+export function polygonParts(feature: ModelFeature): Point2D[][][] | null {
+  if (feature.geometry.type === "Polygon") {
+    const rings = parseRings(feature.geometry.coordinates);
+    return rings === null ? null : [rings];
+  }
+
+  if (feature.geometry.type !== "MultiPolygon") return null;
+
+  const parts = feature.geometry.coordinates as unknown;
+  if (!Array.isArray(parts) || parts.length === 0) return null;
+
+  const parsed: Point2D[][][] = [];
+  for (const part of parts) {
+    const rings = parseRings(part);
+    if (rings === null) return null;
+    parsed.push(rings);
+  }
+  return parsed;
+}
+
+/**
+ * Rings of a feature that carries exactly one polygon, or null otherwise.
+ *
+ * A Parkplatz must be a single Polygon: the number of Stellplätze n can be
+ * neither split across parts nor duplicated into one lot per part, and §3.4 asks
+ * for a lot to be divided into Teilflächen by hand.
+ */
+export function parkingPolygonRings(feature: ModelFeature): Point2D[][] | null {
+  const parts = polygonParts(feature);
+  return parts !== null && parts.length === 1 ? (parts[0] ?? null) : null;
+}
+
+/** Below this a shoelace area counts as zero. Mirrors geo.areaEpsilon. */
+const AREA_EPSILON = 1e-12;
+
+/**
+ * Neumaier compensated summation, the TypeScript counterpart of Go's
+ * `numeric.CompensatedSum`.
+ *
+ * `docs/policies/determinism.md` §3 requires it where the term count scales
+ * with model size and the terms alternate in sign — which is exactly a shoelace
+ * sum over projected CRS coordinates, where the cross products are large and
+ * nearly cancel. A naive accumulator here would let a browser-derived
+ * Stellplatzfläche and centroid drift from the CLI's for the same polygon.
+ */
+class CompensatedSum {
+  private sum = 0;
+  private compensation = 0;
+
+  add(term: number): void {
+    const t = this.sum + term;
+    this.compensation +=
+      Math.abs(this.sum) >= Math.abs(term)
+        ? this.sum - t + term
+        : term - t + this.sum;
+    this.sum = t;
+  }
+
+  value(): number {
+    return this.sum + this.compensation;
+  }
+}
+
 function signedRingArea(ring: Point2D[]): number {
-  let sum = 0;
+  const sum = new CompensatedSum();
   for (let i = 0; i < ring.length - 1; i++) {
     const a = ring[i];
     const b = ring[i + 1];
     if (!a || !b) return 0;
-    sum += a.x * b.y - b.x * a.y;
+    sum.add(a.x * b.y - b.x * a.y);
   }
-  return sum / 2;
+  return sum.value() / 2;
 }
 
 /** Exterior ring less every hole, clamped at zero. Mirrors geo.PolygonArea. */
@@ -92,25 +156,25 @@ export function polygonArea(rings: Point2D[][]): number {
   const exterior = rings[0];
   if (!exterior) return 0;
 
-  let total = Math.abs(signedRingArea(exterior));
+  const total = new CompensatedSum();
+  total.add(Math.abs(signedRingArea(exterior)));
   for (const hole of rings.slice(1)) {
-    total -= Math.abs(signedRingArea(hole));
+    total.add(-Math.abs(signedRingArea(hole)));
   }
-  return total < 0 ? 0 : total;
+
+  const value = total.value();
+  return value < 0 ? 0 : value;
 }
 
-/**
- * Area centroid of the exterior ring, or null where it is undefined — a ring of
- * fewer than four points, one enclosing no area, or a non-finite result.
- * Mirrors geo.PolygonCentroid, holes ignored for the same reason.
- */
-export function polygonCentroid(rings: Point2D[][]): Point2D | null {
-  const ring = rings[0];
-  if (!ring || ring.length < 4) return null;
+/** One closed ring's absolute area and its own centroid. Mirrors ringCentroid. */
+function ringCentroid(
+  ring: Point2D[],
+): { area: number; centroid: Point2D } | null {
+  if (ring.length < 4) return null;
 
-  let doubleArea = 0;
-  let cx = 0;
-  let cy = 0;
+  const doubleArea = new CompensatedSum();
+  const cx = new CompensatedSum();
+  const cy = new CompensatedSum();
 
   for (let i = 0; i < ring.length - 1; i++) {
     const a = ring[i];
@@ -125,15 +189,52 @@ export function polygonCentroid(rings: Point2D[][]): Point2D | null {
       return null;
     }
     const cross = a.x * b.y - b.x * a.y;
-    doubleArea += cross;
-    cx += (a.x + b.x) * cross;
-    cy += (a.y + b.y) * cross;
+    doubleArea.add(cross);
+    cx.add((a.x + b.x) * cross);
+    cy.add((a.y + b.y) * cross);
   }
 
-  if (Math.abs(doubleArea) < 1e-12) return null;
+  const area2 = doubleArea.value();
+  if (Math.abs(area2) < AREA_EPSILON) return null;
 
-  const factor = 1 / (3 * doubleArea);
-  const point = { x: cx * factor, y: cy * factor };
+  const factor = 1 / (3 * area2);
+  return {
+    area: Math.abs(area2) / 2,
+    centroid: { x: cx.value() * factor, y: cy.value() * factor },
+  };
+}
+
+/**
+ * Area centroid of the polygon, holes subtracted, or null where it is
+ * undefined. Mirrors geo.PolygonCentroid — including that holes are identified
+ * by ring position rather than by winding, so the centroid and the area agree
+ * on which ring is which.
+ */
+export function polygonCentroid(rings: Point2D[][]): Point2D | null {
+  const exterior = rings[0] ? ringCentroid(rings[0]) : null;
+  if (exterior === null) return null;
+
+  const area = new CompensatedSum();
+  const mx = new CompensatedSum();
+  const my = new CompensatedSum();
+
+  area.add(exterior.area);
+  mx.add(exterior.area * exterior.centroid.x);
+  my.add(exterior.area * exterior.centroid.y);
+
+  for (const hole of rings.slice(1)) {
+    const parsed = ringCentroid(hole);
+    if (parsed === null) continue;
+
+    area.add(-parsed.area);
+    mx.add(-parsed.area * parsed.centroid.x);
+    my.add(-parsed.area * parsed.centroid.y);
+  }
+
+  const netArea = area.value();
+  if (Math.abs(netArea) < AREA_EPSILON) return null;
+
+  const point = { x: mx.value() / netArea, y: my.value() / netArea };
   return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
 }
 

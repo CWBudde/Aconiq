@@ -180,23 +180,67 @@ describe("buildParkingSources", () => {
     ).toThrow(/pkw, motorrad, lkw-omnibus/);
   });
 
-  it("refuses a MultiPolygon, naming the Teilflächen rule", () => {
+  const square = (offset: number): [number, number][][] => [
+    [
+      [offset, 0],
+      [offset + 10, 0],
+      [offset + 10, 10],
+      [offset, 10],
+      [offset, 0],
+    ],
+  ];
+
+  it("refuses a multi-part MultiPolygon, naming the Teilflächen rule", () => {
     const feature = lot(stated);
     feature.geometry = {
       type: "MultiPolygon",
+      coordinates: [square(0), square(50)],
+    };
+
+    expect(() => buildParkingSources([feature])).toThrow(/single Polygon/);
+  });
+
+  it("accepts a MultiPolygon carrying exactly one part, as the CLI does", () => {
+    // rls19ParkingPolygon refuses on len(polygons) != 1, not on the geometry
+    // type, so a one-member MultiPolygon is a Polygon by another spelling.
+    const feature = lot(stated);
+    feature.geometry = { type: "MultiPolygon", coordinates: [square(0)] };
+
+    const { sources } = buildParkingSources([feature]);
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.center).toEqual({ x: 5, y: 5 });
+  });
+
+  it("subtracts an off-centre hole from both the area and the centre", () => {
+    const feature = lot(stated);
+    feature.geometry = {
+      type: "Polygon",
       coordinates: [
         [
-          [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 0],
-          ],
+          [0, 0],
+          [10, 0],
+          [10, 10],
+          [0, 10],
+          [0, 0],
+        ],
+        [
+          [0, 0],
+          [2, 0],
+          [2, 2],
+          [0, 2],
+          [0, 0],
         ],
       ],
     };
 
-    expect(() => buildParkingSources([feature])).toThrow(/single Polygon/);
+    const { sources } = buildParkingSources([feature]);
+
+    // Exterior A = 100 at (5,5); hole A = 4 at (1,1).
+    // C = (100·5 − 4·1) / 96 = 496/96 = 5.1666…, away from the removed corner.
+    expect(sources[0]?.area_m2).toBeCloseTo(96, 9);
+    expect(sources[0]?.center.x).toBeCloseTo(496 / 96, 9);
+    expect(sources[0]?.center.y).toBeCloseTo(496 / 96, 9);
   });
 
   it("falls back to a feature-index id and skips non-area features", () => {

@@ -97,6 +97,12 @@ A Parkplatz is a `source` feature with `source_type: area` and a single
 the lot is propagated from, so neither is asserted by hand — a mistyped centroid
 is the input that would silently move the level.
 
+A polygon hole is subtracted from both the Stellplatzfläche and the centroid, so
+a lot with a building in the middle is propagated from the Flächenschwerpunkt of
+what is left — Nr. 3.2 puts the substitute point source "im Flächenschwerpunkt
+jeder Teilfläche". A single-part `MultiPolygon` is accepted as a Polygon by
+another spelling.
+
 There is deliberately **no** `rls19_parking_area_m2` property: Eq. 10's
 `−10·lg[P/1m²]` cancels when the lot is propagated as a total-power point
 source, so such a property would be a required value that provably changes no

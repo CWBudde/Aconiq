@@ -204,13 +204,18 @@ func BBoxFromPolygon(rings [][]Point2D) (BBox, bool) {
 }
 
 // PolygonArea returns the plan-view area of a polygon in square units of the
-// projected CRS: the exterior ring less every hole. Rings format: rings[0] is
+// projected CRS: the exterior ring less every hole. PolygonCentroid subtracts
+// the same holes, so the pair describes one surface. Rings format: rings[0] is
 // the exterior, rings[1:] are holes; rings should be closed. Winding order does
 // not matter — each ring contributes its absolute area. A polygon whose holes
 // exceed its exterior returns 0 rather than a negative area.
 //
 // The shoelace terms alternate in sign and their count scales with the ring, so
 // the reduction is compensated per docs/policies/determinism.md §3.
+// areaEpsilon is the threshold below which a shoelace area counts as zero: the
+// geometry encloses nothing and has no centroid to report.
+const areaEpsilon = 1e-12
+
 func PolygonArea(rings [][]Point2D) float64 {
 	if len(rings) == 0 {
 		return 0
@@ -228,14 +233,22 @@ func PolygonArea(rings [][]Point2D) float64 {
 	return total
 }
 
-// PolygonCentroid returns the area centroid of a polygon's exterior ring, and
-// reports whether it is defined. It is false for a ring with fewer than four
-// points, for a degenerate ring enclosing no area, and for any ring whose
-// centroid is not finite — the cases where a caller must refuse the geometry
-// rather than place a source at an arbitrary point.
+// PolygonCentroid returns the area centroid of a polygon, and reports whether
+// it is defined. It is false for an exterior ring with fewer than four points,
+// for a degenerate ring enclosing no area, for a polygon whose holes cancel its
+// exterior, and for any result that is not finite — the cases where a caller
+// must refuse the geometry rather than place a source at an arbitrary point.
 //
-// Holes are ignored: the exterior ring is what positions an area source, and a
-// hole-aware centroid would move it off the footprint a caller actually drew.
+// Holes are subtracted, as PolygonArea subtracts them: the two must describe the
+// same surface, or an area source is placed on a footprint of one size and
+// propagated as another. RLS-19 Nr. 3.2 puts the substitute point source "im
+// Flächenschwerpunkt jeder Teilfläche", and the Teilfläche of a lot with a
+// courtyard in it is the exterior less that courtyard — an exterior-only
+// centroid can sit inside the hole.
+//
+// The centroid of a region that is not simply connected may fall outside it.
+// That is a property of the Flächenschwerpunkt the standard asks for, not of
+// this implementation.
 //
 // Like PolygonArea, the shoelace accumulation is compensated.
 func PolygonCentroid(rings [][]Point2D) (Point2D, bool) {
@@ -243,9 +256,55 @@ func PolygonCentroid(rings [][]Point2D) (Point2D, bool) {
 		return Point2D{}, false
 	}
 
-	ring := rings[0]
-	if len(ring) < 4 {
+	exteriorArea, exterior, ok := ringCentroid(rings[0])
+	if !ok {
 		return Point2D{}, false
+	}
+
+	var (
+		area numeric.CompensatedSum
+		mx   numeric.CompensatedSum
+		my   numeric.CompensatedSum
+	)
+
+	area.Add(exteriorArea)
+	mx.Add(exteriorArea * exterior.X)
+	my.Add(exteriorArea * exterior.Y)
+
+	for _, hole := range rings[1:] {
+		holeArea, holeCentroid, holeOK := ringCentroid(hole)
+		if !holeOK {
+			continue // a degenerate hole removes no area and moves no moment
+		}
+
+		area.Add(-holeArea)
+		mx.Add(-holeArea * holeCentroid.X)
+		my.Add(-holeArea * holeCentroid.Y)
+	}
+
+	netArea := area.Sum()
+	if math.Abs(netArea) < areaEpsilon {
+		return Point2D{}, false
+	}
+
+	point := Point2D{X: mx.Sum() / netArea, Y: my.Sum() / netArea}
+	if !point.IsFinite() {
+		return Point2D{}, false
+	}
+
+	return point, true
+}
+
+// ringCentroid returns one closed ring's absolute area and its own centroid.
+//
+// The centroid is winding-independent: the moment sums and the signed double
+// area flip sign together, so their quotient does not. The area is returned
+// absolute so PolygonCentroid can decide what is exterior and what is a hole by
+// ring position, exactly as PolygonArea does, rather than by trusting a winding
+// convention the input may not follow.
+func ringCentroid(ring []Point2D) (float64, Point2D, bool) {
+	if len(ring) < 4 {
+		return 0, Point2D{}, false
 	}
 
 	var (
@@ -256,7 +315,7 @@ func PolygonCentroid(rings [][]Point2D) (Point2D, bool) {
 
 	for i := range len(ring) - 1 {
 		if !ring[i].IsFinite() || !ring[i+1].IsFinite() {
-			return Point2D{}, false
+			return 0, Point2D{}, false
 		}
 
 		cross := ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y
@@ -267,18 +326,13 @@ func PolygonCentroid(rings [][]Point2D) (Point2D, bool) {
 	}
 
 	area2 := doubleArea.Sum()
-	if math.Abs(area2) < 1e-12 {
-		return Point2D{}, false
+	if math.Abs(area2) < areaEpsilon {
+		return 0, Point2D{}, false
 	}
 
 	factor := 1.0 / (3.0 * area2)
 
-	point := Point2D{X: cx.Sum() * factor, Y: cy.Sum() * factor}
-	if !point.IsFinite() {
-		return Point2D{}, false
-	}
-
-	return point, true
+	return math.Abs(area2) / 2.0, Point2D{X: cx.Sum() * factor, Y: cy.Sum() * factor}, true
 }
 
 // signedRingArea returns the signed shoelace area of one closed ring: positive
