@@ -4,13 +4,36 @@ set shell := ["bash", "-uc"]
 default:
     @just --list
 
-# Format all code using treefmt
-fmt:
-    treefmt --allow-missing-formatter
+# Format all code using treefmt.
+#
+# `check-tools` first, and without --allow-missing-formatter: treefmt runs
+# whatever is on PATH and skips a missing formatter silently, so an unpinned or
+# absent formatter used to rewrite files the pinned one considers correct — or
+# check nothing at all — with no signal either way.
+fmt: check-formatters
+    treefmt
 
-# Check if code is formatted correctly
-check-formatted:
-    treefmt --allow-missing-formatter --fail-on-change
+# Check that the tree is formatted, without modifying it.
+#
+# `treefmt --fail-on-change` formats in place and then reports, so it cannot be
+# used as a check: the CI step rewrote its own checkout and a local run
+# reformatted unrelated work. The script mirrors the tree and formats the copy.
+check-formatted: check-formatters
+    ./scripts/check-formatted.sh
+
+# Verify the installed toolchain against the pins in tools.versions
+check-tools:
+    ./scripts/check-tools.sh
+
+# Install the toolchain at exactly the versions tools.versions pins
+install-tools:
+    ./scripts/install-tools.sh
+
+# The formatter subset of `check-tools`, quiet unless something is wrong. Every
+# recipe that runs treefmt depends on it.
+[private]
+check-formatters:
+    ./scripts/check-tools.sh --quiet format
 
 # Run linters (from backend/)
 # No --timeout flag: a CLI flag silently overrides `run.timeout` in

@@ -1,0 +1,40 @@
+name: Pinned toolchain
+description: >
+  Export the pins in tools.versions into the job environment and, optionally,
+  install them. Every workflow uses this action, so a version lives in exactly
+  one place and CI cannot drift from `just install-tools`.
+
+inputs:
+  install:
+    description: >
+      Space-separated install-tools.sh groups (format, lint, licenses, vuln,
+      all). Empty installs nothing and only exports the versions.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # tools.versions is plain KEY=value precisely so it can be appended to
+    # $GITHUB_ENV; the grep drops its comment block, which that parser rejects.
+    #
+    # TOOLS_BIN is prepended to PATH rather than appended: the runner image
+    # ships its own shellcheck, and a pin that loses to an older copy earlier in
+    # PATH is not a pin.
+    - name: Export pinned tool versions
+      shell: bash
+      run: |
+        set -euo pipefail
+        grep -E '^[A-Z][A-Z0-9_]*=' tools.versions >> "${GITHUB_ENV}"
+        echo "TOOLS_BIN=${RUNNER_TEMP}/toolchain" >> "${GITHUB_ENV}"
+        mkdir -p "${RUNNER_TEMP}/toolchain"
+        echo "${RUNNER_TEMP}/toolchain" >> "${GITHUB_PATH}"
+
+    - name: Install pinned tools
+      if: inputs.install != ''
+      shell: bash
+      env:
+        INSTALL_GROUPS: ${{ inputs.install }}
+      # Unquoted on purpose: the input is a space-separated group list.
+      # shellcheck disable=SC2086
+      run: scripts/install-tools.sh ${INSTALL_GROUPS}

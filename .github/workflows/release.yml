@@ -17,11 +17,8 @@ on:
 permissions:
   contents: read
 
-# Tool versions are pinned exactly, same house style as go-ci.yml and
-# .trunk/trunk.yaml. Bump them deliberately.
-env:
-  JUST_VERSION: 1.42.4
-  GORELEASER_VERSION: v2.18.0
+# Tool versions come from tools.versions at the repo root, exported into the job
+# by the `toolchain` action — see the comment in go-ci.yml.
 
 jobs:
   verify:
@@ -39,6 +36,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
 
       - name: Install just
         uses: extractions/setup-just@v4.0.0
@@ -105,6 +105,9 @@ jobs:
       # All seven targets (linux/darwin/windows on amd64+arm64, plus js/wasm)
       # cross-compile from this one runner because every build is
       # CGO_ENABLED=0 — see the comment in .goreleaser.yaml.
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

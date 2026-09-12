@@ -47,9 +47,11 @@ options = ["write"]
 includes = ["*.go"]
 priority = 1
 
-# Shell script checker
+# Shell script checker. -x follows sourced files (scripts/ source tools.versions),
+# which shellcheck otherwise reports as an unresolved source.
 [formatter.shellcheck]
 command = "shellcheck"
+options = ["-x"]
 includes = ["*.sh"]
 
 # Shell script formatter - runs after shellcheck

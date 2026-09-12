@@ -32,12 +32,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          # Pinned exactly (house style, cf. .trunk/trunk.yaml); keep in sync
-          # with .github/workflows/gh-pages.yml.
-          bun-version: 1.3.7
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         working-directory: frontend

@@ -5,7 +5,10 @@ Thank you for your interest in contributing to Aconiq! This document explains ho
 ## Getting started
 
 1. Fork and clone the repository.
-2. Install prerequisites: Go 1.25+, [just](https://github.com/casey/just), and the formatters listed in `treefmt.toml`.
+2. Install prerequisites: Go 1.25+, [just](https://github.com/casey/just) and [bun](https://bun.sh)
+   at the versions `tools.versions` pins, then `just install-tools` for the rest of the toolchain
+   (formatters, linter, license and vulnerability scanners). `just check-tools` reports what you
+   have against those pins.
 3. Run `just ci` to verify everything builds, passes tests, and is formatted.
 
 ## Development workflow
