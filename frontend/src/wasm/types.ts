@@ -112,11 +112,54 @@ export interface ParkingSource {
   movements_per_space_night: number | null;
 }
 
+export interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+// TerrainEdge is a Böschungskante or Böschungsfuß — a 3D polyline.
+export interface TerrainEdge {
+  id: string;
+  geometry: Point3D[];
+}
+
+export interface TerrainSlope {
+  slope_crest: TerrainEdge;
+  slope_foot?: TerrainEdge;
+}
+
+export interface TerrainProfile {
+  slopes: TerrainSlope[];
+}
+
+// ReflectorType is a Go int — serializes as a number. It indexes Tabelle 8:
+// 0 = unspecified (ReflectionLossDB applies, else the 0.5 dB facade row),
+// 1 = schallharte Fassade oder Wand, 2 = schallabsorbierende Wand,
+// 3 = stark schallabsorbierende Wand. As with JunctionType the ordinal is
+// Go's own iota, not a table row this project renumbers.
+export type ReflectorType = 0 | 1 | 2 | 3;
+
+export interface Reflector {
+  id: string;
+  geometry: Point2D[];
+  height_m: number;
+  type?: ReflectorType;
+  reflection_loss_db?: number;
+}
+
 // PropagationConfig has no json tags in Go → PascalCase keys.
+//
+// Browser mode builds only Buildings and ParkingSources today; Terrain and
+// Reflectors are mirrored because the kernel accepts them and the parity tests
+// drive them, not because a model can express them yet.
 export interface PropagationConfig {
   SegmentLengthM: number;
   MinDistanceM: number;
   ReceiverHeightM: number;
+  ReceiverTerrainZ?: number;
+  Terrain?: TerrainProfile[];
+  Reflectors?: Reflector[];
   Buildings?: Building[];
   ParkingSources?: ParkingSource[];
 }
