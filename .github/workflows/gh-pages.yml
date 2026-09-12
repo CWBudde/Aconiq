@@ -31,6 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The frontend test suite includes the browser-CLI parity suites, and both
+      # artifacts they load are gitignored build outputs. Without this step they
+      # skip and this job reports green having checked the one thing it is here
+      # to check.
+      - name: Build the WASM kernel
+        uses: ./.github/actions/wasm-kernel
+
       - name: Pinned tool versions
         uses: ./.github/actions/toolchain
 
@@ -54,6 +61,10 @@ jobs:
       - name: Test
         working-directory: frontend
         run: bun run test
+        env:
+          # A kernel that failed to build must fail this job rather than quietly
+          # reduce it to the tests that need no kernel.
+          ACONIQ_REQUIRE_WASM: "1"
 
   backend-checks:
     runs-on: ubuntu-latest
