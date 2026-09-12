@@ -303,6 +303,7 @@
   "msg_no_exports_empty_state": "No exports yet. Use aconiq export from the CLI to create an export bundle.",
   "msg_no_log_lines": "No log lines yet.",
   "msg_no_raster_artifacts": "No raster artifacts for this run.",
+  "msg_no_receiver_artifacts": "No receiver table for this run.",
   "msg_no_records_match_filter": "No records match the filter.",
   "msg_no_runs_empty_state": "No runs yet. Click New Run to get started.",
   "msg_no_runs_match_filters": "No runs match the current filters.",
@@ -390,5 +391,7 @@
   "error_osm_fetch_failed": "Fetching from OpenStreetMap failed",
   "label_layers": "Layers",
   "label_draw_tools": "Drawing tools",
-  "label_edit_history": "Undo and redo"
+  "label_edit_history": "Undo and redo",
+  "action_hide_layer": "Hide {label}",
+  "action_show_layer": "Show {label}"
 }

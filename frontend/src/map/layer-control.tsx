@@ -36,7 +36,11 @@ function LayerToggle({ group }: { group: LayerGroup }) {
       size="sm"
       className="h-7 justify-start gap-2 px-2 text-xs"
       onClick={handleToggle}
-      aria-label={`${visible ? "Hide" : "Show"} ${group.label()}`}
+      aria-label={
+        visible
+          ? m.action_hide_layer({ label: group.label() })
+          : m.action_show_layer({ label: group.label() })
+      }
     >
       {visible ? (
         <Eye className="size-3.5" aria-hidden="true" />

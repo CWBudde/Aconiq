@@ -41,6 +41,7 @@ import { formatDurationBetween, formatTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge, type RunStatus } from "@/ui/status-badge";
+import { statusLabel } from "@/ui/run-status";
 import { useCreateRun, useStandards, useRuns, useRunLog } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import type {
@@ -374,7 +375,7 @@ function RunFilterBar({
           <SelectItem value="_all">{m.label_status_filter()}</SelectItem>
           {statuses.map((s) => (
             <SelectItem key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {statusLabel(s)}
             </SelectItem>
           ))}
         </SelectContent>

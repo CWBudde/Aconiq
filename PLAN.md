@@ -978,10 +978,9 @@ Landed; the gates below hold and the pages are built on them:
 ### Phase E — i18n and German
 
 - [ ] Validation messages become codes + params (`validate.ts:43-437` is English-only and rendered
-      verbatim); add the keys still missing after Phase B (`layer-control.tsx:39` builds
-      "Hide/Show …" in English, the "Map unavailable"/"Retry" strings in `map-view.tsx`, whose
-      test mocks the messages module to `""` and has to stop first, and the shadcn `sr-only`
-      texts); strip trailing colons from `label_*` keys (`Min::` today); paraglide
+      verbatim); add the keys still missing after Phase B (the "Map unavailable"/"Retry" strings in
+      `map-view.tsx`, whose test mocks the messages module to `""` and has to stop first, and the
+      shadcn `sr-only` texts); strip trailing colons from `label_*` keys (`Min::` today); paraglide
       plural variants for `run{s}`; language switch without `location.reload()`; enable
       `react/jsx-no-literals` for `pages/`, `map/`, `ui/`.
 - [ ] German terminology and register pass: Immissionsort, Schallquelle,

@@ -330,23 +330,29 @@ export default function ExportPage() {
     [runsWithExports, selectedRunId],
   );
 
-  if (isLoading) {
+  // The heading stays above both transient states so every state of the page
+  // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
+  if (isLoading || error) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2
-          aria-hidden="true"
-          className="h-6 w-6 animate-spin text-muted-foreground"
+      <div className="flex flex-1 flex-col">
+        <PageHeader
+          className="border-b px-4 py-3"
+          title={m.page_title_exports()}
         />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-1 items-start justify-center p-8">
-        <Callout variant="destructive" icon={AlertCircle}>
-          {m.msg_api_error_export()}
-        </Callout>
+        {error ? (
+          <div className="flex flex-1 items-start justify-center p-8">
+            <Callout variant="destructive" icon={AlertCircle}>
+              {m.msg_api_error_export()}
+            </Callout>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2
+              aria-hidden="true"
+              className="h-6 w-6 animate-spin text-muted-foreground"
+            />
+          </div>
+        )}
       </div>
     );
   }
