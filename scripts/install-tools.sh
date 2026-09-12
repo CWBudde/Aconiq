@@ -99,7 +99,7 @@ install_treefmt() {
 }
 
 install_shellcheck() {
-	local version="$SHELLCHECK_VERSION" scarch url tmp
+	local version="$SHELLCHECK_VERSION" scarch url
 	case "$arch" in
 	x86_64 | amd64) scarch=x86_64 ;;
 	arm64 | aarch64) scarch=aarch64 ;;
@@ -110,12 +110,20 @@ install_shellcheck() {
 	esac
 
 	url="https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.${os}.${scarch}.tar.xz"
-	tmp="$(mktemp -d)"
-	trap 'rm -rf "$tmp"' RETURN
 
 	echo "--> shellcheck $version"
-	curl -sSfL "$url" | tar -xJ -C "$tmp"
-	install -m 0755 "$tmp/shellcheck-${version}/shellcheck" "$tools_bin/shellcheck"
+
+	# The only tool whose archive has to be unpacked before installing, so the
+	# scratch directory and the trap that removes it live in a subshell: an EXIT
+	# trap there fires on the way out, success or failure, and leaves no handler
+	# behind in the shell that called it.
+	(
+		tmp="$(mktemp -d)"
+		trap 'rm -rf "$tmp"' EXIT
+
+		curl -sSfL "$url" | tar -xJ -C "$tmp"
+		install -m 0755 "$tmp/shellcheck-${version}/shellcheck" "$tools_bin/shellcheck"
+	)
 }
 
 # prettier is installed into $TOOLS_BIN rather than globally: a global install
