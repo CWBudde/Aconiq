@@ -82,35 +82,61 @@ var surfaceCorrectionTable = map[SurfaceType]SurfaceCorrectionEntry{
 	SurfaceUnpavedOrDamaged: legacyVehicleSurfaceCorrection([4]float64{4.0, 4.0, 2.0, 3.0}),
 }
 
-// SurfaceCorrection returns the DStrO correction for a given surface type
-// and vehicle group at the given speed. Returns 0 if the surface is unknown
-// or if the selected Table 4 cell is not applicable for that speed range.
+// SurfaceCorrection returns the DStrO correction for a given surface type and
+// vehicle group at the given speed, in dB.
+//
+// It returns 0 both for a defined zero and for a cell Tabelle 4a does not
+// grant. That ambiguity is why RoadSource.Validate refuses an out-of-band
+// surface/speed pairing before any level is computed: by the time a validated
+// source reaches this function, every pairing it can ask about is tabulated,
+// and the surviving 0 is a defensive fallback for a caller that skipped
+// validation rather than a modelling semantic. Callers that need to tell the
+// two apart use lookupSurfaceCorrection.
+func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float64 {
+	correction, _ := lookupSurfaceCorrection(st, vg, speedKPH)
+
+	return correction
+}
+
+// lookupSurfaceCorrection resolves one Tabelle 4a / 4b cell and reports whether
+// the table grants a value there. It is the single decision about which cell a
+// surface, vehicle group and speed select, so the emission path and
+// RoadSource.validateSurfaceApplicability cannot disagree about it.
+//
+// ok is false in exactly two cases, and a caller that refuses on it must treat
+// them alike: the surface is absent from the table, or the selected cell is one
+// Tabelle 4a crosses out (OPA at or below 60 km/h, say). ok is true for a
+// tabulated value including a defined zero — "Nicht geriffelter Gussasphalt" is
+// zero in all four cells — and for Kräder.
 //
 // Kräder carry no Straßendeckschichtkorrektur at all: the Anmerkung to
 // Section 3.3.3 prescribes "als Korrektur für den Straßendeckschichttyp ist ein
-// Wert von 0 anzusetzen", for every surface type including Pflasterbeläge.
-func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float64 {
+// Wert von 0 anzusetzen", for every surface type including Pflasterbeläge. That
+// zero is prescribed, not missing, so ok is true.
+func lookupSurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) (float64, bool) {
 	if vg == Krad {
-		return 0
+		return 0, true
 	}
 
 	entry, ok := surfaceCorrectionTable[st]
 	if !ok {
-		return 0
+		return 0, false
 	}
 
 	if entry.UsesLegacyPerVehicle {
-		return entry.LegacyPerVehicle[vg]
+		return entry.LegacyPerVehicle[vg], true
 	}
 
+	// Tabelle 4b (Pflasterbeläge) is indexed by speed alone, with no vehicle
+	// split and no crossed-out cells, so it is always applicable.
 	if entry.UsesPavingThresholds {
 		switch {
 		case speedKPH <= 30:
-			return entry.Paving30
+			return entry.Paving30, true
 		case speedKPH <= 40:
-			return entry.Paving40
+			return entry.Paving40, true
 		default:
-			return entry.Paving50
+			return entry.Paving50, true
 		}
 	}
 
@@ -125,10 +151,40 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 	}
 
 	if math.IsNaN(correction) {
-		return 0
+		return 0, false
 	}
 
-	return correction
+	return correction, true
+}
+
+// surfaceCorrectionBandPhrase describes the speed band in which a surface's
+// Tabelle 4a row carries a value for a vehicle group, for use in the error
+// RoadSource.validateSurfaceApplicability returns.
+//
+// It is descriptive, never decisive: lookupSurfaceCorrection alone decides
+// whether a pairing is refused, and the worst a drift here can cause is a
+// misleading sentence rather than a wrong answer.
+func surfaceCorrectionBandPhrase(st SurfaceType, vg VehicleGroup) string {
+	entry, ok := surfaceCorrectionTable[st]
+	if !ok {
+		return "at no speed"
+	}
+
+	low, high := entry.LkwLow, entry.LkwHigh
+	if vg == Pkw {
+		low, high = entry.PkwLow, entry.PkwHigh
+	}
+
+	switch {
+	case math.IsNaN(low) && math.IsNaN(high):
+		return "at no speed"
+	case math.IsNaN(low):
+		return "above 60 km/h"
+	case math.IsNaN(high):
+		return "at 60 km/h and below"
+	default:
+		return "at every tabulated speed"
+	}
 }
 
 // GradientCorrection computes the Längsneigungskorrektur D_LN for a road
