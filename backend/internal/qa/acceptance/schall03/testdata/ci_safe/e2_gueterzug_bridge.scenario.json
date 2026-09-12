@@ -7,8 +7,8 @@
         {"x": 100, "y": 0}
       ],
       "elevation_m": 3,
-      "fahrbahn": 0,
-      "surface": 0,
+      "fahrbahn": "schwellengleis",
+      "surface": "none",
       "bridge_type": 2,
       "bridge_mitig": false,
       "curve_radius_m": 0,

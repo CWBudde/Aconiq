@@ -7,9 +7,9 @@
         {"x": 80, "y": 0}
       ],
       "elevation_m": 0,
-      "fahrbahn": 0,
-      "s_fahrbahn": 0,
-      "surface": 0,
+      "fahrbahn": "schwellengleis",
+      "s_fahrbahn": "schwellengleis",
+      "surface": "none",
       "bridge_type": 0,
       "curve_radius_m": 0,
       "strecke_max_kph": 25,

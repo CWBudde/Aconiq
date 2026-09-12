@@ -1,6 +1,8 @@
 package schall03
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -11,6 +13,16 @@ import (
 // therefore renumbered whenever the reference row moves; a wire format must
 // never carry those ordinals.  See PLAN.md 1.2 for the renumbering that made
 // this explicit.
+
+// The enumeration names used in wire-format error messages.  They mirror the
+// wording of the Parse* helpers so a bad name and a bad JSON type read the
+// same way.
+const (
+	kindFahrbahnart  = "Fahrbahnart"
+	kindSFahrbahnart = "Straßenbahn Fahrbahnart"
+	kindSurfaceCond  = "surface measure"
+	kindWallSurface  = "wall surface"
+)
 
 // fahrbahnartNames maps the Tabelle 7 vocabulary to FahrbahnartType.
 var fahrbahnartNames = []struct {
@@ -167,6 +179,125 @@ func WallSurfaceNames() []string {
 	}
 
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// JSON wire format
+// ---------------------------------------------------------------------------
+//
+// The four enumerations above are ordinals of Anlage 2 tables, and those
+// ordinals move whenever the reference row of a table moves.  Scenario files
+// therefore carry the names, never the numbers: a file written against an
+// older numbering must fail loudly rather than decode to a different track
+// type and shift levels by several dB in silence.  That is why a bare JSON
+// number is rejected instead of being accepted for compatibility — it removes
+// the need for a migration, because no old file can be misread.
+
+// jsonNull is the literal encoding/json hands to an UnmarshalJSON
+// implementation for a JSON null.
+var jsonNull = []byte("null")
+
+// decodeVocabularyJSON decodes one JSON value into an enum of the stable string
+// vocabulary.  Only names are accepted; a JSON null is a no-op, following the
+// encoding/json convention, and therefore leaves the reference row in place.
+func decodeVocabularyJSON[T ~int](
+	data []byte,
+	target *T,
+	kind string,
+	names []string,
+	parse func(string) (T, error),
+) error {
+	if bytes.Equal(bytes.TrimSpace(data), jsonNull) {
+		return nil
+	}
+
+	var name string
+
+	err := json.Unmarshal(data, &name)
+	if err != nil {
+		return fmt.Errorf(
+			"%s must be named, got %s: expected one of %s, because the Anlage 2 table ordinals are renumbered when the reference row moves and are not a wire format",
+			kind, string(data), strings.Join(names, ", "),
+		)
+	}
+
+	value, err := parse(name)
+	if err != nil {
+		return err
+	}
+
+	*target = value
+
+	return nil
+}
+
+// encodeVocabularyJSON encodes an enum as its canonical name.  The name is
+// found by parsing every accepted name back, so Marshal and Unmarshal are
+// exact inverses by construction rather than by an assumed table order.
+func encodeVocabularyJSON[T ~int](
+	value T,
+	kind string,
+	names []string,
+	parse func(string) (T, error),
+) ([]byte, error) {
+	for _, name := range names {
+		parsed, parseErr := parse(name)
+		if parseErr != nil || parsed != value {
+			continue
+		}
+
+		payload, err := json.Marshal(name)
+		if err != nil {
+			return nil, fmt.Errorf("encode %s %q: %w", kind, name, err)
+		}
+
+		return payload, nil
+	}
+
+	return nil, fmt.Errorf(
+		"%s ordinal %d has no name: expected one of %s",
+		kind, int(value), strings.Join(names, ", "),
+	)
+}
+
+// UnmarshalJSON decodes a Tabelle 7 Fahrbahnart from its stable name.
+func (t *FahrbahnartType) UnmarshalJSON(data []byte) error {
+	return decodeVocabularyJSON(data, t, kindFahrbahnart, FahrbahnartNames(), ParseFahrbahnart)
+}
+
+// MarshalJSON encodes a Tabelle 7 Fahrbahnart as its stable name.
+func (t FahrbahnartType) MarshalJSON() ([]byte, error) {
+	return encodeVocabularyJSON(t, kindFahrbahnart, FahrbahnartNames(), ParseFahrbahnart)
+}
+
+// UnmarshalJSON decodes a Tabelle 15 Straßenbahn Fahrbahnart from its stable name.
+func (t *SFahrbahnartType) UnmarshalJSON(data []byte) error {
+	return decodeVocabularyJSON(data, t, kindSFahrbahnart, SFahrbahnartNames(), ParseSFahrbahnart)
+}
+
+// MarshalJSON encodes a Tabelle 15 Straßenbahn Fahrbahnart as its stable name.
+func (t SFahrbahnartType) MarshalJSON() ([]byte, error) {
+	return encodeVocabularyJSON(t, kindSFahrbahnart, SFahrbahnartNames(), ParseSFahrbahnart)
+}
+
+// UnmarshalJSON decodes a Tabelle 8 surface measure from its stable name.
+func (t *SurfaceCondType) UnmarshalJSON(data []byte) error {
+	return decodeVocabularyJSON(data, t, kindSurfaceCond, SurfaceCondNames(), ParseSurfaceCond)
+}
+
+// MarshalJSON encodes a Tabelle 8 surface measure as its stable name.
+func (t SurfaceCondType) MarshalJSON() ([]byte, error) {
+	return encodeVocabularyJSON(t, kindSurfaceCond, SurfaceCondNames(), ParseSurfaceCond)
+}
+
+// UnmarshalJSON decodes a Tabelle 18 wall surface from its stable name.
+func (t *WallSurfaceType) UnmarshalJSON(data []byte) error {
+	return decodeVocabularyJSON(data, t, kindWallSurface, WallSurfaceNames(), ParseWallSurface)
+}
+
+// MarshalJSON encodes a Tabelle 18 wall surface as its stable name.
+func (t WallSurfaceType) MarshalJSON() ([]byte, error) {
+	return encodeVocabularyJSON(t, kindWallSurface, WallSurfaceNames(), ParseWallSurface)
 }
 
 // ZugartNames lists every Zugart the Beiblatt 1 (Eisenbahn) and Beiblatt 2
