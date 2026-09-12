@@ -445,7 +445,7 @@ export default function SettingsPage() {
   const locale = getLocale();
   const location = useLocation();
   const navigate = useNavigate();
-  const [draftPresent, setDraftPresent] = useState(hasDraft());
+  const [draftPresent, setDraftPresent] = useState(() => hasDraft());
   const [apiBaseUrl, setApiBaseUrl] = useState(() => getAPIBaseURL());
   const [apiBaseUrlDraft, setApiBaseUrlDraft] = useState(() => getAPIBaseURL());
   const [apiBaseUrlOverridePresent, setApiBaseUrlOverridePresent] = useState(
