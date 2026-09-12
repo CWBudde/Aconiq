@@ -24,7 +24,16 @@ mkdir -p "$mirror"
 # Tracked files plus untracked ones that are not ignored: exactly the set a
 # commit could contain. Ignored paths (node_modules/, bin/, .trunk/) stay out,
 # which is also what treefmt.toml excludes by hand.
-git ls-files -z --cached --others --exclude-standard >"$file_list"
+#
+# A tracked file deleted in the working tree is still listed by the index, and
+# has to be dropped here: tar cannot stat it, and the check would die on a file
+# with no content to format rather than report on the files that have some.
+git ls-files -z --cached --others --exclude-standard |
+	while IFS= read -r -d '' file; do
+		if [[ -e $file || -L $file ]]; then
+			printf '%s\0' "$file"
+		fi
+	done >"$file_list"
 
 if [[ ! -s $file_list ]]; then
 	echo "check-formatted: no files to check" >&2
