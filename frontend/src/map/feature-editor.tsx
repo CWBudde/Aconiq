@@ -21,6 +21,7 @@ import {
   setFeatureProperty,
 } from "@/model/source-acoustics";
 import { Trash2 } from "lucide-react";
+import { MapPanel } from "./map-panel";
 import { m } from "@/i18n/messages";
 
 // Message functions are resolved against the *current* locale, so they must be
@@ -74,7 +75,7 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
   if (!feature) return null;
 
   return (
-    <div className="absolute right-3 top-3 z-10 w-72 rounded-md border bg-background p-4 shadow-md">
+    <MapPanel position="top-right" width="w-72" className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold capitalize">
           {featureKindLabel(feature.kind)}
@@ -104,7 +105,7 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
         <FeatureFields feature={feature} />
         <DeleteButton featureId={feature.id} onDelete={onClose} />
       </div>
-    </div>
+    </MapPanel>
   );
 }
 
@@ -145,7 +146,7 @@ function ReceiverEditor({
   if (!receiver) return null;
 
   return (
-    <div className="absolute right-3 top-3 z-10 w-72 rounded-md border bg-background p-4 shadow-md">
+    <MapPanel position="top-right" width="w-72" className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">{m.label_receiver()}</h3>
         <Button
@@ -197,7 +198,7 @@ function ReceiverEditor({
           {m.action_delete_feature()}
         </Button>
       </div>
-    </div>
+    </MapPanel>
   );
 }
 
@@ -257,11 +258,11 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         <p className="text-xs font-medium">
           {m.label_section_source_acoustics()}
         </p>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-2xs leading-relaxed text-muted-foreground">
           {m.msg_source_acoustics_defaults()}
         </p>
         {getRLS19ReviewRequired(feature) ? (
-          <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+          <p className="text-2xs leading-relaxed text-warning">
             {m.msg_source_acoustics_review_required()}
           </p>
         ) : null}
@@ -343,7 +344,7 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         />
       </div>
       <div className="space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
           {m.label_traffic_day()}
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -378,7 +379,7 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         </div>
       </div>
       <div className="space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
           {m.label_traffic_night()}
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -466,7 +467,7 @@ function PropertyNumberField({
 
   return (
     <div className="grid gap-1">
-      <Label htmlFor={`${feature.id}-${propertyKey}`} className="text-[11px]">
+      <Label htmlFor={`${feature.id}-${propertyKey}`} className="text-2xs">
         {label}
       </Label>
       <Input
@@ -483,7 +484,7 @@ function PropertyNumberField({
         }}
         onBlur={handleBlur}
       />
-      <p className="text-[10px] text-muted-foreground">{helper}</p>
+      <p className="text-2xs text-muted-foreground">{helper}</p>
     </div>
   );
 }
@@ -524,7 +525,7 @@ function PropertySelectField({
 
   return (
     <div className="grid gap-1">
-      <Label className="text-[11px]">{label}</Label>
+      <Label className="text-2xs">{label}</Label>
       <Select value={current ?? "__default__"} onValueChange={handleChange}>
         <SelectTrigger className="h-8 text-xs">
           <SelectValue placeholder={m.placeholder_use_run_default()} />
@@ -540,7 +541,7 @@ function PropertySelectField({
           ))}
         </SelectContent>
       </Select>
-      <p className="text-[10px] text-muted-foreground">{helper}</p>
+      <p className="text-2xs text-muted-foreground">{helper}</p>
     </div>
   );
 }

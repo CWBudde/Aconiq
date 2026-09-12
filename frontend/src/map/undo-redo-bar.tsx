@@ -7,6 +7,7 @@ import {
 } from "@/ui/components/tooltip";
 import { useModelStore } from "@/model/model-store";
 import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
+import { MapPanel } from "./map-panel";
 import { m } from "@/i18n/messages";
 
 export function UndoRedoBar() {
@@ -24,18 +25,23 @@ export function UndoRedoBar() {
   useGlobalShortcut({ key: "y", ctrl: true }, redo);
 
   return (
-    <div className="absolute bottom-3 right-3 z-10 flex gap-1 rounded-md border bg-background p-1 shadow-md">
+    <MapPanel
+      position="bottom-right"
+      role="toolbar"
+      aria-label={m.label_edit_history()}
+      className="flex gap-1 p-1"
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="size-8"
             disabled={!canUndo}
             onClick={undo}
             aria-label={m.tooltip_undo()}
           >
-            <Undo2 className="h-4 w-4" />
+            <Undo2 aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{m.tooltip_undo()}</TooltipContent>
@@ -45,16 +51,16 @@ export function UndoRedoBar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="size-8"
             disabled={!canRedo}
             onClick={redo}
             aria-label={m.tooltip_redo()}
           >
-            <Redo2 className="h-4 w-4" />
+            <Redo2 aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{m.tooltip_redo()}</TooltipContent>
       </Tooltip>
-    </div>
+    </MapPanel>
   );
 }

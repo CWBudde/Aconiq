@@ -386,5 +386,12 @@
   "dialog_desc_new_export_browser": "Generate an offline export bundle directly in the browser.",
   "status_generating": "Generating…",
   "msg_no_html_report_yet": "No HTML report yet. Run the CLI command below to generate one.",
-  "label_html_report_preview": "HTML report preview"
+  "label_html_report_preview": "HTML report preview",
+  "msg_unknown_error": "Unknown error",
+  "msg_settings_category_planned": "This category is reserved for future settings and will be filled in once those controls are defined.",
+  "msg_and_more": "… and {count} more",
+  "error_osm_fetch_failed": "Fetching from OpenStreetMap failed",
+  "label_layers": "Layers",
+  "label_draw_tools": "Drawing tools",
+  "label_edit_history": "Undo and redo"
 }
