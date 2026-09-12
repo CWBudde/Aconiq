@@ -4,14 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 )
 
 // ReceiverOutput stores one computed receiver record.
-type ReceiverOutput struct {
-	Receiver   geo.PointReceiver
-	Indicators ReceiverIndicators
-}
+type ReceiverOutput = acoustics.ReceiverOutput
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []IndustrySource, cfg PropagationConfig) ([]ReceiverOutput, error) {

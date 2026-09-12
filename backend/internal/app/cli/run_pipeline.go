@@ -295,7 +295,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosroad.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -336,7 +336,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosrail.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -381,7 +381,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUBRailRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubrail.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -424,7 +424,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUBIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubindustry.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -465,7 +465,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUBRoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubroad.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -698,7 +698,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistBUFAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bufaircraft.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -739,7 +739,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosAircraftRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosaircraft.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)
@@ -780,7 +780,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			return finalizeRunFailure(store, run, logLines, computeErr)
 		}
 
-		persisted, outputHash, finishedAt, err = persistCnossosIndustryRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
+		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosindustry.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
 		if err != nil {
 			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
 			return finalizeRunFailure(store, run, logLines, err)

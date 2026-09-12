@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
@@ -12,10 +13,10 @@ const (
 	// StandardID identifies the BUB road mapping module entry in the standards registry.
 	StandardID = "bub-road"
 
-	IndicatorLday     = "Lday"
-	IndicatorLevening = "Levening"
-	IndicatorLnight   = "Lnight"
-	IndicatorLden     = "Lden"
+	IndicatorLday     = acoustics.IndicatorLday
+	IndicatorLevening = acoustics.IndicatorLevening
+	IndicatorLnight   = acoustics.IndicatorLnight
+	IndicatorLden     = acoustics.IndicatorLden
 )
 
 const (

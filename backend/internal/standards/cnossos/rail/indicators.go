@@ -1,6 +1,8 @@
 package rail
 
-import "math"
+import (
+	"github.com/aconiq/backend/internal/acoustics"
+)
 
 const (
 	// BuiltinModelVersion identifies the current bundled preview coefficient set.
@@ -11,43 +13,17 @@ const (
 	ReportingPrecisionDB = 0.1
 )
 
-// PeriodLevels stores receiver levels per time period.
-type PeriodLevels struct {
-	Lday     float64
-	Levening float64
-	Lnight   float64
-}
-
-// ReceiverIndicators stores exported indicators for one receiver.
-type ReceiverIndicators struct {
-	Lday     float64
-	Levening float64
-	Lnight   float64
-	Lden     float64
-}
+// The day/evening/night model is the directive's, not this module's: these are
+// aliases of internal/acoustics, so the Lden formula and the payload it fills
+// exist once for every module that reports the END set.
+type (
+	PeriodLevels       = acoustics.PeriodLevels
+	ReceiverIndicators = acoustics.ReceiverIndicators
+)
 
 // ComputeLden computes the day-evening-night indicator from period levels.
 func ComputeLden(levels PeriodLevels) float64 {
-	dayLin := 12 * math.Pow(10, levels.Lday/10)
-	eveningLin := 4 * math.Pow(10, (levels.Levening+5)/10)
-	nightLin := 8 * math.Pow(10, (levels.Lnight+10)/10)
-
-	total := (dayLin + eveningLin + nightLin) / 24.0
-	if total <= 0 {
-		return -999.0
-	}
-
-	return 10 * math.Log10(total)
-}
-
-// ToReceiverIndicators builds the final indicator payload.
-func (levels PeriodLevels) ToReceiverIndicators() ReceiverIndicators {
-	return ReceiverIndicators{
-		Lday:     levels.Lday,
-		Levening: levels.Levening,
-		Lnight:   levels.Lnight,
-		Lden:     ComputeLden(levels),
-	}
+	return acoustics.ComputeLden(levels)
 }
 
 // ProvenanceMetadata returns CNOSSOS rail baseline metadata for run provenance.
