@@ -567,6 +567,62 @@ describe("persisted state", () => {
     expect(run.id).toBe("run-0004");
   });
 
+  // The store is shared by every tab of the origin. "Another tab" is a
+  // direct write to the store after this tab has loaded its cache.
+  it("a run completed in another tab survives this tab's next write", async () => {
+    await browserBackend.getRuns();
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [runFixture(1, "2026-01-01T01:00:00.000Z")] },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+
+    expect(run.id).not.toBe("run-0001");
+    expect(runIDs((await persisted()).state)).toEqual([run.id, "run-0001"]);
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((entry) => entry.id)).toEqual([run.id, "run-0001"]);
+  });
+
+  it("a run id is allocated after the other tab's run is seen", async () => {
+    await browserBackend.getRuns();
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [runFixture(3, "2026-01-01T03:00:00.000Z")] },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    expect(run.id).toBe("run-0004");
+  });
+
+  it("writes are serialised through navigator.locks when available", async () => {
+    // jsdom has no Web Locks; the stub grants every request at once and
+    // only records what was asked for.
+    const request = vi.fn((_name: string, callback: () => Promise<unknown>) =>
+      callback(),
+    );
+    Object.defineProperty(navigator, "locks", {
+      value: { request },
+      configurable: true,
+    });
+    try {
+      await seedState();
+
+      const run = await browserBackend.createExport(RUN_ID);
+
+      expect(request).toHaveBeenCalledWith(
+        "aconiq-browser-backend",
+        expect.any(Function),
+      );
+      expect(
+        run.artifacts.some((entry) => entry.kind === "export.bundle"),
+      ).toBe(true);
+      expect(runIDs((await persisted()).state)).toEqual([RUN_ID]);
+    } finally {
+      Reflect.deleteProperty(navigator, "locks");
+    }
+  });
+
   describe("when the store is full", () => {
     const quota = () =>
       new storage.BrowserStorageError("quota", "quota exhausted");

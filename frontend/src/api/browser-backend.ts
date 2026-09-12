@@ -416,8 +416,13 @@ async function migrateLegacyState(): Promise<BrowserBackendState | null> {
  * a later build could still have read. An unavailable IndexedDB also means
  * the legacy localStorage document is not consulted: the session runs in
  * memory, and the migration waits for a browser that can hold its result.
+ *
+ * `whenUnavailable` is what an unavailable store yields: a fresh state on the
+ * first load, the copy already in memory on a reload.
  */
-async function loadState(): Promise<BrowserBackendState> {
+async function loadState(
+  whenUnavailable: () => BrowserBackendState = initialState,
+): Promise<BrowserBackendState> {
   let stored: unknown;
   try {
     stored = await loadPersistedState();
@@ -426,7 +431,7 @@ async function loadState(): Promise<BrowserBackendState> {
       "Browser-mode runs cannot be persisted in this browser; they will be kept in memory for this session only",
       error,
     );
-    return initialState();
+    return whenUnavailable();
   }
   if (stored === null) {
     return (await migrateLegacyState()) ?? initialState();
@@ -443,10 +448,12 @@ async function loadState(): Promise<BrowserBackendState> {
 }
 
 /**
- * In-memory copy of the persisted state. Every async method awaits
- * `ensureLoaded()` before touching it, and every write goes through
- * `persist()`, which updates this copy before the store — so the cache is
- * never behind what the UI was just told, even if the store is.
+ * In-memory copy of the persisted state. Reads serve this cache: every async
+ * read awaits `ensureLoaded()`, and `persist()` updates the copy before the
+ * store, so a read is never behind what the UI was just told. Writes do not
+ * trust it: the store is shared by every tab of the origin, so a write first
+ * calls `reloadState()` and merges into what the store holds now — a run
+ * another tab completed since this tab loaded is kept, not overwritten.
  */
 let state: BrowserBackendState | null = null;
 let loadPromise: Promise<BrowserBackendState> | null = null;
@@ -466,6 +473,42 @@ function ensureLoaded(): Promise<BrowserBackendState> {
   return loadPromise;
 }
 
+/**
+ * Re-reads the store and replaces the cache with it. An unavailable store
+ * keeps the in-memory copy — the session is memory-only, as `loadState`
+ * documents — and an unreadable document yields a fresh state, as on first
+ * load: the write that follows replaces it. A run that could not be stored
+ * earlier (quota) lives only in the cache, so it stays viewable until the next
+ * write reloads; the error the user saw already says it is not kept.
+ */
+async function reloadState(): Promise<BrowserBackendState> {
+  const cached = await ensureLoaded();
+  const fresh = await loadState(() => cached);
+  state = fresh;
+  return fresh;
+}
+
+const STORE_LOCK_NAME = "aconiq-browser-backend";
+
+/**
+ * Serialises writers across tabs. IndexedDB is shared by every tab of the
+ * origin, but the document is written whole, so two tabs writing at once
+ * would still race: both reload, both merge their own run, the second write
+ * wins and the first run is gone. The Web Locks API is origin-wide, so a
+ * request under one name queues behind every other tab's writer.
+ *
+ * Where `navigator.locks` is missing (jsdom, older Safari) the callback runs
+ * unlocked. `reloadState()` before every write still guarantees that
+ * *sequential* cross-tab writes never drop each other's runs; only writes
+ * that truly overlap can collide.
+ */
+async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
+  // lib.dom declares `locks` as always present; the browsers above disagree.
+  const locks = navigator.locks as LockManager | undefined;
+  if (locks === undefined) return fn();
+  return locks.request(STORE_LOCK_NAME, fn);
+}
+
 async function persist(next: BrowserBackendState): Promise<void> {
   state = next;
   pruneURLCache(next);
@@ -473,18 +516,19 @@ async function persist(next: BrowserBackendState): Promise<void> {
 }
 
 /**
- * Stores a new or updated run. On a quota failure the oldest *other* run is
- * evicted and the write retried once; if that still fails the run stays in
- * memory — its results remain viewable for this session — and the caller gets
- * an error whose message says so, because the computation has already
- * succeeded and the dialogs render `error.message`.
+ * Stores a new or updated run, merged into what the store holds *now* — never
+ * into this tab's cache, which may predate another tab's runs. On a quota
+ * failure the oldest *other* run is evicted and the write retried once; if
+ * that still fails the run stays in memory — its results remain viewable for
+ * this session — and the caller gets an error whose message says so, because
+ * the computation has already succeeded and the dialogs render
+ * `error.message`.
  */
 async function persistRun(
-  current: BrowserBackendState,
   storedRun: StoredRun,
   what: "run" | "export",
 ): Promise<void> {
-  const next = setRun(current, storedRun);
+  const next = setRun(await reloadState(), storedRun);
   try {
     await persist(next);
     return;
@@ -508,7 +552,7 @@ async function persistRun(
   }
   throw new BrowserStorageError(
     "quota",
-    `The ${what} completed but could not be stored: the browser's storage quota is exhausted. Its results stay available until this page is reloaded; older runs may need deleting to free space.`,
+    `The ${what} completed but could not be stored: the browser's storage quota is exhausted. Its results stay available only until the next run or export, or until this page is reloaded; older runs may need deleting to free space.`,
   );
 }
 
@@ -518,7 +562,7 @@ function storeFailure(what: "run" | "export", error: unknown): Error {
   }
   return new BrowserStorageError(
     error.reason,
-    `The ${what} completed but could not be stored (${error.message}). Its results stay available until this page is reloaded.`,
+    `The ${what} completed but could not be stored (${error.message}). Its results stay available only until the next run or export, or until this page is reloaded.`,
     { cause: error },
   );
 }
@@ -1376,277 +1420,283 @@ out geom;`;
       rasterHeight = receiverGrid.height;
     }
 
-    const startedAt = nowISO();
-    const runId = nextRunID(await ensureLoaded());
-    const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
+    // The lock spans the compute, not just the persist: the id is minted
+    // from the store before the kernel runs, and a second tab that allocated
+    // in the meantime would mint the same id and have its run replaced by
+    // `setRun` when both persist. Holding the lock until the persist keeps
+    // the id unique while this tab is still computing.
+    return withStoreLock(async () => {
+      const startedAt = nowISO();
+      const runId = nextRunID(await reloadState());
+      const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
 
-    const request: ComputeRequest = {
-      receivers: gridReceivers,
-      sources,
-      barriers,
-      config: {
-        SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
-        MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
-        ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
-        Buildings: buildings,
-        ParkingSources: parking.sources,
-      },
-    };
+      const request: ComputeRequest = {
+        receivers: gridReceivers,
+        sources,
+        barriers,
+        config: {
+          SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
+          MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
+          ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
+          Buildings: buildings,
+          ParkingSources: parking.sources,
+        },
+      };
 
-    const outputs = await kernel.rls19Road(request);
-    const receiverTable = buildReceiverTable(outputs);
-    const receiverCSV = buildReceiverCSV(receiverTable);
-    const rasterMetadata: RasterMetadata = {
-      width: rasterWidth,
-      height: rasterHeight,
-      bands: 2,
-      nodata: -9999,
-      unit: "dB(A)",
-      band_names: ["LrDay", "LrNight"],
-    };
-    const summary = {
-      run_id: runId,
-      status: "completed",
-      grid_width: rasterWidth,
-      grid_height: rasterHeight,
-      source_count: sources.length,
-      parking_source_count: parking.sources.length,
-      receiver_count: outputs.length,
-      reporting_precision_db: 0.1,
-    };
+      const outputs = await kernel.rls19Road(request);
+      const receiverTable = buildReceiverTable(outputs);
+      const receiverCSV = buildReceiverCSV(receiverTable);
+      const rasterMetadata: RasterMetadata = {
+        width: rasterWidth,
+        height: rasterHeight,
+        bands: 2,
+        nodata: -9999,
+        unit: "dB(A)",
+        band_names: ["LrDay", "LrNight"],
+      };
+      const summary = {
+        run_id: runId,
+        status: "completed",
+        grid_width: rasterWidth,
+        grid_height: rasterHeight,
+        source_count: sources.length,
+        parking_source_count: parking.sources.length,
+        receiver_count: outputs.length,
+        reporting_precision_db: 0.1,
+      };
 
-    const hashPayload = outputs.map((output) => ({
-      receiver_id: output.Receiver.id,
-      indicators: output.Indicators,
-    }));
-    const outputHash = await sha256Hex(JSON.stringify(hashPayload));
-    const finishedAt = nowISO();
-    const createdAt = finishedAt;
+      const hashPayload = outputs.map((output) => ({
+        receiver_id: output.Receiver.id,
+        indicators: output.Indicators,
+      }));
+      const outputHash = await sha256Hex(JSON.stringify(hashPayload));
+      const finishedAt = nowISO();
+      const createdAt = finishedAt;
 
-    const receiversJSONArtifact = makeArtifact(
-      runId,
-      "receivers-json",
-      "run.result.receiver_table_json",
-      `${basePath}/results/receivers.json`,
-      createdAt,
-    );
-    const receiversCSVArtifact = makeArtifact(
-      runId,
-      "receivers-csv",
-      "run.result.receiver_table_csv",
-      `${basePath}/results/receivers.csv`,
-      createdAt,
-    );
-    const rasterMetaArtifact = makeArtifact(
-      runId,
-      "raster-meta",
-      "run.result.raster_metadata",
-      `${basePath}/results/rls19-road.json`,
-      createdAt,
-    );
-    const rasterBinArtifact = makeArtifact(
-      runId,
-      "raster-bin",
-      "run.result.raster_binary",
-      `${basePath}/results/rls19-road.bin`,
-      createdAt,
-    );
-    const summaryArtifact = makeArtifact(
-      runId,
-      "summary",
-      "run.result.summary",
-      `${basePath}/results/run-summary.json`,
-      createdAt,
-    );
-    const artifacts: ArtifactRef[] = [
-      receiversJSONArtifact,
-      receiversCSVArtifact,
-      rasterMetaArtifact,
-      rasterBinArtifact,
-      summaryArtifact,
-    ];
+      const receiversJSONArtifact = makeArtifact(
+        runId,
+        "receivers-json",
+        "run.result.receiver_table_json",
+        `${basePath}/results/receivers.json`,
+        createdAt,
+      );
+      const receiversCSVArtifact = makeArtifact(
+        runId,
+        "receivers-csv",
+        "run.result.receiver_table_csv",
+        `${basePath}/results/receivers.csv`,
+        createdAt,
+      );
+      const rasterMetaArtifact = makeArtifact(
+        runId,
+        "raster-meta",
+        "run.result.raster_metadata",
+        `${basePath}/results/rls19-road.json`,
+        createdAt,
+      );
+      const rasterBinArtifact = makeArtifact(
+        runId,
+        "raster-bin",
+        "run.result.raster_binary",
+        `${basePath}/results/rls19-road.bin`,
+        createdAt,
+      );
+      const summaryArtifact = makeArtifact(
+        runId,
+        "summary",
+        "run.result.summary",
+        `${basePath}/results/run-summary.json`,
+        createdAt,
+      );
+      const artifacts: ArtifactRef[] = [
+        receiversJSONArtifact,
+        receiversCSVArtifact,
+        rasterMetaArtifact,
+        rasterBinArtifact,
+        summaryArtifact,
+      ];
 
-    const run: RunSummary = {
-      id: runId,
-      scenario_id: "default",
-      standard_id: spec.standardId,
-      version: spec.version,
-      ...(spec.profile ? { profile: spec.profile } : {}),
-      status: "completed",
-      started_at: startedAt,
-      finished_at: finishedAt,
-      log_path: `${basePath}/run.log`,
-      artifacts,
-    };
+      const run: RunSummary = {
+        id: runId,
+        scenario_id: "default",
+        standard_id: spec.standardId,
+        version: spec.version,
+        ...(spec.profile ? { profile: spec.profile } : {}),
+        status: "completed",
+        started_at: startedAt,
+        finished_at: finishedAt,
+        log_path: `${basePath}/run.log`,
+        artifacts,
+      };
 
-    const log: RunLog = {
-      run_id: runId,
-      lines: [
-        `${startedAt} run started`,
-        `${startedAt} model=browser`,
-        `${startedAt} rls19_road_sources=${String(sources.length)}`,
-        `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
-        `${startedAt} rls19_buildings=${String(buildings.length)}`,
-        `${startedAt} receivers=${String(gridReceivers.length)}`,
-        `${startedAt} stage=compute`,
-        `${finishedAt} output_hash=${outputHash}`,
-        `${finishedAt} persisted=browser`,
-        `${finishedAt} run completed`,
-      ],
-    };
+      const log: RunLog = {
+        run_id: runId,
+        lines: [
+          `${startedAt} run started`,
+          `${startedAt} model=browser`,
+          `${startedAt} rls19_road_sources=${String(sources.length)}`,
+          `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
+          `${startedAt} rls19_buildings=${String(buildings.length)}`,
+          `${startedAt} receivers=${String(gridReceivers.length)}`,
+          `${startedAt} stage=compute`,
+          `${finishedAt} output_hash=${outputHash}`,
+          `${finishedAt} persisted=browser`,
+          `${finishedAt} run completed`,
+        ],
+      };
 
-    const artifactMap: Record<string, StoredArtifactContent> = {
-      [receiversJSONArtifact.id]: {
-        kind: receiversJSONArtifact.kind,
-        mimeType: "application/json",
-        encoding: "json",
-        value: receiverTable,
-      },
-      [receiversCSVArtifact.id]: {
-        kind: receiversCSVArtifact.kind,
-        mimeType: "text/csv",
-        encoding: "text",
-        value: receiverCSV,
-      },
-      [rasterMetaArtifact.id]: {
-        kind: rasterMetaArtifact.kind,
-        mimeType: "application/json",
-        encoding: "json",
-        value: rasterMetadata,
-      },
-      [rasterBinArtifact.id]: {
-        kind: rasterBinArtifact.kind,
-        mimeType: "application/octet-stream",
-        encoding: "text",
-        value: outputHash,
-      },
-      [summaryArtifact.id]: {
-        kind: summaryArtifact.kind,
-        mimeType: "application/json",
-        encoding: "json",
-        value: { ...summary, output_hash: outputHash },
-      },
-    };
+      const artifactMap: Record<string, StoredArtifactContent> = {
+        [receiversJSONArtifact.id]: {
+          kind: receiversJSONArtifact.kind,
+          mimeType: "application/json",
+          encoding: "json",
+          value: receiverTable,
+        },
+        [receiversCSVArtifact.id]: {
+          kind: receiversCSVArtifact.kind,
+          mimeType: "text/csv",
+          encoding: "text",
+          value: receiverCSV,
+        },
+        [rasterMetaArtifact.id]: {
+          kind: rasterMetaArtifact.kind,
+          mimeType: "application/json",
+          encoding: "json",
+          value: rasterMetadata,
+        },
+        [rasterBinArtifact.id]: {
+          kind: rasterBinArtifact.kind,
+          mimeType: "application/octet-stream",
+          encoding: "text",
+          value: outputHash,
+        },
+        [summaryArtifact.id]: {
+          kind: summaryArtifact.kind,
+          mimeType: "application/json",
+          encoding: "json",
+          value: { ...summary, output_hash: outputHash },
+        },
+      };
 
-    await persistRun(
-      await ensureLoaded(),
-      { run, log, artifacts: artifactMap },
-      "run",
-    );
-    return run;
+      await persistRun({ run, log, artifacts: artifactMap }, "run");
+      return run;
+    });
   },
 
   async createExport(runId: string): Promise<RunSummary> {
-    const current = await ensureLoaded();
-    const storedRun = findRunByID(current, runId);
-    const tableArtifact = storedRun.run.artifacts.find(
-      (artifact) => artifact.kind === "run.result.receiver_table_json",
-    );
-    if (!tableArtifact) {
-      throw new Error("Run has no receiver table artifact");
-    }
-    const receiverTable = storedRun.artifacts[tableArtifact.id]
-      ?.value as ReceiverTable;
-    const exportedAt = nowISO();
-    const exportBase = `${DEFAULT_PROJECT_PATH}/exports/${runId}-${exportedAt.replaceAll(":", "").replaceAll(".", "")}`;
+    // Held from the reload to the persist so the run read here is the one
+    // the export is merged into.
+    return withStoreLock(async () => {
+      const storedRun = findRunByID(await reloadState(), runId);
+      const tableArtifact = storedRun.run.artifacts.find(
+        (artifact) => artifact.kind === "run.result.receiver_table_json",
+      );
+      if (!tableArtifact) {
+        throw new Error("Run has no receiver table artifact");
+      }
+      const receiverTable = storedRun.artifacts[tableArtifact.id]
+        ?.value as ReceiverTable;
+      const exportedAt = nowISO();
+      const exportBase = `${DEFAULT_PROJECT_PATH}/exports/${runId}-${exportedAt.replaceAll(":", "").replaceAll(".", "")}`;
 
-    const context = {
-      exported_at: exportedAt,
-      project_id: DEFAULT_PROJECT_ID,
-      run: storedRun.run,
-      receiver_table: receiverTable,
-    };
-    const html = browserExportHTML(storedRun.run, receiverTable);
-    const markdown = browserExportMarkdown(storedRun.run, receiverTable);
-    const bundleSummary = {
-      export_id: `${runId}-${exportedAt}`,
-      run_id: runId,
-      exported_at: exportedAt,
-      copied_files: [
-        "results/receivers.json",
-        "results/receivers.csv",
-        "results/run-summary.json",
-      ],
-      generated_reports: [
-        "report/report-context.json",
-        "report/report.md",
-        "report/report.html",
-      ],
-    };
+      const context = {
+        exported_at: exportedAt,
+        project_id: DEFAULT_PROJECT_ID,
+        run: storedRun.run,
+        receiver_table: receiverTable,
+      };
+      const html = browserExportHTML(storedRun.run, receiverTable);
+      const markdown = browserExportMarkdown(storedRun.run, receiverTable);
+      const bundleSummary = {
+        export_id: `${runId}-${exportedAt}`,
+        run_id: runId,
+        exported_at: exportedAt,
+        copied_files: [
+          "results/receivers.json",
+          "results/receivers.csv",
+          "results/run-summary.json",
+        ],
+        generated_reports: [
+          "report/report-context.json",
+          "report/report.md",
+          "report/report.html",
+        ],
+      };
 
-    const exportStamp = String(Date.now());
-    const bundleArtifact = makeArtifact(
-      runId,
-      `export-bundle-${String(storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1)}`,
-      "export.bundle",
-      `${exportBase}/export-summary.json`,
-      exportedAt,
-    );
-    const contextArtifact = makeArtifact(
-      runId,
-      `export-context-${exportStamp}`,
-      "export.report_context_json",
-      `${exportBase}/report/report-context.json`,
-      exportedAt,
-    );
-    const markdownArtifact = makeArtifact(
-      runId,
-      `export-markdown-${exportStamp}`,
-      "export.report_markdown",
-      `${exportBase}/report/report.md`,
-      exportedAt,
-    );
-    const htmlArtifact = makeArtifact(
-      runId,
-      `export-html-${exportStamp}`,
-      "export.report_html",
-      `${exportBase}/report/report.html`,
-      exportedAt,
-    );
-    const exportArtifacts: ArtifactRef[] = [
-      bundleArtifact,
-      contextArtifact,
-      markdownArtifact,
-      htmlArtifact,
-    ];
+      const exportStamp = String(Date.now());
+      const bundleArtifact = makeArtifact(
+        runId,
+        `export-bundle-${String(storedRun.run.artifacts.filter((artifact) => artifact.kind.startsWith("export.")).length + 1)}`,
+        "export.bundle",
+        `${exportBase}/export-summary.json`,
+        exportedAt,
+      );
+      const contextArtifact = makeArtifact(
+        runId,
+        `export-context-${exportStamp}`,
+        "export.report_context_json",
+        `${exportBase}/report/report-context.json`,
+        exportedAt,
+      );
+      const markdownArtifact = makeArtifact(
+        runId,
+        `export-markdown-${exportStamp}`,
+        "export.report_markdown",
+        `${exportBase}/report/report.md`,
+        exportedAt,
+      );
+      const htmlArtifact = makeArtifact(
+        runId,
+        `export-html-${exportStamp}`,
+        "export.report_html",
+        `${exportBase}/report/report.html`,
+        exportedAt,
+      );
+      const exportArtifacts: ArtifactRef[] = [
+        bundleArtifact,
+        contextArtifact,
+        markdownArtifact,
+        htmlArtifact,
+      ];
 
-    const nextStoredRun: StoredRun = {
-      run: {
-        ...storedRun.run,
-        artifacts: [...storedRun.run.artifacts, ...exportArtifacts],
-      },
-      log: storedRun.log,
-      artifacts: {
-        ...storedRun.artifacts,
-        [bundleArtifact.id]: {
-          kind: bundleArtifact.kind,
-          mimeType: "application/json",
-          encoding: "json",
-          value: bundleSummary,
+      const nextStoredRun: StoredRun = {
+        run: {
+          ...storedRun.run,
+          artifacts: [...storedRun.run.artifacts, ...exportArtifacts],
         },
-        [contextArtifact.id]: {
-          kind: contextArtifact.kind,
-          mimeType: "application/json",
-          encoding: "json",
-          value: context,
+        log: storedRun.log,
+        artifacts: {
+          ...storedRun.artifacts,
+          [bundleArtifact.id]: {
+            kind: bundleArtifact.kind,
+            mimeType: "application/json",
+            encoding: "json",
+            value: bundleSummary,
+          },
+          [contextArtifact.id]: {
+            kind: contextArtifact.kind,
+            mimeType: "application/json",
+            encoding: "json",
+            value: context,
+          },
+          [markdownArtifact.id]: {
+            kind: markdownArtifact.kind,
+            mimeType: "text/markdown",
+            encoding: "text",
+            value: markdown,
+          },
+          [htmlArtifact.id]: {
+            kind: htmlArtifact.kind,
+            mimeType: "text/html",
+            encoding: "text",
+            value: html,
+          },
         },
-        [markdownArtifact.id]: {
-          kind: markdownArtifact.kind,
-          mimeType: "text/markdown",
-          encoding: "text",
-          value: markdown,
-        },
-        [htmlArtifact.id]: {
-          kind: htmlArtifact.kind,
-          mimeType: "text/html",
-          encoding: "text",
-          value: html,
-        },
-      },
-    };
+      };
 
-    await persistRun(current, nextStoredRun, "export");
-    return nextStoredRun.run;
+      await persistRun(nextStoredRun, "export");
+      return nextStoredRun.run;
+    });
   },
 
   /**
