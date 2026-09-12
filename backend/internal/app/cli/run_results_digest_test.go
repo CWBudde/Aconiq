@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,23 +44,28 @@ import (
 // everything not named here is asserted byte for byte.
 //
 //   - created_at  — results.SaveRaster stamps time.Now().UTC() into every
-//     raster metadata sidecar.
+//     raster metadata sidecar, and into nothing else.
 //   - run_id      — run-summary.json takes it from the run directory name, and
 //     projectfs.buildID draws it from crypto/rand.
 //   - generated_at, tool_version — provenance.json only; the clock again, and
 //     the build stamp, which moves with the checkout rather than with the code
 //     under test.
+//
+// Each list is required in full of the file it belongs to, and no file may
+// carry a volatile field that its own list does not name. Normalizing a field
+// away is only safe while something still asserts it was there: a blanket
+// delete would let a schema regression that drops `created_at` produce exactly
+// the payload the golden already holds.
 var (
-	// volatileResultFields is applied to every JSON file under results/,
-	// whichever of the two keys that file happens to carry.
-	volatileResultFields = []string{"created_at", "run_id"}
-	// The next two are per-file, and every key they name must be present:
-	// a field that has gone missing means the snapshot has silently started
-	// pinning something it should not, or has stopped normalizing something
-	// it still must.
+	volatileRasterFields     = []string{"created_at"}
 	volatileRunSummaryFields = []string{"run_id"}
 	volatileProvenanceFields = []string{"run_id", "generated_at", "tool_version"}
 )
+
+// knownVolatileFields is the union of the lists above. Any of these turning up
+// in a file whose own list does not name it is a new source of variance that
+// has to be understood before it is normalized away, so it fails instead.
+var knownVolatileFields = []string{"created_at", "run_id", "generated_at", "tool_version"}
 
 // runResultsDigest is the snapshot value. It is a struct rather than a bare map
 // so the golden file names what each section is.
@@ -254,7 +262,8 @@ func digestResultsTree(t *testing.T, resultsDir string) map[string]string {
 }
 
 // digestPayload returns the bytes to hash for one artifact: the raw file, or
-// for JSON a re-serialization with the volatile fields removed.
+// for JSON a re-serialization with that file's volatile fields removed, having
+// first established that they were there to remove.
 func digestPayload(path string) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -270,7 +279,14 @@ func digestPayload(path string) ([]byte, error) {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
 
-	dropFields(decoded, volatileResultFields)
+	volatile := volatileFieldsFor(path)
+
+	err = checkVolatileFields(filepath.Base(path), decoded, volatile)
+	if err != nil {
+		return nil, err
+	}
+
+	dropFields(decoded, volatile)
 
 	normalized, err := json.Marshal(decoded)
 	if err != nil {
@@ -278,6 +294,47 @@ func digestPayload(path string) ([]byte, error) {
 	}
 
 	return normalized, nil
+}
+
+// volatileFieldsFor names what the file at path is allowed to vary in. A raster
+// metadata sidecar is recognized by the .bin payload sitting beside it rather
+// than by a name list, because the base name is the standard ID and so differs
+// per module.
+func volatileFieldsFor(path string) []string {
+	if filepath.Base(path) == "run-summary.json" {
+		return volatileRunSummaryFields
+	}
+
+	_, err := os.Stat(strings.TrimSuffix(path, ".json") + ".bin")
+	if err == nil {
+		return volatileRasterFields
+	}
+
+	return nil
+}
+
+// checkVolatileFields requires every field the file is allowed to vary in, and
+// refuses any other known source of variance. Both directions matter: a missing
+// field means the snapshot has stopped pinning something, and an unexpected one
+// means a file has started carrying a clock nothing normalizes away.
+func checkVolatileFields(name string, object map[string]any, volatile []string) error {
+	for _, field := range volatile {
+		_, present := object[field]
+		if !present {
+			return fmt.Errorf("%s carries no %q field; the volatile-field list is stale and the snapshot may have stopped pinning part of this file", name, field)
+		}
+	}
+
+	for _, field := range knownVolatileFields {
+		_, present := object[field]
+		if !present || slices.Contains(volatile, field) {
+			continue
+		}
+
+		return fmt.Errorf("%s has gained a %q field that nothing normalizes away; understand where it comes from before adding it to a volatile-field list", name, field)
+	}
+
+	return nil
 }
 
 // readNormalizedJSON decodes one JSON object with the named fields removed,
@@ -297,11 +354,9 @@ func readNormalizedJSON(t *testing.T, path string, volatile []string) map[string
 		t.Fatalf("decode %s: %v", path, err)
 	}
 
-	for _, field := range volatile {
-		_, present := decoded[field]
-		if !present {
-			t.Fatalf("%s carries no %q field; the volatile-field list is stale and the snapshot may now be pinning a clock", filepath.Base(path), field)
-		}
+	err = checkVolatileFields(filepath.Base(path), decoded, volatile)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	dropFields(decoded, volatile)
@@ -318,6 +373,20 @@ func decodeJSONObject(raw []byte) (map[string]any, error) {
 	err := decoder.Decode(&decoded)
 	if err != nil {
 		return nil, fmt.Errorf("decode json object: %w", err)
+	}
+
+	// The digest covers the whole file or it covers nothing useful. A second
+	// document, or trailing garbage, would otherwise hash as if it were not
+	// there while strict consumers rejected the artifact outright.
+	var trailing json.RawMessage
+
+	err = decoder.Decode(&trailing)
+	switch {
+	case errors.Is(err, io.EOF):
+	case err != nil:
+		return nil, fmt.Errorf("expected a single json object, found unparseable trailing content: %w", err)
+	default:
+		return nil, fmt.Errorf("expected a single json object, found trailing content: %s", trailing)
 	}
 
 	return decoded, nil
