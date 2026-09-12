@@ -18,6 +18,9 @@ type Tokens = ReadonlyMap<string, Oklch>;
 
 const MIN_RATIO = 4.5;
 const STATES = ["destructive", "success", "warning", "info"] as const;
+// The opacities the soft variants actually use: `bg-<state>/10` in
+// alert.tsx, `bg-<state>/15` in badge.tsx.
+const SOFT_FILL_ALPHAS = [0.1, 0.15] as const;
 
 // Resolved through node:path rather than `new URL(rel, import.meta.url)`: Vite
 // rewrites that idiom into a served `/@fs/...` URL, which fileURLToPath then
@@ -75,18 +78,47 @@ function oklchToLinearSrgb([L, C, hDeg]: Oklch): [number, number, number] {
   ];
 }
 
+type LinearSrgb = readonly [number, number, number];
+
 /** WCAG 2.x relative luminance from linear sRGB. */
-function relativeLuminance(colour: Oklch): number {
-  const [r, g, b] = oklchToLinearSrgb(colour);
+function luminanceOf([r, g, b]: LinearSrgb): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** WCAG 2.x contrast ratio, always >= 1. */
-function contrastRatio(a: Oklch, b: Oklch): number {
-  const la = relativeLuminance(a);
-  const lb = relativeLuminance(b);
+function relativeLuminance(colour: Oklch): number {
+  return luminanceOf(oklchToLinearSrgb(colour));
+}
+
+/** sRGB transfer function and its inverse, for compositing in gamma space. */
+function encodeSrgb(v: number): number {
+  return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+function decodeSrgb(v: number): number {
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+/**
+ * `bg-<state>/<alpha>` painted over an opaque surface. A browser composites
+ * in gamma-encoded sRGB, so the mix happens there and the result is decoded
+ * back to linear for the luminance calculation.
+ */
+function tint(colour: Oklch, surface: Oklch, alpha: number): LinearSrgb {
+  const [fr, fg, fb] = oklchToLinearSrgb(colour);
+  const [br, bg, bb] = oklchToLinearSrgb(surface);
+  const mix = (f: number, b: number): number =>
+    decodeSrgb(encodeSrgb(f) * alpha + encodeSrgb(b) * (1 - alpha));
+  return [mix(fr, br), mix(fg, bg), mix(fb, bb)];
+}
+
+/** WCAG 2.x contrast ratio from two relative luminances, always >= 1. */
+function ratioOf(la: number, lb: number): number {
   const [lighter, darker] = la > lb ? [la, lb] : [lb, la];
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+function contrastRatio(a: Oklch, b: Oklch): number {
+  return ratioOf(relativeLuminance(a), relativeLuminance(b));
 }
 
 /** The token pairs that must reach MIN_RATIO: [text or foreground, surface]. */
@@ -152,6 +184,29 @@ describe("colour token contrast contract", () => {
             `${theme}: --${fg} on --${bg} measures ${ratio.toFixed(2)}:1, below ${String(MIN_RATIO)}:1`,
           ).toBeGreaterThanOrEqual(MIN_RATIO);
         });
+      }
+
+      // The soft variants of Badge, Alert and Callout put `text-<state>` on
+      // `bg-<state>/<alpha>`. That tint is not the bare surface: compositing
+      // the state into it moves it toward the text and costs roughly half a
+      // point of ratio, which the untinted pairs above cannot see.
+      for (const surface of ["background", "card"] as const) {
+        for (const alpha of SOFT_FILL_ALPHAS) {
+          for (const state of STATES) {
+            const fill = `bg-${state}/${String(alpha * 100)}`;
+            it(`--${state} on ${fill} over --${surface} reaches ${String(MIN_RATIO)}:1`, () => {
+              const colour = token(tokens, theme, state);
+              const ratio = ratioOf(
+                relativeLuminance(colour),
+                luminanceOf(tint(colour, token(tokens, theme, surface), alpha)),
+              );
+              expect(
+                ratio,
+                `${theme}: --${state} on ${fill} over --${surface} measures ${ratio.toFixed(2)}:1, below ${String(MIN_RATIO)}:1`,
+              ).toBeGreaterThanOrEqual(MIN_RATIO);
+            });
+          }
+        }
       }
     });
   }
