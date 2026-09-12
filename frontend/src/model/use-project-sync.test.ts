@@ -134,6 +134,13 @@ describe("useProjectSync", () => {
 
   it("keeps the model dirty when an edit lands while the save is in flight", async () => {
     useModelStore.getState().addFeature(feature);
+    // What the autosave wrote once the request outlasted its debounce: the
+    // newer state, including the in-flight edit.
+    const newerDraft = {
+      features: [feature],
+      receivers: [receiver],
+      calcArea: null,
+    };
     let resolve: (() => void) | undefined;
     state.respond = () =>
       new Promise((r) => {
@@ -150,6 +157,7 @@ describe("useProjectSync", () => {
     act(() => {
       useModelStore.getState().addReceiver(receiver);
     });
+    writeDraft(newerDraft);
     await act(async () => {
       resolve?.();
       await saved;
@@ -159,6 +167,10 @@ describe("useProjectSync", () => {
     // synced would be a lie the next run acted on.
     expect(useModelStore.getState().dirty).toBe(true);
     expect(result.current.error).toBeNull();
+    // ...and the save must not roll the draft back to its stale snapshot:
+    // nothing would re-trigger the autosave, and a reload would lose the
+    // receiver.
+    expect(loadDraft()).toEqual(newerDraft);
   });
 
   it("keeps the failure and the dirty flag when the save is refused", async () => {

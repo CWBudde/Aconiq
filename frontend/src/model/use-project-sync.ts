@@ -102,17 +102,20 @@ export function useProjectSync(): ProjectSync {
         after.calcArea === before.calcArea
       ) {
         markClean();
+        // The draft is crash recovery, and after a save it would be older
+        // than the project: a later "Restore draft" would offer the pre-save
+        // model. Writing what was just saved keeps the two in agreement.
+        //
+        // Only in this branch: when an edit landed in flight, the autosave
+        // owns the newer draft — and may already have written it if the
+        // request outlasted its debounce — so writing the stale snapshot
+        // here would roll it back with nothing left to re-trigger a save.
+        writeDraft({
+          features: before.features,
+          receivers: before.receivers,
+          calcArea: before.calcArea,
+        });
       }
-      // The draft is crash recovery, and after a save it would be older than
-      // the project: a later "Restore draft" would offer the pre-save model.
-      // Writing what was just saved keeps the two in agreement. If an edit
-      // landed meanwhile the model is still dirty, and the autosave's pending
-      // write overtakes this one with the newer state.
-      writeDraft({
-        features: before.features,
-        receivers: before.receivers,
-        calcArea: before.calcArea,
-      });
       projectSyncStore.setState({ error: null });
     } catch (err) {
       projectSyncStore.setState({
