@@ -62,6 +62,11 @@ const (
 	maxRequestBodyBytes   = 64 << 20 // 64 MB
 	maxRunCreateBodyBytes = 256 << 10
 	maxImportOSMBodyBytes = 64 << 10
+	// maxModelSaveBodyBytes bounds a whole model. A district-sized GeoJSON —
+	// a few thousand buildings with full outlines plus roads and receivers —
+	// runs to a few MB, so 16 MB leaves headroom for what the map can draw or
+	// an OSM import can return while staying well under the 64 MB backstop.
+	maxModelSaveBodyBytes = 16 << 20
 	maxTerrainUploadBytes = 50 << 20 // 50 MB, the whole multipart body
 	maxTerrainMemoryBytes = 8 << 20  // buffered in memory; the rest would spill to a temp file
 )

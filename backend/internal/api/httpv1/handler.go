@@ -42,6 +42,9 @@ const (
 	// errorCodeExperimentalOptInRequired answers a run request that targets a
 	// scaffold-tier standard without acknowledging what that tier means.
 	errorCodeExperimentalOptInRequired = "experimental_opt_in_required"
+	// errorCodeModelInvalid answers a model that parsed as GeoJSON but failed
+	// schema validation; details.errors carries the findings per feature.
+	errorCodeModelInvalid = "model_invalid"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -273,6 +276,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
+	mux.HandleFunc("/api/v1/model", handler.handleModelSave)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	// The security middleware sits inside CORS so that a refusal still carries
@@ -1078,7 +1082,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, or /api/v1/import/terrain.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 

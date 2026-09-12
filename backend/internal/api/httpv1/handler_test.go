@@ -211,6 +211,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 		"/api/v1/artifacts/{id}/content",
 		"/api/v1/import/osm",
 		"/api/v1/import/terrain",
+		"/api/v1/model",
 		"/api/v1/runs",
 		"/api/v1/runs/{id}/log",
 		"/api/v1/standards",

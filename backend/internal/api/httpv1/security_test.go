@@ -326,6 +326,44 @@ func TestImportOSMRejectsOversizedBody(t *testing.T) {
 	assertErrorCode(t, rec, http.StatusRequestEntityTooLarge, errorCodeRequestTooLarge)
 }
 
+func TestModelSaveRejectsOversizedBody(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Body Cap")
+	handler := NewHandler(store, nil)
+
+	// Valid JSON with one oversized property value, so the refusal is the cap
+	// and not the decoder.
+	body := `{"model":{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"kind":"receiver","height_m":4,"note":"` +
+		strings.Repeat("a", maxModelSaveBodyBytes) + `"},"geometry":{"type":"Point","coordinates":[1,2]}}]}}`
+
+	req := newAPIRequest(http.MethodPost, "/api/v1/model", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertErrorCode(t, rec, http.StatusRequestEntityTooLarge, errorCodeRequestTooLarge)
+
+	if _, err := os.Stat(store.ModelArtifactPaths().Normalized); !os.IsNotExist(err) {
+		t.Fatalf("an oversized request must not reach the model store, stat returned %v", err)
+	}
+}
+
+func TestModelSaveRejectsSafelistedContentType(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Media Type"), nil)
+
+	req := newAPIRequest(http.MethodPost, "/api/v1/model", strings.NewReader(`{"model":{"type":"FeatureCollection","features":[]}}`))
+	req.Header.Set("Content-Type", "text/plain")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertErrorCode(t, rec, http.StatusUnsupportedMediaType, errorCodeUnsupportedMediaType)
+}
+
 // zeroReader streams as many bytes as asked for without materialising them, so
 // the oversized-upload test does not allocate the cap it is testing.
 type zeroReader struct{}

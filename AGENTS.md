@@ -170,6 +170,7 @@ GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                    SSE: heartbeat + project status snapshots
 POST /api/v1/import/osm
 POST /api/v1/import/terrain
+POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract)
 GET  /api/v1/openapi.json
 ```
 
