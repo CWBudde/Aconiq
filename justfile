@@ -226,8 +226,8 @@ fe-test-wasm: wasm-build
 fe-bundle-check:
     node frontend/scripts/check-bundle-size.mjs
 
-# Run E2E tests with Playwright (starts Vite dev server automatically)
-fe-e2e:
+# Run E2E tests with Playwright (Vite dev server in WASM mode; see playwright.config.ts)
+fe-e2e: wasm-build
     cd frontend && bun run test:e2e
 
 # Run all frontend checks (typecheck, lint, test, build, bundle-check)

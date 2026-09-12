@@ -3,6 +3,12 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Playwright config for E2E tests.
  * Run with: just fe-e2e
+ *
+ * The app is served under `base: "/Aconiq/"` (vite.config.ts), so the dev
+ * server answers at http://localhost:5173/Aconiq/ and the bare origin is a 404.
+ * `baseURL` therefore carries the base path. Note that `page.goto("/map")`
+ * would still resolve against the origin and drop it; the specs go through
+ * `appPath()` in e2e/app.ts, which prefixes the base explicitly.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -16,7 +22,7 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5173/Aconiq/",
     trace: "on-first-retry",
   },
 
@@ -27,10 +33,18 @@ export default defineConfig({
     },
   ],
 
-  // Start Vite dev server automatically when running E2E locally.
+  // Start the Vite dev server automatically. It runs in WASM mode on purpose:
+  // in HTTP mode the app needs `aconiq serve` on :8080 behind the Vite proxy,
+  // and without it no project loads and the sidebar collapses to Import plus
+  // Status/Settings, so most routes never render their real content. The
+  // browser backend always reports a project, so every route is exercised, the
+  // suite is self-contained (no Go server to start), and it mirrors the GitHub
+  // Pages demo build (`just fe-build-wasm`). It needs public/aconiq.wasm and
+  // public/wasm_exec.js, which `just wasm-build` produces; `just fe-e2e`
+  // depends on that recipe.
   webServer: {
-    command: "bun run dev",
-    url: "http://localhost:5173",
+    command: "VITE_WASM_MODE=true bun run dev",
+    url: "http://localhost:5173/Aconiq/",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
