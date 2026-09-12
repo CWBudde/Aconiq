@@ -284,7 +284,12 @@ func persistCnossosRoadRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashCnossosRoadOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"cnossos road receiver outputs",
+		outputs,
+		func(output cnossosroad.ReceiverOutput) string { return output.Receiver.ID },
+		func(output cnossosroad.ReceiverOutput) cnossosroad.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "hash cnossos outputs", err)
 	}
@@ -328,7 +333,12 @@ func persistBUBRoadRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashBUBRoadOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"BUB road receiver outputs",
+		outputs,
+		func(output bubroad.ReceiverOutput) string { return output.Receiver.ID },
+		func(output bubroad.ReceiverOutput) bubroad.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUBRoadRunOutputs", "hash BUB road outputs", err)
 	}
@@ -372,7 +382,12 @@ func persistRLS19RoadRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashRLS19RoadOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"RLS-19 road receiver outputs",
+		outputs,
+		func(output rls19road.ReceiverOutput) string { return output.Receiver.ID },
+		func(output rls19road.ReceiverOutput) rls19road.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistRLS19RoadRunOutputs", "hash RLS-19 road outputs", err)
 	}
@@ -419,7 +434,12 @@ func persistSchall03RunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashSchall03Outputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"Schall 03 receiver outputs",
+		outputs,
+		func(output schall03.ReceiverOutput) string { return output.Receiver.ID },
+		func(output schall03.ReceiverOutput) schall03.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistSchall03RunOutputs", "hash Schall 03 outputs", err)
 	}
@@ -472,7 +492,14 @@ func persistCnossosAircraftRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashCnossosAircraftOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"cnossos aircraft receiver outputs",
+		outputs,
+		func(output cnossosaircraft.ReceiverOutput) string { return output.Receiver.ID },
+		func(output cnossosaircraft.ReceiverOutput) cnossosaircraft.ReceiverIndicators {
+			return output.Indicators
+		},
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosAircraftRunOutputs", "hash cnossos aircraft outputs", err)
 	}
@@ -541,7 +568,12 @@ func persistRailRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashCnossosRailOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"cnossos rail receiver outputs",
+		outputs,
+		func(output cnossosrail.ReceiverOutput) string { return output.Receiver.ID },
+		func(output cnossosrail.ReceiverOutput) cnossosrail.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, module.scope, "hash rail outputs", err)
 	}
@@ -641,7 +673,12 @@ func persistBUFAircraftRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashBUFAircraftOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"BUF aircraft receiver outputs",
+		outputs,
+		func(output bufaircraft.ReceiverOutput) string { return output.Receiver.ID },
+		func(output bufaircraft.ReceiverOutput) bufaircraft.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUFAircraftRunOutputs", "hash buf aircraft outputs", err)
 	}
@@ -747,7 +784,14 @@ func persistIndustryRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashCnossosIndustryOutputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"cnossos industry receiver outputs",
+		outputs,
+		func(output cnossosindustry.ReceiverOutput) string { return output.Receiver.ID },
+		func(output cnossosindustry.ReceiverOutput) cnossosindustry.ReceiverIndicators {
+			return output.Indicators
+		},
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, module.scope, "hash industry outputs", err)
 	}
@@ -846,7 +890,12 @@ func persistISO9613RunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
-	outputHash, err := hashISO9613Outputs(outputs)
+	outputHash, err := hashReceiverOutputs(
+		"ISO 9613 receiver outputs",
+		outputs,
+		func(output iso9613.ReceiverOutput) string { return output.Receiver.ID },
+		func(output iso9613.ReceiverOutput) iso9613.ReceiverIndicators { return output.Indicators },
+	)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistISO9613RunOutputs", "hash iso9613 outputs", err)
 	}
@@ -878,248 +927,70 @@ func persistISO9613RunOutputs(
 	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
-func hashCnossosRoadOutputs(outputs []cnossosroad.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                         `json:"receiver_id"`
-		Indicators cnossosroad.ReceiverIndicators `json:"indicators"`
-	}
+// hashedReceiverRecord is the unit of the run output-hash contract: one
+// receiver's ID beside its indicator block. The JSON tags are part of that
+// contract — changing them changes every output hash this repo has ever stored.
+type hashedReceiverRecord[Indicators any] struct {
+	ReceiverID string     `json:"receiver_id"`
+	Indicators Indicators `json:"indicators"`
+}
 
-	records := make([]record, 0, len(outputs))
+// hashedBuildingRecord is the BEB equivalent. Exposure is aggregated per
+// building, so the key is a building ID rather than a receiver ID.
+type hashedBuildingRecord[Indicators any] struct {
+	BuildingID string     `json:"building_id"`
+	Indicators Indicators `json:"indicators"`
+}
+
+// hashReceiverOutputs hashes one standard's receiver outputs. Every standard
+// but BEB hashes the same shape over a different indicator type, so the only
+// per-standard inputs are the two accessors and label, which names the payload
+// in the error a marshal failure produces.
+func hashReceiverOutputs[Output, Indicators any](
+	label string,
+	outputs []Output,
+	receiverID func(Output) string,
+	indicators func(Output) Indicators,
+) (string, error) {
+	records := make([]hashedReceiverRecord[Indicators], 0, len(outputs))
 	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
+		records = append(records, hashedReceiverRecord[Indicators]{
+			ReceiverID: receiverID(output),
+			Indicators: indicators(output),
 		})
 	}
 
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal cnossos road receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
+	return hashJSONPayload(label, records)
 }
 
-func hashISO9613Outputs(outputs []iso9613.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                     `json:"receiver_id"`
-		Indicators iso9613.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal ISO 9613 receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashCnossosRailOutputs(outputs []cnossosrail.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                         `json:"receiver_id"`
-		Indicators cnossosrail.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal cnossos rail receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashBUBRoadOutputs(outputs []bubroad.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                     `json:"receiver_id"`
-		Indicators bubroad.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal BUB road receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashRLS19RoadOutputs(outputs []rls19road.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                       `json:"receiver_id"`
-		Indicators rls19road.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal RLS-19 road receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashSchall03Outputs(outputs []schall03.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                      `json:"receiver_id"`
-		Indicators schall03.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal Schall 03 receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashCnossosAircraftOutputs(outputs []cnossosaircraft.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                             `json:"receiver_id"`
-		Indicators cnossosaircraft.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal cnossos aircraft receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func hashBUFAircraftOutputs(outputs []bufaircraft.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                         `json:"receiver_id"`
-		Indicators bufaircraft.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
-	if err != nil {
-		return "", fmt.Errorf("marshal BUF aircraft receiver outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
-}
-
+// hashBEBExposureOutputs differs from the others in shape, not only in type:
+// the records are keyed by building and the run-level summary is inside what
+// the hash covers.
 func hashBEBExposureOutputs(outputs []bebexposure.BuildingExposureOutput, summary bebexposure.Summary) (string, error) {
-	type record struct {
-		BuildingID string                         `json:"building_id"`
-		Indicators bebexposure.BuildingIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
+	records := make([]hashedBuildingRecord[bebexposure.BuildingIndicators], 0, len(outputs))
 	for _, output := range outputs {
-		records = append(records, record{
+		records = append(records, hashedBuildingRecord[bebexposure.BuildingIndicators]{
 			BuildingID: output.Building.ID,
 			Indicators: output.Indicators,
 		})
 	}
 
-	payload, err := json.Marshal(struct {
-		Buildings []record            `json:"buildings"`
-		Summary   bebexposure.Summary `json:"summary"`
+	return hashJSONPayload("BEB exposure outputs", struct {
+		Buildings []hashedBuildingRecord[bebexposure.BuildingIndicators] `json:"buildings"`
+		Summary   bebexposure.Summary                                    `json:"summary"`
 	}{
 		Buildings: records,
 		Summary:   summary,
 	})
-	if err != nil {
-		return "", fmt.Errorf("marshal BEB exposure outputs: %w", err)
-	}
-
-	sum := sha256.Sum256(payload)
-
-	return hex.EncodeToString(sum[:]), nil
 }
 
-func hashCnossosIndustryOutputs(outputs []cnossosindustry.ReceiverOutput) (string, error) {
-	type record struct {
-		ReceiverID string                             `json:"receiver_id"`
-		Indicators cnossosindustry.ReceiverIndicators `json:"indicators"`
-	}
-
-	records := make([]record, 0, len(outputs))
-	for _, output := range outputs {
-		records = append(records, record{
-			ReceiverID: output.Receiver.ID,
-			Indicators: output.Indicators,
-		})
-	}
-
-	payload, err := json.Marshal(records)
+func hashJSONPayload(label string, payload any) (string, error) {
+	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("marshal cnossos industry receiver outputs: %w", err)
+		return "", fmt.Errorf("marshal %s: %w", label, err)
 	}
 
-	sum := sha256.Sum256(payload)
+	sum := sha256.Sum256(encoded)
 
 	return hex.EncodeToString(sum[:]), nil
 }
