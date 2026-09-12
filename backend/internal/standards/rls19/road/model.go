@@ -495,7 +495,7 @@ func Descriptor() framework.StandardDescriptor {
 				Profiles: []framework.Profile{
 					{
 						Name:                 "default",
-						SupportedSourceTypes: []string{"line"},
+						SupportedSourceTypes: []string{"line", "area"},
 						SupportedIndicators:  []string{IndicatorLrDay, IndicatorLrNight},
 						ParameterSchema: framework.ParameterSchema{
 							Parameters: []framework.ParameterDefinition{

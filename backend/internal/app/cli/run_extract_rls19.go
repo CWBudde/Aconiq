@@ -134,6 +134,13 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 			}
 		}
 
+		// An area source feature is a Parkplatz (§3.4), which
+		// extractRLS19ParkingSources consumes. The guard above has already
+		// refused any source_type that is neither line nor area.
+		if normalizedSourceType == modelgeojson.SourceTypeArea {
+			continue
+		}
+
 		directionalSources, err := extractRLS19DirectionalSourceSpecs(feature)
 		if err != nil {
 			return nil, 0, domainerrors.New(domainerrors.KindValidation, rls19RoadScope, fmt.Sprintf("feature %q", feature.ID), err)
@@ -178,10 +185,9 @@ func extractRLS19RoadSources(model modelgeojson.Model, options rls19RoadRunOptio
 		}
 	}
 
-	if len(sources) == 0 {
-		return nil, 0, domainerrors.New(domainerrors.KindValidation, rls19RoadScope, "model does not contain any supported line source features", nil)
-	}
-
+	// An empty result is not an error here: a model may carry only Parkplatz
+	// features. Only the runner can see both source kinds, so it owns the
+	// decision that a model carries no rls19-road source at all.
 	return sources, overrideCount, nil
 }
 

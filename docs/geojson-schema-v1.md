@@ -81,6 +81,60 @@ geometry conventions from feature properties.
 - If directional sources would resolve to different `surface_type` values, the
   input must already be harmonized to a single shared surface choice that
   reflects the larger per-direction correction.
+- A `source` feature with `source_type: area` under `rls19-road` is a Parkplatz,
+  not a road; see the next section.
+
+A surface/speed pairing that Tabelle 4a crosses out is refused rather than
+computed as `D_StrO = 0` — `OPA` at or below 60 km/h, for instance. The error
+names the vehicle group, the speed property and the band the row is tabulated
+in. The check skips Kräder, for which Nr. 3.3.3 prescribes zero, and any vehicle
+group with no traffic in either period.
+
+### RLS-19 Parkplatz (§3.4)
+
+A Parkplatz is a `source` feature with `source_type: area` and a single
+`Polygon`. The polygon supplies both the Stellplatzfläche `P` and the centroid
+the lot is propagated from, so neither is asserted by hand — a mistyped centroid
+is the input that would silently move the level.
+
+There is deliberately **no** `rls19_parking_area_m2` property: Eq. 10's
+`−10·lg[P/1m²]` cancels when the lot is propagated as a total-power point
+source, so such a property would be a required value that provably changes no
+output.
+
+A `MultiPolygon` is refused. The number of Stellplätze `n` can be neither split
+across parts nor duplicated once per part, and §3.4 asks for a Parkplatz to be
+divided into Teilflächen (Bild 10) — which is a modelling decision, so each
+Teilfläche is its own feature with its own `n`.
+
+Like the `schall03_*` vocabulary, the enumerations are carried as names rather
+than ordinals: both are row identifiers of a published table, and a row ordinal
+moves when the table does.
+
+| Property                                  | Required                                      | Meaning                                                                                             |
+| ----------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `rls19_parking_num_spaces`                | yes                                           | Number of Stellplätze `n`, an integer ≥ 1                                                           |
+| `rls19_parking_type`                      | yes                                           | Tabelle 6 Parkplatztyp: `pkw` (0 dB), `motorrad` (+5 dB), `lkw-omnibus` (+10 dB)                    |
+| `rls19_parking_facility_type`             | no                                            | Tabelle 7 Parkplatztyp: `park-and-ride`, `tank-rastanlage`. Seeds both movement rates               |
+| `rls19_parking_movements_per_space_day`   | unless `rls19_parking_facility_type` is given | Movements `N` per space and hour, 06–22 Uhr. An arrival and a departure each count as one movement  |
+| `rls19_parking_movements_per_space_night` | unless `rls19_parking_facility_type` is given | The same for 22–06 Uhr                                                                              |
+| `elevation_m`                             | no (default `0`)                              | Absolute Z of the parking surface. Polygon `z` ordinates are ignored; this is the elevation channel |
+
+Omissions are errors, not defaults. An omitted `rls19_parking_type` does not
+mean Pkw, and an omitted movement rate does not mean zero — a rate of zero is
+the silence sentinel, which would report an occupied Parkplatz as inaudible. An
+**explicitly stated** `0` is legal and means exactly that: a period with no
+movements.
+
+A stated `rls19_parking_facility_type` seeds both rates from Tabelle 7, and an
+explicit rate then overrides its own period. Nr. 3.4.1 admits the Tabelle 7
+standard values only where no suitable project-specific survey exists, so
+stating the rates is the primary case; and Tabelle 7 carries only those two
+rows, so an ordinary public car park has no standard rate to fall back on.
+
+Parkplatz contributions are shielded by `barrier` and `building` features on the
+same §3.5 chain road sources use, but do not produce reflections — see
+`docs/conformance/rls19-konformitaetserklaerung.md`.
 
 ### Schall 03 Rail
 

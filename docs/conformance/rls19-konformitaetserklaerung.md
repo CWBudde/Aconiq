@@ -147,6 +147,53 @@ The per-Krad corrections in C3 and C4 are large, but the fixtures carry only
 smaller than the emission shift. A model with a realistic motorcycle share on a
 steep grade will move considerably more.
 
+## Reachability from the CLI
+
+Everything checkmarked above is library behaviour. This section is what
+`aconiq run --standard rls19-road` actually reaches.
+
+Until the `rls19_parking_*` vocabulary landed, the Parkplatz rows P1–P4
+described code no `aconiq run` invocation could reach: `ParkingSources` was
+never assigned outside tests, there was no GeoJSON representation and no
+extractor, and both the road extractor and `ComputeReceiverLevels` refused a
+model with no line source. The rows were accurate about the library and
+misleading about the product.
+
+### Reachable from the CLI today
+
+| Feature                         | Input                                                             |
+| ------------------------------- | ----------------------------------------------------------------- |
+| Road line sources (E1–E7, §3.5) | `source` features with `source_type: line`                        |
+| Shielding                       | `barrier` features, and `building` features as barriers           |
+| Reflections (§3.6)              | `building` features and explicit reflectors                       |
+| Parkplätze (P1–P4, §3.4)        | `source` features with `source_type: area` plus `rls19_parking_*` |
+
+### Known deviations on the Parkplatz path
+
+- **No Teilflächen-Unterteilung.** Nr. 3.4 asks for a Parkplatz to be divided
+  into Teilflächen (Bild 10), and Eq. 10 gives the area-related level of one
+  Teilfläche. A feature is modelled as a single point source at its centroid,
+  which is the un-subdivided case. A modeller who needs the subdivision states
+  each Teilfläche as its own feature with its own `n`; the software does not
+  divide one for them.
+- **No reflections.** A Parkplatz contribution is shielded — it takes the same
+  barriers and terrain edges a road Teilstück does, combined per Eq. 11 as
+  `D_div + D_atm + max(D_gr; D_z)` — but the Nr. 3.6 mirrored paths are not
+  applied to it. That machinery is built around source lines and the
+  active-Teilstück rule of Bild 14, and Nr. 3.4 does not prescribe it for a
+  point-source lot.
+- **The area term is not evaluated.** `L_W'' = … − 10·lg[P/1m²]` and the
+  conversion back to a total sound power cancel exactly, so the Stellplatzfläche
+  is read from the polygon and validated but does not enter the level. See the
+  Korrekturblatt note above.
+
+### Not reachable from the CLI
+
+- Browser (WASM) mode computes road sources only: `browser-backend.ts` declares
+  `supported_source_types: ["line"]` and builds no Parkplatz sources, so the
+  same model gives different answers in the browser and from the CLI. The WASM
+  kernel itself accepts them.
+
 ## Not yet supported
 
 - Section 9 measurement-based vehicle data (custom acoustics from measurements).

@@ -155,7 +155,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierNormative,
 			want:     rls19road.BuiltinDataPackVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistRLS19RoadRunOutputs(runDir, nil, 0, 0, 0, 0, receiverModeCustom, framework.EvidenceTierNormative)
+				out, hash, _, err := persistRLS19RoadRunOutputs(runDir, nil, 0, 0, 0, 0, 0, receiverModeCustom, framework.EvidenceTierNormative)
 
 				return out, hash, err
 			},

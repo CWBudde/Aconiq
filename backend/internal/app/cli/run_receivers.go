@@ -94,11 +94,22 @@ func buildBUBRoadReceivers(sources []bubroad.RoadSource, options bubRoadRunOptio
 	return buildReceiversFromPoints("cli.buildBUBRoadReceivers", sourcePoints, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildRLS19RoadReceivers(sources []rls19road.RoadSource, options rls19RoadRunOptions) ([]geo.PointReceiver, int, int, error) {
-	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
+// buildRLS19RoadReceivers derives the automatic receiver grid from the extent
+// of everything that emits: the road centerlines and, since a Parkplatz is an
+// extended footprint rather than the point it is propagated from, every vertex
+// of each parking polygon. Padding a grid around a lot's centroid alone would
+// place the whole grid inside the source.
+func buildRLS19RoadReceivers(
+	sources []rls19road.RoadSource,
+	parkingExtent []geo.Point2D,
+	options rls19RoadRunOptions,
+) ([]geo.PointReceiver, int, int, error) {
+	sourcePoints := make([]geo.Point2D, 0, len(sources)*2+len(parkingExtent))
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.EffectiveCenterline()...)
 	}
+
+	sourcePoints = append(sourcePoints, parkingExtent...)
 
 	return buildReceiversFromPoints("cli.buildRLS19RoadReceivers", sourcePoints, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
