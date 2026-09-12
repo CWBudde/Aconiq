@@ -25,20 +25,10 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 func (cfg PropagationConfig) Validate() error {
-	for _, item := range []struct {
-		name string
-		v    float64
-		min  float64
-	}{
-		{"air_absorption_db_per_km", cfg.AirAbsorptionDBPerKM, 0},
-		{"ground_attenuation_db", cfg.GroundAttenuationDB, 0},
-		{"slab_track_correction_db", cfg.SlabTrackCorrectionDB, 0},
-		{"bridge_correction_db", cfg.BridgeCorrectionDB, 0},
-		{"curve_correction_db", cfg.CurveCorrectionDB, 0},
-		{"min_distance_m", cfg.MinDistanceM, 0.0000001},
-	} {
-		if math.IsNaN(item.v) || math.IsInf(item.v, 0) || item.v < item.min {
-			return errors.New(item.name + " must be finite and >= 0")
+	for _, item := range propagationParams() {
+		value := item.configValue(cfg)
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < item.configMin {
+			return errors.New(item.definition.Name + " must be finite and >= 0")
 		}
 	}
 

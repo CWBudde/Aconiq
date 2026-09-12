@@ -147,19 +147,6 @@ linters:
       - linters: [goconst]
         path: internal/api/httpv1/openapi\.go
 
-      # goconst group 2 — CLI and standard-module parameter names. Each name
-      # appears exactly three times: flag/descriptor registration, parse, and
-      # provenance metadata. goconst has a fair point (a typo between the three
-      # fails silently), but the fix is the parameter-descriptor refactor in
-      # PLAN.md Priority 7, which removes the triplication outright; a constant
-      # per name would add ~45 identifiers and leave the duplication in place.
-      # Scoped to both the files that carry the triplication and the parameter
-      # vocabulary itself, so any other repeated string in these files is still
-      # reported.
-      - linters: [goconst]
-        path: (internal/app/cli/(run_options|run_options_beb|run_extract_rls19|import_soundplan)\.go|internal/standards/(schall03|iso9613)/(model|propagation|indicators)\.go)
-        text: "string `(air_absorption_db_per_km|bridge_correction_db|curve_correction_db|grid_padding_m|grid_resolution_m|ground_attenuation_db|meteorology_assumption|min_distance_m|rail_[a-z0-9_]+|receiver_height_m|receiver_mode|road_[a-z0-9_]+|slab_track_correction_db|speed_[a-z0-9_]+|traffic_[a-z0-9_]+)`"
-
       # goconst group 3 — JSON output-contract keys. These sit inside the
       # `map[string]any{…}` literals that serialise the CLI `--json` output, the
       # HTTP API responses and the GeoJSON contour export. They are a public

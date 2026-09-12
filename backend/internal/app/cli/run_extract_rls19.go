@@ -15,15 +15,15 @@ import (
 // per-source acoustic override for RLS-19 road. Presence of any one of these
 // keys causes the source to be counted as having feature-level overrides.
 var rls19AcousticOverrideKeys = []string{
-	"surface_type", "road_surface_type",
-	"road_speed_kph", "speed_pkw_kph", "speed_lkw1_kph", "speed_lkw2_kph", "speed_krad_kph",
-	"gradient_percent", "road_gradient_percent",
-	"junction_type", "road_junction_type",
-	"junction_distance_m", "road_junction_distance_m",
-	"building_height_m",
-	"street_width_m",
-	"traffic_day_pkw", "traffic_day_lkw1", "traffic_day_lkw2", "traffic_day_krad",
-	"traffic_night_pkw", "traffic_night_lkw1", "traffic_night_lkw2", "traffic_night_krad",
+	runParams.SurfaceType.key(), runParams.RoadSurfaceType.key(),
+	runParams.RoadSpeedKPH.key(), runParams.SpeedPkwKPH.key(), runParams.SpeedLkw1KPH.key(), runParams.SpeedLkw2KPH.key(), runParams.SpeedKradKPH.key(),
+	runParams.GradientPercent.key(), runParams.RoadGradientPercent.key(),
+	runParams.JunctionType.key(), runParams.RoadJunctionType.key(),
+	runParams.JunctionDistanceM.key(), runParams.RoadJunctionDistanceM.key(),
+	runParams.BuildingHeightM.key(),
+	runParams.StreetWidthM.key(),
+	runParams.TrafficDayPkw.key(), runParams.TrafficDayLkw1.key(), runParams.TrafficDayLkw2.key(), runParams.TrafficDayKrad.key(),
+	runParams.TrafficNightPkw.key(), runParams.TrafficNightLkw1.key(), runParams.TrafficNightLkw2.key(), runParams.TrafficNightKrad.key(),
 }
 
 // rls19FeatureHasAcousticOverrides reports whether a source feature carries any
@@ -45,7 +45,7 @@ func rls19PropertiesHaveAcousticOverrides(properties map[string]any) bool {
 func resolveRLS19SurfaceType(properties map[string]any, defaultSurface string) (string, error) {
 	surfaceType := defaultSurface
 
-	value, ok, err := propertyString(properties, "surface_type", "road_surface_type")
+	value, ok, err := propertyString(properties, runParams.SurfaceType.key(), runParams.RoadSurfaceType.key())
 	if err != nil {
 		return "", err
 	}
@@ -542,24 +542,24 @@ func buildRLS19RoadSource(feature modelgeojson.Feature, options rls19RoadRunOpti
 			&source.Speeds.Lkw1KPH,
 			&source.Speeds.Lkw2KPH,
 			&source.Speeds.KradKPH,
-		}, "road_speed_kph"),
-		overrideFloat(&source.Speeds.PkwKPH, "speed_pkw_kph"),
-		overrideFloat(&source.Speeds.Lkw1KPH, "speed_lkw1_kph"),
-		overrideFloat(&source.Speeds.Lkw2KPH, "speed_lkw2_kph"),
-		overrideFloat(&source.Speeds.KradKPH, "speed_krad_kph"),
-		overrideFloat(&source.GradientPercent, "gradient_percent", "road_gradient_percent"),
-		overrideFloat(&source.JunctionDistanceM, "junction_distance_m", "road_junction_distance_m"),
-		overrideFloat(&source.BuildingHeightM, "building_height_m"),
-		overrideFloat(&source.StreetWidthM, "street_width_m"),
-		overrideParsed(&source.JunctionType, rls19road.ParseJunctionType, "junction_type", "road_junction_type"),
-		overrideFloat(&source.TrafficDay.PkwPerHour, "traffic_day_pkw"),
-		overrideFloat(&source.TrafficDay.Lkw1PerHour, "traffic_day_lkw1"),
-		overrideFloat(&source.TrafficDay.Lkw2PerHour, "traffic_day_lkw2"),
-		overrideFloat(&source.TrafficDay.KradPerHour, "traffic_day_krad"),
-		overrideFloat(&source.TrafficNight.PkwPerHour, "traffic_night_pkw"),
-		overrideFloat(&source.TrafficNight.Lkw1PerHour, "traffic_night_lkw1"),
-		overrideFloat(&source.TrafficNight.Lkw2PerHour, "traffic_night_lkw2"),
-		overrideFloat(&source.TrafficNight.KradPerHour, "traffic_night_krad"),
+		}, runParams.RoadSpeedKPH.key()),
+		overrideFloat(&source.Speeds.PkwKPH, runParams.SpeedPkwKPH.key()),
+		overrideFloat(&source.Speeds.Lkw1KPH, runParams.SpeedLkw1KPH.key()),
+		overrideFloat(&source.Speeds.Lkw2KPH, runParams.SpeedLkw2KPH.key()),
+		overrideFloat(&source.Speeds.KradKPH, runParams.SpeedKradKPH.key()),
+		overrideFloat(&source.GradientPercent, runParams.GradientPercent.key(), runParams.RoadGradientPercent.key()),
+		overrideFloat(&source.JunctionDistanceM, runParams.JunctionDistanceM.key(), runParams.RoadJunctionDistanceM.key()),
+		overrideFloat(&source.BuildingHeightM, runParams.BuildingHeightM.key()),
+		overrideFloat(&source.StreetWidthM, runParams.StreetWidthM.key()),
+		overrideParsed(&source.JunctionType, rls19road.ParseJunctionType, runParams.JunctionType.key(), runParams.RoadJunctionType.key()),
+		overrideFloat(&source.TrafficDay.PkwPerHour, runParams.TrafficDayPkw.key()),
+		overrideFloat(&source.TrafficDay.Lkw1PerHour, runParams.TrafficDayLkw1.key()),
+		overrideFloat(&source.TrafficDay.Lkw2PerHour, runParams.TrafficDayLkw2.key()),
+		overrideFloat(&source.TrafficDay.KradPerHour, runParams.TrafficDayKrad.key()),
+		overrideFloat(&source.TrafficNight.PkwPerHour, runParams.TrafficNightPkw.key()),
+		overrideFloat(&source.TrafficNight.Lkw1PerHour, runParams.TrafficNightLkw1.key()),
+		overrideFloat(&source.TrafficNight.Lkw2PerHour, runParams.TrafficNightLkw2.key()),
+		overrideFloat(&source.TrafficNight.KradPerHour, runParams.TrafficNightKrad.key()),
 	})
 	if overrideErr != nil {
 		return rls19road.RoadSource{}, overrideErr

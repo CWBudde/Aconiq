@@ -177,24 +177,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"band_model":             "octave-63Hz-8000Hz",
 	}
 
-	for _, key := range []string{
-		"receiver_height_m",
-		ParamEngine,
-		"rail_train_class",
-		"rail_traction_type",
-		"rail_track_type",
-		"rail_track_form",
-		"rail_track_roughness_class",
-		"rail_average_train_speed_kph",
-		"traffic_day_trains_per_hour",
-		"traffic_night_trains_per_hour",
-		"air_absorption_db_per_km",
-		"ground_attenuation_db",
-		"slab_track_correction_db",
-		"bridge_correction_db",
-		"curve_correction_db",
-		"min_distance_m",
-	} {
+	for _, key := range provenanceParameterNames() {
 		if value, ok := params[key]; ok {
 			metadata["key_parameter."+key] = value
 		}

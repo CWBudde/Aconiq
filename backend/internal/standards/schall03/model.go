@@ -521,9 +521,6 @@ func (r ReceiverInput) Validate() error {
 // planning-track baseline with preview coefficients routed through a data-pack
 // shaped boundary.
 func Descriptor() framework.StandardDescriptor {
-	minZero := 0.0
-	minPositive := 0.001
-
 	return framework.StandardDescriptor{
 		Context:        framework.StandardContextPlanning,
 		ID:             StandardID,
@@ -539,30 +536,7 @@ func Descriptor() framework.StandardDescriptor {
 						Name:                 "rail-planning-preview",
 						SupportedSourceTypes: []string{"line"},
 						SupportedIndicators:  []string{IndicatorLrDay, IndicatorLrNight},
-						ParameterSchema: framework.ParameterSchema{
-							Parameters: []framework.ParameterDefinition{
-								{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, DefaultValue: "10", Min: &minPositive, Description: "Receiver grid spacing in meters for the future Schall 03 run/export path"},
-								{Name: "grid_padding_m", Kind: framework.ParameterKindFloat, DefaultValue: "30", Min: &minZero, Description: "Padding around source extent in meters"},
-								{Name: "receiver_height_m", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Receiver height in meters"},
-								{Name: ParamEngine, Kind: framework.ParameterKindString, DefaultValue: EngineAuto, Enum: []string{EngineAuto, EngineNormative, EnginePreview}, Description: "Computation chain: auto runs the normative Anlage-2 chain when the model carries schall03_operations and fails otherwise; preview opts into the placeholder data pack"},
-								{Name: "rail_train_class", Kind: framework.ParameterKindString, DefaultValue: TrainClassMixed, Enum: []string{TrainClassPassenger, TrainClassFreight, TrainClassMixed}, Description: "Default train class placeholder for Schall 03 source mapping"},
-								{Name: "rail_traction_type", Kind: framework.ParameterKindString, DefaultValue: TractionElectric, Enum: []string{TractionElectric, TractionDiesel, TractionMixed}, Description: "Default traction type for imported Schall 03 rail sources"},
-								{Name: "rail_track_type", Kind: framework.ParameterKindString, DefaultValue: TrackTypeBallasted, Enum: []string{TrackTypeBallasted, TrackTypeSlab}, Description: "Default track construction type for imported rail sources"},
-								{Name: "rail_track_form", Kind: framework.ParameterKindString, DefaultValue: TrackFormMainline, Enum: []string{TrackFormMainline, TrackFormStation, TrackFormSwitches}, Description: "Default track-form placeholder for future Schall 03 source mapping"},
-								{Name: "rail_track_roughness_class", Kind: framework.ParameterKindString, DefaultValue: RoughnessStandard, Enum: []string{RoughnessStandard, RoughnessLowNoise, RoughnessRough}, Description: "Default roughness class for imported rail sources"},
-								{Name: "rail_average_train_speed_kph", Kind: framework.ParameterKindFloat, DefaultValue: "100", Min: &minPositive, Description: "Default train speed for imported rail sources"},
-								{Name: "rail_curve_radius_m", Kind: framework.ParameterKindFloat, DefaultValue: "500", Min: &minZero, Description: "Default curve radius for imported rail sources"},
-								{Name: "rail_on_bridge", Kind: framework.ParameterKindBool, DefaultValue: "false", Description: "Default bridge flag for imported rail sources"},
-								{Name: "traffic_day_trains_per_hour", Kind: framework.ParameterKindFloat, DefaultValue: "8", Min: &minZero, Description: "Default day trains per hour for imported rail sources"},
-								{Name: "traffic_night_trains_per_hour", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Default night trains per hour for imported rail sources"},
-								{Name: "air_absorption_db_per_km", Kind: framework.ParameterKindFloat, DefaultValue: "0.7", Min: &minZero, Description: "Baseline air absorption term"},
-								{Name: "ground_attenuation_db", Kind: framework.ParameterKindFloat, DefaultValue: "1.2", Min: &minZero, Description: "Baseline ground attenuation term"},
-								{Name: "slab_track_correction_db", Kind: framework.ParameterKindFloat, DefaultValue: "1.5", Min: &minZero, Description: "Additional correction for slab track sections"},
-								{Name: "bridge_correction_db", Kind: framework.ParameterKindFloat, DefaultValue: "2", Min: &minZero, Description: "Additional correction for bridge sections"},
-								{Name: "curve_correction_db", Kind: framework.ParameterKindFloat, DefaultValue: "4", Min: &minZero, Description: "Maximum correction for tight-curve sections"},
-								{Name: "min_distance_m", Kind: framework.ParameterKindFloat, DefaultValue: "3", Min: &minPositive, Description: "Minimum source-receiver distance for the future propagation chain"},
-							},
-						},
+						ParameterSchema:      parameterSchema(),
 					},
 				},
 			},

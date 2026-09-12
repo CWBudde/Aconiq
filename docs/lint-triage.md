@@ -187,12 +187,15 @@ assumed; see the debt pass below.
    spec is built as nested `map[string]any`. The spellings are fixed by the OpenAPI specification,
    so a constant buys no typo protection. Path-scoped; that file contains nothing but the spec
    builder.
-2. **CLI and standard-module parameter names** (`run_options.go`, `run_options_beb.go`,
+2. ~~**CLI and standard-module parameter names** (`run_options.go`, `run_options_beb.go`,
    `run_extract_rls19.go`, `import_soundplan.go`, and
    `{schall03,iso9613}/{model,propagation,indicators}.go`; 99 findings). Group 2 above, unchanged: PLAN.md Priority 7's
    parameter-descriptor refactor owns the structural fix. Scoped to those files _and_ to the
    parameter-name vocabulary (`road_*`, `rail_*`, `traffic_*`, `speed_*`, `grid_*`,
-   `air_absorption_db_per_km`, …).
+   `air_absorption_db_per_km`, …).~~
+   **Resolved 2026-09-12 — the rule is deleted.** The parameter-descriptor refactor landed and the
+   79 findings the rule was hiding by then are fixed in code, not re-excluded. See
+   [Parameter-binding pass](#parameter-binding-pass--2026-09-12) below.
 3. **JSON output-contract keys** (`internal/app/cli/`, `internal/api/httpv1/`,
    `internal/report/export/`; 29 findings). Group 1 above, unchanged: `run_id`, `status`,
    `command`, `output_hash`, `receiver_count`, … are a public output contract emitted from
@@ -684,12 +687,13 @@ three times was planted _inside_ an excluded file (`run_options.go`) and still p
 finding. A path-only exclusion would have swallowed it. The three rules exclude the vocabulary that
 was argued about, not the files it lives in.
 
-**167 findings are still excluded, and that is not a fix.** Groups 2 (99) and 3 (29) both point at
+~~**167 findings are still excluded, and that is not a fix.** Groups 2 (99) and 3 (29) both point at
 PLAN.md Priority 7 for the structural work — the parameter-descriptor refactor and typed response
-payloads respectively. Until Priority 7 lands, the triplication and the untyped `map[string]any`
-output contract are exactly as present as they were when the linter was off; the only thing that
-changed is that they are now named, bounded and pointed at an owner. Group 1 (39, the OpenAPI
-keyword set) is the one exclusion here that is genuinely permanent.
+payloads respectively.~~ **Partly resolved 2026-09-12:** group 2 is gone — the rule is deleted and
+its findings fixed in code. Group 3 still points at Priority 7. Until that lands, the untyped
+`map[string]any` output contract is exactly as present as it was when the linter was off; the only
+thing that changed is that it is now named, bounded and pointed at an owner. Group 1 (39, the
+OpenAPI keyword set) is the one exclusion here that is genuinely permanent.
 
 ### What this pass did not touch
 
@@ -982,6 +986,66 @@ What is left in `app/cli` is 4 one-off `gosec`, the 3 `dupl` in `run_persist.go`
 `executeRunCommand` — every one of them owned by the `framework.Module` work, not by an absence of
 effort. The 2 road-pair `dupl` counted in that table are gone with the follow-up above, taking
 `//nolint` to **31** and `app/cli` to **8**.
+
+## Parameter-binding pass — 2026-09-12
+
+**Verdict: the `goconst` group 2 exclusion is deleted, and the duplication it hid is fixed in code.**
+Nothing was re-excluded and no `//nolint` was added.
+
+Measured on the pass's own tree, deleting the rule exposed **79** findings (the 99 in the debt-pass
+table above had fallen to 79 by then — the extraction pass took 24 of them with the blocks that
+carried them, and the rest is drift). After the refactor the same standalone run reports **0**
+findings in those files, so the rule excludes nothing and is gone rather than narrowed.
+
+### What the exclusion was hiding
+
+The rule's own text named the fix, and the measurement bears the diagnosis out. A parameter name —
+`road_speed_kph`, `rail_track_form`, `receiver_height_m`, … — was written three times: in the
+`framework.ParameterSchema` the standards module publishes, in the CLI parse that reads it into a
+run-options field, and in the module's `ProvenanceMetadata` key list. Nothing connected the three.
+A typo in any one of them failed **silently**: the operator's `--param` was accepted and dropped,
+the run kept its default, the manifest recorded nothing, and no test noticed.
+
+Hoisting a constant per name would have satisfied `goconst` and left every one of those failure
+modes in place, which is why the rule said not to.
+
+### What replaced it
+
+- `internal/app/cli/run_params.go` — `paramBinding`, a named string type carrying `float`,
+  `minFloat`, `minInt`, `str` and `boolean` binders, plus `runParams`: one table holding every
+  normalized parameter name the run pipeline binds, each spelled once. The parse tables, the RLS-19
+  feature-property override table and the SoundPLAN importer's property map all derive their
+  spelling from it.
+- `boundParam` (`run_options_params.go`) — a parameter name plus the closure that reads it. A
+  standard's binding table is now an ordered `[]boundParam`. The order is still behaviour —
+  `applyBoundParams` stops at the first failure — and it is now also data a test can read.
+- `internal/standards/schall03/params.go` and `internal/standards/iso9613/params.go` — one table
+  per module. `Descriptor`'s schema, `PropagationConfig.Validate`'s bounds and
+  `ProvenanceMetadata`'s key list are all derived from it instead of repeating it.
+- `TestRunOptionsCoverParameterSchema` — runs both directions over every registered standard: a
+  schema parameter the CLI binds nowhere is a silently ignored `--param`; a bound name no profile
+  declares can never reach the parser. This is what makes the single-source claim enforceable
+  rather than aspirational.
+
+### One defect the test surfaced
+
+`beb-exposure` declared `lateral_offset_m` in its schema and bound it nowhere, so
+`--param lateral_offset_m=…` was accepted and dropped. It is now bound. The schema default is `0`
+and the field was already zero-valued, so no default run changes and no digest golden moved.
+
+### Where this leaves `just lint`, after the parameter-binding pass
+
+| Still hidden  | Findings | Was (2026-09-12, extraction pass) | Mechanism                                  |
+| ------------- | -------: | --------------------------------: | ------------------------------------------ |
+| `goconst`     |   **62** |                               140 | two named, path+value-scoped rules         |
+| `noinlineerr` |  **109** |                               109 | `linters.disable`; declined in writing     |
+| gosec G304    |   **47** |                                47 | one explicit named rule                    |
+| `//nolint`    |   **33** |                                33 | in-source directives                       |
+| `gocyclo`     |    **5** |                                 5 | `linters.disable`; redundant with `cyclop` |
+
+**256, from 334.** The `goconst` exclusion rules are down from three to two: group 1 (39, the
+OpenAPI wire vocabulary, permanent) and group 3 (23, the JSON output-contract keys, still owned by
+PLAN.md Priority 7's typed response payloads).
 
 ## Reproducing these numbers
 
