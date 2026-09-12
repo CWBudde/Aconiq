@@ -1,6 +1,7 @@
 package httpv1
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -372,12 +374,14 @@ func TestModelSaveEndpointReturnsNotFoundWhenProjectNotInitialized(t *testing.T)
 	assertErrorCode(t, rec, http.StatusNotFound, errorCodeNotFound)
 }
 
-func TestModelSaveEndpointRejectsBadMethod(t *testing.T) {
+// GET and POST are both served now, so the method refusal has to be shown with
+// a method that is neither.
+func TestModelEndpointRejectsBadMethod(t *testing.T) {
 	t.Parallel()
 
 	handler := NewHandler(mustStore(t, "Model Method"), nil)
 
-	req := newAPIRequest(http.MethodGet, "/api/v1/model", nil)
+	req := newAPIRequest(http.MethodPut, "/api/v1/model", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -400,6 +404,7 @@ func TestOpenAPIDocumentsModelSave(t *testing.T) {
 	}
 
 	assertOperationResponses(t, item, "post", []string{"201", "400", "404", "405", "413", "415"})
+	assertOperationResponses(t, item, "get", []string{"200", "400", "404", "405"})
 
 	components, ok := spec["components"].(map[string]any)
 	if !ok {
@@ -411,7 +416,7 @@ func TestOpenAPIDocumentsModelSave(t *testing.T) {
 		t.Fatal("expected schemas object")
 	}
 
-	for _, name := range []string{"ModelSaveRequest", "ModelSaveResponse", "ValidationIssue"} {
+	for _, name := range []string{"ModelSaveRequest", "ModelSaveResponse", "ModelResponse", "ProjectModelStatus", "ValidationIssue"} {
 		if _, ok := schemas[name]; !ok {
 			t.Errorf("expected schema %s", name)
 		}
@@ -458,5 +463,290 @@ func assertModelArtifactRefs(t *testing.T, artifacts []project.ArtifactRef, want
 		if !found {
 			t.Errorf("artifact %s missing from manifest", id)
 		}
+	}
+}
+
+func getModel(t *testing.T, handler http.Handler, query string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := newAPIRequest(http.MethodGet, "/api/v1/model"+query, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	return rec
+}
+
+// A project that loaded but holds no model is a different situation from a
+// project that does not exist, and the frontend has to be able to act on the
+// difference — so it gets its own code, and must not inherit the not-found
+// hint that tells the user to run `aconiq init`.
+func TestModelGetReportsModelNotFoundBeforeAnySave(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Get Empty"), nil)
+
+	rec := getModel(t, handler, "")
+
+	assertErrorCode(t, rec, http.StatusNotFound, errorCodeModelNotFound)
+
+	var response errorResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if strings.Contains(response.Error.Hint, "Initialize the project") {
+		t.Fatalf("a saved-model miss must not read as a missing project: %q", response.Error.Hint)
+	}
+}
+
+func TestModelGetReturnsTheStoredModelAndTheSaveHash(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Model Get")
+	handler := NewHandler(store, nil)
+
+	saved := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`)
+	if saved.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", saved.Code, saved.Body.String())
+	}
+
+	var saveResponse modelSaveResponse
+
+	decodeResponse(t, saved.Body.Bytes(), &saveResponse)
+
+	if saveResponse.Hash == "" {
+		t.Fatal("the save response carried no hash")
+	}
+
+	rec := getModel(t, handler, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response modelGetResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Hash != saveResponse.Hash {
+		t.Errorf("the read receipt differs from the write receipt: %q vs %q", response.Hash, saveResponse.Hash)
+	}
+
+	if response.FeatureCount != 4 {
+		t.Errorf("expected feature_count 4, got %d", response.FeatureCount)
+	}
+
+	if response.CRS != "EPSG:25832" || response.ProjectCRS != "EPSG:25832" {
+		t.Errorf("unexpected crs pair: %q / %q", response.CRS, response.ProjectCRS)
+	}
+
+	// Without a requested CRS the payload is the file, not a re-rendering of it.
+	// The envelope is re-indented on the way out, so the comparison is made on
+	// the compacted forms; member order still survives it, and member order is
+	// exactly what a round trip through a struct would not preserve.
+	onDisk, err := os.ReadFile(store.ModelArtifactPaths().Normalized)
+	if err != nil {
+		t.Fatalf("read normalized model: %v", err)
+	}
+
+	if !bytes.Equal(compactJSON(t, response.Model), compactJSON(t, onDisk)) {
+		t.Errorf("expected the stored document verbatim, got %s", response.Model)
+	}
+}
+
+func compactJSON(t *testing.T, payload []byte) []byte {
+	t.Helper()
+
+	var out bytes.Buffer
+
+	err := json.Compact(&out, payload)
+	if err != nil {
+		t.Fatalf("compact json: %v", err)
+	}
+
+	return out.Bytes()
+}
+
+// The point of the CRS parameter: a project in a projected CRS can be handed to
+// a web map, which only speaks WGS84.
+func TestModelGetReprojectsOnRequest(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Get CRS"), nil)
+
+	if rec := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`); rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := getModel(t, handler, "?crs=EPSG:4326")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response modelGetResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.CRS != "EPSG:4326" {
+		t.Errorf("expected the response to name the requested CRS, got %q", response.CRS)
+	}
+
+	if response.ProjectCRS != "EPSG:25832" {
+		t.Errorf("expected the project CRS alongside it, got %q", response.ProjectCRS)
+	}
+
+	var collection modelgeojson.FeatureCollection
+
+	decodeResponse(t, response.Model, &collection)
+
+	if len(collection.Features) != 4 {
+		t.Fatalf("expected 4 features, got %d", len(collection.Features))
+	}
+
+	// The source sits at 500000 / 5700000 in EPSG:25832, which is roughly
+	// 9.0° E, 51.5° N. The tolerance is wide on purpose: this asserts that a
+	// transform ran and landed in the right place, not the transform's accuracy.
+	lon, lat := firstPointCoordinates(t, collection)
+	if lon < 8.5 || lon > 9.5 {
+		t.Errorf("longitude %v is not a WGS84 longitude for this point", lon)
+	}
+
+	if lat < 51.0 || lat > 52.0 {
+		t.Errorf("latitude %v is not a WGS84 latitude for this point", lat)
+	}
+}
+
+func TestModelGetRejectsAnUnparseableCRS(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Get Bad CRS"), nil)
+
+	if rec := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`); rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	assertErrorCode(t, getModel(t, handler, "?crs=EPSG:garbage"), http.StatusBadRequest, errorCodeBadRequest)
+}
+
+// The status hash is what lets a restored draft prove it already equals the
+// project without fetching the model, so it has to be the same string the save
+// handed out — and absent when there is nothing to compare against.
+func TestProjectStatusCarriesTheModelHash(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Status"), nil)
+
+	before := projectStatusOf(t, handler)
+	if before.Model != nil {
+		t.Fatalf("expected no model member before any save, got %#v", before.Model)
+	}
+
+	saved := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`)
+	if saved.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", saved.Code, saved.Body.String())
+	}
+
+	var saveResponse modelSaveResponse
+
+	decodeResponse(t, saved.Body.Bytes(), &saveResponse)
+
+	after := projectStatusOf(t, handler)
+	if after.Model == nil {
+		t.Fatal("expected a model member after a save")
+	}
+
+	if after.Model.Hash != saveResponse.Hash {
+		t.Errorf("status hash %q differs from the save receipt %q", after.Model.Hash, saveResponse.Hash)
+	}
+
+	if after.Model.UpdatedAt.IsZero() {
+		t.Error("expected the model artifact's timestamp")
+	}
+}
+
+func projectStatusOf(t *testing.T, handler http.Handler) projectStatusResponse {
+	t.Helper()
+
+	req := newAPIRequest(http.MethodGet, "/api/v1/project/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var status projectStatusResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &status)
+
+	return status
+}
+
+// firstPointCoordinates pulls the lon/lat out of the first Point feature.
+func firstPointCoordinates(t *testing.T, collection modelgeojson.FeatureCollection) (float64, float64) {
+	t.Helper()
+
+	for _, feature := range collection.Features {
+		if feature.Geometry.Type != "Point" {
+			continue
+		}
+
+		pair, ok := feature.Geometry.Coordinates.([]any)
+		if !ok || len(pair) != 2 {
+			t.Fatalf("unexpected point coordinates: %#v", feature.Geometry.Coordinates)
+		}
+
+		x, okX := pair[0].(float64)
+		y, okY := pair[1].(float64)
+
+		if !okX || !okY {
+			t.Fatalf("unexpected point coordinates: %#v", pair)
+		}
+
+		return x, y
+	}
+
+	t.Fatal("the collection carries no Point feature")
+
+	return 0, 0
+}
+
+// The SSE stream suppresses an event whose dedupe key is unchanged. Saving a
+// model changes the payload and nothing the key used to be made of, so without
+// the model hash in the key the stream would serve the first hash forever while
+// every other test still passed.
+func TestProjectStatusStreamKeyFollowsTheModelHash(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Stream Model Key")
+	handler := NewHandler(store, nil)
+	streamer := Handler{store: store, now: time.Now}
+
+	_, beforeKey := streamer.buildProjectStatusStreamEvent()
+
+	saved := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`)
+	if saved.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", saved.Code, saved.Body.String())
+	}
+
+	var saveResponse modelSaveResponse
+
+	decodeResponse(t, saved.Body.Bytes(), &saveResponse)
+
+	event, afterKey := streamer.buildProjectStatusStreamEvent()
+
+	if afterKey == beforeKey {
+		t.Fatalf("the dedupe key did not move when the model was saved: %q", afterKey)
+	}
+
+	if !strings.Contains(afterKey, saveResponse.Hash) {
+		t.Errorf("expected the model hash in the dedupe key %q", afterKey)
+	}
+
+	status, ok := event["project"].(projectStatusResponse)
+	if !ok {
+		t.Fatalf("unexpected stream project member: %#v", event["project"])
+	}
+
+	if status.Model == nil || status.Model.Hash != saveResponse.Hash {
+		t.Errorf("the stream event does not carry the saved model's hash: %#v", status.Model)
 	}
 }

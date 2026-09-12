@@ -421,6 +421,45 @@ func openapiImportPathItems() map[string]any {
 func openapiModelPathItems() map[string]any {
 	return map[string]any{
 		"/api/v1/model": map[string]any{
+			"get": map[string]any{
+				"summary":     "Read the project model",
+				"operationId": "getModel",
+				"description": "Returns the normalized model `.noise/model/model.normalized.geojson` holds, together " +
+					"with its hash. Without `crs` the stored bytes are returned untouched, so the payload is exactly " +
+					"what the hash is a receipt for; with `crs` every coordinate is reprojected into that CRS first and " +
+					"`crs` in the response names what the coordinates are actually in. The hash is unchanged by the " +
+					"reprojection: it always describes the stored file.",
+				"parameters": []map[string]any{
+					{
+						"name":     "crs",
+						"in":       "query",
+						"required": false,
+						"description": "CRS to return the coordinates in, e.g. `EPSG:4326` to draw the model on a web " +
+							"map. Omit it to receive the model in the project CRS, unmodified.",
+						"schema": map[string]any{"type": "string"},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "The stored model",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/ModelResponse",
+								},
+							},
+						},
+					},
+					"400": openapiErrorResponse("`crs` is not a recognised CRS identifier (`bad_request`)"),
+					"404": openapiErrorResponse(
+						"The project is not initialized (`not_found`), or it is but no model has been saved yet " +
+							"(`" + errorCodeModelNotFound + "`). The two are separate codes because a client has to " +
+							"be able to tell them apart.",
+					),
+					"405": methodNotAllowedResponse(),
+					"500": openapiErrorResponse("Failed to read the stored model"),
+				},
+			},
 			"post": map[string]any{
 				"summary":     "Replace the project model",
 				"operationId": "saveModel",
@@ -571,6 +610,19 @@ func openapiProjectSchemas() map[string]any {
 				"scenario_count":   map[string]any{"type": "integer"},
 				"run_count":        map[string]any{"type": "integer"},
 				"last_run":         map[string]any{"$ref": "#/components/schemas/LastRunStatus"},
+				"model":            map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
+			},
+		},
+		"ProjectModelStatus": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"hash", "updated_at"},
+			"description": "The saved model's receipt. Absent until a model has been saved. A client that kept " +
+				"the hash POST /api/v1/model returned compares the two as strings to learn whether its local draft " +
+				"is still the project's model, without fetching anything.",
+			"properties": map[string]any{
+				"hash":       openapiModelHashSchema(),
+				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When the model artifact was last written"},
 			},
 		},
 		"ArtifactRef": map[string]any{
@@ -803,23 +855,43 @@ func openapiModelSchemas() map[string]any {
 				},
 				"model": map[string]any{
 					"type":        "object",
-					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver.",
+					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area.",
 				},
 			},
 		},
 		"ModelSaveResponse": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []string{"normalized_path", "dump_path", "validation_report_path", "feature_count", "warnings"},
+			"required":             []string{"normalized_path", "dump_path", "validation_report_path", "feature_count", "hash", "warnings"},
 			"properties": map[string]any{
 				"normalized_path":        map[string]any{"type": "string", "description": "Project-relative path of the normalized GeoJSON"},
 				"dump_path":              map[string]any{"type": "string", "description": "Project-relative path of the model dump"},
 				"validation_report_path": map[string]any{"type": "string", "description": "Project-relative path of the validation report"},
 				"feature_count":          map[string]any{"type": "integer"},
+				"hash":                   openapiModelHashSchema(),
 				"warnings": map[string]any{
 					"type":        "array",
 					"description": "Validation warnings. The model was written despite them.",
 					"items":       map[string]any{"$ref": "#/components/schemas/ValidationIssue"},
+				},
+			},
+		},
+		"ModelResponse": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"crs", "project_crs", "hash", "feature_count", "model"},
+			"properties": map[string]any{
+				"crs": map[string]any{
+					"type": "string",
+					"description": "The CRS the returned coordinates are in — the requested one, or the project " +
+						"CRS when none was requested. Stated rather than inferred.",
+				},
+				"project_crs":   map[string]any{"type": "string", "description": "The project's own CRS"},
+				"hash":          openapiModelHashSchema(),
+				"feature_count": map[string]any{"type": "integer"},
+				"model": map[string]any{
+					"type":        "object",
+					"description": "The normalized GeoJSON FeatureCollection. Returned verbatim from disk unless `crs` asked for a reprojection.",
 				},
 			},
 		},
@@ -914,9 +986,15 @@ func applyOperationTransportContract(operation map[string]any, method string) {
 	}
 
 	responses["413"] = openapiErrorResponse("Request body exceeds this endpoint's limit (`request_too_large`)")
-	responses["415"] = openapiErrorResponse(
-		"Request body was not sent as the media type this endpoint parses (`unsupported_media_type`)",
-	)
+
+	// 415 comes from requireContentType, which only an operation that parses a
+	// body ever calls. Stamping it on a bodyless DELETE would document a refusal
+	// the server cannot produce.
+	if _, hasBody := operation["requestBody"]; hasBody {
+		responses["415"] = openapiErrorResponse(
+			"Request body was not sent as the media type this endpoint parses (`unsupported_media_type`)",
+		)
+	}
 
 	parameters, _ := operation["parameters"].([]map[string]any)
 	operation["parameters"] = append(parameters, clientHeaderParameter())
@@ -957,6 +1035,20 @@ func openapiStandardContextSchema() map[string]any {
 			"project's approval case, `mapping` for area-wide strategic noise mapping. The two are not " +
 			"interchangeable, so a result carries the context it was produced under.",
 		"enum": []string{"planning", "mapping"},
+	}
+}
+
+// openapiModelHashSchema describes the model receipt. The same value appears on
+// three schemas, and the one thing every consumer must understand about it is
+// that it is never recomputed client-side.
+func openapiModelHashSchema() map[string]any {
+	return map[string]any{
+		"type":    "string",
+		"pattern": "^[0-9a-f]{64}$",
+		"description": "SHA-256 of the stored normalized model, as bare lowercase hex — the spelling " +
+			"provenance.json uses for input hashes. It is a receipt issued by the server: keep the value you " +
+			"were handed and compare it as a string. Do not recompute it from a model you hold, because a " +
+			"re-serialised model is not the same bytes.",
 	}
 }
 

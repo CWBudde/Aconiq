@@ -36,15 +36,21 @@ const (
 // on them, and openapi.go documents them, so every emission site must use these
 // spellings.
 const (
-	errorCodeBadRequest    = "bad_request"
-	errorCodeNotFound      = "not_found"
-	errorCodeInternalError = "internal_error"
+	errorCodeBadRequest       = "bad_request"
+	errorCodeNotFound         = "not_found"
+	errorCodeInternalError    = "internal_error"
+	errorCodeMethodNotAllowed = "method_not_allowed"
 	// errorCodeExperimentalOptInRequired answers a run request that targets a
 	// scaffold-tier standard without acknowledging what that tier means.
 	errorCodeExperimentalOptInRequired = "experimental_opt_in_required"
 	// errorCodeModelInvalid answers a model that parsed as GeoJSON but failed
 	// schema validation; details.errors carries the findings per feature.
 	errorCodeModelInvalid = "model_invalid"
+	// errorCodeModelNotFound answers a read of a project that loaded but has no
+	// model saved yet. It is deliberately not errorCodeNotFound: a client has to
+	// be able to tell "no project" from "no model", and the two want different
+	// hints.
+	errorCodeModelNotFound = "model_not_found"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -176,6 +182,16 @@ type projectStatusResponse struct {
 	ScenarioCount   int            `json:"scenario_count"`
 	RunCount        int            `json:"run_count"`
 	LastRun         *lastRunStatus `json:"last_run,omitempty"`
+	// Model is absent until a model has been saved.
+	Model *projectModelStatus `json:"model,omitempty"`
+}
+
+// projectModelStatus lets a client decide whether its local draft still matches
+// the project without fetching the model. The hash is the same receipt
+// POST /api/v1/model returned; the client compares strings and never hashes.
+type projectModelStatus struct {
+	Hash      string    `json:"hash"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type lastRunStatus struct {
@@ -276,7 +292,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
-	mux.HandleFunc("/api/v1/model", handler.handleModelSave)
+	mux.HandleFunc("/api/v1/model", handler.handleModel)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	// The security middleware sits inside CORS so that a refusal still carries
@@ -350,7 +366,41 @@ func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
 		}
 	}
 
+	status.Model = h.modelStatus(proj)
+
 	return status
+}
+
+// modelStatus reports the saved model's receipt, or nil when there is none.
+//
+// The manifest is consulted first, so a fresh project opens no file at all:
+// without a model artifact ref there is nothing to hash. A hash that then fails
+// is reported as absence rather than failing the whole status request — a
+// client that cannot compare falls back to fetching the model, which is a
+// worse answer than this one but not a broken one.
+func (h Handler) modelStatus(proj project.Project) *projectModelStatus {
+	var ref project.ArtifactRef
+
+	for _, a := range proj.Artifacts {
+		if a.ID == project.ArtifactIDModelNormalized {
+			ref = a
+			break
+		}
+	}
+
+	if ref.ID == "" {
+		return nil
+	}
+
+	hash, err := h.store.ModelHash()
+	if err != nil {
+		return nil
+	}
+
+	return &projectModelStatus{
+		Hash:      hash,
+		UpdatedAt: ref.CreatedAt,
+	}
 }
 
 func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
@@ -361,7 +411,7 @@ func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
 		h.handleRunCreate(w, r)
 	default:
 		writeAPIError(w, http.StatusMethodNotAllowed, apiError{
-			Code:    "method_not_allowed",
+			Code:    errorCodeMethodNotAllowed,
 			Message: fmt.Sprintf("method %s is not allowed for %s", r.Method, r.URL.Path),
 		})
 	}
@@ -1230,6 +1280,15 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		lastRunUpdated = last.FinishedAt.UTC().Format(time.RFC3339Nano)
 	}
 
+	// Every member the payload can change by must appear in the key, or the
+	// stream serves the first snapshot forever. The model hash is the one that
+	// moves without any run moving: saving a model changes the payload and
+	// nothing else here.
+	modelHash := ""
+	if status.Model != nil {
+		modelHash = status.Model.Hash
+	}
+
 	key := strings.Join([]string{
 		"available",
 		proj.ProjectID,
@@ -1237,6 +1296,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		lastRunID,
 		lastRunState,
 		lastRunUpdated,
+		modelHash,
 	}, ":")
 
 	return map[string]any{
@@ -1265,7 +1325,7 @@ func requireMethod(w http.ResponseWriter, r *http.Request, expected string) bool
 	}
 
 	writeAPIError(w, http.StatusMethodNotAllowed, apiError{
-		Code:    "method_not_allowed",
+		Code:    errorCodeMethodNotAllowed,
 		Message: "unsupported HTTP method",
 		Details: map[string]any{
 			"method":   r.Method,

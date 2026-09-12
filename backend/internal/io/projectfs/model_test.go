@@ -1,6 +1,7 @@
 package projectfs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -222,4 +223,150 @@ func TestSaveModelErrorMessageNamesTheStepNotThePath(t *testing.T) {
 	if !strings.Contains(err.Error(), store.Root()) {
 		t.Fatalf("the wrapped cause should keep the path for the server-side log: %q", err.Error())
 	}
+}
+
+// Everything the model hash is good for rests on this: the normalized file is a
+// pure function of the model's content. ToFeatureCollection stamps no timestamp
+// and no source path, writeJSONFile marshals with sorted map keys, so saving the
+// same model twice writes the same bytes and yields the same receipt.
+func TestSaveModelIsByteDeterministic(t *testing.T) {
+	t.Parallel()
+
+	model := sampleModel()
+
+	first := hashOfSavedModel(t, model)
+	second := hashOfSavedModel(t, model)
+
+	if first != second {
+		t.Fatalf("identical models hashed differently: %s vs %s", first, second)
+	}
+
+	if len(first) != 64 {
+		t.Fatalf("expected a bare 64-character hex digest, got %q", first)
+	}
+
+	if first != strings.ToLower(first) {
+		t.Fatalf("expected lowercase hex, got %q", first)
+	}
+}
+
+func TestModelHashChangesWithTheModel(t *testing.T) {
+	t.Parallel()
+
+	other := sampleModel()
+	other.Features[0].ID = "r2"
+
+	if hashOfSavedModel(t, sampleModel()) == hashOfSavedModel(t, other) {
+		t.Fatal("two different models produced the same hash")
+	}
+}
+
+func TestReadModelAndModelHashReportNotFoundBeforeAnySave(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("No Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	for name, call := range map[string]func() error{
+		"ReadModel": func() error { _, callErr := store.ReadModel(); return callErr },
+		"ModelHash": func() error { _, callErr := store.ModelHash(); return callErr },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			callErr := call()
+
+			var appErr *domainerrors.AppError
+			if !errors.As(callErr, &appErr) {
+				t.Fatalf("expected a domain error, got %T: %v", callErr, callErr)
+			}
+
+			if appErr.Kind != domainerrors.KindNotFound {
+				t.Fatalf("expected KindNotFound, got %q", appErr.Kind)
+			}
+		})
+	}
+}
+
+func TestReadModelReturnsTheStoredBytes(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Read Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	model := sampleModel()
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	raw, err := store.ReadModel()
+	if err != nil {
+		t.Fatalf("read model: %v", err)
+	}
+
+	onDisk, err := os.ReadFile(store.ModelArtifactPaths().Normalized)
+	if err != nil {
+		t.Fatalf("read normalized model: %v", err)
+	}
+
+	if !bytes.Equal(raw, onDisk) {
+		t.Fatal("ReadModel did not return the stored bytes verbatim")
+	}
+}
+
+func sampleModel() modelgeojson.Model {
+	height := 4.0
+
+	return modelgeojson.Model{
+		SchemaVersion: 1,
+		ProjectCRS:    "EPSG:25832",
+		ImportedAt:    time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+		SourcePath:    "api:model",
+		Features: []modelgeojson.Feature{
+			{ID: "r1", Kind: modelgeojson.FeatureKindReceiver, HeightM: &height, GeometryType: "Point", Coordinates: []any{1.0, 2.0}},
+		},
+	}
+}
+
+// hashOfSavedModel saves model into a fresh project and returns its receipt.
+func hashOfSavedModel(t *testing.T, model modelgeojson.Model) string {
+	t.Helper()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Hash", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	sum, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	return sum
 }
