@@ -748,6 +748,10 @@ editing several of its files rather than one package of its own.
       in-process half (`Handler` uses value receivers, so it has to be a pointer field or a
       package-level lock); the cross-process half needs a file lock or waits for the run pipeline
       to move in-process (item above), after which the mutex is the whole fix.
+- [ ] **Route the SoundPLAN import through `Store.SaveModel`.** `persistSoundPlanArtifacts`
+      (`import_soundplan.go`) still writes the three model files itself because it adds a fourth
+      artifact ref in the same manifest save; let `SaveModel` take extra refs so `.noise/model/`
+      has one writer.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
@@ -854,31 +858,25 @@ register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutz
 
 ### Phase A — Contracts and robustness
 
-Landed (`061524e`…`fb80e87`); the gates below hold and every later phase builds on them:
+Landed; the gates below hold and every later phase builds on them:
 
-- [x] `POST /api/v1/model` replaces the project model through `projectfs.Store.SaveModel`, the
-      same path `aconiq import` uses; refused models write nothing; `openapi.go`, `README.md` and
-      `AGENTS.md` list it. Residual: `persistSoundPlanArtifacts` (`import_soundplan.go`) still
-      writes the three model files itself because it adds a fourth ref in the same save.
-- [x] One `Backend` interface (`api/backend.ts`) selected once; pages and hooks branch on
-      `capabilities` (`canExport`, `runsAgainstSavedModel`, `runsChangeExternally`), never on the
-      mode; every non-OK response goes through `api-error.ts`. "Save to project" lives in the header
-      with Ctrl+S; `dirty` means "differs from the project", so imports and restored drafts start
-      dirty and only a successful save clears it (in browser mode, where the draft is the project,
-      the draft write does); the run dialog refuses to start on unsaved changes. Residual: nothing
-      reads the project model back (`Backend` has no `getModel`, the API no `GET /api/v1/model`), so
-      an HTTP-mode reload comes back only through the localStorage draft and starts dirty even when
-      it equals the project — see the hydration item in Phase C.
-- [x] Runs poll by activity (2 s while a run is pending or running, 15 s idle, never in browser
-      mode); the run log polls while running and is invalidated from the runs list on completion.
+- [x] `POST /api/v1/model` replaces the project model through `projectfs.Store.SaveModel`, the path
+      `aconiq import` uses too (`061524e`, hardened in `2379e37`). Refused models write nothing.
+- [x] One `Backend` interface selected once; pages and hooks branch on `capabilities`, never on the
+      mode, and every non-OK response goes through `api-error.ts` (`f07bb20`).
+- [x] "Save to project" in the header; `dirty` means "differs from the project", so imports and
+      restored drafts start dirty, only a successful save clears it, and the run dialog refuses to
+      start on unsaved changes (`fb2cba7`). The calculation area is not in the payload — see the
+      Phase C item.
+- [x] Runs poll by activity (2 s active, 15 s idle, never in browser mode); the run log polls while
+      running and is invalidated from the runs list on completion (`6e96e7d`, `afe6333`).
 - [x] Browser-mode runs live in IndexedDB as one versioned document with a 20-run cap and quota
-      eviction; the draft document is versioned too. The map's lost WebGL context recovers, and the
-      "Map unavailable" panel has Retry.
+      eviction; the draft document is versioned too (`8b8fa1a`).
+- [x] A lost WebGL context recovers on its own; the "Map unavailable" panel has Retry (`c282100`).
 - [x] The E2E suite runs in WASM mode under `/Aconiq/` (`just fe-e2e`, `frontend-e2e` job) and
-      carries the axe baseline: every route in `de` and `en` is clean under `wcag2a`/`wcag2aa`, and
-      the `best-practice` findings are pinned per route in `KNOWN_VIOLATIONS`
-      (`e2e/a11y.spec.ts`) in both directions — an entry that stops firing fails the test, so the
-      list is pruned as Phase B lands.
+      carries the axe baseline (`fb80e87`, `11d9894`): WCAG A/AA clean on every route in `de` and
+      `en`; `best-practice` findings are pinned per route in `KNOWN_VIOLATIONS` in both directions,
+      so the list must be pruned as Phase B lands.
 
 ### Phase B — Design system foundation
 
@@ -922,6 +920,12 @@ Landed (`061524e`…`fb80e87`); the gates below hold and every later phase build
       hash on `ProjectStatusResponse` compared against a hash stored with the draft) so the `/`
       page can load the saved model on startup and a restored draft that equals the project starts
       clean instead of forcing a re-save before every run.
+- [ ] **Carry the calculation area to the backend.** `modelToGeoJSON` leaves `calcArea` out because
+      the v1 schema has no kind for it and `POST /api/v1/runs` / `aconiq run` take no grid extent,
+      so an HTTP-mode auto-grid run uses the source extent while the map shows a drawn area; the
+      run dialog says so (`msg_calc_area_not_in_project`) instead of claiming the area is active.
+      Add a grid extent to the run request (bounds in the project CRS, or a `calc_area` feature in
+      the model schema), then drop that notice and gate the run on the area being saved.
 - [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:428-461`),
       PDF section, planned settings, "Phase 24+" strings (`en.json:315`). Replace every CLI hand-off
       (`results.tsx:463`, `export.tsx:204-208`, `en.json:305`) with one "Copy CLI command" affordance.
