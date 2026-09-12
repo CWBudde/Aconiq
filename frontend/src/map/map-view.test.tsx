@@ -1,12 +1,4 @@
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 // maplibre-gl cannot run in jsdom (no WebGL), so the whole module is replaced
@@ -18,17 +10,18 @@ const fake = vi.hoisted(() => {
   class FakeMap {
     private readonly handlers = new Map<string, Set<Handler>>();
     private readonly canvas = document.createElement("canvas");
+    readonly container: HTMLElement;
     readonly addControl = vi.fn();
-    readonly resize = vi.fn();
     readonly remove = vi.fn();
     readonly getLayer = vi.fn(() => undefined);
     readonly queryRenderedFeatures = vi.fn(() => []);
 
-    constructor() {
+    constructor(options: { container: HTMLElement }) {
       state.constructCalls += 1;
       if (state.throwOnConstruct) {
         throw new Error("WebGL is not supported");
       }
+      this.container = options.container;
       state.instances.push(this);
     }
 
@@ -76,6 +69,12 @@ vi.mock("maplibre-gl", () => ({
   },
 }));
 
+// `layers.ts` pulls in the whole `@/i18n/messages` graph, which dominates the
+// cost of importing MapView; the component itself renders no message text.
+vi.mock("@/i18n/messages", () => ({
+  m: new Proxy({}, { get: () => () => "" }),
+}));
+
 const { state } = fake;
 
 // `webglDisabledForSession` is module-level on purpose (it must survive
@@ -94,13 +93,6 @@ function latestInstance() {
 }
 
 const MAP_LOAD_TIMEOUT_MS = 15000;
-
-// The first import pays for transforming the module graph and can exceed the
-// per-test timeout on a cold cache; later re-imports after `resetModules` only
-// re-evaluate.
-beforeAll(async () => {
-  await import("./map-view");
-}, 60000);
 
 beforeEach(() => {
   vi.resetModules();
@@ -124,7 +116,7 @@ describe("MapView", () => {
     });
 
     expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
-    expect(container.querySelector("div.absolute.inset-0")).not.toBeNull();
+    expect(container.contains(latestInstance().container)).toBe(true);
     act(() => {
       vi.advanceTimersByTime(MAP_LOAD_TIMEOUT_MS);
     });
@@ -135,7 +127,6 @@ describe("MapView", () => {
     const MapView = await loadMapView();
     render(<MapView />);
     const first = latestInstance();
-    const removeListener = vi.spyOn(first.getCanvas(), "removeEventListener");
 
     act(() => {
       vi.advanceTimersByTime(MAP_LOAD_TIMEOUT_MS);
@@ -143,17 +134,8 @@ describe("MapView", () => {
 
     expect(screen.getByText("Map unavailable")).toBeInTheDocument();
     expect(screen.getByText(/did not finish loading/)).toBeInTheDocument();
-    // The error re-runs the init effect, whose cleanup tears the stale map
-    // down completely.
+    // The error re-runs the init effect, whose cleanup removes the stale map.
     expect(first.remove).toHaveBeenCalledTimes(1);
-    expect(removeListener).toHaveBeenCalledWith(
-      "webglcontextlost",
-      expect.any(Function),
-    );
-    expect(removeListener).toHaveBeenCalledWith(
-      "webglcontextrestored",
-      expect.any(Function),
-    );
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
@@ -203,7 +185,7 @@ describe("MapView", () => {
     expect(screen.getByText("Map unavailable")).toBeInTheDocument();
   });
 
-  it("survives a lost WebGL context and resizes on restore", async () => {
+  it("keeps the canvas mounted through a lost WebGL context", async () => {
     const MapView = await loadMapView();
     render(<MapView />);
     const instance = latestInstance();
@@ -211,42 +193,35 @@ describe("MapView", () => {
       instance.fire("load");
     });
 
-    const lost = new Event("webglcontextlost", { cancelable: true });
+    // MapLibre restores the context itself; all this component has to do is
+    // not swap the canvas for the error panel.
     act(() => {
-      instance.getCanvas().dispatchEvent(lost);
+      instance
+        .getCanvas()
+        .dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
     });
 
-    expect(lost.defaultPrevented).toBe(true);
     expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
     expect(instance.remove).not.toHaveBeenCalled();
-
-    act(() => {
-      instance.getCanvas().dispatchEvent(new Event("webglcontextrestored"));
-    });
-    expect(instance.resize).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the timer and removes the canvas listeners on unmount", async () => {
+  it("clears the timer and removes the map on unmount", async () => {
     const MapView = await loadMapView();
+    const setTimeout = vi.spyOn(window, "setTimeout");
+    const clearTimeout = vi.spyOn(window, "clearTimeout");
     const { unmount } = render(<MapView />);
     const instance = latestInstance();
-    const removeListener = vi.spyOn(
-      instance.getCanvas(),
-      "removeEventListener",
+    // React schedules timers of its own, so pick out ours by its delay and
+    // assert that exactly that handle is cleared.
+    const armed = setTimeout.mock.calls.findIndex(
+      ([, delay]) => delay === MAP_LOAD_TIMEOUT_MS,
     );
-    const clearTimeout = vi.spyOn(window, "clearTimeout");
+    expect(armed).toBeGreaterThanOrEqual(0);
+    const handle: unknown = setTimeout.mock.results[armed]?.value;
 
     unmount();
 
-    expect(clearTimeout).toHaveBeenCalledTimes(1);
-    expect(removeListener).toHaveBeenCalledWith(
-      "webglcontextlost",
-      expect.any(Function),
-    );
-    expect(removeListener).toHaveBeenCalledWith(
-      "webglcontextrestored",
-      expect.any(Function),
-    );
+    expect(clearTimeout).toHaveBeenCalledWith(handle);
     expect(instance.remove).toHaveBeenCalledTimes(1);
 
     // The timer is really gone: nothing fires after the timeout would have.

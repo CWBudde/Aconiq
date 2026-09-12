@@ -16,8 +16,10 @@ import { LAYER_IDS, SOURCE_IDS } from "./layers";
  * `load` only fires after the style *and* the first render complete, so a slow
  * network produces the same signal as a broken GPU. The threshold is therefore
  * deliberately generous, and a timeout is treated as a per-mount condition
- * rather than session-wide evidence that WebGL is unusable: remounting (a route
- * change or basemap switch) retries, and so does the panel's Retry button.
+ * rather than session-wide evidence that WebGL is unusable: a route change
+ * remounts and retries, and so does the panel's Retry button. (A basemap
+ * switch does not: it only re-runs the init effect, which early-returns while
+ * `mapError` is set.)
  */
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
@@ -128,19 +130,12 @@ export function MapView({
       "bottom-left",
     );
 
-    // A lost context is transient by definition: `preventDefault()` tells the
-    // browser we intend to restore, and `webglcontextrestored` then repaints.
-    // It must not set `mapError` — the error panel would unmount this canvas,
-    // and the restored event can only ever fire on the canvas that lost it.
-    const canvas = m.getCanvas();
-    const handleContextLost = (event: Event) => {
-      event.preventDefault();
-    };
-    const handleContextRestored = () => {
-      m.resize();
-    };
-    canvas.addEventListener("webglcontextlost", handleContextLost);
-    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+    // A lost WebGL context is transient by definition, and MapLibre handles the
+    // restore itself: its own canvas listeners call `preventDefault()`, stash
+    // the style, then rebuild the painter and resize on `webglcontextrestored`.
+    // This component must merely keep the canvas mounted meanwhile — a lost
+    // context must never set `mapError`, because the error panel would unmount
+    // the very canvas the restored event fires on.
 
     m.on("load", () => {
       mapRef.current = m;
@@ -155,8 +150,6 @@ export function MapView({
 
     return () => {
       window.clearTimeout(fallbackTimer);
-      canvas.removeEventListener("webglcontextlost", handleContextLost);
-      canvas.removeEventListener("webglcontextrestored", handleContextRestored);
       mapRef.current = null;
       setMap(null);
       m.remove();
