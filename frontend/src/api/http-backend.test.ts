@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { APIRequestError, asAPIRequestError } from "./api-error";
+import {
+  APIRequestError,
+  ERROR_CODE_NOT_FOUND,
+  asAPIRequestError,
+} from "./api-error";
 import type { ModelSaveRequest, ModelSaveResponse } from "./client";
 import { CLIENT_HEADER_NAME } from "./client";
 import { httpBackend } from "./http-backend";
@@ -67,6 +71,7 @@ describe("httpBackend capabilities", () => {
       kind: "http",
       canExport: false,
       runsAgainstSavedModel: true,
+      runsChangeExternally: true,
     });
   });
 });
@@ -75,8 +80,8 @@ describe("httpBackend error handling", () => {
   it("keeps the envelope of a refused read", async () => {
     stubFetch(
       jsonResponse(
-        envelope("project_not_found", "no project here", "Run aconiq init."),
-        400,
+        envelope(ERROR_CODE_NOT_FOUND, "no project here", "Run aconiq init."),
+        404,
       ),
     );
 
@@ -84,7 +89,7 @@ describe("httpBackend error handling", () => {
     const apiError = asAPIRequestError(error);
 
     expect(apiError).toBeInstanceOf(APIRequestError);
-    expect(apiError?.code).toBe("project_not_found");
+    expect(apiError?.code).toBe(ERROR_CODE_NOT_FOUND);
     expect(apiError?.hint).toBe("Run aconiq init.");
     expect(apiError?.message).toBe("no project here");
   });
@@ -119,12 +124,30 @@ describe("httpBackend error handling", () => {
 });
 
 describe("httpBackend.getProjectStatus", () => {
-  it("reads a missing project as null", async () => {
+  it("reads a not_found envelope as no project", async () => {
     stubFetch(
-      jsonResponse(envelope("project_not_found", "no project here"), 404),
+      jsonResponse(envelope(ERROR_CODE_NOT_FOUND, "no project here"), 404),
     );
 
     await expect(httpBackend.getProjectStatus()).resolves.toBeNull();
+  });
+
+  it("throws for a 404 that is not the API's envelope", async () => {
+    // A wrong base-URL override or an older server without the route answers
+    // 404 too; neither means "no project yet".
+    stubFetch(new Response("<html>not found</html>", { status: 404 }));
+
+    await expect(httpBackend.getProjectStatus()).rejects.toThrow(
+      "Request failed: 404",
+    );
+  });
+
+  it("throws for a 404 envelope with another code", async () => {
+    stubFetch(jsonResponse(envelope("route_missing", "no such route"), 404));
+
+    const error = await httpBackend.getProjectStatus().catch((e: unknown) => e);
+
+    expect(asAPIRequestError(error)?.code).toBe("route_missing");
   });
 
   it("throws for any other failure", async () => {
@@ -145,11 +168,11 @@ describe("httpBackend.saveModel", () => {
     normalized_path: ".noise/model/normalized.geojson",
     dump_path: ".noise/model/dump.json",
     validation_report_path: ".noise/model/validation-report.json",
-    feature_count: 0,
-    warnings: [],
+    feature_count: 3,
+    warnings: [{ code: "short_segment", message: "segment under 1 m" }],
   };
 
-  it("posts the model as JSON with the client header and returns the body", async () => {
+  it("posts the model as JSON with the client header and maps the response", async () => {
     const fetchMock = stubFetch(jsonResponse(saved, 201));
 
     const response = await httpBackend.saveModel(request);
@@ -161,7 +184,10 @@ describe("httpBackend.saveModel", () => {
     const headers = headersOf(init);
     expect(headers["Content-Type"]).toBe("application/json");
     expect(headers[CLIENT_HEADER_NAME]).toBe("aconiq-web");
-    expect(response).toEqual(saved);
+    expect(response).toEqual({
+      featureCount: 3,
+      warnings: [{ code: "short_segment", message: "segment under 1 m" }],
+    });
   });
 
   it("keeps the validation findings of a refused model", async () => {

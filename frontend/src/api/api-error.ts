@@ -16,6 +16,12 @@ import type { APIError } from "./client";
 export const ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED =
   "experimental_opt_in_required";
 
+/**
+ * The project the request needs does not exist. Mirrors `errorCodeNotFound`
+ * in `backend/internal/api/httpv1/handler.go`; the API answers with 404.
+ */
+export const ERROR_CODE_NOT_FOUND = "not_found";
+
 /** An error envelope from the local API, kept whole. */
 export class APIRequestError extends Error {
   readonly code: string;

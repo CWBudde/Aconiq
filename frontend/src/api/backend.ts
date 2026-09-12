@@ -10,9 +10,9 @@
  */
 
 import type {
+  APIValidationIssue,
   HealthResponse,
   ModelSaveRequest,
-  ModelSaveResponse,
   ProjectStatusResponse,
   RunLog,
   RunSummary,
@@ -41,6 +41,21 @@ export interface BackendCapabilities {
    * mode with no receivers placed, and refuses to start such a run.
    */
   readonly runsAgainstSavedModel: boolean;
+  /**
+   * Runs change while the page is open without the UI having done anything:
+   * the server executes them and their status moves on its own. When set,
+   * the runs list polls; when not set, a run completes inside `startRun` and
+   * the list is invalidated there, so polling would only re-read what the UI
+   * itself wrote.
+   */
+  readonly runsChangeExternally: boolean;
+}
+
+/** What the UI needs from a model save, mode-independent. */
+export interface ModelSaveResult {
+  featureCount: number;
+  /** Validation warnings; the model was saved despite them. */
+  warnings: APIValidationIssue[];
 }
 
 /** What the run dialog collects; `buildCreateRunRequest` maps it onto the API body. */
@@ -84,13 +99,11 @@ export interface Backend {
   /** Rejects unless `capabilities.canExport`. */
   createExport(runId: string): Promise<RunSummary>;
   /** Replace the project model; refused with `model_invalid` when validation fails. */
-  saveModel(req: ModelSaveRequest): Promise<ModelSaveResponse>;
+  saveModel(req: ModelSaveRequest): Promise<ModelSaveResult>;
 }
 
 /**
  * Selected here rather than in `mode.ts`: `http-backend.ts` imports the URL
- * helpers from `mode.ts`, so selecting there would close an import cycle, and
- * it would pull the browser backend — and the model store behind it — into
- * every chunk that only wants the base-URL helpers (the settings page).
+ * helpers from `mode.ts`, so selecting there would close an import cycle.
  */
 export const backend: Backend = IS_WASM_MODE ? browserBackend : httpBackend;

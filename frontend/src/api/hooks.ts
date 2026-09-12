@@ -5,8 +5,6 @@ import type { ModelSaveRequest, RasterMetadata, ReceiverTable } from "./client";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 
-export { buildCreateRunRequest } from "./http-backend";
-
 export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health.all,
@@ -31,10 +29,9 @@ export function useStandards() {
 }
 
 export function useRuns(refetchIntervalMs?: number) {
-  // The browser backend changes only through this UI, so polling it would
-  // re-read local storage for nothing.
-  const refetchInterval =
-    backend.capabilities.kind === "browser" ? undefined : refetchIntervalMs;
+  const refetchInterval = backend.capabilities.runsChangeExternally
+    ? refetchIntervalMs
+    : undefined;
   return useQuery({
     queryKey: queryKeys.runs.list(),
     queryFn: () => backend.getRuns(),

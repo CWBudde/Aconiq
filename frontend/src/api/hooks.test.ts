@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunSpec } from "./backend";
-import { buildCreateRunRequest } from "./hooks";
+import { buildCreateRunRequest } from "./http-backend";
 
 const baseSpec: RunSpec = {
   standardId: "rls19-road",

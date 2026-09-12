@@ -1,4 +1,8 @@
-import { errorFromResponse } from "./api-error";
+import {
+  ERROR_CODE_NOT_FOUND,
+  errorFromResponse,
+  parseErrorEnvelope,
+} from "./api-error";
 import type { Backend, OsmImportRequest, RunSpec } from "./backend";
 import { apiHeaders } from "./client";
 import type {
@@ -76,6 +80,7 @@ export const httpBackend: Backend = {
     kind: "http",
     canExport: false,
     runsAgainstSavedModel: true,
+    runsChangeExternally: true,
   },
 
   getHealth() {
@@ -84,15 +89,24 @@ export const httpBackend: Backend = {
 
   async getProjectStatus() {
     const response = await send("/api/v1/project/status");
-    // 404, and only 404, means no project is initialised: that is a state the
-    // welcome page renders, not a failure.
+    if (response.ok) {
+      return (await response.json()) as ProjectStatusResponse;
+    }
+    // A `not_found` envelope means no project is initialised: a state the
+    // welcome page renders, not a failure. Any other 404 — an HTML page from
+    // a wrong base URL, an older server without the route — is one.
     if (response.status === 404) {
-      return null;
+      const envelope = parseErrorEnvelope(
+        await response
+          .clone()
+          .json()
+          .catch(() => null),
+      );
+      if (envelope?.code === ERROR_CODE_NOT_FOUND) {
+        return null;
+      }
     }
-    if (!response.ok) {
-      throw await errorFromResponse(response);
-    }
-    return (await response.json()) as ProjectStatusResponse;
+    throw await errorFromResponse(response);
   },
 
   getStandards() {
@@ -133,7 +147,8 @@ export const httpBackend: Backend = {
     );
   },
 
-  saveModel(req) {
-    return postJSON<ModelSaveResponse>("/api/v1/model", req);
+  async saveModel(req) {
+    const saved = await postJSON<ModelSaveResponse>("/api/v1/model", req);
+    return { featureCount: saved.feature_count, warnings: saved.warnings };
   },
 };

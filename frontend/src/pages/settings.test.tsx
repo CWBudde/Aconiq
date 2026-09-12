@@ -15,6 +15,7 @@ vi.mock("@/api/backend", () => ({
       kind: "http",
       canExport: false,
       runsAgainstSavedModel: true,
+      runsChangeExternally: true,
     },
   },
 }));

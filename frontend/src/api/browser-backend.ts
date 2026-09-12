@@ -3,12 +3,16 @@
    client. Several are synchronous in-memory lookups, but they must stay
    `async` so that a thrown error surfaces as a rejected promise, exactly as
    it does on the HTTP path. */
-import type { Backend, OsmImportRequest, RunSpec } from "./backend";
+import type {
+  Backend,
+  ModelSaveResult,
+  OsmImportRequest,
+  RunSpec,
+} from "./backend";
 import type {
   ArtifactRef,
   HealthResponse,
   ModelSaveRequest,
-  ModelSaveResponse,
   ProjectStatusResponse,
   RasterMetadata,
   ReceiverTable,
@@ -880,6 +884,7 @@ export const browserBackend = {
     kind: "browser",
     canExport: true,
     runsAgainstSavedModel: false,
+    runsChangeExternally: false,
   },
 
   async getHealth(): Promise<HealthResponse> {
@@ -1346,16 +1351,10 @@ out geom;`;
 
   /**
    * In browser mode the model store is the project: a run reads it directly,
-   * so there is nothing to write. Nothing is written, so no path is reported.
+   * so there is nothing to write.
    */
-  async saveModel(req: ModelSaveRequest): Promise<ModelSaveResponse> {
-    return {
-      normalized_path: "",
-      dump_path: "",
-      validation_report_path: "",
-      feature_count: req.model.features.length,
-      warnings: [],
-    };
+  async saveModel(req: ModelSaveRequest): Promise<ModelSaveResult> {
+    return { featureCount: req.model.features.length, warnings: [] };
   },
 } satisfies Backend;
 

@@ -27,4 +27,9 @@ describe("backend capabilities", () => {
     expect(browserBackend.capabilities.runsAgainstSavedModel).toBe(false);
     expect(httpBackend.capabilities.runsAgainstSavedModel).toBe(true);
   });
+
+  it("only the API's runs change while the page is open", () => {
+    expect(browserBackend.capabilities.runsChangeExternally).toBe(false);
+    expect(httpBackend.capabilities.runsChangeExternally).toBe(true);
+  });
 });
