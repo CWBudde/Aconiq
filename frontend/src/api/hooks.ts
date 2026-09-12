@@ -1,7 +1,14 @@
+import { useEffect, useRef } from "react";
 import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
 import { backend } from "./backend";
 import type { OsmImportRequest, RunSpec } from "./backend";
-import type { ModelSaveRequest, RasterMetadata, ReceiverTable } from "./client";
+import type {
+  ModelSaveRequest,
+  RasterMetadata,
+  ReceiverTable,
+  RunSummary,
+} from "./client";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 
@@ -28,18 +35,65 @@ export function useStandards() {
   });
 }
 
-export function useRuns(refetchIntervalMs?: number) {
-  const refetchInterval = backend.capabilities.runsChangeExternally
-    ? refetchIntervalMs
-    : undefined;
+/*
+ * Runs and their logs are polled, not pushed. The API's SSE stream
+ * (`/api/v1/events`) carries project status snapshots, not run logs, and a
+ * browser `EventSource` cannot send the `--api-token` header, so the stream is
+ * unreachable whenever a token is set (PLAN.md, Priority 6). Polling by
+ * activity keeps the cost near zero while nothing is running.
+ */
+
+/** Runs-list poll interval while any run is pending or running. */
+export const ACTIVE_RUNS_POLL_MS = 2_000;
+/**
+ * Runs-list poll interval while every run is settled. Slow, but not off: a
+ * run started from the CLI or another tab still shows up while a runs list
+ * is on screen.
+ */
+export const IDLE_RUNS_POLL_MS = 15_000;
+/** Poll interval for the log of a run that is still running. */
+export const RUN_LOG_POLL_MS = 1_000;
+
+function isRunActive(run: RunSummary): boolean {
+  return run.status === "pending" || run.status === "running";
+}
+
+/** Module-level so the query options do not carry a fresh function each render. */
+function runsRefetchInterval(query: Query<RunSummary[]>): number {
+  const runs = query.state.data ?? [];
+  return runs.some(isRunActive) ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
+}
+
+export function useRuns() {
   return useQuery({
     queryKey: queryKeys.runs.list(),
     queryFn: () => backend.getRuns(),
-    ...(refetchInterval === undefined ? {} : { refetchInterval }),
+    refetchInterval: backend.capabilities.runsChangeExternally
+      ? runsRefetchInterval
+      : false,
   });
 }
 
-export function useRunLog(runId: string | null) {
+/**
+ * @param isRunning Whether the run is still being executed by the server.
+ *   While set, the log polls and a remount fetches immediately; when it
+ *   drops, the log is fetched once more so the lines written between the
+ *   last poll and completion arrive. No capability check is needed here: in
+ *   browser mode a run completes inside `startRun`, so a caller never
+ *   observes a running one and passes `false` throughout.
+ */
+export function useRunLog(runId: string | null, isRunning: boolean) {
+  const previous = useRef({ runId, isRunning });
+  useEffect(() => {
+    const was = previous.current;
+    previous.current = { runId, isRunning };
+    if (was.isRunning && !isRunning && runId !== null && was.runId === runId) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.runs.log(runId),
+      });
+    }
+  }, [runId, isRunning]);
+
   return useQuery({
     queryKey: queryKeys.runs.log(runId ?? ""),
     queryFn: () => {
@@ -47,7 +101,8 @@ export function useRunLog(runId: string | null) {
       return backend.getRunLog(runId);
     },
     enabled: runId !== null,
-    staleTime: 30_000,
+    refetchInterval: isRunning ? RUN_LOG_POLL_MS : false,
+    staleTime: isRunning ? 0 : 30_000,
   });
 }
 

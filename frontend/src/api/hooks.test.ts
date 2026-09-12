@@ -1,10 +1,11 @@
 import { createElement, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelSaveResult, RunSpec } from "./backend";
+import type { RunLog, RunSummary } from "./client";
 import { buildCreateRunRequest } from "./http-backend";
-import { useIsSavingModel, useSaveModel } from "./hooks";
+import { useIsSavingModel, useRunLog, useRuns, useSaveModel } from "./hooks";
 import { queryClient } from "./query-client";
 
 const saveState = vi.hoisted(() => ({
@@ -12,18 +13,62 @@ const saveState = vi.hoisted(() => ({
     Promise.resolve({ featureCount: 0, warnings: [] }),
 }));
 
+const backendState = vi.hoisted(() => ({
+  runsChangeExternally: true,
+  runs: [] as RunSummary[],
+  log: { run_id: "", lines: [] } as RunLog,
+}));
+
+const getRuns = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve(backendState.runs)),
+);
+const getRunLog = vi.hoisted(() =>
+  vi.fn<(runId: string) => Promise<RunLog>>(() =>
+    Promise.resolve(backendState.log),
+  ),
+);
+
 vi.mock("./backend", () => ({
   backend: {
     capabilities: {
       kind: "http",
       canExport: false,
       runsAgainstSavedModel: true,
-      runsChangeExternally: true,
+      get runsChangeExternally() {
+        return backendState.runsChangeExternally;
+      },
     },
     saveModel: () => saveState.respond(),
     getProjectStatus: () => Promise.resolve(null),
+    getRuns,
+    getRunLog,
   },
 }));
+
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children);
+}
+
+function runWithStatus(status: RunSummary["status"]): RunSummary {
+  return {
+    id: `run-${status}`,
+    scenario_id: "default",
+    standard_id: "rls19-road",
+    version: "2019",
+    status,
+    started_at: "2026-01-01T00:00:00Z",
+    finished_at: "",
+    log_path: "",
+    artifacts: [],
+  };
+}
+
+/** Advances fake time and lets the queries settle in between. */
+async function advance(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
 
 const baseSpec: RunSpec = {
   standardId: "rls19-road",
@@ -91,14 +136,6 @@ describe("buildCreateRunRequest", () => {
  * app does.
  */
 describe("useIsSavingModel", () => {
-  function wrapper({ children }: { children: ReactNode }) {
-    return createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      children,
-    );
-  }
-
   beforeEach(() => {
     queryClient.clear();
   });
@@ -133,5 +170,131 @@ describe("useIsSavingModel", () => {
     await waitFor(() => {
       expect(observer.result.current).toBe(false);
     });
+  });
+});
+
+/**
+ * Runs are polled rather than pushed (see the note in `hooks.ts`), so the
+ * interval is what keeps a run started from the CLI or another tab visible.
+ * The assertions count calls on the mocked backend rather than reading the
+ * query options: what matters is that a fetch actually happens.
+ */
+describe("useRuns", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    queryClient.clear();
+    getRuns.mockClear();
+    backendState.runsChangeExternally = true;
+    backendState.runs = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("polls every 2 s while a run is running", async () => {
+    backendState.runs = [runWithStatus("running"), runWithStatus("completed")];
+
+    const hook = renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.data).toHaveLength(2);
+
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(2);
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(3);
+  });
+
+  it("polls every 15 s, not every 2 s, while every run is settled", async () => {
+    backendState.runs = [runWithStatus("completed"), runWithStatus("failed")];
+
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+    await advance(13_000);
+    expect(getRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it("speeds up once a run appears that is still running", async () => {
+    backendState.runs = [runWithStatus("completed")];
+
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+
+    // Started elsewhere between polls; the idle poll picks it up.
+    backendState.runs = [runWithStatus("completed"), runWithStatus("pending")];
+    await advance(15_000);
+    expect(getRuns).toHaveBeenCalledTimes(2);
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not poll in browser mode, where a run completes inside startRun", async () => {
+    backendState.runsChangeExternally = false;
+    backendState.runs = [runWithStatus("running")];
+
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+
+    await advance(30_000);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useRunLog", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    queryClient.clear();
+    getRunLog.mockClear();
+    backendState.log = { run_id: "run-1", lines: ["started"] };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("polls while the run is running", async () => {
+    renderHook(() => useRunLog("run-1", true), { wrapper });
+    await advance(0);
+    expect(getRunLog).toHaveBeenCalledTimes(1);
+
+    await advance(2_000);
+    expect(getRunLog.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(getRunLog).toHaveBeenLastCalledWith("run-1");
+  });
+
+  it("fetches once more after the run completes, then stops", async () => {
+    const hook = renderHook(
+      ({ isRunning }: { isRunning: boolean }) => useRunLog("run-1", isRunning),
+      { wrapper, initialProps: { isRunning: true } },
+    );
+    await advance(1_000);
+    const callsWhileRunning = getRunLog.mock.calls.length;
+    expect(callsWhileRunning).toBeGreaterThanOrEqual(2);
+
+    // The final lines land between the last poll and the status flip.
+    backendState.log = { run_id: "run-1", lines: ["started", "done"] };
+    hook.rerender({ isRunning: false });
+    await advance(0);
+    expect(getRunLog).toHaveBeenCalledTimes(callsWhileRunning + 1);
+    expect(hook.result.current.data?.lines).toEqual(["started", "done"]);
+
+    await advance(30_000);
+    expect(getRunLog).toHaveBeenCalledTimes(callsWhileRunning + 1);
+  });
+
+  it("does not poll a run that is not running", async () => {
+    renderHook(() => useRunLog("run-1", false), { wrapper });
+    await advance(0);
+    expect(getRunLog).toHaveBeenCalledTimes(1);
+
+    await advance(30_000);
+    expect(getRunLog).toHaveBeenCalledTimes(1);
   });
 });

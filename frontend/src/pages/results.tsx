@@ -751,7 +751,7 @@ function ResultRunListItem({
 // ---------------------------------------------------------------------------
 
 export default function ResultsPage() {
-  const { data: runs = [], isLoading, error } = useRuns(5_000);
+  const { data: runs = [], isLoading, error } = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const completedRuns = useMemo(

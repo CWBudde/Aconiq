@@ -506,7 +506,10 @@ function RunFilterBar({
 // ---------------------------------------------------------------------------
 
 function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
-  const { data: log, isLoading: logLoading } = useRunLog(run.id);
+  const { data: log, isLoading: logLoading } = useRunLog(
+    run.id,
+    run.status === "running" || run.status === "pending",
+  );
   const lines = log?.lines ?? [];
   const isRunning = run.status === "running";
 
@@ -1290,8 +1293,8 @@ export default function RunPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [filters, setFilters] = useState<RunFilters>(EMPTY_FILTERS);
 
-  // Fetch runs; poll every 3 s to pick up CLI-launched runs quickly.
-  const { data: runs = [], isLoading, error } = useRuns(3_000);
+  // Fetch runs; `useRuns` polls by activity so CLI-launched runs show up too.
+  const { data: runs = [], isLoading, error } = useRuns();
 
   const hasRunning = runs.some((r) => r.status === "running");
 

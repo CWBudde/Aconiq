@@ -397,7 +397,7 @@ function ExportListItem({
 // ---------------------------------------------------------------------------
 
 export default function ExportPage() {
-  const { data: runs = [], isLoading, error } = useRuns(5_000);
+  const { data: runs = [], isLoading, error } = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
