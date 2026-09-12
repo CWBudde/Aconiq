@@ -30,6 +30,10 @@ import type { Route } from "./app";
  * list has to be pruned in the same change that fixes the defect. An allow-list
  * that outlives its defect is a lie.
  *
+ * Beyond axe, every route asserts `<html lang>` matches the locale under
+ * test: index.html hardcodes `lang="en"` and src/main.tsx corrects it at
+ * startup, which no axe rule can see (`html-has-lang` only wants a value).
+ *
  * The map route with an empty model shows the workspace-start panel rather
  * than the map canvas; the baseline covers what renders.
  */
@@ -94,6 +98,8 @@ for (const locale of LOCALES) {
         // waiting for its first link pins the baseline to the same DOM every
         // run rather than to whichever state axe happened to catch.
         await navLink(page, message(locale, "nav_map")).waitFor();
+
+        await expect(page.locator("html")).toHaveAttribute("lang", locale);
 
         const results = await new AxeBuilder({ page })
           .withTags([...WCAG_TAGS, BEST_PRACTICE_TAG])
