@@ -155,6 +155,186 @@ jobs:
       - name: Go tests (race detector)
         run: just test-race
 
+  # Coverage. Advisory, and structurally so rather than merely by intent: this
+  # is a separate job, it is deliberately NOT in the required-check set, and the
+  # floor step carries `continue-on-error`. `go-ci` is required — a coverage
+  # regression must never be able to block a merge, and a coverage *tooling*
+  # failure must never be able to block one either.
+  #
+  # Separate from `go-ci` rather than a `just test-coverage` swapped in for
+  # `just test`, for the same reason: those steps would then be inside the
+  # required check. It costs one more run of the suite, in parallel, against a
+  # gate whose verdict nobody should ever have to reason about.
+  go-coverage:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    # pull-requests: write is for the sticky comment below. Job-level
+    # permissions replace the workflow-level ones rather than adding to them, so
+    # contents: read is restated here.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Run tests with coverage
+        id: tests
+        run: just test-coverage
+
+      # Gated on the test step, not on `always()`. `go test ./...` keeps going
+      # after a package fails and still writes a profile for the packages that
+      # completed — a file that is nonempty, plausible, and missing an arbitrary
+      # slice of the denominator. coverage-check.sh's statement and file minima
+      # catch a truncated run, not a few absent packages, so a partial profile
+      # would be published as the headline number and have the floor enforced
+      # against it.
+      - name: Render the coverage report
+        id: report
+        if: always() && steps.tests.outcome == 'success'
+        continue-on-error: true
+        run: |
+          if [ ! -s backend/coverage.out ]; then
+            echo "has_coverage=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Backend test coverage"
+              echo ""
+              echo "**Not reported for this commit.** The tests passed but produced no"
+              echo "coverage profile at \`backend/coverage.out\`."
+            } >code-coverage-results.md
+            cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "has_coverage=true" >> "$GITHUB_OUTPUT"
+          just coverage-report
+          cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+
+      # `!= 'success'` rather than `== 'failure'`: if checkout fails the test
+      # step never runs and its outcome is `skipped`. Matching only `failure`
+      # would leave the previous commit's sticky comment standing as this
+      # commit's coverage. Say why there is no number, in the same two places
+      # the number would have gone — staying silent is not neutral on a pull
+      # request.
+      - name: Explain the missing coverage report
+        if: >-
+          always() &&
+          (steps.tests.outcome != 'success' || steps.report.outcome == 'failure')
+        continue-on-error: true
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          REPORT_OUTCOME: ${{ steps.report.outcome }}
+        run: |
+          case "${TESTS_OUTCOME}" in
+            success) WHY="The tests passed, but rendering the report failed (\`${REPORT_OUTCOME}\`) — the profile is unreadable." ;;
+            failure) WHY="The test run failed, so \`backend/coverage.out\` holds at most the packages that completed." ;;
+            *)       WHY="The test run never started (\`${TESTS_OUTCOME}\`), so no profile was produced." ;;
+          esac
+          {
+            echo "## Backend test coverage"
+            echo ""
+            echo "**Not reported for this commit.** ${WHY}"
+            echo ""
+            echo "A partial profile is not a coverage number: publishing it would put an"
+            echo "arbitrary slice of the denominator on the pull request and enforce the"
+            echo "floor against it. Fix the run and this job reports again."
+          } >code-coverage-results.md
+          cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+
+      # The SCRIPT, not `just coverage-check`: just has a single failure exit
+      # status and so collapses the two cases the script exists to separate. 1
+      # is a real regression and the percentage means what it says; 2 means the
+      # profile or the configuration is not trustworthy and the percentage
+      # should not be believed at all, in either direction.
+      #
+      # It runs BEFORE the comment is posted so the breach note below can reach
+      # the Markdown that comment carries. Posting first would put a below-floor
+      # percentage on the pull request looking like any other result.
+      - name: Check the coverage floor
+        id: floor
+        if: always() && steps.report.outputs.has_coverage == 'true'
+        continue-on-error: true
+        env:
+          # floor(77.3) - 2, measured 2026-09-12 on 87da006. Ratchet in
+          # docs/testing/coverage.md, never silently here.
+          COVERAGE_FLOOR: "75"
+        run: |
+          rc=0
+          bash scripts/coverage-check.sh || rc=$?
+          echo "status=${rc}" >> "$GITHUB_OUTPUT"
+          exit "${rc}"
+
+      # A non-fatal step failure is easy to miss in a long step list, so raise a
+      # run-level annotation and put the warning into the report itself.
+      #
+      # The two cases get different words on purpose. A regression sends you
+      # looking for missing tests; an untrustworthy measurement does not, and
+      # may well be sitting comfortably above the floor while being worthless.
+      - name: Flag a coverage problem
+        if: >-
+          always() &&
+          ((steps.floor.outputs.status != '' && steps.floor.outputs.status != '0')
+           || steps.floor.outcome == 'failure')
+        continue-on-error: true
+        env:
+          FLOOR_STATUS: ${{ steps.floor.outputs.status }}
+        run: |
+          case "${FLOOR_STATUS}" in
+            1)
+              TITLE="Backend coverage below the floor"
+              LEAD="**Backend coverage is below the floor.**"
+              BODY="Advisory: it fails no required check and blocks no merge."
+              ;;
+            2)
+              TITLE="Backend coverage number is not trustworthy"
+              LEAD="**The backend coverage measurement failed its sanity checks.**"
+              BODY="A tooling problem, not a coverage regression — the percentage above may be anything, including one comfortably over the floor. The step log says which check failed."
+              ;;
+            *)
+              TITLE="Backend coverage check ended unexpectedly"
+              LEAD="**The backend coverage check ended with status \`${FLOOR_STATUS:-unknown}\`.**"
+              BODY="Neither a clean pass nor one of the documented failure codes. See the step log."
+              ;;
+          esac
+          echo "::warning title=${TITLE}::Advisory only — it fails no check and blocks no merge. docs/testing/coverage.md has the policy."
+          {
+            echo ""
+            echo "> ⚠️ ${LEAD}"
+            echo "> ${BODY}"
+            echo "> See docs/testing/coverage.md for the policy and the ratchet ledger."
+          } | tee -a code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Gated on the report FILE existing, never on `has_coverage`: every path
+      # above writes one — the number, or the reason there is none — and a
+      # sticky comment outlives the run that wrote it, so a skipped post leaves
+      # the previous commit's percentage standing as if it were current.
+      #
+      # The same-repository guard plus `continue-on-error`: a fork pull request
+      # gets a read-only GITHUB_TOKEN and cannot comment at all. Without both, a
+      # comment failing to post would turn this job red after every test passed.
+      - name: Post the coverage comment
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          hashFiles('code-coverage-results.md') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash scripts/sticky-comment.sh coverage-backend code-coverage-results.md
+
   # CVE scanning. Separate job for the same reason as go-race: independent of
   # every other gate, so there is no reason to serialise it behind them.
   govulncheck:

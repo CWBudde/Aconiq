@@ -65,9 +65,31 @@ test-race:
     cd backend && go test -race ./...
 
 # Run tests with coverage
+#
+# `-covermode=atomic` is not cosmetic: the engine runs a worker pool and much of
+# the suite runs in parallel, and a lost non-atomic counter write undercounts
+# without emitting any error. `scripts/coverage-check.sh` refuses a profile
+# written any other way, so the number CI publishes and the number produced here
+# are the same measurement.
 test-coverage:
-    cd backend && go test -v -coverprofile=coverage.out ./...
+    cd backend && go test -covermode=atomic -coverprofile=coverage.out ./...
     cd backend && go tool cover -html=coverage.out -o coverage.html
+
+# Render the backend coverage report (requires a prior test-coverage)
+coverage-report:
+    bash scripts/coverage-report.sh
+
+# Check the backend coverage floor (requires a prior test-coverage)
+#
+# Reports only unless COVERAGE_FLOOR is set:
+#     COVERAGE_FLOOR=75 just coverage-check
+#
+# The script separates "below the floor" (exit 1) from "the profile is not
+# trustworthy" (exit 2). just collapses both into one failure status, so
+# .github/workflows/go-ci.yml calls the script directly; use this recipe when
+# the distinction does not matter.
+coverage-check:
+    bash scripts/coverage-check.sh
 
 # Update golden test snapshots
 update-golden:
@@ -222,6 +244,19 @@ fe-test:
 fe-test-wasm: wasm-build
     cd frontend && ACONIQ_REQUIRE_WASM=1 bun run test
 
+# Run frontend tests with coverage
+#
+# The floors live in frontend/vitest.config.ts and are applied by the test run
+# itself, so this recipe fails when coverage is below them. It is deliberately
+# not part of `fe-ci`: coverage here is advisory, and a floor breach must not be
+# able to fail a required check.
+fe-test-coverage:
+    cd frontend && bun run test:coverage
+
+# Render the frontend coverage report (requires a prior fe-test-coverage)
+fe-coverage-report:
+    cd frontend && bun run scripts/coverage-report.mjs --out ../code-coverage-results-frontend.md
+
 # Check JS bundle size budgets (requires a prior fe-build)
 fe-bundle-check:
     node frontend/scripts/check-bundle-size.mjs
@@ -293,7 +328,7 @@ release-snapshot:
 
 # Clean build artifacts
 clean:
-    rm -rf bin/ backend/coverage.out backend/coverage.html frontend/dist frontend/public/aconiq.wasm frontend/public/wasm_exec.js
+    rm -rf bin/ backend/coverage.out backend/coverage.html code-coverage-results.md code-coverage-results-frontend.md frontend/coverage frontend/dist frontend/public/aconiq.wasm frontend/public/wasm_exec.js
 
 fix:
     just lint-fix
