@@ -244,7 +244,12 @@ func TestParkingFixtureRelationsHoldByArithmetic(t *testing.T) {
 
 	levels := map[string]float64{}
 
-	for _, name := range []string{"p1_parking_pr_pkw", "p2_parking_lkw_omnibus", "p3_parking_shielded"} {
+	fixtures := []string{
+		"p1_parking_pr_pkw", "p2_parking_lkw_omnibus",
+		"p3_parking_shielded", "p4_parking_reflected",
+	}
+
+	for _, name := range fixtures {
 		var snapshot expectedSnapshotFile
 
 		path := filepath.Join(packageDir(), "testdata", "ci_safe", name+".golden.json")
@@ -274,5 +279,40 @@ func TestParkingFixtureRelationsHoldByArithmetic(t *testing.T) {
 	shielding := levels["p2_parking_lkw_omnibus"] - levels["p3_parking_shielded"]
 	if shielding <= 0 {
 		t.Errorf("the barrier must lower the Parkplatz contribution, got %.6f dB", shielding)
+	}
+
+	assertParkingReflectionIsBounded(t, levels)
+}
+
+// assertParkingReflectionIsBounded brackets the Nr. 3.6 mirrored path of P4
+// using geometry and Tabelle 8 alone, so the fixture is not merely pinning
+// Aconiq against itself.
+//
+// P4 is the P2 lot with a wall 25 m behind it, which puts the image source at
+// twice the plan distance: 50.122 m becomes 100.061 m in slant, a geometric
+// divergence deficit of 6.005 dB, and Tabelle 8's facade row takes a further
+// 0.5 dB. Air absorption and the ground term are both larger on the longer
+// path, so the mirrored contribution is strictly weaker than that bound —
+// which makes the bound an upper limit on the energy it can add.
+func assertParkingReflectionIsBounded(t *testing.T, levels map[string]float64) {
+	t.Helper()
+
+	direct := levels["p2_parking_lkw_omnibus"]
+
+	gotDelta := levels["p4_parking_reflected"] - direct
+	if gotDelta <= 0 {
+		t.Errorf("the wall must raise the Parkplatz contribution, got %.6f dB", gotDelta)
+	}
+
+	const reflectionLossDB = 0.5 // Tabelle 8, Gebäudefassaden row, set by the fixture
+
+	slantDirect := math.Hypot(50, 4-0.5)
+	slantImage := math.Hypot(100, 4-0.5)
+	deficitDB := 20*math.Log10(slantImage/slantDirect) + reflectionLossDB
+
+	maxDelta := 10 * math.Log10(1+math.Pow(10, -deficitDB/10))
+	if gotDelta > maxDelta {
+		t.Errorf("P4 - P2 = %.6f dB exceeds the divergence-plus-Tabelle-8 bound of %.6f dB",
+			gotDelta, maxDelta)
 	}
 }

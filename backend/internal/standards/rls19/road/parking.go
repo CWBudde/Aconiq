@@ -395,9 +395,15 @@ func DefaultMovementsPerHour(ft ParkingFacilityType, period TimePeriod) (float64
 // Shielding matters here for the same reason it does on the road path — a lot
 // behind a noise barrier is not audible as though the barrier were absent — so
 // the barriers and terrain edges are the same effective sets the road sources
-// see. Reflections are not applied: the §3.6 machinery is built around source
-// lines and the Bild 14 active-Teilstück rule, and §3.4 does not prescribe it
-// for a point-source lot.
+// see.
+//
+// Mirrored paths apply too. Eq. 3 gives the Beurteilungspegel of all
+// Parkplatzflächen as a sum over j of L_W”,j + 10·lg[P_j] − D_A,j − D_RV1,j −
+// D_RV2,j, and names D_RV1,j the "anzusetzender Reflexionsverlust bei der
+// ersten Reflexion für die Parkplatzteilfläche j nach dem Abschnitt 3.6";
+// Eq. 1 sums Fahrstreifenteilstücke and Parkplatzteilflächen "jeweils
+// einschließlich etwaiger Spiegelschallquellen". A lot therefore reflects on
+// exactly the chain a Teilstück does, which is why the same helper serves both.
 func appendParkingContributions(
 	dayContrib, nightContrib *[]float64,
 	parkingSources []ParkingSource,
@@ -406,15 +412,13 @@ func appendParkingContributions(
 	effectiveBarriers []Barrier,
 	cfg PropagationConfig,
 ) error {
-	const sourceHeightM = 0.5
-
 	for _, parking := range parkingSources {
 		emission, err := ComputeParkingEmission(parking)
 		if err != nil {
 			return err
 		}
 
-		sourceZ := parking.ElevationM + sourceHeightM
+		sourceZ := parking.ElevationM + pointSourceHeightM
 
 		planDist := dist2D(parking.Center, receiver)
 		dz := receiverZ - sourceZ
@@ -427,6 +431,17 @@ func appendParkingContributions(
 
 		*dayContrib = append(*dayContrib, emission.LWDay-att.Total)
 		*nightContrib = append(*nightContrib, emission.LWNight-att.Total)
+
+		// A silent lot stays silent: ComputeParkingEmission returns the
+		// silenceDB sentinel for a zero movement rate, and a mirrored path only
+		// subtracts from it, so the contribution stays below silenceThresholdDB
+		// and energySumDB still drops it.
+		appendReflectedContribs(
+			dayContrib, nightContrib,
+			emission.LWDay, emission.LWNight,
+			parking.Center, pointSourceHeightM, sourceZ, receiver, receiverZ,
+			effectiveBarriers, cfg,
+		)
 	}
 
 	return nil
@@ -441,12 +456,10 @@ func parkingShielding(
 	effectiveBarriers []Barrier,
 	cfg PropagationConfig,
 ) float64 {
-	const sourceHeightM = 0.5
-
 	barrierLoss := 0.0
 	if len(effectiveBarriers) > 0 {
 		barrierLoss = ComputeShielding(
-			parking.Center, sourceHeightM,
+			parking.Center, pointSourceHeightM,
 			receiver, cfg.ReceiverHeightM,
 			effectiveBarriers,
 		).InsertionLoss

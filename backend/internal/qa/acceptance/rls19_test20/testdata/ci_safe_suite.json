@@ -448,6 +448,18 @@
         "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
+    },
+    {
+      "name": "P4-derived-parking-reflected",
+      "category": "parking",
+      "setting": "strict",
+      "description": "The P2 lot in front of a reflecting wall 25 m behind it, so the image source sits at exactly twice the plan distance. Pins that a Parkplatzteilflaeche takes the Nr. 3.6 mirrored paths Eq. 3 gives it as D_RV1,j and D_RV2,j.",
+      "scenario_path": "ci_safe/p4_parking_reflected.scenario.json",
+      "expected_path": "ci_safe/p4_parking_reflected.golden.json",
+      "tolerance": {
+        "absolute_db": 1e-06,
+        "rule": "strict derived fixture snapshot"
+      }
     }
   ]
 }

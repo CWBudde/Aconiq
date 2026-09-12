@@ -80,6 +80,13 @@ func (cfg PropagationConfig) Validate() error {
 // sub-segment of length l_i: L_W,i = L_m,E + 10·lg(l_i / l_0).
 const referenceLengthM = 1.0
 
+// pointSourceHeightM is the height of the substitute point source above the
+// ground it stands on. RLS-19 Nr. 3.2 sets it for both source shapes in one
+// sentence: "In der Mitte jedes Teilstücks, bzw. im Flächenschwerpunkt jeder
+// Teilfläche ist in einer Höhe von 0,5 m über dem Boden eine Punktschallquelle
+// anzusetzen" (Nr. 3.2).
+const pointSourceHeightM = 0.5
+
 // Segment represents one sub-segment of a source line for the
 // Teilstueckverfahren (partial segment method).
 type Segment struct {
@@ -314,7 +321,6 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
 
 	// Source height above road surface (RLS-19: 0.5 m).
-	const sourceHeightM = 0.5
 
 	// Merge explicit barriers with building barriers, and explicit reflectors
 	// with building reflectors. Buildings act as both.
@@ -326,7 +332,7 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	nightContrib := make([]float64, 0, len(sources)*4)
 
 	for _, source := range sources {
-		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, sourceHeightM, effectiveBarriers, effectiveCfg, cfg)
+		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, pointSourceHeightM, effectiveBarriers, effectiveCfg, cfg)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
