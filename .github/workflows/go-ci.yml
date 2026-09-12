@@ -48,15 +48,23 @@ jobs:
       # build date into the binary with `git describe --tags`, which reports
       # only the bare commit on the default shallow checkout.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
+      # cache-dependency-path is not optional here: setup-go caches the module
+      # and build caches by default, but it looks for go.sum in the workspace
+      # root, and this module lives in backend/. Without the path it logged
+      # "Dependencies file is not found" on every job and cached nothing — a
+      # warning quiet enough to survive unnoticed while every run re-downloaded
+      # the whole module graph. Every setup-go step in this repository carries
+      # it for that reason.
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       # One installation recipe for CI and for developers, so the awkward cases
       # (treefmt's release tarball, prettier out of npm rather than globally)
@@ -103,7 +111,7 @@ jobs:
         run: just license-report > license-report.csv
 
       - name: Upload license report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: license-report
           path: license-report.csv
@@ -123,7 +131,7 @@ jobs:
           bin/aconiq openapi --out docs/api/openapi.v1.json --server-url http://127.0.0.1:8080
 
       - name: Upload OpenAPI spec
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-spec
           path: docs/api/openapi.v1.json
@@ -137,12 +145,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Pinned tool versions
         uses: ./.github/actions/toolchain
@@ -380,18 +389,21 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       # The installer builds govulncheck with the toolchain backend/go.mod
-      # names, which is load-bearing: setup-go reads only the `go` directive and
-      # ignores `toolchain`, so a govulncheck built by the older compiler cannot
-      # load a module whose toolchain compiles a newer standard library, and
-      # dies before it scans anything.
+      # names, because a govulncheck built by an older compiler cannot load a
+      # module whose toolchain compiles a newer standard library, and dies
+      # before it scans anything. setup-go >= v6 prefers the `toolchain`
+      # directive over `go` and pins GOTOOLCHAIN=local, so the two now agree by
+      # construction on CI; the explicit toolchain in install-tools.sh still
+      # carries a local install, where whatever `go` is on PATH decides.
       - name: Pinned toolchain
         uses: ./.github/actions/toolchain
         with:

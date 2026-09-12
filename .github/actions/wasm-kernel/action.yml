@@ -12,9 +12,10 @@ runs:
     # toolchain the rest of the Go tree is, or wasm_exec.js and the module can
     # disagree about the ABI between them.
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
         go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
 
     - name: Build the kernel
       shell: bash
