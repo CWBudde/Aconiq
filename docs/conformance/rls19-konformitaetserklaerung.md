@@ -218,12 +218,23 @@ put both on one chain.
 ### Not reachable from the CLI
 
 - Terrain, explicit reflectors and per-direction source specifications are read
-  by `aconiq run` but not by browser (WASM) mode. Browser mode now builds road
+  by `aconiq run` but not by browser (WASM) mode. Browser mode builds road
   sources, barriers, buildings and Parkplätze from the same model the CLI reads,
-  and `frontend/src/wasm/parking-vocabulary.test.ts` plus
-  `surface-types.test.ts` pin the shared vocabularies against the Go source. They
-  pin names, not numbers: a behavioural comparison needs the real kernel in the
-  frontend CI job, which is tracked in `PLAN.md`.
+  and that agreement is now pinned by number rather than by name. The frontend
+  CI job builds the `GOOS=js GOARCH=wasm` kernel and runs two suites against it:
+  `frontend/src/wasm/kernel-parity.test.ts` drives every CI-safe acceptance
+  fixture through the kernel and compares against the goldens in this
+  declaration's evidence base, at the suite's own 1e-6 dB tolerance; and
+  `frontend/src/api/browser-parity.test.ts` runs the browser's own model
+  extraction over GeoJSON models the Go tree owns
+  (`backend/internal/app/cli/testdata/parity/`) and compares against levels the
+  CLI computed from the same files, also at 1e-6 dB.
+- One divergence that comparison exposed is open and recorded in `PLAN.md`: in
+  the `custom` receiver mode the CLI keeps receivers in model order while browser
+  mode sorts them by id, so the receiver table's row order — and with it the
+  run's `output_hash` — differs between the targets for the same model. The
+  levels themselves agree receiver for receiver, so no assessed level is
+  affected.
 
 ## Not yet supported
 
