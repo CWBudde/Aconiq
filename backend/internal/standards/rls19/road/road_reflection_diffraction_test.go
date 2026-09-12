@@ -34,9 +34,9 @@ func TestComputeReflectedPaths_SingleReflection(t *testing.T) {
 	if !almostEqual(paths[0].planDistM, 20.0, 1e-6) {
 		t.Fatalf("expected plan dist 20.0 m, got %f", paths[0].planDistM)
 	}
-	// Default reflection loss = 1.0 dB.
-	if !almostEqual(paths[0].lossDB, 1.0, 1e-9) {
-		t.Fatalf("expected reflection loss 1.0 dB, got %f", paths[0].lossDB)
+	// Default reflection loss = Tabelle 8 facade row, 0.5 dB.
+	if !almostEqual(paths[0].lossDB, 0.5, 1e-9) {
+		t.Fatalf("expected reflection loss 0.5 dB, got %f", paths[0].lossDB)
 	}
 }
 
@@ -130,9 +130,9 @@ func TestComputeReflectedPaths_DoubleReflection_Corner(t *testing.T) {
 	if !almostEqual(maxDist, expectedDouble, 0.01) {
 		t.Fatalf("expected double-reflection plan dist ≈ %f, got %f", expectedDouble, maxDist)
 	}
-	// Double reflection loss = 1.0 + 1.0 = 2.0 dB.
-	if !almostEqual(maxLoss, 2.0, 1e-9) {
-		t.Fatalf("expected double-reflection loss 2.0 dB, got %f", maxLoss)
+	// Double reflection loss = 0.5 + 0.5 = 1.0 dB (Tabelle 8 facade row, twice).
+	if !almostEqual(maxLoss, 1.0, 1e-9) {
+		t.Fatalf("expected double-reflection loss 1.0 dB, got %f", maxLoss)
 	}
 }
 
@@ -184,7 +184,7 @@ func TestComputeReceiverLevels_ReflectionCustomLoss(t *testing.T) {
 		ID:       "back-wall",
 		Geometry: []geo.Point2D{{X: -200, Y: -10}, {X: 200, Y: -10}},
 		HeightM:  8,
-		// ReflectionLossDB = 0 → uses default 1.0 dB
+		// ReflectionLossDB = 0 → uses the Tabelle 8 facade default of 0.5 dB
 	}}
 
 	cfgHighLoss := DefaultPropagationConfig()
@@ -495,9 +495,9 @@ func TestGradientCorrection_Eq7c_Lkw2_Uphill(t *testing.T) {
 func TestGradientCorrection_Eq7c_Lkw2_Downhill(t *testing.T) {
 	t.Parallel()
 
-	// Eq. 7c for g < -4: D = (g+4)/(-8) * (v_Lkw2-10)/10
-	// g=-6, v=70: (-6+4)/(-8) * (70-10)/10 = 0.25 * 6 = 1.500
-	want := (-6.0 + 4.0) / (-8.0) * (70.0 - 10.0) / 10.0
+	// Eq. 7c for g < -4: D = (g+4)/(-8) * v_Lkw2/10
+	// g=-6, v=70: (-6+4)/(-8) * 70/10 = 0.25 * 7 = 1.750
+	want := (-6.0 + 4.0) / (-8.0) * 70.0 / 10.0
 
 	got := GradientCorrection(-6, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
@@ -652,7 +652,8 @@ func TestReflectorType_Unspecified_UsesExplicitLoss(t *testing.T) {
 }
 
 // TestReflectorType_Unspecified_DefaultLoss verifies that when neither Type
-// nor ReflectionLossDB is set, effectiveLoss returns the 1.0 dB default.
+// nor ReflectionLossDB is set, effectiveLoss falls back to the Tabelle 8 facade
+// row (0.5 dB) rather than to a value the table does not contain.
 func TestReflectorType_Unspecified_DefaultLoss(t *testing.T) {
 	t.Parallel()
 
@@ -664,8 +665,8 @@ func TestReflectorType_Unspecified_DefaultLoss(t *testing.T) {
 	}
 
 	got := r.effectiveLoss()
-	if !almostEqual(got, 1.0, 1e-9) {
-		t.Fatalf("effectiveLoss() = %g dB, want 1.0 dB (default)", got)
+	if !almostEqual(got, 0.5, 1e-9) {
+		t.Fatalf("effectiveLoss() = %g dB, want 0.5 dB (Tabelle 8 facade row)", got)
 	}
 }
 

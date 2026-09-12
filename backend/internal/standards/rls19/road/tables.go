@@ -72,11 +72,11 @@ var surfaceCorrectionTable = map[SurfaceType]SurfaceCorrectionEntry{
 	SurfacePaving:              pavingSurfaceCorrection(5.0, 6.0, 7.0),
 	SurfacePavingEven:          pavingSurfaceCorrection(1.0, 2.0, 3.0),
 	SurfacePavingOther:         pavingSurfaceCorrection(5.0, 6.0, 7.0),
-	SurfaceConcrete:            bandedSurfaceCorrection(-1.4, -1.4, -2.3, -2.3),
+	SurfaceConcrete:            bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -1.4, notApplicableSurfaceCorrection(), -2.3),
 	SurfaceLOA:                 bandedSurfaceCorrection(-3.2, notApplicableSurfaceCorrection(), -1.0, notApplicableSurfaceCorrection()),
 	SurfaceSMALA8:              bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -2.8, notApplicableSurfaceCorrection(), -4.6),
 	SurfaceDSHV:                bandedSurfaceCorrection(-3.9, -2.8, -0.9, -2.3),
-	SurfaceGussasphalt:         bandedSurfaceCorrection(-2.0, -2.0, -1.5, -1.5),
+	SurfaceGussasphalt:         bandedSurfaceCorrection(notApplicableSurfaceCorrection(), -2.0, notApplicableSurfaceCorrection(), -1.5),
 	SurfaceGussasphaltStandard: bandedSurfaceCorrection(0.0, 0.0, 0.0, 0.0),
 	// Legacy non-normative fallback retained until this input category is revisited.
 	SurfaceUnpavedOrDamaged: legacyVehicleSurfaceCorrection([4]float64{4.0, 4.0, 2.0, 3.0}),
@@ -85,7 +85,15 @@ var surfaceCorrectionTable = map[SurfaceType]SurfaceCorrectionEntry{
 // SurfaceCorrection returns the DStrO correction for a given surface type
 // and vehicle group at the given speed. Returns 0 if the surface is unknown
 // or if the selected Table 4 cell is not applicable for that speed range.
+//
+// Kräder carry no Straßendeckschichtkorrektur at all: the Anmerkung to
+// Section 3.3.3 prescribes "als Korrektur für den Straßendeckschichttyp ist ein
+// Wert von 0 anzusetzen", for every surface type including Pflasterbeläge.
 func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float64 {
+	if vg == Krad {
+		return 0
+	}
+
 	entry, ok := surfaceCorrectionTable[st]
 	if !ok {
 		return 0
@@ -107,7 +115,7 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 	}
 
 	correction := entry.LkwHigh
-	if vg == Pkw || vg == Krad {
+	if vg == Pkw {
 		correction = entry.PkwHigh
 		if speedKPH <= 60 {
 			correction = entry.PkwLow
@@ -128,7 +136,10 @@ func SurfaceCorrection(st SurfaceType, vg VehicleGroup, speedKPH float64) float6
 //
 // RLS-19 Section 3.3.6, Equations 7a / 7b / 7c.
 // Gradients outside [–12 %, +12 %] are clamped to the boundary values.
-// Krad is treated identically to Pkw (Eq. 7a with Pkw speed).
+//
+// Kräder follow the Anmerkung to Section 3.3.3: the Längsneigungskorrektur is
+// Eq. 7c (the Lkw2 form), evaluated at v_Pkw. The caller supplies v_Pkw for
+// Krad — see baseEmissionSpeed.
 func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float64) float64 {
 	g := gradientPercent
 	if g > 12 {
@@ -140,7 +151,7 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float
 	}
 
 	switch vg {
-	case Pkw, Krad:
+	case Pkw:
 		// Eq. 7a
 		if g < -6 {
 			return (g + 6) / (-6) * (90 - math.Min(speedKPH, 70)) / 20
@@ -164,10 +175,10 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float
 
 		return 0
 
-	case Lkw2:
+	case Lkw2, Krad:
 		// Eq. 7c
 		if g < -4 {
-			return (g + 4) / (-8) * (speedKPH - 10) / 10
+			return (g + 4) / (-8) * speedKPH / 10
 		}
 
 		if g > 2 {

@@ -111,9 +111,14 @@ implementation uses the \_total* sound power `L_W = L_W'' + 10·lg[P/1m²] =
 Defects found in this module after its first draft, and how they were resolved.
 Entries here are corrections to Aconiq, not to the standard.
 
-| No. | Area                     | Defect                                                                                                                                                                                                                            | Resolution                                                                                                                                                                                       |
-| --- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| C1  | §3.5 Teilstueckverfahren | The per-Teilstueck length weight was computed as `10·lg(l_i / l_total)` instead of `10·lg(l_i / l_0)` with `l_0 = 1 m`. Because the weights then summed to unity, a road of any length radiated the sound power of a 1 m section. | Corrected in `propagation.go` (direct and mirrored paths share the same weight). Error magnitude was `−10·lg(l_total / 1 m)`: −20 dB for a 100 m source line, −23 dB for 200 m, −30 dB for 1 km. |
+| No. | Area                                      | Defect                                                                                                                                                                                                                              | Resolution                                                                                                                                                                                                                                                                                  |
+| --- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | §3.5 Teilstueckverfahren                  | The per-Teilstueck length weight was computed as `10·lg(l_i / l_total)` instead of `10·lg(l_i / l_0)` with `l_0 = 1 m`. Because the weights then summed to unity, a road of any length radiated the sound power of a 1 m section.   | Corrected in `propagation.go` (direct and mirrored paths share the same weight). Error magnitude was `−10·lg(l_total / 1 m)`: −20 dB for a 100 m source line, −23 dB for 200 m, −30 dB for 1 km.                                                                                            |
+| C2  | §3.3.6 Eq. 7c                             | The Lkw2 downhill branch used `(g+4)/(−8) · (v_Lkw2 − 10)/10`. The `− 10` belongs to the Eq. 7c _uphill_ branch (`v + 10`) and to Eq. 7b (`v − 20`), not here; Eq. 7c downhill is `(g+4)/(−8) · v_Lkw2/10`.                         | Corrected in `tables.go`. Lkw2 sound power was understated by `(g+4)/(−8) · 1.0 dB` — 0.125 dB at `g = −5 %`, 1.0 dB at the `g = −12 %` clamp.                                                                                                                                              |
+| C3  | §3.3.3 Anmerkung (Kräder), §3.3.6         | Kräder were routed into the Eq. 7a (Pkw) gradient branch. The Anmerkung prescribes Eq. 7c with `v_Pkw`, which has a different dead band (−4 % .. +2 % instead of −6 % .. +2 %) and much larger coefficients.                        | Corrected in `tables.go`; the speed argument was already `v_Pkw`. At `v_Pkw = 100 km/h` the per-Krad correction rises by 2.79 dB at `g = +5 %`, 1.25 dB at `g = −5 %` and 6.83 dB at `g = −10 %`.                                                                                           |
+| C4  | §3.3.3 Anmerkung (Kräder), Tabellen 4a/4b | Kräder were given the Pkw row of Tabelle 4a, a Tabelle 4b Pflaster surcharge, or the legacy damaged-surface fallback. The Anmerkung prescribes `D_SD = 0` for Kräder, unconditionally.                                              | `SurfaceCorrection` now returns 0 for Krad before any table lookup. Sign of the previous error depended on the surface: a credited reduction of up to 5.5 dB per Krad on OPA 8, or a charged surcharge of up to 7.0 dB per Krad on rough Pflaster.                                          |
+| C5  | Tabelle 4a                                | The `v ≤ 60 km/h` cells of "Betone nach ZTV Beton-StB 07 mit Waschbetonoberfläche" and "Lärmarmer Gussasphalt, Verfahren B" are crossed out in the table, but were transcribed as if the `v > 60 km/h` value applied in both bands. | Both rows now carry `notApplicableSurfaceCorrection()` below 60 km/h, matching every other partially-crossed row. A reduction of 1.4 dB (Beton, Pkw) to 2.3 dB (Beton, Lkw) was being credited where the table grants none.                                                                 |
+| C6  | §3.6 Tabelle 8                            | An untyped reflector with no explicit loss fell back to 1.0 dB, and imported buildings were seeded with the same value. 1.0 dB is in no row of Tabelle 8 — the table has only 0.5, 3.0 and 5.0 dB.                                  | The fallback is now the facade row, 0.5 dB (`reflections.go`, `building.go`, `run_extract_rls19.go`). It is both the commonest untyped case and the conservative one — the smallest loss in the table, hence the highest resulting level. `ReflectionLossDB` remains a deliberate override. |
 
 All CI-safe expected snapshots under
 `backend/internal/qa/acceptance/rls19_test20/testdata/ci_safe/` and the
@@ -121,6 +126,20 @@ All CI-safe expected snapshots under
 recorded before that correction are void; the observed shift per fixture equals
 `10·lg(l_total / 1 m)` of its source line, as the sources are otherwise
 unchanged.
+
+C2–C5 moved the snapshots again. C2 reached only the two receding-road fixtures
+(`i9_*`, the only ones below `g = −4 %`), by +0.021 dB. C3 reached the five
+fixtures that carry any gradient (`e3_*`, `i8_*`, `i9_*`), by +0.12 to +0.30 dB.
+C4 reached 33 of the 34 fixtures — all but `e6_vehicle_sound_power`, the one
+with `krad_per_hour = 0` — by +0.196 dB on SMA and +0.646 dB on OPA. C5 moved no
+receiver level, because no fixture uses either affected surface type. C6 moved
+no receiver level either: every CI-safe fixture sets `reflection_loss_db`
+explicitly, which is why the suite never exposed the invented default.
+
+The per-Krad corrections in C3 and C4 are large, but the fixtures carry only
+10 Krad/h of 1010 Kfz/h, so the receiver-level shift is an order of magnitude
+smaller than the emission shift. A model with a realistic motorcycle share on a
+steep grade will move considerably more.
 
 ## Not yet supported
 

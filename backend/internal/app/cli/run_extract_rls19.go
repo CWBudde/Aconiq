@@ -444,7 +444,9 @@ func extractRLS19Buildings(model modelgeojson.Model) ([]rls19road.Building, erro
 			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Buildings", fmt.Sprintf("feature %q missing building height_m", feature.ID), nil)
 		}
 
-		reflectionLossDB := 1.0
+		// RLS-19 Tabelle 8, facade row: buildings reflect with D_RV = 0.5 dB
+		// unless the feature states otherwise.
+		reflectionLossDB := 0.5
 
 		{
 			value, ok, err := featurePropertyFloat(feature, "reflection_loss_db")
