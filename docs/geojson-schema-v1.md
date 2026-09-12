@@ -132,9 +132,13 @@ standard values only where no suitable project-specific survey exists, so
 stating the rates is the primary case; and Tabelle 7 carries only those two
 rows, so an ordinary public car park has no standard rate to fall back on.
 
-Parkplatz contributions are shielded by `barrier` and `building` features on the
-same §3.5 chain road sources use, but do not produce reflections — see
-`docs/conformance/rls19-konformitaetserklaerung.md`.
+Parkplatz contributions are shielded by `barrier` and `building` features, and
+reflect off `building` features and explicit reflectors, on the same §3.5 and
+§3.6 chain road sources use. Eq. 3 gives the level of a Parkplatzteilfläche as
+`L_W'' + 10·lg[P] − D_A − D_RV1 − D_RV2` and Eq. 1 sums Teilstücke and
+Teilflächen "jeweils einschließlich etwaiger Spiegelschallquellen", so the two
+source shapes differ only in how their sound power is composed. The remaining
+deviations are listed in `docs/conformance/rls19-konformitaetserklaerung.md`.
 
 ### Schall 03 Rail
 

@@ -413,7 +413,19 @@ a representation for "not stated".
 
 Closing the parking half required making the path reachable at all — it was library-only while the
 conformance declaration called it implemented — so `aconiq run` now accepts `rls19_parking_*` on an
-`area` source feature. What that exposed is tracked under Priority 2.
+`area` source feature.
+
+**A mirror source is a source.** Nr. 3.5 says so in one clause — "Bei der Schallquelle kann es sich
+auch um eine Spiegelschallquelle handeln" — and Gl. 11 then gives it the whole chain,
+`D_div + D_atm + max{D_gr; D_z}`. Reflected paths were taking only the first three terms, so a
+barrier across a mirrored path did nothing; three CI-safe fixtures were over-predicted, by up to
+3.26 dB. The same clause is why Parkplätze reflect at all: Gl. 3 names `D_RV1,j` and `D_RV2,j` "für
+die Parkplatzteilfläche j", and the deviation declaring otherwise was wrong on the text and wrong
+about the code, which was point-based all along. The rule generalises: **a new propagation path
+takes the entire §3.5 chain, or the reason it does not belongs in the conformance document with the
+sentence from the standard that permits it.** Watch for the trap that made this more than a one-line
+fix — a mirrored ray crosses its own reflector by construction, and a building is barrier and
+reflector at once.
 
 ## Priority 2 — Make the CLI run the normative code
 
@@ -467,16 +479,13 @@ Three consequences fell out of the work:
       behind a building is computed as if the building were absent. Reflection alone is the wrong
       half to ship on by default, which is why the reflector role is opt-in — but the shielding
       half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
-- [ ] **Parkplatz sources take no reflections.** A §3.4 lot is shielded on the same Eq. 11 chain a
-      road Teilstück is, but the §3.6 mirrored paths are not applied to it: that machinery is built
-      around source lines and the active-Teilstück rule of Bild 14, so it is not a reuse. Declared
-      under "Reachability from the CLI" in the conformance document. Closing it means the two
-      propagation paths becoming one, which is where they should have been.
-- [ ] **Browser mode computes no Parkplätze.** `browser-backend.ts` hardcodes
-      `supported_source_types: ["line"]` for `rls19-road` and builds no parking sources, so the same
-      model gives different answers in the browser and from the CLI. The WASM kernel already accepts
-      them — `computeRequest.Config` is a `road.PropagationConfig` — so this is a JS-side extraction
-      gap, not a kernel one, and there is no parity test that would catch the next one.
+- [ ] **Browser-CLI parity is pinned by name, not by number.** `browser-backend.ts` now builds road
+      sources, barriers, buildings and Parkplätze from the same model the CLI reads, and four
+      vocabularies are pinned against the Go source from vitest. What none of that catches is a
+      wrong _level_: the frontend CI job builds no wasm, so nothing has ever compared a browser
+      result against a CLI golden. It needs `just wasm-build` in `frontend-ci.yml` plus either a
+      Node `wasm_exec` harness or a Playwright spec. Terrain, explicit reflectors and per-direction
+      sources are still CLI-only.
 - [ ] **No terrain on the Schall 03 propagation path.** `elevation_m` is per segment and h_m falls
       back to the flat-ground special case (deviation 4 in the conformance declaration), even when
       the project carries a DTM the RLS-19 path already reads.
