@@ -10,6 +10,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Daily, for the govulncheck job only (the other two are skipped below).
+  # govulncheck is a required status check and standard-library advisories land
+  # on their own schedule, so without this the first sign of a new one is an
+  # unrelated pull request that can no longer merge. A scheduled run finds it
+  # first and files an issue.
+  schedule:
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -34,6 +41,7 @@ permissions:
 
 jobs:
   go-ci:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       # Full history and tags: `just build` stamps the version, commit and
@@ -125,6 +133,7 @@ jobs:
   # than a plain `go test`, so running it alongside the main job rather than
   # inside it keeps total wall-clock time roughly unchanged.
   go-race:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -150,6 +159,12 @@ jobs:
   # every other gate, so there is no reason to serialise it behind them.
   govulncheck:
     runs-on: ubuntu-latest
+    # issues: write is for the scheduled-failure report below. Job-level
+    # permissions replace the workflow-level ones rather than adding to them, so
+    # contents: read is restated here.
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -176,3 +191,35 @@ jobs:
 
       - name: Scan for known vulnerabilities
         run: just govulncheck
+
+      # The early warning the blocking policy depends on: a scheduled failure
+      # becomes an issue, so the advisory is known and actionable before it
+      # stops somebody's pull request. One issue at a time — while it is open,
+      # later scheduled failures only comment on it.
+      - name: Report a scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: govulncheck is failing on main
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --search "in:title \"${TITLE}\"" \
+            --json number --jq '.[0].number // empty')"
+
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --body "Still failing: ${RUN_URL}"
+            exit 0
+          fi
+
+          gh issue create --title "${TITLE}" --body "$(
+            cat <<EOF
+          \`just govulncheck\` failed on \`main\`: ${RUN_URL}
+
+          govulncheck is a required status check, so this blocks every merge until it is
+          resolved. Run \`just govulncheck\` for the finding. The usual remedies are a
+          \`toolchain\` bump in \`backend/go.mod\` (standard-library advisories) or a
+          dependency bump (module advisories); if neither applies, record the decision in
+          \`docs/policies/vulnerability-scanning.md\`.
+          EOF
+          )"
