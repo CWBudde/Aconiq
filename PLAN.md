@@ -741,6 +741,12 @@ editing several of its files rather than one package of its own.
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
+- [ ] **Serialise manifest read-modify-write.** `POST /api/v1/model`, `POST /api/v1/runs` and
+      the two import handlers each `Load` → mutate → `Save` `.noise/project.json` with no lock, and
+      the `aconiq run` subprocess writes the same manifest from another process, so two concurrent
+      requests can drop each other's change. A `sync.Mutex` on the handler covers the in-process
+      half today; the cross-process half needs a file lock or waits for the run pipeline to move
+      in-process (item above), after which the mutex is the whole fix.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
@@ -855,7 +861,7 @@ register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutz
       the header, and `dirty` meaning "differs from the project" — today `use-autosave.ts:90` marks
       clean after writing localStorage.
 - [ ] **One `Backend` interface, selected once.** Define `{ getRuns, startRun, getRunLog, export…,
-  capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in `api/mode.ts`.
+capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in `api/mode.ts`.
       Replace the 23 `IS_WASM_MODE` branches in pages and hooks with capability flags
       (`canExport`, `canPickReceivers`, `canCancel`). Route every non-OK response through
       `api-error.ts` (`fetchJSON` and `useImportFromOSM` hand-roll `Error` today).
