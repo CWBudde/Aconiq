@@ -375,5 +375,10 @@
   "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst.",
   "nav_primary_label": "Hauptnavigation",
   "action_skip_to_content": "Zum Inhalt springen",
-  "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen"
+  "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen",
+  "msg_log_line_count": "{count} Zeilen",
+  "msg_run_count_one": "{count} Berechnung",
+  "msg_run_count_other": "{count} Berechnungen",
+  "msg_receivers_placed_one": "{count} Empfänger platziert.",
+  "msg_receivers_placed_other": "{count} Empfänger platziert."
 }

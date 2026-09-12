@@ -375,5 +375,10 @@
   "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
   "nav_primary_label": "Main navigation",
   "action_skip_to_content": "Skip to content",
-  "msg_copy_failed": "Copying to the clipboard failed"
+  "msg_copy_failed": "Copying to the clipboard failed",
+  "msg_log_line_count": "{count} lines",
+  "msg_run_count_one": "{count} run",
+  "msg_run_count_other": "{count} runs",
+  "msg_receivers_placed_one": "{count} receiver placed.",
+  "msg_receivers_placed_other": "{count} receivers placed."
 }
