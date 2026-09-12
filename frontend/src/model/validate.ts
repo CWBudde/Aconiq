@@ -6,6 +6,15 @@ import type {
 } from "./types";
 import { isGeometryCompatible } from "./types";
 import {
+  PROP_PARKING_FACILITY_TYPE,
+  PROP_PARKING_MOVEMENTS_DAY,
+  PROP_PARKING_MOVEMENTS_NIGHT,
+  PROP_PARKING_NUM_SPACES,
+  PROP_PARKING_TYPE,
+  RLS19_PARKING_FACILITY_TYPES,
+  RLS19_PARKING_LOT_TYPES,
+} from "./rls19-parking";
+import {
   getFeatureNumber,
   getFeatureString,
   getRLS19ReviewRequired,
@@ -159,6 +168,11 @@ function validateRLS19SourceAcoustics(
   errors: ValidationIssue[],
   warnings: ValidationIssue[],
 ): void {
+  if (feature.sourceType === "area") {
+    validateRLS19Parking(feature, errors);
+    return;
+  }
+
   if (feature.sourceType !== "line") {
     return;
   }
@@ -292,6 +306,85 @@ function validateRLS19SourceAcoustics(
       featureId: feature.id,
       message: "Review imported source acoustics before running RLS-19",
     });
+  }
+}
+
+// validateRLS19Parking surfaces the §3.4 refusals here rather than letting them
+// arrive as a kernel error. An omitted Parkplatztyp is not Pkw and an omitted
+// movement rate is not zero — zero is the silence sentinel, which would report
+// an occupied Parkplatz as inaudible. An explicitly stated 0 is legal.
+function validateRLS19Parking(
+  feature: ModelFeature,
+  errors: ValidationIssue[],
+): void {
+  const push = (code: string, message: string): void => {
+    errors.push({ level: "error", code, featureId: feature.id, message });
+  };
+
+  const numSpaces = getFeatureNumber(feature, PROP_PARKING_NUM_SPACES);
+  if (numSpaces === undefined) {
+    push(
+      "source.rls19.parking.num_spaces.missing",
+      `RLS-19 ${PROP_PARKING_NUM_SPACES} is required: the number of Stellplätze n has no default`,
+    );
+  } else if (numSpaces < 1 || Math.trunc(numSpaces) !== numSpaces) {
+    push(
+      "source.rls19.parking.num_spaces.invalid",
+      `RLS-19 ${PROP_PARKING_NUM_SPACES} must be an integer >= 1`,
+    );
+  }
+
+  const lotType = getFeatureString(feature, PROP_PARKING_TYPE)?.trim();
+  if (!lotType) {
+    push(
+      "source.rls19.parking.parking_type.missing",
+      `RLS-19 ${PROP_PARKING_TYPE} is required, expected one of ${RLS19_PARKING_LOT_TYPES.join(", ")}; it selects the Tabelle 6 row and has no default`,
+    );
+  } else if (
+    !RLS19_PARKING_LOT_TYPES.includes(
+      lotType.toLowerCase() as (typeof RLS19_PARKING_LOT_TYPES)[number],
+    )
+  ) {
+    push(
+      "source.rls19.parking.parking_type.invalid",
+      `RLS-19 parking_type "${lotType}" is not supported`,
+    );
+  }
+
+  const facility = getFeatureString(
+    feature,
+    PROP_PARKING_FACILITY_TYPE,
+  )?.trim();
+  const seeded =
+    facility !== undefined &&
+    facility !== "" &&
+    RLS19_PARKING_FACILITY_TYPES.includes(
+      facility.toLowerCase() as (typeof RLS19_PARKING_FACILITY_TYPES)[number],
+    );
+
+  if (facility && !seeded) {
+    push(
+      "source.rls19.parking.facility_type.invalid",
+      `RLS-19 ${PROP_PARKING_FACILITY_TYPE} "${facility}" is not supported, expected one of ${RLS19_PARKING_FACILITY_TYPES.join(", ")}`,
+    );
+  }
+
+  for (const key of [
+    PROP_PARKING_MOVEMENTS_DAY,
+    PROP_PARKING_MOVEMENTS_NIGHT,
+  ]) {
+    const rate = getFeatureNumber(feature, key);
+    if (rate === undefined && !seeded) {
+      push(
+        "source.rls19.parking.movements.missing",
+        `RLS-19 ${key} is required unless ${PROP_PARKING_FACILITY_TYPE} states a Tabelle 7 Parkplatztyp; state 0 explicitly for a period with no movements`,
+      );
+    } else if (rate !== undefined && (!Number.isFinite(rate) || rate < 0)) {
+      push(
+        "source.rls19.parking.movements.invalid",
+        `RLS-19 ${key} must be >= 0`,
+      );
+    }
   }
 }
 
