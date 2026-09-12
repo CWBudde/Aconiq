@@ -1141,10 +1141,23 @@ function RunSetupDialog({
                   </div>
                 </button>
               </div>
+              {/* The calculation area is not part of the saved model
+                  (`modelToGeoJSON` leaves it out), so a backend auto-grid
+                  cannot honour it: say so instead of claiming it is active. */}
               {receiverMode === "auto-grid" && calcArea ? (
-                <p className="text-xs text-blue-600 dark:text-blue-400">
-                  {m.msg_calc_area_active()}
-                </p>
+                backend.capabilities.runsAgainstSavedModel ? (
+                  <div
+                    data-testid="calc-area-not-in-project"
+                    className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                  >
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{m.msg_calc_area_not_in_project()}</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    {m.msg_calc_area_active()}
+                  </p>
+                )
               ) : null}
               {receiverMode === "custom" && receiverCount === 0 ? (
                 !backend.capabilities.runsAgainstSavedModel ? (

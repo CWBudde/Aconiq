@@ -8,7 +8,7 @@ import {
 import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
-import type { ModelFeature } from "@/model/types";
+import type { CalcArea, ModelFeature } from "@/model/types";
 import { m } from "@/i18n/messages";
 
 /**
@@ -402,5 +402,43 @@ describe("RunPage unsaved changes", () => {
     expect(state.savedModels[0]).toMatchObject({ crs: "EPSG:4326" });
     expect(useModelStore.getState().dirty).toBe(false);
     expect(unsavedCallout()).toBeNull();
+  });
+});
+
+describe("RunPage calculation area", () => {
+  const calcArea: CalcArea = {
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [10, 51],
+          [10.1, 51],
+          [10.1, 51.1],
+          [10, 51.1],
+          [10, 51],
+        ],
+      ],
+    },
+  };
+
+  it("says the area is not in the project where runs read the saved model", () => {
+    useModelStore.getState().setCalcArea(calcArea);
+    useModelStore.getState().markClean();
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("calc-area-not-in-project")).toHaveTextContent(
+      m.msg_calc_area_not_in_project(),
+    );
+    expect(screen.queryByText(m.msg_calc_area_active())).toBeNull();
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("reports the area as active in browser mode, where the grid honours it", () => {
+    state.runsAgainstSavedModel = false;
+    useModelStore.getState().setCalcArea(calcArea);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByText(m.msg_calc_area_active())).toBeInTheDocument();
+    expect(screen.queryByTestId("calc-area-not-in-project")).toBeNull();
   });
 });
