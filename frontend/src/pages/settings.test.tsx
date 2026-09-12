@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { API_BASE_URL_OVERRIDE_KEY } from "@/api/mode";
 import { DRAFT_KEY } from "@/model/use-autosave";
@@ -56,10 +57,13 @@ describe("SettingsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("switches to a planned settings category", () => {
+  // The category strip is a Radix Tabs list, which activates a tab on pointer
+  // down rather than on click; `userEvent` fires the full pointer sequence.
+  it("switches to a planned settings category", async () => {
+    const user = userEvent.setup();
     renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Project/i }));
+    await user.click(screen.getByRole("tab", { name: /Project/i }));
 
     expect(
       screen.getByRole("heading", { name: m.settings_category_project() }),
@@ -80,10 +84,11 @@ describe("SettingsPage", () => {
     );
   });
 
-  it("saves and clears the advanced API endpoint override", () => {
+  it("saves and clears the advanced API endpoint override", async () => {
+    const user = userEvent.setup();
     renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Advanced/i }));
+    await user.click(screen.getByRole("tab", { name: /Advanced/i }));
 
     const endpointInput = screen.getByLabelText(m.label_api_base_url());
     fireEvent.change(endpointInput, {
