@@ -744,9 +744,10 @@ editing several of its files rather than one package of its own.
 - [ ] **Serialise manifest read-modify-write.** `POST /api/v1/model`, `POST /api/v1/runs` and
       the two import handlers each `Load` → mutate → `Save` `.noise/project.json` with no lock, and
       the `aconiq run` subprocess writes the same manifest from another process, so two concurrent
-      requests can drop each other's change. A `sync.Mutex` on the handler covers the in-process
-      half today; the cross-process half needs a file lock or waits for the run pipeline to move
-      in-process (item above), after which the mutex is the whole fix.
+      requests can drop each other's change. A `sync.Mutex` shared by the handlers would cover the
+      in-process half (`Handler` uses value receivers, so it has to be a pointer field or a
+      package-level lock); the cross-process half needs a file lock or waits for the run pipeline
+      to move in-process (item above), after which the mutex is the whole fix.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
@@ -863,7 +864,11 @@ Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase build
       `capabilities` (`canExport`, `runsAgainstSavedModel`, `runsChangeExternally`), never on the
       mode; every non-OK response goes through `api-error.ts`. "Save to project" lives in the header
       with Ctrl+S; `dirty` means "differs from the project", so imports and restored drafts start
-      dirty and only a successful save clears it; the run dialog refuses to start on unsaved changes.
+      dirty and only a successful save clears it (in browser mode, where the draft is the project,
+      the draft write does); the run dialog refuses to start on unsaved changes. Residual: nothing
+      reads the project model back (`Backend` has no `getModel`, the API no `GET /api/v1/model`), so
+      an HTTP-mode reload comes back only through the localStorage draft and starts dirty even when
+      it equals the project — see the hydration item in Phase C.
 - [x] Runs poll by activity (2 s while a run is pending or running, 15 s idle, never in browser
       mode); the run log polls while running and is invalidated from the runs list on completion.
 - [x] Browser-mode runs live in IndexedDB as one versioned document with a 20-run cap and quota
@@ -899,7 +904,7 @@ Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase build
       `settings.tsx:595` adds a third (`landmark-no-duplicate-main`, `landmark-main-is-top-level`,
       `landmark-unique`, all routes); set `document.documentElement.lang` from the locale (stays
       `en` under `de`; axe cannot see it, so add a DOM assertion to the E2E suite); the `h1`→`h3`
-      skip on `/settings` (`heading-order`) and the `h2`→`h4` skip in `run.tsx:555`, which only
+      skip on `/settings` (`heading-order`) and the `h2`→`h4` skip in `run.tsx:559`, which only
       renders once runs exist; `prefers-reduced-motion` rule; one `useGlobalShortcut` hook with the
       `isTextEntryTarget` guard (the sidebar's Ctrl+B lacks it). Prune `KNOWN_VIOLATIONS` as each
       lands. The dark-mode `--destructive` contrast is not covered — the suite runs in the light
@@ -913,6 +918,10 @@ Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase build
       `/run`; `/results/:runId`; `/export/:runId`; `/settings` with two categories (General,
       Connection — five of seven today are "reserved" placeholders). Header mode chip and a
       `<ModeGate>` with one disabled+tooltip treatment.
+- [ ] **Hydrate the workspace from the project** in HTTP mode: `GET /api/v1/model` (or a model
+      hash on `ProjectStatusResponse` compared against a hash stored with the draft) so the `/`
+      page can load the saved model on startup and a restored draft that equals the project starts
+      clean instead of forcing a re-save before every run.
 - [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:428-461`),
       PDF section, planned settings, "Phase 24+" strings (`en.json:315`). Replace every CLI hand-off
       (`results.tsx:463`, `export.tsx:204-208`, `en.json:305`) with one "Copy CLI command" affordance.
@@ -931,7 +940,11 @@ Landed (`d1a2b08`…`5e4d2cf`); the gates below hold and every later phase build
       their parents, one RFC-4180 CSV builder in `model/` (`results.tsx:202` does not escape quotes;
       `browser-backend.ts:783` is a second builder), `results.test.tsx` written alongside.
 - [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
-      ask replace-vs-merge before `loadFeatures`; link preview errors to features.
+      ask replace-vs-merge before `loadFeatures`; link preview errors to features. UI import drops
+      `kind: "receiver"` features (`normalize.ts:12` lists only source/building/barrier) and
+      `loadFeatures` clears placed receivers, so "import, then Save to project" replaces the project
+      model without the receivers `aconiq import` had put there — import receivers into
+      `receivers`.
 
 ### Phase D — Map workspace
 
