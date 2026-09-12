@@ -102,7 +102,10 @@ func (h Handler) handleModelGet(w http.ResponseWriter, r *http.Request) {
 		responseCRS = parsed.ID
 	}
 
-	raw, err := h.store.ReadModel()
+	// One read, hashed in place: reading the bytes and hashing the path
+	// separately would let a concurrent save pair this model with the next
+	// one's receipt.
+	raw, hash, err := h.store.ReadModelWithHash()
 	if err != nil {
 		if writeModelNotFound(w, err) {
 			return
@@ -110,12 +113,6 @@ func (h Handler) handleModelGet(w http.ResponseWriter, r *http.Request) {
 
 		writeDomainError(w, err)
 
-		return
-	}
-
-	hash, err := h.store.ModelHash()
-	if err != nil {
-		writeDomainError(w, err)
 		return
 	}
 

@@ -2,6 +2,8 @@ package projectfs
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -327,6 +329,73 @@ func TestReadModelReturnsTheStoredBytes(t *testing.T) {
 
 	if !bytes.Equal(raw, onDisk) {
 		t.Fatal("ReadModel did not return the stored bytes verbatim")
+	}
+}
+
+// The hash a client stores is a receipt for bytes it was handed. Reading the
+// file and hashing the path are two reads, and a save between them would pair
+// one model with another model's hash — so the hash has to come from the bytes
+// that were returned.
+func TestReadModelWithHashPairsTheBytesWithTheirOwnHash(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Read Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	model := sampleModel()
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	raw, hash, err := store.ReadModelWithHash()
+	if err != nil {
+		t.Fatalf("read model with hash: %v", err)
+	}
+
+	sum := sha256.Sum256(raw)
+	if hex.EncodeToString(sum[:]) != hash {
+		t.Fatal("the reported hash is not the hash of the reported bytes")
+	}
+
+	// The same spelling ModelHash and provenance.json use, so a client can
+	// compare the two without normalising either.
+	fileHash, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	if fileHash != hash {
+		t.Fatalf("ReadModelWithHash says %q, ModelHash says %q", hash, fileHash)
+	}
+}
+
+func TestReadModelWithHashReportsNotFoundBeforeAnySave(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("No Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	_, _, err = store.ReadModelWithHash()
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindNotFound {
+		t.Fatalf("expected a not-found domain error, got %v", err)
 	}
 }
 

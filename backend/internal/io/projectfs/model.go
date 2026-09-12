@@ -1,6 +1,8 @@
 package projectfs
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -76,6 +78,28 @@ func (s Store) ReadModel() ([]byte, error) {
 	}
 
 	return raw, nil
+}
+
+// ReadModelWithHash returns the normalized model together with the SHA-256 of
+// exactly the bytes it returned.
+//
+// Reading the file and hashing the path are two reads, and a save landing
+// between them hands the caller one model's bytes under another model's
+// receipt. A client that stores that pair believes it holds the saved model
+// when it holds the previous one — and the whole point of the receipt is that
+// the client never checks. Hashing what was read cannot drift.
+//
+// The bytes are materialised, unlike hashFile's streaming of untrusted imports:
+// this file is one SaveModel already accepted whole.
+func (s Store) ReadModelWithHash() ([]byte, string, error) {
+	raw, err := s.ReadModel()
+	if err != nil {
+		return nil, "", err
+	}
+
+	sum := sha256.Sum256(raw)
+
+	return raw, hex.EncodeToString(sum[:]), nil
 }
 
 // ModelHash returns the SHA-256 of the normalized model file as bare lowercase
