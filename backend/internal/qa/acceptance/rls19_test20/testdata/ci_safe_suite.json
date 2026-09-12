@@ -13,7 +13,7 @@
       "scenario_path": "ci_safe/e1_base_emission.scenario.json",
       "expected_path": "ci_safe/e1_base_emission.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -25,7 +25,7 @@
       "scenario_path": "ci_safe/e2_surface_correction.scenario.json",
       "expected_path": "ci_safe/e2_surface_correction.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -37,7 +37,7 @@
       "scenario_path": "ci_safe/e3_gradient_correction.scenario.json",
       "expected_path": "ci_safe/e3_gradient_correction.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -49,7 +49,7 @@
       "scenario_path": "ci_safe/e4_junction_correction.scenario.json",
       "expected_path": "ci_safe/e4_junction_correction.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -61,7 +61,7 @@
       "scenario_path": "ci_safe/e5_reflection_surcharge.scenario.json",
       "expected_path": "ci_safe/e5_reflection_surcharge.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -73,7 +73,7 @@
       "scenario_path": "ci_safe/e6_vehicle_sound_power.scenario.json",
       "expected_path": "ci_safe/e6_vehicle_sound_power.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -85,7 +85,7 @@
       "scenario_path": "ci_safe/e7_length_related_power.scenario.json",
       "expected_path": "ci_safe/e7_length_related_power.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "strict derived fixture snapshot"
       }
     },
@@ -97,7 +97,7 @@
       "scenario_path": "ci_safe/i1_immission_reference.scenario.json",
       "expected_path": "ci_safe/i1_immission_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -109,7 +109,7 @@
       "scenario_path": "ci_safe/i1_immission_check.scenario.json",
       "expected_path": "ci_safe/i1_immission_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -121,7 +121,7 @@
       "scenario_path": "ci_safe/i2_barrier_parallel_reference.scenario.json",
       "expected_path": "ci_safe/i2_barrier_parallel_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -133,7 +133,7 @@
       "scenario_path": "ci_safe/i2_barrier_parallel_check.scenario.json",
       "expected_path": "ci_safe/i2_barrier_parallel_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -145,7 +145,7 @@
       "scenario_path": "ci_safe/i3_reflector_parallel_reference.scenario.json",
       "expected_path": "ci_safe/i3_reflector_parallel_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -157,7 +157,7 @@
       "scenario_path": "ci_safe/i3_reflector_parallel_check.scenario.json",
       "expected_path": "ci_safe/i3_reflector_parallel_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -169,7 +169,7 @@
       "scenario_path": "ci_safe/i4_barrier_reflector_reference.scenario.json",
       "expected_path": "ci_safe/i4_barrier_reflector_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -181,7 +181,7 @@
       "scenario_path": "ci_safe/i4_barrier_reflector_check.scenario.json",
       "expected_path": "ci_safe/i4_barrier_reflector_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -193,7 +193,7 @@
       "scenario_path": "ci_safe/i5_double_barrier_reference.scenario.json",
       "expected_path": "ci_safe/i5_double_barrier_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -205,7 +205,7 @@
       "scenario_path": "ci_safe/i5_double_barrier_check.scenario.json",
       "expected_path": "ci_safe/i5_double_barrier_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -217,7 +217,7 @@
       "scenario_path": "ci_safe/i6_cutting_reference.scenario.json",
       "expected_path": "ci_safe/i6_cutting_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -229,7 +229,7 @@
       "scenario_path": "ci_safe/i6_cutting_check.scenario.json",
       "expected_path": "ci_safe/i6_cutting_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -241,7 +241,7 @@
       "scenario_path": "ci_safe/i7_elevated_reference.scenario.json",
       "expected_path": "ci_safe/i7_elevated_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -253,7 +253,7 @@
       "scenario_path": "ci_safe/i7_elevated_check.scenario.json",
       "expected_path": "ci_safe/i7_elevated_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -265,7 +265,7 @@
       "scenario_path": "ci_safe/i8_ascending_reference.scenario.json",
       "expected_path": "ci_safe/i8_ascending_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -277,7 +277,7 @@
       "scenario_path": "ci_safe/i8_ascending_check.scenario.json",
       "expected_path": "ci_safe/i8_ascending_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -289,7 +289,7 @@
       "scenario_path": "ci_safe/i9_receding_reference.scenario.json",
       "expected_path": "ci_safe/i9_receding_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -301,7 +301,7 @@
       "scenario_path": "ci_safe/i9_receding_check.scenario.json",
       "expected_path": "ci_safe/i9_receding_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -313,7 +313,7 @@
       "scenario_path": "ci_safe/k1_intersection_reference.scenario.json",
       "expected_path": "ci_safe/k1_intersection_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -325,7 +325,7 @@
       "scenario_path": "ci_safe/k1_intersection_check.scenario.json",
       "expected_path": "ci_safe/k1_intersection_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -337,7 +337,7 @@
       "scenario_path": "ci_safe/k2_building_fronts_reference.scenario.json",
       "expected_path": "ci_safe/k2_building_fronts_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -349,7 +349,7 @@
       "scenario_path": "ci_safe/k2_building_fronts_check.scenario.json",
       "expected_path": "ci_safe/k2_building_fronts_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -361,7 +361,7 @@
       "scenario_path": "ci_safe/k3_perpendicular_buildings_reference.scenario.json",
       "expected_path": "ci_safe/k3_perpendicular_buildings_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -373,7 +373,7 @@
       "scenario_path": "ci_safe/k3_perpendicular_buildings_check.scenario.json",
       "expected_path": "ci_safe/k3_perpendicular_buildings_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -385,7 +385,7 @@
       "scenario_path": "ci_safe/k4_courtyard_reference.scenario.json",
       "expected_path": "ci_safe/k4_courtyard_reference.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reference setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -397,7 +397,7 @@
       "scenario_path": "ci_safe/k4_courtyard_check.scenario.json",
       "expected_path": "ci_safe/k4_courtyard_check.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "check setting absolute deviation <= 1e-6 dB"
       }
     },
@@ -409,8 +409,44 @@
       "scenario_path": "ci_safe/k5_reflection_conditions.scenario.json",
       "expected_path": "ci_safe/k5_reflection_conditions.golden.json",
       "tolerance": {
-        "absolute_db": 0.000001,
+        "absolute_db": 1e-06,
         "rule": "reflection task absolute deviation <= 1e-6 dB"
+      }
+    },
+    {
+      "name": "P1-derived-parking-pr-pkw",
+      "category": "parking",
+      "setting": "strict",
+      "description": "Parkplatz-only scenario: P+R lot, 200 spaces, Tabelle 7 rates, Pkw row of Tabelle 6.",
+      "scenario_path": "ci_safe/p1_parking_pr_pkw.scenario.json",
+      "expected_path": "ci_safe/p1_parking_pr_pkw.golden.json",
+      "tolerance": {
+        "absolute_db": 1e-06,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "P2-derived-parking-lkw-omnibus",
+      "category": "parking",
+      "setting": "strict",
+      "description": "Same lot and geometry as P1 at Tank-/Rastanlage rates and the Lkw/Omnibus row of Tabelle 6. Its delta against P1 is 10 lg(1.5/0.3) + 10 = 16.9897 dB by hand, which is the one number in this suite with arithmetic behind it rather than a snapshot of Aconiq against itself.",
+      "scenario_path": "ci_safe/p2_parking_lkw_omnibus.scenario.json",
+      "expected_path": "ci_safe/p2_parking_lkw_omnibus.golden.json",
+      "tolerance": {
+        "absolute_db": 1e-06,
+        "rule": "strict derived fixture snapshot"
+      }
+    },
+    {
+      "name": "P3-derived-parking-shielded",
+      "category": "parking",
+      "setting": "strict",
+      "description": "The P2 lot behind an 8 m barrier. Pins that a Parkplatz takes D_z on the Eq. 11 chain: before the shielding fix this fixture would have reproduced P2 exactly.",
+      "scenario_path": "ci_safe/p3_parking_shielded.scenario.json",
+      "expected_path": "ci_safe/p3_parking_shielded.golden.json",
+      "tolerance": {
+        "absolute_db": 1e-06,
+        "rule": "strict derived fixture snapshot"
       }
     }
   ]

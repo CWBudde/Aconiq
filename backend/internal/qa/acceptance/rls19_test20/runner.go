@@ -115,6 +115,11 @@ type propagationConfigFile struct {
 	ReceiverTerrainZ float64                    `json:"receiver_terrain_z,omitempty"`
 	Terrain          []rls19road.TerrainProfile `json:"terrain,omitempty"`
 	Reflectors       []rls19road.Reflector      `json:"reflectors,omitempty"`
+
+	// ParkingSources lives on the propagation config rather than beside
+	// sources because that is where the module carries it: a Parkplatz is a
+	// §3.4 point source, not a road.
+	ParkingSources []rls19road.ParkingSource `json:"parking_sources,omitempty"`
 }
 
 type expectedSnapshotFile struct {
@@ -392,6 +397,7 @@ func (cfg propagationConfigFile) toPropagationConfig(buildings []rls19road.Build
 		Terrain:          cfg.Terrain,
 		Reflectors:       cfg.Reflectors,
 		Buildings:        buildings,
+		ParkingSources:   cfg.ParkingSources,
 	}
 }
 

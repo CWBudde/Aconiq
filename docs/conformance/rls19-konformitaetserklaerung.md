@@ -248,6 +248,21 @@ agreement with the reference results.
 | K3   | Perpendicular buildings  |                |       |                 |                   |
 | K4   | Courtyard                |                |       |                 |                   |
 
+### Parkplatz tasks (§3.4)
+
+| Task | Description                                         | Pins                                       |
+| ---- | --------------------------------------------------- | ------------------------------------------ |
+| P1   | P+R lot, 200 Stellplätze, Tabelle 7 rates, Pkw      | Eq. 10 and the Tabelle 7 standard values   |
+| P2   | The same lot at Tank-/Rastanlage rates, Lkw/Omnibus | Tabelle 6 and the movement-rate dependence |
+| P3   | The P2 lot behind an 8 m barrier                    | D_z on the Parkplatz path (Eq. 11)         |
+
+These are repo-authored derived fixtures like the rest of the CI-safe suite, so
+they pin Aconiq against itself rather than against a reference result. Two
+relations between them do not: `P2 − P1 = 10·lg(1,5/0,3) + 10 = 16,9897 dB`
+follows from Eq. 10 alone, and `P3 < P2` must hold because a barrier stands
+between the lot and the receiver. Both are asserted directly, so a regression in
+either cannot be hidden by regenerating the snapshots.
+
 ## Tolerances
 
 Per-task tolerance values are defined in the CI-safe suite manifest

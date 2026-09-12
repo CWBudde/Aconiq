@@ -2,6 +2,7 @@ package rls19_test20
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,7 +156,7 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 		t.Fatal("expected category_coverage")
 	}
 
-	categories := []string{"emission", "immission", "complex"}
+	categories := []string{"emission", "immission", "complex", "parking"}
 	for _, cat := range categories {
 		cs, ok := report.CategoryCoverage[cat]
 		if !ok {
@@ -227,5 +228,51 @@ func TestUpdateCISafeExpectedSnapshots(t *testing.T) {
 		if err != nil {
 			t.Fatalf("write expected snapshot %s: %v", task.Name, err)
 		}
+	}
+}
+
+// TestParkingFixtureRelationsHoldByArithmetic checks the two relations between
+// the parking fixtures that do not depend on the snapshots being right.
+//
+// The CI-safe suite otherwise pins Aconiq against itself, which proves nothing
+// about agreement with RLS-19. These two do carry independent arithmetic: the
+// P2/P1 delta follows from Eq. 10 alone, and P3 must be strictly quieter than
+// P2 because a barrier stands between the lot and the receiver — which it was
+// not before Parkplatz contributions were given D_z.
+func TestParkingFixtureRelationsHoldByArithmetic(t *testing.T) {
+	t.Parallel()
+
+	levels := map[string]float64{}
+
+	for _, name := range []string{"p1_parking_pr_pkw", "p2_parking_lkw_omnibus", "p3_parking_shielded"} {
+		var snapshot expectedSnapshotFile
+
+		path := filepath.Join(packageDir(), "testdata", "ci_safe", name+".golden.json")
+
+		err := decodeJSONFile(path, &snapshot)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+
+		if len(snapshot.Receivers) != 1 {
+			t.Fatalf("%s: expected one receiver, got %d", name, len(snapshot.Receivers))
+		}
+
+		levels[name] = snapshot.Receivers[0].LrDay
+	}
+
+	// Eq. 10: the lots differ only in N (1.5 vs 0.3 movements per space and
+	// hour) and in D_P,PT (10 dB vs 0 dB), so the level differs by
+	// 10 lg(1.5/0.3) + 10 dB and by nothing else.
+	wantDelta := 10*math.Log10(1.5/0.3) + 10
+
+	gotDelta := levels["p2_parking_lkw_omnibus"] - levels["p1_parking_pr_pkw"]
+	if math.Abs(gotDelta-wantDelta) > 1e-4 {
+		t.Errorf("P2 - P1 = %.6f dB, want %.6f dB from Eq. 10", gotDelta, wantDelta)
+	}
+
+	shielding := levels["p2_parking_lkw_omnibus"] - levels["p3_parking_shielded"]
+	if shielding <= 0 {
+		t.Errorf("the barrier must lower the Parkplatz contribution, got %.6f dB", shielding)
 	}
 }
