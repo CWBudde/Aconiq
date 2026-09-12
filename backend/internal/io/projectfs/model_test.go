@@ -2,10 +2,14 @@ package projectfs
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
@@ -147,5 +151,75 @@ func assertModelArtifactRefs(t *testing.T, artifacts []project.ArtifactRef) {
 		if !found {
 			t.Errorf("artifact %s missing from manifest", id)
 		}
+	}
+}
+
+func TestSaveModelLeavesNoTemporaryFiles(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	model := modelgeojson.Model{SchemaVersion: 1, ProjectCRS: "EPSG:25832", Features: []modelgeojson.Feature{}}
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(store.ModelArtifactPaths().Normalized), "*.tmp"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+
+	if len(leftovers) != 0 {
+		t.Fatalf("expected the temporary files to be renamed away, found %v", leftovers)
+	}
+}
+
+func TestSaveModelErrorMessageNamesTheStepNotThePath(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	// A regular file in the model directory's place makes the first write fail.
+	err = os.WriteFile(filepath.Join(store.Root(), ".noise", "model"), []byte("blocker"), 0o600)
+	if err != nil {
+		t.Fatalf("plant blocking file: %v", err)
+	}
+
+	model := modelgeojson.Model{SchemaVersion: 1, ProjectCRS: "EPSG:25832", Features: []modelgeojson.Feature{}}
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model))
+	if err == nil {
+		t.Fatal("expected SaveModel to fail")
+	}
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected a domain error, got %T: %v", err, err)
+	}
+
+	if strings.Contains(appErr.Msg, store.Root()) {
+		t.Fatalf("the message must not carry the absolute path: %q", appErr.Msg)
+	}
+
+	if !strings.Contains(err.Error(), store.Root()) {
+		t.Fatalf("the wrapped cause should keep the path for the server-side log: %q", err.Error())
 	}
 }

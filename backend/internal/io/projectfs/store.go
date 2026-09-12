@@ -468,6 +468,14 @@ func writeRunLog(path string, lines []string) error {
 	return nil
 }
 
+// writeJSONFile writes v to path atomically — temp file, then rename — the
+// same way Save replaces the manifest. A reader that opens path while it is
+// being rewritten (a `POST /runs` in flight behind a long-running server,
+// reading the normalized model) sees the old file or the new one, never a
+// truncated one, and a write that fails part-way leaves the old file in place.
+//
+// The messages name the file, not its location: they travel into HTTP error
+// envelopes, and the absolute path belongs in the wrapped cause only.
 func writeJSONFile(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -476,9 +484,18 @@ func writeJSONFile(path string, v any) error {
 
 	data = append(data, '\n')
 
-	err = os.WriteFile(path, data, 0o600)
+	tmpPath := path + ".tmp"
+
+	err = os.WriteFile(tmpPath, data, 0o600)
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write json file "+path, err)
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write temporary "+filepath.Base(path), err)
+	}
+
+	err = os.Rename(tmpPath, path)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
 	}
 
 	return nil

@@ -96,13 +96,12 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SaveModel returns domain errors whose message names the step, not the
+	// file: the absolute path stays in the wrapped cause on the server side and
+	// never reaches the envelope.
 	err = h.store.SaveModel(&proj, model, report)
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    errorCodeInternalError,
-			Message: "failed to persist the model: " + err.Error(),
-		})
-
+		writeDomainError(w, err)
 		return
 	}
 

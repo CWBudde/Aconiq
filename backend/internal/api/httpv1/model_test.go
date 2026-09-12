@@ -259,6 +259,81 @@ func TestModelSaveEndpointRejectsInvalidModelWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestModelSaveEndpointRejectsEmptyFeatureCollection(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Empty"), nil)
+
+	rec := postModel(t, handler, `{"model": {"type": "FeatureCollection", "features": []}}`)
+
+	assertErrorCode(t, rec, http.StatusBadRequest, errorCodeModelInvalid)
+
+	var response errorResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	rawErrors, ok := response.Error.Details["errors"].([]any)
+	if !ok || len(rawErrors) != 1 {
+		t.Fatalf("expected exactly one model-wide error, got %#v", response.Error.Details)
+	}
+
+	issue, ok := rawErrors[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected an issue object, got %#v", rawErrors[0])
+	}
+
+	if _, present := issue["feature_id"]; present {
+		t.Errorf("a model-wide finding must carry no feature_id, got %#v", issue)
+	}
+
+	if issue["code"] != "model.empty" {
+		t.Errorf("expected code model.empty, got %#v", issue["code"])
+	}
+}
+
+func TestModelSaveEndpointRejectsUnknownCRS(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model CRS Garbage"), nil)
+
+	rec := postModel(t, handler, `{"crs": "garbage", "model": `+validModelFeatureCollection+`}`)
+
+	assertErrorCode(t, rec, http.StatusBadRequest, errorCodeBadRequest)
+}
+
+func TestModelSaveEndpointReportsPersistFailureWithoutLeakingPaths(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Model Persist Failure")
+	handler := NewHandler(store, nil)
+
+	// A regular file where the model directory has to go makes MkdirAll fail
+	// before anything is written.
+	modelDir := filepath.Dir(store.ModelArtifactPaths().Normalized)
+
+	err := os.WriteFile(modelDir, []byte("not a directory"), 0o600)
+	if err != nil {
+		t.Fatalf("plant blocking file: %v", err)
+	}
+
+	rec := postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`)
+
+	assertErrorCode(t, rec, http.StatusInternalServerError, errorCodeInternalError)
+
+	if body := rec.Body.String(); strings.Contains(body, store.Root()) {
+		t.Errorf("response must not leak the project's absolute path: %s", body)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	if len(proj.Artifacts) != 0 {
+		t.Errorf("expected the manifest untouched after a persist failure, got %d refs", len(proj.Artifacts))
+	}
+}
+
 func TestModelSaveEndpointRejectsMalformedRequests(t *testing.T) {
 	t.Parallel()
 

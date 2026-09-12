@@ -14,11 +14,11 @@ import (
 // normalized model from here by default, so the names are part of the project
 // format, not an implementation detail of whichever importer wrote them.
 const (
-	modelDirName             = "model"
-	modelNormalizedFileName  = "model.normalized.geojson"
-	modelDumpFileName        = "model.dump.json"
-	modelValidationFileName  = "validation-report.json"
-	modelArtifactDirFileMode = 0o750
+	modelDirName            = "model"
+	modelNormalizedFileName = "model.normalized.geojson"
+	modelDumpFileName       = "model.dump.json"
+	modelValidationFileName = "validation-report.json"
+	modelDirMode            = 0o750
 )
 
 // ModelArtifactPaths names the three model artifacts as absolute paths.
@@ -44,7 +44,9 @@ func (s Store) ModelArtifactPaths() ModelArtifactPaths {
 
 // RelativePath renders an absolute path inside the project as the
 // project-relative, forward-slash form the manifest and every user-facing
-// output use. A path that cannot be made relative is returned slash-normalised
+// output use. A path outside the root still comes back relative, climbing out
+// with ".." segments; only a path filepath.Rel cannot relate to the root at all
+// (a relative input, or another volume on Windows) is returned slash-normalised
 // but otherwise unchanged.
 func (s Store) RelativePath(path string) string {
 	rel, err := filepath.Rel(s.root, path)
@@ -67,7 +69,7 @@ func (s Store) RelativePath(path string) string {
 func (s Store) SaveModel(proj *project.Project, model modelgeojson.Model, report modelgeojson.ValidationReport) error {
 	paths := s.ModelArtifactPaths()
 
-	err := os.MkdirAll(s.modelDir(), modelArtifactDirFileMode)
+	err := os.MkdirAll(s.modelDir(), modelDirMode)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "create model directory", err)
 	}
