@@ -13,13 +13,12 @@ export const DRAFT_KEY = "aconiq.model.draft";
 export const DRAFT_VERSION = 1;
 const SAVE_DELAY_MS = 2000;
 
-/** Returns true if a saved draft exists in localStorage. */
+/** Returns true if a saved draft exists that this build can restore. */
 export function hasDraft(): boolean {
-  try {
-    return localStorage.getItem(DRAFT_KEY) !== null;
-  } catch {
-    return false;
-  }
+  // Defined by what `loadDraft` would return, not by whether the key exists:
+  // a draft at a version this build refuses would otherwise get the banner
+  // to offer a Restore that does nothing.
+  return loadDraft() !== null;
 }
 
 /** Reads and deserializes the saved draft, or returns null on failure. */

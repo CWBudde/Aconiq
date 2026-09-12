@@ -68,6 +68,53 @@ describe("browser storage", () => {
     expect((failure as BrowserStorageError).message).toMatch(/quota/);
   });
 
+  it("reports a quota failure raised at commit, after the put succeeded", async () => {
+    // Browsers may accept every `put` and only abort the transaction when it
+    // commits. The write must wait for that, so a fake transaction lets the
+    // request succeed and then aborts with the quota error. Only the write
+    // transaction is faked: the open itself runs a `versionchange` one
+    // through the same method, and that has to stay real.
+    await savePersistedState({ n: 0 });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- only ever invoked through `.call(this, ...)` below
+    const realTransaction = IDBDatabase.prototype.transaction;
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+      this: IDBDatabase,
+      names,
+      mode,
+      options,
+    ) {
+      if (mode !== "readwrite") {
+        return realTransaction.call(this, names, mode, options);
+      }
+      const tx = {
+        error: new DOMException("quota", "QuotaExceededError"),
+        onabort: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        oncomplete: null as (() => void) | null,
+        objectStore: () => ({
+          put: () => {
+            const request = {
+              onsuccess: null as (() => void) | null,
+              onerror: null as (() => void) | null,
+              result: "backend-state",
+            };
+            queueMicrotask(() => {
+              request.onsuccess?.();
+              queueMicrotask(() => tx.onabort?.());
+            });
+            return request;
+          },
+        }),
+      };
+      return tx as unknown as IDBTransaction;
+    });
+
+    const failure = await savePersistedState({ n: 1 }).catch(
+      (error: unknown) => error,
+    );
+    expect(isBrowserStorageError(failure, "quota")).toBe(true);
+  });
+
   describe("without IndexedDB", () => {
     beforeEach(() => {
       vi.stubGlobal("indexedDB", undefined);

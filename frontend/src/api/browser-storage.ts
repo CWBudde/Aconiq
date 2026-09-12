@@ -88,13 +88,23 @@ function openDatabase(): Promise<IDBDatabase> {
       );
       return;
     }
+    let settled = false;
     request.onupgradeneeded = () => {
       request.result.createObjectStore(STORE_NAME);
     };
     request.onsuccess = () => {
+      // `onblocked` may already have rejected; the open still completes once
+      // the other tab closes. A connection nobody holds would sit open with
+      // no `onversionchange` handler and block every future upgrade itself.
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
       resolve(request.result);
     };
     request.onerror = () => {
+      settled = true;
       reject(
         toStorageError(
           request.error,
@@ -107,6 +117,7 @@ function openDatabase(): Promise<IDBDatabase> {
     // one version, so in practice it never does; surfacing it is cheaper than
     // hanging.
     request.onblocked = () => {
+      settled = true;
       reject(
         new BrowserStorageError(
           "unavailable",

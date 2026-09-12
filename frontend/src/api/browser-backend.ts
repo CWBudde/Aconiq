@@ -292,6 +292,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isStoredArtifactContent(
+  value: unknown,
+): value is StoredArtifactContent {
+  return (
+    isRecord(value) &&
+    typeof value["mimeType"] === "string" &&
+    typeof value["kind"] === "string" &&
+    (value["encoding"] === "json" || value["encoding"] === "text") &&
+    "value" in value
+  );
+}
+
+/**
+ * A run is only as usable as its artifacts: `getArtifactURL` serialises
+ * whatever content it finds, so an artifact without `encoding` or `value`
+ * would mint a blob reading "undefined" rather than fail. One bad artifact
+ * drops the whole run — the run's own artifact list would otherwise point
+ * at content that is not there.
+ */
 function isStoredRun(value: unknown): value is StoredRun {
   if (!isRecord(value)) return false;
   const { run, log, artifacts } = value;
@@ -301,7 +320,8 @@ function isStoredRun(value: unknown): value is StoredRun {
     typeof run["started_at"] === "string" &&
     Array.isArray(run["artifacts"]) &&
     isRecord(log) &&
-    isRecord(artifacts)
+    isRecord(artifacts) &&
+    Object.values(artifacts).every(isStoredArtifactContent)
   );
 }
 
@@ -393,7 +413,9 @@ async function migrateLegacyState(): Promise<BrowserBackendState | null> {
  * A corrupt or unavailable store never blocks the UI: the backend starts
  * fresh in memory and warns. The corrupt document is left in place until the
  * next successful write replaces it, so a bug in the guard cannot erase data
- * a later build could still have read.
+ * a later build could still have read. An unavailable IndexedDB also means
+ * the legacy localStorage document is not consulted: the session runs in
+ * memory, and the migration waits for a browser that can hold its result.
  */
 async function loadState(): Promise<BrowserBackendState> {
   let stored: unknown;
@@ -475,14 +497,14 @@ async function persistRun(
       await persist(evicted);
       return;
     } catch (error) {
+      // The eviction never reached the store, so it must not reach the list
+      // either — whatever the retry failed with: the user would see a run
+      // vanish alongside an error about a different one.
+      state = next;
       if (!isBrowserStorageError(error, "quota")) {
         throw storeFailure(what, error);
       }
     }
-    // The eviction never reached the store, so it must not reach the list
-    // either: the user would see a run vanish alongside an error about a
-    // different one.
-    state = next;
   }
   throw new BrowserStorageError(
     "quota",

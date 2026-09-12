@@ -421,6 +421,31 @@ describe("persisted state", () => {
   });
 
   it.each([
+    ["no encoding", { mimeType: "application/json", kind: "k", value: {} }],
+    [
+      "an unknown encoding",
+      { mimeType: "application/json", kind: "k", encoding: "blob", value: 1 },
+    ],
+    ["no value", { mimeType: "text/plain", kind: "k", encoding: "text" }],
+    ["no mime type", { kind: "k", encoding: "text", value: "x" }],
+    ["a non-object artifact", "just text"],
+  ])("drops a run whose artifact has %s", async (_name, artifact) => {
+    const broken = runFixture(2, "2026-01-01T11:00:00.000Z");
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        runs: [
+          { ...broken, artifacts: { "artifact-run-0002-x": artifact } },
+          runFixture(1, "2026-01-01T10:00:00.000Z"),
+        ],
+      },
+    });
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((run) => run.id)).toEqual(["run-0001"]);
+  });
+
+  it.each([
     ["an unknown version", { version: 2, state: { runs: [] } }],
     ["a missing version", { state: { runs: [] } }],
     ["a non-object document", "just a string"],
@@ -630,6 +655,43 @@ describe("persisted state", () => {
       expect(
         runs[0]?.artifacts.some((entry) => entry.kind === "export.bundle"),
       ).toBe(true);
+    });
+
+    it("restores the un-evicted list when the retry fails for another reason", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(2, "2026-01-01T02:00:00.000Z"),
+            runFixture(1, "2026-01-01T01:00:00.000Z"),
+          ],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "savePersistedState")
+        .mockRejectedValueOnce(quota())
+        .mockRejectedValueOnce(
+          new storage.BrowserStorageError("unavailable", "gone away"),
+        );
+
+      const failure = await browserBackend
+        .startRun(RUN_SPEC)
+        .catch((error: unknown) => error);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(storage.isBrowserStorageError(failure, "unavailable")).toBe(true);
+      // The eviction never reached the store, so memory must not show it.
+      const runs = await browserBackend.getRuns();
+      expect(runs.map((entry) => entry.id)).toEqual([
+        "run-0003",
+        "run-0002",
+        "run-0001",
+      ]);
+      expect(runIDs((await persisted()).state)).toEqual([
+        "run-0002",
+        "run-0001",
+      ]);
     });
 
     it("surfaces a non-quota storage failure without evicting", async () => {

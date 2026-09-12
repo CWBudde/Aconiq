@@ -164,6 +164,16 @@ describe("draft utilities", () => {
       expect(loadDraft()).toBeNull();
       expect(warn).toHaveBeenCalledOnce();
     });
+
+    it("hasDraft is false for a draft loadDraft refuses", () => {
+      // The banner offers Restore on hasDraft; a key that is present but
+      // unreadable would make that offer and then do nothing.
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ version: 2, features: [sampleFeature] }),
+      );
+      expect(hasDraft()).toBe(false);
+    });
   });
 
   it("discardDraft removes the entry", () => {
