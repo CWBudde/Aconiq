@@ -267,6 +267,49 @@ func TestGradientCorrection(t *testing.T) {
 	}
 }
 
+// TestGradientCorrection_EquationValues pins D_LN against the closed forms of
+// RLS-19 Section 3.3.6, Equations 7a (Pkw), 7b (Lkw1) and 7c (Lkw2).
+func TestGradientCorrection_EquationValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		gradient float64
+		group    VehicleGroup
+		speedKPH float64
+		want     float64
+	}{
+		// Eq. 7a: (g+6)/(-6) * (90 - min{v,70})/20 for g < -6, (g-2)/10 * (v+70)/100 for g > +2.
+		{name: "Eq7a Pkw downhill", gradient: -10, group: Pkw, speedKPH: 100, want: (-10.0 + 6.0) / -6.0 * (90.0 - 70.0) / 20.0},
+		{name: "Eq7a Pkw uphill", gradient: 5, group: Pkw, speedKPH: 100, want: (5.0 - 2.0) / 10.0 * (100.0 + 70.0) / 100.0},
+
+		// Eq. 7b: (g+4)/(-8) * (v-20)/10 for g < -4, (g-2)/10 * v/10 for g > +2.
+		{name: "Eq7b Lkw1 downhill", gradient: -5, group: Lkw1, speedKPH: 80, want: (-5.0 + 4.0) / -8.0 * (80.0 - 20.0) / 10.0},
+		{name: "Eq7b Lkw1 uphill", gradient: 5, group: Lkw1, speedKPH: 80, want: (5.0 - 2.0) / 10.0 * 80.0 / 10.0},
+
+		// Eq. 7c: (g+4)/(-8) * v/10 for g < -4, (g-2)/10 * (v+10)/10 for g > +2.
+		// The downhill numerator is v_Lkw2, not v_Lkw2 - 10.
+		{name: "Eq7c Lkw2 downhill", gradient: -5, group: Lkw2, speedKPH: 70, want: (-5.0 + 4.0) / -8.0 * 70.0 / 10.0},
+		{name: "Eq7c Lkw2 downhill clamped", gradient: -12, group: Lkw2, speedKPH: 80, want: (-12.0 + 4.0) / -8.0 * 80.0 / 10.0},
+		{name: "Eq7c Lkw2 uphill", gradient: 5, group: Lkw2, speedKPH: 70, want: (5.0 - 2.0) / 10.0 * (70.0 + 10.0) / 10.0},
+
+		// Dead band -4 % .. +2 % (Lkw) and -6 % .. +2 % (Pkw).
+		{name: "Lkw2 dead band", gradient: -4, group: Lkw2, speedKPH: 70, want: 0},
+		{name: "Pkw dead band", gradient: 2, group: Pkw, speedKPH: 100, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := GradientCorrection(tt.gradient, tt.group, tt.speedKPH)
+			if !almostEqual(got, tt.want, 0.000001) {
+				t.Fatalf("GradientCorrection(%.1f, %s, %.0f): want %.6f, got %.6f", tt.gradient, tt.group, tt.speedKPH, tt.want, got)
+			}
+		})
+	}
+}
+
 func TestJunctionCorrection(t *testing.T) {
 	t.Parallel()
 	// No junction type: 0.

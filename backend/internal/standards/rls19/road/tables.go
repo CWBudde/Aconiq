@@ -167,7 +167,7 @@ func GradientCorrection(gradientPercent float64, vg VehicleGroup, speedKPH float
 	case Lkw2:
 		// Eq. 7c
 		if g < -4 {
-			return (g + 4) / (-8) * (speedKPH - 10) / 10
+			return (g + 4) / (-8) * speedKPH / 10
 		}
 
 		if g > 2 {

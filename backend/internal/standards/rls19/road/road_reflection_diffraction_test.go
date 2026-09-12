@@ -495,9 +495,9 @@ func TestGradientCorrection_Eq7c_Lkw2_Uphill(t *testing.T) {
 func TestGradientCorrection_Eq7c_Lkw2_Downhill(t *testing.T) {
 	t.Parallel()
 
-	// Eq. 7c for g < -4: D = (g+4)/(-8) * (v_Lkw2-10)/10
-	// g=-6, v=70: (-6+4)/(-8) * (70-10)/10 = 0.25 * 6 = 1.500
-	want := (-6.0 + 4.0) / (-8.0) * (70.0 - 10.0) / 10.0
+	// Eq. 7c for g < -4: D = (g+4)/(-8) * v_Lkw2/10
+	// g=-6, v=70: (-6+4)/(-8) * 70/10 = 0.25 * 7 = 1.750
+	want := (-6.0 + 4.0) / (-8.0) * 70.0 / 10.0
 
 	got := GradientCorrection(-6, Lkw2, 70)
 	if !almostEqual(got, want, 0.001) {
