@@ -272,294 +272,70 @@ func persistDummyRunOutputs(
 	}, nil
 }
 
-//nolint:dupl // Standard-specific export shims intentionally keep each result bundle wiring explicit.
-func persistCnossosRoadRunOutputs(
-	runDir string,
-	outputs []cnossosroad.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"cnossos road receiver outputs",
-		outputs,
-		func(output cnossosroad.ReceiverOutput) string { return output.Receiver.ID },
-		func(output cnossosroad.ReceiverOutput) cnossosroad.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "hash cnossos outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, cnossosroad.BuiltinModelVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["reporting_precision_db"] = cnossosroad.ReportingPrecisionDB
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{cnossosroad.IndicatorLden, cnossosroad.IndicatorLnight, cnossosroad.IndicatorLday, cnossosroad.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosroad.IndicatorLden: output.Indicators.Lden, cnossosroad.IndicatorLnight: output.Indicators.Lnight, cnossosroad.IndicatorLday: output.Indicators.Lday, cnossosroad.IndicatorLevening: output.Indicators.Levening}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := cnossosroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosRoadRunOutputs", "export cnossos road results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-//nolint:dupl // Standard-specific export shims intentionally keep each result bundle wiring explicit.
-func persistBUBRoadRunOutputs(
-	runDir string,
-	outputs []bubroad.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"BUB road receiver outputs",
-		outputs,
-		func(output bubroad.ReceiverOutput) string { return output.Receiver.ID },
-		func(output bubroad.ReceiverOutput) bubroad.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUBRoadRunOutputs", "hash BUB road outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, bubroad.BuiltinModelVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["reporting_precision_db"] = bubroad.ReportingPrecisionDB
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{bubroad.IndicatorLden, bubroad.IndicatorLnight, bubroad.IndicatorLday, bubroad.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{bubroad.IndicatorLden: output.Indicators.Lden, bubroad.IndicatorLnight: output.Indicators.Lnight, bubroad.IndicatorLday: output.Indicators.Lday, bubroad.IndicatorLevening: output.Indicators.Levening}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := bubroad.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUBRoadRunOutputs", "export BUB road results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-func persistRLS19RoadRunOutputs(
-	runDir string,
-	outputs []rls19road.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	sourceOverrideCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"RLS-19 road receiver outputs",
-		outputs,
-		func(output rls19road.ReceiverOutput) string { return output.Receiver.ID },
-		func(output rls19road.ReceiverOutput) rls19road.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistRLS19RoadRunOutputs", "hash RLS-19 road outputs", err)
-	}
-
-	// RLS-19 has no model version of its own: the data pack it evaluates is the
-	// only thing that versions its results.
-	summary := newRunSummary(runDir, outputHash, rls19road.BuiltinDataPackVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["sources_with_feature_acoustics_overrides"] = sourceOverrideCount
-	summary["reporting_precision_db"] = rls19road.ReportingPrecisionDB
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{rls19road.IndicatorLrDay: output.Indicators.LrDay, rls19road.IndicatorLrNight: output.Indicators.LrNight}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := rls19road.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistRLS19RoadRunOutputs", "export RLS-19 road results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-func persistSchall03RunOutputs(
-	runDir string,
-	outputs []schall03.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	engine string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"Schall 03 receiver outputs",
-		outputs,
-		func(output schall03.ReceiverOutput) string { return output.Receiver.ID },
-		func(output schall03.ReceiverOutput) schall03.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistSchall03RunOutputs", "hash Schall 03 outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, schall03.ModelVersionForEngine(engine), receiverMode, tier, sourceCount, len(outputs))
-	summary["compliance_boundary"] = schall03.ComplianceBoundaryForEngine(engine)
-	summary[schall03.ParamEngine] = engine
-	summary["reporting_precision_db"] = schall03.ReportingPrecisionDB
-	summary["band_model"] = "octave-63Hz-8000Hz"
-
-	// The data pack exists only on the preview path; the normative chain reads
-	// Beiblatt 1/2 and the Anlage-2 tables directly.
-	if engine != schall03.EngineNormative {
-		summary["data_pack_version"] = schall03.BuiltinDataPackVersion
-	}
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{schall03.IndicatorLrDay: output.Indicators.LrDay, schall03.IndicatorLrNight: output.Indicators.LrNight}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := schall03.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistSchall03RunOutputs", "export Schall 03 results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-//nolint:dupl // Standard-specific export shims intentionally keep each result bundle wiring explicit.
-func persistCnossosAircraftRunOutputs(
-	runDir string,
-	outputs []cnossosaircraft.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"cnossos aircraft receiver outputs",
-		outputs,
-		func(output cnossosaircraft.ReceiverOutput) string { return output.Receiver.ID },
-		func(output cnossosaircraft.ReceiverOutput) cnossosaircraft.ReceiverIndicators {
-			return output.Indicators
-		},
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosAircraftRunOutputs", "hash cnossos aircraft outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, cnossosaircraft.BuiltinModelVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["reporting_precision_db"] = cnossosaircraft.ReportingPrecisionDB
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{cnossosaircraft.IndicatorLden, cnossosaircraft.IndicatorLnight, cnossosaircraft.IndicatorLday, cnossosaircraft.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosaircraft.IndicatorLden: output.Indicators.Lden, cnossosaircraft.IndicatorLnight: output.Indicators.Lnight, cnossosaircraft.IndicatorLday: output.Indicators.Lday, cnossosaircraft.IndicatorLevening: output.Indicators.Levening}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := cnossosaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistCnossosAircraftRunOutputs", "export cnossos aircraft results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-// exportedBundle is the shape every standards module's ExportResultBundle
+// exportOutputs is the shape every standards module's ExportResultBundle
 // returns. The per-module structs are structurally identical but nominally
-// distinct, so a persist path shared by an alias pair needs one type to hand
-// back.
-type exportedBundle struct {
-	ReceiverJSONPath string
-	ReceiverCSVPath  string
-	RasterMetaPath   string
-	RasterDataPath   string
+// distinct, so this constraint is what lets one adapter convert any of them.
+type exportOutputs interface {
+	~struct {
+		ReceiverJSONPath string
+		ReceiverCSVPath  string
+		RasterMetaPath   string
+		RasterDataPath   string
+	}
 }
 
-// aliasedModule names what a persist path shared by an alias pair cannot infer
-// from the receiver outputs alone: the scope its errors carry, the versioned
-// model the numbers came from, and the result bundle written to disk. Only the
-// bundle differs numerically-visibly — its raster files are named after the
-// standard, so an alias run must write its own.
-type aliasedModule struct {
-	scope        string
-	modelVersion string
-	export       func(resultsDir string) (exportedBundle, error)
+// exportBundle adapts a module's ExportResultBundle to the export hook a
+// persist plan carries: it binds the outputs and the grid to write and wraps a
+// failure in the caller's scope.
+func exportBundle[Output any, Bundle exportOutputs](
+	scope string,
+	message string,
+	export func(string, []Output, int, int) (Bundle, error),
+	outputs []Output,
+	gridWidth int,
+	gridHeight int,
+) func(resultsDir string) (exportedBundle, error) {
+	return func(resultsDir string) (exportedBundle, error) {
+		exported, err := export(resultsDir, outputs, gridWidth, gridHeight)
+		if err != nil {
+			return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, message, err)
+		}
+
+		return exportedBundle(exported), nil
+	}
 }
 
-// persistRailRunOutputs persists a cnossos-rail run and a bub-rail run alike:
-// bub-rail's receiver output type is a Go alias of cnossos-rail's, so the two
-// share everything except the module identity carried in module.
-func persistRailRunOutputs(
-	module aliasedModule,
+// receiverPersistPlan carries the whole of what one standard's receiver-output
+// persist path does not share with the others: the identity its errors and its
+// run summary carry, the indicator vocabulary its receiver table publishes, and
+// the result bundle it writes to disk. Everything around those — the output
+// hash, the run summary, the custom-receiver short circuit and the grid bundle —
+// is the same for every standard that produces receiver outputs, and lives once
+// in persistReceiverRunOutputs.
+//
+// indicators returns any rather than a second type parameter because the value
+// is only ever marshalled: the hash payload is byte-identical either way.
+type receiverPersistPlan[Output any] struct {
+	scope           string
+	hashLabel       string
+	hashErrMessage  string
+	modelVersion    string
+	indicatorOrder  []string
+	decorateSummary func(summary map[string]any)
+	receiver        func(Output) geo.PointReceiver
+	indicators      func(Output) any
+	values          func(Output) map[string]float64
+	export          func(resultsDir string) (exportedBundle, error)
+}
+
+// persistReceiverRunOutputs writes one standard's receiver outputs under runDir
+// and returns the paths, the output hash and the finish time the run manifest
+// records. In custom-receiver mode it writes a receiver table only; otherwise it
+// writes the standard's full grid bundle beside a grid run summary.
+func persistReceiverRunOutputs[Output any](
+	plan receiverPersistPlan[Output],
 	runDir string,
-	outputs []cnossosrail.ReceiverOutput,
+	outputs []Output,
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
@@ -569,22 +345,36 @@ func persistRailRunOutputs(
 	resultsDir := filepath.Join(runDir, "results")
 
 	outputHash, err := hashReceiverOutputs(
-		"cnossos rail receiver outputs",
+		plan.hashLabel,
 		outputs,
-		func(output cnossosrail.ReceiverOutput) string { return output.Receiver.ID },
-		func(output cnossosrail.ReceiverOutput) cnossosrail.ReceiverIndicators { return output.Indicators },
+		func(output Output) string { return plan.receiver(output).ID },
+		plan.indicators,
 	)
 	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, module.scope, "hash rail outputs", err)
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, plan.scope, plan.hashErrMessage, err)
 	}
 
-	summary := newRunSummary(runDir, outputHash, module.modelVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["reporting_precision_db"] = cnossosrail.ReportingPrecisionDB
+	summary := newRunSummary(runDir, outputHash, plan.modelVersion, receiverMode, tier, sourceCount, len(outputs))
+	if plan.decorateSummary != nil {
+		plan.decorateSummary(summary)
+	}
 
 	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{cnossosrail.IndicatorLden, cnossosrail.IndicatorLnight, cnossosrail.IndicatorLday, cnossosrail.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
+		table := results.ReceiverTable{
+			IndicatorOrder: plan.indicatorOrder,
+			Unit:           "dB",
+			Records:        make([]results.ReceiverRecord, 0, len(outputs)),
+		}
+
 		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosrail.IndicatorLden: output.Indicators.Lden, cnossosrail.IndicatorLnight: output.Indicators.Lnight, cnossosrail.IndicatorLday: output.Indicators.Lday, cnossosrail.IndicatorLevening: output.Indicators.Levening}})
+			receiver := plan.receiver(output)
+			table.Records = append(table.Records, results.ReceiverRecord{
+				ID:      receiver.ID,
+				X:       receiver.Point.X,
+				Y:       receiver.Point.Y,
+				HeightM: receiver.HeightM,
+				Values:  plan.values(output),
+			})
 		}
 
 		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
@@ -592,7 +382,7 @@ func persistRailRunOutputs(
 		return persisted, outputHash, nowUTC(), err
 	}
 
-	exported, err := module.export(resultsDir)
+	exported, err := plan.export(resultsDir)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
@@ -602,7 +392,94 @@ func persistRailRunOutputs(
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
+	return persistedRunOutputs{
+		ReceiverJSONPath:   exported.ReceiverJSONPath,
+		ReceiverCSVPath:    exported.ReceiverCSVPath,
+		RasterMetadataPath: exported.RasterMetaPath,
+		RasterDataPath:     exported.RasterDataPath,
+		SummaryPath:        summaryPath,
+	}, outputHash, nowUTC(), nil
+}
+
+// endIndicatorSet names the END four-indicator vocabulary — Lden, Lnight, Lday,
+// Levening — that six of the registered standards publish. The names are data
+// rather than shared constants because each module declares its own.
+type endIndicatorSet struct {
+	lden     string
+	lnight   string
+	lday     string
+	levening string
+}
+
+// endIndicatorModule is the per-standard half of an END-vocabulary persist
+// plan. levels returns the four levels in indicatorOrder, which is the only
+// thing tying a module's indicator constants to its indicator fields.
+type endIndicatorModule[Output any] struct {
+	scope           string
+	hashLabel       string
+	hashErrMessage  string
+	modelVersion    string
+	names           endIndicatorSet
+	receiver        func(Output) geo.PointReceiver
+	indicators      func(Output) any
+	levels          func(Output) [4]float64
+	decorateSummary func(summary map[string]any)
+	export          func(resultsDir string) (exportedBundle, error)
+}
+
+// endIndicatorPlan expands an END-vocabulary module into the persist plan the
+// shared writer consumes.
+func endIndicatorPlan[Output any](module endIndicatorModule[Output]) receiverPersistPlan[Output] {
+	names := module.names
+
+	return receiverPersistPlan[Output]{
+		scope:           module.scope,
+		hashLabel:       module.hashLabel,
+		hashErrMessage:  module.hashErrMessage,
+		modelVersion:    module.modelVersion,
+		indicatorOrder:  []string{names.lden, names.lnight, names.lday, names.levening},
+		decorateSummary: module.decorateSummary,
+		receiver:        module.receiver,
+		indicators:      module.indicators,
+		values: func(output Output) map[string]float64 {
+			level := module.levels(output)
+
+			return map[string]float64{
+				names.lden:     level[0],
+				names.lnight:   level[1],
+				names.lday:     level[2],
+				names.levening: level[3],
+			}
+		},
+		export: module.export,
+	}
+}
+
+// railPersistPlan serves cnossos-rail and bub-rail alike: bub-rail's receiver
+// output type is a Go alias of cnossos-rail's, so the two differ only in the
+// scope their errors carry, the model version their summary names and the
+// bundle they write — the raster files are named after the standard, so an
+// alias run must still write its own.
+func railPersistPlan(scope string, modelVersion string, export func(resultsDir string) (exportedBundle, error)) receiverPersistPlan[cnossosrail.ReceiverOutput] {
+	return receiverPersistPlan[cnossosrail.ReceiverOutput]{
+		scope:           scope,
+		hashLabel:       "cnossos rail receiver outputs",
+		hashErrMessage:  "hash rail outputs",
+		modelVersion:    modelVersion,
+		indicatorOrder:  []string{cnossosrail.IndicatorLden, cnossosrail.IndicatorLnight, cnossosrail.IndicatorLday, cnossosrail.IndicatorLevening},
+		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosrail.ReportingPrecisionDB },
+		receiver:        func(output cnossosrail.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:      func(output cnossosrail.ReceiverOutput) any { return output.Indicators },
+		values: func(output cnossosrail.ReceiverOutput) map[string]float64 {
+			return map[string]float64{
+				cnossosrail.IndicatorLden:     output.Indicators.Lden,
+				cnossosrail.IndicatorLnight:   output.Indicators.Lnight,
+				cnossosrail.IndicatorLday:     output.Indicators.Lday,
+				cnossosrail.IndicatorLevening: output.Indicators.Levening,
+			}
+		},
+		export: export,
+	}
 }
 
 func persistCnossosRailRunOutputs(
@@ -616,20 +493,9 @@ func persistCnossosRailRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistCnossosRailRunOutputs"
 
-	module := aliasedModule{
-		scope:        scope,
-		modelVersion: cnossosrail.BuiltinModelVersion,
-		export: func(resultsDir string) (exportedBundle, error) {
-			exported, err := cnossosrail.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-			if err != nil {
-				return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, "export cnossos rail results", err)
-			}
+	plan := railPersistPlan(scope, cnossosrail.BuiltinModelVersion, exportBundle(scope, "export cnossos rail results", cnossosrail.ExportResultBundle, outputs, gridWidth, gridHeight))
 
-			return exportedBundle(exported), nil
-		},
-	}
-
-	return persistRailRunOutputs(module, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
 }
 
 // persistBUBRailRunOutputs writes a bub-rail run. bub-rail carries no model
@@ -646,20 +512,261 @@ func persistBUBRailRunOutputs(
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistBUBRailRunOutputs"
 
-	module := aliasedModule{
-		scope:        scope,
-		modelVersion: cnossosrail.BuiltinModelVersion,
-		export: func(resultsDir string) (exportedBundle, error) {
-			exported, err := bubrail.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-			if err != nil {
-				return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, "export BUB rail results", err)
-			}
+	plan := railPersistPlan(scope, cnossosrail.BuiltinModelVersion, exportBundle(scope, "export BUB rail results", bubrail.ExportResultBundle, outputs, gridWidth, gridHeight))
 
-			return exportedBundle(exported), nil
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// industryPersistPlan serves cnossos-industry and bub-industry alike, on the
+// same alias reasoning as railPersistPlan.
+func industryPersistPlan(scope string, modelVersion string, export func(resultsDir string) (exportedBundle, error)) receiverPersistPlan[cnossosindustry.ReceiverOutput] {
+	return receiverPersistPlan[cnossosindustry.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "cnossos industry receiver outputs",
+		hashErrMessage: "hash industry outputs",
+		modelVersion:   modelVersion,
+		indicatorOrder: []string{cnossosindustry.IndicatorLden, cnossosindustry.IndicatorLnight, cnossosindustry.IndicatorLday, cnossosindustry.IndicatorLevening},
+		receiver:       func(output cnossosindustry.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output cnossosindustry.ReceiverOutput) any { return output.Indicators },
+		values: func(output cnossosindustry.ReceiverOutput) map[string]float64 {
+			return map[string]float64{
+				cnossosindustry.IndicatorLden:     output.Indicators.Lden,
+				cnossosindustry.IndicatorLnight:   output.Indicators.Lnight,
+				cnossosindustry.IndicatorLday:     output.Indicators.Lday,
+				cnossosindustry.IndicatorLevening: output.Indicators.Levening,
+			}
 		},
+		export: export,
+	}
+}
+
+func persistCnossosIndustryRunOutputs(
+	runDir string,
+	outputs []cnossosindustry.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistCnossosIndustryRunOutputs"
+
+	plan := industryPersistPlan(scope, cnossosindustry.BuiltinModelVersion, exportBundle(scope, "export cnossos industry results", cnossosindustry.ExportResultBundle, outputs, gridWidth, gridHeight))
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// persistBUBIndustryRunOutputs writes a bub-industry run. bub-industry carries
+// no model version of its own: it delegates every number to cnossos-industry,
+// so that is the version the summary must name.
+func persistBUBIndustryRunOutputs(
+	runDir string,
+	outputs []bubindustry.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistBUBIndustryRunOutputs"
+
+	plan := industryPersistPlan(scope, cnossosindustry.BuiltinModelVersion, exportBundle(scope, "export BUB industry results", bubindustry.ExportResultBundle, outputs, gridWidth, gridHeight))
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// END four-indicator set over structurally identical receiver outputs, so
+// these three wrappers are clones of one another by construction. The fix is
+// not more indirection here: bub-road must share cnossos-road's model and
+// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
+// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
+// the alias-pair shape railPersistPlan and industryPersistPlan already use.
+//
+//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
+func persistCnossosRoadRunOutputs(
+	runDir string,
+	outputs []cnossosroad.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistCnossosRoadRunOutputs"
+
+	plan := endIndicatorPlan(endIndicatorModule[cnossosroad.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "cnossos road receiver outputs",
+		hashErrMessage: "hash cnossos outputs",
+		modelVersion:   cnossosroad.BuiltinModelVersion,
+		names:          endIndicatorSet{cnossosroad.IndicatorLden, cnossosroad.IndicatorLnight, cnossosroad.IndicatorLday, cnossosroad.IndicatorLevening},
+		receiver:       func(output cnossosroad.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output cnossosroad.ReceiverOutput) any { return output.Indicators },
+		levels: func(output cnossosroad.ReceiverOutput) [4]float64 {
+			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
+		},
+		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosroad.ReportingPrecisionDB },
+		export:          exportBundle(scope, "export cnossos road results", cnossosroad.ExportResultBundle, outputs, gridWidth, gridHeight),
+	})
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// END four-indicator set over structurally identical receiver outputs, so
+// these three wrappers are clones of one another by construction. The fix is
+// not more indirection here: bub-road must share cnossos-road's model and
+// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
+// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
+// the alias-pair shape railPersistPlan and industryPersistPlan already use.
+//
+//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
+func persistBUBRoadRunOutputs(
+	runDir string,
+	outputs []bubroad.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistBUBRoadRunOutputs"
+
+	plan := endIndicatorPlan(endIndicatorModule[bubroad.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "BUB road receiver outputs",
+		hashErrMessage: "hash BUB road outputs",
+		modelVersion:   bubroad.BuiltinModelVersion,
+		names:          endIndicatorSet{bubroad.IndicatorLden, bubroad.IndicatorLnight, bubroad.IndicatorLday, bubroad.IndicatorLevening},
+		receiver:       func(output bubroad.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output bubroad.ReceiverOutput) any { return output.Indicators },
+		levels: func(output bubroad.ReceiverOutput) [4]float64 {
+			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
+		},
+		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = bubroad.ReportingPrecisionDB },
+		export:          exportBundle(scope, "export BUB road results", bubroad.ExportResultBundle, outputs, gridWidth, gridHeight),
+	})
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// persistRLS19RoadRunOutputs writes an RLS-19 run. RLS-19 has no model
+// version of its own: the data pack it evaluates is the only thing that
+// versions its results.
+func persistRLS19RoadRunOutputs(
+	runDir string,
+	outputs []rls19road.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	sourceOverrideCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistRLS19RoadRunOutputs"
+
+	plan := receiverPersistPlan[rls19road.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "RLS-19 road receiver outputs",
+		hashErrMessage: "hash RLS-19 road outputs",
+		modelVersion:   rls19road.BuiltinDataPackVersion,
+		indicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight},
+		decorateSummary: func(summary map[string]any) {
+			summary["sources_with_feature_acoustics_overrides"] = sourceOverrideCount
+			summary["reporting_precision_db"] = rls19road.ReportingPrecisionDB
+		},
+		receiver:   func(output rls19road.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators: func(output rls19road.ReceiverOutput) any { return output.Indicators },
+		values: func(output rls19road.ReceiverOutput) map[string]float64 {
+			return map[string]float64{
+				rls19road.IndicatorLrDay:   output.Indicators.LrDay,
+				rls19road.IndicatorLrNight: output.Indicators.LrNight,
+			}
+		},
+		export: exportBundle(scope, "export RLS-19 road results", rls19road.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
 
-	return persistRailRunOutputs(module, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+func persistSchall03RunOutputs(
+	runDir string,
+	outputs []schall03.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	engine string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistSchall03RunOutputs"
+
+	plan := receiverPersistPlan[schall03.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "Schall 03 receiver outputs",
+		hashErrMessage: "hash Schall 03 outputs",
+		modelVersion:   schall03.ModelVersionForEngine(engine),
+		indicatorOrder: []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight},
+		decorateSummary: func(summary map[string]any) {
+			summary["compliance_boundary"] = schall03.ComplianceBoundaryForEngine(engine)
+			summary[schall03.ParamEngine] = engine
+			summary["reporting_precision_db"] = schall03.ReportingPrecisionDB
+			summary["band_model"] = "octave-63Hz-8000Hz"
+
+			// The data pack exists only on the preview path; the normative chain
+			// reads Beiblatt 1/2 and the Anlage-2 tables directly.
+			if engine != schall03.EngineNormative {
+				summary["data_pack_version"] = schall03.BuiltinDataPackVersion
+			}
+		},
+		receiver:   func(output schall03.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators: func(output schall03.ReceiverOutput) any { return output.Indicators },
+		values: func(output schall03.ReceiverOutput) map[string]float64 {
+			return map[string]float64{
+				schall03.IndicatorLrDay:   output.Indicators.LrDay,
+				schall03.IndicatorLrNight: output.Indicators.LrNight,
+			}
+		},
+		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, gridWidth, gridHeight),
+	}
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+// END four-indicator set over structurally identical receiver outputs, so
+// these three wrappers are clones of one another by construction. The fix is
+// not more indirection here: bub-road must share cnossos-road's model and
+// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
+// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
+// the alias-pair shape railPersistPlan and industryPersistPlan already use.
+//
+//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
+func persistCnossosAircraftRunOutputs(
+	runDir string,
+	outputs []cnossosaircraft.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistCnossosAircraftRunOutputs"
+
+	plan := endIndicatorPlan(endIndicatorModule[cnossosaircraft.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "cnossos aircraft receiver outputs",
+		hashErrMessage: "hash cnossos aircraft outputs",
+		modelVersion:   cnossosaircraft.BuiltinModelVersion,
+		names:          endIndicatorSet{cnossosaircraft.IndicatorLden, cnossosaircraft.IndicatorLnight, cnossosaircraft.IndicatorLday, cnossosaircraft.IndicatorLevening},
+		receiver:       func(output cnossosaircraft.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output cnossosaircraft.ReceiverOutput) any { return output.Indicators },
+		levels: func(output cnossosaircraft.ReceiverOutput) [4]float64 {
+			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
+		},
+		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosaircraft.ReportingPrecisionDB },
+		export:          exportBundle(scope, "export cnossos aircraft results", cnossosaircraft.ExportResultBundle, outputs, gridWidth, gridHeight),
+	})
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
 }
 
 func persistBUFAircraftRunOutputs(
@@ -671,42 +778,66 @@ func persistBUFAircraftRunOutputs(
 	receiverMode string,
 	tier framework.EvidenceTier,
 ) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
+	const scope = "cli.persistBUFAircraftRunOutputs"
 
-	outputHash, err := hashReceiverOutputs(
-		"BUF aircraft receiver outputs",
-		outputs,
-		func(output bufaircraft.ReceiverOutput) string { return output.Receiver.ID },
-		func(output bufaircraft.ReceiverOutput) bufaircraft.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUFAircraftRunOutputs", "hash buf aircraft outputs", err)
+	plan := endIndicatorPlan(endIndicatorModule[bufaircraft.ReceiverOutput]{
+		scope:          scope,
+		hashLabel:      "BUF aircraft receiver outputs",
+		hashErrMessage: "hash buf aircraft outputs",
+		modelVersion:   bufaircraft.BuiltinModelVersion,
+		names:          endIndicatorSet{bufaircraft.IndicatorLden, bufaircraft.IndicatorLnight, bufaircraft.IndicatorLday, bufaircraft.IndicatorLevening},
+		receiver:       func(output bufaircraft.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output bufaircraft.ReceiverOutput) any { return output.Indicators },
+		levels: func(output bufaircraft.ReceiverOutput) [4]float64 {
+			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
+		},
+		export: exportBundle(scope, "export BUF aircraft results", bufaircraft.ExportResultBundle, outputs, gridWidth, gridHeight),
+	})
+
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
+
+func persistISO9613RunOutputs(
+	runDir string,
+	outputs []iso9613.ReceiverOutput,
+	gridWidth int,
+	gridHeight int,
+	sourceCount int,
+	receiverMode string,
+	tier framework.EvidenceTier,
+) (persistedRunOutputs, string, time.Time, error) {
+	const scope = "cli.persistISO9613RunOutputs"
+
+	plan := receiverPersistPlan[iso9613.ReceiverOutput]{
+		scope:           scope,
+		hashLabel:       "ISO 9613 receiver outputs",
+		hashErrMessage:  "hash iso9613 outputs",
+		modelVersion:    iso9613.BuiltinModelVersion,
+		indicatorOrder:  []string{iso9613.IndicatorLpAeqDW, iso9613.IndicatorLpAeqLT},
+		decorateSummary: func(summary map[string]any) { summary["indicator"] = iso9613.IndicatorLpAeqDW },
+		receiver:        func(output iso9613.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:      func(output iso9613.ReceiverOutput) any { return output.Indicators },
+		values: func(output iso9613.ReceiverOutput) map[string]float64 {
+			return map[string]float64{
+				iso9613.IndicatorLpAeqDW: output.Indicators.LpAeqDW,
+				iso9613.IndicatorLpAeqLT: output.Indicators.LpAeqLT,
+			}
+		},
+		export: exportBundle(scope, "export iso9613 results", iso9613.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
 
-	summary := newRunSummary(runDir, outputHash, bufaircraft.BuiltinModelVersion, receiverMode, tier, sourceCount, len(outputs))
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+}
 
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{bufaircraft.IndicatorLden, bufaircraft.IndicatorLnight, bufaircraft.IndicatorLday, bufaircraft.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{bufaircraft.IndicatorLden: output.Indicators.Lden, bufaircraft.IndicatorLnight: output.Indicators.Lnight, bufaircraft.IndicatorLday: output.Indicators.Lday, bufaircraft.IndicatorLevening: output.Indicators.Levening}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := bufaircraft.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistBUFAircraftRunOutputs", "export buf aircraft results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
+// exportedBundle is the shape every standards module's ExportResultBundle
+// returns. The per-module structs are structurally identical but nominally
+// distinct, so a persist path shared by an alias pair needs one type to hand
+// back.
+type exportedBundle struct {
+	ReceiverJSONPath string
+	ReceiverCSVPath  string
+	RasterMetaPath   string
+	RasterDataPath   string
 }
 
 func persistBEBExposureRunOutputs(
@@ -766,165 +897,6 @@ func persistBEBExposureRunOutputs(
 		RasterDataPath:     exported.RasterDataPath,
 		SummaryPath:        summaryPath,
 	}, outputHash, nowUTC(), nil
-}
-
-// persistIndustryRunOutputs persists a cnossos-industry run and a bub-industry
-// run alike: bub-industry's receiver output type is a Go alias of
-// cnossos-industry's, so the two share everything except the module identity
-// carried in module.
-func persistIndustryRunOutputs(
-	module aliasedModule,
-	runDir string,
-	outputs []cnossosindustry.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"cnossos industry receiver outputs",
-		outputs,
-		func(output cnossosindustry.ReceiverOutput) string { return output.Receiver.ID },
-		func(output cnossosindustry.ReceiverOutput) cnossosindustry.ReceiverIndicators {
-			return output.Indicators
-		},
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, module.scope, "hash industry outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, module.modelVersion, receiverMode, tier, sourceCount, len(outputs))
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{cnossosindustry.IndicatorLden, cnossosindustry.IndicatorLnight, cnossosindustry.IndicatorLday, cnossosindustry.IndicatorLevening}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{cnossosindustry.IndicatorLden: output.Indicators.Lden, cnossosindustry.IndicatorLnight: output.Indicators.Lnight, cnossosindustry.IndicatorLday: output.Indicators.Lday, cnossosindustry.IndicatorLevening: output.Indicators.Levening}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := module.export(resultsDir)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
-}
-
-func persistCnossosIndustryRunOutputs(
-	runDir string,
-	outputs []cnossosindustry.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistCnossosIndustryRunOutputs"
-
-	module := aliasedModule{
-		scope:        scope,
-		modelVersion: cnossosindustry.BuiltinModelVersion,
-		export: func(resultsDir string) (exportedBundle, error) {
-			exported, err := cnossosindustry.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-			if err != nil {
-				return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, "export cnossos industry results", err)
-			}
-
-			return exportedBundle(exported), nil
-		},
-	}
-
-	return persistIndustryRunOutputs(module, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// persistBUBIndustryRunOutputs writes a bub-industry run. bub-industry carries
-// no model version of its own: it delegates every number to cnossos-industry,
-// so that is the version the summary must name.
-func persistBUBIndustryRunOutputs(
-	runDir string,
-	outputs []bubindustry.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistBUBIndustryRunOutputs"
-
-	module := aliasedModule{
-		scope:        scope,
-		modelVersion: cnossosindustry.BuiltinModelVersion,
-		export: func(resultsDir string) (exportedBundle, error) {
-			exported, err := bubindustry.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-			if err != nil {
-				return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, "export BUB industry results", err)
-			}
-
-			return exportedBundle(exported), nil
-		},
-	}
-
-	return persistIndustryRunOutputs(module, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-func persistISO9613RunOutputs(
-	runDir string,
-	outputs []iso9613.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	resultsDir := filepath.Join(runDir, "results")
-
-	outputHash, err := hashReceiverOutputs(
-		"ISO 9613 receiver outputs",
-		outputs,
-		func(output iso9613.ReceiverOutput) string { return output.Receiver.ID },
-		func(output iso9613.ReceiverOutput) iso9613.ReceiverIndicators { return output.Indicators },
-	)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistISO9613RunOutputs", "hash iso9613 outputs", err)
-	}
-
-	summary := newRunSummary(runDir, outputHash, iso9613.BuiltinModelVersion, receiverMode, tier, sourceCount, len(outputs))
-	summary["indicator"] = iso9613.IndicatorLpAeqDW
-
-	if receiverMode == receiverModeCustom {
-		table := results.ReceiverTable{IndicatorOrder: []string{iso9613.IndicatorLpAeqDW, iso9613.IndicatorLpAeqLT}, Unit: "dB", Records: make([]results.ReceiverRecord, 0, len(outputs))}
-		for _, output := range outputs {
-			table.Records = append(table.Records, results.ReceiverRecord{ID: output.Receiver.ID, X: output.Receiver.Point.X, Y: output.Receiver.Point.Y, HeightM: output.Receiver.HeightM, Values: map[string]float64{iso9613.IndicatorLpAeqDW: output.Indicators.LpAeqDW, iso9613.IndicatorLpAeqLT: output.Indicators.LpAeqLT}})
-		}
-
-		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)
-
-		return persisted, outputHash, nowUTC(), err
-	}
-
-	exported, err := iso9613.ExportResultBundle(resultsDir, outputs, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, "cli.persistISO9613RunOutputs", "export iso9613 results", err)
-	}
-
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
-	if err != nil {
-		return persistedRunOutputs{}, "", time.Time{}, err
-	}
-
-	return persistedRunOutputs{ReceiverJSONPath: exported.ReceiverJSONPath, ReceiverCSVPath: exported.ReceiverCSVPath, RasterMetadataPath: exported.RasterMetaPath, RasterDataPath: exported.RasterDataPath, SummaryPath: summaryPath}, outputHash, nowUTC(), nil
 }
 
 // hashedReceiverRecord is the unit of the run output-hash contract: one
