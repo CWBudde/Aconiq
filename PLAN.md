@@ -245,6 +245,31 @@ commit messages; the consequences each one exposed are open items below.
       touches `frontend/`, so it would have run under the old filter too — the first genuinely
       docs-only pull request is the real test.
 
+- [x] **The formatting gate is read-only** (`68b72a5`). `just check-formatted` mirrors the files a
+      commit could contain into a temporary directory, formats the copy and diffs it back;
+      `treefmt --fail-on-change` formats in place and is no longer used as a check. Anything that
+      grows a formatting step inherits the same obligation — treefmt writes wherever it is pointed.
+- [x] **One pinned toolchain** (`68b72a5`). `tools.versions` is the only place a tool version is
+      written. Every workflow reads it through `.github/actions/toolchain`, and
+      `just install-tools` installs exactly those versions, including the two awkward cases:
+      treefmt, which no `go install` will accept (a fixture path in its module zip contains an
+      emoji), and govulncheck, which has to be built with the toolchain `backend/go.mod` names.
+      `just fmt` and `just check-formatted` refuse to run on a formatter mismatch and treefmt no
+      longer gets `--allow-missing-formatter`, so neither a wrong nor a missing formatter can pass
+      silently — which is what had let prettier 3.9.6 rewrite files the pinned 3.8.0 calls correct.
+      Live constraints: bump a version in `tools.versions` and nowhere else, and keep `TOOLS_BIN`
+      ahead of other copies on `PATH`, because the runner image ships its own shellcheck.
+      This also closed the `golangci-lint` skew item, on a false premise: `.trunk/` is gitignored
+      and was never tracked, so its 2.11.4 pin is one developer's local tooling and never was a
+      third pin in the repository. The scanners configured there are still unused — Priority 9.
+- [x] **`govulncheck` blocks, and a daily scan finds advisories before they block** (`d36c544`).
+      The decision, the rejected alternative and the red-button procedure are in
+      `docs/policies/vulnerability-scanning.md`: it reports reachable calls rather than mere
+      presence, so it gates merges, and the job now also runs daily on `main` and files an issue on
+      failure. Live constraint: govulncheck has no ignore file and none is to be added — an
+      advisory with no fixed version has to be handled by not reaching the symbol, written up in
+      that policy.
+
 ### Open
 
 - [ ] **The debts a green `just lint` still hides.** **256**, re-measured 2026-09-12 and audited in
@@ -290,48 +315,6 @@ commit messages; the consequences each one exposed are open items below.
           remaining `app/cli` directives. Nothing here is suppressed because nobody got round to it.
           `.golangci.yml`'s disable list holds **19** linters, which is why neither `AGENTS.md` nor
           `docs/policies/formatting.md` quotes a number.
-
-- [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
-      **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
-      `GO-2026-5970`, reachable via `reporting.renderTypstSource`) and `backend/go.mod` gained
-      `toolchain go1.26.6`, which clears the seven reachable standard-library advisories
-      (`GO-2026-6218` net/url, `GO-2026-6091` html/template, `GO-2026-6090` crypto/tls,
-      `GO-2026-6089` net/http, `GO-2026-6088` encoding/xml, `GO-2026-5972` encoding/asn1,
-      `GO-2026-5026` net/http). Before the toolchain line there was none at all, so `setup-go`
-      with `go-version-file` would have built CI against a 1.25.x standard library — older, and
-      more exposed, than any developer's local toolchain. Since stdlib advisories land on their
-      own schedule, this job will go red on its own; decide whether that blocks merges or opens an
-      issue.
-      Note what adding that `toolchain` line actually did, since this item half-anticipated it:
-      commands run inside `backend/` do re-exec under go1.26.6, but `setup-go` still installs
-      1.25.0 from the `go` directive, and govulncheck — built by `go install`, which resolves in
-      its own module — stayed on 1.25 and could no longer parse the very standard library it was
-      meant to scan. That broke the job outright until the fix recorded above. It is now a
-      required status check, so "goes red on its own" means "blocks every merge until someone
-      acts", which is the sharper form of the decision this item asks for.
-- [ ] **`just check-formatted` mutates the working tree.** It runs `treefmt --fail-on-change`,
-      which formats in place _and then_ reports. So the CI "check" step rewrites files, and
-      running it locally silently reformats unrelated work. Make it operate on a copy, or use a
-      genuinely read-only check.
-- [ ] **`treefmt` cannot be installed with `go install`.** Every version fails: the module zip
-      contains a test fixture whose path has an emoji, which is not a valid module file path, and
-      `proxy.golang.org` 404s for all `treefmt/v2` `.info`/`.zip` requests. The workflow now uses
-      the release tarball. The old `go install` step was therefore already broken on a clean
-      runner, independently of the module blocker.
-- [ ] **CI installed only the Go formatters.** `treefmt --allow-missing-formatter` skips silently,
-      so markdown, YAML, JSON and TypeScript were never format-checked in CI even when the step
-      passed. `shfmt` and `prettier` are now installed too. No backlog surfaced — but a sharper
-      problem did: **nothing pins the formatters locally.** `go-ci.yml` pins
-      `PRETTIER_VERSION: 3.8.0`; a developer's `just fmt` uses whatever `prettier` is on `PATH`.
-      Measured 2026-09-11: prettier 3.9.6 rewrites four frontend files that 3.8.0 considers
-      correctly formatted, so running the project's own documented formatting command produced a
-      diff CI rejected, and `just check-formatted` reported a backlog that does not exist. The
-      failure is silent in both directions and `just fmt` is the workflow we tell people to use.
-      Pin the formatter toolchain for local use as well — a devbox/mise/nix entry, or at minimum a
-      version check in the recipe that fails loudly on a mismatch instead of reformatting the tree.
-- [ ] **Reconcile the three-way `golangci-lint` skew.** CI and the local toolbox are now both
-      pinned to 2.12.2; `.trunk/trunk.yaml` still pins 2.11.4. Related to the "resolve the two
-      competing lint stacks" item in Priority 9.
 
 ## Priority 1 — Fix known numeric defects
 
@@ -844,10 +827,12 @@ package table and all ten CLI commands, and describes the standards modules by e
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
-- [ ] Resolve the two competing lint stacks. `.trunk/trunk.yaml` is invoked by nothing yet holds
-      `osv-scanner`, `trivy`, `trufflehog`, `checkov`, `gokart`, `actionlint` — exactly the security
-      coverage CI lacks — and pins `go@1.21.0` against a `go 1.25.0` module, and `golangci-lint`
-      2.11.4 against CI's 2.12.2. Either promote those scanners into `go-ci.yml` or drop trunk.
+- [ ] Promote the security scanners that only exist in a developer's `.trunk/`. That directory is
+      gitignored and was never tracked, so it is one machine's tooling, not a second lint stack in
+      the repository — "drop trunk" would change nothing here. What it does hold is `osv-scanner`,
+      `trivy`, `trufflehog`, `checkov`, `gokart` and `actionlint`: exactly the coverage CI lacks,
+      and the frontend's npm dependencies are scanned by nothing at all. Wire them into CI, as
+      their own workflow, so the coverage belongs to the repository.
 
 ---
 
