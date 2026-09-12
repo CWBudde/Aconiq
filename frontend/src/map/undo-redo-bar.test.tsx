@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { UndoRedoBar } from "./undo-redo-bar";
-import { isTextEntryTarget } from "./event-utils";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
 
@@ -25,16 +24,6 @@ function renderBar() {
     </TooltipProvider>,
   );
 }
-
-describe("isTextEntryTarget", () => {
-  it("recognises the controls that own their undo history", () => {
-    expect(isTextEntryTarget(document.createElement("input"))).toBe(true);
-    expect(isTextEntryTarget(document.createElement("textarea"))).toBe(true);
-    expect(isTextEntryTarget(document.createElement("select"))).toBe(true);
-    expect(isTextEntryTarget(document.createElement("div"))).toBe(false);
-    expect(isTextEntryTarget(null)).toBe(false);
-  });
-});
 
 describe("UndoRedoBar keyboard shortcut", () => {
   it("undoes a model edit when the shortcut fires outside a text field", () => {

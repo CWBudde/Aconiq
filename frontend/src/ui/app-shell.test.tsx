@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { AppShell } from "./app-shell";
 import { m } from "@/i18n/messages";
@@ -87,5 +87,85 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: m.nav_run() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_results() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_export() })).toBeVisible();
+  });
+});
+
+describe("AppShell landmarks", () => {
+  function renderShell(path = "/map", children?: React.ReactNode) {
+    mockProjectStatus = {
+      isLoading: false,
+      isError: false,
+      error: null,
+      data: {
+        name: "Demo Project",
+        crs: "EPSG:4326",
+        scenario_count: 2,
+        run_count: 1,
+      },
+    };
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <AppShell>{children ?? <div>content</div>}</AppShell>
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders exactly one main landmark, and the page inside it", () => {
+    renderShell();
+    const main = screen.getAllByRole("main");
+    expect(main).toHaveLength(1);
+    expect(within(main[0] as HTMLElement).getByText("content")).toBeVisible();
+  });
+
+  it("puts the whole rail inside one labelled navigation landmark", () => {
+    renderShell();
+    const nav = screen.getByRole("navigation", { name: m.nav_primary_label() });
+    // Logo, workspace links and footer links all sit inside it.
+    expect(within(nav).getByText("AconiQ")).toBeVisible();
+    expect(within(nav).getByRole("link", { name: m.nav_map() })).toBeVisible();
+    expect(
+      within(nav).getByRole("link", { name: m.nav_settings() }),
+    ).toBeVisible();
+  });
+
+  it("marks the active link as the current page", () => {
+    renderShell("/run");
+    expect(screen.getByRole("link", { name: m.nav_run() })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: m.nav_map() })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("offers a skip link to the content as the first focusable element", () => {
+    const { container } = renderShell();
+    const skip = screen.getByRole("link", { name: m.action_skip_to_content() });
+    expect(skip).toHaveAttribute("href", "#main-content");
+    const first = container.querySelector("a, button, [tabindex]");
+    expect(first).toBe(skip);
+    const target = container.querySelector("#main-content");
+    expect(target).not.toBeNull();
+    expect(target).toHaveAttribute("tabindex", "-1");
+    expect(within(target as HTMLElement).getByText("content")).toBeVisible();
+  });
+
+  it("toggles the sidebar on Ctrl+B, but not from inside a text field", () => {
+    const { container } = renderShell(
+      "/map",
+      <input aria-label="height" defaultValue="5" />,
+    );
+    const rail = container.querySelector("[data-state]");
+    expect(rail).toHaveAttribute("data-state", "expanded");
+
+    fireEvent.keyDown(screen.getByLabelText("height"), {
+      key: "b",
+      ctrlKey: true,
+    });
+    expect(rail).toHaveAttribute("data-state", "expanded");
+
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(rail).toHaveAttribute("data-state", "collapsed");
   });
 });

@@ -50,6 +50,21 @@ test.describe("App shell", () => {
 });
 
 test.describe("Keyboard navigation", () => {
+  test("the skip link is the first Tab stop and moves focus to the content", async ({
+    page,
+  }) => {
+    await useLocale(page, "en");
+    await page.goto(appPath("/map"));
+    await waitForPage(page);
+    await page.keyboard.press("Tab");
+    const skip = page.getByRole("link", {
+      name: message("en", "action_skip_to_content"),
+    });
+    await expect(skip).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#main-content")).toBeFocused();
+  });
+
   test("sidebar links are reachable by Tab", async ({ page }) => {
     await page.goto(appPath("/map"));
     await waitForPage(page);

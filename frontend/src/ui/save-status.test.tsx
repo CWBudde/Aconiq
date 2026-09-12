@@ -160,6 +160,27 @@ describe("SaveStatus", () => {
     expect(sync.save).toHaveBeenCalledTimes(1);
   });
 
+  it("saves on Ctrl+S from inside a text field", () => {
+    setSync({ status: "dirty", dirty: true });
+    render(
+      <>
+        <SaveStatus />
+        <input aria-label="height" />
+      </>,
+    );
+    // Unlike undo, Ctrl+S is nobody's but ours: a user who has just typed a
+    // value expects it to save, not to open the browser's save-page dialog.
+    const event = new KeyboardEvent("keydown", {
+      key: "s",
+      ctrlKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    screen.getByLabelText("height").dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(sync.save).toHaveBeenCalledTimes(1);
+  });
+
   it("retries on Ctrl+S after a failed save", () => {
     setSync({
       status: "error",

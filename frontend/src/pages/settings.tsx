@@ -178,9 +178,9 @@ function AppSettings({
               <Settings className="h-3.5 w-3.5" aria-hidden />
               {m.settings_category_app()}
             </div>
-            <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {m.settings_category_app()}
-            </h3>
+            </h2>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 lg:w-[28rem]">
@@ -336,9 +336,9 @@ function AdvancedSettings({
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
             {m.settings_category_advanced()}
           </div>
-          <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             {m.settings_category_advanced()}
-          </h3>
+          </h2>
           <p className="text-sm leading-6 text-muted-foreground sm:text-base">
             {m.settings_category_advanced_desc()}
           </p>
@@ -427,9 +427,9 @@ function PlannedCategory({ category }: { category: Category }) {
           <Icon className="h-5 w-5" aria-hidden />
         </div>
         <div className="space-y-2">
-          <h3 className="text-2xl font-semibold tracking-tight">
+          <h2 className="text-2xl font-semibold tracking-tight">
             {category.title()}
-          </h3>
+          </h2>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             {category.description()}
           </p>
@@ -592,7 +592,9 @@ export default function SettingsPage() {
             </div>
           </aside>
 
-          <main className="min-w-0">
+          {/* A div, not <main>: the shell already provides the document's
+              one main landmark and a nested one fails axe. */}
+          <div className="min-w-0">
             {active?.id === "app" ? (
               <div
                 role="tabpanel"
@@ -634,7 +636,7 @@ export default function SettingsPage() {
                 <PlannedCategory category={active} />
               </div>
             ) : null}
-          </main>
+          </div>
         </div>
       </div>
     </div>

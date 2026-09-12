@@ -556,9 +556,9 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
 
       {/* Progress timeline */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {m.section_progress()}
-        </h4>
+        </h3>
         {logLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -571,9 +571,9 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
 
       {/* Log viewer */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {m.section_logs()}
-        </h4>
+        </h3>
         {logLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -586,9 +586,9 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
 
       {/* Artifacts */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {m.section_artifacts()}
-        </h4>
+        </h3>
         <ArtifactLinks artifacts={run.artifacts} />
       </section>
 

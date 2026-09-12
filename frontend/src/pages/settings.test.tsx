@@ -133,3 +133,23 @@ describe("SettingsPage", () => {
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 });
+
+describe("SettingsPage heading order", () => {
+  it.each(["app", "advanced", "project"])(
+    "keeps heading levels contiguous in the %s category",
+    (category) => {
+      // The shell's h1 sits above this page, so a level of 2 is the entry;
+      // the sections once opened with h3 (axe `heading-order`).
+      renderPage([`/settings?category=${category}`]);
+      const levels = screen
+        .getAllByRole("heading")
+        .map((h) => Number(h.tagName.slice(1)));
+      expect(levels[0]).toBe(2);
+      let deepest = 1;
+      for (const level of levels) {
+        expect(level).toBeLessThanOrEqual(deepest + 1);
+        deepest = Math.max(deepest, level);
+      }
+    },
+  );
+});

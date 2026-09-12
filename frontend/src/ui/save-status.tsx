@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, Check, Save } from "lucide-react";
 import { modelValidationIssues } from "@/api/api-error";
 import { useProjectSync } from "@/model/use-project-sync";
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/ui/components/dialog";
+import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { m } from "@/i18n/messages";
 
 /**
@@ -26,20 +27,15 @@ export function SaveStatus() {
   // handle, dirty or not: a workspace must never pop the browser's save-page
   // dialog, and a clean one has simply nothing to do. The save follows
   // `dirty`, not `status`: after a failed save the status is "error" while
-  // the model is still unsaved, and the shortcut is the retry.
-  useEffect(() => {
-    if (!enabled) return;
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== "s") return;
-      e.preventDefault();
+  // the model is still unsaved, and the shortcut is the retry. It fires from
+  // inside a text field too: no input claims Ctrl+S for itself, and a user
+  // who has just typed a height expects it to save.
+  useGlobalShortcut(
+    { key: "s", ctrl: true, allowInTextEntry: true, enabled },
+    () => {
       if (dirty && status !== "saving") void save();
-    };
-    window.addEventListener("keydown", handler);
-    return () => {
-      window.removeEventListener("keydown", handler);
-    };
-  }, [enabled, status, dirty, save]);
+    },
+  );
 
   if (!enabled) return null;
 
