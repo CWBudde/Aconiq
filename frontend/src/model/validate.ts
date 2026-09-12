@@ -170,6 +170,7 @@ function validateRLS19SourceAcoustics(
 ): void {
   if (feature.sourceType === "area") {
     validateRLS19Parking(feature, errors);
+
     return;
   }
 
@@ -309,14 +310,49 @@ function validateRLS19SourceAcoustics(
   }
 }
 
+// PARKING_PROPERTIES is what marks an area source as an RLS-19 Parkplatz.
+//
+// The check has to be property-driven, not `source_type: area` alone: this
+// validator is standard-agnostic — it runs from the import and map pages with
+// no standard selected — and an area source is also a legitimate input to
+// cnossos-industry and bub-industry, which would otherwise collect RLS-19
+// errors it has no business carrying. It mirrors how the road checks in this
+// file behave: they fire on a property that is present and wrong, never on one
+// that is absent.
+//
+// The consequence is deliberate and matches the CLI, where `aconiq validate` is
+// likewise standard-agnostic and extraction is the enforcement point: an area
+// source carrying no parking property at all passes here and is refused by the
+// extractor when an rls19-road run actually reads it.
+const PARKING_PROPERTIES = [
+  PROP_PARKING_NUM_SPACES,
+  PROP_PARKING_TYPE,
+  PROP_PARKING_FACILITY_TYPE,
+  PROP_PARKING_MOVEMENTS_DAY,
+  PROP_PARKING_MOVEMENTS_NIGHT,
+];
+
+function isRLS19Parking(feature: ModelFeature): boolean {
+  const properties = feature.properties ?? {};
+
+  return PARKING_PROPERTIES.some((key) => properties[key] !== undefined);
+}
+
 // validateRLS19Parking surfaces the §3.4 refusals here rather than letting them
 // arrive as a kernel error. An omitted Parkplatztyp is not Pkw and an omitted
 // movement rate is not zero — zero is the silence sentinel, which would report
 // an occupied Parkplatz as inaudible. An explicitly stated 0 is legal.
+//
+// A half-filled Parkplatz is the realistic mistake and is caught here; a feature
+// carrying nothing is not assumed to be one at all.
 function validateRLS19Parking(
   feature: ModelFeature,
   errors: ValidationIssue[],
 ): void {
+  if (!isRLS19Parking(feature)) {
+    return;
+  }
+
   const push = (code: string, message: string): void => {
     errors.push({ level: "error", code, featureId: feature.id, message });
   };

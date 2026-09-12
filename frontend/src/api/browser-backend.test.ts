@@ -296,6 +296,69 @@ describe("buildBuildings", () => {
 
     expect(buildings[0]?.reflection_loss_db).toBe(3);
   });
+
+  // A dropped building is a receiver computed as though nothing stood there.
+  // The CLI expands each part into its own building, so this must too.
+  it("expands a MultiPolygon into one building per part, as the CLI does", () => {
+    const buildings = buildBuildings([
+      {
+        ...footprint,
+        geometry: {
+          type: "MultiPolygon",
+          coordinates: [
+            [
+              [
+                [0, 0],
+                [10, 0],
+                [10, 5],
+                [0, 5],
+                [0, 0],
+              ],
+            ],
+            [
+              [
+                [20, 0],
+                [30, 0],
+                [30, 5],
+                [20, 5],
+                [20, 0],
+              ],
+            ],
+          ],
+        },
+      },
+    ]);
+
+    expect(buildings.map((b) => b.id)).toEqual(["block-01", "block-02"]);
+    expect(buildings[1]?.footprint[0]).toEqual({ x: 20, y: 0 });
+  });
+
+  // PropagationConfig.Validate does not inspect buildings, so an unchecked
+  // zero height would compute happily and shield nothing. Building.Validate
+  // refuses it on the CLI side; this mirrors that.
+  it("refuses a building with no stated height", () => {
+    const withoutHeight: ModelFeature = {
+      id: footprint.id,
+      kind: footprint.kind,
+      properties: {},
+      geometry: footprint.geometry,
+    };
+
+    expect(() => buildBuildings([withoutHeight])).toThrow(/height_m/);
+  });
+
+  it.each([
+    ["a zero height", { heightM: 0 }, /height_m/],
+    [
+      "a negative reflection loss",
+      { properties: { reflection_loss_db: -1 } },
+      /reflection_loss_db/,
+    ],
+  ])("refuses %s", (_name, patch, expected) => {
+    expect(() => buildBuildings([{ ...footprint, ...patch }])).toThrow(
+      expected,
+    );
+  });
 });
 
 describe("receiver grid extent", () => {

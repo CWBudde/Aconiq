@@ -20,10 +20,7 @@ import {
   getFeatureString,
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
-import {
-  buildParkingSources,
-  parkingPolygonRings,
-} from "@/model/rls19-parking";
+import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
@@ -666,21 +663,61 @@ function buildBarriers(features: ModelFeature[]): Barrier[] {
 // buildBuildings mirrors extractRLS19Buildings: a building is a barrier and a
 // reflector at once, and the reflection loss falls back to the RLS-19 Tabelle 8
 // facade row, 0.5 dB, when the feature does not state one.
+//
+// A MultiPolygon becomes one building per part, with the same suffixed IDs the
+// CLI assigns, rather than being dropped: a skipped building is a receiver
+// computed as though nothing stood there, which is the quiet-zero failure this
+// whole change set exists to remove. The field checks mirror Building.Validate,
+// because PropagationConfig.Validate does not inspect buildings — an unchecked
+// zero height would compute happily and shield nothing.
 export function buildBuildings(features: ModelFeature[]): Building[] {
   const buildings: Building[] = [];
+
   for (const feature of features) {
     if (feature.kind !== "building") continue;
-    const rings = parkingPolygonRings(feature);
-    const footprint = rings?.[0];
-    if (!footprint || footprint.length < 3) continue;
-    buildings.push({
-      id: feature.id,
-      footprint,
-      height_m: feature.heightM ?? 0,
-      reflection_loss_db:
-        getFeatureNumber(feature, "reflection_loss_db") ?? 0.5,
+
+    const parts = polygonParts(feature);
+    if (parts === null) {
+      throw new Error(
+        `feature "${feature.id}": a building must be a Polygon or a MultiPolygon`,
+      );
+    }
+
+    const heightM = feature.heightM;
+    if (heightM === undefined || !Number.isFinite(heightM) || heightM <= 0) {
+      throw new Error(
+        `feature "${feature.id}": building height_m must be finite and > 0`,
+      );
+    }
+
+    const reflectionLossDb =
+      getFeatureNumber(feature, "reflection_loss_db") ?? 0.5;
+    if (!Number.isFinite(reflectionLossDb) || reflectionLossDb < 0) {
+      throw new Error(
+        `feature "${feature.id}": building reflection_loss_db must be finite and >= 0`,
+      );
+    }
+
+    parts.forEach((rings, index) => {
+      const footprint = rings[0];
+      if (!footprint || footprint.length < 3) {
+        throw new Error(
+          `feature "${feature.id}": building footprint must contain at least 3 vertices`,
+        );
+      }
+
+      buildings.push({
+        id:
+          parts.length === 1
+            ? feature.id
+            : `${feature.id}-${String(index + 1).padStart(2, "0")}`,
+        footprint,
+        height_m: heightM,
+        reflection_loss_db: reflectionLossDb,
+      });
     });
   }
+
   return buildings;
 }
 
