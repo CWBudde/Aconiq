@@ -17,6 +17,11 @@ export default tseslint.config(
       // when the frontend gate started building the kernel, and it is not ours
       // to lint or to add to tsconfig.
       "public/",
+      // Same: the HTML coverage report ships its own bundled scripts
+      // (block-navigation.js, prettify.js, sorter.js), which eslint's project
+      // service cannot resolve because they are in no tsconfig. Gitignored, and
+      // only present after `just fe-test-coverage`.
+      "coverage/",
     ],
   },
   js.configs.recommended,

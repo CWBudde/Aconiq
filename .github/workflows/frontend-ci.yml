@@ -129,3 +129,114 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report
           retention-days: 7
+
+  # Coverage. Advisory, and structurally so: a separate job, deliberately absent
+  # from the required-check set, with the reporting steps carrying
+  # `continue-on-error`. `frontend-ci` is the required check — a coverage
+  # regression must never be able to block a merge.
+  #
+  # It builds the WASM kernel and requires the parity suites, exactly as
+  # `frontend-ci` does. Without the kernel those four suites skip, `src/wasm/`
+  # and a good deal of `browser-backend.ts` drop out of the covered set, and the
+  # percentage would then depend on whether a build step ran rather than on what
+  # is tested — a floor measured one way and enforced the other is a floor that
+  # moves on its own.
+  frontend-coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the WASM kernel
+        uses: ./.github/actions/wasm-kernel
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      # The floors live in vitest.config.ts and the run applies them itself, so
+      # this step is what goes red on a breach. `continue-on-error` is what makes
+      # "advisory" true rather than merely intended, and the outcome is read
+      # below to say which of the two things happened.
+      - name: Run tests with coverage
+        id: tests
+        continue-on-error: true
+        working-directory: frontend
+        env:
+          # Same reason as in `frontend-ci`: locally a missing kernel is a skip,
+          # here its absence would mean the build step silently did nothing —
+          # and would quietly take four suites out of the coverage denominator.
+          ACONIQ_REQUIRE_WASM: "1"
+        run: bun run test:coverage
+
+      # bun directly rather than through `just`, matching every other step in
+      # this workflow: the frontend jobs never install just.
+      - name: Render the coverage report
+        id: report
+        if: always()
+        continue-on-error: true
+        working-directory: frontend
+        run: bun run scripts/coverage-report.mjs --out ../code-coverage-results-frontend.md
+
+      # `reportOnFailure: true` in vitest.config.ts means a failing test still
+      # writes the summary, so the report above usually succeeds even when the
+      # run did not. This covers the case where it does not — and says so in the
+      # same place the number would have gone, because a sticky comment that
+      # goes quiet leaves the previous commit's numbers looking current.
+      - name: Explain the missing coverage report
+        if: always() && steps.report.outcome != 'success'
+        continue-on-error: true
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          case "${TESTS_OUTCOME}" in
+            failure) WHY="The test run failed and produced no readable coverage summary." ;;
+            success) WHY="The tests passed, but rendering the report failed — the coverage summary is unreadable." ;;
+            *)       WHY="The test run never started (\`${TESTS_OUTCOME}\`), so no coverage was measured." ;;
+          esac
+          cd frontend
+          bun run scripts/coverage-report.mjs \
+            --out ../code-coverage-results-frontend.md --unavailable "${WHY}"
+
+      - name: Publish to the job summary
+        if: always() && hashFiles('code-coverage-results-frontend.md') != ''
+        continue-on-error: true
+        run: cat code-coverage-results-frontend.md >> "$GITHUB_STEP_SUMMARY"
+
+      # A threshold breach fails the test step, which is `continue-on-error`, so
+      # it would otherwise be a quiet grey tick in a long step list.
+      - name: Flag a coverage problem
+        if: always() && steps.tests.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          echo "::warning title=Frontend coverage or tests below the line::The coverage run failed — either a test failed or coverage is under the floors in frontend/vitest.config.ts. Advisory only; it fails no required check. docs/testing/coverage.md has the policy."
+          {
+            echo ""
+            echo "> ⚠️ **The coverage run failed.** Either a test failed, or coverage is"
+            echo "> below the floors in \`frontend/vitest.config.ts\` — the step log says"
+            echo "> which. \`frontend-ci\` is the check that decides whether the tests pass;"
+            echo "> this one is advisory."
+            echo "> See docs/testing/coverage.md for the policy and the ratchet ledger."
+          } | tee -a code-coverage-results-frontend.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the coverage comment
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          hashFiles('code-coverage-results-frontend.md') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash scripts/sticky-comment.sh coverage-frontend code-coverage-results-frontend.md
