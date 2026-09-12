@@ -2,11 +2,15 @@
 // agree on, so that agreeing is not a matter of eight copies staying in step.
 //
 // It starts with the END indicator family — the day/evening/night set that
-// Directive 2002/49/EC defines and that every strategic-mapping module in this
-// repository reports. Six modules carried byte-identical copies of the levels,
-// the indicator payload and the Lden formula; a correction to the directive's
-// defining equation had to be applied six times, and nothing would have caught
-// it being applied five.
+// Directive 2002/49/EC defines. Six modules report it and carried
+// byte-identical copies of the levels, the indicator payload and the Lden
+// formula: the four cnossos scaffolds and the bub/buf counterparts that alias
+// them. A correction to the directive's defining equation had to be applied six
+// times, and nothing would have caught it being applied five.
+//
+// Not every module in the repository reports this set, and this package makes
+// no claim on the ones that do not: rls19/road and schall03 publish the German
+// Beurteilungspegel LrDay/LrNight and keep their own indicator model.
 //
 // What is deliberately *not* here yet: the energy summation helper, which
 // exists in nine copies with three different silence semantics (-999 in some

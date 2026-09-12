@@ -402,8 +402,8 @@ func persistReceiverRunOutputs[Output any](
 	}, outputHash, nowUTC(), nil
 }
 
-// endPersistSpec is what one END strategic-mapping module contributes to the
-// shared persist path. The receiver outputs are acoustics.ReceiverOutput for
+// endPersistSpec is what one END module contributes to the shared persist
+// path. The receiver outputs are acoustics.ReceiverOutput for
 // every module in the family, so everything else — the hash payload, the
 // receiver table, the run summary — is identical by construction, and only
 // these two values differ.
@@ -468,7 +468,7 @@ var endPersistSpecs = map[string]endPersistSpec{
 	},
 }
 
-// persistENDRunOutputs writes one END strategic-mapping run: cnossos-road,
+// persistENDRunOutputs writes one run reporting the END indicator set: cnossos-road,
 // -rail, -industry and -aircraft, their bub/buf counterparts, and anything else
 // that reports Lden/Lnight/Lday/Levening.
 //

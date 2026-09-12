@@ -309,7 +309,7 @@ commit messages; the consequences each one exposed are open items below.
           their own copy of the END day/evening/night types, so the one persist path had to be
           written once per type, and three of those copies were close enough for `dupl` to fire.
           `internal/acoustics` owns the model now — the types, the directive's Lden weighting and the
-          bundle every strategic-mapping module publishes — and eight persist clones are one
+          bundle the six modules reporting that set publish — and eight persist clones are one
           table-driven function. No golden moved.
 
           What is left is `goconst` **62** (39 permanent, 23 Priority 7), `noinlineerr` **104**
@@ -691,8 +691,8 @@ trade: the switch is the price of making the schema/parse agreement testable, an
 `framework.Module` subsumes it along with the other nine.
 
 - [ ] **Finish the shared acoustics core.** `internal/acoustics` exists and owns the END indicator
-      model — the day/evening/night types, the directive's Lden weighting and the bundle every
-      strategic-mapping module publishes. What it does not own yet is the summation: `energySumDB`
+      model — the day/evening/night types, the directive's Lden weighting and the bundle the six
+      modules reporting that set publish. What it does not own yet is the summation: `energySumDB`
       exists in **9 copies with 3 different semantics** — `rls19/road/emission.go:147` skips
       `level <= -900`, `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf`
       and returns NaN on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the

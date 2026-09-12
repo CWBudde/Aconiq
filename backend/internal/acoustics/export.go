@@ -17,9 +17,9 @@ type ExportOutputs struct {
 	RasterDataPath   string
 }
 
-// ExportENDBundle writes the receiver table and the two-band raster an END
-// strategic-mapping run publishes: receivers.json, receivers.csv, and an
-// Lden/Lnight raster named after the standard that produced it.
+// ExportENDBundle writes the receiver table and the two-band raster an END run
+// publishes: receivers.json, receivers.csv, and an Lden/Lnight raster named
+// after the standard that produced it.
 //
 // standardID names the raster files, which is the only thing that differed
 // between the eight copies this replaces. Everything else — the indicator
