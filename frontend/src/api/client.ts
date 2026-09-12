@@ -58,6 +58,12 @@ export interface HealthResponse {
 export interface LastRunStatus {
   id: string;
   status: string;
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   standard_id: string;
   version: string;
   profile?: string;
@@ -86,6 +92,12 @@ export interface ArtifactRef {
 export interface RunSummary {
   id: string;
   scenario_id: string;
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   standard_id: string;
   version: string;
   profile?: string;
@@ -149,6 +161,12 @@ export interface VersionInfo {
 }
 
 export interface StandardDescriptor {
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   id: string;
   description: string;
   default_version: string;

@@ -550,6 +550,7 @@ func openapiProjectSchemas() map[string]any {
 			"properties": map[string]any{
 				"id":          map[string]any{"type": "string"},
 				"status":      map[string]any{"type": "string"},
+				"context":     openapiStandardContextSchema(),
 				"standard_id": map[string]any{"type": "string"},
 				"version":     map[string]any{"type": "string"},
 				"profile":     map[string]any{"type": "string"},
@@ -624,6 +625,7 @@ func openapiRunSchemas() map[string]any {
 			"properties": map[string]any{
 				"id":              map[string]any{"type": "string"},
 				"scenario_id":     map[string]any{"type": "string"},
+				"context":         openapiStandardContextSchema(),
 				"standard_id":     map[string]any{"type": "string"},
 				"version":         map[string]any{"type": "string"},
 				"profile":         map[string]any{"type": "string"},
@@ -759,8 +761,11 @@ func openapiStandardSchemas() map[string]any {
 		"StandardDescriptor": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []string{"id", "description", evidenceTierField, "default_version", "versions"},
+			// context has no omitempty on standardResponse, so the key is always
+			// present and a strict consumer may rely on it.
+			"required": []string{"context", "id", "description", evidenceTierField, "default_version", "versions"},
 			"properties": map[string]any{
+				"context":     openapiStandardContextSchema(),
 				"id":          map[string]any{"type": "string"},
 				"description": map[string]any{"type": "string"},
 				evidenceTierField: map[string]any{
@@ -939,6 +944,20 @@ func allowedOverpassEndpointURLs() []string {
 	}
 
 	return urls
+}
+
+// openapiStandardContextSchema describes the standard's assessment context, the
+// member `StandardRef.Context` and `StandardDescriptor.Context` travel under.
+// It is one function because the same member appears on three schemas, and a
+// consumer that switches on it must read the same enum everywhere.
+func openapiStandardContextSchema() map[string]any {
+	return map[string]any{
+		"type": "string",
+		"description": "Which assessment question the standard answers: `planning` for an individual " +
+			"project's approval case, `mapping` for area-wide strategic noise mapping. The two are not " +
+			"interchangeable, so a result carries the context it was produced under.",
+		"enum": []string{"planning", "mapping"},
+	}
 }
 
 func methodNotAllowedResponse() map[string]any {

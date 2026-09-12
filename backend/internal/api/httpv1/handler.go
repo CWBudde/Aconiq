@@ -318,7 +318,15 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := projectStatusResponse{
+	writeJSON(w, http.StatusOK, h.projectStatus(proj))
+}
+
+// projectStatus renders a loaded project as the status payload. It is the one
+// builder behind both "project status" surfaces — the REST response and the
+// SSE `project_status` event — so the two cannot answer the same question
+// differently; a test marshals both and compares the bytes.
+func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
+	status := projectStatusResponse{
 		ProjectID:       proj.ProjectID,
 		Name:            proj.Name,
 		ProjectPath:     h.store.Root(),
@@ -330,7 +338,7 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 
 	if len(proj.Runs) > 0 {
 		last := proj.Runs[len(proj.Runs)-1]
-		response.LastRun = &lastRunStatus{
+		status.LastRun = &lastRunStatus{
 			ID:         last.ID,
 			Status:     last.Status,
 			Context:    last.Standard.Context,
@@ -342,7 +350,7 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	return status
 }
 
 func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
@@ -1210,30 +1218,13 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		}, key
 	}
 
-	status := projectStatusResponse{
-		ProjectID:       proj.ProjectID,
-		Name:            proj.Name,
-		ProjectPath:     h.store.Root(),
-		ManifestVersion: proj.ManifestVersion,
-		CRS:             proj.CRS,
-		ScenarioCount:   len(proj.Scenarios),
-		RunCount:        len(proj.Runs),
-	}
+	status := h.projectStatus(proj)
 	lastRunID := ""
 	lastRunState := ""
 	lastRunUpdated := ""
 
 	if len(proj.Runs) > 0 {
 		last := proj.Runs[len(proj.Runs)-1]
-		status.LastRun = &lastRunStatus{
-			ID:         last.ID,
-			Status:     last.Status,
-			StandardID: last.Standard.ID,
-			Version:    last.Standard.Version,
-			Profile:    last.Standard.Profile,
-			StartedAt:  last.StartedAt,
-			FinishedAt: last.FinishedAt,
-		}
 		lastRunID = last.ID
 		lastRunState = last.Status
 		lastRunUpdated = last.FinishedAt.UTC().Format(time.RFC3339Nano)
