@@ -88,11 +88,12 @@ type reportContext struct {
 	StartedAt  string `json:"started_at"`
 	FinishedAt string `json:"finished_at"`
 
-	SourceCount   string `json:"source_count,omitempty"`
-	ReceiverCount string `json:"receiver_count,omitempty"`
-	GridWidth     string `json:"grid_width,omitempty"`
-	GridHeight    string `json:"grid_height,omitempty"`
-	OutputHash    string `json:"output_hash,omitempty"`
+	SourceCount        string `json:"source_count,omitempty"`
+	ParkingSourceCount string `json:"parking_source_count,omitempty"`
+	ReceiverCount      string `json:"receiver_count,omitempty"`
+	GridWidth          string `json:"grid_width,omitempty"`
+	GridHeight         string `json:"grid_height,omitempty"`
+	OutputHash         string `json:"output_hash,omitempty"`
 
 	InputFiles      []inputFileView `json:"input_files"`
 	ModelSourcePath string          `json:"model_source_path,omitempty"`
@@ -180,11 +181,12 @@ type provenanceEnvelope struct {
 }
 
 type runSummaryEnvelope struct {
-	SourceCount   *int
-	ReceiverCount *int
-	GridWidth     *int
-	GridHeight    *int
-	OutputHash    string
+	SourceCount        *int
+	ParkingSourceCount *int
+	ReceiverCount      *int
+	GridWidth          *int
+	GridHeight         *int
+	OutputHash         string
 }
 
 type modelDumpEnvelope struct {
@@ -273,6 +275,18 @@ func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
 	}, nil
 }
 
+// applyRunSummary copies the run-summary counts into the report context. Every
+// count is optional: a summary written before the field existed leaves it empty
+// and the row is omitted rather than rendered as a zero.
+func applyRunSummary(ctx *reportContext, summary runSummaryEnvelope) {
+	ctx.SourceCount = optionalIntString(summary.SourceCount)
+	ctx.ParkingSourceCount = optionalIntString(summary.ParkingSourceCount)
+	ctx.ReceiverCount = optionalIntString(summary.ReceiverCount)
+	ctx.GridWidth = optionalIntString(summary.GridWidth)
+	ctx.GridHeight = optionalIntString(summary.GridHeight)
+	ctx.OutputHash = summary.OutputHash
+}
+
 func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, error) {
 	ctx := reportContext{
 		Title:           defaultReportTitle,
@@ -308,11 +322,7 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	}
 
 	if hasSummary {
-		ctx.SourceCount = optionalIntString(summary.SourceCount)
-		ctx.ReceiverCount = optionalIntString(summary.ReceiverCount)
-		ctx.GridWidth = optionalIntString(summary.GridWidth)
-		ctx.GridHeight = optionalIntString(summary.GridHeight)
-		ctx.OutputHash = summary.OutputHash
+		applyRunSummary(&ctx, summary)
 	}
 
 	modelDump, hasModelDump, err := loadModelDump(opts.ModelDumpPath)
@@ -558,10 +568,11 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 	}
 
 	out := runSummaryEnvelope{
-		SourceCount:   optionalInt(parsed["source_count"]),
-		ReceiverCount: optionalInt(parsed["receiver_count"]),
-		GridWidth:     optionalInt(parsed["grid_width"]),
-		GridHeight:    optionalInt(parsed["grid_height"]),
+		SourceCount:        optionalInt(parsed["source_count"]),
+		ParkingSourceCount: optionalInt(parsed["parking_source_count"]),
+		ReceiverCount:      optionalInt(parsed["receiver_count"]),
+		GridWidth:          optionalInt(parsed["grid_width"]),
+		GridHeight:         optionalInt(parsed["grid_height"]),
 	}
 	if hashText, ok := parsed["output_hash"].(string); ok {
 		out.OutputHash = strings.TrimSpace(hashText)
@@ -934,6 +945,7 @@ Generated: {{.GeneratedAt}}
 - Started: {{.StartedAt}}
 - Finished: {{.FinishedAt}}
 {{if .SourceCount}}- Source count: {{.SourceCount}}{{end}}
+{{if .ParkingSourceCount}}- Parking source count: {{.ParkingSourceCount}}{{end}}
 {{if .ReceiverCount}}- Receiver count: {{.ReceiverCount}}{{end}}
 {{if .GridWidth}}- Grid width: {{.GridWidth}}{{end}}
 {{if .GridHeight}}- Grid height: {{.GridHeight}}{{end}}
@@ -1074,6 +1086,7 @@ const htmlTemplate = `<!doctype html>
     <li>Started: {{.StartedAt}}</li>
     <li>Finished: {{.FinishedAt}}</li>
     {{if .SourceCount}}<li>Source count: {{.SourceCount}}</li>{{end}}
+    {{if .ParkingSourceCount}}<li>Parking source count: {{.ParkingSourceCount}}</li>{{end}}
     {{if .ReceiverCount}}<li>Receiver count: {{.ReceiverCount}}</li>{{end}}
     {{if .GridWidth}}<li>Grid width: {{.GridWidth}}</li>{{end}}
     {{if .GridHeight}}<li>Grid height: {{.GridHeight}}</li>{{end}}

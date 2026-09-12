@@ -558,3 +558,82 @@ func writeJSONFile(path string, value any) error {
 
 	return os.WriteFile(path, encoded, 0o600)
 }
+
+// TestBuildRunReportCountsParkingSourcesSeparately pins the audit report against
+// a run that carries only RLS-19 Parkplätze. source_count counts road sources,
+// so such a run reports zero of them; without the parking row beside it the
+// report would state "Source count: 0" for a run that computed a source.
+func TestBuildRunReportCountsParkingSourcesSeparately(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+	provenancePath := filepath.Join(bundleDir, "provenance.json")
+	runSummaryPath := filepath.Join(bundleDir, "run-summary.json")
+
+	err := writeJSONFile(provenancePath, map[string]any{
+		"standard": map[string]any{
+			"id":      "rls19-road",
+			"version": "2019",
+			"profile": "default",
+		},
+		"metadata":     map[string]string{"evidence_tier": "normative"},
+		"input_hashes": map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("write provenance: %v", err)
+	}
+
+	err = writeJSONFile(runSummaryPath, map[string]any{
+		"source_count":         0,
+		"parking_source_count": 1,
+		"receiver_count":       1,
+	})
+	if err != nil {
+		t.Fatalf("write run summary: %v", err)
+	}
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir:      bundleDir,
+		Project:        project.Project{ProjectID: "proj-6", Name: "ParkingOnly"},
+		Run:            project.Run{ID: "run-6", ScenarioID: "default", Status: "completed"},
+		ProvenancePath: provenancePath,
+		RunSummaryPath: runSummaryPath,
+	})
+	if err != nil {
+		t.Fatalf("build report: %v", err)
+	}
+
+	markdown, err := os.ReadFile(report.MarkdownPath)
+	if err != nil {
+		t.Fatalf("read markdown: %v", err)
+	}
+
+	if !strings.Contains(string(markdown), "- Parking source count: 1") {
+		t.Fatalf("expected the parking source row in markdown, got: %s", markdown)
+	}
+
+	html, err := os.ReadFile(report.HTMLPath)
+	if err != nil {
+		t.Fatalf("read html: %v", err)
+	}
+
+	if !strings.Contains(string(html), "<li>Parking source count: 1</li>") {
+		t.Fatalf("expected the parking source row in html: %s", html)
+	}
+
+	payload, err := os.ReadFile(report.ContextPath)
+	if err != nil {
+		t.Fatalf("read report context: %v", err)
+	}
+
+	var context map[string]any
+
+	err = json.Unmarshal(payload, &context)
+	if err != nil {
+		t.Fatalf("decode context json: %v", err)
+	}
+
+	if context["parking_source_count"] != "1" {
+		t.Fatalf("unexpected parking source count in context: %#v", context["parking_source_count"])
+	}
+}
