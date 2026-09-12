@@ -488,6 +488,9 @@ func writeJSONFile(path string, v any) error {
 
 	err = os.WriteFile(tmpPath, data, 0o600)
 	if err != nil {
+		// A partial write (disk full) leaves the temp file behind otherwise.
+		_ = os.Remove(tmpPath)
+
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write temporary "+filepath.Base(path), err)
 	}
 
