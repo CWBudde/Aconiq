@@ -646,3 +646,32 @@ func TestExtractGeneratedSourceIDFallbacks(t *testing.T) {
 		})
 	}
 }
+
+// The two road decode orders are the only per-standard data in the shared road
+// override table, and a dropped entry would not fail anything: the property
+// would silently stop being decoded, which every successful-decode test would
+// still pass. Each order therefore has to name every property exactly once.
+func TestRoadDecodeOrdersCoverEveryPropertyOnce(t *testing.T) {
+	t.Parallel()
+
+	orders := []struct {
+		name  string
+		order []roadProperty
+	}{
+		{name: "cnossos-road", order: cnossosRoadDecodeOrder},
+		{name: "bub-road", order: bubRoadDecodeOrder},
+	}
+
+	for _, order := range orders {
+		counts := make([]int, roadPropertyCount)
+		for _, property := range order.order {
+			counts[property]++
+		}
+
+		for property, count := range counts {
+			if count != 1 {
+				t.Errorf("%s decode order names property %d %d times, want exactly once", order.name, property, count)
+			}
+		}
+	}
+}
