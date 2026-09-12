@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Button } from "@/ui/components/button";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
 import { useMapStore } from "./map-store";
@@ -16,7 +17,7 @@ import { LAYER_IDS, SOURCE_IDS } from "./layers";
  * network produces the same signal as a broken GPU. The threshold is therefore
  * deliberately generous, and a timeout is treated as a per-mount condition
  * rather than session-wide evidence that WebGL is unusable: remounting (a route
- * change or basemap switch) retries.
+ * change or basemap switch) retries, and so does the panel's Retry button.
  */
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
@@ -38,11 +39,20 @@ const MAP_UNAVAILABLE_MESSAGE = "Map rendering is unavailable in this browser.";
  * not such a signal (it also fires on a slow network), and neither is
  * `webglcontextlost`, which is transient by definition — there is a
  * `webglcontextrestored` handler below that expects to recover from it.
+ *
+ * Cleared only by the Retry button on the unavailable panel. The user knows
+ * things the code cannot (a GPU switch, a settled network, an extension turned
+ * off), so the retry is theirs to make; if the constructor throws again the
+ * switch is simply set again and the panel returns.
  */
 let webglDisabledForSession = false;
 
 function disableWebGLForSession(): void {
   webglDisabledForSession = true;
+}
+
+function enableWebGLForSession(): void {
+  webglDisabledForSession = false;
 }
 
 /** Layers that are interactive (click/hover targets) */
@@ -118,10 +128,13 @@ export function MapView({
       "bottom-left",
     );
 
+    // A lost context is transient by definition: `preventDefault()` tells the
+    // browser we intend to restore, and `webglcontextrestored` then repaints.
+    // It must not set `mapError` — the error panel would unmount this canvas,
+    // and the restored event can only ever fire on the canvas that lost it.
     const canvas = m.getCanvas();
     const handleContextLost = (event: Event) => {
       event.preventDefault();
-      setMapError("WebGL context was lost.");
     };
     const handleContextRestored = () => {
       m.resize();
@@ -150,6 +163,13 @@ export function MapView({
     };
     // Rebuilds the map only on a basemap or error-state change.
   }, [basemap, mapError]);
+
+  // Clearing `mapError` re-runs the init effect; the session switch is reset
+  // unconditionally because a timeout never set it and a throw needs it reset.
+  const retryMapInit = () => {
+    enableWebGLForSession();
+    setMapError(null);
+  };
 
   // Feature click handler
   useEffect(() => {
@@ -217,6 +237,9 @@ export function MapView({
             <div className="max-w-md space-y-2 rounded-2xl border bg-card p-6 shadow-sm">
               <p className="text-lg font-semibold">Map unavailable</p>
               <p className="text-sm text-muted-foreground">{mapError}</p>
+              <Button variant="outline" size="sm" onClick={retryMapInit}>
+                Retry
+              </Button>
             </div>
           </div>
         ) : (
