@@ -380,5 +380,11 @@
   "msg_run_count_one": "{count} run",
   "msg_run_count_other": "{count} runs",
   "msg_receivers_placed_one": "{count} receiver placed.",
-  "msg_receivers_placed_other": "{count} receivers placed."
+  "msg_receivers_placed_other": "{count} receivers placed.",
+  "msg_artifact_count_one": "{count} artifact",
+  "msg_artifact_count_other": "{count} artifacts",
+  "dialog_desc_new_export_browser": "Generate an offline export bundle directly in the browser.",
+  "status_generating": "Generating…",
+  "msg_no_html_report_yet": "No HTML report yet. Run the CLI command below to generate one.",
+  "label_html_report_preview": "HTML report preview"
 }

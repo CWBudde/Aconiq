@@ -2,12 +2,9 @@ import { useState, useMemo } from "react";
 import {
   Package,
   ExternalLink,
-  Copy,
-  Check,
   Loader2,
   AlertCircle,
   Info,
-  ChevronRight,
   FileText,
   FileCode,
 } from "lucide-react";
@@ -20,6 +17,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/ui/components/dialog";
+import { Label } from "@/ui/components/label";
 import {
   Select,
   SelectContent,
@@ -27,24 +25,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/components/select";
+import { Callout } from "@/ui/callout";
+import { CopyField } from "@/ui/copy-field";
+import { EmptyState } from "@/ui/empty-state";
+import { formatDateTime } from "@/ui/format";
+import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
+import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString([], {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Export artifact kind labels / icons
@@ -73,32 +63,12 @@ function kindMeta(kind: string) {
   return EXPORT_KIND_LABELS[kind] ?? { label: () => kind, icon: Package };
 }
 
-// ---------------------------------------------------------------------------
-// Copy button (with confirmation flash)
-// ---------------------------------------------------------------------------
+function isExportArtifact(artifact: ArtifactRef): boolean {
+  return artifact.kind.startsWith("export.");
+}
 
-function CopyButton({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    });
-  }
-
-  return (
-    <Button variant="outline" size="sm" onClick={handleCopy}>
-      {copied ? (
-        <Check className="mr-1.5 h-3.5 w-3.5 text-green-600" />
-      ) : (
-        <Copy className="mr-1.5 h-3.5 w-3.5" />
-      )}
-      {copied ? m.status_copied() : (label ?? m.action_copy())}
-    </Button>
-  );
+function exportCommand(runId: string): string {
+  return `aconiq export --run-id ${runId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +82,7 @@ function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
   const contentURL = getArtifactContentURL(artifact.id);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
+    <li className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
@@ -124,30 +94,24 @@ function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
             {filename}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatTime(artifact.created_at)}
+            {formatDateTime(artifact.created_at)}
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {artifact.kind === "export.report_markdown" ? (
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium">
-            View
-          </span>
-        ) : null}
-        {artifact.kind === "export.report_html" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              window.open(contentURL, "_blank");
-            }}
-          >
-            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            {m.action_open_in_browser()}
-          </Button>
-        ) : null}
-      </div>
-    </div>
+      {artifact.kind === "export.report_html" ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            window.open(contentURL, "_blank");
+          }}
+        >
+          <ExternalLink aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+          {m.action_open_in_browser()}
+        </Button>
+      ) : null}
+    </li>
   );
 }
 
@@ -156,39 +120,36 @@ function ExportArtifactRow({ artifact }: { artifact: ArtifactRef }) {
 // ---------------------------------------------------------------------------
 
 function ExportDetail({ run }: { run: RunSummary }) {
-  const exportArtifacts = run.artifacts.filter((a) =>
-    a.kind.startsWith("export."),
-  );
+  const exportArtifacts = run.artifacts.filter(isExportArtifact);
   const htmlArtifact = exportArtifacts.find(
     (a) => a.kind === "export.report_html",
   );
-  const cliCommand = `aconiq export --run-id ${run.id}`;
 
   return (
-    <div className="flex flex-col gap-6 overflow-y-auto p-5">
+    <div className="flex flex-col gap-6 p-5">
       {/* Export artifacts */}
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_export_artifacts()}
-        </h3>
+        </SectionHeading>
         {exportArtifacts.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             {m.msg_no_artifacts_for_run()}
           </p>
         ) : (
-          <div className="space-y-2">
+          <ul className="m-0 list-none space-y-2 p-0">
             {exportArtifacts.map((a) => (
               <ExportArtifactRow key={a.id} artifact={a} />
             ))}
-          </div>
+          </ul>
         )}
       </section>
 
       {/* Report preview */}
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_report_preview()}
-        </h3>
+        </SectionHeading>
         {htmlArtifact ? (
           <iframe
             src={getArtifactContentURL(htmlArtifact.id)}
@@ -196,40 +157,31 @@ function ExportDetail({ run }: { run: RunSummary }) {
             width="100%"
             height="400"
             className="rounded-md border"
-            title="HTML Report Preview"
+            title={m.label_html_report_preview()}
           />
         ) : (
-          <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            Run{" "}
-            <code className="rounded bg-muted px-1">
-              aconiq export --run-id {run.id}
-            </code>{" "}
-            to generate a report.
-          </div>
+          <Callout variant="neutral" icon={Info}>
+            {m.msg_no_html_report_yet()}
+          </Callout>
         )}
       </section>
 
       {/* Typst PDF placeholder */}
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_typst_pdf()}
-        </h3>
-        <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        </SectionHeading>
+        <Callout variant="neutral" icon={Info}>
           {m.msg_pdf_generation_planned()}
-        </div>
+        </Callout>
       </section>
 
       {/* CLI command */}
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_cli_command()}
-        </h3>
-        <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
-          <code className="flex-1 font-mono text-xs">{cliCommand}</code>
-          <CopyButton text={cliCommand} />
-        </div>
+        </SectionHeading>
+        <CopyField value={exportCommand(run.id)} />
       </section>
     </div>
   );
@@ -252,9 +204,7 @@ function NewExportDialog({
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const createExport = useCreateExport();
-  const cliCommand = selectedRunId
-    ? `aconiq export --run-id ${selectedRunId}`
-    : "aconiq export --run-id <run-id>";
+  const cliCommand = exportCommand(selectedRunId || "<run-id>");
 
   return (
     <Dialog
@@ -268,21 +218,23 @@ function NewExportDialog({
           <DialogTitle>{m.dialog_title_new_export()}</DialogTitle>
           <DialogDescription>
             {backend.capabilities.canExport
-              ? "Generate an offline export bundle directly in the browser."
+              ? m.dialog_desc_new_export_browser()
               : m.dialog_desc_new_export()}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-xs font-medium">{m.label_select_run()}</p>
+            <Label htmlFor="export-run" className="text-xs">
+              {m.label_select_run()}
+            </Label>
             <Select
               value={selectedRunId || "_none"}
               onValueChange={(v) => {
                 setSelectedRunId(v === "_none" ? "" : v);
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="export-run">
                 <SelectValue placeholder={m.placeholder_select_run()} />
               </SelectTrigger>
               <SelectContent>
@@ -302,18 +254,12 @@ function NewExportDialog({
           </div>
 
           {backend.capabilities.canExport ? null : (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium">{m.label_command()}</p>
-              <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
-                <code className="flex-1 font-mono text-xs">{cliCommand}</code>
-                <CopyButton text={cliCommand} />
-              </div>
-            </div>
+            <CopyField label={m.label_command()} value={cliCommand} />
           )}
           {createExport.isError ? (
-            <p className="text-sm text-destructive">
+            <Callout variant="destructive" icon={AlertCircle}>
               {createExport.error.message}
-            </p>
+            </Callout>
           ) : null}
         </div>
 
@@ -334,7 +280,9 @@ function NewExportDialog({
               }}
               disabled={!selectedRunId || createExport.isPending}
             >
-              {createExport.isPending ? "Generating…" : m.action_new_export()}
+              {createExport.isPending
+                ? m.status_generating()
+                : m.action_new_export()}
             </Button>
           ) : null}
         </DialogFooter>
@@ -344,57 +292,20 @@ function NewExportDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Export list item (left panel)
-// ---------------------------------------------------------------------------
-
-function ExportListItem({
-  run,
-  selected,
-  onClick,
-}: {
-  run: RunSummary;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const bundleArtifact = run.artifacts.find((a) => a.kind === "export.bundle");
-  const exportCount = run.artifacts.filter((a) =>
-    a.kind.startsWith("export."),
-  ).length;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-        selected ? "bg-muted/60" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {run.id}
-          </span>
-        </div>
-        <p className="mt-0.5 truncate text-sm">
-          {run.standard_id}
-          {run.version ? ` / ${run.version}` : ""}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {bundleArtifact
-            ? formatTime(bundleArtifact.created_at)
-            : formatTime(run.finished_at)}{" "}
-          · {String(exportCount)} artifact{exportCount !== 1 ? "s" : ""}
-        </p>
-      </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Export page
 // ---------------------------------------------------------------------------
+
+/** The list row's second line: when the bundle was written, and how many files came with it. */
+function exportMeta(run: RunSummary): string {
+  const bundle = run.artifacts.find((a) => a.kind === "export.bundle");
+  const count = run.artifacts.filter(isExportArtifact).length;
+  const when = formatDateTime(bundle ? bundle.created_at : run.finished_at);
+  const files =
+    count === 1
+      ? m.msg_artifact_count_one({ count })
+      : m.msg_artifact_count_other({ count });
+  return `${when} · ${files}`;
+}
 
 export default function ExportPage() {
   const { data: runs = [], isLoading, error } = useRuns();
@@ -402,8 +313,7 @@ export default function ExportPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const runsWithExports = useMemo(
-    () =>
-      runs.filter((r) => r.artifacts.some((a) => a.kind.startsWith("export."))),
+    () => runs.filter((r) => r.artifacts.some(isExportArtifact)),
     [runs],
   );
 
@@ -423,83 +333,90 @@ export default function ExportPage() {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2
+          aria-hidden="true"
+          className="h-6 w-6 animate-spin text-muted-foreground"
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <div className="flex items-center gap-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4" />
+      <div className="flex flex-1 items-start justify-center p-8">
+        <Callout variant="destructive" icon={AlertCircle}>
           {m.msg_api_error_export()}
-        </div>
+        </Callout>
       </div>
     );
   }
 
   return (
     <>
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left panel */}
-        <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold">
-                {m.page_title_exports()}
-              </h2>
-              <p className="text-xs text-muted-foreground">
+      <MasterDetail
+        listLabel={m.page_title_exports()}
+        header={
+          <PageHeader
+            className="border-b px-4 py-3"
+            title={m.page_title_exports()}
+            description={
+              <span className="text-xs">
                 {String(runsWithExports.length)}{" "}
-                {runsWithExports.length !== 1
-                  ? m.msg_runs_with_exports_plural()
-                  : m.msg_runs_with_exports()}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(true);
-              }}
-            >
-              {m.action_new_export()}
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {runsWithExports.length === 0 ? (
-              <div className="px-4 py-6 text-center">
-                <Package className="mx-auto h-8 w-8 text-muted-foreground" />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {m.msg_no_exports_empty_state()}
-                </p>
-              </div>
-            ) : (
-              runsWithExports.map((run) => (
-                <ExportListItem
+                {runsWithExports.length === 1
+                  ? m.msg_runs_with_exports()
+                  : m.msg_runs_with_exports_plural()}
+              </span>
+            }
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setDialogOpen(true);
+                }}
+              >
+                {m.action_new_export()}
+              </Button>
+            }
+          />
+        }
+        list={
+          runsWithExports.length === 0 ? (
+            <EmptyState
+              compact
+              icon={Package}
+              title={m.msg_no_exports_empty_state()}
+            />
+          ) : (
+            <ItemList>
+              {runsWithExports.map((run) => (
+                <ListItem
                   key={run.id}
-                  run={run}
                   selected={run.id === selectedRun?.id}
-                  onClick={() => {
+                  onSelect={() => {
                     setSelectedRunId(run.id);
                   }}
+                  badge={
+                    <Package
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    />
+                  }
+                  code={run.id}
+                  title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                  meta={exportMeta(run)}
                 />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Right panel */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {selectedRun ? (
-            <ExportDetail run={selectedRun} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {m.msg_select_run_for_details()}
-            </div>
-          )}
-        </div>
-      </div>
+              ))}
+            </ItemList>
+          )
+        }
+      >
+        {selectedRun ? (
+          <ExportDetail run={selectedRun} />
+        ) : (
+          <EmptyState title={m.msg_select_run_for_details()} />
+        )}
+      </MasterDetail>
 
       <NewExportDialog
         open={dialogOpen}

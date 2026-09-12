@@ -380,5 +380,11 @@
   "msg_run_count_one": "{count} Berechnung",
   "msg_run_count_other": "{count} Berechnungen",
   "msg_receivers_placed_one": "{count} Empfänger platziert.",
-  "msg_receivers_placed_other": "{count} Empfänger platziert."
+  "msg_receivers_placed_other": "{count} Empfänger platziert.",
+  "msg_artifact_count_one": "{count} Artefakt",
+  "msg_artifact_count_other": "{count} Artefakte",
+  "dialog_desc_new_export_browser": "Erzeugt ein Offline-Exportpaket direkt im Browser.",
+  "status_generating": "Wird erzeugt…",
+  "msg_no_html_report_yet": "Noch kein HTML-Bericht. Führen Sie den unten stehenden CLI-Befehl aus, um einen zu erzeugen.",
+  "label_html_report_preview": "Vorschau des HTML-Berichts"
 }
