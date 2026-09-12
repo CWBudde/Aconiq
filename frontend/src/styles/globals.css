@@ -149,6 +149,27 @@
   --sidebar-ring: oklch(0.65 0.12 195);
 }
 
+/*
+ * Type scale. The default Tailwind scale is cleared so the only sizes in the
+ * app are 11/12/13/14/16/20 px: `text-2xl` and up produce no CSS.
+ * 1rem = 16px.
+ */
+@theme {
+  --text-*: initial;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+}
+
 @theme inline {
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -184,10 +205,12 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
+  /* Radius cap: `rounded-lg` is the largest step; `rounded-xl` and up
+     produce no CSS. `rounded-full` and `rounded-none` are static and stay. */
+  --radius-*: initial;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
