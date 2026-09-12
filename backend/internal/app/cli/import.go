@@ -76,11 +76,13 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 		return fmt.Errorf("load project manifest: %w", err)
 	}
 
-	modelDir := filepath.Join(store.Root(), ".noise", "model")
-	normalizedPath := filepath.Join(modelDir, "model.normalized.geojson")
-	dumpPath := filepath.Join(modelDir, "model.dump.json")
-	reportPath := filepath.Join(modelDir, "validation-report.json")
-	soundPlanReportPath := filepath.Join(modelDir, "soundplan-import-report.json")
+	// The store owns the model artifact names: `aconiq run` reads them by
+	// default and the HTTP API writes the same files, so they are not chosen here.
+	modelPaths := store.ModelArtifactPaths()
+	normalizedPath := modelPaths.Normalized
+	dumpPath := modelPaths.Dump
+	reportPath := modelPaths.Validation
+	soundPlanReportPath := filepath.Join(filepath.Dir(normalizedPath), "soundplan-import-report.json")
 
 	// When JSON output is enabled, suppress human-readable output from
 	// sub-functions and emit a single JSON object at the end.
@@ -317,44 +319,9 @@ func writeOSMImportArtifacts(
 	dumpPath string,
 	reportPath string,
 ) error {
-	err := writeJSONFile(normalizedPath, model.ToFeatureCollection())
+	err := store.SaveModel(proj, model, report)
 	if err != nil {
-		return err
-	}
-
-	err = writeJSONFile(dumpPath, model.ToDump())
-	if err != nil {
-		return err
-	}
-
-	err = writeJSONFile(reportPath, report)
-	if err != nil {
-		return err
-	}
-
-	now := nowUTC()
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        project.ArtifactIDModelNormalized,
-		Kind:      project.ArtifactKindModelNormalizedGeoJSON,
-		Path:      relativePath(store.Root(), normalizedPath),
-		CreatedAt: now,
-	})
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        project.ArtifactIDModelDump,
-		Kind:      project.ArtifactKindModelDumpJSON,
-		Path:      relativePath(store.Root(), dumpPath),
-		CreatedAt: now,
-	})
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
-		ID:        project.ArtifactIDModelValidation,
-		Kind:      project.ArtifactKindModelValidationReport,
-		Path:      relativePath(store.Root(), reportPath),
-		CreatedAt: now,
-	})
-
-	err = store.Save(*proj)
-	if err != nil {
-		return fmt.Errorf("save project manifest: %w", err)
+		return fmt.Errorf("persist model artifacts: %w", err)
 	}
 
 	state.Logger.Info(
@@ -418,9 +385,9 @@ func runGeometryImport(
 		return domainerrors.New(domainerrors.KindValidation, "cli.import", summarizeValidationErrors(messages, 3), nil)
 	}
 
-	err = persistModelArtifacts(store, proj, model, report, normalizedPath, dumpPath, reportPath)
+	err = store.SaveModel(proj, model, report)
 	if err != nil {
-		return err
+		return fmt.Errorf("persist model artifacts: %w", err)
 	}
 
 	if result.citygmlReport != nil {
@@ -435,42 +402,6 @@ func runGeometryImport(
 	}
 
 	printImportSummary(cmd, state, model, report, relInput, effectiveCRS, store.Root(), normalizedPath, dumpPath, reportPath)
-
-	return nil
-}
-
-func persistModelArtifacts(
-	store projectfs.Store, proj *project.Project,
-	model modelgeojson.Model, report modelgeojson.ValidationReport,
-	normalizedPath, dumpPath, reportPath string,
-) error {
-	err := writeJSONFile(normalizedPath, model.ToFeatureCollection())
-	if err != nil {
-		return err
-	}
-
-	err = writeJSONFile(dumpPath, model.ToDump())
-	if err != nil {
-		return err
-	}
-
-	err = writeJSONFile(reportPath, report)
-	if err != nil {
-		return err
-	}
-
-	now := nowUTC()
-	for _, ref := range []project.ArtifactRef{
-		{ID: project.ArtifactIDModelNormalized, Kind: project.ArtifactKindModelNormalizedGeoJSON, Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
-		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
-		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: relativePath(store.Root(), reportPath), CreatedAt: now},
-	} {
-		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
-	}
-
-	if err := store.Save(*proj); err != nil {
-		return fmt.Errorf("save project manifest: %w", err)
-	}
 
 	return nil
 }

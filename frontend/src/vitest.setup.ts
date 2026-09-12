@@ -1,4 +1,7 @@
 import "@testing-library/jest-dom/vitest";
+// jsdom has no IndexedDB; browser-mode persistence needs one in every test
+// file that touches the backend, so it is installed globally here.
+import "fake-indexeddb/auto";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 

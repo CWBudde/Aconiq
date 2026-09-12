@@ -4,7 +4,7 @@ import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 import { Link } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Button } from "@/ui/components/button";
-import { useProjectStatus } from "@/api";
+import { useProjectStatus } from "@/api/hooks";
 import { MapView } from "@/map/map-view";
 import { LayerControl } from "@/map/layer-control";
 import { CoordinateDisplay } from "@/map/coordinate-display";

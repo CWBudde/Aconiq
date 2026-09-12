@@ -5,10 +5,30 @@ import {
   loadDraft,
   discardDraft,
   useAutosave,
+  writeDraft,
   DRAFT_KEY,
+  DRAFT_VERSION,
 } from "./use-autosave";
 import { useModelStore } from "./model-store";
 import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
+
+// Whether the draft write may mark the model clean depends on what the
+// project is, so each autosave test states the mode it runs in instead of
+// inheriting whatever the env selects.
+const backendState = vi.hoisted(() => ({ runsAgainstSavedModel: false }));
+
+vi.mock("@/api/backend", () => ({
+  backend: {
+    get capabilities() {
+      return {
+        kind: backendState.runsAgainstSavedModel ? "http" : "browser",
+        canExport: false,
+        runsAgainstSavedModel: backendState.runsAgainstSavedModel,
+        runsChangeExternally: backendState.runsAgainstSavedModel,
+      };
+    },
+  },
+}));
 
 const sampleFeature: ModelFeature = {
   id: "s1",
@@ -89,6 +109,73 @@ describe("draft utilities", () => {
     expect(loadDraft()).toBeNull();
   });
 
+  describe("draft versions", () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it("writeDraft stamps the current version", () => {
+      writeDraft({ features: [], receivers: [], calcArea: null });
+      const stored = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "") as {
+        version: number;
+      };
+      expect(stored.version).toBe(DRAFT_VERSION);
+    });
+
+    it("loadDraft accepts the current version", () => {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          version: DRAFT_VERSION,
+          features: [sampleFeature],
+          receivers: [sampleReceiver],
+          calcArea: sampleCalcArea,
+        }),
+      );
+      expect(loadDraft()).toEqual({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+        calcArea: sampleCalcArea,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("loadDraft still accepts an unversioned object", () => {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ features: [sampleFeature], receivers: [] }),
+      );
+      expect(loadDraft()?.features).toHaveLength(1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a newer version", { version: 2, features: [sampleFeature] }],
+      ["a version of the wrong type", { version: "1", features: [] }],
+      ["a non-object shape", "a string"],
+    ])("loadDraft refuses %s and warns", (_name, draft) => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      expect(loadDraft()).toBeNull();
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("hasDraft is false for a draft loadDraft refuses", () => {
+      // The banner offers Restore on hasDraft; a key that is present but
+      // unreadable would make that offer and then do nothing.
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ version: 2, features: [sampleFeature] }),
+      );
+      expect(hasDraft()).toBe(false);
+    });
+  });
+
   it("discardDraft removes the entry", () => {
     localStorage.setItem(
       DRAFT_KEY,
@@ -99,6 +186,33 @@ describe("draft utilities", () => {
     );
     discardDraft();
     expect(hasDraft()).toBe(false);
+  });
+
+  it("writeDraft stores what loadDraft reads back", () => {
+    expect(
+      writeDraft({
+        features: [sampleFeature],
+        receivers: [sampleReceiver],
+        calcArea: sampleCalcArea,
+      }),
+    ).toBe(true);
+    expect(loadDraft()).toEqual({
+      features: [sampleFeature],
+      receivers: [sampleReceiver],
+      calcArea: sampleCalcArea,
+    });
+  });
+
+  it("writeDraft reports a failed write instead of throwing", () => {
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("storage full");
+      });
+    expect(writeDraft({ features: [], receivers: [], calcArea: null })).toBe(
+      false,
+    );
+    spy.mockRestore();
   });
 
   it("hasDraft/loadDraft/discardDraft handle localStorage unavailability gracefully", () => {
@@ -128,6 +242,7 @@ describe("useAutosave", () => {
     vi.useFakeTimers();
     localStorage.clear();
     useModelStore.getState().reset();
+    backendState.runsAgainstSavedModel = false;
   });
 
   afterEach(() => {
@@ -222,6 +337,97 @@ describe("useAutosave", () => {
     expect(useModelStore.getState().features).toHaveLength(1);
     // A bulk load is not an undoable edit.
     expect(useModelStore.getState().canUndo).toBe(false);
-    expect(useModelStore.getState().dirty).toBe(false);
+    // ...but it is content the project has not seen.
+    expect(useModelStore.getState().dirty).toBe(true);
+  });
+
+  describe("in browser mode, where the draft is the project", () => {
+    it("marks the model clean after writing the draft", () => {
+      renderHook(() => {
+        useAutosave();
+      });
+      act(() => {
+        useModelStore.getState().addFeature(sampleFeature);
+      });
+      expect(useModelStore.getState().dirty).toBe(true);
+
+      flushAutosave();
+
+      expect(loadDraft()?.features).toHaveLength(1);
+      expect(useModelStore.getState().dirty).toBe(false);
+    });
+
+    it("writes a restored draft back so it survives the next reload", () => {
+      renderHook(() => {
+        useAutosave();
+      });
+      act(() => {
+        useModelStore.getState().loadModel({
+          features: [sampleFeature],
+          receivers: [],
+          calcArea: null,
+        });
+      });
+      flushAutosave();
+
+      expect(loadDraft()?.features).toHaveLength(1);
+      expect(useModelStore.getState().dirty).toBe(false);
+    });
+  });
+
+  describe("in HTTP mode, where the project is the server's copy", () => {
+    beforeEach(() => {
+      backendState.runsAgainstSavedModel = true;
+    });
+
+    it("still writes the draft for crash recovery", () => {
+      renderHook(() => {
+        useAutosave();
+      });
+      act(() => {
+        useModelStore.getState().addFeature(sampleFeature);
+        useModelStore.getState().setCalcArea(sampleCalcArea);
+      });
+      flushAutosave();
+
+      const draft = loadDraft();
+      expect(draft?.features).toHaveLength(1);
+      expect(draft?.calcArea).toEqual(sampleCalcArea);
+    });
+
+    it("leaves the model dirty after the draft write", () => {
+      renderHook(() => {
+        useAutosave();
+      });
+      act(() => {
+        useModelStore.getState().addFeature(sampleFeature);
+      });
+      flushAutosave();
+
+      // The regression: the draft write called `markClean()`, so the header
+      // could report "saved" for a model the server had never received.
+      expect(useModelStore.getState().dirty).toBe(true);
+    });
+
+    it("keeps the beforeunload guard while the project is behind", () => {
+      renderHook(() => {
+        useAutosave();
+      });
+      act(() => {
+        useModelStore.getState().addFeature(sampleFeature);
+      });
+      flushAutosave();
+
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+
+      act(() => {
+        useModelStore.getState().markClean();
+      });
+      const after = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(after);
+      expect(after.defaultPrevented).toBe(false);
+    });
   });
 });

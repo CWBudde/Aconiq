@@ -6,7 +6,7 @@
  * refusal instead of reporting a generic failure.
  */
 
-import type { APIError } from "./client";
+import type { APIError, APIValidationIssue } from "./client";
 
 /**
  * A run against a scaffold-tier standard was refused because the request did
@@ -15,6 +15,19 @@ import type { APIError } from "./client";
  */
 export const ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED =
   "experimental_opt_in_required";
+
+/**
+ * The project the request needs does not exist. Mirrors `errorCodeNotFound`
+ * in `backend/internal/api/httpv1/handler.go`; the API answers with 404.
+ */
+export const ERROR_CODE_NOT_FOUND = "not_found";
+
+/**
+ * The model failed schema validation and was not saved. Mirrors
+ * `errorCodeModelInvalid` in `backend/internal/api/httpv1/handler.go`; the
+ * findings travel under `details.errors`.
+ */
+export const ERROR_CODE_MODEL_INVALID = "model_invalid";
 
 /** An error envelope from the local API, kept whole. */
 export class APIRequestError extends Error {
@@ -77,4 +90,36 @@ export async function errorFromResponse(response: Response): Promise<Error> {
   const envelope = parseErrorEnvelope(payload);
   if (envelope !== null) return new APIRequestError(envelope);
   return new Error(`Request failed: ${String(response.status)}`);
+}
+
+/**
+ * The validation findings a `model_invalid` refusal carries, or `null` when
+ * there is nothing to list — the error is something else, or the envelope
+ * names no findings. Each entry is checked field by field: the details
+ * object is untyped on the wire, and a finding without a code and a message
+ * is not something the UI can list. The empty case is `null` rather than
+ * `[]` so a caller never offers details it cannot show.
+ */
+export function modelValidationIssues(
+  error: unknown,
+): APIValidationIssue[] | null {
+  const apiError = asAPIRequestError(error);
+  if (apiError === null || apiError.code !== ERROR_CODE_MODEL_INVALID) {
+    return null;
+  }
+  const errors: unknown = apiError.details?.errors;
+  if (!Array.isArray(errors)) return null;
+
+  const issues: APIValidationIssue[] = [];
+  for (const entry of errors) {
+    if (!isRecord(entry)) continue;
+    const { code, message, feature_id: featureId } = entry;
+    if (typeof code !== "string" || typeof message !== "string") continue;
+    issues.push({
+      code,
+      message,
+      ...(typeof featureId === "string" ? { feature_id: featureId } : {}),
+    });
+  }
+  return issues.length > 0 ? issues : null;
 }

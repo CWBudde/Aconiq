@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { useHealth, useProjectStatus } from "@/api";
-import type { HealthResponse, ProjectStatusResponse } from "@/api";
+import { useHealth, useProjectStatus } from "@/api/hooks";
+import type { HealthResponse, ProjectStatusResponse } from "@/api/client";
 import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 

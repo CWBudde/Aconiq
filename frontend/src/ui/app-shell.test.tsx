@@ -21,7 +21,7 @@ let mockProjectStatus: {
   data: null,
 };
 
-vi.mock("@/api", () => ({
+vi.mock("@/api/hooks", () => ({
   useProjectStatus: () => mockProjectStatus,
 }));
 
@@ -31,6 +31,10 @@ vi.mock("@/ui/theme-toggle", () => ({
 
 vi.mock("@/ui/language-toggle", () => ({
   LanguageToggle: () => <div data-testid="language-toggle" />,
+}));
+
+vi.mock("@/ui/save-status", () => ({
+  SaveStatus: () => <div data-testid="save-status" />,
 }));
 
 describe("AppShell", () => {

@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/ui/components/select";
 import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
-import { IS_WASM_MODE } from "@/api/mode";
+import { backend } from "@/api/backend";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 
@@ -267,7 +267,7 @@ function NewExportDialog({
         <DialogHeader>
           <DialogTitle>{m.dialog_title_new_export()}</DialogTitle>
           <DialogDescription>
-            {IS_WASM_MODE
+            {backend.capabilities.canExport
               ? "Generate an offline export bundle directly in the browser."
               : m.dialog_desc_new_export()}
           </DialogDescription>
@@ -301,7 +301,7 @@ function NewExportDialog({
             </Select>
           </div>
 
-          {IS_WASM_MODE ? null : (
+          {backend.capabilities.canExport ? null : (
             <div className="space-y-1.5">
               <p className="text-xs font-medium">{m.label_command()}</p>
               <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
@@ -321,7 +321,7 @@ function NewExportDialog({
           <Button variant="outline" onClick={onClose}>
             {m.action_close()}
           </Button>
-          {IS_WASM_MODE ? (
+          {backend.capabilities.canExport ? (
             <Button
               onClick={() => {
                 if (!selectedRunId) return;
@@ -397,7 +397,7 @@ function ExportListItem({
 // ---------------------------------------------------------------------------
 
 export default function ExportPage() {
-  const { data: runs = [], isLoading, error } = useRuns(5_000);
+  const { data: runs = [], isLoading, error } = useRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 

@@ -1,3 +1,5 @@
+import type { GeoJSONFeatureCollection } from "@/model/types";
+
 /**
  * The custom request header the local API requires on every state-changing
  * method. A CORS simple request cannot carry a custom header, so sending one
@@ -182,4 +184,44 @@ export interface RasterMetadata {
   nodata: number;
   unit: string;
   band_names?: string[];
+}
+
+/**
+ * Body of `POST /api/v1/model` (schema `ModelSaveRequest`). The model is a
+ * GeoJSON FeatureCollection in the v1 input schema, handed over unparsed.
+ */
+export interface ModelSaveRequest {
+  /**
+   * CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on
+   * a web map. When omitted the coordinates are taken to be in the project CRS
+   * already.
+   */
+  crs?: string;
+  model: GeoJSONFeatureCollection;
+}
+
+/**
+ * One validation finding as the API reports it (schema `ValidationIssue`).
+ * Named apart from the model store's own `ValidationIssue`, which carries a
+ * level and camel-cased fields; this one is the wire shape.
+ */
+export interface APIValidationIssue {
+  code: string;
+  message: string;
+  /** The feature the finding is about; absent for model-wide findings. */
+  feature_id?: string;
+}
+
+/**
+ * Response of a successful model save (schema `ModelSaveResponse`). A model
+ * with validation errors is refused instead, with error code `model_invalid`
+ * and the findings under `details.errors` as `APIValidationIssue[]`.
+ */
+export interface ModelSaveResponse {
+  normalized_path: string;
+  dump_path: string;
+  validation_report_path: string;
+  feature_count: number;
+  /** Validation warnings. The model was written despite them. */
+  warnings: APIValidationIssue[];
 }

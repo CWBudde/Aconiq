@@ -6,12 +6,12 @@
 // the same scene; src/wasm/parking-vocabulary.test.ts pins the names against
 // the Go source so the two cannot drift silently.
 
+import type { Point2D } from "./geometry";
 import type {
   ParkingFacilityType,
   ParkingLotType,
   ParkingSource,
-  Point2D,
-} from "@/wasm/types";
+} from "./rls19-parking-types";
 import { getFeatureNumber, getFeatureString } from "./source-acoustics";
 import type { ModelFeature } from "./types";
 

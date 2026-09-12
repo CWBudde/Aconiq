@@ -14,15 +14,6 @@ interface MapState {
   layerVisibility: LayerVisibility;
   toggleLayer: (groupId: string) => void;
   setLayerVisible: (groupId: string, visible: boolean) => void;
-
-  /** Currently selected feature IDs */
-  selectedFeatureIds: string[];
-  setSelectedFeatureIds: (ids: string[]) => void;
-  clearSelection: () => void;
-
-  /** Hovered feature ID (for highlight) */
-  hoveredFeatureId: string | null;
-  setHoveredFeatureId: (id: string | null) => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -47,18 +38,5 @@ export const useMapStore = create<MapState>((set) => ({
         [groupId]: visible,
       },
     }));
-  },
-
-  selectedFeatureIds: [],
-  setSelectedFeatureIds: (ids) => {
-    set({ selectedFeatureIds: ids });
-  },
-  clearSelection: () => {
-    set({ selectedFeatureIds: [], hoveredFeatureId: null });
-  },
-
-  hoveredFeatureId: null,
-  setHoveredFeatureId: (id) => {
-    set({ hoveredFeatureId: id });
   },
 }));

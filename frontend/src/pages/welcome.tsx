@@ -6,7 +6,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router";
-import { useProjectStatus } from "@/api";
+import { useProjectStatus } from "@/api/hooks";
 import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 

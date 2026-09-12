@@ -117,13 +117,19 @@ export const useModelStore = create<ModelState>((set, get) => {
       });
     },
 
+    // `dirty` means "the workspace differs from what the project holds", not
+    // "there is an edit the draft has not seen". Content that arrives through
+    // a load — a file, an OSM fetch, a recovered draft — comes from outside
+    // the project, so a load leaves the model dirty; only `markClean` clears
+    // it, and only a successful save (or, in browser mode, the draft write)
+    // calls that.
     loadFeatures: (features) => {
       commandStack.clear();
       set({
         features,
         receivers: [],
         calcArea: null,
-        dirty: false,
+        dirty: true,
         canUndo: false,
         canRedo: false,
       });
@@ -233,7 +239,7 @@ export const useModelStore = create<ModelState>((set, get) => {
         features,
         receivers,
         calcArea,
-        dirty: false,
+        dirty: true,
         canUndo: false,
         canRedo: false,
       });

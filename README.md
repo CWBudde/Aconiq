@@ -141,6 +141,7 @@ GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                server-sent events: heartbeat and project status
 POST /api/v1/import/osm
 POST /api/v1/import/terrain
+POST /api/v1/model                 replace the project model with normalized GeoJSON
 GET  /api/v1/openapi.json
 ```
 

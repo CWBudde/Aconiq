@@ -4,9 +4,31 @@ import {
   buildBuildings,
   buildRoadSources,
   getFeatureBBox,
+  MAX_STORED_RUNS,
   overpassWayToFeature,
+  PERSISTED_STATE_VERSION,
+  resetBrowserBackendForTests,
 } from "./browser-backend";
+import * as storage from "./browser-storage";
+import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
+import type { ComputeRequest } from "@/wasm/types";
+
+// The persistence tests drive `startRun` end to end, but what the kernel
+// computes is the parity suite's business; here it only has to answer.
+vi.mock("@/wasm/kernel", () => ({
+  getKernel: () =>
+    Promise.resolve({
+      rls19Road: (req: ComputeRequest) =>
+        Promise.resolve(
+          req.receivers.map((receiver) => ({
+            Receiver: receiver,
+            Indicators: { lr_day: 50, lr_night: 40 },
+          })),
+        ),
+      defaultConfig: () => ({}),
+    }),
+}));
 
 describe("buildRoadSources", () => {
   it("prefers feature-level RLS-19 overrides over run defaults", () => {
@@ -107,13 +129,13 @@ describe("overpassWayToFeature", () => {
 // Object URL lifetime
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = "aconiq.browser_backend.v1";
+const LEGACY_STORAGE_KEY = "aconiq.browser_backend.v1";
 const RUN_ID = "run-0001";
 const TABLE_ARTIFACT_ID = "artifact-run-0001-receivers-json";
 const SECOND_RUN_ID = "run-0002";
 const SECOND_ARTIFACT_ID = "artifact-run-0002-summary";
 
-function seedState({ withSecondRun = false } = {}) {
+function seededState({ withSecondRun = false } = {}) {
   const run = {
     id: RUN_ID,
     scenario_id: "default",
@@ -132,65 +154,83 @@ function seedState({ withSecondRun = false } = {}) {
       },
     ],
   };
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      projectId: "demo",
-      projectName: "Demo",
-      projectPath: "/demo",
-      crs: "EPSG:25832",
-      runs: [
-        ...(withSecondRun
-          ? [
-              {
-                run: {
-                  ...run,
-                  id: SECOND_RUN_ID,
-                  started_at: "2026-01-01T09:00:00.000Z",
-                  artifacts: [
-                    {
-                      id: SECOND_ARTIFACT_ID,
-                      kind: "run.result.summary",
-                      path: `.noise/runs/${SECOND_RUN_ID}/summary.json`,
-                      created_at: "2026-01-01T09:00:01.000Z",
-                    },
-                  ],
-                },
-                log: { run_id: SECOND_RUN_ID, lines: ["run completed"] },
-                artifacts: {
-                  [SECOND_ARTIFACT_ID]: {
+  return {
+    projectId: "demo",
+    projectName: "Demo",
+    projectPath: "/demo",
+    crs: "EPSG:25832",
+    runs: [
+      ...(withSecondRun
+        ? [
+            {
+              run: {
+                ...run,
+                id: SECOND_RUN_ID,
+                started_at: "2026-01-01T09:00:00.000Z",
+                artifacts: [
+                  {
+                    id: SECOND_ARTIFACT_ID,
                     kind: "run.result.summary",
-                    mimeType: "application/json",
-                    encoding: "json",
-                    value: { run_id: SECOND_RUN_ID },
+                    path: `.noise/runs/${SECOND_RUN_ID}/summary.json`,
+                    created_at: "2026-01-01T09:00:01.000Z",
                   },
-                },
-              },
-            ]
-          : []),
-        {
-          run,
-          log: { run_id: RUN_ID, lines: ["run completed"] },
-          artifacts: {
-            [TABLE_ARTIFACT_ID]: {
-              kind: "run.result.receiver_table_json",
-              mimeType: "application/json",
-              encoding: "json",
-              value: {
-                run_id: RUN_ID,
-                standard_id: "rls19-road",
-                indicator_order: ["lr_day"],
-                unit: "dB(A)",
-                records: [
-                  { id: "R1", x: 0, y: 0, height_m: 4, values: { lr_day: 55 } },
                 ],
               },
+              log: { run_id: SECOND_RUN_ID, lines: ["run completed"] },
+              artifacts: {
+                [SECOND_ARTIFACT_ID]: {
+                  kind: "run.result.summary",
+                  mimeType: "application/json",
+                  encoding: "json",
+                  value: { run_id: SECOND_RUN_ID },
+                },
+              },
+            },
+          ]
+        : []),
+      {
+        run,
+        log: { run_id: RUN_ID, lines: ["run completed"] },
+        artifacts: {
+          [TABLE_ARTIFACT_ID]: {
+            kind: "run.result.receiver_table_json",
+            mimeType: "application/json",
+            encoding: "json",
+            value: {
+              run_id: RUN_ID,
+              standard_id: "rls19-road",
+              indicator_order: ["lr_day"],
+              unit: "dB(A)",
+              records: [
+                { id: "R1", x: 0, y: 0, height_m: 4, values: { lr_day: 55 } },
+              ],
             },
           },
         },
-      ],
-    }),
-  );
+      },
+    ],
+  };
+}
+
+/**
+ * Writes the fixture the way a previous session would have left it, then
+ * forgets the in-memory copy so the backend loads it from the store — and
+ * loads it, because `getArtifactURL` is synchronous and reads only the
+ * loaded state.
+ */
+async function seedState(options?: { withSecondRun?: boolean }) {
+  await storage.savePersistedState({
+    version: PERSISTED_STATE_VERSION,
+    state: seededState(options),
+  });
+  resetBrowserBackendForTests();
+  await browserBackend.getRuns();
+}
+
+async function resetStores() {
+  await storage.clearPersistedState();
+  window.localStorage.clear();
+  resetBrowserBackendForTests();
 }
 
 describe("artifact object URLs", () => {
@@ -202,8 +242,8 @@ describe("artifact object URLs", () => {
   // URL string and the identity assertions below would be meaningless.
   let counter = 0;
 
-  beforeEach(() => {
-    window.localStorage.clear();
+  beforeEach(async () => {
+    await resetStores();
     created = [];
     revoked = [];
     vi.stubGlobal("URL", {
@@ -218,7 +258,7 @@ describe("artifact object URLs", () => {
         revoked.push(url);
       },
     });
-    seedState();
+    await seedState();
   });
 
   afterEach(() => {
@@ -245,7 +285,7 @@ describe("artifact object URLs", () => {
   });
 
   it("revokes URLs whose artifact has disappeared", async () => {
-    seedState({ withSecondRun: true });
+    await seedState({ withSecondRun: true });
     const kept = browserBackend.getArtifactURL(TABLE_ARTIFACT_ID);
     const dropped = browserBackend.getArtifactURL(SECOND_ARTIFACT_ID);
     expect(dropped).not.toBe(kept);
@@ -253,11 +293,480 @@ describe("artifact object URLs", () => {
     // Drop the second run, then write state through the public API. Pruning
     // has to release the blobs of artifacts that are gone — otherwise the fix
     // above would just be a leak.
-    seedState();
+    await seedState();
     await browserBackend.createExport(RUN_ID);
 
     expect(revoked).toContain(dropped);
     expect(revoked).not.toContain(kept);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Persistence: version guard, migration, cap, quota
+// ---------------------------------------------------------------------------
+
+const ROAD: ModelFeature = {
+  id: "road",
+  kind: "source",
+  sourceType: "line",
+  properties: { traffic_day_pkw: 300 },
+  geometry: {
+    type: "LineString",
+    coordinates: [
+      [0, 0],
+      [100, 0],
+    ],
+  },
+};
+
+const RUN_SPEC = {
+  standardId: "rls19-road",
+  version: "2019",
+  profile: "default",
+  params: { surface_type: "SMA" },
+  receiverMode: "custom",
+} as const;
+
+function runFixture(index: number, startedAt: string) {
+  const id = `run-${String(index).padStart(4, "0")}`;
+  return {
+    run: {
+      id,
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "2019",
+      status: "completed",
+      started_at: startedAt,
+      finished_at: startedAt,
+      log_path: `${id}/run.log`,
+      artifacts: [],
+    },
+    log: { run_id: id, lines: [] },
+    artifacts: {},
+  };
+}
+
+async function persisted(): Promise<{ version: number; state: unknown }> {
+  return (await storage.loadPersistedState()) as {
+    version: number;
+    state: unknown;
+  };
+}
+
+function runIDs(state: unknown): string[] {
+  return (state as { runs: { run: { id: string } }[] }).runs.map(
+    (entry) => entry.run.id,
+  );
+}
+
+describe("persisted state", () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    await resetStores();
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+      ],
+      calcArea: null,
+    });
+    warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    // jsdom has no object URLs, and every persist prunes the URL cache.
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => "blob:mock/persisted",
+      revokeObjectURL: () => undefined,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("starts fresh when nothing is stored", async () => {
+    await expect(browserBackend.getRuns()).resolves.toEqual([]);
+    const status = await browserBackend.getProjectStatus();
+    expect(status.project_id).toBe("browser-project");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("loads a version 1 document field by field", async () => {
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        // projectId absent, crs of the wrong type, one run entry that is not
+        // a run: an older build could have written any of these.
+        projectName: "Old",
+        crs: 42,
+        runs: [
+          runFixture(1, "2026-01-01T10:00:00.000Z"),
+          { run: "not a run" },
+          null,
+        ],
+      },
+    });
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((run) => run.id)).toEqual(["run-0001"]);
+    const status = await browserBackend.getProjectStatus();
+    expect(status.project_id).toBe("browser-project");
+    expect(status.name).toMatch(/^Old/);
+    expect(status.crs).toBe("WGS84 / web map");
+  });
+
+  it.each([
+    ["no encoding", { mimeType: "application/json", kind: "k", value: {} }],
+    [
+      "an unknown encoding",
+      { mimeType: "application/json", kind: "k", encoding: "blob", value: 1 },
+    ],
+    ["no value", { mimeType: "text/plain", kind: "k", encoding: "text" }],
+    ["no mime type", { kind: "k", encoding: "text", value: "x" }],
+    ["a non-object artifact", "just text"],
+  ])("drops a run whose artifact has %s", async (_name, artifact) => {
+    const broken = runFixture(2, "2026-01-01T11:00:00.000Z");
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        runs: [
+          { ...broken, artifacts: { "artifact-run-0002-x": artifact } },
+          runFixture(1, "2026-01-01T10:00:00.000Z"),
+        ],
+      },
+    });
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((run) => run.id)).toEqual(["run-0001"]);
+  });
+
+  it.each([
+    ["an unknown version", { version: 2, state: { runs: [] } }],
+    ["a missing version", { state: { runs: [] } }],
+    ["a non-object document", "just a string"],
+    ["a non-object state", { version: PERSISTED_STATE_VERSION, state: [] }],
+  ])(
+    "starts fresh on %s and leaves the document alone until the next write",
+    async (_name, document) => {
+      await storage.savePersistedState(document);
+
+      await expect(browserBackend.getRuns()).resolves.toEqual([]);
+      expect(warn).toHaveBeenCalledOnce();
+      // Reading must not have replaced what it could not understand.
+      await expect(storage.loadPersistedState()).resolves.toEqual(document);
+
+      const run = await browserBackend.startRun(RUN_SPEC);
+      expect((await persisted()).version).toBe(PERSISTED_STATE_VERSION);
+      expect(runIDs((await persisted()).state)).toEqual([run.id]);
+    },
+  );
+
+  it("migrates the localStorage document once, then removes it", async () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify(seededState({ withSecondRun: true })),
+    );
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((run) => run.id)).toEqual([RUN_ID, SECOND_RUN_ID]);
+    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+    const document = await persisted();
+    expect(document.version).toBe(PERSISTED_STATE_VERSION);
+    // Copied as it was, not re-sorted: the list order is `getRuns`' concern.
+    expect(runIDs(document.state).sort()).toEqual([RUN_ID, SECOND_RUN_ID]);
+    // The artifact came across with the run, not just its summary line.
+    await expect(
+      browserBackend.getArtifactContent(TABLE_ARTIFACT_ID),
+    ).resolves.toMatchObject({ run_id: RUN_ID });
+  });
+
+  it("does not migrate once IndexedDB holds a document", async () => {
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [runFixture(7, "2026-02-01T10:00:00.000Z")] },
+    });
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify(seededState()),
+    );
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((run) => run.id)).toEqual(["run-0007"]);
+    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("starts fresh on an unreadable localStorage document", async () => {
+    window.localStorage.setItem(LEGACY_STORAGE_KEY, "{not json");
+
+    await expect(browserBackend.getRuns()).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledOnce();
+    await expect(storage.loadPersistedState()).resolves.toBeNull();
+  });
+
+  it("keeps a run's results readable after a reload", async () => {
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const artifact = run.artifacts.find(
+      (entry) => entry.kind === "run.result.summary",
+    );
+
+    resetBrowserBackendForTests();
+
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((entry) => entry.id)).toEqual([run.id]);
+    await expect(
+      browserBackend.getArtifactContent(artifact?.id ?? ""),
+    ).resolves.toMatchObject({ run_id: run.id, receiver_count: 1 });
+  });
+
+  it("refuses artifact URLs before the state is loaded", () => {
+    expect(() => browserBackend.getArtifactURL("artifact-x")).toThrow(
+      /before the browser backend loaded/,
+    );
+  });
+
+  it("keeps at most MAX_STORED_RUNS runs, dropping the oldest", async () => {
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        runs: Array.from({ length: MAX_STORED_RUNS }, (_, index) =>
+          runFixture(
+            index + 1,
+            `2026-01-01T${String(index).padStart(2, "0")}:00:00.000Z`,
+          ),
+        ),
+      },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+
+    const runs = await browserBackend.getRuns();
+    expect(runs).toHaveLength(MAX_STORED_RUNS);
+    expect(runs[0]?.id).toBe(run.id);
+    expect(runs.map((entry) => entry.id)).not.toContain("run-0001");
+    expect(runIDs((await persisted()).state)).toHaveLength(MAX_STORED_RUNS);
+  });
+
+  it("mints run ids past the highest stored id, not from the list length", async () => {
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        // A list that has already been capped once: run-0001 is gone.
+        runs: [
+          runFixture(3, "2026-01-01T03:00:00.000Z"),
+          runFixture(2, "2026-01-01T02:00:00.000Z"),
+        ],
+      },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    expect(run.id).toBe("run-0004");
+  });
+
+  // The store is shared by every tab of the origin. "Another tab" is a
+  // direct write to the store after this tab has loaded its cache.
+  it("a run completed in another tab survives this tab's next write", async () => {
+    await browserBackend.getRuns();
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [runFixture(1, "2026-01-01T01:00:00.000Z")] },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+
+    expect(run.id).not.toBe("run-0001");
+    expect(runIDs((await persisted()).state)).toEqual([run.id, "run-0001"]);
+    const runs = await browserBackend.getRuns();
+    expect(runs.map((entry) => entry.id)).toEqual([run.id, "run-0001"]);
+  });
+
+  it("a run id is allocated after the other tab's run is seen", async () => {
+    await browserBackend.getRuns();
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [runFixture(3, "2026-01-01T03:00:00.000Z")] },
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    expect(run.id).toBe("run-0004");
+  });
+
+  it("writes are serialised through navigator.locks when available", async () => {
+    // jsdom has no Web Locks; the stub grants every request at once and
+    // only records what was asked for.
+    const request = vi.fn((_name: string, callback: () => Promise<unknown>) =>
+      callback(),
+    );
+    Object.defineProperty(navigator, "locks", {
+      value: { request },
+      configurable: true,
+    });
+    try {
+      await seedState();
+
+      const run = await browserBackend.createExport(RUN_ID);
+
+      expect(request).toHaveBeenCalledWith(
+        "aconiq-browser-backend",
+        expect.any(Function),
+      );
+      expect(
+        run.artifacts.some((entry) => entry.kind === "export.bundle"),
+      ).toBe(true);
+      expect(runIDs((await persisted()).state)).toEqual([RUN_ID]);
+    } finally {
+      Reflect.deleteProperty(navigator, "locks");
+    }
+  });
+
+  describe("when the store is full", () => {
+    const quota = () =>
+      new storage.BrowserStorageError("quota", "quota exhausted");
+
+    it("evicts the oldest run and retries once", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(2, "2026-01-01T02:00:00.000Z"),
+            runFixture(1, "2026-01-01T01:00:00.000Z"),
+          ],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "savePersistedState")
+        .mockRejectedValueOnce(quota());
+
+      const run = await browserBackend.startRun(RUN_SPEC);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      const runs = await browserBackend.getRuns();
+      expect(runs.map((entry) => entry.id)).toEqual([run.id, "run-0002"]);
+      expect(runIDs((await persisted()).state)).toEqual([run.id, "run-0002"]);
+    });
+
+    it("keeps the run in memory and says so when the retry fails too", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(2, "2026-01-01T02:00:00.000Z"),
+            runFixture(1, "2026-01-01T01:00:00.000Z"),
+          ],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "savePersistedState")
+        .mockRejectedValue(quota());
+
+      const failure = await browserBackend
+        .startRun(RUN_SPEC)
+        .catch((error: unknown) => error);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
+      expect((failure as Error).message).toMatch(
+        /completed but could not be stored/,
+      );
+      expect((failure as Error).message).toMatch(/older runs/);
+
+      // The computation succeeded, so its results stay viewable this
+      // session, and the failed eviction is not shown either.
+      const runs = await browserBackend.getRuns();
+      expect(runs.map((entry) => entry.id)).toEqual([
+        "run-0003",
+        "run-0002",
+        "run-0001",
+      ]);
+      const summary = runs[0]?.artifacts.find(
+        (entry) => entry.kind === "run.result.summary",
+      );
+      await expect(
+        browserBackend.getArtifactContent(summary?.id ?? ""),
+      ).resolves.toMatchObject({ run_id: "run-0003" });
+      // The store still holds what it held before.
+      expect(runIDs((await persisted()).state)).toEqual([
+        "run-0002",
+        "run-0001",
+      ]);
+    });
+
+    it("reports an export the same way", async () => {
+      await seedState();
+      vi.spyOn(storage, "savePersistedState").mockRejectedValue(quota());
+
+      const failure = await browserBackend
+        .createExport(RUN_ID)
+        .catch((error: unknown) => error);
+
+      expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
+      expect((failure as Error).message).toMatch(/export completed/);
+      const runs = await browserBackend.getRuns();
+      expect(
+        runs[0]?.artifacts.some((entry) => entry.kind === "export.bundle"),
+      ).toBe(true);
+    });
+
+    it("restores the un-evicted list when the retry fails for another reason", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(2, "2026-01-01T02:00:00.000Z"),
+            runFixture(1, "2026-01-01T01:00:00.000Z"),
+          ],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "savePersistedState")
+        .mockRejectedValueOnce(quota())
+        .mockRejectedValueOnce(
+          new storage.BrowserStorageError("unavailable", "gone away"),
+        );
+
+      const failure = await browserBackend
+        .startRun(RUN_SPEC)
+        .catch((error: unknown) => error);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(storage.isBrowserStorageError(failure, "unavailable")).toBe(true);
+      // The eviction never reached the store, so memory must not show it.
+      const runs = await browserBackend.getRuns();
+      expect(runs.map((entry) => entry.id)).toEqual([
+        "run-0003",
+        "run-0002",
+        "run-0001",
+      ]);
+      expect(runIDs((await persisted()).state)).toEqual([
+        "run-0002",
+        "run-0001",
+      ]);
+    });
+
+    it("surfaces a non-quota storage failure without evicting", async () => {
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "savePersistedState")
+        .mockRejectedValue(
+          new storage.BrowserStorageError("unavailable", "no IndexedDB"),
+        );
+
+      const failure = await browserBackend
+        .startRun(RUN_SPEC)
+        .catch((error: unknown) => error);
+
+      expect(save).toHaveBeenCalledOnce();
+      expect(storage.isBrowserStorageError(failure, "unavailable")).toBe(true);
+      expect((failure as Error).message).toMatch(/could not be stored/);
+      expect(await browserBackend.getRuns()).toHaveLength(1);
+    });
   });
 });
 

@@ -4,6 +4,12 @@ import type {
   ModelReceiver,
 } from "./types";
 
+/** The part of the model the project persists. */
+export interface ModelPayload {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+}
+
 export function featuresToGeoJSON(
   features: ModelFeature[],
 ): GeoJSONFeatureCollection {
@@ -57,5 +63,31 @@ export function receiversToGeoJSON(
         coordinates: r.geometry.coordinates as unknown,
       },
     })),
+  };
+}
+
+/**
+ * The model as one v1 FeatureCollection for `POST /api/v1/model`: features
+ * first, then receivers, in store order — the order is part of what makes a
+ * save reproducible.
+ *
+ * The calculation area is deliberately not in the payload. The v1 schema
+ * (`docs/geojson-schema-v1.md`) knows the kinds source, building, barrier and
+ * receiver and nothing else, and the run request has no grid extent either,
+ * so `calcArea` stays frontend state and travels only through the
+ * localStorage draft. A backend auto-grid therefore uses the source extent;
+ * the run dialog says so rather than claiming the area is active, until the
+ * PLAN.md item that carries the area to the backend lands.
+ */
+export function modelToGeoJSON({
+  features,
+  receivers,
+}: ModelPayload): GeoJSONFeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: [
+      ...featuresToGeoJSON(features).features,
+      ...receiversToGeoJSON(receivers).features,
+    ],
   };
 }

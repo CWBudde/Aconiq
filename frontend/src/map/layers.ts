@@ -148,34 +148,6 @@ export const CALC_AREA_LAYERS: LayerSpecification[] = [
   },
 ];
 
-export const CONTOUR_LAYERS: LayerSpecification[] = [
-  {
-    id: LAYER_IDS.contourLine,
-    type: "line",
-    source: SOURCE_IDS.contours,
-    paint: {
-      "line-color": "#333333",
-      "line-width": 1,
-    },
-  },
-  {
-    id: LAYER_IDS.contourLabel,
-    type: "symbol",
-    source: SOURCE_IDS.contours,
-    layout: {
-      "symbol-placement": "line",
-      "text-field": ["get", "level"],
-      "text-size": 11,
-      "text-font": ["Open Sans Regular"],
-    },
-    paint: {
-      "text-color": "#333333",
-      "text-halo-color": "#ffffff",
-      "text-halo-width": 1.5,
-    },
-  },
-];
-
 // --- Layer group metadata (for UI controls) ---
 
 export interface LayerGroup {

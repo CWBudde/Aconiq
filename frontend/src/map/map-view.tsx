@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Button } from "@/ui/components/button";
 import { MapContext } from "./use-map";
 import { BASEMAP_STYLES } from "./basemap";
 import { useMapStore } from "./map-store";
@@ -15,8 +16,10 @@ import { LAYER_IDS, SOURCE_IDS } from "./layers";
  * `load` only fires after the style *and* the first render complete, so a slow
  * network produces the same signal as a broken GPU. The threshold is therefore
  * deliberately generous, and a timeout is treated as a per-mount condition
- * rather than session-wide evidence that WebGL is unusable: remounting (a route
- * change or basemap switch) retries.
+ * rather than session-wide evidence that WebGL is unusable: a route change
+ * remounts and retries, and so does the panel's Retry button. (A basemap
+ * switch does not: it only re-runs the init effect, which early-returns while
+ * `mapError` is set.)
  */
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
@@ -38,11 +41,20 @@ const MAP_UNAVAILABLE_MESSAGE = "Map rendering is unavailable in this browser.";
  * not such a signal (it also fires on a slow network), and neither is
  * `webglcontextlost`, which is transient by definition — there is a
  * `webglcontextrestored` handler below that expects to recover from it.
+ *
+ * Cleared only by the Retry button on the unavailable panel. The user knows
+ * things the code cannot (a GPU switch, a settled network, an extension turned
+ * off), so the retry is theirs to make; if the constructor throws again the
+ * switch is simply set again and the panel returns.
  */
 let webglDisabledForSession = false;
 
 function disableWebGLForSession(): void {
   webglDisabledForSession = true;
+}
+
+function enableWebGLForSession(): void {
+  webglDisabledForSession = false;
 }
 
 /** Layers that are interactive (click/hover targets) */
@@ -118,16 +130,12 @@ export function MapView({
       "bottom-left",
     );
 
-    const canvas = m.getCanvas();
-    const handleContextLost = (event: Event) => {
-      event.preventDefault();
-      setMapError("WebGL context was lost.");
-    };
-    const handleContextRestored = () => {
-      m.resize();
-    };
-    canvas.addEventListener("webglcontextlost", handleContextLost);
-    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+    // A lost WebGL context is transient by definition, and MapLibre handles the
+    // restore itself: its own canvas listeners call `preventDefault()`, stash
+    // the style, then rebuild the painter and resize on `webglcontextrestored`.
+    // This component must merely keep the canvas mounted meanwhile — a lost
+    // context must never set `mapError`, because the error panel would unmount
+    // the very canvas the restored event fires on.
 
     m.on("load", () => {
       mapRef.current = m;
@@ -142,14 +150,19 @@ export function MapView({
 
     return () => {
       window.clearTimeout(fallbackTimer);
-      canvas.removeEventListener("webglcontextlost", handleContextLost);
-      canvas.removeEventListener("webglcontextrestored", handleContextRestored);
       mapRef.current = null;
       setMap(null);
       m.remove();
     };
     // Rebuilds the map only on a basemap or error-state change.
   }, [basemap, mapError]);
+
+  // Clearing `mapError` re-runs the init effect; the session switch is reset
+  // unconditionally because a timeout never set it and a throw needs it reset.
+  const retryMapInit = () => {
+    enableWebGLForSession();
+    setMapError(null);
+  };
 
   // Feature click handler
   useEffect(() => {
@@ -217,6 +230,9 @@ export function MapView({
             <div className="max-w-md space-y-2 rounded-2xl border bg-card p-6 shadow-sm">
               <p className="text-lg font-semibold">Map unavailable</p>
               <p className="text-sm text-muted-foreground">{mapError}</p>
+              <Button variant="outline" size="sm" onClick={retryMapInit}>
+                Retry
+              </Button>
             </div>
           </div>
         ) : (

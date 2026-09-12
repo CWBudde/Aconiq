@@ -5,7 +5,7 @@ import MapPage from "./map";
 import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 
-vi.mock("@/api", () => ({
+vi.mock("@/api/hooks", () => ({
   useProjectStatus: () => ({
     isLoading: false,
     isError: false,

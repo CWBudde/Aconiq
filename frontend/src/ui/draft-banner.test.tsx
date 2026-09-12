@@ -42,12 +42,16 @@ describe("DraftBanner", () => {
     ).toBeInTheDocument();
   });
 
-  it("restores features and clears draft on Restore", () => {
+  it("restores features and keeps the draft on Restore", () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
     render(<DraftBanner />);
     fireEvent.click(screen.getByRole("button", { name: /restore/i }));
     expect(useModelStore.getState().features).toHaveLength(1);
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+    // A restored model is content the project has not seen; leaving the
+    // draft in place is what keeps it recoverable if the next autosave never
+    // runs (the earlier discard here lost it on the following reload).
+    expect(useModelStore.getState().dirty).toBe(true);
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
     expect(screen.queryByText(/unsaved draft found/i)).not.toBeInTheDocument();
   });
 

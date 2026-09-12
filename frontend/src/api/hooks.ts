@@ -1,49 +1,21 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { errorFromResponse } from "./api-error";
-import { browserBackend, type BrowserRunSpec } from "./browser-backend";
-import { IS_WASM_MODE, apiURL } from "./mode";
-import { queryKeys } from "./query-keys";
-import { queryClient } from "./query-client";
-import { apiHeaders } from "./client";
+import { useEffect, useRef } from "react";
+import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
+import { backend } from "./backend";
+import type { OsmImportRequest, RunSpec } from "./backend";
 import type {
-  CreateRunRequest,
-  HealthResponse,
-  ProjectStatusResponse,
+  ModelSaveRequest,
   RasterMetadata,
   ReceiverTable,
-  RunLog,
   RunSummary,
-  StandardDescriptor,
 } from "./client";
-import type { GeoJSONFeatureCollection } from "@/model/types";
-
-async function fetchJSON<T>(path: string): Promise<T> {
-  const response = await fetch(apiURL(path), {
-    headers: apiHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${String(response.status)}`);
-  }
-
-  return (await response.json()) as T;
-}
-
-/** Ensure the WASM kernel is loaded (registers window.aconiq). */
-async function ensureKernel(): Promise<void> {
-  const { getKernel } = await import("@/wasm/kernel");
-  await getKernel();
-}
+import { queryKeys } from "./query-keys";
+import { queryClient } from "./query-client";
 
 export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health.all,
-    queryFn: async () => {
-      if (IS_WASM_MODE) {
-        return browserBackend.getHealth();
-      }
-      return fetchJSON<HealthResponse>("/api/v1/health");
-    },
+    queryFn: () => backend.getHealth(),
     staleTime: 60_000,
   });
 }
@@ -51,62 +23,99 @@ export function useHealth() {
 export function useProjectStatus() {
   return useQuery({
     queryKey: queryKeys.project.status(),
-    queryFn: async () => {
-      if (IS_WASM_MODE) {
-        return browserBackend.getProjectStatus();
-      }
-      const response = await fetch(apiURL("/api/v1/project/status"), {
-        headers: apiHeaders(),
-      });
-
-      if (response.status === 404) {
-        return null;
-      }
-      if (!response.ok) {
-        throw new Error(`Request failed: ${String(response.status)}`);
-      }
-      return (await response.json()) as ProjectStatusResponse;
-    },
+    queryFn: () => backend.getProjectStatus(),
   });
 }
 
 export function useStandards() {
   return useQuery({
     queryKey: queryKeys.standards.all,
-    queryFn: () =>
-      IS_WASM_MODE
-        ? browserBackend.getStandards()
-        : fetchJSON<StandardDescriptor[]>("/api/v1/standards"),
+    queryFn: () => backend.getStandards(),
     staleTime: 5 * 60_000,
   });
 }
 
-export function useRuns(refetchIntervalMs?: number) {
-  return useQuery({
-    queryKey: queryKeys.runs.list(),
-    queryFn: () =>
-      IS_WASM_MODE
-        ? browserBackend.getRuns()
-        : fetchJSON<RunSummary[]>("/api/v1/runs"),
-    ...(IS_WASM_MODE
-      ? {}
-      : refetchIntervalMs !== undefined
-        ? { refetchInterval: refetchIntervalMs }
-        : {}),
-  });
+/*
+ * Runs and their logs are polled, not pushed. The API's SSE stream
+ * (`/api/v1/events`) carries project status snapshots, not run logs, and a
+ * browser `EventSource` cannot send the `--api-token` header, so the stream is
+ * unreachable whenever a token is set (PLAN.md, Priority 6). Polling by
+ * activity keeps the cost near zero while nothing is running.
+ */
+
+/** Runs-list poll interval while any run is pending or running. */
+export const ACTIVE_RUNS_POLL_MS = 2_000;
+/**
+ * Runs-list poll interval while every run is settled. Slow, but not off: a
+ * run started from the CLI or another tab still shows up while a runs list
+ * is on screen.
+ */
+export const IDLE_RUNS_POLL_MS = 15_000;
+/** Poll interval for the log of a run that is still running. */
+export const RUN_LOG_POLL_MS = 1_000;
+
+function isRunActive(run: RunSummary): boolean {
+  return run.status === "pending" || run.status === "running";
 }
 
-export function useRunLog(runId: string | null) {
+/** Needs nothing from the render, so it lives outside the hook. */
+function runsRefetchInterval(query: Query<RunSummary[]>): number {
+  const runs = query.state.data ?? [];
+  return runs.some(isRunActive) ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
+}
+
+export function useRuns() {
+  const query = useQuery({
+    queryKey: queryKeys.runs.list(),
+    queryFn: () => backend.getRuns(),
+    refetchInterval: backend.capabilities.runsChangeExternally
+      ? runsRefetchInterval
+      : false,
+  });
+
+  // A run's log is fetched once more when the run settles, so the lines
+  // written between the last log poll and completion arrive. The transition
+  // is detected here, where the status data lives, rather than in
+  // `useRunLog`: a detail panel may be unmounted while the run completes, and
+  // invalidating the cache entry marks it stale so the next mount refetches
+  // regardless of `staleTime`, while an active observer refetches at once.
+  const runs = query.data;
+  const previousRuns = useRef(runs);
+  useEffect(() => {
+    const was = previousRuns.current;
+    previousRuns.current = runs;
+    if (!was || !runs) return;
+    const wasActive = new Set(was.filter(isRunActive).map((run) => run.id));
+    for (const run of runs) {
+      if (wasActive.has(run.id) && !isRunActive(run)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.runs.log(run.id),
+        });
+      }
+    }
+  }, [runs]);
+
+  return query;
+}
+
+/**
+ * @param isRunning Whether the run is still being executed by the server.
+ *   While set, the log polls and a remount fetches immediately. The one
+ *   extra fetch after the run settles is driven by `useRuns`, which sees the
+ *   status change. No capability check is needed here: in browser mode a run
+ *   completes inside `startRun`, so a caller never observes a running one
+ *   and passes `false` throughout.
+ */
+export function useRunLog(runId: string | null, isRunning: boolean) {
   return useQuery({
     queryKey: queryKeys.runs.log(runId ?? ""),
     queryFn: () => {
       if (!runId) throw new Error("Run ID is required");
-      return IS_WASM_MODE
-        ? browserBackend.getRunLog(runId)
-        : fetchJSON<RunLog>(`/api/v1/runs/${runId}/log`);
+      return backend.getRunLog(runId);
     },
     enabled: runId !== null,
-    staleTime: 30_000,
+    refetchInterval: isRunning ? RUN_LOG_POLL_MS : false,
+    staleTime: isRunning ? 0 : 30_000,
   });
 }
 
@@ -115,9 +124,7 @@ export function useArtifactContent<T>(artifactId: string | null) {
     queryKey: queryKeys.artifacts.content(artifactId ?? ""),
     queryFn: () => {
       if (!artifactId) throw new Error("Artifact ID is required");
-      return IS_WASM_MODE
-        ? browserBackend.getArtifactContent<T>(artifactId)
-        : fetchJSON<T>(`/api/v1/artifacts/${artifactId}/content`);
+      return backend.getArtifactContent<T>(artifactId);
     },
     enabled: artifactId !== null,
     staleTime: 5 * 60_000,
@@ -132,77 +139,17 @@ export function useRasterMetadata(artifactId: string | null) {
   return useArtifactContent<RasterMetadata>(artifactId);
 }
 
-export interface OsmImportRequest {
-  south: number;
-  west: number;
-  north: number;
-  east: number;
-  overpass_endpoint?: string;
-}
-
 export function useImportFromOSM() {
   return useMutation({
-    mutationFn: async (req: OsmImportRequest) => {
-      if (IS_WASM_MODE) {
-        return browserBackend.importFromOSM(req);
-      }
-      const response = await fetch(apiURL("/api/v1/import/osm"), {
-        method: "POST",
-        headers: apiHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(req),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          payload?.error?.message ??
-            `Request failed: ${String(response.status)}`,
-        );
-      }
-      return response.json() as Promise<GeoJSONFeatureCollection>;
-    },
+    mutationFn: (req: OsmImportRequest) => backend.importFromOSM(req),
   });
-}
-
-/**
- * Translate a run spec into the API request body.
- *
- * `experimental` is omitted unless the spec sets it, so a run against a
- * standard that needs no acknowledgement never carries one — matching the
- * `omitempty` on the Go struct rather than sending an explicit `false`.
- */
-export function buildCreateRunRequest(spec: BrowserRunSpec): CreateRunRequest {
-  return {
-    standard_id: spec.standardId,
-    standard_version: spec.version,
-    standard_profile: spec.profile,
-    receiver_mode: spec.receiverMode,
-    params: spec.params,
-    ...(spec.experimental === true ? { experimental: true } : {}),
-  };
 }
 
 export function useCreateRun() {
   return useMutation({
-    mutationFn: async (spec: BrowserRunSpec) => {
-      if (IS_WASM_MODE) {
-        await ensureKernel();
-        return browserBackend.startRun(spec);
-      }
-
-      const response = await fetch(apiURL("/api/v1/runs"), {
-        method: "POST",
-        headers: apiHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(buildCreateRunRequest(spec)),
-      });
-      if (!response.ok) {
-        // Thrown whole: the run dialog reads `code` and `hint` off the
-        // envelope to explain a refusal the user can act on.
-        throw await errorFromResponse(response);
-      }
-      return response.json() as Promise<RunSummary>;
-    },
+    // A refusal is thrown whole: the run dialog reads `code` and `hint` off
+    // the envelope to explain one the user can act on.
+    mutationFn: (spec: RunSpec) => backend.startRun(spec),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
@@ -212,22 +159,36 @@ export function useCreateRun() {
 
 export function useCreateExport() {
   return useMutation({
-    mutationFn: async (runId: string) => {
-      if (!IS_WASM_MODE) {
-        throw new Error(
-          "Export generation from the UI is only available in browser mode",
-        );
-      }
-      return browserBackend.createExport(runId);
-    },
+    mutationFn: (runId: string) => backend.createExport(runId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
     },
   });
 }
 
+/**
+ * Keyed so that "is a save in flight?" can be asked from anywhere
+ * (`useIsSavingModel`), not only by the component that started it.
+ */
+export const MODEL_SAVE_MUTATION_KEY = ["model", "save"] as const;
+
+export function useSaveModel() {
+  return useMutation({
+    mutationKey: MODEL_SAVE_MUTATION_KEY,
+    mutationFn: (req: ModelSaveRequest) => backend.saveModel(req),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
+    },
+  });
+}
+
+/** True while any `useSaveModel` mutation is running, whichever surface started it. */
+export function useIsSavingModel(): boolean {
+  return (
+    useIsMutating({ mutationKey: MODEL_SAVE_MUTATION_KEY }, queryClient) > 0
+  );
+}
+
 export function getArtifactContentURL(artifactId: string): string {
-  return IS_WASM_MODE
-    ? browserBackend.getArtifactURL(artifactId)
-    : apiURL(`/api/v1/artifacts/${artifactId}/content`);
+  return backend.getArtifactURL(artifactId);
 }

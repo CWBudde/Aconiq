@@ -136,6 +136,27 @@ describe("model store", () => {
     expect(useModelStore.getState().dirty).toBe(false);
   });
 
+  // `dirty` means "differs from the project". A load brings content from
+  // outside the project (a file, OSM, a recovered draft), so the model is
+  // dirty until it is saved there — the draft write must not clear it.
+  it("loadFeatures marks the model dirty", () => {
+    useModelStore.getState().loadFeatures([pointSource]);
+    expect(useModelStore.getState().dirty).toBe(true);
+  });
+
+  it("loadModel marks the model dirty", () => {
+    useModelStore
+      .getState()
+      .loadModel({ features: [pointSource], receivers: [], calcArea: null });
+    expect(useModelStore.getState().dirty).toBe(true);
+  });
+
+  it("reset leaves the model clean", () => {
+    useModelStore.getState().addFeature(pointSource);
+    useModelStore.getState().reset();
+    expect(useModelStore.getState().dirty).toBe(false);
+  });
+
   it("addReceiver adds a receiver", () => {
     useModelStore.getState().addReceiver(receiver);
     expect(useModelStore.getState().receivers).toEqual([receiver]);

@@ -8,7 +8,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import { useProjectStatus } from "@/api";
+import { useProjectStatus } from "@/api/hooks";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +27,7 @@ import {
 import { Separator } from "@/ui/components/separator";
 import { ThemeToggle } from "@/ui/theme-toggle";
 import { LanguageToggle } from "@/ui/language-toggle";
+import { SaveStatus } from "@/ui/save-status";
 import { m } from "@/i18n/messages";
 
 const navMain = [
@@ -139,6 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex flex-1 items-center justify-between">
             <PageTitle />
             <div className="flex items-center gap-1">
+              <SaveStatus />
               <LanguageToggle />
               <ThemeToggle />
             </div>

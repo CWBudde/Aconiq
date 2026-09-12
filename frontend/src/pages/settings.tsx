@@ -15,8 +15,8 @@ import {
   Layers3,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
+import { backend } from "@/api/backend";
 import {
-  IS_WASM_MODE,
   clearAPIBaseURLOverride,
   getAPIBaseURL,
   hasAPIBaseURLOverride,
@@ -451,7 +451,7 @@ export default function SettingsPage() {
   const locale = getLocale();
   const location = useLocation();
   const navigate = useNavigate();
-  const [draftPresent, setDraftPresent] = useState(hasDraft());
+  const [draftPresent, setDraftPresent] = useState(() => hasDraft());
   const [apiBaseUrl, setApiBaseUrl] = useState(() => getAPIBaseURL());
   const [apiBaseUrlDraft, setApiBaseUrlDraft] = useState(() => getAPIBaseURL());
   const [apiBaseUrlOverridePresent, setApiBaseUrlOverridePresent] = useState(
@@ -459,9 +459,10 @@ export default function SettingsPage() {
   );
 
   const visibleApiBaseUrl = apiBaseUrl || "same-origin";
-  const runtimeLabel = IS_WASM_MODE
-    ? m.msg_runtime_wasm()
-    : m.msg_runtime_api();
+  const runtimeLabel =
+    backend.capabilities.kind === "browser"
+      ? m.msg_runtime_wasm()
+      : m.msg_runtime_api();
   const localeLabel = locale === "de" ? m.language_de() : m.language_en();
   const themeLabel =
     theme === "light"
