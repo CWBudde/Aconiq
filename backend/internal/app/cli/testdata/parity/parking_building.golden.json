@@ -1,0 +1,20 @@
+{
+  "receivers": [
+    {
+      "id": "rec-lot",
+      "x": 0,
+      "y": 90,
+      "height_m": 4,
+      "lr_day": 47.440098,
+      "lr_night": 44.701131
+    },
+    {
+      "id": "rec-side",
+      "x": 110,
+      "y": 90,
+      "height_m": 4,
+      "lr_day": 44.134933,
+      "lr_night": 41.348869
+    }
+  ]
+}

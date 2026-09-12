@@ -1,0 +1,112 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "road-plain",
+      "properties": {
+        "id": "road-plain",
+        "kind": "source",
+        "source_type": "line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-60, 0],
+          [60, 0]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "road-overridden",
+      "properties": {
+        "id": "road-overridden",
+        "kind": "source",
+        "source_type": "line",
+        "surface_type": "AB",
+        "road_speed_kph": 60,
+        "speed_lkw2_kph": 50,
+        "gradient_percent": 4,
+        "traffic_day_pkw": 1200,
+        "traffic_night_pkw": 200
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-60, 12],
+          [60, 12]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "screen",
+      "properties": {
+        "id": "screen",
+        "kind": "barrier",
+        "height_m": 5
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-40, 30],
+          [40, 30]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "block",
+      "properties": {
+        "id": "block",
+        "kind": "building",
+        "height_m": 12,
+        "reflection_loss_db": 0.5
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [-50, -25],
+              [-10, -25],
+              [-10, -15],
+              [-50, -15],
+              [-50, -25]
+            ]
+          ],
+          [
+            [
+              [10, -25],
+              [50, -25],
+              [50, -15],
+              [10, -15],
+              [10, -25]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "rec-near",
+      "properties": {
+        "id": "rec-near",
+        "kind": "receiver",
+        "height_m": 4
+      },
+      "geometry": { "type": "Point", "coordinates": [0, 45] }
+    },
+    {
+      "type": "Feature",
+      "id": "rec-far",
+      "properties": {
+        "id": "rec-far",
+        "kind": "receiver",
+        "height_m": 8
+      },
+      "geometry": { "type": "Point", "coordinates": [25, 80] }
+    }
+  ]
+}

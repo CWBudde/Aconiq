@@ -1,0 +1,102 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "rastanlage",
+      "properties": {
+        "id": "rastanlage",
+        "kind": "source",
+        "source_type": "area",
+        "rls19_parking_num_spaces": 200,
+        "rls19_parking_type": "lkw-omnibus",
+        "rls19_parking_facility_type": "tank-rastanlage"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-50, -25],
+            [50, -25],
+            [50, 25],
+            [-50, 25],
+            [-50, -25]
+          ],
+          [
+            [10, 0],
+            [40, 0],
+            [40, 20],
+            [10, 20],
+            [10, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "park-and-ride",
+      "properties": {
+        "id": "park-and-ride",
+        "kind": "source",
+        "source_type": "area",
+        "rls19_parking_num_spaces": 120,
+        "rls19_parking_type": "pkw",
+        "rls19_parking_facility_type": "park-and-ride",
+        "rls19_parking_movements_night": 0
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [80, -20],
+            [140, -20],
+            [140, 20],
+            [80, 20],
+            [80, -20]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "facade",
+      "properties": {
+        "id": "facade",
+        "kind": "building",
+        "height_m": 10
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-60, -60],
+            [60, -60],
+            [60, -50],
+            [-60, -50],
+            [-60, -60]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "rec-lot",
+      "properties": {
+        "id": "rec-lot",
+        "kind": "receiver",
+        "height_m": 4
+      },
+      "geometry": { "type": "Point", "coordinates": [0, 90] }
+    },
+    {
+      "type": "Feature",
+      "id": "rec-side",
+      "properties": {
+        "id": "rec-side",
+        "kind": "receiver",
+        "height_m": 4
+      },
+      "geometry": { "type": "Point", "coordinates": [110, 90] }
+    }
+  ]
+}
