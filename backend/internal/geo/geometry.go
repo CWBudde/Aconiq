@@ -1,6 +1,10 @@
 package geo
 
-import "math"
+import (
+	"math"
+
+	"github.com/aconiq/backend/internal/numeric"
+)
 
 // DistancePointToSegment returns the Euclidean distance from p to segment ab.
 func DistancePointToSegment(p, a, b Point2D) float64 {
@@ -197,4 +201,99 @@ func BBoxFromPolygon(rings [][]Point2D) (BBox, bool) {
 	}
 
 	return BBoxFromPoints(all)
+}
+
+// PolygonArea returns the plan-view area of a polygon in square units of the
+// projected CRS: the exterior ring less every hole. Rings format: rings[0] is
+// the exterior, rings[1:] are holes; rings should be closed. Winding order does
+// not matter — each ring contributes its absolute area. A polygon whose holes
+// exceed its exterior returns 0 rather than a negative area.
+//
+// The shoelace terms alternate in sign and their count scales with the ring, so
+// the reduction is compensated per docs/policies/determinism.md §3.
+func PolygonArea(rings [][]Point2D) float64 {
+	if len(rings) == 0 {
+		return 0
+	}
+
+	total := math.Abs(signedRingArea(rings[0]))
+	for _, hole := range rings[1:] {
+		total -= math.Abs(signedRingArea(hole))
+	}
+
+	if total < 0 {
+		return 0
+	}
+
+	return total
+}
+
+// PolygonCentroid returns the area centroid of a polygon's exterior ring, and
+// reports whether it is defined. It is false for a ring with fewer than four
+// points, for a degenerate ring enclosing no area, and for any ring whose
+// centroid is not finite — the cases where a caller must refuse the geometry
+// rather than place a source at an arbitrary point.
+//
+// Holes are ignored: the exterior ring is what positions an area source, and a
+// hole-aware centroid would move it off the footprint a caller actually drew.
+//
+// Like PolygonArea, the shoelace accumulation is compensated.
+func PolygonCentroid(rings [][]Point2D) (Point2D, bool) {
+	if len(rings) == 0 {
+		return Point2D{}, false
+	}
+
+	ring := rings[0]
+	if len(ring) < 4 {
+		return Point2D{}, false
+	}
+
+	var (
+		doubleArea numeric.CompensatedSum
+		cx         numeric.CompensatedSum
+		cy         numeric.CompensatedSum
+	)
+
+	for i := range len(ring) - 1 {
+		if !ring[i].IsFinite() || !ring[i+1].IsFinite() {
+			return Point2D{}, false
+		}
+
+		cross := ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y
+
+		doubleArea.Add(cross)
+		cx.Add((ring[i].X + ring[i+1].X) * cross)
+		cy.Add((ring[i].Y + ring[i+1].Y) * cross)
+	}
+
+	area2 := doubleArea.Sum()
+	if math.Abs(area2) < 1e-12 {
+		return Point2D{}, false
+	}
+
+	factor := 1.0 / (3.0 * area2)
+
+	point := Point2D{X: cx.Sum() * factor, Y: cy.Sum() * factor}
+	if !point.IsFinite() {
+		return Point2D{}, false
+	}
+
+	return point, true
+}
+
+// signedRingArea returns the signed shoelace area of one closed ring: positive
+// for counter-clockwise winding, negative for clockwise. Callers that only want
+// a magnitude take the absolute value.
+func signedRingArea(ring []Point2D) float64 {
+	if len(ring) < 3 {
+		return 0
+	}
+
+	var sum numeric.CompensatedSum
+
+	for i := range len(ring) - 1 {
+		sum.Add(ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y)
+	}
+
+	return 0.5 * sum.Sum()
 }
