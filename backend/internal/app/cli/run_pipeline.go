@@ -1,33 +1,17 @@
 package cli
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
-	"github.com/aconiq/backend/internal/engine"
-	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
-	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
-	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
-	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
-	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
-	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
-	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
-	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
-	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
-	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
-	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 	"github.com/aconiq/backend/internal/standards/framework"
-	"github.com/aconiq/backend/internal/standards/iso9613"
-	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
-	"github.com/aconiq/backend/internal/standards/schall03"
 	"github.com/spf13/cobra"
 )
 
@@ -61,44 +45,83 @@ func requireExperimentalOptIn(resolved framework.ResolvedProfile, experimental b
 	), nil)
 }
 
-//nolint:gocognit,cyclop,dupl,funlen,maintidx // This preserves the existing per-standard run orchestration while keeping newRunCommand thin.
+// preparedRun is a run that exists in the project manifest and has not
+// computed anything yet. Everything in it is settled before the first number is
+// produced, which is what lets the steps after it be about the run rather than
+// about validating the request.
+type preparedRun struct {
+	store        projectfs.Store
+	project      project.Project
+	run          project.Run
+	provenance   project.ProvenanceManifest
+	standard     framework.ResolvedProfile
+	params       map[string]string
+	modelPath    string
+	relModelPath string
+	runDir       string
+	log          *runLog
+}
+
 func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {
 		return domainerrors.New(domainerrors.KindInternal, "cli.run", "command state unavailable", nil)
 	}
 
-	params, err := parseKeyValueFlags(req.rawParams)
+	prepared, err := prepareRun(cmd, state, req)
 	if err != nil {
 		return err
+	}
+
+	result, err := computeRun(prepared, state, req)
+	if err != nil {
+		return err
+	}
+
+	err = completeRun(prepared, result)
+	if err != nil {
+		return err
+	}
+
+	return reportRunCompletion(cmd, state, prepared)
+}
+
+// prepareRun turns the request into a run the project knows about: it resolves
+// the standard, refuses what must be refused, and creates the manifest entry.
+//
+// Every refusal here happens before store.CreateRun, so a rejected run leaves
+// the project exactly as it found it — no manifest entry, no run directory, no
+// log.
+func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (preparedRun, error) {
+	params, err := parseKeyValueFlags(req.rawParams)
+	if err != nil {
+		return preparedRun{}, err
 	}
 
 	err = validateReceiverMode(req.receiverMode)
 	if err != nil {
-		return err
+		return preparedRun{}, err
 	}
 
 	registry, err := standards.NewRegistry()
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.run", "initialize standards registry", err)
+		return preparedRun{}, domainerrors.New(domainerrors.KindInternal, "cli.run", "initialize standards registry", err)
 	}
 
 	resolvedStandard, err := registry.Resolve(req.standardID, req.standardVersion, req.standardProfile)
 	if err != nil {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+		return preparedRun{}, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
 	}
 
 	resolvedParams, err := resolvedStandard.RunParameterSchema.NormalizeAndValidate(params)
 	if err != nil {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+		return preparedRun{}, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
 	}
 
-	// A tier whose levels are invented may not be run by accident. The gate sits
-	// ahead of store.CreateRun so that a refused run leaves the project exactly
-	// as it found it: no manifest entry, no run directory, no log.
+	// A tier whose levels are invented may not be run by accident.
 	err = requireExperimentalOptIn(resolvedStandard, req.experimental)
 	if err != nil {
-		return err
+		return preparedRun{}, err
 	}
 
 	// How far the numbers about to be produced may be trusted is stated before
@@ -109,21 +132,20 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 
 	store, err := projectfs.New(state.Config.ProjectPath)
 	if err != nil {
-		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
+		return preparedRun{}, fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
 	proj, err := store.Load()
 	if err != nil {
-		return fmt.Errorf("load project manifest: %w", err)
+		return preparedRun{}, fmt.Errorf("load project manifest: %w", err)
 	}
 
 	resolvedModelPath := resolvePath(store.Root(), req.modelPath)
 	relModelPath := relativePath(store.Root(), resolvedModelPath)
-	combinedInputs := mergeInputPaths(append([]string{relModelPath}, req.inputPaths...))
 
 	standardData, err := buildRunStandardData(resolvedStandard)
 	if err != nil {
-		return err
+		return preparedRun{}, err
 	}
 
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
@@ -139,729 +161,128 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		Parameters:    resolvedParams,
 		Metadata:      buildRunProvenanceMetadata(resolvedStandard, resolvedParams, req.receiverMode),
 		StandardData:  standardData,
-		InputPaths:    combinedInputs,
+		InputPaths:    mergeInputPaths(append([]string{relModelPath}, req.inputPaths...)),
 		Status:        project.RunStatusRunning,
 		LogLines: []string{
 			nowUTC().Format(time.RFC3339) + " run started",
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("create run for scenario %s: %w", req.scenarioID, err)
+		return preparedRun{}, fmt.Errorf("create run for scenario %s: %w", req.scenarioID, err)
 	}
 
-	logLines := []string{
-		run.StartedAt.Format(time.RFC3339) + " run started",
-		fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
-		fmt.Sprintf("%s evidence_tier=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.EvidenceTier),
-		fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
-		fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
-	}
+	return preparedRun{
+		store:        store,
+		project:      proj,
+		run:          run,
+		provenance:   provenance,
+		standard:     resolvedStandard,
+		params:       resolvedParams,
+		modelPath:    resolvedModelPath,
+		relModelPath: relModelPath,
+		runDir:       filepath.Join(store.Root(), ".noise", "runs", run.ID),
+		log: newRunLog(
+			run.StartedAt.Format(time.RFC3339)+" run started",
+			fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
+			fmt.Sprintf("%s evidence_tier=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.EvidenceTier),
+			fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
+			fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
+		),
+	}, nil
+}
 
-	model, err := loadValidatedModel(resolvedModelPath, proj.CRS, relModelPath)
+// computeRun loads the inputs and hands them to the standard's module. From
+// here on a failure is a failed run: it is recorded in the manifest and in the
+// log, rather than returned as if nothing had happened.
+func computeRun(prepared preparedRun, state commandState, req runCommandRequest) (runModuleResult, error) {
+	model, err := loadValidatedModel(prepared.modelPath, prepared.project.CRS, prepared.relModelPath)
 	if err != nil {
-		logLines = append(logLines, fmt.Sprintf("%s failed to load model: %v", nowUTC().Format(time.RFC3339), err))
-		return finalizeRunFailure(store, run, logLines, err)
+		prepared.log.addf("failed to load model: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
-	var terrainModel terrain.Model
-
-	if terrainArtifactPath := findArtifactPath(proj, "artifact-terrain"); terrainArtifactPath != "" {
-		tm, terrainErr := terrain.Load(filepath.Join(store.Root(), terrainArtifactPath))
-		if terrainErr != nil {
-			state.Logger.Warn("terrain DTM load failed, continuing without terrain", "error", terrainErr)
-			logLines = append(logLines, fmt.Sprintf("%s terrain load warning: %v", nowUTC().Format(time.RFC3339), terrainErr))
-		} else {
-			terrainModel = tm
-
-			logLines = append(logLines, fmt.Sprintf("%s terrain loaded from %s", nowUTC().Format(time.RFC3339), terrainArtifactPath))
-		}
-	}
-
-	runDir := filepath.Join(store.Root(), ".noise", "runs", run.ID)
-
-	var (
-		persisted     persistedRunOutputs
-		outputHash    string
-		finishedAt    time.Time
-		sourceCount   int
-		receiverCount int
-	)
-
-	switch resolvedStandard.StandardID {
-	case freefield.StandardID:
-		options, parseErr := parseDummyRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		sources, extractErr := extractDummySources(model, options.SourceEmission, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildDummyReceivers(sources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(sources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
-			if event.Stage == "compute" && event.Message == "chunk_done" {
-				logLines = append(logLines, fmt.Sprintf("%s stage=%s chunk=%d %d/%d", event.Time.Format(time.RFC3339), event.Stage, event.ChunkIndex, event.CompletedChunks, event.TotalChunks))
-				return
-			}
-
-			logLines = append(logLines, fmt.Sprintf("%s stage=%s message=%s", event.Time.Format(time.RFC3339), event.Stage, event.Message))
-		})
-
-		engineSources := make([]engine.Source, 0, len(sources))
-		for _, source := range sources {
-			engineSources = append(engineSources, engine.Source{
-				ID:       source.ID,
-				Point:    source.Point,
-				Emission: source.EmissionDB,
-			})
-		}
-
-		runOutput, runErr := engineRunner.Run(context.Background(), engine.RunConfig{
-			RunID:          run.ID,
-			Workers:        options.Workers,
-			ChunkSize:      options.ChunkSize,
-			CacheDir:       state.Config.CacheDir,
-			Receivers:      receivers,
-			Sources:        engineSources,
-			DisableCache:   options.DisableCache,
-			DeterminismTag: "dummy-freefield",
-		})
-		if runErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s engine failed: %v", nowUTC().Format(time.RFC3339), runErr))
-			return finalizeRunFailure(store, run, logLines, runErr)
-		}
-
-		persisted, err = persistDummyRunOutputs(runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(resolvedStandard.SupportedIndicators), resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-
-		outputHash = runOutput.OutputHash
-		finishedAt = runOutput.FinishedAt
-	case cnossosroad.StandardID:
-		options, parseErr := parseCnossosRoadRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		roadSources, extractErr := extractCnossosRoadSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosRoadReceivers(roadSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(roadSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := cnossosroad.ComputeReceiverOutputs(receivers, roadSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s cnossos compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosroad.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case cnossosrail.StandardID:
-		options, parseErr := parseCnossosRailRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		railSources, extractErr := extractCnossosRailSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract rail sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosRailReceivers(railSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(railSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s rail_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := cnossosrail.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s cnossos rail compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosrail.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case bubrail.StandardID:
-		// bub-rail is an alias module over cnossos-rail: its source, receiver and
-		// output types are Go type aliases of the CNOSSOS ones, so extraction and
-		// receiver building are reused verbatim. Only the parameter schema, the
-		// compute entry point and the exported result bundle are its own.
-		options, parseErr := parseBUBRailRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		railSources, extractErr := extractCnossosRailSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUB rail sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosRailReceivers(railSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(railSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s bub_rail_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := bubrail.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s bub rail compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubrail.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case bubindustry.StandardID:
-		// bub-industry is an alias module over cnossos-industry, on the same terms
-		// as bub-rail above.
-		options, parseErr := parseBUBIndustryRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		industrySources, extractErr := extractCnossosIndustrySources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUB industry sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosIndustryReceivers(industrySources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(industrySources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s bub_industry_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := bubindustry.ComputeReceiverOutputs(receivers, industrySources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s bub industry compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubindustry.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case bubroad.StandardID:
-		options, parseErr := parseBUBRoadRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		roadSources, extractErr := extractBUBRoadSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUB road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildBUBRoadReceivers(roadSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(roadSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s bub_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := bubroad.ComputeReceiverOutputs(receivers, roadSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s bub road compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bubroad.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case rls19road.StandardID:
-		options, parseErr := parseRLS19RoadRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		roadSources, sourceOverrideCount, extractErr := extractRLS19RoadSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract RLS-19 road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		barriers, extractErr := extractRLS19Barriers(model)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract RLS-19 barriers: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		buildings, extractErr := extractRLS19Buildings(model)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract RLS-19 buildings: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildRLS19RoadReceivers(roadSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(roadSources)
-		receiverCount = len(receivers)
-
-		logLines = append(
-			logLines,
-			fmt.Sprintf("%s rls19_road_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-			fmt.Sprintf("%s rls19_sources_with_feature_overrides=%d", nowUTC().Format(time.RFC3339), sourceOverrideCount),
-			fmt.Sprintf("%s rls19_barriers=%d", nowUTC().Format(time.RFC3339), len(barriers)),
-			fmt.Sprintf("%s rls19_buildings=%d", nowUTC().Format(time.RFC3339), len(buildings)),
-		)
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		propagationConfig := options.PropagationConfig()
-		propagationConfig.Buildings = buildings
-
-		if terrainModel != nil && len(receivers) > 0 {
-			centerX, centerY := receiverGridCenter(receivers)
-			propagationConfig.ReceiverTerrainZ = terrainElevationAt(terrainModel, centerX, centerY)
-		}
-
-		receiverOutputs, computeErr := rls19road.ComputeReceiverOutputs(receivers, roadSources, barriers, propagationConfig)
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s rls19 compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistRLS19RoadRunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, sourceOverrideCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case schall03.StandardID:
-		options, parseErr := parseSchall03RunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		schall03Result, computeErr := computeSchall03Run(model, options, resolvedStandard.SupportedSourceTypes, req.receiverMode)
-		logLines = append(logLines, schall03Result.LogLines...)
-
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s schall03 run failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		// Which chain ran is only knowable here, so the manifest is completed
-		// rather than guessed at CreateRun time.
-		err = store.MergeRunProvenanceMetadata(run.ID, schall03.ResolvedProvenanceMetadata(schall03Result.Engine))
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to record resolved engine in provenance: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-
-		sourceCount = schall03Result.SourceCount
-
-		persisted, outputHash, finishedAt, err = persistSchall03RunOutputs(
-			runDir,
-			schall03Result.Outputs,
-			schall03Result.GridWidth,
-			schall03Result.GridHeight,
-			sourceCount,
-			req.receiverMode,
-			schall03Result.Engine,
-			resolvedStandard.EvidenceTier,
-		)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case bebexposure.StandardID:
-		if req.receiverMode == receiverModeCustom {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.run", "custom receiver mode is not supported for building exposure runs", nil)
-		}
-
-		options, parseErr := parseBEBExposureRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		buildings, extractErr := extractBEBBuildings(model, options)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract BEB buildings: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receiverCount = len(buildings)
-
-		var (
-			buildingOutputs []bebexposure.BuildingExposureOutput
-			summary         bebexposure.Summary
-		)
-
-		switch options.UpstreamMappingStandard {
-		case bebexposure.UpstreamStandardBUBRoad:
-			roadSources, extractErr := extractBUBRoadSources(model, options.BUBRoadOptions(), []string{modelgeojson.SourceTypeLine})
-			if extractErr != nil {
-				logLines = append(logLines, fmt.Sprintf("%s failed to extract BEB upstream road sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-				return finalizeRunFailure(store, run, logLines, extractErr)
-			}
-
-			sourceCount = len(roadSources)
-			logLines = append(
-				logLines,
-				fmt.Sprintf("%s beb_upstream_standard=%s", nowUTC().Format(time.RFC3339), options.UpstreamMappingStandard),
-				fmt.Sprintf("%s beb_upstream_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-				fmt.Sprintf("%s beb_buildings=%d", nowUTC().Format(time.RFC3339), receiverCount),
-			)
-
-			buildingOutputs, summary, err = bebexposure.ComputeOutputs(
-				buildings,
-				roadSources,
-				options.ExposureConfig(),
-				options.BUBRoadOptions().PropagationConfig(),
-				options.FacadeReceiverHeightM,
-			)
-		case bebexposure.UpstreamStandardBUFAircraft:
-			aircraftSources, extractErr := extractBUFAircraftSources(model, options.BUFAircraftOptions(), []string{modelgeojson.SourceTypeLine})
-			if extractErr != nil {
-				logLines = append(logLines, fmt.Sprintf("%s failed to extract BEB upstream aircraft sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-				return finalizeRunFailure(store, run, logLines, extractErr)
-			}
-
-			sourceCount = len(aircraftSources)
-			logLines = append(
-				logLines,
-				fmt.Sprintf("%s beb_upstream_standard=%s", nowUTC().Format(time.RFC3339), options.UpstreamMappingStandard),
-				fmt.Sprintf("%s beb_upstream_sources=%d", nowUTC().Format(time.RFC3339), sourceCount),
-				fmt.Sprintf("%s beb_buildings=%d", nowUTC().Format(time.RFC3339), receiverCount),
-			)
-
-			buildingOutputs, summary, err = bebexposure.ComputeOutputsFromAircraft(
-				buildings,
-				aircraftSources,
-				options.ExposureConfig(),
-				options.BUFAircraftOptions().PropagationConfig(),
-				options.FacadeReceiverHeightM,
-			)
-		default:
-			err = domainerrors.New(
-				domainerrors.KindUserInput,
-				"cli.run",
-				fmt.Sprintf("unsupported BEB upstream_mapping_standard %q", options.UpstreamMappingStandard),
-				nil,
-			)
-		}
-
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s beb exposure compute failed: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-
-		persisted, outputHash, finishedAt, err = persistBEBExposureRunOutputs(runDir, buildingOutputs, summary, sourceCount, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case bufaircraft.StandardID:
-		options, parseErr := parseBUFAircraftRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		aircraftSources, extractErr := extractBUFAircraftSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract BUF aircraft sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildBUFAircraftReceivers(aircraftSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(aircraftSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s buf_aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s buf aircraft compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(bufaircraft.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case cnossosaircraft.StandardID:
-		options, parseErr := parseCnossosAircraftRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		aircraftSources, extractErr := extractCnossosAircraftSources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract aircraft sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosAircraftReceivers(aircraftSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(aircraftSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s aircraft_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := cnossosaircraft.ComputeReceiverOutputs(receivers, aircraftSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s cnossos aircraft compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosaircraft.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case cnossosindustry.StandardID:
-		options, parseErr := parseCnossosIndustryRunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		industrySources, extractErr := extractCnossosIndustrySources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract industry sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildCnossosIndustryReceivers(industrySources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(industrySources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s industry_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := cnossosindustry.ComputeReceiverOutputs(receivers, industrySources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s cnossos industry compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistENDRunOutputs(cnossosindustry.StandardID, runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	case iso9613.StandardID:
-		options, parseErr := parseISO9613RunOptions(resolvedParams)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		pointSources, extractErr := extractISO9613Sources(model, options, resolvedStandard.SupportedSourceTypes)
-		if extractErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to extract ISO 9613 point sources: %v", nowUTC().Format(time.RFC3339), extractErr))
-			return finalizeRunFailure(store, run, logLines, extractErr)
-		}
-
-		receivers, gridWidth, gridHeight, receiverErr := resolveReceiverSet(req.receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-			return buildISO9613Receivers(pointSources, options)
-		})
-		if receiverErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to build receivers: %v", nowUTC().Format(time.RFC3339), receiverErr))
-			return finalizeRunFailure(store, run, logLines, receiverErr)
-		}
-
-		sourceCount = len(pointSources)
-		receiverCount = len(receivers)
-
-		logLines = append(logLines, fmt.Sprintf("%s iso9613_sources=%d", nowUTC().Format(time.RFC3339), sourceCount))
-		if req.receiverMode == receiverModeCustom {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d set=%s", nowUTC().Format(time.RFC3339), receiverCount, explicitReceiverSetID))
-		} else {
-			logLines = append(logLines, fmt.Sprintf("%s receivers=%d grid=%dx%d", nowUTC().Format(time.RFC3339), receiverCount, gridWidth, gridHeight))
-		}
-
-		receiverOutputs, computeErr := iso9613.ComputeReceiverOutputs(receivers, pointSources, options.PropagationConfig())
-		if computeErr != nil {
-			logLines = append(logLines, fmt.Sprintf("%s iso9613 compute failed: %v", nowUTC().Format(time.RFC3339), computeErr))
-			return finalizeRunFailure(store, run, logLines, computeErr)
-		}
-
-		persisted, outputHash, finishedAt, err = persistISO9613RunOutputs(runDir, receiverOutputs, gridWidth, gridHeight, sourceCount, req.receiverMode, resolvedStandard.EvidenceTier)
-		if err != nil {
-			logLines = append(logLines, fmt.Sprintf("%s failed to persist outputs: %v", nowUTC().Format(time.RFC3339), err))
-			return finalizeRunFailure(store, run, logLines, err)
-		}
-	default:
-		// Unreachable: every ID the registry offers has a case above, and
-		// TestEveryRegisteredStandardCompletesARun fails the moment one does not.
-		// The branch stays as the defensive fallback for that test being wrong.
-		runErr := domainerrors.New(
-			domainerrors.KindUserInput,
-			"cli.run",
-			fmt.Sprintf("standard %q is registered but not wired in run pipeline yet", resolvedStandard.StandardID),
-			nil,
-		)
-
-		logLines = append(logLines, fmt.Sprintf("%s run wiring missing: %v", nowUTC().Format(time.RFC3339), runErr))
-
-		return finalizeRunFailure(store, run, logLines, runErr)
-	}
-
-	artifacts := buildRunArtifacts(store.Root(), run.ID, persisted)
-	logLines = append(
-		logLines,
-		fmt.Sprintf("%s output_hash=%s", nowUTC().Format(time.RFC3339), outputHash),
-		fmt.Sprintf("%s persisted=%s", nowUTC().Format(time.RFC3339), relativePath(store.Root(), persisted.SummaryPath)),
-		nowUTC().Format(time.RFC3339)+" run completed",
-	)
-
-	err = finalizeRun(store, run, project.RunStatusCompleted, finishedAt, logLines, artifacts)
+	module, err := runModuleFor(prepared.standard.StandardID)
 	if err != nil {
-		return err
+		prepared.log.addf("run wiring missing: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
+
+	result, err := module(runModuleInput{
+		standard:     prepared.standard,
+		params:       prepared.params,
+		model:        model,
+		terrain:      loadRunTerrain(prepared, state),
+		receiverMode: req.receiverMode,
+		runDir:       prepared.runDir,
+		runID:        prepared.run.ID,
+		cacheDir:     state.Config.CacheDir,
+		log:          prepared.log,
+		mergeProvenance: func(metadata map[string]string) error {
+			return prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, metadata)
+		},
+	})
+	if err != nil {
+		// A failure before the module touched anything leaves the run as it
+		// found it; anything else is a failed run and is recorded as one.
+		var before beforeRunError
+		if errors.As(err, &before) {
+			return runModuleResult{}, before.err
+		}
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
+	}
+
+	return result, nil
+}
+
+// loadRunTerrain returns the project's imported DTM, or nil. A terrain that
+// fails to load is a warning rather than a failure: the run continues without
+// elevation, and says so in both the log and the structured logger.
+func loadRunTerrain(prepared preparedRun, state commandState) terrain.Model {
+	artifactPath := findArtifactPath(prepared.project, "artifact-terrain")
+	if artifactPath == "" {
+		return nil
+	}
+
+	model, err := terrain.Load(filepath.Join(prepared.store.Root(), artifactPath))
+	if err != nil {
+		state.Logger.Warn("terrain DTM load failed, continuing without terrain", "error", err)
+		prepared.log.addf("terrain load warning: %v", err)
+
+		return nil
+	}
+
+	prepared.log.addf("terrain loaded from %s", artifactPath)
+
+	return model
+}
+
+// completeRun records the finished run: its artifacts, its closing log lines
+// and its status.
+func completeRun(prepared preparedRun, result runModuleResult) error {
+	artifacts := buildRunArtifacts(prepared.store.Root(), prepared.run.ID, result.persisted)
+
+	prepared.log.addf("output_hash=%s", result.outputHash)
+	prepared.log.addf("persisted=%s", relativePath(prepared.store.Root(), result.persisted.SummaryPath))
+	prepared.log.addf("run completed")
+
+	return finalizeRun(prepared.store, prepared.run, project.RunStatusCompleted, result.finishedAt, prepared.log.all(), artifacts)
+}
+
+// reportRunCompletion writes what the operator sees, in whichever form they
+// asked for.
+func reportRunCompletion(cmd *cobra.Command, state commandState, prepared preparedRun) error {
+	run := prepared.run
+	resultsPath := relativePath(prepared.store.Root(), filepath.Join(prepared.runDir, "results"))
 
 	state.Logger.Info(
 		"run completed",
 		"run_id", run.ID,
 		"status", project.RunStatusCompleted,
 		"standard_id", run.Standard.ID,
-		"provenance", provenance.ManifestPath,
-		"output_hash", outputHash,
+		"provenance", prepared.provenance.ManifestPath,
 	)
 
 	if state.Config.JSONLogs {
@@ -873,15 +294,15 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 			"standard":         run.Standard.ID,
 			"standard_version": run.Standard.Version,
 			"standard_profile": run.Standard.Profile,
-			evidenceTierKey:    string(resolvedStandard.EvidenceTier),
-			"provenance_path":  provenance.ManifestPath,
-			"results_path":     relativePath(store.Root(), filepath.Join(runDir, "results")),
+			evidenceTierKey:    string(prepared.standard.EvidenceTier),
+			"provenance_path":  prepared.provenance.ManifestPath,
+			"results_path":     resultsPath,
 		})
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Completed run %s (%s)\n", run.ID, project.RunStatusCompleted)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Provenance: %s\n", provenance.ManifestPath)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results: %s\n", relativePath(store.Root(), filepath.Join(runDir, "results")))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Provenance: %s\n", prepared.provenance.ManifestPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results: %s\n", resultsPath)
 
 	return nil
 }
