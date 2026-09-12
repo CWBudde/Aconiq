@@ -15,6 +15,14 @@ import (
 //
 // Each case below carries two malformed properties and names the one that must
 // win, so the pair of cases per extractor brackets the table from both ends.
+//
+// The two road extractors get two cases more each, because their tables hold
+// the same twenty properties in two different orders and only the interior of
+// the table tells them apart: cnossos-road decodes the speed before the
+// junction type and all three powered-two-wheeler counts last, while bub-road
+// decodes the junction type first and each powered-two-wheeler count with its
+// own period. Those two differences are the whole of what separates the two
+// road tables, so nothing else would notice if one of them drifted.
 
 func overrideModel(t *testing.T, kind, sourceType, geometry, properties string) modelgeojson.Model {
 	t.Helper()
@@ -92,6 +100,30 @@ func TestExtractOverrideErrorPrecedence(t *testing.T) {
 				return err
 			},
 			want: `cli.extractCnossosRoadSources: feature "f-1": property "traffic_night_ptw_vph": must be a finite number`,
+		},
+		{
+			name:       "cnossos road decodes the speed before the junction type",
+			kind:       "source",
+			sourceType: `, "source_type": "line"`,
+			geometry:   lineGeometry,
+			properties: `"road_junction_type": 5, "road_speed_kph": "fast"`,
+			extract: func(m modelgeojson.Model) error {
+				_, err := extractCnossosRoadSources(m, cnossosRoadRunOptions{}, []string{"line"})
+				return err
+			},
+			want: `cli.extractCnossosRoadSources: feature "f-1": property "road_speed_kph": must be a finite number`,
+		},
+		{
+			name:       "cnossos road decodes the powered-two-wheeler counts after every other period count",
+			kind:       "source",
+			sourceType: `, "source_type": "line"`,
+			geometry:   lineGeometry,
+			properties: `"traffic_day_ptw_vph": "many", "traffic_night_light_vph": "many"`,
+			extract: func(m modelgeojson.Model) error {
+				_, err := extractCnossosRoadSources(m, cnossosRoadRunOptions{}, []string{"line"})
+				return err
+			},
+			want: `cli.extractCnossosRoadSources: feature "f-1": property "traffic_night_light_vph": must be a finite number`,
 		},
 		{
 			name:       "cnossos rail first override wins",
@@ -188,6 +220,30 @@ func TestExtractOverrideErrorPrecedence(t *testing.T) {
 				return err
 			},
 			want: `cli.extractBUBRoadSources: feature "f-1": property "traffic_night_ptw_vph": must be a finite number`,
+		},
+		{
+			name:       "bub road decodes the junction type before the speed",
+			kind:       "source",
+			sourceType: `, "source_type": "line"`,
+			geometry:   lineGeometry,
+			properties: `"road_junction_type": 5, "road_speed_kph": "fast"`,
+			extract: func(m modelgeojson.Model) error {
+				_, err := extractBUBRoadSources(m, bubRoadRunOptions{}, []string{"line"})
+				return err
+			},
+			want: `cli.extractBUBRoadSources: feature "f-1": property "road_junction_type" must be a string`,
+		},
+		{
+			name:       "bub road decodes each powered-two-wheeler count with its own period",
+			kind:       "source",
+			sourceType: `, "source_type": "line"`,
+			geometry:   lineGeometry,
+			properties: `"traffic_day_ptw_vph": "many", "traffic_night_light_vph": "many"`,
+			extract: func(m modelgeojson.Model) error {
+				_, err := extractBUBRoadSources(m, bubRoadRunOptions{}, []string{"line"})
+				return err
+			},
+			want: `cli.extractBUBRoadSources: feature "f-1": property "traffic_day_ptw_vph": must be a finite number`,
 		},
 		{
 			name:       "cnossos industry first override wins",
