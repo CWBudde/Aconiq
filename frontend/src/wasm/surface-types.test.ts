@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { BROWSER_STANDARDS } from "@/api/browser-backend";
 import { RLS19_SURFACE_TYPES } from "@/model/source-acoustics";
 
 /**
@@ -65,5 +66,51 @@ describe("RLS-19 SurfaceType lists", () => {
     // is the field's absent state, not an option.
     const selectable = goSurfaceTypes().filter((value) => value !== "");
     expect([...RLS19_SURFACE_TYPES]).toEqual(selectable);
+  });
+});
+
+/** `supported_source_types` of the Go rls19-road descriptor. */
+function goSupportedSourceTypes(): string[] {
+  const source = repoFile(
+    "../../../backend/internal/standards/rls19/road/model.go",
+  );
+  const match = /SupportedSourceTypes:\s*\[\]string\{([^}]*)\}/.exec(source);
+  expect(
+    match,
+    "SupportedSourceTypes not found in rls19/road/model.go",
+  ).not.toBeNull();
+  return [...(match?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1] ?? "");
+}
+
+/** One parameter's `enum` from the hardcoded browser descriptor. */
+function browserParameterEnum(name: string): string[] {
+  const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
+  const parameter = profile?.parameters.find((p) => p.name === name);
+  expect(
+    parameter,
+    `parameter ${name} not found in BROWSER_STANDARDS`,
+  ).toBeDefined();
+  return [...(parameter?.enum ?? [])];
+}
+
+/**
+ * The browser declares its own `rls19-road` descriptor because the kernel does
+ * not expose one yet. It is therefore a hand-maintained copy of the Go
+ * descriptor, and it has drifted: before these tests it offered 9 of the 17
+ * surfaces and claimed to support line sources only, long after the Go module
+ * started accepting `area` features as Parkplätze.
+ */
+describe("browser rls19-road descriptor", () => {
+  it("supports the same source types the Go descriptor does", () => {
+    const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
+    expect([...(profile?.supported_source_types ?? [])].sort()).toEqual(
+      [...goSupportedSourceTypes()].sort(),
+    );
+  });
+
+  it("offers every selectable surface, not a subset", () => {
+    expect(browserParameterEnum("surface_type")).toEqual([
+      ...RLS19_SURFACE_TYPES,
+    ]);
   });
 });

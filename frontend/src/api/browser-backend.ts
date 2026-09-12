@@ -96,7 +96,7 @@ type OverpassResponse = {
 
 const urlCache = new Map<string, string>();
 
-const BROWSER_STANDARDS: StandardDescriptor[] = [
+export const BROWSER_STANDARDS: StandardDescriptor[] = [
   {
     id: "rls19-road",
     description:
