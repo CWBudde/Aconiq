@@ -1104,6 +1104,56 @@ deleted export copies. Of the 28 directives, 18 are named `gosec`, 8 are the gen
 coefficient tables in `schall03/beiblatt1.go`, one is `tagliatelle`, and exactly one is left in
 `app/cli`: the five-linter directive on `executeRunCommand`, which `framework.Module` owns.
 
+## Run-module dispatch pass — 2026-09-12
+
+**Verdict: the five-linter directive on `executeRunCommand` is gone, and nothing replaced it.**
+`internal/app/cli` now carries no complexity or duplication suppression at all.
+
+`//nolint:gocognit,cyclop,dupl,funlen,maintidx` sat on a 562-line `switch` that spelled out the same
+seven steps — parse options, extract sources, resolve receivers, log the counts, compute, persist —
+once per standard. `runModuleTable` maps a standard id onto a `runModule` instead; nine of the
+thirteen entries are a `receiverRunModule[Opt, Src, Out]` whose per-standard part is five functions
+and three log strings, and the four that differ in kind (the engine-driven dummy, RLS-19's barriers
+and buildings, Schall 03's resolved chain, BEB's per-building aggregation) are named functions.
+`run_pipeline.go` went 887 → 238 lines.
+
+Splitting `executeRunCommand` afterwards was not optional and not a suppression either: with the
+switch gone it still measured `cyclop` 21 (max 15) and `funlen` 74 statements (max 40), because it
+had always been two jobs — validating a request and running it. It is now `prepareRun`,
+`computeRun`, `loadRunTerrain`, `completeRun` and `reportRunCompletion`, each named for what it
+does, and every one of them is under the limits without help.
+
+### What proves it changed nothing
+
+The 13 digest goldens and all 69 snapshots are unmoved, and the run log is byte-identical by
+construction: `runLog` stamps every line the way the pipeline did, and each module logs its own
+failure line with the same wording before returning. Two behaviours were preserved deliberately
+rather than tidied:
+
+- A failure in option parsing, or BEB's refusal of custom receiver mode, still returns without
+  marking the run failed — the run is left in `running`. That is what the switch did.
+  `beforeRunError` carries the distinction rather than leaving it implicit. Whether it is right
+  belongs to `PLAN.md` Priority 3's exit-code taxonomy.
+- Schall 03 still merges its resolved engine into provenance **before** persisting, so a failure
+  there leaves no results behind. That is why `mergeProvenance` is a callback on the module input
+  and not a field on its result.
+
+`gocyclo`'s hidden count fell 5 → 4 with the split.
+
+### Where this leaves `just lint`, after the run-module dispatch
+
+| Still hidden  | Findings | Was (2026-09-12, END indicator pass) | Mechanism                                  |
+| ------------- | -------: | -----------------------------------: | ------------------------------------------ |
+| `goconst`     |   **62** |                                   62 | two named, path+value-scoped rules         |
+| `noinlineerr` |  **104** |                                  104 | `linters.disable`; declined in writing     |
+| gosec G304    |   **47** |                                   47 | one explicit named rule                    |
+| `//nolint`    |   **27** |                                   28 | in-source directives                       |
+| `gocyclo`     |    **4** |                                    5 | `linters.disable`; redundant with `cyclop` |
+
+**244, from 557 when the debt item opened.** The 27 directives are 18 named `gosec`, the 8 genuine
+`dupl` coefficient tables in `schall03/beiblatt1.go`, and one `tagliatelle`. Four of the `gosec`
+ones are in `internal/app/cli`, and they are the only directives left there.
+
 ## Reproducing these numbers
 
 ```bash
