@@ -372,5 +372,7 @@
   "dialog_title_model_invalid": "Model invalid",
   "dialog_desc_model_invalid": "The project refused the model. Fix the findings below and save again.",
   "label_feature_id": "Feature ID",
-  "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first."
+  "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
+  "nav_primary_label": "Main navigation",
+  "action_skip_to_content": "Skip to content"
 }

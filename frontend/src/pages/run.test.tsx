@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { StandardDescriptor } from "@/api/client";
+import type { RunSummary, StandardDescriptor } from "@/api/client";
 import {
   APIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
@@ -22,12 +22,14 @@ import { m } from "@/i18n/messages";
 const state = vi.hoisted(() => {
   const value: {
     standards: unknown[];
+    runs: unknown[];
     runSpecs: Record<string, unknown>[];
     createRunError: Error | null;
     runsAgainstSavedModel: boolean;
     savedModels: unknown[];
   } = {
     standards: [],
+    runs: [],
     runSpecs: [],
     createRunError: null,
     runsAgainstSavedModel: true,
@@ -57,7 +59,7 @@ vi.mock("@/api/hooks", () => ({
     isLoading: false,
     error: null,
   }),
-  useRuns: () => ({ data: [], isLoading: false, error: null }),
+  useRuns: () => ({ data: state.runs, isLoading: false, error: null }),
   useRunLog: () => ({ data: { run_id: "", lines: [] }, isLoading: false }),
   useCreateRun: () => ({
     mutate: (spec: Record<string, unknown>) => {
@@ -163,6 +165,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   state.standards = [];
+  state.runs = [];
   state.runSpecs = [];
   state.createRunError = null;
   state.runsAgainstSavedModel = true;
@@ -440,5 +443,39 @@ describe("RunPage calculation area", () => {
 
     expect(screen.getByText(m.msg_calc_area_active())).toBeInTheDocument();
     expect(screen.queryByTestId("calc-area-not-in-project")).toBeNull();
+  });
+});
+
+describe("RunPage heading order", () => {
+  const completedRun: RunSummary = {
+    id: "run-1",
+    scenario_id: "default",
+    standard_id: "rls19-road",
+    version: "1",
+    profile: "default",
+    status: "completed",
+    started_at: "2026-01-01T10:00:00Z",
+    finished_at: "2026-01-01T10:00:05Z",
+    log_path: "runs/run-1/run.log",
+    artifacts: [],
+  };
+
+  it("keeps heading levels contiguous with a run selected", () => {
+    // Only a selected run renders the detail panel, and that is where the
+    // levels once skipped from the page's h2 to h4 (axe `heading-order`).
+    // The shell's h1 sits above this page, so a level of 2 is the entry.
+    state.runs = [completedRun];
+    state.standards = [standard("rls19-road", "normative")];
+    render(<RunPage />);
+
+    const levels = screen
+      .getAllByRole("heading")
+      .map((h) => Number(h.tagName.slice(1)));
+    expect(levels).toContain(3);
+    let deepest = 1;
+    for (const level of levels) {
+      expect(level).toBeLessThanOrEqual(deepest + 1);
+      deepest = Math.max(deepest, level);
+    }
   });
 });
