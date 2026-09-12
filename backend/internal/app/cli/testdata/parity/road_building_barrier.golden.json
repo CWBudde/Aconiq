@@ -1,0 +1,20 @@
+{
+  "receivers": [
+    {
+      "id": "rec-near",
+      "x": 0,
+      "y": 45,
+      "height_m": 4,
+      "lr_day": 59.722456,
+      "lr_night": 53.350433
+    },
+    {
+      "id": "rec-far",
+      "x": 25,
+      "y": 80,
+      "height_m": 8,
+      "lr_day": 60.509697,
+      "lr_night": 54.140386
+    }
+  ]
+}

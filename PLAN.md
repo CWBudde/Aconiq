@@ -479,13 +479,18 @@ Three consequences fell out of the work:
       behind a building is computed as if the building were absent. Reflection alone is the wrong
       half to ship on by default, which is why the reflector role is opt-in — but the shielding
       half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
-- [ ] **Browser-CLI parity is pinned by name, not by number.** `browser-backend.ts` now builds road
-      sources, barriers, buildings and Parkplätze from the same model the CLI reads, and four
-      vocabularies are pinned against the Go source from vitest. What none of that catches is a
-      wrong _level_: the frontend CI job builds no wasm, so nothing has ever compared a browser
-      result against a CLI golden. It needs `just wasm-build` in `frontend-ci.yml` plus either a
-      Node `wasm_exec` harness or a Playwright spec. Terrain, explicit reflectors and per-direction
-      sources are still CLI-only.
+- [ ] **Browser mode and the CLI order the receiver table differently.** Found by the parity
+      comparison on its first run, and left standing rather than papered over: in the `custom`
+      receiver mode `extractExplicitReceivers` keeps receivers in model order while
+      `browser-backend.ts` sorts them by id, so for the same model the two targets emit the
+      receiver table's rows in different orders — and `output_hash` is computed over that order.
+      The levels agree receiver for receiver, so no assessed level is affected, but picking a
+      winner changes the hash of every browser run already made. That is a decision, not a fix.
+      `browser-parity.test.ts` pins the current behaviour of both sides meanwhile.
+- [ ] **Terrain, explicit reflectors and per-direction sources are still CLI-only.** Browser mode
+      builds road sources, barriers, buildings and Parkplätze, and `wasm/types.ts` now mirrors the
+      terrain and reflector types because the kernel accepts them — but no model can express them
+      in the browser, so the parity fixtures cannot cover them.
 - [ ] **No terrain on the Schall 03 propagation path.** `elevation_m` is per segment and h_m falls
       back to the flat-ground special case (deviation 4 in the conformance declaration), even when
       the project carries a DTM the RLS-19 path already reads.

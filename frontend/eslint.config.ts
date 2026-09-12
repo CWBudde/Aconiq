@@ -12,6 +12,11 @@ export default tseslint.config(
       "vite.config.ts",
       "vitest.config.ts",
       "src/i18n/**",
+      // Build outputs, not sources: `just wasm-build` copies Go's wasm_exec.js
+      // into public/ and it is gitignored. It only became visible to eslint
+      // when the frontend gate started building the kernel, and it is not ours
+      // to lint or to add to tsconfig.
+      "public/",
     ],
   },
   js.configs.recommended,

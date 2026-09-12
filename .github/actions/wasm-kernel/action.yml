@@ -1,0 +1,29 @@
+name: WASM kernel
+description: >
+  Build the Aconiq compute kernel for js/wasm and place it, together with Go's
+  matching wasm_exec.js, where the frontend expects them. Mirrors the
+  `wasm-build` recipe in the justfile; three workflows needed the same two
+  commands, so they live here once.
+
+runs:
+  using: composite
+  steps:
+    # go-version-file rather than a pin: the kernel must be built by the same
+    # toolchain the rest of the Go tree is, or wasm_exec.js and the module can
+    # disagree about the ABI between them.
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: backend/go.mod
+
+    - name: Build the kernel
+      shell: bash
+      working-directory: backend
+      run: GOOS=js GOARCH=wasm go build -o ../frontend/public/aconiq.wasm ./cmd/wasm
+
+    # wasm_exec.js ships with the toolchain and must come from the same one that
+    # compiled the module above, which is why it is copied rather than vendored.
+    # Both artifacts are gitignored.
+    - name: Copy wasm_exec.js
+      shell: bash
+      run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" frontend/public/wasm_exec.js
