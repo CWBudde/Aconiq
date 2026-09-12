@@ -68,7 +68,6 @@
   "status_import_complete": "Import abgeschlossen",
   "status_loading": "Lade...",
   "status_locating": "Lade Standort...",
-  "status_path_copied": "Kopiert!",
   "status_validation_errors": "Validierungsfehler",
   "status_validation_warnings": "Warnung(en)",
 
@@ -199,8 +198,6 @@
   "tooltip_cancel": "Abbrechen",
   "tooltip_close_editor": "Editor schließen",
   "tooltip_toggle_theme": "Design wechseln",
-  "tooltip_cancel_run": "Berechnungen werden über die CLI gestartet — aconiq-Prozess zum Abbrechen beenden.",
-  "tooltip_cancel_not_running": "Nur laufende Berechnungen können abgebrochen werden",
   "tooltip_undo": "Rückgängig (Strg+Z)",
   "tooltip_redo": "Wiederherstellen (Strg+Umschalt+Z)",
 

@@ -68,7 +68,6 @@
   "status_import_complete": "Import Complete",
   "status_loading": "Loading…",
   "status_locating": "Locating…",
-  "status_path_copied": "Copied!",
   "status_validation_errors": "validation error(s)",
   "status_validation_warnings": "warning(s)",
 
@@ -199,8 +198,6 @@
   "tooltip_cancel": "Cancel",
   "tooltip_close_editor": "Close editor",
   "tooltip_toggle_theme": "Toggle theme",
-  "tooltip_cancel_run": "Runs are started from the CLI — kill the aconiq process to cancel.",
-  "tooltip_cancel_not_running": "Only running jobs can be cancelled",
   "tooltip_undo": "Undo (Ctrl+Z)",
   "tooltip_redo": "Redo (Ctrl+Shift+Z)",
 
