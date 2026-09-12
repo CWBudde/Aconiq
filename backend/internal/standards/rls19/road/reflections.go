@@ -121,15 +121,27 @@ func (r Reflector) effectiveLoss() float64 {
 }
 
 // reflectedPath holds one reflected sound path from source to receiver.
+//
+// imagePoint and reflectorIDs exist so the path can be attenuated like any
+// other path. RLS-19 Nr. 3.5 states that the source of a propagation
+// calculation may itself be a Spiegelschallquelle, so the mirrored path takes
+// the same Eq. 11 chain the direct one does — and the shielding calculation
+// needs the image position to run from, plus the identity of the surfaces it
+// bounced off, because a reflected ray crosses its own reflector by
+// construction. See barriersExcluding.
 type reflectedPath struct {
 	planDistM  float64 // plan-view distance of the full reflected path [m]
 	slantDistM float64 // 3D slant distance [m]
 	lossDB     float64 // total reflection loss (sum over all bounces) [dB]
+
+	imagePoint   geo.Point2D // final image source position (1st or 2nd order)
+	reflectorIDs []string    // reflectors this path bounced off, in bounce order
 }
 
 // wallSeg is an internal view of one wall segment from a Reflector.
 type wallSeg struct {
 	a, b    geo.Point2D
+	ownerID string  // ID of the Reflector this segment came from
 	loss    float64 // per-reflection loss for this wall
 	heightM float64 // wall top height above ground [m]
 }
@@ -143,6 +155,7 @@ func reflectorWalls(reflectors []Reflector) []wallSeg {
 			walls = append(walls, wallSeg{
 				a:       r.Geometry[i],
 				b:       r.Geometry[i+1],
+				ownerID: r.ID,
 				loss:    r.effectiveLoss(),
 				heightM: r.HeightM,
 			})
@@ -234,9 +247,11 @@ func firstOrderReflections(source, receiver geo.Point2D, sourceZ, dz float64, wa
 
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 		paths = append(paths, reflectedPath{
-			planDistM:  planDist,
-			slantDistM: slantDist,
-			lossDB:     w.loss, // D_RV1 for this 1st-order path (RLS-19 Eq. 2)
+			planDistM:    planDist,
+			slantDistM:   slantDist,
+			lossDB:       w.loss, // D_RV1 for this 1st-order path (RLS-19 Eq. 2)
+			imagePoint:   img,
+			reflectorIDs: []string{w.ownerID},
 		})
 	}
 
@@ -297,9 +312,11 @@ func secondOrderReflections(source, receiver geo.Point2D, sourceZ, dz float64, w
 
 			slantDist := math.Sqrt(planDist*planDist + dz*dz)
 			paths = append(paths, reflectedPath{
-				planDistM:  planDist,
-				slantDistM: slantDist,
-				lossDB:     w1.loss + w2.loss, // D_RV1 + D_RV2 (RLS-19 Eq. 3)
+				planDistM:    planDist,
+				slantDistM:   slantDist,
+				lossDB:       w1.loss + w2.loss, // D_RV1 + D_RV2 (RLS-19 Eq. 3)
+				imagePoint:   img2,
+				reflectorIDs: []string{w1.ownerID, w2.ownerID},
 			})
 		}
 	}
