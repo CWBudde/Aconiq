@@ -54,11 +54,11 @@ test.describe("Keyboard navigation", () => {
     await page.goto(appPath("/map"));
     await waitForPage(page);
     // Tab through the first few focusable elements until a sidebar link has focus.
-    const navLink = page.locator("a[href]:focus");
-    for (let i = 0; i < 5 && (await navLink.count()) === 0; i++) {
+    const focusedLink = page.locator('[data-sidebar="sidebar"] a[href]:focus');
+    for (let i = 0; i < 5 && (await focusedLink.count()) === 0; i++) {
       await page.keyboard.press("Tab");
     }
-    await expect(navLink).toBeVisible();
+    await expect(focusedLink).toBeVisible();
   });
 });
 

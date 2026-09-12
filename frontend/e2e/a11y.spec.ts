@@ -1,7 +1,15 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { Result } from "axe-core";
-import { LOCALES, ROUTES, appPath, useLocale, waitForPage } from "./app";
+import {
+  LOCALES,
+  ROUTES,
+  appPath,
+  message,
+  navLink,
+  useLocale,
+  waitForPage,
+} from "./app";
 import type { Route } from "./app";
 
 /**
@@ -82,6 +90,10 @@ for (const locale of LOCALES) {
         await useLocale(page, locale);
         await page.goto(appPath(route));
         await waitForPage(page);
+        // The workspace rail only renders once useProjectStatus has resolved;
+        // waiting for its first link pins the baseline to the same DOM every
+        // run rather than to whichever state axe happened to catch.
+        await navLink(page, message(locale, "nav_map")).waitFor();
 
         const results = await new AxeBuilder({ page })
           .withTags([...WCAG_TAGS, BEST_PRACTICE_TAG])

@@ -43,7 +43,9 @@ export function appPath(route: string): string {
  * Pins the UI locale for every page load in this context. Paraglide's strategy
  * (see vite.config.ts) reads localStorage first, under the key the generated
  * runtime exports as `localStorageKey` (src/i18n/runtime.js), so seeding it
- * before the app script runs wins over the browser's preferred language.
+ * before the app script runs wins over the browser's preferred language. The
+ * key is duplicated here as a literal; the "renders the German navigation
+ * labels" smoke test is the guard that catches a Paraglide rename of it.
  */
 export async function useLocale(page: Page, locale: Locale): Promise<void> {
   // A source string rather than a function: the e2e tsconfig has no DOM lib,

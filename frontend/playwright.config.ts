@@ -5,7 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Run with: just fe-e2e
  *
  * The app is served under `base: "/Aconiq/"` (vite.config.ts), so the dev
- * server answers at http://localhost:5173/Aconiq/ and the bare origin is a 404.
+ * server answers at http://localhost:5174/Aconiq/ and the bare origin is a 404.
  * `baseURL` therefore carries the base path. Note that `page.goto("/map")`
  * would still resolve against the origin and drop it; the specs go through
  * `appPath()` in e2e/app.ts, which prefixes the base explicitly.
@@ -22,7 +22,7 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: "http://localhost:5173/Aconiq/",
+    baseURL: "http://localhost:5174/Aconiq/",
     trace: "on-first-retry",
   },
 
@@ -42,9 +42,17 @@ export default defineConfig({
   // Pages demo build (`just fe-build-wasm`). It needs public/aconiq.wasm and
   // public/wasm_exec.js, which `just wasm-build` produces; `just fe-e2e`
   // depends on that recipe.
+  //
+  // Port 5174 rather than Vite's configured 5173: `just dev` and `just fe-dev`
+  // put an HTTP-mode server on 5173, and with `reuseExistingServer` Playwright
+  // would silently test that backend instead. The CLI flag overrides
+  // `server.port` in vite.config.ts (bun forwards the arguments verbatim), and
+  // --strictPort makes a taken port a startup failure instead of a silent hop
+  // to the next free one. Only an E2E server can be on 5174, so reusing one is
+  // safe.
   webServer: {
-    command: "VITE_WASM_MODE=true bun run dev",
-    url: "http://localhost:5173/Aconiq/",
+    command: "VITE_WASM_MODE=true bun run dev -- --port 5174 --strictPort",
+    url: "http://localhost:5174/Aconiq/",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
