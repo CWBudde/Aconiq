@@ -272,8 +272,8 @@ commit messages; the consequences each one exposed are open items below.
 
 ### Open
 
-- [ ] **The debts a green `just lint` still hides.** **256**, re-measured 2026-09-12 and audited in
-      `docs/lint-triage.md`, which carries the per-rule table. Three passes have run against the
+- [ ] **The debts a green `just lint` still hides.** **246**, re-measured 2026-09-12 and audited in
+      `docs/lint-triage.md`, which carries the per-rule table. Four passes have run against the
       557 this item opened with, and what each did matters more than the delta.
 
       The **audit pass** (`7babf60`) made the number honest rather than smaller: `wsl_v5` **196 → 0**
@@ -304,17 +304,28 @@ commit messages; the consequences each one exposed are open items below.
           also found `beb-exposure` declaring `lateral_offset_m` and binding it nowhere, so
           `--param lateral_offset_m=…` was accepted and dropped; that is fixed.
 
-          What is left is `goconst` **62** (39 permanent, 23 Priority 7), `noinlineerr` **109**
-          and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
-          verdict was taken), and **33** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
-          tables, and 7 in `app/cli` that the `framework.Module` work owns outright. The one suppression
-          the extraction pass added is the road-builder `dupl` pair, which replaced two wholesale
-          directives covering eight linters and names its structural fix in Priority 7.
+          The **END indicator pass** took the last three `dupl` directives out of `run_persist.go`
+          without narrowing anything: they were never a persist problem. Six modules each declared
+          their own copy of the END day/evening/night types, so the one persist path had to be
+          written once per type, and three of those copies were close enough for `dupl` to fire.
+          `internal/acoustics` owns the model now — the types, the directive's Lden weighting and the
+          bundle every strategic-mapping module publishes — and eight persist clones are one
+          table-driven function. No golden moved.
 
-          **This item closes when Priority 7's `framework.Module` work lands**, which is what removes the
-          remaining `app/cli` directives. Nothing here is suppressed because nobody got round to it.
-          `.golangci.yml`'s disable list holds **19** linters, which is why neither `AGENTS.md` nor
-          `docs/policies/formatting.md` quotes a number.
+          What is left is `goconst` **62** (39 permanent, 23 Priority 7), `noinlineerr` **104**
+          and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
+          verdict was taken), and **28** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
+          tables in `schall03/beiblatt1.go`, one `tagliatelle`, and **one** in `app/cli`: the
+          five-linter directive on `executeRunCommand`. Two corrections to the numbers this item used
+          to quote: the directive count was **31**, not 33, before this pass — PR #11 removed the
+          road-builder `dupl` pair without updating either this file or `docs/lint-triage.md` — and
+          of the 7 said to be owned by `framework.Module`, 4 were the `app/cli` `gosec` directives
+          already counted among the 18.
+
+          **This item closes when Priority 7's `framework.Module` work lands.** That one directive on
+          `executeRunCommand` is all that is left of it. Nothing here is suppressed because nobody got
+          round to it. `.golangci.yml`'s disable list holds **19** linters, which is why neither
+          `AGENTS.md` nor `docs/policies/formatting.md` quotes a number.
 
 ## Priority 1 — Fix known numeric defects
 
@@ -679,12 +690,15 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
 trade: the switch is the price of making the schema/parse agreement testable, and
 `framework.Module` subsumes it along with the other nine.
 
-- [ ] **Extract a shared acoustics core** (`internal/acoustics`). `energySumDB` exists in **9
-      copies with 3 different semantics**: `rls19/road/emission.go:147` skips `level <= -900`,
-      `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf` and returns NaN
-      on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the same
-      `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
-      This also lands the compensated-summation item from P1.3.
+- [ ] **Finish the shared acoustics core.** `internal/acoustics` exists and owns the END indicator
+      model — the day/evening/night types, the directive's Lden weighting and the bundle every
+      strategic-mapping module publishes. What it does not own yet is the summation: `energySumDB`
+      exists in **9 copies with 3 different semantics** — `rls19/road/emission.go:147` skips
+      `level <= -900`, `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf`
+      and returns NaN on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the
+      same `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
+      Unlike the indicator lift, **this one moves numbers**, so it needs its own golden review; the
+      13 digest goldens are the oracle. It also lands the compensated-summation item from P1.3.
 - [ ] **Unify the four Schall 03 normative propagation kernels** —
       `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
       ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
@@ -723,9 +737,13 @@ trade: the switch is the price of making the schema/parse agreement testable, an
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
-  - [ ] Lift `ExportResultBundle` (12 copies), `PeriodLevels`/`ReceiverIndicators`/`ComputeLden`
-        (8 copies of the END directive's defining formula), `ComputeReceiverOutputs` (12),
-        `ProvenanceMetadata` (10) and `geometricDivergence` (8) into `framework`.
+  - [ ] Lift `ComputeReceiverOutputs` (12 copies), `ProvenanceMetadata` (10) and
+        `geometricDivergence` (8). `PeriodLevels`/`ReceiverIndicators`/`ComputeLden` are done — the
+        END directive's defining formula had six byte-identical copies and now lives once in
+        `internal/acoustics` — and `ExportResultBundle` is down from 12 copies to 4: the eight END
+        modules delegate to `acoustics.ExportENDBundle`, and what is left (`rls19`, `schall03`,
+        `iso9613`, `beb`) publishes a different indicator set, so it is a second shared bundle
+        rather than the same one.
   - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
   - [x] ~~Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`.~~ Done in the
         extraction pass: one `buildAircraftSource` serves both, and the BUF path maps the result
@@ -736,12 +754,20 @@ trade: the switch is the price of making the schema/parse agreement testable, an
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
   - [ ] Consolidate 7 copies of `writeJSONFile`/`writeJSON`.
-  - [ ] `//nolint:dupl` — three remain, all in `run_persist.go`; they go with the generic persist
-        above. The 8 in `schall03/beiblatt1.go` are genuine coefficient tables and stay.
+  - [x] ~~`//nolint:dupl` in `run_persist.go`.~~ Gone with the END indicator lift. The three
+        clones were not a persist problem: six modules each declared their own copy of the END
+        types, so one persist path had to be written once per type. They share
+        `acoustics.ReceiverOutput` now and `persistENDRunOutputs` serves all eight standards from
+        one table. The 8 in `schall03/beiblatt1.go` are genuine coefficient tables and stay.
         Live constraint for anything touching `bub/road`: it aliases `cnossos/road`'s `RoadSource`,
         whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
         through `bubroad.ValidateSource`; the struct's JSON tag is `road_category` for both
         standards, while the CLI parameter stays `road_function_class`.
+  - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
+        `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
+        `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
+        pin the summary and a behaviour change does not belong inside a refactor. Decide which way
+        it goes and regenerate the three goldens deliberately.
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit

@@ -1047,6 +1047,63 @@ and the field was already zero-valued, so no default run changes and no digest g
 OpenAPI wire vocabulary, permanent) and group 3 (23, the JSON output-contract keys, still owned by
 PLAN.md Priority 7's typed response payloads).
 
+## END indicator pass — 2026-09-12
+
+**Verdict: the three `run_persist.go` `dupl` directives were hiding a type problem, not a persist
+problem.** They are gone, and nothing was narrowed to replace them.
+
+`persistCnossosRoadRunOutputs`, `persistBUBRoadRunOutputs` and `persistCnossosAircraftRunOutputs`
+were clones because the thing they persisted was: six modules — `cnossos/road`, `cnossos/rail`,
+`cnossos/industry`, `cnossos/aircraft`, `bub/road`, `buf/aircraft` — each declared their own
+byte-identical `PeriodLevels`, `ReceiverIndicators`, `ComputeLden`, `ToReceiverIndicators` and
+`ReceiverOutput`. Distinct Go types with identical fields, so one persist path had to be written
+once per type, and `dupl` fired on the three that ended up closest.
+
+`internal/acoustics` owns the END model now. The six modules alias it, and the eight END persist
+functions (the three above plus rail, industry and the three alias modules) are one table-driven
+`persistENDRunOutputs`. `ExportResultBundle` went the same way: eight byte-identical 95-line copies
+that differed only in the raster file name became `acoustics.ExportENDBundle` plus eight six-line
+delegations.
+
+### What the measurement corrected
+
+The `//nolint` row of the table below said **33** in both this document and `PLAN.md`. Measured on
+`main` before this pass it was **31**: the road-builder `dupl` pair was removed by the road-source
+refactor without either file being updated. `PLAN.md` also attributed **7** directives in
+`app/cli` to the `framework.Module` work; 4 of those were the `app/cli` `gosec` directives already
+counted among the 18 named `gosec`, so the real figure was 4 — three `dupl` here and the five-linter
+directive on `executeRunCommand`.
+
+### What proves it changed nothing
+
+Every one of the 13 digest goldens under `backend/internal/app/cli/testdata/digest/` is unmoved, as
+are the 69 golden snapshots: the digests cover every file under `.noise/runs/<id>/results/` plus the
+normalized `run-summary.json` and `provenance.json` for every registered standard, so a changed
+indicator, a changed raster layout or a changed summary key would show. `just lint` is 0 and the
+whole suite passes without a single test assertion being edited.
+
+### One inconsistency preserved rather than fixed
+
+`cnossos-industry`, `bub-industry` and `buf-aircraft` do not write `reporting_precision_db` into
+their run summary; the other five END standards do. The table reproduces that difference exactly.
+Fixing it moves three digest goldens, which is a behaviour change and does not belong inside a
+refactor — it is now an open item in `PLAN.md` Priority 7.
+
+### Where this leaves `just lint`, after the END indicator pass
+
+| Still hidden  | Findings | Was (2026-09-12, parameter-binding pass) | Mechanism                                  |
+| ------------- | -------: | ---------------------------------------: | ------------------------------------------ |
+| `goconst`     |   **62** |                                       62 | two named, path+value-scoped rules         |
+| `noinlineerr` |  **104** |                                      109 | `linters.disable`; declined in writing     |
+| gosec G304    |   **47** |                                       47 | one explicit named rule                    |
+| `//nolint`    |   **28** |                              31 (not 33) | in-source directives                       |
+| `gocyclo`     |    **5** |                                        5 | `linters.disable`; redundant with `cyclop` |
+
+**246, from 251 as it stood honestly measured.** The five `noinlineerr` findings went with the
+deleted export copies. Of the 28 directives, 18 are named `gosec`, 8 are the genuine `dupl`
+coefficient tables in `schall03/beiblatt1.go`, one is `tagliatelle`, and exactly one is left in
+`app/cli`: the five-linter directive on `executeRunCommand`, which `framework.Module` owns.
+
 ## Reproducing these numbers
 
 ```bash
