@@ -733,7 +733,11 @@ trade: the switch is the price of making the schema/parse agreement testable, an
 - [ ] Fix the feeder-goroutine leak: `runner.go:346-389` returns on error without cancelling, so
       if every worker has exited the feeder blocks forever on `jobs <- chunk`. Use
       `errgroup.WithContext` or `defer cancel()`.
-- [ ] Collapse the mechanical duplication — ~4 300 non-test LOC, about 9 % of the backend:
+- [ ] Collapse the mechanical duplication — ~4 300 non-test LOC, about 9 % of the backend.
+      Live constraint for anything touching `bub/road`: it aliases `cnossos/road`'s `RoadSource`,
+      whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
+      through `bubroad.ValidateSource`; the struct's JSON tag is `road_category` for both
+      standards, while the CLI parameter stays `road_function_class`.
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
@@ -754,15 +758,6 @@ trade: the switch is the price of making the schema/parse agreement testable, an
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
   - [ ] Consolidate 7 copies of `writeJSONFile`/`writeJSON`.
-  - [x] ~~`//nolint:dupl` in `run_persist.go`.~~ Gone with the END indicator lift. The three
-        clones were not a persist problem: six modules each declared their own copy of the END
-        types, so one persist path had to be written once per type. They share
-        `acoustics.ReceiverOutput` now and `persistENDRunOutputs` serves all eight standards from
-        one table. The 8 in `schall03/beiblatt1.go` are genuine coefficient tables and stay.
-        Live constraint for anything touching `bub/road`: it aliases `cnossos/road`'s `RoadSource`,
-        whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
-        through `bubroad.ValidateSource`; the struct's JSON tag is `road_category` for both
-        standards, while the CLI parameter stays `road_function_class`.
   - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
         `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
         `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
