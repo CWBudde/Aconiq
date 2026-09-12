@@ -58,42 +58,55 @@ function isRunActive(run: RunSummary): boolean {
   return run.status === "pending" || run.status === "running";
 }
 
-/** Module-level so the query options do not carry a fresh function each render. */
+/** Needs nothing from the render, so it lives outside the hook. */
 function runsRefetchInterval(query: Query<RunSummary[]>): number {
   const runs = query.state.data ?? [];
   return runs.some(isRunActive) ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
 }
 
 export function useRuns() {
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.runs.list(),
     queryFn: () => backend.getRuns(),
     refetchInterval: backend.capabilities.runsChangeExternally
       ? runsRefetchInterval
       : false,
   });
+
+  // A run's log is fetched once more when the run settles, so the lines
+  // written between the last log poll and completion arrive. The transition
+  // is detected here, where the status data lives, rather than in
+  // `useRunLog`: a detail panel may be unmounted while the run completes, and
+  // invalidating the cache entry marks it stale so the next mount refetches
+  // regardless of `staleTime`, while an active observer refetches at once.
+  const runs = query.data;
+  const previousRuns = useRef(runs);
+  useEffect(() => {
+    const was = previousRuns.current;
+    previousRuns.current = runs;
+    if (!was || !runs) return;
+    const wasActive = new Set(was.filter(isRunActive).map((run) => run.id));
+    for (const run of runs) {
+      if (wasActive.has(run.id) && !isRunActive(run)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.runs.log(run.id),
+        });
+      }
+    }
+  }, [runs]);
+
+  return query;
 }
 
 /**
  * @param isRunning Whether the run is still being executed by the server.
- *   While set, the log polls and a remount fetches immediately; when it
- *   drops, the log is fetched once more so the lines written between the
- *   last poll and completion arrive. No capability check is needed here: in
- *   browser mode a run completes inside `startRun`, so a caller never
- *   observes a running one and passes `false` throughout.
+ *   While set, the log polls and a remount fetches immediately. The one
+ *   extra fetch after the run settles is driven by `useRuns`, which sees the
+ *   status change. No capability check is needed here: in browser mode a run
+ *   completes inside `startRun`, so a caller never observes a running one
+ *   and passes `false` throughout.
  */
 export function useRunLog(runId: string | null, isRunning: boolean) {
-  const previous = useRef({ runId, isRunning });
-  useEffect(() => {
-    const was = previous.current;
-    previous.current = { runId, isRunning };
-    if (was.isRunning && !isRunning && runId !== null && was.runId === runId) {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.runs.log(runId),
-      });
-    }
-  }, [runId, isRunning]);
-
   return useQuery({
     queryKey: queryKeys.runs.log(runId ?? ""),
     queryFn: () => {

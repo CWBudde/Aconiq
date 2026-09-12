@@ -63,10 +63,16 @@ function runWithStatus(status: RunSummary["status"]): RunSummary {
   };
 }
 
-/** Advances fake time and lets the queries settle in between. */
+/**
+ * Advances fake time and lets the queries settle in between. TanStack hands
+ * React its notifications through `setTimeout(cb, 0)`, and fake-timers gives
+ * a zero-delay timer created during a tick a 1 ms delay, so one scheduled by
+ * a poll firing at the very end of the window needs one more millisecond.
+ */
 async function advance(ms: number) {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(ms);
+    await vi.advanceTimersByTimeAsync(1);
   });
 }
 
@@ -251,7 +257,10 @@ describe("useRunLog", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     queryClient.clear();
+    getRuns.mockClear();
     getRunLog.mockClear();
+    backendState.runsChangeExternally = true;
+    backendState.runs = [{ ...runWithStatus("running"), id: "run-1" }];
     backendState.log = { run_id: "run-1", lines: ["started"] };
   });
 
@@ -259,34 +268,67 @@ describe("useRunLog", () => {
     vi.useRealTimers();
   });
 
+  /** The runs list is what carries a run from running to settled. */
+  function settleRun1() {
+    backendState.runs = [{ ...runWithStatus("completed"), id: "run-1" }];
+    backendState.log = { run_id: "run-1", lines: ["started", "done"] };
+  }
+
   it("polls while the run is running", async () => {
     renderHook(() => useRunLog("run-1", true), { wrapper });
     await advance(0);
     expect(getRunLog).toHaveBeenCalledTimes(1);
 
     await advance(2_000);
-    expect(getRunLog.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(getRunLog).toHaveBeenCalledTimes(3);
     expect(getRunLog).toHaveBeenLastCalledWith("run-1");
   });
 
   it("fetches once more after the run completes, then stops", async () => {
+    // Both hooks, the way `RunDetail` under `RunPage` has them: the status
+    // that stops the log poll is the same one `useRuns` sees settle.
     const hook = renderHook(
-      ({ isRunning }: { isRunning: boolean }) => useRunLog("run-1", isRunning),
+      ({ isRunning }: { isRunning: boolean }) => {
+        useRuns();
+        return useRunLog("run-1", isRunning);
+      },
       { wrapper, initialProps: { isRunning: true } },
     );
     await advance(1_000);
-    const callsWhileRunning = getRunLog.mock.calls.length;
-    expect(callsWhileRunning).toBeGreaterThanOrEqual(2);
+    expect(getRunLog).toHaveBeenCalledTimes(2);
 
     // The final lines land between the last poll and the status flip.
-    backendState.log = { run_id: "run-1", lines: ["started", "done"] };
+    settleRun1();
     hook.rerender({ isRunning: false });
-    await advance(0);
-    expect(getRunLog).toHaveBeenCalledTimes(callsWhileRunning + 1);
+    await advance(1_000); // the runs poll at 2 s picks up the settled run
+    expect(getRunLog).toHaveBeenCalledTimes(3);
     expect(hook.result.current.data?.lines).toEqual(["started", "done"]);
 
     await advance(30_000);
-    expect(getRunLog).toHaveBeenCalledTimes(callsWhileRunning + 1);
+    expect(getRunLog).toHaveBeenCalledTimes(3);
+  });
+
+  it("refetches a log cached while running when it is mounted again after the run settled", async () => {
+    renderHook(() => useRuns(), { wrapper });
+    const detail = renderHook(() => useRunLog("run-1", true), { wrapper });
+    await advance(0);
+    expect(getRunLog).toHaveBeenCalledTimes(1);
+
+    // The user looks elsewhere while the run finishes.
+    detail.unmount();
+    settleRun1();
+    await advance(2_000);
+    expect(getRunLog).toHaveBeenCalledTimes(1);
+
+    // Back within `staleTime`: the cached log is truncated and must not be
+    // served as final.
+    const again = renderHook(() => useRunLog("run-1", false), { wrapper });
+    await advance(0);
+    expect(getRunLog).toHaveBeenCalledTimes(2);
+    expect(again.result.current.data?.lines).toEqual(["started", "done"]);
+
+    await advance(30_000);
+    expect(getRunLog).toHaveBeenCalledTimes(2);
   });
 
   it("does not poll a run that is not running", async () => {
