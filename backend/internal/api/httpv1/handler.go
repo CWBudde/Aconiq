@@ -36,15 +36,27 @@ const (
 // on them, and openapi.go documents them, so every emission site must use these
 // spellings.
 const (
-	errorCodeBadRequest    = "bad_request"
-	errorCodeNotFound      = "not_found"
-	errorCodeInternalError = "internal_error"
+	errorCodeBadRequest       = "bad_request"
+	errorCodeNotFound         = "not_found"
+	errorCodeInternalError    = "internal_error"
+	errorCodeMethodNotAllowed = "method_not_allowed"
 	// errorCodeExperimentalOptInRequired answers a run request that targets a
 	// scaffold-tier standard without acknowledging what that tier means.
 	errorCodeExperimentalOptInRequired = "experimental_opt_in_required"
 	// errorCodeModelInvalid answers a model that parsed as GeoJSON but failed
 	// schema validation; details.errors carries the findings per feature.
 	errorCodeModelInvalid = "model_invalid"
+	// errorCodeModelNotFound answers a read of a project that loaded but has no
+	// model saved yet. It is deliberately not errorCodeNotFound: a client has to
+	// be able to tell "no project" from "no model", and the two want different
+	// hints.
+	errorCodeModelNotFound = "model_not_found"
+	// errorCodeRunNotFinished answers a delete of a run that is still pending or
+	// running: its directory is being written by a live `aconiq run`.
+	errorCodeRunNotFinished = "run_not_finished"
+	// errorCodeExportInsideRun answers a delete whose export bundle sits inside
+	// the run directory: the bundle is kept, so the directory cannot go.
+	errorCodeExportInsideRun = "export_inside_run"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -176,6 +188,16 @@ type projectStatusResponse struct {
 	ScenarioCount   int            `json:"scenario_count"`
 	RunCount        int            `json:"run_count"`
 	LastRun         *lastRunStatus `json:"last_run,omitempty"`
+	// Model is absent until a model has been saved.
+	Model *projectModelStatus `json:"model,omitempty"`
+}
+
+// projectModelStatus lets a client decide whether its local draft still matches
+// the project without fetching the model. The hash is the same receipt
+// POST /api/v1/model returned; the client compares strings and never hashes.
+type projectModelStatus struct {
+	Hash      string    `json:"hash"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type lastRunStatus struct {
@@ -270,13 +292,14 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/project/status", handler.handleProjectStatus)
 	mux.HandleFunc("/api/v1/standards", handler.handleStandards)
 	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
+	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
-	mux.HandleFunc("/api/v1/model", handler.handleModelSave)
+	mux.HandleFunc("/api/v1/model", handler.handleModel)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	// The security middleware sits inside CORS so that a refusal still carries
@@ -318,7 +341,15 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := projectStatusResponse{
+	writeJSON(w, http.StatusOK, h.projectStatus(proj))
+}
+
+// projectStatus renders a loaded project as the status payload. It is the one
+// builder behind both "project status" surfaces — the REST response and the
+// SSE `project_status` event — so the two cannot answer the same question
+// differently; a test marshals both and compares the bytes.
+func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
+	status := projectStatusResponse{
 		ProjectID:       proj.ProjectID,
 		Name:            proj.Name,
 		ProjectPath:     h.store.Root(),
@@ -330,7 +361,7 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 
 	if len(proj.Runs) > 0 {
 		last := proj.Runs[len(proj.Runs)-1]
-		response.LastRun = &lastRunStatus{
+		status.LastRun = &lastRunStatus{
 			ID:         last.ID,
 			Status:     last.Status,
 			Context:    last.Standard.Context,
@@ -342,7 +373,41 @@ func (h Handler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	status.Model = h.modelStatus(proj)
+
+	return status
+}
+
+// modelStatus reports the saved model's receipt, or nil when there is none.
+//
+// The manifest is consulted first, so a fresh project opens no file at all:
+// without a model artifact ref there is nothing to hash. A hash that then fails
+// is reported as absence rather than failing the whole status request — a
+// client that cannot compare falls back to fetching the model, which is a
+// worse answer than this one but not a broken one.
+func (h Handler) modelStatus(proj project.Project) *projectModelStatus {
+	var ref project.ArtifactRef
+
+	for _, a := range proj.Artifacts {
+		if a.ID == project.ArtifactIDModelNormalized {
+			ref = a
+			break
+		}
+	}
+
+	if ref.ID == "" {
+		return nil
+	}
+
+	hash, err := h.store.ModelHash()
+	if err != nil {
+		return nil
+	}
+
+	return &projectModelStatus{
+		Hash:      hash,
+		UpdatedAt: ref.CreatedAt,
+	}
 }
 
 func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +418,7 @@ func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
 		h.handleRunCreate(w, r)
 	default:
 		writeAPIError(w, http.StatusMethodNotAllowed, apiError{
-			Code:    "method_not_allowed",
+			Code:    errorCodeMethodNotAllowed,
 			Message: fmt.Sprintf("method %s is not allowed for %s", r.Method, r.URL.Path),
 		})
 	}
@@ -1082,7 +1147,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 
@@ -1210,33 +1275,25 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		}, key
 	}
 
-	status := projectStatusResponse{
-		ProjectID:       proj.ProjectID,
-		Name:            proj.Name,
-		ProjectPath:     h.store.Root(),
-		ManifestVersion: proj.ManifestVersion,
-		CRS:             proj.CRS,
-		ScenarioCount:   len(proj.Scenarios),
-		RunCount:        len(proj.Runs),
-	}
+	status := h.projectStatus(proj)
 	lastRunID := ""
 	lastRunState := ""
 	lastRunUpdated := ""
 
 	if len(proj.Runs) > 0 {
 		last := proj.Runs[len(proj.Runs)-1]
-		status.LastRun = &lastRunStatus{
-			ID:         last.ID,
-			Status:     last.Status,
-			StandardID: last.Standard.ID,
-			Version:    last.Standard.Version,
-			Profile:    last.Standard.Profile,
-			StartedAt:  last.StartedAt,
-			FinishedAt: last.FinishedAt,
-		}
 		lastRunID = last.ID
 		lastRunState = last.Status
 		lastRunUpdated = last.FinishedAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	// Every member the payload can change by must appear in the key, or the
+	// stream serves the first snapshot forever. The model hash is the one that
+	// moves without any run moving: saving a model changes the payload and
+	// nothing else here.
+	modelHash := ""
+	if status.Model != nil {
+		modelHash = status.Model.Hash
 	}
 
 	key := strings.Join([]string{
@@ -1246,6 +1303,7 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 		lastRunID,
 		lastRunState,
 		lastRunUpdated,
+		modelHash,
 	}, ":")
 
 	return map[string]any{
@@ -1274,7 +1332,7 @@ func requireMethod(w http.ResponseWriter, r *http.Request, expected string) bool
 	}
 
 	writeAPIError(w, http.StatusMethodNotAllowed, apiError{
-		Code:    "method_not_allowed",
+		Code:    errorCodeMethodNotAllowed,
 		Message: "unsupported HTTP method",
 		Details: map[string]any{
 			"method":   r.Method,

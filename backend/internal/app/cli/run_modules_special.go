@@ -94,8 +94,8 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	barriers, buildings := scene.barriers, scene.buildings
 	parkingSources, parkingExtent := scene.parkingSources, scene.parkingExtent
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(input.receiverMode, input.model, func() ([]geo.PointReceiver, int, int, error) {
-		return buildRLS19RoadReceivers(roadSources, parkingExtent, options)
+	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+		return buildRLS19RoadReceivers(roadSources, parkingExtent, calcArea, options)
 	})
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
@@ -109,6 +109,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	input.log.addf("rls19_buildings=%d", len(buildings))
 	input.log.addf("rls19_parking_sources=%d", len(parkingSources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	propagationConfig := options.PropagationConfig()
 	propagationConfig.Buildings = buildings

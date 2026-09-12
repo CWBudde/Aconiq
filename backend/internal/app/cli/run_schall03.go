@@ -110,8 +110,8 @@ func computeSchall03Normative(
 		return schall03RunResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-		return buildSchall03NormativeReceivers(scene.Segments, options)
+	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+		return buildSchall03NormativeReceivers(scene.Segments, calcArea, options)
 	})
 	if err != nil {
 		return schall03RunResult{}, err
@@ -123,6 +123,7 @@ func computeSchall03Normative(
 
 	result.logf("schall03_segments=%d walls=%d barriers=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
 	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
+	result.logGridExtent(receiverMode, calcArea)
 
 	result.Outputs, err = schall03.ComputeNormativeReceiverOutputs(receivers, scene.Segments, scene.Walls, scene.Barriers)
 	if err != nil {
@@ -144,8 +145,8 @@ func computeSchall03Preview(
 		return schall03RunResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
-		return buildSchall03Receivers(railSources, options)
+	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+		return buildSchall03Receivers(railSources, calcArea, options)
 	})
 	if err != nil {
 		return schall03RunResult{}, err
@@ -157,6 +158,7 @@ func computeSchall03Preview(
 
 	result.logf("schall03_sources=%d", len(railSources))
 	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
+	result.logGridExtent(receiverMode, calcArea)
 
 	result.Outputs, err = schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
 	if err != nil {
@@ -168,13 +170,13 @@ func computeSchall03Preview(
 
 // buildSchall03NormativeReceivers derives the auto grid from the normative
 // track centerlines.
-func buildSchall03NormativeReceivers(segments []schall03.TrackSegment, options schall03RunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildSchall03NormativeReceivers(segments []schall03.TrackSegment, calcArea *geo.BBox, options schall03RunOptions) ([]geo.PointReceiver, int, int, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(segments)*2)
 	for _, segment := range segments {
 		sourcePoints = append(sourcePoints, segment.TrackCenterline...)
 	}
 
-	return buildReceiversFromPoints("cli.buildSchall03NormativeReceivers", sourcePoints, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
+	return buildReceiversFromPoints("cli.buildSchall03NormativeReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
 func (r *schall03RunResult) logf(format string, args ...any) {
@@ -189,4 +191,14 @@ func (r *schall03RunResult) logReceivers(receiverMode string, receiverCount, gri
 	}
 
 	r.logf("receivers=%d grid=%dx%d", receiverCount, gridWidth, gridHeight)
+}
+
+// logGridExtent mirrors runLog.addGridExtent for the Schall 03 chain, which
+// carries its own log lines.
+func (r *schall03RunResult) logGridExtent(receiverMode string, calcArea *geo.BBox) {
+	if receiverMode == receiverModeCustom {
+		return
+	}
+
+	r.logf("grid_extent=%s", gridExtentLabel(calcArea))
 }

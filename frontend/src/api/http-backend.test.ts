@@ -169,6 +169,10 @@ describe("httpBackend.saveModel", () => {
     dump_path: ".noise/model/dump.json",
     validation_report_path: ".noise/model/validation-report.json",
     feature_count: 3,
+    // The receipt the server returns for what it just wrote. `saveModel` does
+    // not surface it yet; the draft stores it once hydration lands, so that a
+    // restored draft can prove it equals the project by comparing strings.
+    hash: "78179c43f885b7df906afef9613af46caa688bc66f4af97633f62ea4299a688e",
     warnings: [{ code: "short_segment", message: "segment under 1 m" }],
   };
 

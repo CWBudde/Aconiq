@@ -142,20 +142,21 @@ PLAN.md           Roadmap and the single status source
 
 ### CLI Surface
 
-`backend/internal/app/cli/root.go` registers exactly ten commands:
+`backend/internal/app/cli/root.go` registers exactly eleven commands:
 
-| Command           | Purpose                                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `aconiq init`     | Create a project (`.noise/`)                                                                   |
-| `aconiq import`   | Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM/Overpass, CSV, GeoTIFF terrain |
-| `aconiq compare`  | Compare a run against imported SoundPLAN receiver results with a dB tolerance                  |
-| `aconiq validate` | Validate the normalized model and emit a validation report                                     |
-| `aconiq run`      | Run one scenario against one standard/version/profile                                          |
-| `aconiq status`   | Report project, scenario and run state                                                         |
-| `aconiq export`   | Export a run bundle, generate reports, and emit GIS formats (`--format`)                       |
-| `aconiq serve`    | Start the local HTTP API (default `127.0.0.1:8080`)                                            |
-| `aconiq openapi`  | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                             |
-| `aconiq bench`    | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                   |
+| Command             | Purpose                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| `aconiq init`       | Create a project (`.noise/`)                                                                   |
+| `aconiq import`     | Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM/Overpass, CSV, GeoTIFF terrain |
+| `aconiq compare`    | Compare a run against imported SoundPLAN receiver results with a dB tolerance                  |
+| `aconiq validate`   | Validate the normalized model and emit a validation report                                     |
+| `aconiq run`        | Run one scenario against one standard/version/profile                                          |
+| `aconiq delete-run` | Remove a run, its artifact refs and `.noise/runs/<id>/`; export bundles are kept               |
+| `aconiq status`     | Report project, scenario and run state                                                         |
+| `aconiq export`     | Export a run bundle, generate reports, and emit GIS formats (`--format`)                       |
+| `aconiq serve`      | Start the local HTTP API (default `127.0.0.1:8080`)                                            |
+| `aconiq openapi`    | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                             |
+| `aconiq bench`      | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                   |
 
 ### Local HTTP API (`internal/api/httpv1`)
 
@@ -165,11 +166,13 @@ GET  /api/v1/project/status
 GET  /api/v1/standards
 GET  /api/v1/runs                      list runs
 POST /api/v1/runs                      start a run
+DELETE /api/v1/runs/{id}               delete a run
 GET  /api/v1/runs/{id}/log
 GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                    SSE: heartbeat + project status snapshots
 POST /api/v1/import/osm
 POST /api/v1/import/terrain
+GET  /api/v1/model                     the saved model, optionally reprojected (`?crs=`)
 POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract)
 GET  /api/v1/openapi.json
 ```
@@ -193,12 +196,14 @@ See `docs/project-format-v1.md` and `docs/project-migrations.md`.
 
 ### GeoJSON Input Schema (v1)
 
-`aconiq import` accepts a `FeatureCollection` whose features carry `kind` = `source`, `building`, `barrier`, or `receiver`.
+`aconiq import` accepts a `FeatureCollection` whose features carry `kind` = `source`, `building`, `barrier`, `receiver`, or `calc-area`.
 
 - `source` requires `source_type` (`point`|`line`|`area`), and the geometry must match it: `Point`/`MultiPoint`, `LineString`/`MultiLineString`, `Polygon`/`MultiPolygon`.
 - `building` requires `height_m > 0` and `Polygon`/`MultiPolygon`.
 - `barrier` requires `height_m > 0` and `LineString`/`MultiLineString`.
 - `receiver` requires `height_m > 0` and `Point`.
+- `calc-area` requires `Polygon`, carries no `height_m`, and may appear at most once. It replaces
+  the source extent for the auto receiver grid; `grid_padding_m` still applies to it.
 
 See `docs/geojson-schema-v1.md`.
 

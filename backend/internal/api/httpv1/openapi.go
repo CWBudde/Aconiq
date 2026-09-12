@@ -268,9 +268,58 @@ func openapiRunPathItems() map[string]any {
 		},
 	}
 
+	maps.Copy(items, openapiRunResourcePathItems())
 	maps.Copy(items, openapiArtifactPathItems())
 
 	return items
+}
+
+// openapiRunResourcePathItems describes the single-run resource. Go 1.22 routing
+// gives the more specific /api/v1/runs/{id}/log precedence over this pattern.
+func openapiRunResourcePathItems() map[string]any {
+	return map[string]any{
+		"/api/v1/runs/{id}": map[string]any{
+			"delete": map[string]any{
+				"summary":     "Delete a run",
+				"operationId": "deleteRun",
+				"description": "Removes the run from the manifest, drops every artifact ref belonging to it, and " +
+					"deletes `.noise/runs/{id}/`. Export bundles under `.noise/exports/` are deliberately kept on " +
+					"disk — a bundle may already have been delivered — and the ones whose refs were dropped are " +
+					"listed in `retained_paths`. A run that is still `pending` or `running` is refused: its " +
+					"directory is being written.",
+				"parameters": []map[string]any{
+					{
+						"name":        "id",
+						"in":          "path",
+						"required":    true,
+						"description": "Run ID",
+						"schema":      map[string]any{"type": "string"},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "The run was deleted; the body says what was removed and what was kept",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/DeleteRunResponse",
+								},
+							},
+						},
+					},
+					"400": openapiErrorResponse("Missing or malformed run ID"),
+					"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
+					"405": methodNotAllowedResponse(),
+					"409": openapiErrorResponse(
+						"The run is still pending or running (`" + errorCodeRunNotFinished +
+							"`), or it holds export bundles inside its own directory (`" + errorCodeExportInsideRun +
+							"`). Nothing was removed.",
+					),
+					"500": openapiErrorResponse("Failed to update the manifest or remove the run directory"),
+				},
+			},
+		},
+	}
 }
 
 // openapiArtifactPathItems describes the artifact content and event-stream
@@ -421,6 +470,45 @@ func openapiImportPathItems() map[string]any {
 func openapiModelPathItems() map[string]any {
 	return map[string]any{
 		"/api/v1/model": map[string]any{
+			"get": map[string]any{
+				"summary":     "Read the project model",
+				"operationId": "getModel",
+				"description": "Returns the normalized model `.noise/model/model.normalized.geojson` holds, together " +
+					"with its hash. Without `crs` the stored bytes are returned untouched, so the payload is exactly " +
+					"what the hash is a receipt for; with `crs` every coordinate is reprojected into that CRS first and " +
+					"`crs` in the response names what the coordinates are actually in. The hash is unchanged by the " +
+					"reprojection: it always describes the stored file.",
+				"parameters": []map[string]any{
+					{
+						"name":     "crs",
+						"in":       "query",
+						"required": false,
+						"description": "CRS to return the coordinates in, e.g. `EPSG:4326` to draw the model on a web " +
+							"map. Omit it to receive the model in the project CRS, unmodified.",
+						"schema": map[string]any{"type": "string"},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "The stored model",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"$ref": "#/components/schemas/ModelResponse",
+								},
+							},
+						},
+					},
+					"400": openapiErrorResponse("`crs` is not a recognised CRS identifier (`bad_request`)"),
+					"404": openapiErrorResponse(
+						"The project is not initialized (`not_found`), or it is but no model has been saved yet " +
+							"(`" + errorCodeModelNotFound + "`). The two are separate codes because a client has to " +
+							"be able to tell them apart.",
+					),
+					"405": methodNotAllowedResponse(),
+					"500": openapiErrorResponse("Failed to read the stored model"),
+				},
+			},
 			"post": map[string]any{
 				"summary":     "Replace the project model",
 				"operationId": "saveModel",
@@ -493,6 +581,7 @@ func openapiSchemas() map[string]any {
 		openapiErrorSchemas(),
 		openapiProjectSchemas(),
 		openapiRunSchemas(),
+		openapiRunDeleteSchemas(),
 		openapiStandardSchemas(),
 		openapiModelSchemas(),
 	} {
@@ -550,6 +639,7 @@ func openapiProjectSchemas() map[string]any {
 			"properties": map[string]any{
 				"id":          map[string]any{"type": "string"},
 				"status":      map[string]any{"type": "string"},
+				"context":     openapiStandardContextSchema(),
 				"standard_id": map[string]any{"type": "string"},
 				"version":     map[string]any{"type": "string"},
 				"profile":     map[string]any{"type": "string"},
@@ -570,6 +660,19 @@ func openapiProjectSchemas() map[string]any {
 				"scenario_count":   map[string]any{"type": "integer"},
 				"run_count":        map[string]any{"type": "integer"},
 				"last_run":         map[string]any{"$ref": "#/components/schemas/LastRunStatus"},
+				"model":            map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
+			},
+		},
+		"ProjectModelStatus": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"hash", "updated_at"},
+			"description": "The saved model's receipt. Absent until a model has been saved. A client that kept " +
+				"the hash POST /api/v1/model returned compares the two as strings to learn whether its local draft " +
+				"is still the project's model, without fetching anything.",
+			"properties": map[string]any{
+				"hash":       openapiModelHashSchema(),
+				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When the model artifact was last written"},
 			},
 		},
 		"ArtifactRef": map[string]any{
@@ -624,6 +727,7 @@ func openapiRunSchemas() map[string]any {
 			"properties": map[string]any{
 				"id":              map[string]any{"type": "string"},
 				"scenario_id":     map[string]any{"type": "string"},
+				"context":         openapiStandardContextSchema(),
 				"standard_id":     map[string]any{"type": "string"},
 				"version":         map[string]any{"type": "string"},
 				"profile":         map[string]any{"type": "string"},
@@ -702,6 +806,31 @@ func openapiRunSchemas() map[string]any {
 	}
 }
 
+// openapiRunDeleteSchemas describes what a run delete answers with.
+func openapiRunDeleteSchemas() map[string]any {
+	return map[string]any{
+		"DeleteRunResponse": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"run_id", "removed_paths", "retained_paths"},
+			"properties": map[string]any{
+				"run_id": map[string]any{"type": "string"},
+				"removed_paths": map[string]any{
+					"type":        "array",
+					"description": "Project-relative paths that were deleted. Always present, empty rather than null.",
+					"items":       map[string]any{"type": "string"},
+				},
+				"retained_paths": map[string]any{
+					"type": "array",
+					"description": "Files whose manifest refs were dropped but whose bytes were deliberately left " +
+						"in place — export bundles. Always present, empty rather than null.",
+					"items": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+}
+
 // openapiStandardSchemas describes the standards registry schemas.
 func openapiStandardSchemas() map[string]any {
 	return map[string]any{
@@ -759,8 +888,11 @@ func openapiStandardSchemas() map[string]any {
 		"StandardDescriptor": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []string{"id", "description", evidenceTierField, "default_version", "versions"},
+			// context has no omitempty on standardResponse, so the key is always
+			// present and a strict consumer may rely on it.
+			"required": []string{"context", "id", "description", evidenceTierField, "default_version", "versions"},
 			"properties": map[string]any{
+				"context":     openapiStandardContextSchema(),
 				"id":          map[string]any{"type": "string"},
 				"description": map[string]any{"type": "string"},
 				evidenceTierField: map[string]any{
@@ -798,23 +930,43 @@ func openapiModelSchemas() map[string]any {
 				},
 				"model": map[string]any{
 					"type":        "object",
-					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver.",
+					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area.",
 				},
 			},
 		},
 		"ModelSaveResponse": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []string{"normalized_path", "dump_path", "validation_report_path", "feature_count", "warnings"},
+			"required":             []string{"normalized_path", "dump_path", "validation_report_path", "feature_count", "hash", "warnings"},
 			"properties": map[string]any{
 				"normalized_path":        map[string]any{"type": "string", "description": "Project-relative path of the normalized GeoJSON"},
 				"dump_path":              map[string]any{"type": "string", "description": "Project-relative path of the model dump"},
 				"validation_report_path": map[string]any{"type": "string", "description": "Project-relative path of the validation report"},
 				"feature_count":          map[string]any{"type": "integer"},
+				"hash":                   openapiModelHashSchema(),
 				"warnings": map[string]any{
 					"type":        "array",
 					"description": "Validation warnings. The model was written despite them.",
 					"items":       map[string]any{"$ref": "#/components/schemas/ValidationIssue"},
+				},
+			},
+		},
+		"ModelResponse": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"crs", "project_crs", "hash", "feature_count", "model"},
+			"properties": map[string]any{
+				"crs": map[string]any{
+					"type": "string",
+					"description": "The CRS the returned coordinates are in — the requested one, or the project " +
+						"CRS when none was requested. Stated rather than inferred.",
+				},
+				"project_crs":   map[string]any{"type": "string", "description": "The project's own CRS"},
+				"hash":          openapiModelHashSchema(),
+				"feature_count": map[string]any{"type": "integer"},
+				"model": map[string]any{
+					"type":        "object",
+					"description": "The normalized GeoJSON FeatureCollection. Returned verbatim from disk unless `crs` asked for a reprojection.",
 				},
 			},
 		},
@@ -909,9 +1061,15 @@ func applyOperationTransportContract(operation map[string]any, method string) {
 	}
 
 	responses["413"] = openapiErrorResponse("Request body exceeds this endpoint's limit (`request_too_large`)")
-	responses["415"] = openapiErrorResponse(
-		"Request body was not sent as the media type this endpoint parses (`unsupported_media_type`)",
-	)
+
+	// 415 comes from requireContentType, which only an operation that parses a
+	// body ever calls. Stamping it on a bodyless DELETE would document a refusal
+	// the server cannot produce.
+	if _, hasBody := operation["requestBody"]; hasBody {
+		responses["415"] = openapiErrorResponse(
+			"Request body was not sent as the media type this endpoint parses (`unsupported_media_type`)",
+		)
+	}
 
 	parameters, _ := operation["parameters"].([]map[string]any)
 	operation["parameters"] = append(parameters, clientHeaderParameter())
@@ -939,6 +1097,34 @@ func allowedOverpassEndpointURLs() []string {
 	}
 
 	return urls
+}
+
+// openapiStandardContextSchema describes the standard's assessment context, the
+// member `StandardRef.Context` and `StandardDescriptor.Context` travel under.
+// It is one function because the same member appears on three schemas, and a
+// consumer that switches on it must read the same enum everywhere.
+func openapiStandardContextSchema() map[string]any {
+	return map[string]any{
+		"type": "string",
+		"description": "Which assessment question the standard answers: `planning` for an individual " +
+			"project's approval case, `mapping` for area-wide strategic noise mapping. The two are not " +
+			"interchangeable, so a result carries the context it was produced under.",
+		"enum": []string{"planning", "mapping"},
+	}
+}
+
+// openapiModelHashSchema describes the model receipt. The same value appears on
+// three schemas, and the one thing every consumer must understand about it is
+// that it is never recomputed client-side.
+func openapiModelHashSchema() map[string]any {
+	return map[string]any{
+		"type":    "string",
+		"pattern": "^[0-9a-f]{64}$",
+		"description": "SHA-256 of the stored normalized model, as bare lowercase hex — the spelling " +
+			"provenance.json uses for input hashes. It is a receipt issued by the server: keep the value you " +
+			"were handed and compare it as a string. Do not recompute it from a model you hold, because a " +
+			"re-serialised model is not the same bytes.",
+	}
 }
 
 func methodNotAllowedResponse() map[string]any {

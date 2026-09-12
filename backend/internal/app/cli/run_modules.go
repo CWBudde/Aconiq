@@ -55,6 +55,17 @@ func (l *runLog) addReceiverCount(receiverMode string, receiverCount int, gridWi
 	l.addf("receivers=%d grid=%dx%d", receiverCount, gridWidth, gridHeight)
 }
 
+// addGridExtent records which extent the automatic receiver grid was built
+// over. It is the line a user reads to answer "did it use the area I drew?".
+// Custom receiver mode builds no grid, so there is nothing to record.
+func (l *runLog) addGridExtent(receiverMode string, calcArea *geo.BBox) {
+	if receiverMode == receiverModeCustom {
+		return
+	}
+
+	l.addf("grid_extent=%s", gridExtentLabel(calcArea))
+}
+
 func (l *runLog) all() []string {
 	return l.lines
 }
@@ -129,7 +140,7 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 
 	parseOptions   func(map[string]string) (Opt, error)
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
-	buildReceivers func([]Src, Opt) ([]geo.PointReceiver, int, int, error)
+	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, int, int, error)
 	compute        func([]geo.PointReceiver, []Src, Opt) ([]Out, error)
 	persist        func(runDir string, outputs []Out, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier) (persistedRunOutputs, string, time.Time, error)
 }
@@ -147,8 +158,11 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 		return runModuleResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(input.receiverMode, input.model, func() ([]geo.PointReceiver, int, int, error) {
-		return m.buildReceivers(sources, options)
+	// The calculation area comes off input.model, which runModuleInput already
+	// carries. Adding a field for it would be a decision about all thirteen
+	// standards (see the comment on runModuleInput); this does not need one.
+	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+		return m.buildReceivers(sources, calcArea, options)
 	})
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
@@ -158,6 +172,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 
 	input.log.addf("%s=%d", m.sourceCountKey, len(sources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	outputs, err := m.compute(receivers, sources, options)
 	if err != nil {
@@ -208,8 +223,8 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(input.receiverMode, input.model, func() ([]geo.PointReceiver, int, int, error) {
-		return buildDummyReceivers(sources, options)
+	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+		return buildDummyReceivers(sources, calcArea, options)
 	})
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
@@ -219,6 +234,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 
 	input.log.addf("sources=%d", len(sources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
 		if event.Stage == "compute" && event.Message == "chunk_done" {

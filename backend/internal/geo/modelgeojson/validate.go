@@ -33,6 +33,8 @@ func Validate(model Model) ValidationReport {
 	ids := make(map[string]struct{}, len(model.Features))
 	allPoints := make([]point2, 0, 256)
 
+	var calcAreas calcAreaTracker
+
 	for i, feature := range model.Features {
 		fid := strings.TrimSpace(feature.ID)
 		if fid == "" {
@@ -45,6 +47,8 @@ func Validate(model Model) ValidationReport {
 			ids[fid] = struct{}{}
 		}
 
+		calcAreas.observe(feature, fid, &report)
+
 		points := validateFeature(feature, &report)
 		allPoints = append(allPoints, points...)
 	}
@@ -56,9 +60,47 @@ func Validate(model Model) ValidationReport {
 	return report
 }
 
+// calcAreaTracker enforces the at-most-one calculation area rule. It lives
+// outside validateFeature because that function sees one feature at a time, and
+// this is the only v1 rule a single feature cannot answer.
+//
+// Two areas is a model the UI cannot produce, and neither resolution is honest:
+// the union bbox covers ground between them that the user drew around, and
+// taking the first one makes a run's extent depend on the order features happen
+// to sit in the file.
+type calcAreaTracker struct {
+	seen    bool
+	firstID string
+}
+
+func (t *calcAreaTracker) observe(feature Feature, featureID string, report *ValidationReport) {
+	if featureKind(feature) != FeatureKindCalcArea {
+		return
+	}
+
+	if t.seen {
+		addError(report, "model.calc_area.duplicate", featureID, fmt.Sprintf(
+			"model carries more than one %s feature (the first is %q); a run has exactly one receiver grid extent",
+			FeatureKindCalcArea, t.firstID,
+		))
+
+		return
+	}
+
+	t.seen = true
+	t.firstID = featureID
+}
+
+// featureKind is the feature's kind as the validator compares it. Normalize
+// already lowercases and trims, but Validate also runs over models built in
+// code, so the comparison does not assume it.
+func featureKind(feature Feature) string {
+	return strings.ToLower(strings.TrimSpace(feature.Kind))
+}
+
 func validateFeature(feature Feature, report *ValidationReport) []point2 {
 	id := feature.ID
-	kind := strings.ToLower(strings.TrimSpace(feature.Kind))
+	kind := featureKind(feature)
 	geomType := strings.TrimSpace(feature.GeometryType)
 
 	switch kind {
@@ -82,8 +124,19 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		if geomType != GeometryTypePoint {
 			addError(report, "receiver.geometry.invalid", id, "receiver geometry must be Point")
 		}
+	case FeatureKindCalcArea:
+		// No height_m check: a calculation area is a footprint on the ground
+		// bounding the receiver grid, not an object sound travels around.
+		//
+		// MultiPolygon is refused rather than reduced to its envelope. A
+		// disjoint multi-part area would silently become one bbox spanning the
+		// gap between its parts, computing receivers over ground the user drew
+		// around. Widening this later is cheap; the reverse is not.
+		if geomType != GeometryTypePolygon {
+			addError(report, "calcarea.geometry.invalid", id, "calc-area geometry must be Polygon")
+		}
 	default:
-		addError(report, "feature.kind.invalid", id, "kind must be one of source|building|barrier|receiver")
+		addError(report, "feature.kind.invalid", id, "kind must be one of "+strings.Join(FeatureKinds, "|"))
 	}
 
 	points, ok := validateGeometry(feature, report)

@@ -98,6 +98,100 @@ func TestProjectStatusEndpoint(t *testing.T) {
 	}
 }
 
+// The REST status and the SSE `project_status` event answer the same question,
+// so they must answer it with the same bytes. They were built by two separate
+// literals once, and drifted: the stream omitted the last run's context. One
+// builder now serves both, and this pins that.
+func TestProjectStatusStreamEventMatchesRESTStatus(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Status Parity")
+	mustCreateCompletedRun(t, store)
+
+	handler := NewHandler(store, nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/project/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	event, _ := Handler{store: store, now: time.Now}.buildProjectStatusStreamEvent()
+
+	streamPayload, ok := event["project"]
+	if !ok {
+		t.Fatal("stream event carries no project member")
+	}
+
+	restBytes := remarshalJSON(t, rec.Body.Bytes())
+	streamBytes := remarshalValue(t, streamPayload)
+
+	if !bytes.Equal(restBytes, streamBytes) {
+		t.Fatalf("status payloads differ:\n REST: %s\nsteam: %s", restBytes, streamBytes)
+	}
+
+	// The parity is worth nothing if both are empty of the members that drifted.
+	if !bytes.Contains(restBytes, []byte(`"context":"planning"`)) {
+		t.Fatalf("expected the last run's context in the status payload: %s", restBytes)
+	}
+}
+
+// remarshalJSON re-encodes a JSON document so two payloads can be compared as
+// bytes without their indentation mattering. encoding/json sorts map keys, so
+// the result is canonical.
+func remarshalJSON(t *testing.T, payload []byte) []byte {
+	t.Helper()
+
+	var decoded any
+
+	decodeResponse(t, payload, &decoded)
+
+	return remarshalValue(t, decoded)
+}
+
+func remarshalValue(t *testing.T, value any) []byte {
+	t.Helper()
+
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode payload: %v", err)
+	}
+
+	var decoded any
+
+	decodeResponse(t, encoded, &decoded)
+
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("re-encode payload: %v", err)
+	}
+
+	return canonical
+}
+
+// mustCreateCompletedRun seeds one finished run, carrying a standard context so
+// that a payload comparison covers the members that are easiest to forget.
+func mustCreateCompletedRun(t *testing.T, store projectfs.Store) project.Run {
+	t.Helper()
+
+	run, _, err := store.CreateRun(projectfs.CreateRunSpec{
+		ScenarioID: "default",
+		Standard: project.StandardRef{
+			Context: framework.StandardContextPlanning,
+			ID:      "rls19-road",
+			Version: "2019",
+			Profile: "default",
+		},
+		Status: project.RunStatusCompleted,
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	return run
+}
+
 func TestProjectStatusReturnsNotFoundWhenProjectNotInitialized(t *testing.T) {
 	t.Parallel()
 
@@ -213,6 +307,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 		"/api/v1/import/terrain",
 		"/api/v1/model",
 		"/api/v1/runs",
+		"/api/v1/runs/{id}",
 		"/api/v1/runs/{id}/log",
 		"/api/v1/standards",
 	} {
@@ -295,6 +390,63 @@ func anySliceToStrings(value any) []string {
 	}
 
 	return texts
+}
+
+// Every schema below sets additionalProperties:false, so a member the server
+// emits but the schema omits makes a strict consumer reject the whole response.
+// All three carry the standard's assessment context.
+func TestOpenAPIDocumentsStandardContext(t *testing.T) {
+	t.Parallel()
+
+	spec := BuildOpenAPISpec("")
+
+	components, ok := spec["components"].(map[string]any)
+	if !ok {
+		t.Fatal("expected components object")
+	}
+
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok {
+		t.Fatal("expected schemas object")
+	}
+
+	for _, name := range []string{"LastRunStatus", "RunSummary", "StandardDescriptor"} {
+		schema, isObject := schemas[name].(map[string]any)
+		if !isObject {
+			t.Fatalf("expected %s schema", name)
+		}
+
+		properties, isObject := schema["properties"].(map[string]any)
+		if !isObject {
+			t.Fatalf("expected %s properties object", name)
+		}
+
+		context, isObject := properties["context"].(map[string]any)
+		if !isObject {
+			t.Fatalf("%s: expected a context property, got %#v", name, properties["context"])
+		}
+
+		if context["type"] != "string" {
+			t.Errorf("%s: unexpected context type %#v", name, context["type"])
+		}
+
+		enum, isStrings := context["enum"].([]string)
+		if !isStrings || !slices.Contains(enum, "planning") || !slices.Contains(enum, "mapping") {
+			t.Errorf("%s: unexpected context enum %#v", name, context["enum"])
+		}
+	}
+
+	// standardResponse.Context has no omitempty, so GET /api/v1/standards always
+	// emits the key and a consumer may rely on it.
+	descriptor, ok := schemas["StandardDescriptor"].(map[string]any)
+	if !ok {
+		t.Fatal("expected StandardDescriptor schema")
+	}
+
+	required, ok := descriptor["required"].([]string)
+	if !ok || !slices.Contains(required, "context") {
+		t.Fatalf("expected context to be required on StandardDescriptor, got %#v", descriptor["required"])
+	}
 }
 
 func TestRunsListEndpointReturnsEmptyListWhenNoRuns(t *testing.T) {

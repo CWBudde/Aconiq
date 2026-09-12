@@ -20,12 +20,35 @@ const (
 )
 
 // Feature kinds accepted by model schema v1 (Feature.Kind).
+//
+// FeatureKindCalcArea is the calculation area a user draws on the map: the
+// extent the automatic receiver grid is built over, instead of the extent of
+// whatever happens to emit. It is a model feature rather than a run setting so
+// that it travels through the same file as everything else — reprojected by
+// NormalizeWithCRS, hashed into the run's recorded inputs, and honoured
+// identically by `aconiq run` and by the local API.
+//
+// Multi-word kinds are hyphenated, matching the enum values elsewhere in this
+// codebase (`auto-grid`, `test-fixture`); snake_case is reserved for property
+// names (`source_type`, `height_m`).
 const (
 	FeatureKindSource   = "source"
 	FeatureKindBuilding = "building"
 	FeatureKindBarrier  = "barrier"
 	FeatureKindReceiver = "receiver"
+	FeatureKindCalcArea = "calc-area"
 )
+
+// FeatureKinds is every kind schema v1 accepts. The validator builds its
+// rejection message from this slice rather than repeating the spellings, so the
+// enum has one source.
+var FeatureKinds = []string{
+	FeatureKindSource,
+	FeatureKindBuilding,
+	FeatureKindBarrier,
+	FeatureKindReceiver,
+	FeatureKindCalcArea,
+}
 
 // Source geometry classes accepted by model schema v1 (Feature.SourceType).
 const (

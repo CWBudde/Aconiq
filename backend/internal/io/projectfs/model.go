@@ -1,6 +1,9 @@
 package projectfs
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -55,6 +58,68 @@ func (s Store) RelativePath(path string) string {
 	}
 
 	return filepath.ToSlash(rel)
+}
+
+// ReadModel returns the normalized model exactly as it sits on disk.
+//
+// The path is derived from the store root — ModelArtifactPaths, the same
+// derivation SaveModel writes through — and never from a manifest artifact ref.
+// A manifest is editable data: a ref could name any path on the machine, so
+// resolving one here would make the read only as contained as the file it
+// reads. Deriving the path structurally means there is nothing to validate.
+func (s Store) ReadModel() ([]byte, error) {
+	raw, err := os.ReadFile(s.ModelArtifactPaths().Normalized)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, domainerrors.New(domainerrors.KindNotFound, "projectfs.ReadModel", "no model has been saved", err)
+		}
+
+		return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.ReadModel", "read normalized model", err)
+	}
+
+	return raw, nil
+}
+
+// ReadModelWithHash returns the normalized model together with the SHA-256 of
+// exactly the bytes it returned.
+//
+// Reading the file and hashing the path are two reads, and a save landing
+// between them hands the caller one model's bytes under another model's
+// receipt. A client that stores that pair believes it holds the saved model
+// when it holds the previous one — and the whole point of the receipt is that
+// the client never checks. Hashing what was read cannot drift.
+//
+// The bytes are materialised, unlike hashFile's streaming of untrusted imports:
+// this file is one SaveModel already accepted whole.
+func (s Store) ReadModelWithHash() ([]byte, string, error) {
+	raw, err := s.ReadModel()
+	if err != nil {
+		return nil, "", err
+	}
+
+	sum := sha256.Sum256(raw)
+
+	return raw, hex.EncodeToString(sum[:]), nil
+}
+
+// ModelHash returns the SHA-256 of the normalized model file as bare lowercase
+// hex — the spelling hashInputs writes into provenance.json, so a caller can
+// compare the two without normalising either.
+//
+// It is a receipt of what is on disk, computed on the server side. A client
+// stores the value it was handed and compares strings later; it never recomputes
+// one, because a re-serialised model is not the same bytes.
+func (s Store) ModelHash() (string, error) {
+	sum, err := hashFile(s.ModelArtifactPaths().Normalized)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", domainerrors.New(domainerrors.KindNotFound, "projectfs.ModelHash", "no model has been saved", err)
+		}
+
+		return "", domainerrors.New(domainerrors.KindInternal, "projectfs.ModelHash", "hash normalized model", err)
+	}
+
+	return sum, nil
 }
 
 // SaveModel replaces the project model: it writes the normalized GeoJSON, the

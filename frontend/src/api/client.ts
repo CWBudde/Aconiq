@@ -58,6 +58,12 @@ export interface HealthResponse {
 export interface LastRunStatus {
   id: string;
   status: string;
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   standard_id: string;
   version: string;
   profile?: string;
@@ -74,6 +80,20 @@ export interface ProjectStatusResponse {
   scenario_count: number;
   run_count: number;
   last_run?: LastRunStatus;
+  /** Absent until a model has been saved. */
+  model?: ProjectModelStatus;
+}
+
+/**
+ * The saved model's receipt (schema `ProjectModelStatus`). A client that kept
+ * the `hash` from its last `POST /api/v1/model` compares the two as strings to
+ * learn whether its local draft is still the project's model, without fetching
+ * anything. Never recompute the hash locally: a re-serialised model is not the
+ * same bytes.
+ */
+export interface ProjectModelStatus {
+  hash: string;
+  updated_at: string;
 }
 
 export interface ArtifactRef {
@@ -86,6 +106,12 @@ export interface ArtifactRef {
 export interface RunSummary {
   id: string;
   scenario_id: string;
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   standard_id: string;
   version: string;
   profile?: string;
@@ -124,6 +150,25 @@ export interface RunLog {
   lines: string[];
 }
 
+/**
+ * Response of `DELETE /api/v1/runs/{id}` (schema `DeleteRunResponse`). Both
+ * arrays are always present, empty rather than null.
+ *
+ * A run that is still `pending` or `running` is refused with 409 and error code
+ * `run_not_finished` — its directory is still being written.
+ */
+export interface DeleteRunResponse {
+  run_id: string;
+  /** Project-relative paths that were deleted. */
+  removed_paths: string[];
+  /**
+   * Files whose manifest refs were dropped but whose bytes were deliberately
+   * left in place — export bundles. A bundle may already have been delivered,
+   * so deleting a run never deletes one.
+   */
+  retained_paths: string[];
+}
+
 export interface ParameterDefinition {
   name: string;
   kind: "string" | "bool" | "int" | "float";
@@ -149,6 +194,12 @@ export interface VersionInfo {
 }
 
 export interface StandardDescriptor {
+  /**
+   * Which assessment question the standard answers: `planning` for an
+   * individual project's approval case, `mapping` for area-wide strategic
+   * noise mapping. Typed as a plain string because older backends omit it.
+   */
+  context?: string;
   id: string;
   description: string;
   default_version: string;
@@ -222,6 +273,30 @@ export interface ModelSaveResponse {
   dump_path: string;
   validation_report_path: string;
   feature_count: number;
+  /**
+   * Receipt for what was just written — the SHA-256 of the normalized file, as
+   * bare lowercase hex. Store it beside the local draft and compare it against
+   * `ProjectStatusResponse.model.hash` later.
+   */
+  hash: string;
   /** Validation warnings. The model was written despite them. */
   warnings: APIValidationIssue[];
+}
+
+/**
+ * Response of `GET /api/v1/model` (schema `ModelResponse`). A project that
+ * loaded but has no model yet is refused with error code `model_not_found`,
+ * which is deliberately not the `not_found` a missing project produces.
+ */
+export interface ModelResponse {
+  /**
+   * The CRS the returned coordinates are actually in: the one asked for via
+   * `?crs=`, or the project CRS when none was asked for.
+   */
+  crs: string;
+  project_crs: string;
+  /** Receipt for the stored file. Unaffected by a reprojection. */
+  hash: string;
+  feature_count: number;
+  model: GeoJSONFeatureCollection;
 }

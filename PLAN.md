@@ -907,40 +907,131 @@ Landed; the gates below hold and the pages are built on them:
 
 ### Phase C — Information architecture and pages
 
-- [ ] **Target IA**: `/` project (Welcome and Status merged: open/create, mode chip, health,
-      validation summary); `/model` map always mounted, empty state as overlay with "Import…" and
+The backend contracts this phase needs have landed, and the characterisation nets are in place
+before the pages they protect are cut apart:
+
+- [x] **The calculation area is a model feature.** `calc-area` is a fifth kind in the v1 GeoJSON
+      schema — Polygon only, no `height_m`, at most one (`model.calc_area.duplicate` refuses a
+      second) — so it travels through `POST /api/v1/model`, is reprojected by `NormalizeWithCRS`
+      like everything else, and is honoured by `aconiq run` as well as by the API (`32b3175`,
+      `35a8942`). `buildReceiversFromPoints` takes the extent from it when present; `run.log`
+      records `grid_extent=calc_area|source_extent`, and the over-cap refusal names which extent
+      produced it, because a user can now trip the 250 000-receiver cap by drawing. **Padding still
+      applies to the drawn area** — `browser-backend.ts` already pads it and `browser-parity.test.ts`
+      pins the two kernels together, so suppressing it here would be a silent divergence; set
+      `grid_padding_m` to 0 for the area exactly. `schema_version` stays 1: it has write sites and
+      no reader, and `ToFeatureCollection` does not emit it.
+- [x] **`GET /api/v1/model` and a model hash on `ProjectStatusResponse`** (`ed8eebb`). Both, because
+      they answer different questions: the GET returns the content a reloaded workspace needs, with
+      `?crs=` reusing `NormalizeWithCRS` in reverse (the frontend has no proj4). **The hash is a
+      receipt, never recomputed by the client** — `POST /api/v1/model` returns the hash of what it
+      wrote, the draft stores it, and startup compares two strings. A canonical form hashed on both
+      sides would need the spec implemented twice over coordinates that do not survive a
+      WGS84→25832→WGS84 round trip. The normalized file is byte-deterministic for identical content,
+      which is what makes a file-bytes hash a content identity; `TestSaveModelIsByteDeterministic`
+      pins it. The model hash is part of the SSE dedupe key, or the stream would serve a stale hash
+      forever with every test still green.
+- [x] **`DELETE /api/v1/runs/{id}`** plus `aconiq delete-run` (`e6d3680`). Manifest first, then
+      `os.OpenRoot` + `RemoveAll`, so a failed removal leaves orphan bytes rather than a manifest
+      that lies. Refused with 409 while a run is still writing its directory. Export bundles are
+      kept and reported in `retained_paths`: a bundle may already have been delivered. It answers
+      200 with a body rather than 204, both so the UI can say the bundle was kept and because
+      `http-backend.ts`'s request helper always parses JSON.
+- [x] **One project-status builder** (`3f7e861`), which also closed the three `context` fields that
+      were emitted but absent from schemas declaring `additionalProperties: false`
+      (`StandardDescriptor` — required, it has no `omitempty` — plus `RunSummary` and
+      `LastRunStatus`). Phase F's premise is generating a strict client from this document, so it
+      cannot start by fixing backend bugs.
+- [x] **Characterisation nets before the splits** (`2e0d0d6`, `5539395`, `e3c1507`): first tests
+      for `results.tsx` and `export.tsx`, and coverage for `run.tsx`'s timeline and cascade. The
+      cascade test asserts the _sequence_ of values a parameter field held, via a `MutationObserver`
+      — a final-DOM assertion cannot catch an effect-based rewrite of the render-phase update,
+      because `fireEvent` flushes effects before it returns. A locale key-parity test (`35c5b53`)
+      guards the ~40 key changes the rest of this phase makes; nothing in `src/` reads `de.json`,
+      so a forgotten translation was previously invisible.
+
+Defects these nets pinned, each as current behaviour with a comment, so the fixing commit is a
+one-line expectation flip: the receiver CSV does not double embedded quotes; `label_*` messages
+already end in a colon and the JSX appends another, so the UI reads `Min::`; the row count renders
+`3 / 3 / records`; `EXPORT_KIND_LABELS` has no entry for `export.report_pdf`, which `aconiq export
+--pdf` has emitted since it shipped; `ui/components/dialog.tsx:47` hardcodes the English "Close",
+which also collides with the footer button on accessible name; and the run timeline conveys
+done/active/pending only visually, every marker being `aria-hidden`.
+
+- [ ] **Target IA**: `/` project (Welcome and Status merged: import-or-draw, mode chip, health,
+      validation summary — not "open/create": `Backend` has no create-project or open-project
+      method, and pointing the UI at a different `aconiq serve` is what "open" means here); `/model` map always mounted, empty state as overlay with "Import…" and
       "Start drawing" (`map.tsx:36-40` hides the map and the draw tools until content exists);
-      `/run`; `/results/:runId`; `/export/:runId`; `/settings` with two categories (General,
+      `/import` stays a route (it is a three-step wizard, and the `/model` overlay's "Import…" is a
+      link to it); `/run`; `/results/:runId` and `/export/:runId`, each keeping a bare index route
+      for "nothing selected" — the rail link needs a target, and auto-redirecting to the first run
+      rewrites history, fights Back and races `useRuns`. An unknown run id shows a warning naming
+      it, never a silent fallback to another run. `/settings` with two categories (General,
       Connection — five of seven today are "reserved" placeholders). Header mode chip and a
-      `<ModeGate>` with one disabled+tooltip treatment.
-- [ ] **Hydrate the workspace from the project** in HTTP mode: `GET /api/v1/model` (or a model
-      hash on `ProjectStatusResponse` compared against a hash stored with the draft) so the `/`
-      page can load the saved model on startup and a restored draft that equals the project starts
-      clean instead of forcing a re-save before every run.
-- [ ] **Carry the calculation area to the backend.** `modelToGeoJSON` leaves `calcArea` out because
-      the v1 schema has no kind for it and `POST /api/v1/runs` / `aconiq run` take no grid extent,
-      so an HTTP-mode auto-grid run uses the source extent while the map shows a drawn area; the
-      run dialog says so (`msg_calc_area_not_in_project`) instead of claiming the area is active.
-      Add a grid extent to the run request (bounds in the project CRS, or a `calc_area` feature in
-      the model schema), then drop that notice and gate the run on the area being saved.
-- [ ] **Strip placeholders and apologies**: raster colour-ramp/probe controls (`results.tsx:434-440`),
-      PDF section, planned settings, "Phase 24+" strings (`en.json:312`). Replace every CLI hand-off
-      (`msg_raster_not_implemented` at `results.tsx:434`, `en.json:310`) with the "Copy CLI
-      command" `CopyField` the export page already has (`export.tsx:179-207`).
+      `<ModeGate>` with one disabled+tooltip treatment. `ModeGate` has exactly one call site today
+      (`export.tsx:270`): of the eight inlined capability checks, six are content decisions or not
+      UI at all, and one has no capability behind it. Build it for the rule, not a sweep — and do
+      not gate `SaveStatus`, whose absence in browser mode is correct.
+- [ ] **Hydrate the workspace from the project** in HTTP mode. The endpoint and the hash exist;
+      the frontend half does not. `use-project-hydration.ts` belongs in `RootLayout` beside
+      `useAutosave`, not on `/` — a reload can land on any route, and hydrating only there would
+      show an empty map over a populated project. A draft whose stored hash equals
+      `status.model.hash` is restored clean with no fetch and no banner; otherwise the project is
+      fetched and a divergent draft still gets its Restore. Never hydrate over unsaved work.
+      `DRAFT_VERSION` stays 1 — the hash is an additive optional field, as `calcArea` was, and a
+      bump would discard every existing draft. Route it through a receiver-aware normalizer:
+      `normalize.ts`'s `VALID_KINDS` drops `receiver`, so hydrating through `normalizeGeoJSON`
+      would silently delete placed receivers and then save that loss back.
+- [ ] **Emit the calculation area from the frontend.** The backend accepts it (above);
+      `modelToGeoJSON` still leaves it out. Make `ModelPayload.calcArea` required rather than
+      optional so the compiler enumerates the call sites, emit one `calc-area` feature with a fixed
+      id (a stable id is what keeps the saved file byte-identical, which the hash receipt depends
+      on), and rewrite the doc comment that currently explains the omission. Then delete
+      `msg_calc_area_not_in_project` and the `calc-area-not-in-project` branch. The gate the old
+      wording asked for already exists — `dirty` tracks `calcArea` and the run dialog refuses while
+      dirty — so this needs a test, not a gate. Ships with the hydration item: hydration without it
+      would discard the drawn area on every reload.
+- [ ] **Strip placeholders and apologies**: the inert raster colour-ramp/probe block
+      (`results.tsx:388-441` — a disabled Select over a hardcoded ramp list and two disabled
+      inputs), planned settings, the "Phase 24+" string (`msg_receiver_custom_set_desc`,
+      `en.json:313`), the run-to-run diff notice, and the permanently disabled Cancel button
+      (`run.tsx:533-544`, `alert_cancel_not_supported`) — neither backend can cancel, so no
+      capability would ever enable it and it is a label shaped like a button. Replace each CLI
+      hand-off with the "Copy CLI command" `CopyField` the export page already has
+      (`export.tsx:179-207`), extracted to `api/cli.ts` so the results page can use it too.
+      **The PDF notice is not a placeholder, it is false**: `aconiq export --pdf` has shipped since
+      `export.go:83` and emits `export.report_pdf`, a kind `EXPORT_KIND_LABELS` does not know, so a
+      real PDF artifact renders as a raw kind string. Wire the kind up and offer the command.
 - [ ] **Split run/results/export**: they sit on `MasterDetail`/`Tabs` since Phase B, but `run.tsx`
       is still ~1,330 lines; split it into `pages/run/{page,setup-dialog,detail,timeline}.tsx`;
       extract `useRunSetupSelection` (standard→version→profile→params cascade) and
       `useSelectedRun`. Add `standards-meta.ts`: human labels, German
       directive names, parameters grouped with units (today `traffic_day_lkw1` is shown raw and only
       one standard ID has a label, `run.tsx:67-76`). Gate the run dialog on
-      `validateModel(...).errors.length === 0`. Confirm destructive actions (delete feature, discard
+      `validateProjectModel(features, receivers).errors.length === 0` — **not** `validateModel`,
+      which passes `[]` for receivers (`validate.ts:27-29`) and so validates as if none were
+      placed. Guard the empty case first: `validateProjectModel` pushes a synthetic `model.empty`
+      _error_, so a naive validation summary reads "1 error" on a fresh install. Confirm destructive actions (delete feature, discard
       draft, import-replaces-model) — no `AlertDialog` exists anywhere. Add a delete-run action
-      (`Backend.deleteRun`): browser mode now caps stored runs at 20 and tells the user on a quota
-      error that older runs may need deleting, but offers no way to do it.
+      (`Backend.deleteRun`) against the new `DELETE /api/v1/runs/{id}`, in both modes — browser
+      mode caps stored runs at 20 and tells the user on a quota error that older runs may need
+      deleting, but offers no way to do it. **Deleting breaks `nextRunID`**, which mints ids from
+      the highest id still stored (`browser-backend.ts:671-679`): deleting the newest frees its id,
+      `setRun` then silently replaces an older run and artifact ids name two payloads — the hazard
+      its own comment warns about. A persisted high-water mark and a `PERSISTED_STATE_VERSION` bump
+      are part of the work, not optional.
 - [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`); the sortable
       header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
-      `SortIcon`/`RunColumn` out of their parents, one RFC-4180 CSV builder in `model/`
-      (`results.tsx:156-166` does not escape quotes; `browser-backend.ts:783` is a second builder),
+      `SortIcon` (nested at `results.tsx:139-147`, so it remounts the header on every keystroke)
+      along with `level` and `columnLabel`; `RunColumn` is already at module scope and only needs
+      moving. One CSV builder in `model/` (`results.tsx:155-176` does not double embedded quotes;
+      the second is `buildReceiverCSV` at `browser-backend.ts:1108-1124`, which does — so freeze
+      its bytes and fix the page, keeping the stored artifact identical). Do not adopt RFC 4180's
+      CRLF: Go's `encoding/csv` writes `\n`. Note the two are already not byte-compatible for a
+      different reason — Go quotes only when necessary and ends with a newline, both JS builders
+      always quote and do not; that divergence is its own item, below. Also replace
+      `summaryCards`' `Math.min(...vals)`, which throws past ~100k arguments — exactly what
+      virtualising the table admits,
       `results.test.tsx` written alongside.
 - [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
       ask replace-vs-merge before `loadFeatures`; link preview errors to features. UI import drops
@@ -948,6 +1039,20 @@ Landed; the gates below hold and the pages are built on them:
       `loadFeatures` clears placed receivers, so "import, then Save to project" replaces the project
       model without the receivers `aconiq import` had put there — import receivers into
       `receivers`.
+- [ ] **The browser and CLI receiver CSVs are not byte-compatible**, independently of the escaping
+      bug above. `backend/internal/report/results/receiver_table_io.go:79` uses Go's `encoding/csv`,
+      which quotes only where necessary and terminates the last record with a newline; both JS
+      builders quote every field and emit no trailing newline. Two tools reading "the same" artifact
+      from the two modes get different bytes. Decide which spelling is canonical and move the other,
+      with the golden machinery (`just update-golden`) to pin it.
+- [ ] **`ParameterDefinition` carries no unit**, so `standards-meta.ts`'s unit table is a frontend
+      mirror of Go-side knowledge and can drift. Add `Unit` to `framework.ParameterDefinition`,
+      surface it through OpenAPI, and delete the mirror. Until then the table needs a drift test
+      that asserts one direction only — every key names a parameter some standard declares, never
+      the reverse, or adding a Go parameter would break the frontend build.
+- [ ] **`aconiq import --soundplan` does not emit a `calc-area` feature** although a SoundPLAN
+      bundle carries one (`soundplanimport.CalcArea`, consumed today only by `compare-raster`).
+      Emitting it would make an imported project's grid match the original's extent for free.
 
 ### Phase D — Map workspace
 
@@ -995,9 +1100,10 @@ Landed; the gates below hold and the pages are built on them:
       it needs a real WebGL context, and `map.test.tsx` stubs `MapView` out entirely).
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
-      `package.json` declares (`/api/v1/import/terrain` has no binding today). Found while checking:
-      `StandardDescriptor.context` (`handler.go:134`) is absent from the OpenAPI schema although it
-      sets `additionalProperties: false` — a backend defect to fix in the same PR.
+      `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
+      `context` schema gaps this bullet used to carry — `StandardDescriptor`, and the same defect
+      found twice more in `RunSummary` and `LastRunStatus` — are closed (`3f7e861`), so a generated
+      strict client no longer rejects live responses on day one.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
