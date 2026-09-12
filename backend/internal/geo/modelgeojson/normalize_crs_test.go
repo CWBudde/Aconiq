@@ -294,3 +294,66 @@ func TestNormalizeWithCRS_BackwardCompatible(t *testing.T) {
 		t.Fatalf("legacy Normalize should have empty ImportCRS, got %q", model.ImportCRS)
 	}
 }
+
+// TestNormalizeWithCRS_ReprojectsCalcAreaPolygon pins the guarantee the whole
+// calculation-area design rests on: because the area is a model feature and not
+// a run-request field, it is reprojected by the same pass as every other
+// geometry, and a browser drawing in WGS84 reaches the engine in the project
+// CRS without any code of its own.
+func TestNormalizeWithCRS_ReprojectsCalcAreaPolygon(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "calc-1", "kind": "calc-area"},
+      "geometry": {"type": "Polygon", "coordinates": [[[9.732,52.376],[9.742,52.376],[9.742,52.386],[9.732,52.386],[9.732,52.376]]]}
+    }
+  ]
+}`)
+
+	model, err := NormalizeWithCRS(payload, "EPSG:25832", "EPSG:4326", "test.geojson")
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	if !model.TransformApplied {
+		t.Fatal("expected TransformApplied=true")
+	}
+
+	rings, ok := model.Features[0].Coordinates.([]any)
+	if !ok || len(rings) != 1 {
+		t.Fatalf("unexpected polygon structure: %T", model.Features[0].Coordinates)
+	}
+
+	ring, ok := rings[0].([]any)
+	if !ok || len(ring) != 5 {
+		t.Fatalf("unexpected ring structure: %T", rings[0])
+	}
+
+	for i, raw := range ring {
+		coords, coordsOK := raw.([]any)
+		if !coordsOK || len(coords) < 2 {
+			t.Fatalf("vertex %d is not a coordinate pair: %T", i, raw)
+		}
+
+		x, xOK := coords[0].(float64)
+		y, yOK := coords[1].(float64)
+
+		if !xOK || !yOK {
+			t.Fatalf("vertex %d is not float64: %T, %T", i, coords[0], coords[1])
+		}
+
+		// UTM32 easting ~549xxx-550xxx, northing ~5803xxx-5804xxx near Hannover.
+		if x < 540000 || x > 560000 || y < 5790000 || y > 5810000 {
+			t.Fatalf("vertex %d (%.2f, %.2f) was not reprojected into UTM32", i, x, y)
+		}
+	}
+
+	// The area must still validate after the transform: the ring stays closed.
+	if report := Validate(model); !report.Valid {
+		t.Fatalf("reprojected calc-area does not validate: %#v", report.Errors)
+	}
+}

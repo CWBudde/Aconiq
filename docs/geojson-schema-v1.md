@@ -17,6 +17,7 @@ This schema is the minimal common input for `aconiq import` / `aconiq validate`.
   - `building`
   - `barrier`
   - `receiver`
+  - `calc-area`
 
 ### `source` Features
 
@@ -49,6 +50,28 @@ This schema is the minimal common input for `aconiq import` / `aconiq validate`.
     - `Krankenhaus`
   - the current assessment/export slice uses explicit receiver IDs plus this
     property to compare `LrDay`/`LrNight` against the legal threshold table
+
+### `calc-area` Features
+
+- Geometry must be `Polygon` — **not** `MultiPolygon`. A disjoint multi-part
+  area would be reduced to one bounding box spanning the gap between its parts,
+  which would compute receivers over ground the drawing explicitly excluded.
+- No `height_m`: a calculation area is a footprint on the ground, not an object
+  sound travels around.
+- **At most one per model.** Two areas have no honest resolution — the union
+  bounding box covers ground the user drew around, and picking the first one
+  makes a run's extent depend on feature order in the file. A second one is
+  rejected with `model.calc_area.duplicate`, naming the second feature.
+- Like every other feature, it requires an `id`.
+
+The calculation area is the extent the **automatic receiver grid** is built
+over, replacing the extent of the sources. `grid_padding_m` is still applied to
+it, so set `grid_padding_m=0` to use the drawn area exactly. `aconiq run` and
+`POST /api/v1/runs` honour it identically, because it travels in the model file
+rather than in the run request.
+
+It has no effect in `custom` receiver mode: explicit `receiver` features are
+used as they are, and no grid is built.
 
 ## Standard-Specific Geometry Conventions
 
@@ -243,3 +266,19 @@ Validation uses project CRS from `.noise/project.json`.
 - `.noise/model/model.normalized.geojson`
 - `.noise/model/model.dump.json`
 - `.noise/model/validation-report.json`
+
+## Changes to v1
+
+`schema_version` stays at `1`. The field is written but never read back, and it
+does not reach the file on disk — `ToFeatureCollection` does not emit it — so a
+bump would be a stamp nobody consults. v1 has been widened in place before, for
+`bimschv16_area_category` on `receiver` features.
+
+- **2026-09-12 — `calc-area` feature kind.** The calculation area a user draws
+  on the map, carried as a model feature so that it is reprojected with the rest
+  of the model and reaches both the CLI and the local API through one path.
+
+  Limitation: an older `aconiq` binary reading a model that contains a
+  `calc-area` feature fails validation with `feature.kind.invalid` and no
+  explanation of why the kind is unknown to it. Nothing versions this file, so
+  it cannot do better than that here.

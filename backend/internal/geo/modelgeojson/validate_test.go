@@ -1,6 +1,9 @@
 package modelgeojson
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeAndValidateValidModel(t *testing.T) {
 	t.Parallel()
@@ -230,5 +233,146 @@ func TestNormalizePreservesCustomPropertiesRoundTrip(t *testing.T) {
 
 	if got := gotProps["traffic_day_light_vph"]; got != 123.5 {
 		t.Fatalf("expected round-tripped traffic_day_light_vph, got %#v", got)
+	}
+}
+
+// hasErrorCode reports whether the report carries an error with that code, and
+// the feature ids it was raised against.
+func hasErrorCode(report ValidationReport, code string) (string, bool) {
+	for _, issue := range report.Errors {
+		if issue.Code == code {
+			return issue.FeatureID, true
+		}
+	}
+
+	return "", false
+}
+
+func validateCalcAreaPayload(t *testing.T, payload string) ValidationReport {
+	t.Helper()
+
+	model, err := Normalize([]byte(payload), "EPSG:25832", "input.geojson")
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	return Validate(model)
+}
+
+func TestValidateCalcAreaPolygonWithoutHeightIsValid(t *testing.T) {
+	t.Parallel()
+
+	report := validateCalcAreaPayload(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "calc-1", "kind": "calc-area"},
+      "geometry": {"type": "Polygon", "coordinates": [[[350000,5800000],[350100,5800000],[350100,5800100],[350000,5800100],[350000,5800000]]]}
+    }
+  ]
+}`)
+
+	if !report.Valid {
+		t.Fatalf("expected a calc-area polygon without height_m to validate, got %#v", report.Errors)
+	}
+}
+
+func TestValidateCalcAreaRejectsNonPolygonGeometry(t *testing.T) {
+	t.Parallel()
+
+	geometries := map[string]string{
+		"LineString":   `{"type": "LineString", "coordinates": [[350000,5800000],[350100,5800100]]}`,
+		"Point":        `{"type": "Point", "coordinates": [350000,5800000]}`,
+		"MultiPolygon": `{"type": "MultiPolygon", "coordinates": [[[[350000,5800000],[350100,5800000],[350100,5800100],[350000,5800100],[350000,5800000]]]]}`,
+	}
+
+	for name, geometry := range geometries {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			report := validateCalcAreaPayload(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "calc-1", "kind": "calc-area"},
+      "geometry": `+geometry+`
+    }
+  ]
+}`)
+
+			featureID, found := hasErrorCode(report, "calcarea.geometry.invalid")
+			if !found {
+				t.Fatalf("expected calcarea.geometry.invalid for %s, got %#v", name, report.Errors)
+			}
+
+			if featureID != "calc-1" {
+				t.Fatalf("expected the error to name calc-1, got %q", featureID)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsASecondCalcArea(t *testing.T) {
+	t.Parallel()
+
+	report := validateCalcAreaPayload(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "calc-1", "kind": "calc-area"},
+      "geometry": {"type": "Polygon", "coordinates": [[[350000,5800000],[350100,5800000],[350100,5800100],[350000,5800100],[350000,5800000]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "calc-2", "kind": "calc-area"},
+      "geometry": {"type": "Polygon", "coordinates": [[[360000,5800000],[360100,5800000],[360100,5800100],[360000,5800100],[360000,5800000]]]}
+    }
+  ]
+}`)
+
+	featureID, found := hasErrorCode(report, "model.calc_area.duplicate")
+	if !found {
+		t.Fatalf("expected model.calc_area.duplicate, got %#v", report.Errors)
+	}
+
+	// The second one is the one that can be removed, so it is the one named.
+	if featureID != "calc-2" {
+		t.Fatalf("expected the duplicate error to name calc-2, got %q", featureID)
+	}
+}
+
+func TestValidateUnknownKindMessageListsEveryKind(t *testing.T) {
+	t.Parallel()
+
+	report := validateCalcAreaPayload(t, `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "x-1", "kind": "calculation-area"},
+      "geometry": {"type": "Point", "coordinates": [350000,5800000]}
+    }
+  ]
+}`)
+
+	var message string
+
+	for _, issue := range report.Errors {
+		if issue.Code == "feature.kind.invalid" {
+			message = issue.Message
+		}
+	}
+
+	if message == "" {
+		t.Fatalf("expected feature.kind.invalid, got %#v", report.Errors)
+	}
+
+	for _, kind := range FeatureKinds {
+		if !strings.Contains(message, kind) {
+			t.Fatalf("kind rejection message %q does not mention %q", message, kind)
+		}
 	}
 }
