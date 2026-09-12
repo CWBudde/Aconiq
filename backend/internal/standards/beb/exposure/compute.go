@@ -365,7 +365,7 @@ func representativePoint(footprint [][]geo.Point2D) (geo.Point2D, error) {
 		return geo.Point2D{}, errors.New("footprint exterior ring is required")
 	}
 
-	centroid, ok := polygonCentroid(footprint[0])
+	centroid, ok := geo.PolygonCentroid(footprint)
 	if !ok {
 		bbox, bboxOK := geo.BBoxFromPolygon(footprint)
 		if !bboxOK {
@@ -396,34 +396,4 @@ func representativePoint(footprint [][]geo.Point2D) (geo.Point2D, error) {
 	}
 
 	return footprint[0][0], nil
-}
-
-func polygonCentroid(ring []geo.Point2D) (geo.Point2D, bool) {
-	if len(ring) < 4 {
-		return geo.Point2D{}, false
-	}
-
-	doubleArea := 0.0
-	cx := 0.0
-	cy := 0.0
-
-	for i := range len(ring) - 1 {
-		cross := ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y
-		doubleArea += cross
-		cx += (ring[i].X + ring[i+1].X) * cross
-		cy += (ring[i].Y + ring[i+1].Y) * cross
-	}
-
-	if math.Abs(doubleArea) < 1e-12 {
-		return geo.Point2D{}, false
-	}
-
-	factor := 1.0 / (3.0 * doubleArea)
-
-	point := geo.Point2D{X: cx * factor, Y: cy * factor}
-	if !point.IsFinite() {
-		return geo.Point2D{}, false
-	}
-
-	return point, true
 }

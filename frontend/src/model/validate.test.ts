@@ -286,3 +286,80 @@ describe("validateModel", () => {
     ).toBe(true);
   });
 });
+
+describe("RLS-19 Parkplatz validation", () => {
+  const areaFeature = (properties: Record<string, unknown>): ModelFeature => ({
+    id: "lot",
+    kind: "source",
+    sourceType: "area",
+    properties,
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [10, 0],
+          [10, 10],
+          [0, 10],
+          [0, 0],
+        ],
+      ],
+    },
+  });
+
+  // This validator runs with no standard selected, and an area source is a
+  // legitimate input to cnossos-industry and bub-industry too. Claiming every
+  // one of them is a Parkplatz would bury those models in unrelated errors.
+  it("leaves an area source carrying no parking property alone", () => {
+    const report = validateModel([areaFeature({})]);
+
+    expect(
+      report.errors.filter((issue) =>
+        issue.code.startsWith("source.rls19.parking."),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses a half-filled Parkplatz, which is the realistic mistake", () => {
+    const report = validateModel([
+      areaFeature({ rls19_parking_num_spaces: 200 }),
+    ]);
+
+    const codes = report.errors.map((issue) => issue.code);
+    expect(codes).toContain("source.rls19.parking.parking_type.missing");
+    expect(codes).toContain("source.rls19.parking.movements.missing");
+  });
+
+  it("accepts a Tabelle 7 facility type in place of explicit rates", () => {
+    const report = validateModel([
+      areaFeature({
+        rls19_parking_num_spaces: 200,
+        rls19_parking_type: "lkw-omnibus",
+        rls19_parking_facility_type: "tank-rastanlage",
+      }),
+    ]);
+
+    expect(
+      report.errors.filter((issue) =>
+        issue.code.startsWith("source.rls19.parking."),
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps an explicitly stated zero movement rate legal", () => {
+    const report = validateModel([
+      areaFeature({
+        rls19_parking_num_spaces: 200,
+        rls19_parking_type: "pkw",
+        rls19_parking_movements_per_space_day: 0.3,
+        rls19_parking_movements_per_space_night: 0,
+      }),
+    ]);
+
+    expect(
+      report.errors.filter((issue) =>
+        issue.code.startsWith("source.rls19.parking."),
+      ),
+    ).toEqual([]);
+  });
+});

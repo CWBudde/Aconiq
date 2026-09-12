@@ -2,6 +2,7 @@ package rls19_test20
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,7 +156,7 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 		t.Fatal("expected category_coverage")
 	}
 
-	categories := []string{"emission", "immission", "complex"}
+	categories := []string{"emission", "immission", "complex", "parking"}
 	for _, cat := range categories {
 		cs, ok := report.CategoryCoverage[cat]
 		if !ok {
@@ -227,5 +228,91 @@ func TestUpdateCISafeExpectedSnapshots(t *testing.T) {
 		if err != nil {
 			t.Fatalf("write expected snapshot %s: %v", task.Name, err)
 		}
+	}
+}
+
+// TestParkingFixtureRelationsHoldByArithmetic checks the two relations between
+// the parking fixtures that do not depend on the snapshots being right.
+//
+// The CI-safe suite otherwise pins Aconiq against itself, which proves nothing
+// about agreement with RLS-19. These two do carry independent arithmetic: the
+// P2/P1 delta follows from Eq. 10 alone, and P3 must be strictly quieter than
+// P2 because a barrier stands between the lot and the receiver — which it was
+// not before Parkplatz contributions were given D_z.
+func TestParkingFixtureRelationsHoldByArithmetic(t *testing.T) {
+	t.Parallel()
+
+	levels := map[string]float64{}
+
+	fixtures := []string{
+		"p1_parking_pr_pkw", "p2_parking_lkw_omnibus",
+		"p3_parking_shielded", "p4_parking_reflected",
+	}
+
+	for _, name := range fixtures {
+		var snapshot expectedSnapshotFile
+
+		path := filepath.Join(packageDir(), "testdata", "ci_safe", name+".golden.json")
+
+		err := decodeJSONFile(path, &snapshot)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+
+		if len(snapshot.Receivers) != 1 {
+			t.Fatalf("%s: expected one receiver, got %d", name, len(snapshot.Receivers))
+		}
+
+		levels[name] = snapshot.Receivers[0].LrDay
+	}
+
+	// Eq. 10: the lots differ only in N (1.5 vs 0.3 movements per space and
+	// hour) and in D_P,PT (10 dB vs 0 dB), so the level differs by
+	// 10 lg(1.5/0.3) + 10 dB and by nothing else.
+	wantDelta := 10*math.Log10(1.5/0.3) + 10
+
+	gotDelta := levels["p2_parking_lkw_omnibus"] - levels["p1_parking_pr_pkw"]
+	if math.Abs(gotDelta-wantDelta) > 1e-4 {
+		t.Errorf("P2 - P1 = %.6f dB, want %.6f dB from Eq. 10", gotDelta, wantDelta)
+	}
+
+	shielding := levels["p2_parking_lkw_omnibus"] - levels["p3_parking_shielded"]
+	if shielding <= 0 {
+		t.Errorf("the barrier must lower the Parkplatz contribution, got %.6f dB", shielding)
+	}
+
+	assertParkingReflectionIsBounded(t, levels)
+}
+
+// assertParkingReflectionIsBounded brackets the Nr. 3.6 mirrored path of P4
+// using geometry and Tabelle 8 alone, so the fixture is not merely pinning
+// Aconiq against itself.
+//
+// P4 is the P2 lot with a wall 25 m behind it, which puts the image source at
+// twice the plan distance: 50.122 m becomes 100.061 m in slant, a geometric
+// divergence deficit of 6.005 dB, and Tabelle 8's facade row takes a further
+// 0.5 dB. Air absorption and the ground term are both larger on the longer
+// path, so the mirrored contribution is strictly weaker than that bound —
+// which makes the bound an upper limit on the energy it can add.
+func assertParkingReflectionIsBounded(t *testing.T, levels map[string]float64) {
+	t.Helper()
+
+	direct := levels["p2_parking_lkw_omnibus"]
+
+	gotDelta := levels["p4_parking_reflected"] - direct
+	if gotDelta <= 0 {
+		t.Errorf("the wall must raise the Parkplatz contribution, got %.6f dB", gotDelta)
+	}
+
+	const reflectionLossDB = 0.5 // Tabelle 8, Gebäudefassaden row, set by the fixture
+
+	slantDirect := math.Hypot(50, 4-0.5)
+	slantImage := math.Hypot(100, 4-0.5)
+	deficitDB := 20*math.Log10(slantImage/slantDirect) + reflectionLossDB
+
+	maxDelta := 10 * math.Log10(1+math.Pow(10, -deficitDB/10))
+	if gotDelta > maxDelta {
+		t.Errorf("P4 - P2 = %.6f dB exceeds the divergence-plus-Tabelle-8 bound of %.6f dB",
+			gotDelta, maxDelta)
 	}
 }

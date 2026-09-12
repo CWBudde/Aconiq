@@ -6,7 +6,7 @@
     "receivers.json": "sha256:a1cae05d2e71cf5ce084549a00181e72eb8f7fe6a7ed8012722e358f41a724cc bytes=19307",
     "rls19-road.bin": "sha256:3013a2624c445cd516728be869c6093dfec4730045a29258dc4ef3ba829faafa bytes=2720",
     "rls19-road.json": "sha256:5536bbbdae0c643edfd410d2d57d5706aa676e158b80d2c33209fcc28fe77c80 bytes=218",
-    "run-summary.json": "sha256:ff5bfd2041c42b6861a32b7f05a6e62a831780bd9857f7e56018a6ea8a44c3a3 bytes=344"
+    "run-summary.json": "sha256:8a0ea087dc834c677758ea514bb8cfea99bec29e8e734f9516fa5d9adb582c87 bytes=369"
   },
   "run_summary": {
     "evidence_tier": "normative",
@@ -14,6 +14,7 @@
     "grid_width": 17,
     "model_version": "builtin-rls19-2019-v1",
     "output_hash": "fcf4068048fee299f1ce2ad579957406ee3cbe6181d9479749e40184b91e3905",
+    "parking_source_count": 0,
     "receiver_count": 170,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,

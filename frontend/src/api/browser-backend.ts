@@ -20,9 +20,11 @@ import {
   getFeatureString,
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
+import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
+  Building,
   ComputeRequest,
   Point2D,
   PointReceiver,
@@ -91,7 +93,7 @@ type OverpassResponse = {
 
 const urlCache = new Map<string, string>();
 
-const BROWSER_STANDARDS: StandardDescriptor[] = [
+export const BROWSER_STANDARDS: StandardDescriptor[] = [
   {
     id: "rls19-road",
     description:
@@ -107,7 +109,7 @@ const BROWSER_STANDARDS: StandardDescriptor[] = [
         profiles: [
           {
             name: "default",
-            supported_source_types: ["line"],
+            supported_source_types: ["line", "area"],
             supported_indicators: ["LrDay", "LrNight"],
             parameters: [
               {
@@ -140,17 +142,10 @@ const BROWSER_STANDARDS: StandardDescriptor[] = [
                 required: true,
                 default_value: "SMA",
                 description: "Default road surface type",
-                enum: [
-                  "SMA",
-                  "AB",
-                  "OPA",
-                  "Pflaster",
-                  "Beton",
-                  "LOA",
-                  "DSH-V",
-                  "Gussasphalt",
-                  "beschaedigt",
-                ],
+                // The whole RLS19_SURFACE_TYPES vocabulary, not a subset: a
+                // surface missing here is one a browser-mode run cannot select,
+                // and each carries its own Tabelle 4a row.
+                enum: [...RLS19_SURFACE_TYPES],
               },
               {
                 name: "speed_pkw_kph",
@@ -359,7 +354,11 @@ function setRun(
   return { ...state, runs: nextRuns };
 }
 
-function getFeatureBBox(features: ModelFeature[]): {
+// Exported for the receiver-grid extent test: a Parkplatz is an extended
+// footprint, and a grid padded around a point inside it would sit entirely
+// within the source. This walks every coordinate, so a polygon contributes all
+// its vertices — the CLI needs an explicit extent list to achieve the same.
+export function getFeatureBBox(features: ModelFeature[]): {
   minX: number;
   minY: number;
   maxX: number;
@@ -659,6 +658,67 @@ function buildBarriers(features: ModelFeature[]): Barrier[] {
     });
   }
   return barriers;
+}
+
+// buildBuildings mirrors extractRLS19Buildings: a building is a barrier and a
+// reflector at once, and the reflection loss falls back to the RLS-19 Tabelle 8
+// facade row, 0.5 dB, when the feature does not state one.
+//
+// A MultiPolygon becomes one building per part, with the same suffixed IDs the
+// CLI assigns, rather than being dropped: a skipped building is a receiver
+// computed as though nothing stood there, which is the quiet-zero failure this
+// whole change set exists to remove. The field checks mirror Building.Validate,
+// because PropagationConfig.Validate does not inspect buildings — an unchecked
+// zero height would compute happily and shield nothing.
+export function buildBuildings(features: ModelFeature[]): Building[] {
+  const buildings: Building[] = [];
+
+  for (const feature of features) {
+    if (feature.kind !== "building") continue;
+
+    const parts = polygonParts(feature);
+    if (parts === null) {
+      throw new Error(
+        `feature "${feature.id}": a building must be a Polygon or a MultiPolygon`,
+      );
+    }
+
+    const heightM = feature.heightM;
+    if (heightM === undefined || !Number.isFinite(heightM) || heightM <= 0) {
+      throw new Error(
+        `feature "${feature.id}": building height_m must be finite and > 0`,
+      );
+    }
+
+    const reflectionLossDb =
+      getFeatureNumber(feature, "reflection_loss_db") ?? 0.5;
+    if (!Number.isFinite(reflectionLossDb) || reflectionLossDb < 0) {
+      throw new Error(
+        `feature "${feature.id}": building reflection_loss_db must be finite and >= 0`,
+      );
+    }
+
+    parts.forEach((rings, index) => {
+      const footprint = rings[0];
+      if (!footprint || footprint.length < 3) {
+        throw new Error(
+          `feature "${feature.id}": building footprint must contain at least 3 vertices`,
+        );
+      }
+
+      buildings.push({
+        id:
+          parts.length === 1
+            ? feature.id
+            : `${feature.id}-${String(index + 1).padStart(2, "0")}`,
+        footprint,
+        height_m: heightM,
+        reflection_loss_db: reflectionLossDb,
+      });
+    });
+  }
+
+  return buildings;
 }
 
 function buildReceiverGrid(
@@ -961,13 +1021,15 @@ out geom;`;
 
     const features = useModelStore.getState().features;
     const sources = buildRoadSources(features, spec.params);
-    if (sources.length === 0) {
+    const parking = buildParkingSources(features);
+    if (sources.length === 0 && parking.sources.length === 0) {
       throw new Error(
-        "Browser mode currently requires at least one line source",
+        "model does not contain any rls19-road line source or parking area feature",
       );
     }
 
     const barriers = buildBarriers(features);
+    const buildings = buildBuildings(features);
 
     let gridReceivers: PointReceiver[];
     let rasterWidth: number;
@@ -1031,6 +1093,8 @@ out geom;`;
         SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
         MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
         ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
+        Buildings: buildings,
+        ParkingSources: parking.sources,
       },
     };
 
@@ -1051,6 +1115,7 @@ out geom;`;
       grid_width: rasterWidth,
       grid_height: rasterHeight,
       source_count: sources.length,
+      parking_source_count: parking.sources.length,
       receiver_count: outputs.length,
       reporting_precision_db: 0.1,
     };
@@ -1125,6 +1190,8 @@ out geom;`;
         `${startedAt} run started`,
         `${startedAt} model=browser`,
         `${startedAt} rls19_road_sources=${String(sources.length)}`,
+        `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
+        `${startedAt} rls19_buildings=${String(buildings.length)}`,
         `${startedAt} receivers=${String(gridReceivers.length)}`,
         `${startedAt} stage=compute`,
         `${finishedAt} output_hash=${outputHash}`,

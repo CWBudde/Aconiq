@@ -3,6 +3,7 @@ package road
 import (
 	"errors"
 	"math"
+	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/numeric"
@@ -78,6 +79,13 @@ func (cfg PropagationConfig) Validate() error {
 // length-related emission level L_m,E [dB(A)/m] into the sound power level of a
 // sub-segment of length l_i: L_W,i = L_m,E + 10·lg(l_i / l_0).
 const referenceLengthM = 1.0
+
+// pointSourceHeightM is the height of the substitute point source above the
+// ground it stands on. RLS-19 Nr. 3.2 sets it for both source shapes in one
+// sentence: "In der Mitte jedes Teilstücks, bzw. im Flächenschwerpunkt jeder
+// Teilfläche ist in einer Höhe von 0,5 m über dem Boden eine Punktschallquelle
+// anzusetzen" (Nr. 3.2).
+const pointSourceHeightM = 0.5
 
 // Segment represents one sub-segment of a source line for the
 // Teilstueckverfahren (partial segment method).
@@ -305,15 +313,14 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 		return PeriodLevels{}, errors.New("receiver is not finite")
 	}
 
-	if len(sources) == 0 {
-		return PeriodLevels{}, errors.New("at least one source is required")
+	if len(sources) == 0 && len(cfg.ParkingSources) == 0 {
+		return PeriodLevels{}, errors.New("at least one road source or parking source is required")
 	}
 
 	// Absolute receiver Z = terrain elevation + height above ground.
 	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
 
 	// Source height above road surface (RLS-19: 0.5 m).
-	const sourceHeightM = 0.5
 
 	// Merge explicit barriers with building barriers, and explicit reflectors
 	// with building reflectors. Buildings act as both.
@@ -325,14 +332,17 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	nightContrib := make([]float64, 0, len(sources)*4)
 
 	for _, source := range sources {
-		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, sourceHeightM, effectiveBarriers, effectiveCfg, cfg)
+		err := appendSourceContributions(&dayContrib, &nightContrib, source, receiver, receiverZ, pointSourceHeightM, effectiveBarriers, effectiveCfg, cfg)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
 	}
 
 	if len(cfg.ParkingSources) > 0 {
-		err := appendParkingContributions(&dayContrib, &nightContrib, cfg.ParkingSources, receiver, receiverZ, effectiveCfg)
+		err := appendParkingContributions(
+			&dayContrib, &nightContrib, cfg.ParkingSources,
+			receiver, receiverZ, effectiveBarriers, effectiveCfg,
+		)
 		if err != nil {
 			return PeriodLevels{}, err
 		}
@@ -452,13 +462,7 @@ func appendSegmentContributions(
 		terrainLoss = terrainShield.InsertionLoss
 	}
 
-	// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z).
-	// Ground effect and barrier shielding are not additive — only the larger applies.
-	totalShielding := math.Max(barrierLoss, terrainLoss)
-	if totalShielding > 0 {
-		att.BarrierShielding = totalShielding
-		att.Total = att.GeometricDivergence + att.AirAbsorption + math.Max(att.GroundMeteorological, totalShielding)
-	}
+	att = applyShielding(att, math.Max(barrierLoss, terrainLoss))
 
 	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
 	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
@@ -476,10 +480,28 @@ func appendSegmentContributions(
 	// the reflected path (flat terrain approximation for reflected legs).
 	appendReflectedContribs(
 		dayContrib, nightContrib,
-		emission, lengthWeight,
-		seg.MidPoint, sourceZ, receiver, receiverZ,
-		effectiveCfg,
+		emission.LmEDay+lengthWeight, emission.LmENight+lengthWeight,
+		seg.MidPoint, sourceHeightM, sourceZ, receiver, receiverZ,
+		effectiveBarriers, effectiveCfg,
 	)
+}
+
+// applyShielding folds an insertion loss into a free-field attenuation per
+// RLS-19 Eq. 11: total = D_div + D_atm + max(D_gr; D_z). Ground effect and
+// shielding are not additive — only the larger of the two applies.
+//
+// Both the road Teilstück path and the Parkplatz path go through here, so they
+// cannot combine the same two terms differently.
+func applyShielding(att AttenuationComponents, insertionLoss float64) AttenuationComponents {
+	if insertionLoss <= 0 {
+		return att
+	}
+
+	att.BarrierShielding = insertionLoss
+	att.Total = att.GeometricDivergence + att.AirAbsorption +
+		math.Max(att.GroundMeteorological, insertionLoss)
+
+	return att
 }
 
 // buildingBarriers returns the combined list of explicit barriers and barriers
@@ -528,12 +550,21 @@ func buildingReflectors(explicit []Reflector, buildings []Building) []Reflector 
 // is enforced inside computeReflectedPaths via the segment-intersection check —
 // sub-segments with no valid crossing return no reflected paths and therefore
 // add no energy.
+// appendReflectedContribs adds one contribution per valid mirrored path.
+//
+// baseDayDB and baseNightDB are the sound power levels the path starts from,
+// already composed for the source shape: a road Teilstück passes its
+// length-related emission plus 10*lg(l_i/l_0), a Parkplatzteilflaeche its total
+// power. That is the only thing that differs between the two source shapes, so
+// it is the only thing the caller supplies — everything below is the §3.5
+// chain, which Nr. 3.5 applies to a Spiegelschallquelle exactly as to an
+// original source.
 func appendReflectedContribs(
 	dayContrib, nightContrib *[]float64,
-	emission EmissionResult,
-	lengthWeight float64,
-	source geo.Point2D, sourceZ float64,
+	baseDayDB, baseNightDB float64,
+	source geo.Point2D, sourceHeightM, sourceZ float64,
 	receiver geo.Point2D, receiverZ float64,
+	effectiveBarriers []Barrier,
 	cfg PropagationConfig,
 ) {
 	if len(cfg.Reflectors) == 0 {
@@ -543,10 +574,84 @@ func appendReflectedContribs(
 	reflPaths := computeReflectedPaths(source, sourceZ, receiver, receiverZ, cfg.Reflectors)
 
 	for _, rp := range reflPaths {
+		// Ground correction uses the mean height along the reflected path
+		// (flat-terrain approximation for reflected legs). Terrain edges are
+		// left off the mirrored leg for the same reason: the image path does
+		// not lie over the sampled ground profile.
 		hmRefl := (sourceZ + receiverZ) / 2.0
 		attRefl := computeAttenuation(rp.planDistM, rp.slantDistM, hmRefl, cfg)
+
+		attRefl = applyShielding(attRefl, reflectedPathShielding(rp, sourceHeightM, receiver, effectiveBarriers, cfg))
+
+		// D_RV is a separate additive term of Eq. 2 / Eq. 3, not a candidate in
+		// Eq. 11's max{D_gr; D_z}. It is therefore added after applyShielding
+		// has settled that maximum, never folded into it.
 		attRefl.Total += rp.lossDB
-		*dayContrib = append(*dayContrib, emission.LmEDay+lengthWeight-attRefl.Total)
-		*nightContrib = append(*nightContrib, emission.LmENight+lengthWeight-attRefl.Total)
+
+		*dayContrib = append(*dayContrib, baseDayDB-attRefl.Total)
+		*nightContrib = append(*nightContrib, baseNightDB-attRefl.Total)
 	}
+}
+
+// reflectedPathShielding returns D_z for one mirrored path, measured from the
+// image source, per RLS-19 Nr. 3.5: "Bei der Schallquelle kann es sich auch um
+// eine Spiegelschallquelle handeln" (Nr. 3.5).
+func reflectedPathShielding(
+	rp reflectedPath,
+	sourceHeightM float64,
+	receiver geo.Point2D,
+	effectiveBarriers []Barrier,
+	cfg PropagationConfig,
+) float64 {
+	barriers := barriersExcluding(effectiveBarriers, rp.reflectorIDs)
+	if len(barriers) == 0 {
+		return 0
+	}
+
+	return ComputeShielding(
+		rp.imagePoint, sourceHeightM,
+		receiver, cfg.ReceiverHeightM,
+		barriers,
+	).InsertionLoss
+}
+
+// barriersExcluding drops the barriers a mirrored path bounced off.
+//
+// A reflected ray crosses its own reflector by construction — that crossing is
+// what computeReflectedPaths tests for — so counting it as a diffraction edge
+// would invent a shielding loss exactly where the standard sees a reflection.
+// Buildings are barrier and reflector at once under one ID (Building.asBarrier
+// and Building.asReflector), which is why the identity travels with the path.
+//
+// The exclusion is per reflector, not per facade: another wall of the *same*
+// building does not shield that building's own mirrored path. That direction
+// over-predicts the level and is declared in the conformance document.
+func barriersExcluding(barriers []Barrier, ids []string) []Barrier {
+	if len(ids) == 0 {
+		return barriers
+	}
+
+	excluded := false
+
+	for _, b := range barriers {
+		if slices.Contains(ids, b.ID) {
+			excluded = true
+
+			break
+		}
+	}
+
+	if !excluded {
+		return barriers
+	}
+
+	kept := make([]Barrier, 0, len(barriers))
+
+	for _, b := range barriers {
+		if !slices.Contains(ids, b.ID) {
+			kept = append(kept, b)
+		}
+	}
+
+	return kept
 }

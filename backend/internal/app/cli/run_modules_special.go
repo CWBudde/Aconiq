@@ -15,6 +15,64 @@ import (
 // barriers and buildings are separate feature kinds it propagates against, the
 // count of sources carrying feature overrides is part of its run summary, and
 // terrain elevation is applied at the receiver grid centre.
+// rls19Scene holds everything an RLS-19 run reads from the model besides its
+// road sources.
+type rls19Scene struct {
+	barriers       []rls19road.Barrier
+	buildings      []rls19road.Building
+	parkingSources []rls19road.ParkingSource
+	parkingExtent  []geo.Point2D
+}
+
+// extractRLS19Scene reads the barriers, buildings and Parkplatz sources, and
+// settles whether the model carries anything an rls19-road run can compute.
+//
+// The emptiness check lives here rather than in an extractor because neither
+// extractor can see the other's result: a model may carry only line sources,
+// only Parkplatz features, or both, and only a model carrying neither is
+// refused.
+func extractRLS19Scene(input runModuleInput, roadSources []rls19road.RoadSource) (rls19Scene, error) {
+	barriers, err := extractRLS19Barriers(input.model)
+	if err != nil {
+		input.log.addf("failed to extract RLS-19 barriers: %v", err)
+
+		return rls19Scene{}, err
+	}
+
+	buildings, err := extractRLS19Buildings(input.model)
+	if err != nil {
+		input.log.addf("failed to extract RLS-19 buildings: %v", err)
+
+		return rls19Scene{}, err
+	}
+
+	parkingSources, parkingExtent, err := extractRLS19ParkingSources(input.model)
+	if err != nil {
+		input.log.addf("failed to extract RLS-19 parking sources: %v", err)
+
+		return rls19Scene{}, err
+	}
+
+	if len(roadSources) == 0 && len(parkingSources) == 0 {
+		err = domainerrors.New(
+			domainerrors.KindValidation,
+			"cli.runRLS19RoadModule",
+			"model does not contain any rls19-road line source or parking area feature",
+			nil,
+		)
+		input.log.addf("failed to extract RLS-19 sources: %v", err)
+
+		return rls19Scene{}, err
+	}
+
+	return rls19Scene{
+		barriers:       barriers,
+		buildings:      buildings,
+		parkingSources: parkingSources,
+		parkingExtent:  parkingExtent,
+	}, nil
+}
+
 func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	options, err := parseRLS19RoadRunOptions(input.params)
 	if err != nil {
@@ -28,22 +86,16 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
-	barriers, err := extractRLS19Barriers(input.model)
+	scene, err := extractRLS19Scene(input, roadSources)
 	if err != nil {
-		input.log.addf("failed to extract RLS-19 barriers: %v", err)
-
 		return runModuleResult{}, err
 	}
 
-	buildings, err := extractRLS19Buildings(input.model)
-	if err != nil {
-		input.log.addf("failed to extract RLS-19 buildings: %v", err)
-
-		return runModuleResult{}, err
-	}
+	barriers, buildings := scene.barriers, scene.buildings
+	parkingSources, parkingExtent := scene.parkingSources, scene.parkingExtent
 
 	receivers, gridWidth, gridHeight, err := resolveReceiverSet(input.receiverMode, input.model, func() ([]geo.PointReceiver, int, int, error) {
-		return buildRLS19RoadReceivers(roadSources, options)
+		return buildRLS19RoadReceivers(roadSources, parkingExtent, options)
 	})
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
@@ -55,10 +107,12 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	input.log.addf("rls19_sources_with_feature_overrides=%d", sourceOverrideCount)
 	input.log.addf("rls19_barriers=%d", len(barriers))
 	input.log.addf("rls19_buildings=%d", len(buildings))
+	input.log.addf("rls19_parking_sources=%d", len(parkingSources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
 
 	propagationConfig := options.PropagationConfig()
 	propagationConfig.Buildings = buildings
+	propagationConfig.ParkingSources = parkingSources
 
 	if input.terrain != nil && len(receivers) > 0 {
 		centerX, centerY := receiverGridCenter(receivers)
@@ -73,7 +127,8 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	}
 
 	persisted, outputHash, finishedAt, err := persistRLS19RoadRunOutputs(
-		input.runDir, receiverOutputs, gridWidth, gridHeight, len(roadSources), sourceOverrideCount, input.receiverMode, input.standard.EvidenceTier,
+		input.runDir, receiverOutputs, gridWidth, gridHeight, len(roadSources), sourceOverrideCount,
+		len(parkingSources), input.receiverMode, input.standard.EvidenceTier,
 	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)

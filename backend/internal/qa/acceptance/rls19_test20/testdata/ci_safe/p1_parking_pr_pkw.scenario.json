@@ -1,0 +1,22 @@
+{
+  "sources": [],
+  "receivers": [
+    { "id": "r1", "point": { "x": 0, "y": 50 }, "height_m": 4 }
+  ],
+  "propagation_config": {
+    "segment_length_m": 1,
+    "min_distance_m": 3,
+    "receiver_height_m": 4,
+    "parking_sources": [
+      {
+        "id": "pr-lot",
+        "center": { "x": 0, "y": 0 },
+        "area_m2": 2500,
+        "num_spaces": 200,
+        "parking_type": "pkw",
+        "movements_per_space_day": 0.3,
+        "movements_per_space_night": 0.06
+      }
+    ]
+  }
+}

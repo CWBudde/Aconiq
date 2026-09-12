@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   browserBackend,
+  buildBuildings,
   buildRoadSources,
+  getFeatureBBox,
   overpassWayToFeature,
 } from "./browser-backend";
 import type { ModelFeature } from "@/model/types";
@@ -14,7 +16,11 @@ describe("buildRoadSources", () => {
         kind: "source",
         sourceType: "line",
         properties: {
-          surface_type: "Beton",
+          // AB is tabulated in both Tabelle 4a speed bands. Beton at 60 km/h,
+          // which this fixture used to carry, is a crossed-out cell the kernel
+          // now refuses — the pairing has to be valid for the assertion about
+          // override precedence to be about precedence.
+          surface_type: "AB",
           road_speed_kph: 60,
           speed_lkw2_kph: 50,
           gradient_percent: 4,
@@ -64,7 +70,7 @@ describe("buildRoadSources", () => {
     });
 
     expect(sources).toHaveLength(2);
-    expect(sources[0]?.surface_type).toBe("Beton");
+    expect(sources[0]?.surface_type).toBe("AB");
     expect(sources[0]?.speeds.pkw_kph).toBe(60);
     expect(sources[0]?.speeds.lkw2_kph).toBe(50);
     expect(sources[0]?.traffic_day.pkw_per_hour).toBe(1200);
@@ -252,5 +258,134 @@ describe("artifact object URLs", () => {
 
     expect(revoked).toContain(dropped);
     expect(revoked).not.toContain(kept);
+  });
+});
+
+describe("buildBuildings", () => {
+  const footprint: ModelFeature = {
+    id: "block",
+    kind: "building",
+    heightM: 12,
+    properties: {},
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [10, 0],
+          [10, 5],
+          [0, 5],
+          [0, 0],
+        ],
+      ],
+    },
+  };
+
+  it("falls back to the Tabelle 8 facade row", () => {
+    const buildings = buildBuildings([footprint]);
+
+    expect(buildings).toHaveLength(1);
+    expect(buildings[0]?.height_m).toBe(12);
+    expect(buildings[0]?.reflection_loss_db).toBe(0.5);
+  });
+
+  it("honours an explicit reflection loss", () => {
+    const buildings = buildBuildings([
+      { ...footprint, properties: { reflection_loss_db: 3 } },
+    ]);
+
+    expect(buildings[0]?.reflection_loss_db).toBe(3);
+  });
+
+  // A dropped building is a receiver computed as though nothing stood there.
+  // The CLI expands each part into its own building, so this must too.
+  it("expands a MultiPolygon into one building per part, as the CLI does", () => {
+    const buildings = buildBuildings([
+      {
+        ...footprint,
+        geometry: {
+          type: "MultiPolygon",
+          coordinates: [
+            [
+              [
+                [0, 0],
+                [10, 0],
+                [10, 5],
+                [0, 5],
+                [0, 0],
+              ],
+            ],
+            [
+              [
+                [20, 0],
+                [30, 0],
+                [30, 5],
+                [20, 5],
+                [20, 0],
+              ],
+            ],
+          ],
+        },
+      },
+    ]);
+
+    expect(buildings.map((b) => b.id)).toEqual(["block-01", "block-02"]);
+    expect(buildings[1]?.footprint[0]).toEqual({ x: 20, y: 0 });
+  });
+
+  // PropagationConfig.Validate does not inspect buildings, so an unchecked
+  // zero height would compute happily and shield nothing. Building.Validate
+  // refuses it on the CLI side; this mirrors that.
+  it("refuses a building with no stated height", () => {
+    const withoutHeight: ModelFeature = {
+      id: footprint.id,
+      kind: footprint.kind,
+      properties: {},
+      geometry: footprint.geometry,
+    };
+
+    expect(() => buildBuildings([withoutHeight])).toThrow(/height_m/);
+  });
+
+  it.each([
+    ["a zero height", { heightM: 0 }, /height_m/],
+    [
+      "a negative reflection loss",
+      { properties: { reflection_loss_db: -1 } },
+      /reflection_loss_db/,
+    ],
+  ])("refuses %s", (_name, patch, expected) => {
+    expect(() => buildBuildings([{ ...footprint, ...patch }])).toThrow(
+      expected,
+    );
+  });
+});
+
+describe("receiver grid extent", () => {
+  // The CLI had to be taught this explicitly: padding a grid around a lot's
+  // centroid alone puts the whole grid inside the source.
+  it("covers every vertex of an area source, not just its middle", () => {
+    const bbox = getFeatureBBox([
+      {
+        id: "lot",
+        kind: "source",
+        sourceType: "area",
+        properties: {},
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [0, 0],
+              [200, 0],
+              [200, 100],
+              [0, 100],
+              [0, 0],
+            ],
+          ],
+        },
+      },
+    ]);
+
+    expect(bbox).toEqual({ minX: 0, minY: 0, maxX: 200, maxY: 100 });
   });
 });

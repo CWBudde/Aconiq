@@ -788,3 +788,210 @@ func testdataPath(t *testing.T, parts ...string) string {
 
 	return filepath.Join(all...)
 }
+
+// TestRunRLS19RoadParkingOnlyModelCompletes drives a model whose only source is
+// an RLS-19 §3.4 Parkplatz. Before the parking vocabulary existed, such a model
+// was refused twice over — the extractor demanded a line source and
+// ComputeReceiverLevels demanded any source at all — so P1–P4 of the
+// conformance declaration described code no run could reach.
+func TestRunRLS19RoadParkingOnlyModelCompletes(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := testdataPath(t, "phase17", "rls19_parking_model.geojson")
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Parking", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+	if run.Status != project.RunStatusCompleted {
+		t.Fatalf("expected completed run status, got %q", run.Status)
+	}
+
+	summaryPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "run-summary.json"))
+	if err != nil {
+		t.Fatalf("read run summary: %v", err)
+	}
+
+	var summary map[string]any
+
+	err = json.Unmarshal(summaryPayload, &summary)
+	if err != nil {
+		t.Fatalf("decode run summary: %v", err)
+	}
+
+	// source_count counts line sources, so without its own key a successful
+	// Parkplatz-only run would report zero sources.
+	if got := summary["parking_source_count"]; got != float64(1) {
+		t.Errorf("parking_source_count = %v, want 1", got)
+	}
+
+	if got := summary["source_count"]; got != float64(0) {
+		t.Errorf("source_count = %v, want 0", got)
+	}
+
+	// The automatic grid must be padded around the lot's whole footprint. With
+	// only the centroid in the extent, a 200 m x 100 m lot at the default 20 m
+	// padding would produce a 5x5 grid sitting entirely inside the source
+	// instead of the 25x15 that covers it.
+	if got := summary["grid_width"]; got != float64(25) {
+		t.Errorf("grid_width = %v, want 25 (the polygon extent plus padding)", got)
+	}
+
+	if got := summary["grid_height"]; got != float64(15) {
+		t.Errorf("grid_height = %v, want 15 (the polygon extent plus padding)", got)
+	}
+
+	logPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "run.log"))
+	if err != nil {
+		t.Fatalf("read run log: %v", err)
+	}
+
+	if !strings.Contains(string(logPayload), "rls19_parking_sources=1") {
+		t.Errorf("run log does not record the parking source count:\n%s", logPayload)
+	}
+}
+
+// TestRunRLS19RoadParkingRaisesReceiverLevel proves the parking sources reach
+// ComputeReceiverLevels rather than merely being parsed: the same receiver must
+// read higher with the lot in the model than without it.
+func TestRunRLS19RoadParkingRaisesReceiverLevel(t *testing.T) {
+	t.Parallel()
+
+	withParking := runRLS19ParkingScenario(t, true)
+	withoutParking := runRLS19ParkingScenario(t, false)
+
+	if !(withParking > withoutParking) {
+		t.Errorf("a Parkplatz must raise the receiver level: with %.3f dB, without %.3f dB",
+			withParking, withoutParking)
+	}
+}
+
+// runRLS19ParkingScenario runs a one-road model, optionally with a Parkplatz
+// beside it, and returns LrDay at the explicit receiver.
+func runRLS19ParkingScenario(t *testing.T, includeParking bool) float64 {
+	t.Helper()
+
+	parking := ""
+	if includeParking {
+		parking = `{
+      "type": "Feature",
+      "properties": {
+        "id": "lot", "kind": "source", "source_type": "area",
+        "rls19_parking_num_spaces": 300,
+        "rls19_parking_type": "lkw-omnibus",
+        "rls19_parking_facility_type": "tank-rastanlage"
+      },
+      "geometry": {"type": "Polygon", "coordinates": [[[0,20],[100,20],[100,60],[0,60],[0,20]]]}
+    },`
+	}
+
+	model := `{
+  "type": "FeatureCollection",
+  "features": [
+    ` + parking + `
+    {
+      "type": "Feature",
+      "properties": {"id": "road", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0,0],[100,0]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "rec-1", "kind": "receiver", "height_m": 4},
+      "geometry": {"type": "Point", "coordinates": [50, 120]}
+    }
+  ]
+}`
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte(model), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Parking", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "rls19-road", "--receiver-mode", "custom")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+
+	payload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "receivers.json"))
+	if err != nil {
+		t.Fatalf("read receiver table: %v", err)
+	}
+
+	var table results.ReceiverTable
+
+	err = json.Unmarshal(payload, &table)
+	if err != nil {
+		t.Fatalf("decode receiver table: %v", err)
+	}
+
+	for _, record := range table.Records {
+		if record.ID == "rec-1" {
+			return record.Values[rls19road.IndicatorLrDay]
+		}
+	}
+
+	t.Fatal("receiver rec-1 not found in the result table")
+
+	return 0
+}
+
+// TestRunRLS19RoadRefusesAModelWithNeitherSourceKind pins the runner's combined
+// emptiness check, which replaced the road extractor's own.
+func TestRunRLS19RoadRefusesAModelWithNeitherSourceKind(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "rec-1", "kind": "receiver", "height_m": 4},
+      "geometry": {"type": "Point", "coordinates": [50, 120]}
+    }
+  ]
+}`), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Empty", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+
+	runErr := runCLI("--project", projectDir, "run", "--standard", "rls19-road")
+	if runErr == nil {
+		t.Fatal("a model with neither a line source nor a parking area must be refused")
+	}
+
+	if !strings.Contains(runErr.Error(), "line source or parking area") {
+		t.Errorf("error %q should name both source kinds", runErr)
+	}
+}

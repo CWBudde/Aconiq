@@ -4,7 +4,6 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/numeric"
 )
 
 type periodEmission struct {
@@ -102,46 +101,12 @@ func areaEmissionCorrection(sourceType string, rings [][]geo.Point2D) float64 {
 		return 0
 	}
 
-	areaM2 := areaPlanArea(rings)
+	areaM2 := geo.PolygonArea(rings)
 	if areaM2 <= 0 {
 		return 0
 	}
 
 	return 10 * math.Log10(areaM2)
-}
-
-func areaPlanArea(rings [][]geo.Point2D) float64 {
-	if len(rings) == 0 {
-		return 0
-	}
-
-	total := math.Abs(ringArea(rings[0]))
-	for _, hole := range rings[1:] {
-		total -= math.Abs(ringArea(hole))
-	}
-
-	if total < 0 {
-		return 0
-	}
-
-	return total
-}
-
-func ringArea(ring []geo.Point2D) float64 {
-	if len(ring) < 3 {
-		return 0
-	}
-
-	// The shoelace terms alternate in sign and their count scales with the
-	// ring, which is the cancellation-prone shape docs/policies/determinism.md
-	// §3 requires a compensated reduction for.
-	var sum numeric.CompensatedSum
-
-	for i := range len(ring) - 1 {
-		sum.Add(ring[i].X*ring[i+1].Y - ring[i+1].X*ring[i].Y)
-	}
-
-	return 0.5 * sum.Sum()
 }
 
 func energySumDB(levels []float64) float64 {

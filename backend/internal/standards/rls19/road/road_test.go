@@ -182,13 +182,20 @@ func TestSurfaceCorrection(t *testing.T) {
 		group    VehicleGroup
 		speedKPH float64
 		want     float64
+
+		// notApplicable marks the cells Tabelle 4a crosses out and the surfaces
+		// the table does not carry at all. The zero value means "the table
+		// grants a value here", so only those rows have to say anything — and
+		// the four rows below that want 0.0 *without* it are the whole point:
+		// a defined zero is not a missing one.
+		notApplicable bool
 	}{
 		{name: "SMA alias low Pkw", surface: SurfaceSMA, group: Pkw, speedKPH: 60, want: -2.6},
 		{name: "SMA alias high Lkw", surface: SurfaceSMA, group: Lkw1, speedKPH: 80, want: -2.0},
 		{name: "Non-ribbed guss asphalt", surface: SurfaceGussasphaltStandard, group: Lkw1, speedKPH: 80, want: 0.0},
 		{name: "SMA 5/8 Pkw low", surface: SurfaceSMA5_8, group: Pkw, speedKPH: 60, want: -2.6},
 		{name: "SMA 5/8 Lkw low", surface: SurfaceSMA5_8, group: Lkw1, speedKPH: 60, want: -1.8},
-		{name: "SMA 5/8 high not applicable", surface: SurfaceSMA5_8, group: Pkw, speedKPH: 80, want: 0.0},
+		{name: "SMA 5/8 high not applicable", surface: SurfaceSMA5_8, group: Pkw, speedKPH: 80, want: 0.0, notApplicable: true},
 		{name: "SMA 8/11 Pkw high", surface: SurfaceSMA8_11, group: Pkw, speedKPH: 80, want: -1.8},
 		{name: "SMA 8/11 Lkw high", surface: SurfaceSMA8_11, group: Lkw1, speedKPH: 80, want: -2.0},
 		{name: "AB Pkw low", surface: SurfaceAB, group: Pkw, speedKPH: 50, want: -2.7},
@@ -200,15 +207,15 @@ func TestSurfaceCorrection(t *testing.T) {
 		{name: "OPA PA8 high Pkw", surface: SurfaceOPA8, group: Pkw, speedKPH: 80, want: -5.5},
 		{name: "Concrete high Pkw", surface: SurfaceConcrete, group: Pkw, speedKPH: 80, want: -1.4},
 		{name: "Concrete high Lkw", surface: SurfaceConcrete, group: Lkw1, speedKPH: 80, want: -2.3},
-		{name: "Concrete low Pkw not applicable", surface: SurfaceConcrete, group: Pkw, speedKPH: 40, want: 0.0},
-		{name: "Concrete low Lkw not applicable", surface: SurfaceConcrete, group: Lkw1, speedKPH: 40, want: 0.0},
+		{name: "Concrete low Pkw not applicable", surface: SurfaceConcrete, group: Pkw, speedKPH: 40, want: 0.0, notApplicable: true},
+		{name: "Concrete low Lkw not applicable", surface: SurfaceConcrete, group: Lkw1, speedKPH: 40, want: 0.0, notApplicable: true},
 		{name: "Low-noise guss asphalt high Pkw", surface: SurfaceGussasphalt, group: Pkw, speedKPH: 80, want: -2.0},
 		{name: "Low-noise guss asphalt high Lkw", surface: SurfaceGussasphalt, group: Lkw1, speedKPH: 80, want: -1.5},
-		{name: "Low-noise guss asphalt low Pkw not applicable", surface: SurfaceGussasphalt, group: Pkw, speedKPH: 40, want: 0.0},
-		{name: "Low-noise guss asphalt low Lkw not applicable", surface: SurfaceGussasphalt, group: Lkw1, speedKPH: 40, want: 0.0},
+		{name: "Low-noise guss asphalt low Pkw not applicable", surface: SurfaceGussasphalt, group: Pkw, speedKPH: 40, want: 0.0, notApplicable: true},
+		{name: "Low-noise guss asphalt low Lkw not applicable", surface: SurfaceGussasphalt, group: Lkw1, speedKPH: 40, want: 0.0, notApplicable: true},
 		{name: "LOA low Pkw", surface: SurfaceLOA, group: Pkw, speedKPH: 40, want: -3.2},
 		{name: "LOA low Lkw", surface: SurfaceLOA, group: Lkw1, speedKPH: 40, want: -1.0},
-		{name: "LOA high not applicable", surface: SurfaceLOA, group: Pkw, speedKPH: 80, want: 0.0},
+		{name: "LOA high not applicable", surface: SurfaceLOA, group: Pkw, speedKPH: 80, want: 0.0, notApplicable: true},
 		{name: "SMA LA 8 high Pkw", surface: SurfaceSMALA8, group: Pkw, speedKPH: 80, want: -2.8},
 		{name: "SMA LA 8 high Lkw", surface: SurfaceSMALA8, group: Lkw1, speedKPH: 80, want: -4.6},
 		{name: "DSH-V low Pkw", surface: SurfaceDSHV, group: Pkw, speedKPH: 50, want: -3.9},
@@ -222,20 +229,51 @@ func TestSurfaceCorrection(t *testing.T) {
 		{name: "Paving rough 40", surface: SurfacePavingOther, group: Lkw1, speedKPH: 40, want: 6.0},
 		{name: "Paving rough 50", surface: SurfacePavingOther, group: Pkw, speedKPH: 50, want: 7.0},
 		{name: "Legacy damaged surface", surface: SurfaceUnpavedOrDamaged, group: Lkw2, speedKPH: 50, want: 2.0},
+		// The headline example from PLAN.md 1.5: OPA carries no cell at or below
+		// 60 km/h in either column, and had no test at all before this.
+		{name: "OPA alias low Pkw not applicable", surface: SurfaceOPA, group: Pkw, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "OPA alias low Lkw not applicable", surface: SurfaceOPA, group: Lkw1, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "OPA PA11 low Pkw not applicable", surface: SurfaceOPA11, group: Pkw, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "OPA PA8 low Lkw not applicable", surface: SurfaceOPA8, group: Lkw1, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "SMA 8/11 low Pkw not applicable", surface: SurfaceSMA8_11, group: Pkw, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "SMA LA 8 low Lkw not applicable", surface: SurfaceSMALA8, group: Lkw1, speedKPH: 50, want: 0.0, notApplicable: true},
+		{name: "SMA 5/8 high Lkw not applicable", surface: SurfaceSMA5_8, group: Lkw1, speedKPH: 80, want: 0.0, notApplicable: true},
+		{name: "LOA high Lkw not applicable", surface: SurfaceLOA, group: Lkw1, speedKPH: 80, want: 0.0, notApplicable: true},
+		// Lkw1 and Lkw2 read the same Lkw column, so a cell crossed out for one
+		// is crossed out for the other.
+		{name: "Concrete low Lkw2 not applicable", surface: SurfaceConcrete, group: Lkw2, speedKPH: 40, want: 0.0, notApplicable: true},
+		{name: "Concrete high Lkw2", surface: SurfaceConcrete, group: Lkw2, speedKPH: 80, want: -2.3},
+		// The band boundary is inclusive below: 60 is the "<= 60" column.
+		{name: "OPA at exactly 60 not applicable", surface: SurfaceOPA, group: Pkw, speedKPH: 60, want: 0.0, notApplicable: true},
+		{name: "OPA just above 60", surface: SurfaceOPA, group: Pkw, speedKPH: 61, want: -4.5},
 		// Anmerkung to Section 3.3.3: D_SD is 0 for Kraeder, whatever the surface.
 		{name: "Krad ignores banded surface", surface: SurfaceAB, group: Krad, speedKPH: 50, want: 0.0},
 		{name: "Krad ignores paving surcharge", surface: SurfacePavingOther, group: Krad, speedKPH: 30, want: 0.0},
 		{name: "Krad ignores legacy fallback", surface: SurfaceUnpavedOrDamaged, group: Krad, speedKPH: 50, want: 0.0},
-		{name: "Unknown surface", surface: "unknown", group: Pkw, speedKPH: 50, want: 0.0},
+		// A surface absent from the table is a different cause from a crossed-out
+		// cell, but both mean "no tabulated value"; validateRoadAttributes rejects
+		// an unknown surface before this can be reached from a validated source.
+		{name: "Unknown surface is not tabulated", surface: "unknown", group: Pkw, speedKPH: 50, want: 0.0, notApplicable: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := SurfaceCorrection(tt.surface, tt.group, tt.speedKPH)
+			got, ok := lookupSurfaceCorrection(tt.surface, tt.group, tt.speedKPH)
+			if ok == tt.notApplicable {
+				t.Fatalf("lookupSurfaceCorrection(%q, %s, %.0f): applicable = %v, want %v",
+					tt.surface, tt.group, tt.speedKPH, ok, !tt.notApplicable)
+			}
+
 			if !almostEqual(got, tt.want, 0.000001) {
-				t.Fatalf("SurfaceCorrection(%q, %s, %.0f): want %.6f, got %.6f", tt.surface, tt.group, tt.speedKPH, tt.want, got)
+				t.Fatalf("lookupSurfaceCorrection(%q, %s, %.0f): want %.6f, got %.6f", tt.surface, tt.group, tt.speedKPH, tt.want, got)
+			}
+
+			// The exported wrapper must keep flattening both causes to 0, which
+			// is what a caller that skipped Validate still sees.
+			if flat := SurfaceCorrection(tt.surface, tt.group, tt.speedKPH); !almostEqual(flat, tt.want, 0.000001) {
+				t.Fatalf("SurfaceCorrection(%q, %s, %.0f): want %.6f, got %.6f", tt.surface, tt.group, tt.speedKPH, tt.want, flat)
 			}
 		})
 	}
@@ -1191,5 +1229,27 @@ func TestComputeShielding_TallBarrier(t *testing.T) {
 	if tallResult.InsertionLoss <= shortResult.InsertionLoss {
 		t.Fatalf("taller barrier should have more attenuation: tall=%f short=%f",
 			tallResult.InsertionLoss, shortResult.InsertionLoss)
+	}
+}
+
+// TestAllowedSurfacesAreTabulated guards the invariant that makes the
+// out-of-band refusal trustworthy. lookupSurfaceCorrection reports "not
+// applicable" both for a crossed-out cell and for a surface missing from the
+// table, and validateSurfaceApplicability cannot tell them apart. Adding a
+// surface to allowedSurfaceTypes without a Tabelle 4a row would therefore
+// produce the out-of-band error for a surface that has no row at all.
+func TestAllowedSurfacesAreTabulated(t *testing.T) {
+	t.Parallel()
+
+	for surface := range allowedSurfaceTypes {
+		if _, ok := surfaceCorrectionTable[surface]; !ok {
+			t.Errorf("surface %q is allowed by Validate but carries no Tabelle 4a/4b row", surface)
+		}
+	}
+
+	for surface := range surfaceCorrectionTable {
+		if !isAllowedSurface(surface) {
+			t.Errorf("surface %q carries a correction row but is rejected by Validate", surface)
+		}
 	}
 }

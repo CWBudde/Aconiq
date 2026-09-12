@@ -1,0 +1,33 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pr-lot",
+        "kind": "source",
+        "source_type": "area",
+        "rls19_parking_num_spaces": 200,
+        "rls19_parking_type": "lkw-omnibus",
+        "rls19_parking_facility_type": "tank-rastanlage"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0, 0],
+            [200, 0],
+            [200, 100],
+            [0, 100],
+            [0, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "rec-1", "kind": "receiver", "height_m": 4 },
+      "geometry": { "type": "Point", "coordinates": [100, 250] }
+    }
+  ]
+}

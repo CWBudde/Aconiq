@@ -95,7 +95,7 @@ func areaGeometryEffect(receiver geo.PointReceiver, source IndustrySource, cfg P
 		return 0
 	}
 
-	effectiveRadius := math.Sqrt(areaPlanArea(source.AreaPolygon) / math.Pi)
+	effectiveRadius := math.Sqrt(geo.PolygonArea(source.AreaPolygon) / math.Pi)
 	if effectiveRadius <= 0 {
 		return 0
 	}

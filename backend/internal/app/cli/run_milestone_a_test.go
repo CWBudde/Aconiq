@@ -511,7 +511,7 @@ func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
         "id": "rls19-rd-1",
         "kind": "source",
         "source_type": "line",
-        "surface_type": "OPA",
+        "surface_type": "LOA",
         "speed_pkw_kph": 40,
         "speed_lkw1_kph": 40,
         "speed_lkw2_kph": 40,
@@ -585,8 +585,11 @@ func TestExtractRLS19RoadSourcesUsesFeatureProperties(t *testing.T) {
 	s := sources[0]
 
 	// Per-source acoustic overrides must take precedence over run-wide defaults.
-	if s.SurfaceType != rls19road.SurfaceOPA {
-		t.Fatalf("expected OPA surface type, got %q", s.SurfaceType)
+	// LOA rather than OPA: the point is that a per-source surface_type beats the
+	// run-wide SMA default, and LOA is tabulated at this feature's 40 km/h where
+	// OPA is one of the rows Tabelle 4a crosses out below 60.
+	if s.SurfaceType != rls19road.SurfaceLOA {
+		t.Fatalf("expected LOA surface type, got %q", s.SurfaceType)
 	}
 
 	if s.Speeds.PkwKPH != 40 || s.Speeds.Lkw1KPH != 40 || s.Speeds.Lkw2KPH != 40 || s.Speeds.KradKPH != 40 {

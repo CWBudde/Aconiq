@@ -300,7 +300,90 @@ func (s RoadSource) Validate() error {
 		return err
 	}
 
-	return s.validateTraffic()
+	if err := s.validateTraffic(); err != nil {
+		return err
+	}
+
+	// Last, because it reads speeds and traffic counts that the two steps above
+	// have just established are finite and in range.
+	return s.validateSurfaceApplicability()
+}
+
+// validateSurfaceApplicability refuses a surface/speed pairing for which
+// Tabelle 4a grants no Straßendeckschichtkorrektur — OPA at or below 60 km/h,
+// say, or Beton and lärmarmer Gussasphalt below 60 after the crossed cells were
+// honoured. Such a pairing previously computed as D_StrO = 0, indistinguishable
+// from a surface the table gives zero for and from the zero prescribed for
+// Kräder, so a modeller who picked an inapplicable surface got a plausible
+// number instead of a refusal.
+//
+// The decision comes from lookupSurfaceCorrection, the same function the
+// emission path reads, at the same effective speed — so the cell checked here
+// is the cell that would have been used.
+func (s RoadSource) validateSurfaceApplicability() error {
+	// No surface stated is the zero-correction reference case, not a pairing.
+	if s.SurfaceType == SurfaceNotSpecified {
+		return nil
+	}
+
+	for _, vg := range AllVehicleGroups() {
+		// The Anmerkung to Section 3.3.3 gives Kräder D_SD = 0 whatever the
+		// surface, so no cell is ever read for them.
+		if vg == Krad {
+			continue
+		}
+
+		// A group with no traffic in either period never reaches
+		// SurfaceCorrection: emissionForPeriod skips it. Refusing on a cell it
+		// would not read would reject models that are perfectly computable.
+		if s.TrafficDay.CountForGroup(vg) <= 0 && s.TrafficNight.CountForGroup(vg) <= 0 {
+			continue
+		}
+
+		effective := effectiveVehicleSpeed(s.Speeds, vg)
+		if _, ok := lookupSurfaceCorrection(s.SurfaceType, vg, effective); ok {
+			continue
+		}
+
+		return fmt.Errorf(
+			"road source %q surface_type %q has no Tabelle 4a correction for %s at %s; that row is tabulated only %s",
+			s.ID, s.SurfaceType, vg, s.speedClauseForGroup(vg, effective),
+			surfaceCorrectionBandPhrase(s.SurfaceType, vg),
+		)
+	}
+
+	return nil
+}
+
+// speedClauseForGroup names the speed field the modeller edits and its declared
+// value, adding the clamped value only when the two differ. The band is decided
+// on the clamped speed, but reporting only that would send a reader looking for
+// a field holding a number they never typed.
+func (s RoadSource) speedClauseForGroup(vg VehicleGroup, effective float64) string {
+	declared := baseEmissionSpeed(s.Speeds, vg)
+
+	if effective == declared {
+		return fmt.Sprintf("%s %g km/h", speedFieldForGroup(vg), declared)
+	}
+
+	return fmt.Sprintf("%s %g km/h (clamped to %g km/h)", speedFieldForGroup(vg), declared, effective)
+}
+
+// speedFieldForGroup returns the SpeedInput JSON tag carrying a group's speed,
+// so an error names the property a modeller can edit rather than a Go field.
+func speedFieldForGroup(vg VehicleGroup) string {
+	switch vg {
+	case Pkw:
+		return "pkw_kph"
+	case Lkw1:
+		return "lkw1_kph"
+	case Lkw2:
+		return "lkw2_kph"
+	case Krad:
+		return "krad_kph"
+	default:
+		return "speed"
+	}
 }
 
 func (s RoadSource) validateGeometry() error {
@@ -412,7 +495,7 @@ func Descriptor() framework.StandardDescriptor {
 				Profiles: []framework.Profile{
 					{
 						Name:                 "default",
-						SupportedSourceTypes: []string{"line"},
+						SupportedSourceTypes: []string{"line", "area"},
 						SupportedIndicators:  []string{IndicatorLrDay, IndicatorLrNight},
 						ParameterSchema: framework.ParameterSchema{
 							Parameters: []framework.ParameterDefinition{

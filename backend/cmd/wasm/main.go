@@ -54,10 +54,7 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 			return nil
 		}
 
-		// Apply defaults when config is zero-valued.
-		if req.Config.SegmentLengthM == 0 && req.Config.MinDistanceM == 0 && req.Config.ReceiverHeightM == 0 {
-			req.Config = road.DefaultPropagationConfig()
-		}
+		req.Config = withPropagationDefaults(req.Config)
 
 		// Apply terrain elevation if a terrain model is loaded.
 		if currentTerrain != nil && len(req.Receivers) > 0 {
@@ -109,6 +106,32 @@ func loadTerrainFunc(_ js.Value, args []js.Value) any {
 func clearTerrainFunc(_ js.Value, _ []js.Value) any {
 	currentTerrain = nil
 	return js.Undefined()
+}
+
+// withPropagationDefaults fills the three scalars a caller may leave unset,
+// one at a time.
+//
+// Replacing the whole struct would discard everything else the config carries
+// — Buildings, Reflectors, ParkingSources, Terrain — for a caller that simply
+// did not state a segment length. The browser sets all three today, so that
+// was latent rather than live, but the scene fields are exactly what a request
+// building a Parkplatz sends.
+func withPropagationDefaults(cfg road.PropagationConfig) road.PropagationConfig {
+	defaults := road.DefaultPropagationConfig()
+
+	if cfg.SegmentLengthM == 0 {
+		cfg.SegmentLengthM = defaults.SegmentLengthM
+	}
+
+	if cfg.MinDistanceM == 0 {
+		cfg.MinDistanceM = defaults.MinDistanceM
+	}
+
+	if cfg.ReceiverHeightM == 0 {
+		cfg.ReceiverHeightM = defaults.ReceiverHeightM
+	}
+
+	return cfg
 }
 
 // terrainAtGridCenter queries terrain elevation at the centroid of receivers.

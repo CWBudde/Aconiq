@@ -124,6 +124,7 @@ const reportTypstTemplate = `
     [Started: #report.StartedAt],
     [Finished: #report.FinishedAt],
     ..if report.SourceCount != "" { ([Source count: #report.SourceCount],) } else { () },
+    ..if report.ParkingSourceCount != "" { ([Parking source count: #report.ParkingSourceCount],) } else { () },
     ..if report.ReceiverCount != "" { ([Receiver count: #report.ReceiverCount],) } else { () },
     ..if report.GridWidth != "" { ([Grid width: #report.GridWidth],) } else { () },
     ..if report.GridHeight != "" { ([Grid height: #report.GridHeight],) } else { () },

@@ -526,6 +526,7 @@ func persistRLS19RoadRunOutputs(
 	gridHeight int,
 	sourceCount int,
 	sourceOverrideCount int,
+	parkingSourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
 ) (persistedRunOutputs, string, time.Time, error) {
@@ -539,6 +540,9 @@ func persistRLS19RoadRunOutputs(
 		indicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight},
 		decorateSummary: func(summary map[string]any) {
 			summary["sources_with_feature_acoustics_overrides"] = sourceOverrideCount
+			// Reported separately because source_count counts line sources: a
+			// Parkplatz-only run would otherwise show source_count 0 on success.
+			summary["parking_source_count"] = parkingSourceCount
 			summary["reporting_precision_db"] = rls19road.ReportingPrecisionDB
 		},
 		receiver:   func(output rls19road.ReceiverOutput) geo.PointReceiver { return output.Receiver },
