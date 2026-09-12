@@ -3,8 +3,6 @@ package cli
 import (
 	"fmt"
 	"maps"
-	"math"
-	"strconv"
 	"strings"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -18,6 +16,7 @@ import (
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	cnossosrail "github.com/aconiq/backend/internal/standards/cnossos/rail"
 	cnossosroad "github.com/aconiq/backend/internal/standards/cnossos/road"
+	dummyfreefield "github.com/aconiq/backend/internal/standards/dummy/freefield"
 	"github.com/aconiq/backend/internal/standards/framework"
 	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
@@ -438,6 +437,45 @@ func standardDataForID(standardID string) (framework.StandardData, bool) {
 	}
 }
 
+// runOptionParamKeys returns the normalized parameter names the CLI binds for
+// one standard ID, in binding order. The second result is false for an ID the
+// run pipeline does not parse options for.
+//
+// It exists so TestRunOptionsCoverParameterSchema can compare the binding tables
+// against the parameter schemas the standards modules publish. Reading the keys
+// off the same tables the parsers run is the point: a table that stops matching
+// its schema fails the test rather than silently dropping a parameter.
+func runOptionParamKeys(standardID string) ([]string, bool) {
+	switch standardID {
+	case dummyfreefield.StandardID:
+		return boundParamKeys(dummyParamBindings(&dummyRunOptions{})), true
+	case cnossosroad.StandardID:
+		return boundParamKeys(cnossosRoadParamBindings(&cnossosRoadRunOptions{})), true
+	case cnossosrail.StandardID:
+		return boundParamKeys(cnossosRailParamBindings(&cnossosRailRunOptions{})), true
+	case bubrail.StandardID:
+		return boundParamKeys(bubRailParamBindings(&bubRailRunOptions{})), true
+	case cnossosindustry.StandardID:
+		return boundParamKeys(cnossosIndustryParamBindings(&cnossosIndustryRunOptions{})), true
+	case bubindustry.StandardID:
+		return boundParamKeys(bubIndustryParamBindings(&bubIndustryRunOptions{})), true
+	case cnossosaircraft.StandardID, bufaircraft.StandardID:
+		return boundParamKeys(aircraftParamBindings(&aircraftRunOptions{})), true
+	case bubroad.StandardID:
+		return boundParamKeys(bubRoadParamBindings(&bubRoadRunOptions{})), true
+	case rls19road.StandardID:
+		return boundParamKeys(rls19RoadParamBindings(&rls19RoadRunOptions{})), true
+	case schall03.StandardID:
+		return boundParamKeys(schall03ParamBindings(&schall03RunOptions{})), true
+	case bebexposure.StandardID:
+		return boundParamKeys(bebExposureParamBindings(&bebExposureRunOptions{})), true
+	case iso9613.StandardID:
+		return boundParamKeys(iso9613ParamBindings(&iso9613RunOptions{})), true
+	default:
+		return nil, false
+	}
+}
+
 func mergeMetadata(base map[string]string, extra map[string]string) map[string]string {
 	if len(base) == 0 && len(extra) == 0 {
 		return nil
@@ -468,119 +506,70 @@ func receiverSetID(mode string) string {
 	return ""
 }
 
-func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
-	const scope = "cli.parseDummyRunOptions"
+// dummyParamBindings binds the dummy-freefield parameter schema.
+//
+// It is the only table that carries the engine controls, and the only one whose
+// grid terms are range-checked here rather than by the schema alone.
+func dummyParamBindings(options *dummyRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.minFloat(&options.GridResolutionM, 0.001),
+		runParams.GridPaddingM.minFloat(&options.GridPaddingM, 0),
+		runParams.ReceiverHeightM.minFloat(&options.ReceiverHeightM, 0),
+		runParams.SourceEmissionDB.minFloat(&options.SourceEmission, 0),
+		runParams.Workers.minInt(&options.Workers, 0),
+		runParams.ChunkSize.minInt(&options.ChunkSize, 1),
+		runParams.DisableCache.boolean(&options.DisableCache),
+	}
+}
 
+func parseDummyRunOptions(params map[string]string) (dummyRunOptions, error) {
 	options := dummyRunOptions{}
 
-	for _, field := range []struct {
-		key      string
-		target   *float64
-		minValue float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM, 0.001},
-		{"grid_padding_m", &options.GridPaddingM, 0},
-		{"receiver_height_m", &options.ReceiverHeightM, 0},
-		{"source_emission_db", &options.SourceEmission, 0},
-	} {
-		err := parseMinFloatParam(scope, params, field.key, field.target, field.minValue)
-		if err != nil {
-			return dummyRunOptions{}, err
-		}
-	}
-
-	for _, field := range []struct {
-		key      string
-		target   *int
-		minValue int
-	}{
-		{"workers", &options.Workers, 0},
-		{"chunk_size", &options.ChunkSize, 1},
-	} {
-		err := parseMinIntParam(scope, params, field.key, field.target, field.minValue)
-		if err != nil {
-			return dummyRunOptions{}, err
-		}
-	}
-
-	rawDisable, ok := params["disable_cache"]
-	if !ok {
-		return dummyRunOptions{}, domainerrors.New(domainerrors.KindInternal, scope, `normalized parameter "disable_cache" missing`, nil)
-	}
-
-	parsed, err := strconv.ParseBool(strings.TrimSpace(rawDisable))
+	err := applyBoundParams("cli.parseDummyRunOptions", params, dummyParamBindings(&options))
 	if err != nil {
-		return dummyRunOptions{}, domainerrors.New(domainerrors.KindUserInput, scope, fmt.Sprintf("invalid disable_cache=%q", rawDisable), err)
+		return dummyRunOptions{}, err
 	}
-
-	options.DisableCache = parsed
 
 	return options, nil
+}
+
+// cnossosRoadParamBindings binds the cnossos-road parameter schema.
+func cnossosRoadParamBindings(options *cnossosRoadRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.RoadSurfaceType.str(&options.SurfaceType),
+		runParams.RoadCategory.str(&options.RoadCategory),
+		runParams.RoadSpeedKPH.float(&options.SpeedKPH),
+		runParams.RoadGradientPercent.float(&options.GradientPercent),
+		runParams.RoadJunctionType.str(&options.JunctionType),
+		runParams.RoadJunctionDistanceM.float(&options.JunctionDistanceM),
+		runParams.RoadTemperatureC.float(&options.TemperatureC),
+		runParams.RoadStuddedTyreShare.float(&options.StuddedTyreShare),
+		runParams.TrafficDayLightVPH.float(&options.TrafficDayLightVPH),
+		runParams.TrafficDayMediumVPH.float(&options.TrafficDayMediumVPH),
+		runParams.TrafficDayHeavyVPH.float(&options.TrafficDayHeavyVPH),
+		runParams.TrafficEveningLightVPH.float(&options.TrafficEveningLightVPH),
+		runParams.TrafficEveningMediumVPH.float(&options.TrafficEveningMediumVPH),
+		runParams.TrafficEveningHeavyVPH.float(&options.TrafficEveningHeavyVPH),
+		runParams.TrafficNightLightVPH.float(&options.TrafficNightLightVPH),
+		runParams.TrafficNightMediumVPH.float(&options.TrafficNightMediumVPH),
+		runParams.TrafficNightHeavyVPH.float(&options.TrafficNightHeavyVPH),
+		runParams.TrafficDayPTWVPH.float(&options.TrafficDayPTWVPH),
+		runParams.TrafficEveningPTWVPH.float(&options.TrafficEveningPTWVPH),
+		runParams.TrafficNightPTWVPH.float(&options.TrafficNightPTWVPH),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.BarrierAttenuationDB.float(&options.BarrierAttenuationDB),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+	}
 }
 
 func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions, error) {
-	const scope = "cli.parseCnossosRoadRunOptions"
-
 	options := cnossosRoadRunOptions{}
 
-	err := parseFiniteFloatParams(scope, params, []floatParam{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-	})
-	if err != nil {
-		return cnossosRoadRunOptions{}, err
-	}
-
-	surfaceType, err := stringParamValue(scope, params, "road_surface_type")
-	if err != nil {
-		return cnossosRoadRunOptions{}, err
-	}
-
-	roadCategory, err := stringParamValue(scope, params, "road_category")
-	if err != nil {
-		return cnossosRoadRunOptions{}, err
-	}
-
-	options.RoadCategory = roadCategory
-	options.SurfaceType = surfaceType
-
-	err = parseFiniteFloatParams(scope, params, []floatParam{
-		{"road_speed_kph", &options.SpeedKPH},
-		{"road_gradient_percent", &options.GradientPercent},
-	})
-	if err != nil {
-		return cnossosRoadRunOptions{}, err
-	}
-
-	junctionType, err := stringParamValue(scope, params, "road_junction_type")
-	if err != nil {
-		return cnossosRoadRunOptions{}, err
-	}
-
-	options.JunctionType = junctionType
-
-	err = parseFiniteFloatParams(scope, params, []floatParam{
-		{"road_junction_distance_m", &options.JunctionDistanceM},
-		{"road_temperature_c", &options.TemperatureC},
-		{"road_studded_tyre_share", &options.StuddedTyreShare},
-		{"traffic_day_light_vph", &options.TrafficDayLightVPH},
-		{"traffic_day_medium_vph", &options.TrafficDayMediumVPH},
-		{"traffic_day_heavy_vph", &options.TrafficDayHeavyVPH},
-		{"traffic_evening_light_vph", &options.TrafficEveningLightVPH},
-		{"traffic_evening_medium_vph", &options.TrafficEveningMediumVPH},
-		{"traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH},
-		{"traffic_night_light_vph", &options.TrafficNightLightVPH},
-		{"traffic_night_medium_vph", &options.TrafficNightMediumVPH},
-		{"traffic_night_heavy_vph", &options.TrafficNightHeavyVPH},
-		{"traffic_day_ptw_vph", &options.TrafficDayPTWVPH},
-		{"traffic_evening_ptw_vph", &options.TrafficEveningPTWVPH},
-		{"traffic_night_ptw_vph", &options.TrafficNightPTWVPH},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"barrier_attenuation_db", &options.BarrierAttenuationDB},
-		{"min_distance_m", &options.MinDistanceM},
-	})
+	err := applyBoundParams("cli.parseCnossosRoadRunOptions", params, cnossosRoadParamBindings(&options))
 	if err != nil {
 		return cnossosRoadRunOptions{}, err
 	}
@@ -588,62 +577,46 @@ func parseCnossosRoadRunOptions(params map[string]string) (cnossosRoadRunOptions
 	return options, nil
 }
 
-// fillSharedRailRunOptions fills every rail run option that cnossos-rail and
+// sharedRailParamBindings binds every rail parameter that cnossos-rail and
 // bub-rail declare alike. The two parameter schemas differ only in
-// rail_track_type, which each caller resolves for itself.
-func fillSharedRailRunOptions(scope string, params map[string]string, options *cnossosRailRunOptions) error {
-	err := parseFiniteFloatParams(scope, params, []floatParam{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"rail_average_train_speed_kph", &options.AverageTrainSpeedKPH},
-		{"rail_braking_share", &options.BrakingShare},
-		{"rail_curve_radius_m", &options.CurveRadiusM},
-		{"traffic_day_trains_per_hour", &options.TrafficDayTrainsPerHour},
-		{"traffic_evening_trains_per_hour", &options.TrafficEveningTrainsPerHour},
-		{"traffic_night_trains_per_hour", &options.TrafficNightTrainsPerHour},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"bridge_correction_db", &options.BridgeCorrectionDB},
-		{"curve_squeal_db", &options.CurveSquealDB},
-		{"min_distance_m", &options.MinDistanceM},
-	})
-	if err != nil {
-		return err
+// rail_track_type, which each caller adds for itself.
+func sharedRailParamBindings(options *cnossosRailRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.RailAverageTrainSpeedKPH.float(&options.AverageTrainSpeedKPH),
+		runParams.RailBrakingShare.float(&options.BrakingShare),
+		runParams.RailCurveRadiusM.float(&options.CurveRadiusM),
+		runParams.TrafficDayTrainsPerHour.float(&options.TrafficDayTrainsPerHour),
+		runParams.TrafficEveningTrainsPerHour.float(&options.TrafficEveningTrainsPerHour),
+		runParams.TrafficNightTrainsPerHour.float(&options.TrafficNightTrainsPerHour),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.BridgeCorrectionDB.float(&options.BridgeCorrectionDB),
+		runParams.CurveSquealDB.float(&options.CurveSquealDB),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+		runParams.RailTractionType.str(&options.TractionType),
+		runParams.RailTrackRoughnessClass.str(&options.TrackRoughnessClass),
+		runParams.RailOnBridge.boolean(&options.OnBridge),
 	}
+}
 
-	err = assignStringParams(scope, params, []stringParam{
-		{"rail_traction_type", &options.TractionType},
-		{"rail_track_roughness_class", &options.TrackRoughnessClass},
-	})
-	if err != nil {
-		return err
-	}
+// cnossosRailParamBindings binds the cnossos-rail parameter schema.
+func cnossosRailParamBindings(options *cnossosRailRunOptions) []boundParam {
+	return append(sharedRailParamBindings(options), runParams.RailTrackType.str(&options.TrackType))
+}
 
-	rawOnBridge, err := stringParamValue(scope, params, "rail_on_bridge")
-	if err != nil {
-		return err
-	}
-
-	options.OnBridge, err = strconv.ParseBool(rawOnBridge)
-	if err != nil {
-		return domainerrors.New(domainerrors.KindUserInput, scope, fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
-	}
-
-	return nil
+// bubRailParamBindings binds the bub-rail parameter schema, which publishes no
+// rail_track_type although the aliased rail source model still requires one.
+func bubRailParamBindings(options *bubRailRunOptions) []boundParam {
+	return sharedRailParamBindings(options)
 }
 
 func parseCnossosRailRunOptions(params map[string]string) (cnossosRailRunOptions, error) {
-	const scope = "cli.parseCnossosRailRunOptions"
-
 	options := cnossosRailRunOptions{}
 
-	err := fillSharedRailRunOptions(scope, params, &options)
-	if err != nil {
-		return cnossosRailRunOptions{}, err
-	}
-
-	options.TrackType, err = stringParamValue(scope, params, "rail_track_type")
+	err := applyBoundParams("cli.parseCnossosRailRunOptions", params, cnossosRailParamBindings(&options))
 	if err != nil {
 		return cnossosRailRunOptions{}, err
 	}
@@ -651,16 +624,13 @@ func parseCnossosRailRunOptions(params map[string]string) (cnossosRailRunOptions
 	return options, nil
 }
 
-// parseBUBRailRunOptions parses the bub-rail schema, which publishes no
-// rail_track_type although the aliased rail source model still requires one.
-// The run therefore starts from ballasted track, which a feature's own
-// rail_track_type property still overrides.
+// parseBUBRailRunOptions parses the bub-rail schema. The run starts from
+// ballasted track because the schema publishes no rail_track_type, which a
+// feature's own rail_track_type property still overrides.
 func parseBUBRailRunOptions(params map[string]string) (bubRailRunOptions, error) {
-	const scope = "cli.parseBUBRailRunOptions"
-
 	options := bubRailRunOptions{TrackType: bubrail.TrackTypeBallasted}
 
-	err := fillSharedRailRunOptions(scope, params, &options)
+	err := applyBoundParams("cli.parseBUBRailRunOptions", params, bubRailParamBindings(&options))
 	if err != nil {
 		return bubRailRunOptions{}, err
 	}
@@ -678,108 +648,41 @@ func (o cnossosRailRunOptions) PropagationConfig() cnossosrail.PropagationConfig
 	}
 }
 
+// schall03ParamBindings binds the schall03 parameter schema.
+func schall03ParamBindings(options *schall03RunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.RailAverageTrainSpeedKPH.float(&options.AverageTrainSpeedKPH),
+		runParams.RailCurveRadiusM.float(&options.CurveRadiusM),
+		runParams.TrafficDayTrainsPerHour.float(&options.TrafficDayTrainsPH),
+		runParams.TrafficNightTrainsPerHour.float(&options.TrafficNightTrainsPH),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.SlabTrackCorrectionDB.float(&options.SlabTrackCorrectionDB),
+		runParams.BridgeCorrectionDB.float(&options.BridgeCorrectionDB),
+		runParams.CurveCorrectionDB.float(&options.CurveCorrectionDB),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+		runParams.RailTractionType.str(&options.TractionType),
+		runParams.RailTrainClass.str(&options.TrainClass),
+		runParams.RailTrackType.str(&options.TrackType),
+		runParams.RailTrackForm.str(&options.TrackForm),
+		runParams.RailTrackRoughnessClass.str(&options.TrackRoughnessClass),
+		runParams.Schall03Engine.str(&options.Engine),
+		runParams.RailOnBridge.boolean(&options.OnBridge),
+	}
+}
+
 func parseSchall03RunOptions(params map[string]string) (schall03RunOptions, error) {
 	options := schall03RunOptions{}
 
-	err := fillSchall03RunOptions(&options, params)
+	err := applyBoundParams("cli.parseSchall03RunOptions", params, schall03ParamBindings(&options))
 	if err != nil {
 		return schall03RunOptions{}, err
 	}
 
 	return options, nil
-}
-
-func fillSchall03RunOptions(options *schall03RunOptions, params map[string]string) error {
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseSchall03RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseSchall03RunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseSchall03RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"rail_average_train_speed_kph", &options.AverageTrainSpeedKPH},
-		{"rail_curve_radius_m", &options.CurveRadiusM},
-		{"traffic_day_trains_per_hour", &options.TrafficDayTrainsPH},
-		{"traffic_night_trains_per_hour", &options.TrafficNightTrainsPH},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"slab_track_correction_db", &options.SlabTrackCorrectionDB},
-		{"bridge_correction_db", &options.BridgeCorrectionDB},
-		{"curve_correction_db", &options.CurveCorrectionDB},
-		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *string
-	}{
-		{"rail_traction_type", &options.TractionType},
-		{"rail_train_class", &options.TrainClass},
-		{"rail_track_type", &options.TrackType},
-		{"rail_track_form", &options.TrackForm},
-		{"rail_track_roughness_class", &options.TrackRoughnessClass},
-		{schall03.ParamEngine, &options.Engine},
-	} {
-		value, err := getString(item.key)
-		if err != nil {
-			return err
-		}
-
-		*item.target = value
-	}
-
-	onBridge, err := parseRailOnBridge(params)
-	if err != nil {
-		return err
-	}
-
-	options.OnBridge = onBridge
-
-	return nil
-}
-
-func parseRailOnBridge(params map[string]string) (bool, error) {
-	rawOnBridge, ok := params["rail_on_bridge"]
-	if !ok {
-		return false, domainerrors.New(domainerrors.KindInternal, "cli.parseSchall03RunOptions", `normalized parameter "rail_on_bridge" missing`, nil)
-	}
-
-	onBridge, err := strconv.ParseBool(strings.TrimSpace(rawOnBridge))
-	if err != nil {
-		return false, domainerrors.New(domainerrors.KindUserInput, "cli.parseSchall03RunOptions", fmt.Sprintf("invalid rail_on_bridge=%q", rawOnBridge), err)
-	}
-
-	return onBridge, nil
 }
 
 func (o schall03RunOptions) PropagationConfig() schall03.PropagationConfig {
@@ -793,252 +696,123 @@ func (o schall03RunOptions) PropagationConfig() schall03.PropagationConfig {
 	}
 }
 
+// bubRoadParamBindings binds the bub-road parameter schema.
+func bubRoadParamBindings(options *bubRoadRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.RoadSurfaceType.str(&options.SurfaceType),
+		runParams.RoadFunctionClass.str(&options.RoadFunctionClass),
+		runParams.RoadJunctionType.str(&options.JunctionType),
+		runParams.RoadSpeedKPH.float(&options.SpeedKPH),
+		runParams.RoadGradientPercent.float(&options.GradientPercent),
+		runParams.RoadJunctionDistanceM.float(&options.JunctionDistanceM),
+		runParams.RoadTemperatureC.float(&options.TemperatureC),
+		runParams.RoadStuddedTyreShare.float(&options.StuddedTyreShare),
+		runParams.TrafficDayLightVPH.float(&options.TrafficDayLightVPH),
+		runParams.TrafficDayMediumVPH.float(&options.TrafficDayMediumVPH),
+		runParams.TrafficDayHeavyVPH.float(&options.TrafficDayHeavyVPH),
+		runParams.TrafficDayPTWVPH.float(&options.TrafficDayPTWVPH),
+		runParams.TrafficEveningLightVPH.float(&options.TrafficEveningLightVPH),
+		runParams.TrafficEveningMediumVPH.float(&options.TrafficEveningMediumVPH),
+		runParams.TrafficEveningHeavyVPH.float(&options.TrafficEveningHeavyVPH),
+		runParams.TrafficEveningPTWVPH.float(&options.TrafficEveningPTWVPH),
+		runParams.TrafficNightLightVPH.float(&options.TrafficNightLightVPH),
+		runParams.TrafficNightMediumVPH.float(&options.TrafficNightMediumVPH),
+		runParams.TrafficNightHeavyVPH.float(&options.TrafficNightHeavyVPH),
+		runParams.TrafficNightPTWVPH.float(&options.TrafficNightPTWVPH),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.UrbanCanyonDB.float(&options.UrbanCanyonDB),
+		runParams.IntersectionDensityPerKM.float(&options.IntersectionDensityPerKM),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+	}
+}
+
 func parseBUBRoadRunOptions(params map[string]string) (bubRoadRunOptions, error) {
 	options := bubRoadRunOptions{}
 
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseBUBRoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseBUBRoadRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseBUBRoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	err := parseFloat("grid_resolution_m", &options.GridResolutionM)
+	err := applyBoundParams("cli.parseBUBRoadRunOptions", params, bubRoadParamBindings(&options))
 	if err != nil {
 		return bubRoadRunOptions{}, err
-	}
-
-	err = parseFloat("grid_padding_m", &options.GridPaddingM)
-	if err != nil {
-		return bubRoadRunOptions{}, err
-	}
-
-	err = parseFloat("receiver_height_m", &options.ReceiverHeightM)
-	if err != nil {
-		return bubRoadRunOptions{}, err
-	}
-
-	options.SurfaceType, err = getString("road_surface_type")
-	if err != nil {
-		return bubRoadRunOptions{}, err
-	}
-
-	options.RoadFunctionClass, err = getString("road_function_class")
-	if err != nil {
-		return bubRoadRunOptions{}, err
-	}
-
-	options.JunctionType, err = getString("road_junction_type")
-	if err != nil {
-		return bubRoadRunOptions{}, err
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"road_speed_kph", &options.SpeedKPH},
-		{"road_gradient_percent", &options.GradientPercent},
-		{"road_junction_distance_m", &options.JunctionDistanceM},
-		{"road_temperature_c", &options.TemperatureC},
-		{"road_studded_tyre_share", &options.StuddedTyreShare},
-		{"traffic_day_light_vph", &options.TrafficDayLightVPH},
-		{"traffic_day_medium_vph", &options.TrafficDayMediumVPH},
-		{"traffic_day_heavy_vph", &options.TrafficDayHeavyVPH},
-		{"traffic_day_ptw_vph", &options.TrafficDayPTWVPH},
-		{"traffic_evening_light_vph", &options.TrafficEveningLightVPH},
-		{"traffic_evening_medium_vph", &options.TrafficEveningMediumVPH},
-		{"traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH},
-		{"traffic_evening_ptw_vph", &options.TrafficEveningPTWVPH},
-		{"traffic_night_light_vph", &options.TrafficNightLightVPH},
-		{"traffic_night_medium_vph", &options.TrafficNightMediumVPH},
-		{"traffic_night_heavy_vph", &options.TrafficNightHeavyVPH},
-		{"traffic_night_ptw_vph", &options.TrafficNightPTWVPH},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"urban_canyon_db", &options.UrbanCanyonDB},
-		{"intersection_density_per_km", &options.IntersectionDensityPerKM},
-		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return bubRoadRunOptions{}, err
-		}
 	}
 
 	return options, nil
+}
+
+// rls19RoadParamBindings binds the rls19-road parameter schema, which carries
+// its own speed and traffic vocabulary rather than the shared road one.
+func rls19RoadParamBindings(options *rls19RoadRunOptions) []boundParam {
+	return []boundParam{
+		runParams.SurfaceType.str(&options.SurfaceType),
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.SpeedPkwKPH.float(&options.SpeedPkwKPH),
+		runParams.SpeedLkw1KPH.float(&options.SpeedLkw1KPH),
+		runParams.SpeedLkw2KPH.float(&options.SpeedLkw2KPH),
+		runParams.SpeedKradKPH.float(&options.SpeedKradKPH),
+		runParams.GradientPercent.float(&options.GradientPercent),
+		runParams.TrafficDayPkw.float(&options.TrafficDayPkw),
+		runParams.TrafficDayLkw1.float(&options.TrafficDayLkw1),
+		runParams.TrafficDayLkw2.float(&options.TrafficDayLkw2),
+		runParams.TrafficDayKrad.float(&options.TrafficDayKrad),
+		runParams.TrafficNightPkw.float(&options.TrafficNightPkw),
+		runParams.TrafficNightLkw1.float(&options.TrafficNightLkw1),
+		runParams.TrafficNightLkw2.float(&options.TrafficNightLkw2),
+		runParams.TrafficNightKrad.float(&options.TrafficNightKrad),
+		runParams.SegmentLengthM.float(&options.SegmentLengthM),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+	}
 }
 
 func parseRLS19RoadRunOptions(params map[string]string) (rls19RoadRunOptions, error) {
 	options := rls19RoadRunOptions{}
 
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseRLS19RoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseRLS19RoadRunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseRLS19RoadRunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	var err error
-
-	options.SurfaceType, err = getString("surface_type")
+	err := applyBoundParams("cli.parseRLS19RoadRunOptions", params, rls19RoadParamBindings(&options))
 	if err != nil {
 		return rls19RoadRunOptions{}, err
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"speed_pkw_kph", &options.SpeedPkwKPH},
-		{"speed_lkw1_kph", &options.SpeedLkw1KPH},
-		{"speed_lkw2_kph", &options.SpeedLkw2KPH},
-		{"speed_krad_kph", &options.SpeedKradKPH},
-		{"gradient_percent", &options.GradientPercent},
-		{"traffic_day_pkw", &options.TrafficDayPkw},
-		{"traffic_day_lkw1", &options.TrafficDayLkw1},
-		{"traffic_day_lkw2", &options.TrafficDayLkw2},
-		{"traffic_day_krad", &options.TrafficDayKrad},
-		{"traffic_night_pkw", &options.TrafficNightPkw},
-		{"traffic_night_lkw1", &options.TrafficNightLkw1},
-		{"traffic_night_lkw2", &options.TrafficNightLkw2},
-		{"traffic_night_krad", &options.TrafficNightKrad},
-		{"segment_length_m", &options.SegmentLengthM},
-		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return rls19RoadRunOptions{}, err
-		}
 	}
 
 	return options, nil
 }
 
+// aircraftParamBindings binds the aircraft parameter schema that cnossos-aircraft
+// and buf-aircraft share.
+func aircraftParamBindings(options *aircraftRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.ReferencePowerLevelDB.float(&options.ReferencePowerLevelDB),
+		runParams.EngineStateFactor.float(&options.EngineStateFactor),
+		runParams.BankAngleDeg.float(&options.BankAngleDeg),
+		runParams.LateralOffsetM.float(&options.LateralOffsetM),
+		runParams.TrackStartHeightM.float(&options.TrackStartHeightM),
+		runParams.TrackEndHeightM.float(&options.TrackEndHeightM),
+		runParams.MovementDayPerHour.float(&options.MovementDayPerHour),
+		runParams.MovementEveningPerHour.float(&options.MovementEveningPerHour),
+		runParams.MovementNightPerHour.float(&options.MovementNightPerHour),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.LateralDirectivityDB.float(&options.LateralDirectivityDB),
+		runParams.ApproachCorrectionDB.float(&options.ApproachCorrectionDB),
+		runParams.ClimbCorrectionDB.float(&options.ClimbCorrectionDB),
+		runParams.MinSlantDistanceM.float(&options.MinSlantDistanceM),
+		runParams.AirportID.str(&options.AirportID),
+		runParams.RunwayID.str(&options.RunwayID),
+		runParams.AircraftOperationType.str(&options.OperationType),
+		runParams.AircraftClass.str(&options.AircraftClass),
+		runParams.AircraftProcedureType.str(&options.ProcedureType),
+		runParams.AircraftThrustMode.str(&options.ThrustMode),
+	}
+}
+
 func parseAircraftRunOptions(params map[string]string, contextName string) (aircraftRunOptions, error) {
 	options := aircraftRunOptions{}
 
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, contextName, fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, contextName, fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, contextName, fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"reference_power_level_db", &options.ReferencePowerLevelDB},
-		{"engine_state_factor", &options.EngineStateFactor},
-		{"bank_angle_deg", &options.BankAngleDeg},
-		{"lateral_offset_m", &options.LateralOffsetM},
-		{"track_start_height_m", &options.TrackStartHeightM},
-		{"track_end_height_m", &options.TrackEndHeightM},
-		{"movement_day_per_hour", &options.MovementDayPerHour},
-		{"movement_evening_per_hour", &options.MovementEveningPerHour},
-		{"movement_night_per_hour", &options.MovementNightPerHour},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"lateral_directivity_db", &options.LateralDirectivityDB},
-		{"approach_correction_db", &options.ApproachCorrectionDB},
-		{"climb_correction_db", &options.ClimbCorrectionDB},
-		{"min_slant_distance_m", &options.MinSlantDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return aircraftRunOptions{}, err
-		}
-	}
-
-	var err error
-
-	options.AirportID, err = getString("airport_id")
-	if err != nil {
-		return aircraftRunOptions{}, err
-	}
-
-	options.RunwayID, err = getString("runway_id")
-	if err != nil {
-		return aircraftRunOptions{}, err
-	}
-
-	options.OperationType, err = getString("aircraft_operation_type")
-	if err != nil {
-		return aircraftRunOptions{}, err
-	}
-
-	options.AircraftClass, err = getString("aircraft_class")
-	if err != nil {
-		return aircraftRunOptions{}, err
-	}
-
-	options.ProcedureType, err = getString("aircraft_procedure_type")
-	if err != nil {
-		return aircraftRunOptions{}, err
-	}
-
-	options.ThrustMode, err = getString("aircraft_thrust_mode")
+	err := applyBoundParams(contextName, params, aircraftParamBindings(&options))
 	if err != nil {
 		return aircraftRunOptions{}, err
 	}
@@ -1121,44 +895,48 @@ func (o bufAircraftRunOptions) PropagationConfig() bufaircraft.PropagationConfig
 	}
 }
 
-// fillSharedIndustryRunOptions fills every industry run option that
+// sharedIndustryParamBindings binds every industry parameter that
 // cnossos-industry and bub-industry declare alike. The two parameter schemas
 // differ only in industry_source_category and industry_enclosure_state, which
-// each caller resolves for itself.
-func fillSharedIndustryRunOptions(scope string, params map[string]string, options *cnossosIndustryRunOptions) error {
-	return parseFiniteFloatParams(scope, params, []floatParam{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"industry_sound_power_level_db", &options.SoundPowerLevelDB},
-		{"industry_source_height_m", &options.SourceHeightM},
-		{"industry_tonality_correction_db", &options.TonalityCorrectionDB},
-		{"industry_impulsivity_correction_db", &options.ImpulsivityCorrectionDB},
-		{"operation_day_factor", &options.OperationDayFactor},
-		{"operation_evening_factor", &options.OperationEveningFactor},
-		{"operation_night_factor", &options.OperationNightFactor},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"screening_attenuation_db", &options.ScreeningAttenuationDB},
-		{"facade_reflection_db", &options.FacadeReflectionDB},
-		{"min_distance_m", &options.MinDistanceM},
-	})
+// cnossos-industry adds for itself.
+func sharedIndustryParamBindings(options *cnossosIndustryRunOptions) []boundParam {
+	return []boundParam{
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.IndustrySoundPowerLevelDB.float(&options.SoundPowerLevelDB),
+		runParams.IndustrySourceHeightM.float(&options.SourceHeightM),
+		runParams.IndustryTonalityCorrectionDB.float(&options.TonalityCorrectionDB),
+		runParams.IndustryImpulsivityCorrectionDB.float(&options.ImpulsivityCorrectionDB),
+		runParams.OperationDayFactor.float(&options.OperationDayFactor),
+		runParams.OperationEveningFactor.float(&options.OperationEveningFactor),
+		runParams.OperationNightFactor.float(&options.OperationNightFactor),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.ScreeningAttenuationDB.float(&options.ScreeningAttenuationDB),
+		runParams.FacadeReflectionDB.float(&options.FacadeReflectionDB),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+	}
+}
+
+// cnossosIndustryParamBindings binds the cnossos-industry parameter schema.
+func cnossosIndustryParamBindings(options *cnossosIndustryRunOptions) []boundParam {
+	return append([]boundParam{
+		runParams.IndustrySourceCategory.str(&options.SourceCategory),
+		runParams.IndustryEnclosureState.str(&options.EnclosureState),
+	}, sharedIndustryParamBindings(options)...)
+}
+
+// bubIndustryParamBindings binds the bub-industry parameter schema, which
+// publishes neither industry_source_category nor industry_enclosure_state.
+func bubIndustryParamBindings(options *bubIndustryRunOptions) []boundParam {
+	return sharedIndustryParamBindings(options)
 }
 
 func parseCnossosIndustryRunOptions(params map[string]string) (cnossosIndustryRunOptions, error) {
-	const scope = "cli.parseCnossosIndustryRunOptions"
-
 	options := cnossosIndustryRunOptions{}
 
-	err := assignStringParams(scope, params, []stringParam{
-		{"industry_source_category", &options.SourceCategory},
-		{"industry_enclosure_state", &options.EnclosureState},
-	})
-	if err != nil {
-		return cnossosIndustryRunOptions{}, err
-	}
-
-	err = fillSharedIndustryRunOptions(scope, params, &options)
+	err := applyBoundParams("cli.parseCnossosIndustryRunOptions", params, cnossosIndustryParamBindings(&options))
 	if err != nil {
 		return cnossosIndustryRunOptions{}, err
 	}
@@ -1172,14 +950,12 @@ func parseCnossosIndustryRunOptions(params map[string]string) (cnossosIndustryRu
 // from an open process source, which a feature's own industry_source_category
 // and industry_enclosure_state properties still override.
 func parseBUBIndustryRunOptions(params map[string]string) (bubIndustryRunOptions, error) {
-	const scope = "cli.parseBUBIndustryRunOptions"
-
 	options := bubIndustryRunOptions{
 		SourceCategory: bubindustry.CategoryProcess,
 		EnclosureState: bubindustry.EnclosureOpen,
 	}
 
-	err := fillSharedIndustryRunOptions(scope, params, &options)
+	err := applyBoundParams("cli.parseBUBIndustryRunOptions", params, bubIndustryParamBindings(&options))
 	if err != nil {
 		return bubIndustryRunOptions{}, err
 	}
@@ -1197,63 +973,32 @@ func (o cnossosIndustryRunOptions) PropagationConfig() cnossosindustry.Propagati
 	}
 }
 
+// iso9613ParamBindings binds the iso9613 parameter schema.
+func iso9613ParamBindings(options *iso9613RunOptions) []boundParam {
+	return []boundParam{
+		runParams.MeteorologyAssumption.str(&options.MeteorologyAssumption),
+		runParams.GridResolutionM.float(&options.GridResolutionM),
+		runParams.GridPaddingM.float(&options.GridPaddingM),
+		runParams.ReceiverHeightM.float(&options.ReceiverHeightM),
+		runParams.ISO9613SourceHeightM.float(&options.SourceHeightM),
+		runParams.ISO9613SoundPowerLevelDB.float(&options.SoundPowerLevelDB),
+		runParams.ISO9613DirectivityCorrectionDB.float(&options.DirectivityCorrectionDB),
+		runParams.ISO9613TonalityCorrectionDB.float(&options.TonalityCorrectionDB),
+		runParams.ISO9613ImpulsivityCorrectionDB.float(&options.ImpulsivityCorrectionDB),
+		runParams.GroundFactor.float(&options.GroundFactor),
+		runParams.AirTemperatureC.float(&options.AirTemperatureC),
+		runParams.RelativeHumidityPercent.float(&options.RelativeHumidityPercent),
+		runParams.C0Met.float(&options.C0Met),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+	}
+}
+
 func parseISO9613RunOptions(params map[string]string) (iso9613RunOptions, error) {
 	options := iso9613RunOptions{}
 
-	parseFloat := func(key string, target *float64) error {
-		value, ok := params[key]
-		if !ok {
-			return domainerrors.New(domainerrors.KindInternal, "cli.parseISO9613RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-			return domainerrors.New(domainerrors.KindUserInput, "cli.parseISO9613RunOptions", fmt.Sprintf("invalid %s=%q", key, value), err)
-		}
-
-		*target = parsed
-
-		return nil
-	}
-
-	getString := func(key string) (string, error) {
-		value, ok := params[key]
-		if !ok {
-			return "", domainerrors.New(domainerrors.KindInternal, "cli.parseISO9613RunOptions", fmt.Sprintf("normalized parameter %q missing", key), nil)
-		}
-
-		return strings.TrimSpace(value), nil
-	}
-
-	var err error
-
-	options.MeteorologyAssumption, err = getString("meteorology_assumption")
+	err := applyBoundParams("cli.parseISO9613RunOptions", params, iso9613ParamBindings(&options))
 	if err != nil {
 		return iso9613RunOptions{}, err
-	}
-
-	for _, item := range []struct {
-		key    string
-		target *float64
-	}{
-		{"grid_resolution_m", &options.GridResolutionM},
-		{"grid_padding_m", &options.GridPaddingM},
-		{"receiver_height_m", &options.ReceiverHeightM},
-		{"iso9613_source_height_m", &options.SourceHeightM},
-		{"iso9613_sound_power_level_db", &options.SoundPowerLevelDB},
-		{"iso9613_directivity_correction_db", &options.DirectivityCorrectionDB},
-		{"iso9613_tonality_correction_db", &options.TonalityCorrectionDB},
-		{"iso9613_impulsivity_correction_db", &options.ImpulsivityCorrectionDB},
-		{"ground_factor", &options.GroundFactor},
-		{"air_temperature_c", &options.AirTemperatureC},
-		{"relative_humidity_percent", &options.RelativeHumidityPercent},
-		{"c0_met", &options.C0Met},
-		{"min_distance_m", &options.MinDistanceM},
-	} {
-		err := parseFloat(item.key, item.target)
-		if err != nil {
-			return iso9613RunOptions{}, err
-		}
 	}
 
 	return options, nil

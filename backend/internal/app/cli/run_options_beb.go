@@ -62,73 +62,77 @@ type bebExposureRunOptions struct {
 	MinSlantDistanceM        float64
 }
 
-func parseBEBExposureRunOptions(params map[string]string) (bebExposureRunOptions, error) {
-	const scope = "cli.parseBEBExposureRunOptions"
+// bebExposureParamBindings binds the beb-exposure parameter schema. The module
+// aggregates upstream road and aircraft levels, so its schema republishes both
+// vocabularies alongside its own exposure terms.
+func bebExposureParamBindings(options *bebExposureRunOptions) []boundParam {
+	return []boundParam{
+		runParams.MinimumBuildingHeightM.float(&options.MinimumBuildingHeightM),
+		runParams.FloorHeightM.float(&options.FloorHeightM),
+		runParams.DwellingsPerFloor.float(&options.DwellingsPerFloor),
+		runParams.PersonsPerDwelling.float(&options.PersonsPerDwelling),
+		runParams.ThresholdLdenDB.float(&options.ThresholdLdenDB),
+		runParams.ThresholdLnightDB.float(&options.ThresholdLnightDB),
+		runParams.FacadeReceiverHeightM.float(&options.FacadeReceiverHeightM),
+		runParams.RoadSpeedKPH.float(&options.SpeedKPH),
+		runParams.RoadGradientPercent.float(&options.GradientPercent),
+		runParams.RoadJunctionDistanceM.float(&options.JunctionDistanceM),
+		runParams.RoadTemperatureC.float(&options.TemperatureC),
+		runParams.RoadStuddedTyreShare.float(&options.StuddedTyreShare),
+		runParams.TrafficDayLightVPH.float(&options.TrafficDayLightVPH),
+		runParams.TrafficDayMediumVPH.float(&options.TrafficDayMediumVPH),
+		runParams.TrafficDayHeavyVPH.float(&options.TrafficDayHeavyVPH),
+		runParams.TrafficDayPTWVPH.float(&options.TrafficDayPTWVPH),
+		runParams.TrafficEveningLightVPH.float(&options.TrafficEveningLightVPH),
+		runParams.TrafficEveningMediumVPH.float(&options.TrafficEveningMediumVPH),
+		runParams.TrafficEveningHeavyVPH.float(&options.TrafficEveningHeavyVPH),
+		runParams.TrafficEveningPTWVPH.float(&options.TrafficEveningPTWVPH),
+		runParams.TrafficNightLightVPH.float(&options.TrafficNightLightVPH),
+		runParams.TrafficNightMediumVPH.float(&options.TrafficNightMediumVPH),
+		runParams.TrafficNightHeavyVPH.float(&options.TrafficNightHeavyVPH),
+		runParams.TrafficNightPTWVPH.float(&options.TrafficNightPTWVPH),
+		runParams.AirAbsorptionDBPerKM.float(&options.AirAbsorptionDBPerKM),
+		runParams.GroundAttenuationDB.float(&options.GroundAttenuationDB),
+		runParams.UrbanCanyonDB.float(&options.UrbanCanyonDB),
+		runParams.IntersectionDensityPerKM.float(&options.IntersectionDensityPerKM),
+		runParams.MinDistanceM.float(&options.MinDistanceM),
+		runParams.ReferencePowerLevelDB.float(&options.ReferencePowerLevelDB),
+		runParams.EngineStateFactor.float(&options.EngineStateFactor),
+		runParams.BankAngleDeg.float(&options.BankAngleDeg),
+		// lateral_offset_m was declared by the schema but bound nowhere until
+		// the binding tables made the gap visible; the schema default is 0, so
+		// binding it changes nothing for a default run and makes
+		// `--param lateral_offset_m=...` take effect instead of being dropped.
+		runParams.LateralOffsetM.float(&options.LateralOffsetM),
+		runParams.TrackStartHeightM.float(&options.TrackStartHeightM),
+		runParams.TrackEndHeightM.float(&options.TrackEndHeightM),
+		runParams.MovementDayPerHour.float(&options.MovementDayPerHour),
+		runParams.MovementEveningPerHour.float(&options.MovementEveningPerHour),
+		runParams.MovementNightPerHour.float(&options.MovementNightPerHour),
+		runParams.LateralDirectivityDB.float(&options.LateralDirectivityDB),
+		runParams.ApproachCorrectionDB.float(&options.ApproachCorrectionDB),
+		runParams.ClimbCorrectionDB.float(&options.ClimbCorrectionDB),
+		runParams.MinSlantDistanceM.float(&options.MinSlantDistanceM),
+		runParams.UpstreamMappingStandard.str(&options.UpstreamMappingStandard),
+		runParams.BuildingUsageType.str(&options.BuildingUsageType),
+		runParams.OccupancyMode.str(&options.OccupancyMode),
+		runParams.FacadeEvaluationMode.str(&options.FacadeEvaluationMode),
+		runParams.RoadSurfaceType.str(&options.SurfaceType),
+		runParams.RoadFunctionClass.str(&options.RoadFunctionClass),
+		runParams.RoadJunctionType.str(&options.JunctionType),
+		runParams.AirportID.str(&options.AirportID),
+		runParams.RunwayID.str(&options.RunwayID),
+		runParams.AircraftOperationType.str(&options.OperationType),
+		runParams.AircraftClass.str(&options.AircraftClass),
+		runParams.AircraftProcedureType.str(&options.ProcedureType),
+		runParams.AircraftThrustMode.str(&options.ThrustMode),
+	}
+}
 
+func parseBEBExposureRunOptions(params map[string]string) (bebExposureRunOptions, error) {
 	options := bebExposureRunOptions{}
 
-	err := parseFiniteFloatParams(scope, params, []floatParam{
-		{"minimum_building_height_m", &options.MinimumBuildingHeightM},
-		{"floor_height_m", &options.FloorHeightM},
-		{"dwellings_per_floor", &options.DwellingsPerFloor},
-		{"persons_per_dwelling", &options.PersonsPerDwelling},
-		{"threshold_lden_db", &options.ThresholdLdenDB},
-		{"threshold_lnight_db", &options.ThresholdLnightDB},
-		{"facade_receiver_height_m", &options.FacadeReceiverHeightM},
-		{"road_speed_kph", &options.SpeedKPH},
-		{"road_gradient_percent", &options.GradientPercent},
-		{"road_junction_distance_m", &options.JunctionDistanceM},
-		{"road_temperature_c", &options.TemperatureC},
-		{"road_studded_tyre_share", &options.StuddedTyreShare},
-		{"traffic_day_light_vph", &options.TrafficDayLightVPH},
-		{"traffic_day_medium_vph", &options.TrafficDayMediumVPH},
-		{"traffic_day_heavy_vph", &options.TrafficDayHeavyVPH},
-		{"traffic_day_ptw_vph", &options.TrafficDayPTWVPH},
-		{"traffic_evening_light_vph", &options.TrafficEveningLightVPH},
-		{"traffic_evening_medium_vph", &options.TrafficEveningMediumVPH},
-		{"traffic_evening_heavy_vph", &options.TrafficEveningHeavyVPH},
-		{"traffic_evening_ptw_vph", &options.TrafficEveningPTWVPH},
-		{"traffic_night_light_vph", &options.TrafficNightLightVPH},
-		{"traffic_night_medium_vph", &options.TrafficNightMediumVPH},
-		{"traffic_night_heavy_vph", &options.TrafficNightHeavyVPH},
-		{"traffic_night_ptw_vph", &options.TrafficNightPTWVPH},
-		{"air_absorption_db_per_km", &options.AirAbsorptionDBPerKM},
-		{"ground_attenuation_db", &options.GroundAttenuationDB},
-		{"urban_canyon_db", &options.UrbanCanyonDB},
-		{"intersection_density_per_km", &options.IntersectionDensityPerKM},
-		{"min_distance_m", &options.MinDistanceM},
-		{"reference_power_level_db", &options.ReferencePowerLevelDB},
-		{"engine_state_factor", &options.EngineStateFactor},
-		{"bank_angle_deg", &options.BankAngleDeg},
-		{"track_start_height_m", &options.TrackStartHeightM},
-		{"track_end_height_m", &options.TrackEndHeightM},
-		{"movement_day_per_hour", &options.MovementDayPerHour},
-		{"movement_evening_per_hour", &options.MovementEveningPerHour},
-		{"movement_night_per_hour", &options.MovementNightPerHour},
-		{"lateral_directivity_db", &options.LateralDirectivityDB},
-		{"approach_correction_db", &options.ApproachCorrectionDB},
-		{"climb_correction_db", &options.ClimbCorrectionDB},
-		{"min_slant_distance_m", &options.MinSlantDistanceM},
-	})
-	if err != nil {
-		return bebExposureRunOptions{}, err
-	}
-
-	err = assignStringParams(scope, params, []stringParam{
-		{"upstream_mapping_standard", &options.UpstreamMappingStandard},
-		{"building_usage_type", &options.BuildingUsageType},
-		{"occupancy_mode", &options.OccupancyMode},
-		{"facade_evaluation_mode", &options.FacadeEvaluationMode},
-		{"road_surface_type", &options.SurfaceType},
-		{"road_function_class", &options.RoadFunctionClass},
-		{"road_junction_type", &options.JunctionType},
-		{"airport_id", &options.AirportID},
-		{"runway_id", &options.RunwayID},
-		{"aircraft_operation_type", &options.OperationType},
-		{"aircraft_class", &options.AircraftClass},
-		{"aircraft_procedure_type", &options.ProcedureType},
-		{"aircraft_thrust_mode", &options.ThrustMode},
-	})
+	err := applyBoundParams("cli.parseBEBExposureRunOptions", params, bebExposureParamBindings(&options))
 	if err != nil {
 		return bebExposureRunOptions{}, err
 	}
