@@ -23,21 +23,23 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 ### Go
 
-| Command               | What it does                                                     |
-| --------------------- | ---------------------------------------------------------------- |
-| `just build`          | Build the CLI → `bin/aconiq`                                     |
-| `just test`           | Run all Go tests                                                 |
-| `just test-race`      | Run tests with the race detector                                 |
-| `just test-coverage`  | Run tests with a coverage report (`backend/coverage.html`)       |
-| `just update-golden`  | Update golden snapshots (`UPDATE_GOLDEN=1 go test ./...`)        |
-| `just lint`           | Run golangci-lint v2 over `backend/`                             |
-| `just lint-fix`       | Same, with `--fix`                                               |
-| `just vet`            | `go vet` (compiler-adjacent checks golangci-lint does not cover) |
-| `just check-tidy`     | Verify `go.mod`/`go.sum` are tidy                                |
-| `just govulncheck`    | Scan dependencies and the stdlib for known CVEs                  |
-| `just license-check`  | Fail on restricted/forbidden/unknown dependency licenses         |
-| `just license-report` | CSV report of all dependency licenses                            |
-| `just wasm-build`     | Build the WASM kernel → `frontend/public/aconiq.wasm`            |
+| Command                | What it does                                                     |
+| ---------------------- | ---------------------------------------------------------------- |
+| `just build`           | Build the CLI → `bin/aconiq`                                     |
+| `just test`            | Run all Go tests                                                 |
+| `just test-race`       | Run tests with the race detector                                 |
+| `just test-coverage`   | Run tests with a coverage report (`backend/coverage.html`)       |
+| `just coverage-report` | Render the coverage Markdown CI publishes                        |
+| `just coverage-check`  | Check the coverage floor (`COVERAGE_FLOOR` to enforce)           |
+| `just update-golden`   | Update golden snapshots (`UPDATE_GOLDEN=1 go test ./...`)        |
+| `just lint`            | Run golangci-lint v2 over `backend/`                             |
+| `just lint-fix`        | Same, with `--fix`                                               |
+| `just vet`             | `go vet` (compiler-adjacent checks golangci-lint does not cover) |
+| `just check-tidy`      | Verify `go.mod`/`go.sum` are tidy                                |
+| `just govulncheck`     | Scan dependencies and the stdlib for known CVEs                  |
+| `just license-check`   | Fail on restricted/forbidden/unknown dependency licenses         |
+| `just license-report`  | CSV report of all dependency licenses                            |
+| `just wasm-build`      | Build the WASM kernel → `frontend/public/aconiq.wasm`            |
 
 ### Formatting
 
@@ -58,7 +60,7 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 ### Frontend
 
-`just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-e2e`, `fe-bundle-check`, and `fe-ci` (typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
+`just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-test-coverage`, `fe-coverage-report`, `fe-e2e`, `fe-bundle-check`, and `fe-ci` (typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
 
 ### Aggregates
 
@@ -247,6 +249,8 @@ The tier is not a documentation convention — it is a field the code carries an
 **Linting:** `just lint` runs golangci-lint v2 with `default: all` **minus a tuned disable list**, plus path- and text-scoped exclusion rules. It is not "all linters enabled". Every disable and exclusion is justified in `.golangci.yml` itself and in `docs/lint-triage.md` — keep the two in sync. `issues.uniq-by-line` is deliberately off so a finding cannot hide behind another on the same line. Leave the tree with no findings; fix issues before committing rather than adding suppressions.
 
 **Golden tests:** Snapshots live in `testdata/` next to the owning test package, named `<scenario>.golden.<ext>`. Update only intentionally via `just update-golden`; review diffs before committing. See `docs/testing/golden-tests.md`.
+
+**Coverage:** Measured on both targets, reported on every pull request as a job summary and a sticky comment, and held to a floor that is **advisory** — the `go-coverage` and `frontend-coverage` jobs are deliberately not required checks, so a coverage regression never blocks a merge. Backend floors live in `go-ci.yml` (`COVERAGE_FLOOR`), frontend floors in `frontend/vitest.config.ts`. Ratchet them up in `docs/testing/coverage.md`, which carries the ledger and the reasoning; never lower one to make a check green.
 
 **Floating-point:** Keep calculations at `float64`. Apply rounding only at defined output boundaries. Document rounding rules per standards module. Use stable (pairwise/compensated) summation for sensitive reductions.
 

@@ -1094,10 +1094,15 @@ done/active/pending only visually, every marker being `aria-hidden`.
 
 ### Phase F — Tests, types and the kernel boundary
 
-- [ ] Measure coverage (`@vitest/coverage-v8`, floor in `fe-ci`); `hooks.test.ts` against mocked
-      `fetch`; a `browserBackend.startRun` test with a stubbed kernel compared to a backend golden;
-      tests for `use-draw` and `model-layers` (the map-rebuild fix in `ad47eaa` still has no test —
-      it needs a real WebGL context, and `map.test.tsx` stubs `MapView` out entirely).
+- [ ] `hooks.test.ts` against mocked `fetch`; a `browserBackend.startRun` test with a stubbed
+      kernel compared to a backend golden; tests for `use-draw` and `model-layers` (the map-rebuild
+      fix in `ad47eaa` still has no test — it needs a real WebGL context, and `map.test.tsx` stubs
+      `MapView` out entirely). Coverage measurement itself is done, and it prices this bullet:
+      `src/map` sits at **37.3%** over 1,765 statements, the largest single gap in the frontend.
+      The floors are **not** in `fe-ci` as this bullet used to say — they live in
+      `frontend/vitest.config.ts` and are applied by an advisory `frontend-coverage` job, because a
+      coverage regression must not be able to fail a required check. See
+      `docs/testing/coverage.md`.
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
@@ -1114,9 +1119,11 @@ done/active/pending only visually, every marker being `aria-hidden`.
 
 ### Order and gates
 
-B before C; D and E can run in parallel with C once B is green; the coverage floor from F starts
-with B so every refit adds tests. Each phase ends with `just fe-ci` and `just fe-e2e` green, which
-includes the axe baseline on every route in `de` and `en`.
+B before C; D and E can run in parallel with C once B is green. The coverage floor is now live
+(73.6% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),
+so every refit from here is measured — advisory, so it reports rather than blocks. Each phase ends
+with `just fe-ci` and `just fe-e2e` green, which includes the axe baseline on every route in `de`
+and `en`.
 
 ## Priority 9 — Documentation truth
 
