@@ -270,8 +270,8 @@ commit messages; the consequences each one exposed are open items below.
       advisory with no fixed version has to be handled by not reaching the symbol, written up in
       that policy.
 
-- [x] **The lint debt is down to what is declared** (the END indicator pass and the run-module
-      dispatch). **244** findings are still suppressed, every one named and defended in
+- [x] **The lint debt is down to what is declared** (`8884ea3`, and the run-module dispatch).
+      **244** findings are still suppressed, every one named and defended in
       `docs/lint-triage.md`: `goconst` 62 (39 permanent, 23 owned by Priority 7's typed response
       payloads), `noinlineerr` 104 and `gocyclo` 4 (both declined in writing), gosec G304 47
       non-test, and 27 `//nolint` directives — 18 named `gosec`, 8 genuine `dupl` coefficient
