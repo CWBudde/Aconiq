@@ -375,5 +375,12 @@
   "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst.",
   "nav_primary_label": "Hauptnavigation",
   "action_skip_to_content": "Zum Inhalt springen",
-  "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen"
+  "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen",
+  "msg_unknown_error": "Unbekannter Fehler",
+  "msg_settings_category_planned": "Diese Kategorie ist für künftige Einstellungen reserviert und wird belegt, sobald die entsprechenden Optionen festgelegt sind.",
+  "msg_and_more": "… und {count} weitere",
+  "error_osm_fetch_failed": "Abruf aus OpenStreetMap fehlgeschlagen",
+  "label_layers": "Ebenen",
+  "label_draw_tools": "Zeichenwerkzeuge",
+  "label_edit_history": "Rückgängig und Wiederholen"
 }

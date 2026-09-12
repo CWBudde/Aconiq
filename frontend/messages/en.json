@@ -375,5 +375,12 @@
   "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
   "nav_primary_label": "Main navigation",
   "action_skip_to_content": "Skip to content",
-  "msg_copy_failed": "Copying to the clipboard failed"
+  "msg_copy_failed": "Copying to the clipboard failed",
+  "msg_unknown_error": "Unknown error",
+  "msg_settings_category_planned": "This category is reserved for future settings and will be filled in once those controls are defined.",
+  "msg_and_more": "… and {count} more",
+  "error_osm_fetch_failed": "Fetching from OpenStreetMap failed",
+  "label_layers": "Layers",
+  "label_draw_tools": "Drawing tools",
+  "label_edit_history": "Undo and redo"
 }
