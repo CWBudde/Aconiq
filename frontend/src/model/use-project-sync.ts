@@ -11,6 +11,7 @@
 
 import { useCallback } from "react";
 import { create } from "zustand";
+import { asAPIRequestError } from "@/api/api-error";
 import { backend } from "@/api/backend";
 import { useIsSavingModel, useProjectStatus, useSaveModel } from "@/api/hooks";
 import { useModelStore } from "@/model/model-store";
@@ -68,6 +69,11 @@ export const projectSyncStore = create<ProjectSyncState>(() => ({
   inFlight: false,
 }));
 
+/** Back to "no save has happened". For test isolation. */
+export function resetProjectSyncStore(): void {
+  projectSyncStore.setState({ error: null, inFlight: false });
+}
+
 export function useProjectSync(): ProjectSync {
   const dirty = useModelStore((s) => s.dirty);
   const markClean = useModelStore((s) => s.markClean);
@@ -118,6 +124,11 @@ export function useProjectSync(): ProjectSync {
       }
       projectSyncStore.setState({ error: null });
     } catch (err) {
+      // An API refusal is the server's answer and the header explains it.
+      // Anything else — a network failure, or a bug in the payload builder —
+      // would otherwise be rendered as the same "saving failed" and vanish;
+      // the console keeps what the UI cannot show.
+      if (asAPIRequestError(err) === null) console.error("model save", err);
       projectSyncStore.setState({
         error: err instanceof Error ? err : new Error(String(err)),
       });

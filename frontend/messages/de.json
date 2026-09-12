@@ -366,7 +366,7 @@
   "status_saved_to_project": "Im Projekt gespeichert",
   "action_save_to_project": "Im Projekt speichern",
   "status_saving": "Wird gespeichert…",
-  "msg_save_failed": "Speichern fehlgeschlagen",
+  "msg_save_failed": "Speichern im Projekt fehlgeschlagen",
   "action_show_details": "Details anzeigen",
   "dialog_title_model_invalid": "Modell ungültig",
   "dialog_desc_model_invalid": "Das Projekt hat das Modell abgelehnt. Beheben Sie die aufgeführten Befunde und speichern Sie erneut.",

@@ -94,9 +94,11 @@ export async function errorFromResponse(response: Response): Promise<Error> {
 
 /**
  * The validation findings a `model_invalid` refusal carries, or `null` when
- * the error is anything else. Each entry is checked field by field: the
- * details object is untyped on the wire, and a finding without a code and a
- * message is not something the UI can list.
+ * there is nothing to list — the error is something else, or the envelope
+ * names no findings. Each entry is checked field by field: the details
+ * object is untyped on the wire, and a finding without a code and a message
+ * is not something the UI can list. The empty case is `null` rather than
+ * `[]` so a caller never offers details it cannot show.
  */
 export function modelValidationIssues(
   error: unknown,
@@ -106,7 +108,7 @@ export function modelValidationIssues(
     return null;
   }
   const errors: unknown = apiError.details?.errors;
-  if (!Array.isArray(errors)) return [];
+  if (!Array.isArray(errors)) return null;
 
   const issues: APIValidationIssue[] = [];
   for (const entry of errors) {
@@ -119,5 +121,5 @@ export function modelValidationIssues(
       ...(typeof featureId === "string" ? { feature_id: featureId } : {}),
     });
   }
-  return issues;
+  return issues.length > 0 ? issues : null;
 }

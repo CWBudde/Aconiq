@@ -7,6 +7,7 @@ import {
 } from "@/api/api-error";
 import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
+import { resetProjectSyncStore } from "@/model/use-project-sync";
 import type { ModelFeature } from "@/model/types";
 import { m } from "@/i18n/messages";
 
@@ -167,6 +168,7 @@ beforeEach(() => {
   state.runsAgainstSavedModel = true;
   state.savedModels = [];
   useModelStore.getState().reset();
+  resetProjectSyncStore();
 });
 
 describe("RunPage evidence tiers", () => {

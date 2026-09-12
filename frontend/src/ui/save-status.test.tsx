@@ -135,6 +135,23 @@ describe("SaveStatus", () => {
     expect(ids.map((el) => el.textContent)).toEqual(["b1"]);
   });
 
+  it("offers no details for a refusal that names no findings", () => {
+    setSync({
+      status: "error",
+      dirty: true,
+      error: new APIRequestError({
+        code: ERROR_CODE_MODEL_INVALID,
+        message: "model validation failed",
+        details: { errors: [] },
+      }),
+    });
+    render(<SaveStatus />);
+    expect(screen.getByText(m.msg_save_failed())).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: m.action_show_details() }),
+    ).toBeNull();
+  });
+
   it("saves on Ctrl+S when dirty", () => {
     setSync({ status: "dirty", dirty: true });
     render(<SaveStatus />);

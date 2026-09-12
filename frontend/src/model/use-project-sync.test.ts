@@ -1,11 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APIRequestError, ERROR_CODE_MODEL_INVALID } from "@/api/api-error";
 import type { ModelSaveRequest } from "@/api/client";
 import { useModelStore } from "./model-store";
 import type { ModelFeature, ModelReceiver } from "./types";
 import { loadDraft, writeDraft } from "./use-autosave";
-import { projectSyncStore, useProjectSync } from "./use-project-sync";
+import { resetProjectSyncStore, useProjectSync } from "./use-project-sync";
 
 const state = vi.hoisted(() => {
   const value: {
@@ -73,8 +73,15 @@ beforeEach(() => {
   state.requests = [];
   state.respond = () => Promise.resolve({ featureCount: 0, warnings: [] });
   useModelStore.getState().reset();
-  projectSyncStore.setState({ error: null, inFlight: false });
+  resetProjectSyncStore();
   localStorage.clear();
+  // Failures that are not API refusals are logged; keep the run quiet and
+  // let the tests that care assert on it.
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("useProjectSync", () => {
@@ -190,6 +197,24 @@ describe("useProjectSync", () => {
     expect(useModelStore.getState().dirty).toBe(true);
     expect(result.current.status).toBe("error");
     expect(result.current.error).toBe(refused);
+    // The server's answer is shown in full by the header; nothing to log.
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("logs a failure that is not an API refusal", async () => {
+    useModelStore.getState().addFeature(feature);
+    const failure = new TypeError("Failed to fetch");
+    state.respond = () => Promise.reject(failure);
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    // The header renders this as "saving failed"; a programming error
+    // behind it must not vanish into that.
+    expect(console.error).toHaveBeenCalledWith("model save", failure);
+    expect(result.current.error).toBe(failure);
   });
 
   it("wraps a non-Error rejection so the header has something to show", async () => {
