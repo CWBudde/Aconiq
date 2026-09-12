@@ -1,0 +1,108 @@
+{
+  "standard": "cnossos-industry",
+  "fixture": "phase12/industry_model.geojson",
+  "files": {
+    "cnossos-industry.bin": "sha256:0746b921e36b48619330aeb0ebbb84b4c008889f35b610e01502379e20f7c03b bytes=1280",
+    "cnossos-industry.json": "sha256:eddc122e54a2985b1fa2891a82ae27480b9337cf80b30f55decd364c06515d9f bytes=221",
+    "receivers.csv": "sha256:0a6410cadfb4a780d01fd09133dbea9487afdc919f93773065c6cf157f5b520d bytes=7470",
+    "receivers.json": "sha256:44ac1f0f6d3316082cc5beb91844c38f2aff49c36585b32492db25b47f91e53d bytes=13347",
+    "run-summary.json": "sha256:5722f199d0cd4b91d5d1ff1239b58b2de6f3ebd7d689c526d3c9909d532babf6 bytes=274"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 8,
+    "grid_width": 10,
+    "model_version": "baseline-preview-industry-v2",
+    "output_hash": "38b603d1cbd9e7da76a0b299e1ddc5dd3dc081292f3227cca6631f7bea1d5c12",
+    "receiver_count": 80,
+    "receiver_mode": "auto-grid",
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "d6023ec968fcb17478f691614036c0aeb1abc4f0baf441e9f04455260327ecee"
+    },
+    "metadata": {
+      "compliance_boundary": "baseline-preview-expanded-industry-contract",
+      "emission_model": "category-enclosure-operation-components",
+      "evidence_tier": "scaffold",
+      "indicator_order": "Lday,Levening,Lnight,Lden",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.facade_reflection_db": "0",
+      "key_parameter.grid_padding_m": "20",
+      "key_parameter.grid_resolution_m": "10",
+      "key_parameter.ground_attenuation_db": "1",
+      "key_parameter.industry_enclosure_state": "open",
+      "key_parameter.industry_impulsivity_correction_db": "0",
+      "key_parameter.industry_sound_power_level_db": "96",
+      "key_parameter.industry_source_category": "process",
+      "key_parameter.industry_source_height_m": "5",
+      "key_parameter.industry_tonality_correction_db": "0",
+      "key_parameter.min_distance_m": "3",
+      "key_parameter.operation_day_factor": "1",
+      "key_parameter.operation_evening_factor": "0.7",
+      "key_parameter.operation_night_factor": "0.4",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.screening_attenuation_db": "0",
+      "model_version": "baseline-preview-industry-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "facade_reflection_db": "0",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "ground_attenuation_db": "1",
+      "industry_enclosure_state": "open",
+      "industry_impulsivity_correction_db": "0",
+      "industry_sound_power_level_db": "96",
+      "industry_source_category": "process",
+      "industry_source_height_m": "5",
+      "industry_tonality_correction_db": "0",
+      "min_distance_m": "3",
+      "operation_day_factor": "1",
+      "operation_evening_factor": "0.7",
+      "operation_night_factor": "0.4",
+      "receiver_height_m": "4",
+      "screening_attenuation_db": "0"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "cnossos-industry",
+      "profile": "default",
+      "version": "2020-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "29a26476bd1756fc07a6c852e1620c1e694e43935e73ca76d7713feccbaf9c4b",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "307ea9833bc75bf6057f44de2382c1fea891406ec5cb66754d27378485005673",
+          "name": "preview-industry/enclosure-corrections"
+        },
+        {
+          "digest": "8e239e92ccbbce8d2787bada090b61703738a9edbb8430af637d67dce1407b3f",
+          "name": "preview-industry/height-correction-samples"
+        },
+        {
+          "digest": "2a9dcfa9a6c95968fb1becdd7725f522c3563b5e06745cc4f9bf1bf6d14a43ed",
+          "name": "preview-industry/model-version"
+        },
+        {
+          "digest": "4e77828e17c4d8a85e816d1023d626375befe4bdd2204d3ec0d4dc3becd379b8",
+          "name": "preview-industry/propagation-defaults"
+        },
+        {
+          "digest": "54a0d3bf3afa8ea4e2483dd251d04b9fe73492619ee0b0d772b783fee151abac",
+          "name": "preview-industry/source-category-corrections"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

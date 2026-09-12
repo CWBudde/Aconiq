@@ -695,6 +695,15 @@ That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
       first. A correction to a normative equation currently has to be applied four times.
 - [ ] **Define `framework.Module`** — `Descriptor()` / `BindInputs()` / `Compute(ctx, …)` — register
       implementations instead of bare descriptors, and delete the switch.
+      Its output oracle is in place: `run_results_digest_test.go` runs every registered standard
+      end to end twice and pins a SHA-256 over every file under `.noise/runs/<id>/results/`, plus
+      the normalized `run-summary.json` and `provenance.json`, against
+      `testdata/digest/<standard>.golden.json`. Only four fields are normalized away
+      (`created_at`, `run_id`, `generated_at`, `tool_version`) and each must still be present, so
+      the harness cannot quietly stop pinning something. **Do not regenerate those goldens during
+      the module move** — a diff there is the refactor changing output, not a snapshot needing an
+      update. The acceptance fixtures do not cover this: they import the standards packages
+      directly and never reach the CLI run path.
 - [ ] **Move the run pipeline out of `app/cli`** into `internal/engine` (or `internal/app/run`) as
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec

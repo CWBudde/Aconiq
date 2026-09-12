@@ -1,0 +1,163 @@
+{
+  "standard": "bub-road",
+  "fixture": "phase14/bub_road_model.geojson",
+  "files": {
+    "bub-road.bin": "sha256:8cf1fbdc34392048a5470959e03937ecce947ff8a0130299b645ebf3d9d16581 bytes=1680",
+    "bub-road.json": "sha256:4bed90a63531ebdc47b12c714170a3a5c22b0289d86fbca23dd7af7ae46bfc5e bytes=213",
+    "receivers.csv": "sha256:78900897f0220cb9db65133038a5cd588afaffc67d3f9f6af112f07c4c3f6355 bytes=9904",
+    "receivers.json": "sha256:1c68a7d3d149a8c4078bd246614e0f573adb762f7a2595ea9e2f556c60a0216b bytes=17606",
+    "run-summary.json": "sha256:dbcbd2e2cb5e37d60ae079257eead370a1164166816d34144330ccbd6224b241 bytes=308"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 5,
+    "grid_width": 21,
+    "model_version": "baseline-preview-road-mapping-v2",
+    "output_hash": "5643aea84586c2260139373aac184fcbb14b9b037438800484260a46cf745dce",
+    "receiver_count": 105,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "source_count": 1,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "b0e185a832ec0ed695501cd2588d15038cea9f1671ac1b01857429c79bd439f6"
+    },
+    "metadata": {
+      "compliance_boundary": "baseline-preview-expanded-bub-road-contract",
+      "emission_model": "vehicle-class-components-with-bub-mapping-context",
+      "evidence_tier": "scaffold",
+      "indicator_order": "Lday,Levening,Lnight,Lden",
+      "key_parameter.air_absorption_db_per_km": "0.7",
+      "key_parameter.grid_padding_m": "20",
+      "key_parameter.grid_resolution_m": "10",
+      "key_parameter.ground_attenuation_db": "1.2",
+      "key_parameter.intersection_density_per_km": "0",
+      "key_parameter.min_distance_m": "3",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.road_function_class": "urban_main",
+      "key_parameter.road_gradient_percent": "0",
+      "key_parameter.road_junction_distance_m": "0",
+      "key_parameter.road_junction_type": "none",
+      "key_parameter.road_speed_kph": "60",
+      "key_parameter.road_studded_tyre_share": "0",
+      "key_parameter.road_surface_type": "dense_asphalt",
+      "key_parameter.road_temperature_c": "15",
+      "key_parameter.traffic_day_heavy_vph": "90",
+      "key_parameter.traffic_day_light_vph": "900",
+      "key_parameter.traffic_day_medium_vph": "120",
+      "key_parameter.traffic_day_ptw_vph": "30",
+      "key_parameter.traffic_evening_heavy_vph": "45",
+      "key_parameter.traffic_evening_light_vph": "500",
+      "key_parameter.traffic_evening_medium_vph": "60",
+      "key_parameter.traffic_evening_ptw_vph": "15",
+      "key_parameter.traffic_night_heavy_vph": "30",
+      "key_parameter.traffic_night_light_vph": "250",
+      "key_parameter.traffic_night_medium_vph": "30",
+      "key_parameter.traffic_night_ptw_vph": "5",
+      "key_parameter.urban_canyon_db": "0",
+      "model_version": "baseline-preview-road-mapping-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "ground_attenuation_db": "1.2",
+      "intersection_density_per_km": "0",
+      "min_distance_m": "3",
+      "receiver_height_m": "4",
+      "road_function_class": "urban_main",
+      "road_gradient_percent": "0",
+      "road_junction_distance_m": "0",
+      "road_junction_type": "none",
+      "road_speed_kph": "60",
+      "road_studded_tyre_share": "0",
+      "road_surface_type": "dense_asphalt",
+      "road_temperature_c": "15",
+      "traffic_day_heavy_vph": "90",
+      "traffic_day_light_vph": "900",
+      "traffic_day_medium_vph": "120",
+      "traffic_day_ptw_vph": "30",
+      "traffic_evening_heavy_vph": "45",
+      "traffic_evening_light_vph": "500",
+      "traffic_evening_medium_vph": "60",
+      "traffic_evening_ptw_vph": "15",
+      "traffic_night_heavy_vph": "30",
+      "traffic_night_light_vph": "250",
+      "traffic_night_medium_vph": "30",
+      "traffic_night_ptw_vph": "5",
+      "urban_canyon_db": "0"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "mapping",
+      "id": "bub-road",
+      "profile": "default",
+      "version": "2020-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "bc153a51a22efacdc32ae9e0fb0e6b164d6108aef66e1f8b65d089a5d183bd39",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "a71daa7d6b74f54decf7530d3ba162eb90f74e7fdaa51612ef42d33bdf6c9d3e",
+          "name": "preview-road-mapping/class-correction-weights"
+        },
+        {
+          "digest": "1f8a16ee8267d89b4de3a79a1375e40489b656703c0be16dd1bf8e34d24cfbcd",
+          "name": "preview-road-mapping/class-reference-levels"
+        },
+        {
+          "digest": "0771ed36319759c30a184a29f2c67e88efedd0a23e782be7924e47c9945f4582",
+          "name": "preview-road-mapping/gradient-correction-samples"
+        },
+        {
+          "digest": "37634b1d39feec2a6d58d6b9cd276c13840309aaca24ffc4c5a94099de417123",
+          "name": "preview-road-mapping/intersection-density-samples"
+        },
+        {
+          "digest": "c2608e566be9a8e95827c871dac314b869e84cd8b76983cca20c5abd6f054057",
+          "name": "preview-road-mapping/junction-corrections"
+        },
+        {
+          "digest": "b733b2cacbb19835a87e86d6d942e2907ba82c691fab7e96de6977b108e7b8aa",
+          "name": "preview-road-mapping/junction-distance-samples"
+        },
+        {
+          "digest": "25af46b401e166266edf1ba6303da0ca6372c894818b90c8f47b397f05bbfde6",
+          "name": "preview-road-mapping/model-version"
+        },
+        {
+          "digest": "30a14f98d3d3955f5afa8c9a4fc75928390eaf85b566d4ce1791ae4a78cdc894",
+          "name": "preview-road-mapping/propagation-defaults"
+        },
+        {
+          "digest": "b15f2ac40dbd86680e7fbee7bde8a87c6aa5b616521cc938ca45dd20dd82647e",
+          "name": "preview-road-mapping/road-function-corrections"
+        },
+        {
+          "digest": "f20bbb0e9004e7cf8a19585a5e14a2aa577c1e1dff3f4877e91a8a1849353ea2",
+          "name": "preview-road-mapping/speed-correction-samples"
+        },
+        {
+          "digest": "24414b2e730be0549090411a73b20db03fd775bdc93cb11e23d1eff5c44eae99",
+          "name": "preview-road-mapping/studded-tyre-correction-samples"
+        },
+        {
+          "digest": "22d87b168dd5fb1c564efda89e0aabbcb4ce6a607173d8331e5c1b0bb7c07ae0",
+          "name": "preview-road-mapping/surface-corrections"
+        },
+        {
+          "digest": "f4a1a2adede879ae76671033dae4e9f13928fac2fedca30c0b8f9219f338843b",
+          "name": "preview-road-mapping/temperature-correction-samples"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "standard": "dummy-freefield",
+  "fixture": "phase8/model.geojson",
+  "files": {
+    "ldummy.bin": "sha256:907db85af6fba4401123cabba3a00160e1618530dee4066532aefd1464d49e25 bytes=392",
+    "ldummy.json": "sha256:088d1780331c80898a050915728d9e6c9c67da2eb8021460003d7f1fb17b2e32 bytes=201",
+    "receivers.csv": "sha256:3303f2b5f63cc73aefb2a35efa0b91c7a0cee142b1fb161d85d763af7769159d bytes=1852",
+    "receivers.json": "sha256:a0a1f1afdc3b22c9d0de31c109a5d7bcd297df205fc93ceea64844e4135b4015 bytes=4235",
+    "run-summary.json": "sha256:e1e66c670eae4bb4cf5b08d5935450ab57148b7e01344aa861b881af01f89cec bytes=270"
+  },
+  "run_summary": {
+    "evidence_tier": "test-fixture",
+    "grid_height": 7,
+    "grid_width": 7,
+    "output_hash": "4a356841bedd9f60783860398289d07fa246d233df3d43004349cf0657adf86a",
+    "receiver_count": 49,
+    "receiver_mode": "auto-grid",
+    "source_count": 2,
+    "status": "completed",
+    "total_chunks": 1,
+    "used_cached_chunks": 0
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "09180c674e90cd9322bcdf01a31f16231893d275220ab52a76ef6f8b4a3cb4c4"
+    },
+    "metadata": {
+      "evidence_tier": "test-fixture",
+      "receiver_mode": "auto-grid"
+    },
+    "parameters": {
+      "chunk_size": "128",
+      "disable_cache": "false",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "receiver_height_m": "4",
+      "source_emission_db": "90",
+      "workers": "0"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "dummy-freefield",
+      "profile": "default",
+      "version": "v0"
+    },
+    "tool_name": "aconiq"
+  }
+}

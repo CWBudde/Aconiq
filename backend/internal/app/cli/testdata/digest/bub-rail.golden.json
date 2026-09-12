@@ -1,0 +1,115 @@
+{
+  "standard": "bub-rail",
+  "fixture": "phase11/rail_model.geojson",
+  "files": {
+    "bub-rail.bin": "sha256:21bd1e3a2849833d5adc69a52e7971995d1ffc3784a9729ec70e0d4fa07f6d1a bytes=2080",
+    "bub-rail.json": "sha256:325319767e3474a7a80c88d5ad9ae1ccbc44eada5e96d51bddb68938eb3bf5e5 bytes=214",
+    "receivers.csv": "sha256:56dc778d4c0f2ab51c8624aa86ab6abe67b8a00254fc22534cc114014cf23cef bytes=12307",
+    "receivers.json": "sha256:50a952f5fd150494a6fbb343a9da4f626503571a9d99d69a9c5753a459a33f5e bytes=21834",
+    "run-summary.json": "sha256:ac1464d58fbbde86ac74de15762b94ce5671c0095cdd0e5f90f4ea703ae66bf2 bytes=301"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 10,
+    "grid_width": 13,
+    "model_version": "baseline-preview-rail-v2",
+    "output_hash": "8d880bb90ee3e59c71e627f4a7bf5603b5c43ed3fd812f864bf9dd8c64d88db5",
+    "receiver_count": 130,
+    "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "72da4b59fd281681ce019423e20ca9b9334f578db1a4a391c0ef7c3c6319d8e0"
+    },
+    "metadata": {
+      "evidence_tier": "scaffold",
+      "receiver_mode": "auto-grid"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "bridge_correction_db": "2",
+      "curve_squeal_db": "5",
+      "grid_padding_m": "30",
+      "grid_resolution_m": "15",
+      "ground_attenuation_db": "1.2",
+      "min_distance_m": "3",
+      "rail_average_train_speed_kph": "90",
+      "rail_braking_share": "0.1",
+      "rail_curve_radius_m": "500",
+      "rail_on_bridge": "false",
+      "rail_track_roughness_class": "standard",
+      "rail_traction_type": "electric",
+      "receiver_height_m": "4",
+      "traffic_day_trains_per_hour": "12",
+      "traffic_evening_trains_per_hour": "6",
+      "traffic_night_trains_per_hour": "4"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "mapping",
+      "id": "bub-rail",
+      "profile": "strategic-mapping",
+      "version": "2021-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "0cb38a7a91e099f857014ec04a5523b985c905c875dc1131d45cfb454c202f33",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "afde001e6ff551e546337ea6e0ac5e91176fb16319e37fe4fed652318c968bad",
+          "name": "preview-rail/braking-correction-samples"
+        },
+        {
+          "digest": "8f71fa2caee62952ed5b958de2f52041bae9bf92904bd12a3814e2c38cb46001",
+          "name": "preview-rail/bridge-emission-corrections"
+        },
+        {
+          "digest": "4533b7364cf50382c6460a01c7269a466c99c339cde5387abc469efc7e4d29d3",
+          "name": "preview-rail/component-reference-levels"
+        },
+        {
+          "digest": "5efbe1f4e4f496648d40dc628d12d49f5c4e0ec52efe138b7622871042749e90",
+          "name": "preview-rail/curve-emission-samples"
+        },
+        {
+          "digest": "aad5feffd6c1aecdf26a17091bc3237292aa2c6f2187a1c243becad882230524",
+          "name": "preview-rail/model-version"
+        },
+        {
+          "digest": "ab7097c76b555b627a18d0ae9a805c1d9a978abf717192a8c5c0888dabb6c341",
+          "name": "preview-rail/propagation-curve-samples"
+        },
+        {
+          "digest": "9db9e97dbe606e5d464bc2663aa80a01bd3128fb16f8e6198c6675b3c647b2fb",
+          "name": "preview-rail/propagation-defaults"
+        },
+        {
+          "digest": "f7597b4db221ea79dc9d2a503c1e8841debab5cb5e7fc6bae474f390cfe9430f",
+          "name": "preview-rail/rolling-speed-correction-samples"
+        },
+        {
+          "digest": "72ac1f5b59d7402746cb0264bc5e0cc7cba893b1713e61f3ba46033cc3516cf0",
+          "name": "preview-rail/roughness-corrections"
+        },
+        {
+          "digest": "346004d2326883fc2497602df4438df85a80b560c08241ed7018ed0483815a98",
+          "name": "preview-rail/track-type-corrections"
+        },
+        {
+          "digest": "c0c7c46bf82c7cc871900616e868cfea69bf2a8562f0318ee26201943cc1141e",
+          "name": "preview-rail/traction-corrections"
+        },
+        {
+          "digest": "f1c242d05aa5828538f5446bca0fe224f7ce087999c358a529fe1beabe0a529e",
+          "name": "preview-rail/traction-speed-correction-samples"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

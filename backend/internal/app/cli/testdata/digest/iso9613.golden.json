@@ -1,0 +1,97 @@
+{
+  "standard": "iso9613",
+  "fixture": "phase19/iso9613_industry_model.geojson",
+  "files": {
+    "iso9613.bin": "sha256:52e97da29de8a5d80bd99334aa82ce50c10439f6195f4825975eed6955d484bf bytes=504",
+    "iso9613.json": "sha256:d36ec113454886f5e0d9b5df3a1b1260dc35320fe753393e7c48f7d1776dd684 bytes=204",
+    "receivers.csv": "sha256:ed2ea91bda8a515b0a64b49ee29eba45f219cb8b0782a222a02ce4150817c37f bytes=3584",
+    "receivers.json": "sha256:4e7e1bcd9f1d24757ea88283b7cda5ca4d20521216b441ee986523c373f0146b bytes=7460",
+    "run-summary.json": "sha256:a0dc8111c748f185577ae34046debeedc55e6c2946a1da20b0b491a5a883db35 bytes=290"
+  },
+  "run_summary": {
+    "evidence_tier": "normative",
+    "grid_height": 7,
+    "grid_width": 9,
+    "indicator": "LpAeq_DW",
+    "model_version": "iso9613-octaveband-v1",
+    "output_hash": "eec22861aab968cf67def2479a9599f28e874557b8f4f3f4fc59645e7a359957",
+    "receiver_count": 63,
+    "receiver_mode": "auto-grid",
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "08eb23d8d5a30620d00acfde2dc17a06a6df6d0352973f149a1bef0e9cec86f0"
+    },
+    "metadata": {
+      "compliance_boundary": "iso9613-engineering-octaveband",
+      "evidence_tier": "normative",
+      "implementation_status": "octaveband-point-source",
+      "indicator_order": "LpAeq_DW,LpAeq_LT",
+      "key_parameter.air_temperature_c": "10",
+      "key_parameter.c0_met": "0",
+      "key_parameter.grid_padding_m": "20",
+      "key_parameter.grid_resolution_m": "10",
+      "key_parameter.ground_factor": "0.5",
+      "key_parameter.iso9613_directivity_correction_db": "0",
+      "key_parameter.iso9613_impulsivity_correction_db": "0",
+      "key_parameter.iso9613_sound_power_level_db": "100",
+      "key_parameter.iso9613_source_height_m": "5",
+      "key_parameter.iso9613_tonality_correction_db": "0",
+      "key_parameter.meteorology_assumption": "downwind-or-moderate-inversion",
+      "key_parameter.min_distance_m": "1",
+      "key_parameter.receiver_height_m": "4",
+      "key_parameter.relative_humidity_percent": "70",
+      "meteorology_assumption": "downwind-or-moderate-inversion",
+      "model_version": "iso9613-octaveband-v1",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1",
+      "source_scope": "point"
+    },
+    "parameters": {
+      "air_temperature_c": "10",
+      "c0_met": "0",
+      "grid_padding_m": "20",
+      "grid_resolution_m": "10",
+      "ground_factor": "0.5",
+      "iso9613_directivity_correction_db": "0",
+      "iso9613_impulsivity_correction_db": "0",
+      "iso9613_sound_power_level_db": "100",
+      "iso9613_source_height_m": "5",
+      "iso9613_tonality_correction_db": "0",
+      "meteorology_assumption": "downwind-or-moderate-inversion",
+      "min_distance_m": "1",
+      "receiver_height_m": "4",
+      "relative_humidity_percent": "70"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "planning",
+      "id": "iso9613",
+      "profile": "point-source",
+      "version": "1996-octaveband"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "afb9ce29de5a8ee2b89823189c1b0ede218845eea37cec68300dc687b750e5bb",
+      "evidence_tier": "normative",
+      "tables": [
+        {
+          "digest": "d7cd2d09da2168762f74b31803abb1157d5ce82f0f5768fc0d8b288735b3679c",
+          "name": "iso9613/a-bewertung"
+        },
+        {
+          "digest": "0c0bef4fbdf2aebeb13a38e51f2320387cb2b27c65452b69886de76bfa295cde",
+          "name": "iso9613/oktavband-mittenfrequenzen"
+        },
+        {
+          "digest": "b5c3890429911ade6e4a924abe62138f1a878933d3f6392f19f5602cd47eede9",
+          "name": "iso9613/tabelle-2-luftabsorption"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

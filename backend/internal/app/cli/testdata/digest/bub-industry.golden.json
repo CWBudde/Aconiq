@@ -1,0 +1,84 @@
+{
+  "standard": "bub-industry",
+  "fixture": "phase12/industry_model.geojson",
+  "files": {
+    "bub-industry.bin": "sha256:2ea14f5cada7b036ad2d1d5d589138124e828ed58f4941ea91d0dab018bfb30a bytes=896",
+    "bub-industry.json": "sha256:da1b5dece4027a2509eb573da51cf9edbec5c804aad4290b04d1773325b79bed bytes=215",
+    "receivers.csv": "sha256:0f096e6b3dbe8648b7525b2f59884090af333a901c6c98210611dd9befe23031 bytes=5219",
+    "receivers.json": "sha256:ba4fcccf8b2399239cb54b949b73e86434c3dcd471027df3be321ee8b11a5938 bytes=9344",
+    "run-summary.json": "sha256:6dfae7603fc9e58bf19392d649d6ce0f514110ba4d64aaaf2336f517a0b988cb bytes=273"
+  },
+  "run_summary": {
+    "evidence_tier": "scaffold",
+    "grid_height": 7,
+    "grid_width": 8,
+    "model_version": "baseline-preview-industry-v2",
+    "output_hash": "46529293edd7ded460ca8b5fc2c9815f25c0d4e15526513f0e7510babfe6705c",
+    "receiver_count": 56,
+    "receiver_mode": "auto-grid",
+    "source_count": 2,
+    "status": "completed"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "d6023ec968fcb17478f691614036c0aeb1abc4f0baf441e9f04455260327ecee"
+    },
+    "metadata": {
+      "evidence_tier": "scaffold",
+      "receiver_mode": "auto-grid"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "facade_reflection_db": "0",
+      "grid_padding_m": "30",
+      "grid_resolution_m": "15",
+      "ground_attenuation_db": "1",
+      "industry_impulsivity_correction_db": "0",
+      "industry_sound_power_level_db": "96",
+      "industry_source_height_m": "5",
+      "industry_tonality_correction_db": "0",
+      "min_distance_m": "3",
+      "operation_day_factor": "1",
+      "operation_evening_factor": "0.7",
+      "operation_night_factor": "0.4",
+      "receiver_height_m": "4",
+      "screening_attenuation_db": "0"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "mapping",
+      "id": "bub-industry",
+      "profile": "strategic-mapping",
+      "version": "2021-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "137b36ebc995f2821a33d21b35aa0f6164c1b1e47de68733e0657c35a4acff3e",
+      "evidence_tier": "scaffold",
+      "tables": [
+        {
+          "digest": "307ea9833bc75bf6057f44de2382c1fea891406ec5cb66754d27378485005673",
+          "name": "preview-industry/enclosure-corrections"
+        },
+        {
+          "digest": "8e239e92ccbbce8d2787bada090b61703738a9edbb8430af637d67dce1407b3f",
+          "name": "preview-industry/height-correction-samples"
+        },
+        {
+          "digest": "2a9dcfa9a6c95968fb1becdd7725f522c3563b5e06745cc4f9bf1bf6d14a43ed",
+          "name": "preview-industry/model-version"
+        },
+        {
+          "digest": "4e77828e17c4d8a85e816d1023d626375befe4bdd2204d3ec0d4dc3becd379b8",
+          "name": "preview-industry/propagation-defaults"
+        },
+        {
+          "digest": "54a0d3bf3afa8ea4e2483dd251d04b9fe73492619ee0b0d772b783fee151abac",
+          "name": "preview-industry/source-category-corrections"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}

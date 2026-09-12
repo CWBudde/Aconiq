@@ -1,0 +1,220 @@
+{
+  "standard": "beb-exposure",
+  "fixture": "phase16/beb_model.geojson",
+  "files": {
+    "beb-exposure.bin": "sha256:dea04c0576b7c9033162c0617b9812f20fc5b316000322f455cafd24146323bd bytes=32",
+    "beb-exposure.json": "sha256:d97c2df680af9674556f64e3a2aee9ea8d73a4ef7a88e8396bc80e2a229eaf0e bytes=303",
+    "beb-summary.json": "sha256:5278aa7765515e055739c1abd11dd3198124389077d87852fde64bd9709cfef6 bytes=1430",
+    "buildings.csv": "sha256:59229f653ea7acac6d02b808ad46ad952c50554fbae73fe3488fba4d240c5636 bytes=372",
+    "buildings.json": "sha256:bfcf1c80671aa9c1b1ef3bf55d3160cbf572e44933d3274b2e13e9f6c22ae725 bytes=822",
+    "run-summary.json": "sha256:90477619a3d72ddec05167e620269df9ed4c14572171591e90100305b087e770 bytes=1615"
+  },
+  "run_summary": {
+    "affected_dwellings_lden": 3,
+    "affected_dwellings_lnight": 3,
+    "affected_persons_lden": 6.6000000000000005,
+    "affected_persons_lnight": 6.6000000000000005,
+    "building_count": 2,
+    "estimated_dwellings": 7,
+    "estimated_persons": 15.400000000000002,
+    "evidence_tier": "preview",
+    "facade_evaluation_mode": "centroid",
+    "lden_bands": [
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "55-59",
+        "lower_db": 55,
+        "upper_db_exclusive": 60
+      },
+      {
+        "estimated_dwellings": 3,
+        "estimated_persons": 6.6000000000000005,
+        "label": "60-64",
+        "lower_db": 60,
+        "upper_db_exclusive": 65
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "65-69",
+        "lower_db": 65,
+        "upper_db_exclusive": 70
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "70-74",
+        "lower_db": 70,
+        "upper_db_exclusive": 75
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "75+",
+        "lower_db": 75
+      }
+    ],
+    "lnight_bands": [
+      {
+        "estimated_dwellings": 3,
+        "estimated_persons": 6.6000000000000005,
+        "label": "50-54",
+        "lower_db": 50,
+        "upper_db_exclusive": 55
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "55-59",
+        "lower_db": 55,
+        "upper_db_exclusive": 60
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "60-64",
+        "lower_db": 60,
+        "upper_db_exclusive": 65
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "65-69",
+        "lower_db": 65,
+        "upper_db_exclusive": 70
+      },
+      {
+        "estimated_dwellings": 0,
+        "estimated_persons": 0,
+        "label": "70+",
+        "lower_db": 70
+      }
+    ],
+    "model_version": "baseline-preview-exposure-aggregation-v2",
+    "occupancy_mode": "prefer_feature_overrides",
+    "output_hash": "0f20641f207dcae1761a9d5840cfca60980cf30e086410cd1da0f856aee6ac1a",
+    "reporting_precision_db": 0.1,
+    "source_count": 1,
+    "status": "completed",
+    "upstream_mapping_standard": "bub-road"
+  },
+  "provenance": {
+    "input_hashes": {
+      ".noise/model/model.normalized.geojson": "5edcea6008940595ea9c6965ef796e8773cb7d2efb878388cbb28c9b64f75e1a"
+    },
+    "metadata": {
+      "aggregation_model": "occupancy-facade-threshold-components",
+      "compliance_boundary": "baseline-preview-expanded-beb-exposure-contract",
+      "evidence_tier": "preview",
+      "indicator_order": "Lden,Lnight,estimated_dwellings,estimated_persons,affected_dwellings_lden,affected_persons_lden,affected_dwellings_lnight,affected_persons_lnight",
+      "key_parameter.building_usage_type": "residential",
+      "key_parameter.dwellings_per_floor": "1",
+      "key_parameter.facade_evaluation_mode": "centroid",
+      "key_parameter.facade_receiver_height_m": "4",
+      "key_parameter.floor_height_m": "3",
+      "key_parameter.minimum_building_height_m": "3",
+      "key_parameter.occupancy_mode": "prefer_feature_overrides",
+      "key_parameter.persons_per_dwelling": "2.2",
+      "key_parameter.threshold_lden_db": "55",
+      "key_parameter.threshold_lnight_db": "50",
+      "key_parameter.upstream_mapping_standard": "bub-road",
+      "model_version": "baseline-preview-exposure-aggregation-v2",
+      "receiver_mode": "auto-grid",
+      "reporting_precision_db": "0.1"
+    },
+    "parameters": {
+      "air_absorption_db_per_km": "0.7",
+      "aircraft_class": "narrow_body",
+      "aircraft_operation_type": "departure",
+      "aircraft_procedure_type": "standard_sid",
+      "aircraft_thrust_mode": "takeoff",
+      "airport_id": "DE-APT",
+      "approach_correction_db": "1.5",
+      "bank_angle_deg": "0",
+      "building_usage_type": "residential",
+      "climb_correction_db": "2.5",
+      "dwellings_per_floor": "1",
+      "engine_state_factor": "1",
+      "facade_evaluation_mode": "centroid",
+      "facade_receiver_height_m": "4",
+      "floor_height_m": "3",
+      "ground_attenuation_db": "1.2",
+      "intersection_density_per_km": "0",
+      "lateral_directivity_db": "1",
+      "lateral_offset_m": "0",
+      "min_distance_m": "3",
+      "min_slant_distance_m": "20",
+      "minimum_building_height_m": "3",
+      "movement_day_per_hour": "12",
+      "movement_evening_per_hour": "6",
+      "movement_night_per_hour": "2",
+      "occupancy_mode": "prefer_feature_overrides",
+      "persons_per_dwelling": "2.2",
+      "reference_power_level_db": "110",
+      "road_function_class": "urban_main",
+      "road_gradient_percent": "0",
+      "road_junction_distance_m": "0",
+      "road_junction_type": "none",
+      "road_speed_kph": "60",
+      "road_studded_tyre_share": "0",
+      "road_surface_type": "dense_asphalt",
+      "road_temperature_c": "15",
+      "runway_id": "RWY",
+      "threshold_lden_db": "55",
+      "threshold_lnight_db": "50",
+      "track_end_height_m": "250",
+      "track_start_height_m": "20",
+      "traffic_day_heavy_vph": "90",
+      "traffic_day_light_vph": "900",
+      "traffic_day_medium_vph": "120",
+      "traffic_day_ptw_vph": "30",
+      "traffic_evening_heavy_vph": "45",
+      "traffic_evening_light_vph": "500",
+      "traffic_evening_medium_vph": "60",
+      "traffic_evening_ptw_vph": "15",
+      "traffic_night_heavy_vph": "30",
+      "traffic_night_light_vph": "250",
+      "traffic_night_medium_vph": "30",
+      "traffic_night_ptw_vph": "5",
+      "upstream_mapping_standard": "bub-road",
+      "urban_canyon_db": "0"
+    },
+    "receiver_mode": "auto-grid",
+    "scenario_id": "default",
+    "standard": {
+      "context": "mapping",
+      "id": "beb-exposure",
+      "profile": "building-exposure",
+      "version": "2021-preview"
+    },
+    "standard_data": {
+      "algorithm": "sha256",
+      "digest": "1cd0ce629dcdadd84160981addf87861fadb83caa21a894bbeb3d041361d8db1",
+      "evidence_tier": "preview",
+      "tables": [
+        {
+          "digest": "befbfcaf5ccda75e94907fd9ce6614f0a2e14d73547b0a50a9521c09da710dc2",
+          "name": "preview-exposure/lden-band-definitions"
+        },
+        {
+          "digest": "3a923a3d8be8cabdf4788f3eb4c33cc2f7cf97fc5a9ca182af86b7c325c44697",
+          "name": "preview-exposure/lden-band-edges"
+        },
+        {
+          "digest": "ad54b68c1e25d117a2a5cd3ed5c6274080353117a828621102ad71575cf71ee9",
+          "name": "preview-exposure/lnight-band-definitions"
+        },
+        {
+          "digest": "c852a8b1b442d62e1d355ec91ee758aa74292991d2febad6baa85c42464bfe38",
+          "name": "preview-exposure/lnight-band-edges"
+        },
+        {
+          "digest": "b98fab92114148e4b35c76c6fa0aa64228ea4b07a18999c414707717132445f6",
+          "name": "preview-exposure/model-version"
+        }
+      ]
+    },
+    "tool_name": "aconiq"
+  }
+}
