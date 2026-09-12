@@ -715,3 +715,114 @@ func TestThreeDiffractionEdgesAreSelected(t *testing.T) {
 		t.Errorf("multi-edge run length e = %v, want > 0", geom.E)
 	}
 }
+
+// TestReflectiveBarrierReachesDrefl pins the geometry behind the
+// b5_reflective_barrier acceptance fixture.  Gl. 20's D_refl is only consulted
+// on the top-diffraction branch, only when the *source-side* diffraction edge
+// is reflective, and only while d_s ≤ 5 m — schall03.multiEdgeGeometry reads the
+// first edge alone, so a reflective wall further down the scene contributes
+// nothing.  Every earlier barrier fixture sits at d_s ≥ 15 m, so flipping
+// Reflective on one of them would have left its golden byte-identical.
+func TestReflectiveBarrierReachesDrefl(t *testing.T) {
+	t.Parallel()
+
+	barriers := func(reflective bool) []schall03.BarrierSegment {
+		return []schall03.BarrierSegment{
+			{
+				A: geo.Point2D{X: -300, Y: 2}, B: geo.Point2D{X: 300, Y: 2},
+				TopHeightM: 3, BaseHeightM: 0, Reflective: reflective,
+			},
+			{A: geo.Point2D{X: -300, Y: 10}, B: geo.Point2D{X: 300, Y: 10}, TopHeightM: 5},
+			{A: geo.Point2D{X: -300, Y: 20}, B: geo.Point2D{X: 300, Y: 20}, TopHeightM: 6},
+		}
+	}
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 0, Y: 40}
+
+	const (
+		sourceHeightM   = 0.0 // Teilquelle m = 1, at Schienenoberkante
+		receiverHeightM = 3.5
+		maxDreflDsM     = 5.0 // Gl. 20, Anmerkung 5
+		wantDrefl       = 3.0 // D_refl = max(3 − h_abs, 0) with h_abs = 0
+	)
+
+	totalDist := geo.Distance(source, receiver)
+
+	var obstructing []schall03.BarrierCrossing
+
+	for _, c := range schall03.FindBarrierCrossings(source, receiver, barriers(true)) {
+		if schall03.IsObstructing(c, sourceHeightM, receiverHeightM, totalDist) {
+			obstructing = append(obstructing, c)
+		}
+	}
+
+	edges := schall03.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDist, obstructing)
+	if len(edges) != 3 {
+		t.Fatalf("selected %d diffraction edges, want 3", len(edges))
+	}
+
+	geom := schall03.ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalDist)
+
+	if !geom.TopDiffraction {
+		t.Fatal("D_refl is only consulted on the top-diffraction branch, which this geometry must reach")
+	}
+
+	if !geom.ReflectiveWall {
+		t.Fatal("the source-side diffraction edge is not the reflective wall, so D_refl would be 0")
+	}
+
+	if geom.Ds > maxDreflDsM {
+		t.Fatalf("d_s = %.4f m exceeds the Gl. 20 limit of %.1f m, so D_refl would be 0", geom.Ds, maxDreflDsM)
+	}
+
+	// D_refl is unexported, so it is measured where it acts: the top-diffraction
+	// A_bar of the reflective scene must sit exactly D_refl below the absorbing
+	// one in every band the Gl. 19 clamp and the D_z cap leave room in.
+	absorbing := geom
+	absorbing.ReflectiveWall = false
+
+	reflAbar := schall03.ComputeAbar(geom, schall03.BeiblattSpectrum{})
+	absAbar := schall03.ComputeAbar(absorbing, schall03.BeiblattSpectrum{})
+
+	for f := range schall03.NumBeiblattOctaveBands {
+		got := absAbar[f] - reflAbar[f]
+		if math.Abs(got-wantDrefl) > 1e-9 {
+			t.Errorf("band %d: A_bar dropped by %.6f dB, want D_refl = %.1f dB", f, got, wantDrefl)
+		}
+	}
+
+	// And the correction must survive into the receiver level: the per-band
+	// minimum against the lateral path (Gl. 18) could otherwise absorb it.
+	segments := []schall03.TrackSegment{{
+		ID:              "ice1_reflective_barrier_track",
+		TrackCenterline: []geo.Point2D{{X: -200, Y: 0}, {X: 200, Y: 0}},
+		StreckeMaxKPH:   250,
+		Operations: []schall03.TrainOperation{{
+			TrainType:          "ICE-1-Zug",
+			FzComposition:      []schall03.FzCount{{Fz: 1, Count: 2}, {Fz: 2, Count: 12}},
+			SpeedKPH:           250,
+			TrainsPerHourDay:   8,
+			TrainsPerHourNight: 2,
+		}},
+	}}
+	input := schall03.ReceiverInput{ID: "r_behind_reflective_barrier", Point: receiver, HeightM: receiverHeightM}
+
+	absLevels, err := schall03.ComputeNormativeReceiverLevelsWithScene(input, segments, nil, barriers(false))
+	if err != nil {
+		t.Fatalf("absorbing scene: %v", err)
+	}
+
+	reflLevels, err := schall03.ComputeNormativeReceiverLevelsWithScene(input, segments, nil, barriers(true))
+	if err != nil {
+		t.Fatalf("reflective scene: %v", err)
+	}
+
+	// The suite compares at a tolerance of 0.0001 dB, so anything above that
+	// would make the fixture non-vacuous; this scene clears it by four orders
+	// of magnitude.
+	delta := reflLevels.LpAeqDay - absLevels.LpAeqDay
+	if delta < 0.5 {
+		t.Errorf("reflective scene is only %.6f dB louder than the absorbing one; the fixture barely exercises Gl. 20", delta)
+	}
+}

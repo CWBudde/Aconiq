@@ -355,15 +355,17 @@ different answer.
 
 ### 1.4 Fixture blind spots — closed
 
-Six fixtures were added for the cases the suite could not see. Each was verified to reach the path
-it claims: `TestLateralDiffractionCanDominate` and `TestThreeDiffractionEdgesAreSelected` pin the
-two barrier geometries, and the b1 geometry was re-checked to confirm its lateral A_bar is capped
-at 20 dB in every band, so the assertion is not vacuous.
+Seven fixtures were added for the cases the suite could not see. Each was verified to reach the path
+it claims: `TestLateralDiffractionCanDominate`, `TestThreeDiffractionEdgesAreSelected` and
+`TestReflectiveBarrierReachesDrefl` pin the three barrier geometries, and the b1 geometry was
+re-checked to confirm its lateral A_bar is capped at 20 dB in every band, so the assertion is not
+vacuous.
 
 | fixture                     | closes                                                    |
 | --------------------------- | --------------------------------------------------------- |
 | `b3_lateral_diffraction`    | lateral path per-band cheaper than the top path (Gl. 18)  |
 | `b4_three_edge_barriers`    | three diffraction edges survive the rubber band (Bild 6)  |
+| `b5_reflective_barrier`     | reflective source-side edge at d_s ≤ 5 m — Gl. 20 D_refl  |
 | `e4_bruecke_feste_fahrbahn` | bridge combined with Feste Fahrbahn (Nr. 4.6 suppression) |
 | `e3_langsame_strecke`       | 40 km/h Eisenbahn line — non-`v₀`, no substitute speed    |
 | `s3_langsamfahrstelle`      | Nr. 5.3.2 `permanently_slow` exception, end to end        |
@@ -374,8 +376,14 @@ so C_met is exactly zero at the near receiver, active for one source only at 150
 both further out. `LpAeq_LT` and `LpAeq_DW` now differ in the golden, which they did not in any
 previous fixture.
 
-- [ ] The suite still has no fixture where an intermediate barrier is _reflective_
-      (`BarrierSegment.Reflective`), so Gl. 20's D_refl is exercised only by unit tests.
+This entry previously asked for an _intermediate_ reflective barrier, which would have produced a
+byte-identical golden: `multiEdgeGeometry` reads `first.Barrier` alone, so only the
+nearest-to-source surviving diffraction edge can carry D_refl. `b5_reflective_barrier` therefore
+puts the reflective wall 2 m from the track (d_s = 3.61 m, inside Gl. 20's 5 m limit) and leaves the
+walls behind it absorbing. Two further traps are load-bearing for any future D_refl fixture: D_refl
+is read only on the top-diffraction branch, and `ComputePathBarrierAttenuation` takes the per-band
+minimum against the lateral Gl. 18 path, whose D_z caps at 20 dB — so a scene screened much harder
+than this one hides the correction behind that cap.
 
 ### 1.5 RLS-19 items that could not be verified
 

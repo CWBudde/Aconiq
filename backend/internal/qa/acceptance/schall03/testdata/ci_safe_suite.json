@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "schall03-ci-safe-v4",
+  "suite_version": "schall03-ci-safe-v5",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -107,6 +107,14 @@
       "description": "ICE-1-Zug behind a 16 m long, 12 m high barrier: the lateral path around the barrier end is per-band cheaper than the top path (Gl. 18)",
       "scenario_path": "ci_safe/b3_lateral_diffraction.scenario.json",
       "expected_path": "ci_safe/b3_lateral_diffraction.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b5_reflective_barrier",
+      "category": "propagation",
+      "description": "ICE-1-Zug behind a reflective 3 m wall 2 m from the track plus two absorbing walls: the source-side diffraction edge sits at d_s = 3.61 m, so Gl. 20's D_refl = 3 dB applies",
+      "scenario_path": "ci_safe/b5_reflective_barrier.scenario.json",
+      "expected_path": "ci_safe/b5_reflective_barrier.expected.json",
       "tolerance_db": 0.0001
     },
     {
