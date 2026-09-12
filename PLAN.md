@@ -991,7 +991,9 @@ capabilities }` in `api/`, implement `httpBackend` and `browserBackend`, pick in
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
       `road.ComputeReceiverOutputs` synchronously inside the Promise executor and there is no
-      `Worker` anywhere in `src/`, so a grid run freezes the UI.
+      `Worker` anywhere in `src/`, so a grid run freezes the UI. While there: store one IndexedDB
+      record per run instead of one document — `persist` in `browser-backend.ts` structured-clones
+      every stored run (receiver tables, CSV, export HTML) on each write.
 
 ### Order and gates
 
