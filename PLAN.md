@@ -247,40 +247,49 @@ commit messages; the consequences each one exposed are open items below.
 
 ### Open
 
-- [ ] **The debts a green `just lint` still hides.** **334**, re-measured 2026-09-12 and audited in
-      `docs/lint-triage.md`, which carries the per-rule table. Two passes have run against the
+- [ ] **The debts a green `just lint` still hides.** **256**, re-measured 2026-09-12 and audited in
+      `docs/lint-triage.md`, which carries the per-rule table. Three passes have run against the
       557 this item opened with, and what each did matters more than the delta.
 
       The **audit pass** (`7babf60`) made the number honest rather than smaller: `wsl_v5` **196 → 0**
-      because it had never been disabled — `4b0566c` removed it from `linters.disable` along with
-      its settings block, so it has been enforced since 2026-08-28 while its own commit message,
-      `docs/lint-triage.md` and this file all went on saying it was off. `errcheck` **41 → 0** was
-      the opposite failure: all unchecked `Close`, 11 on export write paths where a swallowed close
-      means a truncated file reported as a successful export, hidden inside `exclusions.presets` and
-      named by no table here. They are fixed in code, `exclusions.presets` is gone, and gosec G304 is
-      now an explicitly named rule rather than a side effect of a preset. It also counted the **63
-      `//nolint` directives** no audit had ever included.
+          because it had never been disabled — `4b0566c` removed it from `linters.disable` along with
+          its settings block, so it has been enforced since 2026-08-28 while its own commit message,
+          `docs/lint-triage.md` and this file all went on saying it was off. `errcheck` **41 → 0** was
+          the opposite failure: all unchecked `Close`, 11 on export write paths where a swallowed close
+          means a truncated file reported as a successful export, hidden inside `exclusions.presets` and
+          named by no table here. They are fixed in code, `exclusions.presets` is gone, and gosec G304 is
+          now an explicitly named rule rather than a side effect of a preset. It also counted the **63
+          `//nolint` directives** no audit had ever included.
 
-      The **paydown passes** (`4bb2867`, and the extraction pass) took those 63 to **33**, in code
-      and without narrowing anything into a smaller suppression. Every one-off directive is gone.
-      In `app/cli` specifically, **18 → 10**: all ten wholesale complexity suppressions on the
-      extraction functions are gone, because they were never hiding complex code — they were hiding
-      twenty copies of one hand-unrolled property decoder per function, which is the entire reason
-      `funlen`, `maintidx`, `cyclop` and `gocognit` fired. `extractDummySources` used the same loop
-      with no directive at all, which is what proved it. `goconst` fell **164 → 140** untargeted,
-      the repeated scope strings going with the blocks that carried them.
+          The **paydown passes** (`4bb2867`, and the extraction pass) took those 63 to **33**, in code
+          and without narrowing anything into a smaller suppression. Every one-off directive is gone.
+          In `app/cli` specifically, **18 → 10**: all ten wholesale complexity suppressions on the
+          extraction functions are gone, because they were never hiding complex code — they were hiding
+          twenty copies of one hand-unrolled property decoder per function, which is the entire reason
+          `funlen`, `maintidx`, `cyclop` and `gocognit` fired. `extractDummySources` used the same loop
+          with no directive at all, which is what proved it. `goconst` fell **164 → 140** untargeted,
+          the repeated scope strings going with the blocks that carried them.
 
-      What is left is `goconst` **140** (39 permanent, the rest Priority 7), `noinlineerr` **109**
-      and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
-      verdict was taken), and **33** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
-      tables, and 7 in `app/cli` that the `framework.Module` work owns outright. The one suppression
-      the extraction pass added is the road-builder `dupl` pair, which replaced two wholesale
-      directives covering eight linters and names its structural fix in Priority 7.
+          The **parameter-binding pass** deleted the `goconst` group 2 exclusion outright rather than
+          narrowing it, taking `goconst` ~~140~~ **62**. The 79 findings it was hiding are fixed in
+          code: each run-parameter name is now written once, in `run_params.go`'s `runParams` binding
+          table for the CLI and in a per-module parameter table for `schall03` and `iso9613`, and the
+          schema, parse and provenance sites all derive from it.
+          `TestRunOptionsCoverParameterSchema` pins the two against each other in both directions. It
+          also found `beb-exposure` declaring `lateral_offset_m` and binding it nowhere, so
+          `--param lateral_offset_m=…` was accepted and dropped; that is fixed.
 
-      **This item closes when Priority 7's `framework.Module` work lands**, which is what removes the
-      remaining `app/cli` directives. Nothing here is suppressed because nobody got round to it.
-      `.golangci.yml`'s disable list holds **19** linters, which is why neither `AGENTS.md` nor
-      `docs/policies/formatting.md` quotes a number.
+          What is left is `goconst` **62** (39 permanent, 23 Priority 7), `noinlineerr` **109**
+          and `gocyclo` **5** (both declined in writing), gosec **G304 47** non-test (unmoved since the
+          verdict was taken), and **33** directives — 18 named `gosec`, 8 legitimate `dupl` coefficient
+          tables, and 7 in `app/cli` that the `framework.Module` work owns outright. The one suppression
+          the extraction pass added is the road-builder `dupl` pair, which replaced two wholesale
+          directives covering eight linters and names its structural fix in Priority 7.
+
+          **This item closes when Priority 7's `framework.Module` work lands**, which is what removes the
+          remaining `app/cli` directives. Nothing here is suppressed because nobody got round to it.
+          `.golangci.yml`'s disable list holds **19** linters, which is why neither `AGENTS.md` nor
+          `docs/policies/formatting.md` quotes a number.
 
 - [ ] **Decide whether to keep `govulncheck` blocking.** It is wired in as its own CI job and is
       **green as of this commit**: `golang.org/x/text` went v0.35.0 → v0.41.0 (clears
@@ -680,8 +689,12 @@ target would only find unfixable library panics was simply false.
 metadata — no compute contract of any kind. Dispatch is a **562-line `switch`** at
 `run_pipeline.go:143`, carrying `//nolint:gocognit,gocyclo,cyclop,dupl,funlen,maintidx`.
 Adding a standard means editing ~8 CLI files (`run_extract.go` 28 hardcoded standard IDs,
-`run_options.go` 25, `run_persist.go` 20, `run_pipeline.go` 10, `compare.go` 9, …).
+`run_options.go` ~~25~~ **35**, `run_persist.go` 20, `run_pipeline.go` 10, `compare.go` 9, …).
 That is why `internal/app/cli` is 16 450 LOC — a third of the backend.
+`run_options.go` grew by one more standard-ID switch in the parameter-binding pass —
+`runOptionParamKeys`, which feeds `TestRunOptionsCoverParameterSchema`. That is a deliberate
+trade: the switch is the price of making the schema/parse agreement testable, and
+`framework.Module` subsumes it along with the other nine.
 
 - [ ] **Extract a shared acoustics core** (`internal/acoustics`). `energySumDB` exists in **9
       copies with 3 different semantics**: `rls19/road/emission.go:147` skips `level <= -900`,
