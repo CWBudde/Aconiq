@@ -372,5 +372,6 @@
   "dialog_title_model_invalid": "Modell ungültig",
   "dialog_desc_model_invalid": "Das Projekt hat das Modell abgelehnt. Beheben Sie die aufgeführten Befunde und speichern Sie erneut.",
   "label_feature_id": "Objekt-ID",
-  "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst."
+  "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst.",
+  "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen"
 }
