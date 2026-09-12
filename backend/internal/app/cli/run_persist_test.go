@@ -8,6 +8,8 @@ import (
 
 	"github.com/aconiq/backend/internal/geo"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
+	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
+	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
@@ -38,7 +40,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosroad.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(cnossosroad.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -48,7 +50,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosrail.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosRailRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(cnossosrail.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -58,7 +60,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosaircraft.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(cnossosaircraft.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -68,7 +70,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosindustry.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistCnossosIndustryRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(cnossosindustry.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -81,7 +83,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosrail.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUBRailRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(bubrail.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -91,7 +93,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     cnossosindustry.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUBIndustryRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(bubindustry.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -101,7 +103,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     bubroad.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUBRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(bubroad.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -111,7 +113,7 @@ func TestPersistRunOutputsWriteUnifiedModelVersion(t *testing.T) {
 			wantTier: framework.EvidenceTierScaffold,
 			want:     bufaircraft.BuiltinModelVersion,
 			persist: func(runDir string) (persistedRunOutputs, string, error) {
-				out, hash, _, err := persistBUFAircraftRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+				out, hash, _, err := persistENDRunOutputs(bufaircraft.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 
 				return out, hash, err
 			},
@@ -218,7 +220,7 @@ func TestPersistCnossosRoadRunOutputsUsesRoadConstants(t *testing.T) {
 
 	runDir := t.TempDir()
 
-	persisted, _, _, err := persistCnossosRoadRunOutputs(runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
+	persisted, _, _, err := persistENDRunOutputs(cnossosroad.StandardID, runDir, nil, 0, 0, 0, receiverModeCustom, framework.EvidenceTierScaffold)
 	if err != nil {
 		t.Fatalf("persist cnossos road outputs: %v", err)
 	}

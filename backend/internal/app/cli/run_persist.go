@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/engine"
@@ -401,250 +402,116 @@ func persistReceiverRunOutputs[Output any](
 	}, outputHash, nowUTC(), nil
 }
 
-// endIndicatorSet names the END four-indicator vocabulary — Lden, Lnight, Lday,
-// Levening — that six of the registered standards publish. The names are data
-// rather than shared constants because each module declares its own.
-type endIndicatorSet struct {
-	lden     string
-	lnight   string
-	lday     string
-	levening string
+// endPersistSpec is what one END strategic-mapping module contributes to the
+// shared persist path. The receiver outputs are acoustics.ReceiverOutput for
+// every module in the family, so everything else — the hash payload, the
+// receiver table, the run summary — is identical by construction, and only
+// these two values differ.
+type endPersistSpec struct {
+	// modelVersion is the version the run summary names. An alias module names
+	// the module whose numbers it publishes, not itself.
+	modelVersion string
+
+	// reportingPrecisionDB is stamped into the run summary when non-zero.
+	// cnossos-industry, bub-industry and buf-aircraft leave it out, which is an
+	// inconsistency this collapse preserved rather than fixed: the digest
+	// goldens pin the run summary, so changing it here would be a behaviour
+	// change smuggled inside a refactor. Tracked in PLAN.md Priority 7.
+	reportingPrecisionDB float64
+
+	// export is the module's own bundle writer. The layout is shared, but the
+	// raster files are named after the standard that produced them, so an alias
+	// module still writes its own.
+	export func(baseDir string, outputs []acoustics.ReceiverOutput, gridWidth int, gridHeight int) (acoustics.ExportOutputs, error)
 }
 
-// endIndicatorModule is the per-standard half of an END-vocabulary persist
-// plan. levels returns the four levels in indicatorOrder, which is the only
-// thing tying a module's indicator constants to its indicator fields.
-type endIndicatorModule[Output any] struct {
-	scope           string
-	hashLabel       string
-	hashErrMessage  string
-	modelVersion    string
-	names           endIndicatorSet
-	receiver        func(Output) geo.PointReceiver
-	indicators      func(Output) any
-	levels          func(Output) [4]float64
-	decorateSummary func(summary map[string]any)
-	export          func(resultsDir string) (exportedBundle, error)
+// endPersistSpecs holds one entry per module reporting the END day/evening/night
+// indicator set. A standard missing from this map is a standard the END persist
+// path cannot write, and says so rather than writing something plausible.
+var endPersistSpecs = map[string]endPersistSpec{
+	cnossosroad.StandardID: {
+		modelVersion:         cnossosroad.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosroad.ReportingPrecisionDB,
+		export:               cnossosroad.ExportResultBundle,
+	},
+	bubroad.StandardID: {
+		modelVersion:         bubroad.BuiltinModelVersion,
+		reportingPrecisionDB: bubroad.ReportingPrecisionDB,
+		export:               bubroad.ExportResultBundle,
+	},
+	cnossosrail.StandardID: {
+		modelVersion:         cnossosrail.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosrail.ReportingPrecisionDB,
+		export:               cnossosrail.ExportResultBundle,
+	},
+	bubrail.StandardID: {
+		modelVersion:         cnossosrail.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosrail.ReportingPrecisionDB,
+		export:               bubrail.ExportResultBundle,
+	},
+	cnossosindustry.StandardID: {
+		modelVersion: cnossosindustry.BuiltinModelVersion,
+		export:       cnossosindustry.ExportResultBundle,
+	},
+	bubindustry.StandardID: {
+		modelVersion: cnossosindustry.BuiltinModelVersion,
+		export:       bubindustry.ExportResultBundle,
+	},
+	cnossosaircraft.StandardID: {
+		modelVersion:         cnossosaircraft.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosaircraft.ReportingPrecisionDB,
+		export:               cnossosaircraft.ExportResultBundle,
+	},
+	bufaircraft.StandardID: {
+		modelVersion: bufaircraft.BuiltinModelVersion,
+		export:       bufaircraft.ExportResultBundle,
+	},
 }
 
-// endIndicatorPlan expands an END-vocabulary module into the persist plan the
-// shared writer consumes.
-func endIndicatorPlan[Output any](module endIndicatorModule[Output]) receiverPersistPlan[Output] {
-	names := module.names
-
-	return receiverPersistPlan[Output]{
-		scope:           module.scope,
-		hashLabel:       module.hashLabel,
-		hashErrMessage:  module.hashErrMessage,
-		modelVersion:    module.modelVersion,
-		indicatorOrder:  []string{names.lden, names.lnight, names.lday, names.levening},
-		decorateSummary: module.decorateSummary,
-		receiver:        module.receiver,
-		indicators:      module.indicators,
-		values: func(output Output) map[string]float64 {
-			level := module.levels(output)
-
-			return map[string]float64{
-				names.lden:     level[0],
-				names.lnight:   level[1],
-				names.lday:     level[2],
-				names.levening: level[3],
-			}
-		},
-		export: module.export,
-	}
-}
-
-// railPersistPlan serves cnossos-rail and bub-rail alike: bub-rail's receiver
-// output type is a Go alias of cnossos-rail's, so the two differ only in the
-// scope their errors carry, the model version their summary names and the
-// bundle they write — the raster files are named after the standard, so an
-// alias run must still write its own.
-func railPersistPlan(scope string, modelVersion string, export func(resultsDir string) (exportedBundle, error)) receiverPersistPlan[cnossosrail.ReceiverOutput] {
-	return receiverPersistPlan[cnossosrail.ReceiverOutput]{
-		scope:           scope,
-		hashLabel:       "cnossos rail receiver outputs",
-		hashErrMessage:  "hash rail outputs",
-		modelVersion:    modelVersion,
-		indicatorOrder:  []string{cnossosrail.IndicatorLden, cnossosrail.IndicatorLnight, cnossosrail.IndicatorLday, cnossosrail.IndicatorLevening},
-		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosrail.ReportingPrecisionDB },
-		receiver:        func(output cnossosrail.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:      func(output cnossosrail.ReceiverOutput) any { return output.Indicators },
-		values: func(output cnossosrail.ReceiverOutput) map[string]float64 {
-			return map[string]float64{
-				cnossosrail.IndicatorLden:     output.Indicators.Lden,
-				cnossosrail.IndicatorLnight:   output.Indicators.Lnight,
-				cnossosrail.IndicatorLday:     output.Indicators.Lday,
-				cnossosrail.IndicatorLevening: output.Indicators.Levening,
-			}
-		},
-		export: export,
-	}
-}
-
-func persistCnossosRailRunOutputs(
-	runDir string,
-	outputs []cnossosrail.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistCnossosRailRunOutputs"
-
-	plan := railPersistPlan(scope, cnossosrail.BuiltinModelVersion, exportBundle(scope, "export cnossos rail results", cnossosrail.ExportResultBundle, outputs, gridWidth, gridHeight))
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// persistBUBRailRunOutputs writes a bub-rail run. bub-rail carries no model
-// version of its own: it delegates every number to cnossos-rail, so that is the
-// version the summary must name.
-func persistBUBRailRunOutputs(
-	runDir string,
-	outputs []bubrail.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistBUBRailRunOutputs"
-
-	plan := railPersistPlan(scope, cnossosrail.BuiltinModelVersion, exportBundle(scope, "export BUB rail results", bubrail.ExportResultBundle, outputs, gridWidth, gridHeight))
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// industryPersistPlan serves cnossos-industry and bub-industry alike, on the
-// same alias reasoning as railPersistPlan.
-func industryPersistPlan(scope string, modelVersion string, export func(resultsDir string) (exportedBundle, error)) receiverPersistPlan[cnossosindustry.ReceiverOutput] {
-	return receiverPersistPlan[cnossosindustry.ReceiverOutput]{
-		scope:          scope,
-		hashLabel:      "cnossos industry receiver outputs",
-		hashErrMessage: "hash industry outputs",
-		modelVersion:   modelVersion,
-		indicatorOrder: []string{cnossosindustry.IndicatorLden, cnossosindustry.IndicatorLnight, cnossosindustry.IndicatorLday, cnossosindustry.IndicatorLevening},
-		receiver:       func(output cnossosindustry.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:     func(output cnossosindustry.ReceiverOutput) any { return output.Indicators },
-		values: func(output cnossosindustry.ReceiverOutput) map[string]float64 {
-			return map[string]float64{
-				cnossosindustry.IndicatorLden:     output.Indicators.Lden,
-				cnossosindustry.IndicatorLnight:   output.Indicators.Lnight,
-				cnossosindustry.IndicatorLday:     output.Indicators.Lday,
-				cnossosindustry.IndicatorLevening: output.Indicators.Levening,
-			}
-		},
-		export: export,
-	}
-}
-
-func persistCnossosIndustryRunOutputs(
-	runDir string,
-	outputs []cnossosindustry.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistCnossosIndustryRunOutputs"
-
-	plan := industryPersistPlan(scope, cnossosindustry.BuiltinModelVersion, exportBundle(scope, "export cnossos industry results", cnossosindustry.ExportResultBundle, outputs, gridWidth, gridHeight))
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// persistBUBIndustryRunOutputs writes a bub-industry run. bub-industry carries
-// no model version of its own: it delegates every number to cnossos-industry,
-// so that is the version the summary must name.
-func persistBUBIndustryRunOutputs(
-	runDir string,
-	outputs []bubindustry.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistBUBIndustryRunOutputs"
-
-	plan := industryPersistPlan(scope, cnossosindustry.BuiltinModelVersion, exportBundle(scope, "export BUB industry results", bubindustry.ExportResultBundle, outputs, gridWidth, gridHeight))
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// END four-indicator set over structurally identical receiver outputs, so
-// these three wrappers are clones of one another by construction. The fix is
-// not more indirection here: bub-road must share cnossos-road's model and
-// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
-// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
-// the alias-pair shape railPersistPlan and industryPersistPlan already use.
+// persistENDRunOutputs writes one END strategic-mapping run: cnossos-road,
+// -rail, -industry and -aircraft, their bub/buf counterparts, and anything else
+// that reports Lden/Lnight/Lday/Levening.
 //
-//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
-func persistCnossosRoadRunOutputs(
+// This replaces eight functions that were clones of one another — three of them
+// close enough that dupl fired on them and carried a suppression. What made
+// them clones was not the persist path but the indicator model: each module
+// declared its own copy of the END types, so the same code had to be written
+// once per type. They share acoustics.ReceiverOutput now, and one function
+// serves them all.
+func persistENDRunOutputs(
+	standardID string,
 	runDir string,
-	outputs []cnossosroad.ReceiverOutput,
+	outputs []acoustics.ReceiverOutput,
 	gridWidth int,
 	gridHeight int,
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
 ) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistCnossosRoadRunOutputs"
+	const scope = "cli.persistENDRunOutputs"
 
-	plan := endIndicatorPlan(endIndicatorModule[cnossosroad.ReceiverOutput]{
+	spec, ok := endPersistSpecs[standardID]
+	if !ok {
+		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, scope, "no END persist spec for standard "+standardID, nil)
+	}
+
+	plan := receiverPersistPlan[acoustics.ReceiverOutput]{
 		scope:          scope,
-		hashLabel:      "cnossos road receiver outputs",
-		hashErrMessage: "hash cnossos outputs",
-		modelVersion:   cnossosroad.BuiltinModelVersion,
-		names:          endIndicatorSet{cnossosroad.IndicatorLden, cnossosroad.IndicatorLnight, cnossosroad.IndicatorLday, cnossosroad.IndicatorLevening},
-		receiver:       func(output cnossosroad.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:     func(output cnossosroad.ReceiverOutput) any { return output.Indicators },
-		levels: func(output cnossosroad.ReceiverOutput) [4]float64 {
-			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
-		},
-		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosroad.ReportingPrecisionDB },
-		export:          exportBundle(scope, "export cnossos road results", cnossosroad.ExportResultBundle, outputs, gridWidth, gridHeight),
-	})
+		hashLabel:      standardID + " receiver outputs",
+		hashErrMessage: "hash " + standardID + " outputs",
+		modelVersion:   spec.modelVersion,
+		indicatorOrder: acoustics.IndicatorOrder(),
+		receiver:       func(output acoustics.ReceiverOutput) geo.PointReceiver { return output.Receiver },
+		indicators:     func(output acoustics.ReceiverOutput) any { return output.Indicators },
+		values:         func(output acoustics.ReceiverOutput) map[string]float64 { return output.Indicators.Values() },
+		export:         exportBundle(scope, "export "+standardID+" results", spec.export, outputs, gridWidth, gridHeight),
+	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// END four-indicator set over structurally identical receiver outputs, so
-// these three wrappers are clones of one another by construction. The fix is
-// not more indirection here: bub-road must share cnossos-road's model and
-// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
-// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
-// the alias-pair shape railPersistPlan and industryPersistPlan already use.
-//
-//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
-func persistBUBRoadRunOutputs(
-	runDir string,
-	outputs []bubroad.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistBUBRoadRunOutputs"
-
-	plan := endIndicatorPlan(endIndicatorModule[bubroad.ReceiverOutput]{
-		scope:          scope,
-		hashLabel:      "BUB road receiver outputs",
-		hashErrMessage: "hash BUB road outputs",
-		modelVersion:   bubroad.BuiltinModelVersion,
-		names:          endIndicatorSet{bubroad.IndicatorLden, bubroad.IndicatorLnight, bubroad.IndicatorLday, bubroad.IndicatorLevening},
-		receiver:       func(output bubroad.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:     func(output bubroad.ReceiverOutput) any { return output.Indicators },
-		levels: func(output bubroad.ReceiverOutput) [4]float64 {
-			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
-		},
-		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = bubroad.ReportingPrecisionDB },
-		export:          exportBundle(scope, "export BUB road results", bubroad.ExportResultBundle, outputs, gridWidth, gridHeight),
-	})
+	if spec.reportingPrecisionDB != 0 {
+		plan.decorateSummary = func(summary map[string]any) {
+			summary["reporting_precision_db"] = spec.reportingPrecisionDB
+		}
+	}
 
 	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
 }
@@ -728,71 +595,6 @@ func persistSchall03RunOutputs(
 		},
 		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-// END four-indicator set over structurally identical receiver outputs, so
-// these three wrappers are clones of one another by construction. The fix is
-// not more indirection here: bub-road must share cnossos-road's model and
-// buf-aircraft must become an alias of cnossos-aircraft, the way bub-rail and
-// bub-industry already do — see PLAN.md Priority 7. Both collapse these into
-// the alias-pair shape railPersistPlan and industryPersistPlan already use.
-//
-//nolint:dupl // cnossos-road, bub-road and cnossos-aircraft publish the same
-func persistCnossosAircraftRunOutputs(
-	runDir string,
-	outputs []cnossosaircraft.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistCnossosAircraftRunOutputs"
-
-	plan := endIndicatorPlan(endIndicatorModule[cnossosaircraft.ReceiverOutput]{
-		scope:          scope,
-		hashLabel:      "cnossos aircraft receiver outputs",
-		hashErrMessage: "hash cnossos aircraft outputs",
-		modelVersion:   cnossosaircraft.BuiltinModelVersion,
-		names:          endIndicatorSet{cnossosaircraft.IndicatorLden, cnossosaircraft.IndicatorLnight, cnossosaircraft.IndicatorLday, cnossosaircraft.IndicatorLevening},
-		receiver:       func(output cnossosaircraft.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:     func(output cnossosaircraft.ReceiverOutput) any { return output.Indicators },
-		levels: func(output cnossosaircraft.ReceiverOutput) [4]float64 {
-			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
-		},
-		decorateSummary: func(summary map[string]any) { summary["reporting_precision_db"] = cnossosaircraft.ReportingPrecisionDB },
-		export:          exportBundle(scope, "export cnossos aircraft results", cnossosaircraft.ExportResultBundle, outputs, gridWidth, gridHeight),
-	})
-
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
-}
-
-func persistBUFAircraftRunOutputs(
-	runDir string,
-	outputs []bufaircraft.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
-	sourceCount int,
-	receiverMode string,
-	tier framework.EvidenceTier,
-) (persistedRunOutputs, string, time.Time, error) {
-	const scope = "cli.persistBUFAircraftRunOutputs"
-
-	plan := endIndicatorPlan(endIndicatorModule[bufaircraft.ReceiverOutput]{
-		scope:          scope,
-		hashLabel:      "BUF aircraft receiver outputs",
-		hashErrMessage: "hash buf aircraft outputs",
-		modelVersion:   bufaircraft.BuiltinModelVersion,
-		names:          endIndicatorSet{bufaircraft.IndicatorLden, bufaircraft.IndicatorLnight, bufaircraft.IndicatorLday, bufaircraft.IndicatorLevening},
-		receiver:       func(output bufaircraft.ReceiverOutput) geo.PointReceiver { return output.Receiver },
-		indicators:     func(output bufaircraft.ReceiverOutput) any { return output.Indicators },
-		levels: func(output bufaircraft.ReceiverOutput) [4]float64 {
-			return [4]float64{output.Indicators.Lden, output.Indicators.Lnight, output.Indicators.Lday, output.Indicators.Levening}
-		},
-		export: exportBundle(scope, "export BUF aircraft results", bufaircraft.ExportResultBundle, outputs, gridWidth, gridHeight),
-	})
 
 	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
 }
