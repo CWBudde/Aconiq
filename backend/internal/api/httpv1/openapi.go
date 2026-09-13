@@ -839,8 +839,12 @@ func openapiStandardSchemas() map[string]any {
 			"additionalProperties": false,
 			"required":             []string{"name", "kind", "required"},
 			"properties": map[string]any{
-				"name":          map[string]any{"type": "string"},
-				"kind":          map[string]any{"type": "string", "enum": []string{"string", "bool", "int", "float"}},
+				"name": map[string]any{"type": "string"},
+				"kind": map[string]any{"type": "string", "enum": []string{"string", "bool", "int", "float"}},
+				"unit": map[string]any{
+					"type":        "string",
+					"description": "Physical unit of the value as a short symbol (m, km/h, dB, dB/km, 1/h, 1/km, %, °C, °). Absent when the parameter is dimensionless or not numeric.",
+				},
 				"required":      map[string]any{"type": "boolean"},
 				"default_value": map[string]any{"type": "string"},
 				"description":   map[string]any{"type": "string"},

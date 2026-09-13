@@ -317,6 +317,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	}
 
 	assertOpenAPIDeclaresEvidenceTier(t, payload)
+	assertOpenAPIDeclaresParameterUnit(t, payload)
 }
 
 // assertOpenAPIDeclaresEvidenceTier checks that the hand-built spec documents the

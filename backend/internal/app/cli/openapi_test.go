@@ -54,6 +54,32 @@ func TestOpenAPICommandWritesSpec(t *testing.T) {
 			t.Fatalf("expected %s in openapi paths", required)
 		}
 	}
+
+	components, ok := doc["components"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected components object in openapi document")
+	}
+
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected schemas object in openapi document")
+	}
+
+	definition, ok := schemas["ParameterDefinition"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected ParameterDefinition schema in openapi document")
+	}
+
+	properties, ok := definition["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected ParameterDefinition properties in openapi document")
+	}
+
+	// ParameterDefinition is additionalProperties:false, so a unit the handler
+	// emits but the exported contract omits would break a strict client.
+	if _, exists := properties["unit"]; !exists {
+		t.Fatalf("expected unit property on ParameterDefinition, got %#v", properties)
+	}
 }
 
 func TestOpenAPICommandEmbedsServerURL(t *testing.T) {
