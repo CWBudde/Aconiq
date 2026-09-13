@@ -65,6 +65,19 @@ function LoadingLine({ text }: { text: string }) {
 
 type SortDir = "asc" | "desc";
 
+/**
+ * "2 / 3 records" — how many rows the filter kept out of how many the table
+ * holds. One message carries the whole sentence rather than three fragments
+ * glued in JSX: German pluralises the noun itself, so a translator has to own
+ * the word next to the number. The plural follows the total, which is the
+ * count the noun names; the filtered count only qualifies it.
+ */
+function recordCount(shown: number, total: number): string {
+  return total === 1
+    ? m.msg_records_count_one({ shown, total })
+    : m.msg_records_count_other({ shown, total });
+}
+
 function ReceiversTab({ run }: { run: RunSummary }) {
   const artifact = run.artifacts.find(
     (a) => a.kind === "run.result.receiver_table_json",
@@ -205,6 +218,9 @@ function ReceiversTab({ run }: { run: RunSummary }) {
       {summaryCards.length > 0 ? (
         <div className="flex flex-wrap gap-3">
           {summaryCards.map(({ ind, min, max, mean }) => {
+            // The messages carry the bare term; the `dt` below punctuates it.
+            // The same two terms label the raster min/max inputs, where a
+            // trailing colon would be wrong, so the colon belongs here.
             const stats: Array<[string, number]> = [
               [m.label_min(), min],
               [m.label_max(), max],
@@ -243,8 +259,7 @@ function ReceiversTab({ run }: { run: RunSummary }) {
           }}
         />
         <span className="text-xs text-muted-foreground">
-          {String(sortedRecords.length)} / {String(data.records.length)}{" "}
-          {m.msg_records_count()}
+          {recordCount(sortedRecords.length, data.records.length)}
         </span>
         <div className="ml-auto">
           <Button variant="outline" size="sm" onClick={downloadCSV}>
@@ -488,15 +503,15 @@ function RunColumn({ run, label }: { run: RunSummary; label: string }) {
           </p>
         ) : null}
         <p>
-          <span className="text-muted-foreground">{m.label_started()}</span>{" "}
+          <span className="text-muted-foreground">{m.label_started()}:</span>{" "}
           {formatTime(run.started_at)}
         </p>
         <p>
-          <span className="text-muted-foreground">{m.label_duration()}</span>{" "}
+          <span className="text-muted-foreground">{m.label_duration()}:</span>{" "}
           {formatDurationBetween(run.started_at, run.finished_at)}
         </p>
         <p>
-          <span className="text-muted-foreground">{m.label_artifacts()}</span>{" "}
+          <span className="text-muted-foreground">{m.label_artifacts()}:</span>{" "}
           {String(run.artifacts.length)}
         </p>
       </div>
@@ -613,7 +628,7 @@ function RunResultDetail({
           ) : null}
         </p>
         <p className="text-xs text-muted-foreground">
-          {m.label_started()} {runTiming(run)}
+          {m.label_started()}: {runTiming(run)}
         </p>
       </div>
 

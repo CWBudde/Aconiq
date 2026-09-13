@@ -347,16 +347,32 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     renderPage([run("run-1", [bundle])]);
 
     const dialog = openDialog();
-    // Radix' own corner close carries the same accessible name; the footer
-    // action is the one whose caption is visible rather than screen-reader only.
-    const footerClose = within(dialog)
-      .getAllByRole("button", { name: m.action_close() })
-      .find((b) => b.querySelector(".sr-only") === null);
-    expect(footerClose).toBeDefined();
-    if (footerClose) fireEvent.click(footerClose);
+    // The corner control names what it closes ("Close dialog"), so the footer
+    // action is reachable by its own name alone — no two controls in this
+    // dialog answer to the same one.
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: m.action_close() }),
+    );
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(state.createdExports).toEqual([]);
+  });
+
+  it("gives the corner close a name of its own", () => {
+    state.canExport = true;
+    renderPage([run("run-1", [bundle])]);
+
+    const dialog = openDialog();
+
+    // Two ways out of the same dialog. Radix' corner control and the footer
+    // button used to answer to "Close" alike, which leaves a screen-reader
+    // user picking between two identical entries.
+    expect(
+      within(dialog).getByRole("button", { name: m.action_close_dialog() }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: m.action_close() }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -503,15 +519,6 @@ describe("ExportPage detail panel", () => {
     expect(screen.queryByTitle(m.label_html_report_preview())).toBeNull();
   });
 
-  it("still announces the PDF section as planned", () => {
-    renderPage([run("run-1", [bundle])]);
-
-    expect(screen.getByText(m.section_typst_pdf())).toBeInTheDocument();
-    expect(
-      screen.getByText(m.msg_pdf_generation_planned()),
-    ).toBeInTheDocument();
-  });
-
   it("shows the run's export command and copies it verbatim", () => {
     renderPage([run("run-42", [bundle])]);
 
@@ -561,14 +568,12 @@ describe("ExportPage detail panel", () => {
 
 describe("ExportPage unknown artifact kinds", () => {
   /**
-   * PINNED DEFECT. `EXPORT_KIND_LABELS` knows four kinds, and
-   * `export.report_pdf` is not among them — yet `aconiq export --pdf` really
-   * does emit it. `kindMeta`'s fallback therefore prints the raw kind string
-   * as the row's label, so the user sees "export.report_pdf" where every
-   * other row carries a translated name. A later commit adds the label; this
-   * test has to be changed then, on purpose.
+   * `export.report_pdf` is a kind `aconiq export --pdf` really writes, so it
+   * belongs in `EXPORT_KIND_LABELS` and carries a translated name like every
+   * other known kind. Only a kind the table does not know falls through to
+   * `kindMeta`'s fallback and prints its own identifier.
    */
-  it("prints the raw kind of a PDF report instead of a label", () => {
+  it("labels a PDF report rather than printing its kind", () => {
     const pdf = artifact(
       "a-pdf",
       "export.report_pdf",
@@ -576,7 +581,10 @@ describe("ExportPage unknown artifact kinds", () => {
     );
     renderPage([run("run-1", [bundle, pdf])]);
 
-    expect(screen.getByText("export.report_pdf")).toBeInTheDocument();
+    expect(
+      screen.getByText(m.export_artifact_label_pdf_report()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("export.report_pdf")).toBeNull();
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     // It is still counted and still an export artifact.
     expect(listItem("run-1")).toHaveTextContent(

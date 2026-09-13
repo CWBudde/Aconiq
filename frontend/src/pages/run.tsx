@@ -168,6 +168,13 @@ function parseTimeline(lines: string[], status: RunStatus): TimelineStep[] {
   return steps;
 }
 
+/** What the step's marker says out loud. */
+function stepStateLabel(step: TimelineStep): string {
+  if (step.done) return m.timeline_status_done();
+  if (step.active) return m.timeline_status_active();
+  return m.timeline_status_pending();
+}
+
 function ProgressTimeline({
   lines,
   status,
@@ -177,12 +184,24 @@ function ProgressTimeline({
 }) {
   const steps = parseTimeline(lines, status);
 
+  // An ordered list, because the steps are a fixed sequence and a reader
+  // arriving mid-run needs to know how many there are and where they are in
+  // them. The marker is the only thing that distinguishes a finished step from
+  // a pending one, so it carries the state as its own accessible name rather
+  // than as a colour and a shape: the tick, the spinner and the dot stay
+  // decoration behind it. `aria-current="step"` marks where the run is now.
   return (
-    <div className="space-y-1">
+    <ol className="space-y-1">
       {steps.map((step, i) => (
-        <div key={i} className="flex items-start gap-2.5">
+        <li
+          key={i}
+          className="flex items-start gap-2.5"
+          {...(step.active && { "aria-current": "step" as const })}
+        >
           <div className="flex flex-col items-center">
             <div
+              role="img"
+              aria-label={stepStateLabel(step)}
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
                 step.done
                   ? "border-success bg-success text-success-foreground"
@@ -201,6 +220,7 @@ function ProgressTimeline({
             </div>
             {i < steps.length - 1 ? (
               <div
+                aria-hidden="true"
                 className={`mt-0.5 w-px flex-1 ${step.done ? "bg-success/40" : "bg-border"}`}
                 style={{ minHeight: "12px" }}
               />
@@ -216,9 +236,9 @@ function ProgressTimeline({
               <p className="text-xs text-muted-foreground">{step.timestamp}</p>
             ) : null}
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
@@ -489,7 +509,7 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
           ) : null}
         </p>
         <p className="text-xs text-muted-foreground">
-          {m.label_started()} {runTiming(run)}
+          {m.label_started()}: {runTiming(run)}
         </p>
       </div>
 

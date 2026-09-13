@@ -277,10 +277,10 @@ function filterInput(): HTMLElement {
 }
 
 /**
- * The label message already ends in a colon and `CompareTab` appends a second
- * one, so the accessible name really is "Compare with::". Pinned here rather
- * than papered over with a regex — see the "punctuates its own labels twice"
- * test below.
+ * The message carries the bare term and `CompareTab` punctuates it, so the
+ * accessible name the `Label` gives the trigger is the term plus exactly one
+ * colon. Spelled out rather than matched with a regex so that a second colon
+ * creeping back in fails here too.
  */
 function compareSelect(): HTMLElement {
   return screen.getByRole("combobox", { name: `${m.label_compare_with()}:` });
@@ -480,11 +480,30 @@ describe("ResultsPage receivers tab states", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultsPage receiver filtering", () => {
+  /*
+   * One message owns the whole count, placeholders and all. The fragments it
+   * replaced read "3 / 3 / records", because the message carried a slash of
+   * its own; more to the point, German pluralises the noun rather than
+   * suffixing it, which no amount of JSX concatenation can express.
+   */
   it("counts every record when nothing is filtered", () => {
     renderResults();
 
     expect(
-      screen.getByText(`3 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 3, total: 3 })),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the singular when the table holds one record", () => {
+    state.receiverTable = {
+      ...table,
+      records: table.records.slice(0, 1),
+    } satisfies ReceiverTable;
+    renderResults();
+
+    // The plural follows the total, which is what the noun counts.
+    expect(
+      screen.getByText(m.msg_records_count_one({ shown: 1, total: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -495,7 +514,7 @@ describe("ResultsPage receiver filtering", () => {
 
     expect(rowIds()).toEqual(["R1", "R10"]);
     expect(
-      screen.getByText(`2 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 2, total: 3 })),
     ).toBeInTheDocument();
   });
 
@@ -524,7 +543,7 @@ describe("ResultsPage receiver filtering", () => {
       screen.getByText(m.msg_no_records_match_filter()),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(`0 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 0, total: 3 })),
     ).toBeInTheDocument();
   });
 });
@@ -736,22 +755,24 @@ describe("ResultsPage compare tab", () => {
 
 describe("ResultsPage label punctuation", () => {
   /*
-   * KNOWN DEFECT, pinned on purpose: every `label_*` message already ends in a
-   * colon, and results.tsx appends another one at each use, so the UI reads
-   * "Min::", "Dimensions::" and "Compare with::". The fix is to drop the
-   * literal colons from results.tsx; update these expectations with it.
+   * A `label_*` message is the bare term — "Min", "Dimensions" — and the page
+   * punctuates it where it is used as a label. The colon is presentation: the
+   * same two terms label the raster min/max inputs, where a trailing colon
+   * would be wrong, and a translator should never have to remember to type
+   * one. So each label carries exactly one colon, never two.
    */
 
-  it("doubles the colon on the indicator summary labels", () => {
+  it("punctuates each indicator summary label exactly once", () => {
     renderResults();
 
     // One card per indicator, so each label appears twice.
     expect(screen.getAllByText(`${m.label_min()}:`)).toHaveLength(2);
     expect(screen.getAllByText(`${m.label_max()}:`)).toHaveLength(2);
     expect(screen.getAllByText(`${m.label_mean()}:`)).toHaveLength(2);
+    expect(screen.queryAllByText(`${m.label_min()}::`)).toHaveLength(0);
   });
 
-  it("doubles the colon on the raster metadata labels", async () => {
+  it("punctuates each raster metadata label exactly once", async () => {
     renderResults([
       run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
     ]);
@@ -761,6 +782,23 @@ describe("ResultsPage label punctuation", () => {
     expect(screen.getByText(`${m.label_dimensions()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_nodata()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_unit()}:`)).toBeInTheDocument();
+    expect(screen.queryByText(`${m.label_dimensions()}::`)).toBeNull();
+  });
+
+  it("leaves the raster min/max fields unpunctuated", async () => {
+    renderResults([
+      run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
+    ]);
+
+    await openTab(m.tab_raster());
+
+    // The same messages that label the summary rows; here they name a field
+    // rather than introduce a value, so they carry no colon at all.
+    expect(screen.getByLabelText(m.label_min())).toHaveAttribute(
+      "placeholder",
+      m.label_min(),
+    );
+    expect(screen.getByLabelText(m.label_max())).toBeInTheDocument();
   });
 });
 
