@@ -908,7 +908,10 @@ Landed; the gates below hold and the pages are built on them:
 ### Phase C — Information architecture and pages
 
 The backend contracts this phase needs have landed, and the characterisation nets are in place
-before the pages they protect are cut apart:
+before the pages they protect are cut apart. One caveat on the citations below: the nine hashes in
+the landed items are pre-rebase objects reachable from no branch — every phase reaches `main`
+squashed, so this phase is `87da006` and nothing else. They are accurate as history and useless as
+`git show` targets, which is the general rule for a per-branch hash in this file.
 
 - [x] **The calculation area is a model feature.** `calc-area` is a fifth kind in the v1 GeoJSON
       schema — Polygon only, no `height_m`, at most one (`model.calc_area.duplicate` refuses a
@@ -950,13 +953,19 @@ before the pages they protect are cut apart:
       guards the ~40 key changes the rest of this phase makes; nothing in `src/` reads `de.json`,
       so a forgotten translation was previously invisible.
 
-Defects these nets pinned, each as current behaviour with a comment, so the fixing commit is a
-one-line expectation flip: the receiver CSV does not double embedded quotes; `label_*` messages
-already end in a colon and the JSX appends another, so the UI reads `Min::`; the row count renders
-`3 / 3 / records`; `EXPORT_KIND_LABELS` has no entry for `export.report_pdf`, which `aconiq export
---pdf` has emitted since it shipped; `ui/components/dialog.tsx:47` hardcodes the English "Close",
-which also collides with the footer button on accessible name; and the run timeline conveys
-done/active/pending only visually, every marker being `aria-hidden`.
+- [x] **The six defects those nets pinned are fixed.** The nets worked as intended: each fix was
+      the expectation flip the comment promised. Three of them were wider than the entry said.
+      The colon belonged to 18 `label_*` messages, not 19, and those messages are rendered _bare_
+      in four more places than the one this file named — `import.tsx`'s `KeyValueList` terms,
+      the map layer toggles (the legend read "Gebäude:"), and five headings and `<Label>`s in
+      `run.tsx` — so stripping the colon from the message fixed all of them and only three sites
+      needed one added back. `sheet.tsx` carried the same hardcoded English "Close" as
+      `dialog.tsx`. And removing the false "PDF generation is planned" notice emptied its whole
+      section, which went with it. The timeline is now an `<ol>` whose markers carry
+      `role="img"` and a localised status name, with `aria-current="step"` on the active one; both
+      test helpers read roles and accessible names instead of `animate-spin` and
+      `parentElement.parentElement`. A new locale-parity assertion forbids a trailing colon on any
+      `label_*` message in either catalogue, so the class cannot come back.
 
 - [ ] **Target IA**: `/` project (Welcome and Status merged: import-or-draw, mode chip, health,
       validation summary — not "open/create": `Backend` has no create-project or open-project
@@ -968,10 +977,12 @@ done/active/pending only visually, every marker being `aria-hidden`.
       rewrites history, fights Back and races `useRuns`. An unknown run id shows a warning naming
       it, never a silent fallback to another run. `/settings` with two categories (General,
       Connection — five of seven today are "reserved" placeholders). Header mode chip and a
-      `<ModeGate>` with one disabled+tooltip treatment. `ModeGate` has exactly one call site today
-      (`export.tsx:270`): of the eight inlined capability checks, six are content decisions or not
-      UI at all, and one has no capability behind it. Build it for the rule, not a sweep — and do
-      not gate `SaveStatus`, whose absence in browser mode is correct.
+      `<ModeGate>` with one disabled+tooltip treatment. **`ModeGate` does not exist** — this file
+      previously said it "has exactly one call site today (`export.tsx:270`)", but that line is a
+      bare `capabilities.canExport` ternary; the one call site is the target, not the state. Of
+      the eight inlined capability checks, six are content decisions or not UI at all, and one has
+      no capability behind it. Build it for the rule, not a sweep — and do not gate `SaveStatus`,
+      whose absence in browser mode is correct.
 - [ ] **Hydrate the workspace from the project** in HTTP mode. The endpoint and the hash exist;
       the frontend half does not. `use-project-hydration.ts` belongs in `RootLayout` beside
       `useAutosave`, not on `/` — a reload can land on any route, and hydrating only there would
@@ -1006,13 +1017,16 @@ done/active/pending only visually, every marker being `aria-hidden`.
       is still ~1,330 lines; split it into `pages/run/{page,setup-dialog,detail,timeline}.tsx`;
       extract `useRunSetupSelection` (standard→version→profile→params cascade) and
       `useSelectedRun`. Add `standards-meta.ts`: human labels, German
-      directive names, parameters grouped with units (today `traffic_day_lkw1` is shown raw and only
-      one standard ID has a label, `run.tsx:67-76`). Gate the run dialog on
+      directive names, parameters grouped and rendered with the `unit` the descriptor now
+      publishes — **not** a table of its own, which is the mirror that item was closed to avoid
+      (today `traffic_day_lkw1` is shown raw and only one standard ID has a label,
+      `run.tsx:67-76`). Gate the run dialog on
       `validateProjectModel(features, receivers).errors.length === 0` — **not** `validateModel`,
       which passes `[]` for receivers (`validate.ts:27-29`) and so validates as if none were
       placed. Guard the empty case first: `validateProjectModel` pushes a synthetic `model.empty`
       _error_, so a naive validation summary reads "1 error" on a fresh install. Confirm destructive actions (delete feature, discard
-      draft, import-replaces-model) — no `AlertDialog` exists anywhere. Add a delete-run action
+      draft, import-replaces-model) — the primitive and a tested `ui/confirm-dialog.tsx` both
+      landed in `87da006`, so what is missing is call sites, not the component. Add a delete-run action
       (`Backend.deleteRun`) against the new `DELETE /api/v1/runs/{id}`, in both modes — browser
       mode caps stored runs at 20 and tells the user on a quota error that older runs may need
       deleting, but offers no way to do it. **Deleting breaks `nextRunID`**, which mints ids from
@@ -1024,12 +1038,10 @@ done/active/pending only visually, every marker being `aria-hidden`.
       header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
       `SortIcon` (nested at `results.tsx:139-147`, so it remounts the header on every keystroke)
       along with `level` and `columnLabel`; `RunColumn` is already at module scope and only needs
-      moving. One CSV builder in `model/` (`results.tsx:155-176` does not double embedded quotes;
-      the second is `buildReceiverCSV` at `browser-backend.ts:1108-1124`, which does — so freeze
-      its bytes and fix the page, keeping the stored artifact identical). Do not adopt RFC 4180's
-      CRLF: Go's `encoding/csv` writes `\n`. Note the two are already not byte-compatible for a
-      different reason — Go quotes only when necessary and ends with a newline, both JS builders
-      always quote and do not; that divergence is its own item, below. Also replace
+      moving. The CSV half of this bullet is done — one builder in `model/receiver-csv.ts`, Go's
+      spelling, pinned by `testdata/csv-parity/` — and the instruction it used to carry was wrong:
+      freezing the stored artifact's bytes was impossible, because the same escaping defect was in
+      both writers. Also replace
       `summaryCards`' `Math.min(...vals)`, which throws past ~100k arguments — exactly what
       virtualising the table admits,
       `results.test.tsx` written alongside.
@@ -1039,20 +1051,47 @@ done/active/pending only visually, every marker being `aria-hidden`.
       `loadFeatures` clears placed receivers, so "import, then Save to project" replaces the project
       model without the receivers `aconiq import` had put there — import receivers into
       `receivers`.
-- [ ] **The browser and CLI receiver CSVs are not byte-compatible**, independently of the escaping
-      bug above. `backend/internal/report/results/receiver_table_io.go:79` uses Go's `encoding/csv`,
-      which quotes only where necessary and terminates the last record with a newline; both JS
-      builders quote every field and emit no trailing newline. Two tools reading "the same" artifact
-      from the two modes get different bytes. Decide which spelling is canonical and move the other,
-      with the golden machinery (`just update-golden`) to pin it.
-- [ ] **`ParameterDefinition` carries no unit**, so `standards-meta.ts`'s unit table is a frontend
-      mirror of Go-side knowledge and can drift. Add `Unit` to `framework.ParameterDefinition`,
-      surface it through OpenAPI, and delete the mirror. Until then the table needs a drift test
-      that asserts one direction only — every key names a parameter some standard declares, never
-      the reverse, or adding a Go parameter would break the frontend build.
-- [ ] **`aconiq import --soundplan` does not emit a `calc-area` feature** although a SoundPLAN
-      bundle carries one (`soundplanimport.CalcArea`, consumed today only by `compare-raster`).
-      Emitting it would make an imported project's grid match the original's extent for free.
+- [x] **One receiver CSV, Go's spelling, pinned across the tree boundary.** `encoding/csv` is
+      canonical — comma, LF, a trailing newline on every record including the last, minimal
+      quoting — and `frontend/src/model/receiver-csv.ts` mirrors it for both the page download and
+      the stored browser artifact. Three live constraints follow.
+      **Go's `unicode.IsSpace` is not JavaScript's `\s`**: Go includes U+0085 and excludes U+FEFF,
+      `\s` does the opposite, so the leading-whitespace quoting rule needs an explicit character
+      class in TS and the fixture carries all three leading characters to prove it.
+      **`strconv.FormatFloat(v,'f',-1,64)` and `String(v)` share their digits but not their
+      presentation** — JS switches to an exponent past 1e21 and below 1e-6 and prints `-0` as `0`,
+      so the TS formatter expands and special-cases; 199 894 doubles built from raw bit patterns
+      agreed on every one.
+      **A fixture whose point is its bytes must be exempt from EOL normalization** — the
+      `csv-parity` directory carries `.gitattributes` with `* -text`, or git would rewrite the CR
+      the self-test exists to check. That directory is the second golden directory read from the
+      frontend tree; `docs/testing/golden-tests.md` no longer calls `testdata/parity/` the only one.
+      `PERSISTED_STATE_VERSION` was deliberately not bumped: that guard refuses a document the code
+      cannot read, and re-spelling one downloadable does not justify discarding a user's model and
+      twenty runs. Runs already in IndexedDB keep their old bytes; both spellings parse.
+- [x] **`ParameterDefinition` carries a unit**, as a short SI-style symbol from a `framework`
+      constant, required through `cloneParameterSchema` or it vanishes in profile resolution, and
+      published on `GET /api/v1/standards` and in the OpenAPI document. 75 of the 117 parameters
+      carry one; 42 are genuinely dimensionless. `standards-meta.ts` must therefore read `unit`
+      from the API rather than being born with a table of its own — the drift test this entry used
+      to ask for is unnecessary if the mirror is never written.
+      Two constraints: the suffix conventions cover most names but **not the RLS-19 traffic
+      counts**, which carry `1/h` from their descriptions and not from `traffic_day_pkw`, so the
+      suffix drift test says in its own comment that it cannot see them. And `c0_met` is **not**
+      dimensionless as this file previously implied — `MeteorologicalCorrection` feeds C0 into
+      `10^(-0.1·C_met)`, so it carries dB per ISO 9613-2 Eq. 22.
+- [x] **`aconiq import --soundplan` emits a `calc-area` feature.** An imported project's auto-grid
+      now matches the original's extent: the run log says `grid_extent=calc_area`. The z ordinate
+      is dropped from the ring and kept as `soundplan_base_elevation_m`, following what the
+      building appender already does. Closure is decided in **2D**, deliberately: the import
+      report's `IsClosed` compares x, y _and_ z, so a footprint that closes in plan but differs in
+      elevation would otherwise gain a zero-length closing segment.
+- [ ] **The SoundPLAN calculation area now exists twice in a project, and the two can diverge.**
+      `compare-raster` reads it from `soundplan-import-report.json` — verbatim, 3D, possibly open —
+      because `calcAreaHorizontalSpan` intersects each raster row against the real outline and the
+      model feature is lossy for that. So a user editing the model's `calc-area` does not move what
+      `compare-raster` uses. Reconcile, or state which one wins, before P13 turns the comparison
+      into evidence.
 
 ### Phase D — Map workspace
 
@@ -1084,8 +1123,9 @@ done/active/pending only visually, every marker being `aria-hidden`.
 
 - [ ] Validation messages become codes + params (`validate.ts:43-437` is English-only and rendered
       verbatim); add the keys still missing after Phase B (the "Map unavailable"/"Retry" strings in
-      `map-view.tsx`, whose test mocks the messages module to `""` and has to stop first, and the
-      shadcn `sr-only` texts); strip trailing colons from `label_*` keys (`Min::` today); paraglide
+      `map-view.tsx`, whose test mocks the messages module to `""` and has to stop first, and
+      `ui/components/sidebar.tsx:276`'s hardcoded English "Toggle Sidebar" — a rendered control,
+      found while localising the dialog and sheet close buttons); paraglide
       plural variants for `run{s}`; language switch without `location.reload()`; enable
       `react/jsx-no-literals` for `pages/`, `map/`, `ui/`.
 - [ ] German terminology and register pass: Immissionsort, Schallquelle,
@@ -1234,6 +1274,15 @@ the comparison into evidence (the assertion itself is Priority 3).
 
 ## Priority 14 — QA hardening and conformance packaging
 
+- [ ] **`just update-golden` is flaky, and has been all along.** `internal/qa/acceptance/rls19_test20`
+      runs `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport` in parallel
+      against the same `testdata/ci_safe/*.golden.json` files, so under `UPDATE_GOLDEN=1` one test
+      decodes a golden the other is mid-write and fails with `unexpected end of JSON input`. The
+      file named differs every run. Reproduced 4 times in 6 on `main`; `-p 1` does not help, because
+      the race is inside one package. The merge gate never sees it — `go test ./...` without the
+      flag is stable — but the one command a maintainer runs before regenerating snapshots is not
+      trustworthy, which is the wrong way round. Serialise the two tests or give them separate
+      fixture directories.
 - [ ] Expand `internal/qa/` with loaders for standard test tasks, result comparison with tolerances
       and outlier reports, and a snapshot exporter for debugging.
 - [ ] Expand fuzz/property tests: geometry robustness, numeric monotonicity where applicable.
