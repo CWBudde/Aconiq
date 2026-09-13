@@ -16,7 +16,13 @@ import { m } from "@/i18n/messages";
  * Characterisation tests: they describe what the results page does today, not
  * what it ought to do. They exist as a safety net under a refactor, so where
  * the current behaviour is wrong the wrong behaviour is pinned deliberately
- * and marked as such — see the CSV quoting cases below.
+ * and marked as such.
+ *
+ * What this file does *not* own is the CSV spelling. The download block below
+ * asserts page behaviour — which table is handed over, what blob comes back,
+ * what it is named — while the bytes themselves belong to
+ * `model/receiver-csv.ts` and are tested in `model/receiver-csv.test.ts` and
+ * `model/receiver-csv.parity.test.ts`.
  */
 
 const state = vi.hoisted(() => {
@@ -620,52 +626,29 @@ describe("ResultsPage receiver sorting", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultsPage CSV download", () => {
-  it("writes the header row and every record, quoted throughout", async () => {
+  it("hands the canonical bytes to a text/csv blob named receivers.csv", async () => {
     renderResults();
 
     const csv = await downloadCSV();
 
+    // The spelling is Go's encoding/csv, produced by the shared builder in
+    // model/receiver-csv.ts: fields are quoted only where they have to be, and
+    // every record — the header included — ends in a single LF. The builder's
+    // own rules are tested in model/receiver-csv.test.ts and pinned against the
+    // CLI in model/receiver-csv.parity.test.ts; what this file owns is that the
+    // page hands the right table to it and the right blob to the browser.
     expect(csv).toBe(
       [
-        '"id","x","y","height_m","Lden","Lnight"',
-        '"R1","100.5","200.25","4","62.4","55.1"',
-        '"R10","300","100","8","71.8",""',
-        '"R2","50.5","400.25","2.5","58.2","51.9"',
+        "id,x,y,height_m,Lden,Lnight",
+        "R1,100.5,200.25,4,62.4,55.1",
+        "R10,300,100,8,71.8,",
+        "R2,50.5,400.25,2.5,58.2,51.9",
+        "",
       ].join("\n"),
     );
     expect(createdBlobs.at(-1)?.type).toBe("text/csv");
     expect(downloadNames).toEqual(["receivers.csv"]);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:aconiq/receivers.csv");
-  });
-
-  it("writes the header from indicator_order, not from the records", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lnight", "Lden"],
-      unit: "dB(A)",
-      records: [
-        { id: "R1", x: 1, y: 2, height_m: 3, values: { Lden: 60, Lnight: 50 } },
-      ],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    expect(csv).toBe(
-      [
-        '"id","x","y","height_m","Lnight","Lden"',
-        '"R1","1","2","3","50","60"',
-      ].join("\n"),
-    );
-  });
-
-  it("leaves a missing indicator empty rather than writing the 0 the table shows", async () => {
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // The table cell for R10/Lnight renders `?? 0`; the CSV writes `?? ""`.
-    expect(csv).toContain('"R10","300","100","8","71.8",""');
-    expect(rowIds()).toContain("R10");
   });
 
   it("exports the filtered and sorted view, not the whole table", async () => {
@@ -679,58 +662,23 @@ describe("ResultsPage CSV download", () => {
 
     expect(csv).toBe(
       [
-        '"id","x","y","height_m","Lden","Lnight"',
-        '"R10","300","100","8","71.8",""',
-        '"R1","100.5","200.25","4","62.4","55.1"',
+        "id,x,y,height_m,Lden,Lnight",
+        "R10,300,100,8,71.8,",
+        "R1,100.5,200.25,4,62.4,55.1",
+        "",
       ].join("\n"),
     );
-    expect(csv).not.toContain('"R2"');
+    expect(csv).not.toContain("R2");
   });
 
-  it("writes an empty body when the filter matches nothing", async () => {
+  it("writes the header and its newline when the filter matches nothing", async () => {
     renderResults();
 
     fireEvent.change(filterInput(), { target: { value: "zzz" } });
 
-    expect(await downloadCSV()).toBe('"id","x","y","height_m","Lden","Lnight"');
-  });
-
-  it("emits broken CSV for an id containing a double quote", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lden"],
-      unit: "dB(A)",
-      records: [{ id: 'R"1', x: 1, y: 2, height_m: 3, values: { Lden: 60 } }],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // KNOWN DEFECT, pinned on purpose: `downloadCSV` wraps every field in
-    // quotes but never doubles an embedded one, so `R"1` leaves the field at
-    // the first inner quote and the row no longer parses. RFC 4180 wants
-    // `"R""1"`. The fix is one line in results.tsx (escape `"` as `""`);
-    // update this expectation in the same commit.
-    expect(csv).toBe(
-      ['"id","x","y","height_m","Lden"', '"R"1","1","2","3","60"'].join("\n"),
-    );
-  });
-
-  it("quotes an id containing a comma correctly today", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lden"],
-      unit: "dB(A)",
-      records: [{ id: "R,2", x: 1, y: 2, height_m: 3, values: { Lden: 60 } }],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // The always-quote style happens to be correct for a comma: the field is
-    // delimited, so a reader does not split on it. Pinned so the quote fix
-    // above cannot regress this case.
-    expect(csv).toBe(
-      ['"id","x","y","height_m","Lden"', '"R,2","1","2","3","60"'].join("\n"),
-    );
+    // An empty table is still a complete CSV file: one header record,
+    // terminated like any other.
+    expect(await downloadCSV()).toBe("id,x,y,height_m,Lden,Lnight\n");
   });
 });
 

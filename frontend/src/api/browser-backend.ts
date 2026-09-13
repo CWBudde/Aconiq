@@ -29,6 +29,7 @@ import {
 } from "@/model/source-acoustics";
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
+import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
@@ -1105,24 +1106,6 @@ function buildReceiverTable(outputs: ReceiverOutput[]): ReceiverTable {
   };
 }
 
-function buildReceiverCSV(table: ReceiverTable): string {
-  const headers = ["id", "x", "y", "height_m", ...table.indicator_order];
-  const rows = table.records.map((record) => [
-    record.id,
-    String(record.x),
-    String(record.y),
-    String(record.height_m),
-    ...table.indicator_order.map((indicator) =>
-      String(record.values[indicator] ?? ""),
-    ),
-  ]);
-  return [headers, ...rows]
-    .map((row) =>
-      row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","),
-    )
-    .join("\n");
-}
-
 function makeArtifact(
   runId: string,
   suffix: string,
@@ -1141,7 +1124,7 @@ function makeArtifact(
 // Receiver values are an open Record, and stored runs are replayed from
 // IndexedDB, so an indicator can legitimately be absent (e.g. a run written
 // by an older build). Render it as an empty cell instead of throwing, matching
-// how buildReceiverCSV already handles missing indicators.
+// how buildReceiverTableCSV already handles missing indicators.
 function formatIndicator(values: Record<string, number>, key: string): string {
   return values[key]?.toFixed(1) ?? "";
 }
@@ -1445,7 +1428,7 @@ out geom;`;
 
       const outputs = await kernel.rls19Road(request);
       const receiverTable = buildReceiverTable(outputs);
-      const receiverCSV = buildReceiverCSV(receiverTable);
+      const receiverCSV = buildReceiverTableCSV(receiverTable);
       const rasterMetadata: RasterMetadata = {
         width: rasterWidth,
         height: rasterHeight,

@@ -38,6 +38,7 @@ import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
 import type { ArtifactRef, RunSummary } from "@/api/client";
+import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -153,19 +154,14 @@ function ReceiversTab({ run }: { run: RunSummary }) {
   }
 
   // Raw values, not the locale-formatted ones: the CSV is for other tools.
+  // The bytes come from the shared builder, so a browser download and the CLI's
+  // receivers.csv are the same file for the same table.
   function downloadCSV() {
     if (!data) return;
-    const headers = ["id", "x", "y", "height_m", ...indicators];
-    const rows = sortedRecords.map((r) => [
-      r.id,
-      String(r.x),
-      String(r.y),
-      String(r.height_m),
-      ...indicators.map((ind) => String(r.values[ind] ?? "")),
-    ]);
-    const csv = [headers, ...rows]
-      .map((row) => row.map((c) => `"${c}"`).join(","))
-      .join("\n");
+    const csv = buildReceiverTableCSV({
+      indicator_order: indicators,
+      records: sortedRecords,
+    });
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

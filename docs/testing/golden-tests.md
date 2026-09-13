@@ -18,15 +18,24 @@ Status date: 2026-03-06
 
 ## Goldens read from outside the Go tree
 
-`backend/internal/app/cli/testdata/parity/` is the one exception to "the package
-that owns the tests owns its snapshots". Its `*.geojson` models and
-`*.golden.json` levels are written by `parity_golden_test.go` and read by
-`frontend/src/api/browser-parity.test.ts`, which checks that browser mode builds
-the same scene out of the same model that the CLI does.
+Two directories are exceptions to "the package that owns the tests owns its
+snapshots". Both are written by a Go test and read by a frontend test:
 
-Two consequences follow, and no Go tool will warn about either:
+- `backend/internal/app/cli/testdata/parity/` — `*.geojson` models and
+  `*.golden.json` levels, written by `parity_golden_test.go` and read by
+  `frontend/src/api/browser-parity.test.ts`, which checks that browser mode
+  builds the same scene out of the same model that the CLI does.
+- `backend/internal/report/results/testdata/csv-parity/` —
+  `receiver_table.golden.json` (the input), `receiver_table.golden.csv` (the
+  bytes) and `float_spelling.golden.json`, written by
+  `receiver_table_csv_test.go` and read by
+  `frontend/src/model/receiver-csv.parity.test.ts`, which checks that the
+  browser CSV builder emits what `encoding/csv` emits. See
+  `docs/result-containers-v1.md`, section "Receiver table CSV — byte contract".
 
-- Renaming, moving or reshaping anything under `testdata/parity/` breaks a test
+Two consequences follow for each, and no Go tool will warn about either:
+
+- Renaming, moving or reshaping anything under those directories breaks a test
   in the other tree. Grep `frontend/` before you do.
 - A deliberate change there moves a golden that a frontend test asserts, so
   `just update-golden` alone does not finish the job — `just fe-test-wasm` has to
