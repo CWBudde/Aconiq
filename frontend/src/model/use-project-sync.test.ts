@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APIRequestError, ERROR_CODE_MODEL_INVALID } from "@/api/api-error";
 import type { ModelSaveRequest } from "@/api/client";
 import { useModelStore } from "./model-store";
-import type { ModelFeature, ModelReceiver } from "./types";
+import { CALC_AREA_FEATURE_ID } from "./to-geojson";
+import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
 import { loadDraft, writeDraft } from "./use-autosave";
 import { resetProjectSyncStore, useProjectSync } from "./use-project-sync";
 
@@ -64,6 +65,21 @@ const receiver: ModelReceiver = {
   id: "r1",
   heightM: 4,
   geometry: { type: "Point", coordinates: [11, 52] },
+};
+
+const calcArea: CalcArea = {
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [10, 51],
+        [10.1, 51],
+        [10.1, 51.1],
+        [10, 51.1],
+        [10, 51],
+      ],
+    ],
+  },
 };
 
 beforeEach(() => {
@@ -137,6 +153,26 @@ describe("useProjectSync", () => {
     expect(useModelStore.getState().dirty).toBe(false);
     expect(result.current.status).toBe("clean");
     expect(result.current.error).toBeNull();
+  });
+
+  it("sends the calculation area as the model's calc-area feature", async () => {
+    useModelStore.getState().addFeature(feature);
+    useModelStore.getState().setCalcArea(calcArea);
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    const req = state.requests[0] as ModelSaveRequest;
+    // Last, and with the fixed id: the area the user drew is what the
+    // backend's auto-grid resolves its extent from, and it reaches a run
+    // only through this file.
+    expect(req.model.features.map((f) => f.id)).toEqual([
+      "s1",
+      CALC_AREA_FEATURE_ID,
+    ]);
+    expect(req.model.features[1]?.properties).toEqual({ kind: "calc-area" });
   });
 
   it("keeps the model dirty when an edit lands while the save is in flight", async () => {

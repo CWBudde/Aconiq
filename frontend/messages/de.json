@@ -350,7 +350,6 @@
   "label_calc_area": "Berechnungsgebiet",
   "action_clear_calc_area": "Berechnungsgebiet löschen",
   "msg_calc_area_active": "Berechnungsgebiet gesetzt. Das automatische Raster verwendet dieses Gebiet statt der Quellausdehnung.",
-  "msg_calc_area_not_in_project": "Das Berechnungsgebiet ist nicht Teil des Projektmodells. Das automatische Raster des Backends verwendet stattdessen die Quellausdehnung.",
   "label_evidence_tier": "Evidenzstufe",
   "evidence_tier_normative": "Normativ",
   "evidence_tier_normative_desc": "Normativ: beruht auf der veröffentlichten Struktur, den Koeffizienten und Tabellen der Norm.",
