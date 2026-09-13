@@ -397,5 +397,6 @@
   "label_draw_tools": "Drawing tools",
   "label_edit_history": "Undo and redo",
   "action_hide_layer": "Hide {label}",
-  "action_show_layer": "Show {label}"
+  "action_show_layer": "Show {label}",
+  "msg_project_model_load_failed": "The project's model could not be loaded. The map may be showing less than the project holds."
 }

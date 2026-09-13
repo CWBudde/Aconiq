@@ -1,13 +1,16 @@
 import type {
+  CalcArea,
   FeatureKind,
   GeoJSONFeature,
   GeoJSONFeatureCollection,
   Geometry,
   GeometryType,
   ModelFeature,
+  ModelReceiver,
+  Position,
   SourceType,
 } from "./types";
-import { createFeatureId } from "./types";
+import { createFeatureId, DEFAULT_RECEIVER_HEIGHT_M } from "./types";
 
 const VALID_KINDS = new Set<string>(["source", "building", "barrier"]);
 const VALID_SOURCE_TYPES = new Set<string>(["point", "line", "area"]);
@@ -32,45 +35,155 @@ export interface NormalizeResult {
   skipped: SkippedFeature[];
 }
 
+/** Everything the model store holds, read out of one v1 FeatureCollection. */
+export interface NormalizeModelResult {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
+  skipped: SkippedFeature[];
+}
+
+/**
+ * One feature's place in the model. `kind` here is the outcome, not the
+ * GeoJSON `kind` property: a feature that declared a kind the model knows but
+ * failed its own rules still lands in `skipped`.
+ */
+type ModelEntry =
+  | { kind: "feature"; feature: ModelFeature }
+  | { kind: "receiver"; receiver: ModelReceiver }
+  | { kind: "calc-area"; area: CalcArea }
+  | {
+      kind: "skipped";
+      reason: string;
+      /**
+       * Set when the feature declared `receiver` or `calc-area` and was
+       * rejected on that kind's own rules. `normalizeGeoJSON` reports every
+       * such feature as an unknown kind, which is what it did back when it
+       * was the only reader and knew neither kind.
+       */
+      declaredKind?: "receiver" | "calc-area";
+    };
+
+/**
+ * The full model: features, receivers and the calculation area.
+ *
+ * Hydrating a workspace from `GET /api/v1/model` has to go through this and
+ * not through `normalizeGeoJSON`, whose `VALID_KINDS` covers only the three
+ * kinds the map draws as features. Reading a project through that one would
+ * drop every placed receiver and the drawn area, and the first save afterwards
+ * would write the loss back into the project.
+ */
+export function normalizeModelGeoJSON(
+  collection: GeoJSONFeatureCollection,
+): NormalizeModelResult {
+  const features: ModelFeature[] = [];
+  const receivers: ModelReceiver[] = [];
+  const skipped: SkippedFeature[] = [];
+  let calcArea: CalcArea | null = null;
+
+  forEachEntry(collection, (index, entry) => {
+    switch (entry.kind) {
+      case "feature":
+        features.push(entry.feature);
+        break;
+      case "receiver":
+        receivers.push(entry.receiver);
+        break;
+      case "calc-area":
+        // At most one, and the first wins — the same rule the backend
+        // validator enforces as `model.calc_area.duplicate`. A model carrying
+        // two is one the UI cannot produce, so this only ever fires for a
+        // file written by something else.
+        if (calcArea === null) {
+          calcArea = entry.area;
+        } else {
+          skipped.push({
+            index,
+            reason: `feature[${String(index)}]: the model holds at most one calculation area`,
+          });
+        }
+        break;
+      case "skipped":
+        skipped.push({ index, reason: entry.reason });
+        break;
+    }
+  });
+
+  return { features, receivers, calcArea, skipped };
+}
+
+/**
+ * Features only, for the import page.
+ *
+ * A projection of `normalizeModelGeoJSON`'s work rather than a second parser:
+ * receivers and calculation areas fold back into `skipped` with exactly the
+ * "unknown kind" reason they produced before the model normalizer learned
+ * those kinds, so the import page's skipped count is unchanged.
+ *
+ * This shim exists because the import page still replaces the model with
+ * features alone. PLAN.md's Phase C import bullet is what deletes it: once
+ * import goes through the model normalizer, the callers move over and this
+ * function goes with them.
+ */
 export function normalizeGeoJSON(
   collection: GeoJSONFeatureCollection,
 ): NormalizeResult {
   const features: ModelFeature[] = [];
   const skipped: SkippedFeature[] = [];
 
-  for (let i = 0; i < collection.features.length; i++) {
-    const raw = collection.features[i];
-    if (!raw) continue;
-    const result = normalizeFeature(raw, i);
-    if (result.ok) {
-      features.push(result.feature);
-    } else {
-      skipped.push({ index: i, reason: result.reason });
+  forEachEntry(collection, (index, entry) => {
+    switch (entry.kind) {
+      case "feature":
+        features.push(entry.feature);
+        break;
+      case "receiver":
+        skipped.push({ index, reason: unknownKindReason(index, "receiver") });
+        break;
+      case "calc-area":
+        skipped.push({ index, reason: unknownKindReason(index, "calc-area") });
+        break;
+      case "skipped":
+        skipped.push({
+          index,
+          reason:
+            entry.declaredKind === undefined
+              ? entry.reason
+              : unknownKindReason(index, entry.declaredKind),
+        });
+        break;
     }
-  }
+  });
 
   return { features, skipped };
 }
 
-type NormalizeFeatureResult =
-  | { ok: true; feature: ModelFeature }
-  | { ok: false; reason: string };
+function forEachEntry(
+  collection: GeoJSONFeatureCollection,
+  visit: (index: number, entry: ModelEntry) => void,
+): void {
+  for (let i = 0; i < collection.features.length; i++) {
+    const raw = collection.features[i];
+    if (!raw) continue;
+    visit(i, normalizeEntry(raw, i));
+  }
+}
 
-function normalizeFeature(
-  raw: GeoJSONFeature,
-  index: number,
-): NormalizeFeatureResult {
+function unknownKindReason(index: number, kind: string): string {
+  return `feature[${String(index)}]: unknown kind "${kind}"`;
+}
+
+function normalizeEntry(raw: GeoJSONFeature, index: number): ModelEntry {
   const props = raw.properties;
   const rawKind = props["kind"];
   const kindRaw = (typeof rawKind === "string" ? rawKind : "")
     .toLowerCase()
     .trim();
 
+  if (kindRaw === "receiver") return normalizeReceiver(raw, index);
+  if (kindRaw === "calc-area") return normalizeCalcArea(raw, index);
+
   if (!VALID_KINDS.has(kindRaw)) {
-    return {
-      ok: false,
-      reason: `feature[${String(index)}]: unknown kind "${kindRaw}"`,
-    };
+    return { kind: "skipped", reason: unknownKindReason(index, kindRaw) };
   }
 
   const kind = kindRaw as FeatureKind;
@@ -78,17 +191,15 @@ function normalizeFeature(
 
   if (!VALID_GEOM_TYPES.has(geomType)) {
     return {
-      ok: false,
+      kind: "skipped",
       reason: `feature[${String(index)}]: unsupported geometry type "${geomType}"`,
     };
   }
 
-  const id = raw.id != null ? String(raw.id) : createFeatureId();
-
   const normalizedProps = normalizeProperties(props);
 
   const feature: ModelFeature = {
-    id,
+    id: resolveFeatureID(raw),
     kind,
     ...(normalizedProps !== undefined && { properties: normalizedProps }),
     geometry: {
@@ -112,7 +223,98 @@ function normalizeFeature(
     }
   }
 
-  return { ok: true, feature };
+  return { kind: "feature", feature };
+}
+
+/**
+ * A receiver, mirroring the backend's rule: the geometry must be a Point.
+ *
+ * A missing or unusable height falls back to the UI's own default instead of
+ * dropping the feature. Dropping is exactly the loss this normalizer exists to
+ * fix — a receiver the user placed on the map is not something to discard over
+ * a property a writer left out.
+ */
+function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
+  if (raw.geometry.type !== "Point") {
+    return {
+      kind: "skipped",
+      declaredKind: "receiver",
+      reason: `feature[${String(index)}]: receiver geometry must be Point, got "${raw.geometry.type}"`,
+    };
+  }
+
+  const height = Number(raw.properties["height_m"]);
+
+  return {
+    kind: "receiver",
+    receiver: {
+      id: resolveFeatureID(raw),
+      heightM:
+        Number.isFinite(height) && height > 0
+          ? height
+          : DEFAULT_RECEIVER_HEIGHT_M,
+      geometry: {
+        type: "Point",
+        coordinates: raw.geometry.coordinates as Position,
+      },
+    },
+  };
+}
+
+/**
+ * The calculation area, mirroring the backend's rule: Polygon and not
+ * MultiPolygon. The backend refuses a multi-part area rather than reducing it
+ * to its envelope, because a disjoint one would silently become a single bbox
+ * spanning ground the user drew around; accepting one here would mean the map
+ * showed an area no run could honour.
+ */
+function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
+  if (raw.geometry.type !== "Polygon") {
+    return {
+      kind: "skipped",
+      declaredKind: "calc-area",
+      reason: `feature[${String(index)}]: calculation area geometry must be Polygon, got "${raw.geometry.type}"`,
+    };
+  }
+
+  return {
+    kind: "calc-area",
+    area: {
+      geometry: {
+        type: "Polygon",
+        coordinates: raw.geometry.coordinates as Position[][],
+      },
+    },
+  };
+}
+
+/**
+ * The id the backend would resolve for this feature, resolved the same way.
+ *
+ * `Model.ToFeatureCollection` writes the id into `properties.id` and leaves
+ * the GeoJSON `id` member unset, and `featureID` in the same Go file reads
+ * `properties.id` first and falls back to the member. Reading only the member
+ * — as this did — meant every feature hydrated from a project arrived without
+ * an id, got a fresh UUID, and the first save afterwards rewrote every id the
+ * project had.
+ */
+function resolveFeatureID(raw: GeoJSONFeature): string {
+  const fromProperties = stringifyID(raw.properties["id"]);
+  if (fromProperties !== "") return fromProperties;
+
+  const fromMember = stringifyID(raw.id);
+  if (fromMember !== "") return fromMember;
+
+  return createFeatureId();
+}
+
+/** `stringifyID` in `backend/internal/geo/modelgeojson/normalize.go`. */
+function stringifyID(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number")
+    return Number.isFinite(value) ? String(value) : "";
+  return "";
 }
 
 function inferHeightMeters(

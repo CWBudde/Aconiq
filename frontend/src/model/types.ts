@@ -97,6 +97,14 @@ export interface ModelReceiver {
   geometry: { type: "Point"; coordinates: Position };
 }
 
+/**
+ * The height the UI gives a receiver when nothing else says. It is the new
+ * feature dialog's fallback, and it is also what the model normalizer defaults
+ * a receiver to when a file carries no usable `height_m` — dropping a receiver
+ * someone placed on the map over a missing property is the worse answer.
+ */
+export const DEFAULT_RECEIVER_HEIGHT_M = 4;
+
 /** Create a new receiver ID */
 export function createReceiverId(): string {
   return crypto.randomUUID();

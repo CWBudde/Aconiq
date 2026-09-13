@@ -4,7 +4,11 @@ import {
   ERROR_CODE_NOT_FOUND,
   asAPIRequestError,
 } from "./api-error";
-import type { ModelSaveRequest, ModelSaveResponse } from "./client";
+import type {
+  ModelResponse,
+  ModelSaveRequest,
+  ModelSaveResponse,
+} from "./client";
 import { CLIENT_HEADER_NAME } from "./client";
 import { httpBackend } from "./http-backend";
 import { apiURL } from "./mode";
@@ -169,9 +173,9 @@ describe("httpBackend.saveModel", () => {
     dump_path: ".noise/model/dump.json",
     validation_report_path: ".noise/model/validation-report.json",
     feature_count: 3,
-    // The receipt the server returns for what it just wrote. `saveModel` does
-    // not surface it yet; the draft stores it once hydration lands, so that a
-    // restored draft can prove it equals the project by comparing strings.
+    // The receipt the server returns for what it just wrote. It is stored
+    // beside the draft, so a restored draft can prove it equals the project
+    // by comparing strings rather than fetching the model.
     hash: "78179c43f885b7df906afef9613af46caa688bc66f4af97633f62ea4299a688e",
     warnings: [{ code: "short_segment", message: "segment under 1 m" }],
   };
@@ -191,6 +195,7 @@ describe("httpBackend.saveModel", () => {
     expect(response).toEqual({
       featureCount: 3,
       warnings: [{ code: "short_segment", message: "segment under 1 m" }],
+      hash: saved.hash,
     });
   });
 
@@ -229,6 +234,62 @@ describe("httpBackend.saveModel", () => {
         },
       ],
     });
+  });
+});
+
+describe("httpBackend.getModel", () => {
+  const stored: ModelResponse = {
+    crs: "EPSG:4326",
+    project_crs: "EPSG:25832",
+    hash: "78179c43f885b7df906afef9613af46caa688bc66f4af97633f62ea4299a688e",
+    feature_count: 1,
+    model: { type: "FeatureCollection", features: [] },
+  };
+
+  it("asks for the CRS it was given", async () => {
+    const fetchMock = stubFetch(jsonResponse(stored, 200));
+
+    const response = await httpBackend.getModel("EPSG:4326");
+
+    // Without the query the API answers in the project CRS — metres, for a
+    // typical German project — and the map would draw the model in the
+    // Atlantic. The parameter is required for exactly that reason.
+    const [url] = requestOf(fetchMock);
+    expect(url).toBe(apiURL("/api/v1/model?crs=EPSG%3A4326"));
+    expect(response).toEqual(stored);
+  });
+
+  it("answers null for a project that holds no model yet", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope("model_not_found", "the project has no model yet"),
+        404,
+      ),
+    );
+
+    await expect(httpBackend.getModel("EPSG:4326")).resolves.toBeNull();
+  });
+
+  it("throws for a missing project, which is a different refusal", async () => {
+    // `not_found` means the project itself is gone. Folding it into the same
+    // `null` would show an empty map where the welcome page belongs.
+    stubFetch(
+      jsonResponse(envelope(ERROR_CODE_NOT_FOUND, "no project here"), 404),
+    );
+
+    const error = await httpBackend
+      .getModel("EPSG:4326")
+      .catch((e: unknown) => e);
+
+    expect(asAPIRequestError(error)?.code).toBe(ERROR_CODE_NOT_FOUND);
+  });
+
+  it("throws for any other failure", async () => {
+    stubFetch(new Response("boom", { status: 500 }));
+
+    await expect(httpBackend.getModel("EPSG:4326")).rejects.toThrow(
+      "Request failed: 500",
+    );
   });
 });
 

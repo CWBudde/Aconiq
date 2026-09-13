@@ -10,7 +10,7 @@ import { queryClient } from "./query-client";
 
 const saveState = vi.hoisted(() => ({
   respond: (): Promise<ModelSaveResult> =>
-    Promise.resolve({ featureCount: 0, warnings: [] }),
+    Promise.resolve({ featureCount: 0, warnings: [], hash: null }),
 }));
 
 const backendState = vi.hoisted(() => ({
@@ -151,7 +151,7 @@ describe("useIsSavingModel", () => {
     saveState.respond = () =>
       new Promise((r) => {
         resolve = () => {
-          r({ featureCount: 1, warnings: [] });
+          r({ featureCount: 1, warnings: [], hash: null });
         };
       });
 

@@ -31,6 +31,32 @@ vi.mock("@/wasm/kernel", () => ({
     }),
 }));
 
+describe("browserBackend.getModel", () => {
+  it("rejects rather than answering null", () => {
+    // A `null` here would be indistinguishable from "the project has no model
+    // yet" to a caller that forgot the capability gate, and would leave the
+    // map empty over a populated store. Following `httpBackend.createExport`:
+    // the method exists so the interface has no mode-specific hole, and says
+    // why it cannot answer.
+    // No CRS argument: the implementation takes none, because there is
+    // nothing to reproject and naming one would suggest otherwise.
+    return expect(browserBackend.getModel()).rejects.toThrow(
+      /not available in browser mode/,
+    );
+  });
+});
+
+describe("browserBackend.saveModel", () => {
+  it("returns no hash: there is no file to be a receipt for", async () => {
+    const result = await browserBackend.saveModel({
+      crs: "EPSG:4326",
+      model: { type: "FeatureCollection", features: [] },
+    });
+
+    expect(result.hash).toBeNull();
+  });
+});
+
 describe("buildRoadSources", () => {
   it("prefers feature-level RLS-19 overrides over run defaults", () => {
     const features: ModelFeature[] = [

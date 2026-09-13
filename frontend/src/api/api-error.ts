@@ -23,6 +23,16 @@ export const ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED =
 export const ERROR_CODE_NOT_FOUND = "not_found";
 
 /**
+ * The project loaded but holds no model yet. Mirrors `errorCodeModelNotFound`
+ * in `backend/internal/api/httpv1/handler.go`, which answers 404 with it.
+ *
+ * Deliberately not `not_found`: a missing project and a project without a
+ * model want different answers from the UI — the first is the welcome page,
+ * the second an empty map that is empty because the project is.
+ */
+export const ERROR_CODE_MODEL_NOT_FOUND = "model_not_found";
+
+/**
  * The model failed schema validation and was not saved. Mirrors
  * `errorCodeModelInvalid` in `backend/internal/api/httpv1/handler.go`; the
  * findings travel under `details.errors`.

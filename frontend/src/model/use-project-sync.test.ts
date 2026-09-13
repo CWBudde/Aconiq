@@ -14,13 +14,18 @@ const state = vi.hoisted(() => {
     projectLoaded: boolean;
     isPending: boolean;
     requests: unknown[];
-    respond: () => Promise<{ featureCount: number; warnings: never[] }>;
+    respond: () => Promise<{
+      featureCount: number;
+      warnings: never[];
+      hash: string | null;
+    }>;
   } = {
     runsAgainstSavedModel: true,
     projectLoaded: true,
     isPending: false,
     requests: [],
-    respond: () => Promise.resolve({ featureCount: 0, warnings: [] }),
+    respond: () =>
+      Promise.resolve({ featureCount: 0, warnings: [], hash: null }),
   };
   return value;
 });
@@ -87,7 +92,8 @@ beforeEach(() => {
   state.projectLoaded = true;
   state.isPending = false;
   state.requests = [];
-  state.respond = () => Promise.resolve({ featureCount: 0, warnings: [] });
+  state.respond = () =>
+    Promise.resolve({ featureCount: 0, warnings: [], hash: null });
   useModelStore.getState().reset();
   resetProjectSyncStore();
   localStorage.clear();
@@ -175,6 +181,36 @@ describe("useProjectSync", () => {
     expect(req.model.features[1]?.properties).toEqual({ kind: "calc-area" });
   });
 
+  it("stamps the server's receipt onto the draft it just saved", async () => {
+    useModelStore.getState().addFeature(feature);
+    state.respond = () =>
+      Promise.resolve({ featureCount: 1, warnings: [], hash: "abc123" });
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    // The one writer that may: this branch has established that the store did
+    // not move during the request, so the draft is byte-for-byte the content
+    // the server hashed. That is what lets the next startup skip the fetch.
+    expect(loadDraft()?.hash).toBe("abc123");
+  });
+
+  it("stamps no hash when the backend has no file to be a receipt for", async () => {
+    state.runsAgainstSavedModel = false;
+    useModelStore.getState().addFeature(feature);
+    state.respond = () =>
+      Promise.resolve({ featureCount: 1, warnings: [], hash: null });
+    const { result } = renderHook(() => useProjectSync());
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(loadDraft()?.hash).toBeUndefined();
+  });
+
   it("keeps the model dirty when an edit lands while the save is in flight", async () => {
     useModelStore.getState().addFeature(feature);
     // What the autosave wrote once the request outlasted its debounce: the
@@ -188,7 +224,7 @@ describe("useProjectSync", () => {
     state.respond = () =>
       new Promise((r) => {
         resolve = () => {
-          r({ featureCount: 0, warnings: [] });
+          r({ featureCount: 0, warnings: [], hash: null });
         };
       });
     const { result } = renderHook(() => useProjectSync());
@@ -276,7 +312,8 @@ describe("useProjectSync", () => {
     });
     expect(result.current.status).toBe("error");
 
-    state.respond = () => Promise.resolve({ featureCount: 1, warnings: [] });
+    state.respond = () =>
+      Promise.resolve({ featureCount: 1, warnings: [], hash: null });
     await act(async () => {
       await result.current.save();
     });
@@ -340,7 +377,8 @@ describe("useProjectSync", () => {
       expect(dialog.result.current.status).toBe("error");
       expect(dialog.result.current.error).toBe(refused);
 
-      state.respond = () => Promise.resolve({ featureCount: 1, warnings: [] });
+      state.respond = () =>
+        Promise.resolve({ featureCount: 1, warnings: [], hash: null });
       await act(async () => {
         await dialog.result.current.save();
       });
@@ -354,7 +392,7 @@ describe("useProjectSync", () => {
       state.respond = () =>
         new Promise((r) => {
           resolve = () => {
-            r({ featureCount: 0, warnings: [] });
+            r({ featureCount: 0, warnings: [], hash: null });
           };
         });
       const header = renderHook(() => useProjectSync());

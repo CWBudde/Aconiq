@@ -95,7 +95,10 @@ export function useProjectSync(): ProjectSync {
     // against afterwards.
     const before = useModelStore.getState();
     try {
-      await mutateAsync({ crs: MODEL_CRS, model: modelToGeoJSON(before) });
+      const saved = await mutateAsync({
+        crs: MODEL_CRS,
+        model: modelToGeoJSON(before),
+      });
       // An edit made while the request was in flight is not in the project,
       // so the flag stays set for it. Reference equality is enough: every
       // edit replaces the array, and the calculation area — not part of the
@@ -116,10 +119,19 @@ export function useProjectSync(): ProjectSync {
         // owns the newer draft — and may already have written it if the
         // request outlasted its debounce — so writing the stale snapshot
         // here would roll it back with nothing left to re-trigger a save.
+        //
+        // This is also the one place a draft is ever stamped with a hash, and
+        // it is the only place where doing so is true: the branch has already
+        // established that the store has not moved since the snapshot that
+        // was sent, so these are byte-for-byte the features that produced the
+        // file the server hashed. Every other writer leaves the field out —
+        // a hash on a draft that has outrun the project would be restored on
+        // the next start as though it were the project's own model.
         writeDraft({
           features: before.features,
           receivers: before.receivers,
           calcArea: before.calcArea,
+          ...(saved.hash === null ? {} : { hash: saved.hash }),
         });
       }
       projectSyncStore.setState({ error: null });

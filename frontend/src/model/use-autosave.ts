@@ -26,6 +26,20 @@ export interface ModelDraft {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+  /**
+   * The project's receipt for this exact content: the hash `POST
+   * /api/v1/model` answered with for the bytes these features produced.
+   *
+   * The safety property the whole hydration design rests on is that a draft
+   * carrying a hash *is* the content that produced the file that hash names.
+   * It holds because exactly one writer ever supplies one — `useProjectSync`,
+   * in the branch that has already established the store did not move during
+   * the request. Absent on every other draft, which is why it is optional
+   * rather than nullable, and why `DRAFT_VERSION` does not move: an additive
+   * optional field, exactly as `calcArea` was, and a bump would throw away
+   * every draft already on disk.
+   */
+  hash?: string;
 }
 
 export function loadDraft(): ModelDraft | null {
@@ -58,6 +72,11 @@ export function loadDraft(): ModelDraft | null {
       // Drafts written before the calculation area was persisted have no
       // `calcArea` key at all.
       calcArea: parsed.calcArea ?? null,
+      // Likewise for the hash, and for every draft the autosave writes. A
+      // value that is not a string is dropped rather than carried: a draft
+      // that claims a hash it cannot have would be restored as if it were the
+      // project's own model.
+      ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
     };
   } catch {
     return null;
@@ -128,6 +147,11 @@ export function useAutosave(): void {
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
+      // Deliberately no `hash`. A draft the autosave writes is newer than the
+      // project by construction — that is what `dirty` means here. Carrying
+      // the last save's receipt forward onto newer edits would make the next
+      // startup find a match, restore a divergent draft *clean*, and let the
+      // workspace claim to be the project while differing from it.
       const written = writeDraft({ features, receivers, calcArea });
       if (written && !backend.capabilities.runsAgainstSavedModel) markClean();
     }, SAVE_DELAY_MS);

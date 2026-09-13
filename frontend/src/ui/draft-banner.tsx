@@ -1,28 +1,32 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { History } from "lucide-react";
 import { useModelStore } from "@/model/model-store";
-import { hasDraft, loadDraft, discardDraft } from "@/model/use-autosave";
+import { loadDraft, discardDraft } from "@/model/use-autosave";
+import { projectHydrationStore } from "@/model/use-project-hydration";
 import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 
 /**
- * Shows a dismissable banner when a saved draft is found at startup and the
- * model is empty. Lets the user restore or discard the draft.
+ * Shows a dismissable banner when a saved draft is worth offering. Lets the
+ * user restore or discard it.
+ *
+ * Whether it is worth offering is decided by `useProjectHydration`, not here.
+ * This component used to answer it itself, in a mount effect asking whether
+ * the model was empty and a draft existed — but child effects run before
+ * parent effects, so it answered before the hydration hook had looked at the
+ * project, and it could only ever say yes to a draft over an empty map. A
+ * draft that diverges from the project is precisely the one the user needs
+ * offered, and after hydration the map is not empty.
  */
 export function DraftBanner() {
-  const features = useModelStore((s) => s.features);
-  const receivers = useModelStore((s) => s.receivers);
   const loadModel = useModelStore((s) => s.loadModel);
-  const [visible, setVisible] = useState(false);
+  // Rendered only after the hydration decision, so a draft that turns out to
+  // be the project's own model is never offered for a frame first.
+  const started = projectHydrationStore((s) => s.started);
+  const offered = projectHydrationStore((s) => s.draftOffered);
+  const [dismissed, setDismissed] = useState(false);
 
-  // Check only on first mount — don't re-show after user interaction.
-  useEffect(() => {
-    if (features.length === 0 && receivers.length === 0 && hasDraft()) {
-      setVisible(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  const visible = started && offered && !dismissed;
   if (!visible) return null;
 
   // The draft is not removed after a restore. `loadModel` marks the model
@@ -34,12 +38,12 @@ export function DraftBanner() {
     if (draft) {
       loadModel(draft);
     }
-    setVisible(false);
+    setDismissed(true);
   }
 
   function handleDiscard() {
     discardDraft();
-    setVisible(false);
+    setDismissed(true);
   }
 
   return (

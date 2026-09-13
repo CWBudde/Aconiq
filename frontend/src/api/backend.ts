@@ -12,6 +12,7 @@
 import type {
   APIValidationIssue,
   HealthResponse,
+  ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
   RunLog,
@@ -56,6 +57,15 @@ export interface ModelSaveResult {
   featureCount: number;
   /** Validation warnings; the model was saved despite them. */
   warnings: APIValidationIssue[];
+  /**
+   * The receipt the API answers with: the SHA-256 of the file just written.
+   * `null` where there is no project file to be a receipt for (browser mode).
+   *
+   * `string | null` rather than `""` on purpose — "this draft has a receipt"
+   * is then a null check, not a truthiness test on a hex string. The client
+   * never computes one itself: a re-serialised model is not the same bytes.
+   */
+  hash: string | null;
 }
 
 /** What the run dialog collects; `buildCreateRunRequest` maps it onto the API body. */
@@ -98,6 +108,22 @@ export interface Backend {
   startRun(spec: RunSpec): Promise<RunSummary>;
   /** Rejects unless `capabilities.canExport`. */
   createExport(runId: string): Promise<RunSummary>;
+  /**
+   * The model saved in the project, in `crs`. `null` when the project holds
+   * no model yet (`model_not_found`) — which is not the same refusal as a
+   * missing project (`not_found`), and that one is rethrown.
+   *
+   * `crs` is required, not optional. Omitted, the API answers in the project
+   * CRS — metres in EPSG:25832 for a typical German project — and the map,
+   * which draws in WGS84, would place the model a few hundred metres off the
+   * coast of Africa. Making the caller name the CRS is what keeps that from
+   * being the default.
+   *
+   * Rejects unless `capabilities.runsAgainstSavedModel`: where the store is
+   * the project there is nothing to read back, and a `null` would be absorbed
+   * silently by a caller that forgot the capability gate.
+   */
+  getModel(crs: string): Promise<ModelResponse | null>;
   /** Replace the project model; refused with `model_invalid` when validation fails. */
   saveModel(req: ModelSaveRequest): Promise<ModelSaveResult>;
 }
