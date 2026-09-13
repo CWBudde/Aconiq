@@ -1,0 +1,7 @@
+# These fixtures are a byte contract, not text Git may tidy. receiver_table
+# .golden.csv deliberately carries a lone CR inside a quoted field and
+# terminates every record with LF, never CRLF; frontend/src/model/
+# receiver-csv.parity.test.ts compares it byte for byte against what the
+# browser builder produces. End-of-line normalization on checkout or commit
+# would break that comparison on any platform configured for it.
+* -text
