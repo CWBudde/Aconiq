@@ -84,6 +84,7 @@ type runExecutor func(context.Context, createRunRequest) error
 type parameterDefinitionResponse struct {
 	Name         string   `json:"name"`
 	Kind         string   `json:"kind"`
+	Unit         string   `json:"unit,omitempty"`
 	Required     bool     `json:"required"`
 	DefaultValue string   `json:"default_value,omitempty"`
 	Description  string   `json:"description,omitempty"`
@@ -886,6 +887,7 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 					params = append(params, parameterDefinitionResponse{
 						Name:         param.Name,
 						Kind:         string(param.Kind),
+						Unit:         param.Unit,
 						Required:     param.Required,
 						DefaultValue: param.DefaultValue,
 						Description:  param.Description,
