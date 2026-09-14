@@ -1000,44 +1000,32 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the eight inlined capability checks, six are content decisions or not UI at all, and one has
       no capability behind it. Build it for the rule, not a sweep — and do not gate `SaveStatus`,
       whose absence in browser mode is correct.
-- [x] **The workspace hydrates from the project, and the drawn area reaches it.** Both halves
-      landed together, because either alone loses the area on reload. `use-project-hydration.ts`
-      sits in `RootLayout` beside `useAutosave`, gated on `runsAgainstSavedModel`; a draft whose
-      stored hash equals `status.model.hash` is restored clean with no fetch and no banner, a
-      mismatch fetches and still offers the divergent draft for Restore, and unsaved work is never
-      hydrated over — re-checked once more after the request returns, because the user can draw
-      while it is in flight. A failure surfaces as a `role="alert"` banner with Retry rather than
-      an empty map over a populated project. `DRAFT_VERSION` stayed 1.
-
-      Four constraints this work established, each load-bearing for anything built on top.
-
-      **Exactly one writer may put a hash on a draft.** `useProjectSync.save()` does, in the branch
-      that has already established the store did not move during the request. The autosave must
-      not, or a draft holding newer edits would carry the last save's receipt, match on the next
-      start, and be restored *clean* — a workspace silently claiming to be the project. Hydration
-      writes no draft at all, or it would overwrite the divergent draft that must still be offered.
-
-      **The id lives in `properties.id`, not in the GeoJSON `id` member.** `ToFeatureCollection`
-      (`modelgeojson/normalize.go:198-221`) writes it there and leaves the member unset, and
-      `projectfs` writes the stored file the same way — so the passthrough and the reprojected path
-      agree. `normalize.ts` read only `raw.id`. Unfixed, every hydration would have minted fresh
-      UUIDs and the first save afterwards would have rewritten every id in the project.
-
-      **A load is not a hydration.** `loadModel` sets `dirty` on purpose, because its content comes
-      from outside the project; hydrated content comes *from* it and lands through a `hydrateModel`
-      twin that stays clean. Using `loadModel` would have armed the `beforeunload` guard on every
-      reload and had the autosave write a hash-less draft of the project's own model two seconds
-      later, guaranteeing a fetch on every subsequent start.
-
-      **The banner cannot decide for itself.** Child effects run before parent effects, so
-      `DraftBanner`'s own `features.length === 0 && hasDraft()` rule ran before hydration had
-      decided anything — and after a mismatch fetch the store is non-empty, so that rule would
-      never have offered the divergent draft. The decision moved into the hydration store.
-
-      Verified across the boundary, not only in mocks: `POST` → `GET` → `POST` against a live
-      `aconiq serve` returns the same hash both times, so hydrate-then-save is a byte-level no-op
-      for a model that came from the API. `ModelResponse` had been sitting in `client.ts` fully
-      typed with zero references — the wire type was written ahead of its consumer.
+- [x] **The workspace hydrates from the project, and the drawn area reaches it** (#26). Both
+      halves together, because either alone loses the area on reload:
+      `use-project-hydration.ts` sits in `RootLayout` beside `useAutosave`, gated on
+      `runsAgainstSavedModel`, and `ModelPayload.calcArea` is required so the compiler
+      enumerated the emit sites. Four constraints follow.
+      **Exactly one writer may put a hash on a draft** — `useProjectSync.save()`, in the branch
+      that has established the store did not move during the request. An autosave that carried
+      the last save's receipt over newer edits would be restored _clean_ on the next start, a
+      workspace silently claiming to be the project; hydration writes no draft at all, or it
+      would overwrite the divergent one that must still be offered.
+      **The id lives in `properties.id`, not the GeoJSON `id` member** —
+      `ToFeatureCollection` writes it there and `projectfs` stores it that way, so a reader
+      that consults only the member mints fresh UUIDs and the next save rewrites every id in
+      the project. An area the user drew has no stored id, so one is derived at emit time from
+      the ids already in the payload: nothing reserves `calc-area` in an imported file, and the
+      backend refuses the whole model with `feature.id.duplicate` when two features share one.
+      **A load is not a hydration** — `loadModel` sets `dirty` because its content comes from
+      outside the project; hydrated content comes from it and lands through `hydrateModel`
+      clean, or the unload guard arms on every reload and the autosave writes a hash-less draft
+      of the project's own model two seconds later.
+      **Startup must not act on a question it has not answered.** Child effects run before
+      parent effects, so the draft offer is decided in the hydration store rather than in
+      `DraftBanner`; an errored project status is not an answer of "no model", so it leaves the
+      hook armed for a later refetch; and no route renders until the decision settles, because
+      every route is editable and an edit made over the not-yet-hydrated store makes the next
+      save replace the project with it.
 
 - [ ] **Strip placeholders and apologies**: the inert raster colour-ramp/probe block
       (`results.tsx:388-441` — a disabled Select over a hardcoded ramp list and two disabled
