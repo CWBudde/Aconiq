@@ -114,3 +114,83 @@ describe("browser rls19-road descriptor", () => {
     ]);
   });
 });
+
+/**
+ * `framework.UnitX` constant name → the symbol it stands for, from
+ * `backend/internal/standards/framework/framework.go`. Spelled out here so a
+ * renamed or retired constant fails loudly rather than silently dropping a
+ * parameter from the comparison below.
+ */
+const GO_UNIT_SYMBOLS: Record<string, string> = {
+  UnitMeter: "m",
+  UnitKilometersPerHour: "km/h",
+  UnitDecibel: "dB",
+  UnitDecibelPerKilometer: "dB/km",
+  UnitPerHour: "1/h",
+  UnitPerKilometer: "1/km",
+  UnitPercent: "%",
+  UnitDegreeCelsius: "°C",
+  UnitDegree: "°",
+};
+
+/** Parameter name → unit symbol, as declared by the Go rls19-road descriptor. */
+function goParameterUnits(): Record<string, string> {
+  const source = repoFile(
+    "../../../backend/internal/standards/rls19/road/model.go",
+  );
+  const units: Record<string, string> = {};
+  const pattern =
+    /\{Name:\s*"([a-z0-9_]+)",[^}]*?Unit:\s*framework\.(Unit\w+)/g;
+  for (const match of source.matchAll(pattern)) {
+    const constant = match[2] ?? "";
+    const symbol = GO_UNIT_SYMBOLS[constant];
+    expect(
+      symbol,
+      `unknown framework unit constant ${constant} — add it to GO_UNIT_SYMBOLS`,
+    ).toBeDefined();
+    units[match[1] ?? ""] = symbol ?? "";
+  }
+  return units;
+}
+
+/** Parameter name → unit symbol, for every browser parameter that declares one. */
+function browserParameterUnits(): Record<string, string> {
+  const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
+  expect(profile, "rls19-road default profile not found").toBeDefined();
+  const units: Record<string, string> = {};
+  for (const parameter of profile?.parameters ?? []) {
+    if (parameter.unit !== undefined) units[parameter.name] = parameter.unit;
+  }
+  return units;
+}
+
+/**
+ * `unit` is published on `GET /api/v1/standards`, so HTTP mode gets it from the
+ * Go descriptor for free. The browser descriptor is hand-maintained, so without
+ * this test the same parameter would carry a unit in HTTP mode and none in
+ * browser mode — and a parameter form reading the shared contract would have to
+ * keep its own name-to-unit table, which is exactly what declaring the unit was
+ * meant to make unnecessary.
+ */
+describe("browser rls19-road parameter units", () => {
+  it("finds the Go unit declarations", () => {
+    // Guards the regex: a change to the Go declaration style must fail here
+    // rather than turn the comparison below into a vacuous truth.
+    const units = goParameterUnits();
+    expect(Object.keys(units).length).toBeGreaterThan(10);
+    expect(units["speed_pkw_kph"]).toBe("km/h");
+    expect(units["traffic_day_lkw1"]).toBe("1/h");
+  });
+
+  it("declares the same unit the Go descriptor does, for every parameter", () => {
+    expect(browserParameterUnits()).toEqual(goParameterUnits());
+  });
+
+  it("leaves dimensionless and non-numeric parameters unitless", () => {
+    // surface_type is an enum: a unit on it would be a spelling mistake, and
+    // toEqual above only catches that because Go declares none either.
+    const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
+    const surface = profile?.parameters.find((p) => p.name === "surface_type");
+    expect(surface?.unit).toBeUndefined();
+  });
+});

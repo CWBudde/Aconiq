@@ -172,6 +172,17 @@ export interface DeleteRunResponse {
 export interface ParameterDefinition {
   name: string;
   kind: "string" | "bool" | "int" | "float";
+  /**
+   * Physical unit of the value as a short symbol — "m", "km/h", "dB",
+   * "dB/km", "1/h", "1/km", "%", "°C", "°". Absent when the parameter is
+   * dimensionless (a share, a factor, a count) or not numeric at all.
+   *
+   * The symbol is the conventional SI-style spelling, not the suffix the
+   * parameter name happens to use: `speed_pkw_kph` carries "km/h". Declared by
+   * `framework.ParameterDefinition.Unit` in the Go modules and published on
+   * `GET /api/v1/standards`; optional because older backends omit it.
+   */
+  unit?: string;
   required: boolean;
   default_value?: string;
   description?: string;

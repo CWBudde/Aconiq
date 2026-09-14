@@ -133,6 +133,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "grid_resolution_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "10",
                 description: "Receiver grid spacing in map units",
@@ -141,6 +142,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "grid_padding_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "20",
                 description: "Padding around source extent in map units",
@@ -149,6 +151,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "receiver_height_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "4",
                 description: "Receiver height above ground",
@@ -168,6 +171,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_pkw_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -175,6 +179,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_lkw1_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -182,6 +187,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_lkw2_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "80",
                 min: 0.001,
@@ -189,6 +195,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_krad_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -196,6 +203,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "gradient_percent",
                 kind: "float",
+                unit: "%",
                 required: true,
                 default_value: "0",
                 min: -12,
@@ -204,6 +212,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_pkw",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "900",
                 min: 0,
@@ -211,6 +220,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_lkw1",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "40",
                 min: 0,
@@ -218,6 +228,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_lkw2",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "60",
                 min: 0,
@@ -225,6 +236,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_krad",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "10",
                 min: 0,
@@ -232,6 +244,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_pkw",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "200",
                 min: 0,
@@ -239,6 +252,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_lkw1",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "10",
                 min: 0,
@@ -246,6 +260,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_lkw2",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "20",
                 min: 0,
@@ -253,6 +268,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_krad",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "2",
                 min: 0,
@@ -260,6 +276,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "segment_length_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "1",
                 min: 0.001,
@@ -267,6 +284,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "min_distance_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "3",
                 min: 0.001,
