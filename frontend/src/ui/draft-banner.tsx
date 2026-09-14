@@ -2,7 +2,10 @@ import { useState } from "react";
 import { History } from "lucide-react";
 import { useModelStore } from "@/model/model-store";
 import { loadDraft, discardDraft } from "@/model/use-autosave";
-import { projectHydrationStore } from "@/model/use-project-hydration";
+import {
+  projectHydrationStore,
+  useHydrationSettled,
+} from "@/model/use-project-hydration";
 import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 
@@ -21,12 +24,14 @@ import { m } from "@/i18n/messages";
 export function DraftBanner() {
   const loadModel = useModelStore((s) => s.loadModel);
   // Rendered only after the hydration decision, so a draft that turns out to
-  // be the project's own model is never offered for a frame first.
-  const started = projectHydrationStore((s) => s.started);
+  // be the project's own model is never offered for a frame first. A failed
+  // decision still counts as one: a draft is worth most precisely when the
+  // project cannot be reached.
+  const settled = useHydrationSettled();
   const offered = projectHydrationStore((s) => s.draftOffered);
   const [dismissed, setDismissed] = useState(false);
 
-  const visible = started && offered && !dismissed;
+  const visible = settled && offered && !dismissed;
   if (!visible) return null;
 
   // The draft is not removed after a restore. `loadModel` marks the model

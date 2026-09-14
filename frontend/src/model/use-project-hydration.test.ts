@@ -27,6 +27,8 @@ const state = vi.hoisted(() => {
     project: unknown;
     isLoading: boolean;
     isError: boolean;
+    error: unknown;
+    refetch: () => Promise<unknown>;
     crsRequests: string[];
     respond: () => Promise<unknown>;
   } = {
@@ -34,6 +36,8 @@ const state = vi.hoisted(() => {
     project: null,
     isLoading: false,
     isError: false,
+    error: null,
+    refetch: () => Promise.resolve(null),
     crsRequests: [],
     respond: () => Promise.resolve(null),
   };
@@ -62,6 +66,8 @@ vi.mock("@/api/hooks", () => ({
     data: state.project,
     isLoading: state.isLoading,
     isError: state.isError,
+    error: state.error,
+    refetch: () => state.refetch(),
   }),
 }));
 
@@ -136,6 +142,8 @@ beforeEach(() => {
   state.project = null;
   state.isLoading = false;
   state.isError = false;
+  state.error = null;
+  state.refetch = () => Promise.resolve(null);
   state.crsRequests = [];
   state.respond = () => Promise.resolve(storedModel());
   localStorage.clear();
@@ -192,15 +200,71 @@ describe("useProjectHydration", () => {
     expect(projectHydrationStore.getState().status).toBe("settled");
   });
 
-  it("does not fetch when the project status errored", async () => {
+  it("does not settle a hydration the project status never answered", async () => {
+    // An errored status is no answer, not an answer of "no model". Collapsing
+    // the two would leave an empty map over a populated project for the rest
+    // of the session, and the next save would write that emptiness back.
     state.isError = true;
+    state.error = new Error("Request failed: 503");
 
     renderHook(() => {
       useProjectHydration();
     });
-    await settle();
+    await waitFor(() => {
+      expect(projectHydrationStore.getState().status).toBe("error");
+    });
 
     expect(state.crsRequests).toEqual([]);
+    expect(projectHydrationStore.getState().error).toBe(state.error);
+    // Still armed, so a later answer is still acted on.
+    expect(projectHydrationStore.getState().started).toBe(false);
+  });
+
+  it("hydrates when the project status succeeds on a later attempt", async () => {
+    state.isError = true;
+    state.error = new Error("Request failed: 503");
+
+    const { rerender } = renderHook(() => {
+      useProjectHydration();
+    });
+    await waitFor(() => {
+      expect(projectHydrationStore.getState().status).toBe("error");
+    });
+
+    // A reconnect, a window focus or the Retry button: React Query answers,
+    // and the hook is still there to act on it.
+    state.isError = false;
+    state.error = null;
+    state.project = projectWithModel(PROJECT_HASH);
+    rerender();
+    await waitFor(() => {
+      expect(state.crsRequests).toEqual(["EPSG:4326"]);
+    });
+    await settle();
+
+    expect(useModelStore.getState().features.map((f) => f.id)).toEqual(["s1"]);
+  });
+
+  it("asks the project status again when that is the request that failed", async () => {
+    // Re-arming the hook alone changes nothing while the query sits in its own
+    // error state: it would serve the same rejection and the same decision.
+    state.isError = true;
+    state.error = new Error("Request failed: 503");
+    const refetch = vi.fn(() => Promise.resolve(null));
+    state.refetch = refetch;
+
+    renderHook(() => {
+      useProjectHydration();
+    });
+    await waitFor(() => {
+      expect(projectHydrationStore.getState().status).toBe("error");
+    });
+    expect(refetch).not.toHaveBeenCalled();
+
+    retryProjectHydration();
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("does not fetch for a project that holds no model", async () => {

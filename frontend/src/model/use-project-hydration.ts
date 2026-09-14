@@ -36,14 +36,28 @@ export type HydrationStatus = "idle" | "fetching" | "settled" | "error";
 
 interface ProjectHydrationState {
   /**
-   * The decision has been made. Set synchronously, before any `await`, so a
-   * StrictMode double-mount, a remount and HMR all see it — which is also why
-   * it lives here rather than in a `useRef`, and why the fetch is imperative
-   * rather than a `useQuery`: a query refetches on focus and on remount, and
-   * would fight one-shot semantics rather than implement them.
+   * Hydration has run and will not run again. Set synchronously, before any
+   * `await`, so a StrictMode double-mount, a remount and HMR all see it —
+   * which is also why it lives here rather than in a `useRef`, and why the
+   * fetch is imperative rather than a `useQuery`: a query refetches on focus
+   * and on remount, and would fight one-shot semantics rather than implement
+   * them.
+   *
+   * It is the one-shot guard and not the settled signal — those parted company
+   * when a failed project status stopped counting as an answer. Read
+   * `useHydrationSettled()` to ask whether startup is finished.
    */
   started: boolean;
   status: HydrationStatus;
+  /**
+   * How many times the user has asked for a retry.
+   *
+   * Re-arming the hook is not enough on its own when it was the project-status
+   * request that failed: that query is React Query's, it is sitting in its own
+   * error state, and nothing would ask it again. The counter is what the hook
+   * watches to refetch it.
+   */
+  attempt: number;
   /** The rejection to show the user; `null` unless `status === "error"`. */
   error: Error | null;
   /**
@@ -68,6 +82,7 @@ function initialState(): ProjectHydrationState {
   return {
     started: false,
     status: "idle",
+    attempt: 0,
     error: null,
     draftOffered:
       model.features.length === 0 && model.receivers.length === 0 && hasDraft(),
@@ -94,11 +109,39 @@ export function resetProjectHydration(): void {
  * decision again.
  */
 export function retryProjectHydration(): void {
-  projectHydrationStore.setState({
+  projectHydrationStore.setState((state) => ({
     started: false,
     status: "idle",
+    attempt: state.attempt + 1,
+    error: null,
+  }));
+}
+
+/**
+ * Whether startup has finished asking whether the project holds a model.
+ *
+ * "Finished" includes having failed: an error is an answer, and the surfaces
+ * waiting on this one — the draft offer, and the routes themselves — must not
+ * wait forever on a backend that is down. The one thing they may not do is act
+ * while the question is still open.
+ */
+export function useHydrationSettled(): boolean {
+  const status = projectHydrationStore((s) => s.status);
+
+  return status === "settled" || status === "error";
+}
+
+/** Everything is decided and nothing is left to fetch. */
+function settle(): void {
+  projectHydrationStore.setState({
+    started: true,
+    status: "settled",
     error: null,
   });
+}
+
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
 }
 
 /** The workspace holds something the project has not been told about. */
@@ -118,6 +161,18 @@ function hasUnsavedWork(model: ReturnType<typeof useModelStore.getState>) {
 export function useProjectHydration(): void {
   const project = useProjectStatus();
   const started = projectHydrationStore((s) => s.started);
+  const attempt = projectHydrationStore((s) => s.attempt);
+  const statusFailed = project.isError;
+  const refetchStatus = project.refetch;
+
+  // A retry asks the project-status query again, because that is the request
+  // that failed whenever the branch below left `started` unset. Re-arming the
+  // hook alone would change nothing: the query would still be serving the same
+  // cached rejection, so the effect would take the same decision again.
+  useEffect(() => {
+    if (attempt === 0 || !statusFailed) return;
+    void refetchStatus();
+  }, [attempt, statusFailed, refetchStatus]);
 
   useEffect(() => {
     if (started) return;
@@ -127,7 +182,7 @@ export function useProjectHydration(): void {
     // store is the project there — but the decision is still made, because
     // the draft banner waits for it.
     if (!backend.capabilities.runsAgainstSavedModel) {
-      projectHydrationStore.setState({ started: true, status: "settled" });
+      settle();
       return;
     }
     // Wait for the status rather than deciding without it; a decision taken
@@ -135,11 +190,26 @@ export function useProjectHydration(): void {
     // is indistinguishable here from "no project".
     if (project.isLoading) return;
 
-    const hash = project.isError ? undefined : project.data?.model?.hash;
+    // An errored status is not an answer of "no model", it is no answer at
+    // all, and the two must not collapse into each other. `started` stays
+    // unset on purpose: a refetch that succeeds later — after a reconnect, a
+    // window focus, or the Retry button — finds the hook still armed and
+    // hydrates after all. Settling here instead would leave an empty map over
+    // a populated project for the rest of the session, and the next save
+    // would write that emptiness into the project.
+    if (project.isError) {
+      projectHydrationStore.setState({
+        status: "error",
+        error: asError(project.error),
+      });
+      return;
+    }
+
+    const hash = project.data?.model?.hash;
     if (hash === undefined) {
-      // No project, an errored status, or a project that holds no model:
-      // there is nothing to hydrate from, and the draft stands as it is.
-      projectHydrationStore.setState({ started: true, status: "settled" });
+      // No project, or a project that holds no model: there is nothing to
+      // hydrate from, and the draft stands as it is.
+      settle();
       return;
     }
 
@@ -147,7 +217,7 @@ export function useProjectHydration(): void {
     // a restored draft or edits made while the status request was running,
     // and either way it is content the project does not have.
     if (hasUnsavedWork(useModelStore.getState())) {
-      projectHydrationStore.setState({ started: true, status: "settled" });
+      settle();
       return;
     }
 
@@ -165,6 +235,7 @@ export function useProjectHydration(): void {
       projectHydrationStore.setState({
         started: true,
         status: "settled",
+        error: null,
         draftOffered: false,
       });
       return;
@@ -173,7 +244,11 @@ export function useProjectHydration(): void {
     // Set before the first await, never after: a StrictMode double-mount
     // re-runs this effect synchronously, and a guard set in the async body
     // would let both runs through and fire two requests.
-    projectHydrationStore.setState({ started: true, status: "fetching" });
+    projectHydrationStore.setState({
+      started: true,
+      status: "fetching",
+      error: null,
+    });
 
     void (async () => {
       try {
@@ -206,9 +281,16 @@ export function useProjectHydration(): void {
         // a rejection here reproduces it.
         projectHydrationStore.setState({
           status: "error",
-          error: err instanceof Error ? err : new Error(String(err)),
+          error: asError(err),
         });
       }
     })();
-  }, [started, project.isLoading, project.isError, project.data]);
+  }, [
+    started,
+    attempt,
+    project.isLoading,
+    project.isError,
+    project.error,
+    project.data,
+  ]);
 }
