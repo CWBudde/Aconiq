@@ -174,6 +174,46 @@ describe("modelToGeoJSON", () => {
     expect(emitted?.geometry.coordinates).toEqual(area.geometry.coordinates);
   });
 
+  it("keeps the id the project already gave the area", () => {
+    // A hydrated area arrives with the id the project stores. Renaming it on
+    // the next save would churn a feature id for nothing.
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [],
+      calcArea: { id: "extent", geometry: area.geometry },
+    });
+    expect(fc.features[0]?.id).toBe("extent");
+  });
+
+  it("steps past a calc-area id an imported feature already holds", () => {
+    // The backend refuses the whole model with `feature.id.duplicate` when two
+    // features share an id, so a fixed id would make every save of such a
+    // model fail. Nothing reserves `calc-area` in an imported file.
+    const clash: ModelFeature = { ...src, id: CALC_AREA_FEATURE_ID };
+    const fc = modelToGeoJSON({
+      features: [clash],
+      receivers: [],
+      calcArea: area,
+    });
+    expect(fc.features.map((f) => f.id)).toEqual([
+      CALC_AREA_FEATURE_ID,
+      "calc-area-1",
+    ]);
+  });
+
+  it("gives up a stored area id that a feature has since taken", () => {
+    const clash: ModelFeature = { ...src, id: "extent" };
+    const fc = modelToGeoJSON({
+      features: [clash],
+      receivers: [],
+      calcArea: { id: "extent", geometry: area.geometry },
+    });
+    expect(fc.features.map((f) => f.id)).toEqual([
+      "extent",
+      CALC_AREA_FEATURE_ID,
+    ]);
+  });
+
   it("serialises one model to identical JSON twice", () => {
     // The saved file's bytes are the model's identity — the API answers a
     // save with their hash — so a generated id anywhere in the payload would

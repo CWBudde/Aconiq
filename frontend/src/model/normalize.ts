@@ -277,9 +277,16 @@ function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
     };
   }
 
+  // The stored id is kept when the project has one, and only then: an area the
+  // user draws carries none, and `to-geojson.ts` derives a stable id for it at
+  // emit time. Minting one here instead would put a fresh UUID on every
+  // hydrated area and rename it in the project on the next save.
+  const id = explicitFeatureID(raw);
+
   return {
     kind: "calc-area",
     area: {
+      ...(id === "" ? {} : { id }),
       geometry: {
         type: "Polygon",
         coordinates: raw.geometry.coordinates as Position[][],
@@ -299,13 +306,23 @@ function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
  * project had.
  */
 function resolveFeatureID(raw: GeoJSONFeature): string {
+  const explicit = explicitFeatureID(raw);
+
+  return explicit === "" ? createFeatureId() : explicit;
+}
+
+/**
+ * The id the feature carries, or `""` when it carries none.
+ *
+ * Split out of `resolveFeatureID` for the calculation area, which must be able
+ * to tell "the project named this" from "nothing named it" rather than take a
+ * minted id it would then write back.
+ */
+function explicitFeatureID(raw: GeoJSONFeature): string {
   const fromProperties = stringifyID(raw.properties["id"]);
   if (fromProperties !== "") return fromProperties;
 
-  const fromMember = stringifyID(raw.id);
-  if (fromMember !== "") return fromMember;
-
-  return createFeatureId();
+  return stringifyID(raw.id);
 }
 
 /** `stringifyID` in `backend/internal/geo/modelgeojson/normalize.go`. */

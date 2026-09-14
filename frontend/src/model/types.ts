@@ -112,5 +112,13 @@ export function createReceiverId(): string {
 
 /** Calculation area polygon that constrains the receiver grid extent */
 export interface CalcArea {
+  /**
+   * The id the project already stores for this area, when it has one.
+   *
+   * Absent for an area the user just drew — `to-geojson.ts` mints a stable one
+   * at emit time. Present for one read back out of the project, so that saving
+   * a hydrated model does not rename a feature the project already named.
+   */
+  id?: string;
   geometry: { type: "Polygon"; coordinates: Position[][] };
 }

@@ -175,6 +175,26 @@ describe("normalizeModelGeoJSON", () => {
     expect(result.skipped).toEqual([]);
   });
 
+  it("keeps the stored id of the calculation area, and mints none", () => {
+    // Kept, so a save does not rename an area the project already named; and
+    // never minted, so an area the user drew stays anonymous and picks up the
+    // derived id at emit time instead of a fresh UUID on every hydration.
+    const named = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        { ...areaFeature, properties: { id: "extent", kind: "calc-area" } },
+      ],
+    });
+    expect(named.calcArea?.id).toBe("extent");
+
+    const anonymous = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [{ ...areaFeature, properties: { kind: "calc-area" } }],
+    });
+    expect(anonymous.calcArea).not.toBeNull();
+    expect(anonymous.calcArea?.id).toBeUndefined();
+  });
+
   it("reads ids from properties.id, the way the backend writes them", () => {
     // `Model.ToFeatureCollection` puts the id in `properties.id` and leaves
     // the GeoJSON `id` member unset, and Go's `featureID` reads it back from

@@ -19,17 +19,44 @@ export interface ModelPayload {
 }
 
 /**
- * The id every emitted calculation area carries.
+ * The id an emitted calculation area carries when it has none of its own.
  *
- * Fixed, not generated: the saved file's bytes are the model's identity —
+ * Derived, not generated: the saved file's bytes are the model's identity —
  * `POST /api/v1/model` answers with their SHA-256 and the frontend keeps that
  * receipt — so an id that changed per save would make unchanged content hash
  * differently. The Go side pins the same property from its end
- * (`TestSaveModelIsByteDeterministic`). Every other id in the model is a
- * `crypto.randomUUID()` or an `osm-way-<id>`, so a bare constant collides
- * with none of them.
+ * (`TestSaveModelIsByteDeterministic`).
+ *
+ * It is a starting point rather than the answer, because nothing reserves it:
+ * an imported file may carry a source with exactly this id, and the backend
+ * refuses the whole model with `feature.id.duplicate` when two features share
+ * one. See `resolveCalcAreaID`.
  */
 export const CALC_AREA_FEATURE_ID = "calc-area";
+
+/**
+ * The id to emit for this area: the one the project already gave it, else the
+ * first unoccupied `calc-area`, `calc-area-1`, `calc-area-2`… .
+ *
+ * Deterministic in the model's own content — the same model emits the same id
+ * every time, which is what the hash receipt needs — while never colliding
+ * with a feature that got there first. A stored id that a feature has since
+ * taken loses to that feature rather than breaking the save.
+ */
+function resolveCalcAreaID(area: CalcArea, taken: ReadonlySet<string>): string {
+  if (area.id != null && area.id !== "" && !taken.has(area.id)) {
+    return area.id;
+  }
+
+  let candidate = CALC_AREA_FEATURE_ID;
+  let suffix = 0;
+  while (taken.has(candidate)) {
+    suffix += 1;
+    candidate = `${CALC_AREA_FEATURE_ID}-${String(suffix)}`;
+  }
+
+  return candidate;
+}
 
 export function featuresToGeoJSON(
   features: ModelFeature[],
@@ -98,10 +125,11 @@ export function receiversToGeoJSON(
  */
 export function calcAreaToGeoJSON(
   area: CalcArea,
+  taken: ReadonlySet<string> = new Set<string>(),
 ): GeoJSONFeatureCollection["features"][number] {
   return {
     type: "Feature" as const,
-    id: CALC_AREA_FEATURE_ID,
+    id: resolveCalcAreaID(area, taken),
     properties: { kind: "calc-area" },
     geometry: {
       type: area.geometry.type,
@@ -128,12 +156,20 @@ export function modelToGeoJSON({
   receivers,
   calcArea,
 }: ModelPayload): GeoJSONFeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: [
-      ...featuresToGeoJSON(features).features,
-      ...receiversToGeoJSON(receivers).features,
-      ...(calcArea === null ? [] : [calcAreaToGeoJSON(calcArea)]),
-    ],
-  };
+  const emitted = [
+    ...featuresToGeoJSON(features).features,
+    ...receiversToGeoJSON(receivers).features,
+  ];
+  if (calcArea !== null) {
+    // The ids already in the payload, so the area can pick one none of them
+    // holds: the backend rejects the model outright when two features share an
+    // id, and an imported file is free to carry one called `calc-area`.
+    const taken = new Set<string>();
+    for (const feature of emitted) {
+      if (typeof feature.id === "string") taken.add(feature.id);
+    }
+    emitted.push(calcAreaToGeoJSON(calcArea, taken));
+  }
+
+  return { type: "FeatureCollection", features: emitted };
 }
