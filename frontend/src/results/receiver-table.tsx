@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useRef, useState, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertCircle,
   ChevronDown,
@@ -48,6 +49,24 @@ function recordCount(shown: number, total: number): string {
  * behaviour change and belongs in its own commit, not in a hoist.
  */
 const idCollator = new Intl.Collator();
+
+/**
+ * Every body row is exactly this tall, so `estimateSize` is not an estimate
+ * and nothing has to be measured after it is painted.
+ *
+ * The number and the class are one fact spelled twice, because Tailwind reads
+ * class names out of the source and cannot see through a template literal.
+ * Change one and change the other. 29px = a 16px `text-xs` line box, 12px of
+ * `py-1.5`, and the 1px bottom border.
+ */
+const ROW_HEIGHT_PX = 29;
+const ROW_CLASS = "h-[29px] border-b last:border-0 hover:bg-muted/30";
+
+/**
+ * How many rows beyond the viewport to keep mounted, so a fast scroll does not
+ * outrun the render.
+ */
+const ROW_OVERSCAN = 12;
 
 /** The sort indicator in a column header: filled for the sorted column. */
 function SortIcon({
@@ -138,6 +157,24 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
     return copy;
   }, [filteredRecords, sortCol, sortDir]);
 
+  /*
+   * The window, not the table. `sortedRecords` stays the whole filtered and
+   * sorted array — the CSV download is built from it, and it is what the
+   * record count counts — while only the rows near the viewport are mounted.
+   *
+   * The scroll element is the bordered `div` below, which this component owns.
+   * Both hooks sit above the early returns, where the rules of hooks need
+   * them, so the virtualizer exists even on the renders that show a callout
+   * instead of a table.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: sortedRecords.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT_PX,
+    overscan: ROW_OVERSCAN,
+  });
+
   function toggleSort(col: string) {
     if (sortCol === col) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -186,6 +223,26 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
   }
 
   const columns = ["id", "x", "y", "height_m", ...indicators];
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const spacerAbove = virtualRows.at(0)?.start ?? 0;
+  const lastEnd = virtualRows.at(-1)?.end;
+  const spacerBelow =
+    lastEnd === undefined ? 0 : rowVirtualizer.getTotalSize() - lastEnd;
+
+  /*
+   * What the table says about its own size.
+   *
+   * With the rows windowed the DOM no longer holds the answer, so a screen
+   * reader asking "how big is this table?" would be told it has twelve rows.
+   * `aria-rowcount` is the whole filtered view plus the header, and every
+   * rendered row carries the `aria-rowindex` it would have if all of them were
+   * there — the header being 1, so a record's index is its offset plus 2.
+   *
+   * The "nothing matched" row is a row like any other, which is why an empty
+   * view still counts as one body row rather than none.
+   */
+  const bodyRowCount = sortedRecords.length === 0 ? 1 : sortedRecords.length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -245,10 +302,10 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
       </div>
 
       {/* Table */}
-      <div className="overflow-auto rounded-md border">
-        <table className="w-full text-xs">
+      <div ref={scrollRef} className="overflow-auto rounded-md border">
+        <table className="w-full text-xs" aria-rowcount={bodyRowCount + 1}>
           <thead>
-            <tr className="border-b bg-muted/50">
+            <tr aria-rowindex={1} className="border-b bg-muted/50">
               {columns.map((col) => (
                 <th
                   key={col}
@@ -277,30 +334,56 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
             </tr>
           </thead>
           <tbody>
-            {sortedRecords.map((r) => (
-              <tr
-                key={r.id}
-                className="border-b last:border-0 hover:bg-muted/30"
-              >
-                <td className="px-3 py-1.5 font-mono">{r.id}</td>
-                <td className="px-3 py-1.5 tabular-nums">
-                  {formatCoordinate(r.x)}
-                </td>
-                <td className="px-3 py-1.5 tabular-nums">
-                  {formatCoordinate(r.y)}
-                </td>
-                <td className="px-3 py-1.5 tabular-nums">
-                  {formatNumber(r.height_m)}
-                </td>
-                {indicators.map((ind) => (
-                  <td key={ind} className="px-3 py-1.5 tabular-nums">
-                    {formatNumber(r.values[ind] ?? 0)}
-                  </td>
-                ))}
+            {/*
+              The scrolled-past rows are a spacer row, not an absolutely
+              positioned window. Absolute positioning forces `display: flex` on
+              every `<tr>`, which is exactly the point at which the browser
+              stops treating this as a table: `scope="col"` and `aria-sort` on
+              the headers above describe a grid that would no longer exist.
+              A `<tr>` holding one tall `<td colSpan>` keeps the native
+              semantics and costs two nodes. Each is rendered only when it has
+              a height, so a fully visible table has neither and its last row
+              is still `:last-child`.
+            */}
+            {spacerAbove > 0 ? (
+              <tr aria-hidden="true">
+                <td colSpan={columns.length} style={{ height: spacerAbove }} />
               </tr>
-            ))}
+            ) : null}
+            {virtualRows.map((virtualRow) => {
+              const r = sortedRecords[virtualRow.index];
+              if (r === undefined) return null;
+              return (
+                <tr
+                  key={r.id}
+                  aria-rowindex={virtualRow.index + 2}
+                  className={ROW_CLASS}
+                >
+                  <td className="px-3 py-1.5 font-mono">{r.id}</td>
+                  <td className="px-3 py-1.5 tabular-nums">
+                    {formatCoordinate(r.x)}
+                  </td>
+                  <td className="px-3 py-1.5 tabular-nums">
+                    {formatCoordinate(r.y)}
+                  </td>
+                  <td className="px-3 py-1.5 tabular-nums">
+                    {formatNumber(r.height_m)}
+                  </td>
+                  {indicators.map((ind) => (
+                    <td key={ind} className="px-3 py-1.5 tabular-nums">
+                      {formatNumber(r.values[ind] ?? 0)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {spacerBelow > 0 ? (
+              <tr aria-hidden="true">
+                <td colSpan={columns.length} style={{ height: spacerBelow }} />
+              </tr>
+            ) : null}
             {sortedRecords.length === 0 ? (
-              <tr>
+              <tr aria-rowindex={2}>
                 <td
                   colSpan={columns.length}
                   className="px-3 py-6 text-center text-muted-foreground"

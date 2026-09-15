@@ -1,6 +1,15 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type {
   ArtifactRef,
@@ -230,7 +239,33 @@ beforeAll(() => {
   };
 });
 
+/**
+ * The height the stubbed viewport reports, and the row height the table lays
+ * out with. `VIEWPORT_PX / ROW_PX` is how many rows fit, which is what the
+ * virtualizer mounts plus its overscan.
+ */
+const VIEWPORT_PX = 640;
+const ROW_PX = 29;
+
 beforeEach(() => {
+  /*
+   * jsdom performs no layout, so every element measures 0×0. The virtualizer
+   * reads its scroll element with `offsetWidth`/`offsetHeight` — not
+   * `getBoundingClientRect` — and a viewport 0px tall holds no rows, so an
+   * unaided test would render nothing but the overscan and quietly stop
+   * addressing real rows. Giving the elements a height is what keeps the
+   * assertions below about the table rather than about jsdom.
+   *
+   * `scrollTop` needs no stub: jsdom stores what is assigned to it, so a test
+   * can set it and fire a scroll event the way a browser would.
+   */
+  vi.spyOn(window.HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(
+    VIEWPORT_PX,
+  );
+  vi.spyOn(window.HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(
+    800,
+  );
+
   state.runs = [];
   state.runsLoading = false;
   state.runsError = null;
@@ -247,6 +282,12 @@ beforeEach(() => {
   revokeObjectURL.mockClear();
   useModelStore.getState().reset();
   resetProjectSyncStore();
+});
+
+// The viewport stub is a prototype spy; without this it would nest once per
+// test rather than being replaced.
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 /** Reads the current path out, so a click's navigation is asserted directly. */
@@ -768,6 +809,175 @@ describe("ResultsPage receiver sorting", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Receivers tab: the window
+// ---------------------------------------------------------------------------
+
+describe("ResultsPage receiver table windowing", () => {
+  const BIG = 5000;
+
+  /**
+   * A table big enough that mounting all of it would be the defect. Built
+   * once and shared: nothing on the page mutates the table it is handed, and
+   * five thousand records is real work to allocate.
+   */
+  const big: ReceiverTable = {
+    indicator_order: ["Lden"],
+    unit: "dB(A)",
+    records: Array.from({ length: BIG }, (_, i) => ({
+      // Zero-padded, so the id order the page sorts by is the index order and
+      // "the row after this one" is a claim a test can make.
+      id: `R${String(i).padStart(4, "0")}`,
+      x: i,
+      y: i,
+      height_m: 4,
+      values: { Lden: 50 + (i % 20) },
+    })),
+  };
+
+  /**
+   * Rendering a five-thousand-row page under jsdom takes a second or so on its
+   * own, and the suite runs several files at once — the default five seconds
+   * is not headroom, it is a coin toss. The number is generous on purpose: it
+   * is there to catch a hang, not to time the renderer.
+   */
+  const TIMEOUT_MS = 30_000;
+
+  /** The scroll element the virtualizer watches: the table's own container. */
+  function scrollContainer(): HTMLElement {
+    const table = screen.getByRole("table");
+    const container = table.parentElement;
+    if (container === null) throw new Error("the table has no scroll parent");
+    return container;
+  }
+
+  function scrollTo(offset: number): void {
+    const container = scrollContainer();
+    container.scrollTop = offset;
+    fireEvent.scroll(container);
+  }
+
+  it(
+    "mounts a window of rows, not five thousand of them",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      const ids = rowIds();
+      // The exact count is the viewport divided by the row height plus the
+      // overscan, which is an implementation detail; that it is nowhere near
+      // the table's size is not.
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.length).toBeLessThan(BIG / 10);
+      expect(ids[0]).toBe("R0000");
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "tells a screen reader how many rows the table really has",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      // Without this the table would claim to be the size of its window. The
+      // count includes the header row, and the rendered rows carry the index
+      // they would have if every row were mounted.
+      const table = screen.getByRole("table");
+      expect(table).toHaveAttribute("aria-rowcount", String(BIG + 1));
+      const rows = within(table).getAllByRole("row");
+      expect(rows[0]).toHaveAttribute("aria-rowindex", "1");
+      expect(rows[1]).toHaveAttribute("aria-rowindex", "2");
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "renders later ids once the container is scrolled",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      expect(rowIds()).not.toContain("R3000");
+
+      // 3000 rows down, at the row height the table lays out with.
+      scrollTo(3000 * ROW_PX);
+
+      // One scan, read three ways: role queries are not cheap on a table this
+      // size and this test is the one that runs them twice.
+      const rows = within(screen.getByRole("table"))
+        .getAllByRole("row")
+        .slice(1);
+      const ids = rows.map((r) => r.querySelector("td")?.textContent ?? "");
+      expect(ids).toContain("R3000");
+      expect(ids).not.toContain("R0000");
+      // Still a window, not the whole table pulled in behind the scroll.
+      expect(ids.length).toBeLessThan(BIG / 10);
+      // The index travels with the row, so row 3001 announces itself as row 3001.
+      expect(rows[ids.indexOf("R3000")]).toHaveAttribute(
+        "aria-rowindex",
+        "3002",
+      );
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "scrolls to the end without running past it",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      scrollTo(BIG * ROW_PX);
+
+      const ids = rowIds();
+      expect(ids.at(-1)).toBe(`R${String(BIG - 1).padStart(4, "0")}`);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "downloads all five thousand rows, not the mounted ones",
+    async () => {
+      state.receiverTable = big;
+      renderResults();
+
+      const csv = await downloadCSV();
+      const lines = csv.split("\n");
+
+      // Header, BIG records, and the trailing empty string after the final LF.
+      expect(lines).toHaveLength(BIG + 2);
+      expect(lines[0]).toBe("id,x,y,height_m,Lden");
+      expect(lines[1]).toBe("R0000,0,0,4,50");
+      expect(lines[BIG]).toBe(
+        `R${String(BIG - 1).padStart(4, "0")},4999,4999,4,${String(50 + ((BIG - 1) % 20))}`,
+      );
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "keeps the filter and the count over the whole table, not the window",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      fireEvent.change(filterInput(), { target: { value: "R490" } });
+
+      // R4900..R4909 — ten rows, all of them found even though none of them was
+      // ever mounted before the filter narrowed the table to them.
+      expect(rowIds()).toEqual(
+        Array.from({ length: 10 }, (_, i) => `R490${String(i)}`),
+      );
+      expect(
+        screen.getByText(m.msg_records_count_other({ shown: 10, total: BIG })),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "11");
+    },
+    TIMEOUT_MS,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Receivers tab: CSV download
 // ---------------------------------------------------------------------------
 
@@ -961,4 +1171,40 @@ describe("ResultsPage heading order", () => {
 
     screen.getByRole("heading", { name: m.page_title_results() });
   });
+});
+
+describe("ResultsPage windowed table accessibility", () => {
+  /*
+   * The route-level baseline in `e2e/a11y.spec.ts` cannot reach this: `/results`
+   * in a fresh browser-mode app has no completed run, so it renders an empty
+   * state and the table is never on the page there. The windowed table's own
+   * semantics are therefore checked here, over a table large enough that the
+   * spacer rows are present — they are the part that could plausibly break a
+   * table's structure, and this is what says they do not.
+   *
+   * Structural rules only. `color-contrast` needs a canvas jsdom does not have,
+   * and contrast belongs to the e2e baseline, on a route that actually paints.
+   */
+  it("introduces no axe violations with the window in place", async () => {
+    state.receiverTable = {
+      indicator_order: ["Lden"],
+      unit: "dB(A)",
+      records: Array.from({ length: 5000 }, (_, i) => ({
+        id: `R${String(i).padStart(4, "0")}`,
+        x: i,
+        y: i,
+        height_m: 4,
+        values: { Lden: 50 + (i % 20) },
+      })),
+    } satisfies ReceiverTable;
+    renderResults();
+
+    const results = await axe.run(screen.getByRole("table"), {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "best-practice"] },
+    });
+
+    // Mapped to strings so a failure names the rule rather than printing a
+    // page of axe's node objects.
+    expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  }, 30_000);
 });
