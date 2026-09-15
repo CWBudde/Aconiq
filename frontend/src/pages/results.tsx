@@ -39,7 +39,8 @@ import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { runTiming } from "@/ui/run-status";
-import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
@@ -625,29 +626,22 @@ function RunResultDetail({
 // Results page
 // ---------------------------------------------------------------------------
 
+// Module scope, not an inline arrow: `useRunFromRoute` memoises the filtered
+// list on this identity, and a fresh closure each render would rebuild it
+// every time.
+function isCompleted(run: RunSummary): boolean {
+  return run.status === "completed";
+}
+
 export default function ResultsPage() {
-  const { data, isLoading, error } = useRuns();
-  const runs = useMemo(() => data ?? [], [data]);
   const { runId } = useParams();
-
-  const completedRuns = useMemo(
-    () => runs.filter((r) => r.status === "completed"),
-    [runs],
-  );
-
-  // The selection is the URL, and nothing else. There is deliberately no
-  // fallback to `completedRuns[0]`: the list arrives in backend order, so
-  // "the first one" was never "the newest one", and showing a run the user
-  // did not ask for puts someone else's numbers under their heading.
-  const selectedRun =
-    runId == null ? null : (completedRuns.find((r) => r.id === runId) ?? null);
-
-  // `data !== undefined`, not `runs.length`: an id is unknown only once a
-  // list has actually arrived. The transient-state return below already
-  // covers the cold load; this is what keeps that true if it is ever
-  // reordered away.
-  const runExists = runId != null && runs.some((r) => r.id === runId);
-  const missingRun = runId != null && data !== undefined && selectedRun == null;
+  const {
+    eligibleRuns: completedRuns,
+    run: selectedRun,
+    state,
+    isLoading,
+    error,
+  } = useRunFromRoute(runId, isCompleted);
 
   // The heading stays above both transient states so every state of the page
   // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
@@ -723,10 +717,10 @@ export default function ResultsPage() {
     >
       {selectedRun ? (
         <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
-      ) : missingRun ? (
+      ) : runId != null && (state === "ineligible" || state === "unknown") ? (
         <div className="flex flex-1 items-start justify-center p-8">
           <Callout variant="warning" icon={AlertTriangle}>
-            {runExists
+            {state === "ineligible"
               ? m.msg_run_not_completed({ runId })
               : m.msg_unknown_run_id({ runId })}
           </Callout>

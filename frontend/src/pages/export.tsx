@@ -36,7 +36,8 @@ import { ModeGate } from "@/ui/mode-gate";
 import { formatDateTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
-import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
+import { getArtifactContentURL, useCreateExport } from "@/api/hooks";
+import { useRunFromRoute } from "@/run/use-run-from-route";
 import { backend } from "@/api/backend";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
@@ -337,31 +338,26 @@ function exportMeta(run: RunSummary): string {
 }
 
 export default function ExportPage() {
-  const { data, isLoading, error } = useRuns();
-  const runs = useMemo(() => data ?? [], [data]);
   const { runId } = useParams();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Resolved against **every** run, so no eligibility predicate: the dialog
+  // offers every run, and generating a bundle selects one that is not in the
+  // list below yet. `ExportDetail` has a no-artifacts branch for that, and
+  // calling such a run "unknown" would be a lie.
+  const {
+    runs,
+    run: selectedRun,
+    state,
+    isLoading,
+    error,
+  } = useRunFromRoute(runId);
 
   const runsWithExports = useMemo(
     () => runs.filter((r) => r.artifacts.some(isExportArtifact)),
     [runs],
   );
-
-  // The selection is the URL, with no fallback to the first run — the list is
-  // in backend order, and opening a bundle nobody asked for is worse than
-  // opening none.
-  //
-  // Resolved against every run rather than against `runsWithExports`, because
-  // the dialog offers every run: generating a bundle selects a run that is not
-  // in the list yet. `ExportDetail` already has a no-artifacts branch for that,
-  // and calling such a run "unknown" would be a lie.
-  const selectedRun =
-    runId == null ? null : (runs.find((r) => r.id === runId) ?? null);
-
-  // `data !== undefined`, not `runs.length`: an id is unknown only once a list
-  // has arrived, or a deep link would flash a warning on every cold load.
-  const missingRun = runId != null && data !== undefined && selectedRun == null;
 
   // The heading stays above both transient states so every state of the page
   // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
@@ -450,7 +446,7 @@ export default function ExportPage() {
       >
         {selectedRun ? (
           <ExportDetail run={selectedRun} />
-        ) : missingRun ? (
+        ) : runId != null && state === "unknown" ? (
           <div className="flex flex-1 items-start justify-center p-8">
             <Callout variant="warning" icon={AlertTriangle}>
               {m.msg_unknown_run_id({ runId })}
