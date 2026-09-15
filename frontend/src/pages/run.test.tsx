@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type {
   ParameterDefinition,
   ProfileInfo,
@@ -13,6 +14,10 @@ import {
 import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
+import {
+  projectHydrationStore,
+  resetProjectHydration,
+} from "@/model/use-project-hydration";
 import type { CalcArea, ModelFeature } from "@/model/types";
 import { getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
@@ -130,9 +135,39 @@ function standard(
   };
 }
 
-function openRunDialog(standards: StandardDescriptor[]) {
+/**
+ * Opens the dialog against a model that validates.
+ *
+ * `beforeEach` resets the store, and the dialog refuses to start a run against
+ * an empty or invalid model — so without a feature here, every test about
+ * something *else* would be testing the emptiness gate. One point source is
+ * enough and raises nothing: `validateRLS19SourceAcoustics` returns early for
+ * anything that is neither a line nor an area.
+ *
+ * A test that placed its own features keeps them: seeding the same
+ * `sampleFeature` on top would duplicate its id, which is itself an error. The
+ * gate's own tests pass `seedModel: false` and assert it directly.
+ */
+function openRunDialog(
+  standards: StandardDescriptor[],
+  { seedModel = true }: { seedModel?: boolean } = {},
+) {
   state.standards = standards;
-  render(<RunPage />);
+  const store = useModelStore.getState();
+  if (seedModel && store.features.length === 0) {
+    // Seeding must not clear a dirty flag a test set on purpose, so the
+    // model is only marked clean if it already was.
+    const wasClean = !store.dirty;
+    store.addFeature(sampleFeature);
+    if (wasClean) useModelStore.getState().markClean();
+  }
+  // A router, because the model gate offers a link to `/model`. The page
+  // itself still reads nothing from the URL.
+  render(
+    <MemoryRouter>
+      <RunPage />
+    </MemoryRouter>,
+  );
   fireEvent.click(screen.getByRole("button", { name: m.action_new_run() }));
 }
 
@@ -206,6 +241,7 @@ beforeEach(() => {
   state.logLines = [];
   useModelStore.getState().reset();
   resetProjectSyncStore();
+  resetProjectHydration();
 });
 
 describe("RunPage evidence tiers", () => {
@@ -442,6 +478,85 @@ describe("RunPage unsaved changes", () => {
   });
 });
 
+describe("RunPage model gate", () => {
+  function invalidCallout(): HTMLElement | null {
+    return screen.queryByTestId("model-invalid-callout");
+  }
+
+  it("refuses a run against a model with nothing in it", () => {
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    // Not "1 error": `validateProjectModel` pushes a synthetic `model.empty`
+    // whose message is hardcoded English, and `useModelValidation` answers
+    // "empty" above the validator precisely so it never reaches the UI.
+    expect(invalidCallout()).toHaveTextContent(m.msg_model_empty_before_run());
+    expect(invalidCallout()).not.toHaveTextContent(
+      m.msg_validation_error_count_one({ count: 1 }),
+    );
+    expect(startRunButton()).toBeDisabled();
+  });
+
+  it("starts no run against an empty model even if the button is clicked", () => {
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
+  });
+
+  it("refuses a run against a model that does not validate, and counts why", () => {
+    // Two features sharing an id. `validateModel` would not see this at all
+    // for a receiver, which is why the gate goes through `useModelValidation`.
+    useModelStore.getState().addFeature(sampleFeature);
+    useModelStore.getState().addFeature({ ...sampleFeature });
+    useModelStore.getState().markClean();
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(invalidCallout()).toHaveTextContent(
+      m.msg_model_invalid_before_run(),
+    );
+    expect(startRunButton()).toBeDisabled();
+  });
+
+  it("does not refuse a run over a warning", () => {
+    // A line source with no traffic attributes warns and is perfectly
+    // runnable; refusing on warnings would make the common case unrunnable.
+    useModelStore.getState().addFeature({
+      id: "road-1",
+      kind: "source",
+      sourceType: "line",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [10, 51],
+          [10.01, 51],
+        ],
+      },
+    });
+    useModelStore.getState().markClean();
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(invalidCallout()).toBeNull();
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("does not claim the project is empty when hydration never answered", () => {
+    // In API mode the store is a copy of the saved model. If hydration failed,
+    // an empty store says nothing about the project — and "nothing to
+    // calculate" would be a claim this dialog cannot make.
+    projectHydrationStore.setState({
+      status: "error",
+      error: new Error("boom"),
+    });
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    expect(invalidCallout()).toBeNull();
+    expect(screen.getByTestId("hydration-failed-callout")).toHaveTextContent(
+      m.msg_project_model_load_failed(),
+    );
+    expect(startRunButton()).toBeEnabled();
+  });
+});
+
 describe("RunPage calculation area", () => {
   const calcArea: CalcArea = {
     geometry: {
@@ -515,7 +630,11 @@ describe("RunPage heading order", () => {
     // The shell's h1 sits above this page, so a level of 2 is the entry.
     state.runs = [completedRun];
     state.standards = [standard("rls19-road", "normative")];
-    render(<RunPage />);
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
 
     const levels = screen
       .getAllByRole("heading")
@@ -633,7 +752,11 @@ describe("RunPage progress timeline", () => {
         artifacts: [],
       } satisfies RunSummary,
     ];
-    render(<RunPage />);
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
   }
 
   it("lists the seven pipeline steps in order whatever the log holds", () => {
