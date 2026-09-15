@@ -53,6 +53,13 @@ type soundPlanPoint struct {
 	Z float64 `json:"z"`
 }
 
+// soundPlanBounds is the envelope of the calculation area an import read out of
+// CalcArea.geo, reported as soundPlanImportReport.CalcAreaBounds.
+//
+// It describes the *imported bundle*, not the project's current extent. The
+// model's calc-area feature is what a run computes over and what the raster
+// comparison synthesizes receivers across, and a user may have moved it since
+// the import. Nothing outside the import's own test reads this.
 type soundPlanBounds struct {
 	MinX float64 `json:"min_x"`
 	MinY float64 `json:"min_y"`

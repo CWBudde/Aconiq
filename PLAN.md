@@ -1223,12 +1223,32 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       building appender already does. Closure is decided in **2D**, deliberately: the import
       report's `IsClosed` compares x, y _and_ z, so a footprint that closes in plan but differs in
       elevation would otherwise gain a zero-length closing segment.
-- [ ] **The SoundPLAN calculation area now exists twice in a project, and the two can diverge.**
-      `compare-raster` reads it from `soundplan-import-report.json` — verbatim, 3D, possibly open —
-      because `calcAreaHorizontalSpan` intersects each raster row against the real outline and the
-      model feature is lossy for that. So a user editing the model's `calc-area` does not move what
-      `compare-raster` uses. Reconcile, or state which one wins, before P13 turns the comparison
-      into evidence.
+- [x] **The model's `calc-area` wins the raster comparison; the import report is the fallback.**
+      `resolveRasterCalcArea` picks it after the model loads, and `calc_area_source`
+      (`model` / `import_report` / `none`) records which, in both the compare report and the
+      artifact.
+      **This bullet's own rationale was wrong on both axes, and the reasons are load-bearing.** The
+      3D difference is inert: the sole read of `.Z` off a `CalcArea` is a field copy, and every
+      consumer is 2D. And the model's ring is the _better-formed_ input for the scanline, not the
+      lossy one — `calcAreaHorizontalSpan`'s edge loop runs to `len(Points)-1` and so never emits
+      the closing edge, which is exactly right for the closed ring validation guarantees and drops
+      an edge from the import report's verbatim, unclosed point list. A plain open rectangle then
+      degrades _loudly_: every row finds one crossing, reports no span, and falls back to the
+      bounding box with a warning. From six vertices up it degrades silently instead — the dropped
+      edge shifts the even/odd pairing rather than removing a crossing, and an open notched octagon
+      returns the notch _gap_ as its span, placing receivers in exactly the region the drawing
+      excludes. Both are pinned.
+      **There is no agreement tolerance, and there cannot be one** until Priority 1.6 is fixed: the
+      reprojection the map save path runs is larger than the grid resolution, so any threshold below
+      5 m fires on a save that changed nothing and any threshold above it hides a real edit. The
+      comparison warns on the vertex count after normalising closure — exact and CRS-independent —
+      and records `calc_area_bounds_delta_m` unconditionally, so P13 reads a measurement rather than
+      a verdict. Vertex-by-vertex comparison is wrong here: the two lists legitimately differ in
+      start vertex, winding and closure.
+      **`ACONIQ_SOUNDPLAN_FIXTURES` is what makes the licensed-fixture suite visible.** A worktree
+      has no `interoperability/`, so `TestCompareSoundPlanReceivers` and the SoundPLAN import tests
+      skip and the run still reports green. Point the variable at the project directory before
+      believing a green run covered the SoundPLAN path.
 
 ### Phase D — Map workspace
 
@@ -1239,6 +1259,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       covers it. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a
       swallowed click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an
       attribute check passes while the tooltip is invisible.
+- [ ] **A save from the map destroys every property the store does not model.**
+      `calcAreaToGeoJSON` (`model/to-geojson.ts:126-139`) emits `properties: { kind }` and nothing
+      else, so `soundplan_base_elevation_m` — written by `aconiq import --soundplan` from
+      `CalcArea.geo`'s first vertex — is gone after the first save, silently and with no way to
+      recover it short of re-importing. Nothing reads that z today, which is why the raster
+      comparison treats its absence as elevation 0 rather than as "no area", so this is metadata
+      loss rather than a numeric defect for now. Fixing it needs a property passthrough on
+      `ModelCalcArea` that preserves what the store does not model; check the other
+      `*ToGeoJSON` builders for the same shape before writing it.
 - [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
       (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
       edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);
@@ -1395,11 +1424,14 @@ the comparison into evidence (the assertion itself is Priority 3).
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
-- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline.
+- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline. **Read Priority 1.6
+      first**: the EPSG:25832 ↔ 4326 transform loses metres, and the map save path runs it on every
+      vertex, so routing more geometry through that pipeline widens an open defect until it is
+      fixed.
 - [ ] Fix the top-edge boundary rule in the heuristic raster alignment.
-      `heuristicRasterRowCenters` (`app/cli/compare_raster.go:581`) places row 0 at exactly
+      `heuristicRasterRowCenters` (`app/cli/compare_raster.go:859`) places row 0 at exactly
       `y == maxY` whenever the row grid fills the CalcArea bounding box
-      (`(rowCount-1)*resolution == maxY-minY`), and `calcAreaHorizontalSpan:636` uses a half-open
+      (`(rowCount-1)*resolution == maxY-minY`), and `calcAreaHorizontalSpan:928` uses a half-open
       scanline rule (`y < minY || y >= maxY`) that rejects every edge at that y. Row 0 therefore
       always falls back to the bounding-box span and emits a warning. Harmless for rectangles —
       the bbox span is the true span — but wrong for non-convex or non-rectangular CalcAreas, and
