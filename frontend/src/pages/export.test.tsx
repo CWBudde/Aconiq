@@ -567,17 +567,47 @@ describe("ExportPage detail panel", () => {
     expect(screen.queryByTitle(m.label_html_report_preview())).toBeNull();
   });
 
+  /** The `CopyField` that shows `text`, so a page with several can be told apart. */
+  function copyFieldFor(text: string): HTMLElement {
+    const code = screen.getByText(text);
+    expect(code.tagName).toBe("CODE");
+    const field = code.closest('[data-slot="copy-field"]');
+    expect(field).not.toBeNull();
+    return field as HTMLElement;
+  }
+
   it("shows the run's export command and copies it verbatim", () => {
     renderPage([run("run-42", [bundle])]);
 
     expect(screen.getByText(m.section_cli_command())).toBeInTheDocument();
-    const command = screen.getByText("aconiq export --run-id run-42");
-    expect(command.tagName).toBe("CODE");
+    const field = copyFieldFor("aconiq export --run-id run-42");
 
-    const copy = screen.getByRole("button", { name: m.action_copy() });
+    const copy = within(field).getByRole("button", { name: m.action_copy() });
     expect(copy).not.toHaveAttribute("data-copied");
     fireEvent.click(copy);
     expect(writeText).toHaveBeenCalledWith("aconiq export --run-id run-42");
+  });
+
+  /*
+   * `--pdf` shipped with the CLI and the artifact it writes has been labelled
+   * here since the kind table learned `export.report_pdf`. The invitation was
+   * the part still missing: the page showed one command, and it was not the
+   * one that produces the report most people ask for.
+   */
+  it("offers the PDF report as its own copyable command", () => {
+    renderPage([run("run-42", [bundle])]);
+
+    const field = copyFieldFor("aconiq export --run-id run-42 --pdf");
+    expect(
+      within(field).getByText(m.label_command_with_pdf()),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(field).getByRole("button", { name: m.action_copy() }),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      "aconiq export --run-id run-42 --pdf",
+    );
   });
 
   it("says a selected run carries no export artifacts", () => {

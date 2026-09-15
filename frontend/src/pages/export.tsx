@@ -182,7 +182,16 @@ function ExportDetail({ run }: { run: RunSummary }) {
         <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_cli_command()}
         </SectionHeading>
-        <CopyField value={exportCommand(run.id)} />
+        <div className="space-y-2">
+          <CopyField value={exportCommand(run.id)} />
+          {/* `--pdf` compiles report.pdf with Typst beside the offline report
+              bundle. Offered as its own line rather than behind a toggle: a
+              read-only hand-off should be copyable at a glance, not stateful. */}
+          <CopyField
+            label={m.label_command_with_pdf()}
+            value={exportCommand(run.id, { pdf: true })}
+          />
+        </div>
       </section>
     </div>
   );
