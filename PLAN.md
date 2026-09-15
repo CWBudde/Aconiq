@@ -1090,27 +1090,53 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **`map/color-ramp.ts` has zero importers and 0 % coverage**, and was deliberately kept:
       "Results on the map" below names `NOISE_LEVEL_RAMP`. Do not delete it as dead code in the
       meantime.
-- [ ] **Split run/results/export**: they sit on `MasterDetail`/`Tabs` since Phase B, but `run.tsx`
-      is still ~1,330 lines; split it into `pages/run/{page,setup-dialog,detail,timeline}.tsx`;
-      extract `useRunSetupSelection` (standard→version→profile→params cascade) and
-      `useSelectedRun`. Add `standards-meta.ts`: human labels, German
-      directive names, parameters grouped and rendered with the `unit` the descriptor now
-      publishes — **not** a table of its own, which is the mirror that item was closed to avoid
-      (today `traffic_day_lkw1` is shown raw and only one standard ID has a label,
-      `run.tsx:67-76`). Gate the run dialog on
-      `validateProjectModel(features, receivers).errors.length === 0` — **not** `validateModel`,
-      which passes `[]` for receivers (`validate.ts:27-29`) and so validates as if none were
-      placed. Guard the empty case first: `validateProjectModel` pushes a synthetic `model.empty`
-      _error_, so a naive validation summary reads "1 error" on a fresh install. Confirm destructive actions (delete feature, discard
-      draft, import-replaces-model) — the primitive and a tested `ui/confirm-dialog.tsx` both
-      landed in `87da006`, so what is missing is call sites, not the component. Add a delete-run action
-      (`Backend.deleteRun`) against the new `DELETE /api/v1/runs/{id}`, in both modes — browser
-      mode caps stored runs at 20 and tells the user on a quota error that older runs may need
-      deleting, but offers no way to do it. **Deleting breaks `nextRunID`**, which mints ids from
-      the highest id still stored (`browser-backend.ts:671-679`): deleting the newest frees its id,
-      `setRun` then silently replaces an older run and artifact ids name two payloads — the hazard
-      its own comment warns about. A persisted high-water mark and a `PERSISTED_STATE_VERSION` bump
-      are part of the work, not optional.
+- [x] **Split run/results/export.** `pages/run.tsx` went 1,335 lines → 162: it is the route module
+      now, and the parts live in `src/run/`. **Not `pages/run/` as this file asked for** — the repo
+      already answers this question the other way, and consistently: `pages/map.tsx` is a thin route
+      module composing a dozen files from `src/map/`, and no nested page directory exists anywhere.
+      Keeping `pages/run.tsx` as the default export also left `routes.tsx`, `routes.test.tsx` and
+      `run.test.tsx`'s import untouched, which made the move commit reviewable as a move: zero test
+      edits, 827 tests unchanged. `parseTimeline` sits in its own module because a file exporting
+      both a component and a function loses fast refresh.
+      `useRunSetupSelection` carries the cascade. **The parameter seeding stays render-phase**;
+      an effect paints the fields empty for one commit on the way, which `run.test.tsx`'s
+      `MutationObserver` pins as `["999", "25"]` rather than `["999", "", "25"]`. The experimental
+      acknowledgement stayed outside the hook — it is an evidence-tier decision, not part of
+      choosing a profile. `useRunFromRoute` replaced the duplicated URL→run resolution in
+      `results.tsx` and `export.tsx`, with eligibility as a parameter because the two genuinely
+      differ; the run page's own selection stayed inline, since it falls back to the first visible
+      run and sharing a name with a rule that refuses exactly that would make the name lie.
+      `STANDARD_LABELS` was keyed by `upstream_mapping_standard` — a **parameter** name — so every
+      lookup had always missed; both message keys are gone. The eight raw `standard_id` sites now
+      read a name, and **the label carries its own evidence limit**: `EvidenceTierBadge` sits
+      beside it in only two of five places, and `RunSummary` has no tier to give the rest one, so a
+      scaffold reads "BUB Straße (Gerüst)". Parameters are grouped by name prefix and labelled with
+      the API's `unit`; the RLS-19 vehicle classes get the terminology the catalogue already
+      carries, and **everything else keeps the backend's own name, humanised, in English**.
+      Composing German across all 98 parameters would have invented `Gleisrauheitsklasse` for
+      published norms — Phase E owns that. The raw name stays on screen in a `code`, because it is
+      what `--param` takes.
+      The run gate goes through `useModelValidation`, on **errors only** — a model with one RLS-19
+      review warning must stay runnable — and **an empty store is not an empty project**: when
+      `runsAgainstSavedModel` and hydration errored, the dialog says the model could not be read
+      and offers the retry. The dialog body became a child, so its queries and this validation run
+      while it is open rather than on every render of `/run`.
+      `ui/confirm-dialog.tsx` has call sites at last: discarding a draft, deleting a feature or a
+      receiver, and import replacing the model. The two map deletes are undoable and the
+      confirmation says so, which is the cheapest way to make that true when the undo bar is at the
+      other end of the workspace. `src/map/feature-editor.test.tsx` exists now.
+      `Backend.deleteRun` lands in both modes with `exportsOutliveRunDelete`, because **which
+      sentence is true has to be said before the user agrees** and `retained_paths` arrives after.
+      Delete is offered only on a finished run. `ConfirmDialog` forwards Radix's
+      `onCloseAutoFocus`: confirming unmounts the button focus would return to, and no axe rule
+      covers landing on `<body>`.
+      **`PERSISTED_STATE_VERSION` stayed at 1, against what this file called mandatory.** The bump
+      is the wrong tool: `decodePersisted` throws on an unknown version and `loadState` swallows
+      that into `initialState()`, warning that "the next completed run replaces them" — so a bump
+      buys nothing upward, since `decodeState` already reads field by field, and downward it makes
+      an older build discard twenty runs. `runHighWaterMark` is additive and raised in `setRun`;
+      its fallback, `max(stored ids)`, is exact rather than approximate for every document written
+      before it, because nothing could delete a run then.
 - [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`); the sortable
       header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
       `SortIcon` (nested at `results.tsx:139-147`, so it remounts the header on every keystroke)
