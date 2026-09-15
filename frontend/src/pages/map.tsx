@@ -138,6 +138,15 @@ function MapWorkspace() {
     features.length > 0 || receivers.length > 0 || calcArea !== null;
   const showStart = !hasWorkspaceContent && !startDismissed;
 
+  // The dismissal covers one empty-model episode, not the whole visit. Without
+  // this, a user who draws a feature and later deletes the last one is left on
+  // an empty map with the hint suppressed for the rest of the route — the one
+  // state it exists for. Clearing it while content exists is invisible:
+  // `showStart` is already false there.
+  useEffect(() => {
+    if (hasWorkspaceContent) setStartDismissed(false);
+  }, [hasWorkspaceContent]);
+
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
       if (mode === "calc-area") {

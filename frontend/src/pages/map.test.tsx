@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { Map } from "maplibre-gl";
 import MapPage from "./map";
@@ -147,6 +147,25 @@ describe("MapPage", () => {
       "data-mode",
       "static",
     );
+  });
+
+  it("brings the panel back when the model empties again", () => {
+    // The dismissal covers one empty-model episode, not the whole visit: a
+    // user who draws a feature and then deletes the last one is back on an
+    // empty map, which is the one state the hint exists for.
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: m.action_close() }));
+    act(() => {
+      useModelStore.getState().addFeature(source);
+    });
+    act(() => {
+      useModelStore.getState().removeFeature(source.id);
+    });
+
+    expect(
+      screen.getByRole("region", { name: m.heading_map_workspace() }),
+    ).toBeVisible();
   });
 
   it("does not show the panel when the model already has content", () => {
