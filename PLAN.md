@@ -1063,17 +1063,33 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       every route is editable and an edit made over the not-yet-hydrated store makes the next
       save replace the project with it.
 
-- [ ] **Strip placeholders and apologies**: the inert raster colour-ramp/probe block
-      (`results.tsx:388-441` — a disabled Select over a hardcoded ramp list and two disabled
-      inputs), the "Phase 24+" string (`msg_receiver_custom_set_desc`,
-      `en.json:313`), the run-to-run diff notice, and the permanently disabled Cancel button
-      (`run.tsx:533-544`, `alert_cancel_not_supported`) — neither backend can cancel, so no
-      capability would ever enable it and it is a label shaped like a button. Replace each CLI
-      hand-off with the "Copy CLI command" `CopyField` the export page already has
-      (`export.tsx:179-207`), extracted to `api/cli.ts` so the results page can use it too.
-      **The PDF notice is not a placeholder, it is false**: `aconiq export --pdf` has shipped since
-      `export.go:83` and emits `export.report_pdf`, a kind `EXPORT_KIND_LABELS` does not know, so a
-      real PDF artifact renders as a raw kind string. Wire the kind up and offer the command.
+- [x] **Placeholders and apologies are gone, and the hand-offs are commands.** The raster
+      colour-ramp/probe block, the "Phase 24+" description, the run-to-run diff notice and the
+      permanently disabled Cancel button are removed, and seven message keys retired with them.
+      Five constraints follow.
+      **`api/cli.ts` is the only place an `aconiq` command is spelled**, and it mirrors
+      `export.go`'s flag surface: `EXPORT_FORMATS` is a `const` tuple, so a bad `--format` is a
+      type error, and flags are emitted in the registration order `export.go` uses. It carries
+      `--run-id`, `--format` and `--pdf` and nothing else — add a flag when a call site wants
+      one, not before.
+      **A blank `--run-id` is a correctness bug, not a formatting one.** `aconiq export`
+      defaults that flag to the _latest_ run, so a command built from an unselected id acts on
+      a different run than the one on screen. The builder substitutes a placeholder, and that
+      fallback lives there rather than at each call site.
+      **`ArtifactRef` carries no run id** — it is `id`, `kind`, `path`, `created_at` — so
+      anything building a `--run-id` command out of an artifact needs the run threaded to it.
+      `RasterArtifactCard` takes one from `RasterTab`.
+      **Every kind `export.go` appends an `ArtifactRef` for needs a row in
+      `EXPORT_KIND_LABELS`, added with it.** The PDF half of the old entry had already landed
+      in `759d119`; the live instances were `export.report_typst` and
+      `export.assessment_16bimschv_json`, both now labelled. `kindMeta`'s raw-string fallback
+      stays as the guard for the next one, not as a design. Two CLI hand-offs were false rather
+      than merely prose: `/results` and `/export` sent the user to the CLI while `/run` starts
+      runs in both modes and the export header already carries a New Export button. Both empty
+      states now point at the UI that does the work.
+      **`map/color-ramp.ts` has zero importers and 0 % coverage**, and was deliberately kept:
+      "Results on the map" below names `NOISE_LEVEL_RAMP`. Do not delete it as dead code in the
+      meantime.
 - [ ] **Split run/results/export**: they sit on `MasterDetail`/`Tabs` since Phase B, but `run.tsx`
       is still ~1,330 lines; split it into `pages/run/{page,setup-dialog,detail,timeline}.tsx`;
       extract `useRunSetupSelection` (standard→version→profile→params cascade) and
