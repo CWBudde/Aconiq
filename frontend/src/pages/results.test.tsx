@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type {
   ArtifactRef,
   RasterMetadata,
@@ -13,10 +14,14 @@ import { resetProjectSyncStore } from "@/model/use-project-sync";
 import { m } from "@/i18n/messages";
 
 /**
- * Characterisation tests: they describe what the results page does today, not
- * what it ought to do. They exist as a safety net under a refactor, so where
- * the current behaviour is wrong the wrong behaviour is pinned deliberately
- * and marked as such.
+ * Mostly characterisation tests: they describe what the results page does
+ * today, not what it ought to do. They exist as a safety net under a refactor,
+ * so where the current behaviour is wrong the wrong behaviour is pinned
+ * deliberately and marked as such.
+ *
+ * The selection is the exception. It used to fall back to the first completed
+ * run and the tests pinned that; it is now the `:runId` segment of the URL and
+ * these assertions are specification, not description.
  *
  * What this file does *not* own is the CSV spelling. The download block below
  * asserts page behaviour — which table is handed over, what blob comes back,
@@ -233,10 +238,40 @@ beforeEach(() => {
   resetProjectSyncStore();
 });
 
-/** Renders the page with `runs` and the first completed run auto-selected. */
-function renderResults(runs: RunSummary[] = [run("run-1")]) {
+/** Reads the current path out, so a click's navigation is asserted directly. */
+function PathProbe() {
+  return <span data-testid="pathname">{useLocation().pathname}</span>;
+}
+
+function pathname(): string {
+  return screen.getByTestId("pathname").textContent;
+}
+
+/**
+ * Renders the page under the same index/`:runId` pair `routes.tsx` registers,
+ * so `useParams` sees what it sees in the app.
+ *
+ * `path` defaults to the first completed run's own URL, because that is what
+ * "a run is open" means now and most of this file is about the detail pane.
+ * The tests that are about the selection itself pass a path explicitly — the
+ * bare `/results` for "nothing selected", a bogus id for the unknown case.
+ */
+function renderResults(runs: RunSummary[] = [run("run-1")], path?: string) {
   state.runs = runs;
-  render(<ResultsPage />);
+  const firstCompleted = runs.find((r) => r.status === "completed");
+  const entry =
+    path ?? (firstCompleted ? `/results/${firstCompleted.id}` : "/results");
+  render(
+    <MemoryRouter initialEntries={[entry]}>
+      <PathProbe />
+      <Routes>
+        <Route path="/results">
+          <Route index element={<ResultsPage />} />
+          <Route path=":runId" element={<ResultsPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 function tab(name: string): HTMLElement {
@@ -264,9 +299,9 @@ function rowIds(): string[] {
     .map((row) => within(row).getAllByRole("cell")[0]?.textContent ?? "");
 }
 
-/** The nth row of the run list, as the button a user clicks. */
+/** The nth row of the run list, as the link a user clicks. */
 function listItem(index: number): HTMLElement {
-  const item = within(screen.getByRole("list")).getAllByRole("button")[index];
+  const item = within(screen.getByRole("list")).getAllByRole("link")[index];
   if (item === undefined)
     throw new Error(`no run list item at ${String(index)}`);
   return item;
@@ -309,7 +344,7 @@ describe("ResultsPage shell", () => {
     ]);
 
     const list = screen.getByRole("list");
-    const items = within(list).getAllByRole("button");
+    const items = within(list).getAllByRole("link");
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent("run-1");
     expect(items[1]).toHaveTextContent("run-4");
@@ -326,23 +361,78 @@ describe("ResultsPage shell", () => {
     expect(screen.getByText(`1 ${m.msg_completed_runs()}`)).toBeInTheDocument();
   });
 
-  it("selects the first completed run without a click", () => {
-    renderResults([run("run-1"), run("run-4")]);
+  it("selects nothing until a run id is in the URL", () => {
+    // Was: "selects the first completed run without a click". The list arrives
+    // in backend order, so the run this used to open was not the newest one,
+    // merely the first — someone else's numbers under the user's heading.
+    renderResults([run("run-1"), run("run-4")], "/results");
 
-    const items = within(screen.getByRole("list")).getAllByRole("button");
-    expect(items[0]).toHaveAttribute("aria-current", "true");
-    expect(items[1]).not.toHaveAttribute("aria-current");
+    const items = within(screen.getByRole("list")).getAllByRole("link");
+    expect(items.some((item) => item.hasAttribute("aria-current"))).toBe(false);
+    expect(
+      screen.getByText(m.msg_select_completed_run_details()),
+    ).toBeInTheDocument();
+    // Nothing is fetched for a run nobody asked for.
+    expect(state.receiverTableArtifactIds).not.toContain(receiverArtifact.id);
+  });
+
+  it("opens the run named in the URL", () => {
+    renderResults([run("run-1"), run("run-4")], "/results/run-4");
+
+    const items = within(screen.getByRole("list")).getAllByRole("link");
+    expect(items[0]).not.toHaveAttribute("aria-current");
+    expect(items[1]).toHaveAttribute("aria-current", "page");
     expect(state.receiverTableArtifactIds).toContain(receiverArtifact.id);
   });
 
   it("switches the detail pane when another run is selected", () => {
-    renderResults([run("run-1"), run("run-4")]);
+    renderResults([run("run-1"), run("run-4")], "/results/run-1");
 
     fireEvent.click(listItem(1));
 
-    const items = within(screen.getByRole("list")).getAllByRole("button");
+    expect(pathname()).toBe("/results/run-4");
+    const items = within(screen.getByRole("list")).getAllByRole("link");
     expect(items[0]).not.toHaveAttribute("aria-current");
-    expect(items[1]).toHaveAttribute("aria-current", "true");
+    expect(items[1]).toHaveAttribute("aria-current", "page");
+  });
+
+  it("names an unknown run id rather than falling back to another run", () => {
+    renderResults([run("run-1")], "/results/nope");
+
+    expect(
+      screen.getByText(m.msg_unknown_run_id({ runId: "nope" })),
+    ).toBeInTheDocument();
+    // The list stays populated, so the way out is right there — but no other
+    // run's detail leaks in.
+    const items = within(screen.getByRole("list")).getAllByRole("link");
+    expect(items).toHaveLength(1);
+    expect(items[0]).not.toHaveAttribute("aria-current");
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("says a run that has not completed has no results", () => {
+    renderResults([run("run-2", { status: "failed" })], "/results/run-2");
+
+    expect(
+      screen.getByText(m.msg_run_not_completed({ runId: "run-2" })),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_unknown_run_id({ runId: "run-2" })),
+    ).toBeNull();
+  });
+
+  it("does not call a run unknown while the runs are loading", () => {
+    // A deep link arrives before `useRuns` resolves. Calling the id unknown
+    // there would flash a warning on every hard reload of a perfectly good URL.
+    state.runsLoading = true;
+    renderResults([], "/results/run-1");
+
+    expect(
+      screen.getByRole("heading", { name: m.page_title_results() }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_unknown_run_id({ runId: "run-1" })),
+    ).toBeNull();
   });
 
   it("offers the empty state when no run has completed", () => {
@@ -356,7 +446,7 @@ describe("ResultsPage shell", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The invariant results.tsx:688-689 states in a comment and nothing enforces
+// The invariant the page states in a comment and nothing else enforces
 // ---------------------------------------------------------------------------
 
 describe("ResultsPage header above transient states", () => {
@@ -366,7 +456,7 @@ describe("ResultsPage header above transient states", () => {
 
   it("keeps the page heading while the runs are loading", () => {
     state.runsLoading = true;
-    render(<ResultsPage />);
+    renderResults([]);
 
     expect(pageHeading()).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
@@ -374,7 +464,7 @@ describe("ResultsPage header above transient states", () => {
 
   it("keeps the page heading when the runs request fails", () => {
     state.runsError = new Error("Request failed: 500");
-    render(<ResultsPage />);
+    renderResults([]);
 
     expect(pageHeading()).toBeInTheDocument();
     expect(screen.getByText(m.msg_api_error_results())).toBeInTheDocument();
@@ -845,7 +935,7 @@ describe("ResultsPage heading order", () => {
 
   it("keeps heading levels contiguous in both transient states", () => {
     state.runsLoading = true;
-    render(<ResultsPage />);
+    renderResults([]);
     expect(assertContiguousHeadings()).toEqual([2]);
 
     screen.getByRole("heading", { name: m.page_title_results() });

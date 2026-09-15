@@ -9,22 +9,41 @@ import type { Locator, Page } from "@playwright/test";
 /**
  * The path the app is mounted under. Must match `base` in vite.config.ts (and
  * therefore `import.meta.env.BASE_URL`, which the router uses as `basename`).
- * Playwright's `baseURL` carries it too, but `page.goto("/map")` resolves an
+ * Playwright's `baseURL` carries it too, but `page.goto("/model")` resolves an
  * absolute path against the origin and would drop it, so every navigation in
  * the specs goes through `appPath()` instead.
  */
 export const BASE_PATH = "/Aconiq";
 
-/** Every route the router registers (src/routes.tsx). `/` redirects to `/welcome`. */
+/**
+ * A run id no project can hold, used to reach the unknown-run warning.
+ * Exported so a spec can wait for the warning that names it rather than for
+ * the page's loading state.
+ */
+export const UNKNOWN_RUN_ID = "does-not-exist";
+
+/**
+ * The routes the accessibility baseline visits. Every route `src/routes.tsx`
+ * registers, plus one bogus run id per parameterised section: the unknown-run
+ * warning is a `role="alert"` on a tinted surface, and neither its contrast
+ * nor its announcement is something jsdom can check.
+ *
+ * `/map` is the retired name of `/model` and matches no route, so it is the
+ * catch-all: the not-found page renders inside the real shell, and nothing
+ * else in this list reaches it — both bogus run ids match `:runId`.
+ */
 export const ROUTES = [
   "/welcome",
-  "/map",
+  "/model",
   "/import",
   "/run",
   "/results",
+  `/results/${UNKNOWN_RUN_ID}`,
   "/export",
+  `/export/${UNKNOWN_RUN_ID}`,
   "/status",
   "/settings",
+  "/map",
 ] as const;
 
 export type Route = (typeof ROUTES)[number];
@@ -34,7 +53,7 @@ export const LOCALES = ["en", "de"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
-/** Returns the base-prefixed path for an app route, e.g. `/map` → `/Aconiq/map`. */
+/** Returns the base-prefixed path for an app route, e.g. `/model` → `/Aconiq/model`. */
 export function appPath(route: string): string {
   return `${BASE_PATH}${route}`;
 }

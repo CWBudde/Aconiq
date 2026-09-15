@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ChevronRight } from "lucide-react";
+import { Link } from "react-router";
 import { cn } from "@/ui/lib/utils";
 
 export interface MasterDetailProps extends Omit<
@@ -77,9 +78,8 @@ export function ItemList({
   );
 }
 
-export interface ListItemProps {
+interface ListItemBase {
   selected: boolean;
-  onSelect: () => void;
   /** Main line, truncated. */
   title: React.ReactNode;
   /** Small muted line under the title: a time, a duration, a count. */
@@ -94,12 +94,33 @@ export interface ListItemProps {
 }
 
 /**
- * One row of an `ItemList`: a full-width button that selects the item. The
- * selected row is marked with `aria-current`, so the state is exposed and
- * not just painted.
+ * A row is a link when it targets a route and a button when it only changes
+ * local state. The union makes the two mutually exclusive, so a row cannot
+ * carry both and quietly pick one.
+ *
+ * `?: undefined` rather than `?: never`, because `exactOptionalPropertyTypes`
+ * rejects an explicit `undefined` against `never` and would break any call
+ * site that spreads its props.
+ */
+export type ListItemProps = ListItemBase &
+  (
+    | { to: string; onSelect?: undefined }
+    | { onSelect: () => void; to?: undefined }
+  );
+
+/**
+ * One row of an `ItemList`. A row that navigates is a real `<a>`: a button
+ * that changes the URL has no href to copy, no middle-click, no context menu
+ * and no entry in a screen reader's links rotor — and no axe rule catches it,
+ * so the distinction has to be made deliberately rather than inherited.
+ *
+ * The selected row is marked with `aria-current`, so the state is exposed and
+ * not just painted. A selected link really is the current page and says
+ * `"page"`; a selected button is only a selection and says `"true"`.
  */
 export function ListItem({
   selected,
+  to,
   onSelect,
   title,
   meta,
@@ -109,44 +130,56 @@ export function ListItem({
   className,
 }: ListItemProps) {
   const hasTopLine = badge != null || code != null;
+  const shared = {
+    "aria-current": selected ? (to != null ? "page" : "true") : undefined,
+    "data-selected": selected ? "true" : undefined,
+    className: cn(
+      "flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+      selected && "bg-accent text-accent-foreground",
+      className,
+    ),
+  } as const;
+
+  const body = (
+    <>
+      <div className="min-w-0 flex-1">
+        {hasTopLine ? (
+          <div className="flex items-center gap-2">
+            {badge}
+            {code != null ? (
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {code}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        <p className={cn("truncate text-sm", hasTopLine && "mt-0.5")}>
+          {title}
+        </p>
+        {meta != null ? (
+          <p className="truncate text-xs text-muted-foreground">{meta}</p>
+        ) : null}
+      </div>
+      {chevron ? (
+        <ChevronRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground"
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <li data-slot="list-item">
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? "true" : undefined}
-        data-selected={selected ? "true" : undefined}
-        className={cn(
-          "flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          selected && "bg-accent text-accent-foreground",
-          className,
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          {hasTopLine ? (
-            <div className="flex items-center gap-2">
-              {badge}
-              {code != null ? (
-                <span className="truncate font-mono text-xs text-muted-foreground">
-                  {code}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <p className={cn("truncate text-sm", hasTopLine && "mt-0.5")}>
-            {title}
-          </p>
-          {meta != null ? (
-            <p className="truncate text-xs text-muted-foreground">{meta}</p>
-          ) : null}
-        </div>
-        {chevron ? (
-          <ChevronRight
-            aria-hidden="true"
-            className="size-4 shrink-0 text-muted-foreground"
-          />
-        ) : null}
-      </button>
+      {to != null ? (
+        <Link to={to} {...shared}>
+          {body}
+        </Link>
+      ) : (
+        <button type="button" onClick={onSelect} {...shared}>
+          {body}
+        </button>
+      )}
     </li>
   );
 }

@@ -55,7 +55,7 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("link", { name: m.nav_import() })).toBeVisible();
-    expect(screen.queryByRole("link", { name: m.nav_map() })).toBeNull();
+    expect(screen.queryByRole("link", { name: m.nav_model() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_run() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_results() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_export() })).toBeNull();
@@ -75,7 +75,7 @@ describe("AppShell", () => {
     };
 
     render(
-      <MemoryRouter initialEntries={["/map"]}>
+      <MemoryRouter initialEntries={["/model"]}>
         <AppShell>
           <div>content</div>
         </AppShell>
@@ -83,7 +83,7 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("link", { name: m.nav_import() })).toBeVisible();
-    expect(screen.getByRole("link", { name: m.nav_map() })).toBeVisible();
+    expect(screen.getByRole("link", { name: m.nav_model() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_run() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_results() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_export() })).toBeVisible();
@@ -91,7 +91,7 @@ describe("AppShell", () => {
 });
 
 describe("AppShell landmarks", () => {
-  function renderShell(path = "/map", children?: React.ReactNode) {
+  function renderShell(path = "/model", children?: React.ReactNode) {
     mockProjectStatus = {
       isLoading: false,
       isError: false,
@@ -122,7 +122,9 @@ describe("AppShell landmarks", () => {
     const nav = screen.getByRole("navigation", { name: m.nav_primary_label() });
     // Logo, workspace links and footer links all sit inside it.
     expect(within(nav).getByText("AconiQ")).toBeVisible();
-    expect(within(nav).getByRole("link", { name: m.nav_map() })).toBeVisible();
+    expect(
+      within(nav).getByRole("link", { name: m.nav_model() }),
+    ).toBeVisible();
     expect(
       within(nav).getByRole("link", { name: m.nav_settings() }),
     ).toBeVisible();
@@ -134,8 +136,51 @@ describe("AppShell landmarks", () => {
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("link", { name: m.nav_map() })).not.toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: m.nav_model() }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks a section's link as current on a path below it", () => {
+    // The rail matched by exact equality until the run routes were
+    // parameterised, so selecting a run un-highlighted the whole rail.
+    renderShell("/results/run-1");
+    expect(screen.getByRole("link", { name: m.nav_results() })).toHaveAttribute(
       "aria-current",
+      "page",
+    );
+    expect(
+      screen.getByRole("link", { name: m.nav_export() }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks nothing current on a URL the route table sends to not-found", () => {
+    // `/settings/typo` and `/results/a/b` both render NotFoundPage, so the
+    // rail must not claim them: a plain prefix match lit Settings and Results
+    // on pages that do not exist.
+    const { unmount } = renderShell("/settings/typo");
+    expect(
+      screen.getByRole("link", { name: m.nav_settings() }),
+    ).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_workspace(),
+    );
+    unmount();
+
+    renderShell("/results/a/b");
+    expect(
+      screen.getByRole("link", { name: m.nav_results() }),
+    ).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_workspace(),
+    );
+  });
+
+  it("titles the header from the matched route, not from an exact path", () => {
+    renderShell("/results/run-1");
+    // The shell renders exactly one h1, in the header.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_results(),
     );
   });
 
@@ -153,7 +198,7 @@ describe("AppShell landmarks", () => {
 
   it("toggles the sidebar on Ctrl+B, but not from inside a text field", () => {
     const { container } = renderShell(
-      "/map",
+      "/model",
       <input aria-label="height" defaultValue="5" />,
     );
     const rail = container.querySelector("[data-state]");

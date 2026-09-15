@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { ItemList, ListItem, MasterDetail } from "./master-detail";
 
 describe("MasterDetail", () => {
@@ -110,5 +111,52 @@ describe("ItemList and ListItem", () => {
       </ItemList>,
     );
     expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("ListItem as a link", () => {
+  function renderRows() {
+    return render(
+      <MemoryRouter>
+        <ItemList>
+          <ListItem selected to="/results/a" title="Run A" />
+          <ListItem selected={false} to="/results/b" title="Run B" />
+        </ItemList>
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders a row that targets a route as a real link", () => {
+    renderRows();
+    const rows = screen.getAllByRole("link");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveAttribute("href", "/results/a");
+  });
+
+  it("marks the selected link as the current page, not merely as true", () => {
+    // A selected link IS the current page. `aria-current="true"` announces
+    // "current" where "page" announces "current page", and axe accepts both —
+    // so nothing but this assertion catches the drift.
+    renderRows();
+    const [first, second] = screen.getAllByRole("link");
+    expect(first).toHaveAttribute("aria-current", "page");
+    expect(second).not.toHaveAttribute("aria-current");
+  });
+
+  it("keeps the selected styling hook on the link variant", () => {
+    renderRows();
+    const [first] = screen.getAllByRole("link");
+    expect(first).toHaveAttribute("data-selected", "true");
+    expect(first?.className).toContain("bg-accent");
+  });
+
+  it("still renders a button when the row only changes local state", () => {
+    render(
+      <ItemList>
+        <ListItem selected onSelect={() => undefined} title="Run A" />
+      </ItemList>,
+    );
+    expect(screen.getByRole("button")).toHaveAttribute("aria-current", "true");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

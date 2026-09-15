@@ -79,7 +79,7 @@ describe("Accessibility: AppShell", () => {
   // milliseconds rather than a browser.
   it("has no landmark or heading-order violations", async () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/map"]}>
+      <MemoryRouter initialEntries={["/model"]}>
         <AppShell>
           <h2>Page</h2>
           <p>Content here.</p>
