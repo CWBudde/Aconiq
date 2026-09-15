@@ -45,6 +45,7 @@ import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
+import { summariseIndicators } from "@/results/summarise";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -84,17 +85,10 @@ function ReceiversTab({ run }: { run: RunSummary }) {
   const indicators = useMemo(() => data?.indicator_order ?? [], [data]);
   const unit = data?.unit ?? "";
 
-  const summaryCards = useMemo(() => {
-    if (!data) return [];
-    return indicators.map((ind) => {
-      const vals = data.records.map((r) => r.values[ind] ?? 0);
-      if (vals.length === 0) return { ind, min: 0, max: 0, mean: 0 };
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      return { ind, min, max, mean };
-    });
-  }, [data, indicators]);
+  const summaryCards = useMemo(
+    () => (data ? summariseIndicators(data.records, indicators) : []),
+    [data, indicators],
+  );
 
   const filteredRecords = useMemo(() => {
     if (!data) return [];
