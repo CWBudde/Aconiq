@@ -8,7 +8,7 @@ import { PageHeader } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { runTiming } from "@/ui/run-status";
 import { useRuns } from "@/api/hooks";
-import { getStandardLabel } from "@/run/standards-meta";
+import { useStandardLabel } from "@/run/use-standard-label";
 import { RunDetail } from "@/run/detail";
 import { RunFilterBar, type RunFilters } from "@/run/filter-bar";
 import { RunSetupDialog } from "@/run/setup-dialog";
@@ -25,6 +25,7 @@ const EMPTY_FILTERS: RunFilters = {
 };
 
 export default function RunPage() {
+  const standardLabel = useStandardLabel();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [filters, setFilters] = useState<RunFilters>(EMPTY_FILTERS);
@@ -138,7 +139,7 @@ export default function RunPage() {
                     }}
                     badge={<StatusBadge status={run.status} />}
                     code={run.id}
-                    title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
+                    title={`${standardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                     meta={runTiming(run)}
                   />
                 ))}

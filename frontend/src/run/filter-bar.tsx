@@ -9,7 +9,7 @@ import {
 } from "@/ui/components/select";
 import type { RunSummary } from "@/api/client";
 import { statusLabel } from "@/ui/run-status";
-import { getStandardLabel } from "@/run/standards-meta";
+import { useStandardLabel } from "@/run/use-standard-label";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,7 @@ export function RunFilterBar({
   filters: RunFilters;
   onChange: (f: RunFilters) => void;
 }) {
+  const standardLabel = useStandardLabel();
   const statuses = useMemo(
     () => Array.from(new Set(runs.map((r) => r.status))).sort(),
     [runs],
@@ -41,9 +42,9 @@ export function RunFilterBar({
   const standards = useMemo(
     () =>
       Array.from(new Set(runs.map((r) => r.standard_id))).sort((a, b) =>
-        getStandardLabel(a).localeCompare(getStandardLabel(b)),
+        standardLabel(a).localeCompare(standardLabel(b)),
       ),
-    [runs],
+    [runs, standardLabel],
   );
   const scenarios = useMemo(
     () => Array.from(new Set(runs.map((r) => r.scenario_id))).sort(),
@@ -95,7 +96,7 @@ export function RunFilterBar({
           <SelectItem value="_all">{m.label_standard_filter()}</SelectItem>
           {standards.map((s) => (
             <SelectItem key={s} value={s}>
-              {getStandardLabel(s)}
+              {standardLabel(s)}
             </SelectItem>
           ))}
         </SelectContent>

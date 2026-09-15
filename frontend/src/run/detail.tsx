@@ -14,7 +14,7 @@ import { backend } from "@/api/backend";
 import { asAPIRequestError } from "@/api/api-error";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { ProgressTimeline } from "@/run/timeline";
-import { getStandardLabel } from "@/run/standards-meta";
+import { useStandardLabel } from "@/run/use-standard-label";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -139,6 +139,7 @@ export function RunDetail({
     run.status === "running" || run.status === "pending",
   );
   const lines = log?.lines ?? [];
+  const standardLabel = useStandardLabel();
   const deleteRun = useDeleteRun();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Read in `onCloseAutoFocus`, which Radix fires as the dialog closes — a ref
@@ -174,7 +175,7 @@ export function RunDetail({
           </span>
         </div>
         <p className="text-sm">
-          <span>{getStandardLabel(run.standard_id)}</span>
+          <span>{standardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}

@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { getStandardLabel, KNOWN_STANDARD_IDS } from "./standards-meta";
+import { EVIDENCE_TIERS } from "@/api/evidence-tier";
+import { m } from "@/i18n/messages";
 
 /**
- * The ids `backend/internal/standards/registry.go` registers.
+ * The ids `backend/internal/standards/registry.go` registers today.
  *
- * Written out rather than imported: the registry is Go, and this list is the
- * assertion. If a module is added there without a name here, the new id shows
- * up in the API as a raw string and this test is where that is caught — so the
- * list has to be maintained, which is the point.
+ * Copied, not derived — and that is a limit worth stating plainly rather than
+ * dressing up. The registry composes its ids inside each module's
+ * `Descriptor()`, so there is no file a test can read to learn them, and a
+ * module added there while this list stays untouched leaves every assertion
+ * below green. What catches that case at runtime is `getStandardLabel`'s
+ * fallback: an unnamed id prints as itself, which is ugly and honest, not
+ * wrong. A generated standards manifest shared by both targets is the real
+ * fix; `PLAN.md` carries it as open work.
  */
 const REGISTERED_IDS = [
   "dummy-freefield",
@@ -25,18 +31,6 @@ const REGISTERED_IDS = [
   "schall03",
 ];
 
-/** Everything the registry declares `scaffold`. */
-const SCAFFOLD_IDS = [
-  "bub-industry",
-  "bub-rail",
-  "bub-road",
-  "buf-aircraft",
-  "cnossos-aircraft",
-  "cnossos-industry",
-  "cnossos-rail",
-  "cnossos-road",
-];
-
 describe("getStandardLabel", () => {
   it("names every standard the backend registers", () => {
     for (const id of REGISTERED_IDS) {
@@ -48,23 +42,51 @@ describe("getStandardLabel", () => {
     expect([...KNOWN_STANDARD_IDS].sort()).toEqual([...REGISTERED_IDS].sort());
   });
 
-  it("marks every scaffold as one, wherever its name is shown", () => {
-    // The tier badge sits beside the name in two of the five places it is
-    // rendered; the filter bar, the detail header and the list row have none,
-    // and `RunSummary` carries no tier to give them one. So the limit is in the
-    // name. See docs/conformance/cnossos-umfangserklaerung.md.
-    for (const id of SCAFFOLD_IDS) {
-      expect(getStandardLabel(id), id).toContain("Gerüst");
-    }
-  });
-
-  it("does not mark a normative module as a scaffold", () => {
-    for (const id of ["rls19-road", "schall03", "iso9613"]) {
-      expect(getStandardLabel(id), id).not.toContain("Gerüst");
-    }
-  });
-
   it("falls back to the id a newer backend registered", () => {
     expect(getStandardLabel("something-later")).toBe("something-later");
+  });
+});
+
+describe("the evidence qualifier", () => {
+  it("is taken from the tier it is given, not from the id", () => {
+    // The whole point: the same module reads differently when the backend
+    // reclassifies it, and no table here has to be edited for that to happen.
+    expect(getStandardLabel("bub-road", "scaffold")).toContain(
+      m.evidence_tier_scaffold(),
+    );
+    expect(getStandardLabel("bub-road", "normative")).not.toContain(
+      m.evidence_tier_scaffold(),
+    );
+  });
+
+  it("qualifies every tier that is not normative", () => {
+    for (const tier of EVIDENCE_TIERS) {
+      const label = getStandardLabel("rls19-road", tier);
+      if (tier === "normative") {
+        expect(label, tier).toBe("RLS-19 Straße");
+      } else {
+        expect(label, tier).not.toBe("RLS-19 Straße");
+      }
+    }
+  });
+
+  it("says nothing when no tier was published", () => {
+    // An older backend omits the field, and an absent claim is not a tier —
+    // the same rule `EvidenceTierBadge` follows. Guessing one from the id is
+    // what this module stopped doing.
+    expect(getStandardLabel("bub-road")).toBe("BUB Straße");
+    expect(getStandardLabel("bub-road", "")).toBe("BUB Straße");
+  });
+
+  it("invents nothing for a tier this build does not know", () => {
+    expect(getStandardLabel("bub-road", "provisional")).toBe("BUB Straße");
+  });
+
+  it("spells the qualifier with the badge's own words", () => {
+    // One source for the wording, so the name beside a badge and the badge
+    // cannot disagree.
+    expect(getStandardLabel("dummy-freefield", "test-fixture")).toBe(
+      `Freifeld (${m.evidence_tier_test_fixture()})`,
+    );
   });
 });

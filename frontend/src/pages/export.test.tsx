@@ -20,6 +20,8 @@ import { m } from "@/i18n/messages";
 
 const state = vi.hoisted(() => {
   const value: {
+    /** Descriptors for `useStandardLabel`; empty means no tier qualifier. */
+    standards: { id: string; evidence_tier?: string }[];
     canExport: boolean;
     runs: unknown[] | undefined;
     runsLoading: boolean;
@@ -29,6 +31,7 @@ const state = vi.hoisted(() => {
     createExportError: Error | null;
     createExportResult: { id: string };
   } = {
+    standards: [],
     canExport: false,
     runs: [],
     runsLoading: false,
@@ -57,6 +60,14 @@ vi.mock("@/api/backend", () => ({
 }));
 
 vi.mock("@/api/hooks", () => ({
+  // Only the names this page reaches for: the factory replaces the module
+  // outright, so one it omits reads as `undefined` at render time rather
+  // than as a type error. `useStandardLabel` calls this one.
+  useStandards: () => ({
+    data: state.standards,
+    isLoading: false,
+    error: null,
+  }),
   useRuns: () => ({
     data: state.runs,
     isLoading: state.runsLoading,

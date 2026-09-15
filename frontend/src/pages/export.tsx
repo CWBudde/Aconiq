@@ -37,7 +37,7 @@ import { formatDateTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { getArtifactContentURL, useCreateExport } from "@/api/hooks";
-import { getStandardLabel } from "@/run/standards-meta";
+import { useStandardLabel } from "@/run/use-standard-label";
 import { useRunFromRoute } from "@/run/use-run-from-route";
 import { backend } from "@/api/backend";
 import { exportCommand } from "@/api/cli";
@@ -223,6 +223,7 @@ function NewExportDialog({
   runs: RunSummary[];
   onCreated: (runId: string) => void;
 }) {
+  const standardLabel = useStandardLabel();
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const createExport = useCreateExport();
   // No fallback here: `exportCommand` substitutes its own placeholder for a
@@ -269,7 +270,7 @@ function NewExportDialog({
                   <SelectItem key={r.id} value={r.id}>
                     <span className="font-mono">{r.id}</span>{" "}
                     <span className="text-muted-foreground">
-                      ({getStandardLabel(r.standard_id)} / {r.version})
+                      ({standardLabel(r.standard_id)} / {r.version})
                     </span>
                   </SelectItem>
                 ))}
@@ -339,6 +340,7 @@ function exportMeta(run: RunSummary): string {
 }
 
 export default function ExportPage() {
+  const standardLabel = useStandardLabel();
   const { runId } = useParams();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -437,7 +439,7 @@ export default function ExportPage() {
                     />
                   }
                   code={run.id}
-                  title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
+                  title={`${standardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                   meta={exportMeta(run)}
                 />
               ))}

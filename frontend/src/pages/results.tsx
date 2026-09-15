@@ -40,7 +40,7 @@ import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { runTiming } from "@/ui/run-status";
 import { useReceiverTable, useRasterMetadata } from "@/api/hooks";
-import { getStandardLabel } from "@/run/standards-meta";
+import { useStandardLabel } from "@/run/use-standard-label";
 import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
@@ -437,6 +437,8 @@ function RasterTab({ run }: { run: RunSummary }) {
 // ---------------------------------------------------------------------------
 
 function RunColumn({ run, label }: { run: RunSummary; label: string }) {
+  const standardLabel = useStandardLabel();
+
   return (
     <Card className="flex-1 p-4">
       <SectionHeading variant="eyebrow" className="mb-1">
@@ -446,7 +448,7 @@ function RunColumn({ run, label }: { run: RunSummary; label: string }) {
       <div className="mt-2 space-y-0.5 text-xs">
         <p>
           <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
-          <span>{getStandardLabel(run.standard_id)}</span>
+          <span>{standardLabel(run.standard_id)}</span>
         </p>
         <p>
           <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
@@ -482,6 +484,7 @@ function CompareTab({
   run: RunSummary;
   allCompletedRuns: RunSummary[];
 }) {
+  const standardLabel = useStandardLabel();
   const [compareRunId, setCompareRunId] = useState<string>("");
   const otherRuns = allCompletedRuns.filter((r) => r.id !== run.id);
   const compareRun = otherRuns.find((r) => r.id === compareRunId) ?? null;
@@ -510,7 +513,7 @@ function CompareTab({
               <SelectItem key={r.id} value={r.id}>
                 <span className="font-mono">{r.id}</span>{" "}
                 <span className="text-muted-foreground">
-                  ({getStandardLabel(r.standard_id)} / {r.version})
+                  ({standardLabel(r.standard_id)} / {r.version})
                 </span>
               </SelectItem>
             ))}
@@ -551,6 +554,7 @@ function RunResultDetail({
   run: RunSummary;
   allCompletedRuns: RunSummary[];
 }) {
+  const standardLabel = useStandardLabel();
   const [tab, setTab] = useState<ResultTab>("receivers");
 
   return (
@@ -564,7 +568,7 @@ function RunResultDetail({
           </span>
         </div>
         <p className="mt-0.5 text-sm">
-          <span>{getStandardLabel(run.standard_id)}</span>
+          <span>{standardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}
@@ -635,6 +639,7 @@ function isCompleted(run: RunSummary): boolean {
 }
 
 export default function ResultsPage() {
+  const standardLabel = useStandardLabel();
   const { runId } = useParams();
   const {
     eligibleRuns: completedRuns,
@@ -708,7 +713,7 @@ export default function ResultsPage() {
                 to={`/results/${run.id}`}
                 badge={<StatusBadge status={run.status} />}
                 code={run.id}
-                title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
+                title={`${standardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                 meta={runTiming(run)}
               />
             ))}

@@ -331,7 +331,7 @@ function RunSetupForm({
                     {standards?.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         <span className="flex items-center gap-2">
-                          <span>{getStandardLabel(s.id)}</span>
+                          <span>{getStandardLabel(s.id, s.evidence_tier)}</span>
                           <EvidenceTierBadge tier={s.evidence_tier} />
                         </span>
                       </SelectItem>
@@ -385,7 +385,10 @@ function RunSetupForm({
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium">
-                    {getStandardLabel(selectedStandard.id)}
+                    {getStandardLabel(
+                      selectedStandard.id,
+                      selectedStandard.evidence_tier,
+                    )}
                   </span>
                   <EvidenceTierBadge tier={selectedStandard.evidence_tier} />
                 </div>
