@@ -187,7 +187,9 @@ describe("MapPage", () => {
 
   it("opens the editor on the feature the select parameter names", () => {
     // The link the import page's done step builds for a finding.
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     renderPageAt("/model?select=src-1");
 
     expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
@@ -196,14 +198,18 @@ describe("MapPage", () => {
   it("strips the select parameter once it has been honoured", () => {
     // Otherwise a Back re-opens the editor on a feature the reader has moved
     // on from.
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     renderPageAt("/model?select=src-1");
 
     expect(screen.getByTestId("location-search").textContent).toBe("");
   });
 
   it("does not show the panel when the model already has content", () => {
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     renderPage();
 
     expect(

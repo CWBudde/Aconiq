@@ -33,7 +33,7 @@ vi.mock("@/wasm/kernel", async () => {
 import { browserBackend, resetBrowserBackendForTests } from "./browser-backend";
 import { clearPersistedState } from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
-import { normalizeGeoJSON } from "@/model/normalize";
+import { normalizeModelGeoJSON } from "@/model/normalize";
 import type {
   GeoJSONFeatureCollection,
   ModelReceiver,
@@ -150,14 +150,12 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
       receivers: ReceiverSnapshot[];
     };
 
-    const { features, skipped } = normalizeGeoJSON(collection);
+    const { features, skipped } = normalizeModelGeoJSON(collection);
 
     // A silently skipped source or building would make the browser compute a
     // smaller scene and the comparison would then be measuring the wrong thing.
-    const unexpected = skipped.filter(
-      (entry) => !entry.reason.includes('unknown kind "receiver"'),
-    );
-    expect(unexpected).toEqual([]);
+    // Receivers are read rather than skipped now, so nothing is exempt.
+    expect(skipped).toEqual([]);
 
     useModelStore.setState({
       features,
@@ -225,7 +223,7 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
     ) as { receivers: ReceiverSnapshot[] };
 
     useModelStore.setState({
-      features: normalizeGeoJSON(collection).features,
+      features: normalizeModelGeoJSON(collection).features,
       receivers: receiversFrom(collection),
       calcArea: null,
     });

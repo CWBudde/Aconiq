@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeGeoJSON, normalizeModelGeoJSON } from "./normalize";
+import { normalizeModelGeoJSON } from "./normalize";
 import { DEFAULT_RECEIVER_HEIGHT_M } from "./types";
 import type { GeoJSONFeatureCollection } from "./types";
 
@@ -41,9 +41,36 @@ const validCollection: GeoJSONFeatureCollection = {
   ],
 };
 
-describe("normalizeGeoJSON", () => {
+/**
+ * The one reader of a v1 FeatureCollection. Receivers and the calculation area
+ * survive it; the feature-only reader that folded them into `skipped` is gone,
+ * along with the workspaces it would have emptied.
+ */
+describe("normalizeModelGeoJSON", () => {
+  const receiverFeature = {
+    type: "Feature" as const,
+    properties: { id: "r1", kind: "receiver", height_m: 4 },
+    geometry: { type: "Point", coordinates: [10, 51] },
+  };
+
+  const areaFeature = {
+    type: "Feature" as const,
+    properties: { id: "calc-area", kind: "calc-area" },
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [10, 51],
+          [10.1, 51],
+          [10.1, 51.1],
+          [10, 51],
+        ],
+      ],
+    },
+  };
+
   it("normalizes a valid FeatureCollection", () => {
-    const result = normalizeGeoJSON(validCollection);
+    const result = normalizeModelGeoJSON(validCollection);
     expect(result.features).toHaveLength(3);
     expect(result.features[0]?.kind).toBe("source");
     expect(result.features[0]?.sourceType).toBe("point");
@@ -54,7 +81,7 @@ describe("normalizeGeoJSON", () => {
   });
 
   it("assigns unique IDs to features without IDs", () => {
-    const result = normalizeGeoJSON(validCollection);
+    const result = normalizeModelGeoJSON(validCollection);
     const ids = result.features.map((f) => f.id);
     expect(new Set(ids).size).toBe(3);
   });
@@ -71,12 +98,12 @@ describe("normalizeGeoJSON", () => {
         },
       ],
     };
-    const result = normalizeGeoJSON(collection);
+    const result = normalizeModelGeoJSON(collection);
     expect(result.features[0]?.id).toBe("my-id");
   });
 
   it("returns empty array for empty collection", () => {
-    const result = normalizeGeoJSON({
+    const result = normalizeModelGeoJSON({
       type: "FeatureCollection",
       features: [],
     });
@@ -94,13 +121,13 @@ describe("normalizeGeoJSON", () => {
         },
       ],
     };
-    const result = normalizeGeoJSON(collection);
+    const result = normalizeModelGeoJSON(collection);
     expect(result.features).toEqual([]);
     expect(result.skipped).toHaveLength(1);
   });
 
   it("preserves standard-specific source properties", () => {
-    const result = normalizeGeoJSON({
+    const result = normalizeModelGeoJSON({
       type: "FeatureCollection",
       features: [
         {
@@ -128,36 +155,6 @@ describe("normalizeGeoJSON", () => {
     expect(result.features[0]?.properties?.["speed_pkw_kph"]).toBe(70);
     expect(result.features[0]?.properties?.["traffic_day_pkw"]).toBe(900);
   });
-});
-
-/**
- * The shim `normalizeGeoJSON` projects from: receivers and the calculation
- * area survive here, where they are folded into `skipped` there. Hydrating a
- * workspace through the feature-only reader would delete every placed
- * receiver and then save the loss back into the project.
- */
-describe("normalizeModelGeoJSON", () => {
-  const receiverFeature = {
-    type: "Feature" as const,
-    properties: { id: "r1", kind: "receiver", height_m: 4 },
-    geometry: { type: "Point", coordinates: [10, 51] },
-  };
-
-  const areaFeature = {
-    type: "Feature" as const,
-    properties: { id: "calc-area", kind: "calc-area" },
-    geometry: {
-      type: "Polygon",
-      coordinates: [
-        [
-          [10, 51],
-          [10.1, 51],
-          [10.1, 51.1],
-          [10, 51],
-        ],
-      ],
-    },
-  };
 
   it("keeps receivers and the calculation area", () => {
     const result = normalizeModelGeoJSON({
@@ -332,40 +329,5 @@ describe("normalizeModelGeoJSON", () => {
       areaFeature.geometry.coordinates,
     );
     expect(result.skipped).toHaveLength(1);
-  });
-
-  it("reports receivers and areas to normalizeGeoJSON as unknown kinds", () => {
-    // The shim's contract: the import page's skipped count and the reasons it
-    // shows are exactly what they were before this file knew those kinds.
-    const result = normalizeGeoJSON({
-      type: "FeatureCollection",
-      features: [receiverFeature, areaFeature],
-    });
-
-    expect(result.features).toEqual([]);
-    expect(result.skipped).toEqual([
-      { index: 0, reason: 'feature[0]: unknown kind "receiver"' },
-      { index: 1, reason: 'feature[1]: unknown kind "calc-area"' },
-    ]);
-  });
-
-  it("reports a rejected receiver as an unknown kind too", () => {
-    // A receiver with the wrong geometry was an unknown kind before, because
-    // the kind check fired first. The shim keeps that reason so nothing that
-    // reads it has to learn a new one.
-    const result = normalizeGeoJSON({
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { kind: "receiver" },
-          geometry: { type: "Polygon", coordinates: [] },
-        },
-      ],
-    });
-
-    expect(result.skipped).toEqual([
-      { index: 0, reason: 'feature[0]: unknown kind "receiver"' },
-    ]);
   });
 });

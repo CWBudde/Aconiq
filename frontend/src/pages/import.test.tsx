@@ -444,9 +444,9 @@ describe("ImportPage", () => {
   });
 
   it("keeps the receivers and the calculation area an import brings", async () => {
-    // The wizard used to normalize with `normalizeGeoJSON`, which reported
-    // both kinds as an unknown kind, and to load with `loadFeatures`, which
-    // cleared the receivers the store held. "Import, then Save to project"
+    // The wizard used to normalize with a feature-only reader, which reported
+    // both kinds as an unknown kind, and to load with a feature-only load,
+    // which cleared the receivers the store held. "Import, then Save to project"
     // therefore wrote a model without the receivers `aconiq import` had put
     // there.
     renderImportPage();

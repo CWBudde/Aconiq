@@ -101,9 +101,10 @@ export default function ImportPage() {
   );
 
   // The whole v1 schema, not the three kinds the map draws as features.
-  // `normalizeGeoJSON` reported `kind: "receiver"` as an unknown kind, so a
-  // file `aconiq import` had written came in without its receivers and the
-  // first save afterwards wrote that loss back into the project.
+  // The feature-only reader this page used to call reported `kind: "receiver"`
+  // as an unknown kind, so a file `aconiq import` had written came in without
+  // its receivers and the first save afterwards wrote that loss back into the
+  // project.
   //
   // The validator follows: `validateProjectModel` checks receiver ids against
   // feature ids and the receivers themselves, which a features-only report

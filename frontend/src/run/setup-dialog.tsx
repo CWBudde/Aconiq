@@ -209,10 +209,9 @@ function RunSetupForm({
   const unsavedChanges = projectSync.enabled && projectSync.dirty;
 
   // The gate on the model itself. `useModelValidation` is the only sanctioned
-  // entry point: `validateModel` passes `[]` for receivers, so a model whose
-  // only defect is a receiver reads valid, and it answers "empty" *above* the
-  // validator so the hardcoded-English `model.empty` error never reaches the
-  // UI.
+  // entry point: it passes the receivers, so a model whose only defect is a
+  // receiver does not read valid, and it answers "empty" *above* the validator
+  // so the hardcoded-English `model.empty` error never reaches the UI.
   //
   // Errors only, never warnings. An RLS-19 source that wants a review raises a
   // warning on a perfectly runnable model; refusing on those would make the

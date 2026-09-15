@@ -25,20 +25,14 @@ import {
 } from "./source-acoustics";
 
 /**
- * Validates features alone, as if no receiver were placed.
+ * The model's findings: the features, the receivers, and the ids they share.
  *
- * **Nothing calls this any more.** A receiver-blind report is a *valid-looking*
- * report: a model whose only defect is a duplicate or malformed receiver comes
- * back clean, and nothing fails. The import wizard was the last caller and the
- * exception this docblock used to grant it — "a candidate list that has no
- * receivers by construction" — stopped being true when the wizard started
- * reading them. Everything reading the store goes through
- * `useModelValidation`; everything else calls `validateProjectModel` directly.
+ * There is no features-only variant any more. A receiver-blind report is a
+ * *valid-looking* report — a model whose only defect is a duplicate or
+ * malformed receiver came back clean — and the import wizard, the last caller
+ * that had a reason for one, now reads receivers too. Everything reading the
+ * store goes through `useModelValidation`.
  */
-export function validateModel(features: ModelFeature[]): ValidationReport {
-  return validateProjectModel(features, []);
-}
-
 export function validateProjectModel(
   features: ModelFeature[],
   receivers: ModelReceiver[],

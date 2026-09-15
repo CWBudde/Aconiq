@@ -68,7 +68,9 @@ describe("DraftBanner", () => {
 
   it("offers no draft when the model already holds features at startup", () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
-    useModelStore.getState().loadFeatures([sampleFeature]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [sampleFeature], receivers: [], calcArea: null });
     resetProjectHydration();
 
     expect(projectHydrationStore.getState().draftOffered).toBe(false);

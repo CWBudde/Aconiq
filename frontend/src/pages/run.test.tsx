@@ -546,8 +546,9 @@ describe("RunPage model gate", () => {
   });
 
   it("refuses a run against a model that does not validate, and counts why", () => {
-    // Two features sharing an id. `validateModel` would not see this at all
-    // for a receiver, which is why the gate goes through `useModelValidation`.
+    // Two features sharing an id. A receiver-blind report would not see the
+    // same defect on a receiver at all, which is why the gate goes through
+    // `useModelValidation`.
     useModelStore.getState().addFeature(sampleFeature);
     useModelStore.getState().addFeature({ ...sampleFeature });
     useModelStore.getState().markClean();

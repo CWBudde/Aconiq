@@ -18,7 +18,6 @@ interface ModelState {
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
   removeFeature: (id: string) => void;
-  loadFeatures: (features: ModelFeature[]) => void;
   reset: () => void;
   markClean: () => void;
 
@@ -187,24 +186,6 @@ export const useModelStore = create<ModelState>((set, get) => {
       });
     },
 
-    // `dirty` means "the workspace differs from what the project holds", not
-    // "there is an edit the draft has not seen". Content that arrives through
-    // a load — a file, an OSM fetch, a recovered draft — comes from outside
-    // the project, so a load leaves the model dirty; only `markClean` clears
-    // it, and only a successful save (or, in browser mode, the draft write)
-    // calls that.
-    loadFeatures: (features) => {
-      commandStack.clear();
-      set({
-        features,
-        receivers: [],
-        calcArea: null,
-        dirty: true,
-        canUndo: false,
-        canRedo: false,
-      });
-    },
-
     reset: () => {
       commandStack.clear();
       set({
@@ -301,8 +282,20 @@ export const useModelStore = create<ModelState>((set, get) => {
     // A bulk replacement is not an undoable edit: the command stack still
     // holds closures over the *previous* features/receivers, so undoing after a
     // load would splice stale objects back into the new model. Clearing the
-    // stack (as `loadFeatures` does) is what keeps undo coherent — the former
-    // `loadReceivers` set the array behind the stack's back and left it stale.
+    // stack is what keeps undo coherent — the former `loadReceivers` set the
+    // array behind the stack's back and left it stale.
+    //
+    // `dirty` means "the workspace differs from what the project holds", not
+    // "there is an edit the draft has not seen". Content that arrives through
+    // a load — a file, an OSM fetch, a recovered draft — comes from outside
+    // the project, so a load leaves the model dirty; only `markClean` clears
+    // it, and only a successful save (or, in browser mode, the draft write)
+    // calls that.
+    //
+    // It replaces the *whole* model. The former `loadFeatures` took features
+    // alone and emptied `receivers` and `calcArea` with them, which is how an
+    // import used to delete every placed receiver; it is deleted rather than
+    // documented, so nothing can reach for it again.
     loadModel: ({ features, receivers, calcArea }) => {
       commandStack.clear();
       set({
@@ -319,8 +312,8 @@ export const useModelStore = create<ModelState>((set, get) => {
     // undoable command: a merge the reader regrets is one Ctrl+Z, not one per
     // imported feature. {@link planMerge} decides what of it lands.
     //
-    // `dirty: true`, like `loadFeatures` and `loadModel`: the content comes
-    // from outside the project.
+    // `dirty: true`, like `loadModel`: the content comes from outside the
+    // project.
     mergeModel: (model) => {
       const state = get();
       const plan = planMerge(

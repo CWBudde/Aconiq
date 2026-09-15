@@ -111,9 +111,11 @@ describe("model store", () => {
     expect(useModelStore.getState().features).toEqual([pointSource]);
   });
 
-  it("loadFeatures replaces all features (not undoable)", () => {
+  it("loadModel replaces all features (not undoable)", () => {
     useModelStore.getState().addFeature(pointSource);
-    useModelStore.getState().loadFeatures([building]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [building], receivers: [], calcArea: null });
     expect(useModelStore.getState().features).toEqual([building]);
   });
 
@@ -153,11 +155,6 @@ describe("model store", () => {
   // `dirty` means "differs from the project". A load brings content from
   // outside the project (a file, OSM, a recovered draft), so the model is
   // dirty until it is saved there — the draft write must not clear it.
-  it("loadFeatures marks the model dirty", () => {
-    useModelStore.getState().loadFeatures([pointSource]);
-    expect(useModelStore.getState().dirty).toBe(true);
-  });
-
   it("loadModel marks the model dirty", () => {
     useModelStore
       .getState()
@@ -206,13 +203,11 @@ describe("mergeModel", () => {
     useModelStore.getState().addFeature(pointSource);
     const edited: ModelFeature = { ...pointSource, heightM: 99 };
 
-    const skipped = useModelStore
-      .getState()
-      .mergeModel({
-        features: [edited, building],
-        receivers: [],
-        calcArea: null,
-      });
+    const skipped = useModelStore.getState().mergeModel({
+      features: [edited, building],
+      receivers: [],
+      calcArea: null,
+    });
 
     expect(useModelStore.getState().features).toEqual([pointSource, building]);
     expect(skipped.features).toBe(1);
