@@ -37,6 +37,7 @@ import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
 import { backend } from "@/api/backend";
+import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 
@@ -79,10 +80,6 @@ function kindMeta(kind: string) {
 
 function isExportArtifact(artifact: ArtifactRef): boolean {
   return artifact.kind.startsWith("export.");
-}
-
-function exportCommand(runId: string): string {
-  return `aconiq export --run-id ${runId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +205,10 @@ function NewExportDialog({
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const createExport = useCreateExport();
-  const cliCommand = exportCommand(selectedRunId || "<run-id>");
+  // No fallback here: `exportCommand` substitutes its own placeholder for a
+  // blank id, because a blank `--run-id` exports the latest run rather than
+  // the one the dialog has selected.
+  const cliCommand = exportCommand(selectedRunId);
 
   return (
     <Dialog
