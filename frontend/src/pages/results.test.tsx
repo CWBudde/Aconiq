@@ -442,6 +442,13 @@ describe("ResultsPage shell", () => {
     expect(
       screen.getByText(m.msg_select_completed_run_details()),
     ).toBeInTheDocument();
+    // A link, not a button: the page that starts runs is a route, and a user
+    // with nothing to look at here should be able to middle-click their way
+    // to it.
+    expect(screen.getByRole("link", { name: m.nav_run() })).toHaveAttribute(
+      "href",
+      "/run",
+    );
   });
 });
 

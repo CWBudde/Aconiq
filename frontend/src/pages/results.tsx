@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import {
   BarChart3,
   Table2,
@@ -711,7 +711,11 @@ export default function ResultsPage() {
             compact
             icon={BarChart3}
             title={m.msg_no_completed_runs()}
-          />
+          >
+            <Button asChild size="sm">
+              <Link to="/run">{m.nav_run()}</Link>
+            </Button>
+          </EmptyState>
         ) : (
           <ItemList>
             {completedRuns.map((run) => (
