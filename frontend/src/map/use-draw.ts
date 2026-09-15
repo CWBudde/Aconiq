@@ -29,6 +29,11 @@ interface UseDrawReturn {
   cancel: () => void;
 }
 
+/** "calc-area" reuses terra-draw's polygon mode but is tracked separately. */
+function terraModeFor(mode: DrawMode): string {
+  return mode === "calc-area" ? "polygon" : mode;
+}
+
 export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   const map = useMap();
   const drawRef = useRef<TerraDraw | null>(null);
@@ -76,7 +81,15 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     });
 
     draw.start();
-    draw.setMode("static");
+    // The requested mode, not a hardcoded "static". `MapView` renders its
+    // children while `map` is still null, so anything that arms a tool on
+    // mount — `/model?draw=1`, or a click landing before `load` fires — has
+    // already run `setMode` against a null `drawRef` and moved only React
+    // state. Replaying `activeModeRef` here is what makes that request
+    // survive initialization; without it the toolbar shows Point while
+    // terra-draw sits in "static" and clicks do nothing. It also preserves
+    // the armed tool across a basemap switch, which rebuilds the map.
+    draw.setMode(terraModeFor(activeModeRef.current));
 
     draw.on("finish", (id: string | number) => {
       const snapshot = draw.getSnapshot();
@@ -116,9 +129,7 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   }, [map]);
 
   const setMode = useCallback((mode: DrawMode) => {
-    // "calc-area" reuses terra-draw's polygon mode but is tracked separately
-    const terraMode = mode === "calc-area" ? "polygon" : mode;
-    drawRef.current?.setMode(terraMode);
+    drawRef.current?.setMode(terraModeFor(mode));
     activeModeRef.current = mode;
     setActiveMode(mode);
   }, []);

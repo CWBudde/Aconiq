@@ -57,14 +57,18 @@ function Consumer() {
 /** A stand-in for the MapLibre map; the adapter is stubbed, so it is opaque. */
 const stubMap = {} as Map;
 
-function renderWithin(map: Map | null) {
-  return render(
+function tree(map: Map | null) {
+  return (
     <MapContext value={map}>
       <DrawProvider onFinish={() => undefined}>
         <Consumer />
       </DrawProvider>
-    </MapContext>,
+    </MapContext>
   );
+}
+
+function renderWithin(map: Map | null) {
+  return render(tree(map));
 }
 
 beforeEach(() => {
@@ -111,6 +115,26 @@ describe("DrawProvider", () => {
     // No instance, so no adapter, so no drawing — while the React state moves
     // and the toolbar shows the mode as active. Exactly what shipped.
     expect(instances).toHaveLength(0);
+    expect(screen.getByTestId("mode")).toHaveTextContent("point");
+  });
+
+  it("arms the mode that was requested before the map existed", () => {
+    // `MapView` renders its children while `map` is still null, so
+    // `/model?draw=1` reaches `setMode` before terra-draw exists. The request
+    // is consumed once and the query flag stripped, so nothing retries it:
+    // without a replay on initialization the toolbar read Point while
+    // terra-draw sat in "static" and clicks did nothing.
+    const view = renderWithin(null);
+    act(() => {
+      api?.setMode("point");
+    });
+    expect(instances).toHaveLength(0);
+
+    view.rerender(tree(stubMap));
+
+    expect(instances).toHaveLength(1);
+    expect(instances[0]?.setMode).toHaveBeenCalledWith("point");
+    expect(instances[0]?.setMode).not.toHaveBeenCalledWith("static");
     expect(screen.getByTestId("mode")).toHaveTextContent("point");
   });
 
