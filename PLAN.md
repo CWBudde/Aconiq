@@ -985,25 +985,20 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `label_*` message in either catalogue, so the class cannot come back.
 
 - [x] **The routes say what is selected** (#28). `/results` and `/export` each carry a bare index
-      route and a `:runId` child, both holding the same element — React Router puts no key on a
-      rendered route, so one instance spans the index and every run and the detail pane's open tab
-      survives a selection change. The `?? list[0]` fallback is gone: the list arrives in backend
-      order, so "the first one" was never "the newest one". An unresolvable id has **three**
-      outcomes, not two — absent from the run list, present but not completed, or selectable — and
-      "unknown" is decided on `data !== undefined`, so a deep link that lands before `useRuns`
-      resolves shows the spinner rather than flashing a warning at a good URL. `export` resolves
-      against **every** run, not the filtered list, because the dialog's picker offers every run:
-      `export.test.tsx`'s "says a selected run carries no export artifacts" had a body asserting
-      the opposite of its own title for exactly that reason, and now asserts what it claimed.
-      Three more things fell out. `ListItem` gained a `to`, as a union with `onSelect`: a button
-      that changes the URL has no href, no middle-click and no links rotor entry, and **no axe rule
-      catches it**. The rail matched by exact pathname equality, so `/results/<id>` lit nothing and
-      titled the header "Workspace"; one `NavItem` now answers that through `useMatch`, and
-      `navMain.slice(1, 2)` became a named entry before an inserted rail item could silently
-      re-aim it. And `/map` is `/model`, with no redirect — it falls through to a new not-found
-      page inside the shell (an `errorElement` would replace the layout, so `waitForPage` would
-      hang on a missing `h1` rather than report the error), because a redirect keeps a missed
-      migration working forever.
+      route and a `:runId` child holding the _same_ element — React Router keys no rendered route,
+      so one instance spans the index and every run, and the detail pane's open tab survives a
+      selection change; a parent/`<Outlet/>` split or a second `lazy()` would remount it. Four
+      constraints the remaining pages inherit. An unresolvable id has **three** outcomes, not two
+      — absent from the run list, present but not completed, or selectable — and "unknown" is
+      decided on `data !== undefined`, so a deep link that lands before `useRuns` resolves shows
+      the spinner rather than a warning at a good URL. A row that changes the URL takes
+      `ListItem`'s `to`, not `onSelect`: a button has no href, no middle-click and no links rotor
+      entry, and **no axe rule catches it**. The rail matches route patterns (`/results/:runId?`),
+      never a pathname prefix, so it neither drops the highlight under `/results/<id>` nor lights
+      a section on the not-found page. And retired paths get no redirect — `/map` falls through
+      to a not-found page inside the shell (an `errorElement` replaces the layout, so
+      `waitForPage` would hang on a missing `h1` instead of reporting the error), because a
+      redirect keeps a missed migration working forever.
 - [ ] **Target IA, the pages half**: `/` project (Welcome and Status merged: import-or-draw, mode
       chip, health, validation summary — not "open/create": `Backend` has no create-project or
       open-project method, and pointing the UI at a different `aconiq serve` is what "open" means
