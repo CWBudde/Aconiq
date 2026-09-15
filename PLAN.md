@@ -984,22 +984,62 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `parentElement.parentElement`. A new locale-parity assertion forbids a trailing colon on any
       `label_*` message in either catalogue, so the class cannot come back.
 
-- [ ] **Target IA**: `/` project (Welcome and Status merged: import-or-draw, mode chip, health,
-      validation summary — not "open/create": `Backend` has no create-project or open-project
-      method, and pointing the UI at a different `aconiq serve` is what "open" means here); `/model` map always mounted, empty state as overlay with "Import…" and
+- [x] **The routes say what is selected** (#28). `/results` and `/export` each carry a bare index
+      route and a `:runId` child, both holding the same element — React Router puts no key on a
+      rendered route, so one instance spans the index and every run and the detail pane's open tab
+      survives a selection change. The `?? list[0]` fallback is gone: the list arrives in backend
+      order, so "the first one" was never "the newest one". An unresolvable id has **three**
+      outcomes, not two — absent from the run list, present but not completed, or selectable — and
+      "unknown" is decided on `data !== undefined`, so a deep link that lands before `useRuns`
+      resolves shows the spinner rather than flashing a warning at a good URL. `export` resolves
+      against **every** run, not the filtered list, because the dialog's picker offers every run:
+      `export.test.tsx`'s "says a selected run carries no export artifacts" had a body asserting
+      the opposite of its own title for exactly that reason, and now asserts what it claimed.
+      Three more things fell out. `ListItem` gained a `to`, as a union with `onSelect`: a button
+      that changes the URL has no href, no middle-click and no links rotor entry, and **no axe rule
+      catches it**. The rail matched by exact pathname equality, so `/results/<id>` lit nothing and
+      titled the header "Workspace"; one `NavItem` now answers that through `useMatch`, and
+      `navMain.slice(1, 2)` became a named entry before an inserted rail item could silently
+      re-aim it. And `/map` is `/model`, with no redirect — it falls through to a new not-found
+      page inside the shell (an `errorElement` would replace the layout, so `waitForPage` would
+      hang on a missing `h1` rather than report the error), because a redirect keeps a missed
+      migration working forever.
+- [ ] **Target IA, the pages half**: `/` project (Welcome and Status merged: import-or-draw, mode
+      chip, health, validation summary — not "open/create": `Backend` has no create-project or
+      open-project method, and pointing the UI at a different `aconiq serve` is what "open" means
+      here); `/model` map always mounted, empty state as overlay with "Import…" and
       "Start drawing" (`map.tsx:36-40` hides the map and the draw tools until content exists);
       `/import` stays a route (it is a three-step wizard, and the `/model` overlay's "Import…" is a
-      link to it); `/run`; `/results/:runId` and `/export/:runId`, each keeping a bare index route
-      for "nothing selected" — the rail link needs a target, and auto-redirecting to the first run
-      rewrites history, fights Back and races `useRuns`. An unknown run id shows a warning naming
-      it, never a silent fallback to another run. `/settings` with two categories (General,
-      Connection — five of seven today are "reserved" placeholders). Header mode chip and a
-      `<ModeGate>` with one disabled+tooltip treatment. **`ModeGate` does not exist** — this file
-      previously said it "has exactly one call site today (`export.tsx:270`)", but that line is a
-      bare `capabilities.canExport` ternary; the one call site is the target, not the state. Of
-      the eight inlined capability checks, six are content decisions or not UI at all, and one has
-      no capability behind it. Build it for the rule, not a sweep — and do not gate `SaveStatus`,
-      whose absence in browser mode is correct.
+      link to it). `/settings` with two categories (General, Connection — five of seven today are
+      "reserved" placeholders; deleting them also strikes the "planned settings" clause from the
+      item below). Header mode chip and a `<ModeGate>` with one disabled+tooltip treatment.
+      **`ModeGate` does not exist** — this file previously said it "has exactly one call site today
+      (`export.tsx:270`)", but that line is a bare `capabilities.canExport` ternary; the one call
+      site is the target, not the state. The count in that sentence was also wrong: there are
+      **eleven** capability reads in `src/`, three of them not UI at all (polling, autosave
+      clean-marking, project-sync enablement), six of the eight component-level reads content
+      decisions, and two that touch a control — `export.tsx:271`, which _hides_ the Generate
+      button, and `run.tsx:1191`, which disables one silently. The "one with no capability behind
+      it" is the permanently disabled Cancel button (`run.tsx:551-560`, not `533-544`), which the
+      item below deletes. Build it for the rule, not a sweep — and do not gate `SaveStatus`, whose
+      absence in browser mode is correct.
+      Two constraints found while planning. **`ModeGate` must use `aria-disabled`, not
+      `disabled`**: `button.tsx:8` carries `disabled:pointer-events-none`, and a disabled button
+      takes no focus and fires no pointer events, so a Radix tooltip over one never opens by mouse
+      _or_ by keyboard — which also means `undo-redo-bar.tsx:33-47`'s two tooltips are dead in
+      exactly the state they describe, and are not a pattern to copy. And **the validation summary
+      must call `validateProjectModel`, guarded by an early return on an empty model** —
+      `validateModel` passes `[]` for receivers, and `validate.ts:38-51` pushes a synthetic
+      `model.empty` _error_ whose message is hardcoded English, so a fresh install would otherwise
+      read "1 error" in the German UI.
+- [ ] **Drawing is inert: `useDraw` runs outside `MapContext`.** `MapView` provides the context
+      around its own children (`map-view.tsx:227`), but `MapWorkspace` calls `useDraw` one level
+      above it (`map.tsx:156`) — every other `useMap()` consumer is a `MapView` child. So `map` is
+      always `null`, the terra-draw init effect early-returns (`use-draw.ts:41`), and a draw-tool
+      click only moves React state. `map.test.tsx:53` mocks `useDraw`, which is why nothing
+      noticed. Extract a `DrawProvider` rendered _inside_ `MapView` and publish the draw API
+      through a context; the regression test must not mock `useDraw`. Ships with the overlay
+      above, whose "Start drawing" is a no-op until it lands.
 - [x] **The workspace hydrates from the project, and the drawn area reaches it** (#26). Both
       halves together, because either alone loses the area on reload:
       `use-project-hydration.ts` sits in `RootLayout` beside `useAutosave`, gated on
