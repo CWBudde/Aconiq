@@ -7,7 +7,8 @@ import {
   Settings,
   Activity,
 } from "lucide-react";
-import { Link, useLocation } from "react-router";
+import { Link, matchPath, useLocation, useMatch } from "react-router";
+import type { LucideIcon } from "lucide-react";
 import { useProjectStatus } from "@/api/hooks";
 import {
   Sidebar,
@@ -30,25 +31,65 @@ import { LanguageToggle } from "@/ui/language-toggle";
 import { SaveStatus } from "@/ui/save-status";
 import { m } from "@/i18n/messages";
 
-const navMain = [
+interface NavEntry {
+  title: () => string;
+  icon: LucideIcon;
+  path: string;
+  /**
+   * Match the path exactly rather than as a prefix. Only a route that is a
+   * prefix of every other one needs it.
+   */
+  end?: boolean;
+}
+
+const importNav: NavEntry = {
+  title: m.nav_import,
+  icon: FileInput,
+  path: "/import",
+};
+
+const navMain: NavEntry[] = [
   { title: m.nav_map, icon: Map, path: "/map" },
-  { title: m.nav_import, icon: FileInput, path: "/import" },
+  importNav,
   { title: m.nav_run, icon: Play, path: "/run" },
   { title: m.nav_results, icon: BarChart3, path: "/results" },
   { title: m.nav_export, icon: FileOutput, path: "/export" },
 ];
 
-const navFooter = [
+const navFooter: NavEntry[] = [
   { title: m.nav_status, icon: Activity, path: "/status" },
   { title: m.nav_settings, icon: Settings, path: "/settings" },
 ];
 
+/**
+ * A rail link, and the one place the "is this the current page?" question is
+ * answered. `useMatch` matches on segment boundaries, so `/results` is current
+ * for `/results/<id>` but not for a hypothetical `/results-archive` — an
+ * equality test marked neither. It is a hook, which is why this is a component
+ * rather than a helper called inside `.map()`.
+ */
+function NavItem({ item }: { item: NavEntry }) {
+  const match = useMatch({ path: item.path, end: item.end ?? false });
+  const current = match !== null;
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={current}>
+        <Link to={item.path} aria-current={current ? "page" : undefined}>
+          <item.icon className="h-4 w-4" />
+          <span>{item.title()}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 function AppSidebar() {
-  const location = useLocation();
   const project = useProjectStatus();
   const showWorkspaceNav = project.data != null;
-  // navMain[1] is the "Import" entry; slice keeps the element type non-optional
-  const workspaceNav = showWorkspaceNav ? navMain : navMain.slice(1, 2);
+  // Named entries, not an index range: with `navMain.slice(1, 2)` here,
+  // inserting a rail item silently re-aimed the no-project rail at whatever
+  // landed at index 1.
+  const workspaceNav = showWorkspaceNav ? navMain : [importNav];
 
   // One <nav> landmark holds the logo, the workspace links and the footer
   // links, so nothing in the rail sits outside a landmark (axe `region`).
@@ -75,22 +116,7 @@ function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {workspaceNav.map((item) => (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location.pathname === item.path}
-                    >
-                      <Link
-                        to={item.path}
-                        aria-current={
-                          location.pathname === item.path ? "page" : undefined
-                        }
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title()}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavItem key={item.path} item={item} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -102,22 +128,7 @@ function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navFooter.map((item) => (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location.pathname === item.path}
-                    >
-                      <Link
-                        to={item.path}
-                        aria-current={
-                          location.pathname === item.path ? "page" : undefined
-                        }
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title()}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavItem key={item.path} item={item} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -130,8 +141,13 @@ function AppSidebar() {
 
 function PageTitle() {
   const location = useLocation();
+  // The same matcher the rail uses, so the heading and the current link can
+  // never disagree. An equality lookup titled every parameterised path
+  // "Workspace" the moment a run id appeared in the URL.
   const allNav = [...navMain, ...navFooter];
-  const current = allNav.find((item) => item.path === location.pathname);
+  const current = allNav.find((item) =>
+    matchPath({ path: item.path, end: item.end ?? false }, location.pathname),
+  );
   if (location.pathname === "/welcome") {
     return (
       <h1 className="text-sm font-medium text-muted-foreground">

@@ -139,6 +139,27 @@ describe("AppShell landmarks", () => {
     );
   });
 
+  it("marks a section's link as current on a path below it", () => {
+    // The rail matched by exact equality until the run routes were
+    // parameterised, so selecting a run un-highlighted the whole rail.
+    renderShell("/results/run-1");
+    expect(screen.getByRole("link", { name: m.nav_results() })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(
+      screen.getByRole("link", { name: m.nav_export() }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  it("titles the header from the matched route, not from an exact path", () => {
+    renderShell("/results/run-1");
+    // The shell renders exactly one h1, in the header.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_results(),
+    );
+  });
+
   it("offers a skip link to the content as the first focusable element", () => {
     const { container } = renderShell();
     const skip = screen.getByRole("link", { name: m.action_skip_to_content() });
