@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   APIRequestError,
+  ERROR_CODE_EXPORT_INSIDE_RUN,
   ERROR_CODE_NOT_FOUND,
   asAPIRequestError,
 } from "./api-error";
@@ -76,7 +77,66 @@ describe("httpBackend capabilities", () => {
       canExport: false,
       runsAgainstSavedModel: true,
       runsChangeExternally: true,
+      exportsOutliveRunDelete: true,
     });
+  });
+});
+
+describe("httpBackend.deleteRun", () => {
+  it("sends DELETE to the run resource and reports what was kept", async () => {
+    const mock = stubFetch(
+      jsonResponse({
+        run_id: "run-0007",
+        removed_paths: [".noise/runs/run-0007"],
+        retained_paths: [".noise/exports/run-0007-bundle.json"],
+      }),
+    );
+
+    const result = await httpBackend.deleteRun("run-0007");
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/runs/run-0007"));
+    expect(init.method).toBe("DELETE");
+    // The guard on state-changing methods
+    // (backend/internal/api/httpv1/security.go) rejects a request without it.
+    expect(headersOf(init)).toHaveProperty(CLIENT_HEADER_NAME);
+    // `removed_paths` is deliberately not carried into the UI: it has no
+    // meaning in browser mode, and a `[]` there would be a small lie.
+    expect(result).toEqual({
+      runId: "run-0007",
+      retainedPaths: [".noise/exports/run-0007-bundle.json"],
+    });
+  });
+
+  it("escapes an id that would otherwise change the path", async () => {
+    const mock = stubFetch(
+      jsonResponse({ run_id: "a/b", removed_paths: [], retained_paths: [] }),
+    );
+
+    await httpBackend.deleteRun("a/b");
+
+    expect(requestOf(mock)[0]).toBe(apiURL("/api/v1/runs/a%2Fb"));
+  });
+
+  it("keeps the envelope of a refusal", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope(
+          ERROR_CODE_EXPORT_INSIDE_RUN,
+          "export bundle lives inside the run directory",
+          "Move the export bundle out of .noise/runs/, then delete the run.",
+        ),
+        409,
+      ),
+    );
+
+    const error = await httpBackend
+      .deleteRun("run-0007")
+      .catch((e: unknown) => e);
+    const apiError = asAPIRequestError(error);
+
+    expect(apiError?.code).toBe(ERROR_CODE_EXPORT_INSIDE_RUN);
+    expect(apiError?.hint).toContain("Move the export bundle out");
   });
 });
 

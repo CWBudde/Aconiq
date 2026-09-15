@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/ui/components/button";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { focusMainContent } from "@/ui/main-content";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import {
@@ -67,6 +69,13 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
   const receiver = useModelStore((s) =>
     featureId && !feature ? s.getReceiverById(featureId) : undefined,
   );
+  const removeFeature = useModelStore((s) => s.removeFeature);
+
+  const handleDelete = useCallback(() => {
+    if (!feature) return;
+    removeFeature(feature.id);
+    onClose();
+  }, [feature, removeFeature, onClose]);
 
   if (receiver) {
     return <ReceiverEditor receiverId={receiver.id} onClose={onClose} />;
@@ -103,7 +112,14 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
           <p className="text-xs">{feature.geometry.type}</p>
         </div>
         <FeatureFields feature={feature} />
-        <DeleteButton featureId={feature.id} onDelete={onClose} />
+        <DeleteButton
+          title={m.confirm_delete_feature_title()}
+          description={m.confirm_delete_feature_desc({
+            kind: featureKindLabel(feature.kind),
+            id: feature.id,
+          })}
+          onDelete={handleDelete}
+        />
       </div>
     </MapPanel>
   );
@@ -188,15 +204,11 @@ function ReceiverEditor({
             onBlur={handleHeightBlur}
           />
         </div>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="mt-2 w-full"
-          onClick={handleDelete}
-        >
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-          {m.action_delete_feature()}
-        </Button>
+        <DeleteButton
+          title={m.confirm_delete_receiver_title()}
+          description={m.confirm_delete_receiver_desc({ id: receiver.id })}
+          onDelete={handleDelete}
+        />
       </div>
     </MapPanel>
   );
@@ -582,29 +594,62 @@ function HeightField({ feature }: { feature: ModelFeature }) {
   );
 }
 
+/**
+ * The one delete control in the editor, for a feature or a receiver.
+ *
+ * It asks first even though `removeFeature` and `removeReceiver` both go
+ * through the command stack and are undoable. Nothing on this panel says so:
+ * the undo bar is at the other end of the workspace, and its own tooltips do
+ * not open in the state they describe. So the confirmation carries that
+ * sentence, which is the cheapest way to make it true.
+ */
 function DeleteButton({
-  featureId,
+  title,
+  description,
   onDelete,
 }: {
-  featureId: string;
+  title: string;
+  description: string;
   onDelete: () => void;
 }) {
-  const removeFeature = useModelStore((s) => s.removeFeature);
-
-  const handleDelete = useCallback(() => {
-    removeFeature(featureId);
-    onDelete();
-  }, [featureId, removeFeature, onDelete]);
+  const [confirming, setConfirming] = useState(false);
+  // Read while the dialog closes, which is before the next render, so a ref
+  // rather than state.
+  const deleted = useRef(false);
 
   return (
-    <Button
-      variant="destructive"
-      size="sm"
-      className="mt-2 w-full"
-      onClick={handleDelete}
-    >
-      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-      {m.action_delete_feature()}
-    </Button>
+    <>
+      <Button
+        variant="destructive"
+        size="sm"
+        className="mt-2 w-full"
+        onClick={() => {
+          setConfirming(true);
+        }}
+      >
+        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+        {m.action_delete_feature()}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        tone="destructive"
+        title={title}
+        description={description}
+        confirmLabel={m.action_delete_feature()}
+        onConfirm={() => {
+          deleted.current = true;
+          onDelete();
+        }}
+        // Both call sites close the panel on delete, taking this button with
+        // it, so there is nothing for Radix to restore focus to. Cancelling
+        // leaves the panel standing and keeps the ordinary restoration.
+        onCloseAutoFocus={(event) => {
+          if (!deleted.current) return;
+          event.preventDefault();
+          focusMainContent();
+        }}
+      />
+    </>
   );
 }

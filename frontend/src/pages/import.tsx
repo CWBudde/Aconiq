@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
@@ -7,6 +7,7 @@ import { Label } from "@/ui/components/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { PageHeader } from "@/ui/page-header";
 import { useModelStore } from "@/model/model-store";
 import { normalizeGeoJSON } from "@/model/normalize";
@@ -211,10 +212,30 @@ export default function ImportPage() {
     handleNormalizeAndPreview,
   ]);
 
+  // `loadFeatures` replaces the workspace outright and clears placed
+  // receivers with it, and no undo covers that — the command stack is reset,
+  // not extended. So the import asks first.
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
+  // Read while the dialog closes, which is before the next render, so a ref
+  // rather than state.
+  const replaced = useRef(false);
+  const goToMapRef = useRef<HTMLButtonElement>(null);
+
   const handleConfirm = useCallback(() => {
     loadFeatures(features);
+    replaced.current = true;
+    setConfirmingReplace(false);
     setStep("done");
   }, [features, loadFeatures]);
+
+  // Confirming removes the Import button the dialog was opened from, so Radix
+  // has nothing to restore focus to and it would fall to `<body>`. The done
+  // step's one action is where the reader is going next, and an effect is what
+  // reaches it: Radix restores focus while the old content is being torn down,
+  // before this button's ref is attached.
+  useEffect(() => {
+    if (step === "done") goToMapRef.current?.focus();
+  }, [step]);
 
   const handleGoToMap = useCallback(() => {
     void navigate("/model");
@@ -421,7 +442,11 @@ export default function ImportPage() {
               >
                 {m.action_back()}
               </Button>
-              <Button onClick={handleConfirm}>
+              <Button
+                onClick={() => {
+                  setConfirmingReplace(true);
+                }}
+              >
                 {m.action_import_features({ count: features.length })}
               </Button>
             </div>
@@ -436,10 +461,31 @@ export default function ImportPage() {
               title={m.status_import_complete()}
               description={`${String(features.length)} ${m.msg_import_complete_description()}`}
             />
-            <Button onClick={handleGoToMap}>{m.action_go_to_map()}</Button>
+            <Button ref={goToMapRef} onClick={handleGoToMap}>
+              {m.action_go_to_map()}
+            </Button>
           </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmingReplace}
+        onOpenChange={setConfirmingReplace}
+        tone="destructive"
+        title={m.confirm_import_replace_title()}
+        description={m.confirm_import_replace_desc({
+          count: features.length,
+        })}
+        confirmLabel={m.action_import_features({ count: features.length })}
+        onConfirm={handleConfirm}
+        // The effect above owns where focus goes; this only stops Radix
+        // sending it to a button that is no longer there first. Cancelling
+        // keeps the ordinary restoration.
+        onCloseAutoFocus={(event) => {
+          if (!replaced.current) return;
+          event.preventDefault();
+        }}
+      />
     </div>
   );
 }

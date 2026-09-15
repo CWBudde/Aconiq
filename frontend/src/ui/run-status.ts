@@ -8,6 +8,7 @@ import {
 import type { RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 import type { BadgeProps } from "@/ui/components/badge";
+import { formatDurationBetween, formatTime } from "@/ui/format";
 
 /** The lifecycle state of a run, as the API reports it. */
 export type RunStatus = RunSummary["status"];
@@ -39,4 +40,22 @@ export const statusConfig: Record<
 /** The localised word for a run state, for filters and lists without a badge. */
 export function statusLabel(status: RunStatus): string {
   return statusConfig[status].label();
+}
+
+/** A run that will not change again: it has completed or failed. */
+export function isFinished(run: RunSummary): boolean {
+  return run.status !== "running" && run.status !== "pending";
+}
+
+/**
+ * "13:05:07 · 12 sec" for a finished run, the start time alone otherwise.
+ *
+ * The guard matters: `finished_at` is absent while a run is still going, so an
+ * unguarded duration reads as a completed one that took no time.
+ */
+export function runTiming(run: RunSummary): string {
+  const started = formatTime(run.started_at);
+  return isFinished(run)
+    ? `${started} · ${formatDurationBetween(run.started_at, run.finished_at)}`
+    : started;
 }

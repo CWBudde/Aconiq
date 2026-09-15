@@ -28,6 +28,17 @@ export interface ConfirmDialogProps {
   /** `destructive` paints the confirm action; use it when nothing can be undone. */
   tone?: "default" | "destructive";
   onConfirm: () => void;
+  /**
+   * Radix returns focus to whatever had it when the dialog opened. When the
+   * confirmed action removes that element — a pane deleted along with its own
+   * Delete button — there is nothing to return to and focus lands on `<body>`,
+   * at the top of the document.
+   *
+   * Call `event.preventDefault()` here and focus somewhere that still exists.
+   * No axe rule covers this, and every DOM-shaped assertion passes while it is
+   * wrong.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 /**
@@ -52,10 +63,11 @@ export function ConfirmDialog({
   cancelLabel,
   tone = "default",
   onConfirm,
+  onCloseAutoFocus,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { History } from "lucide-react";
 import { useModelStore } from "@/model/model-store";
 import { loadDraft, discardDraft } from "@/model/use-autosave";
@@ -7,6 +7,8 @@ import {
   useHydrationSettled,
 } from "@/model/use-project-hydration";
 import { Button } from "@/ui/components/button";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { focusMainContent } from "@/ui/main-content";
 import { m } from "@/i18n/messages";
 
 /**
@@ -30,6 +32,10 @@ export function DraftBanner() {
   const settled = useHydrationSettled();
   const offered = projectHydrationStore((s) => s.draftOffered);
   const [dismissed, setDismissed] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // Read while the dialog closes, which is before the next render, so a ref
+  // rather than state.
+  const discarded = useRef(false);
 
   const visible = settled && offered && !dismissed;
   if (!visible) return null;
@@ -48,7 +54,9 @@ export function DraftBanner() {
 
   function handleDiscard() {
     discardDraft();
+    discarded.current = true;
     setDismissed(true);
+    setConfirmingDiscard(false);
   }
 
   return (
@@ -61,12 +69,39 @@ export function DraftBanner() {
       <span className="flex-1 text-muted-foreground">
         {m.msg_unsaved_draft_found()}
       </span>
-      <Button size="sm" variant="outline" onClick={handleDiscard}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setConfirmingDiscard(true);
+        }}
+      >
         {m.action_discard()}
       </Button>
       <Button size="sm" onClick={handleRestore}>
         {m.action_restore()}
       </Button>
+
+      {/* The one thing on this banner that cannot be taken back: the draft is
+          the only copy of work this browser kept, and discarding it is not an
+          edit the command stack can undo. */}
+      <ConfirmDialog
+        open={confirmingDiscard}
+        onOpenChange={setConfirmingDiscard}
+        tone="destructive"
+        title={m.confirm_discard_draft_title()}
+        description={m.confirm_discard_draft_desc()}
+        confirmLabel={m.action_discard()}
+        onConfirm={handleDiscard}
+        // Discarding takes the whole banner away, the Discard button with it,
+        // so Radix has nothing to hand focus back to. Cancelling does not, and
+        // must keep the ordinary restoration.
+        onCloseAutoFocus={(event) => {
+          if (!discarded.current) return;
+          event.preventDefault();
+          focusMainContent();
+        }}
+      />
     </div>
   );
 }

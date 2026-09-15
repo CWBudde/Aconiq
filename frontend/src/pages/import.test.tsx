@@ -1,5 +1,12 @@
+import { m } from "@/i18n/messages";
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import ImportPage from "./import";
@@ -114,13 +121,55 @@ describe("ImportPage", () => {
     });
   });
 
+  /** Clicks Import and answers the replace confirmation. */
+  function confirmImport() {
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /import/i,
+      }),
+    );
+  }
+
+  it("asks before replacing the workspace, and replaces nothing until then", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+
+    // `loadFeatures` replaces the model outright and clears placed receivers,
+    // and the command stack is reset rather than extended, so no undo covers
+    // it.
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(useModelStore.getState().features).toHaveLength(0);
+  });
+
   it("loads features into the model store on confirm", async () => {
     renderImportPage();
     const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
-    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    confirmImport();
     expect(useModelStore.getState().features).toHaveLength(2);
+  });
+
+  it("moves focus to the done step's action, not to the body", async () => {
+    // Confirming removes the Import button the dialog was opened from, so
+    // Radix restores focus to an element that no longer exists and it falls to
+    // `<body>`. Nothing in the axe baseline covers a lost focus target.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: m.action_go_to_map() }),
+      );
+    });
   });
 
   it("shows done step after confirm", async () => {
@@ -128,7 +177,7 @@ describe("ImportPage", () => {
     const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
-    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    confirmImport();
     expect(screen.getByText("Import Complete")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /go to map/i }),

@@ -32,6 +32,8 @@ import { m } from "@/i18n/messages";
 
 const state = vi.hoisted(() => {
   const value: {
+    /** Descriptors for `useStandardLabel`; empty means no tier qualifier. */
+    standards: { id: string; evidence_tier?: string }[];
     runs: unknown[];
     runsLoading: boolean;
     runsError: Error | null;
@@ -44,6 +46,7 @@ const state = vi.hoisted(() => {
     rasterMetadataError: Error | null;
     canExport: boolean;
   } = {
+    standards: [],
     runs: [],
     runsLoading: false,
     runsError: null,
@@ -76,6 +79,14 @@ vi.mock("@/api/backend", () => ({
 }));
 
 vi.mock("@/api/hooks", () => ({
+  // Only the names this page reaches for: the factory replaces the module
+  // outright, so one it omits reads as `undefined` at render time rather
+  // than as a type error. `useStandardLabel` calls this one.
+  useStandards: () => ({
+    data: state.standards,
+    isLoading: false,
+    error: null,
+  }),
   useRuns: () => ({
     data: state.runs,
     isLoading: state.runsLoading,

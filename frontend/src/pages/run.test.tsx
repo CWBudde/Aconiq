@@ -1,19 +1,34 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import type {
   ParameterDefinition,
   ProfileInfo,
   RunSummary,
   StandardDescriptor,
 } from "@/api/client";
+import type { BackendCapabilities, DeleteRunResult } from "@/api/backend";
+import type { DeleteRunVariables } from "@/api/hooks";
 import {
   APIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
+  ERROR_CODE_EXPORT_INSIDE_RUN,
 } from "@/api/api-error";
 import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
+import {
+  projectHydrationStore,
+  resetProjectHydration,
+} from "@/model/use-project-hydration";
 import type { CalcArea, ModelFeature } from "@/model/types";
+import { getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
 
 /**
@@ -33,6 +48,10 @@ const state = vi.hoisted(() => {
     runsAgainstSavedModel: boolean;
     savedModels: unknown[];
     logLines: string[];
+    deletedRunIds: string[];
+    deletedArtifactIds: string[];
+    retainedPaths: string[];
+    deleteRunError: Error | null;
   } = {
     standards: [],
     runs: [],
@@ -41,20 +60,29 @@ const state = vi.hoisted(() => {
     runsAgainstSavedModel: true,
     savedModels: [],
     logLines: [],
+    deletedRunIds: [] as string[],
+    deletedArtifactIds: [] as string[],
+    retainedPaths: [] as string[],
+    deleteRunError: null as Error | null,
   };
   return value;
 });
 
 // Explicit capabilities rather than whatever the env selects: the dialog's
 // receiver messaging, submit guard and unsaved-changes gate branch on them.
+//
+// Typed as `BackendCapabilities`, so a flag added to the interface is a compile
+// error here rather than `undefined` — which is falsy, raises nothing, and
+// would silently give every test in this file the wrong branch.
 vi.mock("@/api/backend", () => ({
   backend: {
-    get capabilities() {
+    get capabilities(): BackendCapabilities {
       return {
         kind: state.runsAgainstSavedModel ? "http" : "browser",
         canExport: false,
         runsAgainstSavedModel: state.runsAgainstSavedModel,
         runsChangeExternally: state.runsAgainstSavedModel,
+        exportsOutliveRunDelete: state.runsAgainstSavedModel,
       };
     },
   },
@@ -70,6 +98,22 @@ vi.mock("@/api/hooks", () => ({
   useRunLog: () => ({
     data: { run_id: "run-1", lines: state.logLines },
     isLoading: false,
+  }),
+  useDeleteRun: () => ({
+    mutate: (
+      variables: DeleteRunVariables,
+      options?: { onSuccess?: (result: DeleteRunResult) => void },
+    ) => {
+      state.deletedRunIds.push(variables.runId);
+      state.deletedArtifactIds.push(...variables.artifactIds);
+      options?.onSuccess?.({
+        runId: variables.runId,
+        retainedPaths: state.retainedPaths,
+      });
+    },
+    isPending: false,
+    isError: state.deleteRunError !== null,
+    error: state.deleteRunError,
   }),
   useCreateRun: () => ({
     mutate: (spec: Record<string, unknown>) => {
@@ -129,9 +173,39 @@ function standard(
   };
 }
 
-function openRunDialog(standards: StandardDescriptor[]) {
+/**
+ * Opens the dialog against a model that validates.
+ *
+ * `beforeEach` resets the store, and the dialog refuses to start a run against
+ * an empty or invalid model — so without a feature here, every test about
+ * something *else* would be testing the emptiness gate. One point source is
+ * enough and raises nothing: `validateRLS19SourceAcoustics` returns early for
+ * anything that is neither a line nor an area.
+ *
+ * A test that placed its own features keeps them: seeding the same
+ * `sampleFeature` on top would duplicate its id, which is itself an error. The
+ * gate's own tests pass `seedModel: false` and assert it directly.
+ */
+function openRunDialog(
+  standards: StandardDescriptor[],
+  { seedModel = true }: { seedModel?: boolean } = {},
+) {
   state.standards = standards;
-  render(<RunPage />);
+  const store = useModelStore.getState();
+  if (seedModel && store.features.length === 0) {
+    // Seeding must not clear a dirty flag a test set on purpose, so the
+    // model is only marked clean if it already was.
+    const wasClean = !store.dirty;
+    store.addFeature(sampleFeature);
+    if (wasClean) useModelStore.getState().markClean();
+  }
+  // A router, because the model gate offers a link to `/model`. The page
+  // itself still reads nothing from the URL.
+  render(
+    <MemoryRouter>
+      <RunPage />
+    </MemoryRouter>,
+  );
   fireEvent.click(screen.getByRole("button", { name: m.action_new_run() }));
 }
 
@@ -147,13 +221,22 @@ function acknowledgementCheckbox(): HTMLElement {
  * Radix' Select opens on a pointer event and measures the viewport; jsdom
  * implements neither. These shims are what let a test change the standard the
  * way a user does, rather than reaching past the control.
+ *
+ * The option is found by the label the page actually shows, resolved through
+ * the same `getStandardLabel` the page calls — the id is no longer on screen.
+ * A substring match, because the accessible name also carries the tier badge.
  */
 function selectStandard(id: string) {
+  const label = getStandardLabel(id);
   fireEvent.pointerDown(
     screen.getByRole("combobox", { name: m.label_standard() }),
     { button: 0, ctrlKey: false, pointerType: "mouse" },
   );
-  fireEvent.click(screen.getByRole("option", { name: new RegExp(id) }));
+  fireEvent.click(
+    screen.getByRole("option", {
+      name: (name: string) => name.includes(label),
+    }),
+  );
 }
 
 /**
@@ -194,8 +277,13 @@ beforeEach(() => {
   state.runsAgainstSavedModel = true;
   state.savedModels = [];
   state.logLines = [];
+  state.deletedRunIds = [];
+  state.deletedArtifactIds = [];
+  state.retainedPaths = [];
+  state.deleteRunError = null;
   useModelStore.getState().reset();
   resetProjectSyncStore();
+  resetProjectHydration();
 });
 
 describe("RunPage evidence tiers", () => {
@@ -432,6 +520,101 @@ describe("RunPage unsaved changes", () => {
   });
 });
 
+describe("RunPage model gate", () => {
+  function invalidCallout(): HTMLElement | null {
+    return screen.queryByTestId("model-invalid-callout");
+  }
+
+  it("refuses a run against a model with nothing in it", () => {
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    // Not "1 error": `validateProjectModel` pushes a synthetic `model.empty`
+    // whose message is hardcoded English, and `useModelValidation` answers
+    // "empty" above the validator precisely so it never reaches the UI.
+    expect(invalidCallout()).toHaveTextContent(m.msg_model_empty_before_run());
+    expect(invalidCallout()).not.toHaveTextContent(
+      m.msg_validation_error_count_one({ count: 1 }),
+    );
+    expect(startRunButton()).toBeDisabled();
+  });
+
+  it("starts no run against an empty model even if the button is clicked", () => {
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
+  });
+
+  it("refuses a run against a model that does not validate, and counts why", () => {
+    // Two features sharing an id. `validateModel` would not see this at all
+    // for a receiver, which is why the gate goes through `useModelValidation`.
+    useModelStore.getState().addFeature(sampleFeature);
+    useModelStore.getState().addFeature({ ...sampleFeature });
+    useModelStore.getState().markClean();
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(invalidCallout()).toHaveTextContent(
+      m.msg_model_invalid_before_run(),
+    );
+    expect(startRunButton()).toBeDisabled();
+  });
+
+  it("does not refuse a run over a warning", () => {
+    // A line source with no traffic attributes warns and is perfectly
+    // runnable; refusing on warnings would make the common case unrunnable.
+    useModelStore.getState().addFeature({
+      id: "road-1",
+      kind: "source",
+      sourceType: "line",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [10, 51],
+          [10.01, 51],
+        ],
+      },
+    });
+    useModelStore.getState().markClean();
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(invalidCallout()).toBeNull();
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("does not claim the project is empty when hydration never answered", () => {
+    // In API mode the store is a copy of the saved model. If hydration failed,
+    // an empty store says nothing about the project — and "nothing to
+    // calculate" would be a claim this dialog cannot make. So the validation
+    // callout stays away and the hydration one speaks instead.
+    projectHydrationStore.setState({
+      status: "error",
+      error: new Error("boom"),
+    });
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    expect(invalidCallout()).toBeNull();
+    expect(screen.getByTestId("hydration-failed-callout")).toHaveTextContent(
+      m.msg_project_model_load_failed(),
+    );
+  });
+
+  it("refuses the run while the saved model could not be read", () => {
+    // Not knowing is its own reason to refuse. The callout above says the
+    // model could not be read and offers the retry; an enabled Start would
+    // contradict it and send a run against a model nobody has seen.
+    projectHydrationStore.setState({
+      status: "error",
+      error: new Error("boom"),
+    });
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    expect(startRunButton()).toBeDisabled();
+
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
+  });
+});
+
 describe("RunPage calculation area", () => {
   const calcArea: CalcArea = {
     geometry: {
@@ -485,6 +668,144 @@ describe("RunPage calculation area", () => {
   });
 });
 
+describe("RunPage run deletion", () => {
+  function finishedRun(status: RunSummary["status"]): RunSummary {
+    return {
+      id: "run-0007",
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "1",
+      profile: "default",
+      status,
+      started_at: "2026-01-01T10:00:00Z",
+      finished_at: "2026-01-01T10:00:05Z",
+      log_path: "runs/run-0007/run.log",
+      // One artifact, so the deletion has a cached payload to drop: the ids
+      // travel with the request because `runId` alone cannot address
+      // `queryKeys.artifacts.content(...)`.
+      artifacts: [
+        {
+          id: "art-1",
+          kind: "results.receivers_csv",
+          path: "runs/run-0007/results/receivers.csv",
+          created_at: "2026-01-01T10:00:05Z",
+        },
+      ],
+    };
+  }
+
+  function showRunPage(status: RunSummary["status"] = "completed") {
+    state.runs = [finishedRun(status)];
+    state.standards = [standard("rls19-road", "normative")];
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
+  }
+
+  function deleteButton(): HTMLElement {
+    return screen.getByRole("button", { name: m.action_delete_run() });
+  }
+
+  it("offers no delete while the run is still writing its directory", () => {
+    // The API refuses `run_not_finished`, and a button that is always refused
+    // is not an offer.
+    showRunPage("running");
+
+    expect(
+      screen.queryByRole("button", { name: m.action_delete_run() }),
+    ).toBeNull();
+  });
+
+  it("asks before deleting, and deletes nothing until it is answered", () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("run-0007");
+    expect(state.deletedRunIds).toEqual([]);
+  });
+
+  it("says export bundles are kept where the backend keeps them", () => {
+    // Which sentence is true is a property of the backend, and it has to be
+    // said before the user agrees — `retainedPaths` only arrives afterwards.
+    state.runsAgainstSavedModel = true;
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      m.confirm_delete_run_desc_exports_kept({ runId: "run-0007" }),
+    );
+  });
+
+  it("says the bundle goes too where the backend keeps it inside the run", () => {
+    state.runsAgainstSavedModel = false;
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      m.confirm_delete_run_desc_exports_lost({ runId: "run-0007" }),
+    );
+  });
+
+  it("deletes the run once confirmed, and clears the selection", async () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_delete_run(),
+      }),
+    );
+
+    expect(state.deletedRunIds).toEqual(["run-0007"]);
+    expect(state.deletedArtifactIds).toEqual(["art-1"]);
+    // The pane is gone; focus must not have been dropped on `<body>`. Radix
+    // juggles focus across a frame on close, so this is awaited rather than
+    // asserted on the spot.
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: m.action_new_run() }),
+      );
+    });
+  });
+
+  it("keeps the run when the confirmation is cancelled", () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_cancel(),
+      }),
+    );
+
+    expect(state.deletedRunIds).toEqual([]);
+  });
+
+  it("shows the server's own words when the deletion is refused", () => {
+    // `export_inside_run` cannot be pre-empted from here, and the hint names
+    // the file to move.
+    state.deleteRunError = new APIRequestError({
+      code: ERROR_CODE_EXPORT_INSIDE_RUN,
+      message: "export bundle lives inside the run directory",
+      hint: "Move the export bundle out of .noise/runs/, then delete the run.",
+    });
+    showRunPage();
+
+    const alert = screen.getByTestId("delete-run-error");
+    expect(alert).toHaveAttribute(
+      "data-error-code",
+      ERROR_CODE_EXPORT_INSIDE_RUN,
+    );
+    expect(alert).toHaveTextContent("inside the run directory");
+    expect(alert).toHaveTextContent("Move the export bundle out");
+  });
+});
+
 describe("RunPage heading order", () => {
   const completedRun: RunSummary = {
     id: "run-1",
@@ -505,7 +826,11 @@ describe("RunPage heading order", () => {
     // The shell's h1 sits above this page, so a level of 2 is the entry.
     state.runs = [completedRun];
     state.standards = [standard("rls19-road", "normative")];
-    render(<RunPage />);
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
 
     const levels = screen
       .getAllByRole("heading")
@@ -623,7 +948,11 @@ describe("RunPage progress timeline", () => {
         artifacts: [],
       } satisfies RunSummary,
     ];
-    render(<RunPage />);
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
   }
 
   it("lists the seven pipeline steps in order whatever the log holds", () => {
@@ -842,9 +1171,31 @@ describe("RunPage standard cascade", () => {
     return screen.getByRole("combobox", { name: m.label_profile() });
   }
 
+  // Addressed by the backend's own name, which is still on screen: the label
+  // now reads "Grid spacing" with `grid_spacing` beside it in a `code`, because
+  // that name is what `--param` and the request body take. A substring match,
+  // so this asserts the raw name is rendered as well as finding the field.
   function parameter(name: string): HTMLElement {
-    return screen.getByLabelText(name);
+    return screen.getByLabelText(new RegExp(name));
   }
+
+  it("labels a parameter and keeps its backend name beside it", () => {
+    openRunDialog([standardA]);
+
+    // Both, not either: the label is for reading, the name is what `--param`
+    // and the request body take.
+    const field = parameter("grid_spacing");
+    const label = field.closest("div")?.querySelector("label");
+    expect(label?.textContent).toContain("Grid spacing");
+    expect(label?.textContent).toContain("grid_spacing");
+  });
+
+  it("groups the parameters under headings", () => {
+    openRunDialog([standardA]);
+
+    // `grid_spacing` groups by its prefix, and the legend says so.
+    expect(screen.getByText(m.param_group_grid())).not.toBeNull();
+  });
 
   it("seeds the parameters from the default profile when the dialog opens", () => {
     openRunDialog([standardA]);
@@ -907,11 +1258,11 @@ describe("RunPage standard cascade", () => {
     openRunDialog([standardA]);
 
     selectOption(m.label_profile(), "rural");
-    expect(screen.queryByLabelText("wind_correction")).not.toBeNull();
+    expect(screen.queryByLabelText(/wind_correction/)).not.toBeNull();
 
     selectOption(m.label_profile(), "urban");
 
-    expect(screen.queryByLabelText("wind_correction")).toBeNull();
+    expect(screen.queryByLabelText(/wind_correction/)).toBeNull();
     expect(parameter("grid_spacing")).toHaveValue("10");
   });
 

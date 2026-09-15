@@ -1,0 +1,320 @@
+import { useEffect, useState } from "react";
+import { AlertCircle, Info, RefreshCw, Terminal, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/ui/components/button";
+import { Callout } from "@/ui/callout";
+import { CopyButton } from "@/ui/copy-field";
+import { LoadingLine } from "@/ui/loading-line";
+import { SectionHeading } from "@/ui/page-header";
+import { StatusBadge } from "@/ui/status-badge";
+import { isFinished, runTiming } from "@/ui/run-status";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { useDeleteRun, useRunLog } from "@/api/hooks";
+import { backend } from "@/api/backend";
+import { asAPIRequestError } from "@/api/api-error";
+import type { ArtifactRef, RunSummary } from "@/api/client";
+import { ProgressTimeline } from "@/run/timeline";
+import { useStandardLabel } from "@/run/use-standard-label";
+import { m } from "@/i18n/messages";
+
+// ---------------------------------------------------------------------------
+// Log viewer
+// ---------------------------------------------------------------------------
+
+function LogViewer({ lines }: { lines: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? lines : lines.slice(-20);
+
+  return (
+    <div className="rounded-md border bg-muted/30">
+      <div className="flex items-center justify-between border-b px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Terminal aria-hidden="true" className="h-3.5 w-3.5" />
+          {m.label_log()} ({m.msg_log_line_count({ count: lines.length })})
+        </div>
+        {lines.length > 20 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              setExpanded((e) => !e);
+            }}
+          >
+            {expanded ? m.action_show_less() : m.action_show_all()}
+          </Button>
+        ) : null}
+      </div>
+      <div className="max-h-48 overflow-y-auto p-3 font-mono text-xs leading-relaxed">
+        {lines.length === 0 ? (
+          <span className="text-muted-foreground">{m.msg_no_log_lines()}</span>
+        ) : (
+          visible.map((line, i) => (
+            <div key={i} className="whitespace-pre-wrap break-all">
+              {line}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Artifact links
+// ---------------------------------------------------------------------------
+
+// Message functions must be *called* during render, never at module scope, or
+// the labels freeze to the locale that was active at import time.
+//
+// This is the run-artifact half of the vocabulary; `export.tsx` holds the
+// export half in `EXPORT_KIND_LABELS`/`kindMeta`. Two tables for one `kind`
+// namespace, and moving this one here did not fix that — unifying them belongs
+// with the export page's own rework.
+const ARTIFACT_KIND_LABELS: Record<string, () => string> = {
+  "run.result.receiver_table_json": m.artifact_kind_receivers_json,
+  "run.result.receiver_table_csv": m.artifact_kind_receivers_csv,
+  "run.result.raster_metadata": m.artifact_kind_raster_metadata,
+  "run.result.raster_binary": m.artifact_kind_raster_binary,
+  "run.result.summary": m.artifact_kind_summary,
+};
+
+function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
+  if (artifacts.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {m.msg_no_artifacts_yet()}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="m-0 list-none space-y-1 p-0">
+      {artifacts.map((a) => {
+        const label = ARTIFACT_KIND_LABELS[a.kind]?.() ?? a.kind;
+        const filename = a.path.split("/").pop() ?? a.path;
+        return (
+          <li
+            key={a.id}
+            className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium">{label}</p>
+              <p
+                className="truncate font-mono text-xs text-muted-foreground"
+                title={a.path}
+              >
+                {filename}
+              </p>
+            </div>
+            <CopyButton
+              text={a.path}
+              label={m.action_copy_path()}
+              variant="ghost"
+              className="h-6 shrink-0"
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run detail panel
+// ---------------------------------------------------------------------------
+
+export function RunDetail({
+  run,
+  onRetry,
+  onDeleted,
+}: {
+  run: RunSummary;
+  onRetry: () => void;
+  /** Called once the run is gone, so the page can move focus off the pane. */
+  onDeleted: () => void;
+}) {
+  const { data: log, isLoading: logLoading } = useRunLog(
+    run.id,
+    run.status === "running" || run.status === "pending",
+  );
+  const lines = log?.lines ?? [];
+  const standardLabel = useStandardLabel();
+  const deleteRun = useDeleteRun();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+
+  /**
+   * Move focus off the pane, once — and from an effect, which is the only
+   * place that works in both orders this can happen in.
+   *
+   * The dialog closes the moment the user agrees. An API backend answers long
+   * after that, so Radix has already restored focus to the Delete button —
+   * correctly, it still exists — and the pane only goes when the invalidation
+   * lands. The WASM kernel and the tests answer *before* the close, while the
+   * dialog's focus trap is still up, so a focus call made there is bounced
+   * straight back inside and lost when the trap comes down.
+   *
+   * A passive effect runs after the commit that unmounts the dialog, and so
+   * after both. No axe rule covers landing on `<body>`.
+   */
+  useEffect(() => {
+    if (deleted) onDeleted();
+  }, [deleted, onDeleted]);
+
+  function handleDelete() {
+    setConfirmingDelete(false);
+    deleteRun.mutate(
+      { runId: run.id, artifactIds: run.artifacts.map((a) => a.id) },
+      {
+        onSuccess: (result) => {
+          toast.success(
+            result.retainedPaths.length > 0
+              ? m.msg_run_deleted_exports_kept({
+                  runId: run.id,
+                  count: result.retainedPaths.length,
+                })
+              : m.msg_run_deleted({ runId: run.id }),
+          );
+          setDeleted(true);
+        },
+      },
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5 p-5">
+      {/* Header */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <StatusBadge status={run.status} />
+          <span className="font-mono text-xs text-muted-foreground">
+            {run.id}
+          </span>
+        </div>
+        <p className="text-sm">
+          <span>{standardLabel(run.standard_id)}</span>
+          {run.version ? (
+            <>
+              {" / "}
+              <span className="font-mono">{run.version}</span>
+            </>
+          ) : null}
+          {run.profile ? (
+            <>
+              {" / "}
+              <span className="font-mono">{run.profile}</span>
+            </>
+          ) : null}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {m.label_started()}: {runTiming(run)}
+        </p>
+      </div>
+
+      {/* Determinism hint for completed runs */}
+      {run.status === "completed" ? (
+        <Callout variant="neutral" icon={Info}>
+          {m.msg_determinism_hint()}
+        </Callout>
+      ) : null}
+
+      {/* Progress timeline */}
+      <section>
+        <SectionHeading variant="eyebrow" className="mb-2">
+          {m.section_progress()}
+        </SectionHeading>
+        {logLoading ? (
+          <LoadingLine />
+        ) : (
+          <ProgressTimeline lines={lines} status={run.status} />
+        )}
+      </section>
+
+      {/* Log viewer */}
+      <section>
+        <SectionHeading variant="eyebrow" className="mb-2">
+          {m.section_logs()}
+        </SectionHeading>
+        {logLoading ? <LoadingLine /> : <LogViewer lines={lines} />}
+      </section>
+
+      {/* Artifacts */}
+      <section>
+        <SectionHeading variant="eyebrow" className="mb-2">
+          {m.section_artifacts()}
+        </SectionHeading>
+        <ArtifactLinks artifacts={run.artifacts} />
+      </section>
+
+      {/* Deleting failed, and not for a reason the UI could have pre-empted:
+          the API refuses when an export bundle was written inside the run's own
+          directory, and names the file to move. Its own words, not a generic
+          failure. */}
+      {deleteRun.isError ? (
+        <Callout
+          variant="destructive"
+          icon={AlertCircle}
+          data-testid="delete-run-error"
+          data-error-code={asAPIRequestError(deleteRun.error)?.code}
+          title={m.msg_delete_run_failed()}
+        >
+          <p>{deleteRun.error.message}</p>
+          {asAPIRequestError(deleteRun.error)?.hint !== undefined ? (
+            <p>{asAPIRequestError(deleteRun.error)?.hint}</p>
+          ) : null}
+        </Callout>
+      ) : null}
+
+      {/* Actions. There is no Cancel: the API has no cancel endpoint and the
+          WASM kernel completes inside `startRun`, so no capability flag would
+          ever enable one. Delete is offered only once the run has finished —
+          the API refuses `run_not_finished` while its directory is still being
+          written, and a button that is always refused is not an offer. */}
+      <section className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+          {m.action_retry()}
+        </Button>
+        {isFinished(run) ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={deleteRun.isPending}
+            onClick={() => {
+              setConfirmingDelete(true);
+            }}
+          >
+            <Trash2 aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+            {m.action_delete_run()}
+          </Button>
+        ) : null}
+      </section>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        tone="destructive"
+        title={m.confirm_delete_run_title()}
+        // Which sentence is true is a property of the backend, not of this
+        // run, and it has to be said *before* the user agrees — `retainedPaths`
+        // only arrives afterwards.
+        description={
+          backend.capabilities.exportsOutliveRunDelete
+            ? m.confirm_delete_run_desc_exports_kept({ runId: run.id })
+            : m.confirm_delete_run_desc_exports_lost({ runId: run.id })
+        }
+        confirmLabel={m.action_delete_run()}
+        onConfirm={handleDelete}
+        // Where the delete has already succeeded, Radix would hand focus back
+        // to a Delete button that is about to unmount, and the effect above
+        // would have to take it away again. A pending or failed delete keeps
+        // the ordinary restoration: that pane is still there.
+        onCloseAutoFocus={(event) => {
+          if (!deleted) return;
+          event.preventDefault();
+        }}
+      />
+    </div>
+  );
+}

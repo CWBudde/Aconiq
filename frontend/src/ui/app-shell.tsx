@@ -30,6 +30,7 @@ import { ThemeToggle } from "@/ui/theme-toggle";
 import { LanguageToggle } from "@/ui/language-toggle";
 import { SaveStatus } from "@/ui/save-status";
 import { ModeChip } from "@/ui/mode-chip";
+import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { m } from "@/i18n/messages";
 
 interface NavEntry {
@@ -185,7 +186,6 @@ function PageTitle() {
 }
 
 /** The id the skip link targets; the content wrapper below carries it. */
-const MAIN_CONTENT_ID = "main-content";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (

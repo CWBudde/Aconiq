@@ -39,6 +39,20 @@ export const ERROR_CODE_MODEL_NOT_FOUND = "model_not_found";
  */
 export const ERROR_CODE_MODEL_INVALID = "model_invalid";
 
+/**
+ * The run's directory is still being written, so it cannot be deleted yet.
+ * Mirrors `errorCodeRunNotFinished` in
+ * `backend/internal/api/httpv1/handler.go`; the API answers 409 with it.
+ */
+export const ERROR_CODE_RUN_NOT_FINISHED = "run_not_finished";
+
+/**
+ * An export bundle was written inside the run's own directory, so deleting the
+ * run would take the bundle with it. Mirrors `errorCodeExportInsideRun`; the
+ * API answers 409 and its hint says to move the bundle out first.
+ */
+export const ERROR_CODE_EXPORT_INSIDE_RUN = "export_inside_run";
+
 /** An error envelope from the local API, kept whole. */
 export class APIRequestError extends Error {
   readonly code: string;

@@ -34,10 +34,14 @@ import {
   formatNumber,
   formatTime,
 } from "@/ui/format";
+import { LoadingLine } from "@/ui/loading-line";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
-import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { runTiming } from "@/ui/run-status";
+import { useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { useStandardLabel } from "@/run/use-standard-label";
+import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
@@ -46,20 +50,6 @@ import { m } from "@/i18n/messages";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** "13:05:07 · 12 sec": when the run started and how long it took. */
-function runTiming(run: RunSummary): string {
-  return `${formatTime(run.started_at)} · ${formatDurationBetween(run.started_at, run.finished_at)}`;
-}
-
-function LoadingLine({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-      {text}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Receivers tab
@@ -447,6 +437,8 @@ function RasterTab({ run }: { run: RunSummary }) {
 // ---------------------------------------------------------------------------
 
 function RunColumn({ run, label }: { run: RunSummary; label: string }) {
+  const standardLabel = useStandardLabel();
+
   return (
     <Card className="flex-1 p-4">
       <SectionHeading variant="eyebrow" className="mb-1">
@@ -456,7 +448,7 @@ function RunColumn({ run, label }: { run: RunSummary; label: string }) {
       <div className="mt-2 space-y-0.5 text-xs">
         <p>
           <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
-          <span className="font-mono">{run.standard_id}</span>
+          <span>{standardLabel(run.standard_id)}</span>
         </p>
         <p>
           <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
@@ -492,6 +484,7 @@ function CompareTab({
   run: RunSummary;
   allCompletedRuns: RunSummary[];
 }) {
+  const standardLabel = useStandardLabel();
   const [compareRunId, setCompareRunId] = useState<string>("");
   const otherRuns = allCompletedRuns.filter((r) => r.id !== run.id);
   const compareRun = otherRuns.find((r) => r.id === compareRunId) ?? null;
@@ -520,7 +513,7 @@ function CompareTab({
               <SelectItem key={r.id} value={r.id}>
                 <span className="font-mono">{r.id}</span>{" "}
                 <span className="text-muted-foreground">
-                  ({r.standard_id} / {r.version})
+                  ({standardLabel(r.standard_id)} / {r.version})
                 </span>
               </SelectItem>
             ))}
@@ -561,6 +554,7 @@ function RunResultDetail({
   run: RunSummary;
   allCompletedRuns: RunSummary[];
 }) {
+  const standardLabel = useStandardLabel();
   const [tab, setTab] = useState<ResultTab>("receivers");
 
   return (
@@ -574,7 +568,7 @@ function RunResultDetail({
           </span>
         </div>
         <p className="mt-0.5 text-sm">
-          <span className="font-mono">{run.standard_id}</span>
+          <span>{standardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}
@@ -637,29 +631,23 @@ function RunResultDetail({
 // Results page
 // ---------------------------------------------------------------------------
 
+// Module scope, not an inline arrow: `useRunFromRoute` memoises the filtered
+// list on this identity, and a fresh closure each render would rebuild it
+// every time.
+function isCompleted(run: RunSummary): boolean {
+  return run.status === "completed";
+}
+
 export default function ResultsPage() {
-  const { data, isLoading, error } = useRuns();
-  const runs = useMemo(() => data ?? [], [data]);
+  const standardLabel = useStandardLabel();
   const { runId } = useParams();
-
-  const completedRuns = useMemo(
-    () => runs.filter((r) => r.status === "completed"),
-    [runs],
-  );
-
-  // The selection is the URL, and nothing else. There is deliberately no
-  // fallback to `completedRuns[0]`: the list arrives in backend order, so
-  // "the first one" was never "the newest one", and showing a run the user
-  // did not ask for puts someone else's numbers under their heading.
-  const selectedRun =
-    runId == null ? null : (completedRuns.find((r) => r.id === runId) ?? null);
-
-  // `data !== undefined`, not `runs.length`: an id is unknown only once a
-  // list has actually arrived. The transient-state return below already
-  // covers the cold load; this is what keeps that true if it is ever
-  // reordered away.
-  const runExists = runId != null && runs.some((r) => r.id === runId);
-  const missingRun = runId != null && data !== undefined && selectedRun == null;
+  const {
+    eligibleRuns: completedRuns,
+    run: selectedRun,
+    state,
+    isLoading,
+    error,
+  } = useRunFromRoute(runId, isCompleted);
 
   // The heading stays above both transient states so every state of the page
   // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
@@ -725,7 +713,7 @@ export default function ResultsPage() {
                 to={`/results/${run.id}`}
                 badge={<StatusBadge status={run.status} />}
                 code={run.id}
-                title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                title={`${standardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                 meta={runTiming(run)}
               />
             ))}
@@ -735,10 +723,10 @@ export default function ResultsPage() {
     >
       {selectedRun ? (
         <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
-      ) : missingRun ? (
+      ) : runId != null && (state === "ineligible" || state === "unknown") ? (
         <div className="flex flex-1 items-start justify-center p-8">
           <Callout variant="warning" icon={AlertTriangle}>
-            {runExists
+            {state === "ineligible"
               ? m.msg_run_not_completed({ runId })
               : m.msg_unknown_run_id({ runId })}
           </Callout>

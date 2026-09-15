@@ -5,6 +5,7 @@
    it does on the HTTP path. */
 import type {
   Backend,
+  DeleteRunResult,
   ModelSaveResult,
   OsmImportRequest,
   RunSpec,
@@ -92,6 +93,26 @@ type BrowserBackendState = {
   projectPath: string;
   crs: string;
   runs: StoredRun[];
+  /**
+   * The highest run index ever minted, whether or not that run is still
+   * stored. Run ids are minted from this and never from the stored list — see
+   * `nextRunID`.
+   *
+   * Added without bumping `PERSISTED_STATE_VERSION`, deliberately. A document
+   * written before this field existed simply lacks it, and `decodeState`
+   * derives it; a bump would instead make an older build read the new document
+   * as corrupt and throw the user's twenty runs away, which is a worse trade
+   * than the one it would be protecting against.
+   *
+   * What the missing bump does cost is named rather than hidden: an older
+   * build ignores this field, so after a newer build has deleted the
+   * highest-numbered run, that older build mints the next id from the
+   * surviving list and reuses the deleted one. It takes a stale tab against a
+   * newer document to reach — the app ships as one bundle, so "an older build"
+   * is not a supported configuration — and it costs a colliding id, where the
+   * bump costs every run in the document.
+   */
+  runHighWaterMark: number;
 };
 
 type OverpassPoint = {
@@ -305,6 +326,7 @@ function initialState(): BrowserBackendState {
     projectPath: DEFAULT_PROJECT_PATH,
     crs: DEFAULT_CRS,
     runs: [],
+    runHighWaterMark: 0,
   };
 }
 
@@ -363,14 +385,36 @@ function decodeState(value: unknown): BrowserBackendState {
     const field = value[key];
     return typeof field === "string" ? field : fallback;
   };
-  const runs = Array.isArray(value["runs"]) ? value["runs"] : [];
+  const runs = (Array.isArray(value["runs"]) ? value["runs"] : []).filter(
+    isStoredRun,
+  );
+  // A document written before the mark existed carries none, and the highest
+  // stored id is exactly right for it: nothing could delete a run then, so no
+  // id above the surviving ones was ever handed out.
+  const storedMark = value["runHighWaterMark"];
   return {
     projectId: text("projectId", defaults.projectId),
     projectName: text("projectName", defaults.projectName),
     projectPath: text("projectPath", defaults.projectPath),
     crs: text("crs", defaults.crs),
-    runs: runs.filter(isStoredRun),
+    runs,
+    runHighWaterMark:
+      typeof storedMark === "number" && Number.isInteger(storedMark)
+        ? Math.max(storedMark, highestRunIndex(runs))
+        : highestRunIndex(runs),
   };
+}
+
+/** The largest `run-NNNN` index among the stored runs, or 0. */
+function highestRunIndex(runs: StoredRun[]): number {
+  let highest = 0;
+  for (const entry of runs) {
+    const match = /^run-(\d+)$/.exec(entry.run.id);
+    if (match?.[1] !== undefined) {
+      highest = Math.max(highest, Number.parseInt(match[1], 10));
+    }
+  }
+  return highest;
 }
 
 function decodePersisted(value: unknown): BrowserBackendState {
@@ -678,25 +722,33 @@ function setRun(
   );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
-  return { ...current, runs: nextRuns.slice(0, MAX_STORED_RUNS) };
+  return {
+    ...current,
+    runs: nextRuns.slice(0, MAX_STORED_RUNS),
+    // Raised here rather than at mint time: this is the moment an id becomes
+    // real, and an eviction or a delete afterwards must not lower it.
+    runHighWaterMark: Math.max(
+      current.runHighWaterMark,
+      highestRunIndex([storedRun]),
+    ),
+  };
 }
 
 /**
- * Run ids are minted from the highest id still stored, not from the list
- * length: once the cap evicts runs the length stops growing, and an id would
- * be reused — and `setRun` would then silently replace an older run with the
- * new one, while every artifact id derived from the run id would name two
- * payloads.
+ * Run ids are minted from a persisted high-water mark, not from the stored
+ * runs.
+ *
+ * The list is not a record of what has been handed out: the cap evicts the
+ * oldest, and deleting removes whichever the user picked — including the
+ * newest, which is what makes reading the maximum back off the list unsafe.
+ * A reused id would make `setRun` silently replace an older run, and every
+ * artifact id derived from the run id would name two payloads.
+ *
+ * The mark is raised in `setRun`, so a mint that never reaches storage — a
+ * quota failure, a tab closed mid-run — leaves it alone.
  */
 function nextRunID(current: BrowserBackendState): string {
-  let highest = 0;
-  for (const entry of current.runs) {
-    const match = /^run-(\d+)$/.exec(entry.run.id);
-    if (match?.[1] !== undefined) {
-      highest = Math.max(highest, Number.parseInt(match[1], 10));
-    }
-  }
-  return `run-${formatRunIndex(highest)}`;
+  return `run-${formatRunIndex(current.runHighWaterMark)}`;
 }
 
 // Exported for the receiver-grid extent test: a Parkplatz is an extended
@@ -1220,6 +1272,9 @@ export const browserBackend = {
     canExport: true,
     runsAgainstSavedModel: false,
     runsChangeExternally: false,
+    // Export artifacts are stored inside the run record, so deleting the run
+    // deletes the bundle with it. The confirmation has to say so.
+    exportsOutliveRunDelete: false,
   },
 
   async getHealth(): Promise<HealthResponse> {
@@ -1698,6 +1753,38 @@ out geom;`;
 
       await persistRun(nextStoredRun, "export");
       return nextStoredRun.run;
+    });
+  },
+
+  async deleteRun(runId: string): Promise<DeleteRunResult> {
+    // The lock spans the read and the write, like every other writer: the
+    // store is shared by every tab of the origin, so deleting out of this
+    // tab's cache would drop whatever another tab has stored since.
+    //
+    // Written through `persist`, which is what prunes the URL cache and
+    // revokes the deleted run's artifact object URLs. Bypassing it leaks them.
+    //
+    // `runHighWaterMark` is untouched on purpose: it is the record of what has
+    // been handed out, and deleting the newest run must not free its id.
+    return withStoreLock(async () => {
+      const current = await reloadState();
+      const storedRun = findRunByID(current, runId);
+      if (
+        storedRun.run.status === "pending" ||
+        storedRun.run.status === "running"
+      ) {
+        // The same refusal the API gives, for the same reason: the run is
+        // still writing. Browser runs complete inside `startRun`, so this is a
+        // guard rather than a case anyone reaches.
+        throw new Error(`Run ${runId} is still running`);
+      }
+      await persist({
+        ...current,
+        runs: current.runs.filter((entry) => entry.run.id !== runId),
+      });
+      // No paths and no surviving bundle: the export artifacts lived inside
+      // the record just removed.
+      return { runId, retainedPaths: [] };
     });
   },
 
