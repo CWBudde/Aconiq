@@ -386,6 +386,10 @@ function runIDs(state: unknown): string[] {
   );
 }
 
+function highWaterMark(state: unknown): number | undefined {
+  return (state as { runHighWaterMark?: number }).runHighWaterMark;
+}
+
 describe("persisted state", () => {
   let warn: ReturnType<typeof vi.spyOn>;
 
@@ -668,6 +672,86 @@ describe("persisted state", () => {
     } finally {
       Reflect.deleteProperty(navigator, "locks");
     }
+  });
+
+  describe("run ids", () => {
+    it("derives the mark from a document written before it existed", async () => {
+      // The field is additive, so an older document simply lacks it — and the
+      // highest stored id is exactly right there, because nothing could delete
+      // a run before this mark existed.
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(7, "2026-01-01T07:00:00.000Z"),
+            runFixture(3, "2026-01-01T03:00:00.000Z"),
+          ],
+        },
+      });
+      resetBrowserBackendForTests();
+
+      const run = await browserBackend.startRun(RUN_SPEC);
+
+      expect(run.id).toBe("run-0008");
+      expect(highWaterMark((await persisted()).state)).toBe(8);
+    });
+
+    it("keeps the runs a document written before the mark holds", async () => {
+      // The alternative — bumping PERSISTED_STATE_VERSION — makes an older
+      // build read this document as corrupt and discard every run in it.
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [runFixture(2, "2026-01-01T02:00:00.000Z")] },
+      });
+      resetBrowserBackendForTests();
+
+      await expect(
+        browserBackend.getRuns().then((runs) => runs.map((r) => r.id)),
+      ).resolves.toEqual(["run-0002"]);
+    });
+
+    it("does not reuse the id of a run the cap evicted", async () => {
+      const state = {
+        runs: Array.from({ length: MAX_STORED_RUNS }, (_, i) =>
+          runFixture(
+            i + 1,
+            `2026-01-0${String((i % 9) + 1)}T0${String(i % 10)}:00:00.000Z`,
+          ),
+        ),
+        runHighWaterMark: MAX_STORED_RUNS,
+      };
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state,
+      });
+      resetBrowserBackendForTests();
+
+      const first = await browserBackend.startRun(RUN_SPEC);
+      const second = await browserBackend.startRun(RUN_SPEC);
+
+      expect(first.id).toBe(
+        `run-${String(MAX_STORED_RUNS + 1).padStart(4, "0")}`,
+      );
+      expect(second.id).toBe(
+        `run-${String(MAX_STORED_RUNS + 2).padStart(4, "0")}`,
+      );
+      expect(first.id).not.toBe(second.id);
+    });
+
+    it("does not lower the mark when a run fails to reach storage", async () => {
+      // The mark is raised in `setRun`, which is the moment an id becomes
+      // real — never at mint time, where a quota failure would strand it.
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [], runHighWaterMark: 41 },
+      });
+      resetBrowserBackendForTests();
+
+      const run = await browserBackend.startRun(RUN_SPEC);
+
+      expect(run.id).toBe("run-0042");
+      expect(highWaterMark((await persisted()).state)).toBe(42);
+    });
   });
 
   describe("when the store is full", () => {
