@@ -1090,53 +1090,41 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **`map/color-ramp.ts` has zero importers and 0 % coverage**, and was deliberately kept:
       "Results on the map" below names `NOISE_LEVEL_RAMP`. Do not delete it as dead code in the
       meantime.
-- [x] **Split run/results/export.** `pages/run.tsx` went 1,335 lines → 162: it is the route module
-      now, and the parts live in `src/run/`. **Not `pages/run/` as this file asked for** — the repo
-      already answers this question the other way, and consistently: `pages/map.tsx` is a thin route
-      module composing a dozen files from `src/map/`, and no nested page directory exists anywhere.
-      Keeping `pages/run.tsx` as the default export also left `routes.tsx`, `routes.test.tsx` and
-      `run.test.tsx`'s import untouched, which made the move commit reviewable as a move: zero test
-      edits, 827 tests unchanged. `parseTimeline` sits in its own module because a file exporting
-      both a component and a function loses fast refresh.
-      `useRunSetupSelection` carries the cascade. **The parameter seeding stays render-phase**;
-      an effect paints the fields empty for one commit on the way, which `run.test.tsx`'s
-      `MutationObserver` pins as `["999", "25"]` rather than `["999", "", "25"]`. The experimental
-      acknowledgement stayed outside the hook — it is an evidence-tier decision, not part of
-      choosing a profile. `useRunFromRoute` replaced the duplicated URL→run resolution in
-      `results.tsx` and `export.tsx`, with eligibility as a parameter because the two genuinely
-      differ; the run page's own selection stayed inline, since it falls back to the first visible
-      run and sharing a name with a rule that refuses exactly that would make the name lie.
-      `STANDARD_LABELS` was keyed by `upstream_mapping_standard` — a **parameter** name — so every
-      lookup had always missed; both message keys are gone. The eight raw `standard_id` sites now
-      read a name, and **the label carries its own evidence limit**: `EvidenceTierBadge` sits
-      beside it in only two of five places, and `RunSummary` has no tier to give the rest one, so a
-      scaffold reads "BUB Straße (Gerüst)". Parameters are grouped by name prefix and labelled with
-      the API's `unit`; the RLS-19 vehicle classes get the terminology the catalogue already
-      carries, and **everything else keeps the backend's own name, humanised, in English**.
-      Composing German across all 98 parameters would have invented `Gleisrauheitsklasse` for
-      published norms — Phase E owns that. The raw name stays on screen in a `code`, because it is
-      what `--param` takes.
-      The run gate goes through `useModelValidation`, on **errors only** — a model with one RLS-19
-      review warning must stay runnable — and **an empty store is not an empty project**: when
-      `runsAgainstSavedModel` and hydration errored, the dialog says the model could not be read
-      and offers the retry. The dialog body became a child, so its queries and this validation run
-      while it is open rather than on every render of `/run`.
-      `ui/confirm-dialog.tsx` has call sites at last: discarding a draft, deleting a feature or a
-      receiver, and import replacing the model. The two map deletes are undoable and the
-      confirmation says so, which is the cheapest way to make that true when the undo bar is at the
-      other end of the workspace. `src/map/feature-editor.test.tsx` exists now.
-      `Backend.deleteRun` lands in both modes with `exportsOutliveRunDelete`, because **which
-      sentence is true has to be said before the user agrees** and `retained_paths` arrives after.
-      Delete is offered only on a finished run. `ConfirmDialog` forwards Radix's
-      `onCloseAutoFocus`: confirming unmounts the button focus would return to, and no axe rule
-      covers landing on `<body>`.
-      **`PERSISTED_STATE_VERSION` stayed at 1, against what this file called mandatory.** The bump
-      is the wrong tool: `decodePersisted` throws on an unknown version and `loadState` swallows
-      that into `initialState()`, warning that "the next completed run replaces them" — so a bump
-      buys nothing upward, since `decodeState` already reads field by field, and downward it makes
-      an older build discard twenty runs. `runHighWaterMark` is additive and raised in `setRun`;
-      its fallback, `max(stored ids)`, is exact rather than approximate for every document written
-      before it, because nothing could delete a run then.
+- [x] **Split run/results/export** (`9b591a0`..`0a57d78`). `pages/run.tsx` is a route module
+      again and its parts live in `src/run/`, with `useRunSetupSelection` and `useRunFromRoute`
+      carrying the cascade and the URL→run rule. Six constraints follow.
+      **Not `pages/run/` as this file asked for**: `pages/map.tsx` already answers this the
+      other way, and keeping the route module where it was made the move reviewable as a move.
+      **The parameter seeding stays render-phase** — an effect paints the fields empty for one
+      commit, which `run.test.tsx`'s `MutationObserver` pins as `["999", "25"]`.
+      **`useRunFromRoute` takes eligibility as a parameter** because `/results` resolves against
+      completed runs and `/export` against every run; the run page's own first-visible fallback
+      stayed inline rather than share a name with a rule that refuses exactly that.
+      **A standard's name is a name, and its evidence qualifier is derived from
+      `evidence_tier`** — never from a second table keyed by id, which is the parallel signal
+      `AGENTS.md` forbids and which `STANDARD_LABELS` had already demonstrated by being keyed on
+      a _parameter_ name and never matching anything. `useStandardLabel` resolves the tier for
+      the sites that hold only a `RunSummary`.
+      **Parameter labels are derived, not translated.** The RLS-19 vehicle classes get the
+      terminology the catalogue already carries; everything else keeps the backend's own name,
+      humanised. Composing German across all 98 would have invented `Gleisrauheitsklasse` for a
+      published norm — Phase E owns that. The raw name stays on screen, because it is what
+      `--param` takes.
+      **`PERSISTED_STATE_VERSION` stayed at 1, against what this file called mandatory.**
+      `decodePersisted` throws on an unknown version and `loadState` swallows that into
+      `initialState()`, so the bump buys nothing upward — `decodeState` already reads field by
+      field — and downward it discards the user's runs. `runHighWaterMark` is additive, raised
+      in `setRun`, and its `max(stored ids)` fallback is exact for every document written before
+      it, because nothing could delete a run then.
+      **A confirmed destructive action must say where focus goes.** Radix restores it to the
+      trigger, which these actions delete; no axe rule covers landing on `<body>`, and the
+      run-delete case only settles after the mutation does, so it is answered in an effect
+      rather than in `onCloseAutoFocus`.
+      Still open from the review: the frontend's list of registered standard ids
+      (`standards-meta.ts`) is a copy, because the Go registry composes its ids inside each
+      module's `Descriptor()` and no file names them all. A standards manifest generated from
+      the registry and read by both targets would make the drift a test failure instead of a raw
+      id on screen.
 - [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`); the sortable
       header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
       `SortIcon` (nested at `results.tsx:139-147`, so it remounts the header on every keystroke)

@@ -103,6 +103,14 @@ type BrowserBackendState = {
    * derives it; a bump would instead make an older build read the new document
    * as corrupt and throw the user's twenty runs away, which is a worse trade
    * than the one it would be protecting against.
+   *
+   * What the missing bump does cost is named rather than hidden: an older
+   * build ignores this field, so after a newer build has deleted the
+   * highest-numbered run, that older build mints the next id from the
+   * surviving list and reuses the deleted one. It takes a stale tab against a
+   * newer document to reach — the app ships as one bundle, so "an older build"
+   * is not a supported configuration — and it costs a colliding id, where the
+   * bump costs every run in the document.
    */
   runHighWaterMark: number;
 };
