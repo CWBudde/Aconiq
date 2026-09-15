@@ -999,42 +999,43 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       to a not-found page inside the shell (an `errorElement` replaces the layout, so
       `waitForPage` would hang on a missing `h1` instead of reporting the error), because a
       redirect keeps a missed migration working forever.
-- [ ] **Target IA, the pages half**: `/` project (Welcome and Status merged: import-or-draw, mode
-      chip, health, validation summary — not "open/create": `Backend` has no create-project or
-      open-project method, and pointing the UI at a different `aconiq serve` is what "open" means
-      here); `/model` map always mounted, empty state as overlay with "Import…" and
-      "Start drawing" (`map.tsx:36-40` hides the map and the draw tools until content exists);
-      `/import` stays a route (it is a three-step wizard, and the `/model` overlay's "Import…" is a
-      link to it). `/settings` with two categories (General, Connection — five of seven today are
-      "reserved" placeholders; deleting them also strikes the "planned settings" clause from the
-      item below). Header mode chip and a `<ModeGate>` with one disabled+tooltip treatment.
-      **`ModeGate` does not exist** — this file previously said it "has exactly one call site today
-      (`export.tsx:270`)", but that line is a bare `capabilities.canExport` ternary; the one call
-      site is the target, not the state. The count in that sentence was also wrong: there are
-      **eleven** capability reads in `src/`, three of them not UI at all (polling, autosave
-      clean-marking, project-sync enablement), six of the eight component-level reads content
-      decisions, and two that touch a control — `export.tsx:271`, which _hides_ the Generate
-      button, and `run.tsx:1191`, which disables one silently. The "one with no capability behind
-      it" is the permanently disabled Cancel button (`run.tsx:551-560`, not `533-544`), which the
-      item below deletes. Build it for the rule, not a sweep — and do not gate `SaveStatus`, whose
-      absence in browser mode is correct.
-      Two constraints found while planning. **`ModeGate` must use `aria-disabled`, not
-      `disabled`**: `button.tsx:8` carries `disabled:pointer-events-none`, and a disabled button
-      takes no focus and fires no pointer events, so a Radix tooltip over one never opens by mouse
-      _or_ by keyboard — which also means `undo-redo-bar.tsx:33-47`'s two tooltips are dead in
-      exactly the state they describe, and are not a pattern to copy. And **the validation summary
-      must call `validateProjectModel`, guarded by an early return on an empty model** —
-      `validateModel` passes `[]` for receivers, and `validate.ts:38-51` pushes a synthetic
-      `model.empty` _error_ whose message is hardcoded English, so a fresh install would otherwise
-      read "1 error" in the German UI.
-- [ ] **Drawing is inert: `useDraw` runs outside `MapContext`.** `MapView` provides the context
-      around its own children (`map-view.tsx:227`), but `MapWorkspace` calls `useDraw` one level
-      above it (`map.tsx:156`) — every other `useMap()` consumer is a `MapView` child. So `map` is
-      always `null`, the terra-draw init effect early-returns (`use-draw.ts:41`), and a draw-tool
-      click only moves React state. `map.test.tsx:53` mocks `useDraw`, which is why nothing
-      noticed. Extract a `DrawProvider` rendered _inside_ `MapView` and publish the draw API
-      through a context; the regression test must not mock `useDraw`. Ships with the overlay
-      above, whose "Start drawing" is a no-op until it lands.
+- [x] **Target IA, the pages half** (#29). `/` is one project page — get-started, validation
+      summary, backend health, project facts — replacing a welcome page whose only live content
+      was a project summary under three cards of static marketing copy and a status page carrying
+      that same summary again. Three copies of `ProjectSummary` became one. `/welcome` and
+      `/status` are gone with no redirects; sixteen keys went with them.
+      **The page heading renders outside every query branch**, and a test asserts a contiguous
+      outline across all twelve combinations of the two requests' states: `waitForPage` waits for
+      a header `h1` _and_ an `h2`/`h3` inside `main`, so a heading inside a success branch would
+      make a stopped backend hang every e2e spec on the route for the full Playwright timeout
+      rather than fail legibly.
+      `/model` mounts the map from the start, with the empty-model hint as a labelled region over
+      it rather than instead of it — the screen telling the user to start a workspace was
+      previously the one screen with no way to draw one. `ModeChip` names the backend in the
+      header (decorative: an `aria-label` on a role-less element is what axe's
+      `aria-prohibited-attr` flags), and `ModeGate` disables the export dialog's Generate button
+      with a reason instead of hiding it. Settings is down to General and Connection, ids kept
+      because `?category=` is a URL.
+      Three things this turned up. **`ModeGate` uses `aria-disabled`, not `disabled`** — a
+      disabled button takes no focus and fires no pointer events, so a tooltip over one never
+      opens; the tests hover and Tab for real, because every DOM-shaped assertion passes while the
+      tooltip is invisible. That failure is still live in `undo-redo-bar.tsx:33-47`, whose two
+      tooltips are silent in exactly the state they describe — **left open, listed under Phase D**.
+      **`validateModel` must not be called from the UI**; `useModelValidation` passes the
+      receivers and answers "empty" above the validator, so a fresh install no longer reads "1
+      error" in hardcoded English. And **terra-draw tore down against a removed map**: React
+      destroys a deleted subtree's effects parent-first, so `MapView`'s `map.remove()` ran before
+      `useDraw`'s `draw.stop()` and threw `getSource` of undefined, which React surfaced as a
+      crashed page on whatever route the user had just navigated to. Leaving `/model` for
+      `/import` reproduced it every time; it was invisible only because the map never mounted on
+      an empty model.
+- [x] **Drawing worked nowhere, and now works** (#29). `useDraw` ran one level above the
+      `MapContext` provider, so the map was always null, the terra-draw init effect
+      early-returned, and a draw-tool click only moved React state. A `DrawProvider` rendered
+      _inside_ `MapView` owns the instance, which makes the position structural. The test stubs
+      the terra-draw library rather than the hook — mocking the hook is what hid this — and
+      `map.test.tsx`'s `MapView` stub now renders its children inside a real context, so anything
+      laid over the map is exercised at all.
 - [x] **The workspace hydrates from the project, and the drawn area reaches it** (#26). Both
       halves together, because either alone loses the area on reload:
       `use-project-hydration.ts` sits in `RootLayout` beside `useAutosave`, gated on
@@ -1064,7 +1065,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 - [ ] **Strip placeholders and apologies**: the inert raster colour-ramp/probe block
       (`results.tsx:388-441` — a disabled Select over a hardcoded ramp list and two disabled
-      inputs), planned settings, the "Phase 24+" string (`msg_receiver_custom_set_desc`,
+      inputs), the "Phase 24+" string (`msg_receiver_custom_set_desc`,
       `en.json:313`), the run-to-run diff notice, and the permanently disabled Cancel button
       (`run.tsx:533-544`, `alert_cancel_not_supported`) — neither backend can cancel, so no
       capability would ever enable it and it is a label shaped like a button. Replace each CLI
@@ -1155,6 +1156,13 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
+- [ ] **The undo/redo tooltips are dead.** `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a
+      `disabled` Button, and a disabled button takes no focus and fires no pointer events — so
+      neither tooltip opens, by mouse or by keyboard, in exactly the state it describes ("nothing
+      to undo"). Nothing notices because the label is duplicated in `aria-label` and no axe rule
+      covers it. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a
+      swallowed click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an
+      attribute check passes while the tooltip is invisible.
 - [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
       (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
       edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);
