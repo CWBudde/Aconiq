@@ -324,8 +324,6 @@
   "status_loading_raster_metadata": "Loading raster metadata…",
   "status_loading_receiver_table": "Loading receiver table…",
 
-  "alert_cancel_not_supported": "Cancel is not supported from the UI. Kill the `aconiq run` CLI process to abort.",
-
   "table_header_height_m": "Height (m)",
 
   "tool_draw_calc_area": "Set Calculation Area",

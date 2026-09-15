@@ -324,8 +324,6 @@
   "status_loading_raster_metadata": "Raster-Metadaten laden…",
   "status_loading_receiver_table": "Empfängertabelle laden…",
 
-  "alert_cancel_not_supported": "Abbrechen ist in der Benutzeroberfläche nicht unterstützt. aconiq run-CLI-Prozess beenden, um abzubrechen.",
-
   "table_header_height_m": "Höhe (m)",
 
   "tool_draw_calc_area": "Berechnungsgebiet setzen",
