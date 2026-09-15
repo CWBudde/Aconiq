@@ -40,6 +40,38 @@ const validGeoJSON = JSON.stringify({
   ],
 });
 
+/** What `aconiq import` writes: features, receivers and the calculation area. */
+const projectGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "src-1", kind: "source", source_type: "point" },
+      geometry: { type: "Point", coordinates: [10, 51] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "rcv-1", kind: "receiver", height_m: 4 },
+      geometry: { type: "Point", coordinates: [10.001, 51.001] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "area-1", kind: "calc-area" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  ],
+});
+
 function makeFile(content: string, name = "model.geojson"): File {
   return new File([content], name, { type: "application/json" });
 }
@@ -183,6 +215,37 @@ describe("ImportPage", () => {
     expect(
       screen.getByRole("button", { name: /go to map/i }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the receivers and the calculation area an import brings", async () => {
+    // The wizard used to normalize with `normalizeGeoJSON`, which reported
+    // both kinds as an unknown kind, and to load with `loadFeatures`, which
+    // cleared the receivers the store held. "Import, then Save to project"
+    // therefore wrote a model without the receivers `aconiq import` had put
+    // there.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    const state = useModelStore.getState();
+    expect(state.features.map((f) => f.id)).toEqual(["src-1"]);
+    expect(state.receivers.map((r) => r.id)).toEqual(["rcv-1"]);
+    expect(state.calcArea).not.toBeNull();
+  });
+
+  it("counts the receivers and the calculation area in the preview", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    const receivers = screen.getByText(m.label_receivers());
+    expect(receivers.nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
+    // Nothing was skipped: both kinds are part of the schema the wizard reads.
+    expect(screen.queryByText(/features skipped/i)).toBeNull();
   });
 
   it("goes back to upload step from preview", async () => {

@@ -376,5 +376,6 @@
   "label_edit_history": "Rückgängig und Wiederholen",
   "action_hide_layer": "{label} ausblenden",
   "action_show_layer": "{label} einblenden",
-  "msg_project_model_load_failed": "Das Projektmodell konnte nicht geladen werden. Die Karte zeigt möglicherweise weniger, als das Projekt enthält."
+  "msg_project_model_load_failed": "Das Projektmodell konnte nicht geladen werden. Die Karte zeigt möglicherweise weniger, als das Projekt enthält.",
+  "msg_calc_area_included": "Enthalten"
 }

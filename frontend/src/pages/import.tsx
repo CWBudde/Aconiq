@@ -10,11 +10,13 @@ import { OsmImport } from "@/import/osm-import";
 import type { OsmQuery } from "@/import/osm-import";
 import { PreviewStep } from "@/import/preview-step";
 import { useModelStore } from "@/model/model-store";
-import { normalizeGeoJSON } from "@/model/normalize";
-import { validateModel } from "@/model/validate";
+import { normalizeModelGeoJSON } from "@/model/normalize";
+import { validateProjectModel } from "@/model/validate";
 import type {
+  CalcArea,
   GeoJSONFeatureCollection,
   ModelFeature,
+  ModelReceiver,
   ValidationReport,
 } from "@/model/types";
 import { CheckCircle2 } from "lucide-react";
@@ -51,26 +53,40 @@ export default function ImportPage() {
   const [step, setStep] = useState<ImportStep>("upload");
   const [source, setSource] = useState<ImportSource>("file");
   const [features, setFeatures] = useState<ModelFeature[]>([]);
+  const [receivers, setReceivers] = useState<ModelReceiver[]>([]);
+  const [calcArea, setCalcArea] = useState<CalcArea | null>(null);
   const [skippedCount, setSkippedCount] = useState(0);
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const loadFeatures = useModelStore((s) => s.loadFeatures);
+  const loadModel = useModelStore((s) => s.loadModel);
   const navigate = useNavigate();
 
+  /** Everything the import brings, receivers and calculation area included. */
+  const importedCount = features.length + receivers.length;
+
+  // The whole v1 schema, not the three kinds the map draws as features.
+  // `normalizeGeoJSON` reported `kind: "receiver"` as an unknown kind, so a
+  // file `aconiq import` had written came in without its receivers and the
+  // first save afterwards wrote that loss back into the project.
+  //
+  // The validator follows: `validateProjectModel` checks receiver ids against
+  // feature ids and the receivers themselves, which a features-only report
+  // cannot do — it would call a model with a duplicate receiver valid.
   const handleNormalizeAndPreview = useCallback(
     (collection: GeoJSONFeatureCollection) => {
-      const result = normalizeGeoJSON(collection);
+      const result = normalizeModelGeoJSON(collection);
       setFeatures(result.features);
+      setReceivers(result.receivers);
+      setCalcArea(result.calcArea);
       setSkippedCount(result.skipped.length);
-      setReport(validateModel(result.features));
+      setReport(validateProjectModel(result.features, result.receivers));
       setStep("preview");
     },
     [],
   );
 
-  // `loadFeatures` replaces the workspace outright and clears placed
-  // receivers with it, and no undo covers that — the command stack is reset,
-  // not extended. So the import asks first.
+  // `loadModel` replaces the workspace outright, and no undo covers that —
+  // the command stack is reset, not extended. So the import asks first.
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   // Read while the dialog closes, which is before the next render, so a ref
   // rather than state.
@@ -78,11 +94,11 @@ export default function ImportPage() {
   const goToMapRef = useRef<HTMLButtonElement>(null);
 
   const handleConfirm = useCallback(() => {
-    loadFeatures(features);
+    loadModel({ features, receivers, calcArea });
     replaced.current = true;
     setConfirmingReplace(false);
     setStep("done");
-  }, [features, loadFeatures]);
+  }, [features, receivers, calcArea, loadModel]);
 
   // Confirming removes the Import button the dialog was opened from, so Radix
   // has nothing to restore focus to and it would fall to `<body>`. The done
@@ -143,6 +159,8 @@ export default function ImportPage() {
         {step === "preview" && report ? (
           <PreviewStep
             features={features}
+            receivers={receivers}
+            calcArea={calcArea}
             skippedCount={skippedCount}
             report={report}
             onBack={() => {
@@ -160,7 +178,7 @@ export default function ImportPage() {
             <PageHeader
               className="justify-center text-center"
               title={m.status_import_complete()}
-              description={`${String(features.length)} ${m.msg_import_complete_description()}`}
+              description={`${String(importedCount)} ${m.msg_import_complete_description()}`}
             />
             <Button ref={goToMapRef} onClick={handleGoToMap}>
               {m.action_go_to_map()}
@@ -175,9 +193,9 @@ export default function ImportPage() {
         tone="destructive"
         title={m.confirm_import_replace_title()}
         description={m.confirm_import_replace_desc({
-          count: features.length,
+          count: importedCount,
         })}
-        confirmLabel={m.action_import_features({ count: features.length })}
+        confirmLabel={m.action_import_features({ count: importedCount })}
         onConfirm={handleConfirm}
         // The effect above owns where focus goes; this only stops Radix
         // sending it to a button that is no longer there first. Cancelling

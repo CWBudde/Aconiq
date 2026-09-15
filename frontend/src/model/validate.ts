@@ -27,11 +27,13 @@ import {
 /**
  * Validates features alone, as if no receiver were placed.
  *
- * **UI code must not call this.** A receiver-blind report is a *valid-looking*
+ * **Nothing calls this any more.** A receiver-blind report is a *valid-looking*
  * report: a model whose only defect is a duplicate or malformed receiver comes
- * back clean, and nothing fails. The one legitimate caller is the import
- * wizard, which validates a candidate list that has no receivers by
- * construction. Everything reading the store goes through `useModelValidation`.
+ * back clean, and nothing fails. The import wizard was the last caller and the
+ * exception this docblock used to grant it — "a candidate list that has no
+ * receivers by construction" — stopped being true when the wizard started
+ * reading them. Everything reading the store goes through
+ * `useModelValidation`; everything else calls `validateProjectModel` directly.
  */
 export function validateModel(features: ModelFeature[]): ValidationReport {
   return validateProjectModel(features, []);

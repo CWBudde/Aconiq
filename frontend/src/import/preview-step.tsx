@@ -4,7 +4,12 @@ import { Card } from "@/ui/components/card";
 import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
 import { PageHeader } from "@/ui/page-header";
-import type { ModelFeature, ValidationReport } from "@/model/types";
+import type {
+  CalcArea,
+  ModelFeature,
+  ModelReceiver,
+  ValidationReport,
+} from "@/model/types";
 import { m } from "@/i18n/messages";
 
 /** How many validation errors the preview lists before it summarises the rest. */
@@ -19,12 +24,16 @@ const PREVIEW_ERROR_LIMIT = 5;
  */
 export function PreviewStep({
   features,
+  receivers,
+  calcArea,
   skippedCount,
   report,
   onBack,
   onImport,
 }: {
   features: ModelFeature[];
+  receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
   skippedCount: number;
   report: ValidationReport;
   onBack: () => void;
@@ -53,6 +62,21 @@ export function PreviewStep({
               value: countByKind("building"),
             },
             { label: m.label_barriers(), value: countByKind("barrier") },
+            // Receivers and the calculation area are counted because the
+            // import now carries them. Listing only source/building/barrier
+            // was true of the wizard that dropped the other two.
+            {
+              label: m.label_receivers(),
+              value: String(receivers.length),
+            },
+            ...(calcArea === null
+              ? []
+              : [
+                  {
+                    label: m.label_calc_area(),
+                    value: m.msg_calc_area_included(),
+                  },
+                ]),
           ]}
         />
       </Card>
