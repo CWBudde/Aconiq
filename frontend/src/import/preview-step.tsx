@@ -101,8 +101,19 @@ export function PreviewStep({
           title={`${String(report.errors.length)} ${m.status_validation_errors()}`}
         >
           <ul className="space-y-1">
+            {/* The id is named but not linked. These features are not in the
+                store yet — the reader has not chosen Add or Replace — so
+                there is nothing for a map selection to open. The done step
+                links the findings that survived the import. */}
             {report.errors.slice(0, PREVIEW_ERROR_LIMIT).map((e, i) => (
-              <li key={i}>{e.message}</li>
+              <li key={i}>
+                {e.message}
+                {e.featureId === "" ? null : (
+                  <span className="ml-1 font-mono text-xs opacity-80">
+                    {e.featureId}
+                  </span>
+                )}
+              </li>
             ))}
             {report.errors.length > PREVIEW_ERROR_LIMIT ? (
               <li className="text-muted-foreground">

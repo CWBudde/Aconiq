@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Button } from "@/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
@@ -17,9 +17,11 @@ import type {
   GeoJSONFeatureCollection,
   ModelFeature,
   ModelReceiver,
+  ValidationIssue,
   ValidationReport,
 } from "@/model/types";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
+import { SELECT_PARAM } from "@/map/map-params";
 import { m } from "@/i18n/messages";
 
 type ImportStep = "upload" | "preview" | "done";
@@ -151,19 +153,61 @@ export default function ImportPage() {
   const replaced = useRef(false);
   const goToMapRef = useRef<HTMLButtonElement>(null);
 
+  // The findings the done step offers to open on the map. Only those whose
+  // feature actually landed: an Add skips what the workspace already holds,
+  // and a link to a feature the import did not bring selects nothing.
+  const [doneErrors, setDoneErrors] = useState<ValidationIssue[]>([]);
+
+  const errorsFor = useCallback(
+    (landed: Iterable<string>) => {
+      const ids = new Set(landed);
+      return (report?.errors ?? []).filter(
+        (issue) => issue.featureId !== "" && ids.has(issue.featureId),
+      );
+    },
+    [report],
+  );
+
   const handleConfirm = useCallback(() => {
     loadModel({ features, receivers, calcArea });
     setDoneCount(importedCount);
+    setDoneErrors(
+      errorsFor([...features.map((f) => f.id), ...receivers.map((r) => r.id)]),
+    );
     replaced.current = true;
     setConfirmingReplace(false);
     setStep("done");
-  }, [features, receivers, calcArea, importedCount, loadModel]);
+  }, [features, receivers, calcArea, importedCount, loadModel, errorsFor]);
 
   const handleAdd = useCallback(() => {
+    const landed = planMerge(
+      {
+        features: workspaceFeatures,
+        receivers: workspaceReceivers,
+        calcArea: workspaceCalcArea,
+      },
+      { features, receivers, calcArea },
+    );
     const skipped = mergeModel({ features, receivers, calcArea });
     setDoneCount(importedCount - skipped.features - skipped.receivers);
+    setDoneErrors(
+      errorsFor([
+        ...landed.features.map((f) => f.id),
+        ...landed.receivers.map((r) => r.id),
+      ]),
+    );
     setStep("done");
-  }, [features, receivers, calcArea, importedCount, mergeModel]);
+  }, [
+    features,
+    receivers,
+    calcArea,
+    importedCount,
+    mergeModel,
+    errorsFor,
+    workspaceFeatures,
+    workspaceReceivers,
+    workspaceCalcArea,
+  ]);
 
   // Confirming removes the Import button the dialog was opened from, so Radix
   // has nothing to restore focus to and it would fall to `<body>`. The done
@@ -251,6 +295,40 @@ export default function ImportPage() {
             <Button ref={goToMapRef} onClick={handleGoToMap}>
               {m.action_go_to_map()}
             </Button>
+
+            {/* Here the findings can be acted on: the features are in the
+                store, so each link opens the editor on the one it names. */}
+            {doneErrors.length > 0 ? (
+              <Callout
+                variant="destructive"
+                icon={XCircle}
+                className="text-left"
+                title={`${String(doneErrors.length)} ${m.status_validation_errors()}`}
+              >
+                <p>{m.msg_import_errors_remain()}</p>
+                <ul className="mt-2 space-y-1">
+                  {doneErrors.map((issue, i) => (
+                    <li key={i}>
+                      {issue.message}{" "}
+                      <Button
+                        asChild
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                      >
+                        <Link
+                          to={`/model?${SELECT_PARAM}=${encodeURIComponent(issue.featureId)}`}
+                        >
+                          {m.action_show_feature_on_map({
+                            id: issue.featureId,
+                          })}
+                        </Link>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Callout>
+            ) : null}
           </div>
         ) : null}
       </div>

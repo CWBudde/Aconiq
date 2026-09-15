@@ -82,6 +82,18 @@ const existing: ModelFeature = {
   geometry: { type: "Point", coordinates: [9, 50] },
 };
 
+/** One source with no `source_type`: an error the report can name an id for. */
+const invalidGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "broken-1", kind: "source" },
+      geometry: { type: "Point", coordinates: [10, 51] },
+    },
+  ],
+});
+
 function makeFile(content: string, name = "model.geojson"): File {
   return new File([content], name, { type: "application/json" });
 }
@@ -460,6 +472,55 @@ describe("ImportPage", () => {
     expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
     // Nothing was skipped: both kinds are part of the schema the wizard reads.
     expect(screen.queryByText(/features skipped/i)).toBeNull();
+  });
+
+  it("names the feature in a preview error without linking it", async () => {
+    // Nothing to link to: the features are not in the store until the reader
+    // chooses Add or Replace.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    expect(screen.getByText("broken-1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toBeNull();
+  });
+
+  it("links a surviving error to the feature it names", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    expect(
+      screen.getByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toHaveAttribute("href", "/model?select=broken-1");
+  });
+
+  it("does not link a finding whose feature the import skipped", async () => {
+    // Add keeps what the workspace already holds, so the imported copy never
+    // landed and the link would select the feature the reader already has.
+    seedWorkspace({ ...existing, id: "broken-1" });
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    expect(
+      screen.queryByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toBeNull();
   });
 
   it("goes back to upload step from preview", async () => {
