@@ -5,7 +5,7 @@ import {
   BarChart3,
   FileOutput,
   Settings,
-  Activity,
+  Home,
 } from "lucide-react";
 import { Link, matchPath, useLocation, useMatch } from "react-router";
 import type { LucideIcon } from "lucide-react";
@@ -47,6 +47,14 @@ interface NavEntry {
   match?: string;
 }
 
+const projectNav: NavEntry = {
+  title: m.page_title_project,
+  icon: Home,
+  path: "/",
+  // Needs no `match`: the pattern is matched whole, so "/" is current for "/"
+  // alone. As a prefix it would be the current page on every route.
+};
+
 const importNav: NavEntry = {
   title: m.nav_import,
   icon: FileInput,
@@ -54,6 +62,7 @@ const importNav: NavEntry = {
 };
 
 const navMain: NavEntry[] = [
+  projectNav,
   { title: m.nav_model, icon: Map, path: "/model" },
   importNav,
   { title: m.nav_run, icon: Play, path: "/run" },
@@ -74,7 +83,6 @@ const navMain: NavEntry[] = [
 ];
 
 const navFooter: NavEntry[] = [
-  { title: m.nav_status, icon: Activity, path: "/status" },
   { title: m.nav_settings, icon: Settings, path: "/settings" },
 ];
 
@@ -108,7 +116,9 @@ function AppSidebar() {
   // Named entries, not an index range: with `navMain.slice(1, 2)` here,
   // inserting a rail item silently re-aimed the no-project rail at whatever
   // landed at index 1.
-  const workspaceNav = showWorkspaceNav ? navMain : [importNav];
+  // With no project there is nothing to model, run or export — but the project
+  // page and the importer are exactly what the user needs.
+  const workspaceNav = showWorkspaceNav ? navMain : [projectNav, importNav];
 
   // One <nav> landmark holds the logo, the workspace links and the footer
   // links, so nothing in the rail sits outside a landmark (axe `region`).
@@ -167,13 +177,6 @@ function PageTitle() {
   const current = allNav.find((item) =>
     matchPath(item.match ?? item.path, location.pathname),
   );
-  if (location.pathname === "/welcome") {
-    return (
-      <h1 className="text-sm font-medium text-muted-foreground">
-        {m.page_title_welcome()}
-      </h1>
-    );
-  }
   return (
     <h1 className="text-sm font-medium text-muted-foreground">
       {current ? current.title() : m.nav_workspace()}

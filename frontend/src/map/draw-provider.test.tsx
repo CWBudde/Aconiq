@@ -13,7 +13,10 @@ import { MapContext } from "./use-map";
  * survive — `pages/map.test.tsx` stubbed the hook out, so nothing exercised
  * the path from the toolbar to terra-draw.
  */
-const instances: { setMode: ReturnType<typeof vi.fn> }[] = [];
+const instances: {
+  setMode: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+}[] = [];
 
 vi.mock("terra-draw", () => {
   class TerraDraw {
@@ -24,7 +27,7 @@ vi.mock("terra-draw", () => {
     getSnapshot = vi.fn(() => []);
     removeFeatures = vi.fn();
     constructor() {
-      instances.push(this as unknown as { setMode: ReturnType<typeof vi.fn> });
+      instances.push(this as unknown as (typeof instances)[number]);
     }
   }
   // `vi.fn()` rather than an empty class: the modes are only ever constructed
@@ -55,7 +58,7 @@ function Consumer() {
 const stubMap = {} as Map;
 
 function renderWithin(map: Map | null) {
-  render(
+  return render(
     <MapContext value={map}>
       <DrawProvider onFinish={() => undefined}>
         <Consumer />
@@ -109,5 +112,23 @@ describe("DrawProvider", () => {
     // and the toolbar shows the mode as active. Exactly what shipped.
     expect(instances).toHaveLength(0);
     expect(screen.getByTestId("mode")).toHaveTextContent("point");
+  });
+
+  it("survives a teardown against a map that is already gone", () => {
+    // React destroys a deleted subtree's effects parent-first, so `MapView`
+    // has already called `map.remove()` when this cleanup runs and terra-draw
+    // tears down against a dead map. Unguarded, that threw `getSource` of
+    // undefined — which React surfaced as a crashed page on whatever route the
+    // user had just navigated to.
+    const view = renderWithin(stubMap);
+    instances[0]?.stop.mockImplementation(() => {
+      throw new TypeError(
+        "Cannot read properties of undefined (reading 'getSource')",
+      );
+    });
+
+    expect(() => {
+      view.unmount();
+    }).not.toThrow();
   });
 });

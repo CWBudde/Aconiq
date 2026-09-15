@@ -99,7 +99,18 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     drawRef.current = draw;
 
     return () => {
-      draw.stop();
+      try {
+        draw.stop();
+      } catch (error) {
+        // React destroys a deleted subtree's effects parent-first, so
+        // `MapView`'s cleanup has already called `map.remove()` by the time
+        // this runs: terra-draw then tears down against a map whose internals
+        // are gone and throws `getSource` of undefined. There is nothing left
+        // to clean up on a removed map, so this is genuinely nothing to do —
+        // but it is reported, because the same call failing for any other
+        // reason would leak an adapter onto a live map.
+        console.warn("useDraw: terra-draw teardown failed", error);
+      }
       drawRef.current = null;
     };
   }, [map]);

@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
@@ -20,6 +20,7 @@ import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
 import { DrawProvider } from "@/map/draw-provider";
+import { DRAW_PARAM } from "@/map/draw-request";
 import { useDrawContext } from "@/map/use-draw-context";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
@@ -50,8 +51,25 @@ export default function MapPage() {
  * is opaque because it sits over a map raster, where neither a contrast rule
  * nor a reviewer can predict what is behind the text.
  */
-function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
+/**
+ * Arm a tool *and* clear the overlay. Arming alone leaves the card covering
+ * the canvas the user was just told to click; dismissing alone leaves them on
+ * an empty map beside a toolbar nobody pointed at.
+ *
+ * Point mode because a single click completes it and opens the new-feature
+ * dialog — line and polygon need a double-click to finish, which strands a
+ * first-timer. Callers must sit inside `DrawProvider`.
+ */
+function useStartDrawing(onDismiss: () => void): () => void {
   const { setMode } = useDrawContext();
+  return useCallback(() => {
+    setMode("point");
+    onDismiss();
+  }, [setMode, onDismiss]);
+}
+
+function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
+  const startDrawing = useStartDrawing(onDismiss);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-8">
@@ -80,19 +98,7 @@ function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
             <Button asChild>
               <Link to="/import">{m.action_import_data()}</Link>
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Arm *and* dismiss. Arming alone leaves the card covering the
-                // canvas the user was just told to click; dismissing alone
-                // leaves them on an empty map beside a toolbar nobody pointed
-                // at. Point mode because a single click completes it and opens
-                // the new-feature dialog — line and polygon need a
-                // double-click to finish, which strands a first-timer.
-                setMode("point");
-                onDismiss();
-              }}
-            >
+            <Button variant="outline" onClick={startDrawing}>
               {m.action_start_drawing()}
             </Button>
           </div>
@@ -237,6 +243,11 @@ function MapWorkspace() {
               <ValidationPanel onSelectFeature={handleSelectFromValidation} />
             </MapPanel>
           ) : null}
+          <DrawRequest
+            onDismiss={() => {
+              setStartDismissed(true);
+            }}
+          />
           {showStart ? (
             <WorkspaceStart
               onDismiss={() => {
@@ -255,6 +266,28 @@ function MapWorkspace() {
       />
     </TooltipProvider>
   );
+}
+
+/**
+ * Honours `?draw=1`, the flag the project page's "Start drawing" sets, then
+ * strips it so a reload or a Back does not arm the tool again. A boolean
+ * rather than a mode name, so which mode drawing starts in stays a decision
+ * this file makes once.
+ */
+function DrawRequest({ onDismiss }: { onDismiss: () => void }) {
+  const [params, setParams] = useSearchParams();
+  const startDrawing = useStartDrawing(onDismiss);
+  const requested = params.get(DRAW_PARAM) === "1";
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (!requested || handled.current) return;
+    handled.current = true;
+    startDrawing();
+    setParams({}, { replace: true });
+  }, [requested, startDrawing, setParams]);
+
+  return null;
 }
 
 /** Binds the presentational toolbar to the provider above it. */

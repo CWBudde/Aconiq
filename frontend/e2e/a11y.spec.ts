@@ -51,7 +51,7 @@ const BEST_PRACTICE_TAG = "best-practice";
 const NONE: readonly string[] = [];
 
 const KNOWN_VIOLATIONS: Record<Route, readonly string[]> = {
-  "/welcome": NONE,
+  "/": NONE,
   "/model": NONE,
   "/import": NONE,
   "/run": NONE,
@@ -59,7 +59,6 @@ const KNOWN_VIOLATIONS: Record<Route, readonly string[]> = {
   "/results/does-not-exist": NONE,
   "/export": NONE,
   "/export/does-not-exist": NONE,
-  "/status": NONE,
   "/settings": NONE,
   "/map": NONE,
 };

@@ -33,7 +33,7 @@ export const UNKNOWN_RUN_ID = "does-not-exist";
  * else in this list reaches it — both bogus run ids match `:runId`.
  */
 export const ROUTES = [
-  "/welcome",
+  "/",
   "/model",
   "/import",
   "/run",
@@ -41,7 +41,6 @@ export const ROUTES = [
   `/results/${UNKNOWN_RUN_ID}`,
   "/export",
   `/export/${UNKNOWN_RUN_ID}`,
-  "/status",
   "/settings",
   "/map",
 ] as const;
