@@ -166,14 +166,33 @@ export function useCreateExport() {
   });
 }
 
+/**
+ * What `useDeleteRun` needs to clear up after itself.
+ *
+ * The artifact ids travel with the request rather than being looked up here:
+ * artifact payloads are cached under `queryKeys.artifacts.content(id)`, which
+ * `runId` alone cannot address, and by the time the deletion has succeeded the
+ * run that listed them is gone. The caller holds `run.artifacts` already.
+ */
+export interface DeleteRunVariables {
+  runId: string;
+  /** `run.artifacts.map((a) => a.id)` — empty for a run that produced none. */
+  artifactIds: string[];
+}
+
 export function useDeleteRun() {
   return useMutation({
-    mutationFn: (runId: string) => backend.deleteRun(runId),
-    onSuccess: async (_result, runId) => {
+    mutationFn: ({ runId }: DeleteRunVariables) => backend.deleteRun(runId),
+    onSuccess: async (_result, { runId, artifactIds }) => {
       // The run's own cached log and artifact payloads are removed rather than
       // invalidated: there is nothing left to refetch, and the artifact
       // entries are the larger objects.
       queryClient.removeQueries({ queryKey: queryKeys.runs.log(runId) });
+      for (const artifactId of artifactIds) {
+        queryClient.removeQueries({
+          queryKey: queryKeys.artifacts.content(artifactId),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
       // `ProjectStatusResponse.run_count` changed, exactly as it does when a
       // run is created.

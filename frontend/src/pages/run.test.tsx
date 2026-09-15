@@ -14,6 +14,7 @@ import type {
   StandardDescriptor,
 } from "@/api/client";
 import type { BackendCapabilities, DeleteRunResult } from "@/api/backend";
+import type { DeleteRunVariables } from "@/api/hooks";
 import {
   APIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
@@ -48,6 +49,7 @@ const state = vi.hoisted(() => {
     savedModels: unknown[];
     logLines: string[];
     deletedRunIds: string[];
+    deletedArtifactIds: string[];
     retainedPaths: string[];
     deleteRunError: Error | null;
   } = {
@@ -59,6 +61,7 @@ const state = vi.hoisted(() => {
     savedModels: [],
     logLines: [],
     deletedRunIds: [] as string[],
+    deletedArtifactIds: [] as string[],
     retainedPaths: [] as string[],
     deleteRunError: null as Error | null,
   };
@@ -98,11 +101,15 @@ vi.mock("@/api/hooks", () => ({
   }),
   useDeleteRun: () => ({
     mutate: (
-      runId: string,
+      variables: DeleteRunVariables,
       options?: { onSuccess?: (result: DeleteRunResult) => void },
     ) => {
-      state.deletedRunIds.push(runId);
-      options?.onSuccess?.({ runId, retainedPaths: state.retainedPaths });
+      state.deletedRunIds.push(variables.runId);
+      state.deletedArtifactIds.push(...variables.artifactIds);
+      options?.onSuccess?.({
+        runId: variables.runId,
+        retainedPaths: state.retainedPaths,
+      });
     },
     isPending: false,
     isError: state.deleteRunError !== null,
@@ -271,6 +278,7 @@ beforeEach(() => {
   state.savedModels = [];
   state.logLines = [];
   state.deletedRunIds = [];
+  state.deletedArtifactIds = [];
   state.retainedPaths = [];
   state.deleteRunError = null;
   useModelStore.getState().reset();
@@ -672,7 +680,17 @@ describe("RunPage run deletion", () => {
       started_at: "2026-01-01T10:00:00Z",
       finished_at: "2026-01-01T10:00:05Z",
       log_path: "runs/run-0007/run.log",
-      artifacts: [],
+      // One artifact, so the deletion has a cached payload to drop: the ids
+      // travel with the request because `runId` alone cannot address
+      // `queryKeys.artifacts.content(...)`.
+      artifacts: [
+        {
+          id: "art-1",
+          kind: "results.receivers_csv",
+          path: "runs/run-0007/results/receivers.csv",
+          created_at: "2026-01-01T10:00:05Z",
+        },
+      ],
     };
   }
 
@@ -744,6 +762,7 @@ describe("RunPage run deletion", () => {
     );
 
     expect(state.deletedRunIds).toEqual(["run-0007"]);
+    expect(state.deletedArtifactIds).toEqual(["art-1"]);
     // The pane is gone; focus must not have been dropped on `<body>`. Radix
     // juggles focus across a frame on close, so this is awaited rather than
     // asserted on the spot.

@@ -148,7 +148,12 @@ export default function RunPage() {
           }
         >
           {selectedRun ? (
+            /* Keyed by run id so selecting another run gives the pane a fresh
+               `useDeleteRun`. Without it the pane is reused, and a deletion
+               that failed on run A keeps its error state and renders that
+               failure under run B's heading. */
             <RunDetail
+              key={selectedRun.id}
               run={selectedRun}
               onRetry={() => {
                 setDialogOpen(true);

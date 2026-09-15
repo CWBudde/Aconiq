@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, Info, RefreshCw, Terminal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/ui/components/button";
@@ -142,26 +142,44 @@ export function RunDetail({
   const standardLabel = useStandardLabel();
   const deleteRun = useDeleteRun();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  // Read in `onCloseAutoFocus`, which Radix fires as the dialog closes — a ref
-  // rather than state, because that handler must see the current value without
-  // waiting for a render.
-  const deleted = useRef(false);
+  const [deleted, setDeleted] = useState(false);
+
+  /**
+   * Move focus off the pane, once — and from an effect, which is the only
+   * place that works in both orders this can happen in.
+   *
+   * The dialog closes the moment the user agrees. An API backend answers long
+   * after that, so Radix has already restored focus to the Delete button —
+   * correctly, it still exists — and the pane only goes when the invalidation
+   * lands. The WASM kernel and the tests answer *before* the close, while the
+   * dialog's focus trap is still up, so a focus call made there is bounced
+   * straight back inside and lost when the trap comes down.
+   *
+   * A passive effect runs after the commit that unmounts the dialog, and so
+   * after both. No axe rule covers landing on `<body>`.
+   */
+  useEffect(() => {
+    if (deleted) onDeleted();
+  }, [deleted, onDeleted]);
 
   function handleDelete() {
     setConfirmingDelete(false);
-    deleteRun.mutate(run.id, {
-      onSuccess: (result) => {
-        deleted.current = true;
-        toast.success(
-          result.retainedPaths.length > 0
-            ? m.msg_run_deleted_exports_kept({
-                runId: run.id,
-                count: result.retainedPaths.length,
-              })
-            : m.msg_run_deleted({ runId: run.id }),
-        );
+    deleteRun.mutate(
+      { runId: run.id, artifactIds: run.artifacts.map((a) => a.id) },
+      {
+        onSuccess: (result) => {
+          toast.success(
+            result.retainedPaths.length > 0
+              ? m.msg_run_deleted_exports_kept({
+                  runId: run.id,
+                  count: result.retainedPaths.length,
+                })
+              : m.msg_run_deleted({ runId: run.id }),
+          );
+          setDeleted(true);
+        },
       },
-    });
+    );
   }
 
   return (
@@ -288,14 +306,13 @@ export function RunDetail({
         }
         confirmLabel={m.action_delete_run()}
         onConfirm={handleDelete}
-        // The Delete button this dialog was opened from is about to be
-        // unmounted with the pane, so Radix has nothing to restore focus to.
-        // Hand the page the chance to put it somewhere that still exists,
-        // before the pane goes.
+        // Where the delete has already succeeded, Radix would hand focus back
+        // to a Delete button that is about to unmount, and the effect above
+        // would have to take it away again. A pending or failed delete keeps
+        // the ordinary restoration: that pane is still there.
         onCloseAutoFocus={(event) => {
-          if (!deleted.current) return;
+          if (!deleted) return;
           event.preventDefault();
-          onDeleted();
         }}
       />
     </div>

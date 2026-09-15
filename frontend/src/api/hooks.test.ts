@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelSaveResult, RunSpec } from "./backend";
 import type { RunLog, RunSummary } from "./client";
 import { buildCreateRunRequest } from "./http-backend";
-import { useIsSavingModel, useRunLog, useRuns, useSaveModel } from "./hooks";
+import {
+  useDeleteRun,
+  useIsSavingModel,
+  useRunLog,
+  useRuns,
+  useSaveModel,
+} from "./hooks";
+import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 
 const saveState = vi.hoisted(() => ({
@@ -42,6 +49,7 @@ vi.mock("./backend", () => ({
     getProjectStatus: () => Promise.resolve(null),
     getRuns,
     getRunLog,
+    deleteRun: (runId: string) => Promise.resolve({ runId, retainedPaths: [] }),
   },
 }));
 
@@ -338,5 +346,47 @@ describe("useRunLog", () => {
 
     await advance(30_000);
     expect(getRunLog).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useDeleteRun", () => {
+  it("drops the deleted run's cached payloads and keeps everyone else's", async () => {
+    // The artifact ids travel with the request because `runId` alone cannot
+    // address `queryKeys.artifacts.content(...)`, and these are the largest
+    // things in the cache: a receiver table and a raster for a run that no
+    // longer exists are bytes nothing can ever ask for again.
+    queryClient.setQueryData(queryKeys.runs.log("run-1"), {
+      run_id: "run-1",
+      lines: ["done"],
+    });
+    queryClient.setQueryData(queryKeys.artifacts.content("art-1"), "receivers");
+    queryClient.setQueryData(queryKeys.artifacts.content("art-2"), "raster");
+    // Another run's artifact, which this deletion has no business touching.
+    queryClient.setQueryData(queryKeys.artifacts.content("art-9"), "other run");
+
+    const { result } = renderHook(() => useDeleteRun(), { wrapper });
+    act(() => {
+      result.current.mutate({
+        runId: "run-1",
+        artifactIds: ["art-1", "art-2"],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(
+      queryClient.getQueryData(queryKeys.runs.log("run-1")),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(queryKeys.artifacts.content("art-1")),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(queryKeys.artifacts.content("art-2")),
+    ).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.artifacts.content("art-9"))).toBe(
+      "other run",
+    );
   });
 });
