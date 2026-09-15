@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
+import { useParams } from "react-router";
 import {
   BarChart3,
   Table2,
   GitCompare,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Download,
   Info,
   ChevronUp,
@@ -677,24 +679,28 @@ function RunResultDetail({
 // ---------------------------------------------------------------------------
 
 export default function ResultsPage() {
-  const { data: runs = [], isLoading, error } = useRuns();
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const { data, isLoading, error } = useRuns();
+  const runs = useMemo(() => data ?? [], [data]);
+  const { runId } = useParams();
 
   const completedRuns = useMemo(
     () => runs.filter((r) => r.status === "completed"),
     [runs],
   );
 
-  // Derived, not stored: falling back to the first completed run here avoids
-  // the render-phase `setSelectedRunId` this used to do, which forced an extra
-  // render pass on every load.
-  const selectedRun = useMemo(
-    () =>
-      completedRuns.find((r) => r.id === selectedRunId) ??
-      completedRuns[0] ??
-      null,
-    [completedRuns, selectedRunId],
-  );
+  // The selection is the URL, and nothing else. There is deliberately no
+  // fallback to `completedRuns[0]`: the list arrives in backend order, so
+  // "the first one" was never "the newest one", and showing a run the user
+  // did not ask for puts someone else's numbers under their heading.
+  const selectedRun =
+    runId == null ? null : (completedRuns.find((r) => r.id === runId) ?? null);
+
+  // `data !== undefined`, not `runs.length`: an id is unknown only once a
+  // list has actually arrived. The transient-state return below already
+  // covers the cold load; this is what keeps that true if it is ever
+  // reordered away.
+  const runExists = runId != null && runs.some((r) => r.id === runId);
+  const missingRun = runId != null && data !== undefined && selectedRun == null;
 
   // The heading stays above both transient states so every state of the page
   // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
@@ -752,10 +758,8 @@ export default function ResultsPage() {
             {completedRuns.map((run) => (
               <ListItem
                 key={run.id}
-                selected={run.id === selectedRun?.id}
-                onSelect={() => {
-                  setSelectedRunId(run.id);
-                }}
+                selected={run.id === runId}
+                to={`/results/${run.id}`}
                 badge={<StatusBadge status={run.status} />}
                 code={run.id}
                 title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
@@ -768,6 +772,14 @@ export default function ResultsPage() {
     >
       {selectedRun ? (
         <RunResultDetail run={selectedRun} allCompletedRuns={completedRuns} />
+      ) : missingRun ? (
+        <div className="flex flex-1 items-start justify-center p-8">
+          <Callout variant="warning" icon={AlertTriangle}>
+            {runExists
+              ? m.msg_run_not_completed({ runId })
+              : m.msg_unknown_run_id({ runId })}
+          </Callout>
+        </div>
       ) : (
         <EmptyState title={m.msg_select_completed_run_details()} />
       )}

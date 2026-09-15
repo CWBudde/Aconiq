@@ -26,7 +26,22 @@ export const routes: RouteObject[] = [
       { path: "map", element: <MapPage /> },
       { path: "import", element: <ImportPage /> },
       { path: "run", element: <RunPage /> },
-      { path: "results", element: <ResultsPage /> },
+      // A bare index route is what "nothing selected" means, and it is what
+      // the rail link targets. Auto-redirecting to a run would rewrite
+      // history, fight Back, and have to guess before `useRuns` resolves.
+      //
+      // Both children hold the *same* element, not a parent/`<Outlet/>` split:
+      // React Router applies no key to a rendered route, so one component
+      // instance spans `/results`, `/results/a` and `/results/b`, and the
+      // detail pane's open tab survives a selection change. Two separate
+      // `lazy()` calls would produce two component types and remount.
+      {
+        path: "results",
+        children: [
+          { index: true, element: <ResultsPage /> },
+          { path: ":runId", element: <ResultsPage /> },
+        ],
+      },
       { path: "export", element: <ExportPage /> },
       { path: "status", element: <StatusPage /> },
       { path: "settings", element: <SettingsPage /> },

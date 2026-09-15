@@ -42,10 +42,28 @@ describe("the route table", () => {
       "map",
       "import",
       "run",
-      "results",
+      "results/{index,:runId}",
       "export",
       "status",
       "settings",
     ]);
+  });
+
+  it("gives a section's index and :runId children one element type", () => {
+    // The no-remount property depends on both children holding the *same*
+    // lazy binding. Two `lazy(() => import("@/pages/results"))` calls give two
+    // component types, and every selection change would silently remount the
+    // detail pane — resetting its open tab, with nothing in the suite to say so.
+    for (const section of ["results"]) {
+      const parent = layoutChildren().find((c) => c.path === section);
+      const children = parent?.children ?? [];
+      expect(children, section).toHaveLength(2);
+      const [index, param] = children;
+      expect(index?.index, section).toBe(true);
+      expect(param?.path, section).toBe(":runId");
+      expect((index?.element as { type: unknown }).type).toBe(
+        (param?.element as { type: unknown }).type,
+      );
+    }
   });
 });

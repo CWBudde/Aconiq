@@ -118,7 +118,7 @@ describe("ListItem as a link", () => {
   function renderRows() {
     return render(
       <MemoryRouter>
-        <ItemList label="Runs">
+        <ItemList>
           <ListItem selected to="/results/a" title="Run A" />
           <ListItem selected={false} to="/results/b" title="Run B" />
         </ItemList>
@@ -152,7 +152,7 @@ describe("ListItem as a link", () => {
 
   it("still renders a button when the row only changes local state", () => {
     render(
-      <ItemList label="Runs">
+      <ItemList>
         <ListItem selected onSelect={() => undefined} title="Run A" />
       </ItemList>,
     );
