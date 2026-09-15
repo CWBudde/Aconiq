@@ -24,6 +24,15 @@ import {
   RLS19_TRAFFIC_KEYS,
 } from "./source-acoustics";
 
+/**
+ * Validates features alone, as if no receiver were placed.
+ *
+ * **UI code must not call this.** A receiver-blind report is a *valid-looking*
+ * report: a model whose only defect is a duplicate or malformed receiver comes
+ * back clean, and nothing fails. The one legitimate caller is the import
+ * wizard, which validates a candidate list that has no receivers by
+ * construction. Everything reading the store goes through `useModelValidation`.
+ */
 export function validateModel(features: ModelFeature[]): ValidationReport {
   return validateProjectModel(features, []);
 }
@@ -35,6 +44,11 @@ export function validateProjectModel(
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
+  // An empty model is an error, not merely "nothing to say": without it the
+  // run gate would accept a model with nothing in it. `useModelValidation`
+  // answers "empty" before calling this rather than filtering the code out
+  // afterwards, which would leave the count disagreeing with `valid` — and
+  // this message is hardcoded English, so it must never reach the UI.
   if (features.length === 0 && receivers.length === 0) {
     errors.push({
       level: "error",

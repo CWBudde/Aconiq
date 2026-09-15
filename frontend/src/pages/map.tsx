@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 import { Link } from "react-router";
@@ -26,7 +26,7 @@ import { useDraw } from "@/map/use-draw";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
-import { validateModel } from "@/model/validate";
+import { useModelValidation } from "@/model/use-model-validation";
 import { m } from "@/i18n/messages";
 
 /**
@@ -274,9 +274,8 @@ function ValidationToggle({
   open: boolean;
   onToggle: () => void;
 }) {
-  const features = useModelStore((s) => s.features);
-  const report = useMemo(() => validateModel(features), [features]);
-  const issueCount = report.errors.length + report.warnings.length;
+  const { errorCount, warningCount } = useModelValidation();
+  const issueCount = errorCount + warningCount;
 
   return (
     <Button
@@ -288,9 +287,7 @@ function ValidationToggle({
     >
       <ShieldAlert
         aria-hidden="true"
-        className={
-          report.errors.length > 0 ? "size-3.5 text-destructive" : "size-3.5"
-        }
+        className={errorCount > 0 ? "size-3.5 text-destructive" : "size-3.5"}
       />
       {m.label_validation()}
       {issueCount > 0 ? (

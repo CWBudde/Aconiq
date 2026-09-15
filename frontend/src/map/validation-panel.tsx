@@ -1,8 +1,6 @@
-import { useMemo } from "react";
 import { AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/ui/components/button";
-import { useModelStore } from "@/model/model-store";
-import { validateModel } from "@/model/validate";
+import { useModelValidation } from "@/model/use-model-validation";
 import type { ValidationIssue } from "@/model/types";
 import { m } from "@/i18n/messages";
 
@@ -11,10 +9,19 @@ interface ValidationPanelProps {
 }
 
 export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
-  const features = useModelStore((s) => s.features);
-  const report = useMemo(() => validateModel(features), [features]);
+  const { state, errorCount, warningCount, report } = useModelValidation();
 
-  if (report.valid && report.warnings.length === 0) {
+  // An empty model is not a valid one, and with the map now mounted from the
+  // start this panel can be opened before anything has been drawn.
+  if (state === "empty") {
+    return (
+      <div className="p-3 text-center text-xs text-muted-foreground">
+        {m.msg_validation_nothing_yet()}
+      </div>
+    );
+  }
+
+  if (state === "valid" || report === null) {
     return (
       <div className="p-3 text-center text-xs text-muted-foreground">
         {m.msg_model_valid()}
@@ -27,12 +34,16 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
   return (
     <div className="max-h-64 overflow-y-auto">
       <div className="border-b px-3 py-2 text-xs font-medium">
-        {report.errors.length > 0
-          ? `${String(report.errors.length)} ${m.msg_validation_errors_count()}`
+        {errorCount > 0
+          ? errorCount === 1
+            ? m.msg_validation_error_count_one({ count: errorCount })
+            : m.msg_validation_error_count_other({ count: errorCount })
           : ""}
-        {report.errors.length > 0 && report.warnings.length > 0 ? ", " : ""}
-        {report.warnings.length > 0
-          ? `${String(report.warnings.length)} ${m.msg_validation_warnings_count()}`
+        {errorCount > 0 && warningCount > 0 ? ", " : ""}
+        {warningCount > 0
+          ? warningCount === 1
+            ? m.msg_validation_warning_count_one({ count: warningCount })
+            : m.msg_validation_warning_count_other({ count: warningCount })
           : ""}
       </div>
       <ul className="divide-y">
