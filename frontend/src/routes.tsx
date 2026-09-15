@@ -24,7 +24,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="/welcome" replace /> },
       { path: "welcome", element: <WelcomePage /> },
-      { path: "map", element: <MapPage /> },
+      { path: "model", element: <MapPage /> },
       { path: "import", element: <ImportPage /> },
       { path: "run", element: <RunPage /> },
       // A bare index route is what "nothing selected" means, and it is what

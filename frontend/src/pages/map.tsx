@@ -29,6 +29,11 @@ import { useModelStore } from "@/model/model-store";
 import { validateModel } from "@/model/validate";
 import { m } from "@/i18n/messages";
 
+/**
+ * The model workspace, served at `/model`. The file keeps its name: renaming
+ * it to `model.tsx` would sit confusingly beside `src/map/`, which is the
+ * MapLibre layer this page composes.
+ */
 export default function MapPage() {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
@@ -186,7 +191,7 @@ function MapWorkspace() {
     <TooltipProvider>
       {/* The map canvas carries no visible heading; the page outline still
           needs one under the shell's h1, and the E2E helper waits for it. */}
-      <h2 className="sr-only">{m.nav_map()}</h2>
+      <h2 className="sr-only">{m.nav_model()}</h2>
       <MapView
         center={workspaceView.center}
         zoom={workspaceView.zoom}

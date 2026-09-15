@@ -58,7 +58,7 @@ function renderImportPage() {
   const router = createMemoryRouter(
     [
       { path: "/import", element: <ImportPage /> },
-      { path: "/map", element: <div>Map page</div> },
+      { path: "/model", element: <div>Map page</div> },
     ],
     { initialEntries: ["/import"] },
   );

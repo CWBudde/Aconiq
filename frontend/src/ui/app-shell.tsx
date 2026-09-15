@@ -49,7 +49,7 @@ const importNav: NavEntry = {
 };
 
 const navMain: NavEntry[] = [
-  { title: m.nav_map, icon: Map, path: "/map" },
+  { title: m.nav_model, icon: Map, path: "/model" },
   importNav,
   { title: m.nav_run, icon: Play, path: "/run" },
   { title: m.nav_results, icon: BarChart3, path: "/results" },

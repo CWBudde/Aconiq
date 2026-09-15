@@ -99,7 +99,7 @@ export default function WelcomePage() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link to="/map">
+              <Link to="/model">
                 <ArrowRight aria-hidden="true" />
                 {m.action_open_workspace()}
               </Link>

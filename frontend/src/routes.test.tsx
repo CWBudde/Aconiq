@@ -57,7 +57,7 @@ describe("the route table", () => {
     expect(inventory(layoutChildren())).toEqual([
       "index",
       "welcome",
-      "map",
+      "model",
       "import",
       "run",
       "results/{index,:runId}",
@@ -91,5 +91,12 @@ describe("the route table", () => {
     // 404 — but a third segment is nobody's.
     expect(matchedPath("/nonsense")).toBe("*");
     expect(matchedPath("/results/a/b")).toBe("*");
+  });
+
+  it("does not keep the retired paths alive", () => {
+    // `/map` was renamed, and there is deliberately no redirect entry for it:
+    // a redirect would keep a `<Link>` or a spec that was missed in the rename
+    // working silently and forever. The break is meant to be loud.
+    expect(matchedPath("/map")).toBe("*");
   });
 });

@@ -10,7 +10,7 @@ import { appPath, message, navLink, useLocale, waitForPage } from "./app";
  */
 
 const WORKSPACE_NAV = [
-  "nav_map",
+  "nav_model",
   "nav_import",
   "nav_run",
   "nav_results",
@@ -28,7 +28,7 @@ test.describe("App shell", () => {
 
   test("workspace navigation items are present", async ({ page }) => {
     await useLocale(page, "en");
-    await page.goto(appPath("/map"));
+    await page.goto(appPath("/model"));
     await waitForPage(page);
     for (const key of WORKSPACE_NAV) {
       await expect(navLink(page, message("en", key))).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("App shell", () => {
 
   test("navigates to Import page", async ({ page }) => {
     await useLocale(page, "en");
-    await page.goto(appPath("/map"));
+    await page.goto(appPath("/model"));
     await waitForPage(page);
     await navLink(page, message("en", "nav_import")).click();
     await expect(page).toHaveURL(/\/Aconiq\/import$/);
@@ -54,7 +54,7 @@ test.describe("Keyboard navigation", () => {
     page,
   }) => {
     await useLocale(page, "en");
-    await page.goto(appPath("/map"));
+    await page.goto(appPath("/model"));
     await waitForPage(page);
     await page.keyboard.press("Tab");
     const skip = page.getByRole("link", {
@@ -66,7 +66,7 @@ test.describe("Keyboard navigation", () => {
   });
 
   test("sidebar links are reachable by Tab", async ({ page }) => {
-    await page.goto(appPath("/map"));
+    await page.goto(appPath("/model"));
     await waitForPage(page);
     // Tab through the first few focusable elements until a sidebar link has focus.
     const focusedLink = page.locator('[data-sidebar="sidebar"] a[href]:focus');
@@ -82,7 +82,7 @@ test.describe("Locale", () => {
     page,
   }) => {
     await useLocale(page, "de");
-    await page.goto(appPath("/map"));
+    await page.goto(appPath("/model"));
     await waitForPage(page);
     // `nav_import` reads "Import" in both locales, so on its own it proves
     // nothing; the whole rail includes labels that differ (Karte, Berechnung,
@@ -90,6 +90,6 @@ test.describe("Locale", () => {
     for (const key of WORKSPACE_NAV) {
       await expect(navLink(page, message("de", key))).toBeVisible();
     }
-    await expect(navLink(page, message("en", "nav_map"))).toHaveCount(0);
+    await expect(navLink(page, message("en", "nav_model"))).toHaveCount(0);
   });
 });

@@ -55,7 +55,7 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("link", { name: m.nav_import() })).toBeVisible();
-    expect(screen.queryByRole("link", { name: m.nav_map() })).toBeNull();
+    expect(screen.queryByRole("link", { name: m.nav_model() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_run() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_results() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_export() })).toBeNull();
@@ -75,7 +75,7 @@ describe("AppShell", () => {
     };
 
     render(
-      <MemoryRouter initialEntries={["/map"]}>
+      <MemoryRouter initialEntries={["/model"]}>
         <AppShell>
           <div>content</div>
         </AppShell>
@@ -83,7 +83,7 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("link", { name: m.nav_import() })).toBeVisible();
-    expect(screen.getByRole("link", { name: m.nav_map() })).toBeVisible();
+    expect(screen.getByRole("link", { name: m.nav_model() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_run() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_results() })).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_export() })).toBeVisible();
@@ -91,7 +91,7 @@ describe("AppShell", () => {
 });
 
 describe("AppShell landmarks", () => {
-  function renderShell(path = "/map", children?: React.ReactNode) {
+  function renderShell(path = "/model", children?: React.ReactNode) {
     mockProjectStatus = {
       isLoading: false,
       isError: false,
@@ -122,7 +122,9 @@ describe("AppShell landmarks", () => {
     const nav = screen.getByRole("navigation", { name: m.nav_primary_label() });
     // Logo, workspace links and footer links all sit inside it.
     expect(within(nav).getByText("AconiQ")).toBeVisible();
-    expect(within(nav).getByRole("link", { name: m.nav_map() })).toBeVisible();
+    expect(
+      within(nav).getByRole("link", { name: m.nav_model() }),
+    ).toBeVisible();
     expect(
       within(nav).getByRole("link", { name: m.nav_settings() }),
     ).toBeVisible();
@@ -134,9 +136,9 @@ describe("AppShell landmarks", () => {
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("link", { name: m.nav_map() })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(
+      screen.getByRole("link", { name: m.nav_model() }),
+    ).not.toHaveAttribute("aria-current");
   });
 
   it("marks a section's link as current on a path below it", () => {
@@ -174,7 +176,7 @@ describe("AppShell landmarks", () => {
 
   it("toggles the sidebar on Ctrl+B, but not from inside a text field", () => {
     const { container } = renderShell(
-      "/map",
+      "/model",
       <input aria-label="height" defaultValue="5" />,
     );
     const rail = container.querySelector("[data-state]");

@@ -217,7 +217,7 @@ export default function ImportPage() {
   }, [features, loadFeatures]);
 
   const handleGoToMap = useCallback(() => {
-    void navigate("/map");
+    void navigate("/model");
   }, [navigate]);
 
   const countByKind = (kind: ModelFeature["kind"]) =>
