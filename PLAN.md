@@ -1171,17 +1171,29 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       module's `Descriptor()` and no file names them all. A standards manifest generated from
       the registry and read by both targets would make the drift a test failure instead of a raw
       id on screen.
-- [ ] **Results page**: virtualised receiver table (`@tanstack/react-virtual`); the sortable
-      header buttons already carry `aria-sort` and `scope="col"` since Phase B; hoist
-      `SortIcon` (nested at `results.tsx:139-147`, so it remounts the header on every keystroke)
-      along with `level` and `columnLabel`; `RunColumn` is already at module scope and only needs
-      moving. The CSV half of this bullet is done — one builder in `model/receiver-csv.ts`, Go's
-      spelling, pinned by `testdata/csv-parity/` — and the instruction it used to carry was wrong:
-      freezing the stored artifact's bytes was impossible, because the same escaping defect was in
-      both writers. Also replace
-      `summaryCards`' `Math.min(...vals)`, which throws past ~100k arguments — exactly what
-      virtualising the table admits,
-      `results.test.tsx` written alongside.
+- [x] **The receiver table is a window, and it says how big the table is**
+      (`f315baf`..`7f88df7`). `ReceiversTab` moved to `src/results/receiver-table.tsx` and
+      mounts only the rows near the viewport. Five constraints stay live; each is argued where
+      it is enforced.
+      **The window is spacer `<tr>`s, never absolute positioning** — absolutely positioned rows
+      force `display: flex` onto every `<tr>`, and the `scope="col"` and `aria-sort` on the
+      headers then describe a grid that no longer exists. `/results` is `NONE` in
+      `e2e/a11y.spec.ts`, and that list is checked in both directions.
+      **`aria-rowcount` and `aria-rowindex` travel with the rows**, or the table announces its
+      window as its size.
+      **The scroll element needs a resolved `max-height` of its own.** `overflow-auto` bounds
+      nothing; without it the div grows to the spacer rows, `virtual-core` reads that back as
+      the viewport, and every row mounts. The ancestor in `pages/results.tsx` is what scrolled,
+      and the virtualizer does not watch it.
+      **`virtual-core` measures with `offsetWidth`/`offsetHeight`, not `getBoundingClientRect`**,
+      which jsdom answers with 0 — where no rows mount at all. The viewport stub in
+      `results.test.tsx` is load-bearing for 12 other assertions.
+      **The sort collator keeps the default options.** `numeric: true` would put "R2" before
+      "R10", which is a behaviour change owed its own commit and its own test.
+      The "~100k" spread ceiling this file used to assert is not a constant: a spread takes one
+      stack slot per argument, so where it gives out depends on what the caller already spent —
+      125 000 survives in bare node and throws under vitest. `results/summarise.ts` counts in
+      one loop and has no ceiling.
 - [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
       ask replace-vs-merge before `loadFeatures`; link preview errors to features. UI import drops
       `kind: "receiver"` features (`normalize.ts:12` lists only source/building/barrier) and
