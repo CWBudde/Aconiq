@@ -10,6 +10,7 @@ import {
   FileText,
   FileCode,
   FileType,
+  FileCheck,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import {
@@ -48,8 +49,8 @@ import { m } from "@/i18n/messages";
 /**
  * Every artifact kind `aconiq export` can write, keyed exactly as the CLI
  * stamps it. A kind missing here falls through `kindMeta` and prints its own
- * identifier at the reader, so the table has to track the CLI: `--pdf` emits
- * `export.report_pdf` today, whatever the UI once said about PDFs.
+ * identifier at the reader, so the table has to track `export.go`: every kind
+ * it appends an `ArtifactRef` for needs a row here, added with it.
  */
 const EXPORT_KIND_LABELS: Record<
   string,
@@ -71,6 +72,14 @@ const EXPORT_KIND_LABELS: Record<
   "export.report_context_json": {
     label: m.export_artifact_label_json_context,
     icon: FileCode,
+  },
+  "export.report_typst": {
+    label: m.export_artifact_label_typst_report,
+    icon: FileCode,
+  },
+  "export.assessment_16bimschv_json": {
+    label: m.export_artifact_label_bimschv16_assessment,
+    icon: FileCheck,
   },
 };
 

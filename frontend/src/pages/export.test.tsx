@@ -710,6 +710,42 @@ describe("ExportPage unknown artifact kinds", () => {
     ).toBeNull();
   });
 
+  /*
+   * `export.report_typst` is written on every export that does not pass
+   * --skip-report, and `export.assessment_16bimschv_json` on every RLS-19 or
+   * Schall 03 run with a model and a receiver table. Both are ordinary output,
+   * so neither may print its own identifier at the reader.
+   */
+  it("labels a Typst report rather than printing its kind", () => {
+    const typst = artifact(
+      "a-typ",
+      "export.report_typst",
+      "exports/run-1/report.typ",
+    );
+    renderPage([run("run-1", [bundle, typst])]);
+
+    expect(
+      screen.getByText(m.export_artifact_label_typst_report()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("export.report_typst")).toBeNull();
+    expect(screen.getByText("report.typ")).toBeInTheDocument();
+  });
+
+  it("labels a 16. BImSchV assessment rather than printing its kind", () => {
+    const assessment = artifact(
+      "a-bim",
+      "export.assessment_16bimschv_json",
+      "exports/run-1/assessment-16bimschv.json",
+    );
+    renderPage([run("run-1", [bundle, assessment])]);
+
+    expect(
+      screen.getByText(m.export_artifact_label_bimschv16_assessment()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("export.assessment_16bimschv_json")).toBeNull();
+    expect(screen.getByText("assessment-16bimschv.json")).toBeInTheDocument();
+  });
+
   it("prints the raw kind of any other unknown export kind", () => {
     renderPage([
       run("run-1", [

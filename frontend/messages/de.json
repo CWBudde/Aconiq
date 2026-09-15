@@ -217,6 +217,8 @@
   "export_artifact_label_pdf_report": "PDF-Bericht",
   "export_artifact_label_markdown_report": "Markdown-Bericht",
   "export_artifact_label_json_context": "Berichtskontext (JSON)",
+  "export_artifact_label_typst_report": "Typst-Bericht",
+  "export_artifact_label_bimschv16_assessment": "Beurteilung nach der 16. BImSchV",
 
   "banner_draft_recovery": "Entwurf wiederherstellen",
 
