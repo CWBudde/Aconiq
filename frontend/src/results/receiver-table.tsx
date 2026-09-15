@@ -68,6 +68,29 @@ const ROW_CLASS = "h-[29px] border-b last:border-0 hover:bg-muted/30";
  */
 const ROW_OVERSCAN = 12;
 
+/**
+ * The cap on the scroll element's height — and the whole reason the window is
+ * a window.
+ *
+ * `overflow-auto` alone does not bound anything. Without a resolved height the
+ * div grows to its content, and its content is the spacer rows, whose height
+ * is the *whole* table: 250 000 rows is a 7 250 000px div. `virtual-core`
+ * reads that back as the viewport, concludes every row is visible, and mounts
+ * all of them — the exact DOM this component exists to avoid. The element that
+ * actually scrolled in that layout was the ancestor in `pages/results.tsx`,
+ * which the virtualizer is not watching.
+ *
+ * `vh` is resolved against the viewport rather than against a parent, so the
+ * cap holds wherever the table is mounted and does not depend on an ancestor
+ * chain propagating a definite height. It is a max, not a height: a table
+ * short enough to fit still sizes to its rows and never scrolls.
+ *
+ * Written inline rather than as a Tailwind class so that it is a property of
+ * the element a test can read, instead of a class name whose effect only
+ * exists once a stylesheet is loaded — which, under jsdom, it is not.
+ */
+const TABLE_MAX_HEIGHT = "70vh";
+
 /** The sort indicator in a column header: filled for the sorted column. */
 function SortIcon({
   col,
@@ -302,7 +325,11 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
       </div>
 
       {/* Table */}
-      <div ref={scrollRef} className="overflow-auto rounded-md border">
+      <div
+        ref={scrollRef}
+        style={{ maxHeight: TABLE_MAX_HEIGHT }}
+        className="overflow-auto rounded-md border"
+      >
         <table className="w-full text-xs" aria-rowcount={bodyRowCount + 1}>
           <thead>
             <tr aria-rowindex={1} className="border-b bg-muted/50">

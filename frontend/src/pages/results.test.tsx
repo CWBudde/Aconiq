@@ -857,6 +857,30 @@ describe("ResultsPage receiver table windowing", () => {
   }
 
   it(
+    "bounds the element the virtualizer measures",
+    () => {
+      state.receiverTable = big;
+      renderResults();
+
+      /*
+       * The window only windows anything if its scroll element has a height
+       * that does not follow the row count. `overflow-auto` does not supply
+       * one: the div would grow to the spacer rows, which are the size of the
+       * whole table, and `virtual-core` — reading `offsetHeight` — would take
+       * that for the viewport and mount every row.
+       *
+       * jsdom performs no layout, so this asserts the cap is declared rather
+       * than that it is obeyed. It has to be a resolved length against the
+       * viewport, not a percentage, which would hand the question back to an
+       * ancestor chain that does not answer it.
+       */
+      const maxHeight = scrollContainer().style.maxHeight;
+      expect(maxHeight).toMatch(/^\d+(\.\d+)?(vh|px|rem)$/);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     "mounts a window of rows, not five thousand of them",
     () => {
       state.receiverTable = big;
