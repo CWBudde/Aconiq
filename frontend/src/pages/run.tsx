@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AlertCircle, Loader2, Play } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { Callout } from "@/ui/callout";
@@ -28,6 +28,7 @@ export default function RunPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [filters, setFilters] = useState<RunFilters>(EMPTY_FILTERS);
+  const newRunRef = useRef<HTMLButtonElement>(null);
 
   // Fetch runs; `useRuns` polls by activity so CLI-launched runs show up too.
   const { data: runs = [], isLoading, error } = useRuns();
@@ -59,6 +60,14 @@ export default function RunPage() {
 
   const hasRuns = runs.length > 0;
 
+  // Confirming a delete unmounts the detail pane, including the button Radix
+  // would have restored focus to — which drops a keyboard user on `<body>`,
+  // at the top of the document. Route-level axe cannot see that.
+  function handleRunDeleted() {
+    setSelectedRunId(null);
+    newRunRef.current?.focus();
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
@@ -81,6 +90,7 @@ export default function RunPage() {
         }
         actions={
           <Button
+            ref={newRunRef}
             size="sm"
             onClick={() => {
               setDialogOpen(true);
@@ -142,6 +152,7 @@ export default function RunPage() {
               onRetry={() => {
                 setDialogOpen(true);
               }}
+              onDeleted={handleRunDeleted}
             />
           ) : (
             <EmptyState title={m.msg_select_run_details()} />

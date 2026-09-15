@@ -50,6 +50,29 @@ export interface BackendCapabilities {
    * itself wrote.
    */
   readonly runsChangeExternally: boolean;
+  /**
+   * An export bundle survives the deletion of the run it belongs to. The API
+   * keeps the bytes on disk and reports them in `retainedPaths`; the browser
+   * stores export artifacts inside the run record, so deleting the run takes
+   * them with it.
+   *
+   * Read before the deletion, not after: the sentence this answers belongs in
+   * the confirmation, and `retainedPaths` only arrives once the user has
+   * already agreed.
+   */
+  readonly exportsOutliveRunDelete: boolean;
+}
+
+/** What the UI needs from a run deletion, mode-independent. */
+export interface DeleteRunResult {
+  runId: string;
+  /**
+   * Files kept although the run is gone — export bundles, which may already
+   * have been delivered. Always empty in browser mode, which has no paths and
+   * keeps no bundle; `removed_paths` is deliberately not carried across,
+   * because it would have to be invented there.
+   */
+  retainedPaths: string[];
 }
 
 /** What the UI needs from a model save, mode-independent. */
@@ -108,6 +131,11 @@ export interface Backend {
   startRun(spec: RunSpec): Promise<RunSummary>;
   /** Rejects unless `capabilities.canExport`. */
   createExport(runId: string): Promise<RunSummary>;
+  /**
+   * Removes a run and everything it wrote. Refused while the run is still
+   * `pending` or `running` — the API answers 409 `run_not_finished`.
+   */
+  deleteRun(runId: string): Promise<DeleteRunResult>;
   /**
    * The model saved in the project, in `crs`. `null` when the project holds
    * no model yet (`model_not_found`) — which is not the same refusal as a

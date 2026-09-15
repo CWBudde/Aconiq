@@ -8,6 +8,7 @@ import type { Backend, OsmImportRequest, RunSpec } from "./backend";
 import { apiHeaders } from "./client";
 import type {
   CreateRunRequest,
+  DeleteRunResponse,
   HealthResponse,
   ModelResponse,
   ModelSaveResponse,
@@ -20,7 +21,7 @@ import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 
 interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "DELETE";
   headers?: Readonly<Record<string, string>>;
   body?: string;
 }
@@ -83,6 +84,10 @@ export const httpBackend: Backend = {
     canExport: false,
     runsAgainstSavedModel: true,
     runsChangeExternally: true,
+    // The API deletes the run directory but keeps export bundles on disk and
+    // names them in `retained_paths` — a bundle may already have been
+    // delivered.
+    exportsOutliveRunDelete: true,
   },
 
   getHealth() {
@@ -147,6 +152,16 @@ export const httpBackend: Backend = {
         "Export generation from the UI is not available in API mode; run `aconiq export` instead",
       ),
     );
+  },
+
+  async deleteRun(runId) {
+    // 200 with a body rather than 204, so the UI can say the bundle was kept —
+    // and because `request` always parses JSON.
+    const response = await request<DeleteRunResponse>(
+      `/api/v1/runs/${encodeURIComponent(runId)}`,
+      { method: "DELETE" },
+    );
+    return { runId: response.run_id, retainedPaths: response.retained_paths };
   },
 
   async getModel(crs) {

@@ -5,6 +5,7 @@
    it does on the HTTP path. */
 import type {
   Backend,
+  DeleteRunResult,
   ModelSaveResult,
   OsmImportRequest,
   RunSpec,
@@ -1263,6 +1264,9 @@ export const browserBackend = {
     canExport: true,
     runsAgainstSavedModel: false,
     runsChangeExternally: false,
+    // Export artifacts are stored inside the run record, so deleting the run
+    // deletes the bundle with it. The confirmation has to say so.
+    exportsOutliveRunDelete: false,
   },
 
   async getHealth(): Promise<HealthResponse> {
@@ -1741,6 +1745,38 @@ out geom;`;
 
       await persistRun(nextStoredRun, "export");
       return nextStoredRun.run;
+    });
+  },
+
+  async deleteRun(runId: string): Promise<DeleteRunResult> {
+    // The lock spans the read and the write, like every other writer: the
+    // store is shared by every tab of the origin, so deleting out of this
+    // tab's cache would drop whatever another tab has stored since.
+    //
+    // Written through `persist`, which is what prunes the URL cache and
+    // revokes the deleted run's artifact object URLs. Bypassing it leaks them.
+    //
+    // `runHighWaterMark` is untouched on purpose: it is the record of what has
+    // been handed out, and deleting the newest run must not free its id.
+    return withStoreLock(async () => {
+      const current = await reloadState();
+      const storedRun = findRunByID(current, runId);
+      if (
+        storedRun.run.status === "pending" ||
+        storedRun.run.status === "running"
+      ) {
+        // The same refusal the API gives, for the same reason: the run is
+        // still writing. Browser runs complete inside `startRun`, so this is a
+        // guard rather than a case anyone reaches.
+        throw new Error(`Run ${runId} is still running`);
+      }
+      await persist({
+        ...current,
+        runs: current.runs.filter((entry) => entry.run.id !== runId),
+      });
+      // No paths and no surviving bundle: the export artifacts lived inside
+      // the record just removed.
+      return { runId, retainedPaths: [] };
     });
   },
 

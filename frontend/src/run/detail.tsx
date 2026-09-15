@@ -1,13 +1,17 @@
-import { useState } from "react";
-import { Info, RefreshCw, Terminal } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertCircle, Info, RefreshCw, Terminal, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/ui/components/button";
 import { Callout } from "@/ui/callout";
 import { CopyButton } from "@/ui/copy-field";
 import { LoadingLine } from "@/ui/loading-line";
 import { SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
-import { runTiming } from "@/ui/run-status";
-import { useRunLog } from "@/api/hooks";
+import { isFinished, runTiming } from "@/ui/run-status";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { useDeleteRun, useRunLog } from "@/api/hooks";
+import { backend } from "@/api/backend";
+import { asAPIRequestError } from "@/api/api-error";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { ProgressTimeline } from "@/run/timeline";
 import { getStandardLabel } from "@/run/standards-meta";
@@ -123,15 +127,41 @@ function ArtifactLinks({ artifacts }: { artifacts: ArtifactRef[] }) {
 export function RunDetail({
   run,
   onRetry,
+  onDeleted,
 }: {
   run: RunSummary;
   onRetry: () => void;
+  /** Called once the run is gone, so the page can move focus off the pane. */
+  onDeleted: () => void;
 }) {
   const { data: log, isLoading: logLoading } = useRunLog(
     run.id,
     run.status === "running" || run.status === "pending",
   );
   const lines = log?.lines ?? [];
+  const deleteRun = useDeleteRun();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Read in `onCloseAutoFocus`, which Radix fires as the dialog closes — a ref
+  // rather than state, because that handler must see the current value without
+  // waiting for a render.
+  const deleted = useRef(false);
+
+  function handleDelete() {
+    setConfirmingDelete(false);
+    deleteRun.mutate(run.id, {
+      onSuccess: (result) => {
+        deleted.current = true;
+        toast.success(
+          result.retainedPaths.length > 0
+            ? m.msg_run_deleted_exports_kept({
+                runId: run.id,
+                count: result.retainedPaths.length,
+              })
+            : m.msg_run_deleted({ runId: run.id }),
+        );
+      },
+    });
+  }
 
   return (
     <div className="flex flex-col gap-5 p-5">
@@ -198,15 +228,75 @@ export function RunDetail({
         <ArtifactLinks artifacts={run.artifacts} />
       </section>
 
+      {/* Deleting failed, and not for a reason the UI could have pre-empted:
+          the API refuses when an export bundle was written inside the run's own
+          directory, and names the file to move. Its own words, not a generic
+          failure. */}
+      {deleteRun.isError ? (
+        <Callout
+          variant="destructive"
+          icon={AlertCircle}
+          data-testid="delete-run-error"
+          data-error-code={asAPIRequestError(deleteRun.error)?.code}
+          title={m.msg_delete_run_failed()}
+        >
+          <p>{deleteRun.error.message}</p>
+          {asAPIRequestError(deleteRun.error)?.hint !== undefined ? (
+            <p>{asAPIRequestError(deleteRun.error)?.hint}</p>
+          ) : null}
+        </Callout>
+      ) : null}
+
       {/* Actions. There is no Cancel: the API has no cancel endpoint and the
           WASM kernel completes inside `startRun`, so no capability flag would
-          ever enable one. */}
+          ever enable one. Delete is offered only once the run has finished —
+          the API refuses `run_not_finished` while its directory is still being
+          written, and a button that is always refused is not an offer. */}
       <section className="flex gap-2">
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
           {m.action_retry()}
         </Button>
+        {isFinished(run) ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={deleteRun.isPending}
+            onClick={() => {
+              setConfirmingDelete(true);
+            }}
+          >
+            <Trash2 aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+            {m.action_delete_run()}
+          </Button>
+        ) : null}
       </section>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        tone="destructive"
+        title={m.confirm_delete_run_title()}
+        // Which sentence is true is a property of the backend, not of this
+        // run, and it has to be said *before* the user agrees — `retainedPaths`
+        // only arrives afterwards.
+        description={
+          backend.capabilities.exportsOutliveRunDelete
+            ? m.confirm_delete_run_desc_exports_kept({ runId: run.id })
+            : m.confirm_delete_run_desc_exports_lost({ runId: run.id })
+        }
+        confirmLabel={m.action_delete_run()}
+        onConfirm={handleDelete}
+        // The Delete button this dialog was opened from is about to be
+        // unmounted with the pane, so Radix has nothing to restore focus to.
+        // Hand the page the chance to put it somewhere that still exists,
+        // before the pane goes.
+        onCloseAutoFocus={(event) => {
+          if (!deleted.current) return;
+          event.preventDefault();
+          onDeleted();
+        }}
+      />
     </div>
   );
 }

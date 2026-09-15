@@ -754,6 +754,88 @@ describe("persisted state", () => {
     });
   });
 
+  describe("deleteRun", () => {
+    it("removes the run and everything stored under it", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            runFixture(2, "2026-01-01T02:00:00.000Z"),
+            runFixture(1, "2026-01-01T01:00:00.000Z"),
+          ],
+          runHighWaterMark: 2,
+        },
+      });
+      resetBrowserBackendForTests();
+
+      const result = await browserBackend.deleteRun("run-0002");
+
+      expect(result).toEqual({ runId: "run-0002", retainedPaths: [] });
+      expect(runIDs((await persisted()).state)).toEqual(["run-0001"]);
+    });
+
+    it("does not free the id of the run it deleted", async () => {
+      // The hazard the high-water mark exists for: without it the next run
+      // would be `run-0002` again, `setRun` would replace a run that is
+      // already gone, and artifact ids would name two payloads.
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z")],
+          runHighWaterMark: 2,
+        },
+      });
+      resetBrowserBackendForTests();
+
+      await browserBackend.deleteRun("run-0002");
+      const next = await browserBackend.startRun(RUN_SPEC);
+
+      expect(next.id).toBe("run-0003");
+    });
+
+    it("refuses a run that has not finished", async () => {
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [
+            {
+              ...runFixture(1, "2026-01-01T01:00:00.000Z"),
+              run: {
+                ...runFixture(1, "2026-01-01T01:00:00.000Z").run,
+                status: "running",
+              },
+            },
+          ],
+        },
+      });
+      resetBrowserBackendForTests();
+
+      await expect(browserBackend.deleteRun("run-0001")).rejects.toThrow(
+        /still running/,
+      );
+      expect(runIDs((await persisted()).state)).toEqual(["run-0001"]);
+    });
+
+    it("rejects an id it does not hold", async () => {
+      await expect(browserBackend.deleteRun("run-9999")).rejects.toThrow(
+        /not found/,
+      );
+    });
+
+    it("keeps no export bundle, and says so", async () => {
+      // Browser mode stores export artifacts inside the run record, so there
+      // is nothing for `retainedPaths` to name — which is why the capability
+      // flag exists and the confirmation reads differently here.
+      await seedState();
+      await browserBackend.createExport(RUN_ID);
+
+      const result = await browserBackend.deleteRun(RUN_ID);
+
+      expect(result.retainedPaths).toEqual([]);
+      expect(runIDs((await persisted()).state)).toEqual([]);
+    });
+  });
+
   describe("when the store is full", () => {
     const quota = () =>
       new storage.BrowserStorageError("quota", "quota exhausted");

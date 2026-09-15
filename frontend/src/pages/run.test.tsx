@@ -1,5 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type {
   ParameterDefinition,
@@ -7,9 +13,11 @@ import type {
   RunSummary,
   StandardDescriptor,
 } from "@/api/client";
+import type { BackendCapabilities, DeleteRunResult } from "@/api/backend";
 import {
   APIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
+  ERROR_CODE_EXPORT_INSIDE_RUN,
 } from "@/api/api-error";
 import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
@@ -39,6 +47,9 @@ const state = vi.hoisted(() => {
     runsAgainstSavedModel: boolean;
     savedModels: unknown[];
     logLines: string[];
+    deletedRunIds: string[];
+    retainedPaths: string[];
+    deleteRunError: Error | null;
   } = {
     standards: [],
     runs: [],
@@ -47,20 +58,28 @@ const state = vi.hoisted(() => {
     runsAgainstSavedModel: true,
     savedModels: [],
     logLines: [],
+    deletedRunIds: [] as string[],
+    retainedPaths: [] as string[],
+    deleteRunError: null as Error | null,
   };
   return value;
 });
 
 // Explicit capabilities rather than whatever the env selects: the dialog's
 // receiver messaging, submit guard and unsaved-changes gate branch on them.
+//
+// Typed as `BackendCapabilities`, so a flag added to the interface is a compile
+// error here rather than `undefined` — which is falsy, raises nothing, and
+// would silently give every test in this file the wrong branch.
 vi.mock("@/api/backend", () => ({
   backend: {
-    get capabilities() {
+    get capabilities(): BackendCapabilities {
       return {
         kind: state.runsAgainstSavedModel ? "http" : "browser",
         canExport: false,
         runsAgainstSavedModel: state.runsAgainstSavedModel,
         runsChangeExternally: state.runsAgainstSavedModel,
+        exportsOutliveRunDelete: state.runsAgainstSavedModel,
       };
     },
   },
@@ -76,6 +95,18 @@ vi.mock("@/api/hooks", () => ({
   useRunLog: () => ({
     data: { run_id: "run-1", lines: state.logLines },
     isLoading: false,
+  }),
+  useDeleteRun: () => ({
+    mutate: (
+      runId: string,
+      options?: { onSuccess?: (result: DeleteRunResult) => void },
+    ) => {
+      state.deletedRunIds.push(runId);
+      options?.onSuccess?.({ runId, retainedPaths: state.retainedPaths });
+    },
+    isPending: false,
+    isError: state.deleteRunError !== null,
+    error: state.deleteRunError,
   }),
   useCreateRun: () => ({
     mutate: (spec: Record<string, unknown>) => {
@@ -239,6 +270,9 @@ beforeEach(() => {
   state.runsAgainstSavedModel = true;
   state.savedModels = [];
   state.logLines = [];
+  state.deletedRunIds = [];
+  state.retainedPaths = [];
+  state.deleteRunError = null;
   useModelStore.getState().reset();
   resetProjectSyncStore();
   resetProjectHydration();
@@ -607,6 +641,133 @@ describe("RunPage calculation area", () => {
     expect(startRunButton()).toBeDisabled();
     fireEvent.click(startRunButton());
     expect(state.runSpecs).toEqual([]);
+  });
+});
+
+describe("RunPage run deletion", () => {
+  function finishedRun(status: RunSummary["status"]): RunSummary {
+    return {
+      id: "run-0007",
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "1",
+      profile: "default",
+      status,
+      started_at: "2026-01-01T10:00:00Z",
+      finished_at: "2026-01-01T10:00:05Z",
+      log_path: "runs/run-0007/run.log",
+      artifacts: [],
+    };
+  }
+
+  function showRunPage(status: RunSummary["status"] = "completed") {
+    state.runs = [finishedRun(status)];
+    state.standards = [standard("rls19-road", "normative")];
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
+  }
+
+  function deleteButton(): HTMLElement {
+    return screen.getByRole("button", { name: m.action_delete_run() });
+  }
+
+  it("offers no delete while the run is still writing its directory", () => {
+    // The API refuses `run_not_finished`, and a button that is always refused
+    // is not an offer.
+    showRunPage("running");
+
+    expect(
+      screen.queryByRole("button", { name: m.action_delete_run() }),
+    ).toBeNull();
+  });
+
+  it("asks before deleting, and deletes nothing until it is answered", () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("run-0007");
+    expect(state.deletedRunIds).toEqual([]);
+  });
+
+  it("says export bundles are kept where the backend keeps them", () => {
+    // Which sentence is true is a property of the backend, and it has to be
+    // said before the user agrees — `retainedPaths` only arrives afterwards.
+    state.runsAgainstSavedModel = true;
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      m.confirm_delete_run_desc_exports_kept({ runId: "run-0007" }),
+    );
+  });
+
+  it("says the bundle goes too where the backend keeps it inside the run", () => {
+    state.runsAgainstSavedModel = false;
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      m.confirm_delete_run_desc_exports_lost({ runId: "run-0007" }),
+    );
+  });
+
+  it("deletes the run once confirmed, and clears the selection", async () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_delete_run(),
+      }),
+    );
+
+    expect(state.deletedRunIds).toEqual(["run-0007"]);
+    // The pane is gone; focus must not have been dropped on `<body>`. Radix
+    // juggles focus across a frame on close, so this is awaited rather than
+    // asserted on the spot.
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: m.action_new_run() }),
+      );
+    });
+  });
+
+  it("keeps the run when the confirmation is cancelled", () => {
+    showRunPage();
+
+    fireEvent.click(deleteButton());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_cancel(),
+      }),
+    );
+
+    expect(state.deletedRunIds).toEqual([]);
+  });
+
+  it("shows the server's own words when the deletion is refused", () => {
+    // `export_inside_run` cannot be pre-empted from here, and the hint names
+    // the file to move.
+    state.deleteRunError = new APIRequestError({
+      code: ERROR_CODE_EXPORT_INSIDE_RUN,
+      message: "export bundle lives inside the run directory",
+      hint: "Move the export bundle out of .noise/runs/, then delete the run.",
+    });
+    showRunPage();
+
+    const alert = screen.getByTestId("delete-run-error");
+    expect(alert).toHaveAttribute(
+      "data-error-code",
+      ERROR_CODE_EXPORT_INSIDE_RUN,
+    );
+    expect(alert).toHaveTextContent("inside the run directory");
+    expect(alert).toHaveTextContent("Move the export bundle out");
   });
 });
 

@@ -166,6 +166,22 @@ export function useCreateExport() {
   });
 }
 
+export function useDeleteRun() {
+  return useMutation({
+    mutationFn: (runId: string) => backend.deleteRun(runId),
+    onSuccess: async (_result, runId) => {
+      // The run's own cached log and artifact payloads are removed rather than
+      // invalidated: there is nothing left to refetch, and the artifact
+      // entries are the larger objects.
+      queryClient.removeQueries({ queryKey: queryKeys.runs.log(runId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
+      // `ProjectStatusResponse.run_count` changed, exactly as it does when a
+      // run is created.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
+    },
+  });
+}
+
 /**
  * Keyed so that "is a save in flight?" can be asked from anywhere
  * (`useIsSavingModel`), not only by the component that started it.
