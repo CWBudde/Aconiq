@@ -28,8 +28,13 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number];
  * Not cosmetic: `aconiq export` defaults `--run-id` to the *latest* run, so a
  * command emitted with a blank id acts on a different run than the one on
  * screen. `exportCommand` substitutes this rather than emitting one.
+ *
+ * A bare word, not `<run-id>`: these commands are shown in a copy field, and
+ * `<` and `>` are redirection operators — a pasted `--run-id <run-id>` dies in
+ * the shell's parser before `aconiq` is ever invoked, which turns "fill this
+ * in" into a syntax error. Upper case so it still reads as a blank to fill.
  */
-export const RUN_ID_PLACEHOLDER = "<run-id>";
+export const RUN_ID_PLACEHOLDER = "RUN_ID";
 
 export interface ExportCommandOptions {
   /** `--format`, comma-separated in the order given. Omitted when empty. */

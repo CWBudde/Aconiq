@@ -281,7 +281,7 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(within(dialog).getByText(m.label_command())).toBeInTheDocument();
     // No run picked yet: the command carries the literal placeholder.
     expect(
-      within(dialog).getByText("aconiq export --run-id <run-id>"),
+      within(dialog).getByText("aconiq export --run-id RUN_ID"),
     ).toBeInTheDocument();
 
     const button = generateButton(dialog);
@@ -310,7 +310,7 @@ describe("ExportPage new-export dialog: canExport branches", () => {
       within(dialog).getByText("aconiq export --run-id run-7"),
     ).toBeInTheDocument();
     expect(
-      within(dialog).queryByText("aconiq export --run-id <run-id>"),
+      within(dialog).queryByText("aconiq export --run-id RUN_ID"),
     ).toBeNull();
   });
 
@@ -322,7 +322,7 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(generateButton(dialog)).toBeInTheDocument();
     expect(within(dialog).queryByText(m.label_command())).toBeNull();
     expect(
-      within(dialog).queryByText("aconiq export --run-id <run-id>"),
+      within(dialog).queryByText("aconiq export --run-id RUN_ID"),
     ).toBeNull();
   });
 

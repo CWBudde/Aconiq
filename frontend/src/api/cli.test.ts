@@ -15,6 +15,13 @@ describe("exportCommand", () => {
     expect(exportCommand("   ")).toBe(expected);
   });
 
+  it("uses a placeholder no shell reads as an operator", () => {
+    // The command is rendered in a copy field. `<run-id>` looks like a blank
+    // to fill in and parses as redirection, so the pasted line dies in the
+    // shell before `aconiq` runs at all.
+    expect(RUN_ID_PLACEHOLDER).toMatch(/^[A-Za-z0-9_.-]+$/);
+  });
+
   it("trims a run id rather than pasting whitespace into the command", () => {
     expect(exportCommand("  run-7 ")).toBe("aconiq export --run-id run-7");
   });
