@@ -129,6 +129,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		modelgeojson.FeatureKindBuilding: 0,
 		modelgeojson.FeatureKindBarrier:  0,
 		modelgeojson.FeatureKindReceiver: 0,
+		modelgeojson.FeatureKindCalcArea: 0,
 	}
 
 	warnings := append([]string(nil), bundle.Warnings...)
@@ -164,14 +165,15 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 
 	warnings = append(warnings, barrierWarnings...)
 
-	reportRuns := make([]soundPlanImportRunSummary, 0, len(bundle.Runs))
-	for _, run := range bundle.Runs {
-		reportRuns = append(reportRuns, soundPlanImportRunSummary{
-			RunType:         run.RunType,
-			ResultSubFolder: run.ResultSubFolder,
-			Warnings:        append([]string(nil), run.Warnings...),
-		})
+	calcAreaFeature, calcAreaOK, calcAreaWarnings := buildSoundPlanCalcAreaFeature(bundle.CalcArea)
+	if calcAreaOK {
+		features = append(features, calcAreaFeature)
+		counts[modelgeojson.FeatureKindCalcArea]++
 	}
+
+	warnings = append(warnings, calcAreaWarnings...)
+
+	reportRuns := soundPlanRunSummaries(bundle.Runs)
 
 	slices.Sort(warnings)
 
@@ -216,6 +218,21 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	return model, report
+}
+
+// soundPlanRunSummaries condenses the bundle's SoundPLAN runs into the shape
+// the import report carries.
+func soundPlanRunSummaries(runs []*soundplanimport.RunResult) []soundPlanImportRunSummary {
+	summaries := make([]soundPlanImportRunSummary, 0, len(runs))
+	for _, run := range runs {
+		summaries = append(summaries, soundPlanImportRunSummary{
+			RunType:         run.RunType,
+			ResultSubFolder: run.ResultSubFolder,
+			Warnings:        append([]string(nil), run.Warnings...),
+		})
+	}
+
+	return summaries
 }
 
 // soundPlanTerrainSource names the file the terrain data was recovered from.
@@ -483,6 +500,72 @@ func buildSoundPlanBarrierFeatures(barriers []soundplanimport.NoiseBarrier) ([]m
 	}
 
 	return features, warnings
+}
+
+// buildSoundPlanCalcAreaFeature converts the bundle's CalcArea.geo polygon into
+// the single calc-area feature the model schema permits. A SoundPLAN bundle
+// already says where its author wanted results computed, so emitting it makes
+// an imported project's automatic receiver grid cover that extent instead of
+// the extent the imported sources happen to span.
+//
+// A bundle without a calculation area is the normal case, not an error:
+// CalcArea.geo is optional, and such an import is left exactly as it was.
+//
+// Z is dropped, following every other SoundPLAN appender: rail segments,
+// building footprints (points3DToRing) and receivers all emit 2D coordinates
+// and keep the third dimension as a SoundPLAN-specific property. Here the
+// elevation carries no acoustic meaning at all — the validator deliberately
+// applies no height_m rule to a calculation area, because it is a footprint on
+// the ground bounding the receiver grid rather than an object sound travels
+// around — so the first vertex's elevation is preserved as metadata only, named
+// as it is on buildings, which are the other footprint polygons in this model.
+func buildSoundPlanCalcAreaFeature(area *soundplanimport.CalcArea) (modelgeojson.Feature, bool, []string) {
+	if area == nil || len(area.Points) == 0 {
+		return modelgeojson.Feature{}, false, nil
+	}
+
+	ring := points3DToRing(area.Points)
+
+	// Closure is decided in 2D because the emitted ring is 2D. The import
+	// report's IsClosed compares Z as well, so a bundle whose first and last
+	// vertex differ only in elevation reports "not closed" while its footprint
+	// already is; appending the first vertex again there would add a
+	// zero-length segment to an otherwise valid ring.
+	if !soundPlanRingIsClosed(area.Points) {
+		ring = append(ring, ring[0])
+	}
+
+	// A polygon ring needs four coordinates, so fewer than three distinct
+	// vertices cannot describe an area. Refusing to emit it keeps the import
+	// working: an invalid feature would fail validation and reject the whole
+	// bundle over a degenerate extent that is worth nothing anyway.
+	if len(ring) < 4 {
+		return modelgeojson.Feature{}, false, []string{fmt.Sprintf(
+			"CalcArea.geo carries only %d point(s) and cannot form a polygon ring; imported without a calc-area feature, so the receiver grid falls back to the source extent",
+			len(area.Points),
+		)}
+	}
+
+	return modelgeojson.Feature{
+		ID:           "soundplan-calc-area",
+		Kind:         modelgeojson.FeatureKindCalcArea,
+		Properties:   map[string]any{"soundplan_base_elevation_m": area.Points[0].Z},
+		GeometryType: modelgeojson.GeometryTypePolygon,
+		Coordinates:  []any{ring},
+	}, true, nil
+}
+
+// soundPlanRingIsClosed reports whether the footprint's first and last vertex
+// coincide in plan, which is the closure the emitted 2D ring is judged by.
+func soundPlanRingIsClosed(points []soundplanimport.Point3D) bool {
+	if len(points) < 2 {
+		return false
+	}
+
+	first := points[0]
+	last := points[len(points)-1]
+
+	return first.X == last.X && first.Y == last.Y
 }
 
 func calcAreaMetadata(area *soundplanimport.CalcArea) *soundPlanImportCalcArea {

@@ -67,10 +67,40 @@ const (
 	ParameterKindFloat  ParameterKind = "float"
 )
 
+// Unit symbols for ParameterDefinition.Unit. Every unit is spelled here exactly
+// once, and modules refer to the constant rather than repeating the literal:
+// two spellings of the same unit reaching a consumer — "kph" next to "km/h" —
+// is a defect, and a shared constant is the cheapest way to make that
+// impossible.
+const (
+	UnitMeter               = "m"
+	UnitKilometersPerHour   = "km/h"
+	UnitDecibel             = "dB"
+	UnitDecibelPerKilometer = "dB/km"
+	UnitPerHour             = "1/h"
+	UnitPerKilometer        = "1/km"
+	UnitPercent             = "%"
+	UnitDegreeCelsius       = "°C"
+	UnitDegree              = "°"
+)
+
 // ParameterDefinition declares one supported run parameter.
 type ParameterDefinition struct {
-	Name         string
-	Kind         ParameterKind
+	Name string
+	Kind ParameterKind
+
+	// Unit is the physical unit of the value, written as a short symbol: "m",
+	// "km/h", "dB", "dB/km", "1/h", "1/km", "%", "°C", "°". It is empty when the
+	// parameter is dimensionless (a share, a factor, a count) or not numeric at
+	// all (a string, an enum, a bool).
+	//
+	// The spelling is the conventional SI-style symbol, not the suffix the
+	// parameter name happens to use: speed_pkw_kph carries "km/h". Consumers
+	// render this next to the value, so a second spelling for the same unit is a
+	// defect, and TestParameterUnitsMatchNameSuffixes pins the suffixes that
+	// imply one.
+	Unit string
+
 	Required     bool
 	DefaultValue string
 	Description  string
@@ -385,6 +415,7 @@ func cloneParameterSchema(schema ParameterSchema) ParameterSchema {
 		cloned := ParameterDefinition{
 			Name:         parameter.Name,
 			Kind:         parameter.Kind,
+			Unit:         parameter.Unit,
 			Required:     parameter.Required,
 			DefaultValue: parameter.DefaultValue,
 			Description:  parameter.Description,

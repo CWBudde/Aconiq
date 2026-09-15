@@ -7,6 +7,7 @@ import {
   Info,
   FileText,
   FileCode,
+  FileType,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import {
@@ -40,6 +41,12 @@ import { m } from "@/i18n/messages";
 // Export artifact kind labels / icons
 // ---------------------------------------------------------------------------
 
+/**
+ * Every artifact kind `aconiq export` can write, keyed exactly as the CLI
+ * stamps it. A kind missing here falls through `kindMeta` and prints its own
+ * identifier at the reader, so the table has to track the CLI: `--pdf` emits
+ * `export.report_pdf` today, whatever the UI once said about PDFs.
+ */
 const EXPORT_KIND_LABELS: Record<
   string,
   { label: () => string; icon: React.ComponentType<{ className?: string }> }
@@ -48,6 +55,10 @@ const EXPORT_KIND_LABELS: Record<
   "export.report_html": {
     label: m.export_artifact_label_html_report,
     icon: FileText,
+  },
+  "export.report_pdf": {
+    label: m.export_artifact_label_pdf_report,
+    icon: FileType,
   },
   "export.report_markdown": {
     label: m.export_artifact_label_markdown_report,
@@ -164,16 +175,6 @@ function ExportDetail({ run }: { run: RunSummary }) {
             {m.msg_no_html_report_yet()}
           </Callout>
         )}
-      </section>
-
-      {/* Typst PDF placeholder */}
-      <section>
-        <SectionHeading variant="eyebrow" className="mb-2">
-          {m.section_typst_pdf()}
-        </SectionHeading>
-        <Callout variant="neutral" icon={Info}>
-          {m.msg_pdf_generation_planned()}
-        </Callout>
       </section>
 
       {/* CLI command */}

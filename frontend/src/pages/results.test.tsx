@@ -16,7 +16,13 @@ import { m } from "@/i18n/messages";
  * Characterisation tests: they describe what the results page does today, not
  * what it ought to do. They exist as a safety net under a refactor, so where
  * the current behaviour is wrong the wrong behaviour is pinned deliberately
- * and marked as such — see the CSV quoting cases below.
+ * and marked as such.
+ *
+ * What this file does *not* own is the CSV spelling. The download block below
+ * asserts page behaviour — which table is handed over, what blob comes back,
+ * what it is named — while the bytes themselves belong to
+ * `model/receiver-csv.ts` and are tested in `model/receiver-csv.test.ts` and
+ * `model/receiver-csv.parity.test.ts`.
  */
 
 const state = vi.hoisted(() => {
@@ -271,10 +277,10 @@ function filterInput(): HTMLElement {
 }
 
 /**
- * The label message already ends in a colon and `CompareTab` appends a second
- * one, so the accessible name really is "Compare with::". Pinned here rather
- * than papered over with a regex — see the "punctuates its own labels twice"
- * test below.
+ * The message carries the bare term and `CompareTab` punctuates it, so the
+ * accessible name the `Label` gives the trigger is the term plus exactly one
+ * colon. Spelled out rather than matched with a regex so that a second colon
+ * creeping back in fails here too.
  */
 function compareSelect(): HTMLElement {
   return screen.getByRole("combobox", { name: `${m.label_compare_with()}:` });
@@ -474,11 +480,30 @@ describe("ResultsPage receivers tab states", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultsPage receiver filtering", () => {
+  /*
+   * One message owns the whole count, placeholders and all. The fragments it
+   * replaced read "3 / 3 / records", because the message carried a slash of
+   * its own; more to the point, German pluralises the noun rather than
+   * suffixing it, which no amount of JSX concatenation can express.
+   */
   it("counts every record when nothing is filtered", () => {
     renderResults();
 
     expect(
-      screen.getByText(`3 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 3, total: 3 })),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the singular when the table holds one record", () => {
+    state.receiverTable = {
+      ...table,
+      records: table.records.slice(0, 1),
+    } satisfies ReceiverTable;
+    renderResults();
+
+    // The plural follows the total, which is what the noun counts.
+    expect(
+      screen.getByText(m.msg_records_count_one({ shown: 1, total: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -489,7 +514,7 @@ describe("ResultsPage receiver filtering", () => {
 
     expect(rowIds()).toEqual(["R1", "R10"]);
     expect(
-      screen.getByText(`2 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 2, total: 3 })),
     ).toBeInTheDocument();
   });
 
@@ -518,7 +543,7 @@ describe("ResultsPage receiver filtering", () => {
       screen.getByText(m.msg_no_records_match_filter()),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(`0 / 3 ${m.msg_records_count()}`),
+      screen.getByText(m.msg_records_count_other({ shown: 0, total: 3 })),
     ).toBeInTheDocument();
   });
 });
@@ -620,52 +645,29 @@ describe("ResultsPage receiver sorting", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultsPage CSV download", () => {
-  it("writes the header row and every record, quoted throughout", async () => {
+  it("hands the canonical bytes to a text/csv blob named receivers.csv", async () => {
     renderResults();
 
     const csv = await downloadCSV();
 
+    // The spelling is Go's encoding/csv, produced by the shared builder in
+    // model/receiver-csv.ts: fields are quoted only where they have to be, and
+    // every record — the header included — ends in a single LF. The builder's
+    // own rules are tested in model/receiver-csv.test.ts and pinned against the
+    // CLI in model/receiver-csv.parity.test.ts; what this file owns is that the
+    // page hands the right table to it and the right blob to the browser.
     expect(csv).toBe(
       [
-        '"id","x","y","height_m","Lden","Lnight"',
-        '"R1","100.5","200.25","4","62.4","55.1"',
-        '"R10","300","100","8","71.8",""',
-        '"R2","50.5","400.25","2.5","58.2","51.9"',
+        "id,x,y,height_m,Lden,Lnight",
+        "R1,100.5,200.25,4,62.4,55.1",
+        "R10,300,100,8,71.8,",
+        "R2,50.5,400.25,2.5,58.2,51.9",
+        "",
       ].join("\n"),
     );
     expect(createdBlobs.at(-1)?.type).toBe("text/csv");
     expect(downloadNames).toEqual(["receivers.csv"]);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:aconiq/receivers.csv");
-  });
-
-  it("writes the header from indicator_order, not from the records", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lnight", "Lden"],
-      unit: "dB(A)",
-      records: [
-        { id: "R1", x: 1, y: 2, height_m: 3, values: { Lden: 60, Lnight: 50 } },
-      ],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    expect(csv).toBe(
-      [
-        '"id","x","y","height_m","Lnight","Lden"',
-        '"R1","1","2","3","50","60"',
-      ].join("\n"),
-    );
-  });
-
-  it("leaves a missing indicator empty rather than writing the 0 the table shows", async () => {
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // The table cell for R10/Lnight renders `?? 0`; the CSV writes `?? ""`.
-    expect(csv).toContain('"R10","300","100","8","71.8",""');
-    expect(rowIds()).toContain("R10");
   });
 
   it("exports the filtered and sorted view, not the whole table", async () => {
@@ -679,58 +681,23 @@ describe("ResultsPage CSV download", () => {
 
     expect(csv).toBe(
       [
-        '"id","x","y","height_m","Lden","Lnight"',
-        '"R10","300","100","8","71.8",""',
-        '"R1","100.5","200.25","4","62.4","55.1"',
+        "id,x,y,height_m,Lden,Lnight",
+        "R10,300,100,8,71.8,",
+        "R1,100.5,200.25,4,62.4,55.1",
+        "",
       ].join("\n"),
     );
-    expect(csv).not.toContain('"R2"');
+    expect(csv).not.toContain("R2");
   });
 
-  it("writes an empty body when the filter matches nothing", async () => {
+  it("writes the header and its newline when the filter matches nothing", async () => {
     renderResults();
 
     fireEvent.change(filterInput(), { target: { value: "zzz" } });
 
-    expect(await downloadCSV()).toBe('"id","x","y","height_m","Lden","Lnight"');
-  });
-
-  it("emits broken CSV for an id containing a double quote", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lden"],
-      unit: "dB(A)",
-      records: [{ id: 'R"1', x: 1, y: 2, height_m: 3, values: { Lden: 60 } }],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // KNOWN DEFECT, pinned on purpose: `downloadCSV` wraps every field in
-    // quotes but never doubles an embedded one, so `R"1` leaves the field at
-    // the first inner quote and the row no longer parses. RFC 4180 wants
-    // `"R""1"`. The fix is one line in results.tsx (escape `"` as `""`);
-    // update this expectation in the same commit.
-    expect(csv).toBe(
-      ['"id","x","y","height_m","Lden"', '"R"1","1","2","3","60"'].join("\n"),
-    );
-  });
-
-  it("quotes an id containing a comma correctly today", async () => {
-    state.receiverTable = {
-      indicator_order: ["Lden"],
-      unit: "dB(A)",
-      records: [{ id: "R,2", x: 1, y: 2, height_m: 3, values: { Lden: 60 } }],
-    } satisfies ReceiverTable;
-    renderResults();
-
-    const csv = await downloadCSV();
-
-    // The always-quote style happens to be correct for a comma: the field is
-    // delimited, so a reader does not split on it. Pinned so the quote fix
-    // above cannot regress this case.
-    expect(csv).toBe(
-      ['"id","x","y","height_m","Lden"', '"R,2","1","2","3","60"'].join("\n"),
-    );
+    // An empty table is still a complete CSV file: one header record,
+    // terminated like any other.
+    expect(await downloadCSV()).toBe("id,x,y,height_m,Lden,Lnight\n");
   });
 });
 
@@ -788,22 +755,24 @@ describe("ResultsPage compare tab", () => {
 
 describe("ResultsPage label punctuation", () => {
   /*
-   * KNOWN DEFECT, pinned on purpose: every `label_*` message already ends in a
-   * colon, and results.tsx appends another one at each use, so the UI reads
-   * "Min::", "Dimensions::" and "Compare with::". The fix is to drop the
-   * literal colons from results.tsx; update these expectations with it.
+   * A `label_*` message is the bare term — "Min", "Dimensions" — and the page
+   * punctuates it where it is used as a label. The colon is presentation: the
+   * same two terms label the raster min/max inputs, where a trailing colon
+   * would be wrong, and a translator should never have to remember to type
+   * one. So each label carries exactly one colon, never two.
    */
 
-  it("doubles the colon on the indicator summary labels", () => {
+  it("punctuates each indicator summary label exactly once", () => {
     renderResults();
 
     // One card per indicator, so each label appears twice.
     expect(screen.getAllByText(`${m.label_min()}:`)).toHaveLength(2);
     expect(screen.getAllByText(`${m.label_max()}:`)).toHaveLength(2);
     expect(screen.getAllByText(`${m.label_mean()}:`)).toHaveLength(2);
+    expect(screen.queryAllByText(`${m.label_min()}::`)).toHaveLength(0);
   });
 
-  it("doubles the colon on the raster metadata labels", async () => {
+  it("punctuates each raster metadata label exactly once", async () => {
     renderResults([
       run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
     ]);
@@ -813,6 +782,23 @@ describe("ResultsPage label punctuation", () => {
     expect(screen.getByText(`${m.label_dimensions()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_nodata()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_unit()}:`)).toBeInTheDocument();
+    expect(screen.queryByText(`${m.label_dimensions()}::`)).toBeNull();
+  });
+
+  it("leaves the raster min/max fields unpunctuated", async () => {
+    renderResults([
+      run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
+    ]);
+
+    await openTab(m.tab_raster());
+
+    // The same messages that label the summary rows; here they name a field
+    // rather than introduce a value, so they carry no colon at all.
+    expect(screen.getByLabelText(m.label_min())).toHaveAttribute(
+      "placeholder",
+      m.label_min(),
+    );
+    expect(screen.getByLabelText(m.label_max())).toBeInTheDocument();
   });
 });
 

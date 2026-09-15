@@ -77,6 +77,19 @@ describe("message catalogues", () => {
     expect(blank).toEqual([]);
   });
 
+  it.each(LOCALES)("punctuate no label_* message in %s", (locale) => {
+    // A label's colon is presentation, and the same term often labels a form
+    // field as well as a value, where a colon would be wrong. So the message
+    // is the bare term and the JSX punctuates it; a colon typed into the
+    // catalogue reappears next to the one the page already adds.
+    const punctuated = Object.entries(catalogue(locale))
+      .filter(([key]) => isMessageKey(key) && key.startsWith("label_"))
+      .filter(([, value]) => value.trimEnd().endsWith(":"))
+      .map(([key]) => key);
+
+    expect(punctuated).toEqual([]);
+  });
+
   it("use the same placeholders in every locale", () => {
     // A translation that drops a `{count}` compiles and then renders a
     // sentence with a hole in it; one that invents a placeholder paraglide

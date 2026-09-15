@@ -1,0 +1,129 @@
+{
+  "indicator_order": [
+    "Lden",
+    "Lr,Night"
+  ],
+  "unit": "dB(A)",
+  "records": [
+    {
+      "id": "R1",
+      "x": 100.5,
+      "y": 200.25,
+      "height_m": 4,
+      "values": {
+        "Lden": 62.4,
+        "Lr,Night": 55.1
+      }
+    },
+    {
+      "id": "R,2",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R\"3",
+      "x": 0.30000000000000004,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": " R4",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R5 ",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R6\nX",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R7\rX",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "\\.",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": " R9",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R10",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "﻿R11",
+      "x": 1,
+      "y": 2,
+      "height_m": 3,
+      "values": {
+        "Lden": 60,
+        "Lr,Night": 50
+      }
+    },
+    {
+      "id": "R12",
+      "x": 1e+21,
+      "y": 1e-7,
+      "height_m": -0,
+      "values": {
+        "Lden": 1.7976931348623157e+308,
+        "Lr,Night": 5e-324
+      }
+    }
+  ]
+}

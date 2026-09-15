@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/ui/lib/utils";
+import { m } from "@/i18n/messages";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -42,9 +43,15 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
+      {/*
+        "Close dialog", not "Close": a dialog footer may well carry its own
+        Close button, and two controls with the same accessible name inside one
+        dialog leave a screen-reader user choosing blind. The corner control
+        names what it closes; the footer action keeps the plain verb.
+      */}
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <X aria-hidden="true" className="h-4 w-4" />
+        <span className="sr-only">{m.action_close_dialog()}</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>

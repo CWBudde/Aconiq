@@ -11,6 +11,7 @@ import {
 } from "./browser-backend";
 import * as storage from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
+import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { ModelFeature } from "@/model/types";
 import type { ComputeRequest } from "@/wasm/types";
 
@@ -521,6 +522,26 @@ describe("persisted state", () => {
     await expect(
       browserBackend.getArtifactContent(artifact?.id ?? ""),
     ).resolves.toMatchObject({ run_id: run.id, receiver_count: 1 });
+  });
+
+  it("stores the receivers CSV the shared builder produces", async () => {
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const idOf = (kind: string) =>
+      run.artifacts.find((entry) => entry.kind === kind)?.id ?? "";
+
+    const table = await browserBackend.getArtifactContent<
+      Parameters<typeof buildReceiverTableCSV>[0]
+    >(idOf("run.result.receiver_table_json"));
+    const csv = await browserBackend.getArtifactContent<string>(
+      idOf("run.result.receiver_table_csv"),
+    );
+
+    // Not a restatement of the bytes — those are the builder's contract, pinned
+    // against the CLI in model/receiver-csv.parity.test.ts. What is asserted
+    // here is that the stored artifact went through that builder at all, so a
+    // second inline copy of the escaping cannot creep back in.
+    expect(csv).toBe(buildReceiverTableCSV(table));
+    expect(csv).toBe("id,x,y,height_m,LrDay,LrNight\nR1,50,20,4,50,40\n");
   });
 
   it("refuses artifact URLs before the state is loaded", () => {

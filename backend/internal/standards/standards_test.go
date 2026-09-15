@@ -153,3 +153,108 @@ func TestAircraftDescriptionsDiscloseMissingCnossosMethod(t *testing.T) {
 		}
 	}
 }
+
+// unitSuffixes maps a parameter-name suffix to the unit symbol a parameter
+// carrying it must declare. It is ordered longest-first so that
+// air_absorption_db_per_km resolves to dB/km rather than to 1/km or dB.
+//
+// The table is deliberately not exhaustive over units: a parameter may carry a
+// unit without advertising it in its name — traffic_day_pkw is vehicles per
+// hour. What it pins is the reverse direction, that a name promising a unit
+// delivers it, so a new *_db parameter cannot ship unitless.
+var unitSuffixes = []struct {
+	suffix string
+	unit   string
+}{
+	{"_db_per_km", "dB/km"},
+	{"_trains_per_hour", "1/h"},
+	{"_per_hour", "1/h"},
+	{"_per_km", "1/km"},
+	{"_percent", "%"},
+	{"_kph", "km/h"},
+	{"_vph", "1/h"},
+	{"_deg", "°"},
+	{"_db", "dB"},
+	{"_m", "m"},
+	{"_c", "°C"},
+}
+
+// unitFromName returns the unit a parameter name promises, and whether it
+// promises one at all.
+func unitFromName(name string) (string, bool) {
+	for _, candidate := range unitSuffixes {
+		if strings.HasSuffix(name, candidate.suffix) {
+			return candidate.unit, true
+		}
+	}
+
+	return "", false
+}
+
+func TestParameterUnitsMatchNameSuffixes(t *testing.T) {
+	t.Parallel()
+
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+
+	descriptors := registry.List()
+	if len(descriptors) == 0 {
+		t.Fatal("standards registry is empty")
+	}
+
+	checked := 0
+
+	for _, descriptor := range descriptors {
+		for _, version := range descriptor.Versions {
+			for _, profile := range version.Profiles {
+				for _, parameter := range profile.ParameterSchema.Parameters {
+					expected, implied := unitFromName(parameter.Name)
+					if !implied {
+						continue
+					}
+
+					checked++
+
+					if parameter.Unit != expected {
+						t.Errorf(
+							"standard %q version %q profile %q: parameter %q must declare unit %q, got %q",
+							descriptor.ID, version.Name, profile.Name, parameter.Name, expected, parameter.Unit,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	if checked == 0 {
+		t.Fatal("no parameter name implied a unit; the suffix table has stopped matching the schemas")
+	}
+}
+
+// TestParameterUnitsSurviveProfileResolution pins the clone path. A unit a
+// module declares but Resolve drops would reach no consumer, because the CLI and
+// the HTTP API both read a resolved profile rather than the raw descriptor.
+func TestParameterUnitsSurviveProfileResolution(t *testing.T) {
+	t.Parallel()
+
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+
+	for id := range expectedEvidenceTiers {
+		resolved, err := registry.Resolve(id, "", "")
+		if err != nil {
+			t.Fatalf("resolve %q: %v", id, err)
+		}
+
+		for _, parameter := range resolved.RunParameterSchema.Parameters {
+			expected, implied := unitFromName(parameter.Name)
+			if implied && parameter.Unit != expected {
+				t.Errorf("standard %q: resolved parameter %q lost its unit: want %q, got %q", id, parameter.Name, expected, parameter.Unit)
+			}
+		}
+	}
+}

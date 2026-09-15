@@ -29,6 +29,7 @@ import {
 } from "@/model/source-acoustics";
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
+import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
@@ -132,6 +133,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "grid_resolution_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "10",
                 description: "Receiver grid spacing in map units",
@@ -140,6 +142,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "grid_padding_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "20",
                 description: "Padding around source extent in map units",
@@ -148,6 +151,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "receiver_height_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "4",
                 description: "Receiver height above ground",
@@ -167,6 +171,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_pkw_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -174,6 +179,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_lkw1_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -181,6 +187,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_lkw2_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "80",
                 min: 0.001,
@@ -188,6 +195,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "speed_krad_kph",
                 kind: "float",
+                unit: "km/h",
                 required: true,
                 default_value: "100",
                 min: 0.001,
@@ -195,6 +203,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "gradient_percent",
                 kind: "float",
+                unit: "%",
                 required: true,
                 default_value: "0",
                 min: -12,
@@ -203,6 +212,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_pkw",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "900",
                 min: 0,
@@ -210,6 +220,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_lkw1",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "40",
                 min: 0,
@@ -217,6 +228,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_lkw2",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "60",
                 min: 0,
@@ -224,6 +236,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_day_krad",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "10",
                 min: 0,
@@ -231,6 +244,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_pkw",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "200",
                 min: 0,
@@ -238,6 +252,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_lkw1",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "10",
                 min: 0,
@@ -245,6 +260,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_lkw2",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "20",
                 min: 0,
@@ -252,6 +268,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "traffic_night_krad",
                 kind: "float",
+                unit: "1/h",
                 required: true,
                 default_value: "2",
                 min: 0,
@@ -259,6 +276,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "segment_length_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "1",
                 min: 0.001,
@@ -266,6 +284,7 @@ export const BROWSER_STANDARDS: StandardDescriptor[] = [
               {
                 name: "min_distance_m",
                 kind: "float",
+                unit: "m",
                 required: true,
                 default_value: "3",
                 min: 0.001,
@@ -1105,24 +1124,6 @@ function buildReceiverTable(outputs: ReceiverOutput[]): ReceiverTable {
   };
 }
 
-function buildReceiverCSV(table: ReceiverTable): string {
-  const headers = ["id", "x", "y", "height_m", ...table.indicator_order];
-  const rows = table.records.map((record) => [
-    record.id,
-    String(record.x),
-    String(record.y),
-    String(record.height_m),
-    ...table.indicator_order.map((indicator) =>
-      String(record.values[indicator] ?? ""),
-    ),
-  ]);
-  return [headers, ...rows]
-    .map((row) =>
-      row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","),
-    )
-    .join("\n");
-}
-
 function makeArtifact(
   runId: string,
   suffix: string,
@@ -1141,7 +1142,7 @@ function makeArtifact(
 // Receiver values are an open Record, and stored runs are replayed from
 // IndexedDB, so an indicator can legitimately be absent (e.g. a run written
 // by an older build). Render it as an empty cell instead of throwing, matching
-// how buildReceiverCSV already handles missing indicators.
+// how buildReceiverTableCSV already handles missing indicators.
 function formatIndicator(values: Record<string, number>, key: string): string {
   return values[key]?.toFixed(1) ?? "";
 }
@@ -1445,7 +1446,7 @@ out geom;`;
 
       const outputs = await kernel.rls19Road(request);
       const receiverTable = buildReceiverTable(outputs);
-      const receiverCSV = buildReceiverCSV(receiverTable);
+      const receiverCSV = buildReceiverTableCSV(receiverTable);
       const rasterMetadata: RasterMetadata = {
         width: rasterWidth,
         height: rasterHeight,

@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type {
   ParameterDefinition,
   ProfileInfo,
@@ -553,21 +553,33 @@ describe("RunPage progress timeline", () => {
       .filter((text) => known.has(text));
   }
 
+  /**
+   * The timeline is an ordered list, so a step is a list item rather than
+   * whatever two levels of `parentElement` happened to land on.
+   */
   function stepRow(label: string): HTMLElement {
-    const row = screen.getByText(label).parentElement?.parentElement;
+    const row = within(progressSection())
+      .getAllByRole("listitem")
+      .find((item) => item.textContent.startsWith(label));
     if (!row) throw new Error(`no timeline row for "${label}"`);
     return row;
   }
 
   /**
-   * A step's state is only ever shown as a shape and a colour — a tick, a
-   * spinner, or a plain dot — and every one of those is `aria-hidden`, so the
-   * marker has to be read the way the eye reads it.
+   * The step's marker carries its state as its own accessible name — the
+   * tick, the spinner and the dot are decoration behind it — so the state can
+   * be read the way a screen reader announces it rather than inferred from a
+   * CSS class. Mapping the name back to the enum also pins that each state
+   * really does say something different out loud.
    */
   function stepState(label: string): StepState {
-    const icon = stepRow(label).querySelector("svg");
-    if (!icon) return "pending";
-    return icon.classList.contains("animate-spin") ? "active" : "done";
+    const name = within(stepRow(label))
+      .getByRole("img")
+      .getAttribute("aria-label");
+    if (name === m.timeline_status_done()) return "done";
+    if (name === m.timeline_status_active()) return "active";
+    if (name === m.timeline_status_pending()) return "pending";
+    throw new Error(`unknown timeline state "${name ?? ""}" on "${label}"`);
   }
 
   function stepStates(): StepState[] {
@@ -618,6 +630,27 @@ describe("RunPage progress timeline", () => {
       "pending",
     ]);
     expect(stepTimestamp(m.timeline_run_started())).toBeNull();
+  });
+
+  it("marks the step the run is on as the current one", () => {
+    showRun("running", [LOG_RUN_STARTED, LOG_MODEL, LOG_SOURCES]);
+
+    const current = within(progressSection())
+      .getAllByRole("listitem")
+      .filter((item) => item.getAttribute("aria-current") === "step");
+
+    expect(current).toHaveLength(1);
+    expect(current[0]?.textContent).toContain(m.timeline_building_receivers());
+  });
+
+  it("leaves no step current once the run has finished", () => {
+    showRun("completed", [LOG_RUN_STARTED, LOG_COMPLETED]);
+
+    expect(
+      within(progressSection())
+        .getAllByRole("listitem")
+        .filter((item) => item.hasAttribute("aria-current")),
+    ).toEqual([]);
   });
 
   it("marks the matched stages done and the next one active mid-run", () => {
