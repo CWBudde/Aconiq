@@ -32,6 +32,7 @@ interface ModelState {
   updateReceiver: (receiver: ModelReceiver) => void;
   removeReceiver: (id: string) => void;
   loadModel: (model: LoadedModel) => void;
+  mergeModel: (model: LoadedModel) => MergeSkips;
   hydrateModel: (model: LoadedModel) => void;
   getReceiverById: (id: string) => ModelReceiver | undefined;
 
@@ -39,11 +40,21 @@ interface ModelState {
   clearCalcArea: () => void;
 }
 
-/** A complete model replacement (draft restore, import). */
+/** A complete model (draft restore, import) — replaced in, or merged in. */
 export interface LoadedModel {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+}
+
+/** What a {@link ModelState.mergeModel} left behind, for the caller to report. */
+export interface MergeSkips {
+  /** Features whose id the workspace already held. */
+  features: number;
+  /** Receivers whose id the workspace already held. */
+  receivers: number;
+  /** True when the merge carried a calculation area and the workspace kept its own. */
+  calcArea: boolean;
 }
 
 const commandStack = new CommandStack();
@@ -244,6 +255,93 @@ export const useModelStore = create<ModelState>((set, get) => {
         canUndo: false,
         canRedo: false,
       });
+    },
+
+    // Adds a model to the workspace instead of replacing it, as *one*
+    // undoable command: a merge the reader regrets is one Ctrl+Z, not one per
+    // imported feature.
+    //
+    // An id the workspace already holds is skipped, not re-minted and not
+    // overwritten. Re-minting would turn a re-import of the same file into a
+    // second copy of every feature — and, since ids are what the project keys
+    // on, into a model the next save writes twice. Skipping makes the merge
+    // idempotent: importing the same file twice leaves the workspace as the
+    // first import left it. Ids are one namespace across features and
+    // receivers, because `validateProjectModel` checks them as one.
+    //
+    // An existing calculation area wins over an imported one. The model holds
+    // at most one, and the one the reader drew is the one they can see.
+    //
+    // `dirty: true`, like `loadFeatures` and `loadModel`: the content comes
+    // from outside the project.
+    mergeModel: (model) => {
+      const state = get();
+      const taken = new Set<string>([
+        ...state.features.map((f) => f.id),
+        ...state.receivers.map((r) => r.id),
+      ]);
+
+      const addedFeatures: ModelFeature[] = [];
+      for (const feature of model.features) {
+        if (taken.has(feature.id)) continue;
+        taken.add(feature.id);
+        addedFeatures.push(feature);
+      }
+
+      const addedReceivers: ModelReceiver[] = [];
+      for (const receiver of model.receivers) {
+        if (taken.has(receiver.id)) continue;
+        taken.add(receiver.id);
+        addedReceivers.push(receiver);
+      }
+
+      const previousArea = state.calcArea;
+      const nextArea = previousArea ?? model.calcArea;
+
+      const skipped: MergeSkips = {
+        features: model.features.length - addedFeatures.length,
+        receivers: model.receivers.length - addedReceivers.length,
+        calcArea: previousArea !== null && model.calcArea !== null,
+      };
+
+      // A merge that changes nothing pushes nothing. Executing an empty
+      // command would still clear the redo stack, so the second import of the
+      // same file would be idempotent in the model and not in the undo
+      // history.
+      if (
+        addedFeatures.length === 0 &&
+        addedReceivers.length === 0 &&
+        nextArea === previousArea
+      ) {
+        return skipped;
+      }
+
+      const addedIDs = new Set<string>([
+        ...addedFeatures.map((f) => f.id),
+        ...addedReceivers.map((r) => r.id),
+      ]);
+
+      commandStack.execute({
+        description: `Merge ${String(addedFeatures.length)} features and ${String(addedReceivers.length)} receivers`,
+        execute: () => {
+          set((s) => ({
+            features: [...s.features, ...addedFeatures],
+            receivers: [...s.receivers, ...addedReceivers],
+            calcArea: nextArea,
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => ({
+            features: s.features.filter((f) => !addedIDs.has(f.id)),
+            receivers: s.receivers.filter((r) => !addedIDs.has(r.id)),
+            calcArea: previousArea,
+            dirty: true,
+          }));
+        },
+      });
+
+      return skipped;
     },
 
     // `loadModel`'s twin for content that comes *from* the project rather than
