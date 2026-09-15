@@ -238,6 +238,78 @@ func calcAreaFromImportReport(area *soundPlanImportCalcArea) *soundplanimport.Ca
 	return out
 }
 
+// calcAreaFromModel reads the calculation area out of the project model. It
+// returns the area, the feature id for warning text, and any warnings; a nil
+// area means "this model has none", and the caller falls back to the import
+// report.
+//
+// The model's ring is the better-formed input of the two. Validation guarantees
+// it is closed and carries at least four coordinates
+// (modelgeojson/validate.go's parsePolygon), which is exactly what
+// calcAreaHorizontalSpan's edge loop needs: it runs to len(Points)-1 and so
+// never emits the closing edge, which is correct and complete for a closed ring
+// and drops an edge for an open one. The import report's point list is verbatim
+// ParseCalcAreaFile output with nothing enforcing closure.
+func calcAreaFromModel(model modelgeojson.Model) (*soundplanimport.CalcArea, string, []string) {
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindCalcArea {
+			continue
+		}
+
+		// At most one exists — calcAreaTracker in modelgeojson/validate.go
+		// refuses a second — so the first match is the only match.
+		rings, err := parsePolygonCoordinates(feature.Coordinates)
+		if err != nil {
+			// Falling back beats failing: the comparison still has an answer
+			// from the import report, and a model whose geometry cannot be
+			// parsed here is one built in code rather than read from disk.
+			return nil, feature.ID, []string{fmt.Sprintf(
+				"calculation area %q could not be read from the model (%v); using the SoundPLAN import report instead",
+				feature.ID, err,
+			)}
+		}
+
+		var warnings []string
+
+		// soundplanimport.CalcArea is a flat point list with no way to carry a
+		// hole, and calcAreaHorizontalSpan picks the widest gap between
+		// crossings — handed an interior ring it would silently choose a
+		// sub-span across the hole. Outer ring only, and say so.
+		if len(rings) > 1 {
+			warnings = append(warnings, fmt.Sprintf(
+				"calculation area %q carries %d interior ring(s), which a flat point list cannot represent; the raster comparison uses the outer ring only",
+				feature.ID, len(rings)-1,
+			))
+		}
+
+		// Nothing reads this z today: the only read of .Z off a CalcArea in this
+		// file is the field copy in calcAreaFromImportReport, and every consumer
+		// — calcAreaBounds, calcAreaHorizontalSpan, metadataAlignedRowCenters —
+		// is purely 2D. It is carried so the two areas have the same shape.
+		//
+		// Its absence is never "no area". The property survives only until the
+		// first save from the map: frontend/src/model/to-geojson.ts emits
+		// properties: { kind } and nothing else.
+		baseElevationM, _, err := featurePropertyFloat(feature, "soundplan_base_elevation_m")
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"calculation area %q: %v; base elevation read as 0", feature.ID, err,
+			))
+
+			baseElevationM = 0
+		}
+
+		points := make([]soundplanimport.Point3D, 0, len(rings[0]))
+		for _, point := range rings[0] {
+			points = append(points, soundplanimport.Point3D{X: point.X, Y: point.Y, Z: baseElevationM})
+		}
+
+		return &soundplanimport.CalcArea{Points: points}, feature.ID, warnings
+	}
+
+	return nil, "", nil
+}
+
 func receiverHeightFromModel(model modelgeojson.Model) float64 {
 	for _, feature := range model.Features {
 		if feature.Kind != modelgeojson.FeatureKindReceiver {
