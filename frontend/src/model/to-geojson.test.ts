@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CALC_AREA_FEATURE_ID,
   featuresToGeoJSON,
   featuresToSourceGroups,
   modelToGeoJSON,
 } from "./to-geojson";
-import type { ModelFeature, ModelReceiver } from "./types";
+import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
 
 const src: ModelFeature = {
   id: "s1",
@@ -49,6 +50,21 @@ const rcv: ModelReceiver = {
   geometry: { type: "Point", coordinates: [10.5, 51.5] },
 };
 
+const area: CalcArea = {
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [10, 51],
+        [10.1, 51],
+        [10.1, 51.1],
+        [10, 51.1],
+        [10, 51],
+      ],
+    ],
+  },
+};
+
 describe("featuresToGeoJSON", () => {
   it("produces a valid FeatureCollection", () => {
     const fc = featuresToGeoJSON([src, bld]);
@@ -89,7 +105,11 @@ describe("featuresToSourceGroups", () => {
 
 describe("modelToGeoJSON", () => {
   it("puts features first and receivers after them in one collection", () => {
-    const fc = modelToGeoJSON({ features: [src, bld], receivers: [rcv] });
+    const fc = modelToGeoJSON({
+      features: [src, bld],
+      receivers: [rcv],
+      calcArea: null,
+    });
     expect(fc.type).toBe("FeatureCollection");
     expect(fc.features.map((f) => f.id)).toEqual(["s1", "b1", "r1"]);
     expect(fc.features[2]?.properties).toEqual({
@@ -99,14 +119,108 @@ describe("modelToGeoJSON", () => {
   });
 
   it("produces an empty collection for an empty model", () => {
-    expect(modelToGeoJSON({ features: [], receivers: [] }).features).toEqual(
-      [],
-    );
+    expect(
+      modelToGeoJSON({ features: [], receivers: [], calcArea: null }).features,
+    ).toEqual([]);
   });
 
   it("keeps the feature properties the map payload carries", () => {
-    const fc = modelToGeoJSON({ features: [src], receivers: [] });
+    const fc = modelToGeoJSON({
+      features: [src],
+      receivers: [],
+      calcArea: null,
+    });
     expect(fc.features[0]?.properties["source_type"]).toBe("point");
     expect(fc.features[0]?.properties["surface_type"]).toBe("SMA");
+  });
+
+  it("emits the calculation area last, after features and receivers", () => {
+    // Last is load-bearing: it keeps the prefix of a payload written before
+    // the area existed byte-identical, so adding one appends rather than
+    // rewrites.
+    const fc = modelToGeoJSON({
+      features: [src, bld],
+      receivers: [rcv],
+      calcArea: area,
+    });
+    expect(fc.features.map((f) => f.id)).toEqual([
+      "s1",
+      "b1",
+      "r1",
+      CALC_AREA_FEATURE_ID,
+    ]);
+    const withoutArea = modelToGeoJSON({
+      features: [src, bld],
+      receivers: [rcv],
+      calcArea: null,
+    });
+    expect(JSON.stringify(fc.features.slice(0, 3))).toBe(
+      JSON.stringify(withoutArea.features),
+    );
+  });
+
+  it("gives the area the fixed id, the calc-area kind and no height", () => {
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [],
+      calcArea: area,
+    });
+    const emitted = fc.features[0];
+    expect(emitted?.id).toBe(CALC_AREA_FEATURE_ID);
+    // No `height_m`: the backend applies no height rule to this kind, so one
+    // would be a property nothing reads.
+    expect(emitted?.properties).toEqual({ kind: "calc-area" });
+    expect(emitted?.geometry.type).toBe("Polygon");
+    expect(emitted?.geometry.coordinates).toEqual(area.geometry.coordinates);
+  });
+
+  it("keeps the id the project already gave the area", () => {
+    // A hydrated area arrives with the id the project stores. Renaming it on
+    // the next save would churn a feature id for nothing.
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [],
+      calcArea: { id: "extent", geometry: area.geometry },
+    });
+    expect(fc.features[0]?.id).toBe("extent");
+  });
+
+  it("steps past a calc-area id an imported feature already holds", () => {
+    // The backend refuses the whole model with `feature.id.duplicate` when two
+    // features share an id, so a fixed id would make every save of such a
+    // model fail. Nothing reserves `calc-area` in an imported file.
+    const clash: ModelFeature = { ...src, id: CALC_AREA_FEATURE_ID };
+    const fc = modelToGeoJSON({
+      features: [clash],
+      receivers: [],
+      calcArea: area,
+    });
+    expect(fc.features.map((f) => f.id)).toEqual([
+      CALC_AREA_FEATURE_ID,
+      "calc-area-1",
+    ]);
+  });
+
+  it("gives up a stored area id that a feature has since taken", () => {
+    const clash: ModelFeature = { ...src, id: "extent" };
+    const fc = modelToGeoJSON({
+      features: [clash],
+      receivers: [],
+      calcArea: { id: "extent", geometry: area.geometry },
+    });
+    expect(fc.features.map((f) => f.id)).toEqual([
+      "extent",
+      CALC_AREA_FEATURE_ID,
+    ]);
+  });
+
+  it("serialises one model to identical JSON twice", () => {
+    // The saved file's bytes are the model's identity — the API answers a
+    // save with their hash — so a generated id anywhere in the payload would
+    // make unchanged content look changed.
+    const payload = { features: [src, bld], receivers: [rcv], calcArea: area };
+    expect(JSON.stringify(modelToGeoJSON(payload))).toBe(
+      JSON.stringify(modelToGeoJSON(payload)),
+    );
   });
 });

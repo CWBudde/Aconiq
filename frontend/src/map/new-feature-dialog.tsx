@@ -22,7 +22,11 @@ import type {
   Position,
   SourceType,
 } from "@/model/types";
-import { createFeatureId, createReceiverId } from "@/model/types";
+import {
+  createFeatureId,
+  createReceiverId,
+  DEFAULT_RECEIVER_HEIGHT_M,
+} from "@/model/types";
 import type { ModelReceiver } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
@@ -78,7 +82,7 @@ export function NewFeatureDialog({
     if (kind === "receiver") {
       const receiver: ModelReceiver = {
         id: createReceiverId(),
-        heightM: Math.max(0.1, parseFloat(height) || 4),
+        heightM: Math.max(0.1, parseFloat(height) || DEFAULT_RECEIVER_HEIGHT_M),
         geometry: geometry as { type: "Point"; coordinates: Position },
       };
       addReceiver(receiver);

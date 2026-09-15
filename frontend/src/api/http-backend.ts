@@ -1,4 +1,5 @@
 import {
+  ERROR_CODE_MODEL_NOT_FOUND,
   ERROR_CODE_NOT_FOUND,
   errorFromResponse,
   parseErrorEnvelope,
@@ -8,6 +9,7 @@ import { apiHeaders } from "./client";
 import type {
   CreateRunRequest,
   HealthResponse,
+  ModelResponse,
   ModelSaveResponse,
   ProjectStatusResponse,
   RunLog,
@@ -147,8 +149,38 @@ export const httpBackend: Backend = {
     );
   },
 
+  async getModel(crs) {
+    const response = await send(`/api/v1/model?crs=${encodeURIComponent(crs)}`);
+    if (response.ok) {
+      return (await response.json()) as ModelResponse;
+    }
+    // Only `model_not_found` is an answer rather than a failure: the project
+    // loaded and holds no model yet. A `not_found` means the project itself
+    // is gone, which is a different thing and is thrown — as is any other
+    // 404, such as an older server without the route.
+    if (response.status === 404) {
+      const envelope = parseErrorEnvelope(
+        await response
+          .clone()
+          .json()
+          .catch(() => null),
+      );
+      if (envelope?.code === ERROR_CODE_MODEL_NOT_FOUND) {
+        return null;
+      }
+    }
+    throw await errorFromResponse(response);
+  },
+
   async saveModel(req) {
     const saved = await postJSON<ModelSaveResponse>("/api/v1/model", req);
-    return { featureCount: saved.feature_count, warnings: saved.warnings };
+    // The hash is the server's receipt for the bytes it just wrote. Kept, not
+    // discarded: it is what lets the next startup ask "is my draft still the
+    // project's model?" without fetching anything.
+    return {
+      featureCount: saved.feature_count,
+      warnings: saved.warnings,
+      hash: saved.hash,
+    };
   },
 };

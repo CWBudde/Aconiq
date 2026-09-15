@@ -12,6 +12,7 @@ import type {
 import type {
   ArtifactRef,
   HealthResponse,
+  ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
   RasterMetadata,
@@ -1701,11 +1702,35 @@ out geom;`;
   },
 
   /**
+   * In browser mode the model store is the project, so there is nothing to
+   * read back — and a `null` here would be indistinguishable from "the
+   * project has no model yet" to a caller that forgot the capability gate,
+   * which would then leave the map empty over a populated store. Rejecting
+   * follows `httpBackend.createExport`: the method exists so the interface
+   * has no mode-specific hole, and says why it cannot answer.
+   */
+  getModel(): Promise<ModelResponse | null> {
+    return Promise.reject(
+      new Error(
+        "Reading the project model is not available in browser mode; the model store is the project",
+      ),
+    );
+  },
+
+  /**
    * In browser mode the model store is the project: a run reads it directly,
    * so there is nothing to write.
+   *
+   * `hash: null` rather than a computed digest. The hash is a receipt for a
+   * file the server wrote; there is no file here, and inventing one would let
+   * a draft claim to match a project that does not exist.
    */
   async saveModel(req: ModelSaveRequest): Promise<ModelSaveResult> {
-    return { featureCount: req.model.features.length, warnings: [] };
+    return {
+      featureCount: req.model.features.length,
+      warnings: [],
+      hash: null,
+    };
   },
 } satisfies Backend;
 

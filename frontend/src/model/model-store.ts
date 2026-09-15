@@ -32,6 +32,7 @@ interface ModelState {
   updateReceiver: (receiver: ModelReceiver) => void;
   removeReceiver: (id: string) => void;
   loadModel: (model: LoadedModel) => void;
+  hydrateModel: (model: LoadedModel) => void;
   getReceiverById: (id: string) => ModelReceiver | undefined;
 
   setCalcArea: (area: CalcArea) => void;
@@ -240,6 +241,27 @@ export const useModelStore = create<ModelState>((set, get) => {
         receivers,
         calcArea,
         dirty: true,
+        canUndo: false,
+        canRedo: false,
+      });
+    },
+
+    // `loadModel`'s twin for content that comes *from* the project rather than
+    // from outside it: same replacement, but it lands clean.
+    //
+    // The difference is not cosmetic. Hydrating through `loadModel` would mark
+    // a freshly reloaded workspace dirty, which arms the `beforeunload` guard
+    // on every reload and makes the autosave write a draft of the project's
+    // own model two seconds later — a draft carrying no hash, which then
+    // guarantees a fetch on every subsequent start. Clean is also what keeps
+    // the autosave idle, so a divergent draft survives to be offered.
+    hydrateModel: ({ features, receivers, calcArea }) => {
+      commandStack.clear();
+      set({
+        features,
+        receivers,
+        calcArea,
+        dirty: false,
         canUndo: false,
         canRedo: false,
       });

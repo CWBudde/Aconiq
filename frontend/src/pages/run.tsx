@@ -1053,23 +1053,14 @@ function RunSetupDialog({
                   description={m.msg_receiver_custom_set_desc()}
                 />
               </div>
-              {/* The calculation area is not part of the saved model
-                  (`modelToGeoJSON` leaves it out), so a backend auto-grid
-                  cannot honour it: say so instead of claiming it is active. */}
+              {/* The same sentence in both modes: `modelToGeoJSON` now emits
+                  the area as a `calc-area` feature, and the backend resolves
+                  the auto-grid extent from it. No separate gate is needed for
+                  an area that has not been saved yet — setting one marks the
+                  model dirty, and the dialog already refuses to start a run
+                  while it is. */}
               {receiverMode === "auto-grid" && calcArea ? (
-                backend.capabilities.runsAgainstSavedModel ? (
-                  <Callout
-                    variant="warning"
-                    icon={AlertCircle}
-                    data-testid="calc-area-not-in-project"
-                  >
-                    {m.msg_calc_area_not_in_project()}
-                  </Callout>
-                ) : (
-                  <p className="text-xs text-info">
-                    {m.msg_calc_area_active()}
-                  </p>
-                )
+                <p className="text-xs text-info">{m.msg_calc_area_active()}</p>
               ) : null}
               {receiverMode === "custom" &&
               receiverCount === 0 &&

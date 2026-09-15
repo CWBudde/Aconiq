@@ -279,6 +279,33 @@ describe("useAutosave", () => {
     expect(draft?.receivers).toHaveLength(1);
   });
 
+  it("never stamps a hash onto the draft it writes", () => {
+    // The safety property the hydration hook rests on: a draft carrying a
+    // hash is byte-for-byte the content that produced the file that hash
+    // names. Only a completed save can say that. A draft the autosave wrote
+    // is newer than the project by construction — that is what `dirty` means
+    // — so carrying the last save's receipt forward would make the next
+    // startup restore divergent work *clean*, and the workspace would claim
+    // to be the project while differing from it.
+    backendState.runsAgainstSavedModel = true;
+    writeDraft({
+      features: [sampleFeature],
+      receivers: [],
+      calcArea: null,
+      hash: "a-receipt-from-an-earlier-save",
+    });
+    renderHook(() => {
+      useAutosave();
+    });
+
+    act(() => {
+      useModelStore.getState().addFeature(sampleFeature);
+    });
+    flushAutosave();
+
+    expect(loadDraft()?.hash).toBeUndefined();
+  });
+
   it("saves a calculation area set on its own", () => {
     renderHook(() => {
       useAutosave();

@@ -448,15 +448,14 @@ describe("RunPage calculation area", () => {
     },
   };
 
-  it("says the area is not in the project where runs read the saved model", () => {
+  it("reports a saved area as active where runs read the saved model", () => {
     useModelStore.getState().setCalcArea(calcArea);
     useModelStore.getState().markClean();
     openRunDialog([standard("rls19-road", "normative")]);
 
-    expect(screen.getByTestId("calc-area-not-in-project")).toHaveTextContent(
-      m.msg_calc_area_not_in_project(),
-    );
-    expect(screen.queryByText(m.msg_calc_area_active())).toBeNull();
+    // The area travels in the model payload now, so the backend's auto-grid
+    // honours it and the dialog says what browser mode has always said.
+    expect(screen.getByText(m.msg_calc_area_active())).toBeInTheDocument();
     expect(startRunButton()).toBeEnabled();
   });
 
@@ -466,7 +465,23 @@ describe("RunPage calculation area", () => {
     openRunDialog([standard("rls19-road", "normative")]);
 
     expect(screen.getByText(m.msg_calc_area_active())).toBeInTheDocument();
-    expect(screen.queryByTestId("calc-area-not-in-project")).toBeNull();
+  });
+
+  it("refuses a run while a newly drawn area is still unsaved", () => {
+    // The area needs no gate of its own: `setCalcArea` marks the model dirty
+    // and the dialog already refuses a run against a project that has not
+    // seen the workspace. This is that gate exercised through the area —
+    // without it a run would compute over the source extent while the map
+    // showed the drawn one.
+    useModelStore.getState().setCalcArea(calcArea);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("unsaved-changes-callout")).toHaveTextContent(
+      m.msg_unsaved_changes_before_run(),
+    );
+    expect(startRunButton()).toBeDisabled();
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
   });
 });
 

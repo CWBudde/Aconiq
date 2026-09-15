@@ -463,6 +463,23 @@ Three consequences fell out of the work:
 
 ### Open
 
+- [ ] **The auto receiver grid applies metres to a geographic CRS.**
+      `buildReceiversFromPoints` (`run_receivers.go:39-53`) computes
+      `bbox.MinX - paddingM` and hands `resolutionM` to `GridReceiverSet` in the project's own
+      units, and nothing on that path projects first — `calcAreaExtent` and `resolveGridReceivers`
+      (`run_input.go:134-183`) read the model's coordinates as stored. So in a project whose CRS is
+      geographic a 20 m padding is subtracted as 20 **degrees** and a 100 m resolution spaces
+      receivers 100 degrees apart. Measured, not reasoned: a model spanning 9.985–10.015 E,
+      53.545–53.565 N put its single receiver at `-10.015, 33.545`, and the levels computed there
+      were reported as if they were the site's.
+      This is not a corner case — `aconiq init` defaults the project CRS to **EPSG:4326** and
+      `--receiver-mode` defaults to `auto-grid`, so it is the out-of-the-box path. Reproduced
+      byte-identically on `main`, so it predates Phase C and is not a regression.
+      Either project the extent into a metric CRS before padding and gridding, or refuse a
+      geographic project CRS on the auto-grid path — silently computing at the wrong place is the
+      one option that is not available. Whichever way it goes, the browser kernel's
+      `buildReceiverGrid` pads the same bbox the same way, so `browser-parity.test.ts` pins the two
+      together and both sides move at once.
 - [ ] **`aconiq compare` still runs the preview chain, by explicit opt-in.** The SoundPLAN import
       produces the `rail_*` preview vocabulary only, so `compare_test.go` and `cmdoutput_test.go`
       now pass `--param schall03_engine=preview` rather than reaching it by accident. The ~25 dB
@@ -983,25 +1000,33 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the eight inlined capability checks, six are content decisions or not UI at all, and one has
       no capability behind it. Build it for the rule, not a sweep — and do not gate `SaveStatus`,
       whose absence in browser mode is correct.
-- [ ] **Hydrate the workspace from the project** in HTTP mode. The endpoint and the hash exist;
-      the frontend half does not. `use-project-hydration.ts` belongs in `RootLayout` beside
-      `useAutosave`, not on `/` — a reload can land on any route, and hydrating only there would
-      show an empty map over a populated project. A draft whose stored hash equals
-      `status.model.hash` is restored clean with no fetch and no banner; otherwise the project is
-      fetched and a divergent draft still gets its Restore. Never hydrate over unsaved work.
-      `DRAFT_VERSION` stays 1 — the hash is an additive optional field, as `calcArea` was, and a
-      bump would discard every existing draft. Route it through a receiver-aware normalizer:
-      `normalize.ts`'s `VALID_KINDS` drops `receiver`, so hydrating through `normalizeGeoJSON`
-      would silently delete placed receivers and then save that loss back.
-- [ ] **Emit the calculation area from the frontend.** The backend accepts it (above);
-      `modelToGeoJSON` still leaves it out. Make `ModelPayload.calcArea` required rather than
-      optional so the compiler enumerates the call sites, emit one `calc-area` feature with a fixed
-      id (a stable id is what keeps the saved file byte-identical, which the hash receipt depends
-      on), and rewrite the doc comment that currently explains the omission. Then delete
-      `msg_calc_area_not_in_project` and the `calc-area-not-in-project` branch. The gate the old
-      wording asked for already exists — `dirty` tracks `calcArea` and the run dialog refuses while
-      dirty — so this needs a test, not a gate. Ships with the hydration item: hydration without it
-      would discard the drawn area on every reload.
+- [x] **The workspace hydrates from the project, and the drawn area reaches it** (#26). Both
+      halves together, because either alone loses the area on reload:
+      `use-project-hydration.ts` sits in `RootLayout` beside `useAutosave`, gated on
+      `runsAgainstSavedModel`, and `ModelPayload.calcArea` is required so the compiler
+      enumerated the emit sites. Four constraints follow.
+      **Exactly one writer may put a hash on a draft** — `useProjectSync.save()`, in the branch
+      that has established the store did not move during the request. An autosave that carried
+      the last save's receipt over newer edits would be restored _clean_ on the next start, a
+      workspace silently claiming to be the project; hydration writes no draft at all, or it
+      would overwrite the divergent one that must still be offered.
+      **The id lives in `properties.id`, not the GeoJSON `id` member** —
+      `ToFeatureCollection` writes it there and `projectfs` stores it that way, so a reader
+      that consults only the member mints fresh UUIDs and the next save rewrites every id in
+      the project. An area the user drew has no stored id, so one is derived at emit time from
+      the ids already in the payload: nothing reserves `calc-area` in an imported file, and the
+      backend refuses the whole model with `feature.id.duplicate` when two features share one.
+      **A load is not a hydration** — `loadModel` sets `dirty` because its content comes from
+      outside the project; hydrated content comes from it and lands through `hydrateModel`
+      clean, or the unload guard arms on every reload and the autosave writes a hash-less draft
+      of the project's own model two seconds later.
+      **Startup must not act on a question it has not answered.** Child effects run before
+      parent effects, so the draft offer is decided in the hydration store rather than in
+      `DraftBanner`; an errored project status is not an answer of "no model", so it leaves the
+      hook armed for a later refetch; and no route renders until the decision settles, because
+      every route is editable and an edit made over the not-yet-hydrated store makes the next
+      save replace the project with it.
+
 - [ ] **Strip placeholders and apologies**: the inert raster colour-ramp/probe block
       (`results.tsx:388-441` — a disabled Select over a hardcoded ramp list and two disabled
       inputs), planned settings, the "Phase 24+" string (`msg_receiver_custom_set_desc`,

@@ -350,7 +350,6 @@
   "label_calc_area": "Calculation Area",
   "action_clear_calc_area": "Clear Calculation Area",
   "msg_calc_area_active": "Calculation area is set. Auto-grid will use this area instead of source extent.",
-  "msg_calc_area_not_in_project": "The calculation area is not part of the project model. The backend's auto-grid uses the source extent instead.",
   "label_evidence_tier": "Evidence tier",
   "evidence_tier_normative": "Normative",
   "evidence_tier_normative_desc": "Normative: built on the published structure, coefficients and tables of the standard.",
@@ -398,5 +397,6 @@
   "label_draw_tools": "Drawing tools",
   "label_edit_history": "Undo and redo",
   "action_hide_layer": "Hide {label}",
-  "action_show_layer": "Show {label}"
+  "action_show_layer": "Show {label}",
+  "msg_project_model_load_failed": "The project's model could not be loaded. The map may be showing less than the project holds."
 }
