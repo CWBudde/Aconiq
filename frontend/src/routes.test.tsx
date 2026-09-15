@@ -43,7 +43,7 @@ describe("the route table", () => {
       "import",
       "run",
       "results/{index,:runId}",
-      "export",
+      "export/{index,:runId}",
       "status",
       "settings",
     ]);
@@ -54,7 +54,7 @@ describe("the route table", () => {
     // lazy binding. Two `lazy(() => import("@/pages/results"))` calls give two
     // component types, and every selection change would silently remount the
     // detail pane — resetting its open tab, with nothing in the suite to say so.
-    for (const section of ["results"]) {
+    for (const section of ["results", "export"]) {
       const parent = layoutChildren().find((c) => c.path === section);
       const children = parent?.children ?? [];
       expect(children, section).toHaveLength(2);

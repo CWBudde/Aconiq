@@ -1,9 +1,11 @@
 import { useState, useMemo } from "react";
+import { useNavigate, useParams } from "react-router";
 import {
   Package,
   ExternalLink,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Info,
   FileText,
   FileCode,
@@ -309,8 +311,10 @@ function exportMeta(run: RunSummary): string {
 }
 
 export default function ExportPage() {
-  const { data: runs = [], isLoading, error } = useRuns();
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const { data, isLoading, error } = useRuns();
+  const runs = useMemo(() => data ?? [], [data]);
+  const { runId } = useParams();
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const runsWithExports = useMemo(
@@ -318,18 +322,20 @@ export default function ExportPage() {
     [runs],
   );
 
-  // The selection is *derived*, falling back to the first run with exports.
-  // It used to be stored: a `setSelectedRunId` call in the render body, which
-  // React treats as a render-phase update of this component's own state and
-  // re-renders for — an extra pass on every load, and a warning loop whenever
-  // the fallback disagreed with the stored id.
-  const selectedRun = useMemo(
-    () =>
-      runsWithExports.find((r) => r.id === selectedRunId) ??
-      runsWithExports[0] ??
-      null,
-    [runsWithExports, selectedRunId],
-  );
+  // The selection is the URL, with no fallback to the first run — the list is
+  // in backend order, and opening a bundle nobody asked for is worse than
+  // opening none.
+  //
+  // Resolved against every run rather than against `runsWithExports`, because
+  // the dialog offers every run: generating a bundle selects a run that is not
+  // in the list yet. `ExportDetail` already has a no-artifacts branch for that,
+  // and calling such a run "unknown" would be a lie.
+  const selectedRun =
+    runId == null ? null : (runs.find((r) => r.id === runId) ?? null);
+
+  // `data !== undefined`, not `runs.length`: an id is unknown only once a list
+  // has arrived, or a deep link would flash a warning on every cold load.
+  const missingRun = runId != null && data !== undefined && selectedRun == null;
 
   // The heading stays above both transient states so every state of the page
   // keeps its landmark structure (`waitForPage` in e2e/app.ts needs it).
@@ -399,10 +405,8 @@ export default function ExportPage() {
               {runsWithExports.map((run) => (
                 <ListItem
                   key={run.id}
-                  selected={run.id === selectedRun?.id}
-                  onSelect={() => {
-                    setSelectedRunId(run.id);
-                  }}
+                  selected={run.id === runId}
+                  to={`/export/${run.id}`}
                   badge={
                     <Package
                       aria-hidden="true"
@@ -420,6 +424,12 @@ export default function ExportPage() {
       >
         {selectedRun ? (
           <ExportDetail run={selectedRun} />
+        ) : missingRun ? (
+          <div className="flex flex-1 items-start justify-center p-8">
+            <Callout variant="warning" icon={AlertTriangle}>
+              {m.msg_unknown_run_id({ runId })}
+            </Callout>
+          </div>
         ) : (
           <EmptyState title={m.msg_select_run_for_details()} />
         )}
@@ -431,8 +441,11 @@ export default function ExportPage() {
           setDialogOpen(false);
         }}
         runs={runs}
-        onCreated={(runId) => {
-          setSelectedRunId(runId);
+        onCreated={(createdRunId) => {
+          // A push, not a replace: the user did a thing, and Back should undo
+          // it. By the time this fires the runs list has already refetched —
+          // `useCreateExport` awaits the invalidation in its own `onSuccess`.
+          void navigate(`/export/${createdRunId}`);
         }}
       />
     </>

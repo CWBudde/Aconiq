@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import ExportPage from "./export";
 import { formatDateTime } from "@/ui/format";
@@ -132,9 +133,39 @@ const jsonContext = artifact(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderPage(runs: RunSummary[]) {
+/** Reads the current path out, so a click's navigation is asserted directly. */
+function PathProbe() {
+  return <span data-testid="pathname">{useLocation().pathname}</span>;
+}
+
+function pathname(): string {
+  return screen.getByTestId("pathname").textContent;
+}
+
+/**
+ * Renders the page under the same index/`:runId` pair `routes.tsx` registers.
+ *
+ * `path` defaults to the first run with exports, because that is what "a
+ * bundle is open" means now and most of this file is about the detail pane.
+ * The tests about the selection itself pass a path explicitly.
+ */
+function renderPage(runs: RunSummary[], path?: string) {
   state.runs = runs;
-  render(<ExportPage />);
+  const first = runs.find((r) =>
+    r.artifacts.some((a) => a.kind.startsWith("export.")),
+  );
+  const entry = path ?? (first ? `/export/${first.id}` : "/export");
+  render(
+    <MemoryRouter initialEntries={[entry]}>
+      <PathProbe />
+      <Routes>
+        <Route path="/export">
+          <Route index element={<ExportPage />} />
+          <Route path=":runId" element={<ExportPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 /** The page header's action; the dialog's Generate button shares its label. */
@@ -161,7 +192,7 @@ function selectRun(dialog: HTMLElement, runId: string) {
 }
 
 function listItem(runId: string): HTMLElement {
-  return screen.getByRole("button", { name: new RegExp(runId) });
+  return screen.getByRole("link", { name: new RegExp(runId) });
 }
 
 /**
@@ -545,22 +576,58 @@ describe("ExportPage detail panel", () => {
     expect(button).not.toBeNull();
     if (button) fireEvent.click(button);
 
-    // The selection moved to a run the list does not carry, so the detail
-    // falls back to the first run with exports rather than showing nothing.
-    expect(screen.getByText("bundle.zip")).toBeInTheDocument();
+    // The title of this test always described this; the body used to assert
+    // the opposite, because the selection fell back to the first run with
+    // exports. The run is resolved against every run, so its own empty detail
+    // is what shows, and no other run's bundle leaks in.
+    expect(pathname()).toBe("/export/run-2");
+    expect(screen.getByText(m.msg_no_artifacts_for_run())).toBeInTheDocument();
+    expect(screen.queryByText("bundle.zip")).toBeNull();
   });
 
   it("selects another run from the list", () => {
     renderPage([run("run-1", [bundle]), run("run-2", [htmlReport])]);
 
-    expect(listItem("run-1")).toHaveAttribute("aria-current", "true");
+    expect(listItem("run-1")).toHaveAttribute("aria-current", "page");
     fireEvent.click(listItem("run-2"));
 
-    expect(listItem("run-2")).toHaveAttribute("aria-current", "true");
+    expect(pathname()).toBe("/export/run-2");
+    expect(listItem("run-2")).toHaveAttribute("aria-current", "page");
     expect(listItem("run-1")).not.toHaveAttribute("aria-current");
     expect(
       screen.getByText("aconiq export --run-id run-2"),
     ).toBeInTheDocument();
+  });
+
+  it("selects nothing at the bare export route", () => {
+    renderPage([run("run-1", [bundle])], "/export");
+
+    expect(listItem("run-1")).not.toHaveAttribute("aria-current");
+    expect(
+      screen.getByText(m.msg_select_run_for_details()),
+    ).toBeInTheDocument();
+  });
+
+  it("names an unknown run id rather than falling back to another run", () => {
+    renderPage([run("run-1", [bundle])], "/export/nope");
+
+    expect(
+      screen.getByText(m.msg_unknown_run_id({ runId: "nope" })),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("bundle.zip")).toBeNull();
+    expect(listItem("run-1")).not.toHaveAttribute("aria-current");
+  });
+
+  it("does not call a run unknown while the runs are loading", () => {
+    state.runsLoading = true;
+    renderPage([], "/export/run-1");
+
+    expect(
+      screen.getByRole("heading", { name: m.page_title_exports() }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_unknown_run_id({ runId: "run-1" })),
+    ).toBeNull();
   });
 });
 
@@ -654,7 +721,7 @@ describe("ExportPage transient states keep the page header", () => {
   it("keeps the heading above the loading spinner", () => {
     state.runsLoading = true;
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
 
     const heading = screen.getByRole("heading", {
       name: m.page_title_exports(),
@@ -675,7 +742,7 @@ describe("ExportPage transient states keep the page header", () => {
   it("keeps the heading above the error callout", () => {
     state.runsError = new Error("Request failed: 500");
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
 
     const heading = screen.getByRole("heading", {
       name: m.page_title_exports(),
@@ -690,7 +757,7 @@ describe("ExportPage transient states keep the page header", () => {
   it("reports the API failure rather than the raw error", () => {
     state.runsError = new Error("Request failed: 500");
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
 
     expect(screen.getByText(m.msg_api_error_export())).toBeInTheDocument();
     expect(screen.queryByText("Request failed: 500")).toBeNull();
@@ -704,7 +771,7 @@ describe("ExportPage transient states keep the page header", () => {
     state.runsLoading = true;
     state.runsError = new Error("Request failed: 500");
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
 
     expect(screen.getByText(m.msg_api_error_export())).toBeInTheDocument();
     expect(document.querySelector(".animate-spin")).toBeNull();
@@ -745,14 +812,14 @@ describe("ExportPage heading order", () => {
   it("keeps heading levels contiguous while loading", () => {
     state.runsLoading = true;
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
     expectContiguous(headingLevels());
   });
 
   it("keeps heading levels contiguous in the error state", () => {
     state.runsError = new Error("Request failed: 500");
     state.runs = undefined;
-    render(<ExportPage />);
+    renderPage([]);
     expectContiguous(headingLevels());
   });
 });

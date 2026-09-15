@@ -42,7 +42,14 @@ export const routes: RouteObject[] = [
           { path: ":runId", element: <ResultsPage /> },
         ],
       },
-      { path: "export", element: <ExportPage /> },
+      // Same shape as `results` above, and for the same reasons.
+      {
+        path: "export",
+        children: [
+          { index: true, element: <ExportPage /> },
+          { path: ":runId", element: <ExportPage /> },
+        ],
+      },
       { path: "status", element: <StatusPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
