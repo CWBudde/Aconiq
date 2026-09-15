@@ -53,8 +53,15 @@ type soundPlanReceiverComparisonRecord struct {
 }
 
 type soundPlanRasterCompareReport struct {
-	Status                 string                             `json:"status"`
-	Alignment              string                             `json:"alignment,omitempty"`
+	Status    string `json:"status"`
+	Alignment string `json:"alignment,omitempty"`
+	// CalcAreaSource names which of the project's two calculation areas the
+	// synthesis used; CalcAreaBoundsDeltaM measures how far apart their
+	// envelopes are, and is nil when there was no second area to compare
+	// against. A warning fires only when the vertex counts disagree, so without
+	// these two fields the artifact would not record which area produced it.
+	CalcAreaSource         string                             `json:"calc_area_source,omitempty"`
+	CalcAreaBoundsDeltaM   *float64                           `json:"calc_area_bounds_delta_m,omitempty"`
 	GridResolutionM        float64                            `json:"grid_resolution_m,omitempty"`
 	ReceiverHeightM        float64                            `json:"receiver_height_m,omitempty"`
 	SyntheticReceiverCount int                                `json:"synthetic_receiver_count,omitempty"`

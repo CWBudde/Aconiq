@@ -454,7 +454,13 @@ func TestMetadataAlignedRasterReceiversPrefersAreaOverlap(t *testing.T) {
 	}
 }
 
-func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
+// TestPrepareAndFinalizeSoundPlanRasterCompareFallsBackToImportReport walks the
+// whole prepare/finalize path for a project whose model carries **no**
+// calc-area feature, so the SoundPLAN import report's CalcArea is what the
+// synthesis uses. That is the fallback, not the primary path: the model's
+// feature wins whenever there is one, which
+// TestPrepareSoundPlanRasterCompareModelCalcAreaWins covers.
+func TestPrepareAndFinalizeSoundPlanRasterCompareFallsBackToImportReport(t *testing.T) {
 	t.Parallel()
 
 	projectRoot := t.TempDir()
@@ -517,6 +523,16 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
 
+	if got, want := prep.report.CalcAreaSource, calcAreaSourceImportReport; got != want {
+		t.Fatalf("calc area source = %q, want %q", got, want)
+	}
+
+	// Nothing to compare the report's area against, so no delta is recorded —
+	// which is not the same as the two having agreed.
+	if prep.report.CalcAreaBoundsDeltaM != nil {
+		t.Fatalf("bounds delta = %v, want none when the model carries no area", *prep.report.CalcAreaBoundsDeltaM)
+	}
+
 	receiverID := prep.syntheticReceiverIDs[0]
 	table := results.ReceiverTable{
 		IndicatorOrder: []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight},
@@ -551,6 +567,10 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 		t.Fatal("expected raster artifact")
 	}
 
+	if got, want := artifact.CalcAreaSource, calcAreaSourceImportReport; got != want {
+		t.Fatalf("artifact calc area source = %q, want %q", got, want)
+	}
+
 	if len(artifact.Runs) != 1 {
 		t.Fatalf("artifact run count = %d", len(artifact.Runs))
 	}
@@ -564,6 +584,253 @@ func TestPrepareAndFinalizeSoundPlanRasterCompare(t *testing.T) {
 
 		cleanupRasterComparePreparation(prep)
 	})
+}
+
+// rasterCompareProject writes a minimal project whose model carries one base
+// receiver plus the given extra features, and one decodable single-cell GM
+// payload. It returns the project root and the model path relative to it.
+func rasterCompareProject(t *testing.T, extraFeatures ...any) (string, string) {
+	t.Helper()
+
+	projectRoot := t.TempDir()
+
+	modelPath := filepath.Join(".noise", "model", "model.normalized.geojson")
+
+	modelFile := filepath.Join(projectRoot, modelPath)
+	if err := os.MkdirAll(filepath.Dir(modelFile), 0o750); err != nil {
+		t.Fatalf("make model dir: %v", err)
+	}
+
+	features := append([]any{map[string]any{
+		"type":       "Feature",
+		"properties": map[string]any{"id": "base", "kind": "receiver", "height_m": 4.0},
+		"geometry":   map[string]any{"type": "Point", "coordinates": []any{0, 0}},
+	}}, extraFeatures...)
+
+	payload, err := json.Marshal(map[string]any{"type": "FeatureCollection", "features": features})
+	if err != nil {
+		t.Fatalf("marshal model: %v", err)
+	}
+
+	if err := os.WriteFile(modelFile, payload, 0o600); err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	gmDir := filepath.Join(projectRoot, "soundplan", "RS01")
+	if err := os.MkdirAll(gmDir, 0o750); err != nil {
+		t.Fatalf("make gm dir: %v", err)
+	}
+
+	cells := []testGridCell{{ground: -1, day: 0, night: 0, flag: 1}, {ground: 110, day: 50, night: 40, flag: 1}}
+	if err := writeTestGridMapFile(filepath.Join(gmDir, "RRLK0010.GM"), cells); err != nil {
+		t.Fatalf("write gm: %v", err)
+	}
+
+	return projectRoot, modelPath
+}
+
+// calcAreaFeature is one calc-area feature spanning [minX,maxX]×[minY,maxY],
+// with an optional extra vertex on the top edge so that two areas can describe
+// the same envelope with different vertex counts.
+func calcAreaFeature(minX, minY, maxX, maxY float64, extraTopVertex bool) any {
+	ring := []any{
+		[]any{minX, minY},
+		[]any{maxX, minY},
+		[]any{maxX, maxY},
+	}
+
+	if extraTopVertex {
+		ring = append(ring, []any{(minX + maxX) / 2, maxY})
+	}
+
+	ring = append(ring, []any{minX, maxY}, []any{minX, minY})
+
+	return map[string]any{
+		"type":       "Feature",
+		"properties": map[string]any{"id": "drawn-area", "kind": "calc-area"},
+		"geometry":   map[string]any{"type": "Polygon", "coordinates": []any{ring}},
+	}
+}
+
+// syntheticRasterReceiverXY reads the synthesized raster receivers back out of
+// the temporary model the preparation wrote, which is the only place their
+// coordinates exist.
+func syntheticRasterReceiverXY(t *testing.T, prep *rasterComparePreparation) map[string][2]float64 {
+	t.Helper()
+
+	payload, err := os.ReadFile(prep.tempModelPath)
+	if err != nil {
+		t.Fatalf("read temp model: %v", err)
+	}
+
+	// Coordinates stay raw: the same collection carries the calc-area polygon,
+	// whose coordinates are nested arrays rather than a position.
+	var collection struct {
+		Features []struct {
+			Properties map[string]any `json:"properties"`
+			Geometry   struct {
+				Coordinates json.RawMessage `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+
+	if err := json.Unmarshal(payload, &collection); err != nil {
+		t.Fatalf("decode temp model: %v", err)
+	}
+
+	out := make(map[string][2]float64)
+
+	for _, feature := range collection.Features {
+		id, _ := feature.Properties["id"].(string)
+		if !strings.HasPrefix(id, soundPlanRasterReceiverPrefix) {
+			continue
+		}
+
+		var position []float64
+		if err := json.Unmarshal(feature.Geometry.Coordinates, &position); err != nil {
+			t.Fatalf("decode position of %q: %v", id, err)
+		}
+
+		if len(position) < 2 {
+			t.Fatalf("synthetic receiver %q has no position", id)
+		}
+
+		out[id] = [2]float64{position[0], position[1]}
+	}
+
+	return out
+}
+
+// TestPrepareSoundPlanRasterCompareModelCalcAreaWins is the primary path: the
+// model's calc-area feature governs where the synthesized receivers go, even
+// though the SoundPLAN import report carries an area of its own and a different
+// one. The model is the extent a run computes over, so it is the extent the
+// comparison must use.
+//
+// The two areas here differ in both envelope and vertex count, so the divergence
+// warning fires and names the counts and the measured envelope delta.
+func TestPrepareSoundPlanRasterCompareModelCalcAreaWins(t *testing.T) {
+	t.Parallel()
+
+	// The model's area spans 0..10 with an extra vertex on the top edge; the
+	// import report's spans 0..5 with four. One GM row of one cell puts the
+	// receiver at the centre of the area's span, so 5,5 against 2.5,2.5.
+	projectRoot, modelPath := rasterCompareProject(t, calcAreaFeature(0, 0, 10, 10, true))
+
+	report := soundPlanImportReport{
+		SourcePath:      "soundplan",
+		ProjectCRS:      "EPSG:25832",
+		GridResolutionM: 5,
+		CalcArea: &soundPlanImportCalcArea{Points: []soundPlanPoint{
+			{X: 0, Y: 0}, {X: 5, Y: 0}, {X: 5, Y: 5}, {X: 0, Y: 5}, {X: 0, Y: 0},
+		}},
+		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
+	}
+
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	t.Cleanup(func() { cleanupRasterComparePreparation(prep) })
+
+	if !hasPrep || len(prep.syntheticReceiverIDs) != 1 {
+		t.Fatalf("expected one synthetic receiver, got %d", len(prep.syntheticReceiverIDs))
+	}
+
+	if got, want := prep.report.CalcAreaSource, calcAreaSourceModel; got != want {
+		t.Fatalf("calc area source = %q, want %q", got, want)
+	}
+
+	positions := syntheticRasterReceiverXY(t, prep)
+
+	position, ok := positions[prep.syntheticReceiverIDs[0]]
+	if !ok {
+		t.Fatalf("no position for %q", prep.syntheticReceiverIDs[0])
+	}
+
+	if math.Abs(position[0]-5) > 1e-9 || math.Abs(position[1]-5) > 1e-9 {
+		t.Fatalf("receiver at (%.3f, %.3f); want the model's centre (5, 5), not the import report's (2.5, 2.5)",
+			position[0], position[1])
+	}
+
+	if prep.report.CalcAreaBoundsDeltaM == nil {
+		t.Fatal("expected a recorded bounds delta when both areas exist")
+	}
+
+	if got := *prep.report.CalcAreaBoundsDeltaM; math.Abs(got-5) > 1e-9 {
+		t.Fatalf("bounds delta = %v m, want 5", got)
+	}
+
+	divergence := findWarning(prep.report.Warnings, "the model wins")
+	if divergence == "" {
+		t.Fatalf("expected a divergence warning, got %v", prep.report.Warnings)
+	}
+
+	for _, want := range []string{"drawn-area", "has 5 vertices", "has 4", "5.000 m"} {
+		if !strings.Contains(divergence, want) {
+			t.Fatalf("divergence warning %q does not name %q", divergence, want)
+		}
+	}
+}
+
+// TestPrepareSoundPlanRasterCompareAgreeingAreasAreSilent is the other half: the
+// same shape from both sources warns about nothing, while the bounds delta is
+// still recorded, because the artifact must say which area it used whether or
+// not anything was wrong.
+func TestPrepareSoundPlanRasterCompareAgreeingAreasAreSilent(t *testing.T) {
+	t.Parallel()
+
+	projectRoot, modelPath := rasterCompareProject(t, calcAreaFeature(0, 0, 10, 10, false))
+
+	report := soundPlanImportReport{
+		SourcePath:      "soundplan",
+		ProjectCRS:      "EPSG:25832",
+		GridResolutionM: 5,
+		// Same square, but starting at a different vertex and wound the other
+		// way — a vertex-by-vertex comparison would call this a divergence.
+		CalcArea: &soundPlanImportCalcArea{Points: []soundPlanPoint{
+			{X: 10, Y: 10}, {X: 10, Y: 0}, {X: 0, Y: 0}, {X: 0, Y: 10},
+		}},
+		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
+	}
+
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	t.Cleanup(func() { cleanupRasterComparePreparation(prep) })
+
+	if !hasPrep {
+		t.Fatal("expected a prepared comparison")
+	}
+
+	if got, want := prep.report.CalcAreaSource, calcAreaSourceModel; got != want {
+		t.Fatalf("calc area source = %q, want %q", got, want)
+	}
+
+	if got := findWarning(prep.report.Warnings, "the model wins"); got != "" {
+		t.Fatalf("unexpected divergence warning: %q", got)
+	}
+
+	if prep.report.CalcAreaBoundsDeltaM == nil {
+		t.Fatal("expected the bounds delta to be recorded even when the areas agree")
+	}
+
+	if got := *prep.report.CalcAreaBoundsDeltaM; got != 0 {
+		t.Fatalf("bounds delta = %v m, want 0", got)
+	}
+}
+
+func findWarning(warnings []string, needle string) string {
+	for _, warning := range warnings {
+		if strings.Contains(warning, needle) {
+			return warning
+		}
+	}
+
+	return ""
 }
 
 func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing.T) {

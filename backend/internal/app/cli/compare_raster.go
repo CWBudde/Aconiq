@@ -20,6 +20,15 @@ const (
 	soundPlanRasterMetadataAlignment = "gm_origin_grid"
 )
 
+// Where the raster comparison's calculation area came from, as recorded in the
+// report and the artifact. An absent value means the comparison returned before
+// it resolved one at all, which is not the same as calcAreaSourceNone.
+const (
+	calcAreaSourceModel        = "model"
+	calcAreaSourceImportReport = "import_report"
+	calcAreaSourceNone         = "none"
+)
+
 type soundPlanRasterCellComparisonRecord struct {
 	ReceiverID     string  `json:"receiver_id"`
 	Row            int     `json:"row"`
@@ -48,6 +57,8 @@ type soundPlanRasterRunCompareSummary struct {
 type soundPlanRasterCompareArtifact struct {
 	Status                 string                            `json:"status"`
 	Alignment              string                            `json:"alignment,omitempty"`
+	CalcAreaSource         string                            `json:"calc_area_source,omitempty"`
+	CalcAreaBoundsDeltaM   *float64                          `json:"calc_area_bounds_delta_m,omitempty"`
 	GridResolutionM        float64                           `json:"grid_resolution_m,omitempty"`
 	ReceiverHeightM        float64                           `json:"receiver_height_m,omitempty"`
 	SyntheticReceiverCount int                               `json:"synthetic_receiver_count,omitempty"`
@@ -173,7 +184,6 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}
 
 	soundPlanRoot := resolvePath(projectRoot, importReport.SourcePath)
-	calcArea := calcAreaFromImportReport(importReport.CalcArea)
 
 	decodedRuns, decodeWarnings := decodeGridMapRuns(soundPlanRoot, importReport.GridMaps)
 	report.Warnings = append(report.Warnings, decodeWarnings...)
@@ -192,10 +202,15 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 		return &rasterComparePreparation{report: report}, true, nil
 	}
 
+	calcArea := resolveRasterCalcArea(baseModel, importReport)
+	report.CalcAreaSource = calcArea.source
+	report.CalcAreaBoundsDeltaM = calcArea.boundsDeltaM
+	report.Warnings = append(report.Warnings, calcArea.warnings...)
+
 	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
 
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
-		report, importReport, decodedRuns[0].metadata, calcArea, syntheticReceiverHeight, layoutRows,
+		report, importReport, decodedRuns[0].metadata, calcArea.area, syntheticReceiverHeight, layoutRows,
 	)
 	if !synthesized {
 		return &rasterComparePreparation{report: report}, true, nil
@@ -308,6 +323,115 @@ func calcAreaFromModel(model modelgeojson.Model) (*soundplanimport.CalcArea, str
 	}
 
 	return nil, "", nil
+}
+
+// rasterCalcArea is the calculation area the raster comparison synthesizes
+// receivers over, together with the evidence for how it was chosen.
+type rasterCalcArea struct {
+	area   *soundplanimport.CalcArea
+	source string
+	// boundsDeltaM is set only when both sources carried an area, so nil means
+	// "there was nothing to compare against", not "they agreed".
+	boundsDeltaM *float64
+	warnings     []string
+}
+
+// resolveRasterCalcArea picks the calculation area the raster comparison uses.
+//
+// The model's calc-area feature wins. It is the extent a run actually computes
+// over — calcAreaExtent (run_input.go) feeds it to resolveGridReceivers — so
+// synthesizing receivers over anything else compares a run against a grid it did
+// not use. The import report's CalcArea is the fallback, for a project carrying
+// no calc-area feature: one imported before `aconiq import --soundplan` emitted
+// one, or one whose CalcArea.geo was too degenerate to form a ring.
+//
+// **There is deliberately no agreement tolerance.** A threshold here would have
+// to sit above the noise floor of an edit-free save and below a real edit, and
+// no such number exists: the EPSG:25832 → 4326 → 25832 round trip the map save
+// path runs loses 0.49 m in a typical German project and 8.5 m at the edges of
+// UTM zone 32, accumulating with every save (PLAN.md Priority 1.6). Anything
+// below the fixture's 5 m grid resolution would fire on a save that changed
+// nothing; anything above it would hide a real edit. So the two signals are:
+//
+//   - the vertex count, compared after normalising closure, which warns. That
+//     comparison is exact and CRS-independent, so the projection defect cannot
+//     reach it, and a notch that leaves the envelope untouched still changes
+//     every row span.
+//   - the bounds delta, recorded unconditionally rather than judged. Priority 13
+//     then reads a measured number instead of a threshold verdict.
+//
+// Comparing the two areas vertex by vertex would be wrong: the lists legitimately
+// differ in start vertex, in winding, and in whether closure is spelled out.
+func resolveRasterCalcArea(model modelgeojson.Model, importReport soundPlanImportReport) rasterCalcArea {
+	fromReport := calcAreaFromImportReport(importReport.CalcArea)
+
+	fromModel, featureID, warnings := calcAreaFromModel(model)
+	if fromModel == nil {
+		if fromReport == nil {
+			return rasterCalcArea{source: calcAreaSourceNone, warnings: warnings}
+		}
+
+		return rasterCalcArea{area: fromReport, source: calcAreaSourceImportReport, warnings: warnings}
+	}
+
+	chosen := rasterCalcArea{area: fromModel, source: calcAreaSourceModel, warnings: warnings}
+	if fromReport == nil {
+		return chosen
+	}
+
+	delta := calcAreaBoundsDeltaM(fromModel, fromReport)
+	chosen.boundsDeltaM = &delta
+
+	modelVertices := openVertexCount(fromModel)
+
+	reportVertices := openVertexCount(fromReport)
+	if modelVertices != reportVertices {
+		chosen.warnings = append(chosen.warnings, fmt.Sprintf(
+			"the model's calculation area %q has %d vertices and the SoundPLAN import report's has %d "+
+				"(envelopes differ by %.3f m); the model wins, because it is the extent a run computes over",
+			featureID, modelVertices, reportVertices, delta,
+		))
+	}
+
+	return chosen
+}
+
+// openVertexCount counts an area's distinct vertices, ignoring whether it
+// carries a repeated closing vertex. The two sources spell closure differently —
+// the model's ring always repeats its first coordinate, the import report's
+// point list is verbatim ParseCalcAreaFile output and may or may not — so a raw
+// len() would report a difference that is notation rather than shape.
+func openVertexCount(area *soundplanimport.CalcArea) int {
+	points := area.Points
+	if len(points) < 2 {
+		return len(points)
+	}
+
+	first := points[0]
+
+	last := points[len(points)-1]
+	if first.X == last.X && first.Y == last.Y {
+		return len(points) - 1
+	}
+
+	return len(points)
+}
+
+// calcAreaBoundsDeltaM is the largest absolute difference between two areas'
+// axis-aligned envelopes, in metres. That envelope is what the synthesis
+// actually consumes: calcAreaBounds drives the row centres and the bounding-box
+// fallback span, and a bounds shift of δ moves every synthesized receiver by
+// about δ/2 while the comparison is per-cell.
+func calcAreaBoundsDeltaM(first, second *soundplanimport.CalcArea) float64 {
+	a := calcAreaBounds(first)
+	b := calcAreaBounds(second)
+
+	return max(
+		math.Abs(a.MinX-b.MinX),
+		math.Abs(a.MinY-b.MinY),
+		math.Abs(a.MaxX-b.MaxX),
+		math.Abs(a.MaxY-b.MaxY),
+	)
 }
 
 func receiverHeightFromModel(model modelgeojson.Model) float64 {
@@ -434,6 +558,8 @@ func finalizeSoundPlanRasterCompare(
 	artifact := &soundPlanRasterCompareArtifact{
 		Status:                 prep.report.Status,
 		Alignment:              prep.report.Alignment,
+		CalcAreaSource:         prep.report.CalcAreaSource,
+		CalcAreaBoundsDeltaM:   prep.report.CalcAreaBoundsDeltaM,
 		GridResolutionM:        prep.report.GridResolutionM,
 		ReceiverHeightM:        prep.report.ReceiverHeightM,
 		SyntheticReceiverCount: len(prep.syntheticReceiverIDs),
