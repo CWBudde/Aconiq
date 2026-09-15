@@ -427,6 +427,52 @@ sentence from the standard that permits it.** Watch for the trap that made this 
 fix — a mirrored ray crosses its own reflector by construction, and a building is barrier and
 reflector at once.
 
+### 1.6 The EPSG:25832 ↔ 4326 round trip loses metres, and the map save path runs it
+
+`TestETRS89UTM32RoundTripResidualIsPinned` (`internal/geo/crs_transform_test.go`) pins what a
+projected coordinate loses on the `25832 → 4326 → 25832` trip:
+
+| point           | position                    | residual, one round trip |
+| --------------- | --------------------------- | ------------------------ |
+| 500000, 5650000 | on the central meridian     | 0.000319 m               |
+| 548000, 5803000 | 48 km east of the CM        | 0.492396 m               |
+| 300000, 5400000 | western edge of UTM zone 32 | 6.768904 m               |
+| 700000, 5800000 | eastern edge of UTM zone 32 | 8.530139 m               |
+
+**This is bias, not noise.** The error is deterministic and points the same way every time, so
+saves integrate it rather than cancelling it: ten round trips at 548000/5803000 move the geometry
+4.92 m — one full grid cell of the SoundPLAN fixture's `grid_resolution_m: 5` — and ten at the
+eastern zone edge move it 85.3 m. The residual grows quadratically with distance from the central
+meridian and sits almost entirely in the northing.
+
+**It is on the ordinary UI save path, and it moves every vertex** — sources, buildings, barriers,
+receivers and the calculation area alike, not just the feature that was edited.
+`frontend/src/model/use-project-sync.ts:43` pins `MODEL_CRS = "EPSG:4326"`,
+`internal/api/httpv1/model.go:146-168` (`modelInCRS`) reprojects out of the project CRS on
+`GET /api/v1/model?crs=`, and `:229` reprojects back in on `POST /api/v1/model`.
+
+It reproduces against `github.com/wroge/wgs84` v1.1.7 directly, bypassing `geo.EPSGTransform`, so it
+is the library's transverse-Mercator series and not our wrapper. The datum step is not implicated:
+`ETRS89UTM(32) ↔ ETRS89().LonLat()` (EPSG:4258, no Helmert shift) gives the same residuals to all
+printed digits as the WGS84 pair.
+
+**Which direction is at fault is undetermined.** A lossy round trip proves at least one of forward
+and inverse is wrong, not which — and not that only one is. Settling it needs trusted reference
+vectors (proj, or the EPSG-published test points for 25832) rather than more round trips, and that
+measurement is the first step of any fix.
+
+Nothing saw this because `crs_transform_test.go:119` asserts the same CRS pair to `0.0001°`, which
+is roughly 11 m of latitude: an assertion ceiling hiding a defect of its own size. It surfaced only
+when a tolerance was needed in metres, for the calculation-area agreement check in Priority 8
+Phase C — which is why that check ships with no threshold at all.
+
+Three candidate fixes, none chosen:
+
+- replace the projection with an accurate Krüger/Karney series;
+- move to a maintained binding with reference-vector coverage;
+- remove the reprojection from the save path entirely by holding project-CRS coordinates in the
+  frontend and reprojecting for display only, which makes a save lossless without fixing the series.
+
 ## Priority 2 — Make the CLI run the normative code
 
 **Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
