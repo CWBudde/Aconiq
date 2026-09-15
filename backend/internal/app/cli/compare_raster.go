@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/soundplanimport"
 	"github.com/aconiq/backend/internal/report/results"
@@ -18,6 +19,35 @@ const (
 	defaultRasterCompareArtifactPath = ".noise/artifacts/soundplan-raster-compare.json"
 	soundPlanRasterReceiverPrefix    = "soundplan-raster-"
 	soundPlanRasterMetadataAlignment = "gm_origin_grid"
+)
+
+// Where the raster comparison's calculation area came from, as recorded in the
+// report and the artifact. An absent value means the comparison returned before
+// it resolved one at all, which is not the same as calcAreaSourceNone.
+const (
+	calcAreaSourceModel        = "model"
+	calcAreaSourceImportReport = "import_report"
+	calcAreaSourceNone         = "none"
+)
+
+// What the resolved calculation area actually did for the synthesis, as
+// recorded in the report and the artifact. The scanline path derives every
+// receiver position from the area; the GM-metadata path derives positions from
+// the grid's own origin and spacing and consults the area only to decide which
+// way the decoded rows run. Without this, calc_area_source: model reads as
+// "the model's area placed these receivers" on a path where it did not.
+const (
+	calcAreaRoleReceiverPlacement = "receiver_placement"
+	calcAreaRoleRowDirectionOnly  = "row_direction_only"
+)
+
+// The unit calcAreaBoundsDelta is measured in — the project CRS's horizontal
+// axis unit, because the delta is a plain subtraction of project-CRS
+// coordinates.
+const (
+	calcAreaDeltaUnitMetre   = "m"
+	calcAreaDeltaUnitDegree  = "degree"
+	calcAreaDeltaUnitUnknown = "unknown"
 )
 
 type soundPlanRasterCellComparisonRecord struct {
@@ -46,14 +76,18 @@ type soundPlanRasterRunCompareSummary struct {
 }
 
 type soundPlanRasterCompareArtifact struct {
-	Status                 string                            `json:"status"`
-	Alignment              string                            `json:"alignment,omitempty"`
-	GridResolutionM        float64                           `json:"grid_resolution_m,omitempty"`
-	ReceiverHeightM        float64                           `json:"receiver_height_m,omitempty"`
-	SyntheticReceiverCount int                               `json:"synthetic_receiver_count,omitempty"`
-	SoundPlanRuns          []soundplanimport.GridMapMetadata `json:"soundplan_runs,omitempty"`
-	Runs                   []soundPlanRasterRunCompareDetail `json:"runs,omitempty"`
-	Warnings               []string                          `json:"warnings,omitempty"`
+	Status                  string                            `json:"status"`
+	Alignment               string                            `json:"alignment,omitempty"`
+	CalcAreaSource          string                            `json:"calc_area_source,omitempty"`
+	CalcAreaRole            string                            `json:"calc_area_role,omitempty"`
+	CalcAreaBoundsDelta     *float64                          `json:"calc_area_bounds_delta,omitempty"`
+	CalcAreaBoundsDeltaUnit string                            `json:"calc_area_bounds_delta_unit,omitempty"`
+	GridResolutionM         float64                           `json:"grid_resolution_m,omitempty"`
+	ReceiverHeightM         float64                           `json:"receiver_height_m,omitempty"`
+	SyntheticReceiverCount  int                               `json:"synthetic_receiver_count,omitempty"`
+	SoundPlanRuns           []soundplanimport.GridMapMetadata `json:"soundplan_runs,omitempty"`
+	Runs                    []soundPlanRasterRunCompareDetail `json:"runs,omitempty"`
+	Warnings                []string                          `json:"warnings,omitempty"`
 }
 
 type soundPlanRasterRunCompareDetail struct {
@@ -130,6 +164,19 @@ func synthesizeRasterReceivers(
 	syntheticReceivers, ids, synthWarnings := buildMetadataAlignedRasterReceivers(meta, calcArea, receiverHeightM, layoutRows)
 	if len(syntheticReceivers) > 0 {
 		report.Alignment = soundPlanRasterMetadataAlignment
+		report.CalcAreaRole = calcAreaRoleRowDirectionOnly
+
+		// Say so where the source field would otherwise overclaim. The decoded
+		// values live at the GM grid's cells and nowhere else, so placing the
+		// receivers anywhere but there would compare an Aconiq level at one
+		// point against a SoundPLAN level at another — but a reader who sees
+		// only calc_area_source: model would expect moving the area to move
+		// them, and it does not. It can still flip the row direction.
+		if report.CalcAreaSource == calcAreaSourceModel {
+			report.Warnings = append(report.Warnings,
+				"GM origin metadata placed the raster receivers on the SoundPLAN grid; the model's calculation area "+
+					"only chose the row direction, so editing it does not move them")
+		}
 	}
 
 	if len(syntheticReceivers) == 0 {
@@ -147,6 +194,7 @@ func synthesizeRasterReceivers(
 
 		syntheticReceivers, ids, synthWarnings = buildHeuristicRasterReceivers(calcArea, gridResolutionM, receiverHeightM, layoutRows)
 		report.Alignment = "calcarea_scanlines_centered"
+		report.CalcAreaRole = calcAreaRoleReceiverPlacement
 	}
 
 	report.Warnings = append(report.Warnings, synthWarnings...)
@@ -173,7 +221,6 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}
 
 	soundPlanRoot := resolvePath(projectRoot, importReport.SourcePath)
-	calcArea := calcAreaFromImportReport(importReport.CalcArea)
 
 	decodedRuns, decodeWarnings := decodeGridMapRuns(soundPlanRoot, importReport.GridMaps)
 	report.Warnings = append(report.Warnings, decodeWarnings...)
@@ -192,10 +239,16 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 		return &rasterComparePreparation{report: report}, true, nil
 	}
 
+	calcArea := resolveRasterCalcArea(baseModel, importReport)
+	report.CalcAreaSource = calcArea.source
+	report.CalcAreaBoundsDelta = calcArea.boundsDelta
+	report.CalcAreaBoundsDeltaUnit = calcArea.boundsDeltaUnit
+	report.Warnings = append(report.Warnings, calcArea.warnings...)
+
 	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
 
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
-		report, importReport, decodedRuns[0].metadata, calcArea, syntheticReceiverHeight, layoutRows,
+		report, importReport, decodedRuns[0].metadata, calcArea.area, syntheticReceiverHeight, layoutRows,
 	)
 	if !synthesized {
 		return &rasterComparePreparation{report: report}, true, nil
@@ -225,17 +278,251 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}, true, nil
 }
 
+// calcAreaFromImportReport reads the fallback calculation area out of the
+// SoundPLAN import report, closing its ring.
+//
+// The point list is verbatim ParseCalcAreaFile output and nothing upstream
+// enforces closure, while calcAreaHorizontalSpan's edge loop runs to
+// len(Points)-1 and so never emits the closing edge. Left open, the fallback
+// therefore drops one edge of the outline: a rectangle finds a single crossing
+// per row, reports no span and falls back to the bounding box, and an outline
+// with a notch keeps an even crossing count but pairs the crossings wrongly and
+// can return the notch *gap* as the row span — placing receivers in exactly the
+// region the drawing excludes. Closing it here gives the fallback the same
+// guarantee the model path gets from validation.
+//
+// Closure is decided in 2D, as it is for the import's building appender: the
+// scanline is 2D, and CalcArea.geo's z varies along the outline, so comparing z
+// would leave a ring that closes in plan open.
 func calcAreaFromImportReport(area *soundPlanImportCalcArea) *soundplanimport.CalcArea {
 	if area == nil || len(area.Points) == 0 {
 		return nil
 	}
 
-	out := &soundplanimport.CalcArea{Points: make([]soundplanimport.Point3D, 0, len(area.Points))}
+	out := &soundplanimport.CalcArea{Points: make([]soundplanimport.Point3D, 0, len(area.Points)+1)}
 	for _, point := range area.Points {
 		out.Points = append(out.Points, soundplanimport.Point3D{X: point.X, Y: point.Y, Z: point.Z})
 	}
 
+	first := out.Points[0]
+
+	last := out.Points[len(out.Points)-1]
+	if first.X != last.X || first.Y != last.Y {
+		out.Points = append(out.Points, first)
+	}
+
 	return out
+}
+
+// calcAreaFromModel reads the calculation area out of the project model. It
+// returns the area, the feature id for warning text, and any warnings; a nil
+// area means "this model has none", and the caller falls back to the import
+// report.
+//
+// The model's ring is the better-formed input of the two. Validation guarantees
+// it is closed and carries at least four coordinates
+// (modelgeojson/validate.go's parsePolygon), which is exactly what
+// calcAreaHorizontalSpan's edge loop needs: it runs to len(Points)-1 and so
+// never emits the closing edge, which is correct and complete for a closed ring
+// and drops an edge for an open one. Nothing upstream of the import report's
+// point list enforces closure, so calcAreaFromImportReport closes it.
+func calcAreaFromModel(model modelgeojson.Model) (*soundplanimport.CalcArea, string, []string) {
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindCalcArea {
+			continue
+		}
+
+		// At most one exists — calcAreaTracker in modelgeojson/validate.go
+		// refuses a second — so the first match is the only match.
+		rings, err := parsePolygonCoordinates(feature.Coordinates)
+		if err != nil {
+			// Falling back beats failing: the comparison still has an answer
+			// from the import report, and a model whose geometry cannot be
+			// parsed here is one built in code rather than read from disk.
+			return nil, feature.ID, []string{fmt.Sprintf(
+				"calculation area %q could not be read from the model (%v); using the SoundPLAN import report instead",
+				feature.ID, err,
+			)}
+		}
+
+		var warnings []string
+
+		// soundplanimport.CalcArea is a flat point list with no way to carry a
+		// hole, and calcAreaHorizontalSpan picks the widest gap between
+		// crossings — handed an interior ring it would silently choose a
+		// sub-span across the hole. Outer ring only, and say so.
+		if len(rings) > 1 {
+			warnings = append(warnings, fmt.Sprintf(
+				"calculation area %q carries %d interior ring(s), which a flat point list cannot represent; the raster comparison uses the outer ring only",
+				feature.ID, len(rings)-1,
+			))
+		}
+
+		// Nothing reads this z today: the only read of .Z off a CalcArea in this
+		// file is the field copy in calcAreaFromImportReport, and every consumer
+		// — calcAreaBounds, calcAreaHorizontalSpan, metadataAlignedRowCenters —
+		// is purely 2D. It is carried so the two areas have the same shape.
+		//
+		// Its absence is never "no area". The property survives only until the
+		// first save from the map: frontend/src/model/to-geojson.ts emits
+		// properties: { kind } and nothing else.
+		baseElevationM, _, err := featurePropertyFloat(feature, "soundplan_base_elevation_m")
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"calculation area %q: %v; base elevation read as 0", feature.ID, err,
+			))
+
+			baseElevationM = 0
+		}
+
+		points := make([]soundplanimport.Point3D, 0, len(rings[0]))
+		for _, point := range rings[0] {
+			points = append(points, soundplanimport.Point3D{X: point.X, Y: point.Y, Z: baseElevationM})
+		}
+
+		return &soundplanimport.CalcArea{Points: points}, feature.ID, warnings
+	}
+
+	return nil, "", nil
+}
+
+// rasterCalcArea is the calculation area the raster comparison synthesizes
+// receivers over, together with the evidence for how it was chosen.
+type rasterCalcArea struct {
+	area   *soundplanimport.CalcArea
+	source string
+	// boundsDelta is set only when both sources carried an area, so nil means
+	// "there was nothing to compare against", not "they agreed". boundsDeltaUnit
+	// names the unit it is in, which is the project CRS's axis unit and not
+	// necessarily metres.
+	boundsDelta     *float64
+	boundsDeltaUnit string
+	warnings        []string
+}
+
+// resolveRasterCalcArea picks the calculation area the raster comparison uses.
+//
+// The model's calc-area feature wins. It is the extent a run actually computes
+// over — calcAreaExtent (run_input.go) feeds it to resolveGridReceivers — so
+// synthesizing receivers over anything else compares a run against a grid it did
+// not use. The import report's CalcArea is the fallback, for a project carrying
+// no calc-area feature: one imported before `aconiq import --soundplan` emitted
+// one, or one whose CalcArea.geo was too degenerate to form a ring.
+//
+// **There is deliberately no agreement tolerance.** A threshold here would have
+// to sit above the noise floor of an edit-free save and below a real edit, and
+// no such number exists: the EPSG:25832 → 4326 → 25832 round trip the map save
+// path runs loses 0.49 m in a typical German project and 8.5 m at the edges of
+// UTM zone 32, accumulating with every save (PLAN.md Priority 1.6). Anything
+// below the fixture's 5 m grid resolution would fire on a save that changed
+// nothing; anything above it would hide a real edit. So the two signals are:
+//
+//   - the vertex count, compared after normalising closure, which warns. That
+//     comparison is exact and CRS-independent, so the projection defect cannot
+//     reach it, and a notch that leaves the envelope untouched still changes
+//     every row span.
+//   - the bounds delta, recorded unconditionally rather than judged, together
+//     with the unit it is in. Priority 13 then reads a measured number instead
+//     of a threshold verdict.
+//
+// Comparing the two areas vertex by vertex would be wrong: the lists legitimately
+// differ in start vertex, in winding, and in whether closure is spelled out.
+func resolveRasterCalcArea(model modelgeojson.Model, importReport soundPlanImportReport) rasterCalcArea {
+	fromReport := calcAreaFromImportReport(importReport.CalcArea)
+
+	fromModel, featureID, warnings := calcAreaFromModel(model)
+	if fromModel == nil {
+		if fromReport == nil {
+			return rasterCalcArea{source: calcAreaSourceNone, warnings: warnings}
+		}
+
+		return rasterCalcArea{area: fromReport, source: calcAreaSourceImportReport, warnings: warnings}
+	}
+
+	chosen := rasterCalcArea{area: fromModel, source: calcAreaSourceModel, warnings: warnings}
+	if fromReport == nil {
+		return chosen
+	}
+
+	delta := calcAreaBoundsDelta(fromModel, fromReport)
+	chosen.boundsDelta = &delta
+	chosen.boundsDeltaUnit = calcAreaBoundsDeltaUnit(importReport.ProjectCRS)
+
+	modelVertices := openVertexCount(fromModel)
+
+	reportVertices := openVertexCount(fromReport)
+	if modelVertices != reportVertices {
+		chosen.warnings = append(chosen.warnings, fmt.Sprintf(
+			"the model's calculation area %q has %d vertices and the SoundPLAN import report's has %d "+
+				"(envelopes differ by %.6g %s); the model wins, because it is the extent a run computes over",
+			featureID, modelVertices, reportVertices, delta, chosen.boundsDeltaUnit,
+		))
+	}
+
+	return chosen
+}
+
+// calcAreaBoundsDeltaUnit names the unit calcAreaBoundsDelta reports in. The
+// delta subtracts project-CRS coordinates, so it is metres only when the
+// project CRS is projected; under the CLI's default EPSG:4326 it is degrees,
+// where 0.001 is roughly 111 m of latitude. Reprojecting to force metres is not
+// an option here: the 25832 <-> 4326 round trip loses up to 8.5 m (PLAN.md
+// Priority 1.6), which is larger than anything this delta would report.
+func calcAreaBoundsDeltaUnit(projectCRS string) string {
+	parsed, err := geo.ParseCRS(projectCRS)
+	if err != nil {
+		return calcAreaDeltaUnitUnknown
+	}
+
+	switch parsed.Kind {
+	case geo.CRSKindProjected:
+		return calcAreaDeltaUnitMetre
+	case geo.CRSKindGeographic:
+		return calcAreaDeltaUnitDegree
+	case geo.CRSKindUnknown:
+		return calcAreaDeltaUnitUnknown
+	}
+
+	return calcAreaDeltaUnitUnknown
+}
+
+// openVertexCount counts an area's distinct vertices, ignoring whether it
+// carries a repeated closing vertex. The two sources spell closure differently —
+// the model's ring always repeats its first coordinate, the import report's
+// point list is verbatim ParseCalcAreaFile output and may or may not — so a raw
+// len() would report a difference that is notation rather than shape.
+func openVertexCount(area *soundplanimport.CalcArea) int {
+	points := area.Points
+	if len(points) < 2 {
+		return len(points)
+	}
+
+	first := points[0]
+
+	last := points[len(points)-1]
+	if first.X == last.X && first.Y == last.Y {
+		return len(points) - 1
+	}
+
+	return len(points)
+}
+
+// calcAreaBoundsDelta is the largest absolute difference between two areas'
+// axis-aligned envelopes, in the project CRS's axis unit — see
+// calcAreaBoundsDeltaUnit. That envelope is what the synthesis actually
+// consumes: calcAreaBounds drives the row centres and the bounding-box fallback
+// span, and a bounds shift of δ moves every synthesized receiver by about δ/2
+// while the comparison is per-cell.
+func calcAreaBoundsDelta(first, second *soundplanimport.CalcArea) float64 {
+	a := calcAreaBounds(first)
+	b := calcAreaBounds(second)
+
+	return max(
+		math.Abs(a.MinX-b.MinX),
+		math.Abs(a.MinY-b.MinY),
+		math.Abs(a.MaxX-b.MaxX),
+		math.Abs(a.MaxY-b.MaxY),
+	)
 }
 
 func receiverHeightFromModel(model modelgeojson.Model) float64 {
@@ -360,13 +647,17 @@ func finalizeSoundPlanRasterCompare(
 	}
 
 	artifact := &soundPlanRasterCompareArtifact{
-		Status:                 prep.report.Status,
-		Alignment:              prep.report.Alignment,
-		GridResolutionM:        prep.report.GridResolutionM,
-		ReceiverHeightM:        prep.report.ReceiverHeightM,
-		SyntheticReceiverCount: len(prep.syntheticReceiverIDs),
-		SoundPlanRuns:          append([]soundplanimport.GridMapMetadata(nil), prep.soundPlanRuns...),
-		Warnings:               append([]string(nil), prep.report.Warnings...),
+		Status:                  prep.report.Status,
+		Alignment:               prep.report.Alignment,
+		CalcAreaSource:          prep.report.CalcAreaSource,
+		CalcAreaRole:            prep.report.CalcAreaRole,
+		CalcAreaBoundsDelta:     prep.report.CalcAreaBoundsDelta,
+		CalcAreaBoundsDeltaUnit: prep.report.CalcAreaBoundsDeltaUnit,
+		GridResolutionM:         prep.report.GridResolutionM,
+		ReceiverHeightM:         prep.report.ReceiverHeightM,
+		SyntheticReceiverCount:  len(prep.syntheticReceiverIDs),
+		SoundPlanRuns:           append([]soundplanimport.GridMapMetadata(nil), prep.soundPlanRuns...),
+		Warnings:                append([]string(nil), prep.report.Warnings...),
 	}
 
 	prep.report.Runs = make([]soundPlanRasterRunCompareSummary, 0, len(prep.decodedRuns))

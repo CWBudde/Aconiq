@@ -73,6 +73,19 @@ rather than in the run request.
 It has no effect in `custom` receiver mode: explicit `receiver` features are
 used as they are, and no grid is built.
 
+`aconiq compare` reads the same feature when it compares a run against imported
+SoundPLAN grid maps, so that the comparison covers the ground the run actually
+computed. A SoundPLAN bundle also records its own calculation area in
+`.noise/model/soundplan-import-report.json`, which is used only when the model
+carries no `calc-area` feature; `calc_area_source` in the comparison artifact
+says which of the two was used.
+
+`calc_area_role` says what that area then did. It is `receiver_placement` when
+the raster receivers are synthesized over the area scanline by scanline, and
+`row_direction_only` when the grid map's own origin and spacing were usable: the
+decoded values exist at those cells and nowhere else, so the receivers go there
+and the calculation area only decides which way the rows run.
+
 ## Standard-Specific Geometry Conventions
 
 The normalized model stays standard-agnostic, but some standards consume extra

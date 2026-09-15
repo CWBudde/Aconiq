@@ -53,15 +53,26 @@ type soundPlanReceiverComparisonRecord struct {
 }
 
 type soundPlanRasterCompareReport struct {
-	Status                 string                             `json:"status"`
-	Alignment              string                             `json:"alignment,omitempty"`
-	GridResolutionM        float64                            `json:"grid_resolution_m,omitempty"`
-	ReceiverHeightM        float64                            `json:"receiver_height_m,omitempty"`
-	SyntheticReceiverCount int                                `json:"synthetic_receiver_count,omitempty"`
-	ArtifactPath           string                             `json:"artifact_path,omitempty"`
-	SoundPlanRuns          []soundplanimport.GridMapMetadata  `json:"soundplan_runs,omitempty"`
-	Runs                   []soundPlanRasterRunCompareSummary `json:"runs,omitempty"`
-	Warnings               []string                           `json:"warnings,omitempty"`
+	Status    string `json:"status"`
+	Alignment string `json:"alignment,omitempty"`
+	// CalcAreaSource names which of the project's two calculation areas the
+	// synthesis used and CalcAreaRole what it did there, because the
+	// GM-metadata path consults the area only for the row direction.
+	// CalcAreaBoundsDelta measures how far apart the two envelopes are, in
+	// CalcAreaBoundsDeltaUnit, and is nil when there was no second area to
+	// compare against. A warning fires only when the vertex counts disagree, so
+	// without these fields the artifact would not record which area produced it.
+	CalcAreaSource          string                             `json:"calc_area_source,omitempty"`
+	CalcAreaRole            string                             `json:"calc_area_role,omitempty"`
+	CalcAreaBoundsDelta     *float64                           `json:"calc_area_bounds_delta,omitempty"`
+	CalcAreaBoundsDeltaUnit string                             `json:"calc_area_bounds_delta_unit,omitempty"`
+	GridResolutionM         float64                            `json:"grid_resolution_m,omitempty"`
+	ReceiverHeightM         float64                            `json:"receiver_height_m,omitempty"`
+	SyntheticReceiverCount  int                                `json:"synthetic_receiver_count,omitempty"`
+	ArtifactPath            string                             `json:"artifact_path,omitempty"`
+	SoundPlanRuns           []soundplanimport.GridMapMetadata  `json:"soundplan_runs,omitempty"`
+	Runs                    []soundPlanRasterRunCompareSummary `json:"runs,omitempty"`
+	Warnings                []string                           `json:"warnings,omitempty"`
 }
 
 type soundPlanCompareReport struct {

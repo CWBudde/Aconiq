@@ -101,6 +101,23 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatalf("raster artifact status = %q, want heuristic_scanline_compare", rasterArtifact.Status)
 	}
 
+	// A freshly imported bundle carries the same area twice: `aconiq import
+	// --soundplan` emits the calc-area feature from the very CalcArea.geo points
+	// the import report records. The model's copy is the one that governs, and
+	// the two agree exactly — the import appends no closing vertex here, because
+	// this fixture's CalcArea.geo is already closed.
+	if rasterArtifact.CalcAreaSource != calcAreaSourceModel {
+		t.Fatalf("raster artifact calc area source = %q, want %q", rasterArtifact.CalcAreaSource, calcAreaSourceModel)
+	}
+
+	if rasterArtifact.CalcAreaBoundsDelta == nil {
+		t.Fatal("expected a recorded calc area bounds delta")
+	}
+
+	if got := *rasterArtifact.CalcAreaBoundsDelta; got != 0 {
+		t.Fatalf("calc area bounds delta = %v m, want 0 for a freshly imported bundle", got)
+	}
+
 	if len(rasterArtifact.Runs) != 4 {
 		t.Fatalf("raster artifact run count = %d, want 4", len(rasterArtifact.Runs))
 	}

@@ -329,3 +329,83 @@ func TestSupportedEPSGCodes(t *testing.T) {
 		t.Fatalf("expected %d codes, got %d", len(supportedEPSGCodes), len(codes))
 	}
 }
+
+// TestETRS89UTM32RoundTripResidualIsPinned pins what a projected coordinate
+// currently loses on the EPSG:25832 → 4326 → 25832 trip, which is the trip every
+// save from the map workspace puts every vertex through.
+//
+// The numbers below are a defect being recorded, not a specification. A correct
+// round trip would land well inside a millimetre; these residuals reach 8.5 m at
+// the edges of UTM zone 32, and they are bias rather than noise — deterministic
+// and in the same direction each time, so N saves integrate them. They reproduce
+// against github.com/wroge/wgs84 v1.1.7 directly, so they are the library's
+// transverse-Mercator series rather than anything in this package. PLAN.md
+// Priority 1.6 carries the full measurement and the candidate fixes.
+//
+// The bands are ±5%: wide enough to absorb any FMA contraction difference
+// between architectures, far too tight to survive a fix. A corrected projection
+// drops every residual below the lower bound and fails this test, which is the
+// point — neither the fix nor a regression may land unnoticed.
+//
+// TestEPSGTransform_Roundtrip above covers the same CRS pair from the other end
+// and passes, because it starts in degrees and asserts to 0.0001° ≈ 11 m of
+// latitude. That is an assertion ceiling hiding a defect of its own size, and it
+// is why nothing saw this until a tolerance was needed in metres.
+func TestETRS89UTM32RoundTripResidualIsPinned(t *testing.T) {
+	t.Parallel()
+
+	utm32, _ := ParseCRS("EPSG:25832")
+	wgs84, _ := ParseCRS("EPSG:4326")
+
+	toWGS84, err := BuildTransformPipeline(wgs84, utm32)
+	if err != nil {
+		t.Fatalf("build 25832->4326: %v", err)
+	}
+
+	toUTM32, err := BuildTransformPipeline(utm32, wgs84)
+	if err != nil {
+		t.Fatalf("build 4326->25832: %v", err)
+	}
+
+	// The residual grows quadratically with distance from the central meridian
+	// and sits almost entirely in the northing, so the cases sample the zone
+	// from its centre out to both edges.
+	cases := []struct {
+		name     string
+		point    Point2D
+		residual float64
+	}{
+		{"central meridian", Point2D{X: 500000, Y: 5650000}, 0.000319},
+		{"48 km east of the central meridian", Point2D{X: 548000, Y: 5803000}, 0.492396},
+		{"western zone edge", Point2D{X: 300000, Y: 5400000}, 6.768904},
+		{"eastern zone edge", Point2D{X: 700000, Y: 5800000}, 8.530139},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			geographic, err := toWGS84.ApplyPoint(tc.point)
+			if err != nil {
+				t.Fatalf("forward: %v", err)
+			}
+
+			recovered, err := toUTM32.ApplyPoint(geographic)
+			if err != nil {
+				t.Fatalf("inverse: %v", err)
+			}
+
+			residual := math.Hypot(recovered.X-tc.point.X, recovered.Y-tc.point.Y)
+
+			low := tc.residual * 0.95
+
+			high := tc.residual * 1.05
+			if residual < low || residual > high {
+				t.Fatalf("round-trip residual = %.6g m, pinned at %.6g m (accepted %.6g..%.6g).\n"+
+					"A smaller residual means the projection was fixed: update PLAN.md Priority 1.6 and re-pin.\n"+
+					"A larger one is a regression.",
+					residual, tc.residual, low, high)
+			}
+		})
+	}
+}

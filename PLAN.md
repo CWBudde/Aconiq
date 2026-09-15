@@ -427,6 +427,52 @@ sentence from the standard that permits it.** Watch for the trap that made this 
 fix — a mirrored ray crosses its own reflector by construction, and a building is barrier and
 reflector at once.
 
+### 1.6 The EPSG:25832 ↔ 4326 round trip loses metres, and the map save path runs it
+
+`TestETRS89UTM32RoundTripResidualIsPinned` (`internal/geo/crs_transform_test.go`) pins what a
+projected coordinate loses on the `25832 → 4326 → 25832` trip:
+
+| point           | position                    | residual, one round trip |
+| --------------- | --------------------------- | ------------------------ |
+| 500000, 5650000 | on the central meridian     | 0.000319 m               |
+| 548000, 5803000 | 48 km east of the CM        | 0.492396 m               |
+| 300000, 5400000 | western edge of UTM zone 32 | 6.768904 m               |
+| 700000, 5800000 | eastern edge of UTM zone 32 | 8.530139 m               |
+
+**This is bias, not noise.** The error is deterministic and points the same way every time, so
+saves integrate it rather than cancelling it: ten round trips at 548000/5803000 move the geometry
+4.92 m — one full grid cell of the SoundPLAN fixture's `grid_resolution_m: 5` — and ten at the
+eastern zone edge move it 85.3 m. The residual grows quadratically with distance from the central
+meridian and sits almost entirely in the northing.
+
+**It is on the ordinary UI save path, and it moves every vertex** — sources, buildings, barriers,
+receivers and the calculation area alike, not just the feature that was edited.
+`frontend/src/model/use-project-sync.ts:43` pins `MODEL_CRS = "EPSG:4326"`,
+`internal/api/httpv1/model.go:146-168` (`modelInCRS`) reprojects out of the project CRS on
+`GET /api/v1/model?crs=`, and `:229` reprojects back in on `POST /api/v1/model`.
+
+Two things are already ruled out, so do not re-measure them: it reproduces against
+`github.com/wroge/wgs84` v1.1.7 directly, bypassing `geo.EPSGTransform`, so it is the library's
+transverse-Mercator series and not our wrapper; and the datum step is not implicated, because
+`ETRS89UTM(32) ↔ ETRS89().LonLat()` (EPSG:4258, no Helmert shift) gives the same residuals to all
+printed digits as the WGS84 pair.
+
+**Which direction is at fault is undetermined.** A lossy round trip proves at least one of forward
+and inverse is wrong, not which — and not that only one is. Settling it needs trusted reference
+vectors (proj, or the EPSG-published test points for 25832) rather than more round trips, and that
+measurement is the first step of any fix.
+
+Tighten `crs_transform_test.go:119` as part of the fix: it asserts this CRS pair to `0.0001°`,
+roughly 11 m of latitude, which is an assertion ceiling wide enough to hide a defect of its own
+size.
+
+Three candidate fixes, none chosen:
+
+- replace the projection with an accurate Krüger/Karney series;
+- move to a maintained binding with reference-vector coverage;
+- remove the reprojection from the save path entirely by holding project-CRS coordinates in the
+  frontend and reprojecting for display only, which makes a save lossless without fixing the series.
+
 ## Priority 2 — Make the CLI run the normative code
 
 **Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
@@ -1177,12 +1223,19 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       building appender already does. Closure is decided in **2D**, deliberately: the import
       report's `IsClosed` compares x, y _and_ z, so a footprint that closes in plan but differs in
       elevation would otherwise gain a zero-length closing segment.
-- [ ] **The SoundPLAN calculation area now exists twice in a project, and the two can diverge.**
-      `compare-raster` reads it from `soundplan-import-report.json` — verbatim, 3D, possibly open —
-      because `calcAreaHorizontalSpan` intersects each raster row against the real outline and the
-      model feature is lossy for that. So a user editing the model's `calc-area` does not move what
-      `compare-raster` uses. Reconcile, or state which one wins, before P13 turns the comparison
-      into evidence.
+- [x] **The model's `calc-area` wins the raster comparison; the import report is the fallback**
+      (`5432253`, `8b31087`). `calc_area_source` records which area was chosen and `calc_area_role`
+      what it did there — the GM-metadata path places receivers from the grid's own origin and
+      consults the area only for the row direction, so `model` there does not mean "the model's area
+      placed these".
+      **There can be no agreement tolerance** until Priority 1.6 is fixed: the reprojection the map
+      save path runs is larger than the grid resolution, so any threshold below 5 m fires on a save
+      that changed nothing and any above it hides a real edit. The comparison warns on the vertex
+      count after normalising closure and records `calc_area_bounds_delta` with its unit, which is
+      the project CRS's axis unit and not always metres.
+      **`ACONIQ_SOUNDPLAN_FIXTURES` is what makes the licensed-fixture suite visible** — without it
+      `TestCompareSoundPlanReceivers` and the SoundPLAN import tests skip and the run still reports
+      green.
 
 ### Phase D — Map workspace
 
@@ -1193,6 +1246,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       covers it. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a
       swallowed click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an
       attribute check passes while the tooltip is invisible.
+- [ ] **A save from the map destroys every property the store does not model.**
+      `calcAreaToGeoJSON` (`model/to-geojson.ts:126-139`) emits `properties: { kind }` and nothing
+      else, so `soundplan_base_elevation_m` — written by `aconiq import --soundplan` from
+      `CalcArea.geo`'s first vertex — is gone after the first save, silently and with no way to
+      recover it short of re-importing. Nothing reads that z today, which is why the raster
+      comparison treats its absence as elevation 0 rather than as "no area", so this is metadata
+      loss rather than a numeric defect for now. Fixing it needs a property passthrough on
+      `ModelCalcArea` that preserves what the store does not model; check the other
+      `*ToGeoJSON` builders for the same shape before writing it.
 - [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
       (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
       edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);
@@ -1349,11 +1411,14 @@ the comparison into evidence (the assertion itself is Priority 3).
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
-- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline.
+- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline. **Read Priority 1.6
+      first**: the EPSG:25832 ↔ 4326 transform loses metres, and the map save path runs it on every
+      vertex, so routing more geometry through that pipeline widens an open defect until it is
+      fixed.
 - [ ] Fix the top-edge boundary rule in the heuristic raster alignment.
-      `heuristicRasterRowCenters` (`app/cli/compare_raster.go:581`) places row 0 at exactly
+      `heuristicRasterRowCenters` (`app/cli/compare_raster.go:859`) places row 0 at exactly
       `y == maxY` whenever the row grid fills the CalcArea bounding box
-      (`(rowCount-1)*resolution == maxY-minY`), and `calcAreaHorizontalSpan:636` uses a half-open
+      (`(rowCount-1)*resolution == maxY-minY`), and `calcAreaHorizontalSpan:928` uses a half-open
       scanline rule (`y < minY || y >= maxY`) that rejects every edge at that y. Row 0 therefore
       always falls back to the bounding-box span and emits a warning. Harmless for rectangles —
       the bbox span is the true span — but wrong for non-convex or non-rectangular CalcAreas, and
