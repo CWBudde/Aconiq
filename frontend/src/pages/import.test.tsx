@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import ImportPage from "./import";
@@ -191,5 +192,33 @@ describe("ImportPage", () => {
     await waitFor(() => screen.getByText("Import Preview"));
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
     expect(screen.getByText("Import GeoJSON")).toBeInTheDocument();
+  });
+
+  /**
+   * Radix' tabs activate on pointer-down plus focus, not on a synthetic click,
+   * so the switch goes through `user-event` the way `ui/components/tabs.test`
+   * does.
+   */
+  async function openTab(name: string): Promise<void> {
+    await userEvent.setup().click(screen.getByRole("tab", { name }));
+  }
+
+  it("keeps the bounding box across a tab switch", async () => {
+    // Radix unmounts the inactive panel, so a box held inside `OsmImport`
+    // would be discarded the moment the reader glanced at the file tab — and
+    // "Use current location" would have to be answered again. The page holds
+    // it, as it did before the split.
+    renderImportPage();
+    await openTab(m.action_import_from_osm());
+    fireEvent.change(screen.getByLabelText(m.label_south()), {
+      target: { value: "52.49" },
+    });
+
+    await openTab(m.action_import_from_file());
+    await openTab(m.action_import_from_osm());
+
+    expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
+      "52.49",
+    );
   });
 });
