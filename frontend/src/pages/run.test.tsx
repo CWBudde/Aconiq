@@ -576,7 +576,8 @@ describe("RunPage model gate", () => {
   it("does not claim the project is empty when hydration never answered", () => {
     // In API mode the store is a copy of the saved model. If hydration failed,
     // an empty store says nothing about the project — and "nothing to
-    // calculate" would be a claim this dialog cannot make.
+    // calculate" would be a claim this dialog cannot make. So the validation
+    // callout stays away and the hydration one speaks instead.
     projectHydrationStore.setState({
       status: "error",
       error: new Error("boom"),
@@ -587,7 +588,22 @@ describe("RunPage model gate", () => {
     expect(screen.getByTestId("hydration-failed-callout")).toHaveTextContent(
       m.msg_project_model_load_failed(),
     );
-    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("refuses the run while the saved model could not be read", () => {
+    // Not knowing is its own reason to refuse. The callout above says the
+    // model could not be read and offers the retry; an enabled Start would
+    // contradict it and send a run against a model nobody has seen.
+    projectHydrationStore.setState({
+      status: "error",
+      error: new Error("boom"),
+    });
+    openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
+
+    expect(startRunButton()).toBeDisabled();
+
+    fireEvent.click(startRunButton());
+    expect(state.runSpecs).toEqual([]);
   });
 });
 

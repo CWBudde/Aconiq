@@ -223,10 +223,19 @@ function RunSetupForm({
   );
   // An empty store is not an empty project when the run reads the saved model
   // and hydration never delivered it. Saying "nothing to calculate" there would
-  // be a claim about the project this dialog cannot make.
+  // be a claim about the project this dialog cannot make — so the validation
+  // verdict is suppressed, and the hydration callout speaks instead.
   const modelBlocksRun =
     !hydrationFailed &&
     (validation.state === "empty" || validation.errorCount > 0);
+
+  // Not knowing is also a reason to refuse. A failed hydration leaves the store
+  // as a copy that never arrived, so neither this dialog nor the user can say
+  // whether the saved model the run would read is valid; the callout above
+  // says so and offers the retry, and the action has to agree with it. Kept
+  // separate from `modelBlocksRun` so the two callouts stay mutually
+  // exclusive: this one must not also claim the model is empty.
+  const startBlocked = hydrationFailed || modelBlocksRun;
 
   const selection = useRunSetupSelection(standards);
   const {
@@ -271,7 +280,7 @@ function RunSetupForm({
   }
 
   function handleSubmit() {
-    if (experimentalOptInMissing || unsavedChanges || modelBlocksRun) return;
+    if (experimentalOptInMissing || unsavedChanges || startBlocked) return;
 
     createRun.mutate(
       {
@@ -647,7 +656,7 @@ function RunSetupForm({
               createRun.isPending ||
               experimentalOptInMissing ||
               unsavedChanges ||
-              modelBlocksRun ||
+              startBlocked ||
               (!backend.capabilities.runsAgainstSavedModel &&
                 receiverMode === "custom" &&
                 receiverCount === 0)
