@@ -7,6 +7,7 @@ import { Label } from "@/ui/components/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { PageHeader } from "@/ui/page-header";
 import { useModelStore } from "@/model/model-store";
 import { normalizeGeoJSON } from "@/model/normalize";
@@ -211,8 +212,14 @@ export default function ImportPage() {
     handleNormalizeAndPreview,
   ]);
 
+  // `loadFeatures` replaces the workspace outright and clears placed
+  // receivers with it, and no undo covers that — the command stack is reset,
+  // not extended. So the import asks first.
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
+
   const handleConfirm = useCallback(() => {
     loadFeatures(features);
+    setConfirmingReplace(false);
     setStep("done");
   }, [features, loadFeatures]);
 
@@ -421,7 +428,11 @@ export default function ImportPage() {
               >
                 {m.action_back()}
               </Button>
-              <Button onClick={handleConfirm}>
+              <Button
+                onClick={() => {
+                  setConfirmingReplace(true);
+                }}
+              >
                 {m.action_import_features({ count: features.length })}
               </Button>
             </div>
@@ -440,6 +451,18 @@ export default function ImportPage() {
           </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmingReplace}
+        onOpenChange={setConfirmingReplace}
+        tone="destructive"
+        title={m.confirm_import_replace_title()}
+        description={m.confirm_import_replace_desc({
+          count: features.length,
+        })}
+        confirmLabel={m.action_import_features({ count: features.length })}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }

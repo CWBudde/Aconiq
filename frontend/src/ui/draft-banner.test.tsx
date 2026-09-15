@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { DraftBanner } from "./draft-banner";
 import { useModelStore } from "@/model/model-store";
 import { DRAFT_KEY } from "@/model/use-autosave";
@@ -8,6 +8,7 @@ import {
   resetProjectHydration,
 } from "@/model/use-project-hydration";
 import type { ModelFeature } from "@/model/types";
+import { m } from "@/i18n/messages";
 
 /**
  * The banner no longer decides whether a draft is worth offering — the
@@ -118,13 +119,48 @@ describe("DraftBanner", () => {
     expect(screen.queryByText(/unsaved draft found/i)).not.toBeInTheDocument();
   });
 
-  it("clears draft and hides banner on Discard", () => {
+  it("asks before discarding, and discards nothing until it is answered", () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
     offerDraft();
     render(<DraftBanner />);
+
     fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+
+    // The draft is the only copy of this work, and no undo covers removing it.
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+  });
+
+  it("clears draft and hides banner once the discard is confirmed", () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
+    offerDraft();
+    render(<DraftBanner />);
+
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_discard(),
+      }),
+    );
+
     expect(useModelStore.getState().features).toHaveLength(0);
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
     expect(screen.queryByText(/unsaved draft found/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the draft when the confirmation is cancelled", () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify([sampleFeature]));
+    offerDraft();
+    render(<DraftBanner />);
+
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_cancel(),
+      }),
+    );
+
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+    expect(screen.getByText(/unsaved draft found/i)).toBeInTheDocument();
   });
 });
