@@ -836,9 +836,8 @@ describe("ResultsPage compare tab", () => {
     expect(
       screen.getByRole("heading", { name: m.msg_run_column_compare() }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(m.msg_run_to_run_diff_deferred()),
-    ).toBeInTheDocument();
+    // The prompt is replaced by the columns, not joined by a notice.
+    expect(screen.queryByText(m.msg_select_run_compare())).toBeNull();
   });
 
   it("never offers the selected run as its own comparison", async () => {

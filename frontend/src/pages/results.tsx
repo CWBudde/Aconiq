@@ -529,15 +529,10 @@ function CompareTab({
       </div>
 
       {compareRun ? (
-        <>
-          <div className="flex gap-4">
-            <RunColumn run={run} label={m.msg_run_column_selected()} />
-            <RunColumn run={compareRun} label={m.msg_run_column_compare()} />
-          </div>
-          <Callout variant="neutral" icon={Info}>
-            {m.msg_run_to_run_diff_deferred()}
-          </Callout>
-        </>
+        <div className="flex gap-4">
+          <RunColumn run={run} label={m.msg_run_column_selected()} />
+          <RunColumn run={compareRun} label={m.msg_run_column_compare()} />
+        </div>
       ) : (
         <Callout variant="neutral" icon={GitCompare}>
           {m.msg_select_run_compare()}

@@ -300,7 +300,6 @@
   "msg_run_column_selected": "Run A (selected)",
   "msg_run_column_compare": "Run B",
   "msg_run_not_completed": "Run {runId} has not completed, so it has no results.",
-  "msg_run_to_run_diff_deferred": "Run-to-run raster diff layer is deferred to Phase 23g follow-up.",
   "msg_runs_with_exports": "run with exports",
   "msg_runs_with_exports_plural": "runs with exports",
   "msg_select_completed_run_details": "Select a completed run to view its results.",

@@ -300,7 +300,6 @@
   "msg_run_column_selected": "Berechnung A (ausgewählt)",
   "msg_run_column_compare": "Berechnung B",
   "msg_run_not_completed": "Die Berechnung {runId} ist nicht abgeschlossen und hat daher keine Ergebnisse.",
-  "msg_run_to_run_diff_deferred": "Raster-Diff-Layer für Berechnungsvergleich ist auf Phase 23g verschoben.",
   "msg_runs_with_exports": "Berechnung mit Exporten",
   "msg_runs_with_exports_plural": "Berechnungen mit Exporten",
   "msg_select_completed_run_details": "Abgeschlossene Berechnung auswählen, um die Ergebnisse anzuzeigen.",
