@@ -11,8 +11,6 @@ import {
   Info,
   ChevronUp,
   ChevronDown,
-  SlidersHorizontal,
-  Crosshair,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
@@ -27,6 +25,7 @@ import {
 } from "@/ui/components/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
+import { CopyField } from "@/ui/copy-field";
 import { EmptyState } from "@/ui/empty-state";
 import {
   formatCoordinate,
@@ -39,6 +38,7 @@ import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { m } from "@/i18n/messages";
@@ -220,9 +220,9 @@ function ReceiversTab({ run }: { run: RunSummary }) {
       {summaryCards.length > 0 ? (
         <div className="flex flex-wrap gap-3">
           {summaryCards.map(({ ind, min, max, mean }) => {
-            // The messages carry the bare term; the `dt` below punctuates it.
-            // The same two terms label the raster min/max inputs, where a
-            // trailing colon would be wrong, so the colon belongs here.
+            // The messages carry the bare term; the `dt` below punctuates
+            // it. `locale-parity.test.ts` refuses a colon typed into either
+            // catalogue, so the colon belongs here and nowhere else.
             const stats: Array<[string, number]> = [
               [m.label_min(), min],
               [m.label_max(), max],
@@ -347,7 +347,13 @@ function ReceiversTab({ run }: { run: RunSummary }) {
 // Raster tab
 // ---------------------------------------------------------------------------
 
-function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
+function RasterArtifactCard({
+  artifact,
+  runId,
+}: {
+  artifact: ArtifactRef;
+  runId: string;
+}) {
   const { data, isLoading, error } = useRasterMetadata(artifact.id);
 
   if (isLoading) {
@@ -398,60 +404,18 @@ function RasterArtifactCard({ artifact }: { artifact: ArtifactRef }) {
         ) : null}
       </div>
 
-      {/* Rendering controls (placeholder) */}
-      <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-          <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-          {m.section_rendering_controls()}
-        </div>
-        <div className="grid grid-cols-2 gap-3 opacity-50">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">
-              {m.label_color_ramp()}
-            </p>
-            <Select disabled>
-              <SelectTrigger
-                className="h-7 text-xs"
-                aria-label={m.label_color_ramp()}
-              >
-                <SelectValue placeholder="Viridis" />
-              </SelectTrigger>
-              <SelectContent>
-                {["Viridis", "Blues", "Reds", "YlOrRd", "Greens"].map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">{m.label_min_max()}</p>
-            <div className="flex gap-1">
-              <Input
-                disabled
-                className="h-7 text-xs"
-                aria-label={m.label_min()}
-                placeholder={m.label_min()}
-              />
-              <Input
-                disabled
-                className="h-7 text-xs"
-                aria-label={m.label_max()}
-                placeholder={m.label_max()}
-              />
-            </div>
-          </div>
-        </div>
+      {/* The bands themselves. `run.result.raster_metadata` is a sidecar;
+          the grid it describes is a binary blob no API route serves, so the
+          way to the pixels is an export bundle. */}
+      <div className="space-y-1.5">
         <p className="text-xs text-muted-foreground">
-          {m.msg_raster_not_implemented()}
+          {m.msg_raster_export_hint()}
         </p>
+        <CopyField
+          label={m.label_command()}
+          value={exportCommand(runId, { formats: ["geotiff"] })}
+        />
       </div>
-
-      {/* Receiver probe placeholder */}
-      <Callout variant="neutral" icon={Crosshair} className="mt-3">
-        {m.label_receiver_probe_tool()}
-      </Callout>
     </Card>
   );
 }
@@ -472,7 +436,7 @@ function RasterTab({ run }: { run: RunSummary }) {
   return (
     <div className="flex flex-col gap-4">
       {rasterArtifacts.map((a) => (
-        <RasterArtifactCard key={a.id} artifact={a} />
+        <RasterArtifactCard key={a.id} artifact={a} runId={run.id} />
       ))}
     </div>
   );
