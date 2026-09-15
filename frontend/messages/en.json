@@ -293,7 +293,7 @@
   "msg_not_found": "No page exists at {path}.",
   "msg_raster_export_hint": "The CLI writes these bands to GeoTIFF in an export bundle.",
   "msg_receiver_auto_grid_desc": "Regular grid derived from source extent and grid_resolution_m / grid_padding_m parameters.",
-  "msg_receiver_custom_set_desc": "Explicit point or grid receiver sets (Phase 24+).",
+  "msg_receiver_custom_set_desc": "The receivers placed in the workspace, used exactly as drawn.",
   "msg_records_count_one": "{shown} / {total} record",
   "msg_records_count_other": "{shown} / {total} records",
   "msg_run_in_progress": "Run in progress…",

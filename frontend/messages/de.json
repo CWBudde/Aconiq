@@ -293,7 +293,7 @@
   "msg_not_found": "Unter {path} gibt es keine Seite.",
   "msg_raster_export_hint": "Die CLI schreibt diese Bänder als GeoTIFF in ein Exportpaket.",
   "msg_receiver_auto_grid_desc": "Regelmäßiges Raster aus der Quellausdehnung und den Parametern grid_resolution_m / grid_padding_m.",
-  "msg_receiver_custom_set_desc": "Explizite Punkt- oder Rasterempfängermengen (Phase 24+).",
+  "msg_receiver_custom_set_desc": "Die im Arbeitsbereich platzierten Empfänger, unverändert übernommen.",
   "msg_records_count_one": "{shown} / {total} Datensatz",
   "msg_records_count_other": "{shown} / {total} Datensätze",
   "msg_run_in_progress": "Berechnung läuft…",
