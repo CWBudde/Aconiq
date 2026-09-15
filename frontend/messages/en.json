@@ -46,7 +46,7 @@
   "confirm_delete_receiver_title": "Delete this receiver?",
   "confirm_delete_receiver_desc": "Receiver {id} is removed from the workspace. Undo brings it back until you leave the page.",
   "confirm_import_replace_title": "Replace the workspace model?",
-  "confirm_import_replace_desc": "The {count} imported features replace everything currently in the workspace, and any receivers you placed are cleared. The project on disk is unchanged until you save.",
+  "confirm_import_replace_desc": "The {count} imported objects replace everything the workspace holds — features, receivers and the calculation area. Add to workspace keeps them instead. The project on disk is unchanged until you save.",
   "action_discard": "Discard",
   "action_download_csv": "Download CSV",
   "action_fetch_from_osm": "Fetch from OSM",
@@ -377,5 +377,9 @@
   "action_hide_layer": "Hide {label}",
   "action_show_layer": "Show {label}",
   "msg_project_model_load_failed": "The project's model could not be loaded. The map may be showing less than the project holds.",
-  "msg_calc_area_included": "Included"
+  "msg_calc_area_included": "Included",
+  "action_import_add": "Add to workspace",
+  "action_import_replace": "Replace workspace",
+  "msg_import_skips_existing": "{count} of these are already in the workspace. Adding keeps what is there and imports the rest.",
+  "msg_import_skips_calc_area": "The workspace already has a calculation area. Adding keeps the one that is there."
 }

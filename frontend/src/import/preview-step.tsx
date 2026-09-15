@@ -1,9 +1,10 @@
-import { AlertTriangle, XCircle } from "lucide-react";
+import { AlertTriangle, Info, XCircle } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
 import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
 import { PageHeader } from "@/ui/page-header";
+import type { MergeSkips } from "@/model/model-store";
 import type {
   CalcArea,
   ModelFeature,
@@ -28,19 +29,30 @@ export function PreviewStep({
   calcArea,
   skippedCount,
   report,
+  workspaceEmpty,
+  mergeSkips,
   onBack,
-  onImport,
+  onAdd,
+  onReplace,
 }: {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
   skippedCount: number;
   report: ValidationReport;
+  /** No workspace to lose: one button, and no confirmation. */
+  workspaceEmpty: boolean;
+  /** What Add would leave behind, so the reader reads it before choosing. */
+  mergeSkips: MergeSkips;
   onBack: () => void;
-  onImport: () => void;
+  onAdd: () => void;
+  onReplace: () => void;
 }) {
   const countByKind = (kind: ModelFeature["kind"]) =>
     String(features.filter((f) => f.kind === kind).length);
+
+  const skippedOnMerge = mergeSkips.features + mergeSkips.receivers;
+  const importedCount = features.length + receivers.length;
 
   return (
     <div className="space-y-4">
@@ -108,13 +120,42 @@ export function PreviewStep({
         </Callout>
       ) : null}
 
-      <div className="flex gap-2">
+      {/* What Add would skip, said here rather than in a dialog: the reader
+          decides between Add and Replace on this screen, so this is where the
+          consequence has to be readable. */}
+      {!workspaceEmpty && (skippedOnMerge > 0 || mergeSkips.calcArea) ? (
+        <Callout variant="info" icon={Info}>
+          <ul className="space-y-1">
+            {skippedOnMerge > 0 ? (
+              <li>{m.msg_import_skips_existing({ count: skippedOnMerge })}</li>
+            ) : null}
+            {mergeSkips.calcArea ? (
+              <li>{m.msg_import_skips_calc_area()}</li>
+            ) : null}
+          </ul>
+        </Callout>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
         <Button variant="ghost" onClick={onBack}>
           {m.action_back()}
         </Button>
-        <Button onClick={onImport}>
-          {m.action_import_features({ count: features.length })}
-        </Button>
+        {/* An empty workspace gets one button and no dialog, because there is
+            nothing to lose and therefore nothing to choose between: Add and
+            Replace would do the same thing. The asymmetry is deliberate — the
+            choice appears exactly when it has a consequence. */}
+        {workspaceEmpty ? (
+          <Button onClick={onAdd}>
+            {m.action_import_features({ count: importedCount })}
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onAdd}>{m.action_import_add()}</Button>
+            <Button variant="outline" onClick={onReplace}>
+              {m.action_import_replace()}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

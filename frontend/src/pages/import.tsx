@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
@@ -9,7 +9,7 @@ import { FileImport } from "@/import/file-import";
 import { OsmImport } from "@/import/osm-import";
 import type { OsmQuery } from "@/import/osm-import";
 import { PreviewStep } from "@/import/preview-step";
-import { useModelStore } from "@/model/model-store";
+import { planMerge, useModelStore } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { validateProjectModel } from "@/model/validate";
 import type {
@@ -59,10 +59,44 @@ export default function ImportPage() {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const loadModel = useModelStore((s) => s.loadModel);
+  const mergeModel = useModelStore((s) => s.mergeModel);
+  const workspaceFeatures = useModelStore((s) => s.features);
+  const workspaceReceivers = useModelStore((s) => s.receivers);
+  const workspaceCalcArea = useModelStore((s) => s.calcArea);
   const navigate = useNavigate();
 
   /** Everything the import brings, receivers and calculation area included. */
   const importedCount = features.length + receivers.length;
+  /** What the done step reports — an Add that skipped some lands fewer. */
+  const [doneCount, setDoneCount] = useState(0);
+
+  const workspaceEmpty =
+    workspaceFeatures.length === 0 &&
+    workspaceReceivers.length === 0 &&
+    workspaceCalcArea === null;
+
+  // Computed here, at preview time, and not inside the merge: the reader has
+  // to see what Add will leave behind *before* choosing it. A dialog that
+  // reports it afterwards is where the surprise lives.
+  const mergeSkips = useMemo(
+    () =>
+      planMerge(
+        {
+          features: workspaceFeatures,
+          receivers: workspaceReceivers,
+          calcArea: workspaceCalcArea,
+        },
+        { features, receivers, calcArea },
+      ).skipped,
+    [
+      workspaceFeatures,
+      workspaceReceivers,
+      workspaceCalcArea,
+      features,
+      receivers,
+      calcArea,
+    ],
+  );
 
   // The whole v1 schema, not the three kinds the map draws as features.
   // `normalizeGeoJSON` reported `kind: "receiver"` as an unknown kind, so a
@@ -85,8 +119,11 @@ export default function ImportPage() {
     [],
   );
 
-  // `loadModel` replaces the workspace outright, and no undo covers that —
-  // the command stack is reset, not extended. So the import asks first.
+  // Replace goes through `loadModel`, which drops the workspace outright and
+  // resets the command stack rather than extending it, so no undo covers it —
+  // hence the confirmation. Add is the opposite on both counts: it loses
+  // nothing and it is a single undo, so asking would be an obstacle rather
+  // than a safeguard.
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   // Read while the dialog closes, which is before the next render, so a ref
   // rather than state.
@@ -95,10 +132,17 @@ export default function ImportPage() {
 
   const handleConfirm = useCallback(() => {
     loadModel({ features, receivers, calcArea });
+    setDoneCount(importedCount);
     replaced.current = true;
     setConfirmingReplace(false);
     setStep("done");
-  }, [features, receivers, calcArea, loadModel]);
+  }, [features, receivers, calcArea, importedCount, loadModel]);
+
+  const handleAdd = useCallback(() => {
+    const skipped = mergeModel({ features, receivers, calcArea });
+    setDoneCount(importedCount - skipped.features - skipped.receivers);
+    setStep("done");
+  }, [features, receivers, calcArea, importedCount, mergeModel]);
 
   // Confirming removes the Import button the dialog was opened from, so Radix
   // has nothing to restore focus to and it would fall to `<body>`. The done
@@ -163,10 +207,13 @@ export default function ImportPage() {
             calcArea={calcArea}
             skippedCount={skippedCount}
             report={report}
+            workspaceEmpty={workspaceEmpty}
+            mergeSkips={mergeSkips}
             onBack={() => {
               setStep("upload");
             }}
-            onImport={() => {
+            onAdd={handleAdd}
+            onReplace={() => {
               setConfirmingReplace(true);
             }}
           />
@@ -178,7 +225,7 @@ export default function ImportPage() {
             <PageHeader
               className="justify-center text-center"
               title={m.status_import_complete()}
-              description={`${String(importedCount)} ${m.msg_import_complete_description()}`}
+              description={`${String(doneCount)} ${m.msg_import_complete_description()}`}
             />
             <Button ref={goToMapRef} onClick={handleGoToMap}>
               {m.action_go_to_map()}

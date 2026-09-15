@@ -57,6 +57,64 @@ export interface MergeSkips {
   calcArea: boolean;
 }
 
+/** What a merge would land, and what it would leave behind. */
+export interface MergePlan {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
+  skipped: MergeSkips;
+}
+
+/**
+ * What merging `incoming` into `current` would do — computed without touching
+ * the store, so the import page can say it before the reader commits rather
+ * than report it afterwards.
+ *
+ * An id `current` already holds is skipped, not re-minted and not overwritten.
+ * Re-minting would turn a re-import of the same file into a second copy of
+ * every feature, and ids are what the project keys on; skipping is what makes
+ * a merge idempotent. Ids are one namespace across features and receivers,
+ * because `validateProjectModel` checks them as one — which also covers a
+ * duplicate inside `incoming` itself.
+ *
+ * An existing calculation area wins over an imported one. The model holds at
+ * most one, and the one the reader drew is the one they can see.
+ */
+export function planMerge(
+  current: LoadedModel,
+  incoming: LoadedModel,
+): MergePlan {
+  const taken = new Set<string>([
+    ...current.features.map((f) => f.id),
+    ...current.receivers.map((r) => r.id),
+  ]);
+
+  const features: ModelFeature[] = [];
+  for (const feature of incoming.features) {
+    if (taken.has(feature.id)) continue;
+    taken.add(feature.id);
+    features.push(feature);
+  }
+
+  const receivers: ModelReceiver[] = [];
+  for (const receiver of incoming.receivers) {
+    if (taken.has(receiver.id)) continue;
+    taken.add(receiver.id);
+    receivers.push(receiver);
+  }
+
+  return {
+    features,
+    receivers,
+    calcArea: current.calcArea ?? incoming.calcArea,
+    skipped: {
+      features: incoming.features.length - features.length,
+      receivers: incoming.receivers.length - receivers.length,
+      calcArea: current.calcArea !== null && incoming.calcArea !== null,
+    },
+  };
+}
+
 const commandStack = new CommandStack();
 
 export const useModelStore = create<ModelState>((set, get) => {
@@ -259,61 +317,33 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     // Adds a model to the workspace instead of replacing it, as *one*
     // undoable command: a merge the reader regrets is one Ctrl+Z, not one per
-    // imported feature.
-    //
-    // An id the workspace already holds is skipped, not re-minted and not
-    // overwritten. Re-minting would turn a re-import of the same file into a
-    // second copy of every feature — and, since ids are what the project keys
-    // on, into a model the next save writes twice. Skipping makes the merge
-    // idempotent: importing the same file twice leaves the workspace as the
-    // first import left it. Ids are one namespace across features and
-    // receivers, because `validateProjectModel` checks them as one.
-    //
-    // An existing calculation area wins over an imported one. The model holds
-    // at most one, and the one the reader drew is the one they can see.
+    // imported feature. {@link planMerge} decides what of it lands.
     //
     // `dirty: true`, like `loadFeatures` and `loadModel`: the content comes
     // from outside the project.
     mergeModel: (model) => {
       const state = get();
-      const taken = new Set<string>([
-        ...state.features.map((f) => f.id),
-        ...state.receivers.map((r) => r.id),
-      ]);
+      const plan = planMerge(
+        {
+          features: state.features,
+          receivers: state.receivers,
+          calcArea: state.calcArea,
+        },
+        model,
+      );
 
-      const addedFeatures: ModelFeature[] = [];
-      for (const feature of model.features) {
-        if (taken.has(feature.id)) continue;
-        taken.add(feature.id);
-        addedFeatures.push(feature);
-      }
-
-      const addedReceivers: ModelReceiver[] = [];
-      for (const receiver of model.receivers) {
-        if (taken.has(receiver.id)) continue;
-        taken.add(receiver.id);
-        addedReceivers.push(receiver);
-      }
-
+      const { features: addedFeatures, receivers: addedReceivers } = plan;
       const previousArea = state.calcArea;
-      const nextArea = previousArea ?? model.calcArea;
-
-      const skipped: MergeSkips = {
-        features: model.features.length - addedFeatures.length,
-        receivers: model.receivers.length - addedReceivers.length,
-        calcArea: previousArea !== null && model.calcArea !== null,
-      };
 
       // A merge that changes nothing pushes nothing. Executing an empty
       // command would still clear the redo stack, so the second import of the
-      // same file would be idempotent in the model and not in the undo
-      // history.
+      // same file would be idempotent in the model and not in the history.
       if (
         addedFeatures.length === 0 &&
         addedReceivers.length === 0 &&
-        nextArea === previousArea
+        plan.calcArea === previousArea
       ) {
-        return skipped;
+        return plan.skipped;
       }
 
       const addedIDs = new Set<string>([
@@ -327,7 +357,7 @@ export const useModelStore = create<ModelState>((set, get) => {
           set((s) => ({
             features: [...s.features, ...addedFeatures],
             receivers: [...s.receivers, ...addedReceivers],
-            calcArea: nextArea,
+            calcArea: plan.calcArea,
             dirty: true,
           }));
         },
@@ -341,7 +371,7 @@ export const useModelStore = create<ModelState>((set, get) => {
         },
       });
 
-      return skipped;
+      return plan.skipped;
     },
 
     // `loadModel`'s twin for content that comes *from* the project rather than
