@@ -150,7 +150,7 @@
   "heading_import_preview": "Import Preview",
   "heading_map_workspace": "Start a workspace",
   "heading_welcome": "Environmental noise modeling, built for local work",
-  "msg_map_workspace_description": "Import geometry to see the map. Until then, the workspace stays lightweight and avoids loading tiles.",
+  "msg_map_workspace_description": "Import geometry, or draw the first feature directly on the map.",
   "msg_no_project_yet": "No project loaded yet.",
   "msg_no_project_yet_help": "Import data to create the first project state, then return here to work with the map.",
   "msg_welcome_intro": "Aconiq is a CLI-first, offline-first environmental noise modeling system. The browser UI helps you bring in a project, inspect it, run it, and export results without leaving the local workflow.",
@@ -169,6 +169,8 @@
   "page_title_welcome": "Welcome",
   "action_open_workspace": "Open workspace",
   "action_start_import": "Start import",
+  "action_import_data": "Import…",
+  "action_start_drawing": "Start drawing",
 
   "dialog_title_new_export": "New Export",
   "dialog_desc_new_export": "Export bundles are created via the CLI. Select a run and copy the command below.",

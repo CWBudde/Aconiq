@@ -6,10 +6,7 @@ import { TooltipProvider } from "@/ui/components/tooltip";
 import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
-import { Callout } from "@/ui/callout";
-import { KeyValueList } from "@/ui/key-value-list";
-import { PageHeader, SectionHeading } from "@/ui/page-header";
-import { useProjectStatus } from "@/api/hooks";
+import { PageHeader } from "@/ui/page-header";
 import { MapView } from "@/map/map-view";
 import { MapPanel } from "@/map/map-panel";
 import { LayerControl } from "@/map/layer-control";
@@ -22,7 +19,8 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
-import { useDraw } from "@/map/use-draw";
+import { DrawProvider } from "@/map/draw-provider";
+import { useDrawContext } from "@/map/use-draw-context";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
@@ -35,84 +33,71 @@ import { m } from "@/i18n/messages";
  * MapLibre layer this page composes.
  */
 export default function MapPage() {
-  const features = useModelStore((s) => s.features);
-  const receivers = useModelStore((s) => s.receivers);
-  const calcArea = useModelStore((s) => s.calcArea);
-  const hasWorkspaceContent =
-    features.length > 0 || receivers.length > 0 || calcArea !== null;
-
-  if (!hasWorkspaceContent) {
-    return <WorkspaceStart />;
-  }
-
   return <MapWorkspace />;
 }
 
-function ProjectSummary() {
-  const project = useProjectStatus();
+/**
+ * The empty-model hint, laid over the map rather than replacing it.
+ *
+ * It used to be an early return in `MapPage`, so on an empty model the canvas,
+ * the draw toolbar, the layer control and the validation panel were all
+ * unmounted — the user was told to start a workspace by a screen that had no
+ * way to draw one.
+ *
+ * A labelled region, not a dialog: the map must stay pannable and the toolbar
+ * reachable while this is up, so there is no focus trap and no autofocus. The
+ * backdrop passes pointer events through; the card catches its own. The card
+ * is opaque because it sits over a map raster, where neither a contrast rule
+ * nor a reviewer can predict what is behind the text.
+ */
+function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
+  const { setMode } = useDrawContext();
 
-  if (project.isLoading) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {m.status_loading_project()}
-      </p>
-    );
-  }
-  if (project.isError) {
-    return <Callout variant="destructive">{project.error.message}</Callout>;
-  }
-  if (!project.data) {
-    return (
-      <Callout variant="neutral" title={m.msg_no_project_yet()}>
-        {m.msg_no_project_yet_help()}
-      </Callout>
-    );
-  }
   return (
-    <KeyValueList
-      items={[
-        { label: m.label_name_field(), value: project.data.name },
-        { label: m.label_crs_field(), value: project.data.crs, mono: true },
-        {
-          label: m.label_scenarios_field(),
-          value: String(project.data.scenario_count),
-        },
-        { label: m.label_runs_field(), value: String(project.data.run_count) },
-      ]}
-    />
-  );
-}
-
-function WorkspaceStart() {
-  return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
-        <Card className="p-8">
-          <div className="max-w-2xl space-y-4">
-            <Badge variant="outline">{m.section_workspace()}</Badge>
-            <PageHeader
-              title={m.heading_map_workspace()}
-              description={m.msg_map_workspace_description()}
-            />
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-8">
+      <Card
+        role="region"
+        aria-label={m.heading_map_workspace()}
+        className="pointer-events-auto relative max-w-md bg-background p-6 shadow-lg"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 size-7"
+          onClick={onDismiss}
+          aria-label={m.action_close()}
+        >
+          <X aria-hidden="true" />
+        </Button>
+        <div className="space-y-4 pr-8">
+          <Badge variant="outline">{m.section_workspace()}</Badge>
+          <PageHeader
+            as="h3"
+            title={m.heading_map_workspace()}
+            description={m.msg_map_workspace_description()}
+          />
+          <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link to="/import">{m.nav_import()}</Link>
+              <Link to="/import">{m.action_import_data()}</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link to="/status">{m.nav_status()}</Link>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Arm *and* dismiss. Arming alone leaves the card covering the
+                // canvas the user was just told to click; dismissing alone
+                // leaves them on an empty map beside a toolbar nobody pointed
+                // at. Point mode because a single click completes it and opens
+                // the new-feature dialog — line and polygon need a
+                // double-click to finish, which strands a first-timer.
+                setMode("point");
+                onDismiss();
+              }}
+            >
+              {m.action_start_drawing()}
             </Button>
           </div>
-        </Card>
-
-        <Card className="space-y-3 p-6">
-          <SectionHeading variant="eyebrow">
-            {m.section_project()}
-          </SectionHeading>
-          <ProjectSummary />
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -124,6 +109,11 @@ function MapWorkspace() {
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   const [newGeometry, setNewGeometry] = useState<Geometry | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  // Local, deliberately: the overlay disappears on its own as soon as the
+  // first feature lands, and it comes back when the model empties again or
+  // the route is left. Persisting the dismissal would hide the only pointer
+  // to "Start drawing" from the one user who needs it.
+  const [startDismissed, setStartDismissed] = useState(false);
   const setCalcArea = useModelStore((s) => s.setCalcArea);
   const clearCalcArea = useModelStore((s) => s.clearCalcArea);
   const calcArea = useModelStore((s) => s.calcArea);
@@ -137,6 +127,10 @@ function MapWorkspace() {
   const [workspaceView] = useState(() =>
     fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
   );
+
+  const hasWorkspaceContent =
+    features.length > 0 || receivers.length > 0 || calcArea !== null;
+  const showStart = !hasWorkspaceContent && !startDismissed;
 
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
@@ -157,10 +151,6 @@ function MapWorkspace() {
     },
     [setCalcArea],
   );
-
-  const { activeMode, setMode, cancel } = useDraw({
-    onFinish: handleDrawFinish,
-  });
 
   const handleFeatureClick = useCallback(
     (features: MapGeoJSONFeature[], e: MapMouseEvent) => {
@@ -197,59 +187,64 @@ function MapWorkspace() {
         zoom={workspaceView.zoom}
         onFeatureClick={handleFeatureClick}
       >
-        <ModelLayers />
-        <DrawToolbar
-          activeMode={activeMode}
-          onModeChange={setMode}
-          onCancel={cancel}
-        />
-        <LayerControl />
-        <CoordinateDisplay />
-        <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
-        <FeatureEditor
-          featureId={editingFeatureId}
-          onClose={() => {
-            setEditingFeatureId(null);
-          }}
-        />
-        <UndoRedoBar />
-        {calcArea ? (
-          <MapPanel
-            position="bottom-right"
-            inset="bottom-14"
-            translucent
-            className="flex items-center gap-1 py-1 pl-1 pr-1"
-          >
-            <Badge variant="info">{m.label_calc_area()}</Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={clearCalcArea}
-              aria-label={m.action_clear_calc_area()}
+        <DrawProvider onFinish={handleDrawFinish}>
+          <ModelLayers />
+          <WorkspaceDrawToolbar />
+          <LayerControl />
+          <CoordinateDisplay />
+          <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
+          <FeatureEditor
+            featureId={editingFeatureId}
+            onClose={() => {
+              setEditingFeatureId(null);
+            }}
+          />
+          <UndoRedoBar />
+          {calcArea ? (
+            <MapPanel
+              position="bottom-right"
+              inset="bottom-14"
+              translucent
+              className="flex items-center gap-1 py-1 pl-1 pr-1"
             >
-              <X aria-hidden="true" />
-            </Button>
-          </MapPanel>
-        ) : null}
-        <ValidationToggle
-          open={showValidation}
-          onToggle={() => {
-            setShowValidation((open) => !open);
-          }}
-        />
-        {showValidation ? (
-          <MapPanel
-            position="bottom-left"
-            inset="bottom-14 left-3"
-            width="w-80"
-            className="p-0"
-            role="region"
-            aria-label={m.label_validation()}
-          >
-            <ValidationPanel onSelectFeature={handleSelectFromValidation} />
-          </MapPanel>
-        ) : null}
+              <Badge variant="info">{m.label_calc_area()}</Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                onClick={clearCalcArea}
+                aria-label={m.action_clear_calc_area()}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </MapPanel>
+          ) : null}
+          <ValidationToggle
+            open={showValidation}
+            onToggle={() => {
+              setShowValidation((open) => !open);
+            }}
+          />
+          {showValidation ? (
+            <MapPanel
+              position="bottom-left"
+              inset="bottom-14 left-3"
+              width="w-80"
+              className="p-0"
+              role="region"
+              aria-label={m.label_validation()}
+            >
+              <ValidationPanel onSelectFeature={handleSelectFromValidation} />
+            </MapPanel>
+          ) : null}
+          {showStart ? (
+            <WorkspaceStart
+              onDismiss={() => {
+                setStartDismissed(true);
+              }}
+            />
+          ) : null}
+        </DrawProvider>
       </MapView>
       <NewFeatureDialog
         open={newGeometry !== null}
@@ -259,6 +254,18 @@ function MapWorkspace() {
         }}
       />
     </TooltipProvider>
+  );
+}
+
+/** Binds the presentational toolbar to the provider above it. */
+function WorkspaceDrawToolbar() {
+  const { activeMode, setMode, cancel } = useDrawContext();
+  return (
+    <DrawToolbar
+      activeMode={activeMode}
+      onModeChange={setMode}
+      onCancel={cancel}
+    />
   );
 }
 

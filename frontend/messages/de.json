@@ -150,7 +150,7 @@
   "heading_import_preview": "Importvorschau",
   "heading_map_workspace": "Arbeitsbereich starten",
   "heading_welcome": "Aconiq, Open-Source-Lärmmodellierung für alle",
-  "msg_map_workspace_description": "Importiere Geometrie, um die Karte zu sehen. Bis dahin bleibt der Arbeitsbereich leichtgewichtig und lädt keine Kacheln.",
+  "msg_map_workspace_description": "Geometrie importieren oder das erste Objekt direkt auf der Karte zeichnen.",
   "msg_no_project_yet": "Noch kein Projekt geladen.",
   "msg_no_project_yet_help": "Importiere Daten, um den ersten Projektzustand zu erstellen, und kehre dann hierher zurück, um mit der Karte zu arbeiten.",
   "msg_welcome_intro": "Aconiq ist ein offenes System zur Modellierung von Umweltlärm. Es bietet eine benutzerfreundliche Oberfläche für die Erstellung von Lärmmodellen, die Durchführung von Berechnungen und die Analyse von Ergebnissen.",
@@ -169,6 +169,8 @@
   "page_title_welcome": "Willkommen",
   "action_open_workspace": "Arbeitsbereich öffnen",
   "action_start_import": "Import starten",
+  "action_import_data": "Importieren…",
+  "action_start_drawing": "Zeichnen starten",
 
   "dialog_title_new_export": "Neuer Export",
   "dialog_desc_new_export": "Exportpakete werden über die CLI erstellt. Berechnung auswählen und Befehl kopieren.",
