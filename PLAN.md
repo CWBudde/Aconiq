@@ -451,8 +451,9 @@ receivers and the calculation area alike, not just the feature that was edited.
 `internal/api/httpv1/model.go:146-168` (`modelInCRS`) reprojects out of the project CRS on
 `GET /api/v1/model?crs=`, and `:229` reprojects back in on `POST /api/v1/model`.
 
-It reproduces against `github.com/wroge/wgs84` v1.1.7 directly, bypassing `geo.EPSGTransform`, so it
-is the library's transverse-Mercator series and not our wrapper. The datum step is not implicated:
+Two things are already ruled out, so do not re-measure them: it reproduces against
+`github.com/wroge/wgs84` v1.1.7 directly, bypassing `geo.EPSGTransform`, so it is the library's
+transverse-Mercator series and not our wrapper; and the datum step is not implicated, because
 `ETRS89UTM(32) ↔ ETRS89().LonLat()` (EPSG:4258, no Helmert shift) gives the same residuals to all
 printed digits as the WGS84 pair.
 
@@ -461,10 +462,9 @@ and inverse is wrong, not which — and not that only one is. Settling it needs 
 vectors (proj, or the EPSG-published test points for 25832) rather than more round trips, and that
 measurement is the first step of any fix.
 
-Nothing saw this because `crs_transform_test.go:119` asserts the same CRS pair to `0.0001°`, which
-is roughly 11 m of latitude: an assertion ceiling hiding a defect of its own size. It surfaced only
-when a tolerance was needed in metres, for the calculation-area agreement check in Priority 8
-Phase C — which is why that check ships with no threshold at all.
+Tighten `crs_transform_test.go:119` as part of the fix: it asserts this CRS pair to `0.0001°`,
+roughly 11 m of latitude, which is an assertion ceiling wide enough to hide a defect of its own
+size.
 
 Three candidate fixes, none chosen:
 
@@ -1223,32 +1223,19 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       building appender already does. Closure is decided in **2D**, deliberately: the import
       report's `IsClosed` compares x, y _and_ z, so a footprint that closes in plan but differs in
       elevation would otherwise gain a zero-length closing segment.
-- [x] **The model's `calc-area` wins the raster comparison; the import report is the fallback.**
-      `resolveRasterCalcArea` picks it after the model loads, and `calc_area_source`
-      (`model` / `import_report` / `none`) records which, in both the compare report and the
-      artifact.
-      **This bullet's own rationale was wrong on both axes, and the reasons are load-bearing.** The
-      3D difference is inert: the sole read of `.Z` off a `CalcArea` is a field copy, and every
-      consumer is 2D. And the model's ring is the _better-formed_ input for the scanline, not the
-      lossy one — `calcAreaHorizontalSpan`'s edge loop runs to `len(Points)-1` and so never emits
-      the closing edge, which is exactly right for the closed ring validation guarantees and drops
-      an edge from the import report's verbatim, unclosed point list. A plain open rectangle then
-      degrades _loudly_: every row finds one crossing, reports no span, and falls back to the
-      bounding box with a warning. From six vertices up it degrades silently instead — the dropped
-      edge shifts the even/odd pairing rather than removing a crossing, and an open notched octagon
-      returns the notch _gap_ as its span, placing receivers in exactly the region the drawing
-      excludes. Both are pinned.
-      **There is no agreement tolerance, and there cannot be one** until Priority 1.6 is fixed: the
-      reprojection the map save path runs is larger than the grid resolution, so any threshold below
-      5 m fires on a save that changed nothing and any threshold above it hides a real edit. The
-      comparison warns on the vertex count after normalising closure — exact and CRS-independent —
-      and records `calc_area_bounds_delta_m` unconditionally, so P13 reads a measurement rather than
-      a verdict. Vertex-by-vertex comparison is wrong here: the two lists legitimately differ in
-      start vertex, winding and closure.
-      **`ACONIQ_SOUNDPLAN_FIXTURES` is what makes the licensed-fixture suite visible.** A worktree
-      has no `interoperability/`, so `TestCompareSoundPlanReceivers` and the SoundPLAN import tests
-      skip and the run still reports green. Point the variable at the project directory before
-      believing a green run covered the SoundPLAN path.
+- [x] **The model's `calc-area` wins the raster comparison; the import report is the fallback**
+      (`5432253`, `8b31087`). `calc_area_source` records which area was chosen and `calc_area_role`
+      what it did there — the GM-metadata path places receivers from the grid's own origin and
+      consults the area only for the row direction, so `model` there does not mean "the model's area
+      placed these".
+      **There can be no agreement tolerance** until Priority 1.6 is fixed: the reprojection the map
+      save path runs is larger than the grid resolution, so any threshold below 5 m fires on a save
+      that changed nothing and any above it hides a real edit. The comparison warns on the vertex
+      count after normalising closure and records `calc_area_bounds_delta` with its unit, which is
+      the project CRS's axis unit and not always metres.
+      **`ACONIQ_SOUNDPLAN_FIXTURES` is what makes the licensed-fixture suite visible** — without it
+      `TestCompareSoundPlanReceivers` and the SoundPLAN import tests skip and the run still reports
+      green.
 
 ### Phase D — Map workspace
 

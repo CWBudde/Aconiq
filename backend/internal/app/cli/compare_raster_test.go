@@ -153,11 +153,13 @@ func TestCalcAreaFromModelReturnsNilWithoutCalcArea(t *testing.T) {
 	}
 }
 
-// TestCalcAreaHorizontalSpanNeedsAClosedRing is why the model's calculation area
-// wins rather than merely being preferred. calcAreaHorizontalSpan's edge loop
+// TestCalcAreaHorizontalSpanNeedsAClosedRing pins the precondition both sources
+// of a calculation area now have to meet. calcAreaHorizontalSpan's edge loop
 // runs to len(Points)-1 and never emits the closing edge, so it is correct for a
-// closed ring and drops one edge for an open one — and the import report's point
-// list is verbatim ParseCalcAreaFile output with nothing enforcing closure.
+// closed ring and drops one edge for an open one. The model's ring gets closure
+// from validation; the import report's point list is verbatim ParseCalcAreaFile
+// output, so calcAreaFromImportReport closes it — see
+// TestCalcAreaFromImportReportClosesTheRing.
 //
 // The same quadrilateral is fed in both spellings. The open one loses its left
 // edge, finds a single crossing, and reports no span at all; the closed one
@@ -529,8 +531,8 @@ func TestPrepareAndFinalizeSoundPlanRasterCompareFallsBackToImportReport(t *test
 
 	// Nothing to compare the report's area against, so no delta is recorded —
 	// which is not the same as the two having agreed.
-	if prep.report.CalcAreaBoundsDeltaM != nil {
-		t.Fatalf("bounds delta = %v, want none when the model carries no area", *prep.report.CalcAreaBoundsDeltaM)
+	if prep.report.CalcAreaBoundsDelta != nil {
+		t.Fatalf("bounds delta = %v, want none when the model carries no area", *prep.report.CalcAreaBoundsDelta)
 	}
 
 	receiverID := prep.syntheticReceiverIDs[0]
@@ -754,11 +756,11 @@ func TestPrepareSoundPlanRasterCompareModelCalcAreaWins(t *testing.T) {
 			position[0], position[1])
 	}
 
-	if prep.report.CalcAreaBoundsDeltaM == nil {
+	if prep.report.CalcAreaBoundsDelta == nil {
 		t.Fatal("expected a recorded bounds delta when both areas exist")
 	}
 
-	if got := *prep.report.CalcAreaBoundsDeltaM; math.Abs(got-5) > 1e-9 {
+	if got := *prep.report.CalcAreaBoundsDelta; math.Abs(got-5) > 1e-9 {
 		t.Fatalf("bounds delta = %v m, want 5", got)
 	}
 
@@ -767,7 +769,7 @@ func TestPrepareSoundPlanRasterCompareModelCalcAreaWins(t *testing.T) {
 		t.Fatalf("expected a divergence warning, got %v", prep.report.Warnings)
 	}
 
-	for _, want := range []string{"drawn-area", "has 5 vertices", "has 4", "5.000 m"} {
+	for _, want := range []string{"drawn-area", "has 5 vertices", "has 4", "5 m"} {
 		if !strings.Contains(divergence, want) {
 			t.Fatalf("divergence warning %q does not name %q", divergence, want)
 		}
@@ -814,11 +816,11 @@ func TestPrepareSoundPlanRasterCompareAgreeingAreasAreSilent(t *testing.T) {
 		t.Fatalf("unexpected divergence warning: %q", got)
 	}
 
-	if prep.report.CalcAreaBoundsDeltaM == nil {
+	if prep.report.CalcAreaBoundsDelta == nil {
 		t.Fatal("expected the bounds delta to be recorded even when the areas agree")
 	}
 
-	if got := *prep.report.CalcAreaBoundsDeltaM; got != 0 {
+	if got := *prep.report.CalcAreaBoundsDelta; got != 0 {
 		t.Fatalf("bounds delta = %v m, want 0", got)
 	}
 }
@@ -935,4 +937,189 @@ func writeTestGridMapFile(path string, cells []testGridCell) error {
 	}
 
 	return os.WriteFile(path, buf.Bytes(), 0o600)
+}
+
+// TestCalcAreaFromImportReportClosesTheRing covers the fallback's precondition.
+// Nothing upstream of the import report closes CalcArea.geo, and
+// calcAreaHorizontalSpan needs a closed ring, so the conversion closes it. The
+// notch case is the one that matters: left open it returns the notch gap as the
+// row span and puts receivers inside the region the drawing excludes.
+func TestCalcAreaFromImportReportClosesTheRing(t *testing.T) {
+	t.Parallel()
+
+	openRectangle := &soundPlanImportCalcArea{Points: []soundPlanPoint{
+		{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}, {X: 0, Y: 10},
+	}}
+
+	closed := calcAreaFromImportReport(openRectangle)
+	if len(closed.Points) != 5 {
+		t.Fatalf("point count = %d, want 5 (four vertices plus the closing repeat)", len(closed.Points))
+	}
+
+	if closed.Points[4] != closed.Points[0] {
+		t.Fatalf("last point %+v does not repeat the first %+v", closed.Points[4], closed.Points[0])
+	}
+
+	for _, y := range []float64{1, 5, 9} {
+		left, right, ok := calcAreaHorizontalSpan(closed, y)
+		if !ok || left != 0 || right != 10 {
+			t.Fatalf("y=%v: span=(%v,%v) ok=%v, want (0,10) ok=true", y, left, right, ok)
+		}
+	}
+
+	// An already-closed list is left alone rather than gaining a second repeat,
+	// which would add a zero-length edge.
+	alreadyClosed := calcAreaFromImportReport(&soundPlanImportCalcArea{Points: []soundPlanPoint{
+		{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 10}, {X: 0, Y: 10}, {X: 0, Y: 0},
+	}})
+	if len(alreadyClosed.Points) != 5 {
+		t.Fatalf("closed input point count = %d, want 5", len(alreadyClosed.Points))
+	}
+
+	// Closure is decided in 2D: CalcArea.geo's z varies along the outline, so a
+	// z difference at the repeated vertex must not count as "open".
+	closedInPlan := calcAreaFromImportReport(&soundPlanImportCalcArea{Points: []soundPlanPoint{
+		{X: 0, Y: 0, Z: 100}, {X: 10, Y: 0, Z: 101}, {X: 10, Y: 10, Z: 102}, {X: 0, Y: 10, Z: 103}, {X: 0, Y: 0, Z: 104},
+	}})
+	if len(closedInPlan.Points) != 5 {
+		t.Fatalf("plan-closed input point count = %d, want 5", len(closedInPlan.Points))
+	}
+
+	openNotch := calcAreaFromImportReport(&soundPlanImportCalcArea{Points: []soundPlanPoint{
+		{X: 0, Y: 0},
+		{X: 10, Y: 0},
+		{X: 10, Y: 10},
+		{X: 6, Y: 10},
+		{X: 6, Y: 4},
+		{X: 4, Y: 4},
+		{X: 4, Y: 10},
+		{X: 0, Y: 10},
+	}})
+
+	left, right, ok := calcAreaHorizontalSpan(openNotch, 7)
+	if !ok || left != 0 || right != 4 {
+		t.Fatalf("notch at y=7: span=(%v,%v) ok=%v, want the real lobe (0,4), not the notch gap (4,6)", left, right, ok)
+	}
+}
+
+// TestPrepareSoundPlanRasterCompareUnclosedImportReportArea is the fallback
+// regression: a project with no calc-area feature, and an import report whose
+// CalcArea.geo never repeats its first vertex. Before the ring was closed, every
+// row lost the closing edge, found a single crossing and fell back to the
+// bounding box with a warning.
+func TestPrepareSoundPlanRasterCompareUnclosedImportReportArea(t *testing.T) {
+	t.Parallel()
+
+	projectRoot, modelPath := rasterCompareProject(t)
+
+	report := soundPlanImportReport{
+		SourcePath:      "soundplan",
+		ProjectCRS:      "EPSG:25832",
+		GridResolutionM: 5,
+		CalcArea: &soundPlanImportCalcArea{Points: []soundPlanPoint{
+			{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 6}, {X: 0, Y: 6},
+		}},
+		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
+	}
+
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	t.Cleanup(func() { cleanupRasterComparePreparation(prep) })
+
+	if !hasPrep || len(prep.syntheticReceiverIDs) != 1 {
+		t.Fatalf("expected one synthetic receiver, got %d", len(prep.syntheticReceiverIDs))
+	}
+
+	if got, want := prep.report.CalcAreaSource, calcAreaSourceImportReport; got != want {
+		t.Fatalf("calc area source = %q, want %q", got, want)
+	}
+
+	if got, want := prep.report.CalcAreaRole, calcAreaRoleReceiverPlacement; got != want {
+		t.Fatalf("calc area role = %q, want %q", got, want)
+	}
+
+	if got := findWarning(prep.report.Warnings, "could not be intersected with CalcArea"); got != "" {
+		t.Fatalf("unexpected bounding-box fallback warning: %q", got)
+	}
+
+	positions := syntheticRasterReceiverXY(t, prep)
+
+	position, ok := positions[prep.syntheticReceiverIDs[0]]
+	if !ok {
+		t.Fatalf("no position for %q", prep.syntheticReceiverIDs[0])
+	}
+
+	if math.Abs(position[0]-5) > 1e-9 {
+		t.Fatalf("receiver x = %.3f, want the scanline centre 5", position[0])
+	}
+}
+
+// TestCalcAreaBoundsDeltaUnitFollowsProjectCRS pins that the recorded envelope
+// delta is never called metres on a CRS whose axes are not metres. Under the
+// CLI's default EPSG:4326 it is degrees, where 0.001 is roughly 111 m.
+func TestCalcAreaBoundsDeltaUnitFollowsProjectCRS(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"EPSG:25832": calcAreaDeltaUnitMetre,
+		"EPSG:31467": calcAreaDeltaUnitMetre,
+		"EPSG:4326":  calcAreaDeltaUnitDegree,
+		"EPSG:4258":  calcAreaDeltaUnitDegree,
+		"EPSG:1":     calcAreaDeltaUnitUnknown,
+		"WKT:custom": calcAreaDeltaUnitUnknown,
+		"":           calcAreaDeltaUnitUnknown,
+		"nonsense":   calcAreaDeltaUnitUnknown,
+	}
+
+	for crs, want := range cases {
+		if got := calcAreaBoundsDeltaUnit(crs); got != want {
+			t.Errorf("calcAreaBoundsDeltaUnit(%q) = %q, want %q", crs, got, want)
+		}
+	}
+}
+
+// TestPrepareSoundPlanRasterCompareGeographicCRSDeltaIsNotMetres walks the same
+// diverging-areas scenario on a geographic project CRS. The number is unchanged,
+// but neither the field nor the warning may call it metres.
+func TestPrepareSoundPlanRasterCompareGeographicCRSDeltaIsNotMetres(t *testing.T) {
+	t.Parallel()
+
+	projectRoot, modelPath := rasterCompareProject(t, calcAreaFeature(0, 0, 10, 10, true))
+
+	report := soundPlanImportReport{
+		SourcePath:      "soundplan",
+		ProjectCRS:      "EPSG:4326",
+		GridResolutionM: 5,
+		CalcArea: &soundPlanImportCalcArea{Points: []soundPlanPoint{
+			{X: 0, Y: 0}, {X: 5, Y: 0}, {X: 5, Y: 5}, {X: 0, Y: 5}, {X: 0, Y: 0},
+		}},
+		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
+	}
+
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	t.Cleanup(func() { cleanupRasterComparePreparation(prep) })
+
+	if !hasPrep {
+		t.Fatal("expected a prepared comparison")
+	}
+
+	if got, want := prep.report.CalcAreaBoundsDeltaUnit, calcAreaDeltaUnitDegree; got != want {
+		t.Fatalf("bounds delta unit = %q, want %q", got, want)
+	}
+
+	divergence := findWarning(prep.report.Warnings, "the model wins")
+	if divergence == "" {
+		t.Fatalf("expected a divergence warning, got %v", prep.report.Warnings)
+	}
+
+	if !strings.Contains(divergence, "5 degree") {
+		t.Fatalf("divergence warning %q does not name the unit it measured in", divergence)
+	}
 }

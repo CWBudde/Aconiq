@@ -110,11 +110,11 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatalf("raster artifact calc area source = %q, want %q", rasterArtifact.CalcAreaSource, calcAreaSourceModel)
 	}
 
-	if rasterArtifact.CalcAreaBoundsDeltaM == nil {
+	if rasterArtifact.CalcAreaBoundsDelta == nil {
 		t.Fatal("expected a recorded calc area bounds delta")
 	}
 
-	if got := *rasterArtifact.CalcAreaBoundsDeltaM; got != 0 {
+	if got := *rasterArtifact.CalcAreaBoundsDelta; got != 0 {
 		t.Fatalf("calc area bounds delta = %v m, want 0 for a freshly imported bundle", got)
 	}
 
