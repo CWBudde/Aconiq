@@ -34,9 +34,11 @@ import {
   formatNumber,
   formatTime,
 } from "@/ui/format";
+import { LoadingLine } from "@/ui/loading-line";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
+import { runTiming } from "@/ui/run-status";
 import { useRuns, useReceiverTable, useRasterMetadata } from "@/api/hooks";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
@@ -46,20 +48,6 @@ import { m } from "@/i18n/messages";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** "13:05:07 · 12 sec": when the run started and how long it took. */
-function runTiming(run: RunSummary): string {
-  return `${formatTime(run.started_at)} · ${formatDurationBetween(run.started_at, run.finished_at)}`;
-}
-
-function LoadingLine({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-      {text}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Receivers tab

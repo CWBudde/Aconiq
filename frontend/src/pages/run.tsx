@@ -36,11 +36,11 @@ import { Switch } from "@/ui/components/switch";
 import { Callout } from "@/ui/callout";
 import { CopyButton } from "@/ui/copy-field";
 import { EmptyState } from "@/ui/empty-state";
-import { formatDurationBetween, formatTime } from "@/ui/format";
+import { LoadingLine } from "@/ui/loading-line";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge, type RunStatus } from "@/ui/status-badge";
-import { statusLabel } from "@/ui/run-status";
+import { runTiming, statusLabel } from "@/ui/run-status";
 import { useCreateRun, useStandards, useRuns, useRunLog } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import type {
@@ -78,18 +78,6 @@ function getStandardLabel(standardId: string): string {
 
 function getStandardDescription(standardId: string, fallback: string): string {
   return STANDARD_DESCRIPTIONS[standardId]?.() ?? fallback;
-}
-
-function isFinished(run: RunSummary): boolean {
-  return run.status !== "running" && run.status !== "pending";
-}
-
-/** "13:05:07 · 12 sec" for a finished run, the start time alone otherwise. */
-function runTiming(run: RunSummary): string {
-  const started = formatTime(run.started_at);
-  return isFinished(run)
-    ? `${started} · ${formatDurationBetween(run.started_at, run.finished_at)}`
-    : started;
 }
 
 // ---------------------------------------------------------------------------
@@ -465,15 +453,6 @@ function RunFilterBar({
 // ---------------------------------------------------------------------------
 // Run detail panel
 // ---------------------------------------------------------------------------
-
-function LoadingLine() {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-      {m.status_loading()}
-    </div>
-  );
-}
 
 function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
   const { data: log, isLoading: logLoading } = useRunLog(
