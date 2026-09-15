@@ -4,6 +4,7 @@ import type { Result } from "axe-core";
 import {
   LOCALES,
   ROUTES,
+  UNKNOWN_RUN_ID,
   appPath,
   message,
   navLink,
@@ -60,6 +61,7 @@ const KNOWN_VIOLATIONS: Record<Route, readonly string[]> = {
   "/export/does-not-exist": NONE,
   "/status": NONE,
   "/settings": NONE,
+  "/map": NONE,
 };
 
 function summarize(route: Route, violations: Result[]): string {
@@ -82,6 +84,16 @@ for (const locale of LOCALES) {
         // waiting for its first link pins the baseline to the same DOM every
         // run rather than to whichever state axe happened to catch.
         await navLink(page, message(locale, "nav_model")).waitFor();
+        // `waitForPage` is satisfied by a page's own loading heading and the
+        // rail wait only tracks project status, so on the unknown-run routes
+        // axe would otherwise scan the spinner instead of the warning. Wait
+        // for the alert that names the bogus id.
+        if (route.includes(UNKNOWN_RUN_ID)) {
+          await page
+            .getByRole("alert")
+            .filter({ hasText: UNKNOWN_RUN_ID })
+            .waitFor();
+        }
 
         await expect(page.locator("html")).toHaveAttribute("lang", locale);
 

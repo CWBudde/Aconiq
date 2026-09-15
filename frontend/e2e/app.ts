@@ -16,10 +16,21 @@ import type { Locator, Page } from "@playwright/test";
 export const BASE_PATH = "/Aconiq";
 
 /**
+ * A run id no project can hold, used to reach the unknown-run warning.
+ * Exported so a spec can wait for the warning that names it rather than for
+ * the page's loading state.
+ */
+export const UNKNOWN_RUN_ID = "does-not-exist";
+
+/**
  * The routes the accessibility baseline visits. Every route `src/routes.tsx`
  * registers, plus one bogus run id per parameterised section: the unknown-run
  * warning is a `role="alert"` on a tinted surface, and neither its contrast
  * nor its announcement is something jsdom can check.
+ *
+ * `/map` is the retired name of `/model` and matches no route, so it is the
+ * catch-all: the not-found page renders inside the real shell, and nothing
+ * else in this list reaches it — both bogus run ids match `:runId`.
  */
 export const ROUTES = [
   "/welcome",
@@ -27,11 +38,12 @@ export const ROUTES = [
   "/import",
   "/run",
   "/results",
-  "/results/does-not-exist",
+  `/results/${UNKNOWN_RUN_ID}`,
   "/export",
-  "/export/does-not-exist",
+  `/export/${UNKNOWN_RUN_ID}`,
   "/status",
   "/settings",
+  "/map",
 ] as const;
 
 export type Route = (typeof ROUTES)[number];
