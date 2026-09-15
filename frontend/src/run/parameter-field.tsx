@@ -9,11 +9,16 @@ import {
 } from "@/ui/components/select";
 import { Switch } from "@/ui/components/switch";
 import type { ParameterDefinition } from "@/api/client";
+import { parameterLabel, parameterUnitSuffix } from "@/run/parameter-meta";
 
-// ---------------------------------------------------------------------------
-// Parameter editor (shared with setup dialog)
-// ---------------------------------------------------------------------------
-
+/**
+ * One editable parameter of a run profile.
+ *
+ * The label is the human name and the declared unit; the backend's own name
+ * follows it in a muted `code`, because that name is the CLI and API identity —
+ * it is what `--param` and the request body take — and a user reading the
+ * dialog should be able to write the command without translating back.
+ */
 function ParameterLabel({
   id,
   param,
@@ -22,9 +27,17 @@ function ParameterLabel({
   param: ParameterDefinition;
 }) {
   return (
-    <Label htmlFor={id}>
-      {param.name}
-      {param.required ? <span className="ml-1 text-destructive">*</span> : null}
+    <Label htmlFor={id} className="flex-wrap gap-x-1.5">
+      <span>
+        {parameterLabel(param)}
+        {parameterUnitSuffix(param)}
+        {param.required ? (
+          <span className="ml-1 text-destructive">*</span>
+        ) : null}
+      </span>
+      <code className="font-mono text-xs font-normal text-muted-foreground">
+        {param.name}
+      </code>
     </Label>
   );
 }

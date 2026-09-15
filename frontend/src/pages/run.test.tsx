@@ -852,9 +852,31 @@ describe("RunPage standard cascade", () => {
     return screen.getByRole("combobox", { name: m.label_profile() });
   }
 
+  // Addressed by the backend's own name, which is still on screen: the label
+  // now reads "Grid spacing" with `grid_spacing` beside it in a `code`, because
+  // that name is what `--param` and the request body take. A substring match,
+  // so this asserts the raw name is rendered as well as finding the field.
   function parameter(name: string): HTMLElement {
-    return screen.getByLabelText(name);
+    return screen.getByLabelText(new RegExp(name));
   }
+
+  it("labels a parameter and keeps its backend name beside it", () => {
+    openRunDialog([standardA]);
+
+    // Both, not either: the label is for reading, the name is what `--param`
+    // and the request body take.
+    const field = parameter("grid_spacing");
+    const label = field.closest("div")?.querySelector("label");
+    expect(label?.textContent).toContain("Grid spacing");
+    expect(label?.textContent).toContain("grid_spacing");
+  });
+
+  it("groups the parameters under headings", () => {
+    openRunDialog([standardA]);
+
+    // `grid_spacing` groups by its prefix, and the legend says so.
+    expect(screen.getByText(m.param_group_grid())).not.toBeNull();
+  });
 
   it("seeds the parameters from the default profile when the dialog opens", () => {
     openRunDialog([standardA]);
@@ -917,11 +939,11 @@ describe("RunPage standard cascade", () => {
     openRunDialog([standardA]);
 
     selectOption(m.label_profile(), "rural");
-    expect(screen.queryByLabelText("wind_correction")).not.toBeNull();
+    expect(screen.queryByLabelText(/wind_correction/)).not.toBeNull();
 
     selectOption(m.label_profile(), "urban");
 
-    expect(screen.queryByLabelText("wind_correction")).toBeNull();
+    expect(screen.queryByLabelText(/wind_correction/)).toBeNull();
     expect(parameter("grid_spacing")).toHaveValue("10");
   });
 

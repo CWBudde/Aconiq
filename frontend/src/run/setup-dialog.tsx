@@ -39,9 +39,16 @@ import {
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
 } from "@/api/api-error";
 import { isScaffoldTier } from "@/api/evidence-tier";
+import type { ParameterDefinition } from "@/api/client";
 import { useModelStore } from "@/model/model-store";
 import { useProjectSync } from "@/model/use-project-sync";
 import { ParameterField } from "@/run/parameter-field";
+import {
+  parameterGroup,
+  parameterGroupLabel,
+  PARAMETER_GROUP_ORDER,
+  type ParameterGroupKey,
+} from "@/run/parameter-meta";
 import { useRunSetupSelection } from "@/run/use-run-setup-selection";
 import { getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
@@ -83,6 +90,23 @@ function RunCreateError({ error }: { error: Error }) {
 // ---------------------------------------------------------------------------
 
 type ReceiverMode = "auto-grid" | "custom";
+
+/** Non-empty groups in render order, each keeping the backend's own ordering. */
+function groupParameters(
+  parameters: ParameterDefinition[],
+): Array<[ParameterGroupKey, ParameterDefinition[]]> {
+  const byGroup = new Map<ParameterGroupKey, ParameterDefinition[]>();
+  for (const param of parameters) {
+    const key = parameterGroup(param.name);
+    const members = byGroup.get(key);
+    if (members) members.push(param);
+    else byGroup.set(key, [param]);
+  }
+  return PARAMETER_GROUP_ORDER.filter((key) => byGroup.has(key)).map((key) => [
+    key,
+    byGroup.get(key) ?? [],
+  ]);
+}
 
 function ReceiverModeButton({
   mode,
@@ -349,18 +373,34 @@ export function RunSetupDialog({
                 <SectionHeading variant="eyebrow">
                   {m.label_section_parameters()}
                 </SectionHeading>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {selectedProfile.parameters.map((param) => (
-                    <ParameterField
-                      key={param.name}
-                      param={param}
-                      value={params[param.name] ?? ""}
-                      onChange={(v) => {
-                        selection.setParam(param.name, v);
-                      }}
-                    />
-                  ))}
-                </div>
+                {/* Grouped, because nineteen fields in one flat grid is a
+                    wall. A `fieldset`/`legend` rather than a heading: these are
+                    groups of controls, and adding an h4 under the section's h3
+                    would put document structure where form structure belongs.
+                    Within a group the order is the backend's own — grouping
+                    already moves fields, and re-sorting inside a group on top
+                    of that would move them again for nothing. */}
+                {groupParameters(selectedProfile.parameters).map(
+                  ([group, members]) => (
+                    <fieldset key={group} className="space-y-3 border-0 p-0">
+                      <legend className="mb-1 text-xs font-medium text-muted-foreground">
+                        {parameterGroupLabel(group)}
+                      </legend>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        {members.map((param) => (
+                          <ParameterField
+                            key={param.name}
+                            param={param}
+                            value={params[param.name] ?? ""}
+                            onChange={(v) => {
+                              selection.setParam(param.name, v);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </fieldset>
+                  ),
+                )}
               </section>
             ) : null}
 
