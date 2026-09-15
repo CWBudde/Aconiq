@@ -442,6 +442,13 @@ describe("ResultsPage shell", () => {
     expect(
       screen.getByText(m.msg_select_completed_run_details()),
     ).toBeInTheDocument();
+    // A link, not a button: the page that starts runs is a route, and a user
+    // with nothing to look at here should be able to middle-click their way
+    // to it.
+    expect(screen.getByRole("link", { name: m.nav_run() })).toHaveAttribute(
+      "href",
+      "/run",
+    );
   });
 });
 
@@ -498,6 +505,25 @@ describe("ResultsPage tabs", () => {
     await openTab(m.tab_receivers());
 
     expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
+  it("offers the command that writes these bands out", async () => {
+    renderResults([
+      run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
+    ]);
+
+    await openTab(m.tab_raster());
+
+    // The exact line, not a fragment: a command the user copies either runs in
+    // their terminal or fails there with this UI's name on it. The clipboard
+    // itself is `copy-field.test.tsx`'s subject, so this only asserts that the
+    // page offers the control.
+    expect(
+      screen.getByText("aconiq export --run-id run-1 --format geotiff"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: m.action_copy() }),
+    ).toBeInTheDocument();
   });
 
   it("says so when the run carries no raster artifact", async () => {
@@ -817,9 +843,8 @@ describe("ResultsPage compare tab", () => {
     expect(
       screen.getByRole("heading", { name: m.msg_run_column_compare() }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(m.msg_run_to_run_diff_deferred()),
-    ).toBeInTheDocument();
+    // The prompt is replaced by the columns, not joined by a notice.
+    expect(screen.queryByText(m.msg_select_run_compare())).toBeNull();
   });
 
   it("never offers the selected run as its own comparison", async () => {
@@ -846,10 +871,11 @@ describe("ResultsPage compare tab", () => {
 describe("ResultsPage label punctuation", () => {
   /*
    * A `label_*` message is the bare term — "Min", "Dimensions" — and the page
-   * punctuates it where it is used as a label. The colon is presentation: the
-   * same two terms label the raster min/max inputs, where a trailing colon
-   * would be wrong, and a translator should never have to remember to type
-   * one. So each label carries exactly one colon, never two.
+   * punctuates it where it introduces a value. The colon is presentation:
+   * `locale-parity.test.ts` refuses a colon typed into either catalogue, so a
+   * term reused as a field name or a column head stays correct and no
+   * translator has to remember not to type one. These tests pin the other
+   * half — exactly one colon here, never two.
    */
 
   it("punctuates each indicator summary label exactly once", () => {
@@ -873,22 +899,6 @@ describe("ResultsPage label punctuation", () => {
     expect(screen.getByText(`${m.label_nodata()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_unit()}:`)).toBeInTheDocument();
     expect(screen.queryByText(`${m.label_dimensions()}::`)).toBeNull();
-  });
-
-  it("leaves the raster min/max fields unpunctuated", async () => {
-    renderResults([
-      run("run-1", { artifacts: [receiverArtifact, rasterArtifact] }),
-    ]);
-
-    await openTab(m.tab_raster());
-
-    // The same messages that label the summary rows; here they name a field
-    // rather than introduce a value, so they carry no colon at all.
-    expect(screen.getByLabelText(m.label_min())).toHaveAttribute(
-      "placeholder",
-      m.label_min(),
-    );
-    expect(screen.getByLabelText(m.label_max())).toBeInTheDocument();
   });
 });
 

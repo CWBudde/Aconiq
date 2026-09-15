@@ -38,7 +38,7 @@ vi.mock("@/ui/save-status", () => ({
 }));
 
 describe("AppShell", () => {
-  it("shows only Import in the workspace rail when no project is loaded", () => {
+  it("shows only the project page and Import when no project is loaded", () => {
     mockProjectStatus = {
       isLoading: false,
       isError: false,
@@ -47,13 +47,16 @@ describe("AppShell", () => {
     };
 
     render(
-      <MemoryRouter initialEntries={["/welcome"]}>
+      <MemoryRouter initialEntries={["/"]}>
         <AppShell>
           <div>content</div>
         </AppShell>
       </MemoryRouter>,
     );
 
+    expect(
+      screen.getByRole("link", { name: m.page_title_project() }),
+    ).toBeVisible();
     expect(screen.getByRole("link", { name: m.nav_import() })).toBeVisible();
     expect(screen.queryByRole("link", { name: m.nav_model() })).toBeNull();
     expect(screen.queryByRole("link", { name: m.nav_run() })).toBeNull();
@@ -212,5 +215,21 @@ describe("AppShell landmarks", () => {
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     expect(rail).toHaveAttribute("data-state", "collapsed");
+  });
+
+  it("marks the project link current at the root", () => {
+    renderShell("/");
+    expect(
+      screen.getByRole("link", { name: m.page_title_project() }),
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  it("does not mark the project link current elsewhere", () => {
+    // `/` is a prefix of every route, so without `end` on that entry it would
+    // be the current page everywhere — and nothing else here would notice.
+    renderShell("/model");
+    expect(
+      screen.getByRole("link", { name: m.page_title_project() }),
+    ).not.toHaveAttribute("aria-current");
   });
 });

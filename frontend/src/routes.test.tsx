@@ -56,13 +56,11 @@ describe("the route table", () => {
   it("registers every page under one layout route", () => {
     expect(inventory(layoutChildren())).toEqual([
       "index",
-      "welcome",
       "model",
       "import",
       "run",
       "results/{index,:runId}",
       "export/{index,:runId}",
-      "status",
       "settings",
       "*",
     ]);
@@ -98,5 +96,7 @@ describe("the route table", () => {
     // a redirect would keep a `<Link>` or a spec that was missed in the rename
     // working silently and forever. The break is meant to be loud.
     expect(matchedPath("/map")).toBe("*");
+    expect(matchedPath("/welcome")).toBe("*");
+    expect(matchedPath("/status")).toBe("*");
   });
 });

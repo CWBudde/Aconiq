@@ -9,7 +9,6 @@ import {
   Loader2,
   CheckCircle2,
   RefreshCw,
-  StopCircle,
   Terminal,
   Info,
 } from "lucide-react";
@@ -548,19 +547,10 @@ function RunDetail({ run, onRetry }: { run: RunSummary; onRetry: () => void }) {
         <ArtifactLinks artifacts={run.artifacts} />
       </section>
 
-      {/* Actions. Neither backend can cancel a run (the API has no endpoint
-          and the kernel completes inside `startRun`), so the control is
-          disabled rather than offered and then refused on click. */}
+      {/* Actions. There is no Cancel: the API has no cancel endpoint and the
+          WASM kernel completes inside `startRun`, so no capability flag would
+          ever enable one. */}
       <section className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title={m.alert_cancel_not_supported()}
-        >
-          <StopCircle aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
-          {m.action_cancel()}
-        </Button>
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
           {m.action_retry()}

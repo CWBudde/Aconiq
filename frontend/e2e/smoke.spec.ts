@@ -18,11 +18,12 @@ const WORKSPACE_NAV = [
 ] as const;
 
 test.describe("App shell", () => {
-  test("loads and redirects / to /welcome under the base path", async ({
-    page,
-  }) => {
+  test("serves the project page at / under the base path", async ({ page }) => {
     await page.goto(appPath("/"));
-    await expect(page).toHaveURL(/\/Aconiq\/welcome$/);
+    // Asserting the URL did *not* move is the guard: `/` used to redirect to
+    // `/welcome`, and without this the redirect could creep back unnoticed.
+    await expect(page).toHaveURL(/\/Aconiq\/$/);
+    await waitForPage(page);
     await expect(page.getByText("AconiQ", { exact: true })).toBeVisible();
   });
 
@@ -91,5 +92,23 @@ test.describe("Locale", () => {
       await expect(navLink(page, message("de", key))).toBeVisible();
     }
     await expect(navLink(page, message("en", "nav_model"))).toHaveCount(0);
+  });
+
+  test("puts the selected run in the URL, and Back returns to no selection", async ({
+    page,
+  }) => {
+    // The history behaviour the parameterised routes exist for. Asserted from
+    // an id that cannot exist, because the WASM dev server starts with no runs
+    // and there is nothing in the list to click.
+    await useLocale(page, "en");
+    await page.goto(appPath("/results"));
+    await waitForPage(page);
+
+    await page.goto(appPath("/results/does-not-exist"));
+    await waitForPage(page);
+    await expect(page.getByRole("alert")).toContainText("does-not-exist");
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/Aconiq\/results$/);
   });
 });

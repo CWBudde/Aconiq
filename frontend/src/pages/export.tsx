@@ -10,6 +10,7 @@ import {
   FileText,
   FileCode,
   FileType,
+  FileCheck,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import {
@@ -31,11 +32,13 @@ import {
 import { Callout } from "@/ui/callout";
 import { CopyField } from "@/ui/copy-field";
 import { EmptyState } from "@/ui/empty-state";
+import { ModeGate } from "@/ui/mode-gate";
 import { formatDateTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { getArtifactContentURL, useCreateExport, useRuns } from "@/api/hooks";
 import { backend } from "@/api/backend";
+import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { m } from "@/i18n/messages";
 
@@ -46,8 +49,8 @@ import { m } from "@/i18n/messages";
 /**
  * Every artifact kind `aconiq export` can write, keyed exactly as the CLI
  * stamps it. A kind missing here falls through `kindMeta` and prints its own
- * identifier at the reader, so the table has to track the CLI: `--pdf` emits
- * `export.report_pdf` today, whatever the UI once said about PDFs.
+ * identifier at the reader, so the table has to track `export.go`: every kind
+ * it appends an `ArtifactRef` for needs a row here, added with it.
  */
 const EXPORT_KIND_LABELS: Record<
   string,
@@ -70,6 +73,14 @@ const EXPORT_KIND_LABELS: Record<
     label: m.export_artifact_label_json_context,
     icon: FileCode,
   },
+  "export.report_typst": {
+    label: m.export_artifact_label_typst_report,
+    icon: FileCode,
+  },
+  "export.assessment_16bimschv_json": {
+    label: m.export_artifact_label_bimschv16_assessment,
+    icon: FileCheck,
+  },
 };
 
 function kindMeta(kind: string) {
@@ -78,10 +89,6 @@ function kindMeta(kind: string) {
 
 function isExportArtifact(artifact: ArtifactRef): boolean {
   return artifact.kind.startsWith("export.");
-}
-
-function exportCommand(runId: string): string {
-  return `aconiq export --run-id ${runId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +191,16 @@ function ExportDetail({ run }: { run: RunSummary }) {
         <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_cli_command()}
         </SectionHeading>
-        <CopyField value={exportCommand(run.id)} />
+        <div className="space-y-2">
+          <CopyField value={exportCommand(run.id)} />
+          {/* `--pdf` compiles report.pdf with Typst beside the offline report
+              bundle. Offered as its own line rather than behind a toggle: a
+              read-only hand-off should be copyable at a glance, not stateful. */}
+          <CopyField
+            label={m.label_command_with_pdf()}
+            value={exportCommand(run.id, { pdf: true })}
+          />
+        </div>
       </section>
     </div>
   );
@@ -207,7 +223,10 @@ function NewExportDialog({
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const createExport = useCreateExport();
-  const cliCommand = exportCommand(selectedRunId || "<run-id>");
+  // No fallback here: `exportCommand` substitutes its own placeholder for a
+  // blank id, because a blank `--run-id` exports the latest run rather than
+  // the one the dialog has selected.
+  const cliCommand = exportCommand(selectedRunId);
 
   return (
     <Dialog
@@ -270,7 +289,14 @@ function NewExportDialog({
           <Button variant="outline" onClick={onClose}>
             {m.action_close()}
           </Button>
-          {backend.capabilities.canExport ? (
+          {/* Disabled with a reason rather than absent: a hidden button leaves
+              the user hunting for a control that is not there. The CLI command
+              above stays — the gate says why this is dead, the copy field says
+              what to do instead. */}
+          <ModeGate
+            capability="canExport"
+            reason={m.tooltip_export_unavailable()}
+          >
             <Button
               onClick={() => {
                 if (!selectedRunId) return;
@@ -287,7 +313,7 @@ function NewExportDialog({
                 ? m.status_generating()
                 : m.action_new_export()}
             </Button>
-          ) : null}
+          </ModeGate>
         </DialogFooter>
       </DialogContent>
     </Dialog>

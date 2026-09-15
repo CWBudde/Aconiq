@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter } from "react-router";
 import type { RouteObject } from "react-router";
 
 const MapPage = lazy(() => import("@/pages/map"));
@@ -7,9 +7,8 @@ const ImportPage = lazy(() => import("@/pages/import"));
 const RunPage = lazy(() => import("@/pages/run"));
 const ResultsPage = lazy(() => import("@/pages/results"));
 const ExportPage = lazy(() => import("@/pages/export"));
-const StatusPage = lazy(() => import("@/pages/status"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
-const WelcomePage = lazy(() => import("@/pages/welcome"));
+const ProjectPage = lazy(() => import("@/pages/project"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
 
 import { RootLayout } from "@/layouts/root-layout";
@@ -22,8 +21,7 @@ export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
     children: [
-      { index: true, element: <Navigate to="/welcome" replace /> },
-      { path: "welcome", element: <WelcomePage /> },
+      { index: true, element: <ProjectPage /> },
       { path: "model", element: <MapPage /> },
       { path: "import", element: <ImportPage /> },
       { path: "run", element: <RunPage /> },
@@ -51,7 +49,6 @@ export const routes: RouteObject[] = [
           { path: ":runId", element: <ExportPage /> },
         ],
       },
-      { path: "status", element: <StatusPage /> },
       { path: "settings", element: <SettingsPage /> },
       // A child of the layout, so a mistyped URL keeps the rail, the header
       // heading and a way out. Retired paths land here deliberately: a

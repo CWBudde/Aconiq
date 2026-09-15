@@ -1,15 +1,12 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
-import { Callout } from "@/ui/callout";
-import { KeyValueList } from "@/ui/key-value-list";
-import { PageHeader, SectionHeading } from "@/ui/page-header";
-import { useProjectStatus } from "@/api/hooks";
+import { PageHeader } from "@/ui/page-header";
 import { MapView } from "@/map/map-view";
 import { MapPanel } from "@/map/map-panel";
 import { LayerControl } from "@/map/layer-control";
@@ -22,11 +19,13 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
-import { useDraw } from "@/map/use-draw";
+import { DrawProvider } from "@/map/draw-provider";
+import { DRAW_PARAM } from "@/map/draw-request";
+import { useDrawContext } from "@/map/use-draw-context";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
-import { validateModel } from "@/model/validate";
+import { useModelValidation } from "@/model/use-model-validation";
 import { m } from "@/i18n/messages";
 
 /**
@@ -35,84 +34,76 @@ import { m } from "@/i18n/messages";
  * MapLibre layer this page composes.
  */
 export default function MapPage() {
-  const features = useModelStore((s) => s.features);
-  const receivers = useModelStore((s) => s.receivers);
-  const calcArea = useModelStore((s) => s.calcArea);
-  const hasWorkspaceContent =
-    features.length > 0 || receivers.length > 0 || calcArea !== null;
-
-  if (!hasWorkspaceContent) {
-    return <WorkspaceStart />;
-  }
-
   return <MapWorkspace />;
 }
 
-function ProjectSummary() {
-  const project = useProjectStatus();
-
-  if (project.isLoading) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {m.status_loading_project()}
-      </p>
-    );
-  }
-  if (project.isError) {
-    return <Callout variant="destructive">{project.error.message}</Callout>;
-  }
-  if (!project.data) {
-    return (
-      <Callout variant="neutral" title={m.msg_no_project_yet()}>
-        {m.msg_no_project_yet_help()}
-      </Callout>
-    );
-  }
-  return (
-    <KeyValueList
-      items={[
-        { label: m.label_name_field(), value: project.data.name },
-        { label: m.label_crs_field(), value: project.data.crs, mono: true },
-        {
-          label: m.label_scenarios_field(),
-          value: String(project.data.scenario_count),
-        },
-        { label: m.label_runs_field(), value: String(project.data.run_count) },
-      ]}
-    />
-  );
+/**
+ * The empty-model hint, laid over the map rather than replacing it.
+ *
+ * It used to be an early return in `MapPage`, so on an empty model the canvas,
+ * the draw toolbar, the layer control and the validation panel were all
+ * unmounted — the user was told to start a workspace by a screen that had no
+ * way to draw one.
+ *
+ * A labelled region, not a dialog: the map must stay pannable and the toolbar
+ * reachable while this is up, so there is no focus trap and no autofocus. The
+ * backdrop passes pointer events through; the card catches its own. The card
+ * is opaque because it sits over a map raster, where neither a contrast rule
+ * nor a reviewer can predict what is behind the text.
+ */
+/**
+ * Arm a tool *and* clear the overlay. Arming alone leaves the card covering
+ * the canvas the user was just told to click; dismissing alone leaves them on
+ * an empty map beside a toolbar nobody pointed at.
+ *
+ * Point mode because a single click completes it and opens the new-feature
+ * dialog — line and polygon need a double-click to finish, which strands a
+ * first-timer. Callers must sit inside `DrawProvider`.
+ */
+function useStartDrawing(onDismiss: () => void): () => void {
+  const { setMode } = useDrawContext();
+  return useCallback(() => {
+    setMode("point");
+    onDismiss();
+  }, [setMode, onDismiss]);
 }
 
-function WorkspaceStart() {
+function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
+  const startDrawing = useStartDrawing(onDismiss);
+
   return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
-        <Card className="p-8">
-          <div className="max-w-2xl space-y-4">
-            <Badge variant="outline">{m.section_workspace()}</Badge>
-            <PageHeader
-              title={m.heading_map_workspace()}
-              description={m.msg_map_workspace_description()}
-            />
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-8">
+      <Card
+        role="region"
+        aria-label={m.heading_map_workspace()}
+        className="pointer-events-auto relative max-w-md bg-background p-6 shadow-lg"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 size-7"
+          onClick={onDismiss}
+          aria-label={m.action_close()}
+        >
+          <X aria-hidden="true" />
+        </Button>
+        <div className="space-y-4 pr-8">
+          <Badge variant="outline">{m.section_workspace()}</Badge>
+          <PageHeader
+            as="h3"
+            title={m.heading_map_workspace()}
+            description={m.msg_map_workspace_description()}
+          />
+          <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link to="/import">{m.nav_import()}</Link>
+              <Link to="/import">{m.action_import_data()}</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link to="/status">{m.nav_status()}</Link>
+            <Button variant="outline" onClick={startDrawing}>
+              {m.action_start_drawing()}
             </Button>
           </div>
-        </Card>
-
-        <Card className="space-y-3 p-6">
-          <SectionHeading variant="eyebrow">
-            {m.section_project()}
-          </SectionHeading>
-          <ProjectSummary />
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -124,6 +115,11 @@ function MapWorkspace() {
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   const [newGeometry, setNewGeometry] = useState<Geometry | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  // Local, deliberately: the overlay disappears on its own as soon as the
+  // first feature lands, and it comes back when the model empties again or
+  // the route is left. Persisting the dismissal would hide the only pointer
+  // to "Start drawing" from the one user who needs it.
+  const [startDismissed, setStartDismissed] = useState(false);
   const setCalcArea = useModelStore((s) => s.setCalcArea);
   const clearCalcArea = useModelStore((s) => s.clearCalcArea);
   const calcArea = useModelStore((s) => s.calcArea);
@@ -137,6 +133,19 @@ function MapWorkspace() {
   const [workspaceView] = useState(() =>
     fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
   );
+
+  const hasWorkspaceContent =
+    features.length > 0 || receivers.length > 0 || calcArea !== null;
+  const showStart = !hasWorkspaceContent && !startDismissed;
+
+  // The dismissal covers one empty-model episode, not the whole visit. Without
+  // this, a user who draws a feature and later deletes the last one is left on
+  // an empty map with the hint suppressed for the rest of the route — the one
+  // state it exists for. Clearing it while content exists is invisible:
+  // `showStart` is already false there.
+  useEffect(() => {
+    if (hasWorkspaceContent) setStartDismissed(false);
+  }, [hasWorkspaceContent]);
 
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
@@ -157,10 +166,6 @@ function MapWorkspace() {
     },
     [setCalcArea],
   );
-
-  const { activeMode, setMode, cancel } = useDraw({
-    onFinish: handleDrawFinish,
-  });
 
   const handleFeatureClick = useCallback(
     (features: MapGeoJSONFeature[], e: MapMouseEvent) => {
@@ -197,59 +202,69 @@ function MapWorkspace() {
         zoom={workspaceView.zoom}
         onFeatureClick={handleFeatureClick}
       >
-        <ModelLayers />
-        <DrawToolbar
-          activeMode={activeMode}
-          onModeChange={setMode}
-          onCancel={cancel}
-        />
-        <LayerControl />
-        <CoordinateDisplay />
-        <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
-        <FeatureEditor
-          featureId={editingFeatureId}
-          onClose={() => {
-            setEditingFeatureId(null);
-          }}
-        />
-        <UndoRedoBar />
-        {calcArea ? (
-          <MapPanel
-            position="bottom-right"
-            inset="bottom-14"
-            translucent
-            className="flex items-center gap-1 py-1 pl-1 pr-1"
-          >
-            <Badge variant="info">{m.label_calc_area()}</Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={clearCalcArea}
-              aria-label={m.action_clear_calc_area()}
+        <DrawProvider onFinish={handleDrawFinish}>
+          <ModelLayers />
+          <WorkspaceDrawToolbar />
+          <LayerControl />
+          <CoordinateDisplay />
+          <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
+          <FeatureEditor
+            featureId={editingFeatureId}
+            onClose={() => {
+              setEditingFeatureId(null);
+            }}
+          />
+          <UndoRedoBar />
+          {calcArea ? (
+            <MapPanel
+              position="bottom-right"
+              inset="bottom-14"
+              translucent
+              className="flex items-center gap-1 py-1 pl-1 pr-1"
             >
-              <X aria-hidden="true" />
-            </Button>
-          </MapPanel>
-        ) : null}
-        <ValidationToggle
-          open={showValidation}
-          onToggle={() => {
-            setShowValidation((open) => !open);
-          }}
-        />
-        {showValidation ? (
-          <MapPanel
-            position="bottom-left"
-            inset="bottom-14 left-3"
-            width="w-80"
-            className="p-0"
-            role="region"
-            aria-label={m.label_validation()}
-          >
-            <ValidationPanel onSelectFeature={handleSelectFromValidation} />
-          </MapPanel>
-        ) : null}
+              <Badge variant="info">{m.label_calc_area()}</Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                onClick={clearCalcArea}
+                aria-label={m.action_clear_calc_area()}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </MapPanel>
+          ) : null}
+          <ValidationToggle
+            open={showValidation}
+            onToggle={() => {
+              setShowValidation((open) => !open);
+            }}
+          />
+          {showValidation ? (
+            <MapPanel
+              position="bottom-left"
+              inset="bottom-14 left-3"
+              width="w-80"
+              className="p-0"
+              role="region"
+              aria-label={m.label_validation()}
+            >
+              <ValidationPanel onSelectFeature={handleSelectFromValidation} />
+            </MapPanel>
+          ) : null}
+          <DrawRequest
+            onDismiss={() => {
+              setStartDismissed(true);
+            }}
+          />
+          {showStart ? (
+            <WorkspaceStart
+              onDismiss={() => {
+                setStartDismissed(true);
+              }}
+            />
+          ) : null}
+        </DrawProvider>
       </MapView>
       <NewFeatureDialog
         open={newGeometry !== null}
@@ -259,6 +274,40 @@ function MapWorkspace() {
         }}
       />
     </TooltipProvider>
+  );
+}
+
+/**
+ * Honours `?draw=1`, the flag the project page's "Start drawing" sets, then
+ * strips it so a reload or a Back does not arm the tool again. A boolean
+ * rather than a mode name, so which mode drawing starts in stays a decision
+ * this file makes once.
+ */
+function DrawRequest({ onDismiss }: { onDismiss: () => void }) {
+  const [params, setParams] = useSearchParams();
+  const startDrawing = useStartDrawing(onDismiss);
+  const requested = params.get(DRAW_PARAM) === "1";
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (!requested || handled.current) return;
+    handled.current = true;
+    startDrawing();
+    setParams({}, { replace: true });
+  }, [requested, startDrawing, setParams]);
+
+  return null;
+}
+
+/** Binds the presentational toolbar to the provider above it. */
+function WorkspaceDrawToolbar() {
+  const { activeMode, setMode, cancel } = useDrawContext();
+  return (
+    <DrawToolbar
+      activeMode={activeMode}
+      onModeChange={setMode}
+      onCancel={cancel}
+    />
   );
 }
 
@@ -274,9 +323,8 @@ function ValidationToggle({
   open: boolean;
   onToggle: () => void;
 }) {
-  const features = useModelStore((s) => s.features);
-  const report = useMemo(() => validateModel(features), [features]);
-  const issueCount = report.errors.length + report.warnings.length;
+  const { errorCount, warningCount } = useModelValidation();
+  const issueCount = errorCount + warningCount;
 
   return (
     <Button
@@ -288,9 +336,7 @@ function ValidationToggle({
     >
       <ShieldAlert
         aria-hidden="true"
-        className={
-          report.errors.length > 0 ? "size-3.5 text-destructive" : "size-3.5"
-        }
+        className={errorCount > 0 ? "size-3.5 text-destructive" : "size-3.5"}
       />
       {m.label_validation()}
       {issueCount > 0 ? (

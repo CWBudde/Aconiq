@@ -271,16 +271,33 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(within(dialog).queryByText(m.dialog_desc_new_export())).toBeNull();
   });
 
-  it("offers the CLI command, and no Generate button, without canExport", () => {
+  it("offers the CLI command, and a disabled Generate button, without canExport", () => {
+    // Was: "and no Generate button". Hiding it left the user hunting for a
+    // control that was not there; `ModeGate` disables it and says why, and the
+    // CLI command stays as the route that does work here.
     renderPage([run("run-1", [bundle])]);
 
     const dialog = openDialog();
     expect(within(dialog).getByText(m.label_command())).toBeInTheDocument();
     // No run picked yet: the command carries the literal placeholder.
     expect(
-      within(dialog).getByText("aconiq export --run-id <run-id>"),
+      within(dialog).getByText("aconiq export --run-id RUN_ID"),
     ).toBeInTheDocument();
-    expect(generateButton(dialog)).toBeNull();
+
+    const button = generateButton(dialog);
+    expect(button).not.toBeNull();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("refuses to generate from the gated button", () => {
+    renderPage([run("run-1", [bundle])]);
+
+    const dialog = openDialog();
+    selectRun(dialog, "run-1");
+    const button = generateButton(dialog);
+    if (button) fireEvent.click(button);
+
+    expect(state.createdExports).toHaveLength(0);
   });
 
   it("substitutes the picked run into the CLI command", () => {
@@ -293,7 +310,7 @@ describe("ExportPage new-export dialog: canExport branches", () => {
       within(dialog).getByText("aconiq export --run-id run-7"),
     ).toBeInTheDocument();
     expect(
-      within(dialog).queryByText("aconiq export --run-id <run-id>"),
+      within(dialog).queryByText("aconiq export --run-id RUN_ID"),
     ).toBeNull();
   });
 
@@ -305,7 +322,7 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(generateButton(dialog)).toBeInTheDocument();
     expect(within(dialog).queryByText(m.label_command())).toBeNull();
     expect(
-      within(dialog).queryByText("aconiq export --run-id <run-id>"),
+      within(dialog).queryByText("aconiq export --run-id RUN_ID"),
     ).toBeNull();
   });
 
@@ -550,17 +567,47 @@ describe("ExportPage detail panel", () => {
     expect(screen.queryByTitle(m.label_html_report_preview())).toBeNull();
   });
 
+  /** The `CopyField` that shows `text`, so a page with several can be told apart. */
+  function copyFieldFor(text: string): HTMLElement {
+    const code = screen.getByText(text);
+    expect(code.tagName).toBe("CODE");
+    const field = code.closest('[data-slot="copy-field"]');
+    expect(field).not.toBeNull();
+    return field as HTMLElement;
+  }
+
   it("shows the run's export command and copies it verbatim", () => {
     renderPage([run("run-42", [bundle])]);
 
     expect(screen.getByText(m.section_cli_command())).toBeInTheDocument();
-    const command = screen.getByText("aconiq export --run-id run-42");
-    expect(command.tagName).toBe("CODE");
+    const field = copyFieldFor("aconiq export --run-id run-42");
 
-    const copy = screen.getByRole("button", { name: m.action_copy() });
+    const copy = within(field).getByRole("button", { name: m.action_copy() });
     expect(copy).not.toHaveAttribute("data-copied");
     fireEvent.click(copy);
     expect(writeText).toHaveBeenCalledWith("aconiq export --run-id run-42");
+  });
+
+  /*
+   * `--pdf` shipped with the CLI and the artifact it writes has been labelled
+   * here since the kind table learned `export.report_pdf`. The invitation was
+   * the part still missing: the page showed one command, and it was not the
+   * one that produces the report most people ask for.
+   */
+  it("offers the PDF report as its own copyable command", () => {
+    renderPage([run("run-42", [bundle])]);
+
+    const field = copyFieldFor("aconiq export --run-id run-42 --pdf");
+    expect(
+      within(field).getByText(m.label_command_with_pdf()),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(field).getByRole("button", { name: m.action_copy() }),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      "aconiq export --run-id run-42 --pdf",
+    );
   });
 
   it("says a selected run carries no export artifacts", () => {
@@ -661,6 +708,42 @@ describe("ExportPage unknown artifact kinds", () => {
     expect(
       screen.queryByRole("button", { name: m.action_open_in_browser() }),
     ).toBeNull();
+  });
+
+  /*
+   * `export.report_typst` is written on every export that does not pass
+   * --skip-report, and `export.assessment_16bimschv_json` on every RLS-19 or
+   * Schall 03 run with a model and a receiver table. Both are ordinary output,
+   * so neither may print its own identifier at the reader.
+   */
+  it("labels a Typst report rather than printing its kind", () => {
+    const typst = artifact(
+      "a-typ",
+      "export.report_typst",
+      "exports/run-1/report.typ",
+    );
+    renderPage([run("run-1", [bundle, typst])]);
+
+    expect(
+      screen.getByText(m.export_artifact_label_typst_report()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("export.report_typst")).toBeNull();
+    expect(screen.getByText("report.typ")).toBeInTheDocument();
+  });
+
+  it("labels a 16. BImSchV assessment rather than printing its kind", () => {
+    const assessment = artifact(
+      "a-bim",
+      "export.assessment_16bimschv_json",
+      "exports/run-1/assessment-16bimschv.json",
+    );
+    renderPage([run("run-1", [bundle, assessment])]);
+
+    expect(
+      screen.getByText(m.export_artifact_label_bimschv16_assessment()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("export.assessment_16bimschv_json")).toBeNull();
+    expect(screen.getByText("assessment-16bimschv.json")).toBeInTheDocument();
   });
 
   it("prints the raw kind of any other unknown export kind", () => {
