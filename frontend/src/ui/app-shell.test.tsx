@@ -154,6 +154,28 @@ describe("AppShell landmarks", () => {
     ).not.toHaveAttribute("aria-current");
   });
 
+  it("marks nothing current on a URL the route table sends to not-found", () => {
+    // `/settings/typo` and `/results/a/b` both render NotFoundPage, so the
+    // rail must not claim them: a plain prefix match lit Settings and Results
+    // on pages that do not exist.
+    const { unmount } = renderShell("/settings/typo");
+    expect(
+      screen.getByRole("link", { name: m.nav_settings() }),
+    ).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_workspace(),
+    );
+    unmount();
+
+    renderShell("/results/a/b");
+    expect(
+      screen.getByRole("link", { name: m.nav_results() }),
+    ).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      m.nav_workspace(),
+    );
+  });
+
   it("titles the header from the matched route, not from an exact path", () => {
     renderShell("/results/run-1");
     // The shell renders exactly one h1, in the header.

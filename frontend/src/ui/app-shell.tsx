@@ -36,10 +36,14 @@ interface NavEntry {
   icon: LucideIcon;
   path: string;
   /**
-   * Match the path exactly rather than as a prefix. Only a route that is a
-   * prefix of every other one needs it.
+   * The route pattern this entry answers "is this the current page?" with,
+   * when the link target alone does not describe it. It mirrors
+   * `routes.tsx`, so the rail lights for exactly the URLs that render the
+   * section and for no others: a bare prefix match would also claim
+   * `/settings/typo` and `/results/a/b`, which the catch-all renders as the
+   * not-found page. Defaults to `path`, matched whole.
    */
-  end?: boolean;
+  match?: string;
 }
 
 const importNav: NavEntry = {
@@ -52,8 +56,20 @@ const navMain: NavEntry[] = [
   { title: m.nav_model, icon: Map, path: "/model" },
   importNav,
   { title: m.nav_run, icon: Play, path: "/run" },
-  { title: m.nav_results, icon: BarChart3, path: "/results" },
-  { title: m.nav_export, icon: FileOutput, path: "/export" },
+  // The two parameterised sections: `/results` and `/results/<id>` are the
+  // section, `/results/a/b` is not.
+  {
+    title: m.nav_results,
+    icon: BarChart3,
+    path: "/results",
+    match: "/results/:runId?",
+  },
+  {
+    title: m.nav_export,
+    icon: FileOutput,
+    path: "/export",
+    match: "/export/:runId?",
+  },
 ];
 
 const navFooter: NavEntry[] = [
@@ -63,13 +79,15 @@ const navFooter: NavEntry[] = [
 
 /**
  * A rail link, and the one place the "is this the current page?" question is
- * answered. `useMatch` matches on segment boundaries, so `/results` is current
- * for `/results/<id>` but not for a hypothetical `/results-archive` — an
- * equality test marked neither. It is a hook, which is why this is a component
- * rather than a helper called inside `.map()`.
+ * answered. `useMatch` matches the pattern whole and on segment boundaries, so
+ * `/results/:runId?` is current for `/results` and `/results/<id>` but for
+ * neither `/results-archive` nor `/results/a/b` — an equality test marked the
+ * run URL as nothing, and a prefix match marks the not-found page as Results.
+ * It is a hook, which is why this is a component rather than a helper called
+ * inside `.map()`.
  */
 function NavItem({ item }: { item: NavEntry }) {
-  const match = useMatch({ path: item.path, end: item.end ?? false });
+  const match = useMatch(item.match ?? item.path);
   const current = match !== null;
   return (
     <SidebarMenuItem>
@@ -146,7 +164,7 @@ function PageTitle() {
   // "Workspace" the moment a run id appeared in the URL.
   const allNav = [...navMain, ...navFooter];
   const current = allNav.find((item) =>
-    matchPath({ path: item.path, end: item.end ?? false }, location.pathname),
+    matchPath(item.match ?? item.path, location.pathname),
   );
   if (location.pathname === "/welcome") {
     return (
