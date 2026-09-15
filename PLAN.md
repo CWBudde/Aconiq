@@ -1194,35 +1194,22 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       stack slot per argument, so where it gives out depends on what the caller already spent —
       125 000 survives in bare node and throws under vitest. `results/summarise.ts` counts in
       one loop and has no ceiling.
-- [x] **Import page** (`2892a71`..`15ea117`). The wizard reads the whole v1 schema, adds to the
+- [x] **Import page** (`9349769`..`9bc7322`). The wizard reads the whole v1 schema, adds to the
       workspace or replaces it, and its three flows live in `src/import/` beside the route module.
-      Seven constraints follow.
-      **Skipping, not re-minting, is what makes a re-import idempotent.** `mergeModel` keeps what
-      the workspace already holds under an id and drops the incoming copy; a re-minted id would be
-      a second copy of the same feature, and ids are what the project keys on. Ids are one
-      namespace across features and receivers, because `validateProjectModel` checks them as one.
-      **Add needs no confirmation and Replace does.** Add loses nothing and is a single undo;
-      Replace goes through `loadModel`, which resets the command stack rather than extending it,
-      so nothing takes it back. A merge that changes nothing pushes no command at all, or the
-      redo stack would be cleared by an import that did nothing.
-      **An empty workspace gets one button and no dialog**, because Add and Replace would do the
-      same thing. The choice appears exactly where it has a consequence.
-      **The preview names a feature id but cannot link it**: those features are not in the store
-      until Add or Replace is chosen. The done step links the findings whose feature actually
-      landed, through `?select=` in `map/map-params.ts` (formerly `draw-request.ts`).
-      **`model.empty` is answered above the validator**, the way `useModelValidation` does it. Its
-      message is hardcoded English and the import page calls `validateProjectModel` directly, so an
-      empty file printed that string verbatim. A file holding only a calculation area runs no
-      validator at all.
-      **`normalizeGeoJSON`, `loadFeatures` and `validateModel` are deleted, not documented.** Each
-      dropped receivers silently, and `validateModel`'s docblock justified itself by naming the
-      import wizard as its one legitimate caller. Removing the entry point is what stops the next
-      caller; `PLAN.md`'s count of 400 lines for `pages/import.tsx` was stale — it was 491.
-      **A worktree needs both `frontend/public/aconiq.wasm` and `frontend/public/wasm_exec.js`.**
-      With only the first copied, 49 parity tests skip and the suite reports green over what it
-      never ran — the same failure mode as the `ACONIQ_SOUNDPLAN_FIXTURES` trap above.
-      `kernelSkipReason` is fatal only when `ACONIQ_REQUIRE_WASM` is set, which CI does and a
-      worktree does not, so the skip is silent exactly where the artifacts are missing.
+      Four constraints are still live.
+      **Skipping, not re-minting, is what makes a re-import idempotent**, over one id namespace
+      spanning features and receivers, because `validateProjectModel` checks them as one. A merge
+      that changes nothing pushes no command, or an import that did nothing would clear the redo
+      stack.
+      **Add needs no confirmation and Replace does**: Add is a single undo, Replace resets the
+      command stack. An empty workspace gets one button and neither question.
+      **The done step revalidates the merged model** rather than filtering the preview's report by
+      the landed ids — a skip can resolve the finding it is filtered by. The preview names a
+      feature id without linking it, because nothing is in the store until Add or Replace is
+      chosen.
+      **`model.empty` is answered above the validator**, whose message is hardcoded English. A file
+      holding only a calculation area runs no validator at all, and still counts as one object to
+      import: `countModelObjects` is the only definition of that count.
 - [x] **One receiver CSV, Go's spelling, pinned across the tree boundary.** `encoding/csv` is
       canonical — comma, LF, a trailing newline on every record including the last, minimal
       quoting — and `frontend/src/model/receiver-csv.ts` mirrors it for both the page download and
