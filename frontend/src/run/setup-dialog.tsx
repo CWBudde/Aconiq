@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   AlertCircle,
   Grid2x2,
@@ -34,7 +34,6 @@ import {
 } from "@/ui/evidence-tier-badge";
 import { useCreateRun, useStandards } from "@/api/hooks";
 import { backend } from "@/api/backend";
-import type { ProfileInfo } from "@/api/client";
 import {
   asAPIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
@@ -43,6 +42,7 @@ import { isScaffoldTier } from "@/api/evidence-tier";
 import { useModelStore } from "@/model/model-store";
 import { useProjectSync } from "@/model/use-project-sync";
 import { ParameterField } from "@/run/parameter-field";
+import { useRunSetupSelection } from "@/run/use-run-setup-selection";
 import { getStandardDescription, getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
 
@@ -83,14 +83,6 @@ function RunCreateError({ error }: { error: Error }) {
 // ---------------------------------------------------------------------------
 
 type ReceiverMode = "auto-grid" | "custom";
-
-function defaultParams(profile: ProfileInfo): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const p of profile.parameters) {
-    out[p.name] = p.default_value ?? "";
-  }
-  return out;
-}
 
 function ReceiverModeButton({
   mode,
@@ -152,31 +144,18 @@ export function RunSetupDialog({
   const projectSync = useProjectSync();
   const unsavedChanges = projectSync.enabled && projectSync.dirty;
 
-  const firstStandard = standards?.[0];
+  const selection = useRunSetupSelection(standards);
+  const {
+    standardId: effectiveStandardId,
+    version: effectiveVersion,
+    profile: effectiveProfile,
+    standard: selectedStandard,
+    versionInfo: selectedVersion,
+    profileInfo: selectedProfile,
+    params,
+  } = selection;
 
-  const [standardId, setStandardId] = useState<string>("");
-  const [version, setVersion] = useState<string>("");
-  const [profile, setProfile] = useState<string>("");
-  const [params, setParams] = useState<Record<string, string>>({});
   const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
-
-  const effectiveStandardId = standardId || firstStandard?.id || "";
-  const selectedStandard = useMemo(
-    () => standards?.find((s) => s.id === effectiveStandardId),
-    [standards, effectiveStandardId],
-  );
-
-  const effectiveVersion = version || selectedStandard?.default_version || "";
-  const selectedVersion = useMemo(
-    () => selectedStandard?.versions.find((v) => v.name === effectiveVersion),
-    [selectedStandard, effectiveVersion],
-  );
-
-  const effectiveProfile = profile || selectedVersion?.default_profile || "";
-  const selectedProfile = useMemo(
-    () => selectedVersion?.profiles.find((p) => p.name === effectiveProfile),
-    [selectedVersion, effectiveProfile],
-  );
 
   // A scaffold module carries no normative coefficients, so the API refuses to
   // run one until the request says so. The tier of the standard actually
@@ -200,34 +179,11 @@ export function RunSetupDialog({
   const experimentalOptInMissing =
     requiresExperimentalOptIn && !experimentalAcknowledged;
 
-  const profileKey = `${effectiveStandardId}/${effectiveVersion}/${effectiveProfile}`;
-  const [lastProfileKey, setLastProfileKey] = useState<string>("");
-
-  if (profileKey !== lastProfileKey && selectedProfile) {
-    setLastProfileKey(profileKey);
-    setParams(defaultParams(selectedProfile));
-  }
-
+  // The acknowledgement rides along with the standard rather than inside the
+  // cascade: it is an evidence-tier decision, not part of choosing a profile.
   function handleStandardChange(id: string) {
-    setStandardId(id);
-    setVersion("");
-    setProfile("");
-    setParams({});
-    setLastProfileKey("");
+    selection.selectStandard(id);
     setAcknowledgedStandardId(null);
-  }
-
-  function handleVersionChange(v: string) {
-    setVersion(v);
-    setProfile("");
-    setParams({});
-    setLastProfileKey("");
-  }
-
-  function handleProfileChange(p: string) {
-    setProfile(p);
-    setParams({});
-    setLastProfileKey("");
   }
 
   function handleSubmit() {
@@ -321,7 +277,7 @@ export function RunSetupDialog({
                   <Label htmlFor="version">{m.label_version()}</Label>
                   <Select
                     value={effectiveVersion}
-                    onValueChange={handleVersionChange}
+                    onValueChange={selection.selectVersion}
                     disabled={!selectedStandard}
                   >
                     <SelectTrigger id="version">
@@ -343,7 +299,7 @@ export function RunSetupDialog({
                   <Label htmlFor="profile">{m.label_profile()}</Label>
                   <Select
                     value={effectiveProfile}
-                    onValueChange={handleProfileChange}
+                    onValueChange={selection.selectProfile}
                     disabled={!selectedVersion}
                   >
                     <SelectTrigger id="profile">
@@ -403,7 +359,7 @@ export function RunSetupDialog({
                       param={param}
                       value={params[param.name] ?? ""}
                       onChange={(v) => {
-                        setParams((prev) => ({ ...prev, [param.name]: v }));
+                        selection.setParam(param.name, v);
                       }}
                     />
                   ))}
