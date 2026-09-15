@@ -106,14 +106,35 @@ export default function ImportPage() {
   // The validator follows: `validateProjectModel` checks receiver ids against
   // feature ids and the receivers themselves, which a features-only report
   // cannot do — it would call a model with a duplicate receiver valid.
+  //
+  // "Nothing to import" is answered here, *above* the validator, the way
+  // `useModelValidation` answers "empty". `validateProjectModel` pushes a
+  // synthetic `model.empty` error whose message is hardcoded English and whose
+  // own comment says it must never reach the UI — and this page calls the
+  // validator directly, so an empty FeatureCollection printed that English
+  // string verbatim to a German reader. A file carrying only a calculation
+  // area is the same case seen from the other side: there is something to
+  // import and nothing for the validator to check, so it is not run at all.
   const handleNormalizeAndPreview = useCallback(
     (collection: GeoJSONFeatureCollection) => {
       const result = normalizeModelGeoJSON(collection);
+      if (
+        result.features.length === 0 &&
+        result.receivers.length === 0 &&
+        result.calcArea === null
+      ) {
+        setError(m.msg_import_nothing());
+        return;
+      }
       setFeatures(result.features);
       setReceivers(result.receivers);
       setCalcArea(result.calcArea);
       setSkippedCount(result.skipped.length);
-      setReport(validateProjectModel(result.features, result.receivers));
+      setReport(
+        result.features.length === 0 && result.receivers.length === 0
+          ? null
+          : validateProjectModel(result.features, result.receivers),
+      );
       setStep("preview");
     },
     [],
@@ -200,7 +221,7 @@ export default function ImportPage() {
           </div>
         ) : null}
 
-        {step === "preview" && report ? (
+        {step === "preview" ? (
           <PreviewStep
             features={features}
             receivers={receivers}

@@ -190,6 +190,93 @@ describe("ImportPage", () => {
     });
   }
 
+  it("refuses an empty file without showing the validator's English", async () => {
+    // `validateProjectModel` answers an empty model with `model.empty`, whose
+    // message is hardcoded English and whose own comment says it must never
+    // reach the UI. This page calls the validator directly, so the refusal has
+    // to happen above it.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: {
+        files: [makeFile('{"type":"FeatureCollection","features":[]}')],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(m.msg_import_nothing())).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+    // Still on the upload step, where another file can be chosen.
+    expect(screen.getByText("Import GeoJSON")).toBeInTheDocument();
+  });
+
+  it("refuses a file whose every feature was skipped", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          makeFile(
+            JSON.stringify({
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  properties: { kind: "terrain" },
+                  geometry: { type: "Point", coordinates: [10, 51] },
+                },
+              ],
+            }),
+          ),
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(m.msg_import_nothing())).toBeInTheDocument();
+    });
+  });
+
+  it("previews a file that holds only a calculation area", async () => {
+    // Something to import, nothing for the validator to check: running it
+    // would produce the same `model.empty` in English.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          makeFile(
+            JSON.stringify({
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  properties: { id: "area-1", kind: "calc-area" },
+                  geometry: {
+                    type: "Polygon",
+                    coordinates: [
+                      [
+                        [0, 0],
+                        [2, 0],
+                        [2, 2],
+                        [0, 0],
+                      ],
+                    ],
+                  },
+                },
+              ],
+            }),
+          ),
+        ],
+      },
+    });
+
+    await waitFor(() => screen.getByText("Import Preview"));
+    expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
+    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+  });
+
   it("asks before replacing the workspace, and replaces nothing until then", async () => {
     seedWorkspace();
     renderImportPage();

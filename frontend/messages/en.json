@@ -381,5 +381,6 @@
   "action_import_add": "Add to workspace",
   "action_import_replace": "Replace workspace",
   "msg_import_skips_existing": "{count} of these are already in the workspace. Adding keeps what is there and imports the rest.",
-  "msg_import_skips_calc_area": "The workspace already has a calculation area. Adding keeps the one that is there."
+  "msg_import_skips_calc_area": "The workspace already has a calculation area. Adding keeps the one that is there.",
+  "msg_import_nothing": "There is nothing to import — the file holds no features, receivers or calculation area the model reads."
 }

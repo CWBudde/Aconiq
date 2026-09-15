@@ -39,7 +39,8 @@ export function PreviewStep({
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
   skippedCount: number;
-  report: ValidationReport;
+  /** null when there was nothing for the validator to check. */
+  report: ValidationReport | null;
   /** No workspace to lose: one button, and no confirmation. */
   workspaceEmpty: boolean;
   /** What Add would leave behind, so the reader reads it before choosing. */
@@ -93,7 +94,7 @@ export function PreviewStep({
         />
       </Card>
 
-      {report.errors.length > 0 ? (
+      {report && report.errors.length > 0 ? (
         <Callout
           variant="destructive"
           icon={XCircle}
@@ -114,7 +115,7 @@ export function PreviewStep({
         </Callout>
       ) : null}
 
-      {report.warnings.length > 0 ? (
+      {report && report.warnings.length > 0 ? (
         <Callout variant="warning" icon={AlertTriangle}>
           {String(report.warnings.length)} {m.status_validation_warnings()}
         </Callout>

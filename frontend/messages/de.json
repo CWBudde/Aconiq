@@ -381,5 +381,6 @@
   "action_import_add": "Zum Arbeitsbereich hinzufügen",
   "action_import_replace": "Arbeitsbereich ersetzen",
   "msg_import_skips_existing": "{count} davon sind bereits im Arbeitsbereich vorhanden. Beim Hinzufügen bleibt der Bestand erhalten, der Rest wird importiert.",
-  "msg_import_skips_calc_area": "Der Arbeitsbereich enthält bereits ein Berechnungsgebiet. Beim Hinzufügen bleibt das vorhandene erhalten."
+  "msg_import_skips_calc_area": "Der Arbeitsbereich enthält bereits ein Berechnungsgebiet. Beim Hinzufügen bleibt das vorhandene erhalten.",
+  "msg_import_nothing": "Es gibt nichts zu importieren — die Datei enthält keine Objekte, Immissionsorte und kein Berechnungsgebiet, die das Modell liest."
 }
