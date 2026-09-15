@@ -1,18 +1,13 @@
 import { useState } from "react";
 import {
-  BarChart3,
-  FolderKanban,
   History,
   Languages,
-  Map,
   Monitor,
   Moon,
-  Play,
   Server,
   Settings,
   SlidersHorizontal,
   Sun,
-  Layers3,
   type LucideIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
@@ -39,14 +34,12 @@ import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { useTheme } from "@/ui/theme-provider";
 import { cn } from "@/ui/lib/utils";
 
-type CategoryId =
-  | "app"
-  | "project"
-  | "model"
-  | "map"
-  | "runs"
-  | "results"
-  | "advanced";
+/**
+ * The ids are a URL contract: they are what `?category=` carries, so they
+ * outlive the labels above them. "app" is General and "advanced" is
+ * Connection; renaming either would break a bookmark to buy a prettier URL.
+ */
+type CategoryId = "app" | "advanced";
 
 type Category = {
   id: CategoryId;
@@ -359,28 +352,6 @@ function AdvancedSettings({
   );
 }
 
-function PlannedCategory({ category }: { category: Category }) {
-  const Icon = category.icon;
-
-  return (
-    <Card className="p-6">
-      <div className="flex items-start gap-4">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
-          <Icon className="size-5" aria-hidden="true" />
-        </div>
-        <PageHeader
-          title={category.title()}
-          description={category.description()}
-        />
-      </div>
-
-      <Callout variant="neutral" className="mt-6 border-dashed">
-        {m.msg_settings_category_planned()}
-      </Callout>
-    </Card>
-  );
-}
-
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const locale = getLocale();
@@ -412,36 +383,6 @@ export default function SettingsPage() {
       icon: Settings,
       title: m.settings_category_app,
       description: m.settings_category_app_desc,
-    },
-    {
-      id: "project",
-      icon: FolderKanban,
-      title: m.settings_category_project,
-      description: m.settings_category_project_desc,
-    },
-    {
-      id: "model",
-      icon: Layers3,
-      title: m.settings_category_model,
-      description: m.settings_category_model_desc,
-    },
-    {
-      id: "map",
-      icon: Map,
-      title: m.settings_category_map,
-      description: m.settings_category_map_desc,
-    },
-    {
-      id: "runs",
-      icon: Play,
-      title: m.settings_category_runs,
-      description: m.settings_category_runs_desc,
-    },
-    {
-      id: "results",
-      icon: BarChart3,
-      title: m.settings_category_results,
-      description: m.settings_category_results_desc,
     },
     {
       id: "advanced",
@@ -541,19 +482,6 @@ export default function SettingsPage() {
               hasOverride={apiBaseUrlOverridePresent}
             />
           </TabsContent>
-          {categories
-            .filter(
-              (category) => category.id !== "app" && category.id !== "advanced",
-            )
-            .map((category) => (
-              <TabsContent
-                key={category.id}
-                value={category.id}
-                className="mt-0"
-              >
-                <PlannedCategory category={category} />
-              </TabsContent>
-            ))}
         </div>
       </Tabs>
     </div>

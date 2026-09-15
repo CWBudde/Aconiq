@@ -59,36 +59,60 @@ describe("SettingsPage", () => {
 
   // The category strip is a Radix Tabs list, which activates a tab on pointer
   // down rather than on click; `userEvent` fires the full pointer sequence.
-  it("switches to a planned settings category", async () => {
+  it("switches to the Connection category", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole("tab", { name: /Project/i }));
+    await user.click(
+      // The tab's accessible name is its title *and* its description, so this
+      // matches on the title rather than the whole string.
+      screen.getByRole("tab", {
+        name: new RegExp(m.settings_category_advanced(), "i"),
+      }),
+    );
 
     expect(
-      screen.getByRole("heading", { name: m.settings_category_project() }),
+      screen.getByRole("heading", { name: m.settings_category_advanced() }),
     ).toBeInTheDocument();
+    // The id stays "advanced" while the label became "Connection": the id is
+    // a URL, and renaming it would break a bookmark to buy a prettier one.
     expect(screen.getByTestId("location-search")).toHaveTextContent(
-      "?category=project",
+      "?category=advanced",
     );
   });
 
   it("restores the active category from the URL", () => {
+    renderPage(["/settings?category=advanced"]);
+
+    expect(
+      screen.getByRole("heading", { name: m.settings_category_advanced() }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?category=advanced",
+    );
+  });
+
+  it("falls back to General for a category that no longer exists", () => {
+    // Five reserved categories were removed; `?category=results` is a live
+    // bookmark for anyone who opened one.
     renderPage(["/settings?category=results"]);
 
     expect(
-      screen.getByRole("heading", { name: m.settings_category_results() }),
+      screen.getByRole("heading", { name: m.settings_category_app() }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("location-search")).toHaveTextContent(
-      "?category=results",
-    );
   });
 
   it("saves and clears the advanced API endpoint override", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole("tab", { name: /Advanced/i }));
+    await user.click(
+      // The tab's accessible name is its title *and* its description, so this
+      // matches on the title rather than the whole string.
+      screen.getByRole("tab", {
+        name: new RegExp(m.settings_category_advanced(), "i"),
+      }),
+    );
 
     const endpointInput = screen.getByLabelText(m.label_api_base_url());
     fireEvent.change(endpointInput, {
@@ -140,7 +164,7 @@ describe("SettingsPage", () => {
 });
 
 describe("SettingsPage heading order", () => {
-  it.each(["app", "advanced", "project"])(
+  it.each(["app", "advanced"])(
     "keeps heading levels contiguous in the %s category",
     (category) => {
       // The shell's h1 sits above this page, so a level of 2 is the entry;
