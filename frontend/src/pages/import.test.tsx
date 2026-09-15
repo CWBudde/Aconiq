@@ -1,3 +1,4 @@
+import { m } from "@/i18n/messages";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   render,
@@ -152,6 +153,23 @@ describe("ImportPage", () => {
     await waitFor(() => screen.getByText("Import Preview"));
     confirmImport();
     expect(useModelStore.getState().features).toHaveLength(2);
+  });
+
+  it("moves focus to the done step's action, not to the body", async () => {
+    // Confirming removes the Import button the dialog was opened from, so
+    // Radix restores focus to an element that no longer exists and it falls to
+    // `<body>`. Nothing in the axe baseline covers a lost focus target.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: m.action_go_to_map() }),
+      );
+    });
   });
 
   it("shows done step after confirm", async () => {

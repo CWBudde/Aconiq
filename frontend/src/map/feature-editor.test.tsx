@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { FeatureEditor } from "./feature-editor";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature, ModelReceiver } from "@/model/types";
+import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { m } from "@/i18n/messages";
 
 /**
@@ -105,6 +112,47 @@ describe("FeatureEditor deletion", () => {
 
     confirmDelete();
     expect(useModelStore.getState().receivers).toHaveLength(0);
+  });
+
+  it("puts focus back in the content when the panel deletes itself", async () => {
+    // Confirming closes the panel, taking the Delete button with it, so Radix
+    // restores focus to an element that is gone and it lands on `<body>`. The
+    // e2e axe baseline does not cover the map route, and no rule covers this.
+    useModelStore.getState().addFeature(source);
+    render(
+      <div id={MAIN_CONTENT_ID} tabIndex={-1}>
+        <FeatureEditor featureId="src-1" onClose={vi.fn()} />
+      </div>,
+    );
+
+    fireEvent.click(deleteButton());
+    confirmDelete();
+
+    await waitFor(() => {
+      expect(document.activeElement?.id).toBe(MAIN_CONTENT_ID);
+    });
+  });
+
+  it("does not move focus when the confirmation is cancelled", () => {
+    useModelStore.getState().addFeature(source);
+    render(
+      <div id={MAIN_CONTENT_ID} tabIndex={-1}>
+        <FeatureEditor featureId="src-1" onClose={vi.fn()} />
+      </div>,
+    );
+
+    fireEvent.click(deleteButton());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_cancel(),
+      }),
+    );
+
+    // Only that this component does not hijack it: where Radix's own
+    // restoration goes is Radix's business, and jsdom never gave the trigger
+    // focus to restore.
+    expect(document.activeElement?.id).not.toBe(MAIN_CONTENT_ID);
+    expect(useModelStore.getState().features).toHaveLength(1);
   });
 
   it("is undoable after the confirmation, which is what the wording promises", () => {

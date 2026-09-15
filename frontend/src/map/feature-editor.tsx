@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/ui/components/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { focusMainContent } from "@/ui/main-content";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import {
@@ -612,6 +613,9 @@ function DeleteButton({
   onDelete: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  // Read while the dialog closes, which is before the next render, so a ref
+  // rather than state.
+  const deleted = useRef(false);
 
   return (
     <>
@@ -633,7 +637,18 @@ function DeleteButton({
         title={title}
         description={description}
         confirmLabel={m.action_delete_feature()}
-        onConfirm={onDelete}
+        onConfirm={() => {
+          deleted.current = true;
+          onDelete();
+        }}
+        // Both call sites close the panel on delete, taking this button with
+        // it, so there is nothing for Radix to restore focus to. Cancelling
+        // leaves the panel standing and keeps the ordinary restoration.
+        onCloseAutoFocus={(event) => {
+          if (!deleted.current) return;
+          event.preventDefault();
+          focusMainContent();
+        }}
       />
     </>
   );

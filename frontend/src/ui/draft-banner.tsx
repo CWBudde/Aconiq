@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { History } from "lucide-react";
 import { useModelStore } from "@/model/model-store";
 import { loadDraft, discardDraft } from "@/model/use-autosave";
@@ -8,6 +8,7 @@ import {
 } from "@/model/use-project-hydration";
 import { Button } from "@/ui/components/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { focusMainContent } from "@/ui/main-content";
 import { m } from "@/i18n/messages";
 
 /**
@@ -32,6 +33,9 @@ export function DraftBanner() {
   const offered = projectHydrationStore((s) => s.draftOffered);
   const [dismissed, setDismissed] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // Read while the dialog closes, which is before the next render, so a ref
+  // rather than state.
+  const discarded = useRef(false);
 
   const visible = settled && offered && !dismissed;
   if (!visible) return null;
@@ -50,6 +54,7 @@ export function DraftBanner() {
 
   function handleDiscard() {
     discardDraft();
+    discarded.current = true;
     setDismissed(true);
     setConfirmingDiscard(false);
   }
@@ -88,6 +93,14 @@ export function DraftBanner() {
         description={m.confirm_discard_draft_desc()}
         confirmLabel={m.action_discard()}
         onConfirm={handleDiscard}
+        // Discarding takes the whole banner away, the Discard button with it,
+        // so Radix has nothing to hand focus back to. Cancelling does not, and
+        // must keep the ordinary restoration.
+        onCloseAutoFocus={(event) => {
+          if (!discarded.current) return;
+          event.preventDefault();
+          focusMainContent();
+        }}
       />
     </div>
   );
