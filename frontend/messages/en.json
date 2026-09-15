@@ -203,6 +203,7 @@
   "tooltip_toggle_theme": "Toggle theme",
   "tooltip_undo": "Undo (Ctrl+Z)",
   "tooltip_redo": "Redo (Ctrl+Shift+Z)",
+  "tooltip_export_unavailable": "This backend does not generate export bundles. Use the CLI command below.",
 
   "tool_select_edit": "Select / Edit",
   "tool_draw_point": "Draw Point",
@@ -274,6 +275,8 @@
   "msg_draft_present": "A saved draft is present.",
   "msg_draft_absent": "No saved draft is stored.",
   "msg_runtime_api": "API-backed browser UI",
+  "label_mode_api": "API",
+  "label_mode_browser": "Browser",
   "msg_runtime_wasm": "WASM-only browser UI",
   "label_api_base_url": "API base URL",
 

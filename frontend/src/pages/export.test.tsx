@@ -271,7 +271,10 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(within(dialog).queryByText(m.dialog_desc_new_export())).toBeNull();
   });
 
-  it("offers the CLI command, and no Generate button, without canExport", () => {
+  it("offers the CLI command, and a disabled Generate button, without canExport", () => {
+    // Was: "and no Generate button". Hiding it left the user hunting for a
+    // control that was not there; `ModeGate` disables it and says why, and the
+    // CLI command stays as the route that does work here.
     renderPage([run("run-1", [bundle])]);
 
     const dialog = openDialog();
@@ -280,7 +283,21 @@ describe("ExportPage new-export dialog: canExport branches", () => {
     expect(
       within(dialog).getByText("aconiq export --run-id <run-id>"),
     ).toBeInTheDocument();
-    expect(generateButton(dialog)).toBeNull();
+
+    const button = generateButton(dialog);
+    expect(button).not.toBeNull();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("refuses to generate from the gated button", () => {
+    renderPage([run("run-1", [bundle])]);
+
+    const dialog = openDialog();
+    selectRun(dialog, "run-1");
+    const button = generateButton(dialog);
+    if (button) fireEvent.click(button);
+
+    expect(state.createdExports).toHaveLength(0);
   });
 
   it("substitutes the picked run into the CLI command", () => {

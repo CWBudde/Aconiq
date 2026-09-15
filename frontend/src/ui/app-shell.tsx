@@ -29,6 +29,7 @@ import { Separator } from "@/ui/components/separator";
 import { ThemeToggle } from "@/ui/theme-toggle";
 import { LanguageToggle } from "@/ui/language-toggle";
 import { SaveStatus } from "@/ui/save-status";
+import { ModeChip } from "@/ui/mode-chip";
 import { m } from "@/i18n/messages";
 
 interface NavEntry {
@@ -204,6 +205,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex flex-1 items-center justify-between">
             <PageTitle />
             <div className="flex items-center gap-1">
+              {/* Leftmost: SaveStatus renders nothing in browser mode, and a
+                  chip that moved with the mode would be worse than one
+                  anchored to the cluster's edge. */}
+              <ModeChip />
               <SaveStatus />
               <LanguageToggle />
               <ThemeToggle />

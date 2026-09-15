@@ -31,6 +31,7 @@ import {
 import { Callout } from "@/ui/callout";
 import { CopyField } from "@/ui/copy-field";
 import { EmptyState } from "@/ui/empty-state";
+import { ModeGate } from "@/ui/mode-gate";
 import { formatDateTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
@@ -270,7 +271,14 @@ function NewExportDialog({
           <Button variant="outline" onClick={onClose}>
             {m.action_close()}
           </Button>
-          {backend.capabilities.canExport ? (
+          {/* Disabled with a reason rather than absent: a hidden button leaves
+              the user hunting for a control that is not there. The CLI command
+              above stays — the gate says why this is dead, the copy field says
+              what to do instead. */}
+          <ModeGate
+            capability="canExport"
+            reason={m.tooltip_export_unavailable()}
+          >
             <Button
               onClick={() => {
                 if (!selectedRunId) return;
@@ -287,7 +295,7 @@ function NewExportDialog({
                 ? m.status_generating()
                 : m.action_new_export()}
             </Button>
-          ) : null}
+          </ModeGate>
         </DialogFooter>
       </DialogContent>
     </Dialog>

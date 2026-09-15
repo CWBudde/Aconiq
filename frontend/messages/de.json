@@ -203,6 +203,7 @@
   "tooltip_toggle_theme": "Design wechseln",
   "tooltip_undo": "Rückgängig (Strg+Z)",
   "tooltip_redo": "Wiederherstellen (Strg+Umschalt+Z)",
+  "tooltip_export_unavailable": "Dieses Backend erzeugt keine Exportpakete. Den CLI-Befehl unten verwenden.",
 
   "tool_select_edit": "Auswählen / Bearbeiten",
   "tool_draw_point": "Punkt zeichnen",
@@ -274,6 +275,8 @@
   "msg_draft_present": "Ein gespeicherter Entwurf ist vorhanden.",
   "msg_draft_absent": "Es ist kein gespeicherter Entwurf vorhanden.",
   "msg_runtime_api": "Browser-Oberfläche mit API-Anbindung",
+  "label_mode_api": "API",
+  "label_mode_browser": "Browser",
   "msg_runtime_wasm": "Browser-Oberfläche im WASM-Modus",
   "label_api_base_url": "API-Basis-URL",
 
