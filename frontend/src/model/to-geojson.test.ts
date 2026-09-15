@@ -118,6 +118,34 @@ describe("modelToGeoJSON", () => {
     });
   });
 
+  it("keeps the properties a receiver carries, and lets the store's win", () => {
+    // Emitting only `kind` and `height_m` dropped `bimschv16_area_category` on
+    // the first save after an import, and `assessment/bimschv16` then skipped
+    // that receiver as missing its area category.
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [
+        {
+          ...rcv,
+          properties: {
+            id: "r1",
+            kind: "receiver",
+            height_m: 4,
+            bimschv16_area_category: "allgemeines Wohngebiet",
+          },
+        },
+      ],
+      calcArea: null,
+    });
+
+    expect(fc.features[0]?.properties).toEqual({
+      id: "r1",
+      kind: "receiver",
+      height_m: 4,
+      bimschv16_area_category: "allgemeines Wohngebiet",
+    });
+  });
+
   it("produces an empty collection for an empty model", () => {
     expect(
       modelToGeoJSON({ features: [], receivers: [], calcArea: null }).features,

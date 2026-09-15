@@ -175,6 +175,11 @@ function normalizeEntry(raw: GeoJSONFeature, index: number): ModelEntry {
  * dropping the feature. Dropping is exactly the loss this normalizer exists to
  * fix — a receiver the user placed on the map is not something to discard over
  * a property a writer left out.
+ *
+ * The properties are kept for the same reason, and the same way a feature's
+ * are: a receiver carries `bimschv16_area_category`, which is the only thing
+ * that makes it assessable, and reading it into a point alone loses it on the
+ * next save.
  */
 function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
   if (raw.geometry.type !== "Point") {
@@ -185,6 +190,7 @@ function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
   }
 
   const height = Number(raw.properties["height_m"]);
+  const normalizedProps = normalizeProperties(raw.properties);
 
   return {
     kind: "receiver",
@@ -194,6 +200,7 @@ function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
         Number.isFinite(height) && height > 0
           ? height
           : DEFAULT_RECEIVER_HEIGHT_M,
+      ...(normalizedProps !== undefined && { properties: normalizedProps }),
       geometry: {
         type: "Point",
         coordinates: raw.geometry.coordinates as Position,

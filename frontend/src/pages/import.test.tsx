@@ -1,5 +1,5 @@
 import { m } from "@/i18n/messages";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   render,
@@ -74,6 +74,49 @@ const projectGeoJSON = JSON.stringify({
   ],
 });
 
+/** Something to import with nothing for the validator to check. */
+const areaOnlyGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "area-1", kind: "calc-area" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  ],
+});
+
+/**
+ * One id used twice, once as a feature and once as a receiver — the cross-kind
+ * collision `validateProjectModel` reports and `planMerge` resolves by landing
+ * the feature and skipping the receiver.
+ */
+const collidingKindsGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "dup", kind: "source", source_type: "point" },
+      geometry: { type: "Point", coordinates: [10, 51] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "dup", kind: "receiver", height_m: 4 },
+      geometry: { type: "Point", coordinates: [10.002, 51.002] },
+    },
+  ],
+});
+
 /** Already in the workspace when a test wants the import to have a choice. */
 const existing: ModelFeature = {
   id: "placed-1",
@@ -133,6 +176,10 @@ function renderImportPage() {
 
 beforeEach(() => {
   useModelStore.getState().reset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("ImportPage", () => {
@@ -255,34 +302,7 @@ describe("ImportPage", () => {
     // would produce the same `model.empty` in English.
     renderImportPage();
     const input = getFileInput();
-    fireEvent.change(input, {
-      target: {
-        files: [
-          makeFile(
-            JSON.stringify({
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature",
-                  properties: { id: "area-1", kind: "calc-area" },
-                  geometry: {
-                    type: "Polygon",
-                    coordinates: [
-                      [
-                        [0, 0],
-                        [2, 0],
-                        [2, 2],
-                        [0, 0],
-                      ],
-                    ],
-                  },
-                },
-              ],
-            }),
-          ),
-        ],
-      },
-    });
+    fireEvent.change(input, { target: { files: [makeFile(areaOnlyGeoJSON)] } });
 
     await waitFor(() => screen.getByText("Import Preview"));
     expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
@@ -399,10 +419,55 @@ describe("ImportPage", () => {
       screen.getByRole("button", { name: m.action_import_add() }),
     );
 
-    // Two of the three arrived: `src-1` was already there.
+    // Two of the three arrived — the receiver and the calculation area.
+    // `src-1` was already there.
+    expect(
+      screen.getByText(`2 ${m.msg_import_complete_description()}`),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the calculation area as one of the objects it imports", async () => {
+    // A file holding nothing else still changes the model, so a button reading
+    // "Import 0 objects" was offering to do nothing — and the done step then
+    // reported nothing either.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(areaOnlyGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_import_features({ count: 1 }),
+      }),
+    );
+
     expect(
       screen.getByText(`1 ${m.msg_import_complete_description()}`),
     ).toBeInTheDocument();
+    expect(useModelStore.getState().calcArea).not.toBeNull();
+  });
+
+  it("does not report a duplicate the add itself resolved", async () => {
+    // The file names one id twice, once as a feature and once as a receiver,
+    // which `validateProjectModel` reports as `receiver.id.duplicate`. The
+    // merge lands the feature and skips the receiver, so the model it produced
+    // holds no duplicate — filtering the *pre-merge* report by the landed ids
+    // kept the finding, because the id it names is exactly the one that landed.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: { files: [makeFile(collidingKindsGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+    expect(screen.getByText(/Duplicate receiver ID/i)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_import_features({ count: 2 }),
+      }),
+    );
+
+    expect(screen.queryByText(/Duplicate receiver ID/i)).toBeNull();
   });
 
   it("loads features into the model store on confirm", async () => {
@@ -557,6 +622,50 @@ describe("ImportPage", () => {
 
     expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
       "52.49",
+    );
+  });
+
+  it("keeps an edit made while the location request is still pending", async () => {
+    // Only the geolocation button is disabled while the browser asks, so the
+    // endpoint stays editable. A success callback that spread the `query` it
+    // closed over would put the pre-request endpoint back and send the fetch
+    // somewhere the reader did not choose.
+    let succeed: ((pos: GeolocationPosition) => void) | null = null;
+    // jsdom implements no Geolocation API at all, so this defines the one call
+    // the panel makes rather than spying on an existing one.
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (onSuccess: (pos: GeolocationPosition) => void) => {
+          succeed = onSuccess;
+        },
+      },
+    });
+
+    renderImportPage();
+    await openTab(m.action_import_from_osm());
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_use_current_location() }),
+    );
+
+    fireEvent.change(
+      screen.getByLabelText(m.label_overpass_endpoint_optional()),
+      { target: { value: "https://overpass.example/api" } },
+    );
+
+    act(() => {
+      succeed?.({
+        coords: { latitude: 52.5, longitude: 13.4 },
+      } as GeolocationPosition);
+    });
+
+    expect(
+      screen.getByLabelText<HTMLInputElement>(
+        m.label_overpass_endpoint_optional(),
+      ).value,
+    ).toBe("https://overpass.example/api");
+    expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
+      "52.495000",
     );
   });
 });

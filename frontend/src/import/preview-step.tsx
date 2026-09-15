@@ -4,6 +4,7 @@ import { Card } from "@/ui/components/card";
 import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
 import { PageHeader } from "@/ui/page-header";
+import { countModelObjects } from "@/model/model-store";
 import type { MergeSkips } from "@/model/model-store";
 import type {
   CalcArea,
@@ -53,7 +54,7 @@ export function PreviewStep({
     String(features.filter((f) => f.kind === kind).length);
 
   const skippedOnMerge = mergeSkips.features + mergeSkips.receivers;
-  const importedCount = features.length + receivers.length;
+  const importedCount = countModelObjects({ features, receivers, calcArea });
 
   return (
     <div className="space-y-4">

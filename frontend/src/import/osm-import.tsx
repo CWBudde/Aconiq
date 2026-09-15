@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { LocateFixed } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
@@ -68,6 +69,14 @@ export interface OsmQuery {
  * moment the reader looked at the file tab, and "Use current location" would
  * have to be answered a second time. One object with one setter, so the panel
  * takes two props for it rather than ten.
+ *
+ * `onQueryChange` is a `SetStateAction` dispatcher and every write goes through
+ * its updater form, never through a spread of the `query` this render closed
+ * over. Only the geolocation button is disabled while the browser asks for
+ * permission — the endpoint and the four box fields stay editable — so a
+ * success callback that spread its captured snapshot would undo whatever was
+ * typed in the meantime, including an endpoint the next fetch then would not
+ * use.
  */
 export function OsmImport({
   query,
@@ -76,7 +85,7 @@ export function OsmImport({
   onError,
 }: {
   query: OsmQuery;
-  onQueryChange: (query: OsmQuery) => void;
+  onQueryChange: Dispatch<SetStateAction<OsmQuery>>;
   onCollection: (collection: GeoJSONFeatureCollection) => void;
   onError: (message: string | null) => void;
 }) {
@@ -86,9 +95,9 @@ export function OsmImport({
 
   const setField = useCallback(
     (field: keyof OsmQuery) => (value: string) => {
-      onQueryChange({ ...query, [field]: value });
+      onQueryChange((current) => ({ ...current, [field]: value }));
     },
-    [query, onQueryChange],
+    [onQueryChange],
   );
 
   const handleUseCurrentLocation = useCallback(() => {
@@ -103,13 +112,13 @@ export function OsmImport({
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         const delta = 0.005; // ~500 m radius
-        onQueryChange({
-          ...query,
+        onQueryChange((current) => ({
+          ...current,
           south: (lat - delta).toFixed(6),
           north: (lat + delta).toFixed(6),
           west: (lon - delta).toFixed(6),
           east: (lon + delta).toFixed(6),
-        });
+        }));
         setGeolocating(false);
       },
       (err) => {
@@ -117,7 +126,7 @@ export function OsmImport({
         setGeolocating(false);
       },
     );
-  }, [query, onQueryChange, onError]);
+  }, [onQueryChange, onError]);
 
   const handleOSMFetch = useCallback(() => {
     onError(null);

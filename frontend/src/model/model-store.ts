@@ -46,6 +46,25 @@ export interface LoadedModel {
   calcArea: CalcArea | null;
 }
 
+/**
+ * How many objects a model holds: features, receivers, and the calculation
+ * area, which counts as one.
+ *
+ * The area is an object the import carries and installs like any other — a file
+ * holding nothing else still replaces the workspace when Replace is confirmed —
+ * so leaving it out made the import wizard offer "Import 0 objects" for exactly
+ * that file, and under-report every mixed file by one. One function because the
+ * preview's button and the page's confirmation and done step must not disagree
+ * about what "this many" means.
+ */
+export function countModelObjects({
+  features,
+  receivers,
+  calcArea,
+}: LoadedModel): number {
+  return features.length + receivers.length + (calcArea === null ? 0 : 1);
+}
+
 /** What a {@link ModelState.mergeModel} left behind, for the caller to report. */
 export interface MergeSkips {
   /** Features whose id the workspace already held. */

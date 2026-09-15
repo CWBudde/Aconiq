@@ -116,6 +116,16 @@ kernel the four parity suites skip, `src/wasm/` and much of `browser-backend.ts`
 leave the covered set, and the percentage drops — a floor measured one way and
 enforced the other is a floor that moves on its own.
 
+"The kernel" is **two** files, and `kernel-node.ts` needs both:
+`frontend/public/aconiq.wasm` and `frontend/public/wasm_exec.js`. With only one
+of them in place the 49 parity tests skip and the suite still reports green over
+what it never ran, because `kernelSkipReason` is fatal only under
+`ACONIQ_REQUIRE_WASM`, which CI sets and a local checkout or worktree does not.
+Read the skip count, not the exit code. `just wasm-build` writes both — it
+builds the kernel and copies `wasm_exec.js` out of
+`$(go env GOROOT)/lib/wasm/` — so a tree that has one and not the other got
+them from somewhere else.
+
 ## Locally
 
 ```bash

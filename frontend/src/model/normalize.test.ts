@@ -172,6 +172,28 @@ describe("normalizeModelGeoJSON", () => {
     expect(result.skipped).toEqual([]);
   });
 
+  it("keeps a receiver's properties, not only its point", () => {
+    // `bimschv16_area_category` is what makes a receiver assessable at all:
+    // `assessment/bimschv16` skips a receiver that carries none. Reading the
+    // receiver as id, height and geometry dropped it on the next save.
+    const result = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          ...receiverFeature,
+          properties: {
+            ...receiverFeature.properties,
+            bimschv16_area_category: "allgemeines Wohngebiet",
+          },
+        },
+      ],
+    });
+
+    expect(result.receivers[0]?.properties?.["bimschv16_area_category"]).toBe(
+      "allgemeines Wohngebiet",
+    );
+  });
+
   it("keeps the stored id of the calculation area, and mints none", () => {
     // Kept, so a save does not rename an area the project already named; and
     // never minted, so an area the user drew stays anonymous and picks up the

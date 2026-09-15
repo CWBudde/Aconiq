@@ -94,6 +94,17 @@ export function isGeometryCompatible(
 export interface ModelReceiver {
   id: string;
   heightM: number;
+  /**
+   * The properties the receiver arrived with, kept the way {@link ModelFeature}
+   * keeps a feature's.
+   *
+   * A receiver is not only a point: `docs/geojson-schema-v1.md` gives it
+   * `bimschv16_area_category`, and `assessment/bimschv16` refuses to assess a
+   * receiver that carries none. Holding id, height and geometry alone meant an
+   * import read the category and dropped it, and the next save wrote a receiver
+   * the assessment then skipped as missing its area category.
+   */
+  properties?: Record<string, unknown>;
   geometry: { type: "Point"; coordinates: Position };
 }
 

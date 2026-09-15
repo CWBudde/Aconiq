@@ -9,7 +9,12 @@ import { FileImport } from "@/import/file-import";
 import { OsmImport } from "@/import/osm-import";
 import type { OsmQuery } from "@/import/osm-import";
 import { PreviewStep } from "@/import/preview-step";
-import { planMerge, useModelStore } from "@/model/model-store";
+import {
+  countModelObjects,
+  planMerge,
+  useModelStore,
+} from "@/model/model-store";
+import type { LoadedModel } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { validateProjectModel } from "@/model/validate";
 import type {
@@ -68,7 +73,7 @@ export default function ImportPage() {
   const navigate = useNavigate();
 
   /** Everything the import brings, receivers and calculation area included. */
-  const importedCount = features.length + receivers.length;
+  const importedCount = countModelObjects({ features, receivers, calcArea });
   /** What the done step reports — an Add that skipped some lands fewer. */
   const [doneCount, setDoneCount] = useState(0);
 
@@ -159,21 +164,37 @@ export default function ImportPage() {
   // and a link to a feature the import did not bring selects nothing.
   const [doneErrors, setDoneErrors] = useState<ValidationIssue[]>([]);
 
+  // Revalidated against the model the import actually produced, not filtered
+  // out of the preview's report. An Add skips an incoming id the workspace
+  // already holds, and skipping can *resolve* a finding: a file whose feature
+  // and receiver share an id is reported `receiver.id.duplicate` before the
+  // merge, and after it only the feature landed, so nothing is duplicated any
+  // more. The pre-merge report still names that id, and that id did land, so
+  // filtering by the landed ids kept a finding the workspace no longer has.
+  // Narrowing to the landed ids afterwards is still needed for the other half:
+  // a finding the reader cannot act on here is one against a feature that was
+  // already in the workspace before the import.
   const errorsFor = useCallback(
-    (landed: Iterable<string>) => {
+    (merged: LoadedModel, landed: Iterable<string>) => {
       const ids = new Set(landed);
-      return (report?.errors ?? []).filter(
+      return validateProjectModel(
+        merged.features,
+        merged.receivers,
+      ).errors.filter(
         (issue) => issue.featureId !== "" && ids.has(issue.featureId),
       );
     },
-    [report],
+    [],
   );
 
   const handleConfirm = useCallback(() => {
     loadModel({ features, receivers, calcArea });
     setDoneCount(importedCount);
     setDoneErrors(
-      errorsFor([...features.map((f) => f.id), ...receivers.map((r) => r.id)]),
+      errorsFor({ features, receivers, calcArea }, [
+        ...features.map((f) => f.id),
+        ...receivers.map((r) => r.id),
+      ]),
     );
     replaced.current = true;
     setConfirmingReplace(false);
@@ -190,12 +211,24 @@ export default function ImportPage() {
       { features, receivers, calcArea },
     );
     const skipped = mergeModel({ features, receivers, calcArea });
-    setDoneCount(importedCount - skipped.features - skipped.receivers);
+    setDoneCount(
+      importedCount -
+        skipped.features -
+        skipped.receivers -
+        (skipped.calcArea ? 1 : 0),
+    );
     setDoneErrors(
-      errorsFor([
-        ...landed.features.map((f) => f.id),
-        ...landed.receivers.map((r) => r.id),
-      ]),
+      errorsFor(
+        {
+          features: [...workspaceFeatures, ...landed.features],
+          receivers: [...workspaceReceivers, ...landed.receivers],
+          calcArea: landed.calcArea,
+        },
+        [
+          ...landed.features.map((f) => f.id),
+          ...landed.receivers.map((r) => r.id),
+        ],
+      ),
     );
     setStep("done");
   }, [
