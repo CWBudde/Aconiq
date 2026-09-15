@@ -8,6 +8,7 @@ import { PageHeader } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { runTiming } from "@/ui/run-status";
 import { useRuns } from "@/api/hooks";
+import { getStandardLabel } from "@/run/standards-meta";
 import { RunDetail } from "@/run/detail";
 import { RunFilterBar, type RunFilters } from "@/run/filter-bar";
 import { RunSetupDialog } from "@/run/setup-dialog";
@@ -127,7 +128,7 @@ export default function RunPage() {
                     }}
                     badge={<StatusBadge status={run.status} />}
                     code={run.id}
-                    title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                    title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                     meta={runTiming(run)}
                   />
                 ))}

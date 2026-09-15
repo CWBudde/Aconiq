@@ -1,6 +1,5 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-
   "language": "Sprache",
   "language_en": "English",
   "language_de": "Deutsch",
@@ -15,13 +14,10 @@
   "action_import_from_file": "Aus Datei",
   "action_import_from_osm": "Von OpenStreetMap",
   "status_starting_run": "Wird gestartet…",
-  "standard_upstream_mapping_standard": "Upstream-Mapping-Standard",
-  "standard_upstream_mapping_standard_description": "Vertrag des Upstream-Mapping-Standards zur Höhenermittlung.",
   "msg_no_explicit_receivers": "Keine expliziten Empfänger platziert. Bitte im Kartenbereich Empfängerpunkte hinzufügen, bevor die Berechnung gestartet wird.",
   "msg_api_mode_reads_explicit_receivers": "Der API-Modus liest explizite Empfänger aus dem Projektmodell des Backends und nicht aus dem browserseitigen Entwurfszustand.",
   "label_result_raster": "Ergebnisraster",
   "label_result_contours": "Konturen",
-
   "nav_model": "Karte",
   "nav_import": "Import",
   "nav_run": "Berechnung",
@@ -29,7 +25,6 @@
   "nav_export": "Export",
   "nav_settings": "Einstellungen",
   "nav_workspace": "Arbeitsbereich",
-
   "action_back": "Zurück",
   "action_cancel": "Abbrechen",
   "action_close": "Schließen",
@@ -52,14 +47,12 @@
   "action_start_run": "Berechnung starten",
   "action_try_again": "Erneut versuchen",
   "action_use_current_location": "Aktuellen Standort verwenden",
-
   "action_cancel_drawing": "Zeichnung abbrechen",
   "action_add_feature": "Objekt hinzufügen",
   "action_import_features": "{count} Objekte importieren",
   "action_clear_filters": "Zurücksetzen",
   "action_copy_path": "Pfad kopieren",
   "action_choose_file": "Datei auswählen",
-
   "status_badge_pending": "Ausstehend",
   "status_badge_running": "Läuft",
   "status_badge_completed": "Abgeschlossen",
@@ -71,7 +64,6 @@
   "status_locating": "Lade Standort...",
   "status_validation_errors": "Validierungsfehler",
   "status_validation_warnings": "Warnung(en)",
-
   "label_artifacts": "Artefakte",
   "label_bands": "Bänder",
   "label_buildings": "Gebäude",
@@ -128,7 +120,6 @@
   "label_version": "Version",
   "label_version_field": "Version",
   "label_west": "West",
-
   "section_artifacts": "Artefakte",
   "section_backend_health": "Backend-Status",
   "section_export_artifacts": "Export-Artefakte",
@@ -141,7 +132,6 @@
   "section_results": "Ergebnisse",
   "section_cli_command": "CLI-Befehl",
   "section_workspace": "Arbeitsbereich",
-
   "heading_import_geojson": "GeoJSON importieren",
   "heading_import_from_osm": "Von OpenStreetMap importieren",
   "heading_import_preview": "Importvorschau",
@@ -153,17 +143,14 @@
   "action_start_import": "Import starten",
   "action_import_data": "Importieren…",
   "action_start_drawing": "Zeichnen starten",
-
   "dialog_title_new_export": "Neuer Export",
   "dialog_desc_new_export": "Exportpakete werden über die CLI erstellt. Berechnung auswählen und Befehl kopieren.",
   "dialog_title_new_feature": "Neues Objekt",
   "dialog_title_new_run": "Neue Berechnung",
   "dialog_desc_new_run": "Standard, Parameter und Empfänger für diese Berechnung konfigurieren.",
-
   "tab_receivers": "Empfänger",
   "tab_raster": "Raster",
   "tab_compare": "Vergleich",
-
   "option_source": "Quelle",
   "option_building": "Gebäude",
   "option_barrier": "Hindernis",
@@ -174,28 +161,23 @@
   "option_use_run_default": "Berechnungsstandard verwenden",
   "option_select_run_placeholder": "— Berechnung auswählen —",
   "option_select_compare_run": "— Berechnung auswählen —",
-
   "placeholder_select_run": "Berechnung auswählen…",
   "placeholder_select_standard": "Auswählen…",
   "placeholder_compare_run": "Berechnung auswählen…",
   "placeholder_use_run_default": "Berechnungsstandard verwenden",
-
   "tooltip_cancel": "Abbrechen",
   "tooltip_close_editor": "Editor schließen",
   "tooltip_toggle_theme": "Design wechseln",
   "tooltip_undo": "Rückgängig (Strg+Z)",
   "tooltip_redo": "Wiederherstellen (Strg+Umschalt+Z)",
   "tooltip_export_unavailable": "Dieses Backend erzeugt keine Exportpakete. Den CLI-Befehl unten verwenden.",
-
   "tool_select_edit": "Auswählen / Bearbeiten",
   "tool_draw_point": "Punkt zeichnen",
   "tool_draw_line": "Linie zeichnen",
   "tool_draw_polygon": "Polygon zeichnen",
-
   "theme_option_light": "Hell",
   "theme_option_dark": "Dunkel",
   "theme_option_system": "System",
-
   "timeline_run_started": "Berechnung gestartet",
   "timeline_loading_model": "Modell laden",
   "timeline_extracting_sources": "Quellen extrahieren",
@@ -206,7 +188,6 @@
   "timeline_status_done": "abgeschlossen",
   "timeline_status_active": "läuft",
   "timeline_status_pending": "ausstehend",
-
   "artifact_kind_receivers_json": "Empfänger (JSON)",
   "artifact_kind_receivers_csv": "Empfänger (CSV)",
   "artifact_kind_raster_metadata": "Raster-Metadaten",
@@ -219,9 +200,7 @@
   "export_artifact_label_json_context": "Berichtskontext (JSON)",
   "export_artifact_label_typst_report": "Typst-Bericht",
   "export_artifact_label_bimschv16_assessment": "Beurteilung nach der 16. BImSchV",
-
   "banner_draft_recovery": "Entwurf wiederherstellen",
-
   "msg_settings_appearance_help": "Wähle aus, wie die Oberfläche aussehen soll.",
   "msg_settings_language_help": "Wähle die in der Oberfläche verwendete Sprache.",
   "msg_settings_storage_help": "Gespeicherte Entwürfe liegen in localStorage und können hier gelöscht werden.",
@@ -253,13 +232,11 @@
   "label_mode_browser": "Browser",
   "msg_runtime_wasm": "Browser-Oberfläche im WASM-Modus",
   "label_api_base_url": "API-Basis-URL",
-
   "page_title_exports": "Exporte",
   "page_title_project": "Projekt",
   "page_title_not_found": "Seite nicht gefunden",
   "page_title_results": "Ergebnisse",
   "page_title_runs": "Berechnungen",
-
   "msg_api_error_export": "Berechnungen konnten nicht geladen werden. Läuft der API-Server?",
   "msg_api_error_results": "Berechnungen konnten nicht geladen werden. Läuft der API-Server?",
   "msg_api_error_run": "Berechnungen konnten nicht geladen werden. Läuft der API-Server?",
@@ -315,20 +292,16 @@
   "msg_validation_error_count_other": "{count} Fehler",
   "msg_validation_warning_count_one": "{count} Warnung",
   "msg_validation_warning_count_other": "{count} Warnungen",
-
   "error_geolocation_not_supported": "Geolokalisierung wird von Ihrem Browser nicht unterstützt",
   "error_heading": "Etwas ist schiefgelaufen",
   "error_load_raster_metadata": "Raster-Metadaten konnten nicht geladen werden.",
   "error_load_receiver_table": "Empfängertabelle konnte nicht geladen werden.",
   "error_location_fetch_failed": "Standort konnte nicht abgerufen werden",
-
   "status_loading_health": "Verbinde...",
   "status_loading_project": "Lade...",
   "status_loading_raster_metadata": "Raster-Metadaten laden…",
   "status_loading_receiver_table": "Empfängertabelle laden…",
-
   "table_header_height_m": "Höhe (m)",
-
   "tool_draw_calc_area": "Berechnungsgebiet setzen",
   "label_calc_area": "Berechnungsgebiet",
   "action_clear_calc_area": "Berechnungsgebiet löschen",

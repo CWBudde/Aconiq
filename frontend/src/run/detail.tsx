@@ -62,6 +62,11 @@ function LogViewer({ lines }: { lines: string[] }) {
 
 // Message functions must be *called* during render, never at module scope, or
 // the labels freeze to the locale that was active at import time.
+//
+// This is the run-artifact half of the vocabulary; `export.tsx` holds the
+// export half in `EXPORT_KIND_LABELS`/`kindMeta`. Two tables for one `kind`
+// namespace, and moving this one here did not fix that — unifying them belongs
+// with the export page's own rework.
 const ARTIFACT_KIND_LABELS: Record<string, () => string> = {
   "run.result.receiver_table_json": m.artifact_kind_receivers_json,
   "run.result.receiver_table_csv": m.artifact_kind_receivers_csv,
@@ -139,7 +144,7 @@ export function RunDetail({
           </span>
         </div>
         <p className="text-sm">
-          <span className="font-mono">{getStandardLabel(run.standard_id)}</span>
+          <span>{getStandardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}

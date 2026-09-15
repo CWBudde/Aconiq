@@ -40,6 +40,7 @@ import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { runTiming } from "@/ui/run-status";
 import { useReceiverTable, useRasterMetadata } from "@/api/hooks";
+import { getStandardLabel } from "@/run/standards-meta";
 import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
@@ -445,7 +446,7 @@ function RunColumn({ run, label }: { run: RunSummary; label: string }) {
       <div className="mt-2 space-y-0.5 text-xs">
         <p>
           <span className="text-muted-foreground">{m.label_standard()}:</span>{" "}
-          <span className="font-mono">{run.standard_id}</span>
+          <span>{getStandardLabel(run.standard_id)}</span>
         </p>
         <p>
           <span className="text-muted-foreground">{m.label_version()}:</span>{" "}
@@ -509,7 +510,7 @@ function CompareTab({
               <SelectItem key={r.id} value={r.id}>
                 <span className="font-mono">{r.id}</span>{" "}
                 <span className="text-muted-foreground">
-                  ({r.standard_id} / {r.version})
+                  ({getStandardLabel(r.standard_id)} / {r.version})
                 </span>
               </SelectItem>
             ))}
@@ -563,7 +564,7 @@ function RunResultDetail({
           </span>
         </div>
         <p className="mt-0.5 text-sm">
-          <span className="font-mono">{run.standard_id}</span>
+          <span>{getStandardLabel(run.standard_id)}</span>
           {run.version ? (
             <>
               {" / "}
@@ -707,7 +708,7 @@ export default function ResultsPage() {
                 to={`/results/${run.id}`}
                 badge={<StatusBadge status={run.status} />}
                 code={run.id}
-                title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                 meta={runTiming(run)}
               />
             ))}

@@ -22,6 +22,7 @@ function run(id: string, status: RunSummary["status"]): RunSummary {
     profile: "default",
     status,
     started_at: "2026-09-15T10:00:00Z",
+    finished_at: "2026-09-15T10:00:12Z",
     log_path: `runs/${id}/run.log`,
     artifacts: [],
   };

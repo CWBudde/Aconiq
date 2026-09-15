@@ -35,8 +35,14 @@ export function RunFilterBar({
     () => Array.from(new Set(runs.map((r) => r.status))).sort(),
     [runs],
   );
+  // Sorted by label, not by id: the list reads as it is sorted, and
+  // "CNOSSOS-EU Straße" under `c` next to "BUB Straße" under `b` is an order
+  // nobody can see.
   const standards = useMemo(
-    () => Array.from(new Set(runs.map((r) => r.standard_id))).sort(),
+    () =>
+      Array.from(new Set(runs.map((r) => r.standard_id))).sort((a, b) =>
+        getStandardLabel(a).localeCompare(getStandardLabel(b)),
+      ),
     [runs],
   );
   const scenarios = useMemo(

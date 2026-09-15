@@ -14,6 +14,7 @@ import RunPage from "./run";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
 import type { CalcArea, ModelFeature } from "@/model/types";
+import { getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
 
 /**
@@ -147,13 +148,22 @@ function acknowledgementCheckbox(): HTMLElement {
  * Radix' Select opens on a pointer event and measures the viewport; jsdom
  * implements neither. These shims are what let a test change the standard the
  * way a user does, rather than reaching past the control.
+ *
+ * The option is found by the label the page actually shows, resolved through
+ * the same `getStandardLabel` the page calls — the id is no longer on screen.
+ * A substring match, because the accessible name also carries the tier badge.
  */
 function selectStandard(id: string) {
+  const label = getStandardLabel(id);
   fireEvent.pointerDown(
     screen.getByRole("combobox", { name: m.label_standard() }),
     { button: 0, ctrlKey: false, pointerType: "mouse" },
   );
-  fireEvent.click(screen.getByRole("option", { name: new RegExp(id) }));
+  fireEvent.click(
+    screen.getByRole("option", {
+      name: (name: string) => name.includes(label),
+    }),
+  );
 }
 
 /**

@@ -37,6 +37,7 @@ import { formatDateTime } from "@/ui/format";
 import { ItemList, ListItem, MasterDetail } from "@/ui/master-detail";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { getArtifactContentURL, useCreateExport } from "@/api/hooks";
+import { getStandardLabel } from "@/run/standards-meta";
 import { useRunFromRoute } from "@/run/use-run-from-route";
 import { backend } from "@/api/backend";
 import { exportCommand } from "@/api/cli";
@@ -268,7 +269,7 @@ function NewExportDialog({
                   <SelectItem key={r.id} value={r.id}>
                     <span className="font-mono">{r.id}</span>{" "}
                     <span className="text-muted-foreground">
-                      ({r.standard_id} / {r.version})
+                      ({getStandardLabel(r.standard_id)} / {r.version})
                     </span>
                   </SelectItem>
                 ))}
@@ -436,7 +437,7 @@ export default function ExportPage() {
                     />
                   }
                   code={run.id}
-                  title={`${run.standard_id}${run.version ? ` / ${run.version}` : ""}`}
+                  title={`${getStandardLabel(run.standard_id)}${run.version ? ` / ${run.version}` : ""}`}
                   meta={exportMeta(run)}
                 />
               ))}

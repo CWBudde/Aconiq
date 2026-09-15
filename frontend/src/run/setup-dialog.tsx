@@ -43,7 +43,7 @@ import { useModelStore } from "@/model/model-store";
 import { useProjectSync } from "@/model/use-project-sync";
 import { ParameterField } from "@/run/parameter-field";
 import { useRunSetupSelection } from "@/run/use-run-setup-selection";
-import { getStandardDescription, getStandardLabel } from "@/run/standards-meta";
+import { getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -327,10 +327,7 @@ export function RunSetupDialog({
                     <EvidenceTierBadge tier={selectedStandard.evidence_tier} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {getStandardDescription(
-                      selectedStandard.id,
-                      selectedStandard.description,
-                    )}
+                    {selectedStandard.description}
                   </p>
                 </div>
               ) : null}

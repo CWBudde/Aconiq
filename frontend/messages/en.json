@@ -1,6 +1,5 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-
   "language": "Language",
   "language_en": "English",
   "language_de": "Deutsch",
@@ -15,13 +14,10 @@
   "action_import_from_file": "From File",
   "action_import_from_osm": "From OpenStreetMap",
   "status_starting_run": "Starting…",
-  "standard_upstream_mapping_standard": "Upstream mapping standard",
-  "standard_upstream_mapping_standard_description": "Upstream mapping standard contract used for level derivation.",
   "msg_no_explicit_receivers": "No explicit receivers have been placed. Use the map workspace to add receiver points before running.",
   "msg_api_mode_reads_explicit_receivers": "API mode reads explicit receivers from the backend project model, not the browser-only draft state.",
   "label_result_raster": "Result Raster",
   "label_result_contours": "Contours",
-
   "nav_model": "Map",
   "nav_import": "Import",
   "nav_run": "Run",
@@ -29,7 +25,6 @@
   "nav_export": "Export",
   "nav_settings": "Settings",
   "nav_workspace": "Workspace",
-
   "action_back": "Back",
   "action_cancel": "Cancel",
   "action_close": "Close",
@@ -52,14 +47,12 @@
   "action_start_run": "Start Run",
   "action_try_again": "Try again",
   "action_use_current_location": "Use current location",
-
   "action_cancel_drawing": "Cancel drawing",
   "action_add_feature": "Add Feature",
   "action_import_features": "Import {count} Features",
   "action_clear_filters": "Clear",
   "action_copy_path": "Copy path",
   "action_choose_file": "Choose File",
-
   "status_badge_pending": "Pending",
   "status_badge_running": "Running",
   "status_badge_completed": "Completed",
@@ -71,7 +64,6 @@
   "status_locating": "Locating…",
   "status_validation_errors": "validation error(s)",
   "status_validation_warnings": "warning(s)",
-
   "label_artifacts": "Artifacts",
   "label_bands": "Bands",
   "label_buildings": "Buildings",
@@ -128,7 +120,6 @@
   "label_version": "Version",
   "label_version_field": "Version",
   "label_west": "West",
-
   "section_artifacts": "Artifacts",
   "section_backend_health": "Backend Health",
   "section_export_artifacts": "Export Artifacts",
@@ -141,7 +132,6 @@
   "section_results": "Results",
   "section_cli_command": "CLI Command",
   "section_workspace": "Workspace",
-
   "heading_import_geojson": "Import GeoJSON",
   "heading_import_from_osm": "Import from OpenStreetMap",
   "heading_import_preview": "Import Preview",
@@ -153,17 +143,14 @@
   "action_start_import": "Start import",
   "action_import_data": "Import…",
   "action_start_drawing": "Start drawing",
-
   "dialog_title_new_export": "New Export",
   "dialog_desc_new_export": "Export bundles are created via the CLI. Select a run and copy the command below.",
   "dialog_title_new_feature": "New Feature",
   "dialog_title_new_run": "New Run",
   "dialog_desc_new_run": "Configure standard, parameters, and receivers for this run.",
-
   "tab_receivers": "Receivers",
   "tab_raster": "Raster",
   "tab_compare": "Compare",
-
   "option_source": "Source",
   "option_building": "Building",
   "option_barrier": "Barrier",
@@ -174,28 +161,23 @@
   "option_use_run_default": "Use run default",
   "option_select_run_placeholder": "— Select a run —",
   "option_select_compare_run": "— Select a run —",
-
   "placeholder_select_run": "Select a run…",
   "placeholder_select_standard": "Select…",
   "placeholder_compare_run": "Select a run…",
   "placeholder_use_run_default": "Use run default",
-
   "tooltip_cancel": "Cancel",
   "tooltip_close_editor": "Close editor",
   "tooltip_toggle_theme": "Toggle theme",
   "tooltip_undo": "Undo (Ctrl+Z)",
   "tooltip_redo": "Redo (Ctrl+Shift+Z)",
   "tooltip_export_unavailable": "This backend does not generate export bundles. Use the CLI command below.",
-
   "tool_select_edit": "Select / Edit",
   "tool_draw_point": "Draw Point",
   "tool_draw_line": "Draw Line",
   "tool_draw_polygon": "Draw Polygon",
-
   "theme_option_light": "Light",
   "theme_option_dark": "Dark",
   "theme_option_system": "System",
-
   "timeline_run_started": "Run started",
   "timeline_loading_model": "Loading model",
   "timeline_extracting_sources": "Extracting sources",
@@ -206,7 +188,6 @@
   "timeline_status_done": "completed",
   "timeline_status_active": "in progress",
   "timeline_status_pending": "pending",
-
   "artifact_kind_receivers_json": "Receivers (JSON)",
   "artifact_kind_receivers_csv": "Receivers (CSV)",
   "artifact_kind_raster_metadata": "Raster metadata",
@@ -219,9 +200,7 @@
   "export_artifact_label_json_context": "Report Context (JSON)",
   "export_artifact_label_typst_report": "Typst Report",
   "export_artifact_label_bimschv16_assessment": "16. BImSchV Assessment",
-
   "banner_draft_recovery": "Draft recovery",
-
   "msg_settings_appearance_help": "Choose how the interface should look.",
   "msg_settings_language_help": "Choose the language used across the UI.",
   "msg_settings_storage_help": "Saved drafts live in localStorage and can be cleared here.",
@@ -253,13 +232,11 @@
   "label_mode_browser": "Browser",
   "msg_runtime_wasm": "WASM-only browser UI",
   "label_api_base_url": "API base URL",
-
   "page_title_exports": "Exports",
   "page_title_project": "Project",
   "page_title_not_found": "Page not found",
   "page_title_results": "Results",
   "page_title_runs": "Runs",
-
   "msg_api_error_export": "Could not load runs. Is the API server running?",
   "msg_api_error_results": "Could not load runs. Is the API server running?",
   "msg_api_error_run": "Could not load runs. Is the API server running?",
@@ -315,20 +292,16 @@
   "msg_validation_error_count_other": "{count} errors",
   "msg_validation_warning_count_one": "{count} warning",
   "msg_validation_warning_count_other": "{count} warnings",
-
   "error_geolocation_not_supported": "Geolocation is not supported by your browser",
   "error_heading": "Something went wrong",
   "error_load_raster_metadata": "Failed to load raster metadata.",
   "error_load_receiver_table": "Failed to load receiver table.",
   "error_location_fetch_failed": "Could not get location",
-
   "status_loading_health": "Connecting...",
   "status_loading_project": "Loading...",
   "status_loading_raster_metadata": "Loading raster metadata…",
   "status_loading_receiver_table": "Loading receiver table…",
-
   "table_header_height_m": "Height (m)",
-
   "tool_draw_calc_area": "Set Calculation Area",
   "label_calc_area": "Calculation Area",
   "action_clear_calc_area": "Clear Calculation Area",
