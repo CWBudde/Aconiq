@@ -276,6 +276,7 @@
   "label_api_base_url": "API base URL",
 
   "page_title_exports": "Exports",
+  "page_title_not_found": "Page not found",
   "page_title_results": "Results",
   "page_title_runs": "Runs",
   "page_title_status": "Status",
@@ -312,6 +313,7 @@
   "msg_no_records_match_filter": "No records match the filter.",
   "msg_no_runs_empty_state": "No runs yet. Click New Run to get started.",
   "msg_no_runs_match_filters": "No runs match the current filters.",
+  "msg_not_found": "No page exists at {path}.",
   "msg_raster_not_implemented": "Raster map rendering is not yet implemented. Export the run bundle with aconiq export to access raster files.",
   "msg_receiver_auto_grid_desc": "Regular grid derived from source extent and grid_resolution_m / grid_padding_m parameters.",
   "msg_receiver_custom_set_desc": "Explicit point or grid receiver sets (Phase 24+).",

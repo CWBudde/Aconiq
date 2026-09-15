@@ -9,9 +9,27 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { matchRoutes } from "react-router";
 import type { RouteObject } from "react-router";
 
 import { routes } from "./routes";
+
+/**
+ * The path of the deepest route a location matches, or null for no match.
+ *
+ * The cast works around a react-router typing gap: its public `RouteObject`
+ * is not assignable to the `AgnosticRouteObject` its own `matchRoutes`
+ * declares, under `exactOptionalPropertyTypes`. The value is the very table
+ * `createBrowserRouter` is handed in `routes.tsx`.
+ */
+function matchedPath(pathname: string): string | null {
+  const matches = matchRoutes(
+    routes as Parameters<typeof matchRoutes>[0],
+    pathname,
+  );
+  const last = matches?.[matches.length - 1];
+  return last?.route.path ?? (last?.route.index === true ? "index" : null);
+}
 
 /** The single pathless layout route every page hangs off. */
 function layoutChildren(): RouteObject[] {
@@ -46,6 +64,7 @@ describe("the route table", () => {
       "export/{index,:runId}",
       "status",
       "settings",
+      "*",
     ]);
   });
 
@@ -65,5 +84,12 @@ describe("the route table", () => {
         (param?.element as { type: unknown }).type,
       );
     }
+  });
+
+  it("catches a path no route claims", () => {
+    // `:runId` swallows `/results/typo` — that is the unknown-run state, not a
+    // 404 — but a third segment is nobody's.
+    expect(matchedPath("/nonsense")).toBe("*");
+    expect(matchedPath("/results/a/b")).toBe("*");
   });
 });

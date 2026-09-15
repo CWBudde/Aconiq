@@ -10,6 +10,7 @@ const ExportPage = lazy(() => import("@/pages/export"));
 const StatusPage = lazy(() => import("@/pages/status"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const WelcomePage = lazy(() => import("@/pages/welcome"));
+const NotFoundPage = lazy(() => import("@/pages/not-found"));
 
 import { RootLayout } from "@/layouts/root-layout";
 
@@ -52,6 +53,10 @@ export const routes: RouteObject[] = [
       },
       { path: "status", element: <StatusPage /> },
       { path: "settings", element: <SettingsPage /> },
+      // A child of the layout, so a mistyped URL keeps the rail, the header
+      // heading and a way out. Retired paths land here deliberately: a
+      // redirect entry would keep a missed migration working forever.
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ];

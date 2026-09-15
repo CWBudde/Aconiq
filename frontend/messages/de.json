@@ -276,6 +276,7 @@
   "label_api_base_url": "API-Basis-URL",
 
   "page_title_exports": "Exporte",
+  "page_title_not_found": "Seite nicht gefunden",
   "page_title_results": "Ergebnisse",
   "page_title_runs": "Berechnungen",
   "page_title_status": "Status",
@@ -312,6 +313,7 @@
   "msg_no_records_match_filter": "Keine Datensätze entsprechen dem Filter.",
   "msg_no_runs_empty_state": "Noch keine Berechnungen. Neue Berechnung klicken.",
   "msg_no_runs_match_filters": "Keine Berechnungen entsprechen den aktuellen Filtern.",
+  "msg_not_found": "Unter {path} gibt es keine Seite.",
   "msg_raster_not_implemented": "Raster-Kartenrendering ist noch nicht implementiert. Exportpaket mit aconiq export erstellen, um Rasterdateien zu erhalten.",
   "msg_receiver_auto_grid_desc": "Regelmäßiges Raster aus der Quellausdehnung und den Parametern grid_resolution_m / grid_padding_m.",
   "msg_receiver_custom_set_desc": "Explizite Punkt- oder Rasterempfängermengen (Phase 24+).",
