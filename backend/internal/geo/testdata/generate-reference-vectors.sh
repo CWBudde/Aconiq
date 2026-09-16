@@ -38,14 +38,21 @@ for spec in "25831 3 GRS80" "25832 9 GRS80" "25833 15 GRS80" "25834 21 GRS80" \
 	add_projection "northern extreme" "$epsg" "$ellps" "$def" "$((cm - 1))" 55.09
 done
 
+# Offsets the zone edges by a non-integer number of degrees. Bash arithmetic is
+# integer-only, so this needs a calculator; it is jq rather than bc because jq
+# is already a prerequisite and bc is absent from many minimal environments.
+degrees_from() {
+	jq -n --argjson from "$1" --argjson delta "$2" '$from + $delta'
+}
+
 # DHDN / 3-degree Gauss-Kruger zone 2-5 (Bessel). Zone half-width is 1.5 degrees.
 for zone in 2 3 4 5; do
 	epsg="$((31464 + zone))"
 	cm="$((zone * 3))"
 	def="+proj=tmerc +lat_0=0 +lon_0=${cm} +k=1 +x_0=$((zone * 1000000 + 500000)) +y_0=0 +ellps=bessel +units=m +no_defs"
 	add_projection "central meridian" "$epsg" bessel "$def" "$cm" 51
-	add_projection "western zone edge" "$epsg" bessel "$def" "$(bc -l <<<"$cm - 1.5")" 51
-	add_projection "eastern zone edge" "$epsg" bessel "$def" "$(bc -l <<<"$cm + 1.5")" 51
+	add_projection "western zone edge" "$epsg" bessel "$def" "$(degrees_from "$cm" -1.5)" 51
+	add_projection "eastern zone edge" "$epsg" bessel "$def" "$(degrees_from "$cm" 1.5)" 51
 	add_projection "southern extreme" "$epsg" bessel "$def" "$cm" 47.27
 	add_projection "northern extreme" "$epsg" bessel "$def" "$cm" 55.09
 done
@@ -83,10 +90,12 @@ emit_projection() {
 	# shellcheck disable=SC2086 # $def is a word-split list of PROJ parameters.
 	read -r east north _ < <(printf '%s %s\n' "$lon" "$lat" |
 		cs2cs -f '%.9f' "+proj=longlat +ellps=${ellps} +no_defs" +to $def)
-	jq -nc --arg name "$name" --argjson epsg "$epsg" --arg def "$def" \
+	# `--arg proj_string`, not `--arg def`: `def` is a jq keyword, and `$def`
+	# is a syntax error rather than a variable reference.
+	jq -nc --arg name "$name" --argjson epsg "$epsg" --arg proj_string "$def" \
 		--argjson lon "$lon" --argjson lat "$lat" \
 		--argjson east "$east" --argjson north "$north" \
-		'{name: $name, epsg: $epsg, proj_string: $def, lon: $lon, lat: $lat, easting: $east, northing: $north}'
+		'{name: $name, epsg: $epsg, proj_string: $proj_string, lon: $lon, lat: $lat, easting: $east, northing: $north}'
 }
 
 emit_crs() {

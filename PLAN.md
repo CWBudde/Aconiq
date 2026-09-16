@@ -429,13 +429,11 @@ reflector at once.
 
 ### 1.6 The EPSG:25832 ↔ 4326 round trip loses metres, and the map save path runs it — closed
 
-`internal/geo` carries its own transverse Mercator: `geo.TransverseMercator`, the Krüger n-series
-in Karney's formulation to sixth order in the third flattening. It satisfies `wgs84.Projection` and
-is substituted for `ProjectedReferenceSystem.Projection` on every transverse-Mercator code the
-package supports — 25831-25834, 31466-31469, 32632, 32633 — leaving the library's datums, Helmert
-shifts and zone `Area` predicates untouched. EPSG:3857 and the two geographic systems keep the
-library's own projections. The `25832 → 4326 → 25832` residuals that ran to 8.53 m are now 1e-10 to
-4e-9 m, and `wroge/wgs84` is still imported in exactly one file.
+`geo.TransverseMercator` — the Krüger n-series in Karney's formulation, to sixth order in the third
+flattening — is substituted for the library's projection on every transverse-Mercator code the
+package supports (25831-25834, 31466-31469, 32632, 32633), leaving its datums and Helmert shifts
+untouched. The `25832 → 4326 → 25832` residuals that ran to 8.53 m are now under 4e-9 m, and the
+save path this section was named for is unchanged and lossless.
 
 Four constraints are live, and the first two are not about coordinates at all.
 
@@ -448,10 +446,11 @@ coefficient written as a bare ratio in numeric code is suspect until someone has
 **A round trip cannot tell you which direction is wrong, and a clean one tells you nothing.**
 `TestEPSGTransform_Roundtrip` started in degrees, so it ran inverse∘forward, and on that ordering
 the error largely cancels — it passed at `0.0001°` throughout. Tightening it would not have caught
-this: only a metres-first round trip saw the defect at all, and even that could not say which half
-was at fault. Each direction is now asserted **on its own** against PROJ 9.8.1 reference vectors
-(`internal/geo/testdata/`, `crs_reference_vectors_test.go`), and that is the shape any future
-transform work takes. The round-trip tests remain, tightened, as a cheap floor — not as evidence.
+this: the bug was one-sided, the forward agreeing with PROJ to sub-millimetre, which is exactly why
+the round trip hid it. Each direction is now asserted **on its own** against PROJ 9.8.1 reference
+vectors (`internal/geo/testdata/`, `crs_reference_vectors_test.go`), and that is the shape any
+future transform work takes. The round-trip tests remain, tightened, as a cheap floor — not as
+evidence.
 
 **The vectors are the fixture; PROJ is not a dependency.** `testdata/proj-reference-vectors.json`
 was generated once by `cs2cs` and checked in with its provenance and its generator
@@ -463,29 +462,14 @@ projection.** `wgs84` carries one Helmert set for DHDN where PROJ 9.8.1 prefers 
 The projection on the same Bessel ellipsoid is pinned to a micrometre, so the two are separable and
 the tests separate them. Closing the datum gap means shipping a grid file; nobody has asked.
 
-Three beliefs this disproved, recorded because each one would otherwise be re-adopted:
-
-- _That the forward might also be at fault._ It was not — it agreed with PROJ to sub-millimetre
-  throughout. The bug was one-sided, which is exactly why the round trip hid it.
-- _That correcting the constant would have been enough._ Rebuilt with `1.5`, the library's inverse
-  is still 0.0963 m out at the western edge of zone 32 and 0.0832 m at the eastern edge, one-way
-  against PROJ — Snyder truncation, and this time almost entirely in the **longitude**, which `R1`
-  never touched. A round trip on that build shows 5-8 mm of it. Same trap, second time.
-- _That "move to a maintained binding" was an open option._ A cgo PROJ binding is ruled out by
-  `backend/cmd/wasm`, which must compile to `js/wasm`. `wroge/wgs84` v2 has already replaced this
-  series with Krüger, but it is alpha-only (`v2.0.0-alpha.20`) with a changed API, and at 4th order
-  rather than 6th.
-
-Reported upstream as https://github.com/wroge/wgs84/issues/30, cited from
+Two routes are closed rather than untried. Correcting the constant is not enough: rebuilt with
+`1.5`, the library's inverse is still 0.0963 m out at the western edge of zone 32, one-way against
+PROJ — Snyder truncation, and this time almost entirely in the **longitude**, which `R1` never
+touched. And "move to a maintained binding" is not an open option: a cgo PROJ binding is ruled out
+by `backend/cmd/wasm`, which must compile to `js/wasm`, while `wroge/wgs84` v2 has replaced this
+series with Krüger but is alpha-only (`v2.0.0-alpha.20`), with a changed API and at 4th order
+rather than 6th. Reported upstream as https://github.com/wroge/wgs84/issues/30, cited from
 `transversemercator.go` so the next reader knows why the projection is ours.
-
-The save path this section was named for is unchanged and now lossless:
-`frontend/src/model/use-project-sync.ts` pins `MODEL_CRS = "EPSG:4326"` and
-`internal/api/httpv1/model.go` reprojects out on `GET /api/v1/model?crs=` and back in on
-`POST /api/v1/model`. Holding project-CRS coordinates in the frontend — the third candidate fix
-this section used to list — is no longer worth doing for accuracy. Two other callers of the
-inverse got more accurate with it: `cli/run_terrain_crs.go` runs it once per elevation lookup for a
-geographic project, and `cli/export.go`'s `contoursInWGS84` runs it on every contour vertex.
 
 ### 1.7 A geographic project CRS made every level wrong, and it was the default — closed
 
