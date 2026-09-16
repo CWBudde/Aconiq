@@ -80,16 +80,16 @@ func runValidateCommand(cmd *cobra.Command, inputPath string, writeReport bool) 
 		"input", relInput,
 		"feature_count", len(model.Features),
 		"errors", report.ErrorCount(),
-		"warnings", report.WarningCount(),
+		outputFieldWarnings, report.WarningCount(),
 	)
 
 	if state.Config.JSONLogs {
 		jsonPayload := map[string]any{
-			"command":       "validate",
-			"input":         relInput,
-			"feature_count": len(model.Features),
-			"errors":        report.ErrorCount(),
-			"warnings":      report.WarningCount(),
+			"command":           "validate",
+			"input":             relInput,
+			"feature_count":     len(model.Features),
+			"errors":            report.ErrorCount(),
+			outputFieldWarnings: report.WarningCount(),
 		}
 
 		if writeReport {

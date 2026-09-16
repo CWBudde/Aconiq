@@ -221,21 +221,19 @@ func TestCalcAreaHorizontalSpanOpenNotchIsSilentlyWrong(t *testing.T) {
 	}
 }
 
-func TestReceiverHeightFromModel(t *testing.T) {
+// TestSyntheticRasterReceiverHeight pins where the synthetic raster receivers
+// get their height. It used to be the first receiver in the model, which made
+// every raster delta move whenever the receiver import changed — a coupling
+// between two unrelated comparisons that nothing declared.
+func TestSyntheticRasterReceiverHeight(t *testing.T) {
 	t.Parallel()
 
-	model := modelgeojson.Model{Features: []modelgeojson.Feature{
-		{Kind: "receiver", HeightM: float64Ptr(3), ID: "r0", GeometryType: "Point", Coordinates: []any{0, 0}},
-		{Kind: "receiver", HeightM: float64Ptr(5), ID: "r1", GeometryType: "Point", Coordinates: []any{0, 0}},
-	}}
-
-	if got := receiverHeightFromModel(model); got != 3 {
-		t.Fatalf("receiver height = %f, want 3", got)
+	if got := syntheticRasterReceiverHeight(soundPlanImportReport{GridMapHeightM: 2.0}); got != 2.0 {
+		t.Fatalf("receiver height = %f, want the bundle's grid-map height 2.0", got)
 	}
 
-	none := modelgeojson.Model{Features: []modelgeojson.Feature{{Kind: "building", HeightM: float64Ptr(10), ID: "b", GeometryType: "Polygon", Coordinates: []any{[]any{}}}}}
-	if got := receiverHeightFromModel(none); got != 4.0 {
-		t.Fatalf("fallback receiver height = %f, want 4.0", got)
+	if got := syntheticRasterReceiverHeight(soundPlanImportReport{}); got != defaultGridMapReceiverHeightM {
+		t.Fatalf("fallback receiver height = %f, want %f", got, defaultGridMapReceiverHeightM)
 	}
 }
 

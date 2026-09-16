@@ -2,10 +2,12 @@ package cli
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/domain/project"
@@ -46,12 +48,44 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatal("expected run id in compare report")
 	}
 
-	if report.MatchedReceiverCount == 0 {
-		t.Fatal("expected at least one matched receiver")
+	// The Aconiq receiver set and the SoundPLAN result table are the same 30
+	// rows — 13 immission points, one receiver per floor — so the comparison
+	// is a bijection and neither side may have anything left over.
+	if report.MatchedReceiverCount+report.UnmatchedAconiqCount != 30 {
+		t.Fatalf("matched + unmatched Aconiq receivers = %d, want 30", report.MatchedReceiverCount+report.UnmatchedAconiqCount)
 	}
 
-	if report.MatchedReceiverCount+report.UnmatchedAconiqCount != 77 {
-		t.Fatalf("matched + unmatched Aconiq receivers = %d, want 77", report.MatchedReceiverCount+report.UnmatchedAconiqCount)
+	if report.MatchedReceiverCount != 30 {
+		t.Fatalf("matched_receiver_count = %d, want 30", report.MatchedReceiverCount)
+	}
+
+	if report.UnmatchedAconiqCount != 0 || report.UnmatchedSPCount != 0 {
+		t.Fatalf("unmatched = %d Aconiq / %d SoundPLAN (%v, %v), want none on either side",
+			report.UnmatchedAconiqCount, report.UnmatchedSPCount, report.UnmatchedAconiq, report.UnmatchedSoundPlan)
+	}
+
+	// Asserting that a real strategy was used, which the previous version of
+	// this test never did: every one of its 60 pairs was `ordinal`, and it
+	// passed.
+	if want := map[string]int{matchStrategyKey: 30}; !maps.Equal(report.MatchStrategyCounts, want) {
+		t.Fatalf("match_strategy_counts = %v, want %v", report.MatchStrategyCounts, want)
+	}
+
+	// The single assertion that matching by list position cannot satisfy. The
+	// measured agreement is 2.3e-6 m, six orders of magnitude inside this.
+	if report.MaxMatchDistanceM > 0.001 {
+		t.Fatalf("max_match_distance_m = %g, want <= 0.001", report.MaxMatchDistanceM)
+	}
+
+	// One result run, not a comma-joined union of every RSPS* directory: the
+	// reference project holds the same receivers computed with and without the
+	// noise barrier, and the import consumed the barrier.
+	if strings.Contains(report.SoundPlanResultRun, ",") {
+		t.Fatalf("soundplan_result_run = %q, want exactly one result directory", report.SoundPlanResultRun)
+	}
+
+	if report.SoundPlanResultRun != "RSPS0021" {
+		t.Fatalf("soundplan_result_run = %q, want RSPS0021 — the run that used GeoWand.geo", report.SoundPlanResultRun)
 	}
 
 	if report.Stats[schall03.IndicatorLrDay].Count != report.MatchedReceiverCount {
@@ -140,29 +174,36 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 // Recorded SoundPLAN agreement bounds.
 //
 // These record what `aconiq compare` actually produces against the reference
-// SoundPLAN project, measured on 2026-08-28 with the fixture present locally:
+// SoundPLAN project, measured on 2026-09-16 with the fixture present locally,
+// over the 30 receivers that are now matched by (ObjID, Floor) against the 30
+// rows of RSPS0021/RREC0021.abs:
 //
-//	LrDay    mean_abs 24.052  p95_abs 37.859  max_abs 39.745  exceedances 54/54
-//	LrNight  mean_abs 22.630  p95_abs 36.098  max_abs 37.965  exceedances 54/54
+//	LrDay    mean_abs 28.131  p95_abs 37.084  max_abs 37.193  exceedances 30/30
+//	LrNight  mean_abs 26.808  p95_abs 35.360  max_abs 35.507  exceedances 30/30
 //
-// The previous measurement was LrDay 25.110 / LrNight 23.329. Removing the
-// spurious 10 lg(n + 1) flow shift from schall03/emission.go (PLAN.md 1.2)
-// accounts for the whole of the improvement; the shift sat on the data-pack
-// path, which is the path the CLI runs.
+// The previous measurement was LrDay 24.479 / LrNight 23.068 over 60 pairs.
+// **It is not comparable.** Those pairs were produced by the `ordinal`
+// strategy, which paired an Aconiq receiver with whatever SoundPLAN row sat at
+// the same position in file order — and the Aconiq side of them was the map
+// label layer, not the immission points at all. A mean over arbitrary pairs is
+// not a measure of agreement, so the mean going *up* by 3.7 dB here is not a
+// regression: it is the first number in this file that is a measure of
+// anything. The maximum went down, from 39.745 to 37.193.
 //
-// Aconiq reads systematically ~25 dB HIGH against SoundPLAN over all 54
+// Aconiq reads systematically ~27 dB HIGH against SoundPLAN over all 30
 // matched receivers, and every single receiver exceeds the 0.5 dB tolerance.
 // The bounds below are therefore NOT a conformance tolerance and must never be
 // read as one: they are a regression guard that pins the current, bad state so
 // it cannot silently get worse, with roughly 20 % headroom on the observed
 // values.
 //
-// They must be tightened - by a large factor - once the schall03 pipeline and
-// the receiver matching actually agree with the reference (PLAN.md Priority 3
-// and Priority 4). See also assertCompareRecordsAreSelfConsistent, which does
-// hold the compare command itself to an exact standard.
+// They must be tightened - by a large factor - once the schall03 pipeline
+// agrees with the reference. The gap is a level-scale problem on the preview
+// chain, which PLAN.md Priority 13 blocks; correct matching does not touch it.
+// See also assertCompareRecordsAreSelfConsistent, which does hold the compare
+// command itself to an exact standard.
 const (
-	maxObservedMeanAbsDeltaDB = 30.0
+	maxObservedMeanAbsDeltaDB = 34.0
 	maxObservedMaxAbsDeltaDB  = 45.0
 )
 
@@ -179,15 +220,35 @@ func assertCompareRecordsAreSelfConsistent(t *testing.T, report soundPlanCompare
 
 	dayAbs := make([]float64, 0, len(report.Records))
 	nightAbs := make([]float64, 0, len(report.Records))
+	seenPairs := make(map[[2]int64]bool, len(report.Records))
 
 	for _, record := range report.Records {
 		if record.AconiqID == "" {
 			t.Fatalf("record without an Aconiq receiver ID: %#v", record)
 		}
 
-		if record.MatchStrategy != "coordinates" && record.MatchStrategy != "ordinal" {
+		// `ordinal` is deliberately absent: it named a pairing by list
+		// position, which is not a match, and a record carrying it now fails.
+		if record.MatchStrategy != matchStrategyKey && record.MatchStrategy != matchStrategyCoordinates {
 			t.Fatalf("unknown match strategy %q in %#v", record.MatchStrategy, record)
 		}
+
+		if record.DistanceM < 0 {
+			t.Fatalf("%s distance_m = %v; the -1 sentinel is gone and a distance is always a distance", record.AconiqID, record.DistanceM)
+		}
+
+		if strings.TrimSpace(record.SoundPlanName) == "" {
+			t.Fatalf("%s matched a SoundPLAN row with no name", record.AconiqID)
+		}
+
+		// Two receivers both called "Hauptstraße 4" was the visible symptom of
+		// positional matching. The key is what makes it impossible.
+		pair := [2]int64{record.SoundPlanObjID, int64(record.SoundPlanFloor)}
+		if seenPairs[pair] {
+			t.Fatalf("SoundPLAN receiver (obj %d floor %d) was matched twice", pair[0], pair[1])
+		}
+
+		seenPairs[pair] = true
 
 		for name, value := range map[string]float64{
 			"aconiq_lr_day":   record.AconiqLrDay,

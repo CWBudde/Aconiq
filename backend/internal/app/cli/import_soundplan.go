@@ -21,14 +21,20 @@ const (
 )
 
 type soundPlanImportReport struct {
-	Format           string                             `json:"format"`
-	ProjectTitle     string                             `json:"project_title"`
-	ProjectVersion   int                                `json:"project_version"`
-	ProjectV64       bool                               `json:"project_v64"`
-	SourcePath       string                             `json:"source_path"`
-	ProjectCRS       string                             `json:"project_crs"`
-	AssumedImportCRS string                             `json:"assumed_import_crs"`
-	GridResolutionM  float64                            `json:"grid_resolution_m,omitempty"`
+	Format           string  `json:"format"`
+	ProjectTitle     string  `json:"project_title"`
+	ProjectVersion   int     `json:"project_version"`
+	ProjectV64       bool    `json:"project_v64"`
+	SourcePath       string  `json:"source_path"`
+	ProjectCRS       string  `json:"project_crs"`
+	AssumedImportCRS string  `json:"assumed_import_crs"`
+	GridResolutionM  float64 `json:"grid_resolution_m,omitempty"`
+	// GridMapHeightM is the receiver height the SoundPLAN project's grid maps
+	// were computed at (`RLKHEIGHT`). The raster comparison synthesizes its
+	// receivers at this height, because a grid map's own metadata does not
+	// record one and the project's receivers are at facade heights that have
+	// nothing to do with it.
+	GridMapHeightM   float64                            `json:"grid_map_height_m,omitempty"`
 	RunCount         int                                `json:"run_count"`
 	CountsByKind     map[string]int                     `json:"counts_by_kind"`
 	CalcArea         *soundPlanImportCalcArea           `json:"calc_area,omitempty"`
@@ -113,7 +119,7 @@ func runSoundPlanImport(
 		"soundplan import completed",
 		"input", relInput,
 		"feature_count", len(model.Features),
-		"warnings", len(importReport.Warnings),
+		outputFieldWarnings, len(importReport.Warnings),
 		"normalized", relativePath(store.Root(), normalizedPath),
 	)
 
@@ -140,10 +146,12 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	}
 
 	warnings := append([]string(nil), bundle.Warnings...)
-	decisions := []string{
+	decisions := make([]string, 0, 4)
+	decisions = append(
+		decisions,
 		"SoundPLAN coordinates are imported without reprojection and assumed to already match the project CRS.",
 		"Rail defaults are exported explicitly so the normalized model can enter the existing Schall 03 path before full train-operation mapping exists.",
-	}
+	)
 
 	buildingHeightM := derivedBuildingHeight(bundle.Project)
 	receiverHeightM := derivedReceiverHeight(bundle.Project)
@@ -165,6 +173,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 	counts[modelgeojson.FeatureKindBuilding] += len(geoObjects.buildings)
 	counts[modelgeojson.FeatureKindReceiver] += len(geoObjects.receivers)
 	warnings = append(warnings, geoObjects.warnings...)
+	decisions = append(decisions, geoObjects.decisions...)
 
 	barrierFeatures, barrierWarnings := buildSoundPlanBarrierFeatures(bundle.Barriers)
 	features = append(features, barrierFeatures...)
@@ -203,6 +212,7 @@ func buildSoundPlanModelAndReport(bundle *soundplanimport.ProjectBundle, project
 		ProjectCRS:       projectCRS,
 		AssumedImportCRS: projectCRS,
 		GridResolutionM:  bundle.Project.Settings.GridMapDistance,
+		GridMapHeightM:   bundle.Project.Settings.GridMapHeight,
 		RunCount:         len(bundle.Runs),
 		CountsByKind:     counts,
 		CalcArea:         calcAreaMeta,
@@ -379,9 +389,11 @@ type soundPlanGeoObjectFeatures struct {
 	buildings []modelgeojson.Feature
 	receivers []modelgeojson.Feature
 	warnings  []string
+	decisions []string
 }
 
-// buildSoundPlanGeoObjectFeatures converts GeoObjs.geo buildings and receivers.
+// buildSoundPlanGeoObjectFeatures converts GeoObjs.geo buildings and immission
+// points.
 func buildSoundPlanGeoObjectFeatures(
 	objects *soundplanimport.GeoObjects,
 	buildingHeightM float64,
@@ -393,12 +405,9 @@ func buildSoundPlanGeoObjectFeatures(
 
 	out := soundPlanGeoObjectFeatures{
 		buildings: make([]modelgeojson.Feature, 0, len(objects.Buildings)),
-		receivers: make([]modelgeojson.Feature, 0, len(objects.Receivers)),
+		receivers: make([]modelgeojson.Feature, 0, len(objects.ImmissionPoints)),
 		warnings:  make([]string, 0, 4),
-	}
-
-	if len(objects.Receivers) > 0 {
-		out.warnings = append(out.warnings, fmt.Sprintf("receiver heights are not encoded per receiver in the current parser; imported %d receivers with project default height %.2f m", len(objects.Receivers), receiverHeightM))
+		decisions: make([]string, 0, 2),
 	}
 
 	missingBuildingHeights := 0
@@ -443,18 +452,134 @@ func buildSoundPlanGeoObjectFeatures(
 		out.warnings = append(out.warnings, fmt.Sprintf("building heights were missing for %d GeoObjs buildings; imported those features with derived default height %.2f m", missingBuildingHeights, buildingHeightM))
 	}
 
-	for receiverIndex, receiver := range objects.Receivers {
-		out.receivers = append(out.receivers, modelgeojson.Feature{
-			ID:           fmt.Sprintf("soundplan-receiver-%04d", receiverIndex+1),
-			Kind:         modelgeojson.FeatureKindReceiver,
-			HeightM:      float64Ptr(receiverHeightM),
-			Properties:   map[string]any{"soundplan_z_m": receiver.Z},
-			GeometryType: modelgeojson.GeometryTypePoint,
-			Coordinates:  []any{receiver.X, receiver.Y},
-		})
+	for pointIndex, point := range objects.ImmissionPoints {
+		features, warnings := buildSoundPlanReceiverColumn(point, pointIndex, receiverHeightM)
+		out.receivers = append(out.receivers, features...)
+		out.warnings = append(out.warnings, warnings...)
+	}
+
+	if len(objects.ImmissionPoints) > 0 {
+		out.decisions = append(out.decisions, fmt.Sprintf(
+			"SoundPLAN evaluates an Immissionsort once per floor, so each of the %d immission points in GeoObjs.geo is imported as a column of receivers — %d in total — keyed by (soundplan_obj_id, soundplan_floor), which is the key RREC*.abs joins on.",
+			len(objects.ImmissionPoints), len(out.receivers),
+		))
+	}
+
+	if len(objects.MapLabels) > 0 {
+		out.decisions = append(out.decisions, fmt.Sprintf(
+			"GeoObjs.geo object type 0x0028 is a map text caption (house numbers, bridge and dimension labels), not an Immissionsort; the %d such objects are no longer imported as receivers.",
+			len(objects.MapLabels),
+		))
 	}
 
 	return out
+}
+
+// buildSoundPlanReceiverColumn expands one Immissionsort into the receivers
+// SoundPLAN evaluates for it: one per floor, at that floor's height above
+// ground.
+//
+// A point whose floor attributes could not be decoded, or whose geometry puts
+// a floor at or below ground level, is not expanded. It becomes a single
+// receiver at the project's default height, carrying floor 0, and the caller
+// warns naming the point — an incomplete column would silently drop reference
+// rows, and a guessed one would invent receivers SoundPLAN never computed.
+func buildSoundPlanReceiverColumn(
+	point soundplanimport.ImmissionPoint,
+	pointIndex int,
+	defaultHeightM float64,
+) ([]modelgeojson.Feature, []string) {
+	if !point.HasFloorAttrs || point.FloorCount <= 0 {
+		return []modelgeojson.Feature{
+				soundPlanReceiverFeature(point, pointIndex, 0, defaultHeightM),
+			}, []string{fmt.Sprintf(
+				"SoundPLAN immission point %s carries no decodable floor attributes; imported as one receiver at the project default height %.2f m instead of one per floor",
+				describeSoundPlanImmissionPoint(point, pointIndex), defaultHeightM,
+			)}
+	}
+
+	features := make([]modelgeojson.Feature, 0, point.FloorCount)
+
+	for floor := 1; floor <= point.FloorCount; floor++ {
+		heightM := point.FloorHeightM(floor)
+		if heightM <= 0 {
+			return []modelgeojson.Feature{
+					soundPlanReceiverFeature(point, pointIndex, 0, defaultHeightM),
+				}, []string{fmt.Sprintf(
+					"SoundPLAN immission point %s puts floor %d at %.3f m above ground; imported as one receiver at the project default height %.2f m instead of one per floor",
+					describeSoundPlanImmissionPoint(point, pointIndex), floor, heightM, defaultHeightM,
+				)}
+		}
+
+		features = append(features, soundPlanReceiverFeature(point, pointIndex, floor, heightM))
+	}
+
+	return features, nil
+}
+
+// soundPlanReceiverFeature builds one receiver of an Immissionsort's column.
+// Floor 0 means the column could not be expanded; see
+// buildSoundPlanReceiverColumn.
+func soundPlanReceiverFeature(
+	point soundplanimport.ImmissionPoint,
+	pointIndex int,
+	floor int,
+	heightM float64,
+) modelgeojson.Feature {
+	zM := point.FloorRefZ
+	if floor > 0 {
+		zM = point.FloorZ(floor)
+	}
+
+	properties := map[string]any{
+		"soundplan_obj_id":          point.ObjID,
+		"soundplan_receiver_name":   point.Name,
+		"soundplan_floor":           floor,
+		"soundplan_floor_count":     point.FloorCount,
+		"soundplan_z_m":             zM,
+		"soundplan_ground_height_m": point.GroundHeightM,
+		"soundplan_limit_day_db":    point.LimitDayDB,
+		"soundplan_limit_night_db":  point.LimitNightDB,
+	}
+
+	if floor == 0 {
+		properties["soundplan_floor_attributes_missing"] = true
+	}
+
+	return modelgeojson.Feature{
+		ID:           soundPlanReceiverFeatureID(point, pointIndex, floor),
+		Kind:         modelgeojson.FeatureKindReceiver,
+		HeightM:      float64Ptr(heightM),
+		Properties:   properties,
+		GeometryType: modelgeojson.GeometryTypePoint,
+		Coordinates:  []any{point.X, point.Y},
+	}
+}
+
+// soundPlanReceiverFeatureID names a receiver after the SoundPLAN object it
+// came from, falling back to the point's position in the file when the object
+// id could not be decoded — an id of 0 is not an id and must not collide.
+func soundPlanReceiverFeatureID(point soundplanimport.ImmissionPoint, pointIndex int, floor int) string {
+	if point.ObjID > 0 {
+		return fmt.Sprintf("soundplan-receiver-%d-f%d", point.ObjID, floor)
+	}
+
+	return fmt.Sprintf("soundplan-receiver-p%04d-f%d", pointIndex+1, floor)
+}
+
+// describeSoundPlanImmissionPoint names a point in a warning a user has to act
+// on, so it says which object in their project is affected.
+func describeSoundPlanImmissionPoint(point soundplanimport.ImmissionPoint, pointIndex int) string {
+	name := strings.TrimSpace(point.Name)
+	if name == "" {
+		name = fmt.Sprintf("#%d in file order", pointIndex+1)
+	}
+
+	if point.ObjID > 0 {
+		return fmt.Sprintf("%q (obj %d)", name, point.ObjID)
+	}
+
+	return fmt.Sprintf("%q", name)
 }
 
 // buildSoundPlanBarrierFeatures converts SoundPLAN noise barriers into barrier lines.

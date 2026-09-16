@@ -33,8 +33,8 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("decode normalized model: %v", err)
 	}
 
-	if len(fc.Features) < 395 {
-		t.Fatalf("expected at least 395 features, got %d", len(fc.Features))
+	if len(fc.Features) < 348 {
+		t.Fatalf("expected at least 348 features, got %d", len(fc.Features))
 	}
 
 	counts := make(map[string]int)
@@ -48,9 +48,14 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 		t.Fatalf("building count = %d, want 315", counts["building"])
 	}
 
-	if counts["receiver"] != 77 {
-		t.Fatalf("receiver count = %d, want 77", counts["receiver"])
+	// 13 immission points, expanded to one receiver per floor: 2 or 3 floors
+	// each, 30 in total, which is exactly the row count of RREC*.abs. The 77
+	// this used to assert was the map label layer.
+	if counts["receiver"] != 30 {
+		t.Fatalf("receiver count = %d, want 30", counts["receiver"])
 	}
+
+	assertSoundPlanReceiverColumns(t, fc)
 
 	if counts["barrier"] != 1 {
 		t.Fatalf("barrier count = %d, want 1", counts["barrier"])
@@ -189,6 +194,58 @@ func TestImportSoundPlanWritesNormalizedModelAndReport(t *testing.T) {
 
 	if report.CountsByKind["source"] < 2 {
 		t.Fatalf("report source count = %d, want at least 2", report.CountsByKind["source"])
+	}
+}
+
+// assertSoundPlanReceiverColumns checks that every imported receiver carries
+// the SoundPLAN identity the comparison keys on, and that the identities are
+// what the reference project says they are: 13 immission points, each expanded
+// into a column of floors, no two receivers sharing an ID.
+func assertSoundPlanReceiverColumns(t *testing.T, fc modelgeojson.FeatureCollection) {
+	t.Helper()
+
+	objIDs := make(map[float64]bool)
+	ids := make(map[string]bool)
+
+	for _, feature := range fc.Features {
+		if kind, _ := feature.Properties["kind"].(string); kind != "receiver" {
+			continue
+		}
+
+		id, _ := feature.Properties["id"].(string)
+		if id == "" {
+			t.Fatalf("receiver without an id: %#v", feature.Properties)
+		}
+
+		if ids[id] {
+			t.Fatalf("receiver id %q is not unique", id)
+		}
+
+		ids[id] = true
+
+		objID, ok := feature.Properties["soundplan_obj_id"].(float64)
+		if !ok || objID <= 0 {
+			t.Fatalf("receiver %s carries no soundplan_obj_id", id)
+		}
+
+		objIDs[objID] = true
+
+		if _, ok := feature.Properties["soundplan_floor"].(float64); !ok {
+			t.Fatalf("receiver %s carries no soundplan_floor", id)
+		}
+
+		if name, ok := feature.Properties["soundplan_receiver_name"].(string); !ok || name == "" {
+			t.Fatalf("receiver %s carries no soundplan_receiver_name", id)
+		}
+
+		heightM, ok := feature.Properties["height_m"].(float64)
+		if !ok || heightM <= 0 {
+			t.Fatalf("receiver %s height_m = %v, want > 0", id, feature.Properties["height_m"])
+		}
+	}
+
+	if len(objIDs) != 13 {
+		t.Fatalf("distinct soundplan_obj_id = %d, want 13", len(objIDs))
 	}
 }
 
