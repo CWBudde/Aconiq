@@ -36,6 +36,44 @@ export interface NormalizeModelResult {
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
   skipped: SkippedFeature[];
+  /**
+   * The CRS the collection declares, or null when it declares none.
+   *
+   * Null is not EPSG:4326. It means "this file says nothing", which the store
+   * answers differently for a replacement than for a merge.
+   */
+  crs: string | null;
+}
+
+/**
+ * The CRS a FeatureCollection declares, as an `EPSG:<code>` string.
+ *
+ * `aconiq import` writes the OGC named-CRS member
+ * (`{type: "name", properties: {name: "EPSG:25832"}}` — see
+ * `modelgeojson.Model.ToFeatureCollection`), so a file the CLI produced round
+ * trips through here. The URN spelling `urn:ogc:def:crs:EPSG::25832` is
+ * accepted too, because that is what most GIS tools emit.
+ *
+ * Dropping this member is not harmless. The coordinates in a projected file are
+ * metric eastings and northings; labelling them EPSG:4326 hands them to the
+ * kernel's `transform` as longitude and latitude, which refuses them as out of
+ * range — and one that happened to fall inside the lon/lat range would instead
+ * be projected as though it really were degrees.
+ *
+ * Anything unrecognised returns null rather than a guess: the store's fallback
+ * is at least explicit, where a half-parsed name would not be.
+ */
+export function readCollectionCRS(
+  collection: GeoJSONFeatureCollection,
+): string | null {
+  const properties = collection.crs?.["properties"];
+  if (typeof properties !== "object" || properties === null) return null;
+
+  const name = (properties as { name?: unknown }).name;
+  if (typeof name !== "string") return null;
+
+  const code = /^(?:urn:ogc:def:crs:)?EPSG::?(\d+)$/i.exec(name.trim())?.[1];
+  return code === undefined ? null : `EPSG:${code}`;
 }
 
 /**
@@ -96,7 +134,13 @@ export function normalizeModelGeoJSON(
     }
   });
 
-  return { features, receivers, calcArea, skipped };
+  return {
+    features,
+    receivers,
+    calcArea,
+    skipped,
+    crs: readCollectionCRS(collection),
+  };
 }
 
 function forEachEntry(

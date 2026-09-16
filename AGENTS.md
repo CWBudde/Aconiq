@@ -109,38 +109,55 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
+`window.aconiq` exposes `rls19Road`, `transform`, `standards`, `loadTerrain`, `clearTerrain`,
+`defaultConfig`, `health` and `projectStatus`. Two of those carry contracts worth knowing before
+writing browser-mode code:
+
+- **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
+  coordinates and a `target_crs` of `"auto"`, and makes the CRS decision `aconiq run` makes — so
+  browser mode and the CLI resolve the same UTM zone, and refuse the same site in the same words.
+  The frontend must not grow a second transverse-Mercator implementation.
+- **`standards`** publishes what the kernel can actually run, in the same JSON shape
+  `GET /api/v1/standards` answers with. Both go through `internal/standards/descriptorjson`, so
+  the evidence tier, the parameter defaults and the enums are declared once, by the Go module.
+
+The logic behind both lives in `internal/wasmkernel`, which carries **no build tag** so that a host
+`go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and has no tests.
+
 ### Go Package Structure (`backend/internal/`)
 
-| Package                 | Responsibility                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `api/httpv1/`           | Local HTTP API: handler/mux, CORS, and the hand-built OpenAPI document                                             |
-| `app/cli/`              | Cobra commands and their run pipeline (input, extraction per standard, persistence, output)                        |
-| `app/config/`           | Config resolution (project path, cache dir, log level, JSON output)                                                |
-| `app/logging/`          | Structured logging baseline and per-command run logging                                                            |
-| `assessment/bimschv16/` | 16. BImSchV threshold tables and receiver assessment; emitted into export bundles                                  |
-| `assessment/talaerm/`   | TA Lärm Beurteilungspegel, area categories, periods and export envelope (library only; no CLI wiring yet)          |
-| `buildinfo/`            | Release identity (version, commit, build date), stamped at link time, used by `--version` and provenance           |
-| `domain/errors/`        | Error taxonomy (user input vs. internal), drives CLI exit codes                                                    |
-| `domain/project/`       | Core entities: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`, provenance                              |
-| `engine/`               | Compute engine: chunked worker pool, progress events, cancellation, run/shared disk cache, deterministic reduction |
-| `geo/`                  | CRS model and transforms, geometry primitives, spatial index, receiver sets                                        |
-| `geo/modelgeojson/`     | GeoJSON model normalization and validation                                                                         |
-| `geo/terrain/`          | Terrain model interface plus GeoTIFF DTM loading and bilinear elevation queries                                    |
-| `io/citygmlimport/`     | CityGML building import                                                                                            |
-| `io/csvimport/`         | CSV attribute/traffic tables merged into model features                                                            |
-| `io/fgbimport/`         | FlatGeobuf (`.fgb`) import                                                                                         |
-| `io/gpkgimport/`        | GeoPackage (`.gpkg`) import, including WKB decoding                                                                |
-| `io/osmimport/`         | OpenStreetMap import via the Overpass API                                                                          |
-| `io/projectfs/`         | Project folder store (JSON manifest in `.noise/project.json`)                                                      |
-| `io/soundplanimport/`   | SoundPLAN project bundle import (geometry, terrain, rail ops, grids, absolute results)                             |
-| `qa/acceptance/`        | Acceptance fixture catalog and hook registry, with per-standard runners (`rls19_test20/`, `schall03/`)             |
-| `qa/golden/`            | Golden snapshot helper                                                                                             |
-| `report/export/`        | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
-| `report/reporting/`     | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
-| `report/results/`       | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
-| `standards/`            | The registry that assembles the standards modules the CLI can run                                                  |
-| `standards/framework/`  | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |
-| `standards/<module>/`   | Individual standards modules — see the evidence-tier warning below                                                 |
+| Package                     | Responsibility                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `api/httpv1/`               | Local HTTP API: handler/mux, CORS, and the hand-built OpenAPI document                                             |
+| `app/cli/`                  | Cobra commands and their run pipeline (input, extraction per standard, persistence, output)                        |
+| `app/config/`               | Config resolution (project path, cache dir, log level, JSON output)                                                |
+| `app/logging/`              | Structured logging baseline and per-command run logging                                                            |
+| `assessment/bimschv16/`     | 16. BImSchV threshold tables and receiver assessment; emitted into export bundles                                  |
+| `assessment/talaerm/`       | TA Lärm Beurteilungspegel, area categories, periods and export envelope (library only; no CLI wiring yet)          |
+| `buildinfo/`                | Release identity (version, commit, build date), stamped at link time, used by `--version` and provenance           |
+| `domain/errors/`            | Error taxonomy (user input vs. internal), drives CLI exit codes                                                    |
+| `domain/project/`           | Core entities: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`, provenance                              |
+| `engine/`                   | Compute engine: chunked worker pool, progress events, cancellation, run/shared disk cache, deterministic reduction |
+| `geo/`                      | CRS model and transforms, geometry primitives, spatial index, receiver sets                                        |
+| `geo/modelgeojson/`         | GeoJSON model normalization and validation                                                                         |
+| `geo/terrain/`              | Terrain model interface plus GeoTIFF DTM loading and bilinear elevation queries                                    |
+| `io/citygmlimport/`         | CityGML building import                                                                                            |
+| `io/csvimport/`             | CSV attribute/traffic tables merged into model features                                                            |
+| `io/fgbimport/`             | FlatGeobuf (`.fgb`) import                                                                                         |
+| `io/gpkgimport/`            | GeoPackage (`.gpkg`) import, including WKB decoding                                                                |
+| `io/osmimport/`             | OpenStreetMap import via the Overpass API                                                                          |
+| `io/projectfs/`             | Project folder store (JSON manifest in `.noise/project.json`)                                                      |
+| `io/soundplanimport/`       | SoundPLAN project bundle import (geometry, terrain, rail ops, grids, absolute results)                             |
+| `qa/acceptance/`            | Acceptance fixture catalog and hook registry, with per-standard runners (`rls19_test20/`, `schall03/`)             |
+| `qa/golden/`                | Golden snapshot helper                                                                                             |
+| `report/export/`            | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
+| `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
+| `report/results/`           | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
+| `standards/`                | The registry that assembles the standards modules the CLI can run                                                  |
+| `standards/descriptorjson/` | The one JSON encoding of a standards descriptor, shared by the HTTP API and the WASM kernel                        |
+| `standards/framework/`      | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |
+| `standards/<module>/`       | Individual standards modules — see the evidence-tier warning below                                                 |
+| `wasmkernel/`               | What the WASM kernel can run and what its JS entry points do, build-tag-free so host tests can reach it            |
 
 ### CLI Surface
 

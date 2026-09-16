@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeModelGeoJSON } from "./normalize";
+import { normalizeModelGeoJSON, readCollectionCRS } from "./normalize";
 import { DEFAULT_RECEIVER_HEIGHT_M } from "./types";
 import type { GeoJSONFeatureCollection } from "./types";
 
@@ -351,5 +351,72 @@ describe("normalizeModelGeoJSON", () => {
       areaFeature.geometry.coordinates,
     );
     expect(result.skipped).toHaveLength(1);
+  });
+});
+
+/**
+ * The declared CRS has to survive the normalizer, or a projected file is
+ * relabelled EPSG:4326 and its metric eastings are handed to `transform` as
+ * longitudes.
+ */
+describe("readCollectionCRS", () => {
+  const withCRS = (crs: unknown): GeoJSONFeatureCollection =>
+    ({
+      ...validCollection,
+      crs,
+    }) as GeoJSONFeatureCollection;
+
+  it("reads the OGC named-CRS member `aconiq import` writes", () => {
+    expect(
+      readCollectionCRS(
+        withCRS({ type: "name", properties: { name: "EPSG:25832" } }),
+      ),
+    ).toBe("EPSG:25832");
+  });
+
+  it("reads the URN spelling other GIS tools emit", () => {
+    expect(
+      readCollectionCRS(
+        withCRS({
+          type: "name",
+          properties: { name: "urn:ogc:def:crs:EPSG::25832" },
+        }),
+      ),
+    ).toBe("EPSG:25832");
+  });
+
+  it("is case-insensitive and tolerates surrounding space", () => {
+    expect(
+      readCollectionCRS(
+        withCRS({ type: "name", properties: { name: "  epsg:4326 " } }),
+      ),
+    ).toBe("EPSG:4326");
+  });
+
+  it.each([
+    ["no member at all", undefined],
+    ["no properties", { type: "name" }],
+    ["a non-string name", { type: "name", properties: { name: 25832 } }],
+    [
+      "an authority we cannot resolve",
+      { type: "name", properties: { name: "OGC:CRS84" } },
+    ],
+    [
+      "a proj string rather than a code",
+      { type: "name", properties: { name: "+proj=tmerc +lat_0=0" } },
+    ],
+  ])("returns null for %s rather than guessing", (_label, crs) => {
+    expect(readCollectionCRS(withCRS(crs))).toBeNull();
+  });
+
+  it("carries the parsed CRS out of the normalizer", () => {
+    const result = normalizeModelGeoJSON(
+      withCRS({ type: "name", properties: { name: "EPSG:25832" } }),
+    );
+    expect(result.crs).toBe("EPSG:25832");
+  });
+
+  it("reports null, not a default, for a file that declares nothing", () => {
+    expect(normalizeModelGeoJSON(validCollection).crs).toBeNull();
   });
 });

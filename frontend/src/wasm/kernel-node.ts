@@ -18,11 +18,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInThisContext } from "node:vm";
 
+import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel } from "./kernel";
 import type {
   ComputeRequest,
   PropagationConfig,
   ReceiverOutput,
+  TransformRequest,
+  TransformResponse,
 } from "./types";
 
 /**
@@ -56,6 +59,8 @@ interface GoRuntimeGlobal {
   };
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
+    transform: (json: string) => Promise<string>;
+    standards: () => string;
     defaultConfig: () => string;
   };
 }
@@ -144,6 +149,13 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
     async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
       const json = await exports.rls19Road(JSON.stringify(req));
       return JSON.parse(json) as ReceiverOutput[];
+    },
+    async transform(req: TransformRequest): Promise<TransformResponse> {
+      const json = await exports.transform(JSON.stringify(req));
+      return JSON.parse(json) as TransformResponse;
+    },
+    standards(): StandardDescriptor[] {
+      return JSON.parse(exports.standards()) as StandardDescriptor[];
     },
     defaultConfig(): PropagationConfig {
       return JSON.parse(exports.defaultConfig()) as PropagationConfig;

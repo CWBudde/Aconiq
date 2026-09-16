@@ -4,15 +4,36 @@
 //   const kernel = await getKernel();
 //   const outputs = await kernel.rls19Road({ receivers, sources, barriers });
 
+import type { StandardDescriptor } from "@/standards/descriptor";
 import type {
   ComputeRequest,
   PropagationConfig,
   ReceiverOutput,
+  TransformRequest,
+  TransformResponse,
 } from "./types";
 
 export interface AconiqKernel {
   /** Compute RLS-19 road traffic noise levels for all receivers. */
   rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]>;
+  /**
+   * Project a batch of coordinates between two CRS.
+   *
+   * This is the frontend's only way into a map projection, and deliberately
+   * so: the kernel already links `internal/geo` in, and a second
+   * transverse-Mercator implementation in TypeScript would be a second answer
+   * to where a model sits. See `@/model/compute-crs`, which is the only caller.
+   */
+  transform(req: TransformRequest): Promise<TransformResponse>;
+  /**
+   * The standards this kernel can actually run, in the same shape `GET
+   * /api/v1/standards` answers with.
+   *
+   * It comes from the kernel rather than from a hardcoded list so that the
+   * evidence tier, the parameter defaults and the surface enum are declared
+   * once, by the Go module. The hardcoded copy this replaced had drifted twice.
+   */
+  standards(): StandardDescriptor[];
   /** Return the default PropagationConfig. */
   defaultConfig(): PropagationConfig;
 }
@@ -88,6 +109,13 @@ async function loadKernel(): Promise<AconiqKernel> {
     async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
       const json = await exports.rls19Road(JSON.stringify(req));
       return JSON.parse(json) as ReceiverOutput[];
+    },
+    async transform(req: TransformRequest): Promise<TransformResponse> {
+      const json = await exports.transform(JSON.stringify(req));
+      return JSON.parse(json) as TransformResponse;
+    },
+    standards(): StandardDescriptor[] {
+      return JSON.parse(exports.standards()) as StandardDescriptor[];
     },
     defaultConfig(): PropagationConfig {
       return JSON.parse(exports.defaultConfig()) as PropagationConfig;

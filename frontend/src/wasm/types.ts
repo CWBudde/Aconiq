@@ -162,3 +162,41 @@ export interface ComputeRequest {
   barriers: Barrier[];
   config?: PropagationConfig;
 }
+
+/**
+ * Asks the kernel to make the same CRS decision `aconiq run` makes: project a
+ * geographic model into the ETRS89 / UTM zone its centre falls in, and leave a
+ * model that is already metric exactly where it is.
+ *
+ * Mirrors `wasmkernel.AutoTargetCRS`.
+ */
+export const AUTO_TARGET_CRS = "auto";
+
+/**
+ * A batch of coordinates to move between two CRS.
+ *
+ * Coordinates are flat and interleaved — x0, y0, x1, y1, … — not nested pairs:
+ * a per-point crossing of the WASM boundary is not viable for a model of any
+ * size, so the call is batched, and flat halves the JSON of the batch.
+ *
+ * `target_crs` is {@link AUTO_TARGET_CRS} to let the kernel decide, or an
+ * explicit `EPSG:nnnn` to transform unconditionally — which is what makes the
+ * inverse direction free.
+ */
+export interface TransformRequest {
+  source_crs: string;
+  target_crs: string;
+  coordinates: number[];
+}
+
+/**
+ * Where the coordinates ended up. `target_crs` is the CRS they are actually in,
+ * which for an `auto` request is the resolved zone. `applied` is false only
+ * when nothing moved, and then `coordinates` are the input values verbatim.
+ */
+export interface TransformResponse {
+  source_crs: string;
+  target_crs: string;
+  applied: boolean;
+  coordinates: number[];
+}

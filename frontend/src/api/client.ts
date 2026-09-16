@@ -169,61 +169,18 @@ export interface DeleteRunResponse {
   retained_paths: string[];
 }
 
-export interface ParameterDefinition {
-  name: string;
-  kind: "string" | "bool" | "int" | "float";
-  /**
-   * Physical unit of the value as a short symbol — "m", "km/h", "dB",
-   * "dB/km", "1/h", "1/km", "%", "°C", "°". Absent when the parameter is
-   * dimensionless (a share, a factor, a count) or not numeric at all.
-   *
-   * The symbol is the conventional SI-style spelling, not the suffix the
-   * parameter name happens to use: `speed_pkw_kph` carries "km/h". Declared by
-   * `framework.ParameterDefinition.Unit` in the Go modules and published on
-   * `GET /api/v1/standards`; optional because older backends omit it.
-   */
-  unit?: string;
-  required: boolean;
-  default_value?: string;
-  description?: string;
-  enum?: string[];
-  min?: number;
-  max?: number;
-}
-
-export interface ProfileInfo {
-  name: string;
-  supported_source_types: string[];
-  supported_indicators: string[];
-  parameters: ParameterDefinition[];
-}
-
-export interface VersionInfo {
-  name: string;
-  default_profile: string;
-  profiles: ProfileInfo[];
-}
-
-export interface StandardDescriptor {
-  /**
-   * Which assessment question the standard answers: `planning` for an
-   * individual project's approval case, `mapping` for area-wide strategic
-   * noise mapping. Typed as a plain string because older backends omit it.
-   */
-  context?: string;
-  id: string;
-  description: string;
-  default_version: string;
-  versions: VersionInfo[];
-  /**
-   * How much a module's output can be trusted: `normative`, `preview`,
-   * `scaffold` or `test-fixture`. Optional and deliberately typed as a plain
-   * string — older backends omit the field, and newer ones may report a tier
-   * this build does not know yet. Narrow it with `parseEvidenceTier` rather
-   * than comparing raw strings.
-   */
-  evidence_tier?: string;
-}
+/**
+ * The standards descriptor contract. It is declared in `@/standards/descriptor`
+ * because both backends publish it and neither owns it — `aconiq serve` through
+ * `GET /api/v1/standards`, the WASM kernel through `aconiq.standards()` — and
+ * re-exported here so that an existing `from "./client"` import keeps working.
+ */
+export type {
+  ParameterDefinition,
+  ProfileInfo,
+  StandardDescriptor,
+  VersionInfo,
+} from "@/standards/descriptor";
 
 export interface ReceiverRecord {
   id: string;

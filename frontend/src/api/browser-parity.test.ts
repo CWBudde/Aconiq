@@ -6,7 +6,12 @@
 // here can only mean the model → scene translation drifted — which is where the
 // defects have actually been. buildBuildings dropped every MultiPolygon
 // building and PolygonCentroid ignored polygon holes; both survived a full
-// name-level parity suite, and both are encoded in the fixtures below.
+// name-level parity suite, and both are encoded in the fixtures below. So did a
+// third: browser mode handed lon/lat straight to the kernel, which measures
+// distance with math.Hypot, so every propagation distance in a geographic model
+// fell under the minimum-distance clamp — tens of dB, with nothing to see. That
+// one is `road_geographic`, and the x/y comparison below is what makes it
+// visible.
 //
 // Nothing here re-implements browser-backend.ts. Only `getKernel` is mocked, so
 // buildRoadSources, buildBarriers, buildBuildings, buildParkingSources and
@@ -77,7 +82,20 @@ const RUN_PARAMS: Record<string, string> = {
   grid_padding_m: "50",
 };
 
-const FIXTURES = ["road_building_barrier", "parking_building"] as const;
+/**
+ * `parityFixtures` in parity_golden_test.go, project CRS and all.
+ *
+ * The CRS is not decoration. Two of these fixtures are authored in EPSG:25832
+ * and one in EPSG:4326, and a browser that assumed 4326 for all three would not
+ * refuse the metric ones: `road_building_barrier` holds coordinates like
+ * `[-60, 0]` and `[60, 12]`, which are perfectly good lon/lat, so it would
+ * project them into UTM zone 31 and compute a scene 10,000 km wide.
+ */
+const FIXTURES = [
+  { name: "road_building_barrier", crs: "EPSG:25832" },
+  { name: "parking_building", crs: "EPSG:25832" },
+  { name: "road_geographic", crs: "EPSG:4326" },
+] as const;
 
 interface ReceiverSnapshot {
   id: string;
@@ -91,6 +109,8 @@ interface ReceiverSnapshot {
 interface ReceiverTable {
   records: {
     id: string;
+    x: number;
+    y: number;
     values: Record<string, number | undefined>;
   }[];
 }
@@ -134,7 +154,12 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
   beforeEach(async () => {
     await clearPersistedState();
     resetBrowserBackendForTests();
-    useModelStore.setState({ features: [], receivers: [], calcArea: null });
+    useModelStore.setState({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
   });
 
   it("loads the kernel through the mocked production entry point", async () => {
@@ -142,7 +167,7 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
     await expect(getKernel()).resolves.toBe(await getNodeKernel());
   });
 
-  it.each(FIXTURES)("%s", async (name) => {
+  it.each(FIXTURES)("$name", async ({ name, crs }) => {
     const collection = JSON.parse(
       parityFile(`${name}.geojson`),
     ) as GeoJSONFeatureCollection;
@@ -161,6 +186,7 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
       features,
       receivers: receiversFrom(collection),
       calcArea: null,
+      crs,
     });
 
     const run = await browserBackend.startRun({
@@ -194,6 +220,28 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
     for (const want of expected.receivers) {
       const record = byID.get(want.id);
       expect(record, `no browser record for receiver ${want.id}`).toBeDefined();
+
+      // The coordinates, not only the levels.
+      //
+      // They were not compared before, and that is the second reason a whole
+      // class of defect was invisible here: a browser computing in degrees
+      // wrote degrees into its receiver table, the CLI wrote metres into its
+      // golden, and nothing looked. On a geographic fixture the difference is
+      // six orders of magnitude.
+      //
+      // 1e-6 is the goldens' own rounding, not a tolerance: both targets run
+      // the same transform over the same coordinates through the same kernel,
+      // so an agreement looser than that would mean they had taken different
+      // routes there.
+      expect(
+        Math.abs(round6(record?.x ?? NaN) - want.x),
+        `receiver ${want.id} x`,
+      ).toBeLessThanOrEqual(1e-6);
+      expect(
+        Math.abs(round6(record?.y ?? NaN) - want.y),
+        `receiver ${want.id} y`,
+      ).toBeLessThanOrEqual(1e-6);
+
       expect(
         Math.abs(round6(record?.values["LrDay"] ?? NaN) - want.lr_day),
       ).toBeLessThanOrEqual(1e-6);
@@ -201,6 +249,131 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
         Math.abs(round6(record?.values["LrNight"] ?? NaN) - want.lr_night),
       ).toBeLessThanOrEqual(1e-6);
     }
+  });
+
+  // The geographic fixture is the only one that can see a target computing in
+  // degrees, so what it proves has to be stated rather than left implicit in a
+  // level comparison: the run really was projected, and the run says so.
+  it("projects a geographic model into the zone the CLI would pick", async () => {
+    const collection = JSON.parse(
+      parityFile("road_geographic.geojson"),
+    ) as GeoJSONFeatureCollection;
+
+    useModelStore.setState({
+      features: normalizeModelGeoJSON(collection).features,
+      receivers: receiversFrom(collection),
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+
+    const run = await browserBackend.startRun({
+      standardId: "rls19-road",
+      version: "2019",
+      profile: "default",
+      params: RUN_PARAMS,
+      receiverMode: "custom",
+    });
+
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    await expect(
+      browserBackend.getArtifactContent(summaryRef?.id ?? ""),
+    ).resolves.toMatchObject({
+      project_crs: "EPSG:4326",
+      compute_crs: "EPSG:25832",
+    });
+
+    const tableRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.receiver_table_json",
+    );
+    const table = await browserBackend.getArtifactContent<ReceiverTable>(
+      tableRef?.id ?? "",
+    );
+
+    // Eastings and northings, not longitudes and latitudes — the same check
+    // TestGeographicFixtureIsActuallyProjected makes on the Go side.
+    for (const record of table.records) {
+      expect(record.x).toBeGreaterThan(400_000);
+      expect(record.x).toBeLessThan(700_000);
+      expect(record.y).toBeGreaterThan(5_000_000);
+      expect(record.y).toBeLessThan(6_500_000);
+    }
+  });
+
+  // A model already in metres must run through exactly the code it ran through
+  // before: projecting one would move every coordinate for nothing.
+  it("leaves a model already in a metric CRS where it is", async () => {
+    const collection = JSON.parse(
+      parityFile("road_building_barrier.geojson"),
+    ) as GeoJSONFeatureCollection;
+
+    useModelStore.setState({
+      features: normalizeModelGeoJSON(collection).features,
+      receivers: receiversFrom(collection),
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+
+    const run = await browserBackend.startRun({
+      standardId: "rls19-road",
+      version: "2019",
+      profile: "default",
+      params: RUN_PARAMS,
+      receiverMode: "custom",
+    });
+
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    await expect(
+      browserBackend.getArtifactContent(summaryRef?.id ?? ""),
+    ).resolves.toMatchObject({
+      project_crs: "EPSG:25832",
+      compute_crs: "EPSG:25832",
+    });
+  });
+
+  // Browser mode refuses a site the CLI refuses, in the CLI's own words. The
+  // refusal is `geo.ComputeCRSForGeographic`'s, carried across verbatim.
+  it("refuses a geographic model outside the supported UTM zones", async () => {
+    useModelStore.setState({
+      features: [
+        {
+          id: "road",
+          kind: "source",
+          sourceType: "line",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            // Manhattan: UTM zone 18, which the ETRS89 table does not carry.
+            coordinates: [
+              [-74.0, 40.7],
+              [-73.99, 40.7],
+            ],
+          },
+        },
+      ],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [-73.995, 40.701] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+
+    await expect(
+      browserBackend.startRun({
+        standardId: "rls19-road",
+        version: "2019",
+        profile: "default",
+        params: RUN_PARAMS,
+        receiverMode: "custom",
+      }),
+    ).rejects.toThrow(/zones 31-34/);
   });
 
   // Found by the comparison above, and left standing deliberately rather than
@@ -226,6 +399,7 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
       features: normalizeModelGeoJSON(collection).features,
       receivers: receiversFrom(collection),
       calcArea: null,
+      crs: "EPSG:25832",
     });
 
     const run = await browserBackend.startRun({
