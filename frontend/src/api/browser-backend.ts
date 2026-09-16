@@ -24,6 +24,7 @@ import type {
 } from "./client";
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
+import { resolveComputeModel } from "@/model/compute-crs";
 import {
   getFeatureNumber,
   getFeatureString,
@@ -71,8 +72,18 @@ export const MAX_STORED_RUNS = 20;
 const DEFAULT_PROJECT_ID = "browser-project";
 const DEFAULT_PROJECT_NAME = "Aconiq Browser Project";
 const DEFAULT_PROJECT_PATH = "browser://local-storage";
-const DEFAULT_CRS = "WGS84 / web map";
 const DEFAULT_OSM_ENDPOINT = "https://overpass-api.de/api/interpreter";
+
+/**
+ * What a run stored before browser mode recorded a CRS is labelled with.
+ *
+ * Such a run has x and y in degrees, because it was computed without the
+ * projection this file now applies, and `PERSISTED_STATE_VERSION` deliberately
+ * did not move for the change. Saying so is the point: labelling it "EPSG:4326"
+ * would be true of the coordinates and misleading about the levels, and
+ * labelling it with the compute CRS would be a straight lie.
+ */
+const CRS_NOT_RECORDED = "CRS not recorded";
 
 type StoredArtifactContent = {
   mimeType: string;
@@ -91,7 +102,6 @@ type BrowserBackendState = {
   projectId: string;
   projectName: string;
   projectPath: string;
-  crs: string;
   runs: StoredRun[];
   /**
    * The highest run index ever minted, whether or not that run is still
@@ -133,198 +143,11 @@ type OverpassResponse = {
 
 const urlCache = new Map<string, string>();
 
-export const BROWSER_STANDARDS: StandardDescriptor[] = [
-  {
-    id: "rls19-road",
-    description:
-      "RLS-19 road noise computed locally in the browser via WebAssembly.",
-    // The browser kernel is the same Go module compiled to WASM, so it sits at
-    // the same evidence tier the API registry reports for it.
-    evidence_tier: "normative",
-    default_version: "2019",
-    versions: [
-      {
-        name: "2019",
-        default_profile: "default",
-        profiles: [
-          {
-            name: "default",
-            supported_source_types: ["line", "area"],
-            supported_indicators: ["LrDay", "LrNight"],
-            parameters: [
-              {
-                name: "grid_resolution_m",
-                kind: "float",
-                unit: "m",
-                required: true,
-                default_value: "10",
-                description: "Receiver grid spacing in map units",
-                min: 0.001,
-              },
-              {
-                name: "grid_padding_m",
-                kind: "float",
-                unit: "m",
-                required: true,
-                default_value: "20",
-                description: "Padding around source extent in map units",
-                min: 0,
-              },
-              {
-                name: "receiver_height_m",
-                kind: "float",
-                unit: "m",
-                required: true,
-                default_value: "4",
-                description: "Receiver height above ground",
-                min: 0,
-              },
-              {
-                name: "surface_type",
-                kind: "string",
-                required: true,
-                default_value: "SMA",
-                description: "Default road surface type",
-                // The whole RLS19_SURFACE_TYPES vocabulary, not a subset: a
-                // surface missing here is one a browser-mode run cannot select,
-                // and each carries its own Tabelle 4a row.
-                enum: [...RLS19_SURFACE_TYPES],
-              },
-              {
-                name: "speed_pkw_kph",
-                kind: "float",
-                unit: "km/h",
-                required: true,
-                default_value: "100",
-                min: 0.001,
-              },
-              {
-                name: "speed_lkw1_kph",
-                kind: "float",
-                unit: "km/h",
-                required: true,
-                default_value: "100",
-                min: 0.001,
-              },
-              {
-                name: "speed_lkw2_kph",
-                kind: "float",
-                unit: "km/h",
-                required: true,
-                default_value: "80",
-                min: 0.001,
-              },
-              {
-                name: "speed_krad_kph",
-                kind: "float",
-                unit: "km/h",
-                required: true,
-                default_value: "100",
-                min: 0.001,
-              },
-              {
-                name: "gradient_percent",
-                kind: "float",
-                unit: "%",
-                required: true,
-                default_value: "0",
-                min: -12,
-                max: 12,
-              },
-              {
-                name: "traffic_day_pkw",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "900",
-                min: 0,
-              },
-              {
-                name: "traffic_day_lkw1",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "40",
-                min: 0,
-              },
-              {
-                name: "traffic_day_lkw2",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "60",
-                min: 0,
-              },
-              {
-                name: "traffic_day_krad",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "10",
-                min: 0,
-              },
-              {
-                name: "traffic_night_pkw",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "200",
-                min: 0,
-              },
-              {
-                name: "traffic_night_lkw1",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "10",
-                min: 0,
-              },
-              {
-                name: "traffic_night_lkw2",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "20",
-                min: 0,
-              },
-              {
-                name: "traffic_night_krad",
-                kind: "float",
-                unit: "1/h",
-                required: true,
-                default_value: "2",
-                min: 0,
-              },
-              {
-                name: "segment_length_m",
-                kind: "float",
-                unit: "m",
-                required: true,
-                default_value: "1",
-                min: 0.001,
-              },
-              {
-                name: "min_distance_m",
-                kind: "float",
-                unit: "m",
-                required: true,
-                default_value: "3",
-                min: 0.001,
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-];
-
 function initialState(): BrowserBackendState {
   return {
     projectId: DEFAULT_PROJECT_ID,
     projectName: DEFAULT_PROJECT_NAME,
     projectPath: DEFAULT_PROJECT_PATH,
-    crs: DEFAULT_CRS,
     runs: [],
     runHighWaterMark: 0,
   };
@@ -396,7 +219,6 @@ function decodeState(value: unknown): BrowserBackendState {
     projectId: text("projectId", defaults.projectId),
     projectName: text("projectName", defaults.projectName),
     projectPath: text("projectPath", defaults.projectPath),
-    crs: text("crs", defaults.crs),
     runs,
     runHighWaterMark:
       typeof storedMark === "number" && Number.isInteger(storedMark)
@@ -1200,7 +1022,30 @@ function formatIndicator(values: Record<string, number>, key: string): string {
   return values[key]?.toFixed(1) ?? "";
 }
 
-function browserExportHTML(run: RunSummary, table: ReceiverTable): string {
+/**
+ * The CRS a stored run's receiver coordinates are in, read back off its own
+ * run-summary artifact.
+ *
+ * A run made before browser mode projected anything carries no `compute_crs`
+ * and its x/y are degrees, so it is labelled {@link CRS_NOT_RECORDED} rather
+ * than given a CRS it was never computed in.
+ */
+function storedComputeCRS(storedRun: StoredRun): string {
+  const ref = storedRun.run.artifacts.find(
+    (artifact) => artifact.kind === "run.result.summary",
+  );
+  const summary = ref === undefined ? undefined : storedRun.artifacts[ref.id];
+  const value = isRecord(summary?.value)
+    ? summary.value["compute_crs"]
+    : undefined;
+  return typeof value === "string" && value !== "" ? value : CRS_NOT_RECORDED;
+}
+
+function browserExportHTML(
+  run: RunSummary,
+  table: ReceiverTable,
+  computeCRS: string,
+): string {
   const previewRows = table.records.slice(0, 20);
   const rowHtml = previewRows
     .map(
@@ -1225,6 +1070,7 @@ function browserExportHTML(run: RunSummary, table: ReceiverTable): string {
   <body>
     <h1>Aconiq Export</h1>
     <p class="meta">Run ${run.id} · ${run.standard_id} / ${run.version}${run.profile ? ` / ${run.profile}` : ""}</p>
+    <p class="meta">Receiver coordinates are in ${computeCRS}</p>
     <p>Receiver preview (${String(previewRows.length)} of ${String(table.records.length)})</p>
     <table>
       <thead>
@@ -1236,7 +1082,11 @@ function browserExportHTML(run: RunSummary, table: ReceiverTable): string {
 </html>`;
 }
 
-function browserExportMarkdown(run: RunSummary, table: ReceiverTable): string {
+function browserExportMarkdown(
+  run: RunSummary,
+  table: ReceiverTable,
+  computeCRS: string,
+): string {
   const previewRows = table.records
     .slice(0, 10)
     .map(
@@ -1251,6 +1101,8 @@ Run: \`${run.id}\`
 Standard: \`${run.standard_id}\` / \`${run.version}\`${run.profile ? ` / \`${run.profile}\`` : ""}
 
 ## Receiver Preview
+
+Receiver coordinates are in \`${computeCRS}\`.
 
 | ID | X | Y | LrDay | LrNight |
 | --- | ---: | ---: | ---: | ---: |
@@ -1286,9 +1138,15 @@ export const browserBackend = {
     };
   },
 
+  /**
+   * In browser mode the model store *is* the project, so the CRS it reports is
+   * the store's. It used to be the constant `"WGS84 / web map"` — a display
+   * label nothing parses, which said nothing about what the coordinates were in
+   * and could not have, since the store held whatever the last import brought.
+   */
   async getProjectStatus(): Promise<ProjectStatusResponse> {
     const current = await ensureLoaded();
-    const features = useModelStore.getState().features;
+    const { features, crs } = useModelStore.getState();
     const lastRun = current.runs
       .map((entry) => entry.run)
       .sort((a, b) => b.started_at.localeCompare(a.started_at))[0];
@@ -1301,7 +1159,7 @@ export const browserBackend = {
           : current.projectName,
       project_path: current.projectPath,
       manifest_version: 1,
-      crs: current.crs,
+      crs,
       scenario_count: 1,
       run_count: current.runs.length,
       ...(lastRun
@@ -1320,8 +1178,18 @@ export const browserBackend = {
     };
   },
 
+  /**
+   * The standards the kernel can run, as the kernel declares them.
+   *
+   * This used to be a hardcoded descriptor maintained by hand next to the Go
+   * one, and it had drifted twice: it offered 9 of the 17 road surfaces, and
+   * claimed line sources only, long after the module started accepting
+   * Parkplatz areas. It also declared the evidence tier a second time, which is
+   * the exact duplication `framework.StandardDescriptor.EvidenceTier` exists to
+   * prevent.
+   */
   async getStandards(): Promise<StandardDescriptor[]> {
-    return BROWSER_STANDARDS;
+    return (await getKernel()).standards();
   },
 
   async getRuns(): Promise<RunSummary[]> {
@@ -1417,7 +1285,22 @@ out geom;`;
       );
     }
 
-    const features = useModelStore.getState().features;
+    // Project the whole workspace once, before anything reads a coordinate off
+    // it, mirroring `cli.resolveComputeModel`. Never per builder:
+    // `buildParkingSources` computes a shoelace area in m² and a centroid, and
+    // `getFeatureBBox`/`getPolygonBBox` feed a receiver grid whose padding and
+    // resolution are metres by contract. Every one of them needs the model
+    // already in metres.
+    const store = useModelStore.getState();
+    const computeModel = await resolveComputeModel(kernel, {
+      features: store.features,
+      receivers: store.receivers,
+      calcArea: store.calcArea,
+      crs: store.crs,
+    });
+    const projection = computeModel.projection;
+
+    const features = computeModel.features;
     const sources = buildRoadSources(features, spec.params);
     const parking = buildParkingSources(features);
     if (sources.length === 0 && parking.sources.length === 0) {
@@ -1434,7 +1317,7 @@ out geom;`;
     let rasterHeight: number;
 
     if (spec.receiverMode === "custom") {
-      const storeReceivers = useModelStore.getState().receivers;
+      const storeReceivers = computeModel.receivers;
       if (storeReceivers.length === 0) {
         throw new Error(
           "Custom receiver mode requires at least one receiver placed in the map workspace",
@@ -1451,7 +1334,7 @@ out geom;`;
       rasterWidth = 1;
       rasterHeight = sorted.length;
     } else {
-      const calcArea = useModelStore.getState().calcArea;
+      const calcArea = computeModel.calcArea;
       let bbox: {
         minX: number;
         minY: number;
@@ -1520,6 +1403,14 @@ out geom;`;
         parking_source_count: parking.sources.length,
         receiver_count: outputs.length,
         reporting_precision_db: 0.1,
+        // The CLI's own key names (`cli.provenanceProjectCRSKey` and
+        // `provenanceComputeCRSKey`), because results are expressed in the
+        // compute CRS on both targets and a consumer that only ever sees a
+        // receiver table has to be able to learn which CRS it is in. Not on
+        // `ReceiverTable`: the Go container has no CRS field, and adding one
+        // browser-side would fork the format.
+        project_crs: projection.projectCRS,
+        compute_crs: projection.computeCRS,
       };
 
       const hashPayload = outputs.map((output) => ({
@@ -1595,6 +1486,9 @@ out geom;`;
           `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
           `${startedAt} rls19_buildings=${String(buildings.length)}`,
           `${startedAt} receivers=${String(gridReceivers.length)}`,
+          projection.applied
+            ? `${startedAt} compute_crs=${projection.computeCRS} (projected from ${projection.projectCRS})`
+            : `${startedAt} compute_crs=${projection.computeCRS}`,
           `${startedAt} stage=compute`,
           `${finishedAt} output_hash=${outputHash}`,
           `${finishedAt} persisted=browser`,
@@ -1656,14 +1550,20 @@ out geom;`;
       const exportedAt = nowISO();
       const exportBase = `${DEFAULT_PROJECT_PATH}/exports/${runId}-${exportedAt.replaceAll(":", "").replaceAll(".", "")}`;
 
+      const computeCRS = storedComputeCRS(storedRun);
       const context = {
         exported_at: exportedAt,
         project_id: DEFAULT_PROJECT_ID,
         run: storedRun.run,
+        compute_crs: computeCRS,
         receiver_table: receiverTable,
       };
-      const html = browserExportHTML(storedRun.run, receiverTable);
-      const markdown = browserExportMarkdown(storedRun.run, receiverTable);
+      const html = browserExportHTML(storedRun.run, receiverTable, computeCRS);
+      const markdown = browserExportMarkdown(
+        storedRun.run,
+        receiverTable,
+        computeCRS,
+      );
       const bundleSummary = {
         export_id: `${runId}-${exportedAt}`,
         run_id: runId,

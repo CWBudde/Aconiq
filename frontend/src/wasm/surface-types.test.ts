@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { BROWSER_STANDARDS } from "@/api/browser-backend";
 import { RLS19_SURFACE_TYPES } from "@/model/source-acoustics";
+import type { ProfileInfo } from "@/standards/descriptor";
+import { getNodeKernel, kernelSkipReason } from "./kernel-node";
+
+const skipReason = kernelSkipReason();
 
 /**
  * The RLS-19 road surface list exists in three places:
@@ -82,39 +85,6 @@ function goSupportedSourceTypes(): string[] {
   return [...(match?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1] ?? "");
 }
 
-/** One parameter's `enum` from the hardcoded browser descriptor. */
-function browserParameterEnum(name: string): string[] {
-  const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
-  const parameter = profile?.parameters.find((p) => p.name === name);
-  expect(
-    parameter,
-    `parameter ${name} not found in BROWSER_STANDARDS`,
-  ).toBeDefined();
-  return [...(parameter?.enum ?? [])];
-}
-
-/**
- * The browser declares its own `rls19-road` descriptor because the kernel does
- * not expose one yet. It is therefore a hand-maintained copy of the Go
- * descriptor, and it has drifted: before these tests it offered 9 of the 17
- * surfaces and claimed to support line sources only, long after the Go module
- * started accepting `area` features as Parkplätze.
- */
-describe("browser rls19-road descriptor", () => {
-  it("supports the same source types the Go descriptor does", () => {
-    const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
-    expect([...(profile?.supported_source_types ?? [])].sort()).toEqual(
-      [...goSupportedSourceTypes()].sort(),
-    );
-  });
-
-  it("offers every selectable surface, not a subset", () => {
-    expect(browserParameterEnum("surface_type")).toEqual([
-      ...RLS19_SURFACE_TYPES,
-    ]);
-  });
-});
-
 /**
  * `framework.UnitX` constant name → the symbol it stands for, from
  * `backend/internal/standards/framework/framework.go`. Spelled out here so a
@@ -153,44 +123,102 @@ function goParameterUnits(): Record<string, string> {
   return units;
 }
 
-/** Parameter name → unit symbol, for every browser parameter that declares one. */
-function browserParameterUnits(): Record<string, string> {
-  const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
+/**
+ * The descriptor browser mode runs against, as the kernel publishes it.
+ *
+ * It used to be a hand-maintained TypeScript copy of the Go descriptor, and it
+ * had drifted: before these tests it offered 9 of the 17 surfaces and claimed
+ * to support line sources only, long after the Go module started accepting
+ * `area` features as Parkplätze. The copy is gone — `aconiq.standards()` now
+ * publishes the module's own descriptor — so what these tests check is no
+ * longer a second list but the crossing itself: that the Go source's
+ * declarations survive `descriptorjson` and the WASM boundary intact.
+ */
+async function kernelRoadProfile(): Promise<ProfileInfo> {
+  const standards = (await getNodeKernel()).standards();
+  const road = standards.find((standard) => standard.id === "rls19-road");
+  expect(road, "the kernel publishes no rls19-road descriptor").toBeDefined();
+  const profile = road?.versions[0]?.profiles[0];
   expect(profile, "rls19-road default profile not found").toBeDefined();
-  const units: Record<string, string> = {};
-  for (const parameter of profile?.parameters ?? []) {
-    if (parameter.unit !== undefined) units[parameter.name] = parameter.unit;
-  }
-  return units;
+  // Asserted just above; the cast keeps every caller free of `?.` chains.
+  return profile as ProfileInfo;
 }
 
-/**
- * `unit` is published on `GET /api/v1/standards`, so HTTP mode gets it from the
- * Go descriptor for free. The browser descriptor is hand-maintained, so without
- * this test the same parameter would carry a unit in HTTP mode and none in
- * browser mode — and a parameter form reading the shared contract would have to
- * keep its own name-to-unit table, which is exactly what declaring the unit was
- * meant to make unnecessary.
- */
-describe("browser rls19-road parameter units", () => {
-  it("finds the Go unit declarations", () => {
-    // Guards the regex: a change to the Go declaration style must fail here
-    // rather than turn the comparison below into a vacuous truth.
-    const units = goParameterUnits();
-    expect(Object.keys(units).length).toBeGreaterThan(10);
-    expect(units["speed_pkw_kph"]).toBe("km/h");
-    expect(units["traffic_day_lkw1"]).toBe("1/h");
+describe.skipIf(skipReason !== null)("kernel rls19-road descriptor", () => {
+  it("supports the same source types the Go descriptor does", async () => {
+    const profile = await kernelRoadProfile();
+    expect([...profile.supported_source_types].sort()).toEqual(
+      [...goSupportedSourceTypes()].sort(),
+    );
   });
 
-  it("declares the same unit the Go descriptor does, for every parameter", () => {
-    expect(browserParameterUnits()).toEqual(goParameterUnits());
+  it("offers every selectable surface, not a subset", async () => {
+    const profile = await kernelRoadProfile();
+    const surface = profile.parameters.find((p) => p.name === "surface_type");
+    expect(surface?.enum).toEqual([...RLS19_SURFACE_TYPES]);
   });
 
-  it("leaves dimensionless and non-numeric parameters unitless", () => {
-    // surface_type is an enum: a unit on it would be a spelling mistake, and
-    // toEqual above only catches that because Go declares none either.
-    const profile = BROWSER_STANDARDS[0]?.versions[0]?.profiles[0];
-    const surface = profile?.parameters.find((p) => p.name === "surface_type");
-    expect(surface?.unit).toBeUndefined();
+  it("carries the evidence tier the Go module declares", async () => {
+    const standards = (await getNodeKernel()).standards();
+    const road = standards.find((standard) => standard.id === "rls19-road");
+    // Priority 4's whole point: the tier travels with the descriptor instead
+    // of being declared a second time in the frontend, where it could drift.
+    expect(road?.evidence_tier).toBe("normative");
+    expect(road?.context).toBe("planning");
+  });
+
+  it("advertises only what the kernel can run", async () => {
+    // A kernel listing the whole registry would offer twelve standards it has
+    // no entry point for — the dishonesty the evidence tier exists to prevent.
+    const standards = (await getNodeKernel()).standards();
+    expect(standards.map((standard) => standard.id)).toEqual(["rls19-road"]);
   });
 });
+
+/**
+ * `unit` is published by both backends, so HTTP mode gets it from the Go
+ * descriptor for free. This checks the kernel does too — without it the same
+ * parameter could carry a unit in HTTP mode and none in browser mode, and a
+ * parameter form reading the shared contract would have to keep its own
+ * name-to-unit table, which is exactly what declaring the unit made
+ * unnecessary.
+ */
+describe.skipIf(skipReason !== null)(
+  "kernel rls19-road parameter units",
+  () => {
+    it("finds the Go unit declarations", () => {
+      // Guards the regex: a change to the Go declaration style must fail here
+      // rather than turn the comparison below into a vacuous truth.
+      const units = goParameterUnits();
+      expect(Object.keys(units).length).toBeGreaterThan(10);
+      expect(units["speed_pkw_kph"]).toBe("km/h");
+      expect(units["traffic_day_lkw1"]).toBe("1/h");
+    });
+
+    it("declares the same unit the Go descriptor does, for every parameter", async () => {
+      const profile = await kernelRoadProfile();
+      const units: Record<string, string> = {};
+      for (const parameter of profile.parameters) {
+        if (parameter.unit !== undefined)
+          units[parameter.name] = parameter.unit;
+      }
+      expect(units).toEqual(goParameterUnits());
+    });
+
+    it("leaves dimensionless and non-numeric parameters unitless", async () => {
+      // surface_type is an enum: a unit on it would be a spelling mistake, and
+      // toEqual above only catches that because Go declares none either.
+      const profile = await kernelRoadProfile();
+      const surface = profile.parameters.find((p) => p.name === "surface_type");
+      expect(surface?.unit).toBeUndefined();
+    });
+  },
+);
+
+if (skipReason !== null) {
+  describe("kernel rls19-road descriptor", () => {
+    it.skip(`skipped: ${skipReason}`, () => {
+      // Recorded so the skip carries its reason into the runner output.
+    });
+  });
+}

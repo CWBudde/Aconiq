@@ -7,13 +7,33 @@ import type {
 } from "./types";
 import { CommandStack } from "./command-stack";
 
+/**
+ * The CRS a workspace is in when nothing says otherwise. `aconiq init` defaults
+ * a project to the same one, and the map draws in it.
+ */
+export const DEFAULT_MODEL_CRS = "EPSG:4326";
+
 interface ModelState {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+  /**
+   * The CRS the stored coordinates are in.
+   *
+   * It is state rather than the constant it used to be because it decides what
+   * a run does with the model: a geographic CRS has to be projected into a
+   * metric one before any distance is measured, and a metric one must be left
+   * alone. A hardcoded EPSG:4326 got that wrong in both directions — it would
+   * project a model already in metres, and it could not tell a lon/lat pair
+   * from an easting/northing pair that happens to look like one.
+   */
+  crs: string;
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+
+  /** Declares which CRS the stored coordinates are in. It moves nothing. */
+  setCRS: (crs: string) => void;
 
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
@@ -44,6 +64,13 @@ export interface LoadedModel {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+  /**
+   * The CRS the carried coordinates are in. Optional: a draft written before
+   * the store held a CRS carries none, and so does a caller that has nothing to
+   * say about it. Absent means {@link DEFAULT_MODEL_CRS} on a replacement, and
+   * means "keep what the workspace has" on a merge.
+   */
+  crs?: string;
 }
 
 /**
@@ -80,6 +107,8 @@ export interface MergePlan {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+  /** The CRS the merged workspace is in — see {@link planMerge}. */
+  crs: string;
   skipped: MergeSkips;
 }
 
@@ -97,6 +126,12 @@ export interface MergePlan {
  *
  * An existing calculation area wins over an imported one. The model holds at
  * most one, and the one the reader drew is the one they can see.
+ *
+ * The CRS follows the same principle with one exception: a workspace that
+ * already holds something keeps its own, because its coordinates are in it and
+ * relabelling them would move nothing while claiming otherwise. An *empty*
+ * workspace adopts the incoming CRS instead — there is nothing there for the
+ * default to be true of, and dropping it would read a metric file as lon/lat.
  */
 export function planMerge(
   current: LoadedModel,
@@ -121,10 +156,18 @@ export function planMerge(
     receivers.push(receiver);
   }
 
+  const empty =
+    current.features.length === 0 &&
+    current.receivers.length === 0 &&
+    current.calcArea === null;
+
   return {
     features,
     receivers,
     calcArea: current.calcArea ?? incoming.calcArea,
+    crs:
+      (empty ? (incoming.crs ?? current.crs) : current.crs) ??
+      DEFAULT_MODEL_CRS,
     skipped: {
       features: incoming.features.length - features.length,
       receivers: incoming.receivers.length - receivers.length,
@@ -140,9 +183,16 @@ export const useModelStore = create<ModelState>((set, get) => {
     features: [],
     receivers: [],
     calcArea: null,
+    crs: DEFAULT_MODEL_CRS,
     dirty: false,
     canUndo: false,
     canRedo: false,
+
+    // Not an undoable command and not a `dirty` edit: it declares what the
+    // stored coordinates already were, rather than changing them.
+    setCRS: (crs) => {
+      set({ crs });
+    },
 
     addFeature: (feature) => {
       commandStack.execute({
@@ -211,6 +261,7 @@ export const useModelStore = create<ModelState>((set, get) => {
         features: [],
         receivers: [],
         calcArea: null,
+        crs: DEFAULT_MODEL_CRS,
         dirty: false,
         canUndo: false,
         canRedo: false,
@@ -315,12 +366,16 @@ export const useModelStore = create<ModelState>((set, get) => {
     // alone and emptied `receivers` and `calcArea` with them, which is how an
     // import used to delete every placed receiver; it is deleted rather than
     // documented, so nothing can reach for it again.
-    loadModel: ({ features, receivers, calcArea }) => {
+    loadModel: ({ features, receivers, calcArea, crs }) => {
       commandStack.clear();
       set({
         features,
         receivers,
         calcArea,
+        // A replacement replaces the CRS too: the coordinates that arrive are
+        // in the CRS they arrive in, and keeping the previous one would label
+        // them with a system they are not in.
+        crs: crs ?? DEFAULT_MODEL_CRS,
         dirty: true,
         canUndo: false,
         canRedo: false,
@@ -340,12 +395,14 @@ export const useModelStore = create<ModelState>((set, get) => {
           features: state.features,
           receivers: state.receivers,
           calcArea: state.calcArea,
+          crs: state.crs,
         },
         model,
       );
 
       const { features: addedFeatures, receivers: addedReceivers } = plan;
       const previousArea = state.calcArea;
+      const previousCRS = state.crs;
 
       // A merge that changes nothing pushes nothing. Executing an empty
       // command would still clear the redo stack, so the second import of the
@@ -353,7 +410,8 @@ export const useModelStore = create<ModelState>((set, get) => {
       if (
         addedFeatures.length === 0 &&
         addedReceivers.length === 0 &&
-        plan.calcArea === previousArea
+        plan.calcArea === previousArea &&
+        plan.crs === previousCRS
       ) {
         return plan.skipped;
       }
@@ -370,6 +428,7 @@ export const useModelStore = create<ModelState>((set, get) => {
             features: [...s.features, ...addedFeatures],
             receivers: [...s.receivers, ...addedReceivers],
             calcArea: plan.calcArea,
+            crs: plan.crs,
             dirty: true,
           }));
         },
@@ -378,6 +437,7 @@ export const useModelStore = create<ModelState>((set, get) => {
             features: s.features.filter((f) => !addedIDs.has(f.id)),
             receivers: s.receivers.filter((r) => !addedIDs.has(r.id)),
             calcArea: previousArea,
+            crs: previousCRS,
             dirty: true,
           }));
         },
@@ -395,12 +455,13 @@ export const useModelStore = create<ModelState>((set, get) => {
     // own model two seconds later — a draft carrying no hash, which then
     // guarantees a fetch on every subsequent start. Clean is also what keeps
     // the autosave idle, so a divergent draft survives to be offered.
-    hydrateModel: ({ features, receivers, calcArea }) => {
+    hydrateModel: ({ features, receivers, calcArea, crs }) => {
       commandStack.clear();
       set({
         features,
         receivers,
         calcArea,
+        crs: crs ?? DEFAULT_MODEL_CRS,
         dirty: false,
         canUndo: false,
         canRedo: false,

@@ -22,6 +22,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/standards/descriptorjson"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
 
@@ -80,31 +81,14 @@ type Handler struct {
 type runExecutor func(context.Context, createRunRequest) error
 
 // Standards API response types.
-
-type parameterDefinitionResponse struct {
-	Name         string   `json:"name"`
-	Kind         string   `json:"kind"`
-	Unit         string   `json:"unit,omitempty"`
-	Required     bool     `json:"required"`
-	DefaultValue string   `json:"default_value,omitempty"`
-	Description  string   `json:"description,omitempty"`
-	Enum         []string `json:"enum,omitempty"`
-	Min          *float64 `json:"min,omitempty"`
-	Max          *float64 `json:"max,omitempty"`
-}
-
-type profileResponse struct {
-	Name                 string                        `json:"name"`
-	SupportedSourceTypes []string                      `json:"supported_source_types"`
-	SupportedIndicators  []string                      `json:"supported_indicators"`
-	Parameters           []parameterDefinitionResponse `json:"parameters"`
-}
-
-type versionResponse struct {
-	Name           string            `json:"name"`
-	DefaultProfile string            `json:"default_profile"`
-	Profiles       []profileResponse `json:"profiles"`
-}
+//
+// The descriptor shape itself lives in internal/standards/descriptorjson,
+// because the WASM kernel publishes the same descriptors through
+// `aconiq.standards()` and a second encoding would be a second answer to the
+// question of what parameters a standard takes. The alias keeps the name the
+// handler tests read: those tests assert the response bytes, and renaming the
+// type here would read like a contract change there.
+type standardResponse = descriptorjson.Standard
 
 type artifactRefResponse struct {
 	ID        string    `json:"id"`
@@ -144,15 +128,6 @@ type createRunRequest struct {
 	Params          map[string]string `json:"params,omitempty"`
 	InputPaths      []string          `json:"input_paths,omitempty"`
 	Experimental    bool              `json:"experimental,omitempty"`
-}
-
-type standardResponse struct {
-	Context        string            `json:"context"`
-	ID             string            `json:"id"`
-	Description    string            `json:"description"`
-	EvidenceTier   string            `json:"evidence_tier"`
-	DefaultVersion string            `json:"default_version"`
-	Versions       []versionResponse `json:"versions"`
 }
 
 type importOSMRequest struct {
@@ -874,55 +849,7 @@ func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	descriptors := h.registry.List()
-
-	standards := make([]standardResponse, 0, len(descriptors))
-	for _, d := range descriptors {
-		versions := make([]versionResponse, 0, len(d.Versions))
-		for _, v := range d.Versions {
-			profiles := make([]profileResponse, 0, len(v.Profiles))
-			for _, p := range v.Profiles {
-				params := make([]parameterDefinitionResponse, 0, len(p.ParameterSchema.Parameters))
-				for _, param := range p.ParameterSchema.Parameters {
-					params = append(params, parameterDefinitionResponse{
-						Name:         param.Name,
-						Kind:         string(param.Kind),
-						Unit:         param.Unit,
-						Required:     param.Required,
-						DefaultValue: param.DefaultValue,
-						Description:  param.Description,
-						Enum:         param.Enum,
-						Min:          param.Min,
-						Max:          param.Max,
-					})
-				}
-
-				profiles = append(profiles, profileResponse{
-					Name:                 p.Name,
-					SupportedSourceTypes: p.SupportedSourceTypes,
-					SupportedIndicators:  p.SupportedIndicators,
-					Parameters:           params,
-				})
-			}
-
-			versions = append(versions, versionResponse{
-				Name:           v.Name,
-				DefaultProfile: v.DefaultProfile,
-				Profiles:       profiles,
-			})
-		}
-
-		standards = append(standards, standardResponse{
-			Context:        d.Context,
-			ID:             d.ID,
-			Description:    d.Description,
-			EvidenceTier:   string(d.EvidenceTier),
-			DefaultVersion: d.DefaultVersion,
-			Versions:       versions,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, standards)
+	writeJSON(w, http.StatusOK, descriptorjson.FromDescriptors(h.registry.List()))
 }
 
 func (h Handler) handleImportOSM(w http.ResponseWriter, r *http.Request) {
