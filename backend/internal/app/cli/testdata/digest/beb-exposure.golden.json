@@ -106,6 +106,7 @@
     "metadata": {
       "aggregation_model": "occupancy-facade-threshold-components",
       "compliance_boundary": "baseline-preview-expanded-beb-exposure-contract",
+      "compute_crs": "EPSG:25832",
       "evidence_tier": "preview",
       "indicator_order": "Lden,Lnight,estimated_dwellings,estimated_persons,affected_dwellings_lden,affected_persons_lden,affected_dwellings_lnight,affected_persons_lnight",
       "key_parameter.building_usage_type": "residential",
@@ -120,6 +121,7 @@
       "key_parameter.threshold_lnight_db": "50",
       "key_parameter.upstream_mapping_standard": "bub-road",
       "model_version": "baseline-preview-exposure-aggregation-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },

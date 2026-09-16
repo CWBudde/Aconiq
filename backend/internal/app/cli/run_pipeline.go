@@ -202,6 +202,27 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
+	model, projection, err := resolveComputeModel(model, prepared.project.CRS)
+	if err != nil {
+		prepared.log.addf("failed to project model for compute: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
+	}
+
+	if projection.Applied {
+		prepared.log.addf("project_crs=%s is geographic; computing in compute_crs=%s", projection.ProjectCRS, projection.ComputeCRS)
+	}
+
+	err = prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, map[string]string{
+		provenanceProjectCRSKey: projection.ProjectCRS,
+		provenanceComputeCRSKey: projection.ComputeCRS,
+	})
+	if err != nil {
+		prepared.log.addf("failed to record compute CRS: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
+	}
+
 	module, err := runModuleFor(prepared.standard.StandardID)
 	if err != nil {
 		prepared.log.addf("run wiring missing: %v", err)

@@ -25,7 +25,9 @@
       ".noise/model/model.normalized.geojson": "09180c674e90cd9322bcdf01a31f16231893d275220ab52a76ef6f8b4a3cb4c4"
     },
     "metadata": {
+      "compute_crs": "EPSG:25832",
       "evidence_tier": "test-fixture",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid"
     },
     "parameters": {

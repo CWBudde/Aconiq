@@ -24,7 +24,9 @@
       ".noise/model/model.normalized.geojson": "d6023ec968fcb17478f691614036c0aeb1abc4f0baf441e9f04455260327ecee"
     },
     "metadata": {
+      "compute_crs": "EPSG:25832",
       "evidence_tier": "scaffold",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid"
     },
     "parameters": {

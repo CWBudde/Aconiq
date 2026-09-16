@@ -26,6 +26,7 @@
     },
     "metadata": {
       "compliance_boundary": "baseline-preview-expanded-bub-road-contract",
+      "compute_crs": "EPSG:25832",
       "emission_model": "vehicle-class-components-with-bub-mapping-context",
       "evidence_tier": "scaffold",
       "indicator_order": "Lday,Levening,Lnight,Lden",
@@ -58,6 +59,7 @@
       "key_parameter.traffic_night_ptw_vph": "5",
       "key_parameter.urban_canyon_db": "0",
       "model_version": "baseline-preview-road-mapping-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },

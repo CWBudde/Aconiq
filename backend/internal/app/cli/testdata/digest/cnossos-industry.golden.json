@@ -25,6 +25,7 @@
     },
     "metadata": {
       "compliance_boundary": "baseline-preview-expanded-industry-contract",
+      "compute_crs": "EPSG:25832",
       "emission_model": "category-enclosure-operation-components",
       "evidence_tier": "scaffold",
       "indicator_order": "Lday,Levening,Lnight,Lden",
@@ -46,6 +47,7 @@
       "key_parameter.receiver_height_m": "4",
       "key_parameter.screening_attenuation_db": "0",
       "model_version": "baseline-preview-industry-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },

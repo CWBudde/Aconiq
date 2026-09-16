@@ -59,7 +59,7 @@ func newInitCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&projectName, "name", "", "Project display name (defaults to project directory name)")
-	cmd.Flags().StringVar(&crs, "crs", "EPSG:4326", "Project CRS identifier")
+	cmd.Flags().StringVar(&crs, "crs", "EPSG:4326", "Project CRS identifier (a geographic CRS is projected into ETRS89 / UTM at run time)")
 
 	return cmd
 }

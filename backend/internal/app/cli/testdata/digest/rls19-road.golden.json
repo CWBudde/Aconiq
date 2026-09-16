@@ -27,6 +27,7 @@
       ".noise/model/model.normalized.geojson": "b4027b865bd9c2b4c25e9a69029ed4b4d6e66df4828d5be925c1b2e5bc97087b"
     },
     "metadata": {
+      "compute_crs": "EPSG:25832",
       "data_pack_version": "builtin-rls19-2019-v1",
       "evidence_tier": "normative",
       "indicator_order": "LrDay,LrNight",
@@ -42,6 +43,7 @@
       "key_parameter.traffic_night_lkw1": "10",
       "key_parameter.traffic_night_lkw2": "20",
       "key_parameter.traffic_night_pkw": "200",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1",
       "reporting_rounding": "round-half-away-from-zero at report boundary"
