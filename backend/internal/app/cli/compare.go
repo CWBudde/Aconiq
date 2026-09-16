@@ -192,17 +192,24 @@ type compareInputs struct {
 	receivers    []soundplanimport.ReceiverResult
 }
 
-// loadCompareInputs reads the SoundPLAN import report and the receiver results
-// of the one result run the comparison was resolved to.
-func loadCompareInputs(root string, explicitRun string) (compareInputs, error) {
-	importReport, err := loadSoundPlanImportReport(root)
-	if err != nil {
-		return compareInputs{}, err
-	}
-
+// loadCompareInputs reads the receiver results of the one result run the
+// comparison was resolved to.
+//
+// The barrier count comes from model, not from importReport: the report
+// records what the import produced, and the comparison computes whatever
+// --model points at. Those are the same file by default and need not be — a
+// model edited since the import, or a different one named on the flag, would
+// otherwise pick the reference scenario on a stale count and compare against
+// the wrong side of a noise barrier worth up to 8 dB.
+func loadCompareInputs(
+	root string,
+	explicitRun string,
+	importReport soundPlanImportReport,
+	model modelgeojson.Model,
+) (compareInputs, error) {
 	soundPlanRoot := resolvePath(root, importReport.SourcePath)
 
-	resultRun, err := selectSoundPlanReceiverResultDir(soundPlanRoot, explicitRun, importReport.CountsByKind[modelgeojson.FeatureKindBarrier] > 0)
+	resultRun, err := selectSoundPlanReceiverResultDir(soundPlanRoot, explicitRun, modelHasBarriers(model))
 	if err != nil {
 		return compareInputs{}, err
 	}
@@ -229,24 +236,12 @@ func compareRunModelPath(root string, modelPath string, prep *rasterComparePrepa
 	return modelPath
 }
 
-// loadSoundPlanReceiverKeys reads each receiver's SoundPLAN identity out of
-// the model the user imported.
-//
-// It deliberately reads the *original* model, not the temporary one the raster
-// comparison hands the run: that copy carries thousands of synthetic raster
-// receivers, which have no SoundPLAN identity and are filtered out of the
-// receiver comparison anyway.
-func loadSoundPlanReceiverKeys(
-	root string,
-	modelPath string,
-	importReport soundPlanImportReport,
-) (map[string]soundPlanReceiverKey, error) {
-	model, err := loadValidatedModel(resolvePath(root, modelPath), importReport.ProjectCRS, modelPath)
-	if err != nil {
-		return nil, err
-	}
-
-	return soundPlanReceiverKeysFromModel(model), nil
+// modelHasBarriers reports whether the model carries any barrier feature,
+// which is the geometry the reference run is selected on.
+func modelHasBarriers(model modelgeojson.Model) bool {
+	return slices.ContainsFunc(model.Features, func(feature modelgeojson.Feature) bool {
+		return feature.Kind == modelgeojson.FeatureKindBarrier
+	})
 }
 
 // buildCompareReport reads the finished run's receiver table, compares it
@@ -307,17 +302,27 @@ func runCompare(cmd *cobra.Command, req compareRequest) error {
 		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
-	inputs, err := loadCompareInputs(store.Root(), req.soundPlanRun)
+	importReport, err := loadSoundPlanImportReport(store.Root())
 	if err != nil {
 		return err
 	}
 
-	importReport := inputs.importReport
-
-	receiverKeys, err := loadSoundPlanReceiverKeys(store.Root(), req.modelPath, importReport)
+	// Read once, here, and used for both the reference-run choice and the
+	// receiver keys. It is deliberately the *original* model rather than the
+	// temporary one the raster comparison hands the run: that copy carries
+	// thousands of synthetic raster receivers, which have no SoundPLAN
+	// identity and are filtered out of the receiver comparison anyway.
+	model, err := loadValidatedModel(resolvePath(store.Root(), req.modelPath), importReport.ProjectCRS, req.modelPath)
 	if err != nil {
 		return err
 	}
+
+	inputs, err := loadCompareInputs(store.Root(), req.soundPlanRun, importReport, model)
+	if err != nil {
+		return err
+	}
+
+	receiverKeys := soundPlanReceiverKeysFromModel(model)
 
 	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, req.modelPath)
 	if err != nil {
@@ -815,6 +820,11 @@ type soundPlanMatchResult struct {
 // nearest-neighbour within tolM: a pair is formed only when each side is the
 // other's nearest, which is what makes the result independent of the order the
 // two inputs arrive in. The previous greedy first-come matcher was not.
+//
+// Two things are refused rather than resolved, because no answer would be the
+// right one: a receiver carrying a SoundPLAN identity with floor 0, which the
+// import emits for an immission point it could not expand, and two receivers
+// carrying the same key.
 func matchSoundPlanReceivers(
 	table results.ReceiverTable,
 	keys map[string]soundPlanReceiverKey,
@@ -832,31 +842,10 @@ func matchSoundPlanReceivers(
 	}
 
 	used := make([]bool, len(soundPlan))
-	unkeyed := make([]int, 0, len(table.Records))
 
-	for recordIndex, record := range table.Records {
-		key, hasKey := keys[record.ID]
-		if !hasKey {
-			unkeyed = append(unkeyed, recordIndex)
-
-			continue
-		}
-
-		soundPlanIndex, found := byKey[key]
-		if !found {
-			out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(record, key))
-
-			continue
-		}
-
-		used[soundPlanIndex] = true
-
-		out.Matches = append(out.Matches, soundPlanReceiverMatch{
-			AconiqIndex:    recordIndex,
-			SoundPlanIndex: soundPlanIndex,
-			Strategy:       matchStrategyKey,
-			DistanceM:      soundPlanMatchDistance(record, soundPlan[soundPlanIndex]),
-		})
+	unkeyed, err := matchSoundPlanReceiversByKey(table, keys, soundPlan, byKey, used, &out)
+	if err != nil {
+		return soundPlanMatchResult{}, err
 	}
 
 	coordinateMatches := matchSoundPlanReceiversByCoordinates(table, unkeyed, soundPlan, used, tolM)
@@ -925,6 +914,81 @@ func indexSoundPlanReceiversByKey(soundPlan []soundplanimport.ReceiverResult) (m
 	}
 
 	return byKey, nil
+}
+
+// matchSoundPlanReceiversByKey runs the keyed pass and returns the indices of
+// the records that carry no SoundPLAN key at all, for the coordinate fallback.
+//
+// It appends matches and unmatched Aconiq receivers to out and marks the rows
+// it consumed in used, both of which the caller owns.
+func matchSoundPlanReceiversByKey(
+	table results.ReceiverTable,
+	keys map[string]soundPlanReceiverKey,
+	soundPlan []soundplanimport.ReceiverResult,
+	byKey map[soundPlanReceiverKey]int,
+	used []bool,
+	out *soundPlanMatchResult,
+) ([]int, error) {
+	unkeyed := make([]int, 0, len(table.Records))
+	claimedBy := make(map[soundPlanReceiverKey]string, len(table.Records))
+
+	for recordIndex, record := range table.Records {
+		key, hasKey := keys[record.ID]
+		if !hasKey {
+			unkeyed = append(unkeyed, recordIndex)
+
+			continue
+		}
+
+		// A SoundPLAN immission point whose floor attributes could not be
+		// decoded becomes one receiver at the project default height carrying
+		// floor 0, and docs/geojson-schema-v1.md says it has no usable key and
+		// will not match. It is failed here rather than left to the coordinate
+		// fallback: every row of that point's column shares the immission
+		// point's X/Y, so a nearest-neighbour search would pair a guessed
+		// height against whichever floor happens to sort first.
+		if key.Floor <= 0 {
+			out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(record, key))
+
+			continue
+		}
+
+		// Two receivers claiming one reference row is the mirror of the
+		// duplicate indexSoundPlanReceiversByKey rejects, and it is worse
+		// undetected: both would be appended against the same row, so one
+		// reference receiver would be counted twice in every aggregate while
+		// the report showed no unmatched SoundPLAN row to say so.
+		if first, claimed := claimedBy[key]; claimed {
+			return nil, domainerrors.New(
+				domainerrors.KindValidation, "cli.compare",
+				fmt.Sprintf(
+					"receivers %s and %s both carry soundplan_obj_id %d floor %d; one reference receiver cannot stand for two",
+					first, record.ID, key.ObjID, key.Floor,
+				),
+				nil,
+			)
+		}
+
+		claimedBy[key] = record.ID
+
+		soundPlanIndex, found := byKey[key]
+		if !found {
+			out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(record, key))
+
+			continue
+		}
+
+		used[soundPlanIndex] = true
+
+		out.Matches = append(out.Matches, soundPlanReceiverMatch{
+			AconiqIndex:    recordIndex,
+			SoundPlanIndex: soundPlanIndex,
+			Strategy:       matchStrategyKey,
+			DistanceM:      soundPlanMatchDistance(record, soundPlan[soundPlanIndex]),
+		})
+	}
+
+	return unkeyed, nil
 }
 
 // matchSoundPlanReceiversByCoordinates pairs the receivers that carry no
@@ -1059,9 +1123,14 @@ func describeSoundPlanRow(row soundplanimport.ReceiverResult) string {
 //
 // The identity is read from the feature's properties rather than parsed back
 // out of its ID, so the import is the one place that decides what a receiver
-// is. It reads the *original* model: the raster comparison hands the run a
-// temporary copy with thousands of synthetic receivers appended, which carry
-// no SoundPLAN identity and are filtered out of this comparison anyway.
+// is. It must be handed the *original* model: the raster comparison hands the
+// run a temporary copy with thousands of synthetic receivers appended, which
+// carry no SoundPLAN identity and are filtered out of this comparison anyway.
+//
+// A floor of 0 is kept rather than dropped. It is not a usable key, but it is
+// still an identity, and matchSoundPlanReceivers needs to tell such a receiver
+// apart from one that carries no SoundPLAN identity at all: the first must not
+// match, the second falls back to coordinates.
 func soundPlanReceiverKeysFromModel(model modelgeojson.Model) map[string]soundPlanReceiverKey {
 	keys := make(map[string]soundPlanReceiverKey, len(model.Features))
 

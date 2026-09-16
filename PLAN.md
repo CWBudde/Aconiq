@@ -638,29 +638,21 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
 
 ### Landed
 
-- [x] **Receiver matching is exact, and `ordinal` is gone**
-      (#37). The defect was not in the matcher: `GeoObjs.geo` object
-      types `0x0028` and `0x03e9` were swapped in meaning, so the import took 77 map text captions
-      (house numbers, `"Brücke |"`) as receivers and discarded the 13 objects that are the
-      Immissionsorte. Nearest-neighbour distance from an imported "receiver" to the nearest
-      reference row had a median of 65.6 m, which is why coordinate matching at 0.5 m matched
-      nothing. Decoded correctly, the 13 points agree with all 30 rows of `RREC*.abs` to 2.2e-6 m,
-      by name, by floor count and by per-floor elevation. What is now load-bearing:
-  - A SoundPLAN Immissionsort is **a column of receivers, one per floor**. The import emits 30
-    receiver features for 13 points, keyed by `(soundplan_obj_id, soundplan_floor)` — the key
-    `RREC*.abs` is itself indexed by. Model feature count is 351, not 398.
-  - `aconiq compare` reads **one** result run. It used to concatenate every `RSPS*` directory into
-    one candidate pool; `RSPS0011` and `RSPS0021` are the same receivers computed without and with
-    the noise barrier and differ by up to 8 dB, so no matcher could have been right against that
-    pool. The run is chosen by the geometry its `.res` records, overridable with
-    `--soundplan-run`. Duplicate `(ObjID, Floor)` keys are now a hard `KindValidation` error.
-  - The matching tests must stay runnable **without** the licensed fixture. Everything that
-    asserted matching behaviour used to sit behind a `t.Skip` that fires in CI, which is how a
-    matcher that never matched anything shipped. They live in `compare_match_test.go`; the
-    fixture-gated evidence is `TestParseGeoObjs_ImmissionPointsMatchRREC`.
-  - The synthetic raster receivers take their height from the bundle's `RLKHEIGHT`, not from the
-    model's first receiver. The raster deltas are unchanged to the last digit; the old coupling
-    made every raster number a hostage to the receiver import.
+- [x] **Receiver matching is exact, and `ordinal` is gone** (#37). The defect was in the import,
+      not the matcher: two `GeoObjs.geo` object types were swapped, so map text captions became
+      receivers and the Immissionsorte were discarded. Four things it leaves live:
+  - A SoundPLAN Immissionsort is **a column of receivers, one per floor**, keyed by
+    `(soundplan_obj_id, soundplan_floor)` — what `RREC*.abs` is itself indexed by. A duplicate key
+    on either side is a hard `KindValidation` error; floor 0 marks a point that could not be
+    expanded, and never matches.
+  - `aconiq compare` reads **one** result run, chosen by the geometry the _model_ carries against
+    what each `.res` records, and overridable with `--soundplan-run`. `RSPS0011` and `RSPS0021` are
+    the same receivers without and with the noise barrier, differing by up to 8 dB.
+  - The matching tests must stay runnable **without** the licensed fixture, in
+    `compare_match_test.go`. The `t.Skip` that fires in CI is how a matcher that never matched
+    anything shipped.
+  - Synthetic raster receivers take their height from the bundle's `RLKHEIGHT`, not from the
+    model's first receiver, which made every raster number a hostage to the receiver import.
 
 ## Priority 4 — Honest standards labelling
 

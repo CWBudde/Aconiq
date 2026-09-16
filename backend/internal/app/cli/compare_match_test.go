@@ -2,12 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/soundplanimport"
 	"github.com/aconiq/backend/internal/report/results"
@@ -503,4 +505,108 @@ func sortedMatchPairs(table results.ReceiverTable, rows []soundplanimport.Receiv
 	slices.Sort(pairs)
 
 	return pairs
+}
+
+// TestMatchSoundPlanReceiversRefusesFloorZero pins the contract
+// docs/geojson-schema-v1.md states for an immission point the import could not
+// expand: the receiver it becomes has no usable key and does not match.
+//
+// Both ways it could match are covered. The reference set carries a floor-zero
+// row, so the key would otherwise be an exact hit; and every row sits at the
+// receiver's own coordinates, which is where they really are — each floor of a
+// column shares its immission point's X/Y — so a fallback to coordinates would
+// pair the guessed height with whichever floor sorted first.
+func TestMatchSoundPlanReceiversRefusesFloorZero(t *testing.T) {
+	t.Parallel()
+
+	table := results.ReceiverTable{
+		IndicatorOrder: []string{"LrDay", "LrNight"},
+		Records: []results.ReceiverRecord{
+			aconiqRecord("soundplan-receiver-101-f0", 10, 10, 70, 65),
+		},
+	}
+	keys := map[string]soundPlanReceiverKey{
+		"soundplan-receiver-101-f0": {ObjID: 101, Floor: 0},
+	}
+	rows := []soundplanimport.ReceiverResult{
+		spRow(1, 101, 0, "Hauptstraße 4", 10, 10, 48, 43),
+		spRow(2, 101, 1, "Hauptstraße 4", 10, 10, 50, 45),
+	}
+
+	matched, err := matchSoundPlanReceivers(table, keys, rows, defaultReceiverMatchTolM)
+	if err != nil {
+		t.Fatalf("matchSoundPlanReceivers: %v", err)
+	}
+
+	if len(matched.Matches) != 0 {
+		t.Fatalf("matched %d pairs, want 0 — a guessed-height receiver has no floor to match", len(matched.Matches))
+	}
+
+	if len(matched.UnmatchedAconiq) != 1 {
+		t.Fatalf("unmatched Aconiq = %v, want the floor-zero receiver", matched.UnmatchedAconiq)
+	}
+
+	if len(matched.UnmatchedSoundPlan) != 2 {
+		t.Fatalf("unmatched SoundPLAN = %v, want both reference rows", matched.UnmatchedSoundPlan)
+	}
+}
+
+// TestMatchSoundPlanReceiversRefusesDuplicateAconiqKeys is the mirror of the
+// duplicate indexSoundPlanReceiversByKey rejects. Undetected, both receivers
+// would be appended against the one reference row, so it would be counted
+// twice in every aggregate while the report named no unmatched SoundPLAN row.
+func TestMatchSoundPlanReceiversRefusesDuplicateAconiqKeys(t *testing.T) {
+	t.Parallel()
+
+	table := results.ReceiverTable{
+		IndicatorOrder: []string{"LrDay", "LrNight"},
+		Records: []results.ReceiverRecord{
+			aconiqRecord("receiver-a", 10, 10, 70, 65),
+			aconiqRecord("receiver-b", 10, 10, 72, 67),
+		},
+	}
+	keys := map[string]soundPlanReceiverKey{
+		"receiver-a": {ObjID: 101, Floor: 1},
+		"receiver-b": {ObjID: 101, Floor: 1},
+	}
+	rows := []soundplanimport.ReceiverResult{spRow(1, 101, 1, "Hauptstraße 4", 10, 10, 50, 45)}
+
+	_, err := matchSoundPlanReceivers(table, keys, rows, defaultReceiverMatchTolM)
+	if err == nil {
+		t.Fatal("expected an error for two receivers claiming one reference row")
+	}
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindValidation {
+		t.Fatalf("error = %v, want a %s AppError", err, domainerrors.KindValidation)
+	}
+}
+
+// TestModelHasBarriers pins where the reference run's geometry is read from.
+// It used to come from the import report's counts, which record what the
+// import produced rather than what the comparison computes: a model edited
+// since, or a different one named on --model, picked the reference scenario on
+// a stale count and compared against the wrong side of a noise barrier.
+func TestModelHasBarriers(t *testing.T) {
+	t.Parallel()
+
+	withBarrier := modelgeojson.Model{Features: []modelgeojson.Feature{
+		{ID: "s1", Kind: modelgeojson.FeatureKindSource},
+		{ID: "w1", Kind: modelgeojson.FeatureKindBarrier},
+	}}
+	if !modelHasBarriers(withBarrier) {
+		t.Fatal("modelHasBarriers = false, want true")
+	}
+
+	withoutBarrier := modelgeojson.Model{Features: []modelgeojson.Feature{
+		{ID: "s1", Kind: modelgeojson.FeatureKindSource},
+		{ID: "b1", Kind: modelgeojson.FeatureKindBuilding},
+	}}
+	if modelHasBarriers(withoutBarrier) {
+		t.Fatal("modelHasBarriers = true, want false")
+	}
+
+	if modelHasBarriers(modelgeojson.Model{}) {
+		t.Fatal("modelHasBarriers on an empty model = true, want false")
+	}
 }
