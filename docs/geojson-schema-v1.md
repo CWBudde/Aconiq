@@ -51,6 +51,36 @@ This schema is the minimal common input for `aconiq import` / `aconiq validate`.
   - the current assessment/export slice uses explicit receiver IDs plus this
     property to compare `LrDay`/`LrNight` against the legal threshold table
 
+#### Receivers imported from SoundPLAN
+
+A SoundPLAN Immissionsort is a facade position **plus the floor geometry of the
+building behind it**, and SoundPLAN evaluates it once per floor. `aconiq import
+--from-soundplan` therefore emits one `receiver` feature per (immission point,
+floor), at `soundplan-receiver-<obj_id>-f<floor>`, each at that floor's own
+height above ground. Those features carry:
+
+| property                             | meaning                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------- |
+| `soundplan_obj_id`                   | The SoundPLAN object id. It is the `ObjID` column of `RREC*.abs`.                   |
+| `soundplan_floor`                    | The floor, counting from 1. `0` means the column could not be expanded — see below. |
+| `soundplan_floor_count`              | How many floors the immission point declares.                                       |
+| `soundplan_receiver_name`            | The Immissionsort's name, which in practice is the building's address.              |
+| `soundplan_z_m`                      | The floor's absolute elevation.                                                     |
+| `soundplan_ground_height_m`          | The ground elevation SoundPLAN cached for the point; `height_m` is the difference.  |
+| `soundplan_limit_day_db`             | The day threshold the SoundPLAN project assesses this point against.                |
+| `soundplan_limit_night_db`           | The night threshold.                                                                |
+| `soundplan_floor_attributes_missing` | Present and `true` only on an unexpanded point.                                     |
+
+`aconiq compare` matches against the SoundPLAN reference table on
+`(soundplan_obj_id, soundplan_floor)`, which is the key `RREC*.abs` is itself
+indexed by, so the correspondence is exact rather than geometric.
+
+An immission point whose floor attributes could not be decoded, or whose
+geometry puts a floor at or below ground level, is **not** expanded: it becomes
+a single receiver at the project's default receiver height carrying
+`soundplan_floor: 0`, and the import warns naming the point. Such a receiver has
+no usable key and will not match a reference row.
+
 ### `calc-area` Features
 
 - Geometry must be `Polygon` — **not** `MultiPolygon`. A disjoint multi-part

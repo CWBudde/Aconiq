@@ -328,7 +328,7 @@ func writeOSMImportArtifacts(
 		"OSM import completed",
 		"bbox", osmBBox,
 		"feature_count", len(model.Features),
-		"warnings", report.WarningCount(),
+		outputFieldWarnings, report.WarningCount(),
 		"normalized", relativePath(store.Root(), normalizedPath),
 	)
 
@@ -414,7 +414,7 @@ func printImportSummary(
 	logFields := []any{
 		"input", relInput,
 		"feature_count", len(model.Features),
-		"warnings", report.WarningCount(),
+		outputFieldWarnings, report.WarningCount(),
 		"normalized", relativePath(root, normalizedPath),
 	}
 

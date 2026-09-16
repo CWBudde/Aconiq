@@ -76,7 +76,7 @@ func TestParseGeoObjs_BuildingCoordinatesPlausible(t *testing.T) {
 	}
 }
 
-func TestParseGeoObjs_ReceiverCount(t *testing.T) {
+func TestParseGeoObjs_ImmissionPointCount(t *testing.T) {
 	t.Parallel()
 
 	dir := testProjectDir(t)
@@ -86,13 +86,14 @@ func TestParseGeoObjs_ReceiverCount(t *testing.T) {
 		t.Fatalf("ParseGeoObjsFile: %v", err)
 	}
 
-	// The sample project has 77 receiver points (type 0x0028).
-	if len(objs.Receivers) != 77 {
-		t.Errorf("got %d receivers, want 77", len(objs.Receivers))
+	// The sample project has 13 immission points (type 0x03e9). This test used
+	// to assert 77 against type 0x0028, which is the map label layer.
+	if len(objs.ImmissionPoints) != 13 {
+		t.Errorf("got %d immission points, want 13", len(objs.ImmissionPoints))
 	}
 }
 
-func TestParseGeoObjs_ReceiverCoordinatesPlausible(t *testing.T) {
+func TestParseGeoObjs_ImmissionPointCoordinatesPlausible(t *testing.T) {
 	t.Parallel()
 
 	dir := testProjectDir(t)
@@ -102,9 +103,116 @@ func TestParseGeoObjs_ReceiverCoordinatesPlausible(t *testing.T) {
 		t.Fatalf("ParseGeoObjsFile: %v", err)
 	}
 
-	for i, r := range objs.Receivers {
-		if r.X < 6000 || r.X > 9000 || r.Y < 5000 || r.Y > 8000 {
-			t.Errorf("receiver %d: (%.2f,%.2f) out of expected range", i, r.X, r.Y)
+	for i, point := range objs.ImmissionPoints {
+		if point.X < 6000 || point.X > 9000 || point.Y < 5000 || point.Y > 8000 {
+			t.Errorf("immission point %d: (%.2f,%.2f) out of expected range", i, point.X, point.Y)
+		}
+	}
+}
+
+// TestParseGeoObjs_MapLabelCount pins what object type 0x0028 actually is.
+//
+// It is the drawing annotation layer: house numbers, and captions such as the
+// bridge label, in which "|" is SoundPLAN's line break. Asserting the texts
+// rather than only the count is what makes "these are not receivers" evidence
+// instead of a comment.
+func TestParseGeoObjs_MapLabelCount(t *testing.T) {
+	t.Parallel()
+
+	dir := testProjectDir(t)
+
+	objs, err := ParseGeoObjsFile(filepath.Join(dir, "GeoObjs.geo"))
+	if err != nil {
+		t.Fatalf("ParseGeoObjsFile: %v", err)
+	}
+
+	if len(objs.MapLabels) != 77 {
+		t.Errorf("got %d map labels, want 77", len(objs.MapLabels))
+	}
+
+	texts := make(map[string]bool, len(objs.MapLabels))
+	for _, label := range objs.MapLabels {
+		texts[label.Text] = true
+	}
+
+	for _, want := range []string{"86", "Brücke |"} {
+		if !texts[want] {
+			t.Errorf("expected map label %q among the parsed captions", want)
+		}
+	}
+}
+
+// TestParseGeoObjs_ImmissionPointsMatchRREC is the test whose absence let the
+// receiver import ship inverted for as long as it did.
+//
+// It joins the decoded immission points to the reference project's own
+// receiver result table on the object id, and checks every row: position, name,
+// floor count and the per-floor elevation the floor attributes reconstruct. If
+// the two object types are ever swapped again, or the binary layout is read at
+// the wrong offset, nothing here can pass.
+func TestParseGeoObjs_ImmissionPointsMatchRREC(t *testing.T) {
+	t.Parallel()
+
+	dir := testProjectDir(t)
+
+	objs, err := ParseGeoObjsFile(filepath.Join(dir, "GeoObjs.geo"))
+	if err != nil {
+		t.Fatalf("ParseGeoObjsFile: %v", err)
+	}
+
+	rows, err := ParseReceiverResults(filepath.Join(dir, "RSPS0011", "RREC0011.abs"))
+	if err != nil {
+		t.Fatalf("ParseReceiverResults: %v", err)
+	}
+
+	if len(rows) != 30 {
+		t.Fatalf("got %d RREC rows, want 30", len(rows))
+	}
+
+	byObjID := make(map[int64]ImmissionPoint, len(objs.ImmissionPoints))
+	for _, point := range objs.ImmissionPoints {
+		if _, exists := byObjID[point.ObjID]; exists {
+			t.Fatalf("immission point object id %d is not unique", point.ObjID)
+		}
+
+		byObjID[point.ObjID] = point
+	}
+
+	rowsPerObjID := make(map[int32]int, len(byObjID))
+	for _, row := range rows {
+		rowsPerObjID[row.ObjID]++
+	}
+
+	const tolM = 1e-3
+
+	for _, row := range rows {
+		point, ok := byObjID[int64(row.ObjID)]
+		if !ok {
+			t.Fatalf("RREC row %d references object id %d, which no immission point carries", row.RecNo, row.ObjID)
+		}
+
+		if got := math.Hypot(point.X-row.X, point.Y-row.Y); got > tolM {
+			t.Errorf("object %d: |ΔXY| = %g m, want <= %g", row.ObjID, got, tolM)
+		}
+
+		if point.Name != row.Name {
+			t.Errorf("object %d: name = %q, want %q", row.ObjID, point.Name, row.Name)
+		}
+
+		if !point.HasFloorAttrs {
+			t.Fatalf("object %d: floor attributes were not decoded", row.ObjID)
+		}
+
+		if point.FloorCount != rowsPerObjID[row.ObjID] {
+			t.Errorf("object %d: floor count = %d, want %d result rows", row.ObjID, point.FloorCount, rowsPerObjID[row.ObjID])
+		}
+
+		if got := math.Abs(point.FloorZ(int(row.Floor)) - row.Z); got > tolM {
+			t.Errorf("object %d floor %d: |ΔZ| = %g m, want <= %g", row.ObjID, row.Floor, got, tolM)
+		}
+
+		if point.LimitDayDB != row.Limit1 || point.LimitNightDB != row.Limit2 {
+			t.Errorf("object %d: limits = %v/%v, want %v/%v", row.ObjID, point.LimitDayDB, point.LimitNightDB, row.Limit1, row.Limit2)
 		}
 	}
 }
