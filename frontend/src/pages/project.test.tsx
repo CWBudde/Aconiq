@@ -137,7 +137,9 @@ describe("ProjectPage validation summary", () => {
   });
 
   it("reports a well-formed model as valid", () => {
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     renderPage();
 
     expect(screen.getByText(m.msg_model_valid())).toBeInTheDocument();
@@ -146,7 +148,9 @@ describe("ProjectPage validation summary", () => {
   it("counts a defect that only a receiver carries", () => {
     // The summary reads the receivers. A receiver-blind report would call this
     // model valid and nothing would fail.
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     useModelStore.getState().addReceiver(badReceiver);
     renderPage();
 

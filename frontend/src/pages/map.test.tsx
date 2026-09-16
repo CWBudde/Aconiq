@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import type { Map } from "maplibre-gl";
 import MapPage from "./map";
 import { MapContext } from "@/map/use-map";
@@ -38,8 +38,12 @@ vi.mock("@/map/draw-toolbar", () => ({
     <div data-testid="draw-toolbar" data-mode={activeMode} />
   ),
 }));
+// Renders the id it was handed, which is what `?select=` has to reach.
 vi.mock("@/map/feature-editor", () => ({
-  FeatureEditor: () => null,
+  FeatureEditor: ({ featureId }: { featureId: string | null }) =>
+    featureId === null ? null : (
+      <div data-testid="feature-editor">{featureId}</div>
+    ),
 }));
 vi.mock("@/map/new-feature-dialog", () => ({
   NewFeatureDialog: () => null,
@@ -85,6 +89,19 @@ describe("MapPage", () => {
     render(
       <MemoryRouter>
         <MapPage />
+      </MemoryRouter>,
+    );
+  }
+
+  function LocationProbe() {
+    return <div data-testid="location-search">{useLocation().search}</div>;
+  }
+
+  function renderPageAt(entry: string) {
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <MapPage />
+        <LocationProbe />
       </MemoryRouter>,
     );
   }
@@ -168,8 +185,31 @@ describe("MapPage", () => {
     ).toBeVisible();
   });
 
+  it("opens the editor on the feature the select parameter names", () => {
+    // The link the import page's done step builds for a finding.
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPageAt("/model?select=src-1");
+
+    expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+  });
+
+  it("strips the select parameter once it has been honoured", () => {
+    // Otherwise a Back re-opens the editor on a feature the reader has moved
+    // on from.
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPageAt("/model?select=src-1");
+
+    expect(screen.getByTestId("location-search").textContent).toBe("");
+  });
+
   it("does not show the panel when the model already has content", () => {
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     renderPage();
 
     expect(

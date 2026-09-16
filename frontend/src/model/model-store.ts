@@ -18,7 +18,6 @@ interface ModelState {
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
   removeFeature: (id: string) => void;
-  loadFeatures: (features: ModelFeature[]) => void;
   reset: () => void;
   markClean: () => void;
 
@@ -32,6 +31,7 @@ interface ModelState {
   updateReceiver: (receiver: ModelReceiver) => void;
   removeReceiver: (id: string) => void;
   loadModel: (model: LoadedModel) => void;
+  mergeModel: (model: LoadedModel) => MergeSkips;
   hydrateModel: (model: LoadedModel) => void;
   getReceiverById: (id: string) => ModelReceiver | undefined;
 
@@ -39,11 +39,98 @@ interface ModelState {
   clearCalcArea: () => void;
 }
 
-/** A complete model replacement (draft restore, import). */
+/** A complete model (draft restore, import) — replaced in, or merged in. */
 export interface LoadedModel {
   features: ModelFeature[];
   receivers: ModelReceiver[];
   calcArea: CalcArea | null;
+}
+
+/**
+ * How many objects a model holds: features, receivers, and the calculation
+ * area, which counts as one.
+ *
+ * The area is an object the import carries and installs like any other — a file
+ * holding nothing else still replaces the workspace when Replace is confirmed —
+ * so leaving it out made the import wizard offer "Import 0 objects" for exactly
+ * that file, and under-report every mixed file by one. One function because the
+ * preview's button and the page's confirmation and done step must not disagree
+ * about what "this many" means.
+ */
+export function countModelObjects({
+  features,
+  receivers,
+  calcArea,
+}: LoadedModel): number {
+  return features.length + receivers.length + (calcArea === null ? 0 : 1);
+}
+
+/** What a {@link ModelState.mergeModel} left behind, for the caller to report. */
+export interface MergeSkips {
+  /** Features whose id the workspace already held. */
+  features: number;
+  /** Receivers whose id the workspace already held. */
+  receivers: number;
+  /** True when the merge carried a calculation area and the workspace kept its own. */
+  calcArea: boolean;
+}
+
+/** What a merge would land, and what it would leave behind. */
+export interface MergePlan {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
+  skipped: MergeSkips;
+}
+
+/**
+ * What merging `incoming` into `current` would do — computed without touching
+ * the store, so the import page can say it before the reader commits rather
+ * than report it afterwards.
+ *
+ * An id `current` already holds is skipped, not re-minted and not overwritten.
+ * Re-minting would turn a re-import of the same file into a second copy of
+ * every feature, and ids are what the project keys on; skipping is what makes
+ * a merge idempotent. Ids are one namespace across features and receivers,
+ * because `validateProjectModel` checks them as one — which also covers a
+ * duplicate inside `incoming` itself.
+ *
+ * An existing calculation area wins over an imported one. The model holds at
+ * most one, and the one the reader drew is the one they can see.
+ */
+export function planMerge(
+  current: LoadedModel,
+  incoming: LoadedModel,
+): MergePlan {
+  const taken = new Set<string>([
+    ...current.features.map((f) => f.id),
+    ...current.receivers.map((r) => r.id),
+  ]);
+
+  const features: ModelFeature[] = [];
+  for (const feature of incoming.features) {
+    if (taken.has(feature.id)) continue;
+    taken.add(feature.id);
+    features.push(feature);
+  }
+
+  const receivers: ModelReceiver[] = [];
+  for (const receiver of incoming.receivers) {
+    if (taken.has(receiver.id)) continue;
+    taken.add(receiver.id);
+    receivers.push(receiver);
+  }
+
+  return {
+    features,
+    receivers,
+    calcArea: current.calcArea ?? incoming.calcArea,
+    skipped: {
+      features: incoming.features.length - features.length,
+      receivers: incoming.receivers.length - receivers.length,
+      calcArea: current.calcArea !== null && incoming.calcArea !== null,
+    },
+  };
 }
 
 const commandStack = new CommandStack();
@@ -115,24 +202,6 @@ export const useModelStore = create<ModelState>((set, get) => {
             return { features: next, dirty: true };
           });
         },
-      });
-    },
-
-    // `dirty` means "the workspace differs from what the project holds", not
-    // "there is an edit the draft has not seen". Content that arrives through
-    // a load — a file, an OSM fetch, a recovered draft — comes from outside
-    // the project, so a load leaves the model dirty; only `markClean` clears
-    // it, and only a successful save (or, in browser mode, the draft write)
-    // calls that.
-    loadFeatures: (features) => {
-      commandStack.clear();
-      set({
-        features,
-        receivers: [],
-        calcArea: null,
-        dirty: true,
-        canUndo: false,
-        canRedo: false,
       });
     },
 
@@ -232,8 +301,20 @@ export const useModelStore = create<ModelState>((set, get) => {
     // A bulk replacement is not an undoable edit: the command stack still
     // holds closures over the *previous* features/receivers, so undoing after a
     // load would splice stale objects back into the new model. Clearing the
-    // stack (as `loadFeatures` does) is what keeps undo coherent — the former
-    // `loadReceivers` set the array behind the stack's back and left it stale.
+    // stack is what keeps undo coherent — the former `loadReceivers` set the
+    // array behind the stack's back and left it stale.
+    //
+    // `dirty` means "the workspace differs from what the project holds", not
+    // "there is an edit the draft has not seen". Content that arrives through
+    // a load — a file, an OSM fetch, a recovered draft — comes from outside
+    // the project, so a load leaves the model dirty; only `markClean` clears
+    // it, and only a successful save (or, in browser mode, the draft write)
+    // calls that.
+    //
+    // It replaces the *whole* model. The former `loadFeatures` took features
+    // alone and emptied `receivers` and `calcArea` with them, which is how an
+    // import used to delete every placed receiver; it is deleted rather than
+    // documented, so nothing can reach for it again.
     loadModel: ({ features, receivers, calcArea }) => {
       commandStack.clear();
       set({
@@ -244,6 +325,65 @@ export const useModelStore = create<ModelState>((set, get) => {
         canUndo: false,
         canRedo: false,
       });
+    },
+
+    // Adds a model to the workspace instead of replacing it, as *one*
+    // undoable command: a merge the reader regrets is one Ctrl+Z, not one per
+    // imported feature. {@link planMerge} decides what of it lands.
+    //
+    // `dirty: true`, like `loadModel`: the content comes from outside the
+    // project.
+    mergeModel: (model) => {
+      const state = get();
+      const plan = planMerge(
+        {
+          features: state.features,
+          receivers: state.receivers,
+          calcArea: state.calcArea,
+        },
+        model,
+      );
+
+      const { features: addedFeatures, receivers: addedReceivers } = plan;
+      const previousArea = state.calcArea;
+
+      // A merge that changes nothing pushes nothing. Executing an empty
+      // command would still clear the redo stack, so the second import of the
+      // same file would be idempotent in the model and not in the history.
+      if (
+        addedFeatures.length === 0 &&
+        addedReceivers.length === 0 &&
+        plan.calcArea === previousArea
+      ) {
+        return plan.skipped;
+      }
+
+      const addedIDs = new Set<string>([
+        ...addedFeatures.map((f) => f.id),
+        ...addedReceivers.map((r) => r.id),
+      ]);
+
+      commandStack.execute({
+        description: `Merge ${String(addedFeatures.length)} features and ${String(addedReceivers.length)} receivers`,
+        execute: () => {
+          set((s) => ({
+            features: [...s.features, ...addedFeatures],
+            receivers: [...s.receivers, ...addedReceivers],
+            calcArea: plan.calcArea,
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => ({
+            features: s.features.filter((f) => !addedIDs.has(f.id)),
+            receivers: s.receivers.filter((r) => !addedIDs.has(r.id)),
+            calcArea: previousArea,
+            dirty: true,
+          }));
+        },
+      });
+
+      return plan.skipped;
     },
 
     // `loadModel`'s twin for content that comes *from* the project rather than

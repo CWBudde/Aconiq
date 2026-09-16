@@ -1,16 +1,19 @@
 import { m } from "@/i18n/messages";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import ImportPage from "./import";
 import { useModelStore } from "@/model/model-store";
+import type { ModelFeature } from "@/model/types";
 
 const validGeoJSON = JSON.stringify({
   type: "FeatureCollection",
@@ -35,6 +38,101 @@ const validGeoJSON = JSON.stringify({
           ],
         ],
       },
+    },
+  ],
+});
+
+/** What `aconiq import` writes: features, receivers and the calculation area. */
+const projectGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "src-1", kind: "source", source_type: "point" },
+      geometry: { type: "Point", coordinates: [10, 51] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "rcv-1", kind: "receiver", height_m: 4 },
+      geometry: { type: "Point", coordinates: [10.001, 51.001] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "area-1", kind: "calc-area" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  ],
+});
+
+/** Something to import with nothing for the validator to check. */
+const areaOnlyGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "area-1", kind: "calc-area" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  ],
+});
+
+/**
+ * One id used twice, once as a feature and once as a receiver — the cross-kind
+ * collision `validateProjectModel` reports and `planMerge` resolves by landing
+ * the feature and skipping the receiver.
+ */
+const collidingKindsGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "dup", kind: "source", source_type: "point" },
+      geometry: { type: "Point", coordinates: [10, 51] },
+    },
+    {
+      type: "Feature",
+      properties: { id: "dup", kind: "receiver", height_m: 4 },
+      geometry: { type: "Point", coordinates: [10.002, 51.002] },
+    },
+  ],
+});
+
+/** Already in the workspace when a test wants the import to have a choice. */
+const existing: ModelFeature = {
+  id: "placed-1",
+  kind: "source",
+  sourceType: "point",
+  geometry: { type: "Point", coordinates: [9, 50] },
+};
+
+/** One source with no `source_type`: an error the report can name an id for. */
+const invalidGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "broken-1", kind: "source" },
+      geometry: { type: "Point", coordinates: [10, 51] },
     },
   ],
 });
@@ -80,6 +178,10 @@ beforeEach(() => {
   useModelStore.getState().reset();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("ImportPage", () => {
   it("renders the upload step initially", () => {
     renderImportPage();
@@ -121,9 +223,18 @@ describe("ImportPage", () => {
     });
   });
 
-  /** Clicks Import and answers the replace confirmation. */
+  /**
+   * Imports into an empty workspace, where there is one button and no dialog.
+   */
   function confirmImport() {
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
+  }
+
+  /** Imports into a workspace that already holds something, by replacing it. */
+  function replaceWorkspace() {
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_replace() }),
+    );
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", {
         name: /import/i,
@@ -131,19 +242,232 @@ describe("ImportPage", () => {
     );
   }
 
+  /** Puts one feature in the workspace, so the import has something to lose. */
+  function seedWorkspace(feature: ModelFeature = existing) {
+    act(() => {
+      useModelStore.getState().addFeature(feature);
+    });
+  }
+
+  it("refuses an empty file without showing the validator's English", async () => {
+    // `validateProjectModel` answers an empty model with `model.empty`, whose
+    // message is hardcoded English and whose own comment says it must never
+    // reach the UI. This page calls the validator directly, so the refusal has
+    // to happen above it.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: {
+        files: [makeFile('{"type":"FeatureCollection","features":[]}')],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(m.msg_import_nothing())).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+    // Still on the upload step, where another file can be chosen.
+    expect(screen.getByText("Import GeoJSON")).toBeInTheDocument();
+  });
+
+  it("refuses a file whose every feature was skipped", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          makeFile(
+            JSON.stringify({
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  properties: { kind: "terrain" },
+                  geometry: { type: "Point", coordinates: [10, 51] },
+                },
+              ],
+            }),
+          ),
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(m.msg_import_nothing())).toBeInTheDocument();
+    });
+  });
+
+  it("previews a file that holds only a calculation area", async () => {
+    // Something to import, nothing for the validator to check: running it
+    // would produce the same `model.empty` in English.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(areaOnlyGeoJSON)] } });
+
+    await waitFor(() => screen.getByText("Import Preview"));
+    expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
+    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+  });
+
   it("asks before replacing the workspace, and replaces nothing until then", async () => {
+    seedWorkspace();
     renderImportPage();
     const input = getFileInput();
     fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
     await waitFor(() => screen.getByText("Import Preview"));
 
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_replace() }),
+    );
+
+    // `loadModel` replaces the model outright and resets the command stack
+    // rather than extending it, so no undo covers it.
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(useModelStore.getState().features).toEqual([existing]);
+  });
+
+  it("replaces everything the workspace held once confirmed", async () => {
+    seedWorkspace();
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    replaceWorkspace();
+
+    expect(useModelStore.getState().features).toHaveLength(2);
+    expect(
+      useModelStore.getState().features.some((f) => f.id === existing.id),
+    ).toBe(false);
+  });
+
+  it("offers one button and no dialog when the workspace is empty", async () => {
+    // Nothing to lose is nothing to choose between: Add and Replace would do
+    // the same thing, so the reader is asked neither question.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    expect(
+      screen.queryByRole("button", { name: m.action_import_add() }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: m.action_import_replace() }),
+    ).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
 
-    // `loadFeatures` replaces the model outright and clears placed receivers,
-    // and the command stack is reset rather than extended, so no undo covers
-    // it.
-    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-    expect(useModelStore.getState().features).toHaveLength(0);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(useModelStore.getState().features).toHaveLength(2);
+  });
+
+  it("adds to the workspace without asking, keeping what is there", async () => {
+    seedWorkspace();
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(useModelStore.getState().features).toHaveLength(3);
+    expect(useModelStore.getState().features[0]).toEqual(existing);
+  });
+
+  it("is one undo, however many features the add brought", async () => {
+    seedWorkspace();
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(validGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    act(() => {
+      useModelStore.getState().undo();
+    });
+
+    expect(useModelStore.getState().features).toEqual([existing]);
+  });
+
+  it("says what the add will skip before the reader commits to it", async () => {
+    // The dialog must not be where the user first learns what will happen —
+    // and Add has no dialog at all.
+    seedWorkspace({ ...existing, id: "src-1" });
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    expect(
+      screen.getByText(m.msg_import_skips_existing({ count: 1 })),
+    ).toBeInTheDocument();
+  });
+
+  it("reports what actually landed, not what the file held", async () => {
+    seedWorkspace({ ...existing, id: "src-1" });
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    // Two of the three arrived — the receiver and the calculation area.
+    // `src-1` was already there.
+    expect(
+      screen.getByText(`2 ${m.msg_import_complete_description()}`),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the calculation area as one of the objects it imports", async () => {
+    // A file holding nothing else still changes the model, so a button reading
+    // "Import 0 objects" was offering to do nothing — and the done step then
+    // reported nothing either.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(areaOnlyGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_import_features({ count: 1 }),
+      }),
+    );
+
+    expect(
+      screen.getByText(`1 ${m.msg_import_complete_description()}`),
+    ).toBeInTheDocument();
+    expect(useModelStore.getState().calcArea).not.toBeNull();
+  });
+
+  it("does not report a duplicate the add itself resolved", async () => {
+    // The file names one id twice, once as a feature and once as a receiver,
+    // which `validateProjectModel` reports as `receiver.id.duplicate`. The
+    // merge lands the feature and skips the receiver, so the model it produced
+    // holds no duplicate — filtering the *pre-merge* report by the landed ids
+    // kept the finding, because the id it names is exactly the one that landed.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, {
+      target: { files: [makeFile(collidingKindsGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+    expect(screen.getByText(/Duplicate receiver ID/i)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_import_features({ count: 2 }),
+      }),
+    );
+
+    expect(screen.queryByText(/Duplicate receiver ID/i)).toBeNull();
   });
 
   it("loads features into the model store on confirm", async () => {
@@ -184,6 +508,86 @@ describe("ImportPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the receivers and the calculation area an import brings", async () => {
+    // The wizard used to normalize with a feature-only reader, which reported
+    // both kinds as an unknown kind, and to load with a feature-only load,
+    // which cleared the receivers the store held. "Import, then Save to project"
+    // therefore wrote a model without the receivers `aconiq import` had put
+    // there.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    const state = useModelStore.getState();
+    expect(state.features.map((f) => f.id)).toEqual(["src-1"]);
+    expect(state.receivers.map((r) => r.id)).toEqual(["rcv-1"]);
+    expect(state.calcArea).not.toBeNull();
+  });
+
+  it("counts the receivers and the calculation area in the preview", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(projectGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    const receivers = screen.getByText(m.label_receivers());
+    expect(receivers.nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
+    // Nothing was skipped: both kinds are part of the schema the wizard reads.
+    expect(screen.queryByText(/features skipped/i)).toBeNull();
+  });
+
+  it("names the feature in a preview error without linking it", async () => {
+    // Nothing to link to: the features are not in the store until the reader
+    // chooses Add or Replace.
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    expect(screen.getByText("broken-1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toBeNull();
+  });
+
+  it("links a surviving error to the feature it names", async () => {
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    confirmImport();
+
+    expect(
+      screen.getByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toHaveAttribute("href", "/model?select=broken-1");
+  });
+
+  it("does not link a finding whose feature the import skipped", async () => {
+    // Add keeps what the workspace already holds, so the imported copy never
+    // landed and the link would select the feature the reader already has.
+    seedWorkspace({ ...existing, id: "broken-1" });
+    renderImportPage();
+    const input = getFileInput();
+    fireEvent.change(input, { target: { files: [makeFile(invalidGeoJSON)] } });
+    await waitFor(() => screen.getByText("Import Preview"));
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    expect(
+      screen.queryByRole("link", {
+        name: m.action_show_feature_on_map({ id: "broken-1" }),
+      }),
+    ).toBeNull();
+  });
+
   it("goes back to upload step from preview", async () => {
     renderImportPage();
     const input = getFileInput();
@@ -191,5 +595,77 @@ describe("ImportPage", () => {
     await waitFor(() => screen.getByText("Import Preview"));
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
     expect(screen.getByText("Import GeoJSON")).toBeInTheDocument();
+  });
+
+  /**
+   * Radix' tabs activate on pointer-down plus focus, not on a synthetic click,
+   * so the switch goes through `user-event` the way `ui/components/tabs.test`
+   * does.
+   */
+  async function openTab(name: string): Promise<void> {
+    await userEvent.setup().click(screen.getByRole("tab", { name }));
+  }
+
+  it("keeps the bounding box across a tab switch", async () => {
+    // Radix unmounts the inactive panel, so a box held inside `OsmImport`
+    // would be discarded the moment the reader glanced at the file tab — and
+    // "Use current location" would have to be answered again. The page holds
+    // it, as it did before the split.
+    renderImportPage();
+    await openTab(m.action_import_from_osm());
+    fireEvent.change(screen.getByLabelText(m.label_south()), {
+      target: { value: "52.49" },
+    });
+
+    await openTab(m.action_import_from_file());
+    await openTab(m.action_import_from_osm());
+
+    expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
+      "52.49",
+    );
+  });
+
+  it("keeps an edit made while the location request is still pending", async () => {
+    // Only the geolocation button is disabled while the browser asks, so the
+    // endpoint stays editable. A success callback that spread the `query` it
+    // closed over would put the pre-request endpoint back and send the fetch
+    // somewhere the reader did not choose.
+    let succeed: ((pos: GeolocationPosition) => void) | null = null;
+    // jsdom implements no Geolocation API at all, so this defines the one call
+    // the panel makes rather than spying on an existing one.
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (onSuccess: (pos: GeolocationPosition) => void) => {
+          succeed = onSuccess;
+        },
+      },
+    });
+
+    renderImportPage();
+    await openTab(m.action_import_from_osm());
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_use_current_location() }),
+    );
+
+    fireEvent.change(
+      screen.getByLabelText(m.label_overpass_endpoint_optional()),
+      { target: { value: "https://overpass.example/api" } },
+    );
+
+    act(() => {
+      succeed?.({
+        coords: { latitude: 52.5, longitude: 13.4 },
+      } as GeolocationPosition);
+    });
+
+    expect(
+      screen.getByLabelText<HTMLInputElement>(
+        m.label_overpass_endpoint_optional(),
+      ).value,
+    ).toBe("https://overpass.example/api");
+    expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
+      "52.495000",
+    );
   });
 });

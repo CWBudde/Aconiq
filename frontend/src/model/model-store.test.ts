@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useModelStore } from "./model-store";
-import type { ModelFeature, ModelReceiver } from "./types";
+import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
 
 const pointSource: ModelFeature = {
   id: "src-1",
@@ -31,6 +31,20 @@ const receiver: ModelReceiver = {
   id: "rcv-1",
   heightM: 4,
   geometry: { type: "Point", coordinates: [12, 53] },
+};
+
+const calcArea: CalcArea = {
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 0],
+      ],
+    ],
+  },
 };
 
 beforeEach(() => {
@@ -97,9 +111,11 @@ describe("model store", () => {
     expect(useModelStore.getState().features).toEqual([pointSource]);
   });
 
-  it("loadFeatures replaces all features (not undoable)", () => {
+  it("loadModel replaces all features (not undoable)", () => {
     useModelStore.getState().addFeature(pointSource);
-    useModelStore.getState().loadFeatures([building]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [building], receivers: [], calcArea: null });
     expect(useModelStore.getState().features).toEqual([building]);
   });
 
@@ -139,11 +155,6 @@ describe("model store", () => {
   // `dirty` means "differs from the project". A load brings content from
   // outside the project (a file, OSM, a recovered draft), so the model is
   // dirty until it is saved there — the draft write must not clear it.
-  it("loadFeatures marks the model dirty", () => {
-    useModelStore.getState().loadFeatures([pointSource]);
-    expect(useModelStore.getState().dirty).toBe(true);
-  });
-
   it("loadModel marks the model dirty", () => {
     useModelStore
       .getState()
@@ -167,5 +178,131 @@ describe("model store", () => {
     useModelStore.getState().removeReceiver(receiver.id);
     useModelStore.getState().undo();
     expect(useModelStore.getState().receivers).toEqual([receiver]);
+  });
+});
+
+describe("mergeModel", () => {
+  const imported = {
+    features: [pointSource, building],
+    receivers: [receiver],
+    calcArea,
+  };
+
+  it("adds features, receivers and the calculation area", () => {
+    const skipped = useModelStore.getState().mergeModel(imported);
+
+    expect(useModelStore.getState().features).toEqual([pointSource, building]);
+    expect(useModelStore.getState().receivers).toEqual([receiver]);
+    expect(useModelStore.getState().calcArea).toEqual(calcArea);
+    expect(skipped).toEqual({ features: 0, receivers: 0, calcArea: false });
+  });
+
+  it("keeps what the workspace already holds under the same id", () => {
+    // Skipped, not re-minted: a re-minted id is a second copy of the same
+    // feature, and the project keys on ids.
+    useModelStore.getState().addFeature(pointSource);
+    const edited: ModelFeature = { ...pointSource, heightM: 99 };
+
+    const skipped = useModelStore.getState().mergeModel({
+      features: [edited, building],
+      receivers: [],
+      calcArea: null,
+    });
+
+    expect(useModelStore.getState().features).toEqual([pointSource, building]);
+    expect(skipped.features).toBe(1);
+  });
+
+  it("skips a receiver whose id a feature already took", () => {
+    // One namespace, because `validateProjectModel` checks ids as one.
+    useModelStore.getState().addFeature(pointSource);
+    const collision: ModelReceiver = { ...receiver, id: pointSource.id };
+
+    const skipped = useModelStore
+      .getState()
+      .mergeModel({ features: [], receivers: [collision], calcArea: null });
+
+    expect(useModelStore.getState().receivers).toEqual([]);
+    expect(skipped.receivers).toBe(1);
+  });
+
+  it("is idempotent when the same model arrives twice", () => {
+    useModelStore.getState().mergeModel(imported);
+    const before = useModelStore.getState();
+    const snapshot = {
+      features: before.features,
+      receivers: before.receivers,
+      calcArea: before.calcArea,
+      canUndo: before.canUndo,
+      canRedo: before.canRedo,
+    };
+
+    const skipped = useModelStore.getState().mergeModel(imported);
+
+    expect(useModelStore.getState().features).toEqual(snapshot.features);
+    expect(useModelStore.getState().receivers).toEqual(snapshot.receivers);
+    expect(useModelStore.getState().calcArea).toEqual(snapshot.calcArea);
+    expect(skipped).toEqual({ features: 2, receivers: 1, calcArea: true });
+  });
+
+  it("pushes nothing onto the undo stack when it changes nothing", () => {
+    // A no-op command would still clear the redo stack, so a second import of
+    // the same file would be idempotent in the model and not in the history.
+    useModelStore.getState().mergeModel(imported);
+    useModelStore.getState().undo();
+    useModelStore.getState().mergeModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+    });
+
+    expect(useModelStore.getState().canRedo).toBe(true);
+  });
+
+  it("keeps an existing calculation area over an imported one", () => {
+    useModelStore.getState().setCalcArea(calcArea);
+    const otherArea: CalcArea = {
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [5, 5],
+            [6, 5],
+            [6, 6],
+            [5, 5],
+          ],
+        ],
+      },
+    };
+
+    const skipped = useModelStore
+      .getState()
+      .mergeModel({ features: [], receivers: [], calcArea: otherArea });
+
+    expect(useModelStore.getState().calcArea).toEqual(calcArea);
+    expect(skipped.calcArea).toBe(true);
+  });
+
+  it("is one undo, restoring the exact prior state", () => {
+    useModelStore.getState().addFeature(pointSource);
+    useModelStore.getState().mergeModel({
+      features: [building],
+      receivers: [receiver],
+      calcArea,
+    });
+
+    useModelStore.getState().undo();
+
+    expect(useModelStore.getState().features).toEqual([pointSource]);
+    expect(useModelStore.getState().receivers).toEqual([]);
+    expect(useModelStore.getState().calcArea).toBeNull();
+    // One command, not one per imported item: the first feature is still
+    // there and only a second undo removes it.
+    expect(useModelStore.getState().canUndo).toBe(true);
+  });
+
+  it("marks the model dirty, like every other load", () => {
+    useModelStore.getState().mergeModel(imported);
+    expect(useModelStore.getState().dirty).toBe(true);
   });
 });

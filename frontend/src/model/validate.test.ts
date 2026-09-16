@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateModel, validateProjectModel } from "./validate";
+import { validateProjectModel } from "./validate";
 import type { ModelFeature, ModelReceiver } from "./types";
 
 const validSource: ModelFeature = {
@@ -46,15 +46,18 @@ const validReceiver: ModelReceiver = {
   geometry: { type: "Point", coordinates: [2, 3] },
 };
 
-describe("validateModel", () => {
+describe("validateProjectModel", () => {
   it("valid model returns valid=true with no errors", () => {
-    const report = validateModel([validSource, validBuilding, validBarrier]);
+    const report = validateProjectModel(
+      [validSource, validBuilding, validBarrier],
+      [],
+    );
     expect(report.valid).toBe(true);
     expect(report.errors).toHaveLength(0);
   });
 
   it("empty model produces an error", () => {
-    const report = validateModel([]);
+    const report = validateProjectModel([], []);
     expect(report.valid).toBe(false);
     expect(report.errors[0]?.code).toBe("model.empty");
   });
@@ -65,7 +68,7 @@ describe("validateModel", () => {
       kind: "source",
       geometry: { type: "Point", coordinates: [0, 0] },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(report.errors.some((e) => e.code === "source.type.required")).toBe(
       true,
     );
@@ -89,7 +92,7 @@ describe("validateModel", () => {
         ],
       },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(
       report.errors.some((e) => e.code === "source.geometry.mismatch"),
     ).toBe(true);
@@ -112,7 +115,7 @@ describe("validateModel", () => {
         ],
       },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(
       report.errors.some((e) => e.code === "building.height.required"),
     ).toBe(true);
@@ -136,7 +139,7 @@ describe("validateModel", () => {
         ],
       },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(
       report.errors.some((e) => e.code === "building.height.invalid"),
     ).toBe(true);
@@ -154,7 +157,7 @@ describe("validateModel", () => {
         ],
       },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(
       report.errors.some((e) => e.code === "barrier.height.required"),
     ).toBe(true);
@@ -167,7 +170,7 @@ describe("validateModel", () => {
       heightM: 10,
       geometry: { type: "Point", coordinates: [0, 0] },
     };
-    const report = validateModel([bad]);
+    const report = validateProjectModel([bad], []);
     expect(
       report.errors.some((e) => e.code === "building.geometry.invalid"),
     ).toBe(true);
@@ -176,7 +179,7 @@ describe("validateModel", () => {
   it("duplicate IDs produce error", () => {
     const a = { ...validSource };
     const b = { ...validBuilding, id: "src-1" };
-    const report = validateModel([a, b]);
+    const report = validateProjectModel([a, b], []);
     expect(
       report.errors.some(
         (e) =>
@@ -227,20 +230,23 @@ describe("validateModel", () => {
   });
 
   it("warns when imported source acoustics require review", () => {
-    const report = validateModel([
-      {
-        ...validSource,
-        sourceType: "line",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [0, 0],
-            [1, 0],
-          ],
+    const report = validateProjectModel(
+      [
+        {
+          ...validSource,
+          sourceType: "line",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [1, 0],
+            ],
+          },
+          properties: { source_acoustics_review_required: true },
         },
-        properties: { source_acoustics_review_required: true },
-      },
-    ]);
+      ],
+      [],
+    );
 
     expect(
       report.warnings.some(
@@ -250,24 +256,27 @@ describe("validateModel", () => {
   });
 
   it("rejects invalid RLS-19 source override values", () => {
-    const report = validateModel([
-      {
-        ...validSource,
-        sourceType: "line",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [0, 0],
-            [1, 0],
-          ],
+    const report = validateProjectModel(
+      [
+        {
+          ...validSource,
+          sourceType: "line",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [1, 0],
+            ],
+          },
+          properties: {
+            speed_pkw_kph: 0,
+            traffic_day_pkw: -1,
+            surface_type: "bogus",
+          },
         },
-        properties: {
-          speed_pkw_kph: 0,
-          traffic_day_pkw: -1,
-          surface_type: "bogus",
-        },
-      },
-    ]);
+      ],
+      [],
+    );
 
     expect(
       report.errors.some(
@@ -311,7 +320,7 @@ describe("RLS-19 Parkplatz validation", () => {
   // legitimate input to cnossos-industry and bub-industry too. Claiming every
   // one of them is a Parkplatz would bury those models in unrelated errors.
   it("leaves an area source carrying no parking property alone", () => {
-    const report = validateModel([areaFeature({})]);
+    const report = validateProjectModel([areaFeature({})], []);
 
     expect(
       report.errors.filter((issue) =>
@@ -321,9 +330,10 @@ describe("RLS-19 Parkplatz validation", () => {
   });
 
   it("refuses a half-filled Parkplatz, which is the realistic mistake", () => {
-    const report = validateModel([
-      areaFeature({ rls19_parking_num_spaces: 200 }),
-    ]);
+    const report = validateProjectModel(
+      [areaFeature({ rls19_parking_num_spaces: 200 })],
+      [],
+    );
 
     const codes = report.errors.map((issue) => issue.code);
     expect(codes).toContain("source.rls19.parking.parking_type.missing");
@@ -331,13 +341,16 @@ describe("RLS-19 Parkplatz validation", () => {
   });
 
   it("accepts a Tabelle 7 facility type in place of explicit rates", () => {
-    const report = validateModel([
-      areaFeature({
-        rls19_parking_num_spaces: 200,
-        rls19_parking_type: "lkw-omnibus",
-        rls19_parking_facility_type: "tank-rastanlage",
-      }),
-    ]);
+    const report = validateProjectModel(
+      [
+        areaFeature({
+          rls19_parking_num_spaces: 200,
+          rls19_parking_type: "lkw-omnibus",
+          rls19_parking_facility_type: "tank-rastanlage",
+        }),
+      ],
+      [],
+    );
 
     expect(
       report.errors.filter((issue) =>
@@ -347,14 +360,17 @@ describe("RLS-19 Parkplatz validation", () => {
   });
 
   it("keeps an explicitly stated zero movement rate legal", () => {
-    const report = validateModel([
-      areaFeature({
-        rls19_parking_num_spaces: 200,
-        rls19_parking_type: "pkw",
-        rls19_parking_movements_per_space_day: 0.3,
-        rls19_parking_movements_per_space_night: 0,
-      }),
-    ]);
+    const report = validateProjectModel(
+      [
+        areaFeature({
+          rls19_parking_num_spaces: 200,
+          rls19_parking_type: "pkw",
+          rls19_parking_movements_per_space_day: 0.3,
+          rls19_parking_movements_per_space_night: 0,
+        }),
+      ],
+      [],
+    );
 
     expect(
       report.errors.filter((issue) =>

@@ -1194,12 +1194,22 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       stack slot per argument, so where it gives out depends on what the caller already spent —
       125 000 survives in bare node and throws under vitest. `results/summarise.ts` counts in
       one loop and has no ceiling.
-- [ ] **Import page**: split the 400-line component into `FileImport`, `OsmImport`, `PreviewStep`;
-      ask replace-vs-merge before `loadFeatures`; link preview errors to features. UI import drops
-      `kind: "receiver"` features (`normalize.ts:12` lists only source/building/barrier) and
-      `loadFeatures` clears placed receivers, so "import, then Save to project" replaces the project
-      model without the receivers `aconiq import` had put there — import receivers into
-      `receivers`.
+- [x] **Import page** (`9349769`..`9bc7322`). The wizard reads the whole v1 schema, adds to the
+      workspace or replaces it, and its three flows live in `src/import/` beside the route module.
+      Four constraints are still live.
+      **Skipping, not re-minting, is what makes a re-import idempotent**, over one id namespace
+      spanning features and receivers, because `validateProjectModel` checks them as one. A merge
+      that changes nothing pushes no command, or an import that did nothing would clear the redo
+      stack.
+      **Add needs no confirmation and Replace does**: Add is a single undo, Replace resets the
+      command stack. An empty workspace gets one button and neither question.
+      **The done step revalidates the merged model** rather than filtering the preview's report by
+      the landed ids — a skip can resolve the finding it is filtered by. The preview names a
+      feature id without linking it, because nothing is in the store until Add or Replace is
+      chosen.
+      **`model.empty` is answered above the validator**, whose message is hardcoded English. A file
+      holding only a calculation area runs no validator at all, and still counts as one object to
+      import: `countModelObjects` is the only definition of that count.
 - [x] **One receiver CSV, Go's spelling, pinned across the tree boundary.** `encoding/csv` is
       canonical — comma, LF, a trailing newline on every record including the last, minimal
       quoting — and `frontend/src/model/receiver-csv.ts` mirrors it for both the page download and

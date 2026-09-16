@@ -30,11 +30,6 @@ interface SkippedFeature {
 
 const METERS_PER_LEVEL = 3;
 
-export interface NormalizeResult {
-  features: ModelFeature[];
-  skipped: SkippedFeature[];
-}
-
 /** Everything the model store holds, read out of one v1 FeatureCollection. */
 export interface NormalizeModelResult {
   features: ModelFeature[];
@@ -52,26 +47,18 @@ type ModelEntry =
   | { kind: "feature"; feature: ModelFeature }
   | { kind: "receiver"; receiver: ModelReceiver }
   | { kind: "calc-area"; area: CalcArea }
-  | {
-      kind: "skipped";
-      reason: string;
-      /**
-       * Set when the feature declared `receiver` or `calc-area` and was
-       * rejected on that kind's own rules. `normalizeGeoJSON` reports every
-       * such feature as an unknown kind, which is what it did back when it
-       * was the only reader and knew neither kind.
-       */
-      declaredKind?: "receiver" | "calc-area";
-    };
+  | { kind: "skipped"; reason: string };
 
 /**
- * The full model: features, receivers and the calculation area.
+ * The full model: features, receivers and the calculation area — the only way
+ * a FeatureCollection is read.
  *
- * Hydrating a workspace from `GET /api/v1/model` has to go through this and
- * not through `normalizeGeoJSON`, whose `VALID_KINDS` covers only the three
- * kinds the map draws as features. Reading a project through that one would
- * drop every placed receiver and the drawn area, and the first save afterwards
- * would write the loss back into the project.
+ * There used to be a second, feature-only reader beside it, whose `VALID_KINDS`
+ * covered the three kinds the map draws and reported a receiver as an unknown
+ * kind. Anything reading a project through that one dropped every placed
+ * receiver and the drawn area, and the first save afterwards wrote the loss
+ * back into the project. It is gone rather than documented: a comment asking
+ * callers not to use it would have left the entry point in the codebase.
  */
 export function normalizeModelGeoJSON(
   collection: GeoJSONFeatureCollection,
@@ -110,51 +97,6 @@ export function normalizeModelGeoJSON(
   });
 
   return { features, receivers, calcArea, skipped };
-}
-
-/**
- * Features only, for the import page.
- *
- * A projection of `normalizeModelGeoJSON`'s work rather than a second parser:
- * receivers and calculation areas fold back into `skipped` with exactly the
- * "unknown kind" reason they produced before the model normalizer learned
- * those kinds, so the import page's skipped count is unchanged.
- *
- * This shim exists because the import page still replaces the model with
- * features alone. PLAN.md's Phase C import bullet is what deletes it: once
- * import goes through the model normalizer, the callers move over and this
- * function goes with them.
- */
-export function normalizeGeoJSON(
-  collection: GeoJSONFeatureCollection,
-): NormalizeResult {
-  const features: ModelFeature[] = [];
-  const skipped: SkippedFeature[] = [];
-
-  forEachEntry(collection, (index, entry) => {
-    switch (entry.kind) {
-      case "feature":
-        features.push(entry.feature);
-        break;
-      case "receiver":
-        skipped.push({ index, reason: unknownKindReason(index, "receiver") });
-        break;
-      case "calc-area":
-        skipped.push({ index, reason: unknownKindReason(index, "calc-area") });
-        break;
-      case "skipped":
-        skipped.push({
-          index,
-          reason:
-            entry.declaredKind === undefined
-              ? entry.reason
-              : unknownKindReason(index, entry.declaredKind),
-        });
-        break;
-    }
-  });
-
-  return { features, skipped };
 }
 
 function forEachEntry(
@@ -233,17 +175,22 @@ function normalizeEntry(raw: GeoJSONFeature, index: number): ModelEntry {
  * dropping the feature. Dropping is exactly the loss this normalizer exists to
  * fix — a receiver the user placed on the map is not something to discard over
  * a property a writer left out.
+ *
+ * The properties are kept for the same reason, and the same way a feature's
+ * are: a receiver carries `bimschv16_area_category`, which is the only thing
+ * that makes it assessable, and reading it into a point alone loses it on the
+ * next save.
  */
 function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
   if (raw.geometry.type !== "Point") {
     return {
       kind: "skipped",
-      declaredKind: "receiver",
       reason: `feature[${String(index)}]: receiver geometry must be Point, got "${raw.geometry.type}"`,
     };
   }
 
   const height = Number(raw.properties["height_m"]);
+  const normalizedProps = normalizeProperties(raw.properties);
 
   return {
     kind: "receiver",
@@ -253,6 +200,7 @@ function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
         Number.isFinite(height) && height > 0
           ? height
           : DEFAULT_RECEIVER_HEIGHT_M,
+      ...(normalizedProps !== undefined && { properties: normalizedProps }),
       geometry: {
         type: "Point",
         coordinates: raw.geometry.coordinates as Position,
@@ -272,7 +220,6 @@ function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
   if (raw.geometry.type !== "Polygon") {
     return {
       kind: "skipped",
-      declaredKind: "calc-area",
       reason: `feature[${String(index)}]: calculation area geometry must be Polygon, got "${raw.geometry.type}"`,
     };
   }

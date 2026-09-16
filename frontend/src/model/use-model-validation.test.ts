@@ -41,7 +41,9 @@ describe("useModelValidation", () => {
   });
 
   it("reports a well-formed model as valid", () => {
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     const { result } = renderHook(() => useModelValidation());
 
     expect(result.current.state).toBe("valid");
@@ -49,9 +51,12 @@ describe("useModelValidation", () => {
   });
 
   it("sees a defect that only a receiver carries", () => {
-    // The whole reason this hook exists: `validateModel` passes [] for
+    // The whole reason this hook exists: the former `validateModel` passed
+    // [] for
     // receivers, so every call site that used it read this model as valid.
-    useModelStore.getState().loadFeatures([source]);
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
     useModelStore.getState().addReceiver(badReceiver);
     const { result } = renderHook(() => useModelValidation());
 

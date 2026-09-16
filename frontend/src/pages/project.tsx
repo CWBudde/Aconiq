@@ -10,7 +10,7 @@ import { KeyValueList } from "@/ui/key-value-list";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
 import { ProjectSummary } from "@/ui/project-summary";
 import { useModelValidation } from "@/model/use-model-validation";
-import { DRAW_PARAM } from "@/map/draw-request";
+import { DRAW_PARAM } from "@/map/map-params";
 import { m } from "@/i18n/messages";
 
 /**

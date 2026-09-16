@@ -46,7 +46,7 @@
   "confirm_delete_receiver_title": "Diesen Immissionsort löschen?",
   "confirm_delete_receiver_desc": "Immissionsort {id} wird aus dem Arbeitsbereich entfernt. Rückgängig holt ihn zurück, solange Sie die Seite nicht verlassen.",
   "confirm_import_replace_title": "Modell im Arbeitsbereich ersetzen?",
-  "confirm_import_replace_desc": "Die {count} importierten Objekte ersetzen alles, was der Arbeitsbereich derzeit enthält; gesetzte Immissionsorte werden dabei entfernt. Das Projekt auf der Festplatte bleibt unverändert, bis Sie speichern.",
+  "confirm_import_replace_desc": "Die {count} importierten Objekte ersetzen alles, was der Arbeitsbereich enthält — Objekte, Immissionsorte und das Berechnungsgebiet. „Zum Arbeitsbereich hinzufügen“ behält den Bestand. Das Projekt auf der Festplatte bleibt unverändert, bis Sie speichern.",
   "action_discard": "Verwerfen",
   "action_download_csv": "CSV herunterladen",
   "action_fetch_from_osm": "Von OSM laden",
@@ -376,5 +376,13 @@
   "label_edit_history": "Rückgängig und Wiederholen",
   "action_hide_layer": "{label} ausblenden",
   "action_show_layer": "{label} einblenden",
-  "msg_project_model_load_failed": "Das Projektmodell konnte nicht geladen werden. Die Karte zeigt möglicherweise weniger, als das Projekt enthält."
+  "msg_project_model_load_failed": "Das Projektmodell konnte nicht geladen werden. Die Karte zeigt möglicherweise weniger, als das Projekt enthält.",
+  "msg_calc_area_included": "Enthalten",
+  "action_import_add": "Zum Arbeitsbereich hinzufügen",
+  "action_import_replace": "Arbeitsbereich ersetzen",
+  "msg_import_skips_existing": "{count} davon sind bereits im Arbeitsbereich vorhanden. Beim Hinzufügen bleibt der Bestand erhalten, der Rest wird importiert.",
+  "msg_import_skips_calc_area": "Der Arbeitsbereich enthält bereits ein Berechnungsgebiet. Beim Hinzufügen bleibt das vorhandene erhalten.",
+  "msg_import_nothing": "Es gibt nichts zu importieren — die Datei enthält keine Objekte, Immissionsorte und kein Berechnungsgebiet, die das Modell liest.",
+  "msg_import_errors_remain": "Diese Befunde sind mit dem Import gekommen und stehen jetzt im Modell.",
+  "action_show_feature_on_map": "{id} auf der Karte zeigen"
 }

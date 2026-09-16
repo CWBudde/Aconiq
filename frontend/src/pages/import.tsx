@@ -1,30 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { Button } from "@/ui/components/button";
-import { Card } from "@/ui/components/card";
-import { Input } from "@/ui/components/input";
-import { Label } from "@/ui/components/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
-import { KeyValueList } from "@/ui/key-value-list";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { PageHeader } from "@/ui/page-header";
-import { useModelStore } from "@/model/model-store";
-import { normalizeGeoJSON } from "@/model/normalize";
-import { validateModel } from "@/model/validate";
+import { FileImport } from "@/import/file-import";
+import { OsmImport } from "@/import/osm-import";
+import type { OsmQuery } from "@/import/osm-import";
+import { PreviewStep } from "@/import/preview-step";
+import {
+  countModelObjects,
+  planMerge,
+  useModelStore,
+} from "@/model/model-store";
+import type { LoadedModel } from "@/model/model-store";
+import { normalizeModelGeoJSON } from "@/model/normalize";
+import { validateProjectModel } from "@/model/validate";
 import type {
+  CalcArea,
   GeoJSONFeatureCollection,
   ModelFeature,
+  ModelReceiver,
+  ValidationIssue,
   ValidationReport,
 } from "@/model/types";
-import {
-  FileInput,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  LocateFixed,
-} from "lucide-react";
-import { useImportFromOSM } from "@/api/hooks";
+import { CheckCircle2, XCircle } from "lucide-react";
+import { SELECT_PARAM } from "@/map/map-params";
 import { m } from "@/i18n/messages";
 
 type ImportStep = "upload" | "preview" | "done";
@@ -36,197 +38,210 @@ function isImportSource(value: string): value is ImportSource {
   return (IMPORT_SOURCES as readonly string[]).includes(value);
 }
 
-/** How many validation errors the preview lists before it summarises the rest. */
-const PREVIEW_ERROR_LIMIT = 5;
-
-function BBoxField({
-  id,
-  label,
-  value,
-  placeholder,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Input
-        id={id}
-        type="number"
-        step="any"
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-        placeholder={placeholder}
-      />
-      <Label htmlFor={id} className="text-center text-xs text-muted-foreground">
-        {label}
-      </Label>
-    </div>
-  );
-}
-
+/**
+ * The import wizard's step machine.
+ *
+ * The two sources sit in `src/import/` beside it — the same shape `pages/map.tsx`
+ * and `src/map/` already have — and hand a `FeatureCollection` back. This file
+ * owns what happens to one: normalize, validate, preview, and the replacement
+ * the reader confirms.
+ */
 export default function ImportPage() {
+  // The Overpass query lives here rather than in `OsmImport`, because the tab
+  // strip unmounts an inactive panel: a box typed — or geolocated — into the
+  // OSM tab would be gone the moment the reader glanced at the file tab.
+  const [osmQuery, setOsmQuery] = useState<OsmQuery>({
+    south: "",
+    west: "",
+    north: "",
+    east: "",
+    endpoint: "",
+  });
   const [step, setStep] = useState<ImportStep>("upload");
   const [source, setSource] = useState<ImportSource>("file");
   const [features, setFeatures] = useState<ModelFeature[]>([]);
+  const [receivers, setReceivers] = useState<ModelReceiver[]>([]);
+  const [calcArea, setCalcArea] = useState<CalcArea | null>(null);
   const [skippedCount, setSkippedCount] = useState(0);
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const loadFeatures = useModelStore((s) => s.loadFeatures);
+  const loadModel = useModelStore((s) => s.loadModel);
+  const mergeModel = useModelStore((s) => s.mergeModel);
+  const workspaceFeatures = useModelStore((s) => s.features);
+  const workspaceReceivers = useModelStore((s) => s.receivers);
+  const workspaceCalcArea = useModelStore((s) => s.calcArea);
   const navigate = useNavigate();
 
-  // OSM form state. The bounding box is held as text so a half-typed value
-  // survives a re-render; `toFixed` here writes an input value, not a display
-  // string, so it stays outside the locale-aware formatters.
-  const [osmSouth, setOsmSouth] = useState("");
-  const [osmWest, setOsmWest] = useState("");
-  const [osmNorth, setOsmNorth] = useState("");
-  const [osmEast, setOsmEast] = useState("");
-  const [osmEndpoint, setOsmEndpoint] = useState("");
+  /** Everything the import brings, receivers and calculation area included. */
+  const importedCount = countModelObjects({ features, receivers, calcArea });
+  /** What the done step reports — an Add that skipped some lands fewer. */
+  const [doneCount, setDoneCount] = useState(0);
 
-  const [geolocating, setGeolocating] = useState(false);
+  const workspaceEmpty =
+    workspaceFeatures.length === 0 &&
+    workspaceReceivers.length === 0 &&
+    workspaceCalcArea === null;
 
-  const osmMutation = useImportFromOSM();
+  // Computed here, at preview time, and not inside the merge: the reader has
+  // to see what Add will leave behind *before* choosing it. A dialog that
+  // reports it afterwards is where the surprise lives.
+  const mergeSkips = useMemo(
+    () =>
+      planMerge(
+        {
+          features: workspaceFeatures,
+          receivers: workspaceReceivers,
+          calcArea: workspaceCalcArea,
+        },
+        { features, receivers, calcArea },
+      ).skipped,
+    [
+      workspaceFeatures,
+      workspaceReceivers,
+      workspaceCalcArea,
+      features,
+      receivers,
+      calcArea,
+    ],
+  );
 
-  const handleUseCurrentLocation = useCallback(() => {
-    if (typeof navigator.geolocation.getCurrentPosition !== "function") {
-      setError(m.error_geolocation_not_supported());
-      return;
-    }
-    setGeolocating(true);
-    setError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const delta = 0.005; // ~500 m radius
-        setOsmSouth((lat - delta).toFixed(6));
-        setOsmNorth((lat + delta).toFixed(6));
-        setOsmWest((lon - delta).toFixed(6));
-        setOsmEast((lon + delta).toFixed(6));
-        setGeolocating(false);
-      },
-      (err) => {
-        setError(m.error_location_fetch_failed() + `: ${err.message}`);
-        setGeolocating(false);
-      },
-    );
-  }, []);
-
+  // The whole v1 schema, not the three kinds the map draws as features.
+  // The feature-only reader this page used to call reported `kind: "receiver"`
+  // as an unknown kind, so a file `aconiq import` had written came in without
+  // its receivers and the first save afterwards wrote that loss back into the
+  // project.
+  //
+  // The validator follows: `validateProjectModel` checks receiver ids against
+  // feature ids and the receivers themselves, which a features-only report
+  // cannot do — it would call a model with a duplicate receiver valid.
+  //
+  // "Nothing to import" is answered here, *above* the validator, the way
+  // `useModelValidation` answers "empty". `validateProjectModel` pushes a
+  // synthetic `model.empty` error whose message is hardcoded English and whose
+  // own comment says it must never reach the UI — and this page calls the
+  // validator directly, so an empty FeatureCollection printed that English
+  // string verbatim to a German reader. A file carrying only a calculation
+  // area is the same case seen from the other side: there is something to
+  // import and nothing for the validator to check, so it is not run at all.
   const handleNormalizeAndPreview = useCallback(
     (collection: GeoJSONFeatureCollection) => {
-      const result = normalizeGeoJSON(collection);
+      const result = normalizeModelGeoJSON(collection);
+      if (
+        result.features.length === 0 &&
+        result.receivers.length === 0 &&
+        result.calcArea === null
+      ) {
+        setError(m.msg_import_nothing());
+        return;
+      }
       setFeatures(result.features);
+      setReceivers(result.receivers);
+      setCalcArea(result.calcArea);
       setSkippedCount(result.skipped.length);
-      setReport(validateModel(result.features));
+      setReport(
+        result.features.length === 0 && result.receivers.length === 0
+          ? null
+          : validateProjectModel(result.features, result.receivers),
+      );
       setStep("preview");
     },
     [],
   );
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      setError(null);
-      try {
-        const text = await file.text();
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        if (
-          parsed["type"] !== "FeatureCollection" ||
-          !Array.isArray(parsed["features"])
-        ) {
-          setError(m.msg_geojson_error_invalid());
-          return;
-        }
-        handleNormalizeAndPreview(
-          parsed as unknown as GeoJSONFeatureCollection,
-        );
-      } catch {
-        setError(m.msg_geojson_error_parse());
-      }
-    },
-    [handleNormalizeAndPreview],
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) void handleFile(file);
-    },
-    [handleFile],
-  );
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) void handleFile(file);
-    },
-    [handleFile],
-  );
-
-  const handleOSMFetch = useCallback(() => {
-    setError(null);
-    const south = parseFloat(osmSouth);
-    const west = parseFloat(osmWest);
-    const north = parseFloat(osmNorth);
-    const east = parseFloat(osmEast);
-
-    if (isNaN(south) || isNaN(west) || isNaN(north) || isNaN(east)) {
-      setError(m.msg_bbox_required());
-      return;
-    }
-
-    osmMutation.mutate(
-      {
-        south,
-        west,
-        north,
-        east,
-        ...(osmEndpoint ? { overpass_endpoint: osmEndpoint } : {}),
-      },
-      {
-        onSuccess: (collection) => {
-          handleNormalizeAndPreview(collection);
-        },
-        onError: (err: unknown) => {
-          setError(
-            err instanceof Error ? err.message : m.error_osm_fetch_failed(),
-          );
-        },
-      },
-    );
-  }, [
-    osmSouth,
-    osmWest,
-    osmNorth,
-    osmEast,
-    osmEndpoint,
-    osmMutation,
-    handleNormalizeAndPreview,
-  ]);
-
-  // `loadFeatures` replaces the workspace outright and clears placed
-  // receivers with it, and no undo covers that — the command stack is reset,
-  // not extended. So the import asks first.
+  // Replace goes through `loadModel`, which drops the workspace outright and
+  // resets the command stack rather than extending it, so no undo covers it —
+  // hence the confirmation. Add is the opposite on both counts: it loses
+  // nothing and it is a single undo, so asking would be an obstacle rather
+  // than a safeguard.
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   // Read while the dialog closes, which is before the next render, so a ref
   // rather than state.
   const replaced = useRef(false);
   const goToMapRef = useRef<HTMLButtonElement>(null);
 
+  // The findings the done step offers to open on the map. Only those whose
+  // feature actually landed: an Add skips what the workspace already holds,
+  // and a link to a feature the import did not bring selects nothing.
+  const [doneErrors, setDoneErrors] = useState<ValidationIssue[]>([]);
+
+  // Revalidated against the model the import actually produced, not filtered
+  // out of the preview's report. An Add skips an incoming id the workspace
+  // already holds, and skipping can *resolve* a finding: a file whose feature
+  // and receiver share an id is reported `receiver.id.duplicate` before the
+  // merge, and after it only the feature landed, so nothing is duplicated any
+  // more. The pre-merge report still names that id, and that id did land, so
+  // filtering by the landed ids kept a finding the workspace no longer has.
+  // Narrowing to the landed ids afterwards is still needed for the other half:
+  // a finding the reader cannot act on here is one against a feature that was
+  // already in the workspace before the import.
+  const errorsFor = useCallback(
+    (merged: LoadedModel, landed: Iterable<string>) => {
+      const ids = new Set(landed);
+      return validateProjectModel(
+        merged.features,
+        merged.receivers,
+      ).errors.filter(
+        (issue) => issue.featureId !== "" && ids.has(issue.featureId),
+      );
+    },
+    [],
+  );
+
   const handleConfirm = useCallback(() => {
-    loadFeatures(features);
+    loadModel({ features, receivers, calcArea });
+    setDoneCount(importedCount);
+    setDoneErrors(
+      errorsFor({ features, receivers, calcArea }, [
+        ...features.map((f) => f.id),
+        ...receivers.map((r) => r.id),
+      ]),
+    );
     replaced.current = true;
     setConfirmingReplace(false);
     setStep("done");
-  }, [features, loadFeatures]);
+  }, [features, receivers, calcArea, importedCount, loadModel, errorsFor]);
+
+  const handleAdd = useCallback(() => {
+    const landed = planMerge(
+      {
+        features: workspaceFeatures,
+        receivers: workspaceReceivers,
+        calcArea: workspaceCalcArea,
+      },
+      { features, receivers, calcArea },
+    );
+    const skipped = mergeModel({ features, receivers, calcArea });
+    setDoneCount(
+      importedCount -
+        skipped.features -
+        skipped.receivers -
+        (skipped.calcArea ? 1 : 0),
+    );
+    setDoneErrors(
+      errorsFor(
+        {
+          features: [...workspaceFeatures, ...landed.features],
+          receivers: [...workspaceReceivers, ...landed.receivers],
+          calcArea: landed.calcArea,
+        },
+        [
+          ...landed.features.map((f) => f.id),
+          ...landed.receivers.map((r) => r.id),
+        ],
+      ),
+    );
+    setStep("done");
+  }, [
+    features,
+    receivers,
+    calcArea,
+    importedCount,
+    mergeModel,
+    errorsFor,
+    workspaceFeatures,
+    workspaceReceivers,
+    workspaceCalcArea,
+  ]);
 
   // Confirming removes the Import button the dialog was opened from, so Radix
   // has nothing to restore focus to and it would fall to `<body>`. The done
@@ -240,9 +255,6 @@ export default function ImportPage() {
   const handleGoToMap = useCallback(() => {
     void navigate("/model");
   }, [navigate]);
-
-  const countByKind = (kind: ModelFeature["kind"]) =>
-    String(features.filter((f) => f.kind === kind).length);
 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
@@ -267,113 +279,19 @@ export default function ImportPage() {
               </TabsList>
 
               <TabsContent value="file">
-                <div
-                  className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed p-12 text-center"
-                  onDrop={handleDrop}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                  }}
-                >
-                  <FileInput
-                    className="size-10 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <PageHeader
-                    className="justify-center text-center"
-                    title={m.heading_import_geojson()}
-                    description={m.msg_drag_or_click()}
-                  />
-                  <Button
-                    onClick={() => {
-                      fileRef.current?.click();
-                    }}
-                  >
-                    {m.action_choose_file()}
-                  </Button>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".geojson,.json"
-                    className="hidden"
-                    onChange={handleInputChange}
-                  />
-                </div>
+                <FileImport
+                  onCollection={handleNormalizeAndPreview}
+                  onError={setError}
+                />
               </TabsContent>
 
               <TabsContent value="osm">
-                <Card className="flex flex-col gap-4 p-6">
-                  <PageHeader
-                    title={m.heading_import_from_osm()}
-                    description={m.msg_import_osm_description()}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleUseCurrentLocation}
-                    disabled={geolocating}
-                    className="self-start"
-                  >
-                    <LocateFixed aria-hidden="true" />
-                    {geolocating
-                      ? m.status_locating()
-                      : m.action_use_current_location()}
-                  </Button>
-                  <div className="grid grid-cols-4 gap-3">
-                    <BBoxField
-                      id="osm-south"
-                      label={m.label_south()}
-                      value={osmSouth}
-                      placeholder="52.49"
-                      onChange={setOsmSouth}
-                    />
-                    <BBoxField
-                      id="osm-west"
-                      label={m.label_west()}
-                      value={osmWest}
-                      placeholder="13.35"
-                      onChange={setOsmWest}
-                    />
-                    <BBoxField
-                      id="osm-north"
-                      label={m.label_north()}
-                      value={osmNorth}
-                      placeholder="52.52"
-                      onChange={setOsmNorth}
-                    />
-                    <BBoxField
-                      id="osm-east"
-                      label={m.label_east()}
-                      value={osmEast}
-                      placeholder="13.40"
-                      onChange={setOsmEast}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label
-                      htmlFor="osm-endpoint"
-                      className="text-xs text-muted-foreground"
-                    >
-                      {m.label_overpass_endpoint_optional()}
-                    </Label>
-                    <Input
-                      id="osm-endpoint"
-                      type="text"
-                      value={osmEndpoint}
-                      onChange={(e) => {
-                        setOsmEndpoint(e.target.value);
-                      }}
-                      placeholder="https://overpass-api.de/api/interpreter"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleOSMFetch}
-                    disabled={osmMutation.isPending}
-                  >
-                    {osmMutation.isPending
-                      ? m.status_fetching()
-                      : m.action_fetch_from_osm()}
-                  </Button>
-                </Card>
+                <OsmImport
+                  query={osmQuery}
+                  onQueryChange={setOsmQuery}
+                  onCollection={handleNormalizeAndPreview}
+                  onError={setError}
+                />
               </TabsContent>
             </Tabs>
 
@@ -381,76 +299,23 @@ export default function ImportPage() {
           </div>
         ) : null}
 
-        {step === "preview" && report ? (
-          <div className="space-y-4">
-            <PageHeader title={m.heading_import_preview()} />
-            <Card className="space-y-3 p-4 text-sm">
-              <p>
-                {String(features.length)} {m.msg_features_normalized()}
-              </p>
-              {skippedCount > 0 ? (
-                <p className="text-warning">
-                  {String(skippedCount)} {m.msg_features_skipped()}
-                </p>
-              ) : null}
-              <KeyValueList
-                items={[
-                  { label: m.label_sources(), value: countByKind("source") },
-                  {
-                    label: m.label_buildings(),
-                    value: countByKind("building"),
-                  },
-                  { label: m.label_barriers(), value: countByKind("barrier") },
-                ]}
-              />
-            </Card>
-
-            {report.errors.length > 0 ? (
-              <Callout
-                variant="destructive"
-                icon={XCircle}
-                title={`${String(report.errors.length)} ${m.status_validation_errors()}`}
-              >
-                <ul className="space-y-1">
-                  {report.errors.slice(0, PREVIEW_ERROR_LIMIT).map((e, i) => (
-                    <li key={i}>{e.message}</li>
-                  ))}
-                  {report.errors.length > PREVIEW_ERROR_LIMIT ? (
-                    <li className="text-muted-foreground">
-                      {m.msg_and_more({
-                        count: report.errors.length - PREVIEW_ERROR_LIMIT,
-                      })}
-                    </li>
-                  ) : null}
-                </ul>
-              </Callout>
-            ) : null}
-
-            {report.warnings.length > 0 ? (
-              <Callout variant="warning" icon={AlertTriangle}>
-                {String(report.warnings.length)}{" "}
-                {m.status_validation_warnings()}
-              </Callout>
-            ) : null}
-
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setStep("upload");
-                }}
-              >
-                {m.action_back()}
-              </Button>
-              <Button
-                onClick={() => {
-                  setConfirmingReplace(true);
-                }}
-              >
-                {m.action_import_features({ count: features.length })}
-              </Button>
-            </div>
-          </div>
+        {step === "preview" ? (
+          <PreviewStep
+            features={features}
+            receivers={receivers}
+            calcArea={calcArea}
+            skippedCount={skippedCount}
+            report={report}
+            workspaceEmpty={workspaceEmpty}
+            mergeSkips={mergeSkips}
+            onBack={() => {
+              setStep("upload");
+            }}
+            onAdd={handleAdd}
+            onReplace={() => {
+              setConfirmingReplace(true);
+            }}
+          />
         ) : null}
 
         {step === "done" ? (
@@ -459,11 +324,45 @@ export default function ImportPage() {
             <PageHeader
               className="justify-center text-center"
               title={m.status_import_complete()}
-              description={`${String(features.length)} ${m.msg_import_complete_description()}`}
+              description={`${String(doneCount)} ${m.msg_import_complete_description()}`}
             />
             <Button ref={goToMapRef} onClick={handleGoToMap}>
               {m.action_go_to_map()}
             </Button>
+
+            {/* Here the findings can be acted on: the features are in the
+                store, so each link opens the editor on the one it names. */}
+            {doneErrors.length > 0 ? (
+              <Callout
+                variant="destructive"
+                icon={XCircle}
+                className="text-left"
+                title={`${String(doneErrors.length)} ${m.status_validation_errors()}`}
+              >
+                <p>{m.msg_import_errors_remain()}</p>
+                <ul className="mt-2 space-y-1">
+                  {doneErrors.map((issue, i) => (
+                    <li key={i}>
+                      {issue.message}{" "}
+                      <Button
+                        asChild
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                      >
+                        <Link
+                          to={`/model?${SELECT_PARAM}=${encodeURIComponent(issue.featureId)}`}
+                        >
+                          {m.action_show_feature_on_map({
+                            id: issue.featureId,
+                          })}
+                        </Link>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Callout>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -474,9 +373,9 @@ export default function ImportPage() {
         tone="destructive"
         title={m.confirm_import_replace_title()}
         description={m.confirm_import_replace_desc({
-          count: features.length,
+          count: importedCount,
         })}
-        confirmLabel={m.action_import_features({ count: features.length })}
+        confirmLabel={m.action_import_features({ count: importedCount })}
         onConfirm={handleConfirm}
         // The effect above owns where focus goes; this only stops Radix
         // sending it to a button that is no longer there first. Cancelling

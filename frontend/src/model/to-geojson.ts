@@ -94,6 +94,15 @@ export function featuresToSourceGroups(features: ModelFeature[]): SourceGroups {
   };
 }
 
+/**
+ * The receivers as `receiver` features.
+ *
+ * The carried properties go first and `kind`/`height_m` last, exactly as
+ * {@link featuresToGeoJSON} does it: the store's own fields win, and everything
+ * else the receiver arrived with survives the round trip. Emitting only the two
+ * derived properties dropped `bimschv16_area_category` on the first save, and
+ * `assessment/bimschv16` then skipped the receiver as missing its category.
+ */
 export function receiversToGeoJSON(
   receivers: ModelReceiver[],
 ): GeoJSONFeatureCollection {
@@ -103,6 +112,7 @@ export function receiversToGeoJSON(
       type: "Feature" as const,
       id: r.id,
       properties: {
+        ...(r.properties ?? {}),
         kind: "receiver",
         height_m: r.heightM,
       },

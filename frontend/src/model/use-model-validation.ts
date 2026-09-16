@@ -17,12 +17,13 @@ export interface ModelValidationSummary {
 /**
  * The one place the workspace is validated.
  *
- * Two things it fixes over calling `validateModel` at each site.
+ * Two things it fixes over calling the validator at each site.
  *
- * It passes the **receivers**. `validateModel` hardcodes `[]` for them, so a
- * model whose only defect is a receiver read as valid — in the map panel, in
- * its badge, and soon in the run gate, all of which had their own copy of the
- * call.
+ * It passes the **receivers**. The former `validateModel` hardcoded `[]` for
+ * them, so a model whose only defect is a receiver read as valid — in the map
+ * panel, in its badge, and soon in the run gate, all of which had their own
+ * copy of the call. That entry point is gone; this hook is how the store is
+ * validated.
  *
  * And it answers "empty" with an early return **above** the validator rather
  * than by filtering the result. `validateProjectModel` pushes a synthetic

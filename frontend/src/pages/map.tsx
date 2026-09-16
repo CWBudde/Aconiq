@@ -20,7 +20,7 @@ import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
 import { DrawProvider } from "@/map/draw-provider";
-import { DRAW_PARAM } from "@/map/draw-request";
+import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
@@ -257,6 +257,7 @@ function MapWorkspace() {
               setStartDismissed(true);
             }}
           />
+          <SelectRequest onSelect={handleSelectFromValidation} />
           {showStart ? (
             <WorkspaceStart
               onDismiss={() => {
@@ -295,6 +296,35 @@ function DrawRequest({ onDismiss }: { onDismiss: () => void }) {
     startDrawing();
     setParams({}, { replace: true });
   }, [requested, startDrawing, setParams]);
+
+  return null;
+}
+
+/**
+ * Honours `?select=<featureId>`, the link the import page's done step builds
+ * for a finding, then strips it so a Back does not re-open the editor on a
+ * feature the reader has moved on from.
+ *
+ * `onSelect` is `handleSelectFromValidation`, the move the validation panel
+ * already makes: open the editor on that feature and close the panel. A second
+ * one written here would be two ways to select a feature that must not
+ * diverge.
+ */
+function SelectRequest({
+  onSelect,
+}: {
+  onSelect: (featureId: string) => void;
+}) {
+  const [params, setParams] = useSearchParams();
+  const requested = params.get(SELECT_PARAM) ?? "";
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (requested === "" || handled.current) return;
+    handled.current = true;
+    onSelect(requested);
+    setParams({}, { replace: true });
+  }, [requested, onSelect, setParams]);
 
   return null;
 }
