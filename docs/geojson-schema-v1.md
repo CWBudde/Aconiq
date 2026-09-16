@@ -9,6 +9,26 @@ This schema is the minimal common input for `aconiq import` / `aconiq validate`.
 - GeoJSON `FeatureCollection`.
 - Each item must be a GeoJSON `Feature` with `properties` and `geometry`.
 
+### The `crs` Member
+
+A collection may declare the CRS its coordinates are in, as the OGC named-CRS
+member:
+
+```json
+{ "type": "name", "properties": { "name": "EPSG:25832" } }
+```
+
+`aconiq export` and `GET /api/v1/model` write it, and the browser import reads
+it; the URN spelling `urn:ogc:def:crs:EPSG::25832` is accepted on the way in.
+A collection that declares nothing is read in the project's own CRS — in the
+browser, `EPSG:4326`.
+
+Declaring it matters for a projected file. Its coordinates are metric eastings
+and northings, and read as `EPSG:4326` they are handed to the transform as
+longitude and latitude, which refuses them as out of range. RFC 7946 deprecates
+this member, and nothing here depends on a consumer honouring it: it is written
+so a file Aconiq produced says what it is, and read so one can come back.
+
 ## Required Properties
 
 - `id` (string or numeric, normalized to string)

@@ -137,6 +137,24 @@ const invalidGeoJSON = JSON.stringify({
   ],
 });
 
+/**
+ * The same model in EPSG:25832, declared the way `aconiq import` declares it.
+ * The coordinates are metric eastings and northings, so reading this file as
+ * EPSG:4326 is not a mislabelling that comes out in the wash — `transform`
+ * refuses 549829 as a longitude.
+ */
+const projectedGeoJSON = JSON.stringify({
+  type: "FeatureCollection",
+  crs: { type: "name", properties: { name: "EPSG:25832" } },
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "src-25832", kind: "source", source_type: "point" },
+      geometry: { type: "Point", coordinates: [549829.86, 5803100.34] },
+    },
+  ],
+});
+
 function makeFile(content: string, name = "model.geojson"): File {
   return new File([content], name, { type: "application/json" });
 }
@@ -667,5 +685,72 @@ describe("ImportPage", () => {
     expect(screen.getByLabelText<HTMLInputElement>(m.label_south()).value).toBe(
       "52.495000",
     );
+  });
+  /**
+   * A projected file used to land in the workspace labelled EPSG:4326, because
+   * the normalizer dropped the collection's `crs` member and the page called
+   * `loadModel` without one. The run path then handed metric eastings to
+   * `transform` as longitudes, which refuses them — where browser mode had
+   * computed them directly before.
+   */
+  it("keeps the CRS a replaced file declares", async () => {
+    seedWorkspace();
+    renderImportPage();
+    fireEvent.change(getFileInput(), {
+      target: { files: [makeFile(projectedGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    replaceWorkspace();
+
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("keeps the CRS a file declares when it is the first thing imported", async () => {
+    renderImportPage();
+    fireEvent.change(getFileInput(), {
+      target: { files: [makeFile(projectedGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    confirmImport();
+
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("falls back to the default for a file that declares no CRS", async () => {
+    renderImportPage();
+    fireEvent.change(getFileInput(), {
+      target: { files: [makeFile(validGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    confirmImport();
+
+    expect(useModelStore.getState().crs).toBe("EPSG:4326");
+  });
+
+  /**
+   * An Add into a workspace that already holds something keeps the workspace's
+   * CRS — `planMerge`'s rule, and the only safe one: the incoming coordinates
+   * are not reprojected on the way in, so adopting their CRS would relabel
+   * everything already there.
+   */
+  it("leaves a non-empty workspace's CRS alone on Add", async () => {
+    act(() => {
+      useModelStore.getState().setCRS("EPSG:4326");
+    });
+    seedWorkspace();
+    renderImportPage();
+    fireEvent.change(getFileInput(), {
+      target: { files: [makeFile(projectedGeoJSON)] },
+    });
+    await waitFor(() => screen.getByText("Import Preview"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_import_add() }),
+    );
+
+    expect(useModelStore.getState().crs).toBe("EPSG:4326");
   });
 });

@@ -62,6 +62,10 @@ export default function ImportPage() {
   const [features, setFeatures] = useState<ModelFeature[]>([]);
   const [receivers, setReceivers] = useState<ModelReceiver[]>([]);
   const [calcArea, setCalcArea] = useState<CalcArea | null>(null);
+  // What the file declared, or null when it declared nothing. Held rather than
+  // defaulted here: `loadModel` and `mergeModel` answer "nothing declared"
+  // differently, and only they know what the workspace already holds.
+  const [importCRS, setImportCRS] = useState<string | null>(null);
   const [skippedCount, setSkippedCount] = useState(0);
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +141,7 @@ export default function ImportPage() {
       setFeatures(result.features);
       setReceivers(result.receivers);
       setCalcArea(result.calcArea);
+      setImportCRS(result.crs);
       setSkippedCount(result.skipped.length);
       setReport(
         result.features.length === 0 && result.receivers.length === 0
@@ -188,7 +193,12 @@ export default function ImportPage() {
   );
 
   const handleConfirm = useCallback(() => {
-    loadModel({ features, receivers, calcArea });
+    loadModel({
+      features,
+      receivers,
+      calcArea,
+      ...(importCRS !== null && { crs: importCRS }),
+    });
     setDoneCount(importedCount);
     setDoneErrors(
       errorsFor({ features, receivers, calcArea }, [
@@ -199,7 +209,15 @@ export default function ImportPage() {
     replaced.current = true;
     setConfirmingReplace(false);
     setStep("done");
-  }, [features, receivers, calcArea, importedCount, loadModel, errorsFor]);
+  }, [
+    features,
+    receivers,
+    calcArea,
+    importCRS,
+    importedCount,
+    loadModel,
+    errorsFor,
+  ]);
 
   const handleAdd = useCallback(() => {
     const landed = planMerge(
@@ -210,7 +228,12 @@ export default function ImportPage() {
       },
       { features, receivers, calcArea },
     );
-    const skipped = mergeModel({ features, receivers, calcArea });
+    const skipped = mergeModel({
+      features,
+      receivers,
+      calcArea,
+      ...(importCRS !== null && { crs: importCRS }),
+    });
     setDoneCount(
       importedCount -
         skipped.features -
@@ -235,6 +258,7 @@ export default function ImportPage() {
     features,
     receivers,
     calcArea,
+    importCRS,
     importedCount,
     mergeModel,
     errorsFor,
