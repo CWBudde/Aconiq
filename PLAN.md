@@ -475,45 +475,36 @@ Three candidate fixes, none chosen:
 
 ### 1.7 A geographic project CRS made every level wrong, and it was the default — closed
 
-`aconiq run` now projects a geographic project CRS into a metric one before anything reads a
-coordinate, and records which CRS it computed in.
+`aconiq run` projects a geographic project CRS into an ETRS89 / UTM zone taken from the model's own
+centre before anything reads a coordinate, and records `project_crs` and `compute_crs`.
 
-**The bullet this closes described the defect as the auto receiver grid's. It was not.** Every
-standards module measures distance with `geo.Distance`, which is `math.Hypot` over the coordinates
-it is handed, so the units error is the whole compute path rather than one grid builder. Measured
-on `main` with `--receiver-mode custom`, which never touches a grid: four receivers at 10 m, 100 m,
-1 km and 10 km from one 90 dB point source all reported **90.0 dB** — the source's emission level
-verbatim, because in degrees every separation falls under the modules' 1 m clamp. It reached the
-normative modules too: `rls19-road` reported **43.9 dB where the projected twin reports 58.0 dB**,
-at an Immissionsort 100 m from a road, and the model validated `"valid": true` with zero warnings.
-`aconiq init` defaults `--crs` to EPSG:4326 (`init.go:62`, `projectfs/store.go:121`), so this was
-the out-of-the-box path.
+**The bullet this closes called it the auto receiver grid's defect. It was not**: every module
+measures distance with `geo.Distance`, so the units error was the whole compute path — it
+reproduced with custom receivers and reached `rls19-road`, on a model that validated without a
+warning. `aconiq init` defaults `--crs` to EPSG:4326, so this was the out-of-the-box path.
 
-Four constraints are live:
+Five constraints are live:
 
-- **Only ETRS89 / UTM zones 31-34 are available**, and a geographic project whose centre falls
-  outside them is **refused** rather than projected into the nearest zone that exists. The zone is
-  derived from the model's own centre, so the CRS follows the site rather than a setting anyone has
-  to maintain. ETRS89 is the target for EPSG:4326 as well as EPSG:4258: the datum difference is a
-  near-rigid sub-metre shift of the whole model, which moves no distance between two features,
-  whereas a parallel WGS84 / UTM table would cover only zones 32 and 33.
-- **Results are expressed in the compute CRS, not the project CRS**, and both are stamped into
-  `provenance.json`. Transforming them back would run the lossy round trip 1.6 measures, for
-  coordinates nothing computes from. This is why `aconiq export` labels the model GeoJSON and the
-  results separately — a bundle from a reprojected run legitimately holds two CRS, and one shared
-  label would be wrong for one of them.
-- **A projected project is not touched at all**, and the run is byte-identical to before apart from
-  the two new provenance keys. The 13 digest goldens moved by exactly those two lines and nothing
-  else, which is the evidence for that claim rather than a promise about it.
-- **An unclassified CRS is left alone.** A `WKT:` identifier or an EPSG code outside the classified
-  ranges has no code to transform through, so refusing it would break projects that work today
-  while fixing nothing.
+- **Only zones 31-34 exist**, and a site outside them is refused rather than projected into the
+  nearest zone that does. ETRS89 is the target for EPSG:4326 too: the datum difference is a
+  near-rigid sub-metre shift that changes no distance, where a WGS84 / UTM table would reach only
+  zones 32 and 33.
+- **Results are in the compute CRS**, not the project CRS. Transforming them back would run the
+  lossy round trip 1.6 measures over coordinates nothing computes from — which is also why an
+  export bundle now labels the model GeoJSON and the results separately, and why contour GeoJSON
+  is reprojected to WGS84 rather than labelled (RFC 7946 fixes its CRS).
+- **A projected project is not touched**, evidenced by the 13 digest goldens moving by exactly the
+  two new provenance keys and nothing else.
+- **Coordinates embedded in properties move with the geometry.** RLS-19 directional sources carry
+  their own centerline and Schall 03 track features their own point, and both are consumed as
+  geometry. `modelgeojson.propertyGeometries` is the list; a new coordinate-bearing property has to
+  be added to it or it silently stays in degrees.
+- **Terrain is wrapped, not resampled.** The DTM stays in the project CRS and compute-CRS queries
+  are transformed back per lookup, because `terrainElevationAt` turns an out-of-grid miss into an
+  elevation of 0 without saying so.
 
-`TestRunAgreesBetweenGeographicAndProjectedProjectCRS` pins the two spellings of one site to
-0.001 dB; they measure 4.9e-6 dB apart, because 1.6's round-trip bias points the same way for two
-points 100 m apart and very nearly cancels in the distance between them. `aconiq compare-raster`
-deliberately does **not** reproject — it compares against SoundPLAN rasters in the project's own
-CRS, and its models are projected in practice.
+`aconiq compare-raster` deliberately does **not** reproject: it compares against SoundPLAN rasters
+in the project's own CRS.
 
 ## Priority 2 — Make the CLI run the normative code
 

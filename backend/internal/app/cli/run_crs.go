@@ -56,6 +56,18 @@ func isGeographicCRS(id string) bool {
 	return crs.Kind == geo.CRSKindGeographic
 }
 
+// epsgCRS parses an identifier that carries an EPSG code. The second result
+// is false for anything else — a WKT: identifier, or an empty string — which
+// callers read as "there is no transform to build", not as an error.
+func epsgCRS(id string) (geo.CRS, bool) {
+	crs, err := geo.ParseCRS(id)
+	if err != nil || crs.EPSGCode() == 0 {
+		return geo.CRS{}, false
+	}
+
+	return crs, true
+}
+
 func resolveComputeModel(model modelgeojson.Model, projectCRS string) (modelgeojson.Model, computeProjection, error) {
 	projection := computeProjection{ProjectCRS: projectCRS, ComputeCRS: projectCRS}
 

@@ -188,3 +188,122 @@ func TestBoundsReportsAnEmptyModelAsHavingNoExtent(t *testing.T) {
 		t.Fatal("an empty model reported an extent; a zero bbox at (0,0) is a place, not an absence")
 	}
 }
+
+// modelWithEmbeddedGeometry carries the two vocabularies that attach
+// coordinates to a feature through its properties rather than its geometry.
+func modelWithEmbeddedGeometry() modelgeojson.Model {
+	return modelgeojson.Model{
+		SchemaVersion: 1,
+		ProjectCRS:    "EPSG:4326",
+		Features: []modelgeojson.Feature{{
+			ID:           "road-1",
+			Kind:         modelgeojson.FeatureKindSource,
+			SourceType:   "line",
+			GeometryType: modelgeojson.GeometryTypeLineString,
+			Coordinates:  []any{[]any{10.0, 53.55}, []any{10.001, 53.55}},
+			Properties: map[string]any{
+				"rls19_directional_sources": []any{
+					map[string]any{
+						"centerline":            []any{[]any{10.0, 53.55}, []any{10.001, 53.55}},
+						"centerline_elevations": []any{12.0, 12.5},
+					},
+					map[string]any{
+						"coordinates": []any{[]any{10.0, 53.551}, []any{10.001, 53.551}},
+					},
+				},
+				"schall03_track_features": []any{
+					map[string]any{"kind": "haltestelle", "x": 10.0, "y": 53.55},
+				},
+			},
+		}},
+	}
+}
+
+// Coordinates in properties are consumed as geometry by the RLS-19 and
+// Schall 03 extractors, so leaving them in degrees while the feature geometry
+// moves into metres would place directional sources millions of metres from
+// their own receivers and push track features past their 25 m proximity check.
+func TestReprojectMovesCoordinatesEmbeddedInProperties(t *testing.T) {
+	t.Parallel()
+
+	out, err := modelgeojson.Reproject(modelWithEmbeddedGeometry(), "EPSG:25832")
+	if err != nil {
+		t.Fatalf("Reproject: %v", err)
+	}
+
+	props := out.Features[0].Properties
+
+	sources, _ := props["rls19_directional_sources"].([]any)
+	if len(sources) != 2 {
+		t.Fatalf("rls19_directional_sources = %#v", props["rls19_directional_sources"])
+	}
+
+	for i, member := range []string{"centerline", "coordinates"} {
+		entry, _ := sources[i].(map[string]any)
+
+		line, _ := entry[member].([]any)
+		if len(line) != 2 {
+			t.Fatalf("source %d %s = %#v", i, member, entry[member])
+		}
+
+		first, _ := line[0].([]any)
+
+		x, _ := first[0].(float64)
+		if x < 560000 || x > 572000 {
+			t.Fatalf("source %d %s still starts at x=%v; it was not projected", i, member, x)
+		}
+	}
+
+	// Elevations are metres in both CRS and must not be touched.
+	firstSource, _ := sources[0].(map[string]any)
+
+	elevations, _ := firstSource["centerline_elevations"].([]any)
+	if len(elevations) != 2 || elevations[0] != 12.0 || elevations[1] != 12.5 {
+		t.Fatalf("centerline_elevations = %#v, want [12, 12.5]", firstSource["centerline_elevations"])
+	}
+
+	features, _ := props["schall03_track_features"].([]any)
+	track, _ := features[0].(map[string]any)
+
+	trackX, _ := track["x"].(float64)
+	trackY, _ := track["y"].(float64)
+
+	if trackX < 560000 || trackX > 572000 || trackY < 5928000 || trackY > 5940000 {
+		t.Fatalf("track feature sits at (%v, %v); it was not projected", trackX, trackY)
+	}
+
+	if track["kind"] != "haltestelle" {
+		t.Fatalf("track feature lost its kind: %#v", track)
+	}
+}
+
+// Reproject must not write through the model it is handed: the caller still
+// holds the loaded model, and a run that reprojects in place would leave the
+// stored model's properties silently rewritten.
+func TestReprojectLeavesTheInputModelAlone(t *testing.T) {
+	t.Parallel()
+
+	in := modelWithEmbeddedGeometry()
+
+	_, err := modelgeojson.Reproject(in, "EPSG:25832")
+	if err != nil {
+		t.Fatalf("Reproject: %v", err)
+	}
+
+	sources, _ := in.Features[0].Properties["rls19_directional_sources"].([]any)
+	entry, _ := sources[0].(map[string]any)
+	line, _ := entry["centerline"].([]any)
+	first, _ := line[0].([]any)
+
+	x, _ := first[0].(float64)
+	if x != 10.0 {
+		t.Fatalf("the input model's centerline moved to x=%v; Reproject wrote through its argument", x)
+	}
+
+	features, _ := in.Features[0].Properties["schall03_track_features"].([]any)
+	track, _ := features[0].(map[string]any)
+
+	if track["x"] != 10.0 {
+		t.Fatalf("the input model's track feature moved to x=%v; Reproject wrote through its argument", track["x"])
+	}
+}

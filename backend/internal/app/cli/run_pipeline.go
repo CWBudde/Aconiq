@@ -223,6 +223,16 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
+	// The terrain is stored in the project CRS and is not moved with the
+	// model, so a projected run has to query it through a transform.
+	runTerrain, err := newTerrainInComputeCRS(loadRunTerrain(prepared, state), projection)
+	if err != nil {
+		prepared.log.addf("failed to align terrain with the compute CRS: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(),
+			domainerrors.New(domainerrors.KindInternal, "cli.computeRun", "align terrain with the compute CRS", err))
+	}
+
 	module, err := runModuleFor(prepared.standard.StandardID)
 	if err != nil {
 		prepared.log.addf("run wiring missing: %v", err)
@@ -234,7 +244,7 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		standard:     prepared.standard,
 		params:       prepared.params,
 		model:        model,
-		terrain:      loadRunTerrain(prepared, state),
+		terrain:      runTerrain,
 		receiverMode: req.receiverMode,
 		runDir:       prepared.runDir,
 		runID:        prepared.run.ID,

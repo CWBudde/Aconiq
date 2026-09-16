@@ -284,3 +284,141 @@ func TestResolveComputeModelLeavesAnUnclassifiedCRSAlone(t *testing.T) {
 		}
 	}
 }
+
+// readReceiverTable returns every receiver row's x, y and level.
+func readReceiverTable(t *testing.T, projectDir string) ([][3]float64, error) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(projectDir, ".noise", "runs", "*", "results", "receivers.csv"))
+	if err != nil || len(matches) != 1 {
+		return nil, fmt.Errorf("expected exactly one receivers.csv under %s, got %v (%w)", projectDir, matches, err)
+	}
+
+	file, err := os.Open(matches[0])
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", matches[0], err)
+	}
+
+	defer func() { _ = file.Close() }()
+
+	rows, err := csv.NewReader(file).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", matches[0], err)
+	}
+
+	out := make([][3]float64, 0, len(rows)-1)
+
+	for _, row := range rows[1:] {
+		x, _ := strconv.ParseFloat(row[1], 64)
+		y, _ := strconv.ParseFloat(row[2], 64)
+		level, _ := strconv.ParseFloat(row[len(row)-1], 64)
+
+		out = append(out, [3]float64{x, y, level})
+	}
+
+	return out, nil
+}
+
+// runAutoGrid drives a run that builds its own receiver grid, which is the
+// path the original defect report named.
+func runAutoGrid(t *testing.T, crs string, source geo.Point2D) [][3]float64 {
+	t.Helper()
+
+	projectDir := t.TempDir()
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	payload := fmt.Sprintf(`{"type":"FeatureCollection","features":[
+  {"type":"Feature","properties":{"id":"src-1","kind":"source","source_type":"point"},
+   "geometry":{"type":"Point","coordinates":[%s,%s]}}
+]}`, strconv.FormatFloat(source.X, 'f', -1, 64), strconv.FormatFloat(source.Y, 'f', -1, 64))
+
+	err := os.WriteFile(modelPath, []byte(payload), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "AutoGrid", "--crs", crs)
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield",
+		"--param", "grid_resolution_m=10", "--param", "grid_padding_m=20")
+
+	rows, err := readReceiverTable(t, projectDir)
+	if err != nil {
+		t.Fatalf("read receiver table: %v", err)
+	}
+
+	return rows
+}
+
+// The auto receiver grid is where the defect was first reported:
+// buildReceiversFromPoints subtracts grid_padding_m and steps by
+// grid_resolution_m in the project's own units, so a geographic project
+// subtracted 20 degrees of padding and spaced receivers 10 degrees apart —
+// scattering them across three continents and reporting the levels computed
+// there as if they were the site's.
+//
+// The custom-receiver test cannot see that come back, because it supplies the
+// receivers itself. This one compares the grid a geographic project builds
+// against the grid its projected twin builds: same count, same metric spacing,
+// same levels.
+func TestAutoGridAgreesBetweenGeographicAndProjectedProjectCRS(t *testing.T) {
+	source := geo.Point2D{X: 566000, Y: 5934000}
+
+	projected := runAutoGrid(t, "EPSG:25832", source)
+	geographic := runAutoGrid(t, "EPSG:4326", projectedToGeographic(t, source))
+
+	if len(projected) == 0 {
+		t.Fatal("the projected run produced no receivers")
+	}
+
+	if len(geographic) != len(projected) {
+		t.Fatalf("the geographic project built %d grid receivers and its projected twin built %d; "+
+			"a padding in degrees produces a different grid, which is the original defect",
+			len(geographic), len(projected))
+	}
+
+	// 20 m padding either side of a single source, stepped at 10 m: a 5x5 grid.
+	const wantReceivers = 25
+
+	if len(projected) != wantReceivers {
+		t.Fatalf("grid holds %d receivers, want %d — the extent or the step is not in metres", len(projected), wantReceivers)
+	}
+
+	// The step between the first two cells, in the projected run, is the
+	// grid_resolution_m the run asked for. In degrees this would be 10 units
+	// of longitude.
+	const wantStepM = 10.0
+
+	gotStep := projected[1][0] - projected[0][0]
+	if math.Abs(gotStep-wantStepM) > 1e-6 {
+		t.Fatalf("grid step is %.6f, want %.6f m", gotStep, wantStepM)
+	}
+
+	// The two grids are compared by shape rather than by absolute position.
+	// Both are built around the same source, but the geographic project's
+	// source has been through one EPSG:25832 → 4326 → 25832 round trip, which
+	// PLAN.md 1.6 measures as a bias of roughly a metre at this easting — so
+	// the whole grid is offset by that much and every cell by the same amount.
+	// Congruence is the property that distinguishes metres from degrees; the
+	// shared offset is 1.6's business, not this test's.
+	for i := range projected {
+		if math.Abs(geographic[i][2]-projected[i][2]) > 0.01 {
+			t.Fatalf("receiver %d: %.6f dB in EPSG:4326 against %.6f dB in EPSG:25832",
+				i, geographic[i][2], projected[i][2])
+		}
+
+		offsetX := (geographic[i][0] - geographic[0][0]) - (projected[i][0] - projected[0][0])
+		offsetY := (geographic[i][1] - geographic[0][1]) - (projected[i][1] - projected[0][1])
+
+		if math.Abs(offsetX) > 0.05 || math.Abs(offsetY) > 0.05 {
+			t.Fatalf("receiver %d sits %.4f, %.4f m from where the projected grid puts it relative to cell 0; "+
+				"the two grids are not the same shape, which is what a padding or a step in degrees produces",
+				i, offsetX, offsetY)
+		}
+	}
+
+	// And the shared offset really is shared: state its size so a change in
+	// the projection shows up here as a number rather than as a mystery.
+	t.Logf("whole-grid offset from the 1.6 round trip: %.4f m east, %.4f m north",
+		geographic[0][0]-projected[0][0], geographic[0][1]-projected[0][1])
+}

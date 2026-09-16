@@ -30,10 +30,18 @@ func writeProvenanceWithMetadata(t *testing.T, metadata map[string]string) strin
 func TestComputeCRSFromProvenance(t *testing.T) {
 	t.Parallel()
 
+	unreadable := filepath.Join(t.TempDir(), "corrupt.json")
+
+	err := os.WriteFile(unreadable, []byte("{not json"), 0o600)
+	if err != nil {
+		t.Fatalf("write corrupt provenance: %v", err)
+	}
+
 	cases := []struct {
-		name string
-		path string
-		want string
+		name    string
+		path    string
+		want    string
+		wantErr bool
 	}{
 		{
 			name: "a run that recorded one",
@@ -45,15 +53,31 @@ func TestComputeCRSFromProvenance(t *testing.T) {
 			path: writeProvenanceWithMetadata(t, map[string]string{"evidence_tier": "normative"}),
 			want: "",
 		},
-		{"no provenance path", "", ""},
-		{"a path that is not there", filepath.Join(t.TempDir(), "missing.json"), ""},
+		{name: "no provenance path", path: "", want: ""},
+		// The two below must not answer "" — that is the legacy-run sentinel,
+		// and reusing it here would label a geographic run's UTM results
+		// EPSG:4326 on the strength of a file nothing could read.
+		{name: "a path that is not there", path: filepath.Join(t.TempDir(), "missing.json"), wantErr: true},
+		{name: "a manifest that does not decode", path: unreadable, wantErr: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := computeCRSFromProvenance(tc.path)
+			got, err := computeCRSFromProvenance(tc.path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("computeCRSFromProvenance = %q with no error, want an error", got)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("computeCRSFromProvenance: %v", err)
+			}
+
 			if got != tc.want {
 				t.Fatalf("computeCRSFromProvenance = %q, want %q", got, tc.want)
 			}
