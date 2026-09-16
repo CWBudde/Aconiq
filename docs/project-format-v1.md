@@ -64,7 +64,34 @@ Core entities in v1:
 - optional module-specific metadata (for example data-pack version or reporting precision)
 - input file hashes
 - the standard-data digest (`standard_data`)
+- the CRS the run computed in (`project_crs`, `compute_crs`)
 - generation timestamp and tool identity
+
+### `project_crs` and `compute_crs`
+
+Every standards module measures distance planar-metrically, so a model held in
+a geographic CRS cannot be computed in the CRS it is stored in. `aconiq run`
+projects a geographic project CRS into an ETRS89 / UTM zone chosen from the
+model's own centre, and records both identifiers:
+
+```json
+"metadata": {
+  "project_crs": "EPSG:4326",
+  "compute_crs": "EPSG:25832"
+}
+```
+
+**The run's results — the receiver table, the raster and anything derived from
+them — are in `compute_crs`.** They are not transformed back, because the
+inverse trip is lossy (see `PLAN.md` 1.6) and nothing computes from the
+coordinates afterwards. When the project CRS is already projected the two keys
+are equal and the model is not touched.
+
+`aconiq export` reads `compute_crs` back to label the GIS formats it writes, so
+a bundle from a reprojected run carries two CRS: the exported model GeoJSON is
+in `project_crs`, and the GeoTIFF, GeoPackage and contours are in
+`compute_crs`. A run recorded before these keys existed has no `compute_crs`,
+and the export falls back to the project CRS.
 
 ### `standard_data`
 
