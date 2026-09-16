@@ -892,7 +892,7 @@ func openapiStandardSchemas() map[string]any {
 		"StandardDescriptor": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			// context has no omitempty on standardResponse, so the key is always
+			// context has no omitempty on descriptorjson.Standard, so the key is always
 			// present and a strict consumer may rely on it.
 			"required": []string{"context", "id", "description", evidenceTierField, "default_version", "versions"},
 			"properties": map[string]any{

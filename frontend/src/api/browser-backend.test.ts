@@ -13,10 +13,25 @@ import * as storage from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { ModelFeature } from "@/model/types";
-import type { ComputeRequest } from "@/wasm/types";
+import type { ComputeRequest, TransformRequest } from "@/wasm/types";
+
+/**
+ * Records every `transform` request `startRun` makes, so a test can ask what
+ * CRS the browser asked the kernel to project from.
+ */
+const transformRequests: TransformRequest[] = [];
 
 // The persistence tests drive `startRun` end to end, but what the kernel
 // computes is the parity suite's business; here it only has to answer.
+//
+// `transform` is a deliberate no-op: it reports the coordinates unmoved, in the
+// CRS they arrived in. These fixtures state their coordinates in the units they
+// mean, and a stub that projected them would silently change every extent and
+// grid this file asserts on. Whether the *real* projection lands the model
+// where the CLI lands it is the `road_geographic` parity fixture's job, against
+// the real kernel; what this file can still see is that `startRun` asks for the
+// projection at all, and asks with the store's CRS — which is what
+// `transformRequests` is for.
 vi.mock("@/wasm/kernel", () => ({
   getKernel: () =>
     Promise.resolve({
@@ -27,6 +42,16 @@ vi.mock("@/wasm/kernel", () => ({
             Indicators: { lr_day: 50, lr_night: 40 },
           })),
         ),
+      transform: (req: TransformRequest) => {
+        transformRequests.push(req);
+        return Promise.resolve({
+          source_crs: req.source_crs,
+          target_crs: req.source_crs,
+          applied: false,
+          coordinates: req.coordinates,
+        });
+      },
+      standards: () => [],
       defaultConfig: () => ({}),
     }),
 }));
@@ -405,7 +430,11 @@ describe("persisted state", () => {
         },
       ],
       calcArea: null,
+      // Restated per test: the model store is module state, so a case that
+      // declares a metric CRS would otherwise leak it into the next one.
+      crs: "EPSG:4326",
     });
+    transformRequests.length = 0;
     warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     // jsdom has no object URLs, and every persist prunes the URL cache.
     vi.stubGlobal("URL", {
@@ -431,8 +460,8 @@ describe("persisted state", () => {
     await storage.savePersistedState({
       version: PERSISTED_STATE_VERSION,
       state: {
-        // projectId absent, crs of the wrong type, one run entry that is not
-        // a run: an older build could have written any of these.
+        // projectId absent, a `crs` no build reads any more, one run entry
+        // that is not a run: an older build could have written any of these.
         projectName: "Old",
         crs: 42,
         runs: [
@@ -448,7 +477,11 @@ describe("persisted state", () => {
     const status = await browserBackend.getProjectStatus();
     expect(status.project_id).toBe("browser-project");
     expect(status.name).toMatch(/^Old/);
-    expect(status.crs).toBe("WGS84 / web map");
+    // The CRS comes from the model store, not from the stored document: in
+    // browser mode the store *is* the project, and the document's old `crs`
+    // field held the display label "WGS84 / web map", which named no CRS and
+    // could not have — the store holds whatever the last import brought.
+    expect(status.crs).toBe("EPSG:4326");
   });
 
   it.each([
@@ -537,6 +570,73 @@ describe("persisted state", () => {
     await expect(browserBackend.getRuns()).resolves.toEqual([]);
     expect(warn).toHaveBeenCalledOnce();
     await expect(storage.loadPersistedState()).resolves.toBeNull();
+  });
+
+  // The whole scene has to reach the kernel in metres. `startRun` therefore
+  // projects the workspace once, before any builder reads a coordinate, and it
+  // has to ask with the CRS the store says its coordinates are in — not with a
+  // constant, which is what `DEFAULT_CRS = "WGS84 / web map"` amounted to.
+  it("asks the kernel to project the model out of the store's CRS", async () => {
+    useModelStore.setState({ crs: "EPSG:25832" });
+
+    await browserBackend.startRun(RUN_SPEC);
+
+    expect(transformRequests).toHaveLength(1);
+    const request = transformRequests[0];
+    expect(request).toBeDefined();
+    expect(request?.source_crs).toBe("EPSG:25832");
+    // The kernel decides the zone, not the browser: the same
+    // `geo.ComputeCRSForGeographic` the CLI resolves through.
+    expect(request?.target_crs).toBe("auto");
+    // Flat and interleaved, and it carries the receiver as well as the road:
+    // a run whose sources moved and whose receivers did not would compute
+    // distances across two coordinate systems.
+    expect((request?.coordinates.length ?? 1) % 2).toBe(0);
+    expect(request?.coordinates).toContain(50);
+  });
+
+  it("records the CRS it computed in, on the summary and in the log", async () => {
+    useModelStore.setState({ crs: "EPSG:25832" });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const summary = run.artifacts.find(
+      (entry) => entry.kind === "run.result.summary",
+    );
+
+    await expect(
+      browserBackend.getArtifactContent(summary?.id ?? ""),
+    ).resolves.toMatchObject({
+      // The CLI's own provenance key names, so a consumer reads one spelling.
+      project_crs: "EPSG:25832",
+      compute_crs: "EPSG:25832",
+    });
+
+    const log = await browserBackend.getRunLog(run.id);
+    expect(
+      log.lines.some((line) => line.includes("compute_crs=EPSG:25832")),
+    ).toBe(true);
+  });
+
+  it("refuses a model whose property geometry it cannot project", async () => {
+    useModelStore.setState({
+      features: [
+        {
+          ...ROAD,
+          properties: {
+            ...ROAD.properties,
+            // Coordinates in the project CRS that live in a property rather
+            // than in `geometry`. `geo/modelgeojson/reproject.go` moves these;
+            // browser mode cannot, so it must refuse rather than leave them in
+            // degrees inside a model that is otherwise in metres.
+            rls19_directional_sources: [],
+          },
+        },
+      ],
+    });
+
+    await expect(browserBackend.startRun(RUN_SPEC)).rejects.toThrow(
+      /rls19_directional_sources/,
+    );
   });
 
   it("keeps a run's results readable after a reload", async () => {

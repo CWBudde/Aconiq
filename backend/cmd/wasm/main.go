@@ -12,6 +12,9 @@
 //	  config:    { SegmentLengthM: 10, MinDistanceM: 1, ReceiverHeightM: 4 }
 //	}));
 //	const outputs = JSON.parse(result); // []ReceiverOutput
+//
+// Coordinates must be in a metric CRS before they reach rls19Road — see
+// aconiq.transform, and internal/wasmkernel for why.
 package main
 
 import (
@@ -23,6 +26,7 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
+	"github.com/aconiq/backend/internal/wasmkernel"
 )
 
 // currentTerrain holds the terrain model loaded via loadTerrain().
@@ -76,6 +80,57 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 		resolve.Invoke(js.ValueOf(string(out)))
 		return nil
 	}))
+}
+
+// transformFunc projects a batch of coordinates between two CRS.
+// Takes a single JSON string argument, returns a Promise<string> (JSON),
+// mirroring rls19Road so a caller has one calling convention to learn.
+//
+// This is what keeps browser mode out of degrees: `internal/geo` is already
+// linked into this binary, so exposing the transform costs a registration line
+// rather than a second transverse-Mercator implementation in TypeScript — and
+// the browser therefore projects through the same series the CLI does, by
+// construction.
+func transformFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("transform: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.Transform([]byte(input))
+		if err != nil {
+			// Verbatim: geo.ComputeCRSForGeographic's refusal names the zone and
+			// says what to do about it, and browser mode must refuse a site in
+			// the same words `aconiq run` does.
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
+// standardsFunc returns the standards this kernel can run, in the same JSON
+// shape `GET /api/v1/standards` answers with.
+// Signature: () => string (JSON)
+//
+// Unlike defaultConfig/health/projectStatus below, the marshal error is not
+// swallowed: an empty standards list renders the run page unusable, and a
+// silent one would look like a kernel that supports nothing.
+func standardsFunc(_ js.Value, _ []js.Value) any {
+	out, err := wasmkernel.StandardsJSON()
+	if err != nil {
+		return jsReject(fmt.Sprintf("standards: marshal error: %v", err))
+	}
+
+	return js.ValueOf(string(out))
 }
 
 // loadTerrainFunc loads a GeoTIFF terrain model from a Uint8Array.
@@ -204,6 +259,8 @@ func jsReject(msg string) js.Value {
 func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
+	aconiq.Set("transform", js.FuncOf(transformFunc))
+	aconiq.Set("standards", js.FuncOf(standardsFunc))
 	aconiq.Set("loadTerrain", js.FuncOf(loadTerrainFunc))
 	aconiq.Set("clearTerrain", js.FuncOf(clearTerrainFunc))
 	aconiq.Set("defaultConfig", js.FuncOf(defaultConfigFunc))

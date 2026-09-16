@@ -542,16 +542,26 @@ Three consequences fell out of the work:
 
 ### Open
 
-- [ ] **Browser mode still computes in degrees.** The compute projection landed in the Go run
-      pipeline (1.7), and WASM mode does not go through it: `browser-backend.ts` declares
-      `DEFAULT_CRS = "WGS84 / web map"` (`:74`), builds the receiver grid in TypeScript
-      (`buildReceiverGrid`, `:1121-1153`, `minX - padding` in whatever units the store holds) and
-      hands lon/lat straight to the kernel, which exposes only `rls19Road` and computes on what it
-      is given. So the whole offline demo reproduces 1.7 in full. The frontend has no proj4, and it
-      must not grow a second transverse-Mercator implementation: expose the transform the Go kernel
-      already links in (`internal/geo`) as an `aconiq.transform` entry point and call it from
-      `browser-backend.ts`, so the two kernels project through the same series by construction and
-      `browser-parity.test.ts` keeps pinning them together.
+- [ ] **MapLibre draws the model store as if it were EPSG:4326.** The store now carries the CRS its
+      coordinates are in, and a run projects out of it — but the map does not read the field, so a
+      metric model imports correctly, runs correctly and is drawn in the wrong place. The
+      alternatives are a display reprojection through `aconiq.transform` (the store's CRS → 4326 for
+      the map layer only, never for the stored coordinates) or refusing to draw a non-4326 store at
+      all and saying why. Whichever lands, the stored coordinates must stay in the project CRS: a
+      round trip through the map would quietly become the model.
+- [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
+      `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
+      (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
+      contract takes a flat coordinate array, so browser mode cannot move them. `compute-crs.ts`
+      refuses such a model rather than projecting around it — leaving them in degrees inside a
+      metric model puts a directional source millions of metres from its own receivers. Reaching
+      them needs either a nested-batch transform contract or a second collection pass that walks
+      the property trees; neither is worth building until a browser-mode model can express one.
+- [ ] **Browser terrain would be queried in the compute CRS.** `terrainAtGridCenter`
+      (`cmd/wasm/main.go`) queries the DTM at the receiver centroid, which is now a UTM metre pair,
+      while the GeoTIFF stays in whatever CRS it was written in. The CLI answers this with
+      `newTerrainInComputeCRS`; the kernel has no equivalent. It is latent — browser mode never
+      calls `loadTerrain` — and becomes live the moment it does.
 - [ ] **`aconiq compare` still runs the preview chain, by explicit opt-in.** The SoundPLAN import
       produces the `rail_*` preview vocabulary only, so `compare_test.go` and `cmdoutput_test.go`
       now pass `--param schall03_engine=preview` rather than reaching it by accident. The ~25 dB
@@ -677,10 +687,18 @@ Three things fell out of the work:
 
 ### Open
 
-- [ ] **The frontend needs the tier to reach WASM mode honestly.** `browser-backend.ts` hardcodes a
-      single `rls19-road` descriptor and now hardcodes its tier alongside it. That is correct today
-      and is a second place the tier is declared, which is exactly the duplication the descriptor
-      field exists to prevent. It should come from the WASM kernel.
+- [ ] **The kernel's standards list is hand-maintained, and must stay honest.**
+      `internal/wasmkernel.Standards()` is the single declaration of what the WASM build can run —
+      descriptor and entry-point name together — and `aconiq.standards()` publishes it through the
+      same `descriptorjson` encoding `GET /api/v1/standards` uses. It deliberately does **not**
+      import `internal/standards`: `NewRegistry` links all thirteen modules, and the kernel would
+      then advertise twelve it has no entry point for. So adding a standard to the kernel is two
+      edits, and `TestEveryStandardHasItsEntryPoint` reads `cmd/wasm/main.go` to catch the one that
+      is forgotten. A generated registration would remove the coupling; nothing needs it yet.
+- [ ] **Browser mode still refuses every standard but `rls19-road` by name.** `startRun` compares
+      `spec.standardId` against a string literal rather than asking `wasmkernel.Supports`, because
+      the check is on the TypeScript side of the boundary. It is consistent with the published list
+      today only because the list has one entry.
 - [ ] **`Headline()` is English-only.** The CLI banner and the report row are English, but the
       reports are the artifact a German authority reads, and the assessment modules already emit
       German. Decide whether the report row should be localised, and against which message source.
