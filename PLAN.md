@@ -579,11 +579,34 @@ parse and discarding a user's model and runs over a row order is the larger harm
       Gl. 35-36 combined assessment is unreachable from a run. The conformance declaration now says
       so under "Reachability from the CLI"; it needs a `schall03_yard_*` vocabulary to stop being
       true.
-- [ ] **Buildings do not shield.** A `building` feature can opt into acting as a reflector
-      (`schall03_reflecting_wall`), but is never turned into a `BarrierSegment`, so a receiver
-      behind a building is computed as if the building were absent. Reflection alone is the wrong
-      half to ship on by default, which is why the reflector role is opt-in — but the shielding
-      half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
+- [ ] **A Schall 03 barrier shields its own reflection.** `ReflectedSubsegmentContribWithBarriers`
+      (`reflection.go:284`) and `ComputeReflectedLineSourceLpAeqWithBarriers` (:566) pass the
+      **entire** `barriers` slice to `ComputePathBarrierAttenuation` with the image source as the
+      origin. The image→receiver segment crosses the reflecting wall at the reflection point by
+      construction, and `IsObstructing` compares against the line-of-sight height there, so the wall
+      screens the reflection it produced. RLS-19 has `barriersExcluding` for exactly this; Schall 03
+      has no equivalent. Live in the CLI today for any `barrier` carrying
+      `schall03_reflective: true`, because `appendSchall03Barriers` emits both a `BarrierSegment`
+      and a `ReflectingWall` for it. No test catches it: `b5_reflective_barrier` has reflective
+      barriers but `walls: null`, `b2_barrier_with_wall` has a wall that is not a barrier, and
+      `TestReflectedPathObstructedByBarrier` uses a deliberate third object. Closing it moves
+      `b2`/`b5`-class numbers, so it is its own PR. It needs an `ObstacleID` on `ReflectingWall`,
+      which has none — `BarrierSegment` already carries one, which is the enabler.
+- [ ] **Grid receivers land inside building footprints.** `run_receivers.go` does no building
+      masking, so in auto-grid mode a receiver inside a footprint is now shielded by the one ring
+      edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is
+      consistent rather than novel, but it is a visible output change on urban grid runs and the
+      value at such a point is not an Immissionsort.
+- [ ] **Schall 03 lateral diffraction is single-edge in the ground plane.** Wall panels sharing an
+      `ObstacleID` are one obstacle, and a lateral path may round only a free end of an open
+      obstacle or the outermost silhouette vertex of a closed one. **An empty `ObstacleID` is its
+      own obstacle with both endpoints free** — that compatibility default is what keeps every
+      pre-existing scene byte-identical, and anything that emits `BarrierSegment`s must keep it.
+      The silhouette rule is an approximation with a known sign: the taut string may touch two
+      corners per side, so the modelled detour is shorter, `z` and `A_bar` come out smaller and the
+      level louder — on the safe side. Multi-edge lateral diffraction (`e` in the ground plane,
+      `C₃`, `DzCapDouble`) would only make results quieter; it is deviation 8 in the conformance
+      declaration, and `diffractedEdgeRunLength` / `pathDifferenceNonParallel` already exist.
 - [ ] **Terrain, explicit reflectors and per-direction sources are still CLI-only.** Browser mode
       builds road sources, barriers, buildings and Parkplätze, and `wasm/types.ts` now mirrors the
       terrain and reflector types because the kernel accepts them — but no model can express them
@@ -1468,7 +1491,10 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
 
 - [ ] Extract the shared barrier-intersection/ray-geometry logic from RLS-19 into a common package
       and wire automatic barrier detection for ISO 9613-2 diffraction inputs. _(Overlaps P7's
-      acoustics-core extraction — do them together.)_
+      acoustics-core extraction — do them together.)_ What is shared is the polyline/ray primitive.
+      Schall 03's obstacle-grouping rule is **not** shareable: only Schall 03 has lateral
+      diffraction, so only it needs to know which vertex a path may round. Lift the primitive, leave
+      the rule with its caller.
 - [ ] Add reflections via image sources for enclosed industrial-yard cases, once building geometry
       is readily available from the SoundPLAN import path.
 - [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,

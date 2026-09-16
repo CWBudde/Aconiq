@@ -216,11 +216,22 @@ func TestExtractSchall03NormativeSceneSplitsShieldingFromReflection(t *testing.T
 	if scene.Barriers[2].Reflective {
 		t.Fatalf("an unannotated barrier must stay absorbing: %+v", scene.Barriers[2])
 	}
+
+	// The two panels of wall-1 are one obstacle, so its interior vertex is not
+	// a Seitenkante a lateral path may round.
+	if scene.Barriers[0].ObstacleID != "wall-1" || scene.Barriers[1].ObstacleID != "wall-1" {
+		t.Fatalf("wall-1's panels must share one obstacle id: %+v", scene.Barriers[:2])
+	}
+
+	if scene.Barriers[2].ObstacleID != "wall-2" {
+		t.Fatalf("wall-2 must be its own obstacle: %+v", scene.Barriers[2])
+	}
 }
 
-// Buildings reflect only on request; adding reflection while they still do not
-// shield would raise every level behind a building.
-func TestExtractSchall03NormativeSceneTreatsBuildingReflectionAsOptIn(t *testing.T) {
+// A building shields unconditionally and reflects only on request: a receiver
+// behind a house is behind a house, while reflection would raise levels for
+// every model that never asked for it.
+func TestExtractSchall03NormativeSceneShieldsBuildingsAndReflectsOnOptIn(t *testing.T) {
 	t.Parallel()
 
 	const footprint = `"geometry_type": "Polygon", "coordinates": [[[0, 20], [10, 20], [10, 30], [0, 30], [0, 20]]]`
@@ -234,8 +245,28 @@ func TestExtractSchall03NormativeSceneTreatsBuildingReflectionAsOptIn(t *testing
 		t.Fatalf("extract normative scene: %v", err)
 	}
 
-	if len(scene.Walls) != 0 || len(scene.Barriers) != 0 {
-		t.Fatalf("an unannotated building must contribute nothing: %+v", scene)
+	if len(scene.Walls) != 0 {
+		t.Fatalf("an unannotated building must not reflect: %+v", scene.Walls)
+	}
+
+	if len(scene.Barriers) != 4 {
+		t.Fatalf("got %d barrier panels from a four-sided footprint, want 4: %+v", len(scene.Barriers), scene.Barriers)
+	}
+
+	for _, barrier := range scene.Barriers {
+		if barrier.ObstacleID != "house-1" {
+			t.Fatalf("every panel of one footprint must share its obstacle id: %+v", barrier)
+		}
+
+		if barrier.TopHeightM != 8 {
+			t.Fatalf("panel top height = %v, want the building height 8: %+v", barrier.TopHeightM, barrier)
+		}
+
+		// Gl. 20's D_refl is scoped to reflektierende Schallschutzwände mit
+		// absorbierendem Sockel; a house is not a Schallschutzwand.
+		if barrier.Reflective {
+			t.Fatalf("a building panel must not be a reflective Schallschutzwand: %+v", barrier)
+		}
 	}
 
 	reflecting := decodeNormativeModel(t, `[`+normativeTrackFeature+`, {
@@ -259,8 +290,8 @@ func TestExtractSchall03NormativeSceneTreatsBuildingReflectionAsOptIn(t *testing
 		}
 	}
 
-	if len(scene.Barriers) != 0 {
-		t.Fatalf("buildings must not become shielding obstacles in this slice: %+v", scene.Barriers)
+	if len(scene.Barriers) != 4 {
+		t.Fatalf("a reflecting building must still shield: %+v", scene.Barriers)
 	}
 }
 

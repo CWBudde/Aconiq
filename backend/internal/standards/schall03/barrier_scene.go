@@ -37,6 +37,17 @@ type BarrierSegment struct {
 	// parallel (for Gl. 25 path difference).  Only relevant when
 	// ThicknessM > 0.
 	IsParallel bool `json:"is_parallel,omitempty"`
+	// ObstacleID names the physical obstacle this panel belongs to.  Panels
+	// that share an ObstacleID are one building footprint or one barrier
+	// polyline, and lateral diffraction (Nr. 6.5) may only round a vertex the
+	// sound can actually get past — a free end of the obstacle, or its
+	// outermost silhouette vertex — never an interior vertex, which would
+	// offer a path straight through the obstacle.
+	//
+	// An empty ObstacleID means "this panel is an obstacle of its own", so a
+	// scene built before obstacle identity existed keeps its exact previous
+	// behaviour: both endpoints are free ends.
+	ObstacleID string `json:"obstacle_id,omitempty"`
 }
 
 // Validate checks the barrier segment for geometric and physical validity.
@@ -86,9 +97,22 @@ type BarrierCrossing struct {
 	Barrier BarrierSegment
 }
 
+// coincidentCrossingToleranceM is the distance below which two crossings of
+// the same obstacle are taken to be the same point.  geo.SegmentIntersection
+// tests t,u ∈ [0,1] closed, so a ray that grazes a footprint corner intersects
+// both adjoining edges at that corner and returns the vertex twice.
+const coincidentCrossingToleranceM = 1e-9
+
 // FindBarrierCrossings returns all barrier segments that the line from source
 // to receiver crosses in plan view, sorted by distance from source (nearest
 // first).
+//
+// Two crossings of the *same* obstacle at the same point are one crossing: a
+// ray through a footprint corner would otherwise produce two hull points at
+// identical distance and height, which multiEdgeGeometry reads as double
+// diffraction with e = 0 and which silently raises the D_z cap from
+// DzCapSingle to DzCapDouble.  Panels with an empty ObstacleID are obstacles
+// of their own and are never merged.
 func FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegment) []BarrierCrossing {
 	var crossings []BarrierCrossing
 
@@ -119,7 +143,34 @@ func FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegmen
 		crossings[j+1] = key
 	}
 
-	return crossings
+	return dedupeCoincidentCrossings(crossings)
+}
+
+// dedupeCoincidentCrossings drops a crossing that repeats an already-kept
+// crossing of the same named obstacle at the same plan-view point.  crossings
+// must be sorted by DistFromSource, so coincident points are adjacent.
+func dedupeCoincidentCrossings(crossings []BarrierCrossing) []BarrierCrossing {
+	if len(crossings) < 2 {
+		return crossings
+	}
+
+	kept := crossings[:1]
+
+	for _, c := range crossings[1:] {
+		previous := kept[len(kept)-1]
+
+		duplicate := c.Barrier.ObstacleID != "" &&
+			c.Barrier.ObstacleID == previous.Barrier.ObstacleID &&
+			geo.Distance(c.Point, previous.Point) <= coincidentCrossingToleranceM
+
+		if duplicate {
+			continue
+		}
+
+		kept = append(kept, c)
+	}
+
+	return kept
 }
 
 // hullPoint is a point in the vertical source→receiver cross-section used by
@@ -390,6 +441,10 @@ func multiEdgeGeometry(
 //
 // Returns (abar, true) if at least one lateral path exists, or (zero, false)
 // if neither endpoint provides a valid lateral path.
+//
+// A single segment is the degenerate obstacle: both of its endpoints are free
+// ends, so this is obstacleLateralAbar over a one-panel obstacle and there is
+// one rule for lateral diffraction, not two.
 func ComputeLateralDiffraction(
 	source, receiver geo.Point2D,
 	sourceHeightM, receiverHeightM float64,
@@ -404,12 +459,194 @@ func ComputeLateralDiffraction(
 		return BeiblattSpectrum{}, false
 	}
 
+	group := obstacleGroup{
+		segments:   []BarrierSegment{barrier},
+		topHeightM: barrier.TopHeightM,
+	}
+
+	return obstacleLateralAbar(source, receiver, sourceHeightM, receiverHeightM, directDist, group)
+}
+
+// obstacleGroup is one physical obstacle: every panel that carries the same
+// ObstacleID, together with the greatest top height among them.
+type obstacleGroup struct {
+	segments   []BarrierSegment
+	topHeightM float64
+}
+
+// obstacleGroups collects the obstacles that the obstructing crossings belong
+// to, in order of first obstruction (crossings are sorted by distance from the
+// source, so the order does not depend on map iteration).
+//
+// A named obstacle is taken from the full barrier slice, not from the
+// crossings: a ray through a closed footprint crosses two of its four edges,
+// and the other two still carry the vertices that decide which corner a
+// lateral path may round.  A panel with an empty ObstacleID is an obstacle of
+// its own, which is what keeps a scene built before obstacle identity existed
+// byte-identical.
+func obstacleGroups(barriers []BarrierSegment, obstructing []BarrierCrossing) []obstacleGroup {
+	groups := make([]obstacleGroup, 0, len(obstructing))
+	seen := make(map[string]struct{}, len(obstructing))
+
+	for _, c := range obstructing {
+		id := c.Barrier.ObstacleID
+
+		if id == "" {
+			groups = append(groups, obstacleGroup{
+				segments:   []BarrierSegment{c.Barrier},
+				topHeightM: c.Barrier.TopHeightM,
+			})
+
+			continue
+		}
+
+		if _, ok := seen[id]; ok {
+			continue
+		}
+
+		seen[id] = struct{}{}
+
+		group := obstacleGroup{}
+
+		for _, b := range barriers {
+			if b.ObstacleID != id {
+				continue
+			}
+
+			group.segments = append(group.segments, b)
+
+			if b.TopHeightM > group.topHeightM {
+				group.topHeightM = b.TopHeightM
+			}
+		}
+
+		groups = append(groups, group)
+	}
+
+	return groups
+}
+
+// vertexKey quantises a plan-view coordinate so that two panels meeting at a
+// shared vertex are recognised as meeting there.  Quantising is deterministic:
+// identical inputs always produce identical keys.
+type vertexKey [2]float64
+
+const vertexQuantumM = 1e-6
+
+func makeVertexKey(p geo.Point2D) vertexKey {
+	return vertexKey{
+		math.Round(p.X/vertexQuantumM) * vertexQuantumM,
+		math.Round(p.Y/vertexQuantumM) * vertexQuantumM,
+	}
+}
+
+// obstacleLateralCandidates returns the plan-view vertices a lateral path may
+// round, per Nr. 6.5's Seitenkante.
+//
+// An open obstacle — a barrier polyline — has free ends: the vertices that
+// exactly one panel touches.  Rounding an interior vertex would send the path
+// straight through the obstacle, which is why they are not candidates.
+//
+// A closed obstacle — a building footprint — has no free end.  Its Seitenkanten
+// are the two outermost silhouette vertices seen from the source→receiver line,
+// one to each side, taken as the extremes of the signed perpendicular offset.
+func obstacleLateralCandidates(source, receiver geo.Point2D, group obstacleGroup) []geo.Point2D {
+	degree := make(map[vertexKey]int, 2*len(group.segments))
+
+	for _, s := range group.segments {
+		degree[makeVertexKey(s.A)]++
+		degree[makeVertexKey(s.B)]++
+	}
+
+	var (
+		candidates []geo.Point2D
+		taken      = make(map[vertexKey]struct{}, len(degree))
+	)
+
+	for _, s := range group.segments {
+		for _, p := range [2]geo.Point2D{s.A, s.B} {
+			key := makeVertexKey(p)
+
+			if degree[key] != 1 {
+				continue
+			}
+
+			if _, ok := taken[key]; ok {
+				continue
+			}
+
+			taken[key] = struct{}{}
+
+			candidates = append(candidates, p)
+		}
+	}
+
+	if len(candidates) > 0 {
+		return candidates
+	}
+
+	return silhouetteVertices(source, receiver, group)
+}
+
+// silhouetteVertices returns the vertex furthest to each side of the
+// source→receiver line, which is where the taut string of a lateral path
+// leaves a closed obstacle.
+func silhouetteVertices(source, receiver geo.Point2D, group obstacleGroup) []geo.Point2D {
+	dx := receiver.X - source.X
+	dy := receiver.Y - source.Y
+
+	length := math.Hypot(dx, dy)
+	if length <= 0 {
+		return nil
+	}
+
+	var (
+		left, right       geo.Point2D
+		leftOff, rightOff float64
+		haveLeft          bool
+		haveRight         bool
+	)
+
+	for _, s := range group.segments {
+		for _, p := range [2]geo.Point2D{s.A, s.B} {
+			offset := (dx*(p.Y-source.Y) - dy*(p.X-source.X)) / length
+
+			if !haveLeft || offset > leftOff {
+				left, leftOff, haveLeft = p, offset, true
+			}
+
+			if !haveRight || offset < rightOff {
+				right, rightOff, haveRight = p, offset, true
+			}
+		}
+	}
+
+	if !haveLeft {
+		return nil
+	}
+
+	if makeVertexKey(left) == makeVertexKey(right) {
+		return []geo.Point2D{left}
+	}
+
+	return []geo.Point2D{left, right}
+}
+
+// obstacleLateralAbar returns the dominant lateral diffraction path around one
+// obstacle: the candidate Seitenkante with the least attenuation.  The height
+// is the obstacle's greatest top height, because a path that rounds a corner
+// passes the whole obstacle.
+func obstacleLateralAbar(
+	source, receiver geo.Point2D,
+	sourceHeightM, receiverHeightM, directDist float64,
+	group obstacleGroup,
+) (BeiblattSpectrum, bool) {
 	var bestAbar BeiblattSpectrum
 
 	found := false
 
-	for _, endpoint := range [2]geo.Point2D{barrier.A, barrier.B} {
-		abar, ok := lateralPathAbar(source, receiver, endpoint, sourceHeightM, receiverHeightM, barrier.TopHeightM, directDist)
+	for _, endpoint := range obstacleLateralCandidates(source, receiver, group) {
+		abar, ok := lateralPathAbar(source, receiver, endpoint, sourceHeightM, receiverHeightM, group.topHeightM, directDist)
 		if !ok {
 			continue
 		}
@@ -562,12 +799,18 @@ func ComputePathBarrierAttenuation(
 	geom := ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalHorizDist)
 	topAbar := ComputeAbar(geom, agrBandValues)
 
-	// 5. Compute lateral diffraction for each obstructing barrier.
+	// 5. Compute lateral diffraction once per obstructing *obstacle*, not once
+	// per panel: a footprint split into wall panels would otherwise offer a
+	// path around the end of a single panel, which runs straight through the
+	// building, and the per-band minimum below would take it.
 	// Use the minimum A_bar per band across top and all lateral paths.
 	bestAbar := topAbar
 
-	for _, c := range obstructing {
-		latAbar, ok := ComputeLateralDiffraction(source, receiver, sourceHeightM, receiverHeightM, c.Barrier)
+	dh := receiverHeightM - sourceHeightM
+	directDist := math.Sqrt(totalHorizDist*totalHorizDist + dh*dh)
+
+	for _, group := range obstacleGroups(barriers, obstructing) {
+		latAbar, ok := obstacleLateralAbar(source, receiver, sourceHeightM, receiverHeightM, directDist, group)
 		if !ok {
 			continue
 		}

@@ -220,6 +220,193 @@ func TestLateralPathClampsToBarrierTop(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Nr. 6.5: a lateral path may only round a Seitenkante of the whole obstacle
+// ---------------------------------------------------------------------------
+
+// ringBarriers turns a closed plan-view ring into one obstacle's wall panels.
+func ringBarriers(ring []geo.Point2D, topHeightM float64, obstacleID string) []BarrierSegment {
+	out := make([]BarrierSegment, 0, len(ring)-1)
+
+	for i := range len(ring) - 1 {
+		out = append(out, BarrierSegment{
+			A: ring[i], B: ring[i+1], TopHeightM: topHeightM, ObstacleID: obstacleID,
+		})
+	}
+
+	return out
+}
+
+// withoutObstacleID is the pre-obstacle-identity scene: every panel stands on
+// its own, so both of its endpoints count as free ends.
+func withoutObstacleID(barriers []BarrierSegment) []BarrierSegment {
+	out := make([]BarrierSegment, len(barriers))
+	copy(out, barriers)
+
+	for i := range out {
+		out[i].ObstacleID = ""
+	}
+
+	return out
+}
+
+// topDiffractionOnly recomputes A_bar from the rubber-band edges alone, with no
+// lateral candidate considered at all.
+func topDiffractionOnly(
+	source, receiver geo.Point2D,
+	sourceHeightM, receiverHeightM float64,
+	barriers []BarrierSegment,
+) BeiblattSpectrum {
+	totalHorizDist := geo.Distance(source, receiver)
+
+	var obstructing []BarrierCrossing
+
+	for _, c := range FindBarrierCrossings(source, receiver, barriers) {
+		if IsObstructing(c, sourceHeightM, receiverHeightM, totalHorizDist) {
+			obstructing = append(obstructing, c)
+		}
+	}
+
+	edges := SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalHorizDist, obstructing)
+	geom := ComputeBarrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, totalHorizDist)
+
+	return ComputeAbar(geom, BeiblattSpectrum{})
+}
+
+// TestLateralPathDoesNotRoundAnInteriorVertex pins the rule that makes a
+// building footprint shield at all.
+//
+// Every footprint with more than four corners has a wall vertex that is not a
+// corner of its silhouette.  Emitting the ring as independent panels makes that
+// vertex a Seitenkante, and the path around it runs straight through the
+// building.  Because barrierDz is 10·lg(3 + …), a vertex a metre off the ray
+// still yields a finite A_bar, and ComputePathBarrierAttenuation's per-band
+// minimum then takes it in preference to the real screening.
+//
+// The footprint here is 20 m wide with an extra vertex 1 m off the ray in the
+// middle of its front wall — the shape any real building has.
+func TestLateralPathDoesNotRoundAnInteriorVertex(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sourceH     = 0.5
+		receiverH   = 3.5
+		topHeightM  = 3.5
+		obstacleID  = "house-1"
+		bandMargin  = 1e-12
+		receiverPos = 35.0
+	)
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 0, Y: receiverPos}
+
+	withVertex := ringBarriers([]geo.Point2D{
+		{X: -10, Y: 10},
+		{X: 1, Y: 10},
+		{X: 10, Y: 10},
+		{X: 10, Y: 20},
+		{X: -10, Y: 20},
+		{X: -10, Y: 10},
+	}, topHeightM, obstacleID)
+
+	// The same footprint without the collinear front-wall vertex.
+	plain := ringBarriers([]geo.Point2D{
+		{X: -10, Y: 10}, {X: 10, Y: 10}, {X: 10, Y: 20}, {X: -10, Y: 20}, {X: -10, Y: 10},
+	}, topHeightM, obstacleID)
+
+	grouped := ComputePathBarrierAttenuation(source, receiver, sourceH, receiverH, withVertex, BeiblattSpectrum{})
+	ungrouped := ComputePathBarrierAttenuation(source, receiver, sourceH, receiverH, withoutObstacleID(withVertex), BeiblattSpectrum{})
+	plainGrouped := ComputePathBarrierAttenuation(source, receiver, sourceH, receiverH, plain, BeiblattSpectrum{})
+	topOnly := topDiffractionOnly(source, receiver, sourceH, receiverH, withVertex)
+
+	for f := range NumBeiblattOctaveBands {
+		// The receiver sits dead centre behind the footprint, so rounding a
+		// silhouette corner costs more than going over the roof.  No lateral
+		// path may undercut the top-diffraction spectrum at all.
+		if math.Abs(grouped[f]-topOnly[f]) > bandMargin {
+			t.Errorf("band %d: grouped A_bar = %.9f dB, want the top-diffraction %.9f dB",
+				f, grouped[f], topOnly[f])
+		}
+
+		// A vertex that merely subdivides a wall is acoustically nothing.
+		if math.Abs(grouped[f]-plainGrouped[f]) > bandMargin {
+			t.Errorf("band %d: a collinear wall vertex moved A_bar from %.9f to %.9f dB",
+				f, plainGrouped[f], grouped[f])
+		}
+
+		// Without the shared identity the interior vertex is taken as a free
+		// end and pulls the screening down in every band.
+		if ungrouped[f] >= grouped[f] {
+			t.Errorf("band %d: expected the ungrouped panels to lose screening, got %.9f dB against %.9f dB",
+				f, ungrouped[f], grouped[f])
+		}
+	}
+}
+
+// TestLateralPathAroundASmallFootprintStillWins is the other half of the rule:
+// suppressing lateral diffraction for buildings would satisfy
+// TestLateralPathDoesNotRoundAnInteriorVertex and still be wrong.  Rounding a
+// small building really is the dominant path, so a 4 m x 4 m footprint with the
+// receiver 40 m behind it must come out below the top-diffraction spectrum.
+func TestLateralPathAroundASmallFootprintStillWins(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sourceH    = 0.5
+		receiverH  = 3.5
+		topHeightM = 8.0
+	)
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 0, Y: 54}
+
+	hut := ringBarriers([]geo.Point2D{
+		{X: -2, Y: 10}, {X: 2, Y: 10}, {X: 2, Y: 14}, {X: -2, Y: 14}, {X: -2, Y: 10},
+	}, topHeightM, "hut-1")
+
+	got := ComputePathBarrierAttenuation(source, receiver, sourceH, receiverH, hut, BeiblattSpectrum{})
+	topOnly := topDiffractionOnly(source, receiver, sourceH, receiverH, hut)
+
+	for f := range NumBeiblattOctaveBands {
+		if got[f] >= topOnly[f] {
+			t.Errorf("band %d: lateral diffraction around a small footprint must win, got %.9f dB against top-only %.9f dB",
+				f, got[f], topOnly[f])
+		}
+	}
+}
+
+// TestCoincidentCrossingsOfOneObstacleAreOneCrossing pins the dedupe in
+// FindBarrierCrossings.  geo.SegmentIntersection tests t,u ∈ [0,1] closed, so a
+// ray through a footprint corner intersects both adjoining edges at that
+// vertex.  Two crossings at the same distance and height read as double
+// diffraction with e = 0, which silently raises the D_z cap from DzCapSingle to
+// DzCapDouble.
+func TestCoincidentCrossingsOfOneObstacleAreOneCrossing(t *testing.T) {
+	t.Parallel()
+
+	source := geo.Point2D{X: -10, Y: -10}
+	receiver := geo.Point2D{X: 10, Y: 10}
+
+	// The ray runs along y = x and passes exactly through the corner (0, 0).
+	corner := []BarrierSegment{
+		{A: geo.Point2D{X: -5, Y: 0}, B: geo.Point2D{X: 0, Y: 0}, TopHeightM: 6, ObstacleID: "house-1"},
+		{A: geo.Point2D{X: 0, Y: 0}, B: geo.Point2D{X: 0, Y: 5}, TopHeightM: 6, ObstacleID: "house-1"},
+	}
+
+	crossings := FindBarrierCrossings(source, receiver, corner)
+	if len(crossings) != 1 {
+		t.Fatalf("got %d crossings through one corner of one obstacle, want 1: %+v", len(crossings), crossings)
+	}
+
+	// Two panels that merely happen to meet there are still two obstacles.
+	separate := withoutObstacleID(corner)
+
+	crossings = FindBarrierCrossings(source, receiver, separate)
+	if len(crossings) != 2 {
+		t.Fatalf("got %d crossings for two unnamed panels, want 2: %+v", len(crossings), crossings)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Gl. 19/20: D_refl gating in a scene
 // ---------------------------------------------------------------------------
 

@@ -1,0 +1,24 @@
+{
+  "receivers": [
+    {
+      "id": "r_behind_house",
+      "x": 0,
+      "y": 45,
+      "height_m": 3.5,
+      "LpAeqDay": 58.375986,
+      "LpAeqNight": 52.355386,
+      "LrDay": 58.375986,
+      "LrNight": 52.355386
+    },
+    {
+      "id": "r_beside_house",
+      "x": 80,
+      "y": 45,
+      "height_m": 3.5,
+      "LpAeqDay": 66.021165,
+      "LpAeqNight": 60.000565,
+      "LrDay": 66.021165,
+      "LrNight": 60.000565
+    }
+  ]
+}

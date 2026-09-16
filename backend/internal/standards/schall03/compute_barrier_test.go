@@ -221,3 +221,68 @@ func TestReflectedPathObstructedByBarrier(t *testing.T) {
 			resultWallOnly.LpAeqDay, resultBoth.LpAeqDay)
 	}
 }
+
+// A building footprint shields.  The assertion is a margin, not a bare ">": a
+// defect that left buildings all but transparent and moved the level by a
+// rounding step would satisfy an inequality.
+func TestNormativeReceiverBehindBuildingFootprint(t *testing.T) {
+	t.Parallel()
+
+	op, err := schall03.NewTrainOperationFromZugart("ICE-1-Zug", 4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seg := schall03.TrackSegment{
+		ID:              "seg1",
+		TrackCenterline: []geo.Point2D{{X: -200, Y: 0}, {X: 200, Y: 0}},
+		ElevationM:      0,
+		Fahrbahn:        schall03.FahrbahnartSchwellengleis,
+		Surface:         schall03.SurfaceCondNone,
+		StreckeMaxKPH:   250,
+		Operations:      []schall03.TrainOperation{*op},
+	}
+
+	receiver := schall03.ReceiverInput{
+		ID: "r1", Point: geo.Point2D{X: 0, Y: 45}, HeightM: 3.5,
+	}
+
+	// A closed 40 m x 12 m, 9 m high footprint between track and receiver.
+	ring := []geo.Point2D{
+		{X: -20, Y: 15}, {X: 20, Y: 15}, {X: 20, Y: 27}, {X: -20, Y: 27}, {X: -20, Y: 15},
+	}
+
+	barriers := make([]schall03.BarrierSegment, 0, len(ring)-1)
+	for i := range len(ring) - 1 {
+		barriers = append(barriers, schall03.BarrierSegment{
+			A: ring[i], B: ring[i+1], TopHeightM: 9, ObstacleID: "house-1",
+		})
+	}
+
+	free, err := schall03.ComputeNormativeReceiverLevelsWithScene(
+		receiver, []schall03.TrackSegment{seg}, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shielded, err := schall03.ComputeNormativeReceiverLevelsWithScene(
+		receiver, []schall03.TrackSegment{seg}, nil, barriers,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const wantInsertionLossDB = 5.0
+
+	got := free.LpAeqDay - shielded.LpAeqDay
+	if got < wantInsertionLossDB {
+		t.Errorf("building insertion loss = %.2f dB, want at least %.2f dB (free=%.2f, shielded=%.2f)",
+			got, wantInsertionLossDB, free.LpAeqDay, shielded.LpAeqDay)
+	}
+
+	if shielded.LrNight >= free.LrNight {
+		t.Errorf("the night assessment level must fall too: free=%.2f, shielded=%.2f",
+			free.LrNight, shielded.LrNight)
+	}
+}

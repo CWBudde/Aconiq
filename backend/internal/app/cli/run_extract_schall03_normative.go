@@ -79,9 +79,9 @@ func extractSchall03NormativeScene(model modelgeojson.Model, supportedSourceType
 		case modelgeojson.FeatureKindSource:
 			err = appendSchall03Segments(&scene, feature, featureIndex, allowedSourceType)
 		case modelgeojson.FeatureKindBarrier:
-			err = appendSchall03Barriers(&scene, feature)
+			err = appendSchall03Barriers(&scene, feature, featureIndex)
 		case modelgeojson.FeatureKindBuilding:
-			err = appendSchall03BuildingWalls(&scene, feature)
+			err = appendSchall03Building(&scene, feature, featureIndex)
 		}
 
 		if err != nil {
@@ -502,7 +502,13 @@ func parseSchall03FzComposition(where string, object map[string]any) ([]schall03
 // Every consecutive vertex pair becomes one straight barrier panel; a barrier
 // marked reflective additionally becomes a ReflectingWall, because Gl. 19-20
 // treats the two effects separately.
-func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.Feature) error {
+//
+// Every panel of one polyline carries that polyline's ObstacleID, so lateral
+// diffraction (Nr. 6.5) rounds only the polyline's free ends.  Without it an
+// interior vertex of a three-point barrier is a Seitenkante, and since
+// barrierDz is 10·lg(3 + …) any z > 0 however small caps the whole wall at
+// about 4.8 dB per band.
+func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
 	if feature.HeightM == nil || *feature.HeightM <= 0 {
 		return validationErrorf("barrier feature %q requires height_m > 0", feature.ID)
 	}
@@ -537,7 +543,11 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 		return err
 	}
 
-	for _, line := range lines {
+	baseID := schall03ObstacleBaseID(feature, "schall03-barrier", featureIndex)
+
+	for lineIndex, line := range lines {
+		obstacleID := schall03ObstaclePartID(baseID, lineIndex, len(lines))
+
 		for i := range len(line) - 1 {
 			barrier := schall03.BarrierSegment{
 				A:           line[i],
@@ -547,6 +557,7 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 				Reflective:  reflective,
 				ThicknessM:  thicknessM,
 				IsParallel:  parallelEdges,
+				ObstacleID:  obstacleID,
 			}
 
 			validateErr := barrier.Validate()
@@ -570,18 +581,24 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 	return nil
 }
 
-// appendSchall03BuildingWalls turns a building footprint into reflecting walls.
-// It is opt-in: a building is only a reflector when the feature says so, since
-// this slice does not yet treat buildings as shielding obstacles and adding
-// reflection alone would raise every level behind a building.
-func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeojson.Feature) error {
-	reflecting, ok, err := featurePropertyBool(feature, propSchall03ReflectingWall)
+// appendSchall03Building turns a building footprint into shielding obstacles
+// and, on request, into reflecting walls.
+//
+// Shielding is unconditional: a receiver behind a house is behind a house, and
+// height_m is already mandatory on a building feature, so no model that
+// validates today starts failing.  Reflection stays opt-in, because it raises
+// levels for every model that never asked for it and because reflection paths
+// are enumerated to MaxReflectionOrder over every facade.
+//
+// The panels of one ring share an ObstacleID: a lateral path may round the
+// footprint's outermost silhouette vertex, never the end of a single wall
+// panel, which would run straight through the building.  Reflective is left
+// false — Gl. 20's D_refl is scoped to reflektierende Schallschutzwände mit
+// absorbierendem Sockel, and a house is not a Schallschutzwand.
+func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
+	reflecting, _, err := featurePropertyBool(feature, propSchall03ReflectingWall)
 	if err != nil {
 		return propertyError(feature.ID, propSchall03ReflectingWall, err)
-	}
-
-	if !ok || !reflecting {
-		return nil
 	}
 
 	if feature.HeightM == nil || *feature.HeightM <= 0 {
@@ -598,15 +615,37 @@ func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeo
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), err)
 	}
 
-	for _, polygon := range polygons {
+	baseID := schall03ObstacleBaseID(feature, "schall03-building", featureIndex)
+
+	for polygonIndex, polygon := range polygons {
 		if len(polygon) == 0 {
 			continue
 		}
 
-		// Only the outer ring reflects towards the track; inner rings are
-		// courtyards and cannot see a source outside the footprint.
+		obstacleID := schall03ObstaclePartID(baseID, polygonIndex, len(polygons))
+
+		// Only the outer ring shields and reflects towards the track; inner
+		// rings are courtyards and cannot see a source outside the footprint.
 		ring := polygon[0]
 		for i := range len(ring) - 1 {
+			barrier := schall03.BarrierSegment{
+				A:          ring[i],
+				B:          ring[i+1],
+				TopHeightM: *feature.HeightM,
+				ObstacleID: obstacleID,
+			}
+
+			validateErr := barrier.Validate()
+			if validateErr != nil {
+				return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), validateErr)
+			}
+
+			scene.Barriers = append(scene.Barriers, barrier)
+
+			if !reflecting {
+				continue
+			}
+
 			err = appendReflectingWall(scene, feature.ID, ring[i], ring[i+1], *feature.HeightM, surface)
 			if err != nil {
 				return err
@@ -615,6 +654,27 @@ func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeo
 	}
 
 	return nil
+}
+
+// schall03ObstacleBaseID names one feature's obstacle, falling back to the
+// feature's position in the model when it carries no id.
+func schall03ObstacleBaseID(feature modelgeojson.Feature, prefix string, featureIndex int) string {
+	id := strings.TrimSpace(feature.ID)
+	if id == "" {
+		return fmt.Sprintf("%s-%03d", prefix, featureIndex)
+	}
+
+	return id
+}
+
+// schall03ObstaclePartID splits a multi-part geometry into one obstacle per
+// part, following the RLS-19 building convention.
+func schall03ObstaclePartID(baseID string, partIndex, partCount int) string {
+	if partCount <= 1 {
+		return baseID
+	}
+
+	return fmt.Sprintf("%s-%02d", baseID, partIndex+1)
 }
 
 func appendReflectingWall(
