@@ -36,12 +36,6 @@ export interface ProjectSync {
   save: () => Promise<void>;
 }
 
-/**
- * The map draws in WGS84, so that is what the coordinates are in when they
- * leave the store; the server transforms into the project CRS.
- */
-const MODEL_CRS = "EPSG:4326";
-
 interface ProjectSyncState {
   /** The last failed save; cleared by the next successful one. */
   error: Error | null;
@@ -95,8 +89,12 @@ export function useProjectSync(): ProjectSync {
     // against afterwards.
     const before = useModelStore.getState();
     try {
+      // The CRS the store says its coordinates are in, not a constant. The
+      // server transforms from it into the project CRS, so declaring EPSG:4326
+      // over a model held in metres would have it reproject an easting as a
+      // longitude.
       const saved = await mutateAsync({
-        crs: MODEL_CRS,
+        crs: before.crs,
         model: modelToGeoJSON(before),
       });
       // An edit made while the request was in flight is not in the project,
@@ -131,6 +129,7 @@ export function useProjectSync(): ProjectSync {
           features: before.features,
           receivers: before.receivers,
           calcArea: before.calcArea,
+          crs: before.crs,
           ...(saved.hash === null ? {} : { hash: saved.hash }),
         });
       }

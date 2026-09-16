@@ -17,9 +17,18 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
+/**
+ * What `backend/cmd/wasm/main.go` registers on `window.aconiq`. Every entry
+ * point it sets belongs here: a missing one is not a type error at the call
+ * site, it is a `TypeError: not a function` at runtime.
+ */
 interface Window {
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
+    transform: (json: string) => Promise<string>;
+    standards: () => string;
+    loadTerrain: (data: Uint8Array) => string;
+    clearTerrain: () => void;
     defaultConfig: () => string;
     health: () => string;
     projectStatus: () => string;

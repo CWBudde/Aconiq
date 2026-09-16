@@ -40,6 +40,17 @@ export interface ModelDraft {
    * every draft already on disk.
    */
   hash?: string;
+  /**
+   * The CRS the draft's coordinates are in.
+   *
+   * Additive and optional for the same reason `hash` and `calcArea` are, and
+   * `DRAFT_VERSION` does not move for it: a draft written before the store held
+   * a CRS carries none, and bumping the version would throw away every draft
+   * already on disk rather than read one field less from it. A draft without it
+   * restores at {@link DEFAULT_MODEL_CRS}, which is what such a draft was
+   * written under.
+   */
+  crs?: string;
 }
 
 export function loadDraft(): ModelDraft | null {
@@ -77,6 +88,9 @@ export function loadDraft(): ModelDraft | null {
       // that claims a hash it cannot have would be restored as if it were the
       // project's own model.
       ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
+      // Likewise: a CRS that is not a string is dropped rather than carried,
+      // and the store then falls back to its default.
+      ...(typeof parsed.crs === "string" ? { crs: parsed.crs } : {}),
     };
   } catch {
     return null;
@@ -138,6 +152,7 @@ export function useAutosave(): void {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
   const calcArea = useModelStore((s) => s.calcArea);
+  const crs = useModelStore((s) => s.crs);
   const markClean = useModelStore((s) => s.markClean);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -152,14 +167,14 @@ export function useAutosave(): void {
       // the last save's receipt forward onto newer edits would make the next
       // startup find a match, restore a divergent draft *clean*, and let the
       // workspace claim to be the project while differing from it.
-      const written = writeDraft({ features, receivers, calcArea });
+      const written = writeDraft({ features, receivers, calcArea, crs });
       if (written && !backend.capabilities.runsAgainstSavedModel) markClean();
     }, SAVE_DELAY_MS);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [dirty, features, receivers, calcArea, markClean]);
+  }, [dirty, features, receivers, calcArea, crs, markClean]);
 
   // Prevent accidental tab/window close when there are unsaved changes.
   useEffect(() => {
