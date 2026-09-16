@@ -540,6 +540,17 @@ Three consequences fell out of the work:
   Streckenanteil" were both wrong; K_S = 0 dB on both sides since 2015 / 2019. Gl. 35-36 keeps the
   term on the Strecke side only, at value zero.
 
+**The receiver table's row order is the model's order, in both targets.** In `custom` receiver mode
+browser mode sorted the receivers by id while `extractExplicitReceivers` kept model order, so the
+same model produced two `output_hash` values. The browser dropped its sort: the CLI is the primary
+artifact and its archived runs are the evidence someone may hold under a permit application, so
+moving the CLI's order would move its goldens and count as a breaking change to a normative module's
+output under `docs/policies/releases.md`. The cost falls on the browser side and is not recoverable:
+a run already in IndexedDB keeps its old rows and its old hash, so re-running the same model no
+longer reproduces that stored run. `PERSISTED_STATE_VERSION` stayed at 1 deliberately — the stored
+documents still parse, and throwing away a user's model and twenty runs over a row order would be
+the larger harm.
+
 ### Open
 
 - [ ] **MapLibre draws the model store as if it were EPSG:4326.** The store now carries the CRS its
@@ -578,14 +589,6 @@ Three consequences fell out of the work:
       behind a building is computed as if the building were absent. Reflection alone is the wrong
       half to ship on by default, which is why the reflector role is opt-in — but the shielding
       half is what a real project needs. Entangled with P10's shared barrier-geometry extraction.
-- [ ] **Browser mode and the CLI order the receiver table differently.** Found by the parity
-      comparison on its first run, and left standing rather than papered over: in the `custom`
-      receiver mode `extractExplicitReceivers` keeps receivers in model order while
-      `browser-backend.ts` sorts them by id, so for the same model the two targets emit the
-      receiver table's rows in different orders — and `output_hash` is computed over that order.
-      The levels agree receiver for receiver, so no assessed level is affected, but picking a
-      winner changes the hash of every browser run already made. That is a decision, not a fix.
-      `browser-parity.test.ts` pins the current behaviour of both sides meanwhile.
 - [ ] **Terrain, explicit reflectors and per-direction sources are still CLI-only.** Browser mode
       builds road sources, barriers, buildings and Parkplätze, and `wasm/types.ts` now mirrors the
       terrain and reflector types because the kernel accepts them — but no model can express them
