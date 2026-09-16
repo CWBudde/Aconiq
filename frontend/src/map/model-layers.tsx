@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import { useMap } from "./use-map";
-import { useModelStore } from "@/model/model-store";
-import type { CalcArea } from "@/model/types";
+import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { featuresToSourceGroups, receiversToGeoJSON } from "@/model/to-geojson";
+import { computeWorkspaceBounds, toLngLatBounds } from "./extent";
+import { useDisplayModel } from "./display-model";
+import { CRSNotice } from "./crs-notice";
 import {
   SOURCE_IDS,
   BUILDING_LAYERS,
@@ -13,16 +15,40 @@ import {
   CALC_AREA_LAYERS,
 } from "./layers";
 
+const EMPTY_COLLECTION: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+// Module-level, so that "nothing to draw" is the *same* empty array on every
+// render. A fresh `[]` per render would change the sync effect's dependencies
+// every time and re-run it forever.
+const NO_FEATURES: ModelFeature[] = [];
+const NO_RECEIVERS: ModelReceiver[] = [];
+
 /**
  * Syncs the model store features to MapLibre GeoJSON sources.
  * Must be rendered as a child of MapView (inside MapContext).
+ *
+ * It draws {@link useDisplayModel}'s answer, not the store's arrays: the store
+ * may be in a projected CRS, and MapLibre takes lon/lat and nothing else. While
+ * that answer is anything but `ready` the sources are emptied rather than left
+ * as they were — a stale model still drawn, in the wrong place, is the bug this
+ * component had.
+ *
+ * It renders the notice itself rather than returning `null` so that there is
+ * exactly one `useDisplayModel` instance on the map, and therefore one
+ * projection per store change.
  */
 export function ModelLayers() {
   const map = useMap();
-  const features = useModelStore((s) => s.features);
-  const receivers = useModelStore((s) => s.receivers);
-  const calcArea = useModelStore((s) => s.calcArea);
+  const display = useDisplayModel();
   const previousFeatureCountRef = useRef(0);
+
+  const ready = display.status === "ready";
+  const features = ready ? display.features : NO_FEATURES;
+  const receivers = ready ? display.receivers : NO_RECEIVERS;
+  const calcArea = ready ? display.calcArea : null;
 
   useEffect(() => {
     if (!map) return;
@@ -84,20 +110,56 @@ export function ModelLayers() {
       }
     }
 
+    // A fit only makes sense over a model that is actually being drawn, and
+    // the counter must only advance on `ready` — advancing it on the
+    // `projecting` render would consume the one-shot fit on an empty map and
+    // leave the reprojected model off-screen for good.
+    if (!ready) return;
+
     // Bring freshly imported data into view once instead of leaving it off-screen.
     if (previousFeatureCountRef.current === 0 && features.length > 0) {
-      const bounds = computeFeatureBounds(features);
-      if (bounds) {
-        map.fitBounds(bounds, {
-          padding: 48,
-          duration: 0,
-        });
-      }
+      fitToWorkspace(map, features, receivers, calcArea);
     }
     previousFeatureCountRef.current = features.length;
-  }, [map, features, receivers, calcArea]);
+  }, [map, ready, features, receivers, calcArea]);
 
-  return null;
+  return <CRSNotice model={display} />;
+}
+
+/**
+ * Fits the view to everything the workspace holds, and does nothing at all if
+ * the extent is not a lon/lat one.
+ *
+ * Both halves are deliberate. The traversal is `extent.ts`'s, so a
+ * receiver-only import comes into view — the copy this file used to keep
+ * visited features alone. And the guard is what keeps a 4326-*labelled* store
+ * that actually holds metres from throwing `Invalid LngLat latitude value` out
+ * of the effect above: the call was outside both `try` blocks, so it took the
+ * whole sync down with it.
+ */
+function fitToWorkspace(
+  map: maplibregl.Map,
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+  calcArea: CalcArea | null,
+): void {
+  const bounds = computeWorkspaceBounds(features, receivers, calcArea);
+  if (!bounds) return;
+
+  const lngLat = toLngLatBounds(bounds);
+  if (!lngLat) {
+    console.warn(
+      "ModelLayers: the model's extent is not lon/lat, so the view was not fitted to it",
+      bounds,
+    );
+    return;
+  }
+
+  try {
+    map.fitBounds(lngLat, { padding: 48, duration: 0 });
+  } catch (error) {
+    console.error("ModelLayers: could not fit the view to the model", error);
+  }
 }
 
 function isMapStyleReady(map: maplibregl.Map): boolean {
@@ -113,7 +175,7 @@ function calcAreaToGeoJSON(
   calcArea: CalcArea | null,
 ): GeoJSON.FeatureCollection {
   if (!calcArea) {
-    return { type: "FeatureCollection", features: [] };
+    return EMPTY_COLLECTION;
   }
   return {
     type: "FeatureCollection",
@@ -125,44 +187,4 @@ function calcAreaToGeoJSON(
       },
     ],
   };
-}
-
-function computeFeatureBounds(
-  features: ReturnType<typeof useModelStore.getState>["features"],
-): maplibregl.LngLatBoundsLike | null {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  function visit(coords: unknown): void {
-    if (!Array.isArray(coords)) return;
-    if (
-      coords.length >= 2 &&
-      typeof coords[0] === "number" &&
-      typeof coords[1] === "number"
-    ) {
-      minX = Math.min(minX, coords[0]);
-      minY = Math.min(minY, coords[1]);
-      maxX = Math.max(maxX, coords[0]);
-      maxY = Math.max(maxY, coords[1]);
-      return;
-    }
-    for (const value of coords) {
-      visit(value);
-    }
-  }
-
-  for (const feature of features) {
-    visit(feature.geometry.coordinates);
-  }
-
-  if (!Number.isFinite(minX)) {
-    return null;
-  }
-
-  return [
-    [minX, minY],
-    [maxX, maxY],
-  ];
 }

@@ -78,7 +78,19 @@ describe("httpBackend capabilities", () => {
       runsAgainstSavedModel: true,
       runsChangeExternally: true,
       exportsOutliveRunDelete: true,
+      // No transform endpoint, and the WASM kernel is not loaded here.
+      canReprojectForDisplay: false,
     });
+  });
+
+  it("refuses to project coordinates rather than pretending it cannot be asked", async () => {
+    await expect(
+      httpBackend.transformCoordinates({
+        source_crs: "EPSG:25832",
+        target_crs: "EPSG:4326",
+        coordinates: [667000, 5644000],
+      }),
+    ).rejects.toThrow(/save the model and reload/);
   });
 });
 

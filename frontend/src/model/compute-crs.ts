@@ -24,7 +24,21 @@
 
 import type { AconiqKernel } from "@/wasm/kernel";
 import { AUTO_TARGET_CRS } from "@/wasm/types";
+import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
+
+/**
+ * A batch coordinate projection — `aconiq.transform`, or whatever stands in
+ * for it.
+ *
+ * A bare function rather than the kernel object, because the second caller is
+ * the map, which reaches the same kernel through `backend.transformCoordinates`
+ * and has no kernel handle of its own. There is still exactly one projection
+ * behind both: the Go one.
+ */
+export type CoordinateTransform = (
+  req: TransformRequest,
+) => Promise<TransformResponse>;
 
 /** Which CRS a run computed in, and whether getting there moved the model. */
 export interface ComputeProjection {
@@ -95,15 +109,46 @@ export async function resolveComputeModel(
 ): Promise<ComputeModel> {
   refuseUnreachablePropertyGeometry(workspace.features);
 
+  // `async` rather than a plain promise-returning function: it is what turns
+  // the refusal above into a rejection instead of a synchronous throw, which
+  // every caller and every test here expects.
+  const projected = await projectWorkspace(
+    (req) => kernel.transform(req),
+    workspace,
+    AUTO_TARGET_CRS,
+  );
+  return projected;
+}
+
+/**
+ * Moves a whole workspace into `targetCRS`, one batch, one traversal each way.
+ *
+ * The body `resolveComputeModel` used to be, with the target lifted out of it.
+ * Two callers want the same traversal for different reasons: a run projects
+ * into the CRS it computes in, and the map projects into the CRS it draws in.
+ * Writing the second traversal separately is how the two would come to disagree
+ * about the order they visit coordinates in — and a scatter that disagrees with
+ * its collect silently moves a model to somewhere plausible.
+ *
+ * The property-geometry refusal deliberately does *not* live here. It is about
+ * computing: a model carrying `rls19_directional_sources` cannot be projected
+ * for a run, but its geometry draws fine, and refusing here would blank the map
+ * for a model that has nothing wrong with what the map shows.
+ */
+export async function projectWorkspace(
+  transform: CoordinateTransform,
+  workspace: Workspace,
+  targetCRS: string,
+): Promise<ComputeModel> {
   const collected: number[] = [];
   walkWorkspace(workspace, (x, y) => {
     collected.push(x, y);
     return null;
   });
 
-  const response = await kernel.transform({
+  const response = await transform({
     source_crs: workspace.crs,
-    target_crs: AUTO_TARGET_CRS,
+    target_crs: targetCRS,
     coordinates: collected,
   });
 

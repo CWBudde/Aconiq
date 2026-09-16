@@ -83,6 +83,7 @@ vi.mock("@/api/backend", () => ({
         runsAgainstSavedModel: state.runsAgainstSavedModel,
         runsChangeExternally: state.runsAgainstSavedModel,
         exportsOutliveRunDelete: state.runsAgainstSavedModel,
+        canReprojectForDisplay: !state.runsAgainstSavedModel,
       };
     },
   },

@@ -231,6 +231,10 @@ export function useProjectHydration(): void {
         features: draft.features,
         receivers: draft.receivers,
         calcArea: draft.calcArea,
+        // `loadDraft` reads it and `ui/draft-banner.tsx` passes it on; omitting
+        // it here relabelled a metric draft EPSG:4326, after which a run
+        // projected metres as if they were degrees.
+        ...(draft.crs === undefined ? {} : { crs: draft.crs }),
       });
       projectHydrationStore.setState({
         started: true,
@@ -270,6 +274,10 @@ export function useProjectHydration(): void {
           features: model.features,
           receivers: model.receivers,
           calcArea: model.calcArea,
+          // The server's answer, not the constant that was asked for. They
+          // agree today, and leaning on that made the store's CRS a statement
+          // about this file's request rather than about the coordinates.
+          crs: response.crs,
         });
         // `draftOffered` is left as module init computed it. The draft that
         // did not match is divergent work, and this is the case where the

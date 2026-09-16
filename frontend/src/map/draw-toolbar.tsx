@@ -14,6 +14,14 @@ interface DrawToolbarProps {
   activeMode: DrawMode;
   onModeChange: (mode: DrawMode) => void;
   onCancel: () => void;
+  /**
+   * Every tool is refused. Set when the model is stored in a CRS the map does
+   * not draw in: terra-draw emits WGS84, and a shape drawn over a metric model
+   * would enter it in the wrong coordinate system.
+   */
+  disabled?: boolean;
+  /** Why, shown in each tool's own tooltip in place of its label. */
+  disabledReason?: string;
 }
 
 const modelTools: {
@@ -31,8 +39,15 @@ export function DrawToolbar({
   activeMode,
   onModeChange,
   onCancel,
+  disabled = false,
+  disabledReason,
 }: DrawToolbarProps) {
   const isDrawing = activeMode !== "static";
+  // The reason replaces the label rather than joining it: the tooltip is the
+  // only place this can be said, and "Draw point" beside a dead button says
+  // nothing about why it is dead.
+  const reason = (label: string) =>
+    disabled && disabledReason !== undefined ? disabledReason : label;
 
   return (
     <MapPanel
@@ -50,6 +65,7 @@ export function DrawToolbar({
               size="icon"
               className="size-8"
               aria-pressed={activeMode === mode}
+              disabled={disabled}
               onClick={() => {
                 onModeChange(mode);
               }}
@@ -58,7 +74,7 @@ export function DrawToolbar({
               <Icon aria-hidden="true" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">{label()}</TooltipContent>
+          <TooltipContent side="right">{reason(label())}</TooltipContent>
         </Tooltip>
       ))}
       <Separator className="my-1" />
@@ -69,6 +85,7 @@ export function DrawToolbar({
             size="icon"
             className="size-8"
             aria-pressed={activeMode === "calc-area"}
+            disabled={disabled}
             onClick={() => {
               onModeChange("calc-area");
             }}
@@ -77,7 +94,9 @@ export function DrawToolbar({
             <Crop aria-hidden="true" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">{m.tool_draw_calc_area()}</TooltipContent>
+        <TooltipContent side="right">
+          {reason(m.tool_draw_calc_area())}
+        </TooltipContent>
       </Tooltip>
       {isDrawing ? (
         <>

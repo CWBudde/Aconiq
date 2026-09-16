@@ -1,11 +1,13 @@
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
+import { DISPLAY_CRS } from "./display-model";
 
 export type ViewState = {
   center: [number, number];
   zoom: number;
 };
 
-type Bounds = {
+/** A workspace's extent, in whatever CRS the workspace is in. */
+export type Bounds = {
   west: number;
   south: number;
   east: number;
@@ -30,7 +32,15 @@ function visitBounds(coords: unknown, bounds: Bounds): void {
   }
 }
 
-function collectBounds(
+/**
+ * The extent of everything the workspace holds — features, receivers and the
+ * calculation area — or `null` when it holds no coordinate at all.
+ *
+ * The one traversal. `model-layers.tsx` kept a copy that visited features
+ * alone, so a project consisting of imported receivers never came into view:
+ * the one-shot fit computed no bounds for it and fitted nothing.
+ */
+export function computeWorkspaceBounds(
   features: ModelFeature[],
   receivers: ModelReceiver[],
   calcArea: CalcArea | null,
@@ -58,13 +68,53 @@ function collectBounds(
   return bounds;
 }
 
+/**
+ * The same extent as a MapLibre `LngLatBoundsLike`, or `null` when it is not
+ * one.
+ *
+ * With the display projection in place the bounds handed to `fitBounds` are
+ * lon/lat by construction, and this guard still earns its keep: it covers the
+ * case reprojection cannot fix, a store *labelled* EPSG:4326 that actually
+ * holds metres. MapLibre answers a 5 644 000 latitude by throwing
+ * `Invalid LngLat latitude value` out of the effect that called it, which took
+ * the model layers down with it.
+ */
+export function toLngLatBounds(
+  bounds: Bounds,
+): [[number, number], [number, number]] | null {
+  const values = [bounds.west, bounds.south, bounds.east, bounds.north];
+  if (!values.every((value) => Number.isFinite(value))) return null;
+  if (Math.abs(bounds.west) > 180 || Math.abs(bounds.east) > 180) return null;
+  if (Math.abs(bounds.south) > 90 || Math.abs(bounds.north) > 90) return null;
+
+  return [
+    [bounds.west, bounds.south],
+    [bounds.east, bounds.north],
+  ];
+}
+
+/**
+ * The viewport the workspace opens at, computed once on mount.
+ *
+ * `crs` is taken rather than assumed because this runs in a `useState`
+ * initialiser and therefore cannot await a projection. A workspace in anything
+ * but {@link DISPLAY_CRS} gets the fallback centre instead of a centre computed
+ * from eastings and northings, which is how a German model used to open on
+ * `[667000, 5644000]` — a point MapLibre clamps to the edge of the world. The
+ * correct framing arrives one frame later, from `ModelLayers`' `fitBounds` over
+ * the reprojected model.
+ */
 export function fitViewToWorkspace(
   features: ModelFeature[],
   receivers: ModelReceiver[],
   calcArea: CalcArea | null,
   fallbackCenter: [number, number],
+  crs: string,
 ): ViewState {
-  const bounds = collectBounds(features, receivers, calcArea);
+  const bounds =
+    crs === DISPLAY_CRS
+      ? computeWorkspaceBounds(features, receivers, calcArea)
+      : null;
   if (!bounds) {
     return { center: fallbackCenter, zoom: 6 };
   }

@@ -19,6 +19,7 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
+import { DISPLAY_CRS } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
 import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
@@ -125,13 +126,14 @@ function MapWorkspace() {
   const calcArea = useModelStore((s) => s.calcArea);
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
+  const crs = useModelStore((s) => s.crs);
 
   // The initial viewport is computed once, on mount. `useMemo` recomputed it on
   // every model edit, and MapView treats a new `center`/`zoom` as a reason to
   // rebuild — so drawing a single feature discarded the map. Later fitting is
   // ModelLayers' job (it calls `fitBounds` when data first arrives).
   const [workspaceView] = useState(() =>
-    fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
+    fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16], crs),
   );
 
   const hasWorkspaceContent =
@@ -147,8 +149,22 @@ function MapWorkspace() {
     if (hasWorkspaceContent) setStartDismissed(false);
   }, [hasWorkspaceContent]);
 
+  // terra-draw emits WGS84, and `setCalcArea`/`addFeature` write straight into
+  // the store. In a store that holds metres that would mix degrees into the
+  // model — a round trip through the map quietly becoming the model, which is
+  // the one thing the map must never be. The draw-finish callback is the only
+  // coordinate writer on the map side (`FeatureEditor` writes attributes only,
+  // and nothing ever calls `draw.addFeatures`), so refusing here closes the
+  // hole outright.
+  //
+  // The real fix is an inverse 4326 → `store.crs` transform on this path. It is
+  // unavailable in API mode until a transform endpoint exists, and is recorded
+  // in PLAN.md Priority 8 Phase D.
+  const drawingDisabled = crs !== DISPLAY_CRS;
+
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
+      if (drawingDisabled) return;
       if (mode === "calc-area") {
         const geom = feature.geometry;
         if (geom.type === "Polygon") {
@@ -164,7 +180,7 @@ function MapWorkspace() {
       }
       setNewGeometry(feature.geometry as Geometry);
     },
-    [setCalcArea],
+    [setCalcArea, drawingDisabled],
   );
 
   const handleFeatureClick = useCallback(
@@ -204,7 +220,10 @@ function MapWorkspace() {
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers />
-          <WorkspaceDrawToolbar />
+          <WorkspaceDrawToolbar
+            disabled={drawingDisabled}
+            disabledReason={m.msg_draw_disabled_crs({ crs })}
+          />
           <LayerControl />
           <CoordinateDisplay />
           <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
@@ -330,13 +349,21 @@ function SelectRequest({
 }
 
 /** Binds the presentational toolbar to the provider above it. */
-function WorkspaceDrawToolbar() {
+function WorkspaceDrawToolbar({
+  disabled,
+  disabledReason,
+}: {
+  disabled: boolean;
+  disabledReason: string;
+}) {
   const { activeMode, setMode, cancel } = useDrawContext();
   return (
     <DrawToolbar
       activeMode={activeMode}
       onModeChange={setMode}
       onCancel={cancel}
+      disabled={disabled}
+      disabledReason={disabledReason}
     />
   );
 }

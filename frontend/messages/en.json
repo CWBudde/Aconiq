@@ -384,5 +384,11 @@
   "msg_import_skips_calc_area": "The workspace already has a calculation area. Adding keeps the one that is there.",
   "msg_import_nothing": "There is nothing to import — the file holds no features, receivers or calculation area the model reads.",
   "msg_import_errors_remain": "These findings came in with the import and are in the model now.",
-  "action_show_feature_on_map": "Show {id} on the map"
+  "action_show_feature_on_map": "Show {id} on the map",
+  "msg_map_crs_projecting": "The model is stored in {crs}. It is being projected into WGS 84 for display.",
+  "msg_map_crs_reprojected": "Displayed in WGS 84, stored in {crs}.",
+  "msg_map_crs_unsupported": "The model is stored in {crs} and cannot be projected for display in API mode. Save the model, then reload the page — it is then fetched in WGS 84.",
+  "msg_map_crs_failed": "The model stored in {crs} could not be projected for display: {reason}",
+  "msg_draw_disabled_crs": "Drawing is disabled because the model is stored in {crs}. The map draws in WGS 84, and a drawn shape would enter the model in the wrong coordinate system.",
+  "label_crs_notice": "Coordinate reference system"
 }
