@@ -586,37 +586,40 @@ Three consequences fell out of the work:
 
 ## Priority 3 — Establish real validation evidence
 
-**The comparison now asserts, and it fails.** `compare_test.go` ran the whole
-`init → import --from-soundplan → compare` pipeline against the reference project and never read a
-single delta field. It does now (`ac33895`), and against the real fixture Aconiq reads
-systematically high on **every one** of the 54 matched receivers:
+**The comparison now asserts, it matches real pairs, and it fails.** `compare_test.go` ran the
+whole `init → import --from-soundplan → compare` pipeline against the reference project and never
+read a single delta field. It does now (`ac33895`), and the pairs it reads are now the right ones
+(#37). Against the real fixture Aconiq reads systematically high on
+**every one** of the 30 matched receivers:
 
 | indicator | mean abs | p95 abs | max abs | exceeding |
 | --------- | -------- | ------- | ------- | --------- |
-| LrDay     | 24.052   | 37.859  | 39.745  | 54 / 54   |
-| LrNight   | 22.630   | 36.098  | 37.965  | 54 / 54   |
+| LrDay     | 28.131   | 37.084  | 37.193  | 30 / 30   |
+| LrNight   | 26.808   | 35.360  | 35.507  | 30 / 30   |
 
-Down from 25.110 / 23.329: removing the `10 lg(n + 1)` flow shift (Priority 1.2) accounts for the
-whole of that, because the shift sat on the data-pack path the CLI runs. A 1 dB improvement on a
-25 dB error is a rounding correction, not progress.
+**Do not compare these to the 24.479 / 23.068 that stood here before.** Those were means over 60
+pairs the matcher invented by list position, on an Aconiq side that was the map label layer rather
+than the immission points. The mean going up by 3.7 dB is not a regression; it is the first number
+in this table that measures anything. The maximum came down, from 39.745 to 37.193.
 
-This is the single most important number in this file. Note the shape of it: ~25 dB high, on a
+This is the single most important number in this file. Note the shape of it: ~27 dB high, on a
 Schall 03 rail project, measured against `BuiltinDataPack()`'s invented spectra. Priority 2 has
 since wired the CLI to the normative Anlage-2 chain, but **the comparison still does not reach
 it**: the SoundPLAN import produces only the preview `rail_*` vocabulary, so `compare` now opts
 into the preview engine explicitly. **The delta above is a preview-chain number and nothing should
 be concluded from it. Priority 13's `TrackSegment` mapping is what makes it measurable.**
 
-- [ ] **Fix receiver matching before tightening any tolerance.** All 54 matches fell back to the
-      `ordinal` strategy (`distance_m = -1`): coordinate matching at 0.5 m tolerance matched
-      _nothing_, so pairs are matched by list position rather than geometry, and two Aconiq
-      receivers were paired to SoundPLAN records both labelled `Hauptstraße 4`. 23 of the 77 Aconiq
-      receivers are unmatched and 0 SoundPLAN ones are. The comparison is not merely inaccurate —
-      it is comparing arbitrary pairs. Suspect the CRS pipeline (Priority 13) first.
-- [ ] Then tighten the thresholds. What is in the test today is a deliberately loose regression
-      bound (mean*abs ≤ 30 dB, max_abs ≤ 45 dB) labelled in the source as \_not* a tolerance, sitting
+- [ ] Tighten the thresholds. What is in the test today is a deliberately loose regression
+      bound (mean*abs ≤ 34 dB, max_abs ≤ 45 dB) labelled in the source as \_not* a tolerance, sitting
       alongside exact self-consistency assertions that do hold the compare command to a real
-      standard. Once matching and Priority 2 are fixed, this must come down by a large factor.
+      standard. Once Priority 2 and Priority 13 are done, this must come down by a large factor.
+- [ ] **The raster comparison still compares one run against all four grid maps at once.**
+      `RRLK0012`/`RRLK0013` are computed without the noise barrier and `RRLK0022`/`RRLK0023` with
+      it, exactly as `RSPS0011`/`RSPS0021` are, and the `.res` files say so in `[GeoFiles]` and
+      `RunData`. The receiver path now selects one run on those grounds; the raster path reports
+      four `runs[]` entries against a single Aconiq run, so at least two of the four are comparing
+      against a scenario the model does not describe. The selector to reuse is
+      `selectSoundPlanReceiverResultDir`.
 - [ ] Get reference data into CI — submodule or Git LFS, licence permitting — so the comparison
       runs. Today `interoperability/` is gitignored and the SoundPLAN tests skip in CI. The
       plumbing for it is in place: `internal/qa/fixtures.SoundPLANProjectDir` is the single place
@@ -632,6 +635,24 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
       not evidence.
 - [ ] Set tolerances that mean something: ~0.5 dB against a reference tool, not 1e-6 dB against
       yourself. Keep the 1e-6 dB comparison, but rename it what it is — a determinism check.
+
+### Landed
+
+- [x] **Receiver matching is exact, and `ordinal` is gone** (#37). The defect was in the import,
+      not the matcher: two `GeoObjs.geo` object types were swapped, so map text captions became
+      receivers and the Immissionsorte were discarded. Four things it leaves live:
+  - A SoundPLAN Immissionsort is **a column of receivers, one per floor**, keyed by
+    `(soundplan_obj_id, soundplan_floor)` — what `RREC*.abs` is itself indexed by. A duplicate key
+    on either side is a hard `KindValidation` error; floor 0 marks a point that could not be
+    expanded, and never matches.
+  - `aconiq compare` reads **one** result run, chosen by the geometry the _model_ carries against
+    what each `.res` records, and overridable with `--soundplan-run`. `RSPS0011` and `RSPS0021` are
+    the same receivers without and with the noise barrier, differing by up to 8 dB.
+  - The matching tests must stay runnable **without** the licensed fixture, in
+    `compare_match_test.go`. The `t.Skip` that fires in CI is how a matcher that never matched
+    anything shipped.
+  - Synthetic raster receivers take their height from the bundle's `RLKHEIGHT`, not from the
+    model's first receiver, which made every raster number a hostage to the receiver import.
 
 ## Priority 4 — Honest standards labelling
 

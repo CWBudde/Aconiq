@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -201,9 +202,18 @@ type RunResult struct {
 	RunStart        string
 	RunStop         string
 	RunCommands     string
-	ThreadCount     int
-	ErrorCode       int
-	SourceTypes     int
+	// RunData is the raw `RunData=` line: the input files the kernel was
+	// handed, each quoted, the whole list quoted again. RunDataFiles is that
+	// line split into the individual names.
+	//
+	// It duplicates the `[GeoFiles]` section in every .res file seen so far,
+	// but the two are written by different parts of SoundPLAN and either can
+	// be absent, so GeometryFileNames unions them rather than trusting one.
+	RunData      string
+	RunDataFiles []string
+	ThreadCount  int
+	ErrorCode    int
+	SourceTypes  int
 
 	Warnings []string
 
@@ -265,9 +275,95 @@ func parseResGeneral(res *RunResult, sections map[string]map[string]string) {
 	res.RunStart = s["RunStart"]
 	res.RunStop = s["RunStop"]
 	res.RunCommands = s["RunCommands"]
+	res.RunData = s["RunData"]
+	res.RunDataFiles = parseRunDataFiles(res.RunData)
 	res.ThreadCount, _ = strconv.Atoi(s["ThreadCount"])
 	res.ErrorCode, _ = strconv.Atoi(s["Error"])
 	res.SourceTypes, _ = strconv.Atoi(s["SourceTypes"])
+}
+
+// parseRunDataFiles splits a `RunData=` value into the file names it lists.
+//
+// SoundPLAN writes the list as one doubled-quote string: every name is quoted,
+// and the whole sequence is quoted again, e.g.
+//
+//	RunData=""GeoObjs.geo" "GeoRail.geo" "rdgm0001.dgm""
+//
+// Splitting on the quote character therefore yields the names interleaved with
+// the separators and the empty strings the doubled outer quotes produce, so
+// everything that is blank after trimming is dropped. A bare, unquoted value is
+// returned as a single name.
+func parseRunDataFiles(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	fields := strings.Split(raw, `"`)
+	names := make([]string, 0, len(fields)/2+1)
+
+	for _, field := range fields {
+		name := strings.TrimSpace(field)
+		if name == "" {
+			continue
+		}
+
+		names = append(names, name)
+	}
+
+	if len(names) == 0 {
+		return nil
+	}
+
+	return names
+}
+
+// GeometryFileNames reports the input files this run consumed, as lower-cased
+// base names, sorted and deduplicated.
+//
+// It unions `[GeoFiles]` with `RunData`, which is what makes it usable for
+// telling two otherwise identical runs apart: in the reference project
+// RSPS0011 and RSPS0021 compute the same 13 immission points and differ only
+// in whether `GeoWand.geo` — the noise barrier — was part of the input.
+func (res *RunResult) GeometryFileNames() []string {
+	if res == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(res.GeoFiles)+len(res.RunDataFiles))
+	names := make([]string, 0, len(res.GeoFiles)+len(res.RunDataFiles))
+
+	add := func(raw string) {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		name = strings.ReplaceAll(name, `\`, "/")
+
+		if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
+			name = name[idx+1:]
+		}
+
+		if name == "" {
+			return
+		}
+
+		if _, ok := seen[name]; ok {
+			return
+		}
+
+		seen[name] = struct{}{}
+
+		names = append(names, name)
+	}
+
+	for _, ref := range res.GeoFiles {
+		add(ref.Name)
+	}
+
+	for _, name := range res.RunDataFiles {
+		add(name)
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 func parseResComments(res *RunResult, sections map[string]map[string]string) {

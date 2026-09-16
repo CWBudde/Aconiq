@@ -12,6 +12,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/io/soundplanimport"
 	"github.com/aconiq/backend/internal/report/results"
@@ -39,6 +40,8 @@ type compareIndicatorStats struct {
 type soundPlanReceiverComparisonRecord struct {
 	AconiqID       string  `json:"aconiq_id"`
 	SoundPlanRecNo int32   `json:"soundplan_rec_no"`
+	SoundPlanObjID int64   `json:"soundplan_obj_id"`
+	SoundPlanFloor int32   `json:"soundplan_floor"`
 	SoundPlanName  string  `json:"soundplan_name,omitempty"`
 	MatchStrategy  string  `json:"match_strategy"`
 	X              float64 `json:"x"`
@@ -76,22 +79,45 @@ type soundPlanRasterCompareReport struct {
 }
 
 type soundPlanCompareReport struct {
-	Command              string                              `json:"command"`
-	StandardID           string                              `json:"standard_id"`
-	StandardVersion      string                              `json:"standard_version,omitempty"`
-	StandardProfile      string                              `json:"standard_profile,omitempty"`
-	RunID                string                              `json:"run_id"`
-	SoundPlanSource      string                              `json:"soundplan_source"`
-	SoundPlanResultRun   string                              `json:"soundplan_result_run"`
-	ReceiverMatchTolM    float64                             `json:"receiver_match_tolerance_m"`
-	ToleranceDB          float64                             `json:"tolerance_db"`
-	MatchedReceiverCount int                                 `json:"matched_receiver_count"`
-	UnmatchedAconiqCount int                                 `json:"unmatched_aconiq_count"`
-	UnmatchedSPCount     int                                 `json:"unmatched_soundplan_count"`
-	Raster               *soundPlanRasterCompareReport       `json:"raster,omitempty"`
-	Stats                map[string]compareIndicatorStats    `json:"stats"`
-	Records              []soundPlanReceiverComparisonRecord `json:"records"`
+	Command         string `json:"command"`
+	StandardID      string `json:"standard_id"`
+	StandardVersion string `json:"standard_version,omitempty"`
+	StandardProfile string `json:"standard_profile,omitempty"`
+	RunID           string `json:"run_id"`
+	SoundPlanSource string `json:"soundplan_source"`
+	// SoundPlanResultRun names exactly one SoundPLAN result directory. The
+	// candidates it was chosen from and the grounds for the choice are
+	// recorded alongside it, because "which scenario was this compared
+	// against" is not answerable from the levels.
+	SoundPlanResultRun           string   `json:"soundplan_result_run"`
+	SoundPlanResultRunCandidates []string `json:"soundplan_result_run_candidates,omitempty"`
+	SoundPlanResultRunSelection  string   `json:"soundplan_result_run_selection"`
+	// ReceiverMatchTolM is an assertion threshold for keyed matches and a
+	// search bound for the coordinate fallback; see matchSoundPlanReceivers.
+	ReceiverMatchTolM    float64        `json:"receiver_match_tolerance_m"`
+	ToleranceDB          float64        `json:"tolerance_db"`
+	MatchedReceiverCount int            `json:"matched_receiver_count"`
+	MatchStrategyCounts  map[string]int `json:"match_strategy_counts"`
+	MaxMatchDistanceM    float64        `json:"max_match_distance_m"`
+	UnmatchedAconiqCount int            `json:"unmatched_aconiq_count"`
+	UnmatchedSPCount     int            `json:"unmatched_soundplan_count"`
+	// UnmatchedAconiq and UnmatchedSoundPlan name every receiver that was not
+	// paired. Counts alone let an unmatched side be read as a rounding
+	// difference rather than as the missing half of the evidence.
+	UnmatchedAconiq    []string `json:"unmatched_aconiq,omitempty"`
+	UnmatchedSoundPlan []string `json:"unmatched_soundplan,omitempty"`
+	// StatsScope states what Stats aggregates over, so a mean cannot be read
+	// as covering receivers that were never compared.
+	StatsScope string                              `json:"stats_scope"`
+	Warnings   []string                            `json:"warnings,omitempty"`
+	Raster     *soundPlanRasterCompareReport       `json:"raster,omitempty"`
+	Stats      map[string]compareIndicatorStats    `json:"stats"`
+	Records    []soundPlanReceiverComparisonRecord `json:"records"`
 }
+
+// statsScopeMatchedOnly is the only scope the aggregates have ever had; naming
+// it makes that visible in the artifact.
+const statsScopeMatchedOnly = "matched_receivers_only"
 
 func newCompareCommand() *cobra.Command {
 	var (
@@ -101,6 +127,7 @@ func newCompareCommand() *cobra.Command {
 		modelPath       string
 		scenarioID      string
 		toleranceDB     float64
+		soundPlanRun    string
 		rawParams       []string
 	)
 
@@ -115,6 +142,7 @@ func newCompareCommand() *cobra.Command {
 				modelPath:       modelPath,
 				scenarioID:      scenarioID,
 				toleranceDB:     toleranceDB,
+				soundPlanRun:    soundPlanRun,
 				rawParams:       rawParams,
 			})
 		},
@@ -126,6 +154,7 @@ func newCompareCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
 	cmd.Flags().Float64Var(&toleranceDB, "tolerance-db", 0.5, "Absolute delta threshold for tolerance exceedance counting")
+	cmd.Flags().StringVar(&soundPlanRun, "soundplan-run", "", "SoundPLAN result run directory to compare against (default: inferred from the geometry each run used)")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter as key=value, repeatable; forwarded to the underlying run")
 
 	return cmd
@@ -139,6 +168,7 @@ type compareRequest struct {
 	modelPath       string
 	scenarioID      string
 	toleranceDB     float64
+	soundPlanRun    string
 	rawParams       []string
 }
 
@@ -157,35 +187,42 @@ func validateCompareFlags(standardID string, toleranceDB float64) error {
 
 // compareInputs bundles the SoundPLAN reference data a comparison run needs.
 type compareInputs struct {
-	importReport  soundPlanImportReport
-	resultRunDirs []string
-	receivers     []soundplanimport.ReceiverResult
+	importReport soundPlanImportReport
+	resultRun    soundPlanResultRunSelection
+	receivers    []soundplanimport.ReceiverResult
 }
 
-// loadCompareInputs reads the SoundPLAN import report and the receiver results
-// belonging to the discovered result run directories.
-func loadCompareInputs(root string) (compareInputs, error) {
-	importReport, err := loadSoundPlanImportReport(root)
-	if err != nil {
-		return compareInputs{}, err
-	}
-
+// loadCompareInputs reads the receiver results of the one result run the
+// comparison was resolved to.
+//
+// The barrier count comes from model, not from importReport: the report
+// records what the import produced, and the comparison computes whatever
+// --model points at. Those are the same file by default and need not be — a
+// model edited since the import, or a different one named on the flag, would
+// otherwise pick the reference scenario on a stale count and compare against
+// the wrong side of a noise barrier worth up to 8 dB.
+func loadCompareInputs(
+	root string,
+	explicitRun string,
+	importReport soundPlanImportReport,
+	model modelgeojson.Model,
+) (compareInputs, error) {
 	soundPlanRoot := resolvePath(root, importReport.SourcePath)
 
-	resultRunDirs, err := selectSoundPlanReceiverResultDirs(soundPlanRoot)
+	resultRun, err := selectSoundPlanReceiverResultDir(soundPlanRoot, explicitRun, modelHasBarriers(model))
 	if err != nil {
 		return compareInputs{}, err
 	}
 
-	receivers, err := loadSoundPlanReceiverResults(soundPlanRoot, resultRunDirs)
+	receivers, err := loadSoundPlanReceiverResults(soundPlanRoot, resultRun.Dir)
 	if err != nil {
 		return compareInputs{}, err
 	}
 
 	return compareInputs{
-		importReport:  importReport,
-		resultRunDirs: resultRunDirs,
-		receivers:     receivers,
+		importReport: importReport,
+		resultRun:    resultRun,
+		receivers:    receivers,
 	}, nil
 }
 
@@ -197,6 +234,57 @@ func compareRunModelPath(root string, modelPath string, prep *rasterComparePrepa
 	}
 
 	return modelPath
+}
+
+// modelHasBarriers reports whether the model carries any barrier feature,
+// which is the geometry the reference run is selected on.
+func modelHasBarriers(model modelgeojson.Model) bool {
+	return slices.ContainsFunc(model.Features, func(feature modelgeojson.Feature) bool {
+		return feature.Kind == modelgeojson.FeatureKindBarrier
+	})
+}
+
+// buildCompareReport reads the finished run's receiver table, compares it
+// against the SoundPLAN reference run, and attaches the raster section.
+func buildCompareReport(
+	root string,
+	req compareRequest,
+	inputs compareInputs,
+	receiverKeys map[string]soundPlanReceiverKey,
+	rasterPrep *rasterComparePreparation,
+	runID string,
+) (soundPlanCompareReport, error) {
+	receiverTable, err := results.LoadReceiverTableJSON(filepath.Join(root, ".noise", "runs", runID, "results", "receivers.json"))
+	if err != nil {
+		return soundPlanCompareReport{}, domainerrors.New(domainerrors.KindInternal, "cli.compare", "load run receiver outputs", err)
+	}
+
+	report, err := compareSoundPlanReceiverTables(compareReceiverTablesInput{
+		table:           filterOutSyntheticRasterReceivers(receiverTable),
+		keys:            receiverKeys,
+		soundPlan:       inputs.receivers,
+		toleranceDB:     req.toleranceDB,
+		soundPlanSource: inputs.importReport.SourcePath,
+		resultRun:       inputs.resultRun,
+		runID:           runID,
+		standardID:      req.standardID,
+		standardVersion: req.standardVersion,
+		standardProfile: req.standardProfile,
+	})
+	if err != nil {
+		return soundPlanCompareReport{}, err
+	}
+
+	report.Raster, _, err = finalizeSoundPlanRasterCompare(root, rasterPrep, receiverTable, req.toleranceDB)
+	if err != nil {
+		return soundPlanCompareReport{}, err
+	}
+
+	if report.Raster == nil {
+		report.Raster = buildSoundPlanRasterCompareReport(inputs.importReport)
+	}
+
+	return report, nil
 }
 
 func runCompare(cmd *cobra.Command, req compareRequest) error {
@@ -214,14 +302,27 @@ func runCompare(cmd *cobra.Command, req compareRequest) error {
 		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
 	}
 
-	inputs, err := loadCompareInputs(store.Root())
+	importReport, err := loadSoundPlanImportReport(store.Root())
 	if err != nil {
 		return err
 	}
 
-	importReport := inputs.importReport
-	resultRunDirs := inputs.resultRunDirs
-	soundPlanReceivers := inputs.receivers
+	// Read once, here, and used for both the reference-run choice and the
+	// receiver keys. It is deliberately the *original* model rather than the
+	// temporary one the raster comparison hands the run: that copy carries
+	// thousands of synthetic raster receivers, which have no SoundPLAN
+	// identity and are filtered out of the receiver comparison anyway.
+	model, err := loadValidatedModel(resolvePath(store.Root(), req.modelPath), importReport.ProjectCRS, req.modelPath)
+	if err != nil {
+		return err
+	}
+
+	inputs, err := loadCompareInputs(store.Root(), req.soundPlanRun, importReport, model)
+	if err != nil {
+		return err
+	}
+
+	receiverKeys := soundPlanReceiverKeysFromModel(model)
 
 	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, req.modelPath)
 	if err != nil {
@@ -247,23 +348,9 @@ func runCompare(cmd *cobra.Command, req compareRequest) error {
 		return err
 	}
 
-	receiverTable, err := results.LoadReceiverTableJSON(filepath.Join(store.Root(), ".noise", "runs", run.ID, "results", "receivers.json"))
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.compare", "load run receiver outputs", err)
-	}
-
-	report, err := compareSoundPlanReceiverTables(filterOutSyntheticRasterReceivers(receiverTable), soundPlanReceivers, req.toleranceDB, importReport.SourcePath, strings.Join(resultRunDirs, ","), run.ID, req.standardID, req.standardVersion, req.standardProfile)
+	report, err := buildCompareReport(store.Root(), req, inputs, receiverKeys, rasterPrep, run.ID)
 	if err != nil {
 		return err
-	}
-
-	report.Raster, _, err = finalizeSoundPlanRasterCompare(store.Root(), rasterPrep, receiverTable, req.toleranceDB)
-	if err != nil {
-		return err
-	}
-
-	if report.Raster == nil {
-		report.Raster = buildSoundPlanRasterCompareReport(importReport)
 	}
 
 	if err := persistCompareReport(store, report); err != nil {
@@ -325,29 +412,54 @@ func writeCompareJSONOutput(cmd *cobra.Command, runID string, report soundPlanCo
 	}
 
 	return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
-		"command":                    commandNameCompare,
-		"report_path":                defaultCompareReportPath,
-		"run_id":                     runID,
-		"matched_receiver_count":     report.MatchedReceiverCount,
-		"unmatched_aconiq_count":     report.UnmatchedAconiqCount,
-		"unmatched_soundplan_count":  report.UnmatchedSPCount,
-		"soundplan_result_run":       report.SoundPlanResultRun,
-		"raster_status":              compareRasterStatus(report.Raster),
-		"raster_artifact_path":       rasterArtifactPath,
-		"soundplan_raster_run_count": rasterRunCount,
+		"command":                        commandNameCompare,
+		"report_path":                    defaultCompareReportPath,
+		"run_id":                         runID,
+		"matched_receiver_count":         report.MatchedReceiverCount,
+		"match_strategy_counts":          report.MatchStrategyCounts,
+		"max_match_distance_m":           report.MaxMatchDistanceM,
+		"unmatched_aconiq_count":         report.UnmatchedAconiqCount,
+		"unmatched_soundplan_count":      report.UnmatchedSPCount,
+		"unmatched_aconiq":               report.UnmatchedAconiq,
+		"unmatched_soundplan":            report.UnmatchedSoundPlan,
+		"soundplan_result_run":           report.SoundPlanResultRun,
+		"soundplan_result_run_selection": report.SoundPlanResultRunSelection,
+		"stats_scope":                    report.StatsScope,
+		outputFieldWarnings:              report.Warnings,
+		"raster_status":                  compareRasterStatus(report.Raster),
+		"raster_artifact_path":           rasterArtifactPath,
+		"soundplan_raster_run_count":     rasterRunCount,
 	})
 }
 
-// printCompareSummary writes the human-readable compare summary.
-func printCompareSummary(cmd *cobra.Command, runID string, report soundPlanCompareReport) {
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Compared run %s against SoundPLAN %s\n", runID, report.SoundPlanResultRun)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Matched receivers: %d\n", report.MatchedReceiverCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Unmatched Aconiq receivers: %d\n", report.UnmatchedAconiqCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Unmatched SoundPLAN receivers: %d\n", report.UnmatchedSPCount)
+// maxPrintedUnmatchedReceivers caps the unmatched receivers named on stdout.
+// The report names every one of them.
+const maxPrintedUnmatchedReceivers = 5
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Report: %s\n", defaultCompareReportPath)
+// printCompareSummary writes the human-readable compare summary.
+//
+// It prints how the receivers were matched and how far apart the matched pairs
+// are, because that is what the previous version of this command got wrong
+// without anyone noticing: all 60 of its pairs were positional, and the only
+// place that said so was a field inside the artifact.
+func printCompareSummary(cmd *cobra.Command, runID string, report soundPlanCompareReport) {
+	out := cmd.OutOrStdout()
+
+	_, _ = fmt.Fprintf(out, "Compared run %s against SoundPLAN %s (%s)\n", runID, report.SoundPlanResultRun, report.SoundPlanResultRunSelection)
+	_, _ = fmt.Fprintf(out, "Matched receivers: %d [%s]\n", report.MatchedReceiverCount, formatMatchStrategyCounts(report.MatchStrategyCounts))
+	_, _ = fmt.Fprintf(out, "Max match distance: %.4f m (tolerance %.2f m)\n", report.MaxMatchDistanceM, report.ReceiverMatchTolM)
+
+	printUnmatchedReceivers(cmd, "Aconiq", report.UnmatchedAconiqCount, report.UnmatchedAconiq)
+	printUnmatchedReceivers(cmd, "SoundPLAN", report.UnmatchedSPCount, report.UnmatchedSoundPlan)
+
+	for _, warning := range report.Warnings {
+		_, _ = fmt.Fprintf(out, "Warning: %s\n", warning)
+	}
+
+	_, _ = fmt.Fprintf(out, "Report: %s\n", defaultCompareReportPath)
+
 	if report.Raster != nil {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Raster coverage: %s (%d SoundPLAN grid-map runs)\n", report.Raster.Status, len(report.Raster.SoundPlanRuns))
+		_, _ = fmt.Fprintf(out, "Raster coverage: %s (%d SoundPLAN grid-map runs)\n", report.Raster.Status, len(report.Raster.SoundPlanRuns))
 	}
 
 	for _, indicator := range []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight} {
@@ -356,8 +468,46 @@ func printCompareSummary(cmd *cobra.Command, runID string, report soundPlanCompa
 			continue
 		}
 
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s mean_abs=%.3f max_abs=%.3f p95_abs=%.3f exceedances=%d\n",
-			indicator, stats.MeanAbsDeltaDB, stats.MaxAbsDeltaDB, stats.P95AbsDeltaDB, stats.ToleranceExceeding)
+		_, _ = fmt.Fprintf(out, "%s mean_abs=%.3f max_abs=%.3f p95_abs=%.3f exceedances=%d (over %d matched receivers)\n",
+			indicator, stats.MeanAbsDeltaDB, stats.MaxAbsDeltaDB, stats.P95AbsDeltaDB, stats.ToleranceExceeding, stats.Count)
+	}
+}
+
+// formatMatchStrategyCounts renders the strategy histogram in a fixed order so
+// the line is reproducible.
+func formatMatchStrategyCounts(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "none"
+	}
+
+	names := make([]string, 0, len(counts))
+	for name := range counts {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s=%d", name, counts[name]))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func printUnmatchedReceivers(cmd *cobra.Command, side string, count int, names []string) {
+	out := cmd.OutOrStdout()
+
+	_, _ = fmt.Fprintf(out, "Unmatched %s receivers: %d\n", side, count)
+
+	for i, name := range names {
+		if i >= maxPrintedUnmatchedReceivers {
+			_, _ = fmt.Fprintf(out, "  ... and %d more\n", len(names)-maxPrintedUnmatchedReceivers)
+
+			break
+		}
+
+		_, _ = fmt.Fprintf(out, "  - %s\n", name)
 	}
 }
 
@@ -443,29 +593,41 @@ func compareRasterStatus(report *soundPlanRasterCompareReport) string {
 	return report.Status
 }
 
-func selectSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
-	resultDirs := make([]string, 0, 4)
+// soundPlanResultRunSelection records which SoundPLAN result run the
+// comparison read, out of which candidates, and on what grounds.
+//
+// It is singular on purpose. Concatenating every RSPS* directory — which is
+// what this used to do — produced a candidate pool spanning several scenarios:
+// in the reference project RSPS0011 and RSPS0021 hold the same 13 immission
+// points computed without and with the noise barrier, and their levels differ
+// by up to 8 dB. No matcher can be correct against a pool like that, because
+// the right answer is not in it once.
+type soundPlanResultRunSelection struct {
+	Dir        string
+	Candidates []string
+	Selection  string
+	Warnings   []string
+}
 
-	candidates := []string{"RSPS0011", "RSPS0021", "RSPS0000"}
-	for _, candidate := range candidates {
-		dir := filepath.Join(soundPlanRoot, candidate)
+// How a result run was chosen, as recorded in soundplan_result_run_selection.
+const (
+	resultRunSelectionExplicit  = "explicit"
+	resultRunSelectionGeometry  = "geometry_match"
+	resultRunSelectionOnly      = "only_candidate"
+	resultRunSelectionAmbiguous = "ambiguous"
+)
 
-		suffix := compareExtractRunSuffix(candidate)
-		if compareFileExists(filepath.Join(dir, "RREC"+suffix+".abs")) {
-			resultDirs = append(resultDirs, candidate)
-		}
-	}
-
-	if len(resultDirs) > 0 {
-		return resultDirs, nil
-	}
-
+// discoverSoundPlanReceiverResultDirs lists the result directories that carry
+// a receiver table, newest naming first.
+func discoverSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
 	matches, err := filepath.Glob(filepath.Join(soundPlanRoot, "RSPS*"))
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.compare", "discover SoundPLAN receiver result directories", err)
 	}
 
 	slices.Sort(matches)
+
+	resultDirs := make([]string, 0, len(matches))
 
 	for _, match := range matches {
 		name := filepath.Base(match)
@@ -483,22 +645,103 @@ func selectSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
 	return resultDirs, nil
 }
 
-func loadSoundPlanReceiverResults(soundPlanRoot string, resultRunDirs []string) ([]soundplanimport.ReceiverResult, error) {
-	all := make([]soundplanimport.ReceiverResult, 0, 128)
-
-	for _, resultRunDir := range resultRunDirs {
-		suffix := compareExtractRunSuffix(resultRunDir)
-		path := filepath.Join(soundPlanRoot, resultRunDir, "RREC"+suffix+".abs")
-
-		results, err := soundplanimport.ParseReceiverResults(path)
-		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindInternal, "cli.compare", "read SoundPLAN receiver results", err)
-		}
-
-		all = append(all, results...)
+// selectSoundPlanReceiverResultDir picks the one result run to compare
+// against.
+//
+// An explicit --soundplan-run wins. Otherwise the candidates are filtered by
+// whether their .res says the run consumed the noise barrier geometry, which
+// has to agree with whether the import produced barrier features — that is the
+// only thing distinguishing the reference project's two single-point runs. If
+// that leaves no single answer the last candidate by name is taken and the
+// selection is recorded as ambiguous, with a warning, because a comparison
+// that silently picks a scenario is the defect this function exists to stop.
+func selectSoundPlanReceiverResultDir(
+	soundPlanRoot string,
+	explicitRun string,
+	modelHasBarriers bool,
+) (soundPlanResultRunSelection, error) {
+	candidates, err := discoverSoundPlanReceiverResultDirs(soundPlanRoot)
+	if err != nil {
+		return soundPlanResultRunSelection{}, err
 	}
 
-	return all, nil
+	selection := soundPlanResultRunSelection{Candidates: candidates}
+
+	if requested := strings.TrimSpace(explicitRun); requested != "" {
+		if !slices.Contains(candidates, requested) {
+			return soundPlanResultRunSelection{}, domainerrors.New(
+				domainerrors.KindUserInput, "cli.compare",
+				fmt.Sprintf("--soundplan-run %q is not one of the available result runs: %s", requested, strings.Join(candidates, ", ")),
+				nil,
+			)
+		}
+
+		selection.Dir = requested
+		selection.Selection = resultRunSelectionExplicit
+
+		return selection, nil
+	}
+
+	if len(candidates) == 1 {
+		selection.Dir = candidates[0]
+		selection.Selection = resultRunSelectionOnly
+
+		return selection, nil
+	}
+
+	matching := make([]string, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		usedBarrier, known := soundPlanRunUsedBarrierGeometry(soundPlanRoot, candidate)
+		if known && usedBarrier == modelHasBarriers {
+			matching = append(matching, candidate)
+		}
+	}
+
+	if len(matching) == 1 {
+		selection.Dir = matching[0]
+		selection.Selection = resultRunSelectionGeometry
+
+		return selection, nil
+	}
+
+	selection.Dir = candidates[len(candidates)-1]
+	selection.Selection = resultRunSelectionAmbiguous
+	selection.Warnings = append(selection.Warnings, fmt.Sprintf(
+		"SoundPLAN result runs %s could not be told apart by the geometry their .res files record; compared against %s by name order. Pass --soundplan-run to choose.",
+		strings.Join(candidates, ", "), selection.Dir,
+	))
+
+	return selection, nil
+}
+
+// soundPlanRunUsedBarrierGeometry reports whether a result run's .res says the
+// run read GeoWand.geo. The second return is false when the .res could not be
+// read at all, which must not be confused with a run that read no barrier.
+func soundPlanRunUsedBarrierGeometry(soundPlanRoot string, resultRunDir string) (bool, bool) {
+	res, err := soundplanimport.ParseResFile(filepath.Join(soundPlanRoot, resultRunDir+".res"))
+	if err != nil {
+		return false, false
+	}
+
+	names := res.GeometryFileNames()
+	if len(names) == 0 {
+		return false, false
+	}
+
+	return slices.Contains(names, "geowand.geo"), true
+}
+
+func loadSoundPlanReceiverResults(soundPlanRoot string, resultRunDir string) ([]soundplanimport.ReceiverResult, error) {
+	suffix := compareExtractRunSuffix(resultRunDir)
+	path := filepath.Join(soundPlanRoot, resultRunDir, "RREC"+suffix+".abs")
+
+	rows, err := soundplanimport.ParseReceiverResults(path)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.compare", "read SoundPLAN receiver results", err)
+	}
+
+	return rows, nil
 }
 
 func compareExtractRunSuffix(name string) string {
@@ -520,83 +763,451 @@ func compareFileExists(path string) bool {
 	return !info.IsDir()
 }
 
-// matchSoundPlanReceiver picks the SoundPLAN receiver for one Aconiq record. It
-// prefers the nearest unused receiver within the coordinate tolerance and falls
-// back to the first unused receiver in file order. It returns the index of the
-// match (-1 when none is available), its distance, and the strategy used.
-func matchSoundPlanReceiver(
+// Receiver match strategies, as recorded per record and counted in
+// match_strategy_counts.
+//
+// There used to be a third, `ordinal`, which paired an Aconiq receiver with
+// whatever SoundPLAN row happened to sit at the same position in file order.
+// It is deleted rather than demoted: it is not a weaker match, it is a
+// fabricated one, and every way of keeping it — behind a flag, excluded from
+// the statistics — still ends in an artifact full of pairs that were never
+// pairs. A receiver that cannot be matched is reported unmatched, by name.
+const (
+	matchStrategyKey         = "soundplan_key"
+	matchStrategyCoordinates = "coordinates"
+)
+
+// soundPlanReceiverKey identifies one SoundPLAN receiver: the immission point
+// it belongs to and which of that point's floors it is. It is the key
+// RREC*.abs itself is indexed by, and with it the correspondence between the
+// two receiver sets is a bijection by construction, so no assignment algorithm
+// is needed or wanted.
+type soundPlanReceiverKey struct {
+	ObjID int64
+	Floor int
+}
+
+// soundPlanReceiverMatch pairs one Aconiq receiver with one SoundPLAN row.
+type soundPlanReceiverMatch struct {
+	AconiqIndex    int
+	SoundPlanIndex int
+	Strategy       string
+	DistanceM      float64
+}
+
+// soundPlanMatchResult is everything the matcher decided, including what it
+// refused to decide.
+type soundPlanMatchResult struct {
+	Matches            []soundPlanReceiverMatch
+	UnmatchedAconiq    []string
+	UnmatchedSoundPlan []string
+	Warnings           []string
+	StrategyCounts     map[string]int
+	MaxDistanceM       float64
+}
+
+// matchSoundPlanReceivers pairs the Aconiq receiver table with the SoundPLAN
+// receiver rows.
+//
+// Receivers that carry a SoundPLAN key — which every receiver an
+// `--from-soundplan` import produced does — are matched on it alone. The
+// coordinate distance of such a pair is recorded and asserted against tolM,
+// not searched over: it exists to catch a key that points at the wrong place,
+// and in the reference project every pair agrees to within 2.3e-6 m.
+//
+// Receivers with no key at all — a hand-built receiver set compared against a
+// SoundPLAN run — fall back to coordinates. That fallback is a *mutual*
+// nearest-neighbour within tolM: a pair is formed only when each side is the
+// other's nearest, which is what makes the result independent of the order the
+// two inputs arrive in. The previous greedy first-come matcher was not.
+//
+// Two things are refused rather than resolved, because no answer would be the
+// right one: a receiver carrying a SoundPLAN identity with floor 0, which the
+// import emits for an immission point it could not expand, and two receivers
+// carrying the same key.
+func matchSoundPlanReceivers(
+	table results.ReceiverTable,
+	keys map[string]soundPlanReceiverKey,
+	soundPlan []soundplanimport.ReceiverResult,
+	tolM float64,
+) (soundPlanMatchResult, error) {
+	byKey, err := indexSoundPlanReceiversByKey(soundPlan)
+	if err != nil {
+		return soundPlanMatchResult{}, err
+	}
+
+	out := soundPlanMatchResult{
+		Matches:        make([]soundPlanReceiverMatch, 0, len(table.Records)),
+		StrategyCounts: map[string]int{},
+	}
+
+	used := make([]bool, len(soundPlan))
+
+	unkeyed, err := matchSoundPlanReceiversByKey(table, keys, soundPlan, byKey, used, &out)
+	if err != nil {
+		return soundPlanMatchResult{}, err
+	}
+
+	coordinateMatches := matchSoundPlanReceiversByCoordinates(table, unkeyed, soundPlan, used, tolM)
+	for _, match := range coordinateMatches {
+		used[match.SoundPlanIndex] = true
+
+		out.Matches = append(out.Matches, match)
+	}
+
+	slices.SortFunc(out.Matches, func(a, b soundPlanReceiverMatch) int {
+		return a.AconiqIndex - b.AconiqIndex
+	})
+
+	matchedAconiq := make(map[int]struct{}, len(out.Matches))
+
+	for _, match := range out.Matches {
+		matchedAconiq[match.AconiqIndex] = struct{}{}
+		out.StrategyCounts[match.Strategy]++
+		out.MaxDistanceM = math.Max(out.MaxDistanceM, match.DistanceM)
+
+		if match.DistanceM > tolM {
+			out.Warnings = append(out.Warnings, fmt.Sprintf(
+				"receiver %s is %.3f m from the SoundPLAN row it is keyed to, beyond the %.3f m assertion tolerance",
+				table.Records[match.AconiqIndex].ID, match.DistanceM, tolM,
+			))
+		}
+	}
+
+	for _, recordIndex := range unkeyed {
+		if _, ok := matchedAconiq[recordIndex]; ok {
+			continue
+		}
+
+		out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(table.Records[recordIndex], soundPlanReceiverKey{}))
+	}
+
+	for i, row := range soundPlan {
+		if !used[i] {
+			out.UnmatchedSoundPlan = append(out.UnmatchedSoundPlan, describeSoundPlanRow(row))
+		}
+	}
+
+	return out, nil
+}
+
+// indexSoundPlanReceiversByKey indexes the reference rows by (ObjID, Floor).
+//
+// A duplicate key is a hard error, not something to resolve quietly: it means
+// the row set spans more than one scenario — exactly what reading every RSPS*
+// directory into one pool used to produce — and no answer the matcher could
+// give would be the right one.
+func indexSoundPlanReceiversByKey(soundPlan []soundplanimport.ReceiverResult) (map[soundPlanReceiverKey]int, error) {
+	byKey := make(map[soundPlanReceiverKey]int, len(soundPlan))
+
+	for i, row := range soundPlan {
+		key := soundPlanReceiverKey{ObjID: int64(row.ObjID), Floor: int(row.Floor)}
+		if _, exists := byKey[key]; exists {
+			return nil, domainerrors.New(
+				domainerrors.KindValidation, "cli.compare",
+				fmt.Sprintf("SoundPLAN receiver results contain %s twice; the result set spans more than one calculation run", describeSoundPlanRow(row)),
+				nil,
+			)
+		}
+
+		byKey[key] = i
+	}
+
+	return byKey, nil
+}
+
+// matchSoundPlanReceiversByKey runs the keyed pass and returns the indices of
+// the records that carry no SoundPLAN key at all, for the coordinate fallback.
+//
+// It appends matches and unmatched Aconiq receivers to out and marks the rows
+// it consumed in used, both of which the caller owns.
+func matchSoundPlanReceiversByKey(
+	table results.ReceiverTable,
+	keys map[string]soundPlanReceiverKey,
+	soundPlan []soundplanimport.ReceiverResult,
+	byKey map[soundPlanReceiverKey]int,
+	used []bool,
+	out *soundPlanMatchResult,
+) ([]int, error) {
+	unkeyed := make([]int, 0, len(table.Records))
+	claimedBy := make(map[soundPlanReceiverKey]string, len(table.Records))
+
+	for recordIndex, record := range table.Records {
+		key, hasKey := keys[record.ID]
+		if !hasKey {
+			unkeyed = append(unkeyed, recordIndex)
+
+			continue
+		}
+
+		// A SoundPLAN immission point whose floor attributes could not be
+		// decoded becomes one receiver at the project default height carrying
+		// floor 0, and docs/geojson-schema-v1.md says it has no usable key and
+		// will not match. It is failed here rather than left to the coordinate
+		// fallback: every row of that point's column shares the immission
+		// point's X/Y, so a nearest-neighbour search would pair a guessed
+		// height against whichever floor happens to sort first.
+		if key.Floor <= 0 {
+			out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(record, key))
+
+			continue
+		}
+
+		// Two receivers claiming one reference row is the mirror of the
+		// duplicate indexSoundPlanReceiversByKey rejects, and it is worse
+		// undetected: both would be appended against the same row, so one
+		// reference receiver would be counted twice in every aggregate while
+		// the report showed no unmatched SoundPLAN row to say so.
+		if first, claimed := claimedBy[key]; claimed {
+			return nil, domainerrors.New(
+				domainerrors.KindValidation, "cli.compare",
+				fmt.Sprintf(
+					"receivers %s and %s both carry soundplan_obj_id %d floor %d; one reference receiver cannot stand for two",
+					first, record.ID, key.ObjID, key.Floor,
+				),
+				nil,
+			)
+		}
+
+		claimedBy[key] = record.ID
+
+		soundPlanIndex, found := byKey[key]
+		if !found {
+			out.UnmatchedAconiq = append(out.UnmatchedAconiq, describeAconiqReceiver(record, key))
+
+			continue
+		}
+
+		used[soundPlanIndex] = true
+
+		out.Matches = append(out.Matches, soundPlanReceiverMatch{
+			AconiqIndex:    recordIndex,
+			SoundPlanIndex: soundPlanIndex,
+			Strategy:       matchStrategyKey,
+			DistanceM:      soundPlanMatchDistance(record, soundPlan[soundPlanIndex]),
+		})
+	}
+
+	return unkeyed, nil
+}
+
+// matchSoundPlanReceiversByCoordinates pairs the receivers that carry no
+// SoundPLAN key with the rows still unused, by mutual nearest neighbour within
+// tolM. O(n·m) and order-independent; ties fall to the lower index on both
+// sides, so the result is fully determined by the inputs.
+func matchSoundPlanReceiversByCoordinates(
+	table results.ReceiverTable,
+	unkeyed []int,
+	soundPlan []soundplanimport.ReceiverResult,
+	used []bool,
+	tolM float64,
+) []soundPlanReceiverMatch {
+	if len(unkeyed) == 0 {
+		return nil
+	}
+
+	nearestRow := make(map[int]int, len(unkeyed))
+
+	for _, recordIndex := range unkeyed {
+		if rowIndex, ok := nearestSoundPlanRow(table.Records[recordIndex], soundPlan, used, tolM); ok {
+			nearestRow[recordIndex] = rowIndex
+		}
+	}
+
+	matches := make([]soundPlanReceiverMatch, 0, len(nearestRow))
+
+	for _, recordIndex := range unkeyed {
+		rowIndex, ok := nearestRow[recordIndex]
+		if !ok {
+			continue
+		}
+
+		if nearestUnkeyedRecord(soundPlan[rowIndex], table, unkeyed) != recordIndex {
+			continue
+		}
+
+		matches = append(matches, soundPlanReceiverMatch{
+			AconiqIndex:    recordIndex,
+			SoundPlanIndex: rowIndex,
+			Strategy:       matchStrategyCoordinates,
+			DistanceM:      soundPlanMatchDistance(table.Records[recordIndex], soundPlan[rowIndex]),
+		})
+	}
+
+	return matches
+}
+
+func nearestSoundPlanRow(
 	record results.ReceiverRecord,
 	soundPlan []soundplanimport.ReceiverResult,
 	used []bool,
-) (int, float64, string) {
+	tolM float64,
+) (int, bool) {
 	bestIndex := -1
 	bestDistance := math.Inf(1)
-	matchStrategy := ""
 
 	for i, candidate := range soundPlan {
 		if used[i] || !candidate.HasCoords {
 			continue
 		}
 
-		dx := record.X - candidate.X
-		dy := record.Y - candidate.Y
-
-		distance := math.Hypot(dx, dy)
-		if distance > defaultReceiverMatchTolM {
+		distance := math.Hypot(record.X-candidate.X, record.Y-candidate.Y)
+		if distance > tolM || distance >= bestDistance {
 			continue
 		}
 
-		if distance < bestDistance || (distance == bestDistance && candidate.RecNo < soundPlan[bestIndex].RecNo) {
-			bestIndex = i
-			bestDistance = distance
-			matchStrategy = "coordinates"
-		}
+		bestIndex = i
+		bestDistance = distance
 	}
 
-	if bestIndex < 0 {
-		for i := range soundPlan {
-			if used[i] {
-				continue
-			}
-
-			return i, -1, "ordinal"
-		}
-	}
-
-	return bestIndex, bestDistance, matchStrategy
+	return bestIndex, bestIndex >= 0
 }
 
-// countUnusedSoundPlanReceivers counts SoundPLAN receivers left without a match.
-func countUnusedSoundPlanReceivers(used []bool) int {
-	unmatched := 0
-
-	for i := range used {
-		if !used[i] {
-			unmatched++
-		}
-	}
-
-	return unmatched
-}
-
-func compareSoundPlanReceiverTables(
+func nearestUnkeyedRecord(
+	row soundplanimport.ReceiverResult,
 	table results.ReceiverTable,
-	soundPlan []soundplanimport.ReceiverResult,
-	toleranceDB float64,
-	soundPlanSource string,
-	resultRunDir string,
-	runID string,
-	standardID string,
-	standardVersion string,
-	standardProfile string,
-) (soundPlanCompareReport, error) {
-	used := make([]bool, len(soundPlan))
-	records := make([]soundPlanReceiverComparisonRecord, 0, len(table.Records))
-	dayAbs := make([]float64, 0, len(table.Records))
-	nightAbs := make([]float64, 0, len(table.Records))
-	unmatchedAconiq := 0
+	unkeyed []int,
+) int {
+	if !row.HasCoords {
+		return -1
+	}
 
-	for _, record := range table.Records {
+	bestIndex := -1
+	bestDistance := math.Inf(1)
+
+	for _, recordIndex := range unkeyed {
+		record := table.Records[recordIndex]
+
+		distance := math.Hypot(record.X-row.X, record.Y-row.Y)
+		if distance >= bestDistance {
+			continue
+		}
+
+		bestIndex = recordIndex
+		bestDistance = distance
+	}
+
+	return bestIndex
+}
+
+// soundPlanMatchDistance is the plan distance between a matched pair. A row
+// without coordinates yields 0: there is nothing to assert, and a negative
+// sentinel would sort as the best possible agreement.
+func soundPlanMatchDistance(record results.ReceiverRecord, row soundplanimport.ReceiverResult) float64 {
+	if !row.HasCoords {
+		return 0
+	}
+
+	return math.Hypot(record.X-row.X, record.Y-row.Y)
+}
+
+func describeAconiqReceiver(record results.ReceiverRecord, key soundPlanReceiverKey) string {
+	if key.ObjID > 0 {
+		return fmt.Sprintf("%s (obj %d floor %d)", record.ID, key.ObjID, key.Floor)
+	}
+
+	return record.ID
+}
+
+func describeSoundPlanRow(row soundplanimport.ReceiverResult) string {
+	name := strings.TrimSpace(row.Name)
+	if name == "" {
+		name = fmt.Sprintf("rec %d", row.RecNo)
+	}
+
+	return fmt.Sprintf("%s (obj %d floor %d)", name, row.ObjID, row.Floor)
+}
+
+// soundPlanReceiverKeysFromModel reads each receiver's SoundPLAN identity out
+// of the model the run computed.
+//
+// The identity is read from the feature's properties rather than parsed back
+// out of its ID, so the import is the one place that decides what a receiver
+// is. It must be handed the *original* model: the raster comparison hands the
+// run a temporary copy with thousands of synthetic receivers appended, which
+// carry no SoundPLAN identity and are filtered out of this comparison anyway.
+//
+// A floor of 0 is kept rather than dropped. It is not a usable key, but it is
+// still an identity, and matchSoundPlanReceivers needs to tell such a receiver
+// apart from one that carries no SoundPLAN identity at all: the first must not
+// match, the second falls back to coordinates.
+func soundPlanReceiverKeysFromModel(model modelgeojson.Model) map[string]soundPlanReceiverKey {
+	keys := make(map[string]soundPlanReceiverKey, len(model.Features))
+
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindReceiver {
+			continue
+		}
+
+		objID, hasObjID := propertyAsInt64(feature.Properties["soundplan_obj_id"])
+		floor, hasFloor := propertyAsInt64(feature.Properties["soundplan_floor"])
+
+		if !hasObjID || !hasFloor || objID <= 0 {
+			continue
+		}
+
+		keys[feature.ID] = soundPlanReceiverKey{ObjID: objID, Floor: int(floor)}
+	}
+
+	return keys
+}
+
+// propertyAsInt64 reads a GeoJSON property as an integer. A model that came
+// back through JSON carries float64 where the import wrote int, so both have
+// to be accepted; a non-integral number is not an id and is rejected.
+func propertyAsInt64(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float64:
+		if typed != math.Trunc(typed) || math.IsInf(typed, 0) {
+			return 0, false
+		}
+
+		return int64(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return 0, false
+		}
+
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+// compareReceiverTablesInput bundles everything one receiver comparison needs.
+type compareReceiverTablesInput struct {
+	table           results.ReceiverTable
+	keys            map[string]soundPlanReceiverKey
+	soundPlan       []soundplanimport.ReceiverResult
+	toleranceDB     float64
+	soundPlanSource string
+	resultRun       soundPlanResultRunSelection
+	runID           string
+	standardID      string
+	standardVersion string
+	standardProfile string
+}
+
+func compareSoundPlanReceiverTables(input compareReceiverTablesInput) (soundPlanCompareReport, error) {
+	matched, err := matchSoundPlanReceivers(input.table, input.keys, input.soundPlan, defaultReceiverMatchTolM)
+	if err != nil {
+		return soundPlanCompareReport{}, err
+	}
+
+	records := make([]soundPlanReceiverComparisonRecord, 0, len(matched.Matches))
+	dayAbs := make([]float64, 0, len(matched.Matches))
+	nightAbs := make([]float64, 0, len(matched.Matches))
+
+	for _, match := range matched.Matches {
+		record := input.table.Records[match.AconiqIndex]
+
 		dayValue, ok := record.Values[schall03.IndicatorLrDay]
 		if !ok {
 			return soundPlanCompareReport{}, domainerrors.New(domainerrors.KindValidation, "cli.compare", "receiver table missing LrDay", nil)
@@ -607,59 +1218,62 @@ func compareSoundPlanReceiverTables(
 			return soundPlanCompareReport{}, domainerrors.New(domainerrors.KindValidation, "cli.compare", "receiver table missing LrNight", nil)
 		}
 
-		bestIndex, bestDistance, matchStrategy := matchSoundPlanReceiver(record, soundPlan, used)
-		if bestIndex < 0 {
-			unmatchedAconiq++
-			continue
-		}
-
-		used[bestIndex] = true
-		matched := soundPlan[bestIndex]
-		deltaDay := dayValue - matched.ZB1
-		deltaNight := nightValue - matched.ZB2
+		row := input.soundPlan[match.SoundPlanIndex]
+		deltaDay := dayValue - row.ZB1
+		deltaNight := nightValue - row.ZB2
 
 		dayAbs = append(dayAbs, math.Abs(deltaDay))
 		nightAbs = append(nightAbs, math.Abs(deltaNight))
 
 		records = append(records, soundPlanReceiverComparisonRecord{
 			AconiqID:       record.ID,
-			SoundPlanRecNo: matched.RecNo,
-			SoundPlanName:  matched.Name,
-			MatchStrategy:  matchStrategy,
+			SoundPlanRecNo: row.RecNo,
+			SoundPlanObjID: int64(row.ObjID),
+			SoundPlanFloor: row.Floor,
+			SoundPlanName:  row.Name,
+			MatchStrategy:  match.Strategy,
 			X:              record.X,
 			Y:              record.Y,
-			DistanceM:      bestDistance,
+			DistanceM:      match.DistanceM,
 			AconiqLrDay:    dayValue,
-			SoundPlanZB1:   matched.ZB1,
+			SoundPlanZB1:   row.ZB1,
 			DeltaDayDB:     deltaDay,
 			AconiqLrNight:  nightValue,
-			SoundPlanZB2:   matched.ZB2,
+			SoundPlanZB2:   row.ZB2,
 			DeltaNightDB:   deltaNight,
 		})
 	}
 
 	stats := map[string]compareIndicatorStats{
-		schall03.IndicatorLrDay:   buildCompareIndicatorStats(dayAbs, toleranceDB),
-		schall03.IndicatorLrNight: buildCompareIndicatorStats(nightAbs, toleranceDB),
+		schall03.IndicatorLrDay:   buildCompareIndicatorStats(dayAbs, input.toleranceDB),
+		schall03.IndicatorLrNight: buildCompareIndicatorStats(nightAbs, input.toleranceDB),
 	}
 
-	unmatchedSoundPlan := countUnusedSoundPlanReceivers(used)
+	warnings := append(append([]string(nil), input.resultRun.Warnings...), matched.Warnings...)
 
 	return soundPlanCompareReport{
-		Command:              commandNameCompare,
-		StandardID:           standardID,
-		StandardVersion:      standardVersion,
-		StandardProfile:      standardProfile,
-		RunID:                runID,
-		SoundPlanSource:      soundPlanSource,
-		SoundPlanResultRun:   resultRunDir,
-		ReceiverMatchTolM:    defaultReceiverMatchTolM,
-		ToleranceDB:          toleranceDB,
-		MatchedReceiverCount: len(records),
-		UnmatchedAconiqCount: unmatchedAconiq,
-		UnmatchedSPCount:     unmatchedSoundPlan,
-		Stats:                stats,
-		Records:              records,
+		Command:                      commandNameCompare,
+		StandardID:                   input.standardID,
+		StandardVersion:              input.standardVersion,
+		StandardProfile:              input.standardProfile,
+		RunID:                        input.runID,
+		SoundPlanSource:              input.soundPlanSource,
+		SoundPlanResultRun:           input.resultRun.Dir,
+		SoundPlanResultRunCandidates: append([]string(nil), input.resultRun.Candidates...),
+		SoundPlanResultRunSelection:  input.resultRun.Selection,
+		ReceiverMatchTolM:            defaultReceiverMatchTolM,
+		ToleranceDB:                  input.toleranceDB,
+		MatchedReceiverCount:         len(records),
+		MatchStrategyCounts:          matched.StrategyCounts,
+		MaxMatchDistanceM:            matched.MaxDistanceM,
+		UnmatchedAconiqCount:         len(matched.UnmatchedAconiq),
+		UnmatchedSPCount:             len(matched.UnmatchedSoundPlan),
+		UnmatchedAconiq:              matched.UnmatchedAconiq,
+		UnmatchedSoundPlan:           matched.UnmatchedSoundPlan,
+		StatsScope:                   statsScopeMatchedOnly,
+		Warnings:                     warnings,
+		Stats:                        stats,
+		Records:                      records,
 	}, nil
 }
 

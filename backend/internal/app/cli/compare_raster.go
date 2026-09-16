@@ -19,6 +19,12 @@ const (
 	defaultRasterCompareArtifactPath = ".noise/artifacts/soundplan-raster-compare.json"
 	soundPlanRasterReceiverPrefix    = "soundplan-raster-"
 	soundPlanRasterMetadataAlignment = "gm_origin_grid"
+
+	// defaultGridMapReceiverHeightM is the height used when the imported
+	// bundle did not record a grid-map height. It is SoundPLAN Essential's own
+	// Rasterlärmkarte default, and it is a stated assumption rather than a
+	// measurement: a bundle that carries RLKHEIGHT overrides it.
+	defaultGridMapReceiverHeightM = 4.0
 )
 
 // Where the raster comparison's calculation area came from, as recorded in the
@@ -245,7 +251,7 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	report.CalcAreaBoundsDeltaUnit = calcArea.boundsDeltaUnit
 	report.Warnings = append(report.Warnings, calcArea.warnings...)
 
-	syntheticReceiverHeight := receiverHeightFromModel(baseModel)
+	syntheticReceiverHeight := syntheticRasterReceiverHeight(importReport)
 
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
 		report, importReport, decodedRuns[0].metadata, calcArea.area, syntheticReceiverHeight, layoutRows,
@@ -531,18 +537,27 @@ func calcAreaBoundsDelta(first, second *soundplanimport.CalcArea) float64 {
 	)
 }
 
-func receiverHeightFromModel(model modelgeojson.Model) float64 {
-	for _, feature := range model.Features {
-		if feature.Kind != modelgeojson.FeatureKindReceiver {
-			continue
-		}
-
-		if feature.HeightM != nil && *feature.HeightM > 0 {
-			return *feature.HeightM
-		}
+// syntheticRasterReceiverHeight returns the height the synthetic raster
+// receivers are placed at.
+//
+// It comes from the SoundPLAN project's own grid-map setting (`RLKHEIGHT`,
+// carried as soundPlanImportReport.GridMapHeightM), because that is the height
+// the reference grid maps were computed at and the one the comparison has to
+// reproduce. A grid map's GM metadata records no height, so nothing in the
+// raster files themselves can supply it.
+//
+// This used to read the first receiver in the model instead, which made every
+// raster delta a hostage to the receiver import: it happened to return 2.0 m
+// only because the SoundPLAN importer put every receiver at the project's
+// default facade height, which for this project equals RLKHEIGHT by
+// coincidence. Facade receivers now sit at their own per-floor heights, and
+// the first one is no longer anything a grid map has to do with.
+func syntheticRasterReceiverHeight(importReport soundPlanImportReport) float64 {
+	if importReport.GridMapHeightM > 0 {
+		return importReport.GridMapHeightM
 	}
 
-	return 4.0
+	return defaultGridMapReceiverHeightM
 }
 
 // compareDecodedGridMapRun compares one decoded SoundPLAN grid map against the
