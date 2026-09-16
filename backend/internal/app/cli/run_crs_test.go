@@ -135,13 +135,13 @@ func TestRunAgreesBetweenGeographicAndProjectedProjectCRS(t *testing.T) {
 	}
 
 	// The tolerance covers one EPSG:25832 → 4326 → 25832 round trip of both
-	// points. PLAN.md 1.6 pins that round trip's absolute residual at roughly
-	// 0.5 m at this easting, but the residual is a bias pointing the same way
-	// for two points 100 m apart, so it very nearly cancels in the distance
-	// between them: the disagreement measured here is 4.9e-6 dB. The tolerance
-	// is set two orders of magnitude above that rather than at the measurement,
-	// which leaves room for the projection library to change without leaving
-	// room for the defect to come back.
+	// points. That round trip used to lose ~0.5 m at this easting, which mostly
+	// cancelled between two points 100 m apart and left 4.9e-6 dB here; since
+	// PLAN.md 1.6 closed it the round trip is lossless to nanometres and the
+	// disagreement is 8.1e-11 dB. The tolerance stays where it was rather than
+	// following the measurement down: what it is for is the claim that one
+	// spelling of a site must not change its levels, and 0.001 dB is already
+	// two orders below the reporting precision that claim is about.
 	const tolerance = 0.001
 
 	if math.Abs(geographicLevel-projectedLevel) > tolerance {
@@ -396,11 +396,13 @@ func TestAutoGridAgreesBetweenGeographicAndProjectedProjectCRS(t *testing.T) {
 
 	// The two grids are compared by shape rather than by absolute position.
 	// Both are built around the same source, but the geographic project's
-	// source has been through one EPSG:25832 → 4326 → 25832 round trip, which
-	// PLAN.md 1.6 measures as a bias of roughly a metre at this easting — so
-	// the whole grid is offset by that much and every cell by the same amount.
-	// Congruence is the property that distinguishes metres from degrees; the
-	// shared offset is 1.6's business, not this test's.
+	// source has been through one EPSG:25832 → 4326 → 25832 round trip, and
+	// any offset that trip introduces is shared by every cell. It used to be
+	// roughly a metre and is now zero to the printed digits (PLAN.md 1.6), but
+	// the comparison stays congruence-based on purpose: congruence is the
+	// property that distinguishes a grid stepped in metres from one stepped in
+	// degrees, and absolute position would make this test fail for a reason
+	// that belongs to the transform rather than to the grid.
 	for i := range projected {
 		if math.Abs(geographic[i][2]-projected[i][2]) > 0.01 {
 			t.Fatalf("receiver %d: %.6f dB in EPSG:4326 against %.6f dB in EPSG:25832",
@@ -419,6 +421,6 @@ func TestAutoGridAgreesBetweenGeographicAndProjectedProjectCRS(t *testing.T) {
 
 	// And the shared offset really is shared: state its size so a change in
 	// the projection shows up here as a number rather than as a mystery.
-	t.Logf("whole-grid offset from the 1.6 round trip: %.4f m east, %.4f m north",
+	t.Logf("whole-grid offset from the 25832 → 4326 → 25832 round trip: %.4f m east, %.4f m north",
 		geographic[0][0]-projected[0][0], geographic[0][1]-projected[0][1])
 }
