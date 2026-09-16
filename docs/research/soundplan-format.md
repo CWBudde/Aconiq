@@ -77,6 +77,7 @@ Current status:
 - It runs the imported normalized model with custom receivers and compares Aconiq `LrDay` / `LrNight` against aggregated SoundPLAN `RREC` receiver tables.
 - It writes a JSON report artifact with per-receiver deltas and summary stats (mean, max, P95, tolerance exceedances).
 - The compare report now synthesizes raster receivers using explicit GM metadata whenever available (`origin`, `spacing`, row count), runs them through the existing Schall 03 custom-receiver path, and writes per-cell day/night deltas plus summary stats into `.noise/artifacts/soundplan-raster-compare.json`.
+- Those deltas are computed against **one** grid map, not against every `RRLK*` the bundle holds. A project carries the same site as several grid maps, and two signals tell them apart: the geometry file list in the run's `.res` (does it contain `GeoWand.geo`?) and the `GNM<spacing>:<height>` token in its `RunCommands`, matched against the project's `RLKHEIGHT`. Both are carried onto `GridMapMetadata` at import time, as `geometry_files` and `run_layout`. The selected run, its candidates and the grounds for the choice are reported as `soundplan_raster_run`, `soundplan_raster_run_candidates` and `soundplan_raster_run_selection`; `soundplan_runs` stays the full discovered list. `--soundplan-grid-run` overrides the choice.
 - Raster comparison is now metadata-first: explicit GM alignment is attempted first, then falls back to the heuristic `CalcArea.geo` scanline synthesis when metadata is missing or inconsistent.
 
 ## Concrete next slices

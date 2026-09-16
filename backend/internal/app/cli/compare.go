@@ -65,17 +65,25 @@ type soundPlanRasterCompareReport struct {
 	// CalcAreaBoundsDeltaUnit, and is nil when there was no second area to
 	// compare against. A warning fires only when the vertex counts disagree, so
 	// without these fields the artifact would not record which area produced it.
-	CalcAreaSource          string                             `json:"calc_area_source,omitempty"`
-	CalcAreaRole            string                             `json:"calc_area_role,omitempty"`
-	CalcAreaBoundsDelta     *float64                           `json:"calc_area_bounds_delta,omitempty"`
-	CalcAreaBoundsDeltaUnit string                             `json:"calc_area_bounds_delta_unit,omitempty"`
-	GridResolutionM         float64                            `json:"grid_resolution_m,omitempty"`
-	ReceiverHeightM         float64                            `json:"receiver_height_m,omitempty"`
-	SyntheticReceiverCount  int                                `json:"synthetic_receiver_count,omitempty"`
-	ArtifactPath            string                             `json:"artifact_path,omitempty"`
-	SoundPlanRuns           []soundplanimport.GridMapMetadata  `json:"soundplan_runs,omitempty"`
-	Runs                    []soundPlanRasterRunCompareSummary `json:"runs,omitempty"`
-	Warnings                []string                           `json:"warnings,omitempty"`
+	CalcAreaSource          string   `json:"calc_area_source,omitempty"`
+	CalcAreaRole            string   `json:"calc_area_role,omitempty"`
+	CalcAreaBoundsDelta     *float64 `json:"calc_area_bounds_delta,omitempty"`
+	CalcAreaBoundsDeltaUnit string   `json:"calc_area_bounds_delta_unit,omitempty"`
+	GridResolutionM         float64  `json:"grid_resolution_m,omitempty"`
+	ReceiverHeightM         float64  `json:"receiver_height_m,omitempty"`
+	SyntheticReceiverCount  int      `json:"synthetic_receiver_count,omitempty"`
+	ArtifactPath            string   `json:"artifact_path,omitempty"`
+	// SoundPlanRasterRun names the one grid map the raster deltas were computed
+	// against, out of SoundPlanRasterRunCandidates and on the grounds
+	// SoundPlanRasterRunSelection records. SoundPlanRuns stays the full list of
+	// grid maps the bundle holds, which is what it always meant — the number of
+	// runs discovered, not the number compared.
+	SoundPlanRasterRun           string                             `json:"soundplan_raster_run,omitempty"`
+	SoundPlanRasterRunCandidates []string                           `json:"soundplan_raster_run_candidates,omitempty"`
+	SoundPlanRasterRunSelection  string                             `json:"soundplan_raster_run_selection,omitempty"`
+	SoundPlanRuns                []soundplanimport.GridMapMetadata  `json:"soundplan_runs,omitempty"`
+	Runs                         []soundPlanRasterRunCompareSummary `json:"runs,omitempty"`
+	Warnings                     []string                           `json:"warnings,omitempty"`
 }
 
 type soundPlanCompareReport struct {
@@ -121,14 +129,15 @@ const statsScopeMatchedOnly = "matched_receivers_only"
 
 func newCompareCommand() *cobra.Command {
 	var (
-		standardID      string
-		standardVersion string
-		standardProfile string
-		modelPath       string
-		scenarioID      string
-		toleranceDB     float64
-		soundPlanRun    string
-		rawParams       []string
+		standardID       string
+		standardVersion  string
+		standardProfile  string
+		modelPath        string
+		scenarioID       string
+		toleranceDB      float64
+		soundPlanRun     string
+		soundPlanGridRun string
+		rawParams        []string
 	)
 
 	cmd := &cobra.Command{
@@ -136,14 +145,15 @@ func newCompareCommand() *cobra.Command {
 		Short: "Run a comparison against imported SoundPLAN receiver results",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCompare(cmd, compareRequest{
-				standardID:      standardID,
-				standardVersion: standardVersion,
-				standardProfile: standardProfile,
-				modelPath:       modelPath,
-				scenarioID:      scenarioID,
-				toleranceDB:     toleranceDB,
-				soundPlanRun:    soundPlanRun,
-				rawParams:       rawParams,
+				standardID:       standardID,
+				standardVersion:  standardVersion,
+				standardProfile:  standardProfile,
+				modelPath:        modelPath,
+				scenarioID:       scenarioID,
+				toleranceDB:      toleranceDB,
+				soundPlanRun:     soundPlanRun,
+				soundPlanGridRun: soundPlanGridRun,
+				rawParams:        rawParams,
 			})
 		},
 	}
@@ -154,7 +164,11 @@ func newCompareCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
 	cmd.Flags().Float64Var(&toleranceDB, "tolerance-db", 0.5, "Absolute delta threshold for tolerance exceedance counting")
-	cmd.Flags().StringVar(&soundPlanRun, "soundplan-run", "", "SoundPLAN result run directory to compare against (default: inferred from the geometry each run used)")
+	cmd.Flags().StringVar(&soundPlanRun, "soundplan-run", "", "SoundPLAN receiver result run directory to compare against (default: inferred from the geometry each run used)")
+	// A separate flag rather than an overload of --soundplan-run: the receiver
+	// results and the grid maps live in different result directories, and one
+	// value could never name both.
+	cmd.Flags().StringVar(&soundPlanGridRun, "soundplan-grid-run", "", "SoundPLAN grid-map run directory to compare the raster against (default: inferred from the geometry and grid height each run used)")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter as key=value, repeatable; forwarded to the underlying run")
 
 	return cmd
@@ -162,14 +176,15 @@ func newCompareCommand() *cobra.Command {
 
 // compareRequest carries the compare command's flags.
 type compareRequest struct {
-	standardID      string
-	standardVersion string
-	standardProfile string
-	modelPath       string
-	scenarioID      string
-	toleranceDB     float64
-	soundPlanRun    string
-	rawParams       []string
+	standardID       string
+	standardVersion  string
+	standardProfile  string
+	modelPath        string
+	scenarioID       string
+	toleranceDB      float64
+	soundPlanRun     string
+	soundPlanGridRun string
+	rawParams        []string
 }
 
 // validateCompareFlags rejects compare flag values the command cannot honour.
@@ -324,7 +339,7 @@ func runCompare(cmd *cobra.Command, req compareRequest) error {
 
 	receiverKeys := soundPlanReceiverKeysFromModel(model)
 
-	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, req.modelPath)
+	rasterPrep, hasRasterPrep, err := prepareSoundPlanRasterCompare(store.Root(), importReport, req.modelPath, req.soundPlanGridRun)
 	if err != nil {
 		return err
 	}
@@ -405,10 +420,17 @@ func persistCompareReport(store projectfs.Store, report soundPlanCompareReport) 
 func writeCompareJSONOutput(cmd *cobra.Command, runID string, report soundPlanCompareReport) error {
 	rasterArtifactPath := ""
 	rasterRunCount := 0
+	rasterRun := ""
+	rasterRunSelection := ""
 
 	if report.Raster != nil {
 		rasterArtifactPath = report.Raster.ArtifactPath
+		// The count of grid maps discovered, which is what this field has always
+		// meant. Exactly one of them is compared; which one, and why, is reported
+		// beside it rather than by shrinking this number to 1.
 		rasterRunCount = len(report.Raster.SoundPlanRuns)
+		rasterRun = report.Raster.SoundPlanRasterRun
+		rasterRunSelection = report.Raster.SoundPlanRasterRunSelection
 	}
 
 	return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
@@ -429,6 +451,8 @@ func writeCompareJSONOutput(cmd *cobra.Command, runID string, report soundPlanCo
 		"raster_status":                  compareRasterStatus(report.Raster),
 		"raster_artifact_path":           rasterArtifactPath,
 		"soundplan_raster_run_count":     rasterRunCount,
+		"soundplan_raster_run":           rasterRun,
+		"soundplan_raster_run_selection": rasterRunSelection,
 	})
 }
 
@@ -459,7 +483,11 @@ func printCompareSummary(cmd *cobra.Command, runID string, report soundPlanCompa
 	_, _ = fmt.Fprintf(out, "Report: %s\n", defaultCompareReportPath)
 
 	if report.Raster != nil {
-		_, _ = fmt.Fprintf(out, "Raster coverage: %s (%d SoundPLAN grid-map runs)\n", report.Raster.Status, len(report.Raster.SoundPlanRuns))
+		_, _ = fmt.Fprintf(out, "Raster coverage: %s (%d SoundPLAN grid-map runs discovered)\n", report.Raster.Status, len(report.Raster.SoundPlanRuns))
+
+		if report.Raster.SoundPlanRasterRun != "" {
+			_, _ = fmt.Fprintf(out, "Raster compared against SoundPLAN %s (%s)\n", report.Raster.SoundPlanRasterRun, report.Raster.SoundPlanRasterRunSelection)
+		}
 	}
 
 	for _, indicator := range []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight} {
@@ -591,145 +619,6 @@ func compareRasterStatus(report *soundPlanRasterCompareReport) string {
 	}
 
 	return report.Status
-}
-
-// soundPlanResultRunSelection records which SoundPLAN result run the
-// comparison read, out of which candidates, and on what grounds.
-//
-// It is singular on purpose. Concatenating every RSPS* directory — which is
-// what this used to do — produced a candidate pool spanning several scenarios:
-// in the reference project RSPS0011 and RSPS0021 hold the same 13 immission
-// points computed without and with the noise barrier, and their levels differ
-// by up to 8 dB. No matcher can be correct against a pool like that, because
-// the right answer is not in it once.
-type soundPlanResultRunSelection struct {
-	Dir        string
-	Candidates []string
-	Selection  string
-	Warnings   []string
-}
-
-// How a result run was chosen, as recorded in soundplan_result_run_selection.
-const (
-	resultRunSelectionExplicit  = "explicit"
-	resultRunSelectionGeometry  = "geometry_match"
-	resultRunSelectionOnly      = "only_candidate"
-	resultRunSelectionAmbiguous = "ambiguous"
-)
-
-// discoverSoundPlanReceiverResultDirs lists the result directories that carry
-// a receiver table, newest naming first.
-func discoverSoundPlanReceiverResultDirs(soundPlanRoot string) ([]string, error) {
-	matches, err := filepath.Glob(filepath.Join(soundPlanRoot, "RSPS*"))
-	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "cli.compare", "discover SoundPLAN receiver result directories", err)
-	}
-
-	slices.Sort(matches)
-
-	resultDirs := make([]string, 0, len(matches))
-
-	for _, match := range matches {
-		name := filepath.Base(match)
-
-		suffix := compareExtractRunSuffix(name)
-		if compareFileExists(filepath.Join(match, "RREC"+suffix+".abs")) {
-			resultDirs = append(resultDirs, name)
-		}
-	}
-
-	if len(resultDirs) == 0 {
-		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.compare", "no SoundPLAN RSPS receiver result directory found", nil)
-	}
-
-	return resultDirs, nil
-}
-
-// selectSoundPlanReceiverResultDir picks the one result run to compare
-// against.
-//
-// An explicit --soundplan-run wins. Otherwise the candidates are filtered by
-// whether their .res says the run consumed the noise barrier geometry, which
-// has to agree with whether the import produced barrier features — that is the
-// only thing distinguishing the reference project's two single-point runs. If
-// that leaves no single answer the last candidate by name is taken and the
-// selection is recorded as ambiguous, with a warning, because a comparison
-// that silently picks a scenario is the defect this function exists to stop.
-func selectSoundPlanReceiverResultDir(
-	soundPlanRoot string,
-	explicitRun string,
-	modelHasBarriers bool,
-) (soundPlanResultRunSelection, error) {
-	candidates, err := discoverSoundPlanReceiverResultDirs(soundPlanRoot)
-	if err != nil {
-		return soundPlanResultRunSelection{}, err
-	}
-
-	selection := soundPlanResultRunSelection{Candidates: candidates}
-
-	if requested := strings.TrimSpace(explicitRun); requested != "" {
-		if !slices.Contains(candidates, requested) {
-			return soundPlanResultRunSelection{}, domainerrors.New(
-				domainerrors.KindUserInput, "cli.compare",
-				fmt.Sprintf("--soundplan-run %q is not one of the available result runs: %s", requested, strings.Join(candidates, ", ")),
-				nil,
-			)
-		}
-
-		selection.Dir = requested
-		selection.Selection = resultRunSelectionExplicit
-
-		return selection, nil
-	}
-
-	if len(candidates) == 1 {
-		selection.Dir = candidates[0]
-		selection.Selection = resultRunSelectionOnly
-
-		return selection, nil
-	}
-
-	matching := make([]string, 0, len(candidates))
-
-	for _, candidate := range candidates {
-		usedBarrier, known := soundPlanRunUsedBarrierGeometry(soundPlanRoot, candidate)
-		if known && usedBarrier == modelHasBarriers {
-			matching = append(matching, candidate)
-		}
-	}
-
-	if len(matching) == 1 {
-		selection.Dir = matching[0]
-		selection.Selection = resultRunSelectionGeometry
-
-		return selection, nil
-	}
-
-	selection.Dir = candidates[len(candidates)-1]
-	selection.Selection = resultRunSelectionAmbiguous
-	selection.Warnings = append(selection.Warnings, fmt.Sprintf(
-		"SoundPLAN result runs %s could not be told apart by the geometry their .res files record; compared against %s by name order. Pass --soundplan-run to choose.",
-		strings.Join(candidates, ", "), selection.Dir,
-	))
-
-	return selection, nil
-}
-
-// soundPlanRunUsedBarrierGeometry reports whether a result run's .res says the
-// run read GeoWand.geo. The second return is false when the .res could not be
-// read at all, which must not be confused with a run that read no barrier.
-func soundPlanRunUsedBarrierGeometry(soundPlanRoot string, resultRunDir string) (bool, bool) {
-	res, err := soundplanimport.ParseResFile(filepath.Join(soundPlanRoot, resultRunDir+".res"))
-	if err != nil {
-		return false, false
-	}
-
-	names := res.GeometryFileNames()
-	if len(names) == 0 {
-		return false, false
-	}
-
-	return slices.Contains(names, "geowand.geo"), true
 }
 
 func loadSoundPlanReceiverResults(soundPlanRoot string, resultRunDir string) ([]soundplanimport.ReceiverResult, error) {

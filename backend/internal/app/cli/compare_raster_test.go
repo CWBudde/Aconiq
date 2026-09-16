@@ -510,7 +510,7 @@ func TestPrepareAndFinalizeSoundPlanRasterCompareFallsBackToImportReport(t *test
 		GridMaps:        []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -616,17 +616,26 @@ func rasterCompareProject(t *testing.T, extraFeatures ...any) (string, string) {
 		t.Fatalf("write model: %v", err)
 	}
 
-	gmDir := filepath.Join(projectRoot, "soundplan", "RS01")
+	writeRasterCompareGridMap(t, projectRoot, "RS01", "RRLK0010.GM",
+		[]testGridCell{{ground: -1, day: 0, night: 0, flag: 1}, {ground: 110, day: 50, night: 40, flag: 1}})
+
+	return projectRoot, modelPath
+}
+
+// writeRasterCompareGridMap lays one decodable GM payload out under a project's
+// SoundPLAN root. A project holds several, and which of them a comparison reads
+// is the thing the selection decides, so the cells are the caller's to choose.
+func writeRasterCompareGridMap(t *testing.T, projectRoot, subFolder, gmFile string, cells []testGridCell) {
+	t.Helper()
+
+	gmDir := filepath.Join(projectRoot, "soundplan", subFolder)
 	if err := os.MkdirAll(gmDir, 0o750); err != nil {
 		t.Fatalf("make gm dir: %v", err)
 	}
 
-	cells := []testGridCell{{ground: -1, day: 0, night: 0, flag: 1}, {ground: 110, day: 50, night: 40, flag: 1}}
-	if err := writeTestGridMapFile(filepath.Join(gmDir, "RRLK0010.GM"), cells); err != nil {
+	if err := writeTestGridMapFile(filepath.Join(gmDir, gmFile), cells); err != nil {
 		t.Fatalf("write gm: %v", err)
 	}
-
-	return projectRoot, modelPath
 }
 
 // calcAreaFeature is one calc-area feature spanning [minX,maxX]×[minY,maxY],
@@ -727,7 +736,7 @@ func TestPrepareSoundPlanRasterCompareModelCalcAreaWins(t *testing.T) {
 		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -795,7 +804,7 @@ func TestPrepareSoundPlanRasterCompareAgreeingAreasAreSilent(t *testing.T) {
 		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -883,7 +892,7 @@ func TestPrepareSoundPlanRasterCompareUsesMetadataWhenCalcAreaMissing(t *testing
 		GridMaps:        []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2, OriginX: 100, OriginY: 200, SpacingX: 10, SpacingY: 10}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -1020,7 +1029,7 @@ func TestPrepareSoundPlanRasterCompareUnclosedImportReportArea(t *testing.T) {
 		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -1097,7 +1106,7 @@ func TestPrepareSoundPlanRasterCompareGeographicCRSDeltaIsNotMetres(t *testing.T
 		GridMaps: []soundplanimport.GridMapMetadata{{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", PointsTotal: 2}},
 	}
 
-	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath)
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}

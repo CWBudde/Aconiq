@@ -5,6 +5,7 @@ package soundplanimport
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -364,6 +365,67 @@ func (res *RunResult) GeometryFileNames() []string {
 	slices.Sort(names)
 
 	return names
+}
+
+// gridMapRunCommandPrefix is the token SoundPLAN writes into `RunCommands` for
+// a grid-map run: `GNM<spacing>:<height>`, e.g. `GNM5:4`.
+const gridMapRunCommandPrefix = "GNM"
+
+// GridMapLayout reports the grid spacing and receiver height this run was
+// computed with, read out of the `GNM<spacing>:<height>` token in
+// `RunCommands`. The second return is false when no such token is present or
+// it cannot be read, which must not be confused with a run computed at ground
+// level with zero spacing.
+//
+// It is the second discriminator between otherwise identical grid-map runs. In
+// the reference project the geometry list separates the four RRLK runs into
+// two computed without the noise barrier and two with it, and only the height
+// in this token tells the remaining pair apart.
+func (res *RunResult) GridMapLayout() (GridMapRunLayout, bool) {
+	if res == nil {
+		return GridMapRunLayout{}, false
+	}
+
+	index := strings.Index(strings.ToUpper(res.RunCommands), gridMapRunCommandPrefix)
+	if index < 0 {
+		return GridMapRunLayout{}, false
+	}
+
+	// The token is read as the maximal numeric run after the prefix rather than
+	// by splitting the line on a separator: SoundPLAN writes German decimals,
+	// so a comma is as likely to sit inside a number as between two commands.
+	token := res.RunCommands[index+len(gridMapRunCommandPrefix):]
+	if end := strings.IndexFunc(token, func(r rune) bool {
+		return (r < '0' || r > '9') && r != '.' && r != ',' && r != ':'
+	}); end >= 0 {
+		token = token[:end]
+	}
+
+	spacing, height, ok := strings.Cut(token, ":")
+	if !ok {
+		return GridMapRunLayout{}, false
+	}
+
+	spacingM, spacingOK := parseDecimal(spacing)
+
+	heightM, heightOK := parseDecimal(height)
+	if !spacingOK || !heightOK || spacingM <= 0 {
+		return GridMapRunLayout{}, false
+	}
+
+	return GridMapRunLayout{SpacingM: spacingM, HeightM: heightM}, true
+}
+
+// parseDecimal reads a SoundPLAN number that may use either decimal separator.
+// Unlike parseGermanFloat it says whether it succeeded, because a caller that
+// has to tell "absent" from "zero" cannot use a zero return to do it.
+func parseDecimal(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(raw), ",", "."), 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, false
+	}
+
+	return value, true
 }
 
 func parseResComments(res *RunResult, sections map[string]map[string]string) {

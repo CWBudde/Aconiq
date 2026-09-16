@@ -103,16 +103,34 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatalf("raster status = %q, want heuristic_scanline_compare", report.Raster.Status)
 	}
 
+	// Every grid map the bundle holds stays on the record as a discovered run
+	// and as a candidate. What changed is how many of them are compared.
 	if len(report.Raster.SoundPlanRuns) != 4 {
 		t.Fatalf("raster run count = %d, want 4", len(report.Raster.SoundPlanRuns))
+	}
+
+	if len(report.Raster.SoundPlanRasterRunCandidates) != 4 {
+		t.Fatalf("raster run candidates = %v, want all four grid maps", report.Raster.SoundPlanRasterRunCandidates)
+	}
+
+	// The reference project holds the same site as four grid maps: without and
+	// with the noise barrier, each at a 4 m and a 2 m grid. The import consumed
+	// the barrier and the project's RLKHEIGHT is 2 m, so exactly one of the four
+	// describes the model — and the other three measure a scenario it does not.
+	if report.Raster.SoundPlanRasterRun != "RRLK0023" {
+		t.Fatalf("soundplan_raster_run = %q, want RRLK0023 — the barrier run at RLKHEIGHT", report.Raster.SoundPlanRasterRun)
+	}
+
+	if report.Raster.SoundPlanRasterRunSelection != gridRunSelectionGridHeight {
+		t.Fatalf("soundplan_raster_run_selection = %q, want %q", report.Raster.SoundPlanRasterRunSelection, gridRunSelectionGridHeight)
 	}
 
 	if report.Raster.ArtifactPath == "" {
 		t.Fatal("expected raster artifact path in compare report")
 	}
 
-	if len(report.Raster.Runs) != 4 {
-		t.Fatalf("raster summary run count = %d, want 4", len(report.Raster.Runs))
+	if len(report.Raster.Runs) != 1 {
+		t.Fatalf("raster summary run count = %d, want exactly the selected run", len(report.Raster.Runs))
 	}
 
 	for _, run := range report.Raster.Runs {
@@ -152,8 +170,13 @@ func TestCompareSoundPlanReceivers(t *testing.T) {
 		t.Fatalf("calc area bounds delta = %v m, want 0 for a freshly imported bundle", got)
 	}
 
-	if len(rasterArtifact.Runs) != 4 {
-		t.Fatalf("raster artifact run count = %d, want 4", len(rasterArtifact.Runs))
+	if len(rasterArtifact.Runs) != 1 {
+		t.Fatalf("raster artifact run count = %d, want exactly the selected run", len(rasterArtifact.Runs))
+	}
+
+	if rasterArtifact.SoundPlanRasterRun != report.Raster.SoundPlanRasterRun {
+		t.Fatalf("raster artifact run = %q, report run = %q, want the same grid map",
+			rasterArtifact.SoundPlanRasterRun, report.Raster.SoundPlanRasterRun)
 	}
 
 	manifestPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "project.json"))

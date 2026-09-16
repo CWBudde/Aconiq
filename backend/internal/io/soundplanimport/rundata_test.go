@@ -55,6 +55,63 @@ func TestParseRunDataFiles(t *testing.T) {
 	}
 }
 
+// TestGridMapLayout covers the `GNM<spacing>:<height>` token in `RunCommands`.
+//
+// It is the second signal that tells two grid-map runs apart: the geometry list
+// separates a project's grid maps into the ones computed with the noise barrier
+// and the ones without, and only this height separates the pair that remains.
+// Absence and nonsense both have to stay "unknown" — a zero height would look
+// like a grid evaluated at ground level and would match nothing, or worse, a
+// project that records no height at all.
+func TestGridMapLayout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		runCommands string
+		wantOK      bool
+		wantSpacing float64
+		wantHeight  float64
+	}{
+		{name: "plain", runCommands: "GNM5:4", wantOK: true, wantSpacing: 5, wantHeight: 4},
+		{name: "two metre grid", runCommands: "GNM5:2", wantOK: true, wantSpacing: 5, wantHeight: 2},
+		{name: "german decimals", runCommands: "GNM2,5:1,5", wantOK: true, wantSpacing: 2.5, wantHeight: 1.5},
+		{name: "dot decimals", runCommands: "GNM2.5:1.5", wantOK: true, wantSpacing: 2.5, wantHeight: 1.5},
+		{name: "trailing command", runCommands: "GNM5:4 RSPS", wantOK: true, wantSpacing: 5, wantHeight: 4},
+		{name: "leading command", runCommands: "RSPS GNM5:4", wantOK: true, wantSpacing: 5, wantHeight: 4},
+		{name: "absent", runCommands: "RSPS0011", wantOK: false},
+		{name: "empty", runCommands: "", wantOK: false},
+		{name: "no height", runCommands: "GNM5", wantOK: false},
+		{name: "unparseable", runCommands: "GNMx:y", wantOK: false},
+		{name: "zero spacing is not a grid", runCommands: "GNM0:4", wantOK: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			layout, ok := (&RunResult{RunCommands: test.runCommands}).GridMapLayout()
+			if ok != test.wantOK {
+				t.Fatalf("GridMapLayout(%q) ok = %v, want %v", test.runCommands, ok, test.wantOK)
+			}
+
+			if !test.wantOK {
+				return
+			}
+
+			if layout.SpacingM != test.wantSpacing || layout.HeightM != test.wantHeight {
+				t.Fatalf("GridMapLayout(%q) = %+v, want spacing %v height %v",
+					test.runCommands, layout, test.wantSpacing, test.wantHeight)
+			}
+		})
+	}
+
+	// A nil run is not a run declaring zero.
+	if _, ok := (*RunResult)(nil).GridMapLayout(); ok {
+		t.Fatal("GridMapLayout() on a nil run reported a layout")
+	}
+}
+
 // TestGeometryFileNamesUnionsBothSources checks that the two places a .res
 // records its inputs are unioned rather than one being trusted: either can be
 // absent, and the answer must not depend on which.

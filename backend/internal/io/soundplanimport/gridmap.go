@@ -41,13 +41,31 @@ type DecodedGridMap struct {
 	ValueCellCount  int             `json:"value_cell_count"`
 }
 
+// GridMapRunLayout is the grid spacing and receiver height one grid-map run was
+// computed with, as declared by the `GNM<spacing>:<height>` token in its .res
+// `RunCommands` line. It is carried as a pointer on GridMapMetadata so that
+// "the run did not say" stays distinguishable from "the run said zero".
+type GridMapRunLayout struct {
+	SpacingM float64 `json:"spacing_m"`
+	HeightM  float64 `json:"height_m"`
+}
+
 // GridMapMetadata describes the currently decoded metadata from one SoundPLAN
 // grid-map result. Value extraction is intentionally deferred until the GM
 // payload layout is understood well enough to avoid guesswork.
+//
+// GeometryFiles and RunLayout are what the run itself declared about the
+// scenario it computed, rather than about its raster payload. They exist
+// because a project holds several grid maps of the same site and only these two
+// signals tell them apart: which geometry went in, and at what height the grid
+// was evaluated. Both are carried forward from the .res the import already read,
+// so a consumer never has to guess a .res file name from a result subfolder.
 type GridMapMetadata struct {
 	ResultSubFolder   string              `json:"result_subfolder"`
 	RunType           string              `json:"run_type,omitempty"`
 	GMFile            string              `json:"gm_file"`
+	GeometryFiles     []string            `json:"geometry_files,omitempty"`
+	RunLayout         *GridMapRunLayout   `json:"run_layout,omitempty"`
 	FileSizeBytes     int64               `json:"file_size_bytes"`
 	PointsTotal       int                 `json:"points_total,omitempty"`
 	PointsCalculated  int                 `json:"points_calculated,omitempty"`
@@ -90,8 +108,13 @@ func LoadGridMapMetadata(projectDir string, runs []*RunResult) []GridMapMetadata
 			ResultSubFolder:  subdir,
 			RunType:          run.RunType,
 			GMFile:           filepath.Base(gmPath),
+			GeometryFiles:    run.GeometryFileNames(),
 			PointsTotal:      run.Statistics.PointsTotal,
 			PointsCalculated: run.Statistics.PointsCalculated,
+		}
+
+		if layout, ok := run.GridMapLayout(); ok {
+			item.RunLayout = &layout
 		}
 
 		for _, period := range run.AssessmentPeriods {
