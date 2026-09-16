@@ -13,6 +13,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
@@ -222,6 +223,41 @@ func evidenceTierFromProvenance(path string) string {
 	}
 
 	return tier
+}
+
+// computeCRSFromProvenance returns the CRS a run's results are expressed in.
+//
+// The empty string means one thing only: a manifest that decoded and carries
+// no compute_crs, which is a run recorded before the key existed and whose
+// results are therefore in the project CRS. newFormatExportContext applies
+// that fallback.
+//
+// A manifest that cannot be read or decoded is an error rather than that same
+// empty string. Conflating the two would label a geographic run's UTM results
+// EPSG:4326 — putting every exported result off the coast of Africa — on the
+// strength of an unreadable file, which is the one case where guessing is
+// least defensible.
+//
+// A run with no provenance path at all is not an error: `aconiq export`
+// stages one only when the run has one.
+func computeCRSFromProvenance(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read provenance %s: %w", path, err)
+	}
+
+	var parsed project.ProvenanceManifest
+
+	err = json.Unmarshal(payload, &parsed)
+	if err != nil {
+		return "", fmt.Errorf("decode provenance %s: %w", path, err)
+	}
+
+	return strings.TrimSpace(parsed.Metadata[provenanceComputeCRSKey]), nil
 }
 
 // persistExportBundle writes the export summary and records the bundle plus the
@@ -494,8 +530,14 @@ func applyOptionalExportOutputs(
 		return domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
 	}
 
+	resultsCRS, crsErr := computeCRSFromProvenance(staged.provenancePath)
+	if crsErr != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.export",
+			"read the CRS the run's results are in", crsErr)
+	}
+
 	exportedPaths, fmtErr := executeFormatExports(
-		formats, bundleDir, projectCRS,
+		formats, bundleDir, projectCRS, resultsCRS,
 		staged.runResults, opts.contourInterval,
 		staged.modelGeoJSONPath,
 	)
@@ -858,11 +900,21 @@ func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.
 }
 
 // formatExportContext holds the data shared by all per-format export helpers.
+//
+// A bundle can legitimately hold two CRS. The model GeoJSON is the project's
+// stored model and is in projectCRS; the receiver table, the raster and the
+// contours derived from it come out of a run and are in resultsCRS, which
+// differs whenever the run had to project a geographic project CRS into a
+// metric one before computing. Labelling each file with the CRS it is actually
+// in is what lets a GIS overlay them; one shared label would be wrong for one
+// of the two.
 type formatExportContext struct {
 	bundleDir        string
 	formatsDir       string
 	projectCRS       string
 	epsgCode         int
+	resultsCRS       string
+	resultsEPSG      int
 	contourInterval  float64
 	modelGeoJSONPath string
 	receiverTable    *results.ReceiverTable
@@ -875,11 +927,12 @@ func executeFormatExports(
 	formats []exportfmt.Format,
 	bundleDir string,
 	projectCRS string,
+	resultsCRS string,
 	copiedResults copiedRunResults,
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) (map[string][]string, error) {
-	ctx := newFormatExportContext(bundleDir, projectCRS, copiedResults, contourInterval, modelGeoJSONPath)
+	ctx := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
 
 	out := make(map[string][]string)
 
@@ -896,19 +949,26 @@ func executeFormatExports(
 func newFormatExportContext(
 	bundleDir string,
 	projectCRS string,
+	resultsCRS string,
 	copiedResults copiedRunResults,
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) formatExportContext {
+	if strings.TrimSpace(resultsCRS) == "" {
+		resultsCRS = projectCRS
+	}
+
 	ctx := formatExportContext{
 		bundleDir:        bundleDir,
 		formatsDir:       filepath.Join(bundleDir, "formats"),
 		projectCRS:       projectCRS,
+		resultsCRS:       resultsCRS,
 		contourInterval:  contourInterval,
 		modelGeoJSONPath: modelGeoJSONPath,
 	}
 
 	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &ctx.epsgCode)
+	_, _ = fmt.Sscanf(resultsCRS, "EPSG:%d", &ctx.resultsEPSG)
 
 	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
 	if copiedResults.ReceiverTableJSON != "" {
@@ -995,7 +1055,7 @@ func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
 
 	basePath := filepath.Join(c.formatsDir, "raster")
 
-	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, c.rasterGeoTransform(), c.projectCRS)
+	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("geotiff export: %w", err)
 	}
@@ -1017,7 +1077,7 @@ func (c *formatExportContext) exportCOG(out map[string][]string) error {
 
 	cogBasePath := filepath.Join(c.formatsDir, "raster")
 
-	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, c.rasterGeoTransform(), c.projectCRS)
+	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("cog export: %w", err)
 	}
@@ -1038,7 +1098,7 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 	if c.receiverTable != nil {
 		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
 
-		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *c.receiverTable, c.projectCRS, c.epsgCode)
+		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *c.receiverTable, c.resultsCRS, c.resultsEPSG)
 		if err != nil {
 			return fmt.Errorf("geopackage export: %w", err)
 		}
@@ -1067,6 +1127,61 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 	return nil
 }
 
+// geoJSONCRS is the only CRS a GeoJSON file may be in. RFC 7946 §4 fixes it:
+// a consumer reads a bare FeatureCollection as WGS84 whatever produced it.
+const geoJSONCRS = "EPSG:4326"
+
+// contoursInWGS84 moves contour vertices out of the CRS the results are in and
+// into the one GeoJSON is defined in.
+//
+// The other formats in this bundle carry their CRS in their own metadata and
+// so can stay in the results' CRS; GeoJSON cannot, which is why this format
+// alone is reprojected rather than labelled.
+//
+// A results CRS with no EPSG code — a WKT: identifier — is left alone. There
+// is nothing to transform through, and failing the export would break bundles
+// that are produced today in exchange for nothing.
+func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exportfmt.ContourLine, error) {
+	if strings.EqualFold(strings.TrimSpace(resultsCRS), geoJSONCRS) {
+		return contours, nil
+	}
+
+	from, ok := epsgCRS(resultsCRS)
+	if !ok {
+		return contours, nil
+	}
+
+	to, err := geo.ParseCRS(geoJSONCRS)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", geoJSONCRS, err)
+	}
+
+	pipeline, err := geo.BuildTransformPipeline(to, from)
+	if err != nil {
+		return nil, fmt.Errorf("build transform %s -> %s: %w", from.ID, geoJSONCRS, err)
+	}
+
+	out := make([]exportfmt.ContourLine, len(contours))
+
+	for i, contour := range contours {
+		moved := contour
+		moved.Points = make([][2]float64, len(contour.Points))
+
+		for j, point := range contour.Points {
+			transformed, err := pipeline.ApplyPoint(geo.Point2D{X: point[0], Y: point[1]})
+			if err != nil {
+				return nil, fmt.Errorf("contour %d vertex %d: %w", i, j, err)
+			}
+
+			moved.Points[j] = [2]float64{transformed.X, transformed.Y}
+		}
+
+		out[i] = moved
+	}
+
+	return out, nil
+}
+
 func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
 	if c.raster == nil {
 		return nil
@@ -1077,6 +1192,11 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 	})
 	if err != nil {
 		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	contours, err = contoursInWGS84(contours, c.resultsCRS)
+	if err != nil {
+		return fmt.Errorf("contour reprojection: %w", err)
 	}
 
 	contourPath := filepath.Join(c.formatsDir, "contours.geojson")
@@ -1105,7 +1225,7 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 
 	contourGpkgPath := filepath.Join(c.formatsDir, "contours.gpkg")
 
-	err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, c.projectCRS, c.epsgCode)
+	err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, c.resultsCRS, c.resultsEPSG)
 	if err != nil {
 		return fmt.Errorf("contour geopackage export: %w", err)
 	}

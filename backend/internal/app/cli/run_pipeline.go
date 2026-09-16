@@ -202,6 +202,37 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
+	model, projection, err := resolveComputeModel(model, prepared.project.CRS)
+	if err != nil {
+		prepared.log.addf("failed to project model for compute: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
+	}
+
+	if projection.Applied {
+		prepared.log.addf("project_crs=%s is geographic; computing in compute_crs=%s", projection.ProjectCRS, projection.ComputeCRS)
+	}
+
+	err = prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, map[string]string{
+		provenanceProjectCRSKey: projection.ProjectCRS,
+		provenanceComputeCRSKey: projection.ComputeCRS,
+	})
+	if err != nil {
+		prepared.log.addf("failed to record compute CRS: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
+	}
+
+	// The terrain is stored in the project CRS and is not moved with the
+	// model, so a projected run has to query it through a transform.
+	runTerrain, err := newTerrainInComputeCRS(loadRunTerrain(prepared, state), projection)
+	if err != nil {
+		prepared.log.addf("failed to align terrain with the compute CRS: %v", err)
+
+		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(),
+			domainerrors.New(domainerrors.KindInternal, "cli.computeRun", "align terrain with the compute CRS", err))
+	}
+
 	module, err := runModuleFor(prepared.standard.StandardID)
 	if err != nil {
 		prepared.log.addf("run wiring missing: %v", err)
@@ -213,7 +244,7 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		standard:     prepared.standard,
 		params:       prepared.params,
 		model:        model,
-		terrain:      loadRunTerrain(prepared, state),
+		terrain:      runTerrain,
 		receiverMode: req.receiverMode,
 		runDir:       prepared.runDir,
 		runID:        prepared.run.ID,

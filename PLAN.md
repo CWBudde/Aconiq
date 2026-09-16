@@ -473,6 +473,39 @@ Three candidate fixes, none chosen:
 - remove the reprojection from the save path entirely by holding project-CRS coordinates in the
   frontend and reprojecting for display only, which makes a save lossless without fixing the series.
 
+### 1.7 A geographic project CRS made every level wrong, and it was the default — closed
+
+`aconiq run` projects a geographic project CRS into an ETRS89 / UTM zone taken from the model's own
+centre before anything reads a coordinate, and records `project_crs` and `compute_crs`.
+
+**The bullet this closes called it the auto receiver grid's defect. It was not**: every module
+measures distance with `geo.Distance`, so the units error was the whole compute path — it
+reproduced with custom receivers and reached `rls19-road`, on a model that validated without a
+warning. `aconiq init` defaults `--crs` to EPSG:4326, so this was the out-of-the-box path.
+
+Five constraints are live:
+
+- **Only zones 31-34 exist**, and a site outside them is refused rather than projected into the
+  nearest zone that does. ETRS89 is the target for EPSG:4326 too: the datum difference is a
+  near-rigid sub-metre shift that changes no distance, where a WGS84 / UTM table would reach only
+  zones 32 and 33.
+- **Results are in the compute CRS**, not the project CRS. Transforming them back would run the
+  lossy round trip 1.6 measures over coordinates nothing computes from — which is also why an
+  export bundle now labels the model GeoJSON and the results separately, and why contour GeoJSON
+  is reprojected to WGS84 rather than labelled (RFC 7946 fixes its CRS).
+- **A projected project is not touched**, evidenced by the 13 digest goldens moving by exactly the
+  two new provenance keys and nothing else.
+- **Coordinates embedded in properties move with the geometry.** RLS-19 directional sources carry
+  their own centerline and Schall 03 track features their own point, and both are consumed as
+  geometry. `modelgeojson.propertyGeometries` is the list; a new coordinate-bearing property has to
+  be added to it or it silently stays in degrees.
+- **Terrain is wrapped, not resampled.** The DTM stays in the project CRS and compute-CRS queries
+  are transformed back per lookup, because `terrainElevationAt` turns an out-of-grid miss into an
+  elevation of 0 without saying so.
+
+`aconiq compare-raster` deliberately does **not** reproject: it compares against SoundPLAN rasters
+in the project's own CRS.
+
 ## Priority 2 — Make the CLI run the normative code
 
 **Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
@@ -509,23 +542,16 @@ Three consequences fell out of the work:
 
 ### Open
 
-- [ ] **The auto receiver grid applies metres to a geographic CRS.**
-      `buildReceiversFromPoints` (`run_receivers.go:39-53`) computes
-      `bbox.MinX - paddingM` and hands `resolutionM` to `GridReceiverSet` in the project's own
-      units, and nothing on that path projects first — `calcAreaExtent` and `resolveGridReceivers`
-      (`run_input.go:134-183`) read the model's coordinates as stored. So in a project whose CRS is
-      geographic a 20 m padding is subtracted as 20 **degrees** and a 100 m resolution spaces
-      receivers 100 degrees apart. Measured, not reasoned: a model spanning 9.985–10.015 E,
-      53.545–53.565 N put its single receiver at `-10.015, 33.545`, and the levels computed there
-      were reported as if they were the site's.
-      This is not a corner case — `aconiq init` defaults the project CRS to **EPSG:4326** and
-      `--receiver-mode` defaults to `auto-grid`, so it is the out-of-the-box path. Reproduced
-      byte-identically on `main`, so it predates Phase C and is not a regression.
-      Either project the extent into a metric CRS before padding and gridding, or refuse a
-      geographic project CRS on the auto-grid path — silently computing at the wrong place is the
-      one option that is not available. Whichever way it goes, the browser kernel's
-      `buildReceiverGrid` pads the same bbox the same way, so `browser-parity.test.ts` pins the two
-      together and both sides move at once.
+- [ ] **Browser mode still computes in degrees.** The compute projection landed in the Go run
+      pipeline (1.7), and WASM mode does not go through it: `browser-backend.ts` declares
+      `DEFAULT_CRS = "WGS84 / web map"` (`:74`), builds the receiver grid in TypeScript
+      (`buildReceiverGrid`, `:1121-1153`, `minX - padding` in whatever units the store holds) and
+      hands lon/lat straight to the kernel, which exposes only `rls19Road` and computes on what it
+      is given. So the whole offline demo reproduces 1.7 in full. The frontend has no proj4, and it
+      must not grow a second transverse-Mercator implementation: expose the transform the Go kernel
+      already links in (`internal/geo`) as an `aconiq.transform` entry point and call it from
+      `browser-backend.ts`, so the two kernels project through the same series by construction and
+      `browser-parity.test.ts` keeps pinning them together.
 - [ ] **`aconiq compare` still runs the preview chain, by explicit opt-in.** The SoundPLAN import
       produces the `rail_*` preview vocabulary only, so `compare_test.go` and `cmdoutput_test.go`
       now pass `--param schall03_engine=preview` rather than reaching it by accident. The ~25 dB

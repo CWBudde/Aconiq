@@ -26,6 +26,7 @@
     },
     "metadata": {
       "compliance_boundary": "baseline-preview-expanded-cnossos-aircraft-contract",
+      "compute_crs": "EPSG:25832",
       "emission_model": "class-operation-procedure-thrust-components",
       "evidence_tier": "scaffold",
       "indicator_order": "Lday,Levening,Lnight,Lden",
@@ -54,6 +55,7 @@
       "key_parameter.track_end_height_m": "300",
       "key_parameter.track_start_height_m": "30",
       "model_version": "baseline-preview-aircraft-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },

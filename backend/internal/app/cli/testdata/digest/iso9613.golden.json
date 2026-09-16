@@ -26,6 +26,7 @@
     },
     "metadata": {
       "compliance_boundary": "iso9613-engineering-octaveband",
+      "compute_crs": "EPSG:25832",
       "evidence_tier": "normative",
       "implementation_status": "octaveband-point-source",
       "indicator_order": "LpAeq_DW,LpAeq_LT",
@@ -45,6 +46,7 @@
       "key_parameter.relative_humidity_percent": "70",
       "meteorology_assumption": "downwind-or-moderate-inversion",
       "model_version": "iso9613-octaveband-v1",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1",
       "source_scope": "point"

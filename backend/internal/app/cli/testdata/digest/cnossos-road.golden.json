@@ -26,6 +26,7 @@
     },
     "metadata": {
       "compliance_boundary": "baseline-preview-expanded-road-contract",
+      "compute_crs": "EPSG:25832",
       "emission_model": "vehicle-class-components-with-road-context",
       "evidence_tier": "scaffold",
       "indicator_order": "Lday,Levening,Lnight,Lden",
@@ -55,6 +56,7 @@
       "key_parameter.traffic_night_medium_vph": "30",
       "key_parameter.traffic_night_ptw_vph": "5",
       "model_version": "baseline-preview-road-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },

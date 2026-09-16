@@ -26,6 +26,7 @@
     },
     "metadata": {
       "compliance_boundary": "baseline-preview-expanded-rail-contract",
+      "compute_crs": "EPSG:25832",
       "emission_model": "rolling-traction-braking-infrastructure-components",
       "evidence_tier": "scaffold",
       "indicator_order": "Lday,Levening,Lnight,Lden",
@@ -48,6 +49,7 @@
       "key_parameter.traffic_evening_trains_per_hour": "6",
       "key_parameter.traffic_night_trains_per_hour": "4",
       "model_version": "baseline-preview-rail-v2",
+      "project_crs": "EPSG:25832",
       "receiver_mode": "auto-grid",
       "reporting_precision_db": "0.1"
     },
