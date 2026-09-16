@@ -1,0 +1,580 @@
+{
+  "proj_version": "9.8.1",
+  "generated": "2026-09-16",
+  "projection_cases": [
+    {
+      "name": "central meridian",
+      "epsg": 25831,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=3 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 3,
+      "lat": 51,
+      "easting": 500000.000000001,
+      "northing": 5649824.888131557
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 25831,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=3 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 0,
+      "lat": 51,
+      "easting": 289511.142962550,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 25831,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=3 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 6,
+      "lat": 51,
+      "easting": 710488.857037451,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 25831,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=3 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 4,
+      "lat": 47.27,
+      "easting": 575641.439547902,
+      "northing": 5235653.844911755
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 25831,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=3 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 2,
+      "lat": 55.09,
+      "easting": 436175.848775561,
+      "northing": 6105263.369734664
+    },
+    {
+      "name": "central meridian",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 9,
+      "lat": 51,
+      "easting": 500000.000000000,
+      "northing": 5649824.888131557
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 6,
+      "lat": 51,
+      "easting": 289511.142962549,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 12,
+      "lat": 51,
+      "easting": 710488.857037451,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 10,
+      "lat": 47.27,
+      "easting": 575641.439547901,
+      "northing": 5235653.844911755
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 8,
+      "lat": 55.09,
+      "easting": 436175.848775560,
+      "northing": 6105263.369734664
+    },
+    {
+      "name": "central meridian",
+      "epsg": 25833,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 15,
+      "lat": 51,
+      "easting": 500000.000000001,
+      "northing": 5649824.888131557
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 25833,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 12,
+      "lat": 51,
+      "easting": 289511.142962550,
+      "northing": 5654109.178603592
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 25833,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 18,
+      "lat": 51,
+      "easting": 710488.857037452,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 25833,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 16,
+      "lat": 47.27,
+      "easting": 575641.439547902,
+      "northing": 5235653.844911755
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 25833,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 14,
+      "lat": 55.09,
+      "easting": 436175.848775561,
+      "northing": 6105263.369734664
+    },
+    {
+      "name": "central meridian",
+      "epsg": 25834,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 21,
+      "lat": 51,
+      "easting": 500000.000000001,
+      "northing": 5649824.888131557
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 25834,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 18,
+      "lat": 51,
+      "easting": 289511.142962550,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 25834,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 24,
+      "lat": 51,
+      "easting": 710488.857037452,
+      "northing": 5654109.178603593
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 25834,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 22,
+      "lat": 47.27,
+      "easting": 575641.439547901,
+      "northing": 5235653.844911755
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 25834,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=21 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 20,
+      "lat": 55.09,
+      "easting": 436175.848775561,
+      "northing": 6105263.369734664
+    },
+    {
+      "name": "central meridian",
+      "epsg": 32632,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 9,
+      "lat": 51,
+      "easting": 500000.000000000,
+      "northing": 5649824.888255088
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 32632,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 6,
+      "lat": 51,
+      "easting": 289511.142964640,
+      "northing": 5654109.178727080
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 32632,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 12,
+      "lat": 51,
+      "easting": 710488.857035360,
+      "northing": 5654109.178727080
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 32632,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 10,
+      "lat": 47.27,
+      "easting": 575641.439547230,
+      "northing": 5235653.845033304
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 32632,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 8,
+      "lat": 55.09,
+      "easting": 436175.848776267,
+      "northing": 6105263.369858859
+    },
+    {
+      "name": "central meridian",
+      "epsg": 32633,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 15,
+      "lat": 51,
+      "easting": 500000.000000001,
+      "northing": 5649824.888255088
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 32633,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 12,
+      "lat": 51,
+      "easting": 289511.142964642,
+      "northing": 5654109.178727080
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 32633,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 18,
+      "lat": 51,
+      "easting": 710488.857035361,
+      "northing": 5654109.178727080
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 32633,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 16,
+      "lat": 47.27,
+      "easting": 575641.439547231,
+      "northing": 5235653.845033304
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 32633,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+      "lon": 14,
+      "lat": 55.09,
+      "easting": 436175.848776268,
+      "northing": 6105263.369858859
+    },
+    {
+      "name": "central meridian",
+      "epsg": 31466,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=6 +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 6,
+      "lat": 51,
+      "easting": 2500000.000000000,
+      "northing": 5651505.564385357
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 31466,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=6 +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 4.5,
+      "lat": 51,
+      "easting": 2394718.825406485,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 31466,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=6 +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 7.5,
+      "lat": 51,
+      "easting": 2605281.174593515,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 31466,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=6 +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 6,
+      "lat": 47.27,
+      "easting": 2500000.000000000,
+      "northing": 5236730.598450804
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 31466,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=6 +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 6,
+      "lat": 55.09,
+      "easting": 2500000.000000000,
+      "northing": 6106616.958720937
+    },
+    {
+      "name": "central meridian",
+      "epsg": 31467,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 9,
+      "lat": 51,
+      "easting": 3500000.000000000,
+      "northing": 5651505.564385357
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 31467,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 7.5,
+      "lat": 51,
+      "easting": 3394718.825406485,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 31467,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 10.5,
+      "lat": 51,
+      "easting": 3605281.174593515,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 31467,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 9,
+      "lat": 47.27,
+      "easting": 3500000.000000000,
+      "northing": 5236730.598450804
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 31467,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 9,
+      "lat": 55.09,
+      "easting": 3500000.000000000,
+      "northing": 6106616.958720937
+    },
+    {
+      "name": "central meridian",
+      "epsg": 31468,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 12,
+      "lat": 51,
+      "easting": 4500000.000000000,
+      "northing": 5651505.564385357
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 31468,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 10.5,
+      "lat": 51,
+      "easting": 4394718.825406485,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 31468,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 13.5,
+      "lat": 51,
+      "easting": 4605281.174593515,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 31468,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 12,
+      "lat": 47.27,
+      "easting": 4500000.000000000,
+      "northing": 5236730.598450804
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 31468,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 12,
+      "lat": 55.09,
+      "easting": 4500000.000000000,
+      "northing": 6106616.958720937
+    },
+    {
+      "name": "central meridian",
+      "epsg": 31469,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 15,
+      "lat": 51,
+      "easting": 5500000.000000000,
+      "northing": 5651505.564385357
+    },
+    {
+      "name": "western zone edge",
+      "epsg": 31469,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 13.5,
+      "lat": 51,
+      "easting": 5394718.825406485,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "eastern zone edge",
+      "epsg": 31469,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 16.5,
+      "lat": 51,
+      "easting": 5605281.174593515,
+      "northing": 5652576.680578662
+    },
+    {
+      "name": "southern extreme",
+      "epsg": 31469,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 15,
+      "lat": 47.27,
+      "easting": 5500000.000000000,
+      "northing": 5236730.598450804
+    },
+    {
+      "name": "northern extreme",
+      "epsg": 31469,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +units=m +no_defs",
+      "lon": 15,
+      "lat": 55.09,
+      "easting": 5500000.000000000,
+      "northing": 6106616.958720937
+    },
+    {
+      "name": "5 degrees east of the central meridian",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 14,
+      "lat": 51,
+      "easting": 850755.337561215,
+      "northing": 5661732.384450292
+    },
+    {
+      "name": "5 degrees west of the central meridian",
+      "epsg": 25832,
+      "proj_string": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+      "lon": 4,
+      "lat": 51,
+      "easting": 149244.662438785,
+      "northing": 5661732.384450292
+    }
+  ],
+  "crs_cases": [
+    {
+      "name": "geographic identity",
+      "epsg": 4326,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 9.732000000,
+      "y": 52.375900000
+    },
+    {
+      "name": "ETRS89 geographic",
+      "epsg": 4258,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 9.732000000,
+      "y": 52.375900000
+    },
+    {
+      "name": "Hannover",
+      "epsg": 25832,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 549829.857904924,
+      "y": 5803100.337559809
+    },
+    {
+      "name": "Amsterdam",
+      "epsg": 25831,
+      "lon": 4.9041,
+      "lat": 52.3676,
+      "x": 629638.038725405,
+      "y": 5803631.230049349
+    },
+    {
+      "name": "Berlin",
+      "epsg": 25833,
+      "lon": 13.4050,
+      "lat": 52.5200,
+      "x": 391779.259251629,
+      "y": 5820072.159087078
+    },
+    {
+      "name": "Warsaw",
+      "epsg": 25834,
+      "lon": 21.0122,
+      "lat": 52.2297,
+      "x": 500833.243147436,
+      "y": 5786586.671118376
+    },
+    {
+      "name": "Aachen",
+      "epsg": 31466,
+      "lon": 6.0839,
+      "lat": 50.7753,
+      "x": 2505962.059862940,
+      "y": 5626652.910944355
+    },
+    {
+      "name": "Hannover",
+      "epsg": 31467,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 3549922.092976070,
+      "y": 5804982.902000076
+    },
+    {
+      "name": "Munich",
+      "epsg": 31468,
+      "lon": 11.5820,
+      "lat": 48.1351,
+      "x": 4468995.321188237,
+      "y": 5333091.105195056
+    },
+    {
+      "name": "Dresden",
+      "epsg": 31469,
+      "lon": 13.7373,
+      "lat": 51.0504,
+      "x": 5411596.102657315,
+      "y": 5658005.659461678
+    },
+    {
+      "name": "Hannover",
+      "epsg": 32632,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 549829.857904410,
+      "y": 5803100.337683735
+    },
+    {
+      "name": "Berlin",
+      "epsg": 32633,
+      "lon": 13.4050,
+      "lat": 52.5200,
+      "x": 391779.259252750,
+      "y": 5820072.159211027
+    },
+    {
+      "name": "Hannover",
+      "epsg": 3857,
+      "lon": 9.7320,
+      "lat": 52.3759,
+      "x": 1083361.284400138,
+      "y": 6868380.467931502
+    }
+  ]
+}

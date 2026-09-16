@@ -427,51 +427,49 @@ sentence from the standard that permits it.** Watch for the trap that made this 
 fix — a mirrored ray crosses its own reflector by construction, and a building is barrier and
 reflector at once.
 
-### 1.6 The EPSG:25832 ↔ 4326 round trip loses metres, and the map save path runs it
+### 1.6 The EPSG:25832 ↔ 4326 round trip loses metres, and the map save path runs it — closed
 
-`TestETRS89UTM32RoundTripResidualIsPinned` (`internal/geo/crs_transform_test.go`) pins what a
-projected coordinate loses on the `25832 → 4326 → 25832` trip:
+`geo.TransverseMercator` — the Krüger n-series in Karney's formulation, to sixth order in the third
+flattening — is substituted for the library's projection on every transverse-Mercator code the
+package supports (25831-25834, 31466-31469, 32632, 32633), leaving its datums and Helmert shifts
+untouched. The `25832 → 4326 → 25832` residuals that ran to 8.53 m are now under 4e-9 m, and the
+save path this section was named for is unchanged and lossless.
 
-| point           | position                    | residual, one round trip |
-| --------------- | --------------------------- | ------------------------ |
-| 500000, 5650000 | on the central meridian     | 0.000319 m               |
-| 548000, 5803000 | 48 km east of the CM        | 0.492396 m               |
-| 300000, 5400000 | western edge of UTM zone 32 | 6.768904 m               |
-| 700000, 5800000 | eastern edge of UTM zone 32 | 8.530139 m               |
+Four constraints are live, and the first two are not about coordinates at all.
 
-**This is bias, not noise.** The error is deterministic and points the same way every time, so
-saves integrate it rather than cancelling it: ten round trips at 548000/5803000 move the geometry
-4.92 m — one full grid cell of the SoundPLAN fixture's `grid_resolution_m: 5` — and ten at the
-eastern zone edge move it 85.3 m. The residual grows quadratically with distance from the central
-meridian and sits almost entirely in the northing.
+**`3/2` in a floating-point expression is `1`.** The whole defect was
+`math.Pow(1-e²sin²φ₁, 3/2)` in the library's inverse: an untyped integer constant expression, so
+the radius of curvature in the meridian came out 0.21% large. Go will not warn, `go vet` will not
+warn, and the same file writes `2.0` and `4.0` correctly a few lines away. Any exponent, divisor or
+coefficient written as a bare ratio in numeric code is suspect until someone has checked its type.
 
-**It is on the ordinary UI save path, and it moves every vertex** — sources, buildings, barriers,
-receivers and the calculation area alike, not just the feature that was edited.
-`frontend/src/model/use-project-sync.ts:43` pins `MODEL_CRS = "EPSG:4326"`,
-`internal/api/httpv1/model.go:146-168` (`modelInCRS`) reprojects out of the project CRS on
-`GET /api/v1/model?crs=`, and `:229` reprojects back in on `POST /api/v1/model`.
+**A round trip cannot tell you which direction is wrong, and a clean one tells you nothing.**
+`TestEPSGTransform_Roundtrip` started in degrees, so it ran inverse∘forward, and on that ordering
+the error largely cancels — it passed at `0.0001°` throughout. Tightening it would not have caught
+this: the bug was one-sided, the forward agreeing with PROJ to sub-millimetre, which is exactly why
+the round trip hid it. Each direction is now asserted **on its own** against PROJ 9.8.1 reference
+vectors (`internal/geo/testdata/`, `crs_reference_vectors_test.go`), and that is the shape any
+future transform work takes. The round-trip tests remain, tightened, as a cheap floor — not as
+evidence.
 
-Two things are already ruled out, so do not re-measure them: it reproduces against
-`github.com/wroge/wgs84` v1.1.7 directly, bypassing `geo.EPSGTransform`, so it is the library's
-transverse-Mercator series and not our wrapper; and the datum step is not implicated, because
-`ETRS89UTM(32) ↔ ETRS89().LonLat()` (EPSG:4258, no Helmert shift) gives the same residuals to all
-printed digits as the WGS84 pair.
+**The vectors are the fixture; PROJ is not a dependency.** `testdata/proj-reference-vectors.json`
+was generated once by `cs2cs` and checked in with its provenance and its generator
+(`testdata/README.md`). Nothing in `just go-ci` calls PROJ, and nothing should: adding it would
+trade a reviewable 52-row fixture for a toolchain pin on every developer and CI runner.
 
-**Which direction is at fault is undetermined.** A lossy round trip proves at least one of forward
-and inverse is wrong, not which — and not that only one is. Settling it needs trusted reference
-vectors (proj, or the EPSG-published test points for 25832) rather than more round trips, and that
-measurement is the first step of any fix.
+**The DHDN Gauss-Krüger codes are still ~1.8 m from PROJ, and that is the datum, not the
+projection.** `wgs84` carries one Helmert set for DHDN where PROJ 9.8.1 prefers the BETA2007 grid.
+The projection on the same Bessel ellipsoid is pinned to a micrometre, so the two are separable and
+the tests separate them. Closing the datum gap means shipping a grid file; nobody has asked.
 
-Tighten `crs_transform_test.go:119` as part of the fix: it asserts this CRS pair to `0.0001°`,
-roughly 11 m of latitude, which is an assertion ceiling wide enough to hide a defect of its own
-size.
-
-Three candidate fixes, none chosen:
-
-- replace the projection with an accurate Krüger/Karney series;
-- move to a maintained binding with reference-vector coverage;
-- remove the reprojection from the save path entirely by holding project-CRS coordinates in the
-  frontend and reprojecting for display only, which makes a save lossless without fixing the series.
+Two routes are closed rather than untried. Correcting the constant is not enough: rebuilt with
+`1.5`, the library's inverse is still 0.0963 m out at the western edge of zone 32, one-way against
+PROJ — Snyder truncation, and this time almost entirely in the **longitude**, which `R1` never
+touched. And "move to a maintained binding" is not an open option: a cgo PROJ binding is ruled out
+by `backend/cmd/wasm`, which must compile to `js/wasm`, while `wroge/wgs84` v2 has replaced this
+series with Krüger but is alpha-only (`v2.0.0-alpha.20`), with a changed API and at 4th order
+rather than 6th. Reported upstream as https://github.com/wroge/wgs84/issues/30, cited from
+`transversemercator.go` so the next reader knows why the projection is ours.
 
 ### 1.7 A geographic project CRS made every level wrong, and it was the default — closed
 
@@ -489,10 +487,12 @@ Five constraints are live:
   nearest zone that does. ETRS89 is the target for EPSG:4326 too: the datum difference is a
   near-rigid sub-metre shift that changes no distance, where a WGS84 / UTM table would reach only
   zones 32 and 33.
-- **Results are in the compute CRS**, not the project CRS. Transforming them back would run the
-  lossy round trip 1.6 measures over coordinates nothing computes from — which is also why an
-  export bundle now labels the model GeoJSON and the results separately, and why contour GeoJSON
-  is reprojected to WGS84 rather than labelled (RFC 7946 fixes its CRS).
+- **Results are in the compute CRS**, not the project CRS. This bullet used to rest on 1.6's lossy
+  round trip; that argument is gone, and the constraint stands on the stronger one: transforming
+  results back would move coordinates nothing computed from, and label them with a CRS they were
+  not computed in. Which is also why an export bundle labels the model GeoJSON and the results
+  separately, and why contour GeoJSON is reprojected to WGS84 rather than labelled (RFC 7946 fixes
+  its CRS).
 - **A projected project is not touched**, evidenced by the 13 digest goldens moving by exactly the
   two new provenance keys and nothing else.
 - **Coordinates embedded in properties move with the geometry.** RLS-19 directional sources carry
@@ -1276,9 +1276,11 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       what it did there — the GM-metadata path places receivers from the grid's own origin and
       consults the area only for the row direction, so `model` there does not mean "the model's area
       placed these".
-      **There can be no agreement tolerance** until Priority 1.6 is fixed: the reprojection the map
-      save path runs is larger than the grid resolution, so any threshold below 5 m fires on a save
-      that changed nothing and any above it hides a real edit. The comparison warns on the vertex
+      **An agreement tolerance is now possible and still unset.** It was blocked while the map
+      save path moved geometry further than the grid resolution — any threshold below 5 m fired on
+      a save that changed nothing, any above it hid a real edit. Priority 1.6 closed that; the save
+      path now moves a vertex by nanometres, so a tolerance can be chosen on what a real edit looks
+      like rather than around a defect. The comparison warns on the vertex
       count after normalising closure and records `calc_area_bounds_delta` with its unit, which is
       the project CRS's axis unit and not always metres.
       **`ACONIQ_SOUNDPLAN_FIXTURES` is what makes the licensed-fixture suite visible** — without it
@@ -1459,10 +1461,10 @@ the comparison into evidence (the assertion itself is Priority 3).
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
-- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline. **Read Priority 1.6
-      first**: the EPSG:25832 ↔ 4326 transform loses metres, and the map save path runs it on every
-      vertex, so routing more geometry through that pipeline widens an open defect until it is
-      fixed.
+- [ ] Determine SoundPLAN project CRS and route it through the CRS pipeline. The transform accuracy
+      that used to block this is settled (Priority 1.6), but read its live constraints first — in
+      particular, a DHDN Gauss-Krüger project still sits ~1.8 m from PROJ in the **datum**, so a
+      SoundPLAN comparison in 31466-31469 must not attribute that offset to the geometry.
 - [ ] Fix the top-edge boundary rule in the heuristic raster alignment.
       `heuristicRasterRowCenters` (`app/cli/compare_raster.go:859`) places row 0 at exactly
       `y == maxY` whenever the row grid fills the CalcArea bounding box

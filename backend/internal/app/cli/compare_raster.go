@@ -409,18 +409,21 @@ type rasterCalcArea struct {
 // no calc-area feature: one imported before `aconiq import --soundplan` emitted
 // one, or one whose CalcArea.geo was too degenerate to form a ring.
 //
-// **There is deliberately no agreement tolerance.** A threshold here would have
-// to sit above the noise floor of an edit-free save and below a real edit, and
-// no such number exists: the EPSG:25832 → 4326 → 25832 round trip the map save
-// path runs loses 0.49 m in a typical German project and 8.5 m at the edges of
-// UTM zone 32, accumulating with every save (PLAN.md Priority 1.6). Anything
-// below the fixture's 5 m grid resolution would fire on a save that changed
-// nothing; anything above it would hide a real edit. So the two signals are:
+// **There is still no agreement tolerance, and now it is a choice rather than a
+// blocked one.** A threshold here has to sit above the noise floor of an
+// edit-free save and below a real edit. No such number existed while the
+// EPSG:25832 → 4326 → 25832 round trip the map save path runs lost 0.49 m in a
+// typical German project and 8.5 m at the edges of UTM zone 32, accumulating
+// with every save: anything below the fixture's 5 m grid resolution fired on a
+// save that changed nothing, anything above it hid a real edit. PLAN.md
+// Priority 1.6 closed that — the save path now moves a vertex by nanometres —
+// so a threshold is available and simply has not been chosen yet; Priority 13
+// owns picking one from measured fixture data. Until then the two signals are:
 //
 //   - the vertex count, compared after normalising closure, which warns. That
-//     comparison is exact and CRS-independent, so the projection defect cannot
-//     reach it, and a notch that leaves the envelope untouched still changes
-//     every row span.
+//     comparison is exact and CRS-independent, so no transform error can reach
+//     it, and a notch that leaves the envelope untouched still changes every
+//     row span.
 //   - the bounds delta, recorded unconditionally rather than judged, together
 //     with the unit it is in. Priority 13 then reads a measured number instead
 //     of a threshold verdict.
@@ -465,9 +468,12 @@ func resolveRasterCalcArea(model modelgeojson.Model, importReport soundPlanImpor
 // calcAreaBoundsDeltaUnit names the unit calcAreaBoundsDelta reports in. The
 // delta subtracts project-CRS coordinates, so it is metres only when the
 // project CRS is projected; under the CLI's default EPSG:4326 it is degrees,
-// where 0.001 is roughly 111 m of latitude. Reprojecting to force metres is not
-// an option here: the 25832 <-> 4326 round trip loses up to 8.5 m (PLAN.md
-// Priority 1.6), which is larger than anything this delta would report.
+// where 0.001 is roughly 111 m of latitude. Reprojecting to force metres was
+// ruled out while the 25832 <-> 4326 round trip lost up to 8.5 m — more than
+// anything this delta would report. PLAN.md Priority 1.6 removed that
+// objection; what remains is that a delta reported in a unit the caller did not
+// ask for is worse than one reported with its unit named, which is what the
+// return value does.
 func calcAreaBoundsDeltaUnit(projectCRS string) string {
 	parsed, err := geo.ParseCRS(projectCRS)
 	if err != nil {

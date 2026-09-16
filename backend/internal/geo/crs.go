@@ -107,38 +107,69 @@ var supportedEPSGCodes = map[int]bool{
 	3857:  true, // WGS84 / Pseudo-Mercator (Web Mercator)
 }
 
+// utmScale is the scale factor on the central meridian shared by every UTM zone.
+const utmScale = 0.9996
+
 // epsgToCRS maps an EPSG code to the wroge/wgs84 CoordinateReferenceSystem.
+//
+// Every transverse-Mercator CRS keeps the library's datum, Helmert shift and
+// zone Area predicate but swaps in this package's TransverseMercator, because
+// the library's inverse is wrong by metres — see TransverseMercator's doc
+// comment. EPSG:3857 and the two geographic systems use a different projection
+// and are untouched.
 func epsgToCRS(code int) (wgs84.CoordinateReferenceSystem, error) {
 	switch code {
 	case 4326:
 		return wgs84.LonLat(), nil
 	case 4258:
 		return wgs84.ETRS89().LonLat(), nil
-	case 25831:
-		return wgs84.ETRS89UTM(31), nil
-	case 25832:
-		return wgs84.ETRS89UTM(32), nil
-	case 25833:
-		return wgs84.ETRS89UTM(33), nil
-	case 25834:
-		return wgs84.ETRS89UTM(34), nil
-	case 31466:
-		return wgs84.DHDN2001GK(2), nil
-	case 31467:
-		return wgs84.DHDN2001GK(3), nil
-	case 31468:
-		return wgs84.DHDN2001GK(4), nil
-	case 31469:
-		return wgs84.DHDN2001GK(5), nil
-	case 32632:
-		return wgs84.UTM(32, true), nil
-	case 32633:
-		return wgs84.UTM(33, true), nil
+	case 25831, 25832, 25833, 25834:
+		zone := float64(code - 25800)
+		return utmWithExactProjection(wgs84.ETRS89UTM(zone), zone), nil
+	case 31466, 31467, 31468, 31469:
+		// DHDN 3-degree Gauss-Krüger: zone 2..5, central meridian 3°·zone,
+		// unit scale, and the zone number prefixed onto the false easting.
+		return gaussKrugerWithExactProjection(float64(code - 31464)), nil
+	case 32632, 32633:
+		zone := float64(code - 32600)
+		return utmWithExactProjection(wgs84.UTM(zone, true), zone), nil
 	case 3857:
 		return wgs84.WebMercator(), nil
 	default:
 		return nil, fmt.Errorf("unsupported EPSG code %d", code)
 	}
+}
+
+// utmWithExactProjection restates the UTM parameters wgs84.UTM and
+// wgs84.ETRS89UTM pass to Datum.TransverseMercator (reference.go:47 and :62),
+// for northern-hemisphere zones only — which is all this package supports.
+func utmWithExactProjection(crs wgs84.ProjectedReferenceSystem, zone float64) wgs84.ProjectedReferenceSystem {
+	return withExactTransverseMercator(crs, zone*6-183, 0, utmScale, 500000, 0)
+}
+
+// gaussKrugerWithExactProjection restates the parameters wgs84.DHDN2001GK
+// passes to Datum.TransverseMercator (reference.go:132).
+func gaussKrugerWithExactProjection(zone float64) wgs84.ProjectedReferenceSystem {
+	return withExactTransverseMercator(
+		wgs84.DHDN2001GK(zone), zone*3, 0, 1, zone*1e6+500000, 0,
+	)
+}
+
+// withExactTransverseMercator replaces a projected CRS's projection with this
+// package's Krüger series, leaving Datum and Area alone.
+func withExactTransverseMercator(
+	crs wgs84.ProjectedReferenceSystem,
+	lonOrigin, latOrigin, scale, falseEasting, falseNorthing float64,
+) wgs84.ProjectedReferenceSystem {
+	crs.Projection = TransverseMercator{
+		LonOrigin:     lonOrigin,
+		LatOrigin:     latOrigin,
+		Scale:         scale,
+		FalseEasting:  falseEasting,
+		FalseNorthing: falseNorthing,
+	}
+
+	return crs
 }
 
 // IsSupportedEPSG reports whether the given EPSG code can be used in transforms.
