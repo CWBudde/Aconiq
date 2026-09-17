@@ -1587,8 +1587,8 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       receiver clicked on the map to scroll and mark its row; carrying the viewed run through to
       `/model`, so a row followed from an older run does not land on the newest run's levels; and a
       per-indicator unit on the receiver table, without which a mixed-unit run gets no map at all.
-- [x] **CRS and basemap**. The tile URL is no longer hardcoded: `basemap.ts` builds its three styles
-      on demand from `map/tile-source.ts`, a localStorage override shaped like `api/mode.ts`, so an
+- [x] **CRS and basemap** (#53). The tile URL is no longer hardcoded: `basemap.ts` builds its
+      three styles on demand from `map/tile-source.ts`, a localStorage override shaped like `api/mode.ts`, so an
       air-gapped install can point the map at a tile server it can reach. It is edited in Connection
       settings under the API base URL's draft/committed split, and it takes effect on the _next_ map
       build — nothing re-reads the key until a `Map` is constructed, and the copy says so. A picker
