@@ -1609,24 +1609,16 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       needs arguing for. Drawing is gated on `backend.capabilities.canReprojectForDisplay`, not on
       the store's CRS — keep new gates on the capability, or a model the map can project will be
       refused for being metric.
-- [x] **Keyboard path**: `NewFeatureDialog` takes typed coordinates when it is opened with no drawn
-      geometry — reached from the draw toolbar, a point as one x/y pair, a line or an area as an
-      add/remove vertex list — and `map/feature-list.tsx` lists features and receivers as
-      Tab-reachable controls that set the page's `editingFeatureId`, so selecting one marks the
-      feature and opens the docked editor exactly as a click on the canvas does. The constraint that
-      stays live: **the typed numbers are read as the store's own CRS and written into the store
-      untouched, and no transform may be added to that path.** That is why it is not a second
-      exception to "a projection _of_ the model, never a source _for_ it" — `use-draw-projection.ts`
-      needs its inverse only because terra-draw emits 4326 whatever the model holds, and a typed
-      coordinate is already in the model's frame. The fields are labelled with
-      `useModelStore(s => s.crs)` so the frame is named rather than assumed, and `CoordinateDisplay`
-      already reads the pointer out in both 4326 and the store's CRS, so a target is read off the
-      map in the same numbers the dialog asks for.
-      One thing the work disproved: the coordinate control must **not** take the `drawingDisabled`
-      gate the drawing tools take. Every reason that gate fires is a reason terra-draw's 4326 output
-      could not be moved into the model's CRS — on a model in a CRS the kernel cannot project, where
-      the map draws nothing and every tool is dead, typing is then the only way to add a feature at
-      all.
+- [x] **Keyboard path** (#54). `NewFeatureDialog` takes typed coordinates when it is opened with no
+      drawn geometry, and `map/feature-list.tsx` lists features and receivers as Tab-reachable
+      controls that set the page's `editingFeatureId`. Two constraints stay live. **The typed
+      numbers are read as the store's own CRS and written into the store untouched, and no transform
+      may be added to that path** — that is why it is no second exception to "a projection _of_ the
+      model, never a source _for_ it"; `use-draw-projection.ts` needs its inverse only because
+      terra-draw emits 4326 whatever the model holds. And the coordinate control must **not** take
+      the `drawingDisabled` gate the drawing tools take: every reason that gate fires is a reason
+      terra-draw's 4326 output could not be moved into the model's CRS, and on such a model typing is
+      the only way left to add a feature.
 
 ### Phase E — i18n and German
 

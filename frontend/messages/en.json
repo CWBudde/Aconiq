@@ -472,7 +472,7 @@
   "action_add_vertex": "Add point",
   "action_remove_vertex": "Remove point {index}",
   "msg_coordinate_entry_crs": "Coordinates are read as {crs}, the coordinate system the model is stored in, and nothing is transformed. The readout at the bottom of the map gives the pointer in {crs} as well as in WGS 84, so a target can be read off the map.",
-  "msg_coordinate_entry_incomplete": "Every X and Y has to be a number. A point needs one pair, a line two, an area three.",
+  "msg_coordinate_entry_incomplete": "Every X and Y has to be a number. A point needs one pair, a line two, an area three distinct corners — a repeated closing point does not count.",
   "msg_vertex_minimum": "At least {count} points are needed.",
   "label_feature_list": "Features",
   "msg_feature_list_empty": "Nothing in the model yet. Draw on the map, or enter coordinates."

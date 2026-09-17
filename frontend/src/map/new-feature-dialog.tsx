@@ -87,7 +87,9 @@ function inferSourceType(geomType: string): SourceType {
  * The geometry the typed coordinates will become, derived from the kind the
  * user picked rather than asked for separately: the schema already fixes it
  * (`docs/geojson-schema-v1.md`) — a building is a polygon, a barrier a line, a
- * receiver a point — and a source's is its `sourceType`. Offering the pair
+ * receiver a point, and a source's geometry is whatever its `sourceType` says:
+ * a point source a `Point`, a line source a `LineString`, an area source a
+ * `Polygon`. Offering the pair
  * independently is how a `source_type: "line"` on a `Point` gets written.
  */
 function typedGeometryType(
@@ -157,16 +159,21 @@ function typedGeometry(
   if (type === "LineString")
     return { type: "LineString", coordinates: positions };
 
-  // A GeoJSON ring is closed. Appending the first position rather than asking
-  // for it again: a typed ring whose last row repeats the first is what a user
-  // copying coordinates out of a table produces, and closing it twice would
-  // write a zero-length segment the validator then reports.
+  // A GeoJSON ring is closed, and the closing repeat is not a corner: a ring
+  // needs three distinct vertices *plus* the repeat, which is what
+  // `modelgeojson/validate.go` enforces as "at least 4 coordinates". A typed
+  // ring whose last row repeats the first is what a user copying coordinates
+  // out of a table produces, so that repeat is dropped before the corners are
+  // counted — closing it twice would write a zero-length segment, and counting
+  // it as a corner would let three rows through as A, B, A, a ring the backend
+  // then refuses to save.
   const last = positions[positions.length - 1] ?? first;
-  const closed =
-    last[0] === first[0] && last[1] === first[1]
-      ? positions
-      : [...positions, first];
-  return { type: "Polygon", coordinates: [closed] };
+  const corners =
+    positions.length > 1 && last[0] === first[0] && last[1] === first[1]
+      ? positions.slice(0, -1)
+      : positions;
+  if (corners.length < MINIMUM_VERTICES.Polygon) return null;
+  return { type: "Polygon", coordinates: [[...corners, first]] };
 }
 
 /** Every position in a geometry, whatever its nesting depth. */

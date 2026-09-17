@@ -294,6 +294,76 @@ describe("NewFeatureDialog coordinate entry", () => {
     });
   });
 
+  it("refuses a three-row ring whose last row closes it", async () => {
+    // A, B, A is what closing the ring by hand looks like, and it is three
+    // rows, so the row minimum is satisfied. The repeat is not a corner:
+    // keeping it would emit a three-coordinate ring, which
+    // `modelgeojson/validate.go` refuses ("at least 4 coordinates") — the
+    // model would be dirty and unsaveable rather than merely wrong here.
+    const crs = "EPSG:4326";
+    renderTypingDialog();
+    selectKind(m.option_building());
+
+    const xs = screen.getAllByLabelText(m.label_coordinate_x({ crs }));
+    const ys = screen.getAllByLabelText(m.label_coordinate_y({ crs }));
+    const ring = [
+      [0, 0],
+      [1, 0],
+      [0, 0],
+    ];
+    ring.forEach(([x, y], i) => {
+      fireEvent.change(xs[i] as HTMLElement, { target: { value: String(x) } });
+      fireEvent.change(ys[i] as HTMLElement, { target: { value: String(y) } });
+    });
+
+    const add = screen.getByRole("button", { name: m.action_add_feature() });
+    expect(add).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(add);
+
+    expect(useModelStore.getState().features).toHaveLength(0);
+  });
+
+  it("accepts a four-row ring that repeats its first corner last", async () => {
+    // The same closing habit, but with three distinct corners in front of it:
+    // the repeat is dropped and re-appended once, never doubled.
+    const crs = "EPSG:4326";
+    renderTypingDialog();
+    selectKind(m.option_building());
+
+    await userEvent.click(
+      screen.getByRole("button", { name: m.action_add_vertex() }),
+    );
+
+    const xs = screen.getAllByLabelText(m.label_coordinate_x({ crs }));
+    const ys = screen.getAllByLabelText(m.label_coordinate_y({ crs }));
+    const ring = [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 0],
+    ];
+    ring.forEach(([x, y], i) => {
+      fireEvent.change(xs[i] as HTMLElement, { target: { value: String(x) } });
+      fireEvent.change(ys[i] as HTMLElement, { target: { value: String(y) } });
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    expect(useModelStore.getState().features[0]?.geometry).toEqual({
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    });
+  });
+
   it("refuses to remove a vertex the geometry still needs", async () => {
     const crs = "EPSG:4326";
     renderTypingDialog();
@@ -333,6 +403,84 @@ describe("NewFeatureDialog coordinate entry", () => {
     expect(
       screen.getAllByLabelText(m.label_coordinate_x({ crs })),
     ).toHaveLength(2);
+  });
+
+  /**
+   * The source-type picker is the second combobox, rendered beside the kind
+   * picker only while the chosen kind is "source".
+   */
+  function selectSourceType(label: string) {
+    const trigger = screen.getAllByRole("combobox")[1];
+    if (!trigger) throw new Error("no source type picker rendered");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("option", { name: label }));
+  }
+
+  function fillVertices(crs: string, positions: number[][]) {
+    const xs = screen.getAllByLabelText(m.label_coordinate_x({ crs }));
+    const ys = screen.getAllByLabelText(m.label_coordinate_y({ crs }));
+    positions.forEach(([x, y], i) => {
+      fireEvent.change(xs[i] as HTMLElement, { target: { value: String(x) } });
+      fireEvent.change(ys[i] as HTMLElement, { target: { value: String(y) } });
+    });
+  }
+
+  // The geometry follows the source type rather than being offered beside it:
+  // asserting the two together is what would catch a `source_type: "line"`
+  // written onto a `Point` again.
+  it("writes a line source as a LineString", async () => {
+    const crs = "EPSG:4326";
+    renderTypingDialog();
+    selectSourceType(m.option_source_type_line());
+
+    fillVertices(crs, [
+      [0, 0],
+      [1, 1],
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    const feature = useModelStore.getState().features[0];
+    expect(feature?.kind).toBe("source");
+    expect(feature?.sourceType).toBe("line");
+    expect(feature?.geometry).toEqual({
+      type: "LineString",
+      coordinates: [
+        [0, 0],
+        [1, 1],
+      ],
+    });
+  });
+
+  it("writes an area source as a closed Polygon", async () => {
+    const crs = "EPSG:4326";
+    renderTypingDialog();
+    selectSourceType(m.option_source_type_area());
+
+    fillVertices(crs, [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    const feature = useModelStore.getState().features[0];
+    expect(feature?.kind).toBe("source");
+    expect(feature?.sourceType).toBe("area");
+    expect(feature?.geometry).toEqual({
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    });
   });
 
   it("adds a receiver from typed coordinates", () => {
