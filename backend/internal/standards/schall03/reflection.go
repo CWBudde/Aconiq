@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/numeric"
@@ -43,6 +44,16 @@ type ReflectingWall struct {
 	B       geo.Point2D     `json:"b"`        // second endpoint
 	HeightM float64         `json:"height_m"` // wall height above ground [m]
 	Surface WallSurfaceType `json:"surface"`  // acoustic surface category (Table 18)
+	// ObstacleID names the physical obstacle this facade belongs to, in the
+	// same namespace as BarrierSegment.ObstacleID.  A building is reflector
+	// and obstacle at once, and a mirrored ray crosses its own reflector by
+	// construction, so the identity has to travel with the path: without it
+	// the facade diffracts the very reflection it produced.
+	//
+	// An empty ObstacleID means "this wall belongs to no named obstacle", so
+	// a scene built before obstacle identity existed keeps its exact previous
+	// behaviour: nothing is excluded from its reflected paths.
+	ObstacleID string `json:"obstacle_id,omitempty"`
 }
 
 // Validate checks the wall for geometric and physical validity.
@@ -275,6 +286,10 @@ func ReflectedSubsegmentContrib(
 // ReflectedSubsegmentContribWithBarriers is like ReflectedSubsegmentContrib but
 // includes barrier attenuation along the reflected path.  The barrier check uses
 // the image source position as the effective source for the propagation path.
+//
+// excludeObstacleIDs names the obstacles the path bounced off; their panels are
+// dropped from the barrier set before the diffraction check, see
+// barriersExcludingObstacles.
 func ReflectedSubsegmentContribWithBarriers(
 	emission *StreckeEmissionResult,
 	elevationM float64,
@@ -283,7 +298,9 @@ func ReflectedSubsegmentContribWithBarriers(
 	dp, stepLen, sinDelta2, waterFractionW float64,
 	dRho float64,
 	barriers []BarrierSegment,
+	excludeObstacleIDs []string,
 ) float64 {
+	barriers = barriersExcludingObstacles(barriers, excludeObstacleIDs)
 	if len(barriers) == 0 {
 		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho)
 	}
@@ -340,6 +357,75 @@ func ReflectedSubsegmentContribWithBarriers(
 	}
 
 	return contrib
+}
+
+// barriersExcludingObstacles drops the panels of the obstacles a mirrored path
+// bounced off.
+//
+// A reflected ray crosses its own reflector by construction — that crossing is
+// what ComputeReflectionGeometry solves for — so counting it as a diffraction
+// edge would invent a shielding loss exactly where the standard sees a
+// reflection.  A building is obstacle and reflector at once
+// (appendSchall03Building emits both from one footprint under one ObstacleID),
+// which is why the identity travels with the path.
+//
+// The exclusion is per obstacle, not per facade: another wall of the *same*
+// building does not shield that building's own mirrored path.  That direction
+// over-predicts the level and is declared in the conformance document.
+//
+// A panel with an empty ObstacleID belongs to no named obstacle and is never
+// excluded, so a scene built before obstacle identity existed is unchanged.
+func barriersExcludingObstacles(barriers []BarrierSegment, ids []string) []BarrierSegment {
+	if len(ids) == 0 || len(barriers) == 0 {
+		return barriers
+	}
+
+	excluded := false
+
+	for _, b := range barriers {
+		if b.ObstacleID != "" && slices.Contains(ids, b.ObstacleID) {
+			excluded = true
+
+			break
+		}
+	}
+
+	if !excluded {
+		return barriers
+	}
+
+	kept := make([]BarrierSegment, 0, len(barriers))
+
+	for _, b := range barriers {
+		if b.ObstacleID == "" || !slices.Contains(ids, b.ObstacleID) {
+			kept = append(kept, b)
+		}
+	}
+
+	return kept
+}
+
+// reflectionPathObstacleIDs returns the obstacles a path bounced off, in bounce
+// order and without repeats.  Walls that belong to no named obstacle contribute
+// nothing, so the result is empty for a scene without obstacle identity and
+// barriersExcludingObstacles then returns the barrier slice untouched.
+func reflectionPathObstacleIDs(rp ReflectionPath, walls []ReflectingWall) []string {
+	var ids []string
+
+	for _, idx := range rp.Walls {
+		if idx < 0 || idx >= len(walls) {
+			continue
+		}
+
+		id := walls[idx].ObstacleID
+		if id == "" || slices.Contains(ids, id) {
+			continue
+		}
+
+		ids = append(ids, id)
+	}
+
+	return ids
 }
 
 // MaxReflectionOrder is the maximum number of bounces per Schall 03.
@@ -555,7 +641,9 @@ func ComputeReflectedLineSourceLpAeq(
 // ComputeReflectedLineSourceLpAeqWithBarriers is like
 // ComputeReflectedLineSourceLpAeq but includes barrier attenuation on reflected
 // paths.  For each reflected path, the barrier check uses the image source
-// position as the effective source.
+// position as the effective source, and the obstacles the path bounced off are
+// excluded from the barrier set — a facade must not diffract its own
+// reflection.
 func ComputeReflectedLineSourceLpAeqWithBarriers(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
@@ -621,6 +709,7 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 					firstGeom.ImageSource,
 					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
 					barriers,
+					reflectionPathObstacleIDs(rp, walls),
 				))
 			}
 		}

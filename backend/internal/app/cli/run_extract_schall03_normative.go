@@ -79,9 +79,9 @@ func extractSchall03NormativeScene(model modelgeojson.Model, supportedSourceType
 		case modelgeojson.FeatureKindSource:
 			err = appendSchall03Segments(&scene, feature, featureIndex, allowedSourceType)
 		case modelgeojson.FeatureKindBarrier:
-			err = appendSchall03Barriers(&scene, feature)
+			err = appendSchall03Barriers(&scene, feature, featureIndex)
 		case modelgeojson.FeatureKindBuilding:
-			err = appendSchall03BuildingWalls(&scene, feature)
+			err = appendSchall03Building(&scene, feature, featureIndex)
 		}
 
 		if err != nil {
@@ -502,7 +502,15 @@ func parseSchall03FzComposition(where string, object map[string]any) ([]schall03
 // Every consecutive vertex pair becomes one straight barrier panel; a barrier
 // marked reflective additionally becomes a ReflectingWall, because Gl. 19-20
 // treats the two effects separately.
-func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.Feature) error {
+//
+// Every panel of one polyline carries that polyline's ObstacleID, so lateral
+// diffraction (Nr. 6.5) rounds only the polyline's free ends.  Without it an
+// interior vertex of a three-point barrier is a Seitenkante, and since
+// barrierDz is 10·lg(3 + …) any z > 0 however small caps the whole wall at
+// about 4.8 dB per band.  The ReflectingWall a reflective barrier emits carries
+// the same ObstacleID, so the panel does not diffract the reflection it just
+// produced.
+func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
 	if feature.HeightM == nil || *feature.HeightM <= 0 {
 		return validationErrorf("barrier feature %q requires height_m > 0", feature.ID)
 	}
@@ -537,7 +545,9 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 		return err
 	}
 
-	for _, line := range lines {
+	for lineIndex, line := range lines {
+		obstacleID := schall03ObstaclePartID(feature, featureIndex, lineIndex)
+
 		for i := range len(line) - 1 {
 			barrier := schall03.BarrierSegment{
 				A:           line[i],
@@ -547,6 +557,7 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 				Reflective:  reflective,
 				ThicknessM:  thicknessM,
 				IsParallel:  parallelEdges,
+				ObstacleID:  obstacleID,
 			}
 
 			validateErr := barrier.Validate()
@@ -560,7 +571,7 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 				continue
 			}
 
-			err = appendReflectingWall(scene, feature.ID, line[i], line[i+1], *feature.HeightM, surface)
+			err = appendReflectingWall(scene, feature.ID, obstacleID, line[i], line[i+1], *feature.HeightM, surface)
 			if err != nil {
 				return err
 			}
@@ -570,18 +581,28 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 	return nil
 }
 
-// appendSchall03BuildingWalls turns a building footprint into reflecting walls.
-// It is opt-in: a building is only a reflector when the feature says so, since
-// this slice does not yet treat buildings as shielding obstacles and adding
-// reflection alone would raise every level behind a building.
-func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeojson.Feature) error {
-	reflecting, ok, err := featurePropertyBool(feature, propSchall03ReflectingWall)
+// appendSchall03Building turns a building footprint into shielding obstacles
+// and, on request, into reflecting walls.
+//
+// Shielding is unconditional: a receiver behind a house is behind a house, and
+// height_m is already mandatory on a building feature, so no model that
+// validates today starts failing.  Reflection stays opt-in, because it raises
+// levels for every model that never asked for it and because reflection paths
+// are enumerated to MaxReflectionOrder over every facade.
+//
+// The panels of one ring share an ObstacleID: a lateral path may round the
+// footprint's outermost silhouette vertex, never the end of a single wall
+// panel, which would run straight through the building.  The ring's
+// ReflectingWalls carry that same ObstacleID, because a facade is obstacle and
+// reflector at once and a mirrored ray crosses its own reflector by
+// construction — without the shared identity, opting a building into reflection
+// would make its own footprint shield the reflection off it.  Reflective is
+// left false — Gl. 20's D_refl is scoped to reflektierende Schallschutzwände
+// mit absorbierendem Sockel, and a house is not a Schallschutzwand.
+func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
+	reflecting, _, err := featurePropertyBool(feature, propSchall03ReflectingWall)
 	if err != nil {
 		return propertyError(feature.ID, propSchall03ReflectingWall, err)
-	}
-
-	if !ok || !reflecting {
-		return nil
 	}
 
 	if feature.HeightM == nil || *feature.HeightM <= 0 {
@@ -598,16 +619,36 @@ func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeo
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), err)
 	}
 
-	for _, polygon := range polygons {
+	for polygonIndex, polygon := range polygons {
 		if len(polygon) == 0 {
 			continue
 		}
 
-		// Only the outer ring reflects towards the track; inner rings are
-		// courtyards and cannot see a source outside the footprint.
+		obstacleID := schall03ObstaclePartID(feature, featureIndex, polygonIndex)
+
+		// Only the outer ring shields and reflects towards the track; inner
+		// rings are courtyards and cannot see a source outside the footprint.
 		ring := polygon[0]
 		for i := range len(ring) - 1 {
-			err = appendReflectingWall(scene, feature.ID, ring[i], ring[i+1], *feature.HeightM, surface)
+			barrier := schall03.BarrierSegment{
+				A:          ring[i],
+				B:          ring[i+1],
+				TopHeightM: *feature.HeightM,
+				ObstacleID: obstacleID,
+			}
+
+			validateErr := barrier.Validate()
+			if validateErr != nil {
+				return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), validateErr)
+			}
+
+			scene.Barriers = append(scene.Barriers, barrier)
+
+			if !reflecting {
+				continue
+			}
+
+			err = appendReflectingWall(scene, feature.ID, obstacleID, ring[i], ring[i+1], *feature.HeightM, surface)
 			if err != nil {
 				return err
 			}
@@ -617,14 +658,34 @@ func appendSchall03BuildingWalls(scene *schall03NormativeScene, feature modelgeo
 	return nil
 }
 
+// schall03ObstaclePartID names one part of one feature's geometry.
+//
+// The identity is internal: it never leaves the extracted scene, it is not part
+// of the GeoJSON vocabulary, and nothing serialises it into a run artifact.  It
+// therefore does not have to read like the feature's id, and must not be
+// derivable from it alone — a `MultiPolygon` named `house` and a separate
+// polygon named `house-01` are both legal, model validation only checks the
+// original ids, and merging their panels into one obstacle would silently move
+// numbers: the lateral candidate set, the group's top height and the
+// coincident-crossing dedupe all read the group as one building.
+//
+// The feature's kind and its index in the model come first and pin the identity
+// to exactly one feature, whatever it or any other feature is called; the part
+// index separates the rings of one multipart geometry.  The trailing id is for
+// the human reading a scene dump and carries no weight.
+func schall03ObstaclePartID(feature modelgeojson.Feature, featureIndex, partIndex int) string {
+	return fmt.Sprintf("%s#%d#%d#%s", feature.Kind, featureIndex, partIndex, strings.TrimSpace(feature.ID))
+}
+
 func appendReflectingWall(
 	scene *schall03NormativeScene,
 	featureID string,
+	obstacleID string,
 	a, b geo.Point2D,
 	heightM float64,
 	surface schall03.WallSurfaceType,
 ) error {
-	wall := schall03.ReflectingWall{A: a, B: b, HeightM: heightM, Surface: surface}
+	wall := schall03.ReflectingWall{A: a, B: b, HeightM: heightM, Surface: surface, ObstacleID: obstacleID}
 
 	err := wall.Validate()
 	if err != nil {

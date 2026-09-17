@@ -121,7 +121,10 @@ func computeSchall03Normative(
 	result.GridWidth = gridWidth
 	result.GridHeight = gridHeight
 
-	result.logf("schall03_segments=%d walls=%d barriers=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
+	// Barrier panels, not obstacles: one building footprint contributes one
+	// panel per outer-ring edge, so this count is no longer the number of
+	// barrier features in the model.
+	result.logf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
 	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
 	result.logGridExtent(receiverMode, calcArea)
 

@@ -1,7 +1,7 @@
 {
   "name": "schall03-ci-safe",
   "standard_id": "schall03",
-  "suite_version": "schall03-ci-safe-v6",
+  "suite_version": "schall03-ci-safe-v7",
   "evidence_class": "license-safe synthetic acceptance fixture",
   "provenance": "repo-authored synthetic scenarios",
   "tasks": [
@@ -123,6 +123,14 @@
       "description": "ICE-1-Zug behind three staggered barriers (5 m, 8 m, 7.5 m): three diffraction edges survive the rubber band, exercising e = e1 + e2 (Bild 6)",
       "scenario_path": "ci_safe/b4_three_edge_barriers.scenario.json",
       "expected_path": "ci_safe/b4_three_edge_barriers.expected.json",
+      "tolerance_db": 0.0001
+    },
+    {
+      "name": "b6_building_footprint",
+      "category": "propagation",
+      "description": "ICE-1-Zug behind a closed 40 m x 12 m, 9 m high building footprint carrying one extra front-wall vertex: the footprint shields per Nr. 6.4/6.5, its front and back wall form the double edge of Gl. 22, and a lateral path may round only its silhouette corners — never the interior vertex, which lies inside the building",
+      "scenario_path": "ci_safe/b6_building_footprint.scenario.json",
+      "expected_path": "ci_safe/b6_building_footprint.expected.json",
       "tolerance_db": 0.0001
     },
     {

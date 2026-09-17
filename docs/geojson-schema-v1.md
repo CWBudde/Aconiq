@@ -303,10 +303,20 @@ vertex pair becomes one barrier panel of that height.
 
 On a `building` feature (`Polygon`, `height_m` required):
 
+Every outer-ring edge becomes a shielding panel of the building's height, and
+all panels of one ring share an obstacle identity, so a lateral path (Nr. 6.5)
+may round the footprint's silhouette but never an interior wall vertex. Inner
+rings are courtyards and are ignored. Shielding is unconditional: `height_m` is
+already required on a `building` feature, so no model that validates today
+starts failing.
+
 - `schall03_reflecting_wall`: boolean, default false. When true, each outer-ring
-  edge becomes a reflecting wall; `schall03_wall_surface` then defaults to
-  `building`. Buildings are **not** treated as shielding obstacles, so this is
-  opt-in — see the conformance declaration for why.
+  edge additionally becomes a reflecting wall; `schall03_wall_surface` then
+  defaults to `building`. Reflection stays opt-in because it raises levels for
+  every model that never asked for it, and because reflection paths are
+  enumerated to third order over every facade. Gl. 20's D_refl is never applied
+  to a building wall — it is scoped to reflektierende Schallschutzwände mit
+  absorbierendem Sockel.
 
 ## Geometry Sanity Checks
 

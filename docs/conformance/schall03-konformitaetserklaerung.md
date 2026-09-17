@@ -137,10 +137,13 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 - Barriereattenuation auf direkten Ausbreitungswegen ✓
 - Barriereattenuation auf reflektierten Ausbreitungswegen (Spiegelquelle als Quelle) ✓
 - Einheitliche Szenen-API: `ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)` ✓
+- Geschlossene Gebäudegrundrisse als abschirmende Hindernisse ✓ — der Strahl durchstößt Vorder- und Rückwand, die Gummibandmethode behält beide Kanten, e ist die Gebäudetiefe und es gilt die Doppelbeugung nach Gl. 22 mit D_z ≤ 25 dB.
+- Seitliche Beugung je Hindernis, nicht je Wandtafel ✓ — Wandtafeln mit gemeinsamer `ObstacleID` bilden ein Hindernis. Seitenkanten sind die freien Enden eines offenen Hindernisses beziehungsweise die äußersten Silhouettenpunkte eines geschlossenen; ein innen liegender Wandpunkt ist keine Seitenkante, weil der Weg um ihn herum durch das Hindernis hindurch führte. Ein `BarrierSegment` ohne `ObstacleID` ist ein Hindernis für sich, so dass eine einzelne Wandtafel weiterhin um beide Enden umbeugt wird.
+- Eine reflektierende Fläche schirmt ihre eigene Reflexion nicht ab ✓ — ein gespiegelter Strahl durchstößt seinen Reflektor bauartbedingt; genau dieser Durchstoßpunkt ist der Reflexionspunkt und keine Beugungskante. Ein Gebäude ist Hindernis und Reflektor zugleich, weshalb die `ObstacleID` auch an der `ReflectingWall` hängt und die Tafeln dieses Hindernisses vor der Beugungsrechnung aus der Hindernisliste des jeweiligen Spiegelwegs entfernt werden. Eine `ReflectingWall` ohne `ObstacleID` gehört zu keinem benannten Hindernis; dann wird nichts entfernt.
 
 #### Software-Version
 
-`phase20d-normative-barrier-diffraction-v1`
+`phase20d-normative-barrier-diffraction-v2`
 
 ## Reachability from the CLI
 
@@ -166,9 +169,13 @@ code no `aconiq run` invocation could reach. See PLAN.md Priority 2.
 - Eisenbahn and Straßenbahn Strecken: full emission chain, propagation chain,
   barrier diffraction and reflection, driven from GeoJSON `source` features
   carrying `schall03_operations` (see `docs/geojson-schema-v1.md`).
-- Shielding from `barrier` features; reflection from `barrier` features marked
-  `schall03_reflective` and from `building` features marked
-  `schall03_reflecting_wall`.
+- Shielding from `barrier` features and, unconditionally, from `building`
+  features: every outer-ring edge becomes a wall panel of the building's
+  height, and all panels of one ring form one obstacle. Inner rings are
+  courtyards and are ignored. Reflection stays opt-in — from `barrier` features
+  marked `schall03_reflective` and from `building` features marked
+  `schall03_reflecting_wall` — because it raises levels for every model that
+  never asked for it.
 - The Nr. 5.3.2 substitution extent, from `schall03_track_features` on the
   `source` feature — the Weichen, Kreuzungen und Haltestellen the 50 km/h
   substitute speed is scoped to.
@@ -178,11 +185,6 @@ code no `aconiq run` invocation could reach. See PLAN.md Priority 2.
 - **Rangier- und Umschlagbahnhöfe (Nr. 4.8, Phase 20b).** `rangierbahnhof.go`
   and the Beiblatt 3 tables have no GeoJSON representation and no run-pipeline
   branch; Gl. 35–36 combined assessment is therefore unreachable from a run.
-- **Buildings as shielding obstacles.** A `building` feature can act as a
-  reflector on request but is never turned into a `BarrierSegment`, so a
-  receiver behind a building is computed as if the building were absent. Adding
-  reflection without shielding would be the wrong half to ship by default,
-  which is why the reflector role is opt-in.
 - **Measured vehicle data (Nr. 9).** `measured_vehicle.go` accepts it; no input
   format carries it.
 
@@ -194,7 +196,7 @@ code no `aconiq run` invocation could reach. See PLAN.md Priority 2.
 
 ## Evidence
 
-- CI-safe test suite: repo-authored synthetic scenarios covering emission (straight track, bridge, bridge combined with Feste Fahrbahn, a 40 km/h Eisenbahn line, Straßenbahn, Straßenbahn Langsamfahrstelle, Straßenbahn Haltestellenbereich), propagation (free field, two-receiver distance check, water body, single barrier, barrier plus reflecting wall, a dominant lateral diffraction path, a three-edge barrier scene, a reflective barrier reaching Gl. 20's D_refl), and full assessment including Straßenbahn full-chain
+- CI-safe test suite: repo-authored synthetic scenarios covering emission (straight track, bridge, bridge combined with Feste Fahrbahn, a 40 km/h Eisenbahn line, Straßenbahn, Straßenbahn Langsamfahrstelle, Straßenbahn Haltestellenbereich), propagation (free field, two-receiver distance check, water body, single barrier, barrier plus reflecting wall, a dominant lateral diffraction path, a three-edge barrier scene, a reflective barrier reaching Gl. 20's D_refl, a closed building footprint whose front and back wall form the double edge of Gl. 22), and full assessment including Straßenbahn full-chain
 - Suite location: `backend/internal/qa/acceptance/schall03/testdata/ci_safe_suite.json`
 - No official conformance test suite exists for Schall 03; comparison with hand-calculated reference values used for unit tests
 
@@ -215,3 +217,7 @@ code no `aconiq run` invocation could reach. See PLAN.md Priority 2.
    `permanently_slow` and declared features are mutually exclusive and rejected together, because the "dauerhaft v ≤ 30 km/h" exception presupposes a section carrying no Weichen, Kreuzungen oder Haltestellen.
    The related deviation on the Eisenbahn side is closed: the 50 km/h floor is no longer applied to Eisenbahn segments. Nr. 4.3 prescribes no substitute speed below the 70 km/h that applies im Bereich von Personenbahnhöfen und Haltepunkten, which is implemented via the `is_station` flag; slow Eisenbahn lines are now computed at their real speed. The previous behaviour read 2.2 dB high at 1000 Hz and 5.5 dB high at 2000 Hz for a 30 km/h approach.
 7. **Fahrbahnart default**: `FahrbahnartType` and `SFahrbahnartType` are numbered so that Schwellengleis — the reference track type of Nr. 4.4 and Nr. 5.4, carrying no c1 correction — is the zero value. A `TrackSegment` whose JSON omits `fahrbahn` or `s_fahrbahn` therefore receives no Tabelle 7 or Tabelle 15 correction. Before 28 August 2026 the zero value was Feste Fahrbahn (Eisenbahn) and straßenbündiger Bahnkörper (Straßenbahn), so an omitted field silently added +7/+3 dB Schiene and +1 dB Reflexion, respectively up to +8 dB at 1000 Hz. Scenario files no longer carry those ordinals at all: `fahrbahn`, `s_fahrbahn`, `surface` and the wall `surface` are read and written as names from the stable vocabulary (for example `schwellengleis`, `feste-fahrbahn`), and a bare JSON number is rejected with an error naming the accepted values. A file written against the old numbering therefore fails loudly instead of being misread, which is why no schema-version field or migration entry is needed for it.
+8. **Seitliche Beugung um einen geschlossenen Grundriss (Silhouetten-Näherung)**: Ein geschlossenes Hindernis hat keine freien Enden. Aconiq nimmt als Seitenkanten je Seite den Grundrisspunkt mit dem größten vorzeichenbehafteten Lotabstand von der Verbindungslinie Quelle–Immissionsort und wertet Gl. 18/26 für diesen einen Punkt aus. Das gespannte Seil (Bild 5) kann jedoch je Seite zwei oder mehr Eckpunkte berühren, etwa Vorder- und Hinterkante derselben Gebäudeseite. Der modellierte Umweg ist deshalb **kürzer** als der tatsächliche, z und damit A_bar fallen **kleiner** aus, und der berechnete Pegel liegt **höher** als der normgerechte — die Abweichung wirkt also zugunsten des Schutzguts. Die Mehrfachbeugung in der Grundrissebene (Laufweglänge e in der Ebene, C₃, D_z ≤ 25 dB nach Gl. 22) ist nicht umgesetzt; sie kann Ergebnisse gegenüber dem Auslieferungsstand nur leiser machen.
+   Gl. 20's D_refl wird auf Gebäudewände **nicht** angewendet: die Gleichung ist auf reflektierende Schallschutzwände mit absorbierendem Sockel beschränkt, und ein Wohnhaus ist keine Schallschutzwand. Gebäudetafeln tragen daher `Reflective: false`.
+   Gitterimmissionsorte innerhalb eines Gebäudegrundrisses werden nicht maskiert (`run_receivers.go` kennt keine Gebäudemaskierung). Im Auto-Raster liegen solche Punkte im Gebäude und werden seit dieser Änderung von der einen Ringkante abgeschirmt, die ihr Strahl durchstößt, statt frei zu stehen. RLS-19 verhält sich ebenso; der Wert an einem Punkt innerhalb eines Gebäudes ist in beiden Fällen nicht als Immissionsort zu lesen.
+9. **Ausschluss je Hindernis, nicht je Wandtafel (Spiegelwege)**: Aus der Hindernisliste eines Spiegelwegs werden alle Tafeln des reflektierenden Hindernisses entfernt, nicht nur die eine Tafel, an der reflektiert wurde. Bei einem geschlossenen Grundriss schirmt damit auch die Rückwand desselben Gebäudes den an seiner Vorderwand reflektierten Strahl nicht ab, obwohl dieser sie durchstößt. Die Abweichung wirkt **erhöhend** auf den berechneten Pegel und damit zugunsten des Schutzguts. Fremde Hindernisse im Spiegelweg schirmen unverändert ab. RLS-19 ist an dieser Stelle gleich abgegrenzt (`barriersExcluding`).
