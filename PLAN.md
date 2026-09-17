@@ -512,6 +512,43 @@ Five constraints are live:
 `aconiq compare-raster` deliberately does **not** reproject: it compares against SoundPLAN rasters
 in the project's own CRS.
 
+### 1.8 RLS-19 measured the propagation path above sea level — closed
+
+`h_m` in Gl. 14 is the mean height of the path **above the ground**. The module computed the mean
+path elevation correctly and then subtracted an average terrain elevation that `computeTerrainAvgZ`
+answered with **0** whenever no declared slope edge crossed the path — and the CLI never populates
+`cfg.Terrain`, so that was every path of every run. On a project carrying elevations `h_m` became the
+height above sea level, `D_gr` went far negative, Gl. 14's `minimum 0` clamped it, and the
+Bodendämpfung disappeared without a word: up to +4.8 dB, measured at +4.39 dB end to end on a site
+400 m up. Recorded as C11 in the conformance declaration.
+
+Four constraints follow, and the first is the general lesson.
+
+**Zero is an elevation, not an absence.** A lookup that cannot answer must say so rather than return
+a plausible number — the same rule P1.5 drew from RLS-19's `SurfaceCorrection`, reached here by a
+different route. `computeTerrainAvgZ` now returns `(value, ok)`.
+
+**Where nothing is known, the ground under each end is the ground at that end.** That fallback —
+not DTM sampling — is the core of the fix, and it is bit-identical to the old output when elevations
+are 0. That identity is why 843 tests and 94 acceptance fixtures were blind to this: every fixture
+but two sits at elevation 0. Only `i8_ascending` and `i9_receding` moved, by −0.5732 dB.
+
+**A DTM must be read for its shape, not its datum.** The ordinary project has a DTM and 2D GeoJSON
+sources, so the model's declared ground is 0 while the DTM says 400. Sampling absolute elevations
+would have produced `h_m ≈ −197` and ~41 dB of invented attenuation — a worse defect than the one
+being fixed. `geo/terrain.MeanRiseAboveChord` therefore returns the mean rise of the terrain above
+the chord joining its own endpoint samples, and the module adds that to the chord between the ground
+elevations it already knows.
+
+**Schall 03 does not have this bug**, and the assumption that it did was wrong.
+`schall03.meanPathHeight` already works in heights above ground. Its deviation 4 is the weaker one
+its declaration states — the flat-ground special case of `S/d` — and `MeanRiseAboveChord` is exactly
+what closes it: add the sampled rise to `(h_g + h_r)/2`. Left undone deliberately.
+
+Cost: a DTM-attached run is ~28 % slower on the propagation path (25 m nominal sampling, capped at
+64 intervals). Only projects that import a DTM pay it; a geographic project pays more, because every
+sample goes through `terrainInComputeCRS`.
+
 ## Priority 2 — Make the CLI run the normative code
 
 **Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
@@ -826,6 +863,14 @@ corrections — an archived run is evidence someone may hold under a permit appl
 test-fixture-tier numbers get the opposite rule and carry no stability promise at all. That is
 enforceable rather than aspirational because the release workflow runs `just update-golden` and
 fails on a dirty tree.
+
+**Until the first tag, norm-closeness outranks golden stability.** The rule above protects an
+archived run someone may hold under a permit application, and `git tag` is still empty, so there is
+no such run yet — `CHANGELOG.md` already says as much. A numeric change that brings a normative
+module closer to its standard is therefore taken now rather than deferred, and every one still
+carries a **numeric** changelog entry and a conformance-document update in the same change. That is
+what makes the shift deliberate rather than silent, and it is what the rule starts enforcing at the
+first tag.
 
 ### Open
 
@@ -1601,11 +1646,24 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
       cooling towers, facades).
 - [ ] Add spatial ground zones so per-region G values come from polygon geometry instead of a
       single global ground factor.
-- [ ] Implement the ISO 9613-1 analytical α model to replace nearest-row Table 2 lookup
-      (`iso9613/atmospheric.go:27-46`), which snaps to one of 6 points using an undocumented
-      `dt/10, dh/50` weighting. At 4 kHz the table spans 22.9–88.8 dB/km. The deviation _is_
-      honestly disclosed at `docs/conformance/iso9613-konformitaetserklaerung.md:84` — implementing
-      the ~20-line formula is cheaper than maintaining the caveat.
+- [x] **The ISO 9613-1 α model replaced the nearest-row Table 2 lookup.** `AlphaForBand` evaluates
+      the analytical model — classical absorption plus O₂ and N₂ relaxation — at every condition.
+      **This entry understated the defect by describing the table's span rather than the resulting
+      error.** The `dt/10, dh/50` weighting weighted temperature five times more heavily than
+      humidity per unit, so 5 °C / 30 % RH selected the 10 °C / **70 %** row: 32.8 dB/km at 4 kHz
+      where the formula gives 83.0, which is 25 dB over 500 m against the ±1 to ±3 dB clause 9
+      claims for the whole method. Whole regions of input space were indistinguishable — 5 °C/30 %
+      returned exactly what 10 °C/70 % did. Three constraints are live.
+      **Table 2 is now a test oracle, not a rechenweg**, and that is what made the change safe to
+      make without the ISO text: the table is a tabulation of the same formula, so it validates it.
+      Agreement is ≤ 0.05 dB/km through 1 kHz and ≤ 1.4 % at 2–8 kHz, which is the table's own
+      rounding. Do not loosen those tolerances to make a band pass — a disagreement is a
+      transcription error in the formula.
+      **The coefficient is evaluated at the reference pressure** (101,325 kPa); site pressure is not
+      parameterisable, and that is the residual limitation that replaced the old one in the
+      declaration.
+      **`air_temperature_c` is bounded to [−60, 60] °C.** It previously accepted −273, where the
+      formula divides by an absolute temperature at or below zero.
 
 ## Priority 11 — 16. BImSchV scope completion
 
