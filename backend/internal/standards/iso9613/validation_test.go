@@ -109,6 +109,12 @@ func TestValidationAtmosphericAbsorptionAgainstTable2(t *testing.T) {
 	// Full octave-band verification at 10 C / 70% RH for d = 200.09 m.
 	// alpha (dB/km) from Table 2 row 1: {0.1, 0.4, 1.0, 1.9, 3.7, 9.7, 32.8, 117.0}
 	// A_atm = alpha * d / 1000
+	//
+	// alpha is computed from ISO 9613-1 rather than read from the table, so the
+	// comparison carries the table's own precision as its tolerance: the
+	// per-band table2Tolerance, scaled from dB/km to this distance. See the
+	// comment on table2Tolerance for why the residual is the tabulation's and
+	// not the formula's.
 
 	d := math.Sqrt(200*200 + 6*6) // 200.09 m
 
@@ -117,9 +123,11 @@ func TestValidationAtmosphericAbsorptionAgainstTable2(t *testing.T) {
 
 	for i := range NumBands {
 		expected := alphaTable2[i] * d / 1000.0
-		if math.Abs(got[i]-expected) > 0.005 {
-			t.Errorf("band %d (%g Hz): expected A_atm=%.4f, got %.4f (alpha=%.1f dB/km)",
-				i, OctaveBandFrequencies[i], expected, got[i], alphaTable2[i])
+
+		tolerance := AtmosphericAbsorption(table2Tolerance[i], d) + 0.005
+		if math.Abs(got[i]-expected) > tolerance {
+			t.Errorf("band %d (%g Hz): expected A_atm=%.4f ± %.4f, got %.4f (Table 2 alpha=%.1f dB/km)",
+				i, OctaveBandFrequencies[i], expected, tolerance, got[i], alphaTable2[i])
 		}
 	}
 
@@ -349,12 +357,19 @@ func TestValidationNoteOneSingle500HzBand(t *testing.T) {
 	cfg.GroundFactor = 0 // hard ground keeps A_gr free of the a'..d' functions
 
 	// Hand calculation at 500 Hz, d = dp = 100 m (source and receiver both at 4 m):
-	//   A_div = 20*lg(100) + 11                        = 51.00 dB
-	//   A_atm = 1.9 dB/km * 100 m / 1000               =  0.19 dB   (Table 2, 10 C / 70 %)
-	//   A_gr  = A_s + A_r + A_m = -1.5 + -1.5 + 0      = -3.00 dB   (Table 3, G = 0, q = 0)
+	//   A_div = 20*lg(100) + 11                        = 51.0000 dB
+	//   A_atm = 1.92422 dB/km * 100 m / 1000           =  0.19242 dB
+	//   A_gr  = A_s + A_r + A_m = -1.5 + -1.5 + 0      = -3.0000 dB   (Table 3, G = 0, q = 0)
 	//   A_bar = 0
-	//   L_AT(DW) = 100 - (51.00 + 0.19 - 3.00)         = 51.81 dB
-	expected := 100.0 - (20*math.Log10(100) + 11 + 1.9*100/1000 - 3.0)
+	//   L_AT(DW) = 100 - (51.0000 + 0.19242 - 3.0000)  = 51.80758 dB
+	//
+	// The 500 Hz coefficient is the ISO 9613-1 value at 10 C / 70 %, written out
+	// as a literal so this stays a hand calculation rather than a restatement of
+	// the implementation. ISO 9613-2 Table 2 tabulates the same coefficient,
+	// rounded, as 1.9 dB/km.
+	const alpha500At10C70 = 1.9242229427 // dB/km
+
+	expected := 100.0 - (20*math.Log10(100) + 11 + alpha500At10C70*100/1000 - 3.0)
 
 	indicators, err := ComputeReceiverIndicators(receiver, []PointSource{source}, cfg)
 	if err != nil {

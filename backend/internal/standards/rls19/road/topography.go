@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 )
 
 // TerrainEdge represents a slope edge (Böschungskante or Böschungsfuß) as a 3D
@@ -67,35 +68,99 @@ type TerrainProfile struct {
 	Slopes []TerrainSlope `json:"slopes"`
 }
 
+// terrainSampleStepM is the nominal spacing at which a DTM is sampled along a
+// propagation path for the mean-height correction. The ground enters h_m only
+// through its average, and h_m enters D_gr through a single term, so metre-fine
+// sampling would buy no accuracy the correction can express; 25 m resolves an
+// embankment or a cutting while keeping the query count per path in single
+// figures at the distances RLS-19 assesses.
+const terrainSampleStepM = 25.0
+
+// groundPath is one source→receiver path together with everything that is
+// known about the ground beneath it.
+type groundPath struct {
+	source, receiver geo.Point2D
+
+	// sourceZ and receiverZ are the absolute elevations of the path's ends —
+	// the substitute point source and the receiver.
+	sourceZ, receiverZ float64
+
+	// sourceGroundZ and receiverGroundZ are the absolute elevations of the
+	// ground each end stands on. They are what makes h_m a height above the
+	// ground rather than above the datum, so they are required, not optional.
+	sourceGroundZ, receiverGroundZ float64
+
+	// profiles are declared slope edges (Böschungskante, Böschungsfuß); dtm is
+	// the imported terrain model, in the CRS the run computes in.
+	profiles []TerrainProfile
+	dtm      terrain.Model
+}
+
 // computeMeanHeight returns h_m, the mean height of the source–receiver path
-// above terrain, using the RLS-19 modified formula:
+// above the ground, using the RLS-19 modified formula:
 //
 //	h_m = (sourceZ + receiverZ) / 2 − avgTerrainZ
 //
-// where avgTerrainZ is the distance-weighted average terrain elevation along the
-// horizontal projection of the source–receiver path.  If no terrain profiles are
-// provided, avgTerrainZ = 0 (flat ground at the reference datum).
-func computeMeanHeight(
-	source, receiver geo.Point2D,
-	sourceZ, receiverZ float64,
-	profiles []TerrainProfile,
-) float64 {
-	meanPathZ := (sourceZ + receiverZ) / 2.0
-	avgTerrainZ := computeTerrainAvgZ(source, receiver, profiles)
+// where avgTerrainZ is the distance-weighted average ground elevation along the
+// horizontal projection of the source–receiver path.
+func computeMeanHeight(p groundPath) float64 {
+	meanPathZ := (p.sourceZ + p.receiverZ) / 2.0
 
-	return meanPathZ - avgTerrainZ
+	return meanPathZ - p.avgTerrainZ()
+}
+
+// avgTerrainZ resolves the average ground elevation under the path, in order of
+// preference:
+//
+//  1. the declared terrain profiles, integrated piecewise between their
+//     breakpoints;
+//  2. the imported DTM, sampled along the path and read relative to the ground
+//     already known at each end;
+//  3. the straight line between the ground elevations at the two ends.
+//
+// It is never zero. Zero is an elevation like any other, and answering with it
+// where nothing is known makes h_m the height of the path above sea level: at a
+// site a few hundred metres up that drives D_gr (Eq. 14) far below zero, where
+// it clamps to 0 and the ground attenuation disappears without a word. Where no
+// terrain is known the ground under each end is the ground at that end, which
+// is what case 3 says; on flat ground it returns h_m = (sourceHeight +
+// receiverHeight)/2 at any elevation, including zero.
+func (p groundPath) avgTerrainZ() float64 {
+	avg, ok := computeTerrainAvgZ(p.source, p.receiver, p.profiles)
+	if ok {
+		return avg
+	}
+
+	chordZ := (p.sourceGroundZ + p.receiverGroundZ) / 2.0
+
+	rise, ok := terrain.MeanRiseAboveChord(
+		p.dtm,
+		p.source.X, p.source.Y,
+		p.receiver.X, p.receiver.Y,
+		terrainSampleStepM,
+	)
+	if ok {
+		return chordZ + rise
+	}
+
+	return chordZ
 }
 
 // computeTerrainAvgZ computes the weighted-average terrain elevation along the
 // horizontal source→receiver path, integrating all slope edges piecewise.
-func computeTerrainAvgZ(source, receiver geo.Point2D, profiles []TerrainProfile) float64 {
+//
+// The second return value is false when the declared profiles say nothing about
+// this path — there are none, or none of their edges crosses it. That is not an
+// average of zero; it is the caller's cue to fall back to what else it knows
+// about the ground.
+func computeTerrainAvgZ(source, receiver geo.Point2D, profiles []TerrainProfile) (float64, bool) {
 	if len(profiles) == 0 {
-		return 0
+		return 0, false
 	}
 
 	dTotal := dist2D(source, receiver)
 	if dTotal < 1e-9 {
-		return 0
+		return 0, false
 	}
 
 	// Collect terrain breakpoints: (distance from source, terrain Z).
@@ -118,7 +183,7 @@ func computeTerrainAvgZ(source, receiver geo.Point2D, profiles []TerrainProfile)
 	}
 
 	if len(bps) == 0 {
-		return 0
+		return 0, false
 	}
 
 	// Sort by distance from source.
@@ -159,7 +224,7 @@ func computeTerrainAvgZ(source, receiver geo.Point2D, profiles []TerrainProfile)
 		totalArea += w * (s.z0 + s.z1) / 2.0
 	}
 
-	return totalArea / dTotal
+	return totalArea / dTotal, true
 }
 
 // terrainEdgeCrossing finds where a terrain edge crosses the source→receiver

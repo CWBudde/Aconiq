@@ -265,30 +265,6 @@ func TestComputeAttenuation_DAtmFormula(t *testing.T) {
 	}
 }
 
-// --- energySumDB tests ---
-
-func TestEnergySumDB(t *testing.T) {
-	t.Parallel()
-
-	// Two equal levels: +3 dB.
-	result := energySumDB([]float64{60, 60})
-	if !almostEqual(result, 63.01, 0.01) {
-		t.Fatalf("60+60 dB: expected ~63.01, got %f", result)
-	}
-
-	// Empty: -999.
-	result = energySumDB(nil)
-	if result > -900 {
-		t.Fatalf("empty sum: expected -999, got %f", result)
-	}
-
-	// Single value passes through.
-	result = energySumDB([]float64{55.0})
-	if !almostEqual(result, 55.0, 0.01) {
-		t.Fatalf("single value: expected 55, got %f", result)
-	}
-}
-
 // --- topography tests ---
 
 // sampleTieflageSource returns a source at Z=100 (road in cut, terrain at Z=105.5).
@@ -354,14 +330,16 @@ func TestTerrainEdgeValidate(t *testing.T) {
 func TestComputeTerrainAvgZ_NoProfiles(t *testing.T) {
 	t.Parallel()
 
-	avg := computeTerrainAvgZ(
+	// No profiles is "nothing known about the ground here", not "the ground is
+	// at zero" — the caller has to be able to tell the two apart.
+	_, ok := computeTerrainAvgZ(
 		geo.Point2D{X: 0, Y: 0},
 		geo.Point2D{X: 100, Y: 0},
 		nil,
 	)
 
-	if avg != 0 {
-		t.Fatalf("expected 0 for no terrain profiles, got %f", avg)
+	if ok {
+		t.Fatal("expected no answer for no terrain profiles")
 	}
 }
 
@@ -375,11 +353,14 @@ func TestComputeTerrainAvgZ_FlatTerrain(t *testing.T) {
 	}
 	profile := TerrainProfile{Slopes: []TerrainSlope{{SlopeCrest: edge}}}
 
-	avg := computeTerrainAvgZ(
+	avg, ok := computeTerrainAvgZ(
 		geo.Point2D{X: 100, Y: 0},
 		geo.Point2D{X: 100, Y: 100},
 		[]TerrainProfile{profile},
 	)
+	if !ok {
+		t.Fatal("expected the crossing edge to settle the terrain average")
+	}
 
 	// Edge crosses at midpoint of path; terrain before = 105.5, after = 105.5.
 	if !almostEqual(avg, 105.5, 0.01) {
@@ -402,7 +383,15 @@ func TestComputeMeanHeight_Tieflage(t *testing.T) {
 	sourceZ := 100.5   // road at 100, + 0.5 m source height
 	receiverZ := 108.3 // IO1 absolute Z
 
-	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+	hm := computeMeanHeight(groundPath{
+		source:          source,
+		receiver:        receiver,
+		sourceZ:         sourceZ,
+		receiverZ:       receiverZ,
+		sourceGroundZ:   100.0, // road surface in the cut
+		receiverGroundZ: 105.5, // terrain beside it
+		profiles:        []TerrainProfile{profile},
+	})
 
 	// TEST-20 reference: h_m = -0.104
 	if !almostEqual(hm, -0.104, 0.05) {
@@ -424,7 +413,15 @@ func TestComputeMeanHeight_TieflageFarReceiver(t *testing.T) {
 	sourceZ := 100.5
 	receiverZ := 120.5 // IO2 absolute Z
 
-	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+	hm := computeMeanHeight(groundPath{
+		source:          source,
+		receiver:        receiver,
+		sourceZ:         sourceZ,
+		receiverZ:       receiverZ,
+		sourceGroundZ:   100.0, // road surface in the cut
+		receiverGroundZ: 105.5, // terrain beside it
+		profiles:        []TerrainProfile{profile},
+	})
 
 	// TEST-20 reference: h_m = 5.988
 	if !almostEqual(hm, 5.988, 0.05) {
@@ -454,7 +451,15 @@ func TestComputeMeanHeight_Hochlage(t *testing.T) {
 	sourceZ := 105.5   // road at 105, + 0.5 m
 	receiverZ := 102.6 // IO1 absolute Z
 
-	hm := computeMeanHeight(source, receiver, sourceZ, receiverZ, []TerrainProfile{profile})
+	hm := computeMeanHeight(groundPath{
+		source:          source,
+		receiver:        receiver,
+		sourceZ:         sourceZ,
+		receiverZ:       receiverZ,
+		sourceGroundZ:   105.0, // road surface on the embankment
+		receiverGroundZ: 100.0, // terrain beside it
+		profiles:        []TerrainProfile{profile},
+	})
 
 	// TEST-20 reference: h_m = 2.237
 	if !almostEqual(hm, 2.237, 0.05) {

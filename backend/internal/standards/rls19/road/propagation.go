@@ -5,7 +5,9 @@ import (
 	"math"
 	"slices"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/numeric"
 )
 
@@ -29,6 +31,15 @@ type PropagationConfig struct {
 	// Terrain describes topographic features (cuts, embankments) near the road.
 	// Used for terrain-edge shielding (Böschungskante) and the h_m calculation.
 	Terrain []TerrainProfile
+
+	// TerrainModel is the imported DTM, already in the CRS the run computes
+	// in. It is the ground h_m is measured above wherever no slope edge is
+	// declared. Optional: a run without a DTM falls back to the ground
+	// elevations the model itself carries, never to sea level.
+	//
+	// It is excluded from JSON: a terrain model is an interface over a raster
+	// the project stores as a file, not a value a request carries.
+	TerrainModel terrain.Model `json:"-"`
 
 	// Reflectors are building facades or other vertical surfaces that reflect
 	// sound to the receiver via additional propagation paths (up to 2 bounces).
@@ -349,8 +360,8 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	}
 
 	return PeriodLevels{
-		LrDay:   energySumDB(dayContrib),
-		LrNight: energySumDB(nightContrib),
+		LrDay:   acoustics.EnergySum(dayContrib),
+		LrNight: acoustics.EnergySum(nightContrib),
 	}, nil
 }
 
@@ -432,8 +443,20 @@ func appendSegmentContributions(
 	dz := receiverZ - sourceZ
 	slantDist := math.Sqrt(planDist*planDist + dz*dz)
 
-	// Mean height above terrain for ground correction.
-	hm := computeMeanHeight(seg.MidPoint, receiver, sourceZ, receiverZ, effectiveCfg.Terrain)
+	// Mean height above the ground for the ground correction. The ground under
+	// the source is the road surface the substitute point source stands 0.5 m
+	// above; under the receiver it is the terrain elevation the receiver height
+	// is measured from.
+	hm := computeMeanHeight(groundPath{
+		source:          seg.MidPoint,
+		receiver:        receiver,
+		sourceZ:         sourceZ,
+		receiverZ:       receiverZ,
+		sourceGroundZ:   seg.MidZ,
+		receiverGroundZ: effectiveCfg.ReceiverTerrainZ,
+		profiles:        effectiveCfg.Terrain,
+		dtm:             effectiveCfg.TerrainModel,
+	})
 
 	// Free-field attenuation (D_div + D_atm + D_gr).
 	att := computeAttenuation(planDist, slantDist, hm, effectiveCfg)
@@ -578,7 +601,13 @@ func appendReflectedContribs(
 		// (flat-terrain approximation for reflected legs). Terrain edges are
 		// left off the mirrored leg for the same reason: the image path does
 		// not lie over the sampled ground profile.
-		hmRefl := (sourceZ + receiverZ) / 2.0
+		//
+		// The height is measured above the ground each end stands on — the road
+		// surface or parking surface under the source, the receiver's own
+		// terrain elevation under the receiver — and not above the datum. The
+		// mean of the two absolute Z values would make a site 400 m up read as
+		// a path 400 m in the air and lose D_gr entirely.
+		hmRefl := (sourceHeightM + (receiverZ - cfg.ReceiverTerrainZ)) / 2.0
 		attRefl := computeAttenuation(rp.planDistM, rp.slantDistM, hmRefl, cfg)
 
 		attRefl = applyShielding(attRefl, reflectedPathShielding(rp, sourceHeightM, receiver, effectiveBarriers, cfg))

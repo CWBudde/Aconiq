@@ -4,48 +4,48 @@
   "receiver_count": 6,
   "receivers": [
     {
-      "LpAeq_DW": 61.343749,
-      "LpAeq_LT": 61.343749,
+      "LpAeq_DW": 61.325901,
+      "LpAeq_LT": 61.325901,
       "height_m": 4,
       "id": "r1",
       "x": -30,
       "y": -20
     },
     {
-      "LpAeq_DW": 63.399599,
-      "LpAeq_LT": 63.399599,
+      "LpAeq_DW": 63.385987,
+      "LpAeq_LT": 63.385987,
       "height_m": 4,
       "id": "r2",
       "x": 0,
       "y": -20
     },
     {
-      "LpAeq_DW": 67.870337,
-      "LpAeq_LT": 67.870337,
+      "LpAeq_DW": 67.865036,
+      "LpAeq_LT": 67.865036,
       "height_m": 4,
       "id": "r3",
       "x": 30,
       "y": -20
     },
     {
-      "LpAeq_DW": 67.820492,
-      "LpAeq_LT": 67.820492,
+      "LpAeq_DW": 67.812458,
+      "LpAeq_LT": 67.812458,
       "height_m": 4,
       "id": "r4",
       "x": -30,
       "y": 15
     },
     {
-      "LpAeq_DW": 68.004583,
-      "LpAeq_LT": 68.004583,
+      "LpAeq_DW": 67.996385,
+      "LpAeq_LT": 67.996385,
       "height_m": 4,
       "id": "r5",
       "x": 0,
       "y": 15
     },
     {
-      "LpAeq_DW": 65.993447,
-      "LpAeq_LT": 65.993447,
+      "LpAeq_DW": 65.984185,
+      "LpAeq_LT": 65.984185,
       "height_m": 4,
       "id": "r6",
       "x": 30,
