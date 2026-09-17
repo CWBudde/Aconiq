@@ -443,9 +443,11 @@ func calcAreaFromModel(model modelgeojson.Model) (*soundplanimport.CalcArea, str
 		// — calcAreaBounds, calcAreaHorizontalSpan, metadataAlignedRowCenters —
 		// is purely 2D. It is carried so the two areas have the same shape.
 		//
-		// Its absence is never "no area". The property survives only until the
-		// first save from the map: frontend/src/model/to-geojson.ts emits
-		// properties: { kind } and nothing else.
+		// Its absence is never "no area". A save from the map no longer drops it
+		// — frontend/src/model/to-geojson.ts's calcAreaToGeoJSON carries the
+		// area's own properties through — so an absent value means the area was
+		// drawn rather than imported, and 0 is the right reading for one that
+		// was never given a base elevation.
 		baseElevationM, _, err := featurePropertyFloat(feature, "soundplan_base_elevation_m")
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf(

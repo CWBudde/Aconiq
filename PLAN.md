@@ -1512,12 +1512,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       computes no Tailwind stylesheet, so a `hover` + `findByRole("tooltip")` assertion passes
       over a real `disabled` button too — `aria-disabled` and Tab-reachability are what catch the
       regression (`map/draw-toolbar.test.tsx`, `map/undo-redo-bar.test.tsx`).
-- [ ] **`compare_raster.go:441-448` still says the map drops `soundplan_base_elevation_m`.**
-      It no longer does — `CalcArea` carries a `properties` passthrough and `calcAreaToGeoJSON`
-      emits it, in the shape `featuresToGeoJSON` and `receiversToGeoJSON` already used — so that
-      comment is stale and the Go side should be reread once for what else assumed the loss. The
-      premise that outlived it: nothing reads the z, and the raster comparison treats its absence
-      as elevation 0 rather than as "no area", so this was always metadata loss and never a
+- [x] **The stale `compare_raster.go` comment is corrected, and the reread it asked for found
+      nothing else.** The sentence claimed the map drops `soundplan_base_elevation_m` on the first
+      save; `calcAreaToGeoJSON`'s properties passthrough ended that, and the comment now says what
+      an absent value actually means — an area that was drawn rather than imported. The reread was
+      the point of the item and it came back empty: the whole Go surface for this property is two
+      writes in `import_soundplan.go` (a building's and a calc-area's) and the single read at
+      `compare_raster.go:449`, so no other site had been reasoning from the loss.
+      The premise that outlived it: nothing reads the z, and the raster comparison treats its
+      absence as elevation 0 rather than as "no area", so this was always metadata loss and never a
       numeric defect. The passthrough carries one rule of its own — a carried `properties.id` is
       rewritten to the id `resolveCalcAreaID` settled on, because `featureID` reads
       `properties.id` before the GeoJSON `id` member and a stale one would recreate the
