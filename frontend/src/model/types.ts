@@ -131,5 +131,16 @@ export interface CalcArea {
    * a hydrated model does not rename a feature the project already named.
    */
   id?: string;
+  /**
+   * The properties the area arrived with, kept the way {@link ModelFeature}
+   * and {@link ModelReceiver} keep theirs.
+   *
+   * An area is more than its outline to whatever wrote it. `aconiq import
+   * --soundplan` puts `soundplan_base_elevation_m` here, read off the first
+   * vertex of the bundle's `CalcArea.geo`; holding id and geometry alone meant
+   * the first save from the map wrote an area without it, silently and with no
+   * recovery short of re-importing.
+   */
+  properties?: Record<string, unknown>;
   geometry: { type: "Polygon"; coordinates: Position[][] };
 }

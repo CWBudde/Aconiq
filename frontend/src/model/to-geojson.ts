@@ -132,15 +132,36 @@ export function receiversToGeoJSON(
  * sound travels around — so emitting one would be a property nothing reads.
  * The geometry is a Polygon and never a MultiPolygon, which the validator
  * refuses rather than reducing to its envelope.
+ *
+ * The carried properties go first and `kind` last, exactly as
+ * {@link receiversToGeoJSON} does it: the store's own field wins, and
+ * everything else the area arrived with survives the round trip. Emitting
+ * `kind` alone dropped `soundplan_base_elevation_m` — which `aconiq import
+ * --soundplan` reads off the first vertex of the bundle's `CalcArea.geo` — on
+ * the first save from the map, with no recovery short of re-importing.
  */
 export function calcAreaToGeoJSON(
   area: CalcArea,
   taken: ReadonlySet<string> = new Set<string>(),
 ): GeoJSONFeatureCollection["features"][number] {
+  const id = resolveCalcAreaID(area, taken);
+  const carried = area.properties ?? {};
+
   return {
     type: "Feature" as const,
-    id: resolveCalcAreaID(area, taken),
-    properties: { kind: "calc-area" },
+    id,
+    properties: {
+      ...carried,
+      // A carried `properties.id` is rewritten rather than passed on, and only
+      // when the area carried one. The backend's `featureID` reads
+      // `properties.id` *before* the GeoJSON `id` member, so one still naming
+      // an id a feature has since taken would recreate exactly the
+      // `feature.id.duplicate` that `resolveCalcAreaID` just stepped past.
+      // Rewriting an existing key leaves it where it was, so the emitted key
+      // order — and with it the saved file's bytes — stays deterministic.
+      ...("id" in carried ? { id } : {}),
+      kind: "calc-area",
+    },
     geometry: {
       type: area.geometry.type,
       coordinates: area.geometry.coordinates as unknown,

@@ -214,6 +214,31 @@ describe("normalizeModelGeoJSON", () => {
     expect(anonymous.calcArea?.id).toBeUndefined();
   });
 
+  it("keeps the properties the calculation area carries", () => {
+    // `aconiq import --soundplan` writes `soundplan_base_elevation_m` here off
+    // the first vertex of the bundle's `CalcArea.geo`. Reading the area into a
+    // bare polygon lost it, and the next save wrote that loss into the project.
+    const result = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          ...areaFeature,
+          properties: {
+            id: "extent",
+            kind: "calc-area",
+            soundplan_base_elevation_m: 117.5,
+          },
+        },
+      ],
+    });
+
+    expect(result.calcArea?.properties).toEqual({
+      id: "extent",
+      kind: "calc-area",
+      soundplan_base_elevation_m: 117.5,
+    });
+  });
+
   it("reads ids from properties.id, the way the backend writes them", () => {
     // `Model.ToFeatureCollection` puts the id in `properties.id` and leaves
     // the GeoJSON `id` member unset, and Go's `featureID` reads it back from

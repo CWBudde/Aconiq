@@ -1393,32 +1393,28 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
-- [ ] **The undo/redo tooltips are dead — worth fixing for the shape, not for the symptom.**
-      `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a `disabled` Button, and a disabled
-      button takes no focus and fires no pointer events, so neither tooltip opens by mouse or by
-      keyboard whenever there is nothing to undo or redo. **The earlier wording here oversold
-      what that costs, and the correction is the useful part.** Both tooltips render
-      `m.tooltip_undo()`/`m.tooltip_redo()` — byte-identical to the button's own `aria-label` —
-      so nothing is lost to a screen reader, and what a sighted mouse user loses is the
-      "(Ctrl+Z)" hint, in the one state where the shortcut would do nothing anyway. These
-      tooltips never described "nothing to undo"; that phrasing was borrowed from `ModeGate`,
-      where the tooltip _is_ the reason, and does not transfer. The reason to still fix it is
-      that the shape is a trap: the day anyone puts a reason in that tooltip it becomes
-      unreachable, which is exactly what had happened in `map/draw-toolbar.tsx` before it was
-      fixed. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a swallowed
-      click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an attribute check
-      passes while the tooltip is invisible. Note jsdom computes no Tailwind stylesheet, so a
-      hover assertion alone does _not_ catch a regression to `disabled`; assert `aria-disabled`
-      and Tab-reachability, as `map/draw-toolbar.test.tsx` does.
-- [ ] **A save from the map destroys every property the store does not model.**
-      `calcAreaToGeoJSON` (`model/to-geojson.ts:126-139`) emits `properties: { kind }` and nothing
-      else, so `soundplan_base_elevation_m` — written by `aconiq import --soundplan` from
-      `CalcArea.geo`'s first vertex — is gone after the first save, silently and with no way to
-      recover it short of re-importing. Nothing reads that z today, which is why the raster
-      comparison treats its absence as elevation 0 rather than as "no area", so this is metadata
-      loss rather than a numeric defect for now. Fixing it needs a property passthrough on
-      `ModelCalcArea` that preserves what the store does not model; check the other
-      `*ToGeoJSON` builders for the same shape before writing it.
+- [ ] **A `disabled` Button under a Radix tooltip is the live constraint, not an open item.**
+      Every control on the map that refuses an action now uses `aria-disabled` plus a
+      click handler that swallows activation — `ui/mode-gate.tsx` carries the argument,
+      `map/draw-toolbar.tsx` and `map/undo-redo-bar.tsx` both use it. `disabled` puts
+      `disabled:pointer-events-none` on the button and takes it out of the focus order, so a
+      tooltip whose trigger is one never opens, by mouse or keyboard, in exactly the state it
+      describes. Two corrections the undo/redo fix produced, worth keeping for the next control:
+      the `aria-label` and the tooltip being byte-identical is what made that instance harmless,
+      so severity has to be read off the tooltip's own text rather than off the shape; and jsdom
+      computes no Tailwind stylesheet, so a `hover` + `findByRole("tooltip")` assertion passes
+      over a real `disabled` button too — `aria-disabled` and Tab-reachability are what catch the
+      regression (`map/draw-toolbar.test.tsx`, `map/undo-redo-bar.test.tsx`).
+- [ ] **`compare_raster.go:441-448` still says the map drops `soundplan_base_elevation_m`.**
+      It no longer does — `CalcArea` carries a `properties` passthrough and `calcAreaToGeoJSON`
+      emits it, in the shape `featuresToGeoJSON` and `receiversToGeoJSON` already used — so that
+      comment is stale and the Go side should be reread once for what else assumed the loss. The
+      premise that outlived it: nothing reads the z, and the raster comparison treats its absence
+      as elevation 0 rather than as "no area", so this was always metadata loss and never a
+      numeric defect. The passthrough carries one rule of its own — a carried `properties.id` is
+      rewritten to the id `resolveCalcAreaID` settled on, because `featureID` reads
+      `properties.id` before the GeoJSON `id` member and a stale one would recreate the
+      `feature.id.duplicate` the resolution just stepped past.
 - [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
       (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
       edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);

@@ -55,11 +55,10 @@ export function DrawToolbar({
   // `ui/components/button.tsx` puts `disabled:pointer-events-none` on every
   // button, and a disabled DOM button takes no focus either — so a tooltip
   // whose trigger is one never opens, by mouse or by keyboard, in exactly the
-  // state it exists to explain. `ui/mode-gate.tsx` carries the full argument
-  // and the same fix. `map/undo-redo-bar.tsx` has the same mechanism and is
-  // still open under Phase D, but not the same severity: its tooltip repeats
-  // the `aria-label` verbatim, so a dead one costs the "(Ctrl+Z)" hint rather
-  // than the only explanation the control has.
+  // state it exists to explain. `ui/mode-gate.tsx` carries the full argument,
+  // and `map/undo-redo-bar.tsx` carries the same fix — it was never the same
+  // severity, its tooltip repeating the `aria-label` verbatim, but it was the
+  // same trap.
   //
   // A click handler swallows activation instead, which covers Enter and Space
   // too because both produce a click.

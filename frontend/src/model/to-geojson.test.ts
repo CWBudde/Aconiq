@@ -5,6 +5,7 @@ import {
   featuresToSourceGroups,
   modelToGeoJSON,
 } from "./to-geojson";
+import { normalizeModelGeoJSON } from "./normalize";
 import type { CalcArea, ModelFeature, ModelReceiver } from "./types";
 
 const src: ModelFeature = {
@@ -200,6 +201,99 @@ describe("modelToGeoJSON", () => {
     expect(emitted?.properties).toEqual({ kind: "calc-area" });
     expect(emitted?.geometry.type).toBe("Polygon");
     expect(emitted?.geometry.coordinates).toEqual(area.geometry.coordinates);
+  });
+
+  it("keeps the properties an area carries, and lets the store's kind win", () => {
+    // The receiver defect, found a second time on the area: emitting `kind`
+    // and nothing else dropped `soundplan_base_elevation_m` — written by
+    // `aconiq import --soundplan` off the first vertex of the bundle's
+    // `CalcArea.geo` — on the first save from the map.
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [],
+      calcArea: {
+        ...area,
+        properties: {
+          kind: "calc-area",
+          soundplan_base_elevation_m: 117.5,
+          note: "Baugebiet Nord",
+        },
+      },
+    });
+
+    expect(fc.features[0]?.properties).toEqual({
+      kind: "calc-area",
+      soundplan_base_elevation_m: 117.5,
+      note: "Baugebiet Nord",
+    });
+  });
+
+  it("round trips an unmodelled area property through store and emit", () => {
+    // The full path the loss happened on: a file the CLI wrote, read into the
+    // store, saved back out. The property is one nothing in the store models.
+    const imported = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {
+            id: "extent",
+            kind: "calc-area",
+            soundplan_base_elevation_m: 117.5,
+          },
+          geometry: {
+            type: "Polygon",
+            coordinates: area.geometry.coordinates,
+          },
+        },
+      ],
+    });
+
+    const saved = modelToGeoJSON({
+      features: imported.features,
+      receivers: imported.receivers,
+      calcArea: imported.calcArea,
+    });
+
+    expect(saved.features[0]?.id).toBe("extent");
+    expect(saved.features[0]?.properties["soundplan_base_elevation_m"]).toBe(
+      117.5,
+    );
+  });
+
+  it("does not let a carried properties.id outlive the id resolution", () => {
+    // `featureID` in `modelgeojson/normalize.go` reads `properties.id` before
+    // the GeoJSON `id` member, so a carried one still naming an id a feature
+    // has since taken would recreate the `feature.id.duplicate` that
+    // `resolveCalcAreaID` just stepped past.
+    const clash: ModelFeature = { ...src, id: "extent" };
+    const fc = modelToGeoJSON({
+      features: [clash],
+      receivers: [],
+      calcArea: {
+        id: "extent",
+        properties: { id: "extent", kind: "calc-area" },
+        geometry: area.geometry,
+      },
+    });
+
+    expect(fc.features.map((f) => f.id)).toEqual([
+      "extent",
+      CALC_AREA_FEATURE_ID,
+    ]);
+    expect(fc.features[1]?.properties["id"]).toBe(CALC_AREA_FEATURE_ID);
+  });
+
+  it("gives an area that carried no id none in its properties", () => {
+    // The id member alone is what the backend falls back to, and adding a
+    // property the area never had would change the saved bytes for every
+    // model that has an area.
+    const fc = modelToGeoJSON({
+      features: [],
+      receivers: [],
+      calcArea: area,
+    });
+    expect(fc.features[0]?.properties).not.toHaveProperty("id");
   });
 
   it("keeps the id the project already gave the area", () => {
