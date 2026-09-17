@@ -441,5 +441,7 @@
   "msg_draw_projecting": "The drawn shape is being projected into {crs}, the coordinate system the model is stored in.",
   "msg_draw_projection_failed": "The drawn shape could not be projected into {crs} and was discarded: {reason}",
   "label_draw_projection": "Drawn geometry",
-  "label_crs_notice": "Coordinate reference system"
+  "label_crs_notice": "Coordinate reference system",
+  "label_bimschv16_area_category": "Area category (16. BImSchV)",
+  "msg_bimschv16_area_category_absent": "Not set = this receiver is skipped by the 16. BImSchV assessment; there is no default category."
 }

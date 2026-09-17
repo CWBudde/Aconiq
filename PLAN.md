@@ -1533,12 +1533,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 - [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
       change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
       `CommandStack` first so drags do not become one step per mousemove.
-- [ ] **Editor completeness**: two property shapes are still unreachable from the map. The
-      array-valued `schall03_operations` and `schall03_track_features` are reported by count and not
-      edited — a form for them is a second model editor, and half of one is how an Fz composition
-      loses a vehicle — so a rail model still needs its Zugarten written into the model file. And
-      the receiver panel still offers height alone, so `bimschv16_area_category` cannot be set on
-      the map although `assessment/bimschv16` refuses to assess a receiver that carries none.
+- [ ] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
+      are still reported by count and not edited, so a rail model's Zugarten still have to be
+      written into the model file by hand. That is a decision rather than a gap: a form for them is
+      a second model editor, and half of one is how an Fz composition silently loses a vehicle.
+      `schall03_track_features` carries coordinates in its properties besides, which puts it in
+      `PROPERTY_GEOMETRIES` — browser mode cannot move those and refuses a model that carries one
+      outright — so an editor for it would be filling in a model that half the app cannot run.
+- [x] **The receiver's Gebietskategorie** (#51). The receiver panel offers
+      `bimschv16_area_category` beside the height, over the four canonical values
+      `assessment/bimschv16` declares; `model/bimschv16.test.ts` pins them, their German labels and
+      the property name against `assessment.go`, including that this spelling is the first of the
+      five `categoryFromFeature` tries — which is what makes a value written here outrank an older
+      spelling the same receiver still carries. The select is the source panel's, generalised over
+      a value and a commit rather than twinned: `ModelReceiver` is not a `ModelFeature` and is
+      written through `updateReceiver`, and two controls would have meant two sets of empty-option
+      semantics to keep in step. An absent category is neither a default nor a quiet one — the
+      receiver lands in `ExportEnvelope.Skipped` — and the field's helper says exactly that.
 - [x] **The field tables, and the three rules they encode** (#50). The help under a field says what
       an _absent_ value means, and that answer is per property rather than per panel — "the run's
       default applies" is true for the RLS-19 road properties and false for every Parkplatz and

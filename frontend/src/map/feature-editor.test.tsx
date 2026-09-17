@@ -17,6 +17,11 @@ import {
   RLS19_PARKING_FACILITY_TYPES,
   RLS19_PARKING_LOT_TYPES,
 } from "@/model/rls19-parking";
+import {
+  BIMSCHV16_AREA_CATEGORIES,
+  bimschv16AreaCategoryLabel,
+  PROP_BIMSCHV16_AREA_CATEGORY,
+} from "@/model/bimschv16";
 import type { ModelFeature, ModelReceiver } from "@/model/types";
 import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { getLocale, overwriteGetLocale, type Locale } from "@/i18n/runtime";
@@ -910,6 +915,166 @@ describe("FeatureEditor receiver", () => {
     });
 
     expect(screen.getByLabelText(m.label_height_m())).toHaveValue(9);
+  });
+});
+
+/**
+ * The 16. BImSchV Gebietskategorie: the one receiver property the assessment
+ * cannot proceed without. Until this select existed the panel offered height
+ * alone, so a receiver drawn on the map could never be assessed at all — it
+ * was skipped for a property no part of the UI could write.
+ */
+describe("FeatureEditor receiver area category", () => {
+  function areaCategoryField(): HTMLElement {
+    return selectField("rcv-1", PROP_BIMSCHV16_AREA_CATEGORY);
+  }
+
+  function storedReceiverProperties(): Record<string, unknown> {
+    return useModelStore.getState().getReceiverById("rcv-1")?.properties ?? {};
+  }
+
+  it("offers the four categories ThresholdsForCategory knows, by their German names", () => {
+    // The statutory category names, not translations of them: the thresholds
+    // are declared for "Kern-, Dorf- oder Mischgebiet", and an invented
+    // English category would name a row the law does not have.
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+
+    for (const category of BIMSCHV16_AREA_CATEGORIES) {
+      expect(
+        screen.getByRole("option", {
+          name: bimschv16AreaCategoryLabel(category),
+        }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("says an absent category skips the receiver rather than defaulting it", () => {
+    // There is no default category. `assessReceiverFeature` reports "missing
+    // 16. BImSchV area category property" and the receiver lands in
+    // `ExportEnvelope.Skipped`, so the helper must not promise a run default.
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    expect(
+      screen.getByText(m.msg_bimschv16_area_category_absent()),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_source_acoustics_default_fallback()),
+    ).toBeNull();
+
+    fireEvent.click(areaCategoryField());
+    expect(
+      screen.queryByRole("option", { name: m.option_use_run_default() }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: m.option_not_set() }),
+    ).toBeInTheDocument();
+  });
+
+  it("writes the canonical value the Go enum owns, not the German label", () => {
+    // `ParseAreaCategory` takes both, but the enum value is what the type
+    // carries — and what every other reader of the model compares against.
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: bimschv16AreaCategoryLabel("mixed"),
+      }),
+    );
+
+    expect(storedReceiverProperties()).toEqual({
+      bimschv16_area_category: "mixed",
+    });
+  });
+
+  it("commits on change rather than on blur", () => {
+    // A select has no blur the way a number field does; the choice is the
+    // commit, as it is for every other vocabulary in this panel.
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: bimschv16AreaCategoryLabel("commercial"),
+      }),
+    );
+
+    expect(storedReceiverProperties()["bimschv16_area_category"]).toBe(
+      "commercial",
+    );
+  });
+
+  it("removes the property again when the category is unset", () => {
+    useModelStore.getState().addReceiver({
+      ...receiver,
+      properties: { bimschv16_area_category: "residential" },
+    });
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(screen.getByRole("option", { name: m.option_not_set() }));
+
+    expect(storedReceiverProperties()).toEqual({});
+  });
+
+  it("keeps the receiver's other properties and its height", () => {
+    useModelStore.getState().addReceiver({
+      ...receiver,
+      properties: { name: "IO 1" },
+    });
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: bimschv16AreaCategoryLabel("residential"),
+      }),
+    );
+
+    expect(storedReceiverProperties()).toEqual({
+      name: "IO 1",
+      bimschv16_area_category: "residential",
+    });
+    expect(useModelStore.getState().receivers[0]?.heightM).toBe(4);
+  });
+
+  it("goes through the command stack, so the write is undoable", () => {
+    // `updateReceiver` is a full-object replace; a write that bypassed it
+    // would leave an edit no undo could reach.
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(
+      screen.getByRole("option", { name: bimschv16AreaCategoryLabel("mixed") }),
+    );
+    act(() => {
+      useModelStore.getState().undo();
+    });
+
+    expect(storedReceiverProperties()).toEqual({});
+  });
+
+  it("follows a category changed elsewhere in the model", () => {
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    act(() => {
+      useModelStore.getState().updateReceiver({
+        ...receiver,
+        properties: { bimschv16_area_category: "commercial" },
+      });
+    });
+
+    expect(areaCategoryField()).toHaveTextContent(
+      bimschv16AreaCategoryLabel("commercial"),
+    );
   });
 });
 
