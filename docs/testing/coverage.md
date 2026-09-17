@@ -16,7 +16,13 @@ comment — one comment per target, edited in place rather than appended, so it
 always shows the current commit.
 
 Everything a developer sees locally is produced by the same scripts CI publishes.
-There is no CI-only measurement.
+There is no CI-only measurement — but note what that does and does not buy. Both
+sides running the same script is exactly why the frontend figure could be wrong in
+both places at once: the script measures whatever tree it is pointed at, and
+neither side generated `src/i18n/` before running it. What saved the local number
+until now was `fe-ci` happening to run `fe-typecheck` first. The recipes that run
+the suite now depend on `fe-i18n` by name, so the generated code is a stated
+prerequisite rather than a side effect of recipe order.
 
 ## The denominators are complete
 
