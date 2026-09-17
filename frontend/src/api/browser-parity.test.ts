@@ -210,11 +210,12 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
 
     expect(table.records).toHaveLength(expected.receivers.length);
 
-    // Matched by id, not by row: the two targets order the receiver table
-    // differently — see the ordering test below. The levels are the claim here.
+    // Row for row, in order: both targets keep the receivers in model order —
+    // see the ordering test below. Comparing in order is the stricter claim, and
+    // it is free now that the orders agree.
     const byID = new Map(table.records.map((record) => [record.id, record]));
-    expect([...byID.keys()].sort()).toEqual(
-      expected.receivers.map((receiver) => receiver.id).sort(),
+    expect(table.records.map((record) => record.id)).toEqual(
+      expected.receivers.map((receiver) => receiver.id),
     );
 
     for (const want of expected.receivers) {
@@ -376,18 +377,26 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
     ).rejects.toThrow(/zones 31-34/);
   });
 
-  // Found by the comparison above, and left standing deliberately rather than
-  // papered over: in `custom` receiver mode the CLI keeps the receivers in model
-  // order (extractExplicitReceivers walks model.Features) while browser mode
-  // sorts them by id. The levels agree receiver for receiver, so this is not a
-  // computation defect — but the receiver table's row order and therefore the
-  // run's output_hash differ between the two targets for the same model.
+  // Found by the comparison above: in `custom` receiver mode browser mode used
+  // to sort the receivers by id while the CLI kept them in model order
+  // (extractExplicitReceivers walks model.Features). The levels agreed receiver
+  // for receiver, so it was never a computation defect — but the receiver
+  // table's row order is what `output_hash` is computed over, so the same model
+  // hashed differently in the two targets.
   //
-  // Picking a winner changes the hash of every browser run that has already been
-  // made, so it is a decision rather than a fix. This test records the current
-  // behaviour so the difference cannot quietly change shape in the meantime, and
-  // PLAN.md carries the open item.
-  it("orders the receiver table by id, where the CLI keeps model order", async () => {
+  // Model order won, and the browser dropped its sort. The CLI is the primary
+  // artifact and its archived runs are the ones a permit application may rest
+  // on; moving its order would move its goldens and count as a breaking change
+  // to a normative module's output under docs/policies/releases.md. The cost is
+  // paid on the browser side: a run already in IndexedDB keeps its old rows and
+  // its old hash, and re-running the same model now produces a different hash
+  // than that stored run. `PERSISTED_STATE_VERSION` deliberately did not move —
+  // the stored bytes still parse, and discarding a user's model over a row order
+  // would be the larger harm.
+  //
+  // The fixture is the one whose two orders genuinely differed before: sorted by
+  // id it reads rec-far, rec-near, and in model order rec-near, rec-far.
+  it("orders the receiver table in model order, as the CLI does", async () => {
     const collection = JSON.parse(
       parityFile("road_building_barrier.geojson"),
     ) as GeoJSONFeatureCollection;
@@ -420,12 +429,12 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
     const browserOrder = table.records.map((record) => record.id);
     const cliOrder = golden.receivers.map((receiver) => receiver.id);
 
-    expect(browserOrder).toEqual(
+    expect(browserOrder).toEqual(cliOrder);
+    // Agreement by accident would prove nothing: assert the old behaviour really
+    // is gone, rather than that this fixture happens to sort into model order.
+    expect(browserOrder).not.toEqual(
       [...cliOrder].sort((a, b) => a.localeCompare(b)),
     );
-    // The fixture is chosen so the two orders genuinely differ; if they ever
-    // coincide, this test stops proving anything.
-    expect(browserOrder).not.toEqual(cliOrder);
   });
 });
 

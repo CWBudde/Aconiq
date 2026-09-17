@@ -1323,16 +1323,18 @@ out geom;`;
           "Custom receiver mode requires at least one receiver placed in the map workspace",
         );
       }
-      const sorted = [...storeReceivers].sort((a, b) =>
-        a.id.localeCompare(b.id),
-      );
-      gridReceivers = sorted.map((r) => ({
+      // Model order, not id order: `extractExplicitReceivers`
+      // (backend/internal/app/cli/run_input.go) walks `model.Features` and keeps
+      // whatever order the model gives it. The receiver table's row order is
+      // what `output_hash` is computed over, so sorting here made the same model
+      // hash differently in the two targets.
+      gridReceivers = storeReceivers.map((r) => ({
         id: r.id,
         point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
         height_m: r.heightM,
       }));
       rasterWidth = 1;
-      rasterHeight = sorted.length;
+      rasterHeight = storeReceivers.length;
     } else {
       const calcArea = computeModel.calcArea;
       let bbox: {
