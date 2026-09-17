@@ -291,6 +291,12 @@ fe-ci: fe-typecheck fe-lint fe-test-wasm fe-build fe-bundle-check
 # line in .gitignore, which does not cover a file added with `git add -f`, one
 # that was already tracked when the rule landed, or a branch that predates it.
 # Mirrored by .github/workflows/repo-hygiene.yml, which calls this recipe.
+#
+# This is the index half of docs/policies/data-handling.md: what may be stored
+# there, who may hold it, how a licensed fixture reaches a test run without
+# being tracked, and what to do if it leaks. Read it before changing this
+# recipe -- the guard is a tracked-path check, not a content scanner, and the
+# policy says so.
 check-no-third-party-data:
     #!/usr/bin/env bash
     set -euo pipefail

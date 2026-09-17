@@ -262,6 +262,8 @@ The tier is not a documentation convention — it is a field the code carries an
 
 **Determinism:** Same inputs + standard/profile → identical outputs regardless of worker count. Map iteration must never influence numeric results. Partial results merge in fixed order (no "first finished wins"). See `docs/policies/determinism.md`.
 
+**Data handling:** Licensed third-party material — standards texts, customer project bundles — lives under `interoperability/` and is never tracked. `just check-no-third-party-data` refuses a commit that tracks a path there, but it is a tracked-path check, not a content scanner: a licensed table pasted into a Go file passes it. What may be held, by whom, how a licensed fixture reaches a test run, and what to do if it leaks are in `docs/policies/data-handling.md`.
+
 **Formatting:** Enforced via `just fmt` (treefmt: gofumpt + gci + shfmt + shellcheck + prettier), at the versions `tools.versions` pins. `just check-formatted` is the CI gate and is read-only; see the note above.
 
 **Linting:** `just lint` runs golangci-lint v2 with `default: all` **minus a tuned disable list**, plus path- and text-scoped exclusion rules. It is not "all linters enabled". Every disable and exclusion is justified in `.golangci.yml` itself and in `docs/lint-triage.md` — keep the two in sync. `issues.uniq-by-line` is deliberately off so a finding cannot hide behind another on the same line. Leave the tree with no findings; fix issues before committing rather than adding suppressions.
