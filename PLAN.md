@@ -1370,9 +1370,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       than merely prose: `/results` and `/export` sent the user to the CLI while `/run` starts
       runs in both modes and the export header already carries a New Export button. Both empty
       states now point at the UI that does the work.
-      **`map/color-ramp.ts` has zero importers and 0 % coverage**, and was deliberately kept:
-      "Results on the map" below names `NOISE_LEVEL_RAMP`. Do not delete it as dead code in the
-      meantime.
+      **`map/color-ramp.ts` was deliberately kept although it had zero importers and 0 % coverage**,
+      because "Results on the map" below named `NOISE_LEVEL_RAMP`. That instruction has expired:
+      `result-layers.tsx` imports it, so the module is now reached by the code rather than only by
+      a promise in this file.
 - [x] **Split run/results/export** (`9b591a0`..`0a57d78`). `pages/run.tsx` is a route module
       again and its parts live in `src/run/`, with `useRunSetupSelection` and `useRunFromRoute`
       carrying the cascade and the URL→run rule. Six constraints follow.
