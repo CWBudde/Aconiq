@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
 import { Link, useSearchParams } from "react-router";
@@ -19,6 +19,7 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
+import { DISPLAY_CRS } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
 import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
@@ -68,8 +69,17 @@ function useStartDrawing(onDismiss: () => void): () => void {
   }, [setMode, onDismiss]);
 }
 
-function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
+function WorkspaceStart({
+  onDismiss,
+  drawingDisabled,
+  disabledReason,
+}: {
+  onDismiss: () => void;
+  drawingDisabled: boolean;
+  disabledReason: string;
+}) {
   const startDrawing = useStartDrawing(onDismiss);
+  const reasonId = useId();
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-8">
@@ -98,10 +108,23 @@ function WorkspaceStart({ onDismiss }: { onDismiss: () => void }) {
             <Button asChild>
               <Link to="/import">{m.action_import_data()}</Link>
             </Button>
-            <Button variant="outline" onClick={startDrawing}>
+            <Button
+              variant="outline"
+              onClick={startDrawing}
+              disabled={drawingDisabled}
+              aria-describedby={drawingDisabled ? reasonId : undefined}
+            >
               {m.action_start_drawing()}
             </Button>
           </div>
+          {/* Visible rather than a tooltip: this one is the *only* pointer to
+              drawing an empty workspace has, and a dead button beside an
+              "Import data" link reads as a bug unless it says why. */}
+          {drawingDisabled ? (
+            <p id={reasonId} className="text-xs text-muted-foreground">
+              {disabledReason}
+            </p>
+          ) : null}
         </div>
       </Card>
     </div>
@@ -125,13 +148,14 @@ function MapWorkspace() {
   const calcArea = useModelStore((s) => s.calcArea);
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
+  const crs = useModelStore((s) => s.crs);
 
   // The initial viewport is computed once, on mount. `useMemo` recomputed it on
   // every model edit, and MapView treats a new `center`/`zoom` as a reason to
   // rebuild — so drawing a single feature discarded the map. Later fitting is
   // ModelLayers' job (it calls `fitBounds` when data first arrives).
   const [workspaceView] = useState(() =>
-    fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16]),
+    fitViewToWorkspace(features, receivers, calcArea, [10.45, 51.16], crs),
   );
 
   const hasWorkspaceContent =
@@ -147,8 +171,29 @@ function MapWorkspace() {
     if (hasWorkspaceContent) setStartDismissed(false);
   }, [hasWorkspaceContent]);
 
+  // terra-draw emits WGS84, and `setCalcArea`/`addFeature` write straight into
+  // the store. In a store that holds metres that would mix degrees into the
+  // model — a round trip through the map quietly becoming the model, which is
+  // the one thing the map must never be. The draw-finish callback is the only
+  // coordinate writer on the map side (`FeatureEditor` writes attributes only,
+  // and nothing ever calls `draw.addFeatures`), so refusing there closes the
+  // hole outright.
+  //
+  // It is the last line of defence and not the only one. Every way *into* an
+  // active drawing mode takes this same flag — the toolbar, `?draw=1`, the
+  // start panel's button — and `DrawGuard` disarms one that a late CRS change
+  // has invalidated. Refusing at the finish alone let a user complete a shape
+  // and watch it vanish unexplained, which is worse than a dead control.
+  //
+  // The real fix is an inverse 4326 → `store.crs` transform on the finish path.
+  // It is unavailable in API mode until a transform endpoint exists, and is
+  // recorded in PLAN.md Priority 8 Phase D.
+  const drawingDisabled = crs !== DISPLAY_CRS;
+  const drawingDisabledReason = m.msg_draw_disabled_crs({ crs });
+
   const handleDrawFinish = useCallback(
     (mode: DrawMode, feature: GeoJSON.Feature) => {
+      if (drawingDisabled) return;
       if (mode === "calc-area") {
         const geom = feature.geometry;
         if (geom.type === "Polygon") {
@@ -164,7 +209,7 @@ function MapWorkspace() {
       }
       setNewGeometry(feature.geometry as Geometry);
     },
-    [setCalcArea],
+    [setCalcArea, drawingDisabled],
   );
 
   const handleFeatureClick = useCallback(
@@ -204,7 +249,11 @@ function MapWorkspace() {
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers />
-          <WorkspaceDrawToolbar />
+          <DrawGuard disabled={drawingDisabled} />
+          <WorkspaceDrawToolbar
+            disabled={drawingDisabled}
+            disabledReason={drawingDisabledReason}
+          />
           <LayerControl />
           <CoordinateDisplay />
           <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
@@ -253,6 +302,7 @@ function MapWorkspace() {
             </MapPanel>
           ) : null}
           <DrawRequest
+            disabled={drawingDisabled}
             onDismiss={() => {
               setStartDismissed(true);
             }}
@@ -260,6 +310,8 @@ function MapWorkspace() {
           <SelectRequest onSelect={handleSelectFromValidation} />
           {showStart ? (
             <WorkspaceStart
+              drawingDisabled={drawingDisabled}
+              disabledReason={drawingDisabledReason}
               onDismiss={() => {
                 setStartDismissed(true);
               }}
@@ -283,8 +335,18 @@ function MapWorkspace() {
  * strips it so a reload or a Back does not arm the tool again. A boolean
  * rather than a mode name, so which mode drawing starts in stays a decision
  * this file makes once.
+ *
+ * `disabled` is the same CRS gate the toolbar takes. Without it the link armed
+ * point mode over a metric model, the user drew a shape, and `handleDrawFinish`
+ * dropped it without a word — the parameter was a way past a disabled toolbar.
  */
-function DrawRequest({ onDismiss }: { onDismiss: () => void }) {
+function DrawRequest({
+  disabled,
+  onDismiss,
+}: {
+  disabled: boolean;
+  onDismiss: () => void;
+}) {
   const [params, setParams] = useSearchParams();
   const startDrawing = useStartDrawing(onDismiss);
   const requested = params.get(DRAW_PARAM) === "1";
@@ -293,9 +355,33 @@ function DrawRequest({ onDismiss }: { onDismiss: () => void }) {
   useEffect(() => {
     if (!requested || handled.current) return;
     handled.current = true;
-    startDrawing();
+    // The parameter goes either way: a refused request that stayed in the URL
+    // would be re-asked on every reload. A refused request also leaves the
+    // start panel standing, because that panel is where the reason is written.
+    if (!disabled) startDrawing();
     setParams({}, { replace: true });
-  }, [requested, startDrawing, setParams]);
+  }, [requested, disabled, startDrawing, setParams]);
+
+  return null;
+}
+
+/**
+ * Disarms the tools when drawing stops being allowed under an already active
+ * mode.
+ *
+ * The gates on the entry points decide with the CRS the store held at the time.
+ * `use-project-hydration` loads the model *after* mount, so `/model?draw=1` can
+ * arm point mode over an empty 4326 store one tick before a metric model lands
+ * in it — and the user is then drawing into a model whose shape will be
+ * refused. Cancelling is the only honest move: the toolbar has already greyed
+ * out around them, and the notice says why.
+ */
+function DrawGuard({ disabled }: { disabled: boolean }) {
+  const { activeMode, cancel } = useDrawContext();
+
+  useEffect(() => {
+    if (disabled && activeMode !== "static") cancel();
+  }, [disabled, activeMode, cancel]);
 
   return null;
 }
@@ -330,13 +416,21 @@ function SelectRequest({
 }
 
 /** Binds the presentational toolbar to the provider above it. */
-function WorkspaceDrawToolbar() {
+function WorkspaceDrawToolbar({
+  disabled,
+  disabledReason,
+}: {
+  disabled: boolean;
+  disabledReason: string;
+}) {
   const { activeMode, setMode, cancel } = useDrawContext();
   return (
     <DrawToolbar
       activeMode={activeMode}
       onModeChange={setMode}
       onCancel={cancel}
+      disabled={disabled}
+      disabledReason={disabledReason}
     />
   );
 }

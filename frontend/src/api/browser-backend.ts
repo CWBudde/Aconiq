@@ -41,6 +41,8 @@ import type {
   PointReceiver,
   ReceiverOutput,
   RoadSource,
+  TransformRequest,
+  TransformResponse,
 } from "@/wasm/types";
 import {
   BrowserStorageError,
@@ -1127,6 +1129,17 @@ export const browserBackend = {
     // Export artifacts are stored inside the run record, so deleting the run
     // deletes the bundle with it. The confirmation has to say so.
     exportsOutliveRunDelete: false,
+    // The kernel is already in memory by the time the user reaches the map —
+    // `getHealth()` awaits `getKernel()` — so refusing to project here would
+    // be refusing with the projector loaded.
+    canReprojectForDisplay: true,
+  },
+
+  async transformCoordinates(
+    req: TransformRequest,
+  ): Promise<TransformResponse> {
+    const kernel = await getKernel();
+    return kernel.transform(req);
   },
 
   async getHealth(): Promise<HealthResponse> {

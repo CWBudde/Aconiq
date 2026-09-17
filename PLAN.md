@@ -548,13 +548,14 @@ parse and discarding a user's model and runs over a row order is the larger harm
 
 ### Open
 
-- [ ] **MapLibre draws the model store as if it were EPSG:4326.** The store now carries the CRS its
-      coordinates are in, and a run projects out of it — but the map does not read the field, so a
-      metric model imports correctly, runs correctly and is drawn in the wrong place. The
-      alternatives are a display reprojection through `aconiq.transform` (the store's CRS → 4326 for
-      the map layer only, never for the stored coordinates) or refusing to draw a non-4326 store at
-      all and saying why. Whichever lands, the stored coordinates must stay in the project CRS: a
-      round trip through the map would quietly become the model.
+- [ ] **API mode cannot draw a metric model.** No projector is reachable there: `internal/api/httpv1`
+      has no transform endpoint, and pulling the 4 MB WASM kernel into a mode that never otherwise
+      loads it, purely to draw a map, buys a map at the cost of the mode's whole premise. It is not
+      theoretical — `pages/import.tsx` passes the imported CRS in **both** modes, so a projected
+      import leaves an API-mode store metric for the rest of the session. Closing it means deciding
+      `POST /api/v1/transform` on its own merits, and is what unblocks the inverse draw transform
+      under Priority 8 Phase D. Whatever lands holds the invariant that governs the map: **it is a
+      projection _of_ the model, never a source _for_ it.**
 - [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
       `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
       (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
@@ -1407,10 +1408,17 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
       row↔map highlight from the receiver table. Until it lands, hide the result toggles in
       `layer-control.tsx:74-76`.
-- [ ] **CRS and basemap**: guard `fitBounds` (`model-layers.tsx:91` throws on EPSG:25832 input);
-      proj4 with 25832/25833 on import and a UTM readout in the coordinate display; tile-error →
-      `OFFLINE_STYLE` with a notice; basemap picker; tile URL in Connection settings
-      (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
+- [ ] **Drawn geometry cannot enter a non-4326 model.** terra-draw emits WGS84 whatever the model
+      is stored in, so every way into an active drawing mode is gated off while the store's CRS is
+      not the display one. The fix is an inverse 4326 → `store.crs` transform on the draw-finish
+      path — the only coordinate writer on the map side, since `FeatureEditor` writes attributes
+      only and nothing calls `draw.addFeatures`. Blocked in API mode on the same transform endpoint
+      Priority 2 records.
+- [ ] **CRS and basemap**: a UTM readout in the coordinate display (`CoordinateDisplay` reads out
+      WGS 84 over a project stored in 25832); tile-error → `OFFLINE_STYLE` with a notice; basemap
+      picker; tile URL in Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
+      The `fitBounds` half is closed. No proj4 may be added for any of the rest: the projection is
+      `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run` would not.
 - [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
       feature list, so the map is not mouse-only.
 

@@ -23,6 +23,7 @@ import { browserBackend } from "./browser-backend";
 import { httpBackend } from "./http-backend";
 import { IS_WASM_MODE } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
+import type { TransformRequest, TransformResponse } from "@/wasm/types";
 
 export interface BackendCapabilities {
   /** Which implementation is behind the interface. Read it for labels, not for branching. */
@@ -61,6 +62,19 @@ export interface BackendCapabilities {
    * already agreed.
    */
   readonly exportsOutliveRunDelete: boolean;
+  /**
+   * A projection is reachable, so a model stored in a projected CRS can be
+   * moved into WGS84 for the map to draw it.
+   *
+   * Browser mode has the Go kernel in memory before the user reaches the map —
+   * `getHealth()` awaits `getKernel()` — so it can project on demand. API mode
+   * has no projector: `internal/api/httpv1` exposes no transform endpoint, and
+   * fetching the 4 MB kernel in a mode that never otherwise loads it, purely to
+   * draw a map, is the wrong trade. There the map says so and points at the
+   * route that works: save the model, then reload, because hydration refetches
+   * with `?crs=EPSG:4326`.
+   */
+  readonly canReprojectForDisplay: boolean;
 }
 
 /** What the UI needs from a run deletion, mode-independent. */
@@ -154,6 +168,14 @@ export interface Backend {
   getModel(crs: string): Promise<ModelResponse | null>;
   /** Replace the project model; refused with `model_invalid` when validation fails. */
   saveModel(req: ModelSaveRequest): Promise<ModelSaveResult>;
+  /**
+   * Project a flat, interleaved batch of coordinates between two CRS.
+   *
+   * Rejects unless `capabilities.canReprojectForDisplay`. The one projection
+   * the frontend has: it is the Go kernel's, so the browser cannot place a
+   * model where `aconiq run` would not.
+   */
+  transformCoordinates(req: TransformRequest): Promise<TransformResponse>;
 }
 
 /**

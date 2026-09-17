@@ -325,6 +325,45 @@ describe("useProjectHydration", () => {
     expect(projectHydrationStore.getState().draftOffered).toBe(false);
   });
 
+  it("restores the draft's own CRS with it", async () => {
+    // `loadDraft` reads it and `ui/draft-banner.tsx` passes it on; this path
+    // used to drop it, relabelling a metric draft EPSG:4326 — after which a
+    // run projected metres as if they were degrees.
+    state.project = projectWithModel(PROJECT_HASH);
+    writeDraft({
+      features: [draftFeature],
+      receivers: [],
+      calcArea: null,
+      hash: PROJECT_HASH,
+      crs: "EPSG:25832",
+    });
+    resetProjectHydration();
+
+    renderHook(() => {
+      useProjectHydration();
+    });
+    await settle();
+
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("takes the CRS from the server's answer on the fetch path", async () => {
+    // `ModelResponse.crs` is the authoritative statement about what the
+    // returned coordinates are in. Leaning on the constant that was *asked*
+    // for made the store's CRS a statement about this file's request instead.
+    state.project = projectWithModel(PROJECT_HASH);
+    state.respond = () =>
+      Promise.resolve({ ...storedModel(), crs: "EPSG:25832" });
+
+    renderHook(() => {
+      useProjectHydration();
+    });
+    await settle();
+
+    expect(state.crsRequests).toEqual(["EPSG:4326"]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
   it("fetches and still offers a draft whose hash differs", async () => {
     state.project = projectWithModel(PROJECT_HASH);
     writeDraft({

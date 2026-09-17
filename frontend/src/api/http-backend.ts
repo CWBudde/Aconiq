@@ -88,6 +88,9 @@ export const httpBackend: Backend = {
     // names them in `retained_paths` — a bundle may already have been
     // delivered.
     exportsOutliveRunDelete: true,
+    // No transform endpoint exists, and the WASM kernel is not loaded in this
+    // mode. See `transformCoordinates` below.
+    canReprojectForDisplay: false,
   },
 
   getHealth() {
@@ -185,6 +188,19 @@ export const httpBackend: Backend = {
       }
     }
     throw await errorFromResponse(response);
+  },
+
+  transformCoordinates() {
+    // The map never calls it (`canReprojectForDisplay` is false); the method
+    // still exists so the interface has no mode-specific hole. `POST
+    // /api/v1/transform` is a design decision of its own, and pulling the 4 MB
+    // kernel into a mode that never otherwise loads it, to draw a map, is not
+    // the way to avoid making it.
+    return Promise.reject(
+      new Error(
+        "Coordinate projection is not available in API mode; save the model and reload, which refetches it in WGS84",
+      ),
+    );
   },
 
   async saveModel(req) {

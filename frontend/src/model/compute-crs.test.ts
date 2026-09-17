@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveComputeModel } from "./compute-crs";
+import { projectWorkspace, resolveComputeModel } from "./compute-crs";
 import type { Workspace } from "./compute-crs";
 import type { ModelFeature } from "./types";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
@@ -264,5 +264,58 @@ describe("resolveComputeModel", () => {
 
     expect(kernel.requests[0]?.coordinates).toEqual([]);
     expect(model.features).toEqual([]);
+  });
+});
+
+describe("projectWorkspace", () => {
+  it("asks for the target it was given, not for auto", async () => {
+    // `wasmkernel.resolveTarget` transforms unconditionally on an explicit
+    // target and only consults the coordinates for "auto" — which is what
+    // makes the inverse direction, the one the map needs, free.
+    const kernel = fakeKernel(unmoved);
+
+    await projectWorkspace(
+      kernel.transform,
+      workspace({ crs: "EPSG:25832" }),
+      "EPSG:4326",
+    );
+
+    expect(kernel.requests).toHaveLength(1);
+    expect(kernel.requests[0]?.source_crs).toBe("EPSG:25832");
+    expect(kernel.requests[0]?.target_crs).toBe("EPSG:4326");
+  });
+
+  it("leaves the workspace it was handed untouched", async () => {
+    // The map projects the store's own arrays. Mutating them there would make
+    // the map a source for the model instead of a projection of it.
+    const kernel = fakeKernel(shiftBy(1000, 2000));
+    const input = workspace();
+    const before = structuredClone(input);
+
+    await projectWorkspace(kernel.transform, input, "EPSG:4326");
+
+    expect(input).toEqual(before);
+    expect(input.features[0]).toBe(LINE);
+  });
+
+  it("does not refuse geometry carried in a property", async () => {
+    // The refusal belongs to `resolveComputeModel`, because it is about
+    // computing. `ModelLayers` never draws `rls19_directional_sources`, and
+    // throwing here would blank the map for a model whose geometry projects
+    // perfectly well.
+    const kernel = fakeKernel(shiftBy(1, 1));
+
+    const model = await projectWorkspace(
+      kernel.transform,
+      workspace({
+        features: [{ ...LINE, properties: { rls19_directional_sources: [] } }],
+      }),
+      "EPSG:4326",
+    );
+
+    expect(model.features[0]?.geometry.coordinates).toEqual([
+      [2, 3],
+      [4, 5],
+    ]);
   });
 });

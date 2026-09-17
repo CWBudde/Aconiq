@@ -34,8 +34,21 @@ vi.mock("@/map/feature-popup", () => ({
   FeaturePopup: () => null,
 }));
 vi.mock("@/map/draw-toolbar", () => ({
-  DrawToolbar: ({ activeMode }: { activeMode: string }) => (
-    <div data-testid="draw-toolbar" data-mode={activeMode} />
+  DrawToolbar: ({
+    activeMode,
+    disabled,
+    disabledReason,
+  }: {
+    activeMode: string;
+    disabled?: boolean;
+    disabledReason?: string;
+  }) => (
+    <div
+      data-testid="draw-toolbar"
+      data-mode={activeMode}
+      data-disabled={String(disabled === true)}
+      data-disabled-reason={disabledReason ?? ""}
+    />
   ),
 }));
 // Renders the id it was handed, which is what `?select=` has to reach.
@@ -45,8 +58,11 @@ vi.mock("@/map/feature-editor", () => ({
       <div data-testid="feature-editor">{featureId}</div>
     ),
 }));
+// Renders only when it is open, which is the signal that a drawn shape
+// reached the page at all.
 vi.mock("@/map/new-feature-dialog", () => ({
-  NewFeatureDialog: () => null,
+  NewFeatureDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="new-feature-dialog" /> : null,
 }));
 vi.mock("@/map/validation-panel", () => ({
   ValidationPanel: () => null,
@@ -65,8 +81,20 @@ vi.mock("terra-draw", () => {
       setMode = vi.fn();
       start = vi.fn();
       stop = vi.fn();
-      on = vi.fn();
-      getSnapshot = vi.fn(() => []);
+      // Captured so a test can play terra-draw finishing a shape. The adapter
+      // hands the page WGS84 coordinates whatever the model is stored in,
+      // which is the whole reason the page has to refuse.
+      on = vi.fn((event: string, handler: (id: string) => void) => {
+        if (event === "finish") draw.finish = handler;
+      });
+      getSnapshot = vi.fn(() => [
+        {
+          id: "drawn-1",
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Polygon", coordinates: [DRAWN_RING] },
+        },
+      ]);
       removeFeatures = vi.fn();
     },
     TerraDrawPointMode: mode,
@@ -80,8 +108,20 @@ vi.mock("terra-draw-maplibre-gl-adapter", () => ({
   TerraDrawMapLibreGLAdapter: vi.fn(),
 }));
 
+/** The handler `useDraw` registers on terra-draw's "finish" event. */
+const draw: { finish: ((id: string) => void) | null } = { finish: null };
+
+/** A ring in WGS84, which is all terra-draw ever emits. */
+const DRAWN_RING = [
+  [10, 51],
+  [10.1, 51],
+  [10.1, 51.1],
+  [10, 51],
+];
+
 describe("MapPage", () => {
   beforeEach(() => {
+    draw.finish = null;
     useModelStore.getState().reset();
   });
 
@@ -216,5 +256,111 @@ describe("MapPage", () => {
       screen.queryByRole("region", { name: m.heading_map_workspace() }),
     ).toBeNull();
     expect(screen.getByTestId("map-view")).toBeInTheDocument();
+  });
+
+  it("takes a drawn shape into the page for a model the map draws in", () => {
+    // The positive control for the refusal below: with the store in WGS84 the
+    // finished shape reaches the page and opens the new-feature dialog.
+    renderPageAt("/model?draw=1");
+
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-disabled",
+      "false",
+    );
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
+  });
+
+  it("disables drawing and refuses a finished shape in a metric model", () => {
+    // terra-draw emits WGS84 whatever the store is in, and the finish handler
+    // writes straight into the model. Accepting the shape would mix degrees
+    // into a model held in metres — a round trip through the map quietly
+    // becoming the model.
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const fixtureFeatures = useModelStore.getState().features;
+    renderPageAt("/model?draw=1");
+
+    const toolbar = screen.getByTestId("draw-toolbar");
+    expect(toolbar).toHaveAttribute("data-disabled", "true");
+    expect(toolbar.getAttribute("data-disabled-reason")).toContain(
+      "EPSG:25832",
+    );
+
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+    expect(useModelStore.getState().calcArea).toBeNull();
+    // Reference identity: nothing on the map side may write a coordinate back.
+    expect(useModelStore.getState().features).toBe(fixtureFeatures);
+    expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("does not arm a tool from the draw parameter in a metric model", () => {
+    // `?draw=1` was a way past the disabled toolbar: it armed point mode, the
+    // user drew a shape, and `handleDrawFinish` dropped it without a word.
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const fixtureFeatures = useModelStore.getState().features;
+    renderPageAt("/model?draw=1");
+
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "static",
+    );
+    // Stripped even when refused, or a reload would re-ask.
+    expect(screen.getByTestId("location-search").textContent).toBe("");
+
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+    // Reference identity: nothing on the map side may write a coordinate back.
+    expect(useModelStore.getState().features).toBe(fixtureFeatures);
+    expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("disables Start drawing in an empty metric workspace and says why", () => {
+    // The other entry point the finish-time refusal did not cover. The panel
+    // stays up on a refused `?draw=1` precisely because it is what carries the
+    // reason — the toolbar can only say it in a tooltip.
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPageAt("/model?draw=1");
+
+    expect(
+      screen.getByRole("region", { name: m.heading_map_workspace() }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: m.action_start_drawing() }),
+    ).toBeDisabled();
+    // The toolbar's wording, not a second one invented for this surface.
+    expect(
+      screen.getByText(m.msg_draw_disabled_crs({ crs: "EPSG:25832" })),
+    ).toBeVisible();
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "static",
+    );
   });
 });
