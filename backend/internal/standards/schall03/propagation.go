@@ -151,7 +151,8 @@ func agrB(hm, d float64) float64 {
 }
 
 // meanPathHeight returns h_m, the mean height of the propagation path above
-// ground, for Gl. 14.
+// ground, for Gl. 14.  hg and hr are heights *above ground*, never absolute
+// elevations; newPathGeometry is what converts one into the other.
 //
 // KNOWN SIMPLIFICATION: Gl. 15 defines h_m = S/d, with S the area between the
 // propagation path and the terrain profile (Bild 4).  This implementation has
@@ -167,6 +168,68 @@ func meanPathHeight(hg, hr float64) float64 {
 	}
 
 	return hm
+}
+
+// pathGeometry is the vertical geometry of one source→receiver propagation
+// path, resolved into the terms Anlage 2 asks for.
+//
+// Anlage 2 measures verticals in two different ways and it is easy to mix them
+// up.  Gl. 11 and Gl. 12 want d, a distance between two points, so both ends
+// have to be expressed against one common zero.  Gl. 9, Gl. 14 and Gl. 15 want
+// heights *above ground*: D_Ω mirrors the source in the ground plane, and h_m
+// is the mean height of the path over the terrain beneath it.  Feeding an
+// absolute elevation into the second group is what this type exists to prevent
+// — at a site 400 m above sea level it drove h_m to ~202 m, where Gl. 14's
+// bracket goes negative and the ≥ 0 dB clamp erases the Bodendämpfung.
+//
+// Both groups are served from the same two numbers, because Anlage 2's ground
+// model is flat: one ground plane carries the whole path (see meanPathHeight).
+type pathGeometry struct {
+	// SourceHeightM is h_g, the Teilquelle's height above the ground plane [m].
+	SourceHeightM float64
+	// ReceiverHeightM is h_r, the receiver's height above that plane [m].
+	ReceiverHeightM float64
+	// MeanHeightM is h_m per Gl. 15 [m].
+	MeanHeightM float64
+	// SlantDistanceM is d, the source→receiver distance in three dimensions
+	// [m], clamped to the 1 m reference length of Gl. 11.
+	SlantDistanceM float64
+	// DOmega is D_Ω per Gl. 9 [dB].
+	DOmega float64
+}
+
+// newPathGeometry resolves one propagation path.
+//
+// sourceZ is the absolute Z of the Teilquelle — the track's elevation_m plus
+// the Teilquelle's height above Schienenoberkante.  groundZ is the absolute Z
+// of the ground plane the path runs over, taken from the receiver because that
+// is where the assessment happens and because the flat-ground model gives
+// source and receiver one shared plane.  receiverHeightM is the receiver's
+// height above that plane, and dp the horizontal source–receiver distance.
+//
+// A scene whose ground sits at Z = 0 is the identity case: sourceZ is then
+// already a height above ground and every term comes out as it did before the
+// ground plane existed.
+func newPathGeometry(sourceZ, groundZ, receiverHeightM, dp float64) pathGeometry {
+	path := pathGeometry{
+		SourceHeightM:   sourceZ - groundZ,
+		ReceiverHeightM: receiverHeightM,
+	}
+
+	path.MeanHeightM = meanPathHeight(path.SourceHeightM, path.ReceiverHeightM)
+
+	// Both heights are measured from the same plane, so their difference is the
+	// vertical separation of the two points and the plane cancels out of d.
+	dz := path.SourceHeightM - path.ReceiverHeightM
+
+	path.SlantDistanceM = math.Sqrt(dp*dp + dz*dz)
+	if path.SlantDistanceM < groundReferenceLengthM {
+		path.SlantDistanceM = groundReferenceLengthM
+	}
+
+	path.DOmega = solidAngleDOmega(dp, path.SourceHeightM, path.ReceiverHeightM)
+
+	return path
 }
 
 // agrW computes the water-body ground correction per Gl. 16.

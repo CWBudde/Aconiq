@@ -567,6 +567,17 @@ type ReceiverInput struct {
 	ID      string      `json:"id"`
 	Point   geo.Point2D `json:"point"`
 	HeightM float64     `json:"height_m"`
+
+	// TerrainZ is the absolute elevation of the ground under the receiver [m],
+	// the datum HeightM is measured from.  Anlage 2's ground model is flat, so
+	// this one plane also carries the source end of every path: a track's
+	// elevation_m is an absolute Z, and TerrainZ is what turns it into the
+	// height above ground that Gl. 9, Gl. 14 and Gl. 15 ask for.
+	//
+	// Zero means "ground at sea level", which is also the reading a scene that
+	// never mentions terrain gets — and for such a scene elevation_m is itself
+	// a height above ground, so the two readings agree.
+	TerrainZ float64 `json:"terrain_z_m,omitempty"`
 }
 
 // Validate checks one receiver payload.
@@ -581,6 +592,12 @@ func (r ReceiverInput) Validate() error {
 
 	if math.IsNaN(r.HeightM) || math.IsInf(r.HeightM, 0) || r.HeightM < 0 {
 		return fmt.Errorf("receiver %q height_m must be finite and >= 0", r.ID)
+	}
+
+	// TerrainZ may be negative — ground below sea level is a real place — but
+	// it must be a number, because every vertical term is measured from it.
+	if math.IsNaN(r.TerrainZ) || math.IsInf(r.TerrainZ, 0) {
+		return fmt.Errorf("receiver %q terrain_z_m must be finite", r.ID)
 	}
 
 	return nil

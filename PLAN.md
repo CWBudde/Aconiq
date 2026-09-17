@@ -660,6 +660,17 @@ byte at both refusal sites. Four things it leaves live:
       edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is
       consistent rather than novel, but it is a visible output change on urban grid runs and the
       value at such a point is not an Immissionsort.
+- [ ] **The SoundPLAN import produces no DTM, so the Schall 03 ground-datum fix does not reach it.**
+      `import_soundplan.go` records only the _name_ of the file the elevation data came from
+      (`GeoTmp.geo`, `Höhen.txt`, `.dgm`) in its import report, and registers no `artifact-terrain` —
+      which is the only thing `run_pipeline.go` looks for. A SoundPLAN project therefore carries an
+      absolute `elevation_m` (the rail's `ZTrack`) against a ground plane at Z = 0: the datum mix,
+      unfixed, for exactly the projects that motivated fixing it. A normative run in that state now
+      warns in `run.log`, and the gap is declared in `CHANGELOG.md` and in entry 10 of the
+      Konformitätserklärung — **but the numbers are still wrong**. Closing it means converting
+      SoundPLAN contour lines, elevation points and `.dgm` files into a terrain artifact the run
+      pipeline can load. Found by a review bot, not by the tests, and the claim it falsified was this
+      project's own: the fix was announced as reaching "every SoundPLAN-imported project".
 - [ ] **Schall 03 lateral diffraction is single-edge in the ground plane.** Wall panels sharing an
       `ObstacleID` are one obstacle, and a lateral path may round only a free end of an open
       obstacle or the outermost silhouette vertex of a closed one. **An empty `ObstacleID` is its
@@ -1757,6 +1768,15 @@ the comparison into evidence (the assertion itself is Priority 3).
       Confirm and document the legal interoperability position for parsing the proprietary format.
 
 ## Priority 14 — QA hardening and conformance packaging
+
+- [ ] **`ACONIQ_STRICT_ACCEPTANCE=1` fails a test that asserts the non-strict behaviour.**
+      `go test ./internal/qa/...` under that flag fails `TestFullySkippedSuiteIsNotReportedAsPassed`
+      with `expected status="skipped", got "failed"`. Strict mode is precisely what promotes a
+      fully-skipped suite to `failed`, and the test asserts `skipped` unconditionally, so the two
+      contradict each other by construction. Pre-existing on `main` and invisible to the ordinary
+      gate, but it **blocks step 3 of the release checklist** in `docs/policies/releases.md`, which
+      exists to prove the acceptance suites produced evidence rather than skipping. Fix the test to
+      read the mode rather than the runner.
 
 `just update-golden` is trustworthy again, and the entry that stood here named the wrong test.
 The bullet blamed `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport`;
