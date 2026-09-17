@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"math"
+	"slices"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -132,10 +134,16 @@ func computeSchall03Normative(
 	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
 	result.logGridExtent(receiverMode, calcArea)
 
-	receiverInputs, sampled := schall03ReceiverInputs(receivers, terrainModel)
+	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
+	if err != nil {
+		return schall03RunResult{}, err
+	}
+
 	if terrainModel != nil {
 		result.logf("schall03_receiver_terrain_samples=%d/%d", sampled, len(receivers))
 	}
+
+	result.warnOnUngroundedElevation(terrainModel, scene.Segments)
 
 	result.Outputs, err = schall03.ComputeNormativeReceiverOutputs(receiverInputs, scene.Segments, scene.Walls, scene.Barriers)
 	if err != nil {
@@ -180,6 +188,36 @@ func computeSchall03Preview(
 	return result, nil
 }
 
+// warnOnUngroundedElevation says out loud which of the two readings of
+// elevation_m the run just used.
+//
+// With no DTM every receiver's ground sits at Z = 0, so a track's elevation_m
+// is read as a height above that ground — the right reading for a hand-written
+// scene where it means a bridge deck or an embankment crest, and that scene
+// must keep working, so this is a warning and not a refusal.
+//
+// It is the wrong reading for an imported project, where elevation_m is an
+// absolute Z: the SoundPLAN import writes the rail's ZTrack into it, and such a
+// project carries no DTM today because that import creates no terrain
+// artifact. There the levels are computed as though the whole site stood
+// hundreds of metres above its own ground.
+func (r *schall03RunResult) warnOnUngroundedElevation(terrainModel terrain.Model, segments []schall03.TrackSegment) {
+	if terrainModel != nil {
+		return
+	}
+
+	if !slices.ContainsFunc(segments, func(segment schall03.TrackSegment) bool { return segment.ElevationM != 0 }) {
+		return
+	}
+
+	r.logf(
+		"WARNING no terrain model: elevation_m is read as a height above the ground under each receiver. " +
+			"That is correct where it means a bridge or embankment height, and wrong where it is an absolute Z — " +
+			"a SoundPLAN-imported project is the case in point, because its elevation_m is the rail's ZTrack and the " +
+			"SoundPLAN import does not yet produce a DTM. Import one with `aconiq import --terrain` to put the path on real ground.",
+	)
+}
+
 // schall03ReceiverInputs pairs every receiver with the absolute elevation of
 // the ground it stands on, which the Anlage-2 chain uses as the datum for the
 // whole propagation path: a track's elevation_m is an absolute Z, so without
@@ -196,37 +234,15 @@ func computeSchall03Preview(
 // back to sea level while its neighbours stayed on the hill. Such receivers
 // inherit the mean of the ones the DTM does reach, and the run log records how
 // many were actually sampled. Second return value is that count.
-func schall03ReceiverInputs(receivers []geo.PointReceiver, terrainModel terrain.Model) ([]schall03.ReceiverInput, int) {
-	groundZ := make([]float64, len(receivers))
-	sampled := 0
-
-	if terrainModel != nil {
-		var hits numeric.CompensatedSum
-
-		covered := make([]bool, len(receivers))
-
-		for i, receiver := range receivers {
-			elevation, ok := terrainModel.ElevationAt(receiver.Point.X, receiver.Point.Y)
-			if !ok {
-				continue
-			}
-
-			groundZ[i] = elevation
-			covered[i] = true
-			sampled++
-
-			hits.Add(elevation)
-		}
-
-		if sampled > 0 && sampled < len(receivers) {
-			fallback := hits.Sum() / float64(sampled)
-
-			for i := range groundZ {
-				if !covered[i] {
-					groundZ[i] = fallback
-				}
-			}
-		}
+//
+// A DTM that covers not one receiver has no mean to fall back to, and taking
+// Z = 0 there would reinstate exactly the sea-level datum this function exists
+// to remove — silently, on a project that went to the trouble of importing
+// terrain. That is refused rather than computed.
+func schall03ReceiverInputs(receivers []geo.PointReceiver, terrainModel terrain.Model) ([]schall03.ReceiverInput, int, error) {
+	groundZ, sampled, err := schall03ReceiverGroundZ(receivers, terrainModel)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	inputs := make([]schall03.ReceiverInput, len(receivers))
@@ -239,7 +255,86 @@ func schall03ReceiverInputs(receivers []geo.PointReceiver, terrainModel terrain.
 		}
 	}
 
-	return inputs, sampled
+	return inputs, sampled, nil
+}
+
+// schall03ReceiverGroundZ samples the DTM once per receiver and fills the
+// misses, applying the rules schall03ReceiverInputs documents.
+func schall03ReceiverGroundZ(receivers []geo.PointReceiver, terrainModel terrain.Model) ([]float64, int, error) {
+	groundZ := make([]float64, len(receivers))
+
+	if terrainModel == nil {
+		return groundZ, 0, nil
+	}
+
+	var hits numeric.CompensatedSum
+
+	covered := make([]bool, len(receivers))
+	sampled := 0
+
+	for i, receiver := range receivers {
+		elevation, ok := terrainModel.ElevationAt(receiver.Point.X, receiver.Point.Y)
+		if !ok {
+			continue
+		}
+
+		groundZ[i] = elevation
+		covered[i] = true
+		sampled++
+
+		hits.Add(elevation)
+	}
+
+	if sampled == 0 {
+		if len(receivers) == 0 {
+			return groundZ, 0, nil
+		}
+
+		return nil, 0, schall03TerrainCoversNoReceiverError(receivers, terrainModel)
+	}
+
+	fallback := hits.Sum() / float64(sampled)
+
+	for i := range groundZ {
+		if !covered[i] {
+			groundZ[i] = fallback
+		}
+	}
+
+	return groundZ, sampled, nil
+}
+
+// schall03TerrainCoversNoReceiverError reports a DTM whose extent and the
+// receivers' have nothing in common. Both extents are quoted because the
+// overwhelmingly likely cause is that they are expressed in different CRS, and
+// two disjoint number ranges make that visible at a glance.
+func schall03TerrainCoversNoReceiverError(receivers []geo.PointReceiver, terrainModel terrain.Model) error {
+	terrainBounds := terrainModel.Bounds()
+
+	minX, minY := receivers[0].Point.X, receivers[0].Point.Y
+	maxX, maxY := minX, minY
+
+	for _, receiver := range receivers[1:] {
+		minX = math.Min(minX, receiver.Point.X)
+		minY = math.Min(minY, receiver.Point.Y)
+		maxX = math.Max(maxX, receiver.Point.X)
+		maxY = math.Max(maxY, receiver.Point.Y)
+	}
+
+	return domainerrors.New(
+		domainerrors.KindUserInput,
+		"cli.schall03ReceiverInputs",
+		fmt.Sprintf(
+			"the imported terrain DTM covers none of the %d receivers, so Schall 03 has no ground elevation to measure the propagation path against. "+
+				"Terrain bounds are [%.2f, %.2f, %.2f, %.2f]; the receivers span [%.2f, %.2f, %.2f, %.2f]. "+
+				"Check that the DTM is in the project's CRS — a CRS mismatch is the usual cause of two extents this far apart — "+
+				"and that its extent reaches the site; then re-import it with `aconiq import --terrain`",
+			len(receivers),
+			terrainBounds[0], terrainBounds[1], terrainBounds[2], terrainBounds[3],
+			minX, minY, maxX, maxY,
+		),
+		nil,
+	)
 }
 
 // buildSchall03NormativeReceivers derives the auto grid from the normative

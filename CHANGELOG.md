@@ -155,7 +155,13 @@ with results produced after them.
   the level behind it **7.0 dB high**. Every height is now measured against a ground plane the
   receiver carries, filled per receiver from the imported DTM. A scene whose ground is at Z = 0 —
   which is every scene with no DTM, where `elevation_m` is itself a height above ground — is
-  bit-identical.
+  bit-identical. The correction reaches a project that carries a DTM; a SoundPLAN-imported project
+  does not yet carry one (see `Known limitations`), and a run in that state now warns in `run.log`
+  which of the two readings of `elevation_m` it took.
+- Schall 03 refused to admit that a DTM covering no receiver at all left every receiver on the
+  sea-level datum. A terrain model whose extent and the receivers' have nothing in common — almost
+  always a CRS mismatch — now fails the run as a user error, quoting both extents, instead of
+  computing against Z = 0.
 - **numeric** `cnossos-road`, `cnossos-rail` and `bub-road` had the same `10 lg(Q + 1)` flow defect
   and now take an explicit zero-flow branch.
 - **numeric** Schall 03 height summation iterated a map, so results could differ by roughly one ULP
@@ -234,5 +240,11 @@ with results produced after them.
 - `beb-exposure` is preview grade: the aggregation is sound, but it consumes preview-grade levels.
 - The SoundPLAN cross-check currently disagrees by roughly 25 dB mean on the Schall 03 preview
   chain. It is asserted rather than hidden, and it is an open defect.
+- The SoundPLAN import produces no terrain artifact. It records which file the elevation data came
+  from — contour lines, elevation points or a `.dgm` — but converts none of it into a DTM. So the
+  Schall 03 ground-datum fix above does not reach a SoundPLAN-imported project: its `elevation_m`
+  is an absolute Z, it has no DTM to measure against, and the levels are computed as though the
+  track stood that far above its own ground. Import a DTM with `aconiq import --terrain` until the
+  SoundPLAN import grows one; the run warns when it is missing.
 
 [Unreleased]: https://github.com/cwbudde/Aconiq/commits/main

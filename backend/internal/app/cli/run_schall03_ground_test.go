@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -42,6 +44,9 @@ func TestRunSchall03IsInvariantWhenTheWholeSceneMovesUphill(t *testing.T) {
 		t.Fatal("no receiver records")
 	}
 
+	assertSchall03WallStillScreens(t, atSeaLevel)
+	assertSchall03WallStillScreens(t, onThePlateau)
+
 	if len(onThePlateau) != len(atSeaLevel) {
 		t.Fatalf("receiver count changed: %d vs %d", len(atSeaLevel), len(onThePlateau))
 	}
@@ -62,6 +67,32 @@ func TestRunSchall03IsInvariantWhenTheWholeSceneMovesUphill(t *testing.T) {
 	}
 }
 
+// assertSchall03WallStillScreens checks that the scene's wall is doing
+// something. `near` and `open` are the same 60 m from the track and differ only
+// in which side of the wall they stand on, so a screened level that is not well
+// below the open one means shielding has stopped being applied — and the
+// translation invariance above would then be comparing two unshielded runs and
+// passing for the wrong reason.
+//
+// The measured gap is about 9.8 dB; the margin below is set low enough that
+// ordinary changes to the barrier chain do not trip it, and high enough that
+// losing the barrier entirely does.
+func assertSchall03WallStillScreens(t *testing.T, levels map[string]map[string]float64) {
+	t.Helper()
+
+	const minShieldingDB = 5.0
+
+	for _, indicator := range []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight} {
+		screened := levels["near"][indicator]
+		open := levels["open"][indicator]
+
+		if open-screened < minShieldingDB {
+			t.Errorf("%s: screened receiver %.3f dB vs open receiver %.3f dB — the wall shields only %.3f dB, want at least %.1f dB",
+				indicator, screened, open, open-screened, minShieldingDB)
+		}
+	}
+}
+
 // runSchall03GroundScene runs one scenario whose track sits at the absolute
 // elevation groundZ, over a flat DTM at that same elevation, and returns the
 // receiver indicators by receiver ID.
@@ -78,7 +109,7 @@ func runSchall03GroundScene(t *testing.T, groundZ float64) map[string]map[string
 	}
 
 	// The DTM covers x, y ∈ [-200, 600] at 50 m resolution, comfortably around
-	// the track and both receivers.
+	// the track and all three receivers.
 	terrainPath := filepath.Join(projectDir, "dtm.tif")
 	writeFlatGeoTIFF(t, terrainPath, 16, 16, -200, 600, 50, groundZ)
 
@@ -109,8 +140,8 @@ func runSchall03GroundScene(t *testing.T, groundZ float64) map[string]map[string
 		t.Fatalf("read run.log: %v", err)
 	}
 
-	if !strings.Contains(string(logPayload), "schall03_receiver_terrain_samples=2/2") {
-		t.Fatalf("the DTM did not cover both receivers:\n%s", logPayload)
+	if !strings.Contains(string(logPayload), "schall03_receiver_terrain_samples=3/3") {
+		t.Fatalf("the DTM did not cover every receiver:\n%s", logPayload)
 	}
 
 	payload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "results", "receivers.json"))
@@ -149,13 +180,17 @@ func runSchall03GroundScene(t *testing.T, groundZ float64) map[string]map[string
 }
 
 // schall03GroundModelJSON is one straight electrified line, a Schallschutzwand
-// beside it and two receivers, all resting on ground at the absolute elevation
-// groundZ. `elevation_m` is the absolute Z of the Schienenoberkante, so it
-// moves with the ground.
+// beside it and three receivers, all resting on ground at the absolute
+// elevation groundZ. `elevation_m` is the absolute Z of the Schienenoberkante,
+// so it moves with the ground.
 //
-// The near receiver is 60 m out and screened; the far one is 250 m out and in
-// the open, where Gl. 14's A_gr,B is well clear of its ≥ 0 dB clamp and the
-// defect had the most room to act.
+// The wall runs along y = 20, between the track and the positive-y side, so
+// which side a receiver stands on decides whether it is screened. `near` is
+// 60 m out behind the wall and `far` is 250 m out behind it, where Gl. 14's
+// `A_gr,B` is well clear of its ≥ 0 dB clamp and the defect had the most room
+// to act. `open` is the unscreened control: 60 m out on the source side, the
+// same distance as `near` and with nothing between it and the track, so the
+// two differ by the shielding alone.
 func schall03GroundModelJSON(groundZ float64) string {
 	return fmt.Sprintf(`{
   "type": "FeatureCollection",
@@ -190,6 +225,11 @@ func schall03GroundModelJSON(groundZ float64) string {
       "type": "Feature",
       "properties": {"id": "far", "kind": "receiver", "height_m": 3.5},
       "geometry": {"type": "Point", "coordinates": [200, 250]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": "open", "kind": "receiver", "height_m": 3.5},
+      "geometry": {"type": "Point", "coordinates": [200, -60]}
     }
   ]
 }`, groundZ)
@@ -261,5 +301,111 @@ func writeFlatGeoTIFF(t *testing.T, path string, width, height int, originX, ori
 	err := os.WriteFile(path, buf, 0o600)
 	if err != nil {
 		t.Fatalf("write GeoTIFF: %v", err)
+	}
+}
+
+// TestRunSchall03RefusesATerrainThatCoversNoReceiver pins the second half of
+// the datum fix. A DTM that reaches not one receiver leaves the run with no
+// ground to measure against, and taking Z = 0 there would put the whole scene
+// back on the sea-level datum this work removed — silently, on a project that
+// imported terrain precisely so that would not happen. The run is refused
+// instead, and as a user error, because the cause is always a CRS or an extent
+// the user can correct.
+func TestRunSchall03RefusesATerrainThatCoversNoReceiver(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte(schall03GroundModelJSON(0)), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	// A DTM at real EPSG:25832 coordinates, while the model sits near the
+	// origin — the shape a CRS mismatch takes in practice.
+	terrainPath := filepath.Join(projectDir, "dtm.tif")
+	writeFlatGeoTIFF(t, terrainPath, 16, 16, 500000, 5600000, 50, 120)
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Ground", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath, "--terrain", terrainPath)
+
+	err = runCLI("--project", projectDir, "run", "--standard", "schall03", "--receiver-mode", "custom")
+	if err == nil {
+		t.Fatal("the run was accepted although the DTM covers no receiver")
+	}
+
+	var appErr *domainerrors.AppError
+
+	if !errors.As(err, &appErr) {
+		t.Fatalf("error is not an AppError: %v", err)
+	}
+
+	// KindUserInput is what exits the CLI with code 2.
+	if appErr.Kind != domainerrors.KindUserInput {
+		t.Errorf("error kind = %q, want %q", appErr.Kind, domainerrors.KindUserInput)
+	}
+
+	for _, want := range []string{"covers none of the", "CRS", "aconiq import --terrain"} {
+		if !strings.Contains(appErr.Error(), want) {
+			t.Errorf("the refusal does not mention %q:\n%v", want, appErr)
+		}
+	}
+}
+
+// TestRunSchall03WarnsWhenElevationHasNoGroundUnderIt covers the case the
+// refusal above cannot reach: no DTM at all, and a track carrying a non-zero
+// elevation_m. The reading the run then takes — elevation_m as a height above
+// the receiver's ground — is right for a hand-written bridge deck and wrong for
+// a SoundPLAN import, where it is an absolute Z and no terrain artifact is
+// produced to correct it. Both scenes must keep running, so the run says which
+// reading it took instead of refusing.
+func TestRunSchall03WarnsWhenElevationHasNoGroundUnderIt(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte(schall03GroundModelJSON(120)), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Ground", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "schall03", "--receiver-mode", "custom")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new project store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	if len(proj.Runs) == 0 {
+		t.Fatal("expected one run")
+	}
+
+	run := proj.Runs[len(proj.Runs)-1]
+
+	logPayload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "runs", run.ID, "run.log"))
+	if err != nil {
+		t.Fatalf("read run.log: %v", err)
+	}
+
+	for _, want := range []string{
+		"WARNING no terrain model",
+		"height above the ground under each receiver",
+		"SoundPLAN",
+		"aconiq import --terrain",
+	} {
+		if !strings.Contains(string(logPayload), want) {
+			t.Errorf("run.log does not mention %q:\n%s", want, logPayload)
+		}
 	}
 }
