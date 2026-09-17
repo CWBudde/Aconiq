@@ -157,10 +157,16 @@ commit messages; the consequences each one exposed are open items below.
 - [x] **`just ci` reconciled with `go-ci.yml`** (`e183c68`). Every gate now invokes a `just`
       recipe; the two remaining non-recipe steps produce artifacts rather than gate, and say so in
       both places.
-- [x] **Repository hygiene** (`91ffcc1`): `backend/wasm` (3.28 MB and orphaned — the real build
-      target is `frontend/public/aconiq.wasm`), the committed `tsbuildinfo`, the empty
+- [x] **Repository hygiene** (`91ffcc1`): the committed `tsbuildinfo`, the empty
       `backend/cmd/noise/` and root `.codex`, plus gitignores for `.trunk/`, `playwright-report/`
       and `test-results/`.
+      **This entry's first claim was wrong and is corrected here: `backend/wasm` is still tracked.**
+      `91ffcc1` never touched it; `f614faa` (#19) is the last commit that did, and the file is
+      neither deleted nor gitignored. It is now 4.0 MB. Worse, it is a live footgun rather than dead
+      weight: `go build ./cmd/wasm` run from inside `backend/` writes its output straight over it,
+      so any contributor who builds the kernel the obvious way silently stages a 4 MB binary diff.
+      Deleting it and gitignoring the path is the fix, and it is a decision about a tracked artifact
+      rather than a cleanup, so it is named here rather than done in passing.
 - [x] **The 55 frontend type errors the honest typecheck exposed** (`be19871`). All fixed; the
       project type-checks clean. Four were the shipped crashes predicted in Priority 8
       (`run.tsx:969`, `run.tsx:890`, `map-view.tsx:88-89`, `new-feature-dialog.tsx:136`), and the
@@ -548,14 +554,18 @@ parse and discarding a user's model and runs over a row order is the larger harm
 
 ### Open
 
-- [ ] **API mode cannot draw a metric model.** No projector is reachable there: `internal/api/httpv1`
-      has no transform endpoint, and pulling the 4 MB WASM kernel into a mode that never otherwise
-      loads it, purely to draw a map, buys a map at the cost of the mode's whole premise. It is not
-      theoretical — `pages/import.tsx` passes the imported CRS in **both** modes, so a projected
-      import leaves an API-mode store metric for the rest of the session. Closing it means deciding
-      `POST /api/v1/transform` on its own merits, and is what unblocks the inverse draw transform
-      under Priority 8 Phase D. Whatever lands holds the invariant that governs the map: **it is a
-      projection _of_ the model, never a source _for_ it.**
+- [ ] **The geographic refusal is written out twice.** `POST /api/v1/transform` closed the
+      API-mode projector gap: the handler delegates to `internal/geo/crstransform`, which the WASM
+      kernel now wraps rather than owns, so all three surfaces resolve the same zone and a test
+      compares the API's message to the kernel's byte for byte. What that work exposed is that
+      `app/cli/run_crs.go:92` builds the **same refusal sentence from its own string literal**, and
+      nothing compares the two. Two copies of a sentence whose entire point is that it is identical
+      everywhere; either the CLI reads it from `crstransform` or the parity test covers three
+      surfaces rather than two.
+      Two constraints the endpoint leaves live. **Its message is unprefixed**, alone among this
+      package's handlers, and only a test keeps it that way. And **it reads no project**, which is
+      what keeps it on the right side of the invariant that governs the map: it is a projection _of_
+      the model, never a source _for_ it.
 - [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
       `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
       (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
@@ -580,14 +590,16 @@ parse and discarding a user's model and runs over a row order is the larger harm
       Gl. 35-36 combined assessment is unreachable from a run. The conformance declaration now says
       so under "Reachability from the CLI"; it needs a `schall03_yard_*` vocabulary to stop being
       true.
-- [ ] **A Schall 03 reflection of order ≥ 2 is shielded from the wrong origin.**
-      `ComputeReflectedLineSourceLpAeqWithBarriers` passes `rp.Geometries[0].ImageSource` as the
-      effective source for every path, whatever its order. For a single bounce that is the image
-      source; for two or three it is only the first mirror, so the diffraction check runs along a
-      ray that is not the path. `EnumerateReflectionPaths` already carries the running image source
-      in `candidate.imageSource` but drops it when it builds the `ReflectionPath`; carrying it
-      through is the fix. Separate from the obstacle exclusion, which is now in place and scoped by
-      `ObstacleID` on both `BarrierSegment` and `ReflectingWall`.
+- [ ] **Obstacles are not mirrored into a reflection's unfolded frame.** Found while fixing the
+      order-≥2 origin, which is closed: `ReflectionPath.EffectiveSource` is now the last bounce's
+      image source, so the diffraction check and `TotalDist` describe one ray, and a barrier across
+      an order-2 path moved a measured 0.5549 dB where it had been worth **exactly 0.0000 dB**.
+      What is still approximate is the other half. `ComputePathBarrierAttenuation` receives the
+      unfolded source but the panels at their **real** coordinates, so only the final leg — last
+      reflection point to receiver — is exact; every earlier leg is tested against unmirrored
+      obstacles, at every order including the first. Declared as deviation 3 in the conformance
+      declaration. Closing it means mirroring the obstacle set per leg, which is a larger change
+      than the origin fix was, and the sign of the error has not been established.
 - [ ] **Grid receivers land inside building footprints.** `run_receivers.go` does no building
       masking, so in auto-grid mode a receiver inside a footprint is now shielded by the one ring
       edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is
@@ -763,10 +775,16 @@ Three things fell out of the work:
       then advertise twelve it has no entry point for. So adding a standard to the kernel is two
       edits, and `TestEveryStandardHasItsEntryPoint` reads `cmd/wasm/main.go` to catch the one that
       is forgotten. A generated registration would remove the coupling; nothing needs it yet.
-- [ ] **Browser mode still refuses every standard but `rls19-road` by name.** `startRun` compares
-      `spec.standardId` against a string literal rather than asking `wasmkernel.Supports`, because
-      the check is on the TypeScript side of the boundary. It is consistent with the published list
-      today only because the list has one entry.
+- [ ] **Browser mode's model extraction is still RLS-19-only, and now says so.** The refusal by
+      name is gone: `startRun` asks `kernel.standards()`, so it cannot disagree with the list the
+      same kernel serves the run page. What remains is a second, differently worded gate — the
+      kernel publishes the standard but this build has no extraction for it — which is the
+      TypeScript twin of `TestEveryStandardHasItsEntryPoint` and is what a second kernel entry
+      point will meet. Closing it is Phase F's "move RLS-19 extraction into the kernel", after which
+      the dispatch disappears rather than growing an arm.
+      Live constraint: **`RunSpec.standardId` is `string`**, so no compiler-checked exhaustiveness
+      is available and the `default` arm is what carries the refusal. Giving it a union would
+      re-declare which standards exist, which is the duplication this removed.
 - [ ] **`Headline()` is English-only.** The CLI banner and the report row are English, but the
       reports are the artifact a German authority reads, and the assessment modules already emit
       German. Decide whether the report row should be localised, and against which message source.
@@ -1412,8 +1430,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       is stored in, so every way into an active drawing mode is gated off while the store's CRS is
       not the display one. The fix is an inverse 4326 → `store.crs` transform on the draw-finish
       path — the only coordinate writer on the map side, since `FeatureEditor` writes attributes
-      only and nothing calls `draw.addFeatures`. Blocked in API mode on the same transform endpoint
-      Priority 2 records.
+      only and nothing calls `draw.addFeatures`. **No longer blocked in API mode**: since
+      `POST /api/v1/transform` landed, `backend.transformCoordinates` resolves in both modes and
+      `canReprojectForDisplay` is true for both, so the inverse direction is reachable from the
+      draw-finish path. What still gates drawing is `pages/map.tsx`'s `drawingDisabled`, keyed on
+      `store.crs` rather than on the capability — deliberately, because the endpoint made the
+      transform reachable, not the write path correct.
 - [ ] **CRS and basemap**: a UTM readout in the coordinate display (`CoordinateDisplay` reads out
       WGS 84 over a project stored in 25832); tile-error → `OFFLINE_STYLE` with a notice; basemap
       picker; tile URL in Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
@@ -1461,6 +1483,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       every stored run (receiver tables, CSV, export HTML) on each write.
 
 ### Order and gates
+
+**`just fe-ci` needs the public internet, and fails misleadingly without it.**
+`frontend/project.inlang/settings.json` loads both inlang plugins from
+`cdn.jsdelivr.net`, and `compile:i18n` treats a failed plugin import as a warning: it then writes an
+**empty** message catalogue and exits 0. Everything downstream reads as catastrophe — ~2 200 eslint
+findings and ~325 test failures, all of them `m.<key>` resolution noise — with nothing pointing at
+the cause. Vendoring the two plugins, or failing the compile on a plugin import error, would make
+an offline or network-restricted checkout say what is actually wrong. Until then, the two
+`PluginImportError` warnings above a green compile are the tell.
 
 B before C; D and E can run in parallel with C once B is green. The coverage floor is now live
 (73.6% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),

@@ -67,6 +67,14 @@ const (
 	// runs to a few MB, so 16 MB leaves headroom for what the map can draw or
 	// an OSM import can return while staying well under the 64 MB backstop.
 	maxModelSaveBodyBytes = 16 << 20
+	// maxTransformBodyBytes matches maxModelSaveBodyBytes exactly, and the
+	// reason is symmetry rather than headroom: the batch a client sends here is
+	// derived from precisely the model POST /api/v1/model accepts, so a smaller
+	// cap would let the API take in a model it then refuses to project for
+	// drawing. The flat encoding is strictly more compact than the GeoJSON it
+	// came from — no nesting, no properties, no per-feature envelope — so a
+	// district model of ~250 000 points encodes to well under half of this.
+	maxTransformBodyBytes = 16 << 20
 	maxTerrainUploadBytes = 50 << 20 // 50 MB, the whole multipart body
 	maxTerrainMemoryBytes = 8 << 20  // buffered in memory; the rest would spill to a temp file
 )

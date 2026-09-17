@@ -58,6 +58,12 @@ const (
 	// errorCodeExportInsideRun answers a delete whose export bundle sits inside
 	// the run directory: the bundle is kept, so the directory cannot go.
 	errorCodeExportInsideRun = "export_inside_run"
+	// errorCodeCRSNotProjectable answers a transform that cannot be carried out
+	// for the CRS it was given: a geographic site whose centre falls outside the
+	// ETRS89 / UTM zones this project supports, or a pair with no route between
+	// them. One code, not two, because the remedy is the same — the CRS setup is
+	// wrong — and details.reason separates the causes for a client that cares.
+	errorCodeCRSNotProjectable = "crs_not_projectable"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -276,6 +282,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
 	mux.HandleFunc("/api/v1/model", handler.handleModel)
+	mux.HandleFunc("/api/v1/transform", handler.handleTransform)
 	mux.HandleFunc("/", handler.handleNotFound)
 
 	// The security middleware sits inside CORS so that a refusal still carries

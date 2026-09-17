@@ -142,6 +142,7 @@ GET  /api/v1/events                server-sent events: heartbeat and project sta
 POST /api/v1/import/osm
 POST /api/v1/import/terrain
 POST /api/v1/model                 replace the project model with normalized GeoJSON
+POST /api/v1/transform             project a batch of coordinates between two CRS
 GET  /api/v1/openapi.json
 ```
 

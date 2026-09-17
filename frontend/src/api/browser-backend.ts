@@ -33,7 +33,7 @@ import {
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
-import { getKernel } from "@/wasm/kernel";
+import { type AconiqKernel, getKernel } from "@/wasm/kernel";
 import type {
   Barrier,
   Building,
@@ -1120,6 +1120,273 @@ function findRunByID(current: BrowserBackendState, runId: string): StoredRun {
   return storedRun;
 }
 
+/**
+ * One browser-mode RLS-19 road run, from the model store to a persisted run.
+ *
+ * It is a free function rather than part of `startRun` because turning the
+ * model into a scene is per standard, and still lives on this side of the WASM
+ * boundary: the kernel takes a `ComputeRequest`, not a model. `startRun`
+ * decides which extraction to call; this is the only one this build carries.
+ */
+async function runRLS19Road(
+  kernel: AconiqKernel,
+  spec: RunSpec,
+): Promise<RunSummary> {
+  // Project the whole workspace once, before anything reads a coordinate off
+  // it, mirroring `cli.resolveComputeModel`. Never per builder:
+  // `buildParkingSources` computes a shoelace area in m² and a centroid, and
+  // `getFeatureBBox`/`getPolygonBBox` feed a receiver grid whose padding and
+  // resolution are metres by contract. Every one of them needs the model
+  // already in metres.
+  const store = useModelStore.getState();
+  const computeModel = await resolveComputeModel(kernel, {
+    features: store.features,
+    receivers: store.receivers,
+    calcArea: store.calcArea,
+    crs: store.crs,
+  });
+  const projection = computeModel.projection;
+
+  const features = computeModel.features;
+  const sources = buildRoadSources(features, spec.params);
+  const parking = buildParkingSources(features);
+  if (sources.length === 0 && parking.sources.length === 0) {
+    throw new Error(
+      "model does not contain any rls19-road line source or parking area feature",
+    );
+  }
+
+  const barriers = buildBarriers(features);
+  const buildings = buildBuildings(features);
+
+  let gridReceivers: PointReceiver[];
+  let rasterWidth: number;
+  let rasterHeight: number;
+
+  if (spec.receiverMode === "custom") {
+    const storeReceivers = computeModel.receivers;
+    if (storeReceivers.length === 0) {
+      throw new Error(
+        "Custom receiver mode requires at least one receiver placed in the map workspace",
+      );
+    }
+    // Model order, not id order: `extractExplicitReceivers`
+    // (backend/internal/app/cli/run_input.go) walks `model.Features` and keeps
+    // whatever order the model gives it. The receiver table's row order is
+    // what `output_hash` is computed over, so sorting here made the same model
+    // hash differently in the two targets.
+    gridReceivers = storeReceivers.map((r) => ({
+      id: r.id,
+      point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
+      height_m: r.heightM,
+    }));
+    rasterWidth = 1;
+    rasterHeight = storeReceivers.length;
+  } else {
+    const calcArea = computeModel.calcArea;
+    let bbox: {
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    } | null = null;
+    if (calcArea) {
+      bbox = getPolygonBBox(calcArea.geometry.coordinates);
+    }
+    if (!bbox) {
+      bbox = getFeatureBBox(
+        features.filter((feature) => feature.kind === "source"),
+      );
+    }
+    if (!bbox) {
+      throw new Error("Could not derive source extent from the current model");
+    }
+    const receiverGrid = buildReceiverGrid(bbox, spec.params);
+    gridReceivers = receiverGrid.receivers;
+    rasterWidth = receiverGrid.width;
+    rasterHeight = receiverGrid.height;
+  }
+
+  // The lock spans the compute, not just the persist: the id is minted
+  // from the store before the kernel runs, and a second tab that allocated
+  // in the meantime would mint the same id and have its run replaced by
+  // `setRun` when both persist. Holding the lock until the persist keeps
+  // the id unique while this tab is still computing.
+  return withStoreLock(async () => {
+    const startedAt = nowISO();
+    const runId = nextRunID(await reloadState());
+    const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
+
+    const request: ComputeRequest = {
+      receivers: gridReceivers,
+      sources,
+      barriers,
+      config: {
+        SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
+        MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
+        ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
+        Buildings: buildings,
+        ParkingSources: parking.sources,
+      },
+    };
+
+    const outputs = await kernel.rls19Road(request);
+    const receiverTable = buildReceiverTable(outputs);
+    const receiverCSV = buildReceiverTableCSV(receiverTable);
+    const rasterMetadata: RasterMetadata = {
+      width: rasterWidth,
+      height: rasterHeight,
+      bands: 2,
+      nodata: -9999,
+      unit: "dB(A)",
+      band_names: ["LrDay", "LrNight"],
+    };
+    const summary = {
+      run_id: runId,
+      status: "completed",
+      grid_width: rasterWidth,
+      grid_height: rasterHeight,
+      source_count: sources.length,
+      parking_source_count: parking.sources.length,
+      receiver_count: outputs.length,
+      reporting_precision_db: 0.1,
+      // The CLI's own key names (`cli.provenanceProjectCRSKey` and
+      // `provenanceComputeCRSKey`), because results are expressed in the
+      // compute CRS on both targets and a consumer that only ever sees a
+      // receiver table has to be able to learn which CRS it is in. Not on
+      // `ReceiverTable`: the Go container has no CRS field, and adding one
+      // browser-side would fork the format.
+      project_crs: projection.projectCRS,
+      compute_crs: projection.computeCRS,
+    };
+
+    const hashPayload = outputs.map((output) => ({
+      receiver_id: output.Receiver.id,
+      indicators: output.Indicators,
+    }));
+    const outputHash = await sha256Hex(JSON.stringify(hashPayload));
+    const finishedAt = nowISO();
+    const createdAt = finishedAt;
+
+    const receiversJSONArtifact = makeArtifact(
+      runId,
+      "receivers-json",
+      "run.result.receiver_table_json",
+      `${basePath}/results/receivers.json`,
+      createdAt,
+    );
+    const receiversCSVArtifact = makeArtifact(
+      runId,
+      "receivers-csv",
+      "run.result.receiver_table_csv",
+      `${basePath}/results/receivers.csv`,
+      createdAt,
+    );
+    // `results/<standard-id>.json` / `.bin`, the CLI's own naming: the raster
+    // files are named after the standard that produced them
+    // (`cli.endPersistSpec.export`), so a run bundle stays self-describing. It
+    // read `rls19-road` literally, which was the same string only by accident.
+    // Nothing selects these by path — every reader goes by artifact kind — but
+    // a second standard would have written its raster under RLS-19's name.
+    const rasterMetaArtifact = makeArtifact(
+      runId,
+      "raster-meta",
+      "run.result.raster_metadata",
+      `${basePath}/results/${spec.standardId}.json`,
+      createdAt,
+    );
+    const rasterBinArtifact = makeArtifact(
+      runId,
+      "raster-bin",
+      "run.result.raster_binary",
+      `${basePath}/results/${spec.standardId}.bin`,
+      createdAt,
+    );
+    const summaryArtifact = makeArtifact(
+      runId,
+      "summary",
+      "run.result.summary",
+      `${basePath}/results/run-summary.json`,
+      createdAt,
+    );
+    const artifacts: ArtifactRef[] = [
+      receiversJSONArtifact,
+      receiversCSVArtifact,
+      rasterMetaArtifact,
+      rasterBinArtifact,
+      summaryArtifact,
+    ];
+
+    const run: RunSummary = {
+      id: runId,
+      scenario_id: "default",
+      standard_id: spec.standardId,
+      version: spec.version,
+      ...(spec.profile ? { profile: spec.profile } : {}),
+      status: "completed",
+      started_at: startedAt,
+      finished_at: finishedAt,
+      log_path: `${basePath}/run.log`,
+      artifacts,
+    };
+
+    const log: RunLog = {
+      run_id: runId,
+      lines: [
+        `${startedAt} run started`,
+        `${startedAt} model=browser`,
+        `${startedAt} rls19_road_sources=${String(sources.length)}`,
+        `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
+        `${startedAt} rls19_buildings=${String(buildings.length)}`,
+        `${startedAt} receivers=${String(gridReceivers.length)}`,
+        projection.applied
+          ? `${startedAt} compute_crs=${projection.computeCRS} (projected from ${projection.projectCRS})`
+          : `${startedAt} compute_crs=${projection.computeCRS}`,
+        `${startedAt} stage=compute`,
+        `${finishedAt} output_hash=${outputHash}`,
+        `${finishedAt} persisted=browser`,
+        `${finishedAt} run completed`,
+      ],
+    };
+
+    const artifactMap: Record<string, StoredArtifactContent> = {
+      [receiversJSONArtifact.id]: {
+        kind: receiversJSONArtifact.kind,
+        mimeType: "application/json",
+        encoding: "json",
+        value: receiverTable,
+      },
+      [receiversCSVArtifact.id]: {
+        kind: receiversCSVArtifact.kind,
+        mimeType: "text/csv",
+        encoding: "text",
+        value: receiverCSV,
+      },
+      [rasterMetaArtifact.id]: {
+        kind: rasterMetaArtifact.kind,
+        mimeType: "application/json",
+        encoding: "json",
+        value: rasterMetadata,
+      },
+      [rasterBinArtifact.id]: {
+        kind: rasterBinArtifact.kind,
+        mimeType: "application/octet-stream",
+        encoding: "text",
+        value: outputHash,
+      },
+      [summaryArtifact.id]: {
+        kind: summaryArtifact.kind,
+        mimeType: "application/json",
+        encoding: "json",
+        value: { ...summary, output_hash: outputHash },
+      },
+    };
+
+    await persistRun({ run, log, artifacts: artifactMap }, "run");
+    return run;
+  });
+}
+
 export const browserBackend = {
   capabilities: {
     kind: "browser",
@@ -1292,261 +1559,36 @@ out geom;`;
     // is the failure reported, not a model finding it would never compute.
     const kernel = await getKernel();
 
-    if (spec.standardId !== "rls19-road") {
+    // Two refusals, because two different things can be missing, and saying
+    // "not available" for both hid the second one.
+    //
+    // First: does the kernel publish this standard at all? Asked of
+    // `kernel.standards()` rather than compared against a literal, so this gate
+    // cannot disagree with the list `getStandards` serves — both come from the
+    // Go descriptor, declared once. The literal was only ever right because the
+    // published list happened to have one entry.
+    const published = kernel
+      .standards()
+      .some((standard) => standard.id === spec.standardId);
+    if (!published) {
       throw new Error(
         `Standard ${spec.standardId} is not available in browser mode`,
       );
     }
 
-    // Project the whole workspace once, before anything reads a coordinate off
-    // it, mirroring `cli.resolveComputeModel`. Never per builder:
-    // `buildParkingSources` computes a shoelace area in m² and a centroid, and
-    // `getFeatureBBox`/`getPolygonBBox` feed a receiver grid whose padding and
-    // resolution are metres by contract. Every one of them needs the model
-    // already in metres.
-    const store = useModelStore.getState();
-    const computeModel = await resolveComputeModel(kernel, {
-      features: store.features,
-      receivers: store.receivers,
-      calcArea: store.calcArea,
-      crs: store.crs,
-    });
-    const projection = computeModel.projection;
-
-    const features = computeModel.features;
-    const sources = buildRoadSources(features, spec.params);
-    const parking = buildParkingSources(features);
-    if (sources.length === 0 && parking.sources.length === 0) {
-      throw new Error(
-        "model does not contain any rls19-road line source or parking area feature",
-      );
-    }
-
-    const barriers = buildBarriers(features);
-    const buildings = buildBuildings(features);
-
-    let gridReceivers: PointReceiver[];
-    let rasterWidth: number;
-    let rasterHeight: number;
-
-    if (spec.receiverMode === "custom") {
-      const storeReceivers = computeModel.receivers;
-      if (storeReceivers.length === 0) {
+    // Second: does *this* build know how to extract a model for it? Publishing
+    // a standard and being able to run it here are separate facts while the
+    // extraction lives in TypeScript, so a kernel that grows a second entry must
+    // be refused in words that cannot be mistaken for "the kernel cannot do it".
+    // The TypeScript-side twin of Go's `TestEveryStandardHasItsEntryPoint`.
+    switch (spec.standardId) {
+      case "rls19-road":
+        return runRLS19Road(kernel, spec);
+      default:
         throw new Error(
-          "Custom receiver mode requires at least one receiver placed in the map workspace",
+          `The kernel publishes ${spec.standardId}, but this build has no model extraction for it`,
         );
-      }
-      // Model order, not id order: `extractExplicitReceivers`
-      // (backend/internal/app/cli/run_input.go) walks `model.Features` and keeps
-      // whatever order the model gives it. The receiver table's row order is
-      // what `output_hash` is computed over, so sorting here made the same model
-      // hash differently in the two targets.
-      gridReceivers = storeReceivers.map((r) => ({
-        id: r.id,
-        point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
-        height_m: r.heightM,
-      }));
-      rasterWidth = 1;
-      rasterHeight = storeReceivers.length;
-    } else {
-      const calcArea = computeModel.calcArea;
-      let bbox: {
-        minX: number;
-        minY: number;
-        maxX: number;
-        maxY: number;
-      } | null = null;
-      if (calcArea) {
-        bbox = getPolygonBBox(calcArea.geometry.coordinates);
-      }
-      if (!bbox) {
-        bbox = getFeatureBBox(
-          features.filter((feature) => feature.kind === "source"),
-        );
-      }
-      if (!bbox) {
-        throw new Error(
-          "Could not derive source extent from the current model",
-        );
-      }
-      const receiverGrid = buildReceiverGrid(bbox, spec.params);
-      gridReceivers = receiverGrid.receivers;
-      rasterWidth = receiverGrid.width;
-      rasterHeight = receiverGrid.height;
     }
-
-    // The lock spans the compute, not just the persist: the id is minted
-    // from the store before the kernel runs, and a second tab that allocated
-    // in the meantime would mint the same id and have its run replaced by
-    // `setRun` when both persist. Holding the lock until the persist keeps
-    // the id unique while this tab is still computing.
-    return withStoreLock(async () => {
-      const startedAt = nowISO();
-      const runId = nextRunID(await reloadState());
-      const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
-
-      const request: ComputeRequest = {
-        receivers: gridReceivers,
-        sources,
-        barriers,
-        config: {
-          SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
-          MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
-          ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
-          Buildings: buildings,
-          ParkingSources: parking.sources,
-        },
-      };
-
-      const outputs = await kernel.rls19Road(request);
-      const receiverTable = buildReceiverTable(outputs);
-      const receiverCSV = buildReceiverTableCSV(receiverTable);
-      const rasterMetadata: RasterMetadata = {
-        width: rasterWidth,
-        height: rasterHeight,
-        bands: 2,
-        nodata: -9999,
-        unit: "dB(A)",
-        band_names: ["LrDay", "LrNight"],
-      };
-      const summary = {
-        run_id: runId,
-        status: "completed",
-        grid_width: rasterWidth,
-        grid_height: rasterHeight,
-        source_count: sources.length,
-        parking_source_count: parking.sources.length,
-        receiver_count: outputs.length,
-        reporting_precision_db: 0.1,
-        // The CLI's own key names (`cli.provenanceProjectCRSKey` and
-        // `provenanceComputeCRSKey`), because results are expressed in the
-        // compute CRS on both targets and a consumer that only ever sees a
-        // receiver table has to be able to learn which CRS it is in. Not on
-        // `ReceiverTable`: the Go container has no CRS field, and adding one
-        // browser-side would fork the format.
-        project_crs: projection.projectCRS,
-        compute_crs: projection.computeCRS,
-      };
-
-      const hashPayload = outputs.map((output) => ({
-        receiver_id: output.Receiver.id,
-        indicators: output.Indicators,
-      }));
-      const outputHash = await sha256Hex(JSON.stringify(hashPayload));
-      const finishedAt = nowISO();
-      const createdAt = finishedAt;
-
-      const receiversJSONArtifact = makeArtifact(
-        runId,
-        "receivers-json",
-        "run.result.receiver_table_json",
-        `${basePath}/results/receivers.json`,
-        createdAt,
-      );
-      const receiversCSVArtifact = makeArtifact(
-        runId,
-        "receivers-csv",
-        "run.result.receiver_table_csv",
-        `${basePath}/results/receivers.csv`,
-        createdAt,
-      );
-      const rasterMetaArtifact = makeArtifact(
-        runId,
-        "raster-meta",
-        "run.result.raster_metadata",
-        `${basePath}/results/rls19-road.json`,
-        createdAt,
-      );
-      const rasterBinArtifact = makeArtifact(
-        runId,
-        "raster-bin",
-        "run.result.raster_binary",
-        `${basePath}/results/rls19-road.bin`,
-        createdAt,
-      );
-      const summaryArtifact = makeArtifact(
-        runId,
-        "summary",
-        "run.result.summary",
-        `${basePath}/results/run-summary.json`,
-        createdAt,
-      );
-      const artifacts: ArtifactRef[] = [
-        receiversJSONArtifact,
-        receiversCSVArtifact,
-        rasterMetaArtifact,
-        rasterBinArtifact,
-        summaryArtifact,
-      ];
-
-      const run: RunSummary = {
-        id: runId,
-        scenario_id: "default",
-        standard_id: spec.standardId,
-        version: spec.version,
-        ...(spec.profile ? { profile: spec.profile } : {}),
-        status: "completed",
-        started_at: startedAt,
-        finished_at: finishedAt,
-        log_path: `${basePath}/run.log`,
-        artifacts,
-      };
-
-      const log: RunLog = {
-        run_id: runId,
-        lines: [
-          `${startedAt} run started`,
-          `${startedAt} model=browser`,
-          `${startedAt} rls19_road_sources=${String(sources.length)}`,
-          `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
-          `${startedAt} rls19_buildings=${String(buildings.length)}`,
-          `${startedAt} receivers=${String(gridReceivers.length)}`,
-          projection.applied
-            ? `${startedAt} compute_crs=${projection.computeCRS} (projected from ${projection.projectCRS})`
-            : `${startedAt} compute_crs=${projection.computeCRS}`,
-          `${startedAt} stage=compute`,
-          `${finishedAt} output_hash=${outputHash}`,
-          `${finishedAt} persisted=browser`,
-          `${finishedAt} run completed`,
-        ],
-      };
-
-      const artifactMap: Record<string, StoredArtifactContent> = {
-        [receiversJSONArtifact.id]: {
-          kind: receiversJSONArtifact.kind,
-          mimeType: "application/json",
-          encoding: "json",
-          value: receiverTable,
-        },
-        [receiversCSVArtifact.id]: {
-          kind: receiversCSVArtifact.kind,
-          mimeType: "text/csv",
-          encoding: "text",
-          value: receiverCSV,
-        },
-        [rasterMetaArtifact.id]: {
-          kind: rasterMetaArtifact.kind,
-          mimeType: "application/json",
-          encoding: "json",
-          value: rasterMetadata,
-        },
-        [rasterBinArtifact.id]: {
-          kind: rasterBinArtifact.kind,
-          mimeType: "application/octet-stream",
-          encoding: "text",
-          value: outputHash,
-        },
-        [summaryArtifact.id]: {
-          kind: summaryArtifact.kind,
-          mimeType: "application/json",
-          encoding: "json",
-          value: { ...summary, output_hash: outputHash },
-        },
-      };
-
-      await persistRun({ run, log, artifacts: artifactMap }, "run");
-      return run;
-    });
   },
 
   async createExport(runId: string): Promise<RunSummary> {

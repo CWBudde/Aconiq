@@ -722,3 +722,56 @@ func assertOperationResponses(t *testing.T, item map[string]any, method string, 
 		}
 	}
 }
+
+func TestTransformRejectsOversizedBody(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Transform Body Cap"), nil)
+
+	// Valid JSON with one oversized property value, so the refusal is the cap
+	// and not the decoder.
+	body := `{"source_crs":"EPSG:` + strings.Repeat("4", maxTransformBodyBytes) + `","coordinates":[9,51]}`
+
+	req := newAPIRequest(http.MethodPost, "/api/v1/transform", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertErrorCode(t, rec, http.StatusRequestEntityTooLarge, errorCodeRequestTooLarge)
+}
+
+// The media-type requirement is what closes the CORS simple-request path, so it
+// has to hold on a new body-reading endpoint too.
+func TestTransformRejectsSafelistedContentType(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Transform Media Type"), nil)
+
+	req := newAPIRequest(http.MethodPost, "/api/v1/transform",
+		strings.NewReader(`{"source_crs":"EPSG:4326","coordinates":[9,51]}`))
+	req.Header.Set("Content-Type", "text/plain")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertErrorCode(t, rec, http.StatusUnsupportedMediaType, errorCodeUnsupportedMediaType)
+}
+
+// A state-changing method needs the client header, whether or not the endpoint
+// writes anything: POST is what the middleware sees.
+func TestTransformRequiresTheClientHeader(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Transform Client Header"), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transform",
+		strings.NewReader(`{"source_crs":"EPSG:4326","coordinates":[9,51]}`))
+	req.Host = testHost
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertErrorCode(t, rec, http.StatusForbidden, errorCodeClientHeaderRequired)
+}

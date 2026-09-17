@@ -387,7 +387,7 @@
   "action_show_feature_on_map": "Show {id} on the map",
   "msg_map_crs_projecting": "The model is stored in {crs}. It is being projected into WGS 84 for display.",
   "msg_map_crs_reprojected": "Displayed in WGS 84, stored in {crs}.",
-  "msg_map_crs_unsupported": "The model is stored in {crs} and cannot be projected for display in API mode. Save the model, then reload the page — it is then fetched in WGS 84.",
+  "msg_map_crs_unsupported": "The model is stored in {crs} and no projection is available in this mode, so it cannot be drawn. A backend that can project it — the desktop or browser mode — shows it in place.",
   "msg_map_crs_failed": "The model stored in {crs} could not be projected for display: {reason}",
   "msg_draw_disabled_crs": "Drawing is disabled because the model is stored in {crs}. The map draws in WGS 84, and a drawn shape would enter the model in the wrong coordinate system.",
   "label_crs_notice": "Coordinate reference system"
