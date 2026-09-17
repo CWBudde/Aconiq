@@ -907,15 +907,39 @@ parsing, extraction and persistence are all `app/cli` files, and `framework` can
 without a cycle. `internal/app/cli` is 13 014 non-test LOC, and adding a standard still means
 editing several of its files rather than one package of its own.
 
-- [ ] **Finish the shared acoustics core.** `internal/acoustics` exists and owns the END indicator
-      model — the day/evening/night types, the directive's Lden weighting and the bundle the six
-      modules reporting that set publish. What it does not own yet is the summation: `energySumDB`
-      exists in **9 copies with 3 different semantics** — `rls19/road/emission.go:147` skips
-      `level <= -900`, `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf`
-      and returns NaN on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the
-      same `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
-      Unlike the indicator lift, **this one moves numbers**, so it needs its own golden review; the
-      13 digest goldens are the oracle. It also lands the compensated-summation item from P1.3.
+- [ ] **Finish the shared acoustics core.** `internal/acoustics` owns the END indicator model and,
+      since this pass, `EnergySum`: the seven byte-identical `energySumDB` copies
+      (`rls19/road`, `cnossos/road|rail|industry|aircraft`, `bub/road`, `buf/aircraft`) are one
+      function with one pair of sentinels, `SilenceDB` and `SilenceThresholdDB`. Every golden is
+      byte-identical, so the deduplication is provably not a behaviour change.
+      **Two claims this entry used to make were wrong.** `cnossos/road` _does_ skip
+      `level <= -900`; it was behaviourally identical to `rls19/road`, and the only variation across
+      the seven was whether the numbers were named constants or inline literals. And the two
+      sentinels do **not** both reach `results.ReceiverTable`: `finiteOrSilence` converts `-Inf` to
+      `-999` at schall03's own output boundary, so only `-999` ever lands in a receiver table.
+      What is genuinely left is smaller and sharper than "nine copies":
+  - [ ] **Compensate `EnergySum`, and re-cut five goldens deliberately.** The switch to
+        `numeric.CompensatedSum` is one line, and it is **not** free — which is the finding that
+        matters here, because Priority 1.3 observed compensation leaving every golden unchanged and
+        **that does not generalise to these call sites.** These reductions really do scale with
+        model size (`rls19/road/propagation.go` sums one contribution per source, per reflection
+        path and per line-source subsegment), so compensation recovers real low bits: measured at
+        **1-2 ulps, max 2.8e-14 dB**, moving `rls19-road`, `cnossos-road`, `cnossos-rail`,
+        `bub-road` and `bub-rail`. Receiver tables persist `float64` at full round-trip precision
+        and the run digests hash every byte, so a negligible delta is still a golden diff.
+        Until it is taken, `EnergySum` accumulates with a plain `+=` — byte for byte what the seven
+        copies did — and says so in its doc comment, with
+        `TestEnergySumLosesTermsAnUncompensatedSumMustLose` pinning the terms the naive sum drops so
+        the follow-up has a test to invert.
+        **Note what this costs under Priority 5's versioning rule**: `rls19-road` is normative-tier,
+        and a change to a normative module's computed levels is a breaking change there regardless
+        of direction or size. This is a release decision, not a cleanup.
+  - [ ] **Decide the two outliers, or declare them.** `bimschv16.energySumDB` has no NaN/Inf guard
+        and no silence threshold; `schall03.EnergeticSumLevels` works in `-Inf` internally and
+        returns NaN on a `+Inf` term rather than skipping it. Both now carry a comment saying why
+        they differ. Converging either changes numbers, so neither belonged in a refactor. "One
+        sentinel" is a two-module question now, not a nine-module one.
+  - [ ] **One `Level` type** is still untouched.
 - [x] **The four Schall 03 normative propagation kernels are one.** `subsegmentContrib`
       (`compute.go`) is the single implementation of Gl. 6, 8–16, parameterised by `dRho`
       (0 direct, the Gl. 28 wall absorption loss reflected), a `rayOrigin` (the real subsegment
