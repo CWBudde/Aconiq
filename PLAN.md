@@ -1437,15 +1437,27 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase F — Tests, types and the kernel boundary
 
-- [ ] `hooks.test.ts` against mocked `fetch`; a `browserBackend.startRun` test with a stubbed
-      kernel compared to a backend golden; tests for `use-draw` and `model-layers` (the map-rebuild
-      fix in `ad47eaa` still has no test — it needs a real WebGL context, and `map.test.tsx` stubs
-      `MapView` out entirely). Coverage measurement itself is done, and it prices this bullet:
-      `src/map` sits at **37.3%** over 1,765 statements, the largest single gap in the frontend.
-      The floors are **not** in `fe-ci` as this bullet used to say — they live in
-      `frontend/vitest.config.ts` and are applied by an advisory `frontend-coverage` job, because a
-      coverage regression must not be able to fail a required check. See
-      `docs/testing/coverage.md`.
+- [ ] `hooks.test.ts` against mocked `fetch` (`api/hooks.ts` leaves a third of its hooks
+      unexercised), and a `browserBackend.startRun` test with a stubbed kernel compared to a backend
+      golden. **`use-draw` and `model-layers` are done** — 95.6% and 89.8%, via
+      `draw-provider.test.tsx` and `model-layers.test.tsx` — and `src/map` as a whole is now 94.0%,
+      not the 37.3% over 1,765 statements this bullet used to quote. What survives of the original
+      claim is narrower and still true: **the map-rebuild fix in `ad47eaa` has no test**, because
+      `map-view.tsx`'s residual statements are MapLibre lifecycle that jsdom cannot reach. Faking a
+      WebGL context would test the fake; it belongs in `frontend/e2e/`.
+      The floors are **not** in `fe-ci` — they live in `frontend/vitest.config.ts` and are applied
+      by an advisory `frontend-coverage` job, because a coverage regression must not be able to fail
+      a required check. That job published a number less than half the truth from the day it was
+      created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
+- [ ] **Four vendored shadcn components have no importers anywhere.**
+      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` are 176
+      statements that nothing in `src/` or `e2e/` imports. They are most of what keeps `src/ui` at
+      77% while this repository's **own** shared components under `src/ui` sit at 91.5%, most of
+      them at 100%. Testing them would be the purest coverage theatre available here, so the choice
+      is to delete them or to keep them deliberately as design-system stock — a decision about what
+      the design system holds on hand, not a coverage question.
+      The remaining honest gaps after that are `src/wasm` (45.2%, the browser-side kernel loader —
+      `kernel-node.ts` is what the parity suites exercise) and `src/layouts` (41.7%, 24 statements).
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
