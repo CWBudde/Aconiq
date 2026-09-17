@@ -82,18 +82,24 @@ type soundPlanRasterRunCompareSummary struct {
 }
 
 type soundPlanRasterCompareArtifact struct {
-	Status                  string                            `json:"status"`
-	Alignment               string                            `json:"alignment,omitempty"`
-	CalcAreaSource          string                            `json:"calc_area_source,omitempty"`
-	CalcAreaRole            string                            `json:"calc_area_role,omitempty"`
-	CalcAreaBoundsDelta     *float64                          `json:"calc_area_bounds_delta,omitempty"`
-	CalcAreaBoundsDeltaUnit string                            `json:"calc_area_bounds_delta_unit,omitempty"`
-	GridResolutionM         float64                           `json:"grid_resolution_m,omitempty"`
-	ReceiverHeightM         float64                           `json:"receiver_height_m,omitempty"`
-	SyntheticReceiverCount  int                               `json:"synthetic_receiver_count,omitempty"`
-	SoundPlanRuns           []soundplanimport.GridMapMetadata `json:"soundplan_runs,omitempty"`
-	Runs                    []soundPlanRasterRunCompareDetail `json:"runs,omitempty"`
-	Warnings                []string                          `json:"warnings,omitempty"`
+	Status                  string   `json:"status"`
+	Alignment               string   `json:"alignment,omitempty"`
+	CalcAreaSource          string   `json:"calc_area_source,omitempty"`
+	CalcAreaRole            string   `json:"calc_area_role,omitempty"`
+	CalcAreaBoundsDelta     *float64 `json:"calc_area_bounds_delta,omitempty"`
+	CalcAreaBoundsDeltaUnit string   `json:"calc_area_bounds_delta_unit,omitempty"`
+	GridResolutionM         float64  `json:"grid_resolution_m,omitempty"`
+	ReceiverHeightM         float64  `json:"receiver_height_m,omitempty"`
+	SyntheticReceiverCount  int      `json:"synthetic_receiver_count,omitempty"`
+	// The same three fields the report carries: which grid map the per-cell
+	// deltas below belong to, out of which candidates, and on what grounds.
+	// SoundPlanRuns stays every grid map the bundle holds.
+	SoundPlanRasterRun           string                            `json:"soundplan_raster_run,omitempty"`
+	SoundPlanRasterRunCandidates []string                          `json:"soundplan_raster_run_candidates,omitempty"`
+	SoundPlanRasterRunSelection  string                            `json:"soundplan_raster_run_selection,omitempty"`
+	SoundPlanRuns                []soundplanimport.GridMapMetadata `json:"soundplan_runs,omitempty"`
+	Runs                         []soundPlanRasterRunCompareDetail `json:"runs,omitempty"`
+	Warnings                     []string                          `json:"warnings,omitempty"`
 }
 
 type soundPlanRasterRunCompareDetail struct {
@@ -155,6 +161,49 @@ func decodeGridMapRuns(soundPlanRoot string, gridMaps []soundplanimport.GridMapM
 	return decodedRuns, warnings
 }
 
+// recordSelectedGridMapRun chooses the grid map the raster comparison is run
+// against and writes the decision onto the report. It returns the selected
+// result subfolder, or "" when no grid map named one at all — which is reported
+// rather than left to look like a selection nobody made.
+func recordSelectedGridMapRun(
+	report *soundPlanRasterCompareReport,
+	importReport soundPlanImportReport,
+	baseModel modelgeojson.Model,
+	explicitGridRun string,
+) (string, error) {
+	selection, err := selectSoundPlanGridMapRun(
+		importReport.GridMaps, explicitGridRun, modelHasBarriers(baseModel), importReport.GridMapHeightM,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	report.SoundPlanRasterRun = selection.Dir
+	report.SoundPlanRasterRunCandidates = selection.Candidates
+	report.SoundPlanRasterRunSelection = selection.Selection
+	report.Warnings = append(report.Warnings, selection.Warnings...)
+
+	if selection.Dir == "" {
+		report.Warnings = append(report.Warnings,
+			"no SoundPLAN grid map names a result subfolder, so none could be selected for raster comparison")
+	}
+
+	return selection.Dir, nil
+}
+
+// selectedGridMaps narrows the discovered grid maps to the one run the
+// comparison chose. It returns a slice so that decodeGridMapRuns keeps
+// reporting a skipped record the same way it always has.
+func selectedGridMaps(gridMaps []soundplanimport.GridMapMetadata, resultSubFolder string) []soundplanimport.GridMapMetadata {
+	for _, gridMap := range gridMaps {
+		if strings.TrimSpace(gridMap.ResultSubFolder) == resultSubFolder {
+			return []soundplanimport.GridMapMetadata{gridMap}
+		}
+	}
+
+	return nil
+}
+
 // synthesizeRasterReceivers places one Aconiq receiver per decoded SoundPLAN
 // grid cell, preferring the GM origin metadata and falling back to CalcArea
 // scanlines. It records the chosen alignment and any warnings on report, and
@@ -212,7 +261,20 @@ func synthesizeRasterReceivers(
 	return syntheticReceivers, ids, true
 }
 
-func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImportReport, modelPath string) (*rasterComparePreparation, bool, error) {
+// prepareSoundPlanRasterCompare synthesizes the raster receivers for the one
+// SoundPLAN grid map this comparison is run against.
+//
+// The model is loaded before the grid map is decoded, not after, because the
+// selection depends on it: which grid map describes the scenario the model does
+// is decided by whether the model carries barriers. Decoding then happens once,
+// for the selected run only — which also retires the assumption that the first
+// decoded run's grid layout could stand for all of them.
+func prepareSoundPlanRasterCompare(
+	projectRoot string,
+	importReport soundPlanImportReport,
+	modelPath string,
+	explicitGridRun string,
+) (*rasterComparePreparation, bool, error) {
 	if len(importReport.GridMaps) == 0 {
 		return nil, false, nil
 	}
@@ -227,16 +289,6 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 	}
 
 	soundPlanRoot := resolvePath(projectRoot, importReport.SourcePath)
-
-	decodedRuns, decodeWarnings := decodeGridMapRuns(soundPlanRoot, importReport.GridMaps)
-	report.Warnings = append(report.Warnings, decodeWarnings...)
-
-	if len(decodedRuns) == 0 {
-		report.Warnings = append(report.Warnings, "no decodable GM payload was available for raster comparison")
-		return &rasterComparePreparation{report: report}, true, nil
-	}
-
-	layoutRows := decodedRuns[0].decoded.Rows
 	baseModelPath := resolvePath(projectRoot, modelPath)
 
 	baseModel, err := loadValidatedModel(baseModelPath, importReport.ProjectCRS, relativePath(projectRoot, baseModelPath))
@@ -245,13 +297,35 @@ func prepareSoundPlanRasterCompare(projectRoot string, importReport soundPlanImp
 		return &rasterComparePreparation{report: report}, true, nil
 	}
 
+	selectedRun, err := recordSelectedGridMapRun(report, importReport, baseModel, explicitGridRun)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if selectedRun == "" {
+		return &rasterComparePreparation{report: report}, true, nil
+	}
+
+	decodedRuns, decodeWarnings := decodeGridMapRuns(soundPlanRoot, selectedGridMaps(importReport.GridMaps, selectedRun))
+	report.Warnings = append(report.Warnings, decodeWarnings...)
+
+	if len(decodedRuns) == 0 {
+		report.Warnings = append(report.Warnings, "no decodable GM payload was available for raster comparison")
+		return &rasterComparePreparation{report: report}, true, nil
+	}
+
+	// One run by construction, and it is the selected one — so the grid layout
+	// below belongs to the grid map actually being compared.
+	layoutRows := decodedRuns[0].decoded.Rows
+
 	calcArea := resolveRasterCalcArea(baseModel, importReport)
 	report.CalcAreaSource = calcArea.source
 	report.CalcAreaBoundsDelta = calcArea.boundsDelta
 	report.CalcAreaBoundsDeltaUnit = calcArea.boundsDeltaUnit
 	report.Warnings = append(report.Warnings, calcArea.warnings...)
 
-	syntheticReceiverHeight := syntheticRasterReceiverHeight(importReport)
+	syntheticReceiverHeight, heightWarnings := selectedRunReceiverHeight(decodedRuns[0].metadata, importReport)
+	report.Warnings = append(report.Warnings, heightWarnings...)
 
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
 		report, importReport, decodedRuns[0].metadata, calcArea.area, syntheticReceiverHeight, layoutRows,
@@ -560,6 +634,47 @@ func syntheticRasterReceiverHeight(importReport soundPlanImportReport) float64 {
 	return defaultGridMapReceiverHeightM
 }
 
+// selectedRunReceiverHeight returns the height the synthetic raster receivers
+// are placed at for the one grid map that was selected, plus any warning the
+// choice owes the reader.
+//
+// The height has to come from the run being compared, not from the project.
+// RLKHEIGHT is the project's *current* grid-map setting, and the selection can
+// legitimately land on a run computed at another: --soundplan-grid-run names a
+// run outright, and the geometry signal alone can settle the choice before the
+// height is ever consulted. Placing the Aconiq receivers at RLKHEIGHT then
+// compares Aconiq levels at one height against SoundPLAN cells at another while
+// the report states the run was chosen on purpose — the very mismatch selecting
+// a single run exists to remove.
+//
+// The project value stays the fallback for a run that declared no layout, which
+// is every import report written before GridMapMetadata.RunLayout existed. A
+// declared height of zero is treated the same way: nothing places receivers at
+// ground level, so it is a parse artefact rather than a grid.
+func selectedRunReceiverHeight(
+	meta soundplanimport.GridMapMetadata,
+	importReport soundPlanImportReport,
+) (float64, []string) {
+	layout := meta.RunLayout
+	if layout == nil || layout.HeightM <= 0 {
+		return syntheticRasterReceiverHeight(importReport), nil
+	}
+
+	// Only a recorded RLKHEIGHT can disagree. When the bundle recorded none,
+	// syntheticRasterReceiverHeight would have answered with an assumed default,
+	// and warning that the run contradicts an assumption would be noise.
+	projectHeightM := importReport.GridMapHeightM
+	if projectHeightM <= 0 || math.Abs(layout.HeightM-projectHeightM) <= gridMapHeightToleranceM {
+		return layout.HeightM, nil
+	}
+
+	return layout.HeightM, []string{fmt.Sprintf(
+		"SoundPLAN grid map %s was computed at %g m, but the project records RLKHEIGHT %g m; "+
+			"the synthetic raster receivers are placed at %g m so both sides of the comparison sit at the same height",
+		meta.ResultSubFolder, layout.HeightM, projectHeightM, layout.HeightM,
+	)}
+}
+
 // compareDecodedGridMapRun compares one decoded SoundPLAN grid map against the
 // synthetic raster receivers computed by the Aconiq run, in scanline order.
 func compareDecodedGridMapRun(
@@ -677,8 +792,12 @@ func finalizeSoundPlanRasterCompare(
 		GridResolutionM:         prep.report.GridResolutionM,
 		ReceiverHeightM:         prep.report.ReceiverHeightM,
 		SyntheticReceiverCount:  len(prep.syntheticReceiverIDs),
-		SoundPlanRuns:           append([]soundplanimport.GridMapMetadata(nil), prep.soundPlanRuns...),
-		Warnings:                append([]string(nil), prep.report.Warnings...),
+
+		SoundPlanRasterRun:           prep.report.SoundPlanRasterRun,
+		SoundPlanRasterRunCandidates: append([]string(nil), prep.report.SoundPlanRasterRunCandidates...),
+		SoundPlanRasterRunSelection:  prep.report.SoundPlanRasterRunSelection,
+		SoundPlanRuns:                append([]soundplanimport.GridMapMetadata(nil), prep.soundPlanRuns...),
+		Warnings:                     append([]string(nil), prep.report.Warnings...),
 	}
 
 	prep.report.Runs = make([]soundPlanRasterRunCompareSummary, 0, len(prep.decodedRuns))

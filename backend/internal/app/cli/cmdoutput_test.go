@@ -307,6 +307,20 @@ func TestCompareJSONOutput(t *testing.T) {
 	if result["raster_artifact_path"] == nil || result["raster_artifact_path"] == "" {
 		t.Fatal("expected raster_artifact_path")
 	}
+
+	// The count stays the number of grid maps discovered; the run named beside
+	// it is the one of them the raster deltas were computed against.
+	if result["soundplan_raster_run_count"] != 4.0 {
+		t.Fatalf("soundplan_raster_run_count = %v, want 4", result["soundplan_raster_run_count"])
+	}
+
+	if result["soundplan_raster_run"] != "RRLK0023" {
+		t.Fatalf("soundplan_raster_run = %v, want RRLK0023", result["soundplan_raster_run"])
+	}
+
+	if result["soundplan_raster_run_selection"] != gridRunSelectionGridHeight {
+		t.Fatalf("soundplan_raster_run_selection = %v, want %v", result["soundplan_raster_run_selection"], gridRunSelectionGridHeight)
+	}
 }
 
 func TestStatusJSONOutput(t *testing.T) {

@@ -617,17 +617,25 @@ it**: the SoundPLAN import produces only the preview `rail_*` vocabulary, so `co
 into the preview engine explicitly. **The delta above is a preview-chain number and nothing should
 be concluded from it. Priority 13's `TrackSegment` mapping is what makes it measurable.**
 
+**The reference project is a Schall 03 _1990_ model, not an Anlage-2-2014 one**, which bounds what
+this comparison can ever claim. `Project.sp` selects `[RAIL] SELECTED=20490` and its own description
+says _„Häkchen 5 dB Schienenbonus setzen"_; `TS03.abs` holds the 1990 train library (`ICE (v<=250)`,
+`D / FD-Zug (2000)`, `Eilzug (2000)`, `Güterzug (Fernv.)` …), whose `ZugArt` ordinals are exactly the
+ones `railops.go:231-278` hardcodes. `soundplanimport.go:165` parses `RAILBONUS` and nothing consumes
+it. So even after Priority 13's `TrackSegment` mapping lands perfectly, the delta measures the
+1990 → 2014 method change **plus** the Aconiq implementation, with the 5 dB Schienenbonus inside it:
+a residual of a few dB against this fixture is not evidence of a defect, and agreement to 0.5 dB
+would be evidence of something wrong. Two further consequences for Priority 13: a 1990 `TS03` row
+carries a single A-weighted base level and **no Fz decomposition**, so `FzComposition` has to come
+from a declared editorial lookup table rather than from the data; and `Fahrbahn`, `BridgeType` and
+`Surface` arrive only as dB surcharges (`DFb` +2 dB Betonschwellen, `DBue` +3 dB), which have no
+categorical 2014 counterpart. A 2014 reference project is what would make this comparison a
+conformance measurement.
+
 - [ ] Tighten the thresholds. What is in the test today is a deliberately loose regression
       bound (mean*abs ≤ 34 dB, max_abs ≤ 45 dB) labelled in the source as \_not* a tolerance, sitting
       alongside exact self-consistency assertions that do hold the compare command to a real
       standard. Once Priority 2 and Priority 13 are done, this must come down by a large factor.
-- [ ] **The raster comparison still compares one run against all four grid maps at once.**
-      `RRLK0012`/`RRLK0013` are computed without the noise barrier and `RRLK0022`/`RRLK0023` with
-      it, exactly as `RSPS0011`/`RSPS0021` are, and the `.res` files say so in `[GeoFiles]` and
-      `RunData`. The receiver path now selects one run on those grounds; the raster path reports
-      four `runs[]` entries against a single Aconiq run, so at least two of the four are comparing
-      against a scenario the model does not describe. The selector to reuse is
-      `selectSoundPlanReceiverResultDir`.
 - [ ] Get reference data into CI — submodule or Git LFS, licence permitting — so the comparison
       runs. Today `interoperability/` is gitignored and the SoundPLAN tests skip in CI. The
       plumbing for it is in place: `internal/qa/fixtures.SoundPLANProjectDir` is the single place
@@ -661,6 +669,28 @@ be concluded from it. Priority 13's `TrackSegment` mapping is what makes it meas
     anything shipped.
   - Synthetic raster receivers take their height from the bundle's `RLKHEIGHT`, not from the
     model's first receiver, which made every raster number a hostage to the receiver import.
+
+- [x] **The raster path selects one grid map too** (#40). Four things it leaves live:
+  - **The barrier signal alone does not select one raster run.** It selects two. The reference
+    project holds the same site four times — without and with `GeoWand.geo`, each at a 4 m and a
+    2 m grid — so the second discriminator is the grid height in the `GNM<spacing>:<height>` token
+    of the run's `RunCommands`, matched against `RLKHEIGHT`. Any future "just reuse the receiver
+    selector" reasoning has to account for that.
+  - The evidence travels on `GridMapMetadata` (`geometry_files`, `run_layout`), written by
+    `LoadGridMapMetadata` from the `*RunResult` it already holds, rather than being re-read from a
+    `.res` whose name is guessed from a result subfolder. **An import report written before those
+    fields existed carries no evidence**, so a project has to be re-imported for the choice to be
+    made on anything but name order; without it the run is picked by name and warned about.
+  - `soundplan_runs` and `soundplan_raster_run_count` stay the number of grid maps **discovered**.
+    Exactly one is compared, and which one is reported beside them — shrinking the count to 1 would
+    have hidden the other three rather than explaining them.
+  - **Absent geometry evidence and contradicted geometry evidence are different branches.** A model
+    that provably describes none of the imported grid maps — an edited `--model` that adds a barrier
+    the bundle never computed with — must not fall through to a height match and report
+    `grid_height_match`; it selects, warns and reports `geometry_contradicted`. And the synthetic
+    receivers take the **selected run's** `run_layout.height_m`, not the project's `RLKHEIGHT`,
+    because `--soundplan-grid-run` and the geometry signal can both land on a run computed at
+    another height.
 
 ## Priority 4 — Honest standards labelling
 
