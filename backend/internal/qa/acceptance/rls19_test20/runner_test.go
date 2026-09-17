@@ -187,8 +187,14 @@ func TestConformanceReportContainsRequiredFields(t *testing.T) {
 }
 
 func TestUpdateCISafeExpectedSnapshots(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: this test rewrites every testdata/ci_safe/*.golden.json,
+	// and four tests in this package read those same files —
+	// TestRunCISafeSuiteProducesPassingReport, TestCISafeSuiteExecutesTasks,
+	// TestConformanceReportContainsRequiredFields and
+	// TestParkingFixtureRelationsHoldByArithmetic. Staying sequential puts the
+	// rewrite ahead of the whole parallel batch, so no reader can decode a
+	// half-written snapshot. The skip below is not a substitute: t.Parallel()
+	// defers the test into that batch before UpdateEnabled() is ever consulted.
 	if !golden.UpdateEnabled() {
 		t.Skip("golden update disabled")
 	}

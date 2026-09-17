@@ -697,6 +697,17 @@ func TestISO9613ToleranceLookup(t *testing.T) {
 func TestISO9613ToleranceCompliance(t *testing.T) {
 	t.Parallel()
 
+	// This test reads the very files TestAcceptanceFixtures writes under
+	// UPDATE_GOLDEN, and both run in the same parallel batch, so a read here
+	// can land on a half-written snapshot. Serialising the two would make the
+	// read safe but pointless: what it would then compare against is the stale
+	// golden the update run exists to replace. Skipping while the goldens are
+	// in flux is what TestCatalogProvidesDeterministicFixtures already does,
+	// and it leaves both tests live in the ordinary mode CI runs.
+	if golden.UpdateEnabled() {
+		t.Skip("golden update in progress: the expected files are being rewritten")
+	}
+
 	for _, fixture := range Catalog() {
 		if fixture.StandardID != iso9613.StandardID {
 			continue
