@@ -1540,7 +1540,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `schall03_track_features` carries coordinates in its properties besides, which puts it in
       `PROPERTY_GEOMETRIES` — browser mode cannot move those and refuses a model that carries one
       outright — so an editor for it would be filling in a model that half the app cannot run.
-- [x] **The receiver's Gebietskategorie** (#51). The receiver panel offers
+- [x] **The receiver's Gebietskategorie** (#52). The receiver panel offers
       `bimschv16_area_category` beside the height, over the four canonical values
       `assessment/bimschv16` declares; `model/bimschv16.test.ts` pins them, their German labels and
       the property name against `assessment.go`, including that this spelling is the first of the
