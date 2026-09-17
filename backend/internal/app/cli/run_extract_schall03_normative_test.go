@@ -218,13 +218,24 @@ func TestExtractSchall03NormativeSceneSplitsShieldingFromReflection(t *testing.T
 	}
 
 	// The two panels of wall-1 are one obstacle, so its interior vertex is not
-	// a Seitenkante a lateral path may round.
-	if scene.Barriers[0].ObstacleID != "wall-1" || scene.Barriers[1].ObstacleID != "wall-1" {
+	// a Seitenkante a lateral path may round.  The id itself is internal and
+	// deliberately not the feature id, so the assertion is on identity, not on
+	// spelling.
+	if scene.Barriers[0].ObstacleID == "" || scene.Barriers[0].ObstacleID != scene.Barriers[1].ObstacleID {
 		t.Fatalf("wall-1's panels must share one obstacle id: %+v", scene.Barriers[:2])
 	}
 
-	if scene.Barriers[2].ObstacleID != "wall-2" {
+	if scene.Barriers[2].ObstacleID == "" || scene.Barriers[2].ObstacleID == scene.Barriers[0].ObstacleID {
 		t.Fatalf("wall-2 must be its own obstacle: %+v", scene.Barriers[2])
+	}
+
+	// A reflective barrier is obstacle and reflector at once.  The wall carries
+	// the panel's obstacle id, so it does not diffract the reflection it just
+	// produced.
+	for i, wall := range scene.Walls {
+		if wall.ObstacleID != scene.Barriers[i].ObstacleID {
+			t.Fatalf("wall %d must carry its panel's obstacle id: %+v vs %+v", i, wall, scene.Barriers[i])
+		}
 	}
 }
 
@@ -254,7 +265,7 @@ func TestExtractSchall03NormativeSceneShieldsBuildingsAndReflectsOnOptIn(t *test
 	}
 
 	for _, barrier := range scene.Barriers {
-		if barrier.ObstacleID != "house-1" {
+		if barrier.ObstacleID == "" || barrier.ObstacleID != scene.Barriers[0].ObstacleID {
 			t.Fatalf("every panel of one footprint must share its obstacle id: %+v", barrier)
 		}
 
@@ -292,6 +303,66 @@ func TestExtractSchall03NormativeSceneShieldsBuildingsAndReflectsOnOptIn(t *test
 
 	if len(scene.Barriers) != 4 {
 		t.Fatalf("a reflecting building must still shield: %+v", scene.Barriers)
+	}
+
+	// Shielding panel and reflecting facade are the same wall of the same
+	// house, so they share one obstacle id and the footprint does not shield
+	// the reflection off itself.
+	for i, wall := range scene.Walls {
+		if wall.ObstacleID == "" || wall.ObstacleID != scene.Barriers[i].ObstacleID {
+			t.Fatalf("facade %d must carry its footprint's obstacle id: %+v vs %+v", i, wall, scene.Barriers[i])
+		}
+	}
+}
+
+// An obstacle id must not be spellable by a user id.
+//
+// A MultiPolygon named `house` used to yield the part ids `house-01` and
+// `house-02`, while a separate feature may legally be named `house-01` —
+// model validation only checks the original ids.  The two would then merge
+// into one obstacle group, which silently moves numbers: the lateral candidate
+// set, the group's top height and the coincident-crossing dedupe all read the
+// group as one building.
+func TestExtractSchall03NormativeSceneObstacleIDsCannotCollide(t *testing.T) {
+	t.Parallel()
+
+	model := decodeNormativeModel(t, `[`+normativeTrackFeature+`, {
+		"id": "house", "kind": "building", "height_m": 8,
+		"geometry_type": "MultiPolygon",
+		"coordinates": [
+			[[[0, 20], [10, 20], [10, 30], [0, 30], [0, 20]]],
+			[[[20, 20], [30, 20], [30, 30], [20, 30], [20, 20]]]
+		],
+		"properties": {}
+	}, {
+		"id": "house-01", "kind": "building", "height_m": 12,
+		"geometry_type": "Polygon",
+		"coordinates": [[[40, 20], [50, 20], [50, 30], [40, 30], [40, 20]]],
+		"properties": {}
+	}]`)
+
+	scene, err := extractSchall03NormativeScene(model, []string{"line"})
+	if err != nil {
+		t.Fatalf("extract normative scene: %v", err)
+	}
+
+	if len(scene.Barriers) != 12 {
+		t.Fatalf("got %d panels from three four-sided rings, want 12", len(scene.Barriers))
+	}
+
+	groups := make(map[string]int, 3)
+	for _, barrier := range scene.Barriers {
+		groups[barrier.ObstacleID]++
+	}
+
+	if len(groups) != 3 {
+		t.Fatalf("got %d obstacle groups, want 3 — two parts of `house` plus `house-01`: %v", len(groups), groups)
+	}
+
+	for id, count := range groups {
+		if count != 4 {
+			t.Fatalf("obstacle %q has %d panels, want 4 — groups merged: %v", id, count, groups)
+		}
 	}
 }
 

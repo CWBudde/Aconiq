@@ -579,19 +579,14 @@ parse and discarding a user's model and runs over a row order is the larger harm
       Gl. 35-36 combined assessment is unreachable from a run. The conformance declaration now says
       so under "Reachability from the CLI"; it needs a `schall03_yard_*` vocabulary to stop being
       true.
-- [ ] **A Schall 03 barrier shields its own reflection.** `ReflectedSubsegmentContribWithBarriers`
-      (`reflection.go:284`) and `ComputeReflectedLineSourceLpAeqWithBarriers` (:566) pass the
-      **entire** `barriers` slice to `ComputePathBarrierAttenuation` with the image source as the
-      origin. The image→receiver segment crosses the reflecting wall at the reflection point by
-      construction, and `IsObstructing` compares against the line-of-sight height there, so the wall
-      screens the reflection it produced. RLS-19 has `barriersExcluding` for exactly this; Schall 03
-      has no equivalent. Live in the CLI today for any `barrier` carrying
-      `schall03_reflective: true`, because `appendSchall03Barriers` emits both a `BarrierSegment`
-      and a `ReflectingWall` for it. No test catches it: `b5_reflective_barrier` has reflective
-      barriers but `walls: null`, `b2_barrier_with_wall` has a wall that is not a barrier, and
-      `TestReflectedPathObstructedByBarrier` uses a deliberate third object. Closing it moves
-      `b2`/`b5`-class numbers, so it is its own PR. It needs an `ObstacleID` on `ReflectingWall`,
-      which has none — `BarrierSegment` already carries one, which is the enabler.
+- [ ] **A Schall 03 reflection of order ≥ 2 is shielded from the wrong origin.**
+      `ComputeReflectedLineSourceLpAeqWithBarriers` passes `rp.Geometries[0].ImageSource` as the
+      effective source for every path, whatever its order. For a single bounce that is the image
+      source; for two or three it is only the first mirror, so the diffraction check runs along a
+      ray that is not the path. `EnumerateReflectionPaths` already carries the running image source
+      in `candidate.imageSource` but drops it when it builds the `ReflectionPath`; carrying it
+      through is the fix. Separate from the obstacle exclusion, which is now in place and scoped by
+      `ObstacleID` on both `BarrierSegment` and `ReflectingWall`.
 - [ ] **Grid receivers land inside building footprints.** `run_receivers.go` does no building
       masking, so in auto-grid mode a receiver inside a footprint is now shielded by the one ring
       edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is

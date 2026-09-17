@@ -551,3 +551,168 @@ func TestSubsegmentContribIsOrderDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Gl. 28: a facade must not diffract the reflection it produced
+// ---------------------------------------------------------------------------
+
+// reflectionSceneTrack is the emitting track the reflection regressions share.
+func reflectionSceneTrack(t *testing.T) TrackSegment {
+	t.Helper()
+
+	op, err := NewTrainOperationFromZugart("ICE-1-Zug", 4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return TrackSegment{
+		ID:              "seg1",
+		TrackCenterline: []geo.Point2D{{X: -150, Y: 0}, {X: 150, Y: 0}},
+		ElevationM:      0,
+		Fahrbahn:        FahrbahnartSchwellengleis,
+		Surface:         SurfaceCondNone,
+		StreckeMaxKPH:   250,
+		Operations:      []TrainOperation{*op},
+	}
+}
+
+// reflectingHouse returns the shielding panels and the reflecting facades of one
+// opt-in reflecting building, both carrying obstacleID.
+func reflectingHouse(obstacleID string) ([]BarrierSegment, []ReflectingWall) {
+	ring := []geo.Point2D{
+		{X: -60, Y: 40}, {X: 60, Y: 40}, {X: 60, Y: 50}, {X: -60, Y: 50}, {X: -60, Y: 40},
+	}
+
+	barriers := ringBarriers(ring, 12, obstacleID)
+
+	walls := make([]ReflectingWall, 0, len(barriers))
+	for _, b := range barriers {
+		walls = append(walls, ReflectingWall{
+			A: b.A, B: b.B, HeightM: 12, Surface: WallSurfaceBuilding, ObstacleID: obstacleID,
+		})
+	}
+
+	return barriers, walls
+}
+
+// withoutWallObstacleID is the pre-identity wall set: every facade belongs to no
+// named obstacle, so nothing is excluded from the paths it generates.
+func withoutWallObstacleID(walls []ReflectingWall) []ReflectingWall {
+	out := make([]ReflectingWall, len(walls))
+	copy(out, walls)
+
+	for i := range out {
+		out[i].ObstacleID = ""
+	}
+
+	return out
+}
+
+// TestReflectingBuildingDoesNotShieldItsOwnReflection pins the obstacle
+// exclusion on mirrored paths.
+//
+// REGRESSION: making building footprints shield turned every opt-in reflecting
+// building into a barrier standing exactly on its own reflection point, so the
+// facade attenuated the reflection it had just produced and the opt-in
+// contribution collapsed.  A reflected ray crosses its own reflector by
+// construction — that crossing is the reflection, not a diffraction edge.
+//
+// The house stands behind the receiver, so only the reflected contribution can
+// differ: the direct path from the track never reaches y = 40 m.
+func TestReflectingBuildingDoesNotShieldItsOwnReflection(t *testing.T) {
+	t.Parallel()
+
+	seg := reflectionSceneTrack(t)
+	receiver := ReceiverInput{ID: "r1", Point: geo.Point2D{X: 0, Y: 30}, HeightM: 3.5}
+
+	barriers, walls := reflectingHouse("house-1")
+
+	excluded, err := ComputeNormativeReceiverLevelsWithScene(receiver, []TrackSegment{seg}, walls, barriers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selfShielded, err := ComputeNormativeReceiverLevelsWithScene(
+		receiver, []TrackSegment{seg}, withoutWallObstacleID(walls), barriers,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A margin, not a bare ">": the self-shielded scene sits within 0.01 dB of
+	// the free field, because the facade swallowed the whole reflection.
+	if excluded.LpAeqDay-selfShielded.LpAeqDay < 0.5 {
+		t.Errorf("a facade must not diffract its own reflection: excluded = %.6f dB, self-shielded = %.6f dB",
+			excluded.LpAeqDay, selfShielded.LpAeqDay)
+	}
+}
+
+// TestReflectedPathStillShieldedByAnotherObstacle keeps the exclusion scoped.
+//
+// The fix above must not degenerate into "reflections are never shielded": a
+// screen that is a *different* obstacle still stands in the mirrored ray and
+// still attenuates it.  The screen sits between the receiver and the house, so
+// it too leaves the direct path alone.
+func TestReflectedPathStillShieldedByAnotherObstacle(t *testing.T) {
+	t.Parallel()
+
+	seg := reflectionSceneTrack(t)
+	receiver := ReceiverInput{ID: "r1", Point: geo.Point2D{X: 0, Y: 30}, HeightM: 3.5}
+
+	barriers, walls := reflectingHouse("house-1")
+
+	withScreen := append([]BarrierSegment{}, barriers...)
+	withScreen = append(withScreen, BarrierSegment{
+		A: geo.Point2D{X: -80, Y: 35}, B: geo.Point2D{X: 80, Y: 35},
+		TopHeightM: 8, ObstacleID: "screen-1",
+	})
+
+	houseOnly, err := ComputeNormativeReceiverLevelsWithScene(receiver, []TrackSegment{seg}, walls, barriers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	screened, err := ComputeNormativeReceiverLevelsWithScene(receiver, []TrackSegment{seg}, walls, withScreen)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if houseOnly.LpAeqDay-screened.LpAeqDay < 0.5 {
+		t.Errorf("another obstacle in the mirrored ray must still shield it: screened = %.6f dB, unscreened = %.6f dB",
+			screened.LpAeqDay, houseOnly.LpAeqDay)
+	}
+}
+
+// TestBarriersExcludingObstaclesKeepsUnnamedPanels pins the empty-id
+// convention: a panel that belongs to no named obstacle is never excluded, so a
+// scene built before obstacle identity existed keeps its previous behaviour.
+func TestBarriersExcludingObstaclesKeepsUnnamedPanels(t *testing.T) {
+	t.Parallel()
+
+	barriers := []BarrierSegment{
+		{A: geo.Point2D{X: 0, Y: 0}, B: geo.Point2D{X: 10, Y: 0}, TopHeightM: 4},
+		{A: geo.Point2D{X: 0, Y: 5}, B: geo.Point2D{X: 10, Y: 5}, TopHeightM: 4, ObstacleID: "house-1"},
+		{A: geo.Point2D{X: 0, Y: 9}, B: geo.Point2D{X: 10, Y: 9}, TopHeightM: 4, ObstacleID: "screen-1"},
+	}
+
+	// No ids to exclude: the slice is returned untouched.
+	if got := barriersExcludingObstacles(barriers, nil); len(got) != 3 {
+		t.Fatalf("got %d panels for an empty exclusion set, want 3", len(got))
+	}
+
+	// An empty id is not a name, so it must not match the unnamed panel.
+	if got := barriersExcludingObstacles(barriers, []string{""}); len(got) != 3 {
+		t.Fatalf("got %d panels when excluding the empty id, want 3", len(got))
+	}
+
+	got := barriersExcludingObstacles(barriers, []string{"house-1"})
+	if len(got) != 2 {
+		t.Fatalf("got %d panels after excluding one obstacle, want 2: %+v", len(got), got)
+	}
+
+	for _, b := range got {
+		if b.ObstacleID == "house-1" {
+			t.Fatalf("excluded obstacle survived: %+v", b)
+		}
+	}
+}

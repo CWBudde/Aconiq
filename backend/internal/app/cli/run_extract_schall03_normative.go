@@ -507,7 +507,9 @@ func parseSchall03FzComposition(where string, object map[string]any) ([]schall03
 // diffraction (Nr. 6.5) rounds only the polyline's free ends.  Without it an
 // interior vertex of a three-point barrier is a Seitenkante, and since
 // barrierDz is 10·lg(3 + …) any z > 0 however small caps the whole wall at
-// about 4.8 dB per band.
+// about 4.8 dB per band.  The ReflectingWall a reflective barrier emits carries
+// the same ObstacleID, so the panel does not diffract the reflection it just
+// produced.
 func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
 	if feature.HeightM == nil || *feature.HeightM <= 0 {
 		return validationErrorf("barrier feature %q requires height_m > 0", feature.ID)
@@ -543,10 +545,8 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 		return err
 	}
 
-	baseID := schall03ObstacleBaseID(feature, "schall03-barrier", featureIndex)
-
 	for lineIndex, line := range lines {
-		obstacleID := schall03ObstaclePartID(baseID, lineIndex, len(lines))
+		obstacleID := schall03ObstaclePartID(feature, featureIndex, lineIndex)
 
 		for i := range len(line) - 1 {
 			barrier := schall03.BarrierSegment{
@@ -571,7 +571,7 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 				continue
 			}
 
-			err = appendReflectingWall(scene, feature.ID, line[i], line[i+1], *feature.HeightM, surface)
+			err = appendReflectingWall(scene, feature.ID, obstacleID, line[i], line[i+1], *feature.HeightM, surface)
 			if err != nil {
 				return err
 			}
@@ -592,9 +592,13 @@ func appendSchall03Barriers(scene *schall03NormativeScene, feature modelgeojson.
 //
 // The panels of one ring share an ObstacleID: a lateral path may round the
 // footprint's outermost silhouette vertex, never the end of a single wall
-// panel, which would run straight through the building.  Reflective is left
-// false — Gl. 20's D_refl is scoped to reflektierende Schallschutzwände mit
-// absorbierendem Sockel, and a house is not a Schallschutzwand.
+// panel, which would run straight through the building.  The ring's
+// ReflectingWalls carry that same ObstacleID, because a facade is obstacle and
+// reflector at once and a mirrored ray crosses its own reflector by
+// construction — without the shared identity, opting a building into reflection
+// would make its own footprint shield the reflection off it.  Reflective is
+// left false — Gl. 20's D_refl is scoped to reflektierende Schallschutzwände
+// mit absorbierendem Sockel, and a house is not a Schallschutzwand.
 func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.Feature, featureIndex int) error {
 	reflecting, _, err := featurePropertyBool(feature, propSchall03ReflectingWall)
 	if err != nil {
@@ -615,14 +619,12 @@ func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.
 		return domainerrors.New(domainerrors.KindValidation, extractNormativeScope, fmt.Sprintf("building feature %q", feature.ID), err)
 	}
 
-	baseID := schall03ObstacleBaseID(feature, "schall03-building", featureIndex)
-
 	for polygonIndex, polygon := range polygons {
 		if len(polygon) == 0 {
 			continue
 		}
 
-		obstacleID := schall03ObstaclePartID(baseID, polygonIndex, len(polygons))
+		obstacleID := schall03ObstaclePartID(feature, featureIndex, polygonIndex)
 
 		// Only the outer ring shields and reflects towards the track; inner
 		// rings are courtyards and cannot see a source outside the footprint.
@@ -646,7 +648,7 @@ func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.
 				continue
 			}
 
-			err = appendReflectingWall(scene, feature.ID, ring[i], ring[i+1], *feature.HeightM, surface)
+			err = appendReflectingWall(scene, feature.ID, obstacleID, ring[i], ring[i+1], *feature.HeightM, surface)
 			if err != nil {
 				return err
 			}
@@ -656,35 +658,34 @@ func appendSchall03Building(scene *schall03NormativeScene, feature modelgeojson.
 	return nil
 }
 
-// schall03ObstacleBaseID names one feature's obstacle, falling back to the
-// feature's position in the model when it carries no id.
-func schall03ObstacleBaseID(feature modelgeojson.Feature, prefix string, featureIndex int) string {
-	id := strings.TrimSpace(feature.ID)
-	if id == "" {
-		return fmt.Sprintf("%s-%03d", prefix, featureIndex)
-	}
-
-	return id
-}
-
-// schall03ObstaclePartID splits a multi-part geometry into one obstacle per
-// part, following the RLS-19 building convention.
-func schall03ObstaclePartID(baseID string, partIndex, partCount int) string {
-	if partCount <= 1 {
-		return baseID
-	}
-
-	return fmt.Sprintf("%s-%02d", baseID, partIndex+1)
+// schall03ObstaclePartID names one part of one feature's geometry.
+//
+// The identity is internal: it never leaves the extracted scene, it is not part
+// of the GeoJSON vocabulary, and nothing serialises it into a run artifact.  It
+// therefore does not have to read like the feature's id, and must not be
+// derivable from it alone — a `MultiPolygon` named `house` and a separate
+// polygon named `house-01` are both legal, model validation only checks the
+// original ids, and merging their panels into one obstacle would silently move
+// numbers: the lateral candidate set, the group's top height and the
+// coincident-crossing dedupe all read the group as one building.
+//
+// The feature's kind and its index in the model come first and pin the identity
+// to exactly one feature, whatever it or any other feature is called; the part
+// index separates the rings of one multipart geometry.  The trailing id is for
+// the human reading a scene dump and carries no weight.
+func schall03ObstaclePartID(feature modelgeojson.Feature, featureIndex, partIndex int) string {
+	return fmt.Sprintf("%s#%d#%d#%s", feature.Kind, featureIndex, partIndex, strings.TrimSpace(feature.ID))
 }
 
 func appendReflectingWall(
 	scene *schall03NormativeScene,
 	featureID string,
+	obstacleID string,
 	a, b geo.Point2D,
 	heightM float64,
 	surface schall03.WallSurfaceType,
 ) error {
-	wall := schall03.ReflectingWall{A: a, B: b, HeightM: heightM, Surface: surface}
+	wall := schall03.ReflectingWall{A: a, B: b, HeightM: heightM, Surface: surface, ObstacleID: obstacleID}
 
 	err := wall.Validate()
 	if err != nil {
