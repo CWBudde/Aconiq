@@ -119,31 +119,21 @@ func normativeSubsegmentContrib(
 			continue
 		}
 
-		hg := elevationM + heightAboveSO[h]
-		hr := receiver.HeightM
-
-		hm := meanPathHeight(hg, hr)
-
-		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
-		if dSlant < 1 {
-			dSlant = 1
-		}
-
-		dOmega := solidAngleDOmega(dp, hg, hr)
-		adivVal := adiv(dSlant)
+		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
+		adivVal := adiv(path.SlantDistanceM)
 
 		// Gl. 13: A_gr = A_gr,B + A_gr,W.
 		// A_gr,B applies only when there is a land path (d_land > 0).
 		// A_gr,W is negative and applies only when there is a water path.
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant)
+			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
 		}
 
 		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
 			lW := spectrum[f] + 10*log10Step
-			lpF := lW + dI + dOmega - adivVal - aatmVal - agrVal
+			lpF := lW + dI + path.DOmega - adivVal - aatmVal - agrVal
 			contrib += math.Pow(10, 0.1*lpF)
 		}
 	}
@@ -305,22 +295,12 @@ func normativeSubsegmentContribWithBarriers(
 			continue
 		}
 
-		hg := elevationM + heightAboveSO[h]
-		hr := receiver.HeightM
-
-		hm := meanPathHeight(hg, hr)
-
-		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
-		if dSlant < 1 {
-			dSlant = 1
-		}
-
-		dOmega := solidAngleDOmega(dp, hg, hr)
-		adivVal := adiv(dSlant)
+		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
+		adivVal := adiv(path.SlantDistanceM)
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant)
+			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
 		}
 
 		// Compute barrier attenuation for this height level.
@@ -329,14 +309,16 @@ func normativeSubsegmentContribWithBarriers(
 			agrBands[f] = agrVal
 		}
 
+		// BarrierSegment.TopHeightM is a height above ground, so the path ends
+		// have to be handed over in that same datum.
 		abarBands := ComputePathBarrierAttenuation(
-			sourcePoint, receiver.Point, hg, hr, barriers, agrBands,
+			sourcePoint, receiver.Point, path.SourceHeightM, path.ReceiverHeightM, barriers, agrBands,
 		)
 
 		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
 			lW := spectrum[f] + 10*log10Step
-			lpF := lW + dI + dOmega - adivVal - aatmVal - agrVal - abarBands[f]
+			lpF := lW + dI + path.DOmega - adivVal - aatmVal - agrVal - abarBands[f]
 			contrib += math.Pow(10, 0.1*lpF)
 		}
 	}
@@ -657,8 +639,12 @@ func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources [
 // for that planning period — yields math.Inf(-1) from the level chain.  That
 // value cannot be marshalled to JSON, so it is mapped to the silenceDB
 // sentinel the rest of the tree already uses for "no contribution".
+//
+// Receivers arrive as ReceiverInput rather than geo.PointReceiver because each
+// one carries the elevation of the ground it stands on, which geo has no field
+// for and which every vertical propagation term is measured from.
 func ComputeNormativeReceiverOutputs(
-	receivers []geo.PointReceiver,
+	receivers []ReceiverInput,
 	segments []TrackSegment,
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
@@ -674,18 +660,13 @@ func ComputeNormativeReceiverOutputs(
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
 	for _, receiver := range receivers {
-		levels, err := ComputeNormativeReceiverLevelsWithScene(
-			ReceiverInput{ID: receiver.ID, Point: receiver.Point, HeightM: receiver.HeightM},
-			segments,
-			walls,
-			barriers,
-		)
+		levels, err := ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
 
 		outputs = append(outputs, ReceiverOutput{
-			Receiver: receiver,
+			Receiver: geo.PointReceiver{ID: receiver.ID, Point: receiver.Point, HeightM: receiver.HeightM},
 			Indicators: ReceiverIndicators{
 				LrDay:   finiteOrSilence(levels.LrDay),
 				LrNight: finiteOrSilence(levels.LrNight),

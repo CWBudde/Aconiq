@@ -253,29 +253,19 @@ func ReflectedSubsegmentContrib(
 			continue
 		}
 
-		hg := elevationM + heightAboveSO[h]
-		hr := receiver.HeightM
-
-		hm := meanPathHeight(hg, hr)
-
-		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
-		if dSlant < 1 {
-			dSlant = 1
-		}
-
-		dOmega := solidAngleDOmega(dp, hg, hr)
-		adivVal := adiv(dSlant)
+		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
+		adivVal := adiv(path.SlantDistanceM)
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant)
+			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
 		}
 
 		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
 			lW := spectrum[f] + 10*log10Step
 			// Gl. 28: image source level includes D_ρ.
-			lpF := lW + dRho + dI + dOmega - adivVal - aatmVal - agrVal
+			lpF := lW + dRho + dI + path.DOmega - adivVal - aatmVal - agrVal
 			contrib += math.Pow(10, 0.1*lpF)
 		}
 	}
@@ -321,22 +311,12 @@ func ReflectedSubsegmentContribWithBarriers(
 			continue
 		}
 
-		hg := elevationM + heightAboveSO[h]
-		hr := receiver.HeightM
-
-		hm := meanPathHeight(hg, hr)
-
-		dSlant := math.Sqrt(dp*dp + (hg-hr)*(hg-hr))
-		if dSlant < 1 {
-			dSlant = 1
-		}
-
-		dOmega := solidAngleDOmega(dp, hg, hr)
-		adivVal := adiv(dSlant)
+		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
+		adivVal := adiv(path.SlantDistanceM)
 
 		agrVal := agrW(dWater, dp)
 		if dLand > 0 {
-			agrVal += agrB(hm, dSlant)
+			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
 		}
 
 		// Barrier attenuation along the reflected path (image source → receiver).
@@ -346,14 +326,15 @@ func ReflectedSubsegmentContribWithBarriers(
 			agrBands[f] = agrVal
 		}
 
+		// Heights above ground, matching BarrierSegment.TopHeightM.
 		abarBands := ComputePathBarrierAttenuation(
-			imageSource, receiver.Point, hg, hr, barriers, agrBands,
+			imageSource, receiver.Point, path.SourceHeightM, path.ReceiverHeightM, barriers, agrBands,
 		)
 
 		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], dSlant)
+			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
 			lW := spectrum[f] + 10*log10Step
-			lpF := lW + dRho + dI + dOmega - adivVal - aatmVal - agrVal - abarBands[f]
+			lpF := lW + dRho + dI + path.DOmega - adivVal - aatmVal - agrVal - abarBands[f]
 			contrib += math.Pow(10, 0.1*lpF)
 		}
 	}

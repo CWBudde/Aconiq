@@ -155,7 +155,7 @@ func runSchall03Module(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, beforeRunError{err: err}
 	}
 
-	result, computeErr := computeSchall03Run(input.model, options, input.standard.SupportedSourceTypes, input.receiverMode)
+	result, computeErr := computeSchall03Run(input.model, input.terrain, options, input.standard.SupportedSourceTypes, input.receiverMode)
 	input.log.addLines(result.LogLines)
 
 	if computeErr != nil {

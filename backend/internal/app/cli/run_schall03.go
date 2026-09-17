@@ -7,6 +7,8 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/geo/terrain"
+	"github.com/aconiq/backend/internal/numeric"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
@@ -72,6 +74,7 @@ func schall03MissingNormativeInputsError(configured string) error {
 // and computes receiver levels.
 func computeSchall03Run(
 	model modelgeojson.Model,
+	terrainModel terrain.Model,
 	options schall03RunOptions,
 	supportedSourceTypes []string,
 	receiverMode string,
@@ -92,7 +95,7 @@ func computeSchall03Run(
 	}
 
 	if engine == schall03.EngineNormative {
-		return computeSchall03Normative(result, model, options, supportedSourceTypes, receiverMode)
+		return computeSchall03Normative(result, model, terrainModel, options, supportedSourceTypes, receiverMode)
 	}
 
 	return computeSchall03Preview(result, model, options, supportedSourceTypes, receiverMode)
@@ -101,6 +104,7 @@ func computeSchall03Run(
 func computeSchall03Normative(
 	result schall03RunResult,
 	model modelgeojson.Model,
+	terrainModel terrain.Model,
 	options schall03RunOptions,
 	supportedSourceTypes []string,
 	receiverMode string,
@@ -128,7 +132,12 @@ func computeSchall03Normative(
 	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
 	result.logGridExtent(receiverMode, calcArea)
 
-	result.Outputs, err = schall03.ComputeNormativeReceiverOutputs(receivers, scene.Segments, scene.Walls, scene.Barriers)
+	receiverInputs, sampled := schall03ReceiverInputs(receivers, terrainModel)
+	if terrainModel != nil {
+		result.logf("schall03_receiver_terrain_samples=%d/%d", sampled, len(receivers))
+	}
+
+	result.Outputs, err = schall03.ComputeNormativeReceiverOutputs(receiverInputs, scene.Segments, scene.Walls, scene.Barriers)
 	if err != nil {
 		return schall03RunResult{}, fmt.Errorf("compute Schall 03 normative receiver levels: %w", err)
 	}
@@ -169,6 +178,68 @@ func computeSchall03Preview(
 	}
 
 	return result, nil
+}
+
+// schall03ReceiverInputs pairs every receiver with the absolute elevation of
+// the ground it stands on, which the Anlage-2 chain uses as the datum for the
+// whole propagation path: a track's elevation_m is an absolute Z, so without
+// it h_g would be measured from sea level while h_r was measured from the
+// ground, and Gl. 14's h_m would come out several hundred metres too high.
+//
+// A run with no terrain keeps every receiver at Z = 0, which is the reading a
+// scene that never mentions terrain already had — there elevation_m is itself
+// a height above ground, and the two agree.
+//
+// A receiver the terrain does not cover is a miss, not an elevation of 0; that
+// is the trap terrainInComputeCRS's doc comment names, and 0 is the worst
+// possible guess here, because it would drop one receiver of a hillside grid
+// back to sea level while its neighbours stayed on the hill. Such receivers
+// inherit the mean of the ones the DTM does reach, and the run log records how
+// many were actually sampled. Second return value is that count.
+func schall03ReceiverInputs(receivers []geo.PointReceiver, terrainModel terrain.Model) ([]schall03.ReceiverInput, int) {
+	groundZ := make([]float64, len(receivers))
+	sampled := 0
+
+	if terrainModel != nil {
+		var hits numeric.CompensatedSum
+
+		covered := make([]bool, len(receivers))
+
+		for i, receiver := range receivers {
+			elevation, ok := terrainModel.ElevationAt(receiver.Point.X, receiver.Point.Y)
+			if !ok {
+				continue
+			}
+
+			groundZ[i] = elevation
+			covered[i] = true
+			sampled++
+
+			hits.Add(elevation)
+		}
+
+		if sampled > 0 && sampled < len(receivers) {
+			fallback := hits.Sum() / float64(sampled)
+
+			for i := range groundZ {
+				if !covered[i] {
+					groundZ[i] = fallback
+				}
+			}
+		}
+	}
+
+	inputs := make([]schall03.ReceiverInput, len(receivers))
+	for i, receiver := range receivers {
+		inputs[i] = schall03.ReceiverInput{
+			ID:       receiver.ID,
+			Point:    receiver.Point,
+			HeightM:  receiver.HeightM,
+			TerrainZ: groundZ[i],
+		}
+	}
+
+	return inputs, sampled
 }
 
 // buildSchall03NormativeReceivers derives the auto grid from the normative

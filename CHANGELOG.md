@@ -123,6 +123,17 @@ with results produced after them.
   energetic sum was computed in arithmetic dB; the Nr. 5.3.2 Straßenbahn substitute speed was
   applied to Eisenbahn segments; and the flow term computed `10 lg(n + 1)`, worth a spurious
   +3.0 dB at one train per hour and a full bare spectrum for a period with no trains at all.
+- **numeric** Schall 03: the propagation geometry measured an absolute elevation against a height
+  above ground. `elevation_m` is the absolute Z of the Schienenoberkante — the SoundPLAN import
+  writes the rail's Z straight into it — while a receiver's `height_m` is measured from the ground
+  it stands on, and the chain subtracted one from the other. At a site 400 m up, `h_m` (Gl. 15)
+  read 203.75 m instead of 3.75 m, so Gl. 14's bracket went negative, the `≥ 0 dB` clamp fired and
+  the Bodendämpfung disappeared (+4.1 dB); `d` (Gl. 11/12) grew from 200.0 m to 447.7 m (−7.0 dB);
+  and a 4 m Schallschutzwand stopped screening a source that appeared to stand 404 m up, which put
+  the level behind it **7.0 dB high**. Every height is now measured against a ground plane the
+  receiver carries, filled per receiver from the imported DTM. A scene whose ground is at Z = 0 —
+  which is every scene with no DTM, where `elevation_m` is itself a height above ground — is
+  bit-identical.
 - **numeric** `cnossos-road`, `cnossos-rail` and `bub-road` had the same `10 lg(Q + 1)` flow defect
   and now take an explicit zero-flow branch.
 - **numeric** Schall 03 height summation iterated a map, so results could differ by roughly one ULP

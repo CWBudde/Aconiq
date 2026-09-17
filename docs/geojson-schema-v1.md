@@ -287,7 +287,11 @@ On a `source` feature with `source_type: line`:
   exception presupposes a section carrying none of these features.
 - `schall03_water_body_fraction`: 0–1, the share of the source–receiver path
   crossing water (Gl. 16).
-- `elevation_m`: track elevation, shared with the preview path.
+- `elevation_m`: the **absolute Z** of the Schienenoberkante, shared with the preview path. The
+  normative chain measures every height against the ground under the receiver, which it reads from
+  an imported GeoTIFF DTM (`aconiq import --terrain`), so a project with no terrain places that
+  ground at Z = 0 — and there `elevation_m` is read as a height above ground, which is what a model
+  written without a DTM means by it.
 
 On a `barrier` feature (`LineString`, `height_m` required): each consecutive
 vertex pair becomes one barrier panel of that height.
