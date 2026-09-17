@@ -85,6 +85,12 @@ type runModuleInput struct {
 	cacheDir     string
 	log          *runLog
 
+	// projection is the CRS the model was moved into before anything read a
+	// coordinate off it, and the CRS every result is therefore expressed in.
+	// It reaches the run summary, which is the only artifact a consumer of the
+	// receiver table can read the CRS back from.
+	projection computeProjection
+
 	// mergeProvenance completes the run manifest with metadata that is only
 	// knowable once the module has run — which chain Schall 03 resolved, so
 	// far. It is a callback rather than a return value because the point at
@@ -142,7 +148,7 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
 	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, int, int, error)
 	compute        func([]geo.PointReceiver, []Src, Opt) ([]Out, error)
-	persist        func(runDir string, outputs []Out, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier) (persistedRunOutputs, string, time.Time, error)
+	persist        func(runDir string, outputs []Out, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
 }
 
 func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleResult, error) {
@@ -183,6 +189,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 
 	persisted, outputHash, finishedAt, err := m.persist(
 		input.runDir, outputs, gridWidth, gridHeight, len(sources), input.receiverMode, input.standard.EvidenceTier,
+		input.projection,
 	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
@@ -200,9 +207,9 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 // endPersist binds the shared END persist path to one standard, so a table
 // entry names its standard once. Every END module computes
 // acoustics.ReceiverOutput, which is what lets one persist function serve them.
-func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, int, int, int, string, framework.EvidenceTier) (persistedRunOutputs, string, time.Time, error) {
-	return func(runDir string, outputs []acoustics.ReceiverOutput, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier) (persistedRunOutputs, string, time.Time, error) {
-		return persistENDRunOutputs(standardID, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, int, int, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
+	return func(runDir string, outputs []acoustics.ReceiverOutput, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error) {
+		return persistENDRunOutputs(standardID, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
 	}
 }
 
@@ -271,7 +278,10 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, fmt.Errorf("run compute engine: %w", err)
 	}
 
-	persisted, err := persistDummyRunOutputs(input.runDir, runOutput, receivers, gridWidth, gridHeight, firstIndicator(input.standard.SupportedIndicators), input.standard.EvidenceTier)
+	persisted, err := persistDummyRunOutputs(
+		input.runDir, runOutput, receivers, gridWidth, gridHeight,
+		firstIndicator(input.standard.SupportedIndicators), input.standard.EvidenceTier, input.projection,
+	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
 

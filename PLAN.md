@@ -1553,10 +1553,40 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `sourceType` is derived from the geometry, with the correction offered explicitly rather than
       applied on open — deriving alone would have left an imported contradiction visible and
       unrepairable, and a silent write would dirty a project for a panel that was only looked at.
-- [ ] **Results on the map**: `ResultLayers` (raster image source + contours), legend from
-      `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
-      row↔map highlight from the receiver table. Until it lands, hide the result toggles in
-      `layer-control.tsx:74-76`.
+- [x] **Results on the map, as receiver levels**. `ResultLayers` draws the newest completed run's
+      receiver table, coloured from `NOISE_LEVEL_RAMP`, with a picker over `indicator_order` and
+      the ramp's own labels as the legend. Five things it settled.
+      **The run summary now names the CRS its results are in.** `newRunSummary` writes
+      `project_crs` and `compute_crs` — the keys `run_crs.go` already defines for provenance, and
+      the ones browser mode already wrote — because provenance is not an `ArtifactRef` and the API
+      therefore never serves it, so a consumer holding a receiver table had nowhere to ask. The 13
+      digest goldens moved by exactly those two keys and nothing else.
+      **The receiver table is the only result container both targets produce in the same shape**,
+      which is why the layer is points and not a surface.
+      **No symbol layer, so no `glyphs` problem.** This file used to cite `layers.ts:169` for a
+      `text-font` no style provides; there is no `text-font` anywhere in `frontend/src` and there
+      never was. The real constraint is that none of the styles in `basemap.ts` declares `glyphs`,
+      so a _future_ label layer needs one added first.
+      **`RESULT_LAYER_GROUPS` lost its two dead groups.** `raster` and `contours` toggled layer
+      ids nothing ever added, so they reported a state that did not exist. (The instruction that
+      used to sit here — hide the result toggles in `layer-control.tsx` — named lines that had
+      long since moved; the control renders whatever the groups list holds and needs no such
+      special case.)
+      **The row→map direction is a link, not a highlight.** The receiver table is on `/results`
+      and the map on `/model`, so a live two-way highlight needs a second map; each row instead
+      links to `/model?select=<id>`, which `SelectRequest` already honours once and strips. A real
+      `<a>` and never a button that navigates — no axe rule catches that substitution — and the
+      link is per row and id-keyed, because the table is virtualized and only about twelve rows
+      are mounted.
+- [ ] **Results on the map: the raster and the contours.** Three things block it, and none is
+      frontend work. Browser mode stores the run's SHA-256 hex string where the raster binary
+      belongs (`api/browser-backend.ts`) and `StoredArtifactContent.encoding` is `"json" | "text"`,
+      so a binary artifact cannot be represented there at all. The GeoTIFF, COG and contour
+      GeoJSON exports get no `ArtifactRef` — `cli/export.go` registers `export.bundle` and the
+      report kinds and nothing else — so no URL reaches them. And `results.RasterMetadata` carries
+      no geotransform; only `InferGeoTransformFromReceivers` reconstructs one, which is not
+      something a map should be doing. Also still open: the map→table direction, which wants a
+      receiver clicked on the map to scroll and mark its row.
 - [ ] **CRS and basemap**: tile-error → `OFFLINE_STYLE` with a notice; basemap picker; tile URL in
       Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`). The `fitBounds` and
       coordinate-readout halves are closed. No proj4 may be added for any of the rest: the

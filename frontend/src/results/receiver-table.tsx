@@ -1,4 +1,5 @@
 import { useRef, useState, useMemo } from "react";
+import { Link } from "react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertCircle,
@@ -17,6 +18,7 @@ import { useReceiverTable } from "@/api/hooks";
 import type { RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { summariseIndicators } from "@/results/summarise";
+import { SELECT_PARAM } from "@/map/map-params";
 import { m } from "@/i18n/messages";
 
 type SortDir = "asc" | "desc";
@@ -90,6 +92,23 @@ const ROW_OVERSCAN = 12;
  * exists once a stylesheet is loaded — which, under jsdom, it is not.
  */
 const TABLE_MAX_HEIGHT = "70vh";
+
+/**
+ * Where a row sends the reader: the map, with the editor already open on that
+ * receiver.
+ *
+ * A real link and never a button that navigates. The two pages are separate
+ * routes — the table is on `/results` and the map on `/model` — so this is a
+ * navigation, and a button has no href to copy, no middle-click, no context
+ * menu and no entry in a screen reader's links rotor. No axe rule catches that
+ * substitution, so it has to be made deliberately.
+ *
+ * `/model` honours the parameter once and strips it (`SelectRequest`), so a
+ * Back does not re-open the editor on a receiver the reader has moved on from.
+ */
+function receiverOnMapPath(id: string): string {
+  return `/model?${SELECT_PARAM}=${encodeURIComponent(id)}`;
+}
 
 /** The sort indicator in a column header: filled for the sorted column. */
 function SortIcon({
@@ -386,7 +405,15 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
                   aria-rowindex={virtualRow.index + 2}
                   className={ROW_CLASS}
                 >
-                  <td className="px-3 py-1.5 font-mono">{r.id}</td>
+                  <td className="px-3 py-1.5 font-mono">
+                    <Link
+                      to={receiverOnMapPath(r.id)}
+                      aria-label={m.action_show_receiver_on_map({ id: r.id })}
+                      className="rounded-sm underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {r.id}
+                    </Link>
+                  </td>
                   <td className="px-3 py-1.5 tabular-nums">
                     {formatCoordinate(r.x)}
                   </td>

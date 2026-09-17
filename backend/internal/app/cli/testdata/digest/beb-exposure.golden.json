@@ -7,7 +7,7 @@
     "beb-summary.json": "sha256:5278aa7765515e055739c1abd11dd3198124389077d87852fde64bd9709cfef6 bytes=1430",
     "buildings.csv": "sha256:59229f653ea7acac6d02b808ad46ad952c50554fbae73fe3488fba4d240c5636 bytes=372",
     "buildings.json": "sha256:bfcf1c80671aa9c1b1ef3bf55d3160cbf572e44933d3274b2e13e9f6c22ae725 bytes=822",
-    "run-summary.json": "sha256:90477619a3d72ddec05167e620269df9ed4c14572171591e90100305b087e770 bytes=1615"
+    "run-summary.json": "sha256:77dca4049808fd702aeb7381b1a2dae5e9d01a98844a683e0762f505bbd66165 bytes=1669"
   },
   "run_summary": {
     "affected_dwellings_lden": 3,
@@ -15,6 +15,7 @@
     "affected_persons_lden": 6.6000000000000005,
     "affected_persons_lnight": 6.6000000000000005,
     "building_count": 2,
+    "compute_crs": "EPSG:25832",
     "estimated_dwellings": 7,
     "estimated_persons": 15.400000000000002,
     "evidence_tier": "preview",
@@ -94,6 +95,7 @@
     "model_version": "baseline-preview-exposure-aggregation-v2",
     "occupancy_mode": "prefer_feature_overrides",
     "output_hash": "0f20641f207dcae1761a9d5840cfca60980cf30e086410cd1da0f856aee6ac1a",
+    "project_crs": "EPSG:25832",
     "reporting_precision_db": 0.1,
     "source_count": 1,
     "status": "completed",

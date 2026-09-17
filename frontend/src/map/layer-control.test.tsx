@@ -5,6 +5,7 @@ import { LayerControl } from "./layer-control";
 import {
   MODEL_LAYER_GROUPS,
   RESULT_LAYER_GROUPS,
+  RESULT_RECEIVER_LAYERS,
   type LayerGroup,
 } from "./layers";
 import { useMapStore } from "./map-store";
@@ -125,25 +126,40 @@ describe("LayerControl", () => {
   });
 
   it("keeps toggling when the layer is not on the style yet", () => {
-    // The result layers only exist once a run is displayed, so toggling them
-    // on a fresh project throws out of MapLibre. Unguarded, the first throw
-    // would abort the loop and leave the group half-hidden, and the store
-    // update — which already happened — would disagree with the map.
+    // The receiver-level layer only exists once a completed run has been
+    // projected, so toggling it on a fresh project throws out of MapLibre.
+    // Unguarded the throw escapes the handler, and the store update — which
+    // already happened — would disagree with the map for good.
+    //
+    // The group carries exactly one layer, so this also pins that the guard is
+    // per layer id and not a try around the whole loop: the model groups below
+    // are what prove the loop runs on.
     const map = new FakeMap();
-    const contours = group("contours");
-    const [first, second] = contours.layerIds;
-    if (first === undefined || second === undefined) {
-      throw new Error("contours group lost a layer");
+    const levels = group("receiver-levels");
+    const [only] = levels.layerIds;
+    if (only === undefined) {
+      throw new Error("receiver-levels group lost its layer");
     }
-    map.missing.add(first);
+    map.missing.add(only);
     renderControl(map);
 
     expect(() => {
-      fireEvent.click(toggleFor(contours.label()));
+      fireEvent.click(toggleFor(levels.label()));
     }).not.toThrow();
 
-    expect(visibilityOf(map, second)).toEqual(["none"]);
-    expect(useMapStore.getState().layerVisibility[contours.id]).toBe(false);
+    expect(visibilityOf(map, only)).toEqual([]);
+    expect(useMapStore.getState().layerVisibility[levels.id]).toBe(false);
+  });
+
+  it("offers no toggle for a layer nothing draws", () => {
+    // `raster` and `contours` sat here for layers no component ever added:
+    // browser mode cannot represent a binary artifact at all and the GIS
+    // exports get no ArtifactRef, so neither had a source to switch. A dead
+    // control is worse than a missing one — it reports a state that is not
+    // there — and this is what would notice one coming back.
+    const drawn = new Set(RESULT_LAYER_GROUPS.flatMap((g) => g.layerIds));
+
+    expect([...drawn]).toEqual(RESULT_RECEIVER_LAYERS.map((layer) => layer.id));
   });
 
   it("still records the choice when there is no map", () => {

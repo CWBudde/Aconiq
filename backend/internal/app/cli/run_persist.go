@@ -45,6 +45,7 @@ func newRunSummary(
 	modelVersion string,
 	receiverMode string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 	sourceCount int,
 	receiverCount int,
 ) map[string]any {
@@ -58,11 +59,28 @@ func newRunSummary(
 		evidenceTierKey:  string(tier),
 	}
 
+	addComputeCRS(summary, projection)
+
 	if modelVersion != "" {
 		summary["model_version"] = modelVersion
 	}
 
 	return summary
+}
+
+// addComputeCRS stamps the CRS a run computed in onto its summary.
+//
+// The receiver table carries x/y and no CRS — results.ReceiverTable has no
+// field for one, and adding one would fork the container format — so the run
+// summary is where a consumer that only ever sees the results learns which
+// CRS to read them in. The keys are provenance's own, because provenance is
+// not an artifact and the API therefore never serves it: a caller reading
+// `run.result.summary` would otherwise have nowhere to ask. Browser mode
+// writes the same two keys (`api/browser-backend.ts`), so a receiver table
+// means the same thing on both targets.
+func addComputeCRS(summary map[string]any, projection computeProjection) {
+	summary[provenanceProjectCRSKey] = projection.ProjectCRS
+	summary[provenanceComputeCRSKey] = projection.ComputeCRS
 }
 
 // writeGridRunSummary stamps the raster grid dimensions onto a run summary and
@@ -198,6 +216,7 @@ func persistDummyRunOutputs(
 	gridHeight int,
 	indicator string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
@@ -233,7 +252,7 @@ func persistDummyRunOutputs(
 	// versions no model of its own, so it contributes no model version.
 	sourceCount, _ := runOutput.Metadata["source_count"].(int)
 
-	summary := newRunSummary(runDir, runOutput.OutputHash, "", receiverModeAutoGrid, tier, sourceCount, len(receivers))
+	summary := newRunSummary(runDir, runOutput.OutputHash, "", receiverModeAutoGrid, tier, projection, sourceCount, len(receivers))
 	summary["total_chunks"] = runOutput.TotalChunks
 	summary["used_cached_chunks"] = runOutput.UsedCachedChunks
 
@@ -342,6 +361,7 @@ func persistReceiverRunOutputs[Output any](
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
@@ -355,7 +375,7 @@ func persistReceiverRunOutputs[Output any](
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, plan.scope, plan.hashErrMessage, err)
 	}
 
-	summary := newRunSummary(runDir, outputHash, plan.modelVersion, receiverMode, tier, sourceCount, len(outputs))
+	summary := newRunSummary(runDir, outputHash, plan.modelVersion, receiverMode, tier, projection, sourceCount, len(outputs))
 	if plan.decorateSummary != nil {
 		plan.decorateSummary(summary)
 	}
@@ -487,6 +507,7 @@ func persistENDRunOutputs(
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistENDRunOutputs"
 
@@ -513,7 +534,7 @@ func persistENDRunOutputs(
 		}
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
 }
 
 // persistRLS19RoadRunOutputs writes an RLS-19 run. RLS-19 has no model
@@ -529,6 +550,7 @@ func persistRLS19RoadRunOutputs(
 	parkingSourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistRLS19RoadRunOutputs"
 
@@ -556,7 +578,7 @@ func persistRLS19RoadRunOutputs(
 		export: exportBundle(scope, "export RLS-19 road results", rls19road.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
 }
 
 func persistSchall03RunOutputs(
@@ -568,6 +590,7 @@ func persistSchall03RunOutputs(
 	receiverMode string,
 	engine string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistSchall03RunOutputs"
 
@@ -600,7 +623,7 @@ func persistSchall03RunOutputs(
 		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
 }
 
 func persistISO9613RunOutputs(
@@ -611,6 +634,7 @@ func persistISO9613RunOutputs(
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistISO9613RunOutputs"
 
@@ -632,7 +656,7 @@ func persistISO9613RunOutputs(
 		export: exportBundle(scope, "export iso9613 results", iso9613.ExportResultBundle, outputs, gridWidth, gridHeight),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier)
+	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
 }
 
 // exportedBundle is the shape every standards module's ExportResultBundle
@@ -652,6 +676,7 @@ func persistBEBExposureRunOutputs(
 	summary bebexposure.Summary,
 	sourceCount int,
 	tier framework.EvidenceTier,
+	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
 
@@ -688,6 +713,8 @@ func persistBEBExposureRunOutputs(
 		"lden_bands":                summary.LdenBands,
 		"lnight_bands":              summary.LnightBands,
 	}
+
+	addComputeCRS(runSummary, projection)
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 

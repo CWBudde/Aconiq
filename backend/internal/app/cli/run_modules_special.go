@@ -136,7 +136,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 
 	persisted, outputHash, finishedAt, err := persistRLS19RoadRunOutputs(
 		input.runDir, receiverOutputs, gridWidth, gridHeight, len(roadSources), sourceOverrideCount,
-		len(parkingSources), input.receiverMode, input.standard.EvidenceTier,
+		len(parkingSources), input.receiverMode, input.standard.EvidenceTier, input.projection,
 	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
@@ -187,6 +187,7 @@ func runSchall03Module(input runModuleInput) (runModuleResult, error) {
 		input.receiverMode,
 		result.Engine,
 		input.standard.EvidenceTier,
+		input.projection,
 	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
@@ -228,7 +229,9 @@ func runBEBExposureModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
-	persisted, outputHash, finishedAt, err := persistBEBExposureRunOutputs(input.runDir, outputs, summary, sourceCount, input.standard.EvidenceTier)
+	persisted, outputHash, finishedAt, err := persistBEBExposureRunOutputs(
+		input.runDir, outputs, summary, sourceCount, input.standard.EvidenceTier, input.projection,
+	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
 

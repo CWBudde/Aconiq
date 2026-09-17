@@ -647,6 +647,56 @@ describe("ResultsPage receivers tab states", () => {
 // Receivers tab: filtering
 // ---------------------------------------------------------------------------
 
+describe("ResultsPage receiver rows link to the map", () => {
+  /*
+   * The table is on `/results` and the map on `/model`, so the row cannot
+   * highlight anything live — there is no map on this page to highlight on.
+   * What it can do is take the reader to the one that has it, and `/model`
+   * already knows how to honour `?select=` and strip it again.
+   */
+  it("sends each row to the map with the receiver selected", () => {
+    renderResults();
+
+    const link = screen.getByRole("link", {
+      name: m.action_show_receiver_on_map({ id: "R2" }),
+    });
+
+    expect(link).toHaveAttribute("href", "/model?select=R2");
+  });
+
+  it("is a link and not a button, so it has an href to copy", () => {
+    // A button that navigates has no href, no middle-click, no context menu
+    // and no entry in a screen reader's links rotor — and no axe rule catches
+    // the substitution.
+    renderResults();
+
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+    expect(row).toBeDefined();
+    expect(
+      within(row as HTMLElement).queryByRole("button", { name: /R1/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByRole("link", { name: /R1/ }),
+    ).toHaveAttribute("href");
+  });
+
+  it("escapes an id that would otherwise change the query", () => {
+    // Receiver ids come out of an import and are not constrained to anything.
+    // An id holding `&` or `#` would end the parameter and select nothing.
+    state.receiverTable = {
+      ...table,
+      records: [{ id: "R&1 #2", x: 0, y: 0, height_m: 4, values: {} }],
+    } satisfies ReceiverTable;
+    renderResults();
+
+    expect(
+      screen.getByRole("link", {
+        name: m.action_show_receiver_on_map({ id: "R&1 #2" }),
+      }),
+    ).toHaveAttribute("href", "/model?select=R%261%20%232");
+  });
+});
+
 describe("ResultsPage receiver filtering", () => {
   /*
    * One message owns the whole count, placeholders and all. The fragments it

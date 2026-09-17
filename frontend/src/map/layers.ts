@@ -1,4 +1,8 @@
-import type { LayerSpecification } from "maplibre-gl";
+import type {
+  DataDrivenPropertyValueSpecification,
+  LayerSpecification,
+} from "maplibre-gl";
+import { NOISE_LEVEL_RAMP, rampToExpression } from "./color-ramp";
 import { m } from "@/i18n/messages";
 
 /**
@@ -20,8 +24,7 @@ export const SOURCE_IDS = {
   sources: "model-sources",
   receivers: "model-receivers",
   calcArea: "calc-area",
-  results: "result-raster",
-  contours: "result-contours",
+  resultReceivers: "result-receivers",
 } as const;
 
 // --- Layer IDs ---
@@ -36,9 +39,7 @@ export const LAYER_IDS = {
   receiversPoint: "receivers-point",
   calcAreaFill: "calc-area-fill",
   calcAreaOutline: "calc-area-outline",
-  resultRaster: "result-raster-layer",
-  contourLine: "contour-line",
-  contourLabel: "contour-label",
+  resultReceiverLevel: "result-receiver-level",
 } as const;
 
 // --- Selection ---
@@ -250,6 +251,46 @@ export const CALC_AREA_LAYERS: LayerSpecification[] = [
   },
 ];
 
+// --- Result layer styles ---
+
+/**
+ * The feature property {@link RESULT_RECEIVER_LAYERS} colours by, and the one
+ * `result-layers.tsx` writes the selected indicator's level under.
+ *
+ * A fixed name rather than the indicator's own: the paint expression is part
+ * of the style and changing it would mean re-adding the layer every time the
+ * picker moves, while the source can simply be re-fed.
+ */
+export const RESULT_LEVEL_PROPERTY = "value";
+
+/**
+ * One computed receiver, filled with its level.
+ *
+ * A circle and not a symbol: none of the styles in `basemap.ts` declares
+ * `glyphs`, so a `text-field` layer would render nothing and log a font error
+ * per tile. Labelling the receivers needs a glyph source first.
+ *
+ * The white stroke is what keeps a green circle readable over the light
+ * basemap's green and a dark one's grey — the ramp's ends are the two colours
+ * the basemap itself is most likely to supply underneath.
+ */
+export const RESULT_RECEIVER_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.resultReceiverLevel,
+    type: "circle",
+    source: SOURCE_IDS.resultReceivers,
+    paint: {
+      "circle-radius": 5,
+      "circle-color": rampToExpression(
+        NOISE_LEVEL_RAMP,
+        RESULT_LEVEL_PROPERTY,
+      ) as DataDrivenPropertyValueSpecification<string>,
+      "circle-stroke-width": 1,
+      "circle-stroke-color": "#ffffff",
+    },
+  },
+];
+
 // --- Layer group metadata (for UI controls) ---
 
 export interface LayerGroup {
@@ -302,17 +343,29 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
   },
 ];
 
+/**
+ * The id of the group {@link RESULT_RECEIVER_LAYERS} belongs to, named here so
+ * `result-layers.tsx` can read the visibility the user chose before the layer
+ * existed. A group toggled off on an empty map would otherwise come back on
+ * its own the moment a run was drawn.
+ */
+export const RESULT_RECEIVERS_GROUP_ID = "receiver-levels";
+
+/**
+ * The result groups the layer control offers.
+ *
+ * It held two more — `raster` and `contours` — for layers nothing ever added:
+ * the raster bytes reach neither mode (browser mode stores the run hash where
+ * the binary belongs, and `StoredArtifactContent.encoding` has no case for a
+ * binary payload), and the GeoTIFF/COG/contour exports get no `ArtifactRef`,
+ * so no URL reaches the map. Both toggles were therefore permanently dead
+ * controls, and are gone until the artifact side of that exists.
+ */
 export const RESULT_LAYER_GROUPS: LayerGroup[] = [
   {
-    id: "raster",
-    label: m.label_result_raster,
-    layerIds: [LAYER_IDS.resultRaster],
-    defaultVisible: true,
-  },
-  {
-    id: "contours",
-    label: m.label_result_contours,
-    layerIds: [LAYER_IDS.contourLine, LAYER_IDS.contourLabel],
+    id: RESULT_RECEIVERS_GROUP_ID,
+    label: m.label_result_receiver_levels,
+    layerIds: [LAYER_IDS.resultReceiverLevel],
     defaultVisible: true,
   },
 ];

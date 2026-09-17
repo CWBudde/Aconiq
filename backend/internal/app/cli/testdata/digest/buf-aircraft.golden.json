@@ -6,14 +6,16 @@
     "buf-aircraft.json": "sha256:dc73e148bb706521da45c2acda452cd8fc7f80f232102f21feb272ecede4c51a bytes=218",
     "receivers.csv": "sha256:019c4ce01b8d44a377c9560693a105dcca39c55aeb2a894d2e568ec3ed4cf31b bytes=35215",
     "receivers.json": "sha256:06e723575605155151e786716ee3c7b5e846a1b1f0893ed346b8d375b07de6b0 bytes=62773",
-    "run-summary.json": "sha256:53f4ebde7b79181bb193c193b34a628932de361203d8c2fd4d06bbc397f2c93f bytes=284"
+    "run-summary.json": "sha256:f47c0641eae7144d11f33d017325780a3722e3c2d681c8fac07f19c9914b5169 bytes=338"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 13,
     "grid_width": 29,
     "model_version": "baseline-preview-aircraft-mapping-v2",
     "output_hash": "53a4ea07f0c68e8208ff3592e7377fbf7eb38152528104edeca8edf53ad62d6c",
+    "project_crs": "EPSG:25832",
     "receiver_count": 377,
     "receiver_mode": "auto-grid",
     "source_count": 2,

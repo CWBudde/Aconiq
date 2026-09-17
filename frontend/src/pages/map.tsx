@@ -17,6 +17,7 @@ import { NewFeatureDialog } from "@/map/new-feature-dialog";
 import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
+import { ResultLayers } from "@/map/result-layers";
 import { fitViewToWorkspace } from "@/map/extent";
 import { DISPLAY_CRS, useDisplayModel } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
@@ -296,6 +297,9 @@ function MapWorkspace() {
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers display={display} selectedFeatureId={editingFeatureId} />
+          {/* After the model layers, so the computed levels read on top of the
+              sources that produced them rather than under a building fill. */}
+          <ResultLayers />
           <DrawGuard disabled={drawingDisabled} />
           <DrawShortcuts />
           <WorkspaceDrawToolbar
