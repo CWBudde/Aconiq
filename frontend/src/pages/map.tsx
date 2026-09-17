@@ -19,7 +19,7 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
-import { DISPLAY_CRS } from "@/map/display-model";
+import { DISPLAY_CRS, useDisplayModel } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
 import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
@@ -184,20 +184,11 @@ function MapWorkspace() {
   // attributes only, and nothing ever calls `draw.addFeatures`), so one inverse
   // transform there covers the whole surface.
   //
-  // What is left to refuse is a backend with no projection at all. It is keyed
-  // on the capability rather than on the CRS: both shipped modes can project —
-  // browser mode has the kernel in memory, API mode reaches
-  // `POST /api/v1/transform` — and a store already in WGS84 needs no projector
-  // to draw into either way. So the gate closes only where a metric model meets
-  // a backend that cannot move a coordinate, which is the one case where a
-  // finished shape could not be landed honestly.
-  //
-  // Every way *into* an active drawing mode takes this same flag — the toolbar,
-  // `?draw=1`, the start panel's button — and `DrawGuard` disarms one that a
-  // late CRS change has invalidated.
-  const drawingDisabled =
-    crs !== DISPLAY_CRS && !backend.capabilities.canReprojectForDisplay;
-  const drawingDisabledReason = m.msg_draw_disabled_no_projection({ crs });
+  // What is left to refuse is every case where that transform could not
+  // succeed; `drawingDisabled` below enumerates them. Each way *into* an active
+  // drawing mode takes that one flag — the toolbar, `?draw=1`, the start
+  // panel's button — and `DrawGuard` disarms one that a late change has
+  // invalidated.
 
   // Runs with coordinates already in the store's CRS, or not at all.
   const landGeometry = useCallback(
@@ -219,8 +210,44 @@ function MapWorkspace() {
     [setCalcArea],
   );
 
+  // The map's one `useDisplayModel` instance: `ModelLayers` draws this answer,
+  // and the draw gate above refuses on it. A second call would reproject the
+  // whole workspace a second time on every store change.
+  const display = useDisplayModel();
+
   const drawProjection = useDrawProjection(landGeometry);
   const acceptDrawn = drawProjection.accept;
+
+  // Three different reasons a finished shape could not be landed, and each one
+  // has to close every way into a drawing mode rather than be discovered after
+  // the shape is gone.
+  //
+  // 1. No projector at all. Keyed on the capability rather than on the CRS:
+  //    both shipped modes can project — browser mode has the kernel in memory,
+  //    API mode reaches `POST /api/v1/transform` — and a store already in WGS84
+  //    needs no projector to draw into either way.
+  // 2. A projector that cannot handle *this* CRS. `readCollectionCRS` accepts
+  //    any `EPSG:<n>` an import declares, while the kernel supports a fixed set
+  //    (`geo.epsgToCRS`), so a model in, say, EPSG:3035 reaches the store and
+  //    fails every transform. The capability flag is global and stays true, so
+  //    it cannot see this; the display projection having failed is the evidence
+  //    that it happened, and it is the same transform the draw path would make.
+  //    A map that cannot draw the model cannot place a new shape in it either.
+  // 3. A shape already in flight. Terra-draw has removed the finished shape
+  //    from the map, so a second one accepted now would make the first stale
+  //    and drop it with nothing shown — the silent loss this whole path exists
+  //    to avoid.
+  const drawProjectionPending = drawProjection.status.status === "projecting";
+  const displayUnprojectable = display.status === "failed";
+  const drawingDisabled =
+    (crs !== DISPLAY_CRS && !backend.capabilities.canReprojectForDisplay) ||
+    displayUnprojectable ||
+    drawProjectionPending;
+  const drawingDisabledReason = drawProjectionPending
+    ? m.msg_draw_disabled_projecting({ crs })
+    : displayUnprojectable
+      ? m.msg_draw_disabled_crs_unsupported({ crs })
+      : m.msg_draw_disabled_no_projection({ crs });
 
   // The last line of defence, kept although no armed tool can reach it: the
   // gates above disarm every way in, and this one is what makes a new way in
@@ -269,7 +296,7 @@ function MapWorkspace() {
         onFeatureClick={handleFeatureClick}
       >
         <DrawProvider onFinish={handleDrawFinish}>
-          <ModelLayers />
+          <ModelLayers display={display} />
           <DrawGuard disabled={drawingDisabled} />
           <DrawShortcuts />
           <WorkspaceDrawToolbar

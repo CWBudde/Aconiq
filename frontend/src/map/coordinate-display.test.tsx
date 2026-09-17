@@ -242,6 +242,55 @@ describe("CoordinateDisplay", () => {
     expect(screen.getByText("51.250000, 10.500000")).toBeInTheDocument();
   });
 
+  it("drops the projected pair as soon as the pointer leaves the position", async () => {
+    // The two lines must describe one point. Keeping the old easting/northing
+    // beside the new lon/lat while the debounce and the round trip run puts two
+    // different positions on the panel as though they were one — and a slow or
+    // failing transform leaves that standing.
+    storeMetric();
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.5, 51.25);
+    await waitFor(() => {
+      expect(
+        screen.getByText("1,050,000.00, 5,125,000.00"),
+      ).toBeInTheDocument();
+    });
+
+    let answer: ((response: TransformResponse) => void) | null = null;
+    projection.respond = () =>
+      new Promise<TransformResponse>((resolve) => {
+        answer = resolve;
+      });
+
+    map.moveTo(11.5, 52.25);
+
+    // The geographic line has already moved, so the projected one must not
+    // still be answering for where the pointer was.
+    expect(screen.getByText("52.250000, 11.500000")).toBeInTheDocument();
+    expect(
+      screen.queryByText("1,050,000.00, 5,125,000.00"),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(answer).not.toBeNull();
+    });
+    act(() => {
+      answer?.({
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        applied: true,
+        coordinates: [1150000, 5225000],
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("1,150,000.00, 5,225,000.00"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("projects where the pointer stopped, not every frame it crossed", async () => {
     // MapLibre fires `mousemove` per frame and in API mode each projection is
     // an HTTP round trip, so the readout debounces rather than asking sixty

@@ -209,4 +209,63 @@ describe("useDrawProjection", () => {
       coordinates: [11, 52],
     });
   });
+
+  it("drops an answer a CRS change alone has invalidated", async () => {
+    // The same hazard as above without the second shape to advance the token:
+    // undoing a model merge restores the previous CRS while a transform is out.
+    // Nothing else moves, so the answer would land coordinates computed for the
+    // CRS the store has just left into the one it now declares.
+    setCRS("EPSG:25832");
+    let answer: ((response: TransformResponse) => void) | null = null;
+    projection.respond = () =>
+      new Promise<TransformResponse>((resolve) => {
+        answer = resolve;
+      });
+    const { landed, result } = mount();
+
+    act(() => {
+      result.current.accept("point", drawn(10, 51));
+    });
+    expect(result.current.status).toEqual({
+      status: "projecting",
+      targetCRS: "EPSG:25832",
+    });
+
+    setCRS("EPSG:25833");
+
+    act(() => {
+      answer?.({
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        applied: true,
+        coordinates: [20, 102],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual({ status: "idle" });
+    });
+    expect(landed).toHaveLength(0);
+  });
+
+  it("does not strand the map on 'projecting' when it drops an answer", async () => {
+    // Dropping the answer is only half of it. The status is what `pages/map.tsx`
+    // keeps the draw toolbar disabled on, so a shape nothing is going to deliver
+    // must not leave it up — that would disable drawing for the rest of the
+    // session.
+    setCRS("EPSG:25832");
+    projection.respond = () => new Promise<TransformResponse>(() => {});
+    const { result } = mount();
+
+    act(() => {
+      result.current.accept("point", drawn(10, 51));
+    });
+    expect(result.current.status.status).toBe("projecting");
+
+    setCRS("EPSG:25833");
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual({ status: "idle" });
+    });
+  });
 });

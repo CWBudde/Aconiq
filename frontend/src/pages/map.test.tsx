@@ -380,7 +380,17 @@ describe("MapPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
     });
+    // Two requests, in this order. The page holds the map's one
+    // `useDisplayModel` instance — `ModelLayers` is mocked out here, so this is
+    // the page's own — which projects the workspace *out* of the store's CRS
+    // for the map. The second is this test's subject: the same transform
+    // inverted, carrying the finished shape back in.
     expect(projection.requests).toEqual([
+      {
+        source_crs: "EPSG:25832",
+        target_crs: "EPSG:4326",
+        coordinates: [10, 51],
+      },
       {
         source_crs: "EPSG:4326",
         target_crs: "EPSG:25832",
@@ -518,6 +528,98 @@ describe("MapPage", () => {
     expect(useModelStore.getState().features).toBe(fixtureFeatures);
     expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
     expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("refuses drawing where the model's own CRS could not be projected", async () => {
+    // `readCollectionCRS` takes any `EPSG:<n>` an import declares, while the
+    // kernel supports a fixed set — so a model in EPSG:3035 reaches the store
+    // and every transform of it fails. `canReprojectForDisplay` is global and
+    // stays true, so it cannot see this; what can is the display projection
+    // having already failed on the same transform the draw path would make.
+    projection.respond = () =>
+      Promise.reject(new Error("unsupported EPSG code 3035"));
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:3035",
+    });
+    renderPageAt("/model?draw=1");
+
+    const toolbar = screen.getByTestId("draw-toolbar");
+    await waitFor(() => {
+      expect(toolbar).toHaveAttribute("data-disabled", "true");
+    });
+    expect(toolbar.getAttribute("data-disabled-reason")).toBe(
+      m.msg_draw_disabled_crs_unsupported({ crs: "EPSG:3035" }),
+    );
+    // `?draw=1` armed point mode on mount, while the display projection was
+    // still out and the gate still open. `DrawGuard` is what disarms a mode a
+    // late refusal has invalidated, and this is the case it exists for — the
+    // refusal here can only ever arrive after the tool is already armed.
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-mode",
+        "static",
+      );
+    });
+  });
+
+  it("holds the toolbar shut while a finished shape is still projecting", async () => {
+    // Terra-draw has already taken the finished shape off the map, so a second
+    // one accepted now would make the first stale and drop it with nothing
+    // shown — the silent loss the whole projection path exists to avoid.
+    let answer: ((response: TransformResponse) => void) | null = null;
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPageAt("/model?draw=1");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-disabled",
+        "false",
+      );
+    });
+
+    projection.respond = () =>
+      new Promise<TransformResponse>((resolve) => {
+        answer = resolve;
+      });
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    const toolbar = screen.getByTestId("draw-toolbar");
+    await waitFor(() => {
+      expect(toolbar).toHaveAttribute("data-disabled", "true");
+    });
+    expect(toolbar.getAttribute("data-disabled-reason")).toBe(
+      m.msg_draw_disabled_projecting({ crs: "EPSG:25832" }),
+    );
+
+    await waitFor(() => {
+      expect(answer).not.toBeNull();
+    });
+    act(() => {
+      answer?.({
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        applied: true,
+        coordinates: DRAWN_RING.flat().map((v) => v * 100000),
+      });
+    });
+
+    // And opens again once the shape has landed, rather than staying shut.
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-disabled",
+        "false",
+      );
+    });
   });
 
   it("disables Start drawing without a projector and says why", () => {

@@ -6,6 +6,7 @@ import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { MapContext } from "./use-map";
+import { useDisplayModel } from "./display-model";
 import { ModelLayers } from "./model-layers";
 import { SOURCE_IDS } from "./layers";
 
@@ -154,10 +155,17 @@ const AREA: CalcArea = {
   },
 };
 
+// `ModelLayers` takes the display projection as a prop so that `pages/map.tsx`
+// can hold the one `useDisplayModel` instance and gate drawing on it. The tests
+// still drive the store, so the harness supplies the same hook the page does.
+function Harness() {
+  return <ModelLayers display={useDisplayModel()} />;
+}
+
 function renderLayers(map: FakeMap) {
   return render(
     <MapContext value={map as unknown as MapLibreMap}>
-      <ModelLayers />
+      <Harness />
     </MapContext>,
   );
 }

@@ -79,6 +79,13 @@ export function CoordinateDisplay() {
     }
 
     const request = (requestRef.current += 1);
+    // The pointer has moved, so the pair on screen belongs to a position it has
+    // left. Keeping it until the replacement arrives would show the new lon/lat
+    // beside the old easting/northing — two coordinates for two different
+    // points, presented as one — and a slow or failing transform would leave
+    // that standing. The readout says nothing rather than something false.
+    setProjected(null);
+
     const timer = setTimeout(() => {
       void backend
         .transformCoordinates({

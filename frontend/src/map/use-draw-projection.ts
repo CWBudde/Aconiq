@@ -20,7 +20,7 @@
  * dialog must open on the same tick the shape is finished.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { backend } from "@/api/backend";
 import { projectGeometry } from "@/model/compute-crs";
 import { useModelStore } from "@/model/model-store";
@@ -64,6 +64,21 @@ export function useDrawProjection(
   // one, must not land the answer to the earlier question.
   const requestRef = useRef(0);
 
+  // `accept` is the only other place the token advances, so without this a CRS
+  // change under a pending transform would leave the token matching and the
+  // answer landing: coordinates projected for the CRS the store has just left,
+  // written into the store that now declares a different one. Undoing a model
+  // merge restores `previousCRS` and does exactly that.
+  //
+  // Clearing the status is the other half. A callback that bails leaves
+  // whatever was last set standing, so dropping an answer without this would
+  // strand the map on "projecting" for a shape nothing is going to deliver —
+  // and `pages/map.tsx` keeps the toolbar disabled while that status is up.
+  useEffect(() => {
+    requestRef.current += 1;
+    setStatus({ status: "idle" });
+  }, [crs]);
+
   const onGeometryRef = useRef(onGeometry);
   onGeometryRef.current = onGeometry;
 
@@ -94,6 +109,12 @@ export function useDrawProjection(
       ).then(
         (projected) => {
           if (requestRef.current !== request) return;
+          // The store's CRS as of now, not as of the render that started this
+          // request. The effect above catches a CRS change once React has
+          // re-rendered; this catches one that lands in the window between the
+          // store updating and that render, where the token still matches.
+          // Writing here is the irreversible half, so it is checked twice.
+          if (useModelStore.getState().crs !== crs) return;
           setStatus({ status: "idle" });
           onGeometryRef.current(mode, projected.geometry as Geometry);
         },
