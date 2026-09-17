@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ShieldAlert, X } from "lucide-react";
+import { List, ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import { Link, useSearchParams } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
@@ -13,6 +13,7 @@ import { LayerControl } from "@/map/layer-control";
 import { CoordinateDisplay } from "@/map/coordinate-display";
 import { DrawToolbar } from "@/map/draw-toolbar";
 import { FeatureEditor } from "@/map/feature-editor";
+import { FeatureList } from "@/map/feature-list";
 import { NewFeatureDialog } from "@/map/new-feature-dialog";
 import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
@@ -138,7 +139,12 @@ function WorkspaceStart({
 function MapWorkspace() {
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   const [newGeometry, setNewGeometry] = useState<Geometry | null>(null);
+  // The keyboard path into the same dialog. A separate flag rather than a
+  // sentinel geometry: the dialog tells the two apart by `geometry === null`,
+  // and a placeholder shape would be a coordinate this page invented.
+  const [coordinateEntry, setCoordinateEntry] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
+  const [showFeatureList, setShowFeatureList] = useState(false);
   // Local, deliberately: the overlay disappears on its own as soon as the
   // first feature lands, and it comes back when the model empties again or
   // the route is left. Persisting the dismissal would hide the only pointer
@@ -305,6 +311,9 @@ function MapWorkspace() {
           <WorkspaceDrawToolbar
             disabled={drawingDisabled}
             disabledReason={drawingDisabledReason}
+            onCoordinateEntry={() => {
+              setCoordinateEntry(true);
+            }}
           />
           <DrawProjectionNotice
             status={drawProjection.status}
@@ -337,6 +346,18 @@ function MapWorkspace() {
                 <X aria-hidden="true" />
               </Button>
             </MapPanel>
+          ) : null}
+          <FeatureListToggle
+            open={showFeatureList}
+            onToggle={() => {
+              setShowFeatureList((open) => !open);
+            }}
+          />
+          {showFeatureList ? (
+            <FeatureList
+              selectedId={editingFeatureId}
+              onSelect={setEditingFeatureId}
+            />
           ) : null}
           <ValidationToggle
             open={showValidation}
@@ -374,11 +395,18 @@ function MapWorkspace() {
           ) : null}
         </DrawProvider>
       </MapView>
+      {/* One dialog for both ways in. A drawn shape arrives as `geometry`; the
+          keyboard path opens it with none, and the dialog asks for the
+          coordinates instead — in the store's own CRS, with no transform on
+          that path at all. See `new-feature-dialog.tsx` for why that is not a
+          second exception to "a projection *of* the model, never a source
+          *for* it". */}
       <NewFeatureDialog
-        open={newGeometry !== null}
+        open={newGeometry !== null || coordinateEntry}
         geometry={newGeometry}
         onClose={() => {
           setNewGeometry(null);
+          setCoordinateEntry(false);
         }}
       />
     </TooltipProvider>
@@ -549,9 +577,11 @@ function SelectRequest({
 function WorkspaceDrawToolbar({
   disabled,
   disabledReason,
+  onCoordinateEntry,
 }: {
   disabled: boolean;
   disabledReason: string;
+  onCoordinateEntry: () => void;
 }) {
   const { activeMode, setMode, cancel } = useDrawContext();
   return (
@@ -561,7 +591,44 @@ function WorkspaceDrawToolbar({
       onCancel={cancel}
       disabled={disabled}
       disabledReason={disabledReason}
+      onCoordinateEntry={onCoordinateEntry}
     />
+  );
+}
+
+/**
+ * Opens the feature list. Modelled on `ValidationToggle` below, down to the
+ * count badge: the two are the same kind of control — a switch for a panel
+ * that reads the model — and the map already has enough different-looking
+ * buttons on it.
+ */
+function FeatureListToggle({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
+  const count = features.length + receivers.length;
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="absolute right-56 top-3 z-10 h-8 gap-1.5 text-xs shadow-md"
+      aria-pressed={open}
+      onClick={onToggle}
+    >
+      <List aria-hidden="true" className="size-3.5" />
+      {m.label_feature_list()}
+      {count > 0 ? (
+        <span className="rounded-full bg-secondary px-1.5 py-0.5 text-2xs tabular-nums">
+          {String(count)}
+        </span>
+      ) : null}
+    </Button>
   );
 }
 

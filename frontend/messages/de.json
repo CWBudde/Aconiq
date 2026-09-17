@@ -462,5 +462,18 @@
   "label_basemap_tile_url": "Kachel-URL der Hintergrundkarte",
   "msg_basemap_tile_url_help": "Vorlage für die Rasterkacheln der Hintergrundkarte, mit den üblichen Platzhaltern z, x und y in geschweiften Klammern. Leer lassen, um die OpenStreetMap-Vorgabe zu verwenden.",
   "msg_basemap_tile_url_current": "Aktuelle Kachel-URL",
-  "msg_basemap_tile_url_note": "Wird nur lokal in diesem Browser gespeichert. Eine Änderung wirkt beim nächsten Aufbau der Karte — die Seite neu laden oder die Hintergrundkarte wechseln."
+  "msg_basemap_tile_url_note": "Wird nur lokal in diesem Browser gespeichert. Eine Änderung wirkt beim nächsten Aufbau der Karte — die Seite neu laden oder die Hintergrundkarte wechseln.",
+  "action_enter_coordinates": "Koordinaten eingeben",
+  "dialog_title_coordinate_feature": "Neues Objekt aus Koordinaten",
+  "label_coordinates": "Koordinaten",
+  "label_coordinate_x": "X ({crs})",
+  "label_coordinate_y": "Y ({crs})",
+  "label_vertices": "Stützpunkte",
+  "action_add_vertex": "Stützpunkt hinzufügen",
+  "action_remove_vertex": "Stützpunkt {index} entfernen",
+  "msg_coordinate_entry_crs": "Die Koordinaten werden als {crs} gelesen, dem Koordinatensystem des Modells, und nicht umgerechnet. Die Anzeige am unteren Kartenrand gibt die Zeigerposition neben WGS 84 auch in {crs} an, sodass sich ein Ziel von der Karte ablesen lässt.",
+  "msg_coordinate_entry_incomplete": "Jeder X- und Y-Wert muss eine Zahl sein. Ein Punkt braucht ein Wertepaar, eine Linie zwei, eine Fläche drei.",
+  "msg_vertex_minimum": "Es sind mindestens {count} Stützpunkte erforderlich.",
+  "label_feature_list": "Objekte",
+  "msg_feature_list_empty": "Das Modell ist noch leer. Zeichnen Sie auf der Karte oder geben Sie Koordinaten ein."
 }
