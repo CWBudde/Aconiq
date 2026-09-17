@@ -554,18 +554,25 @@ parse and discarding a user's model and runs over a row order is the larger harm
 
 ### Open
 
-- [ ] **The geographic refusal is written out twice.** `POST /api/v1/transform` closed the
-      API-mode projector gap: the handler delegates to `internal/geo/crstransform`, which the WASM
-      kernel now wraps rather than owns, so all three surfaces resolve the same zone and a test
-      compares the API's message to the kernel's byte for byte. What that work exposed is that
-      `app/cli/run_crs.go:92` builds the **same refusal sentence from its own string literal**, and
-      nothing compares the two. Two copies of a sentence whose entire point is that it is identical
-      everywhere; either the CLI reads it from `crstransform` or the parity test covers three
-      surfaces rather than two.
-      Two constraints the endpoint leaves live. **Its message is unprefixed**, alone among this
-      package's handlers, and only a test keeps it that way. And **it reads no project**, which is
-      what keeps it on the right side of the invariant that governs the map: it is a projection _of_
-      the model, never a source _for_ it.
+The geographic refusal is no longer written out twice. `crstransform.GeographicRefusal` is the
+one place that sentence exists; `resolveTarget` and `app/cli/run_crs.go` both call it, and
+`cli.TestGeographicRefusalReadsTheSameOnAllThreeSurfaces` compares CLI, API and kernel byte for
+byte at both refusal sites. Four things it leaves live:
+
+- **The CLI names the CRS as `geo.ParseCRS` canonicalises it**, not as the caller typed it. That
+  is what makes a byte-for-byte comparison possible at all, and the parity test pins it — reverting
+  to the raw string fails with `cli: "project CRS epsg:4326 …"` against `api: "… EPSG:4326 …"`.
+- **A byte-for-byte comparison cannot be made on the CLI's `error.Error()`.**
+  `domainerrors.AppError.Error()` renders `"<Op>: <Msg>: <Err>"`, so the rendered strings can never
+  be equal. The test compares `AppError.Msg`, and asserts the kind and op separately.
+- **`aconiq run` renders the cause twice** — the shared sentence already ends with
+  `": " + err.Error()`, and `AppError.Error()` appends the same cause again. Pre-existing, left
+  unchanged because fixing it changes user-visible CLI output and is owed its own commit.
+- The endpoint's own two constraints stand. **Its message is unprefixed**, alone among this
+  package's handlers, and only a test keeps it that way. And **it reads no project**, which is what
+  keeps it on the right side of the invariant that governs the map: it is a projection _of_ the
+  model, never a source _for_ it.
+
 - [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
       `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
       (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
@@ -909,10 +916,23 @@ editing several of its files rather than one package of its own.
       same `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
       Unlike the indicator lift, **this one moves numbers**, so it needs its own golden review; the
       13 digest goldens are the oracle. It also lands the compensated-summation item from P1.3.
-- [ ] **Unify the four Schall 03 normative propagation kernels** —
-      `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
-      ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
-      first. A correction to a normative equation currently has to be applied four times.
+- [x] **The four Schall 03 normative propagation kernels are one.** `subsegmentContrib`
+      (`compute.go`) is the single implementation of Gl. 6, 8–16, parameterised by `dRho`
+      (0 direct, the Gl. 28 wall absorption loss reflected), a `rayOrigin` (the real subsegment
+      point direct, the fully unfolded image source reflected, read only when barriers exist) and
+      a possibly-empty barrier set. The four entry points keep their names and signatures, so no
+      caller and no test moved, and the Gl. explanations — which had survived in one copy each —
+      now sit on the kernel. The four line-source integrators were the same duplication a second
+      time and collapsed with it, into `eachSubsegment` + `directRayTerms`/`reflectedRayTerms` +
+      `lineSourceLevel`. Net −126 LOC. Two things it leaves live.
+      **The line numbers this entry used to carry were stale** and cost the next reader a search:
+      `compute.go:61` was inside `buildVehicleInputs` and two of the four cited lines landed in doc
+      comments. Cite a function name, not a line, for anything that will outlive one commit.
+      **The per-band accumulation is deliberately not compensated**, while the per-subsegment sum
+      above it is. That is not an oversight: the inner reduction runs over at most 3 Teilquelle
+      heights × `NumBeiblattOctaveBands` terms, the fixed-length case
+      `docs/policies/determinism.md` §3 exempts; the outer one grows with the model. The asymmetry
+      is now stated on the kernel so it is not “fixed” by someone who reads only half of it.
 - [ ] **Move the module contract into `framework` and register implementations.** The dispatch
       exists and the switch is gone; what is still CLI-side is the contract. A standard's four
       halves — its options (`run_options.go`), its extraction (`run_extract_*.go`), its compute
@@ -1607,6 +1627,23 @@ the comparison into evidence (the assertion itself is Priority 3).
       normative chain whenever the model carries `schall03_operations` — but the SoundPLAN import
       writes only the preview `rail_*` properties, so `compare` opts into the preview engine and
       the 25 dB delta it reports says nothing about the normative code.
+      Two things bound who can do this work, and they are the reason it keeps being deferred.
+      **It cannot be validated without the licensed fixture.** `interoperability/` is gitignored and
+      `repo-hygiene.yml` refuses to track it, so a checkout that has not been handed the project —
+      or `ACONIQ_SOUNDPLAN_FIXTURES` pointing at one — makes `qa/fixtures.SoundPLANProjectDir` skip
+      every test that would measure the mapping. The work is writable blind and testable against
+      synthetic `RailTrack`/`TrainType` values, but the number it exists to move is unobservable.
+      **And `FzComposition` is an editorial decision, not a conversion.** A 1990 `TS03` row carries
+      one A-weighted base level and no Fz decomposition, so the 19 `Zugarten` of `beiblatt1.go` have
+      to be reached through a declared lookup table someone is willing to defend against the norm.
+      `railops.go`'s `classifyTrainClass`/`classifyTractionType` ordinal switch produces only the
+      three-value preview vocabulary and is not a starting point for it.
+      What the import already carries and does not yet use: `soundplan_train_names`,
+      `soundplan_day_train_count`, `soundplan_night_train_count`, `soundplan_track_vmax_kph` and
+      `soundplan_assessment_*_hours` are emitted per segment today. `StreckeMaxKPH` is available and
+      reliable (`RailEmission.TrackV`); `Fahrbahn`, `Surface` and `BridgeType` arrive only as dB
+      surcharges with no categorical 2014 counterpart, and all three reference enums are the zero
+      value by design, so defaulting them is the safe choice rather than a gap.
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
@@ -1636,15 +1673,32 @@ the comparison into evidence (the assertion itself is Priority 3).
 
 ## Priority 14 — QA hardening and conformance packaging
 
-- [ ] **`just update-golden` is flaky, and has been all along.** `internal/qa/acceptance/rls19_test20`
-      runs `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport` in parallel
-      against the same `testdata/ci_safe/*.golden.json` files, so under `UPDATE_GOLDEN=1` one test
-      decodes a golden the other is mid-write and fails with `unexpected end of JSON input`. The
-      file named differs every run. Reproduced 4 times in 6 on `main`; `-p 1` does not help, because
-      the race is inside one package. The merge gate never sees it — `go test ./...` without the
-      flag is stable — but the one command a maintainer runs before regenerating snapshots is not
-      trustworthy, which is the wrong way round. Serialise the two tests or give them separate
-      fixture directories.
+`just update-golden` is trustworthy again, and the entry that stood here named the wrong test.
+The bullet blamed `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport`;
+both are **readers**. The writer was a third test, `TestUpdateCISafeExpectedSnapshots`, which
+called `t.Parallel()` _before_ its `golden.UpdateEnabled()` skip — so under `UPDATE_GOLDEN` Go
+deferred it into the same parallel batch as the readers and rewrote all 38 CI-safe snapshots
+while they were being decoded. It writes through the package's own `writeJSONFile`, never through
+`golden.AssertBytesSnapshot`, so no amount of locking in the helper could have fixed it. Dropping
+the `t.Parallel()` puts the rewrite ahead of the whole batch, which is how the sibling
+`qa/acceptance/schall03` updater was already written. 5 failures in 6 before; 10 clean runs after.
+
+Three things it leaves live:
+
+- **There are four readers, not one** — the three that make a full `Run(ModeCISafe)` pass plus
+  `TestParkingFixtureRelationsHoldByArithmetic`, which reads four goldens directly. `t.TempDir()`
+  in the readers is only the report output directory; fixtures always come from the checked-in
+  `testdata/ci_safe/` via `packageDir()`.
+- **A second package had the same defect** and no entry here: `qa/acceptance`'s
+  `TestAcceptanceFixtures` writes while `TestISO9613ToleranceCompliance` reads. Far rarer — it
+  never surfaced in 60 whole-package update runs, and took `-count=300` over the two tests to
+  produce six mid-write reads, because only three iso9613 goldens exist. There the writer _is_ the
+  fixture assertion, so the reader skips under `UpdateEnabled()` instead, the way
+  `TestCatalogProvidesDeterministicFixtures` already guarded itself.
+- **`UPDATE_GOLDEN=true` used to regenerate half the tree.** `qa/acceptance/schall03` compared
+  `os.Getenv("UPDATE_GOLDEN") != "1"` rather than calling `golden.UpdateEnabled()`, which accepts
+  five spellings. Anything reading that variable goes through the helper.
+
 - [ ] Expand `internal/qa/` with loaders for standard test tasks, result comparison with tolerances
       and outlier reports, and a snapshot exporter for debugging.
 - [ ] Expand fuzz/property tests: geometry robustness, numeric monotonicity where applicable.
