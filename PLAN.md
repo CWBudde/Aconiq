@@ -540,10 +540,21 @@ being fixed. `geo/terrain.MeanRiseAboveChord` therefore returns the mean rise of
 the chord joining its own endpoint samples, and the module adds that to the chord between the ground
 elevations it already knows.
 
-**Schall 03 does not have this bug**, and the assumption that it did was wrong.
-`schall03.meanPathHeight` already works in heights above ground. Its deviation 4 is the weaker one
-its declaration states — the flat-ground special case of `S/d` — and `MeanRiseAboveChord` is exactly
-what closes it: add the sampled rise to `(h_g + h_r)/2`. Left undone deliberately.
+**Schall 03 has the same bug, and this paragraph said the opposite.** The claim rested on reading
+`schall03.meanPathHeight(hg, hr)` as operating on heights above ground without tracing where `hg`
+comes from: it is `elevation_m + heightAboveSO`, and `elevation_m` is an absolute Z — that is what
+`aconiq import --from-soundplan` writes — while `receiver.HeightM` is a height above ground. The
+correction is the useful part, because the module is worse off than RLS-19 was. Four terms read those
+heights, not one, and the two obvious ones cancel: `A_gr,B` loses its ground attenuation (too loud)
+while `d` inflates `A_div` (too quiet), netting −2.73 dB in free field. The one that does not cancel
+is `ComputePathBarrierAttenuation` — a source at an apparent 404 m clears every wall, so **shielding
+disappears and a receiver behind a Schallschutzwand reads +7.0 dB high**. Reproduced and fixed
+against `main` in its own pull request, deliberately not stacked on this branch.
+**A near-cancelling total is how this stayed invisible.** Anyone measuring only the receiver level
+would have read −2.7 dB and moved on; the components have to be measured separately.
+Deviation 4 is a different, weaker thing and remains open: the flat-ground special case of `S/d`.
+`MeanRiseAboveChord` is what closes it — add the sampled rise to `(h_g + h_r)/2` — and it is
+deliberately left undone, because it lives on this branch and the datum fix was based on `main`.
 
 Cost: a DTM-attached run is ~28 % slower on the propagation path (25 m nominal sampling, capped at
 64 intervals). Only projects that import a DTM pay it; a geographic project pays more, because every
