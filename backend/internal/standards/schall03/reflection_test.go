@@ -1,6 +1,7 @@
 package schall03_test
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -404,5 +405,92 @@ func TestEnumerateReflectionPathsMaxOrder3(t *testing.T) {
 		if p.Order > 3 {
 			t.Errorf("path has order %d, max is 3", p.Order)
 		}
+	}
+}
+
+// The fully unfolded origin of a reflected path is the image source of its LAST
+// bounce, not its first.  That is the invariant the barrier check on reflected
+// paths rests on, so it is asserted here on the enumerator itself, without any
+// barriers in play.
+//
+// Why the last one is the right origin: EnumerateReflectionPaths solves each
+// bounce from the previous image source, so ImageSource[n] is the source
+// mirrored across wall 1 … wall n in order, and TotalDist is measured from that
+// same point.  If the two ever disagreed, a diffraction check run from the
+// unfolded origin would follow a different ray than the propagation distance.
+func TestReflectionPathEffectiveSourceIsTheUnfoldedOrigin(t *testing.T) {
+	t.Parallel()
+
+	// A canyon deep enough to survive the Fresnel check at orders 1, 2 and 3.
+	source := geo.Point2D{X: 5, Y: 0}
+	receiver := geo.Point2D{X: 60, Y: 0}
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: -50, Y: 12}, B: geo.Point2D{X: 150, Y: 12}, HeightM: 40, Surface: schall03.WallSurfaceHard},
+		{A: geo.Point2D{X: -50, Y: -12}, B: geo.Point2D{X: 150, Y: -12}, HeightM: 40, Surface: schall03.WallSurfaceHard},
+	}
+
+	paths := schall03.EnumerateReflectionPaths(source, receiver, walls, schall03.MaxReflectionOrder)
+
+	seenOrders := map[int]int{}
+
+	for _, rp := range paths {
+		seenOrders[rp.Order]++
+
+		// The propagation distance and the unfolded ray must agree.
+		assertApproxRefl(t, geo.Distance(rp.EffectiveSource(), receiver), rp.TotalDist, 1e-9,
+			fmt.Sprintf("order %d walls %v: distance from EffectiveSource", rp.Order, rp.Walls))
+
+		if rp.Order == 1 {
+			// Order 1 is the one case where first and last coincide.
+			assertApproxRefl(t, rp.EffectiveSource().X, rp.Geometries[0].ImageSource.X, 1e-12, "order 1 image X")
+			assertApproxRefl(t, rp.EffectiveSource().Y, rp.Geometries[0].ImageSource.Y, 1e-12, "order 1 image Y")
+		}
+
+		if rp.Order < 2 {
+			continue
+		}
+
+		// Higher orders: the unfolded origin is the source mirrored across
+		// every wall of the path, in bounce order — and it is NOT the first
+		// bounce's image source.
+		want := source
+		for _, idx := range rp.Walls {
+			m, ok := schall03.MirrorSource(want, walls[idx])
+			if !ok {
+				t.Fatalf("order %d walls %v: MirrorSource failed", rp.Order, rp.Walls)
+			}
+
+			want = m
+		}
+
+		assertApproxRefl(t, rp.EffectiveSource().X, want.X, 1e-9,
+			fmt.Sprintf("order %d walls %v: unfolded image X", rp.Order, rp.Walls))
+		assertApproxRefl(t, rp.EffectiveSource().Y, want.Y, 1e-9,
+			fmt.Sprintf("order %d walls %v: unfolded image Y", rp.Order, rp.Walls))
+
+		if geo.Distance(rp.EffectiveSource(), rp.Geometries[0].ImageSource) < 1e-6 {
+			t.Errorf("order %d walls %v: unfolded origin coincides with the first bounce's image %v — "+
+				"the scene no longer distinguishes the two, so this test proves nothing",
+				rp.Order, rp.Walls, rp.Geometries[0].ImageSource)
+		}
+	}
+
+	for order := 1; order <= schall03.MaxReflectionOrder; order++ {
+		if seenOrders[order] == 0 {
+			t.Errorf("expected at least one order-%d path, got none (orders seen: %v)", order, seenOrders)
+		}
+	}
+}
+
+// EffectiveSource is exported, so it must answer for a path the enumerator never
+// builds rather than panicking on an empty Geometries slice.
+func TestReflectionPathEffectiveSourceEmpty(t *testing.T) {
+	t.Parallel()
+
+	var empty schall03.ReflectionPath
+
+	got := empty.EffectiveSource()
+	if got != (geo.Point2D{}) {
+		t.Errorf("EffectiveSource of an empty path = %v, want the zero point", got)
 	}
 }

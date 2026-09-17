@@ -223,6 +223,12 @@ describe("useDisplayModel", () => {
     ]);
   });
 
+  // Neither shipped backend reports this any more — browser mode has the kernel
+  // in memory and API mode has POST /api/v1/transform — so this pins the
+  // contract for a backend that has no projector rather than for a mode that
+  // exists today. Deleting the branch would mean deleting the capability, and
+  // the capability is what stops such a backend drawing a model in the wrong
+  // place.
   it("refuses without asking when no projector is reachable", () => {
     state.canReprojectForDisplay = false;
     loadMetric();

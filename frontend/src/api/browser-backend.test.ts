@@ -14,12 +14,39 @@ import { useModelStore } from "@/model/model-store";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { ModelFeature } from "@/model/types";
 import type { ComputeRequest, TransformRequest } from "@/wasm/types";
+import type { StandardDescriptor } from "./client";
 
 /**
  * Records every `transform` request `startRun` makes, so a test can ask what
  * CRS the browser asked the kernel to project from.
  */
 const transformRequests: TransformRequest[] = [];
+
+/**
+ * A descriptor the stubbed kernel can publish. Only `id` carries weight here —
+ * `startRun`'s first gate matches on it — but the shape is the real one, so a
+ * field this file invents cannot pass for a field the Go encoding emits.
+ */
+function descriptorFor(id: string): StandardDescriptor {
+  return {
+    id,
+    description: `${id} (stub)`,
+    default_version: "2019",
+    versions: [],
+  };
+}
+
+/**
+ * What `kernel.standards()` answers with, and therefore what `startRun`'s
+ * first gate consults.
+ *
+ * Mutable, and reset per test that touches it, because the gate asks the kernel
+ * instead of comparing against a string literal: publishing a standard is the
+ * one thing a real kernel changes when it grows a module, so a test about the
+ * gates has to be able to change it too.
+ */
+const RLS19_ROAD_DESCRIPTOR = descriptorFor("rls19-road");
+let publishedStandards: StandardDescriptor[] = [RLS19_ROAD_DESCRIPTOR];
 
 // The persistence tests drive `startRun` end to end, but what the kernel
 // computes is the parity suite's business; here it only has to answer.
@@ -51,7 +78,7 @@ vi.mock("@/wasm/kernel", () => ({
           coordinates: req.coordinates,
         });
       },
-      standards: () => [],
+      standards: () => publishedStandards,
       defaultConfig: () => ({}),
     }),
 }));
@@ -414,6 +441,60 @@ function runIDs(state: unknown): string[] {
 function highWaterMark(state: unknown): number | undefined {
   return (state as { runHighWaterMark?: number }).runHighWaterMark;
 }
+
+/**
+ * The two refusals `startRun` can hand back before it computes anything, and
+ * the reason they are two.
+ *
+ * Browser mode used to compare `spec.standardId` against the literal
+ * "rls19-road", which was right only because the kernel published exactly one
+ * standard. The gate now asks the kernel, and a standard the kernel publishes
+ * but this build cannot extract a model for is a separate, differently worded
+ * refusal. Without the second case the split is unobservable, because the one
+ * published standard is also the one with an extraction.
+ */
+describe("browserBackend.startRun standard gates", () => {
+  afterEach(() => {
+    publishedStandards = [RLS19_ROAD_DESCRIPTOR];
+  });
+
+  it("refuses a standard the kernel does not publish", async () => {
+    publishedStandards = [RLS19_ROAD_DESCRIPTOR];
+
+    await expect(
+      browserBackend.startRun({ ...RUN_SPEC, standardId: "iso9613" }),
+    ).rejects.toThrow("Standard iso9613 is not available in browser mode");
+  });
+
+  it("refuses a published standard it has no model extraction for", async () => {
+    publishedStandards = [RLS19_ROAD_DESCRIPTOR, descriptorFor("iso9613")];
+
+    await expect(
+      browserBackend.startRun({ ...RUN_SPEC, standardId: "iso9613" }),
+    ).rejects.toThrow(
+      "The kernel publishes iso9613, but this build has no model extraction for it",
+    );
+  });
+
+  it("lets the published standard it can extract through both gates", async () => {
+    await resetStores();
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    expect(run.standard_id).toBe("rls19-road");
+  });
+});
 
 describe("persisted state", () => {
   let warn: ReturnType<typeof vi.spyOn>;

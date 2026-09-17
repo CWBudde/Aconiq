@@ -193,6 +193,7 @@ POST /api/v1/import/osm
 POST /api/v1/import/terrain
 GET  /api/v1/model                     the saved model, optionally reprojected (`?crs=`)
 POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract)
+POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
 GET  /api/v1/openapi.json
 ```
 

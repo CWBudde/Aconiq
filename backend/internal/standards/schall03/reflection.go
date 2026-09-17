@@ -284,8 +284,10 @@ func ReflectedSubsegmentContrib(
 }
 
 // ReflectedSubsegmentContribWithBarriers is like ReflectedSubsegmentContrib but
-// includes barrier attenuation along the reflected path.  The barrier check uses
-// the image source position as the effective source for the propagation path.
+// includes barrier attenuation along the reflected path.  imageSource must be
+// the fully unfolded origin of that path — the source mirrored across every wall
+// it bounces off, which ReflectionPath.EffectiveSource returns — so that the
+// diffraction check runs along the ray dp measures.
 //
 // excludeObstacleIDs names the obstacles the path bounced off; their panels are
 // dropped from the barrier set before the diffraction check, see
@@ -438,6 +440,29 @@ type ReflectionPath struct {
 	Geometries []ReflectionGeometry // geometry per bounce
 	TotalDist  float64              // total reflected path length [m]
 	DRho       float64              // cumulative absorption loss D_ρ [dB]
+}
+
+// EffectiveSource is the fully unfolded origin of the path — the image source of
+// the *last* bounce, which is what a barrier along the path must be checked
+// against.  For order 1 it is Geometries[0].ImageSource; for higher orders it is
+// not, because Geometries[0].ImageSource is only the first mirror.
+//
+// EnumerateReflectionPaths mirrors the running image source once per bounce
+// (each ReflectionGeometry is solved from the previous image source), so the
+// last ImageSource is the source reflected across every wall of the path in
+// order.  That is also the point TotalDist measures from: TotalDist equals
+// geo.Distance(EffectiveSource(), receiver).  Propagation distance and
+// diffraction ray therefore describe one and the same ray.
+//
+// A path with no geometries cannot occur — the enumerator appends a geometry per
+// bounce and never emits an order-0 path — but the method is exported, so an
+// empty path returns the zero point rather than panicking.
+func (p ReflectionPath) EffectiveSource() geo.Point2D {
+	if len(p.Geometries) == 0 {
+		return geo.Point2D{}
+	}
+
+	return p.Geometries[len(p.Geometries)-1].ImageSource
 }
 
 // candidate holds in-progress state for multi-order reflection path enumeration.
@@ -640,10 +665,18 @@ func ComputeReflectedLineSourceLpAeq(
 
 // ComputeReflectedLineSourceLpAeqWithBarriers is like
 // ComputeReflectedLineSourceLpAeq but includes barrier attenuation on reflected
-// paths.  For each reflected path, the barrier check uses the image source
-// position as the effective source, and the obstacles the path bounced off are
-// excluded from the barrier set — a facade must not diffract its own
-// reflection.
+// paths.
+//
+// For each reflected path the barrier check runs from the path's
+// EffectiveSource — the image source of the *last* bounce, i.e. the source
+// mirrored across every wall of the path.  That is the origin of the fully
+// unfolded ray, and the one the path's TotalDist is measured from, so the
+// diffraction check and the propagation distance describe the same ray at every
+// order.  The first bounce's image source would only do for order 1; for two or
+// three bounces it is a ray the sound never travels.
+//
+// The obstacles the path bounced off are excluded from the barrier set — a
+// facade must not diffract its own reflection.
 func ComputeReflectedLineSourceLpAeqWithBarriers(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
@@ -706,7 +739,7 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 
 				total.Add(ReflectedSubsegmentContribWithBarriers(
 					emission, elevationM, receiver,
-					firstGeom.ImageSource,
+					rp.EffectiveSource(),
 					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
 					barriers,
 					reflectionPathObstacleIDs(rp, walls),

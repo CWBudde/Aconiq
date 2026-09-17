@@ -35,6 +35,9 @@ anyone who ran an earlier working tree holds results those changes invalidate.
   optional PDF.
 - Local HTTP API (`aconiq serve`, default `127.0.0.1:8080`) with a hand-built OpenAPI v1 document,
   a standardized JSON error envelope, and an SSE event stream.
+- `POST /api/v1/transform` projects a flat coordinate batch between two CRS, giving API mode a
+  projector without loading the WebAssembly kernel. `target_crs: "auto"` makes the same zone
+  decision `aconiq run` makes, because both go through the same `internal/geo/crstransform`.
 - WebAssembly compute kernel (`backend/cmd/wasm`), letting the browser UI run without the HTTP API.
 - React/TypeScript frontend (Vite, shadcn/ui, MapLibre) driving the local API or the WASM kernel.
 - `aconiq --version`, plus real build identity — version, commit and build date — stamped at link

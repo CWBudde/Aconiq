@@ -286,3 +286,132 @@ func TestNormativeReceiverBehindBuildingFootprint(t *testing.T) {
 			free.LrNight, shielded.LrNight)
 	}
 }
+
+// A barrier on a SECOND-order reflected path shields it.
+//
+// The reflected level is computed through ComputeReflectedLineSourceLpAeqWithBarriers
+// directly rather than through ComputeNormativeReceiverLevelsWithScene, so the
+// direct contribution — which dominates the total and which the barrier here
+// does not touch — cannot dilute the assertion.
+//
+// Geometry.  A canyon of two parallel reflectors at y = +40 and y = −20 around a
+// track on y = 0, with the receiver at y = 30.  The paths the enumerator finds
+// unfold to these origins (see TestReflectionPathEffectiveSourceIsTheUnfoldedOrigin
+// for why the unfolded origin is the last bounce's image):
+//
+//	order 1 via y=+40 → image at y =  80, ray reaches y ≤  80
+//	order 1 via y=−20 → image at y = −40, ray reaches y ≤  30
+//	order 2 via y=−20 then y=+40 → image at y = 120, ray reaches y ≤ 120
+//
+// The barrier stands at y = 100, in the strip that only the order-2 unfolded ray
+// crosses.  It is therefore invisible to every first-order path and visible to
+// the second-order one, which is exactly the distinction the effective-source
+// choice makes.  Handing the barrier check the FIRST bounce's image instead
+// leaves this barrier unseen and the level unchanged; that regression is what
+// this test catches.
+func TestSecondOrderReflectedPathObstructedByBarrier(t *testing.T) {
+	t.Parallel()
+
+	// A flat spectrum on all three Teilquelle heights: the assertion is about
+	// which ray the diffraction check follows, not about emission tables.
+	emission := &schall03.StreckeEmissionResult{
+		PerHeight: map[int]schall03.BeiblattSpectrum{
+			1: {90, 90, 90, 90, 90, 90, 90, 90},
+			2: {90, 90, 90, 90, 90, 90, 90, 90},
+			3: {90, 90, 90, 90, 90, 90, 90, 90},
+		},
+	}
+
+	centerline := []geo.Point2D{{X: -100, Y: 0}, {X: 100, Y: 0}}
+
+	receiver := schall03.ReceiverInput{
+		ID: "r1", Point: geo.Point2D{X: 0, Y: 30}, HeightM: 3.5,
+	}
+
+	walls := []schall03.ReflectingWall{
+		{A: geo.Point2D{X: -150, Y: 40}, B: geo.Point2D{X: 150, Y: 40}, HeightM: 15, Surface: schall03.WallSurfaceHard},
+		{A: geo.Point2D{X: -150, Y: -20}, B: geo.Point2D{X: 150, Y: -20}, HeightM: 15, Surface: schall03.WallSurfaceHard},
+	}
+
+	// Guard the premise: the scene must actually produce a second-order path,
+	// and no first-order unfolded ray may reach the barrier line.
+	assertSecondOrderReachesBarrierLine(t, centerline, receiver, walls, 100)
+
+	barriers := []schall03.BarrierSegment{
+		{
+			A: geo.Point2D{X: -250, Y: 100}, B: geo.Point2D{X: 250, Y: 100},
+			TopHeightM: 8, BaseHeightM: 0,
+		},
+	}
+
+	free := schall03.ComputeReflectedLineSourceLpAeqWithBarriers(
+		emission, centerline, 0, receiver, 0, walls, nil,
+	)
+
+	shielded := schall03.ComputeReflectedLineSourceLpAeqWithBarriers(
+		emission, centerline, 0, receiver, 0, walls, barriers,
+	)
+
+	if math.IsInf(free, -1) {
+		t.Fatal("expected a finite reflected level without barriers")
+	}
+
+	// A margin, not a bare ">": before this was fixed the barrier was invisible
+	// to every path and the two levels were bit-identical, so any movement at all
+	// would pass an inequality — including a movement that is only a rounding
+	// step.  0.2 dB is well inside the ~0.55 dB this scene actually produces.
+	const wantInsertionLossDB = 0.2
+
+	got := free - shielded
+	if got < wantInsertionLossDB {
+		t.Errorf("a barrier across the order-2 unfolded ray must reduce the reflected level by at least "+
+			"%.2f dB: got %.4f dB (free=%.4f, shielded=%.4f)", wantInsertionLossDB, got, free, shielded)
+	}
+}
+
+// assertSecondOrderReachesBarrierLine checks the premise of the test above: over
+// the whole centerline at least one order-2 path exists whose unfolded ray
+// crosses y = barrierY, and no order-1 unfolded ray gets that far.  Without this
+// the test could pass for the wrong reason if the geometry ever drifted.
+func assertSecondOrderReachesBarrierLine(
+	t *testing.T,
+	centerline []geo.Point2D,
+	receiver schall03.ReceiverInput,
+	walls []schall03.ReflectingWall,
+	barrierY float64,
+) {
+	t.Helper()
+
+	secondOrderCrossings := 0
+
+	// Sample along the centerline the way the integrator does, rather than only
+	// at its vertices: the enumerator's answer depends on where on the track the
+	// source sits.
+	const samples = 41
+
+	a := centerline[0]
+	b := centerline[len(centerline)-1]
+
+	for i := range samples {
+		frac := float64(i) / float64(samples-1)
+		pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
+
+		for _, rp := range schall03.EnumerateReflectionPaths(pt, receiver.Point, walls, schall03.MaxReflectionOrder) {
+			reach := math.Max(rp.EffectiveSource().Y, receiver.Point.Y)
+			if reach < barrierY {
+				continue
+			}
+
+			if rp.Order == 1 {
+				t.Fatalf("an order-1 path already reaches y=%g (image %v) — the barrier no longer isolates order ≥ 2",
+					barrierY, rp.EffectiveSource())
+			}
+
+			secondOrderCrossings++
+		}
+	}
+
+	if secondOrderCrossings == 0 {
+		t.Fatalf("no reflected path of order ≥ 2 reaches y=%g — the barrier would shield nothing", barrierY)
+	}
+}
