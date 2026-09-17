@@ -42,7 +42,7 @@ func (cfg PropagationConfig) Validate() error {
 		message string
 	}{
 		{cfg.GroundFactor, withinInclusive(0, 1), "ground_factor must be finite and within [0,1]"},
-		{cfg.AirTemperatureC, isFinite, "air_temperature_c must be finite"},
+		{cfg.AirTemperatureC, withinInclusive(minAirTemperatureC, maxAirTemperatureC), fmt.Sprintf("air_temperature_c must be finite and within [%g,%g]", minAirTemperatureC, maxAirTemperatureC)},
 		{cfg.RelativeHumidityPercent, withinInclusive(0, 100), "relative_humidity_percent must be finite and within [0,100]"},
 	} {
 		if !check.valid(check.value) {

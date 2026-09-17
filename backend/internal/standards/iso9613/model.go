@@ -144,8 +144,12 @@ func (m Meteorology) Validate() error {
 		return fmt.Errorf("iso9613 meteorology assumption must be %q", MeteorologyDownwind)
 	}
 
-	if math.IsNaN(m.TemperatureC) || math.IsInf(m.TemperatureC, 0) {
-		return errors.New("iso9613 meteorology temperature_c must be finite")
+	// Same bounds as the air_temperature_c parameter: this is the same quantity,
+	// and the ISO 9613-1 absorption coefficient it feeds divides by the absolute
+	// temperature.
+	if math.IsNaN(m.TemperatureC) || math.IsInf(m.TemperatureC, 0) ||
+		m.TemperatureC < minAirTemperatureC || m.TemperatureC > maxAirTemperatureC {
+		return fmt.Errorf("iso9613 meteorology temperature_c must be finite and within [%g,%g]", minAirTemperatureC, maxAirTemperatureC)
 	}
 
 	if math.IsNaN(m.RelativeHumidityPercent) || math.IsInf(m.RelativeHumidityPercent, 0) || m.RelativeHumidityPercent < 0 || m.RelativeHumidityPercent > 100 {
