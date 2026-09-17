@@ -937,10 +937,6 @@ target would only find unfixable library panics was simply false.
       `FileReader.readFeature` and `PropReader.ReadBinary` each size a `make` from an unvalidated
       file field. All three are worked around on our side; they are still library bugs, and the
       workaround is code this repo would rather not own.
-- [ ] **Write the data-handling policy.** The CI guard that refuses any tracked
-      `interoperability/` path is in place (`just check-no-third-party-data`, mirrored by
-      `.github/workflows/repo-hygiene.yml`), but the policy the guard enforces is still unwritten:
-      what may be stored there, who may hold it, and what happens if it leaks.
 - [ ] **A token and `EventSource` do not compose.** A browser cannot set headers on an SSE
       connection, so `/api/v1/events` is unreachable when `--api-token` is set; the same applies to
       the bare URL handed to the DOM by `getArtifactContentURL`. Nothing uses either today, so
