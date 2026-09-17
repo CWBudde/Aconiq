@@ -46,8 +46,10 @@ export interface ModeGateProps {
  * `disabled:pointer-events-none` on every button, and a disabled DOM button
  * takes no focus and fires no pointer events — so a tooltip whose trigger is a
  * disabled button never opens, by mouse or by keyboard. That is not
- * hypothetical: it is why the tooltips in `map/undo-redo-bar.tsx` are silent
- * in exactly the state they describe. `aria-disabled` keeps the element
+ * hypothetical: `map/draw-toolbar.tsx` shipped it over a tooltip carrying the
+ * only explanation the control had, and `map/undo-redo-bar.tsx` still has the
+ * shape (harmlessly so far — its tooltip only repeats the `aria-label`).
+ * `aria-disabled` keeps the element
  * hoverable and focusable, announces unavailability, and lets Radix point the
  * trigger at the reason through `aria-describedby` — which is why that
  * attribute is not set here; setting it would win over Radix's and name an id

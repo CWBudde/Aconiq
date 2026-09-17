@@ -1177,8 +1177,8 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       Three things this turned up. **`ModeGate` uses `aria-disabled`, not `disabled`** — a
       disabled button takes no focus and fires no pointer events, so a tooltip over one never
       opens; the tests hover and Tab for real, because every DOM-shaped assertion passes while the
-      tooltip is invisible. That failure is still live in `undo-redo-bar.tsx:33-47`, whose two
-      tooltips are silent in exactly the state they describe — **left open, listed under Phase D**.
+      tooltip is invisible. The same shape is still live in `undo-redo-bar.tsx:33-47`, though it
+      costs far less there — **left open, listed under Phase D**.
       **`validateModel` must not be called from the UI**; `useModelValidation` passes the
       receivers and answers "empty" above the validator, so a fresh install no longer reads "1
       error" in hardcoded English. And **terra-draw tore down against a removed map**: React
@@ -1375,13 +1375,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
-- [ ] **The undo/redo tooltips are dead.** `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a
-      `disabled` Button, and a disabled button takes no focus and fires no pointer events — so
-      neither tooltip opens, by mouse or by keyboard, in exactly the state it describes ("nothing
-      to undo"). Nothing notices because the label is duplicated in `aria-label` and no axe rule
-      covers it. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a
-      swallowed click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an
-      attribute check passes while the tooltip is invisible.
+- [ ] **The undo/redo tooltips are dead — worth fixing for the shape, not for the symptom.**
+      `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a `disabled` Button, and a disabled
+      button takes no focus and fires no pointer events, so neither tooltip opens by mouse or by
+      keyboard whenever there is nothing to undo or redo. **The earlier wording here oversold
+      what that costs, and the correction is the useful part.** Both tooltips render
+      `m.tooltip_undo()`/`m.tooltip_redo()` — byte-identical to the button's own `aria-label` —
+      so nothing is lost to a screen reader, and what a sighted mouse user loses is the
+      "(Ctrl+Z)" hint, in the one state where the shortcut would do nothing anyway. These
+      tooltips never described "nothing to undo"; that phrasing was borrowed from `ModeGate`,
+      where the tooltip _is_ the reason, and does not transfer. The reason to still fix it is
+      that the shape is a trap: the day anyone puts a reason in that tooltip it becomes
+      unreachable, which is exactly what had happened in `map/draw-toolbar.tsx` before it was
+      fixed. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a swallowed
+      click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an attribute check
+      passes while the tooltip is invisible. Note jsdom computes no Tailwind stylesheet, so a
+      hover assertion alone does _not_ catch a regression to `disabled`; assert `aria-disabled`
+      and Tab-reachability, as `map/draw-toolbar.test.tsx` does.
 - [ ] **A save from the map destroys every property the store does not model.**
       `calcAreaToGeoJSON` (`model/to-geojson.ts:126-139`) emits `properties: { kind }` and nothing
       else, so `soundplan_base_elevation_m` — written by `aconiq import --soundplan` from

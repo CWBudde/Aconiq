@@ -58,9 +58,8 @@ function button(name: string): HTMLElement {
  * at the trigger.
  *
  * `fireEvent` dispatches straight at the node, so it will open a tooltip over a
- * control no user could reach. That is not hypothetical: it is how
- * `map/undo-redo-bar.tsx` shipped two tooltips that are silent in exactly the
- * state they describe.
+ * control no user could reach, and report a pass for it. That is why the probe
+ * matters even where, as here, it is not the assertion that bites.
  *
  * **But hovering is not what catches that regression here, and it is worth
  * being exact about why.** `userEvent` does honour `pointer-events: none` —
