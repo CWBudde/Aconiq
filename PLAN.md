@@ -1540,16 +1540,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `schall03_track_features` carries coordinates in its properties besides, which puts it in
       `PROPERTY_GEOMETRIES` — browser mode cannot move those and refuses a model that carries one
       outright — so an editor for it would be filling in a model that half the app cannot run.
-- [x] **The receiver's Gebietskategorie** (#52). The receiver panel offers
-      `bimschv16_area_category` beside the height, over the four canonical values
-      `assessment/bimschv16` declares; `model/bimschv16.test.ts` pins them, their German labels and
-      the property name against `assessment.go`, including that this spelling is the first of the
-      five `categoryFromFeature` tries — which is what makes a value written here outrank an older
-      spelling the same receiver still carries. The select is the source panel's, generalised over
-      a value and a commit rather than twinned: `ModelReceiver` is not a `ModelFeature` and is
-      written through `updateReceiver`, and two controls would have meant two sets of empty-option
-      semantics to keep in step. An absent category is neither a default nor a quiet one — the
-      receiver lands in `ExportEnvelope.Skipped` — and the field's helper says exactly that.
+- [x] **The receiver's Gebietskategorie** (#52). The receiver panel writes
+      `bimschv16_area_category`, the first of `categoryFromFeature`'s five tries, so a value set
+      here outranks an older spelling the same receiver still carries;
+      `model/bimschv16.test.ts` pins the four values, their labels and the key against
+      `assessment.go`. Absent is not a default but `ExportEnvelope.Skipped`, and a select shows a
+      stored spelling its vocabulary does not list rather than blanking it.
 - [x] **The field tables, and the three rules they encode** (#50). The help under a field says what
       an _absent_ value means, and that answer is per property rather than per panel — "the run's
       default applies" is true for the RLS-19 road properties and false for every Parkplatz and

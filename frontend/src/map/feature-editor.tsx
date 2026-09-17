@@ -1327,6 +1327,17 @@ function PropertySelectField({
     [onCommit],
   );
 
+  // A stored value the vocabulary does not list gets an item of its own.
+  // Radix matches the trigger's text to an item, so without one an imported
+  // spelling the backend still reads — `ParseAreaCategory` accepts
+  // "allgemeines Wohngebiet", `normalizeCategory` folds it to `residential` —
+  // would render as the placeholder, and a set receiver would read as unset.
+  // Showing it is also the only thing that calls `optionLabel`'s fallback.
+  const strayValue =
+    value !== undefined && value !== "" && !spec.options.includes(value)
+      ? value
+      : undefined;
+
   return (
     <div className="grid gap-1">
       <Label htmlFor={fieldId} className="text-2xs">
@@ -1345,6 +1356,11 @@ function PropertySelectField({
               {spec.optionLabel?.(option) ?? option}
             </SelectItem>
           ))}
+          {strayValue !== undefined && (
+            <SelectItem value={strayValue}>
+              {spec.optionLabel?.(strayValue) ?? strayValue}
+            </SelectItem>
+          )}
         </SelectContent>
       </Select>
       <p className="text-2xs text-muted-foreground">{helper}</p>

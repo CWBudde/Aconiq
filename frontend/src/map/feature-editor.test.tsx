@@ -1076,6 +1076,31 @@ describe("FeatureEditor receiver area category", () => {
       bimschv16AreaCategoryLabel("commercial"),
     );
   });
+
+  it("shows an imported spelling the enum does not list rather than blanking it", () => {
+    // `ParseAreaCategory` accepts "allgemeines Wohngebiet" on this very key,
+    // so such a receiver is assessable — but the value matches none of the
+    // four items, and a Radix select with no matching item falls back to its
+    // placeholder. That would read as "not set" on a receiver that is set.
+    useModelStore.getState().addReceiver({
+      ...receiver,
+      properties: { bimschv16_area_category: "allgemeines Wohngebiet" },
+    });
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    expect(areaCategoryField()).toHaveTextContent("allgemeines Wohngebiet");
+    expect(areaCategoryField()).not.toHaveTextContent(m.option_not_set());
+
+    // And it stays a value that can be replaced or cleared.
+    fireEvent.click(areaCategoryField());
+    fireEvent.click(
+      screen.getByRole("option", { name: bimschv16AreaCategoryLabel("mixed") }),
+    );
+
+    expect(storedReceiverProperties()).toEqual({
+      bimschv16_area_category: "mixed",
+    });
+  });
 });
 
 /**
