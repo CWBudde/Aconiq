@@ -305,4 +305,62 @@ describe("MapPage", () => {
     expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
     expect(useModelStore.getState().crs).toBe("EPSG:25832");
   });
+
+  it("does not arm a tool from the draw parameter in a metric model", () => {
+    // `?draw=1` was a way past the disabled toolbar: it armed point mode, the
+    // user drew a shape, and `handleDrawFinish` dropped it without a word.
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const fixtureFeatures = useModelStore.getState().features;
+    renderPageAt("/model?draw=1");
+
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "static",
+    );
+    // Stripped even when refused, or a reload would re-ask.
+    expect(screen.getByTestId("location-search").textContent).toBe("");
+
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+    // Reference identity: nothing on the map side may write a coordinate back.
+    expect(useModelStore.getState().features).toBe(fixtureFeatures);
+    expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("disables Start drawing in an empty metric workspace and says why", () => {
+    // The other entry point the finish-time refusal did not cover. The panel
+    // stays up on a refused `?draw=1` precisely because it is what carries the
+    // reason — the toolbar can only say it in a tooltip.
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPageAt("/model?draw=1");
+
+    expect(
+      screen.getByRole("region", { name: m.heading_map_workspace() }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: m.action_start_drawing() }),
+    ).toBeDisabled();
+    // The toolbar's wording, not a second one invented for this surface.
+    expect(
+      screen.getByText(m.msg_draw_disabled_crs({ crs: "EPSG:25832" })),
+    ).toBeVisible();
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "static",
+    );
+  });
 });

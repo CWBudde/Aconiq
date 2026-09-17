@@ -43,7 +43,7 @@ const NO_RECEIVERS: ModelReceiver[] = [];
 export function ModelLayers() {
   const map = useMap();
   const display = useDisplayModel();
-  const previousFeatureCountRef = useRef(0);
+  const previousContentCountRef = useRef(0);
 
   const ready = display.status === "ready";
   const features = ready ? display.features : NO_FEATURES;
@@ -116,11 +116,18 @@ export function ModelLayers() {
     // leave the reprojected model off-screen for good.
     if (!ready) return;
 
+    // Counted over everything `fitToWorkspace` frames, not features alone. The
+    // feature count cancelled the very fix the shared bounds helper is here
+    // for: a receiver-only or calc-area-only workspace has an extent, and
+    // gating on `features.length` left it at the fallback view for good.
+    const contentCount =
+      features.length + receivers.length + (calcArea ? 1 : 0);
+
     // Bring freshly imported data into view once instead of leaving it off-screen.
-    if (previousFeatureCountRef.current === 0 && features.length > 0) {
+    if (previousContentCountRef.current === 0 && contentCount > 0) {
       fitToWorkspace(map, features, receivers, calcArea);
     }
-    previousFeatureCountRef.current = features.length;
+    previousContentCountRef.current = contentCount;
   }, [map, ready, features, receivers, calcArea]);
 
   return <CRSNotice model={display} />;

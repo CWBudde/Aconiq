@@ -1,4 +1,5 @@
 import { MapPanel } from "./map-panel";
+import { DISPLAY_CRS } from "./display-model";
 import type { DisplayModel } from "./display-model";
 import { m } from "@/i18n/messages";
 
@@ -10,11 +11,19 @@ import { m } from "@/i18n/messages";
  * change a live region is for. The `ready` state carries a badge only when the
  * coordinates were actually moved — a reader looking at a model in WGS84 needs
  * no notice that it is in WGS84.
+ *
+ * It also carries why drawing is off, on the same condition `pages/map.tsx`
+ * computes `drawingDisabled` from — the store's CRS is not the display one. The
+ * toolbar can only say it in a tooltip and the start panel is not up over a
+ * workspace that has content, so on a populated metric model this panel is the
+ * one surface a user who followed `?draw=1` and saw nothing happen can read.
  */
 export function CRSNotice({ model }: { model: DisplayModel }) {
   if (model.status === "ready" && !model.reprojected) {
     return null;
   }
+
+  const drawingDisabled = model.sourceCRS !== DISPLAY_CRS;
 
   return (
     <MapPanel
@@ -24,9 +33,14 @@ export function CRSNotice({ model }: { model: DisplayModel }) {
       translucent
       role="status"
       aria-label={m.label_crs_notice()}
-      className="text-xs leading-relaxed"
+      className="space-y-1 text-xs leading-relaxed"
     >
-      {noticeText(model)}
+      <p>{noticeText(model)}</p>
+      {drawingDisabled ? (
+        <p className="text-muted-foreground">
+          {m.msg_draw_disabled_crs({ crs: model.sourceCRS })}
+        </p>
+      ) : null}
     </MapPanel>
   );
 }

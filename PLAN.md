@@ -548,19 +548,14 @@ parse and discarding a user's model and runs over a row order is the larger harm
 
 ### Open
 
-- [ ] **API mode cannot draw a metric model, and the refusal is reachable.** The map now projects
-      the store's CRS into 4326 for display where a projector exists, and refuses where none does —
-      the split is `BackendCapabilities.canReprojectForDisplay`, not a mode test. In API mode no
-      projector exists: `internal/api/httpv1` has no transform endpoint, and pulling the 4 MB WASM
-      kernel into a mode that never otherwise loads it, purely to draw a map, buys a map at the cost
-      of the mode's whole premise. The refusal is not theoretical — `pages/import.tsx` passes the
-      imported CRS in **both** modes, so a projected import leaves an API-mode store metric for the
-      rest of the session, and the map then says "save the model, then reload" because hydration
-      refetches with `?crs=EPSG:4326`. Closing it means deciding `POST /api/v1/transform` on its own
-      merits; it is also what unblocks the inverse draw transform under Priority 8 Phase D.
-      The invariant that governs anything built here: **the map is a projection _of_ the model,
-      never a source _for_ it** — `map/model-layers.test.tsx` enforces it by reference identity,
-      because deep equality passes a write-back that happens to round-trip to the same numbers.
+- [ ] **API mode cannot draw a metric model.** No projector is reachable there: `internal/api/httpv1`
+      has no transform endpoint, and pulling the 4 MB WASM kernel into a mode that never otherwise
+      loads it, purely to draw a map, buys a map at the cost of the mode's whole premise. It is not
+      theoretical — `pages/import.tsx` passes the imported CRS in **both** modes, so a projected
+      import leaves an API-mode store metric for the rest of the session. Closing it means deciding
+      `POST /api/v1/transform` on its own merits, and is what unblocks the inverse draw transform
+      under Priority 8 Phase D. Whatever lands holds the invariant that governs the map: **it is a
+      projection _of_ the model, never a source _for_ it.**
 - [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
       `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
       (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
@@ -1395,22 +1390,17 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
       row↔map highlight from the receiver table. Until it lands, hide the result toggles in
       `layer-control.tsx:74-76`.
-- [ ] **Drawn geometry cannot enter a non-4326 model.** `handleDrawFinish` (`pages/map.tsx`)
-      returns early and `DrawToolbar` is disabled with the reason whenever the store's CRS is not
-      the display one, because terra-draw emits WGS84 whatever the model is stored in and the
-      finish handler writes straight into it. The fix is an inverse 4326 → `store.crs` transform on
-      that one path — it is the only coordinate writer on the map side, since `FeatureEditor`
-      writes attributes only and nothing calls `draw.addFeatures`. It is blocked in API mode on the
-      same transform endpoint Priority 2 records.
-- [ ] **CRS and basemap**: a UTM readout in the coordinate display — `CoordinateDisplay` now reads
-      out WGS 84 over a project stored in 25832, which is what this bullet already covered;
-      tile-error → `OFFLINE_STYLE` with a notice; basemap picker; tile URL in Connection settings
-      (`basemap.ts:28` hardcodes `tile.openstreetmap.org`). The `fitBounds` half is closed: the map
-      draws the store's CRS projected into 4326, and `toLngLatBounds` (`map/extent.ts`) still
-      refuses an extent that is not lon/lat, which covers the one case reprojection cannot fix — a
-      store _labelled_ EPSG:4326 that holds metres. No proj4 is needed and none may be added: the
-      projection is `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run`
-      would not.
+- [ ] **Drawn geometry cannot enter a non-4326 model.** terra-draw emits WGS84 whatever the model
+      is stored in, so every way into an active drawing mode is gated off while the store's CRS is
+      not the display one. The fix is an inverse 4326 → `store.crs` transform on the draw-finish
+      path — the only coordinate writer on the map side, since `FeatureEditor` writes attributes
+      only and nothing calls `draw.addFeatures`. Blocked in API mode on the same transform endpoint
+      Priority 2 records.
+- [ ] **CRS and basemap**: a UTM readout in the coordinate display (`CoordinateDisplay` reads out
+      WGS 84 over a project stored in 25832); tile-error → `OFFLINE_STYLE` with a notice; basemap
+      picker; tile URL in Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
+      The `fitBounds` half is closed. No proj4 may be added for any of the rest: the projection is
+      `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run` would not.
 - [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
       feature list, so the map is not mouse-only.
 

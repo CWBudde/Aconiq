@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import { useModelStore } from "@/model/model-store";
+import { m } from "@/i18n/messages";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { MapContext } from "./use-map";
 import { ModelLayers } from "./model-layers";
@@ -234,6 +235,45 @@ describe("ModelLayers", () => {
         [6.672, 56.442],
       ],
     ]);
+
+    // A reprojected model draws, and drawing into it is still refused. Over a
+    // workspace with content the start panel is down and the toolbar can only
+    // say it in a tooltip, so this notice is the one surface that explains a
+    // `?draw=1` which appeared to do nothing.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      m.msg_draw_disabled_crs({ crs: "EPSG:25832" }),
+    );
+  });
+
+  it("frames a receiver-only workspace once it is ready", async () => {
+    // The bounds helper deliberately visits receivers and the calculation
+    // area, and the one-shot fit was still gated on `features.length` — which
+    // cancelled the fix for the commonest case there is, an import of
+    // receivers alone.
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [METRIC_RECEIVER],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const map = new FakeMap();
+
+    renderLayers(map);
+
+    // Not while it is projecting: framing an empty map would consume the fit.
+    expect(map.fitBoundsCalls).toEqual([]);
+
+    await waitFor(() => {
+      expect(drawn(map, SOURCE_IDS.receivers).features).toHaveLength(1);
+    });
+
+    // Exactly once, on the `ready` render that first had something to frame.
+    expect(map.fitBoundsCalls).toEqual([
+      [
+        [6.672, 56.442],
+        [6.672, 56.442],
+      ],
+    ]);
   });
 
   it("does not write the display projection back into the store", async () => {
@@ -288,6 +328,9 @@ describe("ModelLayers", () => {
     expect(drawn(map, SOURCE_IDS.sources).features).toHaveLength(0);
     expect(state.requests).toEqual([]);
     expect(screen.getByRole("status")).toHaveTextContent("EPSG:25832");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      m.msg_draw_disabled_crs({ crs: "EPSG:25832" }),
+    );
   });
 
   it("survives an extent that is not lon/lat instead of throwing out of the effect", () => {
