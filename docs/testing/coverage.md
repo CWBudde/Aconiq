@@ -129,10 +129,19 @@ carrying 4,333 statements, a quarter of the tree.
 | 2026-09-17 | `f7e0885` | 81.8%      | 87.0%    | 83.3%     | 81.8% | 71 / 71 / 75 / 81 |
 | 2026-09-17 | `317fdfa` | 86.8%      | 87.8%    | 86.1%     | 86.8% | 84 / 84 / 84 / 85 |
 
-10,706 / 13,087 statements over 83 test files. By area: `src/results` 99.7%,
-`src/pages` 94.4%, `src/run` 90.0%, `src/model` 89.4%, `src/(root)` 85.7%,
-`src/import` 84.7%, `src/api` 82.7%, `src/ui` 77.0%, `src/map` **62.6%**
-(1,953 statements), `src/wasm` 45.2%, `src/layouts` 41.7%.
+At the last row, 11,360 / 13,087 statements over 89 test files. By area:
+`src/results` 99.7%, `src/pages` 94.4%, `src/map` 94.0%, `src/model` 91.5%,
+`src/run` 90.0%, `src/(root)` 85.7%, `src/import` 84.7%, `src/api` 82.7%,
+`src/ui` 77.0%, `src/wasm` **45.2%**, `src/layouts` **41.7%** — the last two are
+what is left.
+
+At the `f7e0885` row before it, 10,706 / 13,087 over 83 files, differing where
+this round's work went in: `src/map` 62.6% and `src/model` 89.4%. `src/ui` sits
+still at 77.0% in both, and that is not a gap so much as a composition: this
+repository's **own** shared components under `src/ui` are at 91.5%, most of them
+100%, while ~579 uncovered statements are vendored shadcn — including four files
+(`table.tsx`, `resizable.tsx`, `scroll-area.tsx`, `textarea.tsx`) that nothing
+imports at all.
 
 **Every frontend number CI published between those two rows was wrong, and badly.**
 The `frontend-coverage` job ran `bun run test:coverage` with no `compile:i18n`
@@ -146,16 +155,21 @@ and 84.7%, and the comment blamed the floors.
 
 It is the same defect as `48b63b2`, which added the `compile:i18n` step to
 `frontend-ci` for `tsc`; `frontend-coverage` never got it. The floors were never
-the problem, and they are only being moved now because the fourth row measured a
+the problem, and they are only being moved now because the last row measured a
 tree with `src/map` covered: 62.6% → 94.0%, the last genuinely thin area, closing
 the file that carried 326 uncovered statements on its own. **The lesson generalises: a job that consumes
 generated output has to generate it, and inheriting it from another job's side
 effect is not a mechanism.** Anything new that runs the suite needs that step by
 name.
 
-`src/map` is the one large gap and it is a known one: the MapLibre code needs a
-real WebGL context, `map.test.tsx` stubs `MapView` out entirely, and `use-draw`
-and `model-layers` have no tests at all. `PLAN.md` Priority 8 Phase F tracks it.
+`src/map` **was** the one large gap. It is now 94.0%: `use-draw` (95.6%) and
+`model-layers` (89.8%) have had tests since before this round, and this round
+added `feature-editor.tsx` — 326 uncovered statements on its own — plus the four
+overlay components that read 0% precisely because `pages/map.test.tsx` mocks them
+out. What remains true is the narrow part: `map-view.tsx`'s residual statements
+are MapLibre lifecycle, jsdom cannot reach them, and faking a WebGL context there
+would test the fake. That belongs in `frontend/e2e/`, and `PLAN.md` Priority 8
+Phase F tracks it.
 
 The frontend numbers are measured **with the WASM kernel built** and
 `ACONIQ_REQUIRE_WASM=1`, exactly as the `frontend-coverage` job runs. Without the

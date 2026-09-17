@@ -1,5 +1,7 @@
+import type * as React from "react";
 import { MousePointer, Circle, Minus, Pentagon, Crop, X } from "lucide-react";
 import { Button } from "@/ui/components/button";
+import { cn } from "@/ui/lib/utils";
 import { Separator } from "@/ui/components/separator";
 import {
   Tooltip,
@@ -49,6 +51,26 @@ export function DrawToolbar({
   const reason = (label: string) =>
     disabled && disabledReason !== undefined ? disabledReason : label;
 
+  // `aria-disabled`, not `disabled`, and the tooltip above is the whole reason.
+  // `ui/components/button.tsx` puts `disabled:pointer-events-none` on every
+  // button, and a disabled DOM button takes no focus either — so a tooltip
+  // whose trigger is one never opens, by mouse or by keyboard, in exactly the
+  // state it exists to explain. `ui/mode-gate.tsx` carries the full argument
+  // and the same fix; this is its third site, after `map/undo-redo-bar.tsx`
+  // which is still open under Priority 8 Phase D.
+  //
+  // A click handler swallows activation instead, which covers Enter and Space
+  // too because both produce a click.
+  const refuse = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const refusedClass = cn(
+    "size-8",
+    disabled && "opacity-50 cursor-not-allowed",
+  );
+
   return (
     <MapPanel
       position="top-left"
@@ -63,10 +85,14 @@ export function DrawToolbar({
             <Button
               variant={activeMode === mode ? "default" : "ghost"}
               size="icon"
-              className="size-8"
+              className={refusedClass}
               aria-pressed={activeMode === mode}
-              disabled={disabled}
-              onClick={() => {
+              aria-disabled={disabled || undefined}
+              onClick={(event) => {
+                if (disabled) {
+                  refuse(event);
+                  return;
+                }
                 onModeChange(mode);
               }}
               aria-label={label()}
@@ -83,10 +109,14 @@ export function DrawToolbar({
           <Button
             variant={activeMode === "calc-area" ? "default" : "ghost"}
             size="icon"
-            className="size-8"
+            className={refusedClass}
             aria-pressed={activeMode === "calc-area"}
-            disabled={disabled}
-            onClick={() => {
+            aria-disabled={disabled || undefined}
+            onClick={(event) => {
+              if (disabled) {
+                refuse(event);
+                return;
+              }
               onModeChange("calc-area");
             }}
             aria-label={m.tool_draw_calc_area()}

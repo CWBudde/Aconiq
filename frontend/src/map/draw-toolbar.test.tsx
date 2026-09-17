@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { DrawToolbar } from "./draw-toolbar";
 import type { DrawMode } from "./use-draw";
@@ -53,11 +54,25 @@ function button(name: string): HTMLElement {
 }
 
 /**
- * Radix only mounts tooltip content once the trigger is pointed at, and it
- * opens on a pointer *move* rather than on hover state alone.
+ * Hovered with `userEvent`, deliberately, rather than a `fireEvent.pointerMove`
+ * at the trigger.
+ *
+ * `fireEvent` dispatches straight at the node, so it will open a tooltip over a
+ * control no user could reach. That is not hypothetical: it is how
+ * `map/undo-redo-bar.tsx` shipped two tooltips that are silent in exactly the
+ * state they describe.
+ *
+ * **But hovering is not what catches that regression here, and it is worth
+ * being exact about why.** `userEvent` does honour `pointer-events: none` —
+ * except the rule that would set it is Tailwind's `disabled:pointer-events-none`
+ * from `ui/components/button.tsx`, and jsdom computes no stylesheet, so the
+ * property is never actually there in this environment. A hover would pass over
+ * a real `disabled` button too. What fails if the refused state regresses is
+ * the pair of assertions below: `aria-disabled` being present, and Tab reaching
+ * the button at all. Both were verified to fail against the `disabled` version.
  */
 async function tooltipFor(name: string): Promise<string | null> {
-  fireEvent.pointerMove(button(name), { pointerType: "mouse" });
+  await userEvent.hover(button(name));
   const tooltip = await screen.findByRole("tooltip");
   return tooltip.textContent;
 }
@@ -134,25 +149,43 @@ describe("DrawToolbar cancel", () => {
 });
 
 describe("DrawToolbar when drawing is refused", () => {
-  it("refuses every tool, not just the geometry ones", () => {
+  it("marks every tool refused without making it unreachable", () => {
     // terra-draw emits WGS84. Over a metric model every one of these would
     // enter coordinates in the wrong CRS, the calculation area included.
+    //
+    // `aria-disabled` rather than `disabled`, and the assertion says both
+    // halves: a real `disabled` attribute would announce the same thing and
+    // then take the button out of the pointer and focus order, which is what
+    // kills the tooltip that has to explain it.
     renderToolbar({ disabled: true, disabledReason: "Model is in EPSG:25832" });
 
     for (const tool of tools) {
-      expect(button(tool.label())).toBeDisabled();
+      expect(button(tool.label())).toHaveAttribute("aria-disabled", "true");
+      expect(button(tool.label())).not.toBeDisabled();
     }
   });
 
-  it("accepts no clicks while refused", () => {
+  it("accepts no clicks while refused", async () => {
     const { onModeChange } = renderToolbar({
       disabled: true,
       disabledReason: "Model is in EPSG:25832",
     });
 
-    fireEvent.click(button(m.tool_draw_point()));
+    // A real click, not a dispatched one: `aria-disabled` does not stop
+    // activation by itself, so the handler has to swallow it.
+    await userEvent.click(button(m.tool_draw_point()));
 
     expect(onModeChange).not.toHaveBeenCalled();
+  });
+
+  it("is reachable by keyboard, so the reason is not mouse-only", async () => {
+    renderToolbar({ disabled: true, disabledReason: "Model is in EPSG:25832" });
+
+    await userEvent.tab();
+
+    // A `disabled` button is skipped by Tab entirely; this is the assertion
+    // that would catch a regression to one.
+    expect(button(m.tool_select_edit())).toHaveFocus();
   });
 
   it("puts the reason in the tooltip in place of the tool's name", async () => {
