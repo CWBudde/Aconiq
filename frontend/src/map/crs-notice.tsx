@@ -1,5 +1,4 @@
 import { MapPanel } from "./map-panel";
-import { DISPLAY_CRS } from "./display-model";
 import type { DisplayModel } from "./display-model";
 import { m } from "@/i18n/messages";
 
@@ -13,8 +12,13 @@ import { m } from "@/i18n/messages";
  * no notice that it is in WGS84.
  *
  * It also carries why drawing is off, on the same condition `pages/map.tsx`
- * computes `drawingDisabled` from — the store's CRS is not the display one. The
- * toolbar can only say it in a tooltip and the start panel is not up over a
+ * computes `drawingDisabled` from. That condition is now "no projection is
+ * reachable", which is exactly what `unsupported` means here — a metric store
+ * with no projector — so the two cannot drift apart while this reads the status
+ * rather than re-deriving it. A metric store the map *can* project draws and is
+ * drawn into; it only says so in the badge above.
+ *
+ * The toolbar can only say it in a tooltip and the start panel is not up over a
  * workspace that has content, so on a populated metric model this panel is the
  * one surface a user who followed `?draw=1` and saw nothing happen can read.
  */
@@ -23,7 +27,7 @@ export function CRSNotice({ model }: { model: DisplayModel }) {
     return null;
   }
 
-  const drawingDisabled = model.sourceCRS !== DISPLAY_CRS;
+  const drawingDisabled = model.status === "unsupported";
 
   return (
     <MapPanel
@@ -38,7 +42,7 @@ export function CRSNotice({ model }: { model: DisplayModel }) {
       <p>{noticeText(model)}</p>
       {drawingDisabled ? (
         <p className="text-muted-foreground">
-          {m.msg_draw_disabled_crs({ crs: model.sourceCRS })}
+          {m.msg_draw_disabled_no_projection({ crs: model.sourceCRS })}
         </p>
       ) : null}
     </MapPanel>

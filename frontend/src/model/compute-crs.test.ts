@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { projectWorkspace, resolveComputeModel } from "./compute-crs";
+import {
+  projectGeometry,
+  projectWorkspace,
+  resolveComputeModel,
+} from "./compute-crs";
 import type { Workspace } from "./compute-crs";
-import type { ModelFeature } from "./types";
+import type { Geometry, ModelFeature } from "./types";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
 
 /**
@@ -317,5 +321,110 @@ describe("projectWorkspace", () => {
       [2, 3],
       [4, 5],
     ]);
+  });
+});
+
+describe("projectGeometry", () => {
+  const RING: Geometry = {
+    type: "Polygon",
+    coordinates: [
+      [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+        [1, 2],
+      ],
+    ],
+  };
+
+  it("walks one geometry's coordinate tree in the order a workspace walk does", async () => {
+    // The same collect/scatter, so the map's inverse direction cannot come to
+    // disagree with the forward one about where a coordinate belongs.
+    const kernel = fakeKernel(shiftBy(100, 200));
+
+    const projected = await projectGeometry(
+      kernel.transform,
+      RING,
+      "EPSG:4326",
+      "EPSG:25832",
+    );
+
+    expect(kernel.requests[0]?.coordinates).toEqual([1, 2, 3, 4, 5, 6, 1, 2]);
+    expect(projected.geometry.coordinates).toEqual([
+      [
+        [101, 202],
+        [103, 204],
+        [105, 206],
+        [101, 202],
+      ],
+    ]);
+  });
+
+  it("asks for the target it was given, in the direction it was given", async () => {
+    const kernel = fakeKernel(shiftBy(0, 0));
+
+    await projectGeometry(kernel.transform, RING, "EPSG:4326", "EPSG:25832");
+
+    expect(kernel.requests).toHaveLength(1);
+    expect(kernel.requests[0]?.source_crs).toBe("EPSG:4326");
+    expect(kernel.requests[0]?.target_crs).toBe("EPSG:25832");
+  });
+
+  it("leaves the geometry it was handed untouched", async () => {
+    const kernel = fakeKernel(shiftBy(7, 8));
+    const before = structuredClone(RING);
+
+    const projected = await projectGeometry(
+      kernel.transform,
+      RING,
+      "EPSG:4326",
+      "EPSG:25832",
+    );
+
+    expect(RING).toEqual(before);
+    expect(projected.geometry).not.toBe(RING);
+  });
+
+  it("hands back the very same geometry when nothing moved", async () => {
+    // `applied: false` means the coordinates came back verbatim, and rebuilding
+    // the tree from them would allocate a copy that is equal but not identical.
+    const kernel = fakeKernel(unmoved);
+
+    const projected = await projectGeometry(
+      kernel.transform,
+      RING,
+      "EPSG:4326",
+      "EPSG:4326",
+    );
+
+    expect(projected.geometry).toBe(RING);
+    expect(projected.projection.applied).toBe(false);
+  });
+
+  it("refuses an answer of the wrong length rather than scattering NaN", async () => {
+    const kernel = fakeKernel((req) => ({
+      source_crs: req.source_crs,
+      target_crs: "EPSG:25832",
+      applied: true,
+      coordinates: req.coordinates.slice(0, 2),
+    }));
+
+    await expect(
+      projectGeometry(kernel.transform, RING, "EPSG:4326", "EPSG:25832"),
+    ).rejects.toThrow("was not projected");
+  });
+
+  it("carries a third ordinate through untouched", async () => {
+    // An absolute elevation in metres, which no horizontal projection moves.
+    const kernel = fakeKernel(shiftBy(10, 20));
+
+    const projected = await projectGeometry(
+      kernel.transform,
+      { type: "Point", coordinates: [1, 2, 33] } as unknown as Geometry,
+      "EPSG:4326",
+      "EPSG:25832",
+    );
+
+    expect(projected.geometry.coordinates).toEqual([11, 22, 33]);
   });
 });

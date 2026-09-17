@@ -389,6 +389,9 @@
   "msg_map_crs_reprojected": "Dargestellt in WGS 84, gespeichert in {crs}.",
   "msg_map_crs_unsupported": "Das Modell ist in {crs} gespeichert und in diesem Modus steht keine Umrechnung zur Verfügung, sodass es nicht dargestellt werden kann. Ein Backend mit Umrechnung — der Desktop- oder Browsermodus — zeigt es an der richtigen Stelle.",
   "msg_map_crs_failed": "Das in {crs} gespeicherte Modell konnte für die Darstellung nicht umgerechnet werden: {reason}",
-  "msg_draw_disabled_crs": "Das Zeichnen ist deaktiviert, weil das Modell in {crs} gespeichert ist. Die Karte zeichnet in WGS 84, und eine gezeichnete Geometrie käme im falschen Koordinatensystem ins Modell.",
+  "msg_draw_disabled_no_projection": "Das Zeichnen ist deaktiviert, weil das Modell in {crs} gespeichert ist und in diesem Modus keine Umrechnung zur Verfügung steht. Die Karte zeichnet in WGS 84, und eine gezeichnete Geometrie ließe sich nicht in das Koordinatensystem des Modells überführen.",
+  "msg_draw_projecting": "Die gezeichnete Geometrie wird nach {crs} umgerechnet, dem Koordinatensystem des Modells.",
+  "msg_draw_projection_failed": "Die gezeichnete Geometrie konnte nicht nach {crs} umgerechnet werden und wurde verworfen: {reason}",
+  "label_draw_projection": "Gezeichnete Geometrie",
   "label_crs_notice": "Koordinatenreferenzsystem"
 }

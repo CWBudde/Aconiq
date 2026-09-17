@@ -74,6 +74,47 @@ describe("FeatureEditor deletion", () => {
     expect(useModelStore.getState().features).toHaveLength(1);
   });
 
+  it("opens the same confirmation on Del", () => {
+    // The Phase D keyboard path: Del deletes the edited feature. It goes
+    // through the button's own dialog rather than straight to `removeFeature`,
+    // so there is one delete path and the sentence about undo is not skipped
+    // by whoever reaches for the keyboard.
+    useModelStore.getState().addFeature(source);
+    render(<FeatureEditor featureId="src-1" onClose={vi.fn()} />);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(useModelStore.getState().features).toHaveLength(1);
+
+    confirmDelete();
+    expect(useModelStore.getState().features).toHaveLength(0);
+  });
+
+  it("deletes the edited receiver on Del as well", () => {
+    useModelStore.getState().addReceiver(receiver);
+    render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    confirmDelete();
+
+    expect(useModelStore.getState().receivers).toHaveLength(0);
+  });
+
+  it("leaves Del to the text field the user is typing in", () => {
+    // `useGlobalShortcut` bows out of text controls, which is what keeps Del
+    // editing a number in the height field instead of deleting the feature
+    // the field belongs to.
+    useModelStore.getState().addFeature({ ...source, kind: "barrier" });
+    render(<FeatureEditor featureId="src-1" onClose={vi.fn()} />);
+    const height = screen.getByLabelText(m.label_height_m());
+
+    fireEvent.keyDown(height, { key: "Delete" });
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(useModelStore.getState().features).toHaveLength(1);
+  });
+
   it("names what is being deleted, and says undo can bring it back", () => {
     // The panel has no undo control of its own and the undo bar is at the
     // other end of the workspace, so the confirmation is where that is said.

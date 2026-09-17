@@ -1,16 +1,62 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { CoordinateDisplay } from "./coordinate-display";
 import { MapContext } from "./use-map";
+import { useModelStore } from "@/model/model-store";
+import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import { getLocale, overwriteGetLocale, type Locale } from "@/i18n/runtime";
 
 /**
  * The readout is a plain panel fed by one MapLibre event, so nothing here
  * needs WebGL — the event is delivered directly to the handler the component
- * registered. What it is worth pinning is the order of the two numbers and
- * that the listener is taken back off on unmount.
+ * registered. What it is worth pinning is the order of the two numbers, the
+ * second line the panel owes a project stored in metres, and that the listener
+ * is taken back off on unmount.
  */
+
+const projection = vi.hoisted(() => {
+  /** Multiplies by 100 000, so a projected coordinate is recognisable on sight. */
+  const scaled = (req: TransformRequest): Promise<TransformResponse> =>
+    Promise.resolve({
+      source_crs: req.source_crs,
+      target_crs: req.target_crs,
+      applied: true,
+      coordinates: req.coordinates.map((value) => value * 100000),
+    });
+
+  const value: {
+    canReprojectForDisplay: boolean;
+    requests: TransformRequest[];
+    respond: (req: TransformRequest) => Promise<TransformResponse>;
+    readonly scaled: (req: TransformRequest) => Promise<TransformResponse>;
+  } = {
+    canReprojectForDisplay: true,
+    requests: [],
+    respond: scaled,
+    scaled,
+  };
+  return value;
+});
+
+vi.mock("@/api/backend", () => ({
+  backend: {
+    get capabilities() {
+      return {
+        kind: "browser",
+        canExport: false,
+        runsAgainstSavedModel: false,
+        runsChangeExternally: false,
+        exportsOutliveRunDelete: false,
+        canReprojectForDisplay: projection.canReprojectForDisplay,
+      };
+    },
+    transformCoordinates: (req: TransformRequest) => {
+      projection.requests.push(req);
+      return projection.respond(req);
+    },
+  },
+}));
 
 type MoveHandler = (event: { lngLat: { lng: number; lat: number } }) => void;
 
@@ -55,9 +101,28 @@ function useLocale(locale: Locale) {
   overwriteGetLocale(() => locale);
 }
 
+beforeEach(() => {
+  useModelStore.getState().reset();
+  projection.canReprojectForDisplay = true;
+  projection.requests = [];
+  projection.respond = projection.scaled;
+});
+
 afterEach(() => {
   overwriteGetLocale(originalGetLocale);
 });
+
+/** Puts the store in a metric CRS without putting anything in it. */
+function storeMetric() {
+  act(() => {
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+  });
+}
 
 describe("CoordinateDisplay", () => {
   it("shows nothing until the pointer has been over the map", () => {
@@ -134,5 +199,95 @@ describe("CoordinateDisplay", () => {
     // `MapView` renders its children while `map` is still null.
     const { container } = renderDisplay(null);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("asks for nothing while the store is in the CRS the map draws in", () => {
+    // WGS 84 in and WGS 84 out is a round trip through the backend for no
+    // information, once per settled pointer position.
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.5, 51.25);
+
+    expect(projection.requests).toEqual([]);
+  });
+
+  it("reads the pointer out in the CRS the model is stored in", async () => {
+    // The whole point of the second line: a project in EPSG:25832 is drawn in
+    // WGS 84, so the map's own event answers in degrees for a model measured
+    // in metres — numbers the user cannot check against their own data.
+    storeMetric();
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.5, 51.25);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("1,050,000.00, 5,125,000.00"),
+      ).toBeInTheDocument();
+    });
+    // Easting first, which is EPSG:25832's own axis order, and the CRS names
+    // the line so the two orders on the panel cannot be confused.
+    expect(projection.requests).toEqual([
+      {
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        coordinates: [10.5, 51.25],
+      },
+    ]);
+    expect(screen.getByText("EPSG:25832")).toBeInTheDocument();
+    // The geographic line stays: it is still true, and it is what the basemap
+    // and every WGS 84 import are in.
+    expect(screen.getByText("51.250000, 10.500000")).toBeInTheDocument();
+  });
+
+  it("projects where the pointer stopped, not every frame it crossed", async () => {
+    // MapLibre fires `mousemove` per frame and in API mode each projection is
+    // an HTTP round trip, so the readout debounces rather than asking sixty
+    // times for a single sweep.
+    storeMetric();
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.1, 51.1);
+    map.moveTo(10.2, 51.2);
+    map.moveTo(10.5, 51.25);
+
+    await waitFor(() => {
+      expect(projection.requests).toHaveLength(1);
+    });
+    expect(projection.requests[0]?.coordinates).toEqual([10.5, 51.25]);
+  });
+
+  it("keeps the geographic line when the projection fails", async () => {
+    // `CRSNotice` is where a broken projection is explained; blanking the
+    // readout as well would take away the one coordinate that is still true.
+    storeMetric();
+    projection.respond = () => Promise.reject(new Error("no zone"));
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.5, 51.25);
+
+    await waitFor(() => {
+      expect(projection.requests).toHaveLength(1);
+    });
+    expect(screen.getByText("51.250000, 10.500000")).toBeInTheDocument();
+    expect(screen.queryByText("EPSG:25832")).toBeNull();
+  });
+
+  it("asks nothing of a backend that cannot project", async () => {
+    storeMetric();
+    projection.canReprojectForDisplay = false;
+    const map = new FakeMap();
+    renderDisplay(map);
+
+    map.moveTo(10.5, 51.25);
+
+    await waitFor(() => {
+      expect(screen.getByText("51.250000, 10.500000")).toBeInTheDocument();
+    });
+    expect(projection.requests).toEqual([]);
   });
 });
