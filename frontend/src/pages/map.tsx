@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ShieldAlert, X } from "lucide-react";
-import type { MapGeoJSONFeature, MapMouseEvent } from "maplibre-gl";
+import type { MapGeoJSONFeature } from "maplibre-gl";
 import { Link, useSearchParams } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Badge } from "@/ui/components/badge";
@@ -11,7 +11,6 @@ import { MapView } from "@/map/map-view";
 import { MapPanel } from "@/map/map-panel";
 import { LayerControl } from "@/map/layer-control";
 import { CoordinateDisplay } from "@/map/coordinate-display";
-import { FeaturePopup } from "@/map/feature-popup";
 import { DrawToolbar } from "@/map/draw-toolbar";
 import { FeatureEditor } from "@/map/feature-editor";
 import { NewFeatureDialog } from "@/map/new-feature-dialog";
@@ -136,9 +135,6 @@ function WorkspaceStart({
 }
 
 function MapWorkspace() {
-  const [clickedFeature, setClickedFeature] =
-    useState<MapGeoJSONFeature | null>(null);
-  const [popupLngLat, setPopupLngLat] = useState<[number, number] | null>(null);
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   const [newGeometry, setNewGeometry] = useState<Geometry | null>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -260,25 +256,28 @@ function MapWorkspace() {
     [drawingDisabled, acceptDrawn],
   );
 
-  const handleFeatureClick = useCallback(
-    (features: MapGeoJSONFeature[], e: MapMouseEvent) => {
-      const feature = features[0];
-      if (feature) {
-        setClickedFeature(feature);
-        setPopupLngLat([e.lngLat.lng, e.lngLat.lat]);
-        const props = feature.properties as Record<string, unknown>;
-        const featureId = props["id"] ?? feature.id;
-        if (featureId != null) {
-          setEditingFeatureId(
-            typeof featureId === "string"
-              ? featureId
-              : String(featureId as number),
-          );
-        }
-      }
-    },
-    [],
-  );
+  /**
+   * A click on the map selects: it opens the editor on the feature and, through
+   * `ModelLayers`, marks it on the canvas.
+   *
+   * There is no second surface any more. A popup used to open here as well,
+   * rendering every property of the clicked feature as an HTML string built by
+   * concatenation — a model field was therefore markup, and a feature imported
+   * from OSM or a CSV could carry any. The editor shows the same properties as
+   * form fields, which is both the safe way and the editable one.
+   */
+  const handleFeatureClick = useCallback((features: MapGeoJSONFeature[]) => {
+    const feature = features[0];
+    if (!feature) return;
+
+    const props = feature.properties as Record<string, unknown>;
+    const featureId = props["id"] ?? feature.id;
+    if (featureId == null) return;
+
+    setEditingFeatureId(
+      typeof featureId === "string" ? featureId : String(featureId as number),
+    );
+  }, []);
 
   const handleSelectFromValidation = useCallback((featureId: string) => {
     setEditingFeatureId(featureId);
@@ -296,7 +295,7 @@ function MapWorkspace() {
         onFeatureClick={handleFeatureClick}
       >
         <DrawProvider onFinish={handleDrawFinish}>
-          <ModelLayers display={display} />
+          <ModelLayers display={display} selectedFeatureId={editingFeatureId} />
           <DrawGuard disabled={drawingDisabled} />
           <DrawShortcuts />
           <WorkspaceDrawToolbar
@@ -309,7 +308,6 @@ function MapWorkspace() {
           />
           <LayerControl />
           <CoordinateDisplay />
-          <FeaturePopup feature={clickedFeature} lngLat={popupLngLat} />
           <FeatureEditor
             featureId={editingFeatureId}
             onClose={() => {

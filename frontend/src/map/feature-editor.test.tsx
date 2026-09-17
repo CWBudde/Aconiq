@@ -13,6 +13,10 @@ import {
   RLS19_JUNCTION_TYPES,
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
+import {
+  RLS19_PARKING_FACILITY_TYPES,
+  RLS19_PARKING_LOT_TYPES,
+} from "@/model/rls19-parking";
 import type { ModelFeature, ModelReceiver } from "@/model/types";
 import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { getLocale, overwriteGetLocale, type Locale } from "@/i18n/runtime";
@@ -297,6 +301,18 @@ function numberField(featureId: string, propertyKey: string): HTMLInputElement {
   return element;
 }
 
+/**
+ * A select's Radix trigger, resolved through the id its label points at — the
+ * same pairing the number fields use, and the field's only accessible name.
+ */
+function selectField(featureId: string, propertyKey: string): HTMLElement {
+  const element = document.getElementById(`${featureId}-${propertyKey}`);
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`no select rendered for ${propertyKey}`);
+  }
+  return element;
+}
+
 function type(input: HTMLElement, value: string) {
   fireEvent.change(input, { target: { value } });
   fireEvent.blur(input);
@@ -449,30 +465,68 @@ describe("FeatureEditor height field", () => {
 });
 
 describe("FeatureEditor source type", () => {
-  it("offers the three source types and shows the current one", () => {
-    edit(lineSource);
-    fireEvent.click(screen.getByLabelText(m.label_source_type()));
-
-    for (const option of [
-      m.option_source_type_point(),
-      m.option_source_type_line(),
-      m.option_source_type_area(),
-    ]) {
-      expect(screen.getByRole("option", { name: option })).toBeInTheDocument();
+  /** The derived value, which names itself after its own label. */
+  function derivedSourceType(featureId: string): HTMLElement {
+    const element = document.getElementById(`${featureId}-source-type`);
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("no derived source type rendered");
     }
+    return element;
+  }
+
+  it("reads the source type off the geometry rather than off a select", () => {
+    // The select this replaces could be set to `area` on a LineString. The map
+    // drew the result happily and `aconiq run` refused it with
+    // `source.geometry.mismatch`, with nothing on the panel to say so.
+    edit(lineSource);
+
+    expect(
+      screen.queryByRole("combobox", { name: m.label_source_type() }),
+    ).toBeNull();
+    expect(derivedSourceType("road-1")).toHaveTextContent(
+      m.option_source_type_line(),
+    );
+    expect(screen.getByText(m.msg_source_type_derived())).toBeInTheDocument();
   });
 
-  it("writes the chosen type to the model", () => {
-    edit(lineSource);
+  it("derives a point and an area from their geometries too", () => {
+    // "Point" is also the geometry type one row up, which is why the value is
+    // read through the id its label points at rather than by its text.
+    edit(source);
+    expect(derivedSourceType("src-1")).toHaveTextContent(
+      m.option_source_type_point(),
+    );
 
-    fireEvent.click(screen.getByLabelText(m.label_source_type()));
+    useModelStore.getState().reset();
+    edit({ ...building, id: "area-1", kind: "source", sourceType: "area" });
+    expect(derivedSourceType("area-1")).toHaveTextContent(
+      m.option_source_type_area(),
+    );
+  });
+
+  it("offers to correct a declared type the geometry contradicts", () => {
+    // Deriving alone would leave an imported contradiction unrepairable: the
+    // property is still in the model and no control could rewrite it.
+    edit({ ...lineSource, sourceType: "area" });
+
     fireEvent.click(
-      screen.getByRole("option", { name: m.option_source_type_area() }),
+      screen.getByRole("button", {
+        name: m.action_apply_derived_source_type(),
+      }),
     );
 
     expect(useModelStore.getState().getFeatureById("road-1")?.sourceType).toBe(
-      "area",
+      "line",
     );
+  });
+
+  it("offers no correction when the declaration already agrees", () => {
+    edit(lineSource);
+    expect(
+      screen.queryByRole("button", {
+        name: m.action_apply_derived_source_type(),
+      }),
+    ).toBeNull();
   });
 
   it("shows the RLS-19 fields only for a line source", () => {
@@ -706,15 +760,16 @@ describe("FeatureEditor RLS-19 provenance", () => {
 
 describe("FeatureEditor RLS-19 select fields", () => {
   /**
-   * Three comboboxes are on the panel for a line source, in DOM order: the
-   * source type, the surface type and the junction type. Only the first has a
-   * label associated with it, so the other two are addressed by position.
+   * Addressed through the label, which is what every select on the panel now
+   * carries: they used to be picked out by their position among the
+   * comboboxes, and a Radix trigger with no label reads out as its own current
+   * value — so three of them in a row announced "SMA", "none", "none".
    */
   function acousticsSelect(which: "surface" | "junction"): HTMLElement {
-    const boxes = screen.getAllByRole("combobox");
-    const box = boxes[which === "surface" ? 1 : 2];
-    if (!box) throw new Error(`no ${which} select rendered`);
-    return box;
+    return selectField(
+      "road-1",
+      which === "surface" ? "surface_type" : "junction_type",
+    );
   }
 
   it("offers every surface type RLS-19 tabulates, plus the run default", () => {
@@ -855,5 +910,407 @@ describe("FeatureEditor receiver", () => {
     });
 
     expect(screen.getByLabelText(m.label_height_m())).toHaveValue(9);
+  });
+});
+
+/**
+ * The panel as a dialog: it opens on a selection, it is the only thing that
+ * can edit that selection, and it has to be leavable by keyboard. None of that
+ * was true while it was a bare `MapPanel` — focus stayed wherever the click
+ * left it, Tab walked out into the page behind the map, and Escape did
+ * nothing.
+ */
+describe("FeatureEditor dialog behaviour", () => {
+  it("is a dialog named by its own heading", () => {
+    edit(building);
+
+    const dialog = screen.getByRole("dialog", { name: m.option_building() });
+    expect(dialog).toContainElement(screen.getByRole("heading", { level: 3 }));
+  });
+
+  it("takes focus when it opens, without landing in a field", () => {
+    // Focusing the first input would turn the next keystroke into an edit of a
+    // feature the user has only just clicked on.
+    edit(building);
+
+    expect(document.activeElement).toBe(screen.getByRole("dialog"));
+  });
+
+  it("closes on Escape and hands focus back to the content", () => {
+    const onClose = vi.fn();
+    useModelStore.getState().addFeature(building);
+    render(
+      <div id={MAIN_CONTENT_ID} tabIndex={-1}>
+        <FeatureEditor featureId="bld-1" onClose={onClose} />
+      </div>,
+    );
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalled();
+    expect(document.activeElement?.id).toBe(MAIN_CONTENT_ID);
+  });
+
+  it("wraps Tab and Shift+Tab inside the panel", () => {
+    edit(building);
+    const close = screen.getByRole("button", {
+      name: m.tooltip_close_editor(),
+    });
+    const remove = deleteButton();
+
+    remove.focus();
+    fireEvent.keyDown(remove, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(remove);
+  });
+
+  it("leaves the delete confirmation its own Escape", () => {
+    // React bubbles synthetic events through portals, so without the
+    // `contains` guard an Escape meant for the confirmation would close the
+    // panel underneath it as well.
+    const onClose = vi.fn();
+    useModelStore.getState().addFeature(building);
+    render(<FeatureEditor featureId="bld-1" onClose={onClose} />);
+
+    fireEvent.click(deleteButton());
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * RLS-19 Nr. 3.4. `validate.ts` has refused a half-filled Parkplatz since it
+ * learned the §3.4 rules, and until now no control on this panel could answer
+ * the finding: the fields simply did not exist.
+ */
+describe("FeatureEditor Parkplatz fields", () => {
+  const parking: ModelFeature = {
+    id: "lot-1",
+    kind: "source",
+    sourceType: "area",
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [10, 51],
+          [10.001, 51],
+          [10.001, 51.001],
+          [10, 51.001],
+          [10, 51],
+        ],
+      ],
+    },
+  };
+
+  it("appears on an area source and not on a line one", () => {
+    edit(parking);
+    expect(screen.getByText(m.label_section_parking())).toBeInTheDocument();
+
+    useModelStore.getState().reset();
+    edit(lineSource);
+    expect(screen.queryByText(m.label_section_parking())).toBeNull();
+  });
+
+  it("writes the number of Stellplätze", () => {
+    edit(parking);
+
+    type(numberField("lot-1", "rls19_parking_num_spaces"), "40");
+
+    expect(storedProperties("lot-1")["rls19_parking_num_spaces"]).toBe(40);
+  });
+
+  it("offers the Tabelle 6 rows and no run default to fall back on", () => {
+    // An omitted Parkplatztyp is not Pkw — it selects the surcharge row, and
+    // the rows differ by up to 10 dB. Offering "use run default" here would be
+    // a control promising a default the standard does not have.
+    edit(parking);
+    fireEvent.click(selectField("lot-1", "rls19_parking_type"));
+
+    for (const lotType of RLS19_PARKING_LOT_TYPES) {
+      expect(screen.getByRole("option", { name: lotType })).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole("option", { name: m.option_use_run_default() }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: m.option_not_set() }),
+    ).toBeInTheDocument();
+  });
+
+  it("writes a Parkplatztyp and clears the finding that asked for it", () => {
+    // One parking property present is what marks the feature as a Parkplatz at
+    // all, so the rest become findings rather than silence.
+    useModelStore.getState().addFeature({
+      ...parking,
+      properties: { rls19_parking_num_spaces: 40 },
+    });
+    render(<FeatureEditor featureId="lot-1" onClose={vi.fn()} />);
+
+    expect(
+      screen.getByText(/rls19_parking_type is required/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(selectField("lot-1", "rls19_parking_type"));
+    fireEvent.click(screen.getByRole("option", { name: "lkw-omnibus" }));
+
+    expect(storedProperties("lot-1")["rls19_parking_type"]).toBe("lkw-omnibus");
+    expect(screen.queryByText(/rls19_parking_type is required/)).toBeNull();
+  });
+
+  it("does not promise a run default for the movement rates", () => {
+    // Zero is the silence sentinel: a rate that quietly fell back to a default
+    // would report an occupied Parkplatz as inaudible, or as busier than it is.
+    edit(parking);
+    const rate = numberField("lot-1", "rls19_parking_movements_per_space_day");
+
+    expect(rate).not.toHaveAttribute("placeholder");
+    expect(
+      screen.getAllByText(m.msg_parking_movements_required()),
+    ).toHaveLength(2);
+  });
+
+  it("offers the Tabelle 7 facility types that seed both rates", () => {
+    edit(parking);
+    fireEvent.click(selectField("lot-1", "rls19_parking_facility_type"));
+
+    for (const facility of RLS19_PARKING_FACILITY_TYPES) {
+      expect(
+        screen.getByRole("option", { name: facility }),
+      ).toBeInTheDocument();
+    }
+  });
+});
+
+/** Schall 03, the normative Anlage-2 property set. */
+describe("FeatureEditor Schall 03 fields", () => {
+  it("offers the track fields on a line source", () => {
+    edit(lineSource);
+
+    expect(screen.getByText(m.label_section_rail())).toBeInTheDocument();
+    expect(
+      numberField("road-1", "schall03_strecke_max_kph"),
+    ).toBeInTheDocument();
+  });
+
+  it("writes a Fahrbahnart from the Tabelle 7 vocabulary", () => {
+    edit(lineSource);
+
+    fireEvent.click(selectField("road-1", "schall03_fahrbahn"));
+    fireEvent.click(screen.getByRole("option", { name: "feste-fahrbahn" }));
+
+    expect(storedProperties("road-1")["schall03_fahrbahn"]).toBe(
+      "feste-fahrbahn",
+    );
+  });
+
+  it("reports how many Zugarten the feature carries without editing them", () => {
+    // A form for `schall03_operations` would be a second model editor, and
+    // half of one is how an Fz composition silently loses a vehicle.
+    edit({
+      ...lineSource,
+      properties: {
+        schall03_operations: [
+          { zugart: "ICE-3-Vollzug" },
+          { zugart: "Gueterzug-E-Lok" },
+        ],
+      },
+    });
+
+    expect(screen.getByText(m.msg_rail_arrays_read_only())).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("removes a boolean's key instead of writing false", () => {
+    // Every Schall 03 flag defaults to false, so absent and `false` mean the
+    // same thing — and absent keeps a row of `false`s out of every model diff.
+    edit(lineSource);
+
+    fireEvent.click(screen.getByLabelText(m.label_rail_is_station()));
+    expect(storedProperties("road-1")["schall03_is_station"]).toBe(true);
+
+    fireEvent.click(screen.getByLabelText(m.label_rail_is_station()));
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_is_station",
+    );
+  });
+
+  it("offers the barrier properties on a barrier", () => {
+    edit(barrier);
+
+    expect(
+      screen.getByLabelText(m.label_rail_reflective()),
+    ).toBeInTheDocument();
+    expect(numberField("bar-1", "schall03_base_height_m")).toBeInTheDocument();
+    expect(selectField("bar-1", "schall03_wall_surface")).toBeInTheDocument();
+  });
+
+  it("offers a building only the reflection opt-in and the wall surface", () => {
+    // A building shields unconditionally — `height_m` is already required — so
+    // there is nothing to switch on for that half.
+    edit(building);
+
+    expect(
+      screen.getByLabelText(m.label_rail_reflecting_wall()),
+    ).toBeInTheDocument();
+    expect(selectField("bld-1", "schall03_wall_surface")).toBeInTheDocument();
+    expect(screen.queryByLabelText(m.label_rail_reflective())).toBeNull();
+  });
+});
+
+/**
+ * A number field's own bounds, enforced where the model is written.
+ *
+ * `min`/`max` on an `<input type="number">` only mark it `:invalid`: constraint
+ * validation gates a form submission and this panel submits nothing, so every
+ * one of these values used to reach the model as typed and be refused by the Go
+ * extractor at run time — with no frontend validator in between, because
+ * `validate.ts` carries no Schall 03 rules.
+ */
+describe("FeatureEditor number field constraints", () => {
+  it("refuses a Brückentyp outside the tabulated rows", () => {
+    edit(lineSource);
+
+    const input = numberField("road-1", "schall03_bridge_type");
+    type(input, "5");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_bridge_type",
+    );
+    expect(
+      screen.getByText(m.msg_field_range({ min: 0, max: 4 })),
+    ).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("refuses a fractional Brückentyp, which names a row and not a quantity", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_bridge_type"), "1.5");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_bridge_type",
+    );
+    expect(screen.getByText(m.msg_field_integer_only())).toBeInTheDocument();
+  });
+
+  it("refuses a water-body fraction above one", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_water_body_fraction"), "2");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_water_body_fraction",
+    );
+    expect(
+      screen.getByText(m.msg_field_range({ min: 0, max: 1 })),
+    ).toBeInTheDocument();
+  });
+
+  it("takes a value its step would not land on, because step is not a bound", () => {
+    // `schall03_strecke_max_kph` steps by 1 from a `min` of 0.1. Reading the
+    // step as a constraint would refuse the smallest legal speed there is.
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_strecke_max_kph"), "0.1");
+
+    expect(storedProperties("road-1")["schall03_strecke_max_kph"]).toBe(0.1);
+  });
+
+  it("reports a lower bound on its own without inventing an upper one", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_strecke_max_kph"), "0");
+
+    expect(screen.getByText(m.msg_field_min({ min: 0.1 }))).toBeInTheDocument();
+  });
+
+  it("takes the refusal away once a legal value replaces it", () => {
+    edit(lineSource);
+
+    const input = numberField("road-1", "schall03_bridge_type");
+    type(input, "5");
+    type(input, "3");
+
+    expect(storedProperties("road-1")["schall03_bridge_type"]).toBe(3);
+    expect(
+      screen.queryByText(m.msg_field_range({ min: 0, max: 4 })),
+    ).toBeNull();
+    expect(input).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("leaves a field with no bounds alone", () => {
+    // `reflection_surcharge_db` is a correction that may go either way, so it
+    // carries neither `min` nor `max` and nothing here may invent one.
+    edit(lineSource);
+
+    type(numberField("road-1", "reflection_surcharge_db"), "-2.5");
+
+    expect(storedProperties("road-1")["reflection_surcharge_db"]).toBe(-2.5);
+  });
+});
+
+/**
+ * The validator's findings, on the panel that can act on them. The workspace's
+ * validation panel offers a "go to" that opens this editor, and until now the
+ * reader arrived with nothing repeating what the problem had been.
+ */
+describe("FeatureEditor inline issues", () => {
+  const heightless: ModelFeature = {
+    id: "bld-2",
+    kind: "building",
+    geometry: building.geometry,
+  };
+
+  it("shows the feature's own findings, code and all", () => {
+    edit(heightless);
+
+    expect(screen.getByText("Building requires height_m")).toBeInTheDocument();
+    expect(screen.getByText("building.height.required")).toBeInTheDocument();
+  });
+
+  it("shows nothing for a feature the validator is happy with", () => {
+    edit(building);
+
+    expect(screen.queryByText("building.height.required")).toBeNull();
+  });
+
+  it("shows both findings where one code fires twice", () => {
+    // A Parkplatz missing both movement rates pushes
+    // `source.rls19.parking.movements.missing` once per period. Keyed on the
+    // code alone React kept one of the two, so the panel asked for half of what
+    // the run needs — and the reader who fixed the one line it showed came
+    // straight back to the same refusal.
+    edit({
+      id: "lot-2",
+      kind: "source",
+      sourceType: "area",
+      properties: { rls19_parking_num_spaces: 200, rls19_parking_type: "pkw" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [10, 51],
+            [10.001, 51],
+            [10.001, 51.001],
+            [10, 51.001],
+            [10, 51],
+          ],
+        ],
+      },
+    });
+
+    expect(
+      screen.getAllByText("source.rls19.parking.movements.missing"),
+    ).toHaveLength(2);
+  });
+
+  it("shows no other feature's findings", () => {
+    useModelStore.getState().addFeature(heightless);
+    edit(building);
+
+    expect(screen.queryByText("building.height.required")).toBeNull();
   });
 });

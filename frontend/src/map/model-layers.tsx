@@ -8,6 +8,7 @@ import type { DisplayModel } from "./display-model";
 import { CRSNotice } from "./crs-notice";
 import {
   SOURCE_IDS,
+  SELECTED_STATE_KEY,
   BUILDING_LAYERS,
   BARRIER_LAYERS,
   SOURCE_LAYERS,
@@ -25,6 +26,21 @@ const EMPTY_COLLECTION: GeoJSON.FeatureCollection = {
 // every time and re-run it forever.
 const NO_FEATURES: ModelFeature[] = [];
 const NO_RECEIVERS: ModelReceiver[] = [];
+
+export interface ModelLayersProps {
+  /** The projected model this component draws — see the note below. */
+  display: DisplayModel;
+  /**
+   * The feature or receiver the editor is open on, or `null`.
+   *
+   * It arrives here rather than being read from a store because this component
+   * is the one place that knows which GeoJSON source a model id ended up in —
+   * `featuresToSourceGroups` splits the features by kind, and a feature state
+   * is addressed by (source, id). A selection highlight written anywhere else
+   * would have to duplicate that split.
+   */
+  selectedFeatureId?: string | null;
+}
 
 /**
  * Syncs the model store features to MapLibre GeoJSON sources.
@@ -45,7 +61,10 @@ const NO_RECEIVERS: ModelReceiver[] = [];
  * holds it, because the draw gate needs the same answer: a model the map could
  * not project is one no finished shape can be placed in either.
  */
-export function ModelLayers({ display }: { display: DisplayModel }) {
+export function ModelLayers({
+  display,
+  selectedFeatureId = null,
+}: ModelLayersProps) {
   const map = useMap();
   const previousContentCountRef = useRef(0);
 
@@ -134,7 +153,107 @@ export function ModelLayers({ display }: { display: DisplayModel }) {
     previousContentCountRef.current = contentCount;
   }, [map, ready, features, receivers, calcArea]);
 
+  useFeatureSelection(map, selectedFeatureId, features, receivers);
+
   return <CRSNotice model={display} />;
+}
+
+/** Which GeoJSON source a feature of this kind is drawn from. */
+const SOURCE_ID_FOR_KIND: Record<ModelFeature["kind"], string> = {
+  source: SOURCE_IDS.sources,
+  building: SOURCE_IDS.buildings,
+  barrier: SOURCE_IDS.barriers,
+};
+
+interface SelectionTarget {
+  source: string;
+  id: string;
+}
+
+/**
+ * The (source, id) pair MapLibre needs, or null when the id names nothing that
+ * is currently drawn.
+ *
+ * Null covers more than a typo: a feature the editor is open on is not drawn
+ * while the display model is projecting, and a selected feature can be deleted
+ * out from under the panel. Both must clear the highlight rather than leave a
+ * state key on a feature that no longer exists — `setFeatureState` stores the
+ * state whether or not the feature is there, so a stale write comes back as a
+ * highlight on whatever id is reused next.
+ */
+function selectionTarget(
+  selectedFeatureId: string | null,
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): SelectionTarget | null {
+  if (selectedFeatureId == null || selectedFeatureId === "") return null;
+
+  const feature = features.find((f) => f.id === selectedFeatureId);
+  if (feature) {
+    return { source: SOURCE_ID_FOR_KIND[feature.kind], id: feature.id };
+  }
+
+  const receiver = receivers.find((r) => r.id === selectedFeatureId);
+  if (receiver) {
+    return { source: SOURCE_IDS.receivers, id: receiver.id };
+  }
+
+  return null;
+}
+
+/**
+ * Marks the edited feature on the map, and unmarks the one before it.
+ *
+ * The feature state is a property of the *map*, not of the model: the model is
+ * what a run reads, and a highlight is not an input to anything. So this
+ * writes `feature-state` and never a model property, which is also why it
+ * survives an undo of the edit the panel is making.
+ *
+ * `to-geojson.ts` puts the model id on the emitted feature's `id` member, which
+ * is what makes the pair addressable at all — a GeoJSON source with no feature
+ * ids accepts every `setFeatureState` call and paints none of them.
+ */
+function useFeatureSelection(
+  map: maplibregl.Map | null,
+  selectedFeatureId: string | null,
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): void {
+  const appliedRef = useRef<SelectionTarget | null>(null);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const target = selectionTarget(selectedFeatureId, features, receivers);
+    const applied = appliedRef.current;
+
+    if (
+      applied &&
+      (!target || applied.id !== target.id || applied.source !== target.source)
+    ) {
+      try {
+        map.removeFeatureState(applied, SELECTED_STATE_KEY);
+      } catch (error) {
+        console.error(
+          `ModelLayers: could not clear the selection on "${applied.id}"`,
+          error,
+        );
+      }
+      appliedRef.current = null;
+    }
+
+    if (!target) return;
+
+    try {
+      map.setFeatureState(target, { [SELECTED_STATE_KEY]: true });
+      appliedRef.current = target;
+    } catch (error) {
+      console.error(
+        `ModelLayers: could not select "${target.id}" on the map`,
+        error,
+      );
+    }
+  }, [map, selectedFeatureId, features, receivers]);
 }
 
 /**

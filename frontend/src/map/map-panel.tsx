@@ -22,6 +22,12 @@ export interface MapPanelProps extends React.HTMLAttributes<HTMLDivElement> {
   width?: string;
   /** See-through over the map: for read-only overlays like a coordinate readout. */
   translucent?: boolean;
+  /**
+   * The panel element. A panel that manages focus needs the node — the docked
+   * feature editor traps Tab inside it — and React 19 passes `ref` as an
+   * ordinary prop, so no `forwardRef` wrapper is involved.
+   */
+  ref?: React.Ref<HTMLDivElement>;
   children: React.ReactNode;
 }
 
@@ -48,11 +54,13 @@ export function MapPanel({
   width,
   translucent = false,
   className,
+  ref,
   children,
   ...props
 }: MapPanelProps) {
   return (
     <div
+      ref={ref}
       data-slot="map-panel"
       data-position={position}
       className={cn(

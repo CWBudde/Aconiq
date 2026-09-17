@@ -28,17 +28,22 @@ vi.mock("@/map/map-view", () => ({
     </MapContext>
   ),
 }));
+// Renders the id it was handed: the selection highlight is `ModelLayers`'s
+// job, and the page's half of it is passing the edited feature down.
 vi.mock("@/map/model-layers", () => ({
-  ModelLayers: () => null,
+  ModelLayers: ({
+    selectedFeatureId,
+  }: {
+    selectedFeatureId: string | null;
+  }) => (
+    <div data-testid="model-layers" data-selected={selectedFeatureId ?? ""} />
+  ),
 }));
 vi.mock("@/map/layer-control", () => ({
   LayerControl: () => null,
 }));
 vi.mock("@/map/coordinate-display", () => ({
   CoordinateDisplay: () => null,
-}));
-vi.mock("@/map/feature-popup", () => ({
-  FeaturePopup: () => null,
 }));
 vi.mock("@/map/draw-toolbar", () => ({
   DrawToolbar: ({
@@ -306,6 +311,21 @@ describe("MapPage", () => {
     renderPageAt("/model?select=src-1");
 
     expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+  });
+
+  it("marks the selected feature on the map as well as in the editor", () => {
+    // Before this, nothing on the canvas said which feature the panel was
+    // editing: the editor opened over the layer control and the map looked
+    // exactly as it had.
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPageAt("/model?select=src-1");
+
+    expect(screen.getByTestId("model-layers")).toHaveAttribute(
+      "data-selected",
+      "src-1",
+    );
   });
 
   it("strips the select parameter once it has been honoured", () => {

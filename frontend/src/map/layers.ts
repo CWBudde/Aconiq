@@ -41,6 +41,28 @@ export const LAYER_IDS = {
   contourLabel: "contour-label",
 } as const;
 
+// --- Selection ---
+
+/**
+ * The key {@link SELECTION_STATE} is written under, and the one the paint
+ * expressions below read. `model-layers.tsx` is the only writer.
+ */
+export const SELECTED_STATE_KEY = "selected";
+
+/**
+ * The colour a selected feature is drawn in.
+ *
+ * One colour for every kind, and a colour no kind already uses: the selection
+ * has to be readable against the grey of a building, the red of a source, the
+ * blue of a receiver and the brown of a barrier alike, over a light or a dark
+ * basemap. It is not a theme token because nothing here is CSS — MapLibre
+ * paints the canvas from the style, where a `var(--…)` never resolves.
+ *
+ * Colour is never the only signal: every selected layer also widens, so the
+ * selection survives a monochrome display and a colour-vision deficiency.
+ */
+export const SELECTION_COLOR = "#f59e0b";
+
 // --- Model layer styles ---
 
 export const BUILDING_LAYERS: LayerSpecification[] = [
@@ -49,8 +71,18 @@ export const BUILDING_LAYERS: LayerSpecification[] = [
     type: "fill",
     source: SOURCE_IDS.buildings,
     paint: {
-      "fill-color": "#b0b0b0",
-      "fill-opacity": 0.4,
+      "fill-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#b0b0b0",
+      ],
+      "fill-opacity": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        0.35,
+        0.4,
+      ],
     },
   },
   {
@@ -58,8 +90,18 @@ export const BUILDING_LAYERS: LayerSpecification[] = [
     type: "line",
     source: SOURCE_IDS.buildings,
     paint: {
-      "line-color": "#666666",
-      "line-width": 1,
+      "line-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#666666",
+      ],
+      "line-width": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        3,
+        1,
+      ],
     },
   },
 ];
@@ -70,8 +112,18 @@ export const BARRIER_LAYERS: LayerSpecification[] = [
     type: "line",
     source: SOURCE_IDS.barriers,
     paint: {
-      "line-color": "#8B4513",
-      "line-width": 2.5,
+      "line-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#8B4513",
+      ],
+      "line-width": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        5,
+        2.5,
+      ],
       "line-dasharray": [4, 2],
     },
   },
@@ -84,8 +136,18 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
     source: SOURCE_IDS.sources,
     filter: ["==", ["geometry-type"], "Polygon"],
     paint: {
-      "fill-color": "#e63946",
-      "fill-opacity": 0.2,
+      "fill-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#e63946",
+      ],
+      "fill-opacity": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        0.4,
+        0.2,
+      ],
     },
   },
   {
@@ -94,8 +156,18 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
     source: SOURCE_IDS.sources,
     filter: ["==", ["geometry-type"], "LineString"],
     paint: {
-      "line-color": "#e63946",
-      "line-width": 3,
+      "line-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#e63946",
+      ],
+      "line-width": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        5.5,
+        3,
+      ],
     },
   },
   {
@@ -104,10 +176,25 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
     source: SOURCE_IDS.sources,
     filter: ["==", ["geometry-type"], "Point"],
     paint: {
-      "circle-radius": 5,
+      "circle-radius": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        8,
+        5,
+      ],
       "circle-color": "#e63946",
-      "circle-stroke-width": 1.5,
-      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        3,
+        1.5,
+      ],
+      "circle-stroke-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#ffffff",
+      ],
     },
   },
 ];
@@ -118,10 +205,25 @@ export const RECEIVER_LAYERS: LayerSpecification[] = [
     type: "circle",
     source: SOURCE_IDS.receivers,
     paint: {
-      "circle-radius": 3,
+      "circle-radius": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        6,
+        3,
+      ],
       "circle-color": "#2196F3",
-      "circle-stroke-width": 1,
-      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        2.5,
+        1,
+      ],
+      "circle-stroke-color": [
+        "case",
+        ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
+        SELECTION_COLOR,
+        "#ffffff",
+      ],
     },
   },
 ];
