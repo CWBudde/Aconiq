@@ -67,6 +67,8 @@ class FakeMap {
   readonly sources = new Map<string, { data: unknown }>();
   readonly layers = new Set<string>();
   readonly fitBoundsCalls: [[number, number], [number, number]][] = [];
+  /** Feature states by `${source}/${id}`, the way MapLibre keys them. */
+  readonly featureStates = new Map<string, Record<string, unknown>>();
 
   getStyle() {
     return { sources: {} };
@@ -92,6 +94,23 @@ class FakeMap {
 
   addLayer(layer: { id: string }) {
     this.layers.add(layer.id);
+  }
+
+  setFeatureState(
+    target: { source: string; id: string },
+    state: Record<string, unknown>,
+  ) {
+    const key = `${target.source}/${target.id}`;
+    this.featureStates.set(key, {
+      ...(this.featureStates.get(key) ?? {}),
+      ...state,
+    });
+  }
+
+  removeFeatureState(target: { source: string; id: string }, key: string) {
+    const stored = this.featureStates.get(`${target.source}/${target.id}`);
+    if (!stored) return;
+    Reflect.deleteProperty(stored, key);
   }
 
   fitBounds(bounds: [[number, number], [number, number]]) {
@@ -158,16 +177,25 @@ const AREA: CalcArea = {
 // `ModelLayers` takes the display projection as a prop so that `pages/map.tsx`
 // can hold the one `useDisplayModel` instance and gate drawing on it. The tests
 // still drive the store, so the harness supplies the same hook the page does.
-function Harness() {
-  return <ModelLayers display={useDisplayModel()} />;
+function Harness({ selectedFeatureId }: { selectedFeatureId: string | null }) {
+  return (
+    <ModelLayers
+      display={useDisplayModel()}
+      selectedFeatureId={selectedFeatureId}
+    />
+  );
 }
 
-function renderLayers(map: FakeMap) {
+function renderLayers(map: FakeMap, selectedFeatureId: string | null = null) {
   return render(
     <MapContext value={map as unknown as MapLibreMap}>
-      <Harness />
+      <Harness selectedFeatureId={selectedFeatureId} />
     </MapContext>,
   );
+}
+
+function selectionState(map: FakeMap, source: string, id: string): unknown {
+  return map.featureStates.get(`${source}/${id}`)?.["selected"];
 }
 
 beforeEach(() => {
@@ -367,5 +395,128 @@ describe("ModelLayers", () => {
     expect(drawn(map, SOURCE_IDS.sources).features).toHaveLength(1);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+/**
+ * Which feature the editor is open on, drawn on the map.
+ *
+ * It is a `feature-state` and never a model property: the model is what a run
+ * reads, and a highlight is not an input to anything. The pairing this has to
+ * get right is (source, id) — the features are split into three sources by
+ * kind, and a state written against the wrong one paints nothing and reports
+ * no error.
+ */
+describe("ModelLayers selection", () => {
+  const WGS84_BUILDING: ModelFeature = {
+    id: "bld-1",
+    kind: "building",
+    heightM: 8,
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [10, 51],
+          [10.01, 51],
+          [10.01, 51.01],
+          [10, 51],
+        ],
+      ],
+    },
+  };
+
+  const WGS84_RECEIVER: ModelReceiver = {
+    id: "R1",
+    heightM: 4,
+    geometry: { type: "Point", coordinates: [10.5, 51.5] },
+  };
+
+  function loadWGS84() {
+    useModelStore.getState().loadModel({
+      features: [WGS84_FEATURE, WGS84_BUILDING],
+      receivers: [WGS84_RECEIVER],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+  }
+
+  it("marks a feature on the source its kind is drawn from", () => {
+    loadWGS84();
+    const map = new FakeMap();
+
+    renderLayers(map, "bld-1");
+
+    expect(selectionState(map, SOURCE_IDS.buildings, "bld-1")).toBe(true);
+    // Not on the sources layer, where a kind-blind write would have put it.
+    expect(selectionState(map, SOURCE_IDS.sources, "bld-1")).toBeUndefined();
+  });
+
+  it("marks a receiver on the receiver source", () => {
+    loadWGS84();
+    const map = new FakeMap();
+
+    renderLayers(map, "R1");
+
+    expect(selectionState(map, SOURCE_IDS.receivers, "R1")).toBe(true);
+  });
+
+  it("moves the mark rather than leaving two features highlighted", () => {
+    loadWGS84();
+    const map = new FakeMap();
+    const { rerender } = renderLayers(map, "road");
+
+    rerender(
+      <MapContext value={map as unknown as MapLibreMap}>
+        <Harness selectedFeatureId="R1" />
+      </MapContext>,
+    );
+
+    expect(selectionState(map, SOURCE_IDS.sources, "road")).toBeUndefined();
+    expect(selectionState(map, SOURCE_IDS.receivers, "R1")).toBe(true);
+  });
+
+  it("clears the mark when the editor closes", () => {
+    loadWGS84();
+    const map = new FakeMap();
+    const { rerender } = renderLayers(map, "road");
+
+    rerender(
+      <MapContext value={map as unknown as MapLibreMap}>
+        <Harness selectedFeatureId={null} />
+      </MapContext>,
+    );
+
+    expect(selectionState(map, SOURCE_IDS.sources, "road")).toBeUndefined();
+  });
+
+  it("writes nothing for an id that is in neither collection", () => {
+    // A selected feature can be deleted out from under the panel, and
+    // `setFeatureState` stores a state whether or not the feature exists — so
+    // a stale write comes back as a highlight on whatever id is reused next.
+    loadWGS84();
+    const map = new FakeMap();
+
+    renderLayers(map, "deleted-1");
+
+    expect(map.featureStates.size).toBe(0);
+  });
+
+  it("waits for the reprojection before marking a metric model", async () => {
+    // Nothing is drawn while the display model is projecting, so a state
+    // written then would address a feature that is not in the source yet.
+    useModelStore.getState().loadModel({
+      features: [METRIC_FEATURE],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const map = new FakeMap();
+
+    renderLayers(map, "road");
+    expect(map.featureStates.size).toBe(0);
+
+    await waitFor(() => {
+      expect(selectionState(map, SOURCE_IDS.sources, "road")).toBe(true);
+    });
   });
 });
