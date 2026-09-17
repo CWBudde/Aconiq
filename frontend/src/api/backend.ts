@@ -66,13 +66,16 @@ export interface BackendCapabilities {
    * A projection is reachable, so a model stored in a projected CRS can be
    * moved into WGS84 for the map to draw it.
    *
-   * Browser mode has the Go kernel in memory before the user reaches the map —
-   * `getHealth()` awaits `getKernel()` — so it can project on demand. API mode
-   * has no projector: `internal/api/httpv1` exposes no transform endpoint, and
-   * fetching the 4 MB kernel in a mode that never otherwise loads it, purely to
-   * draw a map, is the wrong trade. There the map says so and points at the
-   * route that works: save the model, then reload, because hydration refetches
-   * with `?crs=EPSG:4326`.
+   * Both shipped modes have one, and it is the same projection in both: browser
+   * mode has the Go kernel in memory before the user reaches the map —
+   * `getHealth()` awaits `getKernel()` — and API mode reaches
+   * `POST /api/v1/transform`, which serves it over the wire rather than making
+   * a mode that never otherwise loads the 4 MB kernel fetch it to draw a map.
+   *
+   * The flag stays all the same: it is a property of this interface, not of the
+   * two implementations that happen to exist. A backend without a projector —
+   * an offline or read-only one — is what it is here for, and the map still has
+   * to say so rather than draw a model in the wrong place.
    */
   readonly canReprojectForDisplay: boolean;
 }
@@ -172,8 +175,9 @@ export interface Backend {
    * Project a flat, interleaved batch of coordinates between two CRS.
    *
    * Rejects unless `capabilities.canReprojectForDisplay`. The one projection
-   * the frontend has: it is the Go kernel's, so the browser cannot place a
-   * model where `aconiq run` would not.
+   * the frontend has — `internal/geo/crstransform`, in process in browser mode
+   * and over the wire in API mode — so neither can place a model where
+   * `aconiq run` would not compute it.
    */
   transformCoordinates(req: TransformRequest): Promise<TransformResponse>;
 }

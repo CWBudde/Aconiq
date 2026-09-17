@@ -78,19 +78,86 @@ describe("httpBackend capabilities", () => {
       runsAgainstSavedModel: true,
       runsChangeExternally: true,
       exportsOutliveRunDelete: true,
-      // No transform endpoint, and the WASM kernel is not loaded here.
-      canReprojectForDisplay: false,
+      // `POST /api/v1/transform` projects server-side, so the map can draw a
+      // model stored in a projected CRS without the 4 MB kernel.
+      canReprojectForDisplay: true,
     });
   });
+});
 
-  it("refuses to project coordinates rather than pretending it cannot be asked", async () => {
-    await expect(
-      httpBackend.transformCoordinates({
+describe("httpBackend.transformCoordinates", () => {
+  it("posts the flat batch to the transform endpoint and returns what it answers", async () => {
+    const mock = stubFetch(
+      jsonResponse({
+        source_crs: "EPSG:25832",
+        target_crs: "EPSG:4326",
+        applied: true,
+        coordinates: [10.0, 50.9],
+      }),
+    );
+
+    const result = await httpBackend.transformCoordinates({
+      source_crs: "EPSG:25832",
+      target_crs: "EPSG:4326",
+      coordinates: [667000, 5644000],
+    });
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/transform"));
+    expect(init.method).toBe("POST");
+
+    const headers = headersOf(init);
+    expect(headers["Content-Type"]).toBe("application/json");
+    // POST is state-changing to the server's middleware even though this
+    // endpoint writes nothing, so the preflight proof still has to travel.
+    expect(headers[CLIENT_HEADER_NAME]).toBeDefined();
+
+    // The batch goes over flat and interleaved, as the kernel takes it.
+    expect(init.body).toBe(
+      JSON.stringify({
         source_crs: "EPSG:25832",
         target_crs: "EPSG:4326",
         coordinates: [667000, 5644000],
       }),
-    ).rejects.toThrow(/save the model and reload/);
+    );
+
+    expect(result).toEqual({
+      source_crs: "EPSG:25832",
+      target_crs: "EPSG:4326",
+      applied: true,
+      coordinates: [10.0, 50.9],
+    });
+  });
+
+  it("surfaces a refused projection as an envelope rather than a bare message", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope(
+          "crs_not_projectable",
+          "project CRS EPSG:4326 is geographic, so the model has to be projected before levels can be computed: longitude -120.000000 falls outside ETRS89 / UTM zones 31 to 34",
+          "only ETRS89 / UTM zones 31 to 34 are supported",
+        ),
+        400,
+      ),
+    );
+
+    const error = await httpBackend
+      .transformCoordinates({
+        source_crs: "EPSG:4326",
+        target_crs: "auto",
+        coordinates: [-120.0, 37.0],
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+    const apiError = asAPIRequestError(error);
+    expect(apiError?.code).toBe("crs_not_projectable");
+    // The projector's own wording reaches the page: the same sentence
+    // `aconiq run` prints for the same site.
+    expect(apiError?.message).toContain("is geographic");
+    expect(apiError?.hint).toContain("zones 31 to 34");
   });
 });
 

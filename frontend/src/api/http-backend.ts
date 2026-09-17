@@ -19,6 +19,7 @@ import type {
 } from "./client";
 import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
+import type { TransformResponse } from "@/wasm/types";
 
 interface RequestOptions {
   method?: "GET" | "POST" | "DELETE";
@@ -88,9 +89,9 @@ export const httpBackend: Backend = {
     // names them in `retained_paths` — a bundle may already have been
     // delivered.
     exportsOutliveRunDelete: true,
-    // No transform endpoint exists, and the WASM kernel is not loaded in this
-    // mode. See `transformCoordinates` below.
-    canReprojectForDisplay: false,
+    // `POST /api/v1/transform` projects a batch server-side, so API mode has a
+    // projector without loading the 4 MB kernel it never otherwise needs.
+    canReprojectForDisplay: true,
   },
 
   getHealth() {
@@ -190,17 +191,12 @@ export const httpBackend: Backend = {
     throw await errorFromResponse(response);
   },
 
-  transformCoordinates() {
-    // The map never calls it (`canReprojectForDisplay` is false); the method
-    // still exists so the interface has no mode-specific hole. `POST
-    // /api/v1/transform` is a design decision of its own, and pulling the 4 MB
-    // kernel into a mode that never otherwise loads it, to draw a map, is not
-    // the way to avoid making it.
-    return Promise.reject(
-      new Error(
-        "Coordinate projection is not available in API mode; save the model and reload, which refetches it in WGS84",
-      ),
-    );
+  transformCoordinates(req) {
+    // The same projection the WASM kernel runs in browser mode and `aconiq run`
+    // runs on the CLI — `internal/geo/crstransform`, reached over the wire here
+    // rather than in process. The frontend grows no second transverse-Mercator
+    // implementation and cannot resolve a zone the CLI would not.
+    return postJSON<TransformResponse>("/api/v1/transform", req);
   },
 
   async saveModel(req) {
