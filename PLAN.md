@@ -1781,6 +1781,25 @@ Three things it leaves live:
   `os.Getenv("UPDATE_GOLDEN") != "1"` rather than calling `golden.UpdateEnabled()`, which accepts
   five spellings. Anything reading that variable goes through the helper.
 
+- [ ] **The backend coverage guard's parser cross-check compares two different populations.**
+      `scripts/coverage-check.sh` asserts that `go tool cover -func`'s total and the raw profile sum
+      agree to 0.05 pp, on the stated premise that "if the two ever disagree, one of them is parsing
+      the profile wrongly and neither number can be trusted". **That premise is wrong**, and the
+      check fires as a result: it reported "the backend coverage measurement failed its sanity
+      checks" on this branch while the coverage was fine.
+      Diagnosed rather than guessed. `go tool cover -func` reports **functions**, so it attributes
+      nothing from a file holding only package-level declarations —
+      `internal/app/cli/run_modules_table.go` has zero top-level `func`s, being the `runModuleTable`
+      var of function literals. The profile carries 233 files, `-func` 232. The two numbers are
+      therefore both correct over different populations, and the gap is the dropped file's weight:
+      0.0048 pp on `main` (78.9048 exact vs 78.9 printed), 0.0638 pp here (79.1638 vs 79.1). `main`
+      passes by luck, not by construction, and any change to overall coverage can move an unrelated
+      branch across the 0.05 threshold.
+      The fix is to compare like with like — evaluate the exact ratio over only the files `-func`
+      attributes — not to widen the tolerance, which would keep a check whose stated meaning is
+      false. The headline percentage should stay the full-profile one. `go-coverage` is advisory, so
+      nothing is blocked meanwhile; what is damaged is the credibility of a warning that says the
+      measurement cannot be trusted when it can.
 - [ ] Expand `internal/qa/` with loaders for standard test tasks, result comparison with tolerances
       and outlier reports, and a snapshot exporter for debugging.
 - [ ] Expand fuzz/property tests: geometry robustness, numeric monotonicity where applicable.
