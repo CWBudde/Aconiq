@@ -9,14 +9,30 @@ import (
 	"time"
 )
 
+// sseOutcome carries the reader goroutine's single answer.
+//
+// One channel rather than two, and deliberately never closed. The shape this
+// replaces used a result channel and an error channel with `defer close(...)`
+// on both, which is a coin flip: once the goroutine has queued its error and
+// run its defers, the *closed and empty* result channel is ready alongside it,
+// and `select` picks uniformly among ready cases. The helper then returns
+// `(nil, nil)` and the caller reports "expected a refusal" over a refusal that
+// was sitting right there. Measured at 5008 out of 10000 on the exact shape,
+// and invisible in 500 runs of the test that provokes it, because whether the
+// goroutine reaches its defers before the caller reaches the select is a
+// scheduling accident.
+//
+// Buffered, so the goroutine abandoned by the timeout path below can still send
+// without blocking forever.
+type sseOutcome struct {
+	seen map[string]string
+	err  error
+}
+
 func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(seen map[string]string) bool) (map[string]string, error) {
-	resultCh := make(chan map[string]string, 1)
-	errCh := make(chan error, 1)
+	outcome := make(chan sseOutcome, 1)
 
 	go func() {
-		defer close(resultCh)
-		defer close(errCh)
-
 		// bufio.Reader rather than bufio.Scanner, and the difference is the
 		// whole point. A Scanner hands back the final partial line as an
 		// ordinary token at EOF, so a stream that ends mid-frame yields a
@@ -34,10 +50,10 @@ func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(se
 				// Whatever `line` holds here was never terminated, so the
 				// server had not finished writing it. It is not an event.
 				if errors.Is(err, io.EOF) {
-					errCh <- errors.New("sse stream ended before expected events")
-				} else {
-					errCh <- err
+					err = errors.New("sse stream ended before expected events")
 				}
+
+				outcome <- sseOutcome{err: err}
 
 				return
 			}
@@ -56,7 +72,7 @@ func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(se
 
 				seen[currentEvent] = strings.TrimSpace(strings.TrimPrefix(line, "data: "))
 				if done(seen) {
-					resultCh <- seen
+					outcome <- sseOutcome{seen: seen}
 					return
 				}
 			}
@@ -67,10 +83,8 @@ func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(se
 	defer timer.Stop()
 
 	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return nil, err
+	case got := <-outcome:
+		return got.seen, got.err
 	case <-timer.C:
 		_ = body.Close()
 		return nil, errors.New("timed out waiting for sse events")
