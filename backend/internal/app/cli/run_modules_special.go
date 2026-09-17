@@ -120,6 +120,13 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 		propagationConfig.ReceiverTerrainZ = terrainElevationAt(input.terrain, centerX, centerY)
 	}
 
+	// The DTM is the ground h_m is measured above, so it travels with the
+	// config rather than being reduced to the single elevation above. It is
+	// already wrapped into the compute CRS. A project without one leaves it
+	// nil, and the module falls back to the ground elevations the model
+	// carries — correct on flat ground, blind to a rise in between.
+	propagationConfig.TerrainModel = input.terrain
+
 	receiverOutputs, err := rls19road.ComputeReceiverOutputs(receivers, roadSources, barriers, propagationConfig)
 	if err != nil {
 		input.log.addf("rls19 compute failed: %v", err)

@@ -424,7 +424,16 @@ func appendParkingContributions(
 		dz := receiverZ - sourceZ
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 
-		hm := computeMeanHeight(parking.Center, receiver, sourceZ, receiverZ, cfg.Terrain)
+		hm := computeMeanHeight(groundPath{
+			source:          parking.Center,
+			receiver:        receiver,
+			sourceZ:         sourceZ,
+			receiverZ:       receiverZ,
+			sourceGroundZ:   parking.ElevationM,
+			receiverGroundZ: cfg.ReceiverTerrainZ,
+			profiles:        cfg.Terrain,
+			dtm:             cfg.TerrainModel,
+		})
 		att := computeAttenuation(planDist, slantDist, hm, cfg)
 
 		att = applyShielding(att, parkingShielding(parking, receiver, sourceZ, receiverZ, effectiveBarriers, cfg))
