@@ -70,30 +70,33 @@ describe("DrawToolbar tools", () => {
     ).toBeInTheDocument();
   });
 
-  it.each(tools)("reports $mode to the caller when clicked", ({ mode, label }) => {
-    const { onModeChange } = renderToolbar();
+  it.each(tools)(
+    "reports $mode to the caller when clicked",
+    ({ mode, label }) => {
+      const { onModeChange } = renderToolbar();
 
-    fireEvent.click(button(label()));
+      fireEvent.click(button(label()));
 
-    expect(onModeChange).toHaveBeenCalledWith(mode);
-  });
+      expect(onModeChange).toHaveBeenCalledWith(mode);
+    },
+  );
 
-  it.each(tools)("presses only the $mode button while it is active", ({
-    mode,
-    label,
-  }) => {
-    // `aria-pressed` is the only thing that tells a screen-reader user which
-    // tool is armed; the sighted cue is the button variant alone.
-    renderToolbar({ activeMode: mode });
+  it.each(tools)(
+    "presses only the $mode button while it is active",
+    ({ mode, label }) => {
+      // `aria-pressed` is the only thing that tells a screen-reader user which
+      // tool is armed; the sighted cue is the button variant alone.
+      renderToolbar({ activeMode: mode });
 
-    for (const tool of tools) {
-      expect(button(tool.label())).toHaveAttribute(
-        "aria-pressed",
-        String(tool.mode === mode),
-      );
-    }
-    expect(button(label())).toHaveAttribute("aria-pressed", "true");
-  });
+      for (const tool of tools) {
+        expect(button(tool.label())).toHaveAttribute(
+          "aria-pressed",
+          String(tool.mode === mode),
+        );
+      }
+      expect(button(label())).toHaveAttribute("aria-pressed", "true");
+    },
+  );
 
   it("presses nothing in the static mode the toolbar rests in", () => {
     renderToolbar({ activeMode: "static" });
@@ -182,7 +185,10 @@ describe("DrawToolbar when drawing is refused", () => {
   it("names the tool while it is usable", async () => {
     // The reason must not leak into the enabled state: `disabledReason` is
     // passed unconditionally by `pages/map.tsx`.
-    renderToolbar({ disabled: false, disabledReason: "Model is in EPSG:25832" });
+    renderToolbar({
+      disabled: false,
+      disabledReason: "Model is in EPSG:25832",
+    });
 
     expect(await tooltipFor(m.tool_draw_point())).toBe(m.tool_draw_point());
   });

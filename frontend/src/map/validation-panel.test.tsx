@@ -76,7 +76,9 @@ describe("ValidationPanel on an empty model", () => {
     // map is now mounted from the start, so this is the first thing seen.
     renderPanel();
 
-    expect(screen.getByText(m.msg_validation_nothing_yet())).toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_validation_nothing_yet()),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 

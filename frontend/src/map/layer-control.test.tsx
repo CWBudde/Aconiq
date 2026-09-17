@@ -29,7 +29,9 @@ class FakeMap {
 
   setLayoutProperty(layerId: string, name: string, value: unknown) {
     if (this.missing.has(layerId)) {
-      throw new Error(`The layer '${layerId}' does not exist in the map's style`);
+      throw new Error(
+        `The layer '${layerId}' does not exist in the map's style`,
+      );
     }
     this.calls.push([layerId, name, value]);
   }

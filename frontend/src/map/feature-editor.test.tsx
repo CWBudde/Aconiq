@@ -337,9 +337,9 @@ describe("FeatureEditor labels follow the locale", () => {
     useLocale("de");
     edit(lineSource);
 
-    expect(numberField("road-1", "speed_pkw_kph").labels?.[0]).toHaveTextContent(
-      "Pkw",
-    );
+    expect(
+      numberField("road-1", "speed_pkw_kph").labels?.[0],
+    ).toHaveTextContent("Pkw");
     expect(
       numberField("road-1", "traffic_night_krad").labels?.[0],
     ).toHaveTextContent("Krad");
@@ -465,7 +465,10 @@ describe("FeatureEditor RLS-19 number fields", () => {
     const input = numberField("road-1", "road_speed_kph");
 
     expect(input).toHaveValue(null);
-    expect(input).toHaveAttribute("placeholder", m.placeholder_use_run_default());
+    expect(input).toHaveAttribute(
+      "placeholder",
+      m.placeholder_use_run_default(),
+    );
   });
 
   it("commits on blur", () => {
@@ -506,9 +509,9 @@ describe("FeatureEditor RLS-19 number fields", () => {
 
     type(numberField("road-1", "road_speed_kph"), "");
 
-    expect(useModelStore.getState().getFeatureById("road-1")).not.toHaveProperty(
-      "properties",
-    );
+    expect(
+      useModelStore.getState().getFeatureById("road-1"),
+    ).not.toHaveProperty("properties");
   });
 
   it("never writes NaN, whatever is pasted into the field", () => {
@@ -567,11 +570,17 @@ describe("FeatureEditor RLS-19 number fields", () => {
     // cannot. The distinction is carried only by the `min` attributes.
     edit(lineSource);
 
-    expect(numberField("road-1", "reflection_surcharge_db")).not.toHaveAttribute(
+    expect(
+      numberField("road-1", "reflection_surcharge_db"),
+    ).not.toHaveAttribute("min");
+    expect(numberField("road-1", "traffic_day_pkw")).toHaveAttribute(
       "min",
+      "0",
     );
-    expect(numberField("road-1", "traffic_day_pkw")).toHaveAttribute("min", "0");
-    expect(numberField("road-1", "speed_pkw_kph")).toHaveAttribute("min", "0.1");
+    expect(numberField("road-1", "speed_pkw_kph")).toHaveAttribute(
+      "min",
+      "0.1",
+    );
   });
 
   it("offers a speed and a traffic volume for all four vehicle classes", () => {
@@ -582,7 +591,9 @@ describe("FeatureEditor RLS-19 number fields", () => {
 
     for (const suffix of ["pkw", "lkw1", "lkw2", "krad"]) {
       expect(numberField("road-1", `speed_${suffix}_kph`)).toBeInTheDocument();
-      expect(numberField("road-1", `traffic_day_${suffix}`)).toBeInTheDocument();
+      expect(
+        numberField("road-1", `traffic_day_${suffix}`),
+      ).toBeInTheDocument();
       expect(
         numberField("road-1", `traffic_night_${suffix}`),
       ).toBeInTheDocument();
@@ -685,7 +696,9 @@ describe("FeatureEditor RLS-19 select fields", () => {
     fireEvent.click(acousticsSelect("junction"));
 
     for (const junction of RLS19_JUNCTION_TYPES) {
-      expect(screen.getByRole("option", { name: junction })).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: junction }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -758,7 +771,9 @@ describe("FeatureEditor receiver", () => {
     useModelStore.getState().addReceiver(receiver);
     render(<FeatureEditor featureId="rcv-1" onClose={vi.fn()} />);
 
-    expect(screen.queryByLabelText(m.label_source_type())).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(m.label_source_type()),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(m.label_section_source_acoustics()),
     ).not.toBeInTheDocument();

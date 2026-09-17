@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { NOISE_LEVEL_RAMP, rampToExpression, type ColorStop } from "./color-ramp";
+import {
+  NOISE_LEVEL_RAMP,
+  rampToExpression,
+  type ColorStop,
+} from "./color-ramp";
 
 /**
  * The ramp has no importers yet — "Results on the map" is what will read it —
