@@ -9,6 +9,7 @@ import {
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { useMap } from "./use-map";
+import type { DrawApi, DrawSelectionListeners } from "./use-draw-context";
 
 /** Drawing modes — "calc-area" maps to polygon internally but signals a different intent */
 export type DrawMode =
@@ -23,11 +24,7 @@ interface UseDrawOptions {
   onFinish?: (mode: DrawMode, feature: GeoJSON.Feature) => void;
 }
 
-interface UseDrawReturn {
-  activeMode: DrawMode;
-  setMode: (mode: DrawMode) => void;
-  cancel: () => void;
-}
+type UseDrawReturn = DrawApi;
 
 /** "calc-area" reuses terra-draw's polygon mode but is tracked separately. */
 function terraModeFor(mode: DrawMode): string {
@@ -39,8 +36,16 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   const drawRef = useRef<TerraDraw | null>(null);
   const [activeMode, setActiveMode] = useState<DrawMode>("static");
   const activeModeRef = useRef<DrawMode>("static");
+  // Published so that a consumer holding state inside terra-draw can re-place
+  // it after a rebuild — see `DrawApi.instanceEpoch`.
+  const [instanceEpoch, setInstanceEpoch] = useState(0);
   const onFinishRef = useRef(options.onFinish);
   onFinishRef.current = options.onFinish;
+
+  // A set rather than a single callback: the subscribers are hooks rendered
+  // under the provider, and the set outlives the terra-draw instance so a map
+  // rebuild does not silently drop them.
+  const selectionListeners = useRef(new Set<DrawSelectionListeners>());
 
   useEffect(() => {
     if (!map) return;
@@ -92,6 +97,26 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     draw.setMode(terraModeFor(activeModeRef.current));
 
     draw.on("finish", (id: string | number) => {
+      // Select mode finishes too. Terra-draw fires "finish" at the end of a
+      // drag, and the handler below is written for a *newly drawn* shape: it
+      // puts the tools back to "static" and removes the feature from the map.
+      // Run in select mode it would disarm the tool mid-edit and delete the
+      // feature being reshaped — so a reshape is never a *draw* finish, and
+      // `use-geometry-edit.ts` owns the select-mode events instead.
+      //
+      // It is still the end of a gesture, and the only event that says so:
+      // terra-draw leaves a dropped feature selected, so `deselect` comes once
+      // for a whole run of drags rather than once per drag. Forwarding it is
+      // what lets the owner project and seal per drag; swallowing it entirely
+      // left the undo run open and, over a metric model, the reshape unwritten
+      // until the selection was cleared.
+      if (activeModeRef.current === "select") {
+        for (const listener of selectionListeners.current) {
+          listener.onFinish?.(String(id));
+        }
+        return;
+      }
+
       const snapshot = draw.getSnapshot();
       const feature = snapshot.find((f) => f.id === id);
       if (feature && onFinishRef.current) {
@@ -109,7 +134,29 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
       }
     });
 
+    draw.on("change", (ids: (string | number)[], type: string) => {
+      const asStrings = ids.map((id) => String(id));
+      for (const listener of selectionListeners.current) {
+        listener.onChange?.(asStrings, type);
+      }
+    });
+
+    draw.on("select", (id: string | number) => {
+      for (const listener of selectionListeners.current) {
+        listener.onSelect?.(String(id));
+      }
+    });
+
+    draw.on("deselect", (id: string | number) => {
+      for (const listener of selectionListeners.current) {
+        listener.onDeselect?.(String(id));
+      }
+    });
+
     drawRef.current = draw;
+    // After `drawRef`, so the re-render this schedules finds the new instance
+    // in place: a consumer re-arming on the epoch calls straight back in.
+    setInstanceEpoch((epoch) => epoch + 1);
 
     return () => {
       try {
@@ -140,5 +187,72 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     setActiveMode("static");
   }, []);
 
-  return { activeMode, setMode, cancel };
+  const addFeatures = useCallback((features: GeoJSON.Feature[]): boolean => {
+    const draw = drawRef.current;
+    if (!draw) return false;
+    try {
+      const results = draw.addFeatures(
+        features as Parameters<TerraDraw["addFeatures"]>[0],
+      );
+      // Terra-draw validates rather than throws, and a rejected feature leaves
+      // an id nothing holds — which `selectFeature` would then throw on. The
+      // caller checks this before selecting.
+      return results.every((result) => result.valid);
+    } catch (error) {
+      console.warn("useDraw: terra-draw rejected a feature", error);
+      return false;
+    }
+  }, []);
+
+  const selectFeature = useCallback((id: string) => {
+    try {
+      drawRef.current?.selectFeature(id);
+    } catch (error) {
+      // Reported rather than swallowed: unlike `removeFeatures`, there is no
+      // benign reason for this to fail once `addFeatures` has said the feature
+      // was accepted, and a silent failure leaves select mode armed on nothing.
+      console.warn("useDraw: could not select feature", id, error);
+    }
+  }, []);
+
+  const removeFeatures = useCallback((ids: string[]) => {
+    try {
+      drawRef.current?.removeFeatures(ids);
+    } catch {
+      // Terra-draw throws on an id its store no longer holds, and the callers
+      // are teardown paths that cannot know: a mode change clears the store
+      // underneath them, and a map rebuild replaces it outright. Nothing is
+      // left to remove in either case.
+    }
+  }, []);
+
+  const getFeature = useCallback((id: string): GeoJSON.Feature | undefined => {
+    const snapshot = drawRef.current?.getSnapshot() ?? [];
+    return snapshot.find((f) => String(f.id) === id) as
+      | GeoJSON.Feature
+      | undefined;
+  }, []);
+
+  const subscribeSelection = useCallback(
+    (listeners: DrawSelectionListeners) => {
+      const set = selectionListeners.current;
+      set.add(listeners);
+      return () => {
+        set.delete(listeners);
+      };
+    },
+    [],
+  );
+
+  return {
+    activeMode,
+    instanceEpoch,
+    setMode,
+    cancel,
+    addFeatures,
+    selectFeature,
+    removeFeatures,
+    getFeature,
+    subscribeSelection,
+  };
 }

@@ -26,6 +26,8 @@ import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
 import { useDrawProjection } from "@/map/use-draw-projection";
 import type { DrawProjectionStatus } from "@/map/use-draw-projection";
+import { useGeometryEdit } from "@/map/use-geometry-edit";
+import type { DisplayModel } from "@/map/display-model";
 import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { backend } from "@/api/backend";
 import type { CalcArea, Geometry, Position } from "@/model/types";
@@ -138,6 +140,11 @@ function WorkspaceStart({
 
 function MapWorkspace() {
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
+  // Bumped on every selection, a repeat of the id already open included.
+  // `GeometryEdit` re-arms on it: a feature deselected on the map has had its
+  // terra-draw copy removed, so clicking it again reaches only MapLibre, which
+  // sets the id this page already holds and would otherwise change nothing.
+  const [selectionEpoch, setSelectionEpoch] = useState(0);
   const [newGeometry, setNewGeometry] = useState<Geometry | null>(null);
   // The keyboard path into the same dialog. A separate flag rather than a
   // sentinel geometry: the dialog tells the two apart by `geometry === null`,
@@ -284,10 +291,12 @@ function MapWorkspace() {
     setEditingFeatureId(
       typeof featureId === "string" ? featureId : String(featureId as number),
     );
+    setSelectionEpoch((epoch) => epoch + 1);
   }, []);
 
   const handleSelectFromValidation = useCallback((featureId: string) => {
     setEditingFeatureId(featureId);
+    setSelectionEpoch((epoch) => epoch + 1);
     setShowValidation(false);
   }, []);
 
@@ -306,6 +315,12 @@ function MapWorkspace() {
           {/* After the model layers, so the computed levels read on top of the
               sources that produced them rather than under a building fill. */}
           <ResultLayers />
+          <GeometryEdit
+            display={display}
+            featureId={editingFeatureId}
+            selectionEpoch={selectionEpoch}
+            disabled={drawingDisabled}
+          />
           <DrawGuard disabled={drawingDisabled} />
           <DrawShortcuts />
           <WorkspaceDrawToolbar
@@ -445,6 +460,35 @@ function DrawRequest({
     setParams({}, { replace: true });
   }, [requested, disabled, startDrawing, setParams]);
 
+  return null;
+}
+
+/**
+ * Feeds the selected feature into terra-draw's select mode, so it can be
+ * reshaped, and reads the result back into the model.
+ *
+ * A component rather than a call in `MapWorkspace` for the reason
+ * `draw-provider.tsx` gives: everything that talks to terra-draw has to run
+ * **inside** `DrawProvider`, and being a child is what makes that structural
+ * instead of a convention.
+ *
+ * It takes the same `drawingDisabled` every other way into an active tool takes.
+ * A model the map cannot project cannot be reshaped either — the reshape goes
+ * back through the same inverse transform a drawn shape does, and refusing
+ * afterwards would mean refusing a shape the user had already moved.
+ */
+function GeometryEdit({
+  display,
+  featureId,
+  selectionEpoch,
+  disabled,
+}: {
+  display: DisplayModel;
+  featureId: string | null;
+  selectionEpoch: number;
+  disabled: boolean;
+}) {
+  useGeometryEdit({ display, featureId, selectionEpoch, disabled });
   return null;
 }
 

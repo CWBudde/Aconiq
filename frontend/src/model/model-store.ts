@@ -2,8 +2,10 @@ import { create } from "zustand";
 import type {
   CalcArea,
   FeatureKind,
+  Geometry,
   ModelFeature,
   ModelReceiver,
+  Position,
 } from "./types";
 import { CommandStack } from "./command-stack";
 
@@ -37,18 +39,35 @@ interface ModelState {
 
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
+  /**
+   * Replaces a feature's geometry and nothing else, as a **coalescing** edit.
+   *
+   * Separate from {@link updateFeature} because of where it is called from: a
+   * reshape on the map arrives as one command per pointer move, and each of
+   * those going onto the undo stack as its own step is a Ctrl+Z that walks the
+   * shape back a pixel at a time. The commands carry `geometry:<id>`, so the
+   * stack merges a run of them into one step and `sealHistory` ends it.
+   */
+  updateFeatureGeometry: (id: string, geometry: Geometry) => void;
   removeFeature: (id: string) => void;
   reset: () => void;
   markClean: () => void;
 
   undo: () => void;
   redo: () => void;
+  /**
+   * Ends the current coalescing run, so the next edit is a new undo step even
+   * when it carries the same key. Called by whoever knows a gesture finished.
+   */
+  sealHistory: () => void;
 
   getFeatureById: (id: string) => ModelFeature | undefined;
   featuresByKind: (kind: FeatureKind) => ModelFeature[];
 
   addReceiver: (receiver: ModelReceiver) => void;
   updateReceiver: (receiver: ModelReceiver) => void;
+  /** {@link updateFeatureGeometry} for a receiver, which is always one point. */
+  updateReceiverGeometry: (id: string, position: Position) => void;
   removeReceiver: (id: string) => void;
   loadModel: (model: LoadedModel) => void;
   mergeModel: (model: LoadedModel) => MergeSkips;
@@ -233,6 +252,33 @@ export const useModelStore = create<ModelState>((set, get) => {
       });
     },
 
+    // `previous` is read here, before the command runs — the same shape
+    // `updateFeature` has, and the reason `CommandStack` keeps the *oldest*
+    // `undo` when it merges. Each step of a drag holds the geometry it
+    // personally replaced, so only this first one holds the shape the drag
+    // started from.
+    updateFeatureGeometry: (id, geometry) => {
+      const previous = get().features.find((f) => f.id === id);
+      if (!previous) return;
+      const next: ModelFeature = { ...previous, geometry };
+      commandStack.execute({
+        description: `Reshape ${previous.kind} ${id}`,
+        coalesceKey: `geometry:${id}`,
+        execute: () => {
+          set((s) => ({
+            features: s.features.map((f) => (f.id === id ? next : f)),
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => ({
+            features: s.features.map((f) => (f.id === id ? previous : f)),
+            dirty: true,
+          }));
+        },
+      });
+    },
+
     removeFeature: (id) => {
       const feature = get().features.find((f) => f.id === id);
       if (!feature) return;
@@ -280,6 +326,10 @@ export const useModelStore = create<ModelState>((set, get) => {
       commandStack.redo();
     },
 
+    sealHistory: () => {
+      commandStack.seal();
+    },
+
     getFeatureById: (id) => {
       return get().features.find((f) => f.id === id);
     },
@@ -321,6 +371,31 @@ export const useModelStore = create<ModelState>((set, get) => {
             receivers: s.receivers.map((r) =>
               r.id === receiver.id ? previous : r,
             ),
+            dirty: true,
+          }));
+        },
+      });
+    },
+
+    updateReceiverGeometry: (id, position) => {
+      const previous = get().receivers.find((r) => r.id === id);
+      if (!previous) return;
+      const next: ModelReceiver = {
+        ...previous,
+        geometry: { type: "Point", coordinates: position },
+      };
+      commandStack.execute({
+        description: `Move receiver ${id}`,
+        coalesceKey: `geometry:${id}`,
+        execute: () => {
+          set((s) => ({
+            receivers: s.receivers.map((r) => (r.id === id ? next : r)),
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set((s) => ({
+            receivers: s.receivers.map((r) => (r.id === id ? previous : r)),
             dirty: true,
           }));
         },

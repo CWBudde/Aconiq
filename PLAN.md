@@ -1535,9 +1535,26 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       from — a state written against the wrong source paints nothing and reports no error. The
       docked editor is now the one click surface, and it shows a feature's properties as form
       fields rather than as an HTML string built by concatenation from values an import supplied.
-- [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
-      change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
-      `CommandStack` first so drags do not become one step per mousemove.
+- [x] **Geometry editing** (#56): the selected feature is fed into select mode and reshaped back
+      into the model (`map/use-geometry-edit.ts`). Five constraints it leaves live. **A reshape is
+      not a _draw_ finish** — `use-draw.ts`'s finish handler resets the mode to "static" and removes
+      the feature, which in select mode would disarm the tool and delete the feature being reshaped
+      — but the event is still the end of a gesture, and the only one that says so: terra-draw
+      leaves a dropped feature selected, so `deselect` arrives once for a whole run of drags.
+      Select-mode `finish` is therefore forwarded to the edit owner and is the per-drag commit and
+      seal boundary. **Two commit triggers, chosen by the store's CRS**: in `DISPLAY_CRS` the
+      inverse is the identity so every `change` commits, while over a metric model the latest
+      geometry is held and projected once per drag — otherwise a drag costs one
+      `POST /api/v1/transform` per mousemove. **The merge keeps the newest `execute` and the oldest
+      `undo`** (`model/command-stack.ts`), because the geometry commands capture `previous` before
+      they run. **Terra-draw's copy is its own**: an undo or any other outside write leaves it
+      stale, so a session re-arms when the store's geometry object is no longer the one it wrote,
+      and on `DrawApi.instanceEpoch`, because a basemap switch rebuilds the instance and empties its
+      store. **One inverse transform, two callers** (`map/use-inverse-projection.ts`), so the map
+      still has exactly one place where a coordinate travels into the model; it is newest-wins, and
+      that is safe here only because terra-draw's geometry is cumulative. Left out: `Multi*`
+      geometry is refused rather than silently reduced to its first ring, and a metric reshape whose
+      projection fails is reported by the feature snapping back rather than by a notice.
 - [ ] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
       are still reported by count and not edited, so a rail model's Zugarten still have to be
       written into the model file by hand. That is a decision rather than a gap: a form for them is
