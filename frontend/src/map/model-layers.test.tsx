@@ -6,6 +6,7 @@ import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { MapContext } from "./use-map";
+import { useDisplayModel } from "./display-model";
 import { ModelLayers } from "./model-layers";
 import { SOURCE_IDS } from "./layers";
 
@@ -154,10 +155,17 @@ const AREA: CalcArea = {
   },
 };
 
+// `ModelLayers` takes the display projection as a prop so that `pages/map.tsx`
+// can hold the one `useDisplayModel` instance and gate drawing on it. The tests
+// still drive the store, so the harness supplies the same hook the page does.
+function Harness() {
+  return <ModelLayers display={useDisplayModel()} />;
+}
+
 function renderLayers(map: FakeMap) {
   return render(
     <MapContext value={map as unknown as MapLibreMap}>
-      <ModelLayers />
+      <Harness />
     </MapContext>,
   );
 }
@@ -236,12 +244,17 @@ describe("ModelLayers", () => {
       ],
     ]);
 
-    // A reprojected model draws, and drawing into it is still refused. Over a
-    // workspace with content the start panel is down and the toolbar can only
-    // say it in a tooltip, so this notice is the one surface that explains a
-    // `?draw=1` which appeared to do nothing.
-    expect(screen.getByRole("status")).toHaveTextContent(
-      m.msg_draw_disabled_crs({ crs: "EPSG:25832" }),
+    // A reprojected model draws, and — since the inverse transform landed —
+    // drawing into it is allowed, so the notice says where the model is stored
+    // and stops there. A refusal here would be the stale premise it used to
+    // carry: the projector that drew this model is the same one a finished
+    // shape travels back through.
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(
+      m.msg_map_crs_reprojected({ crs: "EPSG:25832" }),
+    );
+    expect(notice).not.toHaveTextContent(
+      m.msg_draw_disabled_no_projection({ crs: "EPSG:25832" }),
     );
   });
 
@@ -329,7 +342,7 @@ describe("ModelLayers", () => {
     expect(state.requests).toEqual([]);
     expect(screen.getByRole("status")).toHaveTextContent("EPSG:25832");
     expect(screen.getByRole("status")).toHaveTextContent(
-      m.msg_draw_disabled_crs({ crs: "EPSG:25832" }),
+      m.msg_draw_disabled_no_projection({ crs: "EPSG:25832" }),
     );
   });
 

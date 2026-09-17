@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import type { Map } from "maplibre-gl";
 import MapPage from "./map";
 import { MapContext } from "@/map/use-map";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
+import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import { m } from "@/i18n/messages";
 
 /**
@@ -59,10 +66,23 @@ vi.mock("@/map/feature-editor", () => ({
     ),
 }));
 // Renders only when it is open, which is the signal that a drawn shape
-// reached the page at all.
+// reached the page at all, and carries the geometry it was handed — the
+// coordinates the store is about to be written with, which is the whole
+// question on a metric model.
 vi.mock("@/map/new-feature-dialog", () => ({
-  NewFeatureDialog: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="new-feature-dialog" /> : null,
+  NewFeatureDialog: ({
+    open,
+    geometry,
+  }: {
+    open: boolean;
+    geometry: unknown;
+  }) =>
+    open ? (
+      <div
+        data-testid="new-feature-dialog"
+        data-geometry={JSON.stringify(geometry)}
+      />
+    ) : null,
 }));
 vi.mock("@/map/validation-panel", () => ({
   ValidationPanel: () => null,
@@ -83,7 +103,8 @@ vi.mock("terra-draw", () => {
       stop = vi.fn();
       // Captured so a test can play terra-draw finishing a shape. The adapter
       // hands the page WGS84 coordinates whatever the model is stored in,
-      // which is the whole reason the page has to refuse.
+      // which is the whole reason the finish path has an inverse transform on
+      // it.
       on = vi.fn((event: string, handler: (id: string) => void) => {
         if (event === "finish") draw.finish = handler;
       });
@@ -108,6 +129,55 @@ vi.mock("terra-draw-maplibre-gl-adapter", () => ({
   TerraDrawMapLibreGLAdapter: vi.fn(),
 }));
 
+/**
+ * The one projection the page has, faked so the direction it is asked for is
+ * visible. `map/draw-projection.parity.test.ts` runs the real kernel against
+ * PROJ's own vectors — a fake answers in whichever direction it was told to, so
+ * it can never catch a swapped source/target.
+ */
+const projection = vi.hoisted(() => {
+  /** Multiplies by 100 000, so a projected coordinate is recognisable on sight. */
+  const scaled = (req: TransformRequest): Promise<TransformResponse> =>
+    Promise.resolve({
+      source_crs: req.source_crs,
+      target_crs: req.target_crs,
+      applied: true,
+      coordinates: req.coordinates.map((value) => value * 100000),
+    });
+
+  const value: {
+    canReprojectForDisplay: boolean;
+    requests: TransformRequest[];
+    respond: (req: TransformRequest) => Promise<TransformResponse>;
+    readonly scaled: (req: TransformRequest) => Promise<TransformResponse>;
+  } = {
+    canReprojectForDisplay: true,
+    requests: [],
+    respond: scaled,
+    scaled,
+  };
+  return value;
+});
+
+vi.mock("@/api/backend", () => ({
+  backend: {
+    get capabilities() {
+      return {
+        kind: "browser",
+        canExport: false,
+        runsAgainstSavedModel: false,
+        runsChangeExternally: false,
+        exportsOutliveRunDelete: false,
+        canReprojectForDisplay: projection.canReprojectForDisplay,
+      };
+    },
+    transformCoordinates: (req: TransformRequest) => {
+      projection.requests.push(req);
+      return projection.respond(req);
+    },
+  },
+}));
+
 /** The handler `useDraw` registers on terra-draw's "finish" event. */
 const draw: { finish: ((id: string) => void) | null } = { finish: null };
 
@@ -123,6 +193,9 @@ describe("MapPage", () => {
   beforeEach(() => {
     draw.finish = null;
     useModelStore.getState().reset();
+    projection.canReprojectForDisplay = true;
+    projection.requests = [];
+    projection.respond = projection.scaled;
   });
 
   function renderPage() {
@@ -259,8 +332,9 @@ describe("MapPage", () => {
   });
 
   it("takes a drawn shape into the page for a model the map draws in", () => {
-    // The positive control for the refusal below: with the store in WGS84 the
-    // finished shape reaches the page and opens the new-feature dialog.
+    // A store already in WGS84 needs no transform, and must not pay for one:
+    // the dialog opens on the same tick the shape is finished, with the
+    // coordinates terra-draw emitted.
     renderPageAt("/model?draw=1");
 
     expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
@@ -271,14 +345,158 @@ describe("MapPage", () => {
       draw.finish?.("drawn-1");
     });
 
-    expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
+    const dialog = screen.getByTestId("new-feature-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(JSON.parse(dialog.dataset["geometry"] ?? "null")).toEqual({
+      type: "Polygon",
+      coordinates: [DRAWN_RING],
+    });
+    expect(projection.requests).toEqual([]);
   });
 
-  it("disables drawing and refuses a finished shape in a metric model", () => {
-    // terra-draw emits WGS84 whatever the store is in, and the finish handler
-    // writes straight into the model. Accepting the shape would mix degrees
-    // into a model held in metres — a round trip through the map quietly
-    // becoming the model.
+  it("moves a drawn shape into the store's CRS before the page sees it", async () => {
+    // terra-draw emits WGS84 whatever the store is in. Landing those degrees
+    // in a model held in metres is the map quietly becoming the model, so the
+    // finish path asks for the inverse of the display projection — WGS84 in,
+    // the store's CRS out, and the target named explicitly rather than left to
+    // `auto`, which would resolve a zone from the shape instead of honouring
+    // the one the model is already in.
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPageAt("/model?draw=1");
+
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-disabled",
+      "false",
+    );
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
+    });
+    // Two requests, in this order. The page holds the map's one
+    // `useDisplayModel` instance — `ModelLayers` is mocked out here, so this is
+    // the page's own — which projects the workspace *out* of the store's CRS
+    // for the map. The second is this test's subject: the same transform
+    // inverted, carrying the finished shape back in.
+    expect(projection.requests).toEqual([
+      {
+        source_crs: "EPSG:25832",
+        target_crs: "EPSG:4326",
+        coordinates: [10, 51],
+      },
+      {
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        coordinates: DRAWN_RING.flat(),
+      },
+    ]);
+    const dialog = screen.getByTestId("new-feature-dialog");
+    expect(JSON.parse(dialog.dataset["geometry"] ?? "null")).toEqual({
+      type: "Polygon",
+      coordinates: [
+        DRAWN_RING.map((position) => position.map((value) => value * 100000)),
+      ],
+    });
+  });
+
+  it("says the shape is being projected while the answer is out", async () => {
+    // The finish path is synchronous and the transform is not. A shape that
+    // simply disappeared for the length of a round trip is what the old CRS
+    // gate was put there to avoid, so the wait is on screen.
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    let answer: ((response: TransformResponse) => void) | null = null;
+    projection.respond = () =>
+      new Promise<TransformResponse>((resolve) => {
+        answer = resolve;
+      });
+    renderPageAt("/model?draw=1");
+
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    expect(
+      screen.getByText(m.msg_draw_projecting({ crs: "EPSG:25832" })),
+    ).toBeVisible();
+    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+
+    act(() => {
+      answer?.({
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        applied: true,
+        coordinates: DRAWN_RING.flat().map((value) => value * 100000),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(m.msg_draw_projecting({ crs: "EPSG:25832" })),
+    ).toBeNull();
+  });
+
+  it("keeps a failed projection out of the model and says so", async () => {
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    const fixtureFeatures = useModelStore.getState().features;
+    projection.respond = () => Promise.reject(new Error("zone out of range"));
+    renderPageAt("/model?draw=1");
+
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          m.msg_draw_projection_failed({
+            crs: "EPSG:25832",
+            reason: "zone out of range",
+          }),
+        ),
+      ).toBeVisible();
+    });
+    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+    expect(useModelStore.getState().calcArea).toBeNull();
+    // Reference identity: a failure may not touch what the store already holds.
+    expect(useModelStore.getState().features).toBe(fixtureFeatures);
+    expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+
+    // The notice stays until it is read, and then goes.
+    fireEvent.click(screen.getByRole("button", { name: m.action_close() }));
+    expect(
+      screen.queryByText(
+        m.msg_draw_projection_failed({
+          crs: "EPSG:25832",
+          reason: "zone out of range",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a finished shape where no projector is reachable", () => {
+    // The gate is the capability, not the CRS: what cannot be done honestly is
+    // landing a WGS84 shape in a metric model with nothing to move it.
+    projection.canReprojectForDisplay = false;
     useModelStore.getState().loadModel({
       features: [source],
       receivers: [],
@@ -293,35 +511,9 @@ describe("MapPage", () => {
     expect(toolbar.getAttribute("data-disabled-reason")).toContain(
       "EPSG:25832",
     );
-
-    act(() => {
-      draw.finish?.("drawn-1");
-    });
-
-    expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
-    expect(useModelStore.getState().calcArea).toBeNull();
-    // Reference identity: nothing on the map side may write a coordinate back.
-    expect(useModelStore.getState().features).toBe(fixtureFeatures);
-    expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
-    expect(useModelStore.getState().crs).toBe("EPSG:25832");
-  });
-
-  it("does not arm a tool from the draw parameter in a metric model", () => {
     // `?draw=1` was a way past the disabled toolbar: it armed point mode, the
-    // user drew a shape, and `handleDrawFinish` dropped it without a word.
-    useModelStore.getState().loadModel({
-      features: [source],
-      receivers: [],
-      calcArea: null,
-      crs: "EPSG:25832",
-    });
-    const fixtureFeatures = useModelStore.getState().features;
-    renderPageAt("/model?draw=1");
-
-    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
-      "data-mode",
-      "static",
-    );
+    // user drew a shape, and the finish handler dropped it without a word.
+    expect(toolbar).toHaveAttribute("data-mode", "static");
     // Stripped even when refused, or a reload would re-ask.
     expect(screen.getByTestId("location-search").textContent).toBe("");
 
@@ -330,16 +522,111 @@ describe("MapPage", () => {
     });
 
     expect(screen.queryByTestId("new-feature-dialog")).toBeNull();
+    expect(projection.requests).toEqual([]);
+    expect(useModelStore.getState().calcArea).toBeNull();
     // Reference identity: nothing on the map side may write a coordinate back.
     expect(useModelStore.getState().features).toBe(fixtureFeatures);
     expect(useModelStore.getState().features[0]).toBe(fixtureFeatures[0]);
     expect(useModelStore.getState().crs).toBe("EPSG:25832");
   });
 
-  it("disables Start drawing in an empty metric workspace and says why", () => {
-    // The other entry point the finish-time refusal did not cover. The panel
+  it("refuses drawing where the model's own CRS could not be projected", async () => {
+    // `readCollectionCRS` takes any `EPSG:<n>` an import declares, while the
+    // kernel supports a fixed set — so a model in EPSG:3035 reaches the store
+    // and every transform of it fails. `canReprojectForDisplay` is global and
+    // stays true, so it cannot see this; what can is the display projection
+    // having already failed on the same transform the draw path would make.
+    projection.respond = () =>
+      Promise.reject(new Error("unsupported EPSG code 3035"));
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:3035",
+    });
+    renderPageAt("/model?draw=1");
+
+    const toolbar = screen.getByTestId("draw-toolbar");
+    await waitFor(() => {
+      expect(toolbar).toHaveAttribute("data-disabled", "true");
+    });
+    expect(toolbar.getAttribute("data-disabled-reason")).toBe(
+      m.msg_draw_disabled_crs_unsupported({ crs: "EPSG:3035" }),
+    );
+    // `?draw=1` armed point mode on mount, while the display projection was
+    // still out and the gate still open. `DrawGuard` is what disarms a mode a
+    // late refusal has invalidated, and this is the case it exists for — the
+    // refusal here can only ever arrive after the tool is already armed.
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-mode",
+        "static",
+      );
+    });
+  });
+
+  it("holds the toolbar shut while a finished shape is still projecting", async () => {
+    // Terra-draw has already taken the finished shape off the map, so a second
+    // one accepted now would make the first stale and drop it with nothing
+    // shown — the silent loss the whole projection path exists to avoid.
+    let answer: ((response: TransformResponse) => void) | null = null;
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPageAt("/model?draw=1");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-disabled",
+        "false",
+      );
+    });
+
+    projection.respond = () =>
+      new Promise<TransformResponse>((resolve) => {
+        answer = resolve;
+      });
+    act(() => {
+      draw.finish?.("drawn-1");
+    });
+
+    const toolbar = screen.getByTestId("draw-toolbar");
+    await waitFor(() => {
+      expect(toolbar).toHaveAttribute("data-disabled", "true");
+    });
+    expect(toolbar.getAttribute("data-disabled-reason")).toBe(
+      m.msg_draw_disabled_projecting({ crs: "EPSG:25832" }),
+    );
+
+    await waitFor(() => {
+      expect(answer).not.toBeNull();
+    });
+    act(() => {
+      answer?.({
+        source_crs: "EPSG:4326",
+        target_crs: "EPSG:25832",
+        applied: true,
+        coordinates: DRAWN_RING.flat().map((v) => v * 100000),
+      });
+    });
+
+    // And opens again once the shape has landed, rather than staying shut.
+    await waitFor(() => {
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-disabled",
+        "false",
+      );
+    });
+  });
+
+  it("disables Start drawing without a projector and says why", () => {
+    // The other entry point the finish-time refusal does not cover. The panel
     // stays up on a refused `?draw=1` precisely because it is what carries the
     // reason — the toolbar can only say it in a tooltip.
+    projection.canReprojectForDisplay = false;
     useModelStore.getState().loadModel({
       features: [],
       receivers: [],
@@ -356,8 +643,47 @@ describe("MapPage", () => {
     ).toBeDisabled();
     // The toolbar's wording, not a second one invented for this surface.
     expect(
-      screen.getByText(m.msg_draw_disabled_crs({ crs: "EPSG:25832" })),
+      screen.getByText(
+        m.msg_draw_disabled_no_projection({ crs: "EPSG:25832" }),
+      ),
     ).toBeVisible();
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "static",
+    );
+  });
+
+  it("offers Start drawing over a metric model it can project", () => {
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPage();
+
+    expect(
+      screen.getByRole("button", { name: m.action_start_drawing() }),
+    ).toBeEnabled();
+  });
+
+  it("cancels the armed tool on Escape", () => {
+    // Esc is the shape's way out. It goes through the same `cancel` the
+    // toolbar's X calls, and it is armed only while a tool is: an always-on
+    // binding calls `preventDefault` and would take Esc from every dialog on
+    // the route.
+    renderPage();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_start_drawing() }),
+    );
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-mode",
+      "point",
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
     expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
       "data-mode",
       "static",

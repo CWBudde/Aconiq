@@ -4,7 +4,7 @@ import { useMap } from "./use-map";
 import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { featuresToSourceGroups, receiversToGeoJSON } from "@/model/to-geojson";
 import { computeWorkspaceBounds, toLngLatBounds } from "./extent";
-import { useDisplayModel } from "./display-model";
+import type { DisplayModel } from "./display-model";
 import { CRSNotice } from "./crs-notice";
 import {
   SOURCE_IDS,
@@ -36,13 +36,17 @@ const NO_RECEIVERS: ModelReceiver[] = [];
  * as they were — a stale model still drawn, in the wrong place, is the bug this
  * component had.
  *
- * It renders the notice itself rather than returning `null` so that there is
- * exactly one `useDisplayModel` instance on the map, and therefore one
- * projection per store change.
+ * It renders the notice itself rather than returning `null` so that the map has
+ * one place where an unprojectable model is explained.
+ *
+ * The answer arrives as a prop rather than from a `useDisplayModel` call here.
+ * There must be exactly one instance of that hook on the map — a second one is
+ * a second projection of the whole workspace per store change — and `pages/map.tsx`
+ * holds it, because the draw gate needs the same answer: a model the map could
+ * not project is one no finished shape can be placed in either.
  */
-export function ModelLayers() {
+export function ModelLayers({ display }: { display: DisplayModel }) {
   const map = useMap();
-  const display = useDisplayModel();
   const previousContentCountRef = useRef(0);
 
   const ready = display.status === "ready";

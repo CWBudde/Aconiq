@@ -19,10 +19,14 @@ import { ValidationPanel } from "@/map/validation-panel";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { fitViewToWorkspace } from "@/map/extent";
-import { DISPLAY_CRS } from "@/map/display-model";
+import { DISPLAY_CRS, useDisplayModel } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
 import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
+import { useDrawProjection } from "@/map/use-draw-projection";
+import type { DrawProjectionStatus } from "@/map/use-draw-projection";
+import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
+import { backend } from "@/api/backend";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
@@ -174,42 +178,86 @@ function MapWorkspace() {
   // terra-draw emits WGS84, and `setCalcArea`/`addFeature` write straight into
   // the store. In a store that holds metres that would mix degrees into the
   // model — a round trip through the map quietly becoming the model, which is
-  // the one thing the map must never be. The draw-finish callback is the only
-  // coordinate writer on the map side (`FeatureEditor` writes attributes only,
-  // and nothing ever calls `draw.addFeatures`), so refusing there closes the
-  // hole outright.
+  // the one thing the map must never be. `useDrawProjection` closes that by
+  // moving the shape into the store's CRS first; the draw-finish callback is
+  // the only coordinate writer on the map side (`FeatureEditor` writes
+  // attributes only, and nothing ever calls `draw.addFeatures`), so one inverse
+  // transform there covers the whole surface.
   //
-  // It is the last line of defence and not the only one. Every way *into* an
-  // active drawing mode takes this same flag — the toolbar, `?draw=1`, the
-  // start panel's button — and `DrawGuard` disarms one that a late CRS change
-  // has invalidated. Refusing at the finish alone let a user complete a shape
-  // and watch it vanish unexplained, which is worse than a dead control.
-  //
-  // The real fix is an inverse 4326 → `store.crs` transform on the finish path.
-  // It is unavailable in API mode until a transform endpoint exists, and is
-  // recorded in PLAN.md Priority 8 Phase D.
-  const drawingDisabled = crs !== DISPLAY_CRS;
-  const drawingDisabledReason = m.msg_draw_disabled_crs({ crs });
+  // What is left to refuse is every case where that transform could not
+  // succeed; `drawingDisabled` below enumerates them. Each way *into* an active
+  // drawing mode takes that one flag — the toolbar, `?draw=1`, the start
+  // panel's button — and `DrawGuard` disarms one that a late change has
+  // invalidated.
 
-  const handleDrawFinish = useCallback(
-    (mode: DrawMode, feature: GeoJSON.Feature) => {
-      if (drawingDisabled) return;
+  // Runs with coordinates already in the store's CRS, or not at all.
+  const landGeometry = useCallback(
+    (mode: DrawMode, geometry: Geometry) => {
       if (mode === "calc-area") {
-        const geom = feature.geometry;
-        if (geom.type === "Polygon") {
+        if (geometry.type === "Polygon") {
           const area: CalcArea = {
             geometry: {
               type: "Polygon",
-              coordinates: geom.coordinates as Position[][],
+              coordinates: geometry.coordinates as Position[][],
             },
           };
           setCalcArea(area);
         }
         return;
       }
-      setNewGeometry(feature.geometry as Geometry);
+      setNewGeometry(geometry);
     },
-    [setCalcArea, drawingDisabled],
+    [setCalcArea],
+  );
+
+  // The map's one `useDisplayModel` instance: `ModelLayers` draws this answer,
+  // and the draw gate above refuses on it. A second call would reproject the
+  // whole workspace a second time on every store change.
+  const display = useDisplayModel();
+
+  const drawProjection = useDrawProjection(landGeometry);
+  const acceptDrawn = drawProjection.accept;
+
+  // Three different reasons a finished shape could not be landed, and each one
+  // has to close every way into a drawing mode rather than be discovered after
+  // the shape is gone.
+  //
+  // 1. No projector at all. Keyed on the capability rather than on the CRS:
+  //    both shipped modes can project — browser mode has the kernel in memory,
+  //    API mode reaches `POST /api/v1/transform` — and a store already in WGS84
+  //    needs no projector to draw into either way.
+  // 2. A projector that cannot handle *this* CRS. `readCollectionCRS` accepts
+  //    any `EPSG:<n>` an import declares, while the kernel supports a fixed set
+  //    (`geo.epsgToCRS`), so a model in, say, EPSG:3035 reaches the store and
+  //    fails every transform. The capability flag is global and stays true, so
+  //    it cannot see this; the display projection having failed is the evidence
+  //    that it happened, and it is the same transform the draw path would make.
+  //    A map that cannot draw the model cannot place a new shape in it either.
+  // 3. A shape already in flight. Terra-draw has removed the finished shape
+  //    from the map, so a second one accepted now would make the first stale
+  //    and drop it with nothing shown — the silent loss this whole path exists
+  //    to avoid.
+  const drawProjectionPending = drawProjection.status.status === "projecting";
+  const displayUnprojectable = display.status === "failed";
+  const drawingDisabled =
+    (crs !== DISPLAY_CRS && !backend.capabilities.canReprojectForDisplay) ||
+    displayUnprojectable ||
+    drawProjectionPending;
+  const drawingDisabledReason = drawProjectionPending
+    ? m.msg_draw_disabled_projecting({ crs })
+    : displayUnprojectable
+      ? m.msg_draw_disabled_crs_unsupported({ crs })
+      : m.msg_draw_disabled_no_projection({ crs });
+
+  // The last line of defence, kept although no armed tool can reach it: the
+  // gates above disarm every way in, and this one is what makes a new way in
+  // fail closed rather than write degrees into a metric model.
+  const handleDrawFinish = useCallback(
+    (mode: DrawMode, feature: GeoJSON.Feature) => {
+      if (drawingDisabled) return;
+      acceptDrawn(mode, feature);
+    },
+    [drawingDisabled, acceptDrawn],
   );
 
   const handleFeatureClick = useCallback(
@@ -248,11 +296,16 @@ function MapWorkspace() {
         onFeatureClick={handleFeatureClick}
       >
         <DrawProvider onFinish={handleDrawFinish}>
-          <ModelLayers />
+          <ModelLayers display={display} />
           <DrawGuard disabled={drawingDisabled} />
+          <DrawShortcuts />
           <WorkspaceDrawToolbar
             disabled={drawingDisabled}
             disabledReason={drawingDisabledReason}
+          />
+          <DrawProjectionNotice
+            status={drawProjection.status}
+            onDismiss={drawProjection.dismiss}
           />
           <LayerControl />
           <CoordinateDisplay />
@@ -384,6 +437,81 @@ function DrawGuard({ disabled }: { disabled: boolean }) {
   }, [disabled, activeMode, cancel]);
 
   return null;
+}
+
+/**
+ * Esc abandons the shape in progress and puts the tools back to select-nothing
+ * — the same thing the toolbar's X does, which is why it goes through
+ * `useDrawContext().cancel` rather than reaching for terra-draw.
+ *
+ * Armed only while a tool is: Esc belongs to whatever is on top of the map when
+ * nothing is being drawn, and `useGlobalShortcut` calls `preventDefault`, so an
+ * always-on binding would quietly take Esc away from every dialog on the route.
+ * The hook's own text-entry guard covers the editor's inputs.
+ */
+function DrawShortcuts() {
+  const { activeMode, cancel } = useDrawContext();
+  useGlobalShortcut(
+    { key: "Escape", enabled: activeMode !== "static" },
+    cancel,
+  );
+  return null;
+}
+
+/**
+ * What became of the shape between terra-draw finishing it and the store
+ * holding it.
+ *
+ * Nothing at all while the store is in WGS84, which needs no transform and
+ * stays synchronous. Over a metric model the round trip through the projection
+ * is a visible step: `role="status"` announces it, and a failure stays up with
+ * the reason until it is dismissed, because the alternative — the old
+ * behaviour — was a completed shape vanishing without a word.
+ *
+ * It sits beside the draw toolbar rather than in a free corner: it is about the
+ * shape just drawn, and the toolbar is where the user's attention already is.
+ */
+function DrawProjectionNotice({
+  status,
+  onDismiss,
+}: {
+  status: DrawProjectionStatus;
+  onDismiss: () => void;
+}) {
+  if (status.status === "idle") return null;
+
+  return (
+    <MapPanel
+      position="top-left"
+      inset="left-16 top-3"
+      width="w-72"
+      translucent
+      role="status"
+      aria-label={m.label_draw_projection()}
+      className="space-y-1 text-xs leading-relaxed"
+    >
+      {status.status === "projecting" ? (
+        <p>{m.msg_draw_projecting({ crs: status.targetCRS })}</p>
+      ) : (
+        <>
+          <p>
+            {m.msg_draw_projection_failed({
+              crs: status.targetCRS,
+              reason: status.error.message,
+            })}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={onDismiss}
+          >
+            {m.action_close()}
+          </Button>
+        </>
+      )}
+    </MapPanel>
+  );
 }
 
 /**

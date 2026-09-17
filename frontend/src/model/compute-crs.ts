@@ -140,25 +140,14 @@ export async function projectWorkspace(
   workspace: Workspace,
   targetCRS: string,
 ): Promise<ComputeModel> {
-  const collected: number[] = [];
-  walkWorkspace(workspace, (x, y) => {
-    collected.push(x, y);
-    return null;
-  });
+  const { moved, projection } = await projectThrough(
+    transform,
+    workspace.crs,
+    targetCRS,
+    (visit) => walkWorkspace(workspace, visit),
+  );
 
-  const response = await transform({
-    source_crs: workspace.crs,
-    target_crs: targetCRS,
-    coordinates: collected,
-  });
-
-  const projection: ComputeProjection = {
-    projectCRS: workspace.crs,
-    computeCRS: response.target_crs,
-    applied: response.applied,
-  };
-
-  if (!response.applied) {
+  if (moved === null) {
     return {
       features: workspace.features,
       receivers: workspace.receivers,
@@ -167,6 +156,99 @@ export async function projectWorkspace(
     };
   }
 
+  return { ...moved, projection };
+}
+
+/** A geometry in another CRS, and what getting it there took. */
+export interface ProjectedGeometry<G extends GeometryLike> {
+  geometry: G;
+  projection: ComputeProjection;
+}
+
+/**
+ * The narrowest thing this file can project: anything holding a GeoJSON
+ * coordinate tree. `model/types`' `Geometry` is one, and so is the
+ * `GeoJSON.Geometry` terra-draw hands the map — which has no `GeometryCollection`
+ * member and therefore no coordinates, so the two cannot simply share a type.
+ */
+export interface GeometryLike {
+  coordinates: unknown;
+}
+
+/**
+ * Moves one geometry from `sourceCRS` into `targetCRS`.
+ *
+ * The map's inverse direction: terra-draw emits WGS84 whatever the store holds,
+ * and a shape has to arrive in the store's CRS or the model is silently half in
+ * degrees. That is the *one* place a coordinate travels from the map into the
+ * model — "a projection of the model, never a source for it" holds everywhere
+ * else — so it goes through the same collect/scatter as a whole workspace
+ * rather than a second traversal written for one geometry.
+ *
+ * The argument is never mutated: the geometry comes back rebuilt, and a third
+ * ordinate rides along untouched.
+ */
+export async function projectGeometry<G extends GeometryLike>(
+  transform: CoordinateTransform,
+  geometry: G,
+  sourceCRS: string,
+  targetCRS: string,
+): Promise<ProjectedGeometry<G>> {
+  const { moved, projection } = await projectThrough(
+    transform,
+    sourceCRS,
+    targetCRS,
+    (visit) => ({
+      ...geometry,
+      coordinates: mapCoordinates(geometry.coordinates, visit),
+    }),
+  );
+
+  return { geometry: moved ?? geometry, projection };
+}
+
+/**
+ * What a traversal does to each `[x, y]` it reaches: `null` leaves it where it
+ * is, a pair replaces it.
+ */
+type CoordinateVisit = (x: number, y: number) => [number, number] | null;
+
+/**
+ * One batch out, one batch back, and the same traversal run twice over it.
+ *
+ * `walk` is called once to collect and once to scatter, so the two passes
+ * cannot disagree about the order they visit coordinates in — the defect that
+ * moves a model to somewhere plausible instead of somewhere obviously wrong.
+ * `moved` is `null` when the projection was a no-op, which is the caller's cue
+ * to hand back whatever it already had rather than the rebuilt copy: the
+ * workspace's own arrays, by reference, are what `useDisplayModel` relies on.
+ */
+async function projectThrough<T>(
+  transform: CoordinateTransform,
+  sourceCRS: string,
+  targetCRS: string,
+  walk: (visit: CoordinateVisit) => T,
+): Promise<{ moved: T | null; projection: ComputeProjection }> {
+  const collected: number[] = [];
+  walk((x, y) => {
+    collected.push(x, y);
+    return null;
+  });
+
+  const response = await transform({
+    source_crs: sourceCRS,
+    target_crs: targetCRS,
+    coordinates: collected,
+  });
+
+  const projection: ComputeProjection = {
+    projectCRS: sourceCRS,
+    computeCRS: response.target_crs,
+    applied: response.applied,
+  };
+
+  if (!response.applied) return { moved: null, projection };
+
   if (response.coordinates.length !== collected.length) {
     throw new Error(
       `The compute projection returned ${String(response.coordinates.length)} values for ${String(collected.length)} sent; the model was not projected.`,
@@ -174,18 +256,16 @@ export async function projectWorkspace(
   }
 
   // The same traversal a second time, consuming from an index where the first
-  // pass appended. Running one traversal twice rather than two traversals once
-  // each is what makes it impossible for the collect and the scatter to
-  // disagree about the order they visit coordinates in.
+  // pass appended.
   let next = 0;
-  const moved = walkWorkspace(workspace, () => {
+  const moved = walk(() => {
     const x = response.coordinates[next] ?? Number.NaN;
     const y = response.coordinates[next + 1] ?? Number.NaN;
     next += 2;
     return [x, y];
   });
 
-  return { ...moved, projection };
+  return { moved, projection };
 }
 
 /**
@@ -202,7 +282,7 @@ export async function projectWorkspace(
  */
 function walkWorkspace(
   workspace: Workspace,
-  visit: (x: number, y: number) => [number, number] | null,
+  visit: CoordinateVisit,
 ): Omit<ComputeModel, "projection"> {
   return {
     features: workspace.features.map((feature) => ({
@@ -246,10 +326,7 @@ function walkWorkspace(
  * `visit` returns for it. A third ordinate is an absolute elevation in metres
  * and is carried through untouched, exactly as the Go side does.
  */
-function mapCoordinates(
-  coords: unknown,
-  visit: (x: number, y: number) => [number, number] | null,
-): unknown {
+function mapCoordinates(coords: unknown, visit: CoordinateVisit): unknown {
   if (!Array.isArray(coords)) return coords;
 
   const values: unknown[] = coords;

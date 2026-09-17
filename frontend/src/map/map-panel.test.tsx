@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MapPanel, type MapPanelPosition } from "./map-panel";
 
-const corners: Record<MapPanelPosition, string[]> = {
+const anchors: Record<MapPanelPosition, string[]> = {
   "top-left": ["left-3", "top-3"],
   "top-right": ["right-3", "top-3"],
   "bottom-left": ["bottom-3", "left-3"],
   "bottom-right": ["bottom-3", "right-3"],
+  "bottom-center": ["bottom-3", "left-1/2", "-translate-x-1/2"],
 };
 
 describe("MapPanel", () => {
-  it.each(Object.keys(corners) as MapPanelPosition[])(
-    "anchors to the %s corner above the map",
+  it.each(Object.keys(anchors) as MapPanelPosition[])(
+    "anchors to the %s of the map, above the canvas",
     (position) => {
       render(
         <MapPanel position={position} data-testid="panel">
@@ -19,7 +20,7 @@ describe("MapPanel", () => {
         </MapPanel>,
       );
       const panel = screen.getByTestId("panel");
-      expect(panel).toHaveClass("absolute", "z-10", ...corners[position]);
+      expect(panel).toHaveClass("absolute", "z-10", ...anchors[position]);
       expect(panel).toHaveAttribute("data-position", position);
     },
   );

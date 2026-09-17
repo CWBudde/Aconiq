@@ -1523,10 +1523,9 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `properties.id` before the GeoJSON `id` member and a stale one would recreate the
       `feature.id.duplicate` the resolution just stepped past.
 - [ ] **Selection and chrome**: `setFeatureState` on click and `feature-state` paint expressions
-      (nothing on the map shows which feature is being edited); Esc cancels drawing, Del deletes the
-      edited feature; delete `FeaturePopup` (second click surface and an HTML-injection vector);
-      move the coordinate display off the undo bar's corner; dock the editor as a `MapPanel` beside
-      the map instead of over the layer control.
+      (nothing on the map shows which feature is being edited); delete `FeaturePopup` (second click
+      surface and an HTML-injection vector); dock the editor as a `MapPanel` beside the map instead
+      of over the layer control.
 - [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
       change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
       `CommandStack` first so drags do not become one step per mousemove.
@@ -1539,21 +1538,17 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
       row↔map highlight from the receiver table. Until it lands, hide the result toggles in
       `layer-control.tsx:74-76`.
-- [ ] **Drawn geometry cannot enter a non-4326 model.** terra-draw emits WGS84 whatever the model
-      is stored in, so every way into an active drawing mode is gated off while the store's CRS is
-      not the display one. The fix is an inverse 4326 → `store.crs` transform on the draw-finish
-      path — the only coordinate writer on the map side, since `FeatureEditor` writes attributes
-      only and nothing calls `draw.addFeatures`. **No longer blocked in API mode**: since
-      `POST /api/v1/transform` landed, `backend.transformCoordinates` resolves in both modes and
-      `canReprojectForDisplay` is true for both, so the inverse direction is reachable from the
-      draw-finish path. What still gates drawing is `pages/map.tsx`'s `drawingDisabled`, keyed on
-      `store.crs` rather than on the capability — deliberately, because the endpoint made the
-      transform reachable, not the write path correct.
-- [ ] **CRS and basemap**: a UTM readout in the coordinate display (`CoordinateDisplay` reads out
-      WGS 84 over a project stored in 25832); tile-error → `OFFLINE_STYLE` with a notice; basemap
-      picker; tile URL in Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`).
-      The `fitBounds` half is closed. No proj4 may be added for any of the rest: the projection is
-      `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run` would not.
+- [ ] **CRS and basemap**: tile-error → `OFFLINE_STYLE` with a notice; basemap picker; tile URL in
+      Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`). The `fitBounds` and
+      coordinate-readout halves are closed. No proj4 may be added for any of the rest: the
+      projection is `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run`
+      would not — which now also covers the one direction that writes, `use-draw-projection.ts`'s
+      inverse 4326 → `store.crs` transform on the draw-finish path. That path is the single
+      deliberate exception to "a projection _of_ the model, never a source _for_ it"; anything else
+      on the map side that wants to write a coordinate is a second exception and needs arguing for.
+      Drawing is gated on `backend.capabilities.canReprojectForDisplay`, not on the store's CRS —
+      keep new gates on the capability, or a model the map can project will be refused for being
+      metric.
 - [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
       feature list, so the map is not mouse-only.
 

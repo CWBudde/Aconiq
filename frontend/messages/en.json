@@ -389,6 +389,11 @@
   "msg_map_crs_reprojected": "Displayed in WGS 84, stored in {crs}.",
   "msg_map_crs_unsupported": "The model is stored in {crs} and no projection is available in this mode, so it cannot be drawn. A backend that can project it — the desktop or browser mode — shows it in place.",
   "msg_map_crs_failed": "The model stored in {crs} could not be projected for display: {reason}",
-  "msg_draw_disabled_crs": "Drawing is disabled because the model is stored in {crs}. The map draws in WGS 84, and a drawn shape would enter the model in the wrong coordinate system.",
+  "msg_draw_disabled_no_projection": "Drawing is disabled because the model is stored in {crs} and no projection is available in this mode. The map draws in WGS 84, and a drawn shape could not be moved into the coordinate system the model is stored in.",
+  "msg_draw_disabled_crs_unsupported": "Drawing is disabled because the model's coordinate system {crs} could not be projected for the map. The map cannot draw the model, so it cannot place a new shape in it either — check the coordinate system the model was imported with.",
+  "msg_draw_disabled_projecting": "Drawing is paused until the shape you just finished has been projected into {crs}.",
+  "msg_draw_projecting": "The drawn shape is being projected into {crs}, the coordinate system the model is stored in.",
+  "msg_draw_projection_failed": "The drawn shape could not be projected into {crs} and was discarded: {reason}",
+  "label_draw_projection": "Drawn geometry",
   "label_crs_notice": "Coordinate reference system"
 }

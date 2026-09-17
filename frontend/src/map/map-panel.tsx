@@ -5,7 +5,9 @@ export type MapPanelPosition =
   | "top-left"
   | "top-right"
   | "bottom-left"
-  | "bottom-right";
+  | "bottom-right"
+  /** Centred on the bottom edge — for a readout that belongs to no corner. */
+  | "bottom-center";
 
 export interface MapPanelProps extends React.HTMLAttributes<HTMLDivElement> {
   /** The corner of the map the panel is anchored to. */
@@ -28,6 +30,10 @@ const positionClass: Record<MapPanelPosition, string> = {
   "top-right": "right-3 top-3",
   "bottom-left": "bottom-3 left-3",
   "bottom-right": "bottom-3 right-3",
+  // The four corners are taken on the workspace route — toolbar, layer control
+  // and editor, validation, undo — so the coordinate readout sits between the
+  // two bottom ones instead of under the undo bar, where it used to overlap.
+  "bottom-center": "bottom-3 left-1/2 -translate-x-1/2",
 };
 
 /**

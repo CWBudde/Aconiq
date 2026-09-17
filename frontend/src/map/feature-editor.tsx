@@ -23,6 +23,7 @@ import {
   setFeatureProperty,
 } from "@/model/source-acoustics";
 import { Trash2 } from "lucide-react";
+import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { MapPanel } from "./map-panel";
 import { m } from "@/i18n/messages";
 
@@ -602,6 +603,14 @@ function HeightField({ feature }: { feature: ModelFeature }) {
  * the undo bar is at the other end of the workspace, and its own tooltips do
  * not open in the state they describe. So the confirmation carries that
  * sentence, which is the cheapest way to make it true.
+ *
+ * Del reaches the same confirmation rather than deleting outright. This button
+ * only exists while the editor has a feature or a receiver open, so the binding
+ * is armed exactly when there is something for "the edited feature" to mean —
+ * and routing the key through the dialog keeps one delete path instead of a
+ * quiet second one that skips the sentence the button's own path insists on.
+ * `useGlobalShortcut` bows out of text controls, so Del in the height field
+ * still edits the number.
  */
 function DeleteButton({
   title,
@@ -613,6 +622,10 @@ function DeleteButton({
   onDelete: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+
+  useGlobalShortcut({ key: "Delete", enabled: !confirming }, () => {
+    setConfirming(true);
+  });
   // Read while the dialog closes, which is before the next render, so a ref
   // rather than state.
   const deleted = useRef(false);
