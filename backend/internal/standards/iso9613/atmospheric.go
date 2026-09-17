@@ -60,7 +60,7 @@ const (
 	maxAirTemperatureC = 60.0
 )
 
-// LookupAlpha returns the atmospheric attenuation coefficient α (dB/km) for a
+// AlphaForBand returns the atmospheric attenuation coefficient α (dB/km) for a
 // given temperature, relative humidity and octave band. band is 0-indexed.
 //
 // The coefficient is computed from the ISO 9613-1 model for the condition
@@ -70,7 +70,7 @@ const (
 // at 32.8 dB/km where the formula gives 83.0 — 25 dB over 500 m, an order of
 // magnitude outside the ±1 to ±3 dB accuracy ISO 9613-2, clause 9 claims for
 // the method as a whole.
-func LookupAlpha(tempC, humidity float64, band int) float64 {
+func AlphaForBand(tempC, humidity float64, band int) float64 {
 	if band < 0 || band >= NumBands {
 		return 0
 	}
@@ -122,7 +122,7 @@ func AtmosphericAbsorptionBands(tempC, humidity, distanceM float64) BandLevels {
 	var result BandLevels
 
 	for i := range NumBands {
-		alpha := LookupAlpha(tempC, humidity, i)
+		alpha := AlphaForBand(tempC, humidity, i)
 		result[i] = AtmosphericAbsorption(alpha, distanceM)
 	}
 

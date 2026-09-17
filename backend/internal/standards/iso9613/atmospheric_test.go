@@ -35,7 +35,7 @@ func TestAlphaMatchesTable2(t *testing.T) {
 
 	for _, row := range table2 {
 		for band := range NumBands {
-			got := LookupAlpha(row.TempC, row.Humidity, band)
+			got := AlphaForBand(row.TempC, row.Humidity, band)
 
 			diff := math.Abs(got - row.Alpha[band])
 			if diff > table2Tolerance[band] {
@@ -67,7 +67,7 @@ func TestAlphaAnchors(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		got := LookupAlpha(tc.tempC, tc.humidity, tc.band)
+		got := AlphaForBand(tc.tempC, tc.humidity, tc.band)
 		if math.Abs(got-tc.expected) > 0.0001 {
 			t.Errorf("%s: expected %.4f dB/km, got %.4f", tc.name, tc.expected, got)
 		}
@@ -85,7 +85,7 @@ func TestAlphaVariesContinuously(t *testing.T) {
 
 	const band4kHz = 6
 
-	cold := LookupAlpha(5, 30, band4kHz)
+	cold := AlphaForBand(5, 30, band4kHz)
 	if math.Abs(cold-83.0314) > 0.001 {
 		t.Errorf("5°C/30%% 4 kHz: expected 83.0314 dB/km, got %.4f", cold)
 	}
@@ -97,7 +97,7 @@ func TestAlphaVariesContinuously(t *testing.T) {
 	previous := math.Inf(1)
 
 	for humidity := 20.0; humidity <= 40.0; humidity += 5 {
-		alpha := LookupAlpha(20, humidity, band4kHz)
+		alpha := AlphaForBand(20, humidity, band4kHz)
 		if alpha >= previous {
 			t.Errorf("α at 20°C, RH=%.0f%% is %.4f, not below the %.4f of the previous step", humidity, alpha, previous)
 		}
@@ -124,7 +124,7 @@ func TestAtmosphericAbsorptionTable2Row1(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		alpha := LookupAlpha(10, 70, tc.band)
+		alpha := AlphaForBand(10, 70, tc.band)
 
 		got := AtmosphericAbsorption(alpha, tc.distance)
 
@@ -153,7 +153,7 @@ func TestAtmosphericAbsorptionTable2AllRows(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		alpha := LookupAlpha(tc.tempC, tc.humidity, 3)
+		alpha := AlphaForBand(tc.tempC, tc.humidity, 3)
 		if math.Abs(alpha-tc.alpha500) > table2Tolerance[3] {
 			t.Errorf("T=%.0f RH=%.0f: expected α₅₀₀=%.1f ± %.2f, got %.4f", tc.tempC, tc.humidity, tc.alpha500, table2Tolerance[3], alpha)
 		}
@@ -222,14 +222,14 @@ func TestAirTemperatureIsBounded(t *testing.T) {
 	}
 }
 
-func TestLookupAlphaInvalidBand(t *testing.T) {
+func TestAlphaForBandRejectsAnOutOfRangeBand(t *testing.T) {
 	t.Parallel()
 
-	if LookupAlpha(10, 70, -1) != 0 {
+	if AlphaForBand(10, 70, -1) != 0 {
 		t.Error("expected 0 for invalid band -1")
 	}
 
-	if LookupAlpha(10, 70, 8) != 0 {
+	if AlphaForBand(10, 70, 8) != 0 {
 		t.Error("expected 0 for invalid band 8")
 	}
 }
