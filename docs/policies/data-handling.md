@@ -27,9 +27,16 @@ being tracked, and what to do when it escapes.
 
 Lawfully obtained reference material that the repository is developed **against** but must not
 contain: standards documents, their annexes and correction sheets, and vendor or customer project
-bundles used as interoperability fixtures. Nothing else. It is not a scratch area for source, for
-generated artefacts, or for anything that belongs in the repository and is merely inconvenient to
-commit.
+bundles that a local test run reads as input. Nothing else. It is not a scratch area for source,
+for generated artefacts, or for anything that belongs in the repository and is merely inconvenient
+to commit.
+
+"Input" is the load-bearing word, and `compliance-boundaries.md` §6 is where it matters: real
+SoundPLAN project files are "never used as fixtures in this repository". That is the same rule as
+this one rather than a competing one. A _fixture_ is checked in and travels with the repository,
+and no customer bundle ever becomes one. What a bundle may be is an untracked local input, found at
+run time by the mechanism the next section describes, present on an entitled machine and nowhere
+else — and a test that cannot find it skips.
 
 What matters for each item is not whether it may be _stored_ there — it may — but whether its
 content may cross into tracked source. That answer differs per source, and the distinction that
@@ -91,8 +98,13 @@ One resolver does this, and tests must go through it: `internal/qa/fixtures.Soun
    hard `t.Fatal`, deliberately: someone stated where the data is and was wrong, and a skip would
    bury that.
 2. **Otherwise, discovery by content.** The resolver scans the immediate children of the repository
-   root's `interoperability/` for a directory containing a `Project.sp`. Exactly one is used; none
-   skips; two or more is an error, because the choice would be arbitrary. Keying on the marker file
+   root's `interoperability/` for a directory containing a `Project.sp`. Exactly one is used.
+   Neither of the other two outcomes fails a test: finding none and finding two or more both come
+   back as errors from discovery, and `SoundPLANProjectDir` turns every discovery error into a
+   `t.Skipf`. So an ambiguous `interoperability/` skips, with the reason printed, rather than
+   stopping the run — consistent with point 1, in that only a _stated_ location that proves wrong
+   is worth a hard failure, but it belongs with the hazards below and not among the guarantees.
+   Keying on the marker file
    rather than on a directory name is what removed a customer project name from tracked source
    (`26ce6df`), and it is the pattern any future licensed fixture must follow: **discover by
    content, never by name.** A path, a project name or a customer name in tracked source is itself a
@@ -120,8 +132,10 @@ higher than the phrasing suggests:
 
 1. **Both mechanisms are distribution.** A submodule hands a copy to every CI runner and to everyone
    with read access; LFS stores the bytes in the repository's own object store. Neither is a way of
-   _not_ redistributing. So neither can ever carry the ISO texts, the FGSV texts, or a customer
-   bundle, and no access control changes that.
+   _not_ redistributing. So under the rights held today neither can carry the ISO texts, the FGSV
+   texts, or a customer bundle — and tightening access control does not reach it, because the
+   question is the right to redistribute and not the size of the audience. Only a rights grant
+   reaches it, which is what point 2 is about.
 2. **The only admissible route is material whose rights we hold.** A synthetic SoundPLAN project,
    built on an entitled seat from invented geometry and containing no customer's data, qualifies. So
    does a customer's written permission that names redistribution specifically — consent to use is
@@ -192,10 +206,15 @@ The procedure, in order. Step 1 decides which of two different situations you ar
    because a fork holds the objects on its own.
 5. **Notify, according to what leaked.** A standards publisher's text (FGSV, ISO, DIN): tell the
    repository owner; the exposure is a licence breach and the remedy is removal plus a written
-   record. A customer's project data: that is personal data. The customer is told, and whether
-   Art. 33 GDPR requires a supervisory-authority notification within 72 hours is decided by MeKo and
-   not by the person who pushed it. The clock starts at awareness, so write down when awareness
-   began.
+   record. A customer's material: the customer is told in every case, because the confidentiality
+   obligation is breached whether or not anyone is identifiable in what leaked — a tender document
+   or a DWG drawing can be purely commercial. Whether it is _also_ a personal-data breach is a
+   second question, answered from the content rather than assumed: a SoundPLAN bundle carries
+   addresses and identifiable project detail, which is the case `compliance-boundaries.md` §6 has
+   in mind, while the table above covers material that carries none. Where the answer is yes,
+   whether Art. 33 GDPR requires a supervisory-authority notification within 72 hours is decided by
+   MeKo and not by the person who pushed it. The clock starts at awareness, so write down when
+   awareness began — for that assessment as much as for the notification.
 6. **Record it here**, under a dated heading, the way `vulnerability-scanning.md` requires for an
    advisory with no fix: what leaked, from which refs, when it was pushed, when it was removed, and
    who was told. An incident that is embarrassing is still one the next person has to be able to
