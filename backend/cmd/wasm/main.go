@@ -65,6 +65,12 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 			req.Config.ReceiverTerrainZ = terrainAtGridCenter(currentTerrain, req.Receivers)
 		}
 
+		// The terrain is also the ground h_m is measured above, so the model
+		// itself travels into the config and not just the one elevation above.
+		// Browser mode resolves the ground the way `aconiq run` does or it is
+		// answering a different question.
+		req.Config.TerrainModel = currentTerrain
+
 		outputs, err := road.ComputeReceiverOutputs(req.Receivers, req.Sources, req.Barriers, req.Config)
 		if err != nil {
 			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: computation error: %v", err)))

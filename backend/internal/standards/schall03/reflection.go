@@ -222,7 +222,8 @@ func segmentLineIntersection(p1, p2, s1, s2 geo.Point2D) (geo.Point2D, bool) {
 // ReflectedSubsegmentContrib computes the linear acoustic power contribution
 // from one track subsegment to a receiver along a reflected path.
 //
-// This mirrors normativeSubsegmentContrib (compute.go) but:
+// It runs the same kernel as normativeSubsegmentContrib (subsegmentContrib in
+// compute.go, Gl. 6, 8-16) but:
 //   - Uses the reflected path distance instead of the direct distance
 //   - Applies the cumulative absorption loss D_ρ from wall reflections (Gl. 28)
 //   - No barrier diffraction (use ReflectedSubsegmentContribWithBarriers for barrier support)
@@ -239,38 +240,13 @@ func ReflectedSubsegmentContrib(
 	dp, stepLen, sinDelta2, waterFractionW float64,
 	dRho float64,
 ) float64 {
-	dI := directivityDI(sinDelta2)
-	log10Step := math.Log10(stepLen)
-
-	dLand := (1.0 - waterFractionW) * dp
-	dWater := waterFractionW * dp
-
-	var contrib float64
-
-	for _, h := range teilquelleHeightIndices {
-		spectrum, present := emission.PerHeight[h]
-		if !present {
-			continue
-		}
-
-		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
-		adivVal := adiv(path.SlantDistanceM)
-
-		agrVal := agrW(dWater, dp)
-		if dLand > 0 {
-			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
-		}
-
-		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
-			lW := spectrum[f] + 10*log10Step
-			// Gl. 28: image source level includes D_ρ.
-			lpF := lW + dRho + dI + path.DOmega - adivVal - aatmVal - agrVal
-			contrib += math.Pow(10, 0.1*lpF)
-		}
-	}
-
-	return contrib
+	// Gl. 28: the image source level includes D_ρ; the rest of the chain is the
+	// direct-path kernel, here without barriers.
+	return subsegmentContrib(
+		emission, elevationM, receiver, geo.Point2D{},
+		dp, stepLen, sinDelta2, waterFractionW, dRho,
+		nil,
+	)
 }
 
 // ReflectedSubsegmentContribWithBarriers is like ReflectedSubsegmentContrib but
@@ -297,49 +273,13 @@ func ReflectedSubsegmentContribWithBarriers(
 		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho)
 	}
 
-	dI := directivityDI(sinDelta2)
-	log10Step := math.Log10(stepLen)
-
-	dLand := (1.0 - waterFractionW) * dp
-	dWater := waterFractionW * dp
-
-	var contrib float64
-
-	for _, h := range teilquelleHeightIndices {
-		spectrum, present := emission.PerHeight[h]
-		if !present {
-			continue
-		}
-
-		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
-		adivVal := adiv(path.SlantDistanceM)
-
-		agrVal := agrW(dWater, dp)
-		if dLand > 0 {
-			agrVal += agrB(path.MeanHeightM, path.SlantDistanceM)
-		}
-
-		// Barrier attenuation along the reflected path (image source → receiver).
-		var agrBands BeiblattSpectrum
-
-		for f := range NumBeiblattOctaveBands {
-			agrBands[f] = agrVal
-		}
-
-		// Heights above ground, matching BarrierSegment.TopHeightM.
-		abarBands := ComputePathBarrierAttenuation(
-			imageSource, receiver.Point, path.SourceHeightM, path.ReceiverHeightM, barriers, agrBands,
-		)
-
-		for f := range NumBeiblattOctaveBands {
-			aatmVal := aatm(AirAbsorptionAlpha[f], path.SlantDistanceM)
-			lW := spectrum[f] + 10*log10Step
-			lpF := lW + dRho + dI + path.DOmega - adivVal - aatmVal - agrVal - abarBands[f]
-			contrib += math.Pow(10, 0.1*lpF)
-		}
-	}
-
-	return contrib
+	// Gl. 28 for D_ρ, and the diffraction check along the unfolded ray
+	// imageSource → receiver.
+	return subsegmentContrib(
+		emission, elevationM, receiver, imageSource,
+		dp, stepLen, sinDelta2, waterFractionW, dRho,
+		barriers,
+	)
 }
 
 // barriersExcludingObstacles drops the panels of the obstacles a mirrored path
@@ -583,65 +523,52 @@ func ComputeReflectedLineSourceLpAeq(
 
 	var total numeric.CompensatedSum
 
-	for i := range len(centerline) - 1 {
-		a := centerline[i]
-		b := centerline[i+1]
+	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 
-		segLen := geo.Distance(a, b)
-		if math.IsNaN(segLen) || math.IsInf(segLen, 0) || segLen <= 0 {
-			continue
+		for _, rp := range paths {
+			reflDist, sd2 := reflectedRayTerms(pt, rp, tvX, tvY, tvLen)
+
+			total.Add(ReflectedSubsegmentContrib(
+				emission, elevationM, receiver,
+				reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+			))
 		}
+	})
 
-		nsubs := max(int(math.Ceil(segLen/maxIntegrationStepM)), 1)
-		stepLen := segLen / float64(nsubs)
+	return lineSourceLevel(total.Sum())
+}
 
-		tvX := b.X - a.X
-		tvY := b.Y - a.Y
-		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
+// reflectedRayTerms returns the propagation distance and sin²(δ) for one
+// enumerated reflection path leaving the subsegment midpoint pt.
+//
+// The distance is the total reflected path length, clamped to the 1 m
+// near-field floor.
+//
+// The directivity uses a different ray: Gl. 28's D_Ir is the directivity of the
+// point source "in der Richtung des Spiegelschallempfängers" — the direction
+// from the source towards the mirrored receiver, which is the same ray as
+// source → first reflection point (Bild 8: R lies on Q–IO_i).  The
+// source→own-image direction is perpendicular to the wall by construction and
+// does not depend on the receiver at all.
+func reflectedRayTerms(pt geo.Point2D, rp ReflectionPath, tvX, tvY, tvLen float64) (float64, float64) {
+	firstGeom := rp.Geometries[0]
+	rvX := firstGeom.ReflectionPoint.X - pt.X
+	rvY := firstGeom.ReflectionPoint.Y - pt.Y
+	dp := math.Sqrt(rvX*rvX + rvY*rvY)
 
-		for j := range nsubs {
-			frac := (float64(j) + 0.5) / float64(nsubs)
-			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
-
-			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
-
-			for _, rp := range paths {
-				// Gl. 28: D_Ir is the directivity of the point source "in der Richtung
-				// des Spiegelschallempfängers" — the direction from the source towards
-				// the mirrored receiver, which is the same ray as source → first
-				// reflection point (Bild 8: R lies on Q–IO_i).  The source→own-image
-				// direction is perpendicular to the wall by construction and does not
-				// depend on the receiver at all.
-				firstGeom := rp.Geometries[0]
-				rvX := firstGeom.ReflectionPoint.X - pt.X
-				rvY := firstGeom.ReflectionPoint.Y - pt.Y
-				dp := math.Sqrt(rvX*rvX + rvY*rvY)
-
-				if dp < 1 {
-					dp = 1
-				}
-
-				sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
-
-				// Use total reflected path distance for propagation.
-				reflDist := rp.TotalDist
-				if reflDist < 1 {
-					reflDist = 1
-				}
-
-				total.Add(ReflectedSubsegmentContrib(
-					emission, elevationM, receiver,
-					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
-				))
-			}
-		}
+	if dp < 1 {
+		dp = 1
 	}
 
-	if total.Sum() <= 0 {
-		return math.Inf(-1)
+	sinDelta2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
+
+	reflDist := rp.TotalDist
+	if reflDist < 1 {
+		reflDist = 1
 	}
 
-	return 10 * math.Log10(total.Sum())
+	return reflDist, sinDelta2
 }
 
 // ComputeReflectedLineSourceLpAeqWithBarriers is like
@@ -677,63 +604,23 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 
 	var total numeric.CompensatedSum
 
-	for i := range len(centerline) - 1 {
-		a := centerline[i]
-		b := centerline[i+1]
+	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 
-		segLen := geo.Distance(a, b)
-		if math.IsNaN(segLen) || math.IsInf(segLen, 0) || segLen <= 0 {
-			continue
+		for _, rp := range paths {
+			reflDist, sd2 := reflectedRayTerms(pt, rp, tvX, tvY, tvLen)
+
+			total.Add(ReflectedSubsegmentContribWithBarriers(
+				emission, elevationM, receiver,
+				rp.EffectiveSource(),
+				reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+				barriers,
+				reflectionPathObstacleIDs(rp, walls),
+			))
 		}
+	})
 
-		nsubs := max(int(math.Ceil(segLen/maxIntegrationStepM)), 1)
-		stepLen := segLen / float64(nsubs)
-
-		tvX := b.X - a.X
-		tvY := b.Y - a.Y
-		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
-
-		for j := range nsubs {
-			frac := (float64(j) + 0.5) / float64(nsubs)
-			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
-
-			paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
-
-			for _, rp := range paths {
-				// Gl. 28: directivity towards the first reflection point (see the
-				// comment in ComputeReflectedLineSourceLpAeq).
-				firstGeom := rp.Geometries[0]
-				rvX := firstGeom.ReflectionPoint.X - pt.X
-				rvY := firstGeom.ReflectionPoint.Y - pt.Y
-				dp := math.Sqrt(rvX*rvX + rvY*rvY)
-
-				if dp < 1 {
-					dp = 1
-				}
-
-				sd2 := normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen)
-
-				reflDist := rp.TotalDist
-				if reflDist < 1 {
-					reflDist = 1
-				}
-
-				total.Add(ReflectedSubsegmentContribWithBarriers(
-					emission, elevationM, receiver,
-					rp.EffectiveSource(),
-					reflDist, stepLen, sd2, waterFractionW, rp.DRho,
-					barriers,
-					reflectionPathObstacleIDs(rp, walls),
-				))
-			}
-		}
-	}
-
-	if total.Sum() <= 0 {
-		return math.Inf(-1)
-	}
-
-	return 10 * math.Log10(total.Sum())
+	return lineSourceLevel(total.Sum())
 }
 
 // FresnelCheck implements Gl. 27 to determine whether a reflecting surface is

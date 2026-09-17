@@ -132,6 +132,14 @@ func (s OctaveSpectrum) EnergeticTotal() float64 {
 // term count is not bounded: lineSourceSpectrumAtReceiver feeds it one level
 // per integration subsegment, so a long line source produces thousands of terms
 // spanning many orders of magnitude.
+//
+// It is deliberately not acoustics.EnergySum. This module works in -Inf for
+// silence internally and converts to the -999 sentinel only at its own output
+// boundary (finiteOrSilence in compute.go), and it returns NaN on a +Inf term
+// rather than skipping it, so that an impossible level cannot be silently
+// dropped mid-spectrum. Adopting the shared contract would change both
+// behaviours and so would change numbers; that is a decision to take on its own
+// — see PLAN.md Priority 7.
 func EnergeticSumLevels(levels ...float64) float64 {
 	if len(levels) == 0 {
 		return math.Inf(-1)

@@ -37,8 +37,12 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 ### Luftabsorption A_atm (Abschnitt 7.2)
 
 - [x] Gl. 8 — A_atm = α·d/1000
-- [x] Tabelle 2 — Absorptionskoeffizienten für 6 Referenzbedingungen
-- [x] Nächste-Zeile-Auswahl für nicht tabellierte Bedingungen
+- [x] Absorptionskoeffizient α analytisch nach ISO 9613-1 berechnet — klassische Absorption
+      sowie O₂- und N₂-Relaxation — für jede Temperatur/Feuchte-Kombination, ausgewertet beim
+      Referenzluftdruck 101,325 kPa
+- [x] Tabelle 2 — die sechs tabellierten Referenzbedingungen dienen als Prüforakel, nicht als
+      Rechenweg: die Berechnung weicht bis 1 kHz um ≤ 0,05 dB/km und bei 2–8 kHz um ≤ 1,4 %
+      von der Tabelle ab, was der Rundung der Tabelle entspricht
 
 ### Bodendämpfung A_gr (Abschnitt 7.3)
 
@@ -83,7 +87,8 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 
 ## Bekannte Einschränkungen
 
-- Luftabsorption nutzt Nächste-Zeile-Auswahl aus Tabelle 2 statt des vollständigen ISO-9613-1-Modells
+- Luftabsorption wird beim Referenzluftdruck (101,325 kPa) berechnet; ein abweichender
+  Standortluftdruck ist nicht parametrierbar. Die Lufttemperatur ist auf [−60, 60] °C begrenzt.
 - Bodendämpfung nutzt einen einzigen globalen Bodenfaktor G für alle drei Regionen
 - Barrierendämpfung erfordert vorberechnete Beugungsgeometrie (keine automatische Strahl-Barriere-Verschneidung); das Vorzeichen von z nach Abschnitt 7.4 muss der Aufrufer über `LineOfSightClear` mitliefern, geometrisch inkonsistente Eingaben werden zurückgewiesen
 - Keine Reflexionsberechnung (Spiegelquellen)
@@ -93,7 +98,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 
 ## Koeffizienten und Datenpakete
 
-Tabelle 2 (Absorptionskoeffizienten) ist als Referenztabelle aus der öffentlich zugänglichen Norm eingebettet. Tabelle 3 (Bodendämpfung) wird durch die implementierten Funktionen a'(h)–d'(h) abgebildet. Keine weiteren normativen Daten werden im Repository gebündelt.
+Tabelle 2 (Absorptionskoeffizienten) ist als Referenztabelle aus der öffentlich zugänglichen Norm eingebettet und dient ausschließlich als Prüforakel für die nach ISO 9613-1 berechneten Koeffizienten. Tabelle 3 (Bodendämpfung) wird durch die implementierten Funktionen a'(h)–d'(h) abgebildet. Keine weiteren normativen Daten werden im Repository gebündelt.
 
 ## Toleranzen
 

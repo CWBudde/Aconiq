@@ -424,7 +424,16 @@ func appendParkingContributions(
 		dz := receiverZ - sourceZ
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 
-		hm := computeMeanHeight(parking.Center, receiver, sourceZ, receiverZ, cfg.Terrain)
+		hm := computeMeanHeight(groundPath{
+			source:          parking.Center,
+			receiver:        receiver,
+			sourceZ:         sourceZ,
+			receiverZ:       receiverZ,
+			sourceGroundZ:   parking.ElevationM,
+			receiverGroundZ: cfg.ReceiverTerrainZ,
+			profiles:        cfg.Terrain,
+			dtm:             cfg.TerrainModel,
+		})
 		att := computeAttenuation(planDist, slantDist, hm, cfg)
 
 		att = applyShielding(att, parkingShielding(parking, receiver, sourceZ, receiverZ, effectiveBarriers, cfg))
@@ -435,7 +444,7 @@ func appendParkingContributions(
 		// A silent lot stays silent: ComputeParkingEmission returns the
 		// silenceDB sentinel for a zero movement rate, and a mirrored path only
 		// subtracts from it, so the contribution stays below silenceThresholdDB
-		// and energySumDB still drops it.
+		// and acoustics.EnergySum still drops it.
 		appendReflectedContribs(
 			dayContrib, nightContrib,
 			emission.LWDay, emission.LWNight,

@@ -21,6 +21,8 @@ func parameterDefinitions() []framework.ParameterDefinition {
 	minPositive := 0.001
 	maxGroundFactor := 1.0
 	maxHumidity := 100.0
+	minTemperature := minAirTemperatureC
+	maxTemperature := maxAirTemperatureC
 
 	return []framework.ParameterDefinition{
 		{Name: "grid_resolution_m", Kind: framework.ParameterKindFloat, Unit: framework.UnitMeter, DefaultValue: "10", Min: &minPositive, Description: "Receiver grid spacing in meters"},
@@ -32,7 +34,10 @@ func parameterDefinitions() []framework.ParameterDefinition {
 		{Name: "iso9613_tonality_correction_db", Kind: framework.ParameterKindFloat, Unit: framework.UnitDecibel, DefaultValue: "0", Description: "Tonality correction applied at the reporting boundary"},
 		{Name: "iso9613_impulsivity_correction_db", Kind: framework.ParameterKindFloat, Unit: framework.UnitDecibel, DefaultValue: "0", Description: "Impulsivity correction applied at the reporting boundary"},
 		{Name: "ground_factor", Kind: framework.ParameterKindFloat, DefaultValue: "0.5", Min: &minZero, Max: &maxGroundFactor, Description: "Normalized ground factor G for the initial homogeneous-ground scaffold"},
-		{Name: "air_temperature_c", Kind: framework.ParameterKindFloat, Unit: framework.UnitDegreeCelsius, DefaultValue: "10", Description: "Air temperature used for atmospheric absorption inputs"},
+		// Bounded because the ISO 9613-1 absorption coefficient divides by the
+		// absolute temperature: unbounded, -273 °C was accepted and produced
+		// infinite attenuation rather than a refusal. See minAirTemperatureC.
+		{Name: "air_temperature_c", Kind: framework.ParameterKindFloat, Unit: framework.UnitDegreeCelsius, DefaultValue: "10", Min: &minTemperature, Max: &maxTemperature, Description: "Air temperature used for atmospheric absorption inputs"},
 		{Name: "relative_humidity_percent", Kind: framework.ParameterKindFloat, Unit: framework.UnitPercent, DefaultValue: "70", Min: &minZero, Max: &maxHumidity, Description: "Relative humidity used for atmospheric absorption inputs"},
 		{Name: paramMeteorologyAssumption, Kind: framework.ParameterKindString, DefaultValue: MeteorologyDownwind, Enum: []string{MeteorologyDownwind}, Description: "Favorable propagation assumption for ISO 9613-2 engineering calculations"},
 		// c0_met reads as dimensionless but is not: ISO 9613-2 Eq. 22 makes C_met

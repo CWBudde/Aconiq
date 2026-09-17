@@ -101,6 +101,19 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 Entries marked **numeric** change computed levels. Results produced before them are not comparable
 with results produced after them.
 
+- **numeric** ISO 9613-2: `A_atm` now evaluates the ISO 9613-1 absorption coefficient analytically
+  at the stated air temperature and relative humidity, instead of snapping to the nearest of the six
+  ISO 9613-2 Table 2 rows. The snap weighted temperature five times more heavily than humidity, so
+  5 °C / 30 % RH selected the 10 °C / **70 %** row and took the 4 kHz coefficient as 32.8 dB/km where
+  the formula gives 83.0 — 25 dB over 500 m, an order of magnitude outside the ±1 to ±3 dB that
+  clause 9 claims for the method as a whole. Whole regions of input space were previously
+  indistinguishable: 5 °C / 30 % RH and 10 °C / 70 % RH returned identical levels, as did
+  20 °C / 60 % and 25 °C / 40 %. Levels move by up to 0.02 dB at the default 10 °C / 70 % RH and by
+  −3.3 dB at 1000 m for a broadband source at 5 °C / 30 % RH. Table 2 is retained as the regression
+  oracle: the formula reproduces all 48 tabulated values to ≤ 0.05 dB/km through 1 kHz and ≤ 1.4 %
+  at 2–8 kHz, which is the table's own rounding.
+- ISO 9613-2: `air_temperature_c` is bounded to [−60, 60] °C. It previously accepted −273 °C, where
+  the absorption formula divides by an absolute temperature at or below zero.
 - **numeric** ISO 9613-2: A-weighting was applied twice on the default import path (broadband
   `L_WA` replicated into all eight octave bands, then energy-summed with a second weighting), worth
   about +7 dB. Clause 1 NOTE 1 is now implemented as a single 500 Hz band. Golden levels drop 5.8
@@ -112,6 +125,15 @@ with results produced after them.
   negative ground effect into a positive screening attenuation.
 - **numeric** RLS-19: line-source segments are weighted against `l0 = 1 m` rather than the total
   road length.
+- **numeric** RLS-19: `h_m` was measured above sea level rather than above the ground, so on any
+  project carrying elevations `D_gr` (Gl. 14) clamped to 0 and the Bodendämpfung disappeared —
+  levels up to 4.8 dB high, measured at +4.39 dB through the CLI on a flat site 400 m up. The ground
+  under a path is now resolved from declared slope edges, else from the imported DTM sampled along
+  the path, else from the straight line between the ground elevations at the two ends; never from
+  zero. Mirrored paths carried the same datum error and are corrected with it. Models whose ground
+  sits at elevation 0 are bit-for-bit unchanged, which is why no existing fixture but two caught it;
+  the CI-safe acceptance fixtures I8 (ascending road) and I9 (receding road) move by −0.57 dB on
+  LrDay and LrNight.
 - **numeric** Schall 03: ten normative defects, each verified against the 16. BImSchV Anlage 2
   text. `d0` in Gl. 14 was read as a path length instead of the 1 m reference length, which zeroed
   the only ground term at normal assessment distances; the Tabelle 6 Rollgeräusche speed-factor row

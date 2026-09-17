@@ -512,6 +512,54 @@ Five constraints are live:
 `aconiq compare-raster` deliberately does **not** reproject: it compares against SoundPLAN rasters
 in the project's own CRS.
 
+### 1.8 RLS-19 measured the propagation path above sea level — closed
+
+`h_m` in Gl. 14 is the mean height of the path **above the ground**. The module computed the mean
+path elevation correctly and then subtracted an average terrain elevation that `computeTerrainAvgZ`
+answered with **0** whenever no declared slope edge crossed the path — and the CLI never populates
+`cfg.Terrain`, so that was every path of every run. On a project carrying elevations `h_m` became the
+height above sea level, `D_gr` went far negative, Gl. 14's `minimum 0` clamped it, and the
+Bodendämpfung disappeared without a word: up to +4.8 dB, measured at +4.39 dB end to end on a site
+400 m up. Recorded as C11 in the conformance declaration.
+
+Four constraints follow, and the first is the general lesson.
+
+**Zero is an elevation, not an absence.** A lookup that cannot answer must say so rather than return
+a plausible number — the same rule P1.5 drew from RLS-19's `SurfaceCorrection`, reached here by a
+different route. `computeTerrainAvgZ` now returns `(value, ok)`.
+
+**Where nothing is known, the ground under each end is the ground at that end.** That fallback —
+not DTM sampling — is the core of the fix, and it is bit-identical to the old output when elevations
+are 0. That identity is why 843 tests and 94 acceptance fixtures were blind to this: every fixture
+but two sits at elevation 0. Only `i8_ascending` and `i9_receding` moved, by −0.5732 dB.
+
+**A DTM must be read for its shape, not its datum.** The ordinary project has a DTM and 2D GeoJSON
+sources, so the model's declared ground is 0 while the DTM says 400. Sampling absolute elevations
+would have produced `h_m ≈ −197` and ~41 dB of invented attenuation — a worse defect than the one
+being fixed. `geo/terrain.MeanRiseAboveChord` therefore returns the mean rise of the terrain above
+the chord joining its own endpoint samples, and the module adds that to the chord between the ground
+elevations it already knows.
+
+**Schall 03 has the same bug, and this paragraph said the opposite.** The claim rested on reading
+`schall03.meanPathHeight(hg, hr)` as operating on heights above ground without tracing where `hg`
+comes from: it is `elevation_m + heightAboveSO`, and `elevation_m` is an absolute Z — that is what
+`aconiq import --from-soundplan` writes — while `receiver.HeightM` is a height above ground. The
+correction is the useful part, because the module is worse off than RLS-19 was. Four terms read those
+heights, not one, and the two obvious ones cancel: `A_gr,B` loses its ground attenuation (too loud)
+while `d` inflates `A_div` (too quiet), netting −2.73 dB in free field. The one that does not cancel
+is `ComputePathBarrierAttenuation` — a source at an apparent 404 m clears every wall, so **shielding
+disappears and a receiver behind a Schallschutzwand reads +7.0 dB high**. Reproduced and fixed
+against `main` in its own pull request, deliberately not stacked on this branch.
+**A near-cancelling total is how this stayed invisible.** Anyone measuring only the receiver level
+would have read −2.7 dB and moved on; the components have to be measured separately.
+Deviation 4 is a different, weaker thing and remains open: the flat-ground special case of `S/d`.
+`MeanRiseAboveChord` is what closes it — add the sampled rise to `(h_g + h_r)/2` — and it is
+deliberately left undone, because it lives on this branch and the datum fix was based on `main`.
+
+Cost: a DTM-attached run is ~28 % slower on the propagation path (25 m nominal sampling, capped at
+64 intervals). Only projects that import a DTM pay it; a geographic project pays more, because every
+sample goes through `terrainInComputeCRS`.
+
 ## Priority 2 — Make the CLI run the normative code
 
 **Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
@@ -554,18 +602,25 @@ parse and discarding a user's model and runs over a row order is the larger harm
 
 ### Open
 
-- [ ] **The geographic refusal is written out twice.** `POST /api/v1/transform` closed the
-      API-mode projector gap: the handler delegates to `internal/geo/crstransform`, which the WASM
-      kernel now wraps rather than owns, so all three surfaces resolve the same zone and a test
-      compares the API's message to the kernel's byte for byte. What that work exposed is that
-      `app/cli/run_crs.go:92` builds the **same refusal sentence from its own string literal**, and
-      nothing compares the two. Two copies of a sentence whose entire point is that it is identical
-      everywhere; either the CLI reads it from `crstransform` or the parity test covers three
-      surfaces rather than two.
-      Two constraints the endpoint leaves live. **Its message is unprefixed**, alone among this
-      package's handlers, and only a test keeps it that way. And **it reads no project**, which is
-      what keeps it on the right side of the invariant that governs the map: it is a projection _of_
-      the model, never a source _for_ it.
+The geographic refusal is no longer written out twice. `crstransform.GeographicRefusal` is the
+one place that sentence exists; `resolveTarget` and `app/cli/run_crs.go` both call it, and
+`cli.TestGeographicRefusalReadsTheSameOnAllThreeSurfaces` compares CLI, API and kernel byte for
+byte at both refusal sites. Four things it leaves live:
+
+- **The CLI names the CRS as `geo.ParseCRS` canonicalises it**, not as the caller typed it. That
+  is what makes a byte-for-byte comparison possible at all, and the parity test pins it — reverting
+  to the raw string fails with `cli: "project CRS epsg:4326 …"` against `api: "… EPSG:4326 …"`.
+- **A byte-for-byte comparison cannot be made on the CLI's `error.Error()`.**
+  `domainerrors.AppError.Error()` renders `"<Op>: <Msg>: <Err>"`, so the rendered strings can never
+  be equal. The test compares `AppError.Msg`, and asserts the kind and op separately.
+- **`aconiq run` renders the cause twice** — the shared sentence already ends with
+  `": " + err.Error()`, and `AppError.Error()` appends the same cause again. Pre-existing, left
+  unchanged because fixing it changes user-visible CLI output and is owed its own commit.
+- The endpoint's own two constraints stand. **Its message is unprefixed**, alone among this
+  package's handlers, and only a test keeps it that way. And **it reads no project**, which is what
+  keeps it on the right side of the invariant that governs the map: it is a projection _of_ the
+  model, never a source _for_ it.
+
 - [ ] **Property geometry is unreachable in browser mode.** `rls19_directional_sources` and
       `schall03_track_features` carry coordinates in the project CRS inside a feature's properties
       (`geo/modelgeojson/reproject.go`'s `propertyGeometries`), and the batched `aconiq.transform`
@@ -820,6 +875,14 @@ test-fixture-tier numbers get the opposite rule and carry no stability promise a
 enforceable rather than aspirational because the release workflow runs `just update-golden` and
 fails on a dirty tree.
 
+**Until the first tag, norm-closeness outranks golden stability.** The rule above protects an
+archived run someone may hold under a permit application, and `git tag` is still empty, so there is
+no such run yet — `CHANGELOG.md` already says as much. A numeric change that brings a normative
+module closer to its standard is therefore taken now rather than deferred, and every one still
+carries a **numeric** changelog entry and a conformance-document update in the same change. That is
+what makes the shift deliberate rather than silent, and it is what the rule starts enforcing at the
+first tag.
+
 ### Open
 
 - [ ] **Cut the first release.** Everything needed is in place and `git tag` is still empty, which
@@ -900,19 +963,56 @@ parsing, extraction and persistence are all `app/cli` files, and `framework` can
 without a cycle. `internal/app/cli` is 13 014 non-test LOC, and adding a standard still means
 editing several of its files rather than one package of its own.
 
-- [ ] **Finish the shared acoustics core.** `internal/acoustics` exists and owns the END indicator
-      model — the day/evening/night types, the directive's Lden weighting and the bundle the six
-      modules reporting that set publish. What it does not own yet is the summation: `energySumDB`
-      exists in **9 copies with 3 different semantics** — `rls19/road/emission.go:147` skips
-      `level <= -900`, `cnossos/road/emission.go:326` does not, `schall03/model.go:129` uses `-Inf`
-      and returns NaN on +Inf. Two incompatible silence sentinels (`-999.0` vs `-Inf`) flow into the
-      same `results.ReceiverTable`. One `EnergySum`, one sentinel, one `Level` type.
-      Unlike the indicator lift, **this one moves numbers**, so it needs its own golden review; the
-      13 digest goldens are the oracle. It also lands the compensated-summation item from P1.3.
-- [ ] **Unify the four Schall 03 normative propagation kernels** —
-      `compute.go:61`, `compute.go:246`, `reflection.go:223`, `reflection.go:281` are near-identical
-      ~50-line implementations of Gl. 13–16, and the explanatory Gl. comments survive only in the
-      first. A correction to a normative equation currently has to be applied four times.
+- [ ] **Finish the shared acoustics core.** `internal/acoustics` owns the END indicator model and,
+      since this pass, `EnergySum`: the seven byte-identical `energySumDB` copies
+      (`rls19/road`, `cnossos/road|rail|industry|aircraft`, `bub/road`, `buf/aircraft`) are one
+      function with one pair of sentinels, `SilenceDB` and `SilenceThresholdDB`. Every golden is
+      byte-identical, so the deduplication is provably not a behaviour change.
+      **Two claims this entry used to make were wrong.** `cnossos/road` _does_ skip
+      `level <= -900`; it was behaviourally identical to `rls19/road`, and the only variation across
+      the seven was whether the numbers were named constants or inline literals. And the two
+      sentinels do **not** both reach `results.ReceiverTable`: `finiteOrSilence` converts `-Inf` to
+      `-999` at schall03's own output boundary, so only `-999` ever lands in a receiver table.
+      What is genuinely left is smaller and sharper than "nine copies":
+  - [ ] **Compensate `EnergySum`, and re-cut five goldens deliberately.** The switch to
+        `numeric.CompensatedSum` is one line, and it is **not** free — which is the finding that
+        matters here, because Priority 1.3 observed compensation leaving every golden unchanged and
+        **that does not generalise to these call sites.** These reductions really do scale with
+        model size (`rls19/road/propagation.go` sums one contribution per source, per reflection
+        path and per line-source subsegment), so compensation recovers real low bits: measured at
+        **1-2 ulps, max 2.8e-14 dB**, moving `rls19-road`, `cnossos-road`, `cnossos-rail`,
+        `bub-road` and `bub-rail`. Receiver tables persist `float64` at full round-trip precision
+        and the run digests hash every byte, so a negligible delta is still a golden diff.
+        Until it is taken, `EnergySum` accumulates with a plain `+=` — byte for byte what the seven
+        copies did — and says so in its doc comment, with
+        `TestEnergySumLosesTermsAnUncompensatedSumMustLose` pinning the terms the naive sum drops so
+        the follow-up has a test to invert.
+        **Note what this costs under Priority 5's versioning rule**: `rls19-road` is normative-tier,
+        and a change to a normative module's computed levels is a breaking change there regardless
+        of direction or size. This is a release decision, not a cleanup.
+  - [ ] **Decide the two outliers, or declare them.** `bimschv16.energySumDB` has no NaN/Inf guard
+        and no silence threshold; `schall03.EnergeticSumLevels` works in `-Inf` internally and
+        returns NaN on a `+Inf` term rather than skipping it. Both now carry a comment saying why
+        they differ. Converging either changes numbers, so neither belonged in a refactor. "One
+        sentinel" is a two-module question now, not a nine-module one.
+  - [ ] **One `Level` type** is still untouched.
+- [x] **The four Schall 03 normative propagation kernels are one.** `subsegmentContrib`
+      (`compute.go`) is the single implementation of Gl. 6, 8–16, parameterised by `dRho`
+      (0 direct, the Gl. 28 wall absorption loss reflected), a `rayOrigin` (the real subsegment
+      point direct, the fully unfolded image source reflected, read only when barriers exist) and
+      a possibly-empty barrier set. The four entry points keep their names and signatures, so no
+      caller and no test moved, and the Gl. explanations — which had survived in one copy each —
+      now sit on the kernel. The four line-source integrators were the same duplication a second
+      time and collapsed with it, into `eachSubsegment` + `directRayTerms`/`reflectedRayTerms` +
+      `lineSourceLevel`. Net −126 LOC. Two things it leaves live.
+      **The line numbers this entry used to carry were stale** and cost the next reader a search:
+      `compute.go:61` was inside `buildVehicleInputs` and two of the four cited lines landed in doc
+      comments. Cite a function name, not a line, for anything that will outlive one commit.
+      **The per-band accumulation is deliberately not compensated**, while the per-subsegment sum
+      above it is. That is not an oversight: the inner reduction runs over at most 3 Teilquelle
+      heights × `NumBeiblattOctaveBands` terms, the fixed-length case
+      `docs/policies/determinism.md` §3 exempts; the outer one grows with the model. The asymmetry
+      is now stated on the kernel so it is not “fixed” by someone who reads only half of it.
 - [ ] **Move the module contract into `framework` and register implementations.** The dispatch
       exists and the switch is gone; what is still CLI-side is the contract. A standard's four
       halves — its options (`run_options.go`), its extraction (`run_extract_*.go`), its compute
@@ -1557,11 +1657,24 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
       cooling towers, facades).
 - [ ] Add spatial ground zones so per-region G values come from polygon geometry instead of a
       single global ground factor.
-- [ ] Implement the ISO 9613-1 analytical α model to replace nearest-row Table 2 lookup
-      (`iso9613/atmospheric.go:27-46`), which snaps to one of 6 points using an undocumented
-      `dt/10, dh/50` weighting. At 4 kHz the table spans 22.9–88.8 dB/km. The deviation _is_
-      honestly disclosed at `docs/conformance/iso9613-konformitaetserklaerung.md:84` — implementing
-      the ~20-line formula is cheaper than maintaining the caveat.
+- [x] **The ISO 9613-1 α model replaced the nearest-row Table 2 lookup.** `AlphaForBand` evaluates
+      the analytical model — classical absorption plus O₂ and N₂ relaxation — at every condition.
+      **This entry understated the defect by describing the table's span rather than the resulting
+      error.** The `dt/10, dh/50` weighting weighted temperature five times more heavily than
+      humidity per unit, so 5 °C / 30 % RH selected the 10 °C / **70 %** row: 32.8 dB/km at 4 kHz
+      where the formula gives 83.0, which is 25 dB over 500 m against the ±1 to ±3 dB clause 9
+      claims for the whole method. Whole regions of input space were indistinguishable — 5 °C/30 %
+      returned exactly what 10 °C/70 % did. Three constraints are live.
+      **Table 2 is now a test oracle, not a rechenweg**, and that is what made the change safe to
+      make without the ISO text: the table is a tabulation of the same formula, so it validates it.
+      Agreement is ≤ 0.05 dB/km through 1 kHz and ≤ 1.4 % at 2–8 kHz, which is the table's own
+      rounding. Do not loosen those tolerances to make a band pass — a disagreement is a
+      transcription error in the formula.
+      **The coefficient is evaluated at the reference pressure** (101,325 kPa); site pressure is not
+      parameterisable, and that is the residual limitation that replaced the old one in the
+      declaration.
+      **`air_temperature_c` is bounded to [−60, 60] °C.** It previously accepted −273, where the
+      formula divides by an absolute temperature at or below zero.
 
 ## Priority 11 — 16. BImSchV scope completion
 
@@ -1607,6 +1720,23 @@ the comparison into evidence (the assertion itself is Priority 3).
       normative chain whenever the model carries `schall03_operations` — but the SoundPLAN import
       writes only the preview `rail_*` properties, so `compare` opts into the preview engine and
       the 25 dB delta it reports says nothing about the normative code.
+      Two things bound who can do this work, and they are the reason it keeps being deferred.
+      **It cannot be validated without the licensed fixture.** `interoperability/` is gitignored and
+      `repo-hygiene.yml` refuses to track it, so a checkout that has not been handed the project —
+      or `ACONIQ_SOUNDPLAN_FIXTURES` pointing at one — makes `qa/fixtures.SoundPLANProjectDir` skip
+      every test that would measure the mapping. The work is writable blind and testable against
+      synthetic `RailTrack`/`TrainType` values, but the number it exists to move is unobservable.
+      **And `FzComposition` is an editorial decision, not a conversion.** A 1990 `TS03` row carries
+      one A-weighted base level and no Fz decomposition, so the 19 `Zugarten` of `beiblatt1.go` have
+      to be reached through a declared lookup table someone is willing to defend against the norm.
+      `railops.go`'s `classifyTrainClass`/`classifyTractionType` ordinal switch produces only the
+      three-value preview vocabulary and is not a starting point for it.
+      What the import already carries and does not yet use: `soundplan_train_names`,
+      `soundplan_day_train_count`, `soundplan_night_train_count`, `soundplan_track_vmax_kph` and
+      `soundplan_assessment_*_hours` are emitted per segment today. `StreckeMaxKPH` is available and
+      reliable (`RailEmission.TrackV`); `Fahrbahn`, `Surface` and `BridgeType` arrive only as dB
+      surcharges with no categorical 2014 counterpart, and all three reference enums are the zero
+      value by design, so defaulting them is the safe choice rather than a gap.
 - [ ] Map SoundPLAN track parameters and train types to Aconiq emission fields and Fz categories.
 - [ ] Convert SoundPLAN buildings, barriers, terrain, receivers, and calculation areas into the
       internal model.
@@ -1636,15 +1766,51 @@ the comparison into evidence (the assertion itself is Priority 3).
 
 ## Priority 14 — QA hardening and conformance packaging
 
-- [ ] **`just update-golden` is flaky, and has been all along.** `internal/qa/acceptance/rls19_test20`
-      runs `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport` in parallel
-      against the same `testdata/ci_safe/*.golden.json` files, so under `UPDATE_GOLDEN=1` one test
-      decodes a golden the other is mid-write and fails with `unexpected end of JSON input`. The
-      file named differs every run. Reproduced 4 times in 6 on `main`; `-p 1` does not help, because
-      the race is inside one package. The merge gate never sees it — `go test ./...` without the
-      flag is stable — but the one command a maintainer runs before regenerating snapshots is not
-      trustworthy, which is the wrong way round. Serialise the two tests or give them separate
-      fixture directories.
+`just update-golden` is trustworthy again, and the entry that stood here named the wrong test.
+The bullet blamed `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport`;
+both are **readers**. The writer was a third test, `TestUpdateCISafeExpectedSnapshots`, which
+called `t.Parallel()` _before_ its `golden.UpdateEnabled()` skip — so under `UPDATE_GOLDEN` Go
+deferred it into the same parallel batch as the readers and rewrote all 38 CI-safe snapshots
+while they were being decoded. It writes through the package's own `writeJSONFile`, never through
+`golden.AssertBytesSnapshot`, so no amount of locking in the helper could have fixed it. Dropping
+the `t.Parallel()` puts the rewrite ahead of the whole batch, which is how the sibling
+`qa/acceptance/schall03` updater was already written. 5 failures in 6 before; 10 clean runs after.
+
+Three things it leaves live:
+
+- **There are four readers, not one** — the three that make a full `Run(ModeCISafe)` pass plus
+  `TestParkingFixtureRelationsHoldByArithmetic`, which reads four goldens directly. `t.TempDir()`
+  in the readers is only the report output directory; fixtures always come from the checked-in
+  `testdata/ci_safe/` via `packageDir()`.
+- **A second package had the same defect** and no entry here: `qa/acceptance`'s
+  `TestAcceptanceFixtures` writes while `TestISO9613ToleranceCompliance` reads. Far rarer — it
+  never surfaced in 60 whole-package update runs, and took `-count=300` over the two tests to
+  produce six mid-write reads, because only three iso9613 goldens exist. There the writer _is_ the
+  fixture assertion, so the reader skips under `UpdateEnabled()` instead, the way
+  `TestCatalogProvidesDeterministicFixtures` already guarded itself.
+- **`UPDATE_GOLDEN=true` used to regenerate half the tree.** `qa/acceptance/schall03` compared
+  `os.Getenv("UPDATE_GOLDEN") != "1"` rather than calling `golden.UpdateEnabled()`, which accepts
+  five spellings. Anything reading that variable goes through the helper.
+
+- [ ] **The backend coverage guard's parser cross-check compares two different populations.**
+      `scripts/coverage-check.sh` asserts that `go tool cover -func`'s total and the raw profile sum
+      agree to 0.05 pp, on the stated premise that "if the two ever disagree, one of them is parsing
+      the profile wrongly and neither number can be trusted". **That premise is wrong**, and the
+      check fires as a result: it reported "the backend coverage measurement failed its sanity
+      checks" on this branch while the coverage was fine.
+      Diagnosed rather than guessed. `go tool cover -func` reports **functions**, so it attributes
+      nothing from a file holding only package-level declarations —
+      `internal/app/cli/run_modules_table.go` has zero top-level `func`s, being the `runModuleTable`
+      var of function literals. The profile carries 233 files, `-func` 232. The two numbers are
+      therefore both correct over different populations, and the gap is the dropped file's weight:
+      0.0048 pp on `main` (78.9048 exact vs 78.9 printed), 0.0638 pp here (79.1638 vs 79.1). `main`
+      passes by luck, not by construction, and any change to overall coverage can move an unrelated
+      branch across the 0.05 threshold.
+      The fix is to compare like with like — evaluate the exact ratio over only the files `-func`
+      attributes — not to widen the tolerance, which would keep a check whose stated meaning is
+      false. The headline percentage should stay the full-profile one. `go-coverage` is advisory, so
+      nothing is blocked meanwhile; what is damaged is the credibility of a warning that says the
+      measurement cannot be trusted when it can.
 - [ ] Expand `internal/qa/` with loaders for standard test tasks, result comparison with tolerances
       and outlier reports, and a snapshot exporter for debugging.
 - [ ] Expand fuzz/property tests: geometry robustness, numeric monotonicity where applicable.

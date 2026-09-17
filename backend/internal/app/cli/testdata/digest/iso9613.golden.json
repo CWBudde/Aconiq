@@ -2,11 +2,11 @@
   "standard": "iso9613",
   "fixture": "phase19/iso9613_industry_model.geojson",
   "files": {
-    "iso9613.bin": "sha256:52e97da29de8a5d80bd99334aa82ce50c10439f6195f4825975eed6955d484bf bytes=504",
+    "iso9613.bin": "sha256:a560dc3a9f61639489d46d6491ea5d358784efb15197646fe3a8bc40f6d85771 bytes=504",
     "iso9613.json": "sha256:d36ec113454886f5e0d9b5df3a1b1260dc35320fe753393e7c48f7d1776dd684 bytes=204",
-    "receivers.csv": "sha256:ed2ea91bda8a515b0a64b49ee29eba45f219cb8b0782a222a02ce4150817c37f bytes=3584",
-    "receivers.json": "sha256:4e7e1bcd9f1d24757ea88283b7cda5ca4d20521216b441ee986523c373f0146b bytes=7460",
-    "run-summary.json": "sha256:a0dc8111c748f185577ae34046debeedc55e6c2946a1da20b0b491a5a883db35 bytes=290"
+    "receivers.csv": "sha256:4381d4af04351aaf8d90bf5868de6724f52e4deba6a3d00ffec699c08fd26a2d bytes=3578",
+    "receivers.json": "sha256:d151e0e02a9540f199e0704927f430a4ef529fbfd0978ddbe6468c7d61a06c60 bytes=7454",
+    "run-summary.json": "sha256:e4f023dc52e1c68eccd7313bb22da52bedba9118124e1ce50da3f76182227b1c bytes=290"
   },
   "run_summary": {
     "evidence_tier": "normative",
@@ -14,7 +14,7 @@
     "grid_width": 9,
     "indicator": "LpAeq_DW",
     "model_version": "iso9613-octaveband-v1",
-    "output_hash": "eec22861aab968cf67def2479a9599f28e874557b8f4f3f4fc59645e7a359957",
+    "output_hash": "53bf6c4e2afd8efaed942212b1b75254b427acc9647e82aac663fa8c123ec798",
     "receiver_count": 63,
     "receiver_mode": "auto-grid",
     "source_count": 2,

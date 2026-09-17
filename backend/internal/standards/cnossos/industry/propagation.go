@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 )
 
@@ -180,9 +181,9 @@ func ComputeReceiverPeriodLevels(receiver geo.PointReceiver, sources []IndustryS
 	}
 
 	return PeriodLevels{
-		Lday:     energySumDB(dayContrib),
-		Levening: energySumDB(eveningContrib),
-		Lnight:   energySumDB(nightContrib),
+		Lday:     acoustics.EnergySum(dayContrib),
+		Levening: acoustics.EnergySum(eveningContrib),
+		Lnight:   acoustics.EnergySum(nightContrib),
 	}, nil
 }
 

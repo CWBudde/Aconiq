@@ -127,7 +127,7 @@ func TestParkingReflectedPathIsShielded(t *testing.T) {
 
 // TestParkingSilenceSurvivesAReflector guards the −999 dB sentinel against the
 // new path. A mirrored path only subtracts, so a lot with no movements stays
-// below the silence threshold and is still dropped by energySumDB.
+// below the silence threshold and is still dropped by acoustics.EnergySum.
 func TestParkingSilenceSurvivesAReflector(t *testing.T) {
 	t.Parallel()
 

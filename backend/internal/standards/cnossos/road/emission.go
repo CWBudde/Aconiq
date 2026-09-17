@@ -2,6 +2,8 @@ package road
 
 import (
 	"math"
+
+	"github.com/aconiq/backend/internal/acoustics"
 )
 
 type periodEmission struct {
@@ -19,15 +21,10 @@ const (
 	vehicleClassPoweredTwoWheelers vehicleClass = "powered_two_wheelers"
 )
 
-const (
-	// silenceDB is the sentinel level used for "no acoustic contribution".
-	// It matches the convention used by cnossos/industry and rls19.
-	silenceDB = -999.0
-
-	// silenceThresholdDB is the cut-off below which a level is treated as the
-	// silence sentinel and dropped from an energy sum.
-	silenceThresholdDB = -900.0
-)
+// silenceDB is the sentinel level used for "no acoustic contribution". It is
+// acoustics.SilenceDB, which is also what acoustics.EnergySum recognises (at or
+// below acoustics.SilenceThresholdDB) and drops.
+const silenceDB = -999.0
 
 // ComputeEmission computes period emissions for one road source.
 //
@@ -52,7 +49,7 @@ func ComputeEmission(source RoadSource) (periodEmission, error) {
 }
 
 func emissionForPeriod(source RoadSource, traffic TrafficPeriod) float64 {
-	return energySumDB([]float64{
+	return acoustics.EnergySum([]float64{
 		emissionForVehicleClass(source, traffic.LightVehiclesPerHour, vehicleClassLight),
 		emissionForVehicleClass(source, traffic.MediumVehiclesPerHour, vehicleClassMedium),
 		emissionForVehicleClass(source, traffic.HeavyVehiclesPerHour, vehicleClassHeavy),
@@ -99,7 +96,7 @@ func baseEmissionLevel(class vehicleClass) float64 {
 // but it also adds a spurious +3.0 dB at Q = 1 veh/h and never falls below the
 // class base level, so an empty period could not be distinguished from a very
 // quiet one. Callers must treat the returned silence sentinel as "no
-// contribution"; energySumDB drops it.
+// contribution"; acoustics.EnergySum drops it.
 func trafficFlowCorrection(vehiclesPerHour float64) float64 {
 	if vehiclesPerHour <= 0 {
 		return silenceDB
@@ -346,22 +343,4 @@ func studdedTyreCorrection(share float64, class vehicleClass) float64 {
 	default:
 		return 0
 	}
-}
-
-func energySumDB(levels []float64) float64 {
-	sum := 0.0
-
-	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) || level <= silenceThresholdDB {
-			continue
-		}
-
-		sum += math.Pow(10, level/10)
-	}
-
-	if sum <= 0 {
-		return silenceDB
-	}
-
-	return 10 * math.Log10(sum)
 }

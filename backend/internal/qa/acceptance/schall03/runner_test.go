@@ -1,10 +1,10 @@
 package schall03runner_test
 
 import (
-	"os"
 	"testing"
 
 	schall03runner "github.com/aconiq/backend/internal/qa/acceptance/schall03"
+	"github.com/aconiq/backend/internal/qa/golden"
 )
 
 func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
@@ -34,7 +34,7 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 }
 
 func TestUpdateGoldenSnapshots(t *testing.T) {
-	if os.Getenv("UPDATE_GOLDEN") != "1" {
+	if !golden.UpdateEnabled() {
 		t.Skip("set UPDATE_GOLDEN=1 to regenerate expected snapshots")
 	}
 
