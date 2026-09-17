@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/app/config"
@@ -160,5 +161,132 @@ func TestFromFlagsPassesThroughJSONLogs(t *testing.T) {
 		if cfg.JSONLogs != jsonLogs {
 			t.Fatalf("JSONLogs = %t, want %t", cfg.JSONLogs, jsonLogs)
 		}
+	}
+}
+
+// FromFlags derives both paths from the working directory when no flags are
+// given, so it has to survive that directory being gone. A removed working
+// directory is not exotic: it is what a shell left in a `git clean`ed or
+// rebuilt tree sits in, and the failure mode to avoid is FromFlags returning a
+// silently empty or relative ProjectPath that later writes `.noise/` somewhere
+// unexpected.
+func TestFromFlagsReportsAMissingWorkingDirectory(t *testing.T) {
+	// Not parallel: it changes the process working directory.
+	gone := filepath.Join(t.TempDir(), "gone")
+
+	err := os.Mkdir(gone, 0o700)
+	if err != nil {
+		t.Fatalf("create working directory: %v", err)
+	}
+
+	t.Chdir(gone)
+
+	err = os.Remove(gone)
+	if err != nil {
+		t.Fatalf("remove working directory: %v", err)
+	}
+
+	{
+		_, err := os.Getwd()
+		if err == nil {
+			t.Skip("this platform still resolves a removed working directory")
+		}
+	}
+
+	cfg, err := config.FromFlags("", "", false, false)
+	if err == nil {
+		t.Fatalf("expected an error with no working directory, got %#v", cfg)
+	}
+
+	if cfg != (config.Config{}) {
+		t.Fatalf("expected the zero Config alongside the error, got %#v", cfg)
+	}
+
+	if !strings.Contains(err.Error(), "working directory") {
+		t.Fatalf("error %q does not name the working directory", err)
+	}
+}
+
+// An explicit --project keeps working even then: the path needs no lookup.
+func TestFromFlagsWithExplicitAbsolutePathSurvivesAMissingWorkingDirectory(t *testing.T) {
+	// Not parallel: it changes the process working directory.
+	project := t.TempDir()
+	gone := filepath.Join(t.TempDir(), "gone")
+
+	err := os.Mkdir(gone, 0o700)
+	if err != nil {
+		t.Fatalf("create working directory: %v", err)
+	}
+
+	t.Chdir(gone)
+
+	err = os.Remove(gone)
+	if err != nil {
+		t.Fatalf("remove working directory: %v", err)
+	}
+
+	cfg, err := config.FromFlags(project, "", false, false)
+	if err != nil {
+		t.Fatalf("from flags with an absolute project path: %v", err)
+	}
+
+	if cfg.ProjectPath != project {
+		t.Fatalf("ProjectPath = %q, want %q", cfg.ProjectPath, project)
+	}
+}
+
+// A relative --project or --cache-dir can only be resolved against the working
+// directory. When that is gone, each must name itself in the error rather than
+// leaving the caller to guess which of the two flags was at fault.
+func TestFromFlagsReportsWhichRelativePathCouldNotBeResolved(t *testing.T) {
+	// Not parallel: it changes the process working directory.
+	cases := []struct {
+		name        string
+		projectPath string
+		cacheDir    string
+		wantInError string
+	}{
+		{name: "relative project path", projectPath: "site", cacheDir: "", wantInError: `"site"`},
+		{name: "relative cache dir", projectPath: "", cacheDir: "scratch", wantInError: `"scratch"`},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectPath := testCase.projectPath
+			if projectPath == "" {
+				// Keep the project path resolvable so the cache dir is what fails.
+				projectPath = t.TempDir()
+			}
+
+			gone := filepath.Join(t.TempDir(), "gone")
+
+			err := os.Mkdir(gone, 0o700)
+			if err != nil {
+				t.Fatalf("create working directory: %v", err)
+			}
+
+			t.Chdir(gone)
+
+			err = os.Remove(gone)
+			if err != nil {
+				t.Fatalf("remove working directory: %v", err)
+			}
+
+			{
+				_, err := os.Getwd()
+				if err == nil {
+					t.Skip("this platform still resolves a removed working directory")
+				}
+			}
+
+			cfg, err := config.FromFlags(projectPath, testCase.cacheDir, false, false)
+			if err == nil {
+				t.Fatalf("expected an error, got %#v", cfg)
+			}
+
+			if !strings.Contains(err.Error(), testCase.wantInError) {
+				t.Fatalf("error %q does not name %s", err, testCase.wantInError)
+			}
+		})
 	}
 }
