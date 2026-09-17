@@ -266,16 +266,21 @@ describe("DrawProvider editing surface", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores a finish while select mode is armed", () => {
-    // The regression guard for the editing path. Terra-draw fires "finish" at
-    // the end of a *drag* too, and the finish handler is written for a newly
-    // drawn shape: it resets the mode to "static" and removes the feature. Run
-    // in select mode it disarms the tool mid-edit and deletes the feature being
-    // reshaped.
+  it("hands a finish to the editing subscriber while select mode is armed", () => {
+    // The regression guard for the editing path, in both directions. Terra-draw
+    // fires "finish" at the end of a *drag* too, and the finish handler is
+    // written for a newly drawn shape: it resets the mode to "static" and
+    // removes the feature, which in select mode disarms the tool mid-edit and
+    // deletes the feature being reshaped. But the event is still the end of the
+    // gesture, and the only one that says so — terra-draw leaves a dropped
+    // feature selected, so "deselect" comes once for a whole run of drags — so
+    // swallowing it outright left the reshape's owner with no drag boundary.
     vi.useFakeTimers();
     try {
       renderWithin(stubMap);
+      const onFinish = vi.fn();
       act(() => {
+        api?.subscribeSelection({ onFinish });
         api?.addFeatures([point]);
         api?.setMode("select");
       });
@@ -286,6 +291,7 @@ describe("DrawProvider editing surface", () => {
         vi.runAllTimers();
       });
 
+      expect(onFinish).toHaveBeenCalledWith("src-1");
       expect(finished).toEqual([]);
       expect(instances[0]?.setMode).not.toHaveBeenCalled();
       expect(instances[0]?.removeFeatures).not.toHaveBeenCalled();
@@ -294,6 +300,25 @@ describe("DrawProvider editing surface", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reports the instance being rebuilt, which a basemap switch does", () => {
+    // A basemap switch replaces the MapLibre map, and terra-draw with it: the
+    // new instance starts with an empty feature store. Nothing else about the
+    // API moves — `activeMode` is React state and survives — so a consumer that
+    // has put a feature in there has no other way to learn its copy is gone.
+    const view = renderWithin(stubMap);
+    const before = api?.instanceEpoch;
+    act(() => {
+      api?.addFeatures([point]);
+    });
+    expect(api?.getFeature("src-1")).toEqual(point);
+
+    view.rerender(tree({} as Map));
+
+    expect(instances).toHaveLength(2);
+    expect(api?.instanceEpoch).not.toBe(before);
+    expect(api?.getFeature("src-1")).toBeUndefined();
   });
 
   it("still finishes a drawn shape in every other mode", () => {

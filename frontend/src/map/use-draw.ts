@@ -36,6 +36,9 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   const drawRef = useRef<TerraDraw | null>(null);
   const [activeMode, setActiveMode] = useState<DrawMode>("static");
   const activeModeRef = useRef<DrawMode>("static");
+  // Published so that a consumer holding state inside terra-draw can re-place
+  // it after a rebuild — see `DrawApi.instanceEpoch`.
+  const [instanceEpoch, setInstanceEpoch] = useState(0);
   const onFinishRef = useRef(options.onFinish);
   onFinishRef.current = options.onFinish;
 
@@ -98,9 +101,21 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
       // drag, and the handler below is written for a *newly drawn* shape: it
       // puts the tools back to "static" and removes the feature from the map.
       // Run in select mode it would disarm the tool mid-edit and delete the
-      // feature being reshaped — so a reshape is not a finish, and
+      // feature being reshaped — so a reshape is never a *draw* finish, and
       // `use-geometry-edit.ts` owns the select-mode events instead.
-      if (activeModeRef.current === "select") return;
+      //
+      // It is still the end of a gesture, and the only event that says so:
+      // terra-draw leaves a dropped feature selected, so `deselect` comes once
+      // for a whole run of drags rather than once per drag. Forwarding it is
+      // what lets the owner project and seal per drag; swallowing it entirely
+      // left the undo run open and, over a metric model, the reshape unwritten
+      // until the selection was cleared.
+      if (activeModeRef.current === "select") {
+        for (const listener of selectionListeners.current) {
+          listener.onFinish?.(String(id));
+        }
+        return;
+      }
 
       const snapshot = draw.getSnapshot();
       const feature = snapshot.find((f) => f.id === id);
@@ -139,6 +154,9 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     });
 
     drawRef.current = draw;
+    // After `drawRef`, so the re-render this schedules finds the new instance
+    // in place: a consumer re-arming on the epoch calls straight back in.
+    setInstanceEpoch((epoch) => epoch + 1);
 
     return () => {
       try {
@@ -228,6 +246,7 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
 
   return {
     activeMode,
+    instanceEpoch,
     setMode,
     cancel,
     addFeatures,

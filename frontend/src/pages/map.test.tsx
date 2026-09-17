@@ -935,6 +935,17 @@ describe("MapPage", () => {
       });
     }
 
+    /**
+     * The end of one gesture. Terra-draw fires "finish" from its drag-end path
+     * and leaves the feature selected — this is the boundary, not "deselect",
+     * which comes once for a whole run of drags.
+     */
+    function endDrag(id: string) {
+      act(() => {
+        draw.instance?.emit("finish", id);
+      });
+    }
+
     it("hands the selected feature to terra-draw and selects it", async () => {
       // Select mode was always built with draggable features and draggable,
       // deletable midpoints — nothing had ever called `addFeatures`, so it was
@@ -1192,6 +1203,133 @@ describe("MapPage", () => {
         id: "rcv-1",
         heightM: 4,
         geometry: { type: "Point", coordinates: [10.25, 51.25] },
+      });
+    });
+
+    it("seals on finish, so a second drag without a deselect is a second step", async () => {
+      // Terra-draw leaves a dropped feature selected, so "deselect" arrives
+      // once for a whole run of drags. Sealing on it alone merged every drag
+      // of a selection into one undo step.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("src-1", [10.5, 51.5]);
+      endDrag("src-1");
+      // Nothing was taken out from under the user: the feature is still in
+      // terra-draw's store and the tool is still armed on it.
+      expect(draw.instance?.removeFeatures).not.toHaveBeenCalled();
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-mode",
+        "select",
+      );
+
+      dragTo("src-1", [13, 54]);
+      endDrag("src-1");
+
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10.5, 51.5],
+      });
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10, 51],
+      });
+    });
+
+    it("writes a metric reshape when the drag ends, not when the selection is cleared", async () => {
+      // The deferred commit needs a boundary that arrives per drag. Waiting for
+      // "deselect" left everything but the last drag of a selection unwritten,
+      // and a save while the feature stayed selected persisted the pre-drag
+      // geometry.
+      useModelStore.getState().loadModel({
+        features: [source],
+        receivers: [],
+        calcArea: null,
+        crs: "EPSG:25832",
+      });
+      renderPageAt("/model?select=src-1");
+      await waitFor(() => {
+        expect(projection.requests).toHaveLength(1);
+      });
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("src-1", [1, 2]);
+      dragTo("src-1", [3, 4]);
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10, 51],
+      });
+
+      endDrag("src-1");
+
+      await waitFor(() => {
+        expect(useModelStore.getState().features[0]?.geometry).toEqual({
+          type: "Point",
+          coordinates: [300000, 400000],
+        });
+      });
+      // One inverse request for the whole drag, carrying its last position.
+      expect(
+        projection.requests.filter((req) => req.source_crs === "EPSG:4326"),
+      ).toEqual([
+        {
+          source_crs: "EPSG:4326",
+          target_crs: "EPSG:25832",
+          coordinates: [3, 4],
+        },
+      ]);
+      expect(draw.instance?.removeFeatures).not.toHaveBeenCalled();
+    });
+
+    it("re-arms terra-draw when the model moves under the selection", async () => {
+      // Terra-draw's copy is its own. An undo changes the store without
+      // touching it, so the model layers showed the restored shape while
+      // terra-draw still held the dragged one — and the next drag committed
+      // that stale copy straight back over the undo.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("src-1", [10.5, 51.5]);
+      endDrag("src-1");
+
+      act(() => {
+        useModelStore.getState().undo();
+      });
+
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalledTimes(2);
+      });
+      expect(
+        draw.instance?.features.find((f) => f.id === "src-1")?.geometry,
+      ).toEqual({ type: "Point", coordinates: [10, 51] });
+
+      // And the next drag starts from the model's shape rather than re-applying
+      // the one the undo removed.
+      dragTo("src-1", [10.2, 51.2]);
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10.2, 51.2],
       });
     });
   });

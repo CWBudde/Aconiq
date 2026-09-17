@@ -9,7 +9,7 @@
  * feature's geometry is handed to terra-draw, selected, dragged by the user, and
  * read back into the model.
  *
- * Three things are load-bearing.
+ * Four things are load-bearing.
  *
  * **The geometry comes from the display model, not from the store.** Terra-draw
  * draws on MapLibre and therefore in WGS84; the store may hold metres. The
@@ -29,15 +29,27 @@
  * asymmetry is deliberate: the cheap path gets live feedback, the expensive one
  * gets a single round trip, and both produce exactly one undo step.
  *
- * **One gesture is one undo step.** Every commit carries `geometry:<id>`, and
- * `CommandStack` merges a run of same-key commands keeping the newest `execute`
- * and the oldest `undo` — see its `execute` for why that asymmetry is the only
- * correct one. `sealHistory()` closes the run when the gesture ends, so a second
- * drag of the same feature is a second step rather than a continuation of the
- * first.
+ * **One gesture is one undo step, and `finish` is what ends a gesture.** Every
+ * commit carries `geometry:<id>`, and `CommandStack` merges a run of same-key
+ * commands keeping the newest `execute` and the oldest `undo` — see its
+ * `execute` for why that asymmetry is the only correct one. `sealHistory()`
+ * closes the run. The boundary is terra-draw's `finish`, which it fires from
+ * its drag-end path and which leaves the feature selected: waiting for
+ * `deselect` instead would seal once for a whole run of drags, and over a
+ * metric model would leave every drag but the last unwritten.
+ *
+ * **The model can move under an armed session, and terra-draw would not know.**
+ * Its copy of the feature is its own; an undo, a redo or any other writer
+ * changes the store without touching it, and the next `change` would commit the
+ * stale copy straight back over the edit that just landed. So each session
+ * remembers the geometry object the store held after its last write, and a
+ * store geometry that is no longer that object re-arms the session on the
+ * model's version. Reference identity is exact here rather than approximate:
+ * the remembered object is read back out of the store, and undo restores the
+ * distinct object it captured.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useModelStore } from "@/model/model-store";
 import type { Geometry, Position } from "@/model/types";
 import { DISPLAY_CRS } from "./display-model";
@@ -69,8 +81,24 @@ interface EditSession {
   synchronous: boolean;
   /** The latest display-CRS geometry, held for the single deferred commit. */
   pending: Geometry | null;
+  /**
+   * The store's geometry object as of this session's last write, by reference.
+   *
+   * A store geometry that is not this object came from somewhere else — an
+   * undo, a redo, another writer — and terra-draw's copy is stale against it.
+   */
+  stored: Geometry | null;
   /** Set once the gesture has ended, so a later teardown is a no-op. */
   ended: boolean;
+}
+
+/** The store's own geometry for a feature or receiver, by reference. */
+function storedGeometry(id: string, receiver: boolean): Geometry | null {
+  const state = useModelStore.getState();
+  const geometry = receiver
+    ? state.receivers.find((r) => r.id === id)?.geometry
+    : state.features.find((f) => f.id === id)?.geometry;
+  return geometry ?? null;
 }
 
 export interface GeometryEditOptions {
@@ -104,6 +132,7 @@ export function useGeometryEdit({
 }: GeometryEditOptions): void {
   const {
     activeMode,
+    instanceEpoch,
     addFeatures,
     selectFeature,
     removeFeatures,
@@ -112,6 +141,8 @@ export function useGeometryEdit({
   } = useDrawContext();
 
   const crs = useModelStore((s) => s.crs);
+  const features = useModelStore((s) => s.features);
+  const receivers = useModelStore((s) => s.receivers);
   const updateFeatureGeometry = useModelStore((s) => s.updateFeatureGeometry);
   const updateReceiverGeometry = useModelStore((s) => s.updateReceiverGeometry);
   const sealHistory = useModelStore((s) => s.sealHistory);
@@ -133,9 +164,19 @@ export function useGeometryEdit({
       if (session.receiver) {
         if (geometry.type !== "Point") return;
         updateReceiverGeometry(session.id, geometry.coordinates as Position);
-        return;
+      } else {
+        updateFeatureGeometry(session.id, geometry);
       }
-      updateFeatureGeometry(session.id, geometry);
+
+      // Read back rather than remember what was handed over:
+      // `updateReceiverGeometry` builds a geometry of its own from the
+      // position, so the object the store holds is not the object passed in.
+      // Recorded against whichever session is current, which after a `finish`
+      // is no longer the one that started this commit.
+      const current = sessionRef.current;
+      if (current !== null && current.id === session.id) {
+        current.stored = storedGeometry(session.id, session.receiver);
+      }
     },
     [updateFeatureGeometry, updateReceiverGeometry],
   );
@@ -150,6 +191,14 @@ export function useGeometryEdit({
    * holds. That is a visible outcome rather than a silent one, which is why
    * there is no notice here: unlike a *drawn* shape, which exists nowhere else
    * and would simply vanish, the feature is still on the map.
+   *
+   * {@link useInverseProjection} is a newest-wins channel: a second projection
+   * started while one is in flight supersedes it, and the first answer is
+   * dropped. That is the right behaviour for this caller rather than a hazard
+   * to guard against — terra-draw's geometry is cumulative, so back-to-back
+   * drags of the same feature hand over shapes of which the later one already
+   * contains the earlier. What is lost to a supersession is a round trip, not
+   * an edit.
    */
   const endSession = useCallback(() => {
     const session = sessionRef.current;
@@ -191,6 +240,24 @@ export function useGeometryEdit({
         }
         session.pending = geometry as Geometry;
       },
+      onFinish: (id) => {
+        const session = sessionRef.current;
+        if (!session || session.ended || session.id !== id) return;
+        endSession();
+        // The gesture ended; the selection did not. Terra-draw keeps the
+        // feature selected and in its store, so the next drag has nowhere to
+        // land unless a session is opened for it — and it has to be a *new*
+        // one, or `CommandStack` would read the drag just sealed and the one
+        // about to start as a single step.
+        sessionRef.current = {
+          id: session.id,
+          receiver: session.receiver,
+          synchronous: session.synchronous,
+          pending: null,
+          stored: session.stored,
+          ended: false,
+        };
+      },
       onDeselect: (id) => {
         if (sessionRef.current?.id !== id) return;
         endSession();
@@ -198,6 +265,28 @@ export function useGeometryEdit({
       },
     });
   }, [subscribeSelection, getFeature, commit, endSession, removeFeatures]);
+
+  // Re-arming on a model edit the session did not make. Bumped rather than
+  // acted on directly: re-arming *is* the arming effect, and duplicating its
+  // add/select here would be a second place for terra-draw's copy to come from.
+  const [resyncEpoch, setResyncEpoch] = useState(0);
+  useEffect(() => {
+    const session = sessionRef.current;
+    if (!session || session.ended) return;
+    const current = storedGeometry(session.id, session.receiver);
+    // Gone from the model entirely: the page clears the selection for that, and
+    // re-arming on nothing would only thrash.
+    if (current === null || current === session.stored) return;
+    // Anything still held is measured against a shape the model no longer has,
+    // so it is dropped rather than landed: committing it on the way out would
+    // undo the undo that got us here.
+    session.pending = null;
+    setResyncEpoch((epoch) => epoch + 1);
+    // The store's arrays, so this runs on every model edit and on nothing else.
+    // The comparison above is what separates this session's own writes — which
+    // are most of them, since the synchronous path commits per pointer move —
+    // from the edits that make terra-draw's copy stale.
+  }, [features, receivers]);
 
   const armed =
     activeMode === "select" &&
@@ -236,11 +325,16 @@ export function useGeometryEdit({
     ]);
     if (!accepted) return;
 
+    const receiverSession = feature === undefined;
     sessionRef.current = {
       id: featureId,
-      receiver: feature === undefined,
+      receiver: receiverSession,
       synchronous: crs === DISPLAY_CRS,
       pending: null,
+      // The store's geometry, not the display one handed to terra-draw above:
+      // it is the baseline a later external edit is measured against, and over
+      // a metric model the two are different coordinates for the same shape.
+      stored: storedGeometry(featureId, receiverSession),
       ended: false,
     };
     selectFeature(featureId);
@@ -252,11 +346,17 @@ export function useGeometryEdit({
     // `selectionEpoch` is a dependency on purpose: re-selecting the feature the
     // page already holds has to re-arm, and nothing else about it has changed.
     // `crs` re-arms too, because it decides which commit trigger applies.
+    // `instanceEpoch` is the terra-draw instance itself being rebuilt — a
+    // basemap switch replaces the map and with it the store this feature was
+    // put into, and nothing else in the dependency list moves when it does.
+    // `resyncEpoch` is the model having been changed by someone else.
   }, [
     armed,
     featureId,
     selectionEpoch,
     crs,
+    instanceEpoch,
+    resyncEpoch,
     addFeatures,
     selectFeature,
     removeFeatures,

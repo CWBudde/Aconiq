@@ -8,16 +8,38 @@ import type { DrawMode } from "./use-draw";
  * `change` fires per pointer move while a feature or one of its vertices is
  * being dragged, and its `ids` cover terra-draw's own selection points and
  * midpoints as well as the feature — a listener has to filter for the id it
- * put there. `select` and `deselect` bracket the gesture.
+ * put there. `select` and `deselect` bracket the *selection*; `finish` brackets
+ * a single gesture inside it.
  */
 export interface DrawSelectionListeners {
   onChange?: (ids: string[], type: string) => void;
   onSelect?: (id: string) => void;
+  /**
+   * One editing gesture has ended: a feature or a vertex was dropped, a
+   * midpoint was inserted, a coordinate was deleted.
+   *
+   * This — not `deselect` — is the per-drag boundary. Terra-draw's select mode
+   * calls `onFinish` from its drag-end path and leaves the feature selected, so
+   * a listener that waits for `deselect` sees one boundary for a whole run of
+   * drags. `deselect` still arrives, once, when the selection is actually
+   * cleared.
+   */
+  onFinish?: (id: string) => void;
   onDeselect?: (id: string) => void;
 }
 
 export interface DrawApi {
   activeMode: DrawMode;
+  /**
+   * Bumped every time the terra-draw instance behind this API is rebuilt.
+   *
+   * A basemap switch replaces the MapLibre map, which tears the instance and
+   * its feature store down and builds an empty pair. Nothing else about the API
+   * changes — `activeMode` is React state that survives it — so a consumer that
+   * has put a feature into the store has no other way to learn that its copy is
+   * gone. Anything holding state *inside* terra-draw depends on this.
+   */
+  instanceEpoch: number;
   setMode: (mode: DrawMode) => void;
   cancel: () => void;
   /**
