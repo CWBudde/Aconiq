@@ -259,6 +259,10 @@ function normalizeReceiver(raw: GeoJSONFeature, index: number): ModelEntry {
  * to its envelope, because a disjoint one would silently become a single bbox
  * spanning ground the user drew around; accepting one here would mean the map
  * showed an area no run could honour.
+ *
+ * The properties are kept for the reason a receiver's are: an imported area
+ * carries `soundplan_base_elevation_m`, reading it into a bare polygon loses
+ * it, and the next save writes that loss back into the project.
  */
 function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
   if (raw.geometry.type !== "Polygon") {
@@ -273,11 +277,13 @@ function normalizeCalcArea(raw: GeoJSONFeature, index: number): ModelEntry {
   // emit time. Minting one here instead would put a fresh UUID on every
   // hydrated area and rename it in the project on the next save.
   const id = explicitFeatureID(raw);
+  const normalizedProps = normalizeProperties(raw.properties);
 
   return {
     kind: "calc-area",
     area: {
       ...(id === "" ? {} : { id }),
+      ...(normalizedProps !== undefined && { properties: normalizedProps }),
       geometry: {
         type: "Polygon",
         coordinates: raw.geometry.coordinates as Position[][],

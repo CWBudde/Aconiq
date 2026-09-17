@@ -47,8 +47,9 @@ export interface ModeGateProps {
  * takes no focus and fires no pointer events — so a tooltip whose trigger is a
  * disabled button never opens, by mouse or by keyboard. That is not
  * hypothetical: `map/draw-toolbar.tsx` shipped it over a tooltip carrying the
- * only explanation the control had, and `map/undo-redo-bar.tsx` still has the
- * shape (harmlessly so far — its tooltip only repeats the `aria-label`).
+ * only explanation the control had, and `map/undo-redo-bar.tsx` shipped it too
+ * — harmlessly, because its tooltips only repeat the `aria-label`, but it is
+ * the same trap and it now uses this fix as well.
  * `aria-disabled` keeps the element
  * hoverable and focusable, announces unavailability, and lets Radix point the
  * trigger at the reason through `aria-describedby` — which is why that
