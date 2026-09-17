@@ -128,6 +128,28 @@ func Transform(req Request) (Response, error) {
 	}, nil
 }
 
+// GeographicRefusal is the single place the sentence refusing a geographic
+// model outside the supported ETRS89 / UTM zones is written.
+//
+// It is exported because three surfaces have to refuse the same site in the
+// same words, and only two of them come through Transform: POST
+// /api/v1/transform and the WebAssembly kernel do, while `aconiq run` resolves
+// the zone itself and needs the sentence for the message inside its own error
+// envelope. A second literal in any of the three would be free to drift, which
+// is exactly what this function removes.
+//
+// sourceCRS is the canonicalised geo.CRS.ID rather than whatever identifier the
+// caller was handed, so the three also name the CRS in identical words.
+// cli.TestGeographicRefusalReadsTheSameOnAllThreeSurfaces compares them byte
+// for byte.
+func GeographicRefusal(sourceCRS string, cause error) *Error {
+	return refuse(ReasonGeographicRefused, NoIndex, errors.New(
+		"project CRS "+sourceCRS+
+			" is geographic, so the model has to be projected before levels can be computed: "+
+			cause.Error(),
+	))
+}
+
 // resolveTarget answers which CRS the batch is going into, and whether that was
 // this package's decision to make. An explicit target always transforms, which
 // is what makes the inverse direction free; only AutoTarget consults the
@@ -156,11 +178,7 @@ func resolveTarget(req Request, source geo.CRS) (geo.CRS, bool, error) {
 	if err != nil {
 		// Verbatim, so that browser mode, API mode and `aconiq run` refuse the
 		// same site in the same words.
-		return geo.CRS{}, false, refuse(ReasonGeographicRefused, NoIndex, errors.New(
-			"project CRS "+source.ID+
-				" is geographic, so the model has to be projected before levels can be computed: "+
-				err.Error(),
-		))
+		return geo.CRS{}, false, GeographicRefusal(source.ID, err)
 	}
 
 	return target, true, nil

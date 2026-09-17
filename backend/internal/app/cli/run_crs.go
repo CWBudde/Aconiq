@@ -3,6 +3,7 @@ package cli
 import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/crstransform"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
 
@@ -23,26 +24,6 @@ type computeProjection struct {
 	Applied    bool
 }
 
-// resolveComputeModel returns the model a run computes on, together with the
-// CRS that model is in.
-//
-// Every standards module measures distance with geo.Distance, which is
-// math.Hypot over the coordinates it is handed. That is correct for a metric
-// projected CRS and silently wrong for a geographic one: in degrees a whole
-// city fits inside 0.05 units, every propagation distance falls under the
-// modules' minimum-distance clamp, and each receiver reports the source's
-// emission level verbatim. `aconiq init` defaults the project CRS to
-// EPSG:4326, so that is the out-of-the-box path.
-//
-// A geographic model is therefore projected into a metric CRS before anything
-// reads a coordinate off it. A model already in a projected CRS is returned
-// untouched and reports Applied=false, so the ordinary German project — which
-// is in EPSG:25832 — runs through exactly the code it ran through before.
-//
-// A CRS whose kind cannot be determined (a WKT: identifier, or an EPSG code
-// outside the classified ranges) is also left alone. Refusing it would break
-// projects that work today, and there is no transform to apply to a CRS with
-// no EPSG code.
 // isGeographicCRS reports whether an identifier names a CRS this project
 // classifies as geographic. An identifier it cannot parse is not geographic:
 // there is no EPSG code to transform through, so there is nothing this
@@ -68,6 +49,26 @@ func epsgCRS(id string) (geo.CRS, bool) {
 	return crs, true
 }
 
+// resolveComputeModel returns the model a run computes on, together with the
+// CRS that model is in.
+//
+// Every standards module measures distance with geo.Distance, which is
+// math.Hypot over the coordinates it is handed. That is correct for a metric
+// projected CRS and silently wrong for a geographic one: in degrees a whole
+// city fits inside 0.05 units, every propagation distance falls under the
+// modules' minimum-distance clamp, and each receiver reports the source's
+// emission level verbatim. `aconiq init` defaults the project CRS to
+// EPSG:4326, so that is the out-of-the-box path.
+//
+// A geographic model is therefore projected into a metric CRS before anything
+// reads a coordinate off it. A model already in a projected CRS is returned
+// untouched and reports Applied=false, so the ordinary German project — which
+// is in EPSG:25832 — runs through exactly the code it ran through before.
+//
+// A CRS whose kind cannot be determined (a WKT: identifier, or an EPSG code
+// outside the classified ranges) is also left alone. Refusing it would break
+// projects that work today, and there is no transform to apply to a CRS with
+// no EPSG code.
 func resolveComputeModel(model modelgeojson.Model, projectCRS string) (modelgeojson.Model, computeProjection, error) {
 	projection := computeProjection{ProjectCRS: projectCRS, ComputeCRS: projectCRS}
 
@@ -87,9 +88,19 @@ func resolveComputeModel(model modelgeojson.Model, projectCRS string) (modelgeoj
 
 	computeCRS, err := geo.ComputeCRSForGeographic(centreLon, centreLat)
 	if err != nil {
+		// The sentence belongs to the projector, so that `aconiq run`, POST
+		// /api/v1/transform and the WebAssembly kernel refuse the same site in
+		// the same words; only the envelope around it is the CLI's. The CRS is
+		// named as geo.ParseCRS canonicalises it, which is what the other two
+		// surfaces interpolate — not the identifier the caller typed.
+		refusedCRS := projectCRS
+		if parsed, ok := epsgCRS(projectCRS); ok {
+			refusedCRS = parsed.ID
+		}
+
 		return modelgeojson.Model{}, computeProjection{}, domainerrors.New(
 			domainerrors.KindUserInput, "cli.resolveComputeModel",
-			"project CRS "+projectCRS+" is geographic, so the model has to be projected before levels can be computed: "+err.Error(),
+			crstransform.GeographicRefusal(refusedCRS, err).Error(),
 			err,
 		)
 	}
