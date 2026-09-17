@@ -540,16 +540,11 @@ Three consequences fell out of the work:
   Streckenanteil" were both wrong; K_S = 0 dB on both sides since 2015 / 2019. Gl. 35-36 keeps the
   term on the Strecke side only, at value zero.
 
-**The receiver table's row order is the model's order, in both targets.** In `custom` receiver mode
-browser mode sorted the receivers by id while `extractExplicitReceivers` kept model order, so the
-same model produced two `output_hash` values. The browser dropped its sort: the CLI is the primary
-artifact and its archived runs are the evidence someone may hold under a permit application, so
-moving the CLI's order would move its goldens and count as a breaking change to a normative module's
-output under `docs/policies/releases.md`. The cost falls on the browser side and is not recoverable:
-a run already in IndexedDB keeps its old rows and its old hash, so re-running the same model no
-longer reproduces that stored run. `PERSISTED_STATE_VERSION` stayed at 1 deliberately — the stored
-documents still parse, and throwing away a user's model and twenty runs over a row order would be
-the larger harm.
+**The receiver table's row order is the model's order, in both targets, and `output_hash` is
+computed over it.** Changing either side's ordering is therefore a hash change. Browser runs already
+in IndexedDB keep their old rows and their old hash, so re-running the same model does not reproduce
+a stored run; `PERSISTED_STATE_VERSION` stayed at 1 deliberately, because the stored documents still
+parse and discarding a user's model and runs over a row order is the larger harm.
 
 ### Open
 
