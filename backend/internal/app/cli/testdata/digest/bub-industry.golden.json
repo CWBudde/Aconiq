@@ -6,14 +6,16 @@
     "bub-industry.json": "sha256:da1b5dece4027a2509eb573da51cf9edbec5c804aad4290b04d1773325b79bed bytes=215",
     "receivers.csv": "sha256:0f096e6b3dbe8648b7525b2f59884090af333a901c6c98210611dd9befe23031 bytes=5219",
     "receivers.json": "sha256:ba4fcccf8b2399239cb54b949b73e86434c3dcd471027df3be321ee8b11a5938 bytes=9344",
-    "run-summary.json": "sha256:6dfae7603fc9e58bf19392d649d6ce0f514110ba4d64aaaf2336f517a0b988cb bytes=273"
+    "run-summary.json": "sha256:c8094229bb56374b4812ac90e6bc77d379d27fccb5dd806de7ea42ed295b2ae3 bytes=327"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 7,
     "grid_width": 8,
     "model_version": "baseline-preview-industry-v2",
     "output_hash": "46529293edd7ded460ca8b5fc2c9815f25c0d4e15526513f0e7510babfe6705c",
+    "project_crs": "EPSG:25832",
     "receiver_count": 56,
     "receiver_mode": "auto-grid",
     "source_count": 2,

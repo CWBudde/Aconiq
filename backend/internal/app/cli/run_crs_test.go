@@ -153,7 +153,16 @@ func TestRunAgreesBetweenGeographicAndProjectedProjectCRS(t *testing.T) {
 // The compute CRS travels with the numbers. A reader of provenance.json must
 // be able to tell which CRS the levels were computed in without going back to
 // the project manifest, which can be edited after the run.
-func TestRunRecordsTheComputeCRSInProvenance(t *testing.T) {
+// The CRS a run computed in has to reach both files, for two different
+// readers.
+//
+// provenance.json is the audit record. run-summary.json is what the local API
+// serves — provenance is not an ArtifactRef, so `GET /api/v1/artifacts/{id}`
+// never reaches it — and it is therefore the only place a consumer holding a
+// receiver table can learn which CRS its x/y are in. Browser mode writes the
+// same two keys into its own summary, so the map projects a stored run the
+// same way on both targets.
+func TestRunRecordsTheComputeCRSInProvenanceAndTheRunSummary(t *testing.T) {
 	source := geo.Point2D{X: 566000, Y: 5934000}
 	receiver := geo.Point2D{X: 566000, Y: 5934100}
 
@@ -184,24 +193,38 @@ func TestRunRecordsTheComputeCRSInProvenance(t *testing.T) {
 			mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
 			mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield", "--receiver-mode", "custom")
 
-			matches, err := filepath.Glob(filepath.Join(projectDir, ".noise", "runs", "*", "provenance.json"))
-			if err != nil || len(matches) != 1 {
-				t.Fatalf("expected one provenance.json, got %v (%v)", matches, err)
-			}
+			wanted := map[string]string{"project_crs": tc.wantProjectCRS, "compute_crs": tc.wantComputeCRS}
 
-			payload, err := os.ReadFile(matches[0])
-			if err != nil {
-				t.Fatalf("read provenance: %v", err)
-			}
+			for _, name := range []string{"provenance.json", filepath.Join("results", "run-summary.json")} {
+				payload := readSingleRunFile(t, projectDir, name)
 
-			for key, want := range map[string]string{"project_crs": tc.wantProjectCRS, "compute_crs": tc.wantComputeCRS} {
-				needle := fmt.Sprintf("%q: %q", key, want)
-				if !strings.Contains(string(payload), needle) {
-					t.Fatalf("provenance does not record %s; got:\n%s", needle, payload)
+				for key, want := range wanted {
+					needle := fmt.Sprintf("%q: %q", key, want)
+					if !strings.Contains(payload, needle) {
+						t.Fatalf("%s does not record %s; got:\n%s", name, needle, payload)
+					}
 				}
 			}
 		})
 	}
+}
+
+// readSingleRunFile returns the contents of one file under the project's only
+// run directory, failing the test when the project holds anything but one run.
+func readSingleRunFile(t *testing.T, projectDir string, name string) string {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(projectDir, ".noise", "runs", "*", name))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("expected one %s, got %v (%v)", name, matches, err)
+	}
+
+	payload, err := os.ReadFile(filepath.Clean(matches[0]))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+
+	return string(payload)
 }
 
 // A site the CRS table cannot carry is refused. The run fails rather than

@@ -6,14 +6,16 @@
     "cnossos-aircraft.json": "sha256:8026f8169b202dcb948874d6c5060346a9636b371c81d3d4029875a5113d4245 bytes=222",
     "receivers.csv": "sha256:39399c459c3c6bb9ca35a97e5031ac1ef294af0e93c1f49cfb9ec7c906ae5335 bytes=35258",
     "receivers.json": "sha256:dce447b3cab29cba47b1f07edb8bf022ffcc90d7f47af39abfd0c0d9eeb96dc7 bytes=62816",
-    "run-summary.json": "sha256:ce78f0455690f49c4c5f9fa8716fb7a1bd56e1559e02577c2305971db5c70cec bytes=305"
+    "run-summary.json": "sha256:7975584cea56a47b0a0cb6afa1f43f95fb978d2a1abbffa0bfaf5a1c4b65fe66 bytes=359"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 13,
     "grid_width": 29,
     "model_version": "baseline-preview-aircraft-v2",
     "output_hash": "28cb1859c4515fc7bdad236b93e07519d1c79de03ffe7c7b1d73f2b9f73c3638",
+    "project_crs": "EPSG:25832",
     "receiver_count": 377,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,

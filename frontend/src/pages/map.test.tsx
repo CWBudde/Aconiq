@@ -42,6 +42,12 @@ vi.mock("@/map/model-layers", () => ({
 vi.mock("@/map/layer-control", () => ({
   LayerControl: () => null,
 }));
+// Reads the run list, so it needs a QueryClient this page's tests do not set
+// up. What it draws is pinned in `map/result-layers.test.tsx`; the page's own
+// half is that it is mounted inside the map at all.
+vi.mock("@/map/result-layers", () => ({
+  ResultLayers: () => <div data-testid="result-layers" />,
+}));
 vi.mock("@/map/coordinate-display", () => ({
   CoordinateDisplay: () => null,
 }));

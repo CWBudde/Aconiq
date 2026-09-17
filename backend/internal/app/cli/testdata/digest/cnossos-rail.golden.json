@@ -6,14 +6,16 @@
     "cnossos-rail.json": "sha256:64f253cee077e5324c57046129fcded58992a6e4a84d64da58339e5522451cfc bytes=218",
     "receivers.csv": "sha256:a4421be0146391f74ff7bc307264ff0af495a28bed860c647ecd5ff58454c37e bytes=20796",
     "receivers.json": "sha256:48408c424f211656d06e65ed2f52bfe9d8c0de93ce65802cc238af86032a8c69 bytes=36966",
-    "run-summary.json": "sha256:5fe621ca973fe682b50cc10d3bab2db8906254a0b62f98327683d9fa1e0dfe9f bytes=301"
+    "run-summary.json": "sha256:dcba677e41f46390c499b92a111320207679eaf0dbd1792ec53a2bcca471f36a bytes=355"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 13,
     "grid_width": 17,
     "model_version": "baseline-preview-rail-v2",
     "output_hash": "f06181660561e6c76b388a3d0c34f73cb6d1208abb661e75c90f492fc7244edc",
+    "project_crs": "EPSG:25832",
     "receiver_count": 221,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,

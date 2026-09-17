@@ -1370,9 +1370,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       than merely prose: `/results` and `/export` sent the user to the CLI while `/run` starts
       runs in both modes and the export header already carries a New Export button. Both empty
       states now point at the UI that does the work.
-      **`map/color-ramp.ts` has zero importers and 0 % coverage**, and was deliberately kept:
-      "Results on the map" below names `NOISE_LEVEL_RAMP`. Do not delete it as dead code in the
-      meantime.
+      **`map/color-ramp.ts` was deliberately kept although it had zero importers and 0 % coverage**,
+      because "Results on the map" below named `NOISE_LEVEL_RAMP`. That instruction has expired:
+      `result-layers.tsx` imports it, so the module is now reached by the code rather than only by
+      a promise in this file.
 - [x] **Split run/results/export** (`9b591a0`..`0a57d78`). `pages/run.tsx` is a route module
       again and its parts live in `src/run/`, with `useRunSetupSelection` and `useRunFromRoute`
       carrying the cascade and the URL→run rule. Six constraints follow.
@@ -1564,10 +1565,28 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `sourceType` is derived from the geometry, with the correction offered explicitly rather than
       applied on open — deriving alone would have left an imported contradiction visible and
       unrepairable, and a silent write would dirty a project for a panel that was only looked at.
-- [ ] **Results on the map**: `ResultLayers` (raster image source + contours), legend from
-      `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);
-      row↔map highlight from the receiver table. Until it lands, hide the result toggles in
-      `layer-control.tsx:74-76`.
+- [x] **Results on the map, as receiver levels** (`c7bcbb3`). `ResultLayers` draws the newest
+      completed run's receiver table from `NOISE_LEVEL_RAMP`. Four constraints follow.
+      `newRunSummary` writes `project_crs` and `compute_crs` (provenance's own keys, which browser
+      mode already wrote), because provenance is not an `ArtifactRef` and the API never serves it;
+      the 13 digest goldens carry both, so a further summary key moves them again.
+      The ramp is a decibel ramp and only paints a table whose `unit` says decibels: `beb-exposure`
+      writes `"mixed"` and puts dwelling and person counts in `indicator_order`.
+      The row→map link is offered only for an id the model store holds — `auto-grid` receiver ids
+      are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
+      `<a>`, never a button that navigates, which no axe rule would catch.
+      No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
+- [ ] **Results on the map: the raster and the contours.** Three things block it, and none is
+      frontend work. Browser mode stores the run's SHA-256 hex string where the raster binary
+      belongs (`api/browser-backend.ts`) and `StoredArtifactContent.encoding` is `"json" | "text"`,
+      so a binary artifact cannot be represented there at all. The GeoTIFF, COG and contour
+      GeoJSON exports get no `ArtifactRef` — `cli/export.go` registers `export.bundle` and the
+      report kinds and nothing else — so no URL reaches them. And `results.RasterMetadata` carries
+      no geotransform; only `InferGeoTransformFromReceivers` reconstructs one, which is not
+      something a map should be doing. Also still open: the map→table direction, which wants a
+      receiver clicked on the map to scroll and mark its row; carrying the viewed run through to
+      `/model`, so a row followed from an older run does not land on the newest run's levels; and a
+      per-indicator unit on the receiver table, without which a mixed-unit run gets no map at all.
 - [ ] **CRS and basemap**: tile-error → `OFFLINE_STYLE` with a notice; basemap picker; tile URL in
       Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`). The `fitBounds` and
       coordinate-readout halves are closed. No proj4 may be added for any of the rest: the

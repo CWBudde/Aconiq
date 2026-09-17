@@ -250,6 +250,7 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		runID:        prepared.run.ID,
 		cacheDir:     state.Config.CacheDir,
 		log:          prepared.log,
+		projection:   projection,
 		mergeProvenance: func(metadata map[string]string) error {
 			return prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, metadata)
 		},

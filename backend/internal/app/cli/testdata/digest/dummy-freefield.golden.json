@@ -6,13 +6,15 @@
     "ldummy.json": "sha256:088d1780331c80898a050915728d9e6c9c67da2eb8021460003d7f1fb17b2e32 bytes=201",
     "receivers.csv": "sha256:3303f2b5f63cc73aefb2a35efa0b91c7a0cee142b1fb161d85d763af7769159d bytes=1852",
     "receivers.json": "sha256:a0a1f1afdc3b22c9d0de31c109a5d7bcd297df205fc93ceea64844e4135b4015 bytes=4235",
-    "run-summary.json": "sha256:e1e66c670eae4bb4cf5b08d5935450ab57148b7e01344aa861b881af01f89cec bytes=270"
+    "run-summary.json": "sha256:b9b77af43a91b8ae5068232bf2835a35140e8eec7987c987f44b6d511fc5342f bytes=324"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "test-fixture",
     "grid_height": 7,
     "grid_width": 7,
     "output_hash": "4a356841bedd9f60783860398289d07fa246d233df3d43004349cf0657adf86a",
+    "project_crs": "EPSG:25832",
     "receiver_count": 49,
     "receiver_mode": "auto-grid",
     "source_count": 2,

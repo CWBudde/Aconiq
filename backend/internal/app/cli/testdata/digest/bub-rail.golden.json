@@ -6,14 +6,16 @@
     "bub-rail.json": "sha256:325319767e3474a7a80c88d5ad9ae1ccbc44eada5e96d51bddb68938eb3bf5e5 bytes=214",
     "receivers.csv": "sha256:56dc778d4c0f2ab51c8624aa86ab6abe67b8a00254fc22534cc114014cf23cef bytes=12307",
     "receivers.json": "sha256:50a952f5fd150494a6fbb343a9da4f626503571a9d99d69a9c5753a459a33f5e bytes=21834",
-    "run-summary.json": "sha256:ac1464d58fbbde86ac74de15762b94ce5671c0095cdd0e5f90f4ea703ae66bf2 bytes=301"
+    "run-summary.json": "sha256:e44a0e8b5800894c7754f76a6aa485b1d15d7e5a61715a3a39a9d2901836b9fa bytes=355"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 10,
     "grid_width": 13,
     "model_version": "baseline-preview-rail-v2",
     "output_hash": "8d880bb90ee3e59c71e627f4a7bf5603b5c43ed3fd812f864bf9dd8c64d88db5",
+    "project_crs": "EPSG:25832",
     "receiver_count": 130,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,

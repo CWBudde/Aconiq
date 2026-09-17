@@ -6,15 +6,17 @@
     "iso9613.json": "sha256:d36ec113454886f5e0d9b5df3a1b1260dc35320fe753393e7c48f7d1776dd684 bytes=204",
     "receivers.csv": "sha256:4381d4af04351aaf8d90bf5868de6724f52e4deba6a3d00ffec699c08fd26a2d bytes=3578",
     "receivers.json": "sha256:d151e0e02a9540f199e0704927f430a4ef529fbfd0978ddbe6468c7d61a06c60 bytes=7454",
-    "run-summary.json": "sha256:e4f023dc52e1c68eccd7313bb22da52bedba9118124e1ce50da3f76182227b1c bytes=290"
+    "run-summary.json": "sha256:2cae0e0b19c18a485a82b6fdfe8c224843dc353ad087dbe3c9d294f62c5523f8 bytes=344"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "normative",
     "grid_height": 7,
     "grid_width": 9,
     "indicator": "LpAeq_DW",
     "model_version": "iso9613-octaveband-v1",
     "output_hash": "53bf6c4e2afd8efaed942212b1b75254b427acc9647e82aac663fa8c123ec798",
+    "project_crs": "EPSG:25832",
     "receiver_count": 63,
     "receiver_mode": "auto-grid",
     "source_count": 2,

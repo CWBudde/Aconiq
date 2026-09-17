@@ -6,14 +6,16 @@
     "cnossos-road.json": "sha256:86beacc56057d4df0a71ea110bc8daa6977544d6073792532fefc383a60d13c0 bytes=218",
     "receivers.csv": "sha256:ba5310bcdbc4812c0247ba9f86e7efd91de77c6f64f85ed8e9bec607aa672dac bytes=15428",
     "receivers.json": "sha256:584cf0b5dbc209c95420e11f43aae713f0d22105b8c8cae02bec658d741fc663 bytes=27510",
-    "run-summary.json": "sha256:ea05c182e756cf370a864f7f3fec2cef52d242a087bfc3d53dfb433b069d02d7 bytes=301"
+    "run-summary.json": "sha256:601240a16db75fa9e5938d3a98bceec3ca50d6a4f471e143aa17ec08b20d1605 bytes=355"
   },
   "run_summary": {
+    "compute_crs": "EPSG:25832",
     "evidence_tier": "scaffold",
     "grid_height": 11,
     "grid_width": 15,
     "model_version": "baseline-preview-road-v2",
     "output_hash": "41402460485f5fcfae6e8ddc8fa5bfd0580748440a660b551ae74f6da75c9cd0",
+    "project_crs": "EPSG:25832",
     "receiver_count": 165,
     "receiver_mode": "auto-grid",
     "reporting_precision_db": 0.1,
