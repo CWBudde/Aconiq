@@ -1522,16 +1522,14 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       rewritten to the id `resolveCalcAreaID` settled on, because `featureID` reads
       `properties.id` before the GeoJSON `id` member and a stale one would recreate the
       `feature.id.duplicate` the resolution just stepped past.
-- [ ] **Selection and chrome**: Esc cancels drawing and Del deletes the edited feature; move the
-      coordinate display off the undo bar's corner.
-      **The selection half is closed** and leaves two constraints behind. The highlight is a
-      `feature-state` and never a model property — the map is a projection of the model, so a
-      highlight that reached the store would be an input to a run. And it is written from
-      `ModelLayers` alone, because `featuresToSourceGroups` splits the features into three sources
-      by kind and only that component knows which one an id is drawn from; a state written against
-      the wrong source paints nothing and reports no error. `FeaturePopup` went with it: the docked
-      editor is the one click surface, and it shows a feature's properties as form fields rather
-      than as an HTML string built by concatenation from values an import supplied.
+- [x] **The selected feature is marked, and `FeaturePopup` is gone** (#50). Two constraints it
+      leaves live: the highlight is a `feature-state` and never a model property, because the map
+      is a projection of the model and a highlight that reached the store would be an input to a
+      run; and it is written from `ModelLayers` alone, because `featuresToSourceGroups` splits the
+      features into three sources by kind and only that component knows which one an id is drawn
+      from — a state written against the wrong source paints nothing and reports no error. The
+      docked editor is now the one click surface, and it shows a feature's properties as form
+      fields rather than as an HTML string built by concatenation from values an import supplied.
 - [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
       change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
       `CommandStack` first so drags do not become one step per mousemove.
@@ -1541,16 +1539,19 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       loses a vehicle — so a rail model still needs its Zugarten written into the model file. And
       the receiver panel still offers height alone, so `bimschv16_area_category` cannot be set on
       the map although `assessment/bimschv16` refuses to assess a receiver that carries none.
-      **The rest is closed**, and what stays live is the rule the field tables encode: the help
-      under a field says what an _absent_ value means, and that answer is per property rather than
-      per panel — "the run's default applies" is true for the RLS-19 road properties and false for
-      every Parkplatz and Schall 03 one, where absent means either a refusal or a named reference
-      row. The vocabularies and property names the editor writes are pinned against the Go
-      extractors by `model/schall03.test.ts` and `wasm/parking-vocabulary.test.ts`. Those pins are
-      the only thing that catches a name drifting here: a misspelled property is no type error
-      anywhere, it is simply written, saved and never read.
-      `sourceType` is now derived from the geometry, with the correction offered explicitly rather
-      than applied on open — deriving alone would have left an imported contradiction visible and
+- [x] **The field tables, and the three rules they encode** (#50). The help under a field says what
+      an _absent_ value means, and that answer is per property rather than per panel — "the run's
+      default applies" is true for the RLS-19 road properties and false for every Parkplatz and
+      Schall 03 one, where absent means either a refusal or a named reference row. The vocabularies
+      and property names the editor writes are pinned against the Go extractors by
+      `model/schall03.test.ts` and `wasm/parking-vocabulary.test.ts`; those pins are the only thing
+      that catches a name drifting here, because a misspelled property is no type error anywhere —
+      it is simply written, saved and never read. And a field's own bounds are enforced before the
+      write, not by the `min`/`max` attributes, which mark an input invalid and let the value
+      through: `step` is the stepper increment and never a constraint, so a whole-number field says
+      so explicitly.
+      `sourceType` is derived from the geometry, with the correction offered explicitly rather than
+      applied on open — deriving alone would have left an imported contradiction visible and
       unrepairable, and a silent write would dirty a project for a panel that was only looked at.
 - [ ] **Results on the map**: `ResultLayers` (raster image source + contours), legend from
       `NOISE_LEVEL_RAMP`, `glyphs` in the style (`layers.ts:169` requests a font no style provides);

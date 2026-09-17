@@ -378,4 +378,54 @@ describe("RLS-19 Parkplatz validation", () => {
       ),
     ).toEqual([]);
   });
+
+  const square = (offset: number): [number, number][][] => [
+    [
+      [offset, 0],
+      [offset + 10, 0],
+      [offset + 10, 10],
+      [offset, 10],
+      [offset, 0],
+    ],
+  ];
+
+  const complete = {
+    rls19_parking_num_spaces: 200,
+    rls19_parking_type: "pkw",
+    rls19_parking_movements_per_space_day: 0.3,
+    rls19_parking_movements_per_space_night: 0,
+  };
+
+  // Every property is filled in, so nothing else here has anything to say — and
+  // until this rule existed that was the whole finding: a lot a user could
+  // complete on the map, save, and have refused only when a run read it.
+  it("refuses a multi-part Parkplatz the extractors cannot read", () => {
+    const feature = areaFeature(complete);
+    feature.geometry = {
+      type: "MultiPolygon",
+      coordinates: [square(0), square(50)],
+    };
+
+    const report = validateProjectModel([feature], []);
+
+    const issue = report.errors.find(
+      (candidate) =>
+        candidate.code === "source.rls19.parking.geometry.multipart",
+    );
+    expect(issue?.message).toContain("2 parts");
+    expect(issue?.message).toContain("Teilfläche");
+  });
+
+  it("accepts a MultiPolygon carrying exactly one part, as the extractors do", () => {
+    const feature = areaFeature(complete);
+    feature.geometry = { type: "MultiPolygon", coordinates: [square(0)] };
+
+    const report = validateProjectModel([feature], []);
+
+    expect(
+      report.errors.filter((issue) =>
+        issue.code.startsWith("source.rls19.parking."),
+      ),
+    ).toEqual([]);
+  });
 });

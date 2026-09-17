@@ -1161,6 +1161,98 @@ describe("FeatureEditor Schall 03 fields", () => {
 });
 
 /**
+ * A number field's own bounds, enforced where the model is written.
+ *
+ * `min`/`max` on an `<input type="number">` only mark it `:invalid`: constraint
+ * validation gates a form submission and this panel submits nothing, so every
+ * one of these values used to reach the model as typed and be refused by the Go
+ * extractor at run time — with no frontend validator in between, because
+ * `validate.ts` carries no Schall 03 rules.
+ */
+describe("FeatureEditor number field constraints", () => {
+  it("refuses a Brückentyp outside the tabulated rows", () => {
+    edit(lineSource);
+
+    const input = numberField("road-1", "schall03_bridge_type");
+    type(input, "5");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_bridge_type",
+    );
+    expect(
+      screen.getByText(m.msg_field_range({ min: 0, max: 4 })),
+    ).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("refuses a fractional Brückentyp, which names a row and not a quantity", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_bridge_type"), "1.5");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_bridge_type",
+    );
+    expect(screen.getByText(m.msg_field_integer_only())).toBeInTheDocument();
+  });
+
+  it("refuses a water-body fraction above one", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_water_body_fraction"), "2");
+
+    expect(storedProperties("road-1")).not.toHaveProperty(
+      "schall03_water_body_fraction",
+    );
+    expect(
+      screen.getByText(m.msg_field_range({ min: 0, max: 1 })),
+    ).toBeInTheDocument();
+  });
+
+  it("takes a value its step would not land on, because step is not a bound", () => {
+    // `schall03_strecke_max_kph` steps by 1 from a `min` of 0.1. Reading the
+    // step as a constraint would refuse the smallest legal speed there is.
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_strecke_max_kph"), "0.1");
+
+    expect(storedProperties("road-1")["schall03_strecke_max_kph"]).toBe(0.1);
+  });
+
+  it("reports a lower bound on its own without inventing an upper one", () => {
+    edit(lineSource);
+
+    type(numberField("road-1", "schall03_strecke_max_kph"), "0");
+
+    expect(screen.getByText(m.msg_field_min({ min: 0.1 }))).toBeInTheDocument();
+  });
+
+  it("takes the refusal away once a legal value replaces it", () => {
+    edit(lineSource);
+
+    const input = numberField("road-1", "schall03_bridge_type");
+    type(input, "5");
+    type(input, "3");
+
+    expect(storedProperties("road-1")["schall03_bridge_type"]).toBe(3);
+    expect(
+      screen.queryByText(m.msg_field_range({ min: 0, max: 4 })),
+    ).toBeNull();
+    expect(input).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("leaves a field with no bounds alone", () => {
+    // `reflection_surcharge_db` is a correction that may go either way, so it
+    // carries neither `min` nor `max` and nothing here may invent one.
+    edit(lineSource);
+
+    type(numberField("road-1", "reflection_surcharge_db"), "-2.5");
+
+    expect(storedProperties("road-1")["reflection_surcharge_db"]).toBe(-2.5);
+  });
+});
+
+/**
  * The validator's findings, on the panel that can act on them. The workspace's
  * validation panel offers a "go to" that opens this editor, and until now the
  * reader arrived with nothing repeating what the problem had been.
@@ -1183,6 +1275,36 @@ describe("FeatureEditor inline issues", () => {
     edit(building);
 
     expect(screen.queryByText("building.height.required")).toBeNull();
+  });
+
+  it("shows both findings where one code fires twice", () => {
+    // A Parkplatz missing both movement rates pushes
+    // `source.rls19.parking.movements.missing` once per period. Keyed on the
+    // code alone React kept one of the two, so the panel asked for half of what
+    // the run needs — and the reader who fixed the one line it showed came
+    // straight back to the same refusal.
+    edit({
+      id: "lot-2",
+      kind: "source",
+      sourceType: "area",
+      properties: { rls19_parking_num_spaces: 200, rls19_parking_type: "pkw" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [10, 51],
+            [10.001, 51],
+            [10.001, 51.001],
+            [10, 51.001],
+            [10, 51],
+          ],
+        ],
+      },
+    });
+
+    expect(
+      screen.getAllByText("source.rls19.parking.movements.missing"),
+    ).toHaveLength(2);
   });
 
   it("shows no other feature's findings", () => {

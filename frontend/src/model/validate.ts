@@ -6,6 +6,7 @@ import type {
 } from "./types";
 import { isGeometryCompatible } from "./types";
 import {
+  polygonParts,
   PROP_PARKING_FACILITY_TYPE,
   PROP_PARKING_MOVEMENTS_DAY,
   PROP_PARKING_MOVEMENTS_NIGHT,
@@ -366,6 +367,23 @@ function validateRLS19Parking(
   const push = (code: string, message: string): void => {
     errors.push({ level: "error", code, featureId: feature.id, message });
   };
+
+  // The one §3.4 refusal that is about the geometry rather than a property, and
+  // the only one both extractors made and this file did not. `buildParkingSources`
+  // and `rls19ParkingPolygon` each refuse a lot that is not a single polygon,
+  // because n can be neither split across the parts nor repeated once per part.
+  // Without the check here a multi-part lot can be filled in completely — on the
+  // map or by an import — report clean, and be refused only when a run reads it.
+  //
+  // `null` is not a finding: it means the geometry is no polygon at all, which
+  // `isGeometryCompatible` already refuses as a source-type mismatch.
+  const parts = polygonParts(feature);
+  if (parts !== null && parts.length !== 1) {
+    push(
+      "source.rls19.parking.geometry.multipart",
+      `RLS-19 parking source must be a single Polygon, got ${String(parts.length)} parts; model each Teilfläche (§3.4, Bild 10) as its own feature with its own ${PROP_PARKING_NUM_SPACES}`,
+    );
+  }
 
   const numSpaces = getFeatureNumber(feature, PROP_PARKING_NUM_SPACES);
   if (numSpaces === undefined) {

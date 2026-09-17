@@ -407,8 +407,15 @@ function FeatureIssues({ featureId }: { featureId: string }) {
       aria-label={m.label_validation()}
       className="space-y-2 rounded-md border bg-muted/30 p-2"
     >
-      {issues.map((issue) => (
-        <div key={issue.code} className="flex items-start gap-2">
+      {/* The code is not a key: a Parkplatz missing both movement rates carries
+          `parking.movements.missing` twice, once per period, and keying on the
+          code alone made React drop one of the two — so the panel asked for
+          half of what the run needs. */}
+      {issues.map((issue, index) => (
+        <div
+          key={`${issue.code}-${String(index)}`}
+          className="flex items-start gap-2"
+        >
           {issue.level === "error" ? (
             <XCircle
               aria-hidden="true"
@@ -572,6 +579,13 @@ interface NumberFieldSpec {
   max?: number;
   step?: number;
   /**
+   * True where only whole numbers are legal — a Tabelle row index, a count of
+   * Stellplätze. Deliberately not inferred from `step`, which is the stepper
+   * increment and nothing more: `schall03_strecke_max_kph` steps by 1 from a
+   * `min` of 0.1, and reading `step` as a constraint would refuse 0.1 itself.
+   */
+  integer?: boolean;
+  /**
    * What the field says below itself when the value is neither set nor
    * inferred. The default is "the run's default applies"; a property that has
    * no default states its own rule here.
@@ -728,6 +742,7 @@ const PARKING_NUMBER_FIELDS: NumberFieldSpec[] = [
     label: m.label_parking_num_spaces,
     min: 1,
     step: 1,
+    integer: true,
     defaultable: false,
     helper: m.msg_field_required_no_default,
   },
@@ -808,6 +823,7 @@ const RAIL_TRACK_NUMBER_FIELDS: NumberFieldSpec[] = [
     min: 0,
     max: 4,
     step: 1,
+    integer: true,
     defaultable: false,
     helper: m.msg_field_default_zero,
   },
@@ -1096,6 +1112,34 @@ function fieldHelper(
   return spec.helper?.() ?? m.msg_source_acoustics_default_fallback();
 }
 
+/**
+ * Why the field refuses a value, or null where it takes it.
+ *
+ * `min`, `max` and `step` on an `<input type="number">` mark it `:invalid` and
+ * stop there — constraint validation gates a form submission, and this panel
+ * submits nothing, so without this check a Brückentyp of 5 or a water-body
+ * fraction of 2 is written to the model as typed. Neither reaches a frontend
+ * validator, because `validate.ts` carries no Schall 03 rules at all, so the
+ * workspace stays green until the Go extractor refuses the run.
+ *
+ * Only `min`, `max` and `integer` are read. `step` is the stepper increment and
+ * never a constraint here — `schall03_strecke_max_kph` steps by 1 from a `min`
+ * of 0.1, so reading it as one would refuse the smallest legal speed.
+ */
+function fieldViolation(spec: NumberFieldSpec, value: number): string | null {
+  if (spec.integer === true && !Number.isInteger(value)) {
+    return m.msg_field_integer_only();
+  }
+
+  const { min, max } = spec;
+  if (min != null && max != null) {
+    return value < min || value > max ? m.msg_field_range({ min, max }) : null;
+  }
+  if (min != null && value < min) return m.msg_field_min({ min });
+  if (max != null && value > max) return m.msg_field_max({ max });
+  return null;
+}
+
 function PropertyNumberField({
   feature,
   spec,
@@ -1107,14 +1151,20 @@ function PropertyNumberField({
   const updateFeature = useModelStore((s) => s.updateFeature);
   const current = getFeatureNumber(feature, propertyKey, ...aliases);
   const [value, setValue] = useState(current == null ? "" : String(current));
+  // Set by a blur that refused to write, and cleared by the next one that
+  // writes — or by the model changing underneath, which is how an undo takes
+  // the message away with the value it complained about.
+  const [violation, setViolation] = useState<string | null>(null);
 
   useEffect(() => {
     setValue(current == null ? "" : String(current));
+    setViolation(null);
   }, [current]);
 
   const handleBlur = useCallback(() => {
     const trimmed = value.trim();
     if (trimmed === "") {
+      setViolation(null);
       updateFeature(
         setFeatureProperty(feature, propertyKey, undefined, ...aliases),
       );
@@ -1126,10 +1176,22 @@ function PropertyNumberField({
       return;
     }
 
+    // The refused text stays in the field rather than snapping back to the
+    // stored value: the reader has to see what is being refused to correct it,
+    // and the model is the thing that must not take it.
+    const refusal = fieldViolation(spec, numeric);
+    if (refusal !== null) {
+      setViolation(refusal);
+      return;
+    }
+
+    setViolation(null);
     updateFeature(
       setFeatureProperty(feature, propertyKey, numeric, ...aliases),
     );
-  }, [aliases, feature, propertyKey, updateFeature, value]);
+  }, [aliases, feature, propertyKey, spec, updateFeature, value]);
+
+  const noteId = `${feature.id}-${propertyKey}-note`;
 
   return (
     <div className="grid gap-1">
@@ -1149,13 +1211,26 @@ function PropertyNumberField({
             : m.placeholder_use_run_default()
         }
         value={value}
+        aria-invalid={violation !== null}
+        aria-describedby={noteId}
         onChange={(e) => {
           setValue(e.target.value);
         }}
         onBlur={handleBlur}
       />
-      <p className="text-2xs text-muted-foreground">
-        {fieldHelper(feature, spec)}
+      {/* One line, not two: the refusal replaces the "what an absent value
+          means" helper rather than joining it, because the helper answers a
+          question the reader is no longer asking. */}
+      <p
+        id={noteId}
+        role={violation === null ? undefined : "alert"}
+        className={
+          violation === null
+            ? "text-2xs text-muted-foreground"
+            : "text-2xs text-destructive"
+        }
+      >
+        {violation ?? fieldHelper(feature, spec)}
       </p>
     </div>
   );
