@@ -267,9 +267,9 @@ jobs:
         if: always() && steps.report.outputs.has_coverage == 'true'
         continue-on-error: true
         env:
-          # floor(77.3) - 2, measured 2026-09-12 on 87da006. Ratchet in
+          # floor(78.9) - 2, measured 2026-09-17 on 317fdfa. Ratchet in
           # docs/testing/coverage.md, never silently here.
-          COVERAGE_FLOOR: "75"
+          COVERAGE_FLOOR: "76"
         run: |
           rc=0
           bash scripts/coverage-check.sh || rc=$?

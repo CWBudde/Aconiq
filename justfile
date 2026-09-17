@@ -228,12 +228,27 @@ fe-lint:
 fe-lint-fix:
     cd frontend && bun run lint:fix
 
+# Compile the Paraglide message catalogue into frontend/src/i18n
+#
+# `src/i18n/` is gitignored generated code, and only this compiler writes it —
+# vitest has no plugins configured, so a test run never produces it. Every recipe
+# that runs the suite therefore depends on this one by name.
+#
+# Inheriting it from a neighbouring step is what went wrong before: `fe-ci` runs
+# `fe-typecheck` first, whose `bun run typecheck` compiles the catalogue as a
+# side effect, so the suite worked there and nowhere else. `just fe-test-coverage`
+# on a fresh clone measured a tree where every module importing `@/i18n/messages`
+# failed to resolve, and reported 35.8% for a tree that covers 81.8%. The CI job
+# had the same hole. See docs/testing/coverage.md.
+fe-i18n:
+    cd frontend && bun run compile:i18n
+
 # Run frontend tests
 #
 # The browser-CLI parity suites need frontend/public/aconiq.wasm, which is a
 # gitignored build output, and skip with a reason when it is absent. Use
 # `fe-test-wasm` to build it and require them to run.
-fe-test:
+fe-test: fe-i18n
     cd frontend && bun run test
 
 # Run frontend tests with the browser-CLI parity suites required to run.
@@ -241,7 +256,7 @@ fe-test:
 # ACONIQ_REQUIRE_WASM turns a missing kernel from a skip into a failure, which is
 # what `.github/workflows/frontend-ci.yml` sets: a parity suite that quietly
 # checked nothing would be a silent green.
-fe-test-wasm: wasm-build
+fe-test-wasm: wasm-build fe-i18n
     cd frontend && ACONIQ_REQUIRE_WASM=1 bun run test
 
 # Run frontend tests with coverage
@@ -250,7 +265,7 @@ fe-test-wasm: wasm-build
 # itself, so this recipe fails when coverage is below them. It is deliberately
 # not part of `fe-ci`: coverage here is advisory, and a floor breach must not be
 # able to fail a required check.
-fe-test-coverage:
+fe-test-coverage: fe-i18n
     cd frontend && bun run test:coverage
 
 # Render the frontend coverage report (requires a prior fe-test-coverage)

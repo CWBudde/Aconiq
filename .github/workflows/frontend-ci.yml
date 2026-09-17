@@ -165,6 +165,19 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
+      # `src/i18n/` is gitignored Paraglide output, so a fresh checkout does not
+      # have it and only `compile:i18n` writes it. `frontend-ci` gets it as a
+      # side effect of running `typecheck` first; this job runs the tests
+      # directly and so has to ask for it by name.
+      #
+      # Without it every module importing `@/i18n/messages` fails to resolve,
+      # which takes the whole UI half of the suite out of the *numerator* while
+      # leaving it in the denominator: this job published 35.8% for a tree that
+      # actually covers 81.8%, and blamed the floors for the gap.
+      - name: Compile messages
+        working-directory: frontend
+        run: bun run compile:i18n
+
       # The floors live in vitest.config.ts and the run applies them itself, so
       # this step is what goes red on a breach. `continue-on-error` is what makes
       # "advisory" true rather than merely intended, and the outcome is read

@@ -1,12 +1,10 @@
 package httpv1
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"io"
 	"math"
 	"mime/multipart"
@@ -1274,61 +1272,6 @@ func decodeResponse(t *testing.T, payload []byte, out any) {
 	err := json.Unmarshal(payload, out)
 	if err != nil {
 		t.Fatalf("decode response: %v", err)
-	}
-}
-
-func waitForSSEEventData(body io.ReadCloser, timeout time.Duration, done func(seen map[string]string) bool) (map[string]string, error) {
-	resultCh := make(chan map[string]string, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		defer close(resultCh)
-		defer close(errCh)
-
-		scanner := bufio.NewScanner(body)
-		currentEvent := ""
-		seen := make(map[string]string)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if after, ok := strings.CutPrefix(line, "event: "); ok {
-				currentEvent = strings.TrimSpace(after)
-				continue
-			}
-
-			if strings.HasPrefix(line, "data: ") {
-				if currentEvent == "" {
-					continue
-				}
-
-				seen[currentEvent] = strings.TrimSpace(strings.TrimPrefix(line, "data: "))
-				if done(seen) {
-					resultCh <- seen
-					return
-				}
-			}
-		}
-
-		err := scanner.Err()
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		errCh <- errors.New("sse stream ended before expected events")
-	}()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return nil, err
-	case <-timer.C:
-		_ = body.Close()
-		return nil, errors.New("timed out waiting for sse events")
 	}
 }
 

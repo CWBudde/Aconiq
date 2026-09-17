@@ -16,7 +16,13 @@ comment — one comment per target, edited in place rather than appended, so it
 always shows the current commit.
 
 Everything a developer sees locally is produced by the same scripts CI publishes.
-There is no CI-only measurement.
+There is no CI-only measurement — but note what that does and does not buy. Both
+sides running the same script is exactly why the frontend figure could be wrong in
+both places at once: the script measures whatever tree it is pointed at, and
+neither side generated `src/i18n/` before running it. What saved the local number
+until now was `fe-ci` happening to run `fe-typecheck` first. The recipes that run
+the suite now depend on `fe-i18n` by name, so the generated code is a stated
+prerequisite rather than a side effect of recipe order.
 
 ## The denominators are complete
 
@@ -86,9 +92,28 @@ trips them, tight enough that a real regression does.
 
 ### Backend
 
-| Date       | Commit    | Measured | Floor | Note                                                                                         |
-| ---------- | --------- | -------- | ----- | -------------------------------------------------------------------------------------------- |
-| 2026-09-12 | `87da006` | 77.3%    | 75    | First measurement. 12,822 / 16,584 statements, 219 files, 43 / 47 packages with a test file. |
+| Date       | Commit    | Measured | Floor | Note                                                                                           |
+| ---------- | --------- | -------- | ----- | ---------------------------------------------------------------------------------------------- |
+| 2026-09-12 | `87da006` | 77.3%    | 75    | First measurement. 12,822 / 16,584 statements, 219 files, 43 / 47 packages with a test file.   |
+| 2026-09-17 | `f7e0885` | 71.2%    | 75    | **Below the floor**, and honestly so — no measurement defect here. 12,464 / 17,512 statements. |
+| 2026-09-17 | `317fdfa` | 78.9%    | 76    | Shortfall closed and the floor ratcheted. 13,825 / 17,512 statements.                          |
+
+The backend drop is real and it is not spread evenly. The tree grew by ~930
+statements between those rows while the covered count barely moved, and almost all
+of the new mass is one package: `internal/io/soundplanimport` now carries **1,365
+statements at 14.4%**, ~1,168 of them uncovered — on its own about the size of the
+whole shortfall against the floor. It does not appear in the baseline's
+weakest-packages list below because most of it did not exist yet. The floor was
+not lowered; the tests were the fix, and `PLAN.md` Priority 13 had already asked
+for them ("Add unit tests for all parsers").
+
+That is what the third row is. `soundplanimport` went 14.4% → 94.3% on synthetic
+fixtures alone — its 62 licensed-fixture tests still skip, so the number holds in
+CI — and the ledger's own nominated cheapest wins went with it:
+`internal/standards/framework` 70.7% → 98.7%, `internal/geo/terrain` 69.1% →
+90.7%, `internal/io/fgbimport` 66.3% → 90.5%, `internal/app/config` 82.4% → 100%,
+`internal/app/logging` 0% → 95.5%. The floor moves 75 → 76, two points under the
+new measurement.
 
 Weakest packages at the baseline, for whoever goes looking for the cheapest wins:
 `internal/standards/cnossos/road` 56.7% (305 statements), `internal/io/fgbimport`
@@ -101,14 +126,50 @@ carrying 4,333 statements, a quarter of the tree.
 | Date       | Commit    | Statements | Branches | Functions | Lines | Floors (l/s/f/b)  |
 | ---------- | --------- | ---------- | -------- | --------- | ----- | ----------------- |
 | 2026-09-12 | `87da006` | 73.6%      | 83.9%    | 77.9%     | 73.6% | 71 / 71 / 75 / 81 |
+| 2026-09-17 | `f7e0885` | 81.8%      | 87.0%    | 83.3%     | 81.8% | 71 / 71 / 75 / 81 |
+| 2026-09-17 | `317fdfa` | 86.8%      | 87.8%    | 86.1%     | 86.8% | 84 / 84 / 84 / 85 |
 
-8,460 / 11,496 statements over 62 test files. By area: `src/pages` 81.7%,
-`src/ui` 76.3%, `src/api` 82.8%, `src/model` 85.2%, `src/map` **37.3%**
-(1,765 statements), `src/wasm` 41.4%, `src/layouts` 42.1%.
+At the last row, 11,360 / 13,087 statements over 89 test files. By area:
+`src/results` 99.7%, `src/pages` 94.4%, `src/map` 94.0%, `src/model` 91.5%,
+`src/run` 90.0%, `src/(root)` 85.7%, `src/import` 84.7%, `src/api` 82.7%,
+`src/ui` 77.0%, `src/wasm` **45.2%**, `src/layouts` **41.7%** — the last two are
+what is left.
 
-`src/map` is the one large gap and it is a known one: the MapLibre code needs a
-real WebGL context, `map.test.tsx` stubs `MapView` out entirely, and `use-draw`
-and `model-layers` have no tests at all. `PLAN.md` Priority 8 Phase F tracks it.
+At the `f7e0885` row before it, 10,706 / 13,087 over 83 files, differing where
+this round's work went in: `src/map` 62.6% and `src/model` 89.4%. `src/ui` sits
+still at 77.0% in both, and that is not a gap so much as a composition: this
+repository's **own** shared components under `src/ui` are at 91.5%, most of them
+100%, while ~579 uncovered statements are vendored shadcn — including four files
+(`table.tsx`, `resizable.tsx`, `scroll-area.tsx`, `textarea.tsx`) that nothing
+imports at all.
+
+**Every frontend number CI published between those two rows was wrong, and badly.**
+The `frontend-coverage` job ran `bun run test:coverage` with no `compile:i18n`
+before it. `src/i18n/` is gitignored Paraglide output that nothing else in that
+job writes — `frontend-ci` only has it because `typecheck` compiles it as a side
+effect — so on a fresh checkout every module importing `@/i18n/messages` failed to
+resolve. That took the whole UI half of the suite out of the **numerator** while
+leaving it in the denominator. The published figure was **35.8%** against a true
+81.8%, with `src/pages` and `src/import` reading 0.0% where they are in fact 94.4%
+and 84.7%, and the comment blamed the floors.
+
+It is the same defect as `48b63b2`, which added the `compile:i18n` step to
+`frontend-ci` for `tsc`; `frontend-coverage` never got it. The floors were never
+the problem, and they are only being moved now because the last row measured a
+tree with `src/map` covered: 62.6% → 94.0%, the last genuinely thin area, closing
+the file that carried 326 uncovered statements on its own. **The lesson generalises: a job that consumes
+generated output has to generate it, and inheriting it from another job's side
+effect is not a mechanism.** Anything new that runs the suite needs that step by
+name.
+
+`src/map` **was** the one large gap. It is now 94.0%: `use-draw` (95.6%) and
+`model-layers` (89.8%) have had tests since before this round, and this round
+added `feature-editor.tsx` — 326 uncovered statements on its own — plus the four
+overlay components that read 0% precisely because `pages/map.test.tsx` mocks them
+out. What remains true is the narrow part: `map-view.tsx`'s residual statements
+are MapLibre lifecycle, jsdom cannot reach them, and faking a WebGL context there
+would test the fake. That belongs in `frontend/e2e/`, and `PLAN.md` Priority 8
+Phase F tracks it.
 
 The frontend numbers are measured **with the WASM kernel built** and
 `ACONIQ_REQUIRE_WASM=1`, exactly as the `frontend-coverage` job runs. Without the

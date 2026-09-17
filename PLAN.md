@@ -1195,8 +1195,8 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       Three things this turned up. **`ModeGate` uses `aria-disabled`, not `disabled`** — a
       disabled button takes no focus and fires no pointer events, so a tooltip over one never
       opens; the tests hover and Tab for real, because every DOM-shaped assertion passes while the
-      tooltip is invisible. That failure is still live in `undo-redo-bar.tsx:33-47`, whose two
-      tooltips are silent in exactly the state they describe — **left open, listed under Phase D**.
+      tooltip is invisible. The same shape is still live in `undo-redo-bar.tsx:33-47`, though it
+      costs far less there — **left open, listed under Phase D**.
       **`validateModel` must not be called from the UI**; `useModelValidation` passes the
       receivers and answers "empty" above the validator, so a fresh install no longer reads "1
       error" in hardcoded English. And **terra-draw tore down against a removed map**: React
@@ -1393,13 +1393,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
-- [ ] **The undo/redo tooltips are dead.** `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a
-      `disabled` Button, and a disabled button takes no focus and fires no pointer events — so
-      neither tooltip opens, by mouse or by keyboard, in exactly the state it describes ("nothing
-      to undo"). Nothing notices because the label is duplicated in `aria-label` and no axe rule
-      covers it. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a
-      swallowed click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an
-      attribute check passes while the tooltip is invisible.
+- [ ] **The undo/redo tooltips are dead — worth fixing for the shape, not for the symptom.**
+      `undo-redo-bar.tsx:33-47` puts a Radix tooltip on a `disabled` Button, and a disabled
+      button takes no focus and fires no pointer events, so neither tooltip opens by mouse or by
+      keyboard whenever there is nothing to undo or redo. **The earlier wording here oversold
+      what that costs, and the correction is the useful part.** Both tooltips render
+      `m.tooltip_undo()`/`m.tooltip_redo()` — byte-identical to the button's own `aria-label` —
+      so nothing is lost to a screen reader, and what a sighted mouse user loses is the
+      "(Ctrl+Z)" hint, in the one state where the shortcut would do nothing anyway. These
+      tooltips never described "nothing to undo"; that phrasing was borrowed from `ModeGate`,
+      where the tooltip _is_ the reason, and does not transfer. The reason to still fix it is
+      that the shape is a trap: the day anyone puts a reason in that tooltip it becomes
+      unreachable, which is exactly what had happened in `map/draw-toolbar.tsx` before it was
+      fixed. `ui/mode-gate.tsx` has the fix and the test shape: `aria-disabled` plus a swallowed
+      click, asserted with a real `hover`/`tab` and `findByRole("tooltip")` — an attribute check
+      passes while the tooltip is invisible. Note jsdom computes no Tailwind stylesheet, so a
+      hover assertion alone does _not_ catch a regression to `disabled`; assert `aria-disabled`
+      and Tab-reachability, as `map/draw-toolbar.test.tsx` does.
 - [ ] **A save from the map destroys every property the store does not model.**
       `calcAreaToGeoJSON` (`model/to-geojson.ts:126-139`) emits `properties: { kind }` and nothing
       else, so `soundplan_base_elevation_m` — written by `aconiq import --soundplan` from
@@ -1459,15 +1469,27 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase F — Tests, types and the kernel boundary
 
-- [ ] `hooks.test.ts` against mocked `fetch`; a `browserBackend.startRun` test with a stubbed
-      kernel compared to a backend golden; tests for `use-draw` and `model-layers` (the map-rebuild
-      fix in `ad47eaa` still has no test — it needs a real WebGL context, and `map.test.tsx` stubs
-      `MapView` out entirely). Coverage measurement itself is done, and it prices this bullet:
-      `src/map` sits at **37.3%** over 1,765 statements, the largest single gap in the frontend.
-      The floors are **not** in `fe-ci` as this bullet used to say — they live in
-      `frontend/vitest.config.ts` and are applied by an advisory `frontend-coverage` job, because a
-      coverage regression must not be able to fail a required check. See
-      `docs/testing/coverage.md`.
+- [ ] `hooks.test.ts` against mocked `fetch` (`api/hooks.ts` leaves a third of its hooks
+      unexercised), and a `browserBackend.startRun` test with a stubbed kernel compared to a backend
+      golden. **`use-draw` and `model-layers` are done** — 95.6% and 89.8%, via
+      `draw-provider.test.tsx` and `model-layers.test.tsx` — and `src/map` as a whole is now 94.0%,
+      not the 37.3% over 1,765 statements this bullet used to quote. What survives of the original
+      claim is narrower and still true: **the map-rebuild fix in `ad47eaa` has no test**, because
+      `map-view.tsx`'s residual statements are MapLibre lifecycle that jsdom cannot reach. Faking a
+      WebGL context would test the fake; it belongs in `frontend/e2e/`.
+      The floors are **not** in `fe-ci` — they live in `frontend/vitest.config.ts` and are applied
+      by an advisory `frontend-coverage` job, because a coverage regression must not be able to fail
+      a required check. That job published a number less than half the truth from the day it was
+      created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
+- [ ] **Four vendored shadcn components have no importers anywhere.**
+      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` are 176
+      statements that nothing in `src/` or `e2e/` imports. They are most of what keeps `src/ui` at
+      77% while this repository's **own** shared components under `src/ui` sit at 91.5%, most of
+      them at 100%. Testing them would be the purest coverage theatre available here, so the choice
+      is to delete them or to keep them deliberately as design-system stock — a decision about what
+      the design system holds on hand, not a coverage question.
+      The remaining honest gaps after that are `src/wasm` (45.2%, the browser-side kernel loader —
+      `kernel-node.ts` is what the parity suites exercise) and `src/layouts` (41.7%, 24 statements).
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
