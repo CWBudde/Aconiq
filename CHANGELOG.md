@@ -125,6 +125,15 @@ with results produced after them.
   negative ground effect into a positive screening attenuation.
 - **numeric** RLS-19: line-source segments are weighted against `l0 = 1 m` rather than the total
   road length.
+- **numeric** RLS-19: `h_m` was measured above sea level rather than above the ground, so on any
+  project carrying elevations `D_gr` (Gl. 14) clamped to 0 and the Bodendämpfung disappeared —
+  levels up to 4.8 dB high, measured at +4.39 dB through the CLI on a flat site 400 m up. The ground
+  under a path is now resolved from declared slope edges, else from the imported DTM sampled along
+  the path, else from the straight line between the ground elevations at the two ends; never from
+  zero. Mirrored paths carried the same datum error and are corrected with it. Models whose ground
+  sits at elevation 0 are bit-for-bit unchanged, which is why no existing fixture but two caught it;
+  the CI-safe acceptance fixtures I8 (ascending road) and I9 (receding road) move by −0.57 dB on
+  LrDay and LrNight.
 - **numeric** Schall 03: ten normative defects, each verified against the 16. BImSchV Anlage 2
   text. `d0` in Gl. 14 was read as a path length instead of the 1 m reference length, which zeroed
   the only ground term at normal assessment distances; the Tabelle 6 Rollgeräusche speed-factor row
