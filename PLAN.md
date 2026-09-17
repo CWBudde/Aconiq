@@ -672,7 +672,7 @@ conformance measurement.
   - Synthetic raster receivers take their height from the bundle's `RLKHEIGHT`, not from the
     model's first receiver, which made every raster number a hostage to the receiver import.
 
-- [x] **The raster path selects one grid map too.** Three things it leaves live:
+- [x] **The raster path selects one grid map too** (#40). Four things it leaves live:
   - **The barrier signal alone does not select one raster run.** It selects two. The reference
     project holds the same site four times — without and with `GeoWand.geo`, each at a 4 m and a
     2 m grid — so the second discriminator is the grid height in the `GNM<spacing>:<height>` token
@@ -686,6 +686,13 @@ conformance measurement.
   - `soundplan_runs` and `soundplan_raster_run_count` stay the number of grid maps **discovered**.
     Exactly one is compared, and which one is reported beside them — shrinking the count to 1 would
     have hidden the other three rather than explaining them.
+  - **Absent geometry evidence and contradicted geometry evidence are different branches.** A model
+    that provably describes none of the imported grid maps — an edited `--model` that adds a barrier
+    the bundle never computed with — must not fall through to a height match and report
+    `grid_height_match`; it selects, warns and reports `geometry_contradicted`. And the synthetic
+    receivers take the **selected run's** `run_layout.height_m`, not the project's `RLKHEIGHT`,
+    because `--soundplan-grid-run` and the geometry signal can both land on a run computed at
+    another height.
 
 ## Priority 4 — Honest standards labelling
 

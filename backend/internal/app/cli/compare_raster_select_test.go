@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -328,4 +329,317 @@ func TestPrepareSoundPlanRasterCompareRejectsUnknownGridRun(t *testing.T) {
 	if _, _, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "RS99"); err == nil {
 		t.Fatal("expected an error for a grid-map run that does not exist")
 	}
+}
+
+// TestSelectSoundPlanGridMapRunContradictedGeometry covers the case the
+// geometry filter used to hand straight to the height filter: every candidate
+// declared its geometry, and every one of them disagrees with the model. The
+// model provably describes none of these runs, so a unique height match is not
+// a discriminator — it is one wrong answer out of a set of wrong answers, and
+// reporting it as grid_height_match would present it as the confident one.
+func TestSelectSoundPlanGridMapRunContradictedGeometry(t *testing.T) {
+	t.Parallel()
+
+	// An edited --model added a barrier the imported bundle never computed
+	// with: both grid maps used GeoWand.geo, the model does not.
+	barrierOnly := []soundplanimport.GridMapMetadata{
+		referenceGridMapRun("RRLK0022", true, 4),
+		referenceGridMapRun("RRLK0023", true, 2),
+	}
+
+	// RLKHEIGHT 2 m singles RRLK0023 out on height alone, which is exactly the
+	// confident-looking answer this must not give.
+	selection, err := selectSoundPlanGridMapRun(barrierOnly, "", false, 2)
+	if err != nil {
+		t.Fatalf("selectSoundPlanGridMapRun: %v", err)
+	}
+
+	if selection.Selection == gridRunSelectionGridHeight {
+		t.Fatal("a height match was reported for a pool whose geometry rules every candidate out")
+	}
+
+	if selection.Selection != gridRunSelectionContradicted {
+		t.Fatalf("selection = %q, want %q", selection.Selection, gridRunSelectionContradicted)
+	}
+
+	// Still a selection: the command has to stay usable for "I know, compare
+	// anyway", so refusing outright would be the wrong trade.
+	if selection.Dir != "RRLK0023" {
+		t.Fatalf("dir = %q, want the last candidate by name order", selection.Dir)
+	}
+
+	if len(selection.Warnings) != 1 {
+		t.Fatalf("warnings = %v, want one naming the contradiction", selection.Warnings)
+	}
+
+	warning := selection.Warnings[0]
+	for _, want := range []string{"RRLK0022", "RRLK0023", "--soundplan-grid-run", "noise barrier"} {
+		if !strings.Contains(warning, want) {
+			t.Fatalf("warning %q does not mention %q", warning, want)
+		}
+	}
+
+	// The mirror case: the model carries the barrier and no run did.
+	mirror, err := selectSoundPlanGridMapRun(
+		[]soundplanimport.GridMapMetadata{
+			referenceGridMapRun("RRLK0012", false, 4),
+			referenceGridMapRun("RRLK0013", false, 2),
+		}, "", true, 2,
+	)
+	if err != nil {
+		t.Fatalf("selectSoundPlanGridMapRun: %v", err)
+	}
+
+	if mirror.Selection != gridRunSelectionContradicted {
+		t.Fatalf("selection = %q, want %q", mirror.Selection, gridRunSelectionContradicted)
+	}
+
+	// An explicit run is still the user's call, contradiction or not.
+	explicit, err := selectSoundPlanGridMapRun(barrierOnly, "RRLK0022", false, 2)
+	if err != nil {
+		t.Fatalf("selectSoundPlanGridMapRun: %v", err)
+	}
+
+	if explicit.Dir != "RRLK0022" || explicit.Selection != resultRunSelectionExplicit {
+		t.Fatalf("dir = %q (%s), want RRLK0022 (%s)", explicit.Dir, explicit.Selection, resultRunSelectionExplicit)
+	}
+}
+
+// TestSelectSoundPlanGridMapRunHeightDecidesWithoutGeometry is the other half
+// of the distinction: absent geometry evidence is not contradicted evidence,
+// and the height must still settle the choice on its own. This is every import
+// report written before GridMapMetadata.GeometryFiles existed, so it has to
+// keep behaving exactly as it did.
+func TestSelectSoundPlanGridMapRunHeightDecidesWithoutGeometry(t *testing.T) {
+	t.Parallel()
+
+	noGeometry := []soundplanimport.GridMapMetadata{
+		{ResultSubFolder: "RS01", GMFile: "RRLK0010.GM", RunLayout: &soundplanimport.GridMapRunLayout{SpacingM: referenceGridMapSpacingM, HeightM: 4}},
+		{ResultSubFolder: "RS02", GMFile: "RRLK0020.GM", RunLayout: &soundplanimport.GridMapRunLayout{SpacingM: referenceGridMapSpacingM, HeightM: 2}},
+	}
+
+	selection, err := selectSoundPlanGridMapRun(noGeometry, "", true, 2)
+	if err != nil {
+		t.Fatalf("selectSoundPlanGridMapRun: %v", err)
+	}
+
+	if selection.Dir != "RS02" || selection.Selection != gridRunSelectionGridHeight {
+		t.Fatalf("dir = %q (%s), want RS02 (%s)", selection.Dir, selection.Selection, gridRunSelectionGridHeight)
+	}
+
+	if len(selection.Warnings) != 0 {
+		t.Fatalf("warnings = %v, want none when the height names exactly one run", selection.Warnings)
+	}
+
+	// A partial list is absent evidence too. One candidate disagrees and the
+	// other never said, so the pool has not been ruled out — the unknown run
+	// could still be the right one, and the height is the only signal left.
+	partial := []soundplanimport.GridMapMetadata{
+		referenceGridMapRun("RS01", true, 4),
+		{ResultSubFolder: "RS02", GMFile: "RRLK0020.GM", RunLayout: &soundplanimport.GridMapRunLayout{SpacingM: referenceGridMapSpacingM, HeightM: 2}},
+	}
+
+	mixed, err := selectSoundPlanGridMapRun(partial, "", false, 2)
+	if err != nil {
+		t.Fatalf("selectSoundPlanGridMapRun: %v", err)
+	}
+
+	if mixed.Dir != "RS02" || mixed.Selection != gridRunSelectionGridHeight {
+		t.Fatalf("dir = %q (%s), want RS02 (%s)", mixed.Dir, mixed.Selection, gridRunSelectionGridHeight)
+	}
+}
+
+// TestPrepareSoundPlanRasterCompareUsesSelectedRunHeight pins where the
+// synthetic receivers are placed once the comparison has chosen a run.
+//
+// --soundplan-grid-run names a run outright, and that run need not have been
+// computed at the project's current RLKHEIGHT. Placing the Aconiq receivers at
+// RLKHEIGHT anyway would compare levels at one height against SoundPLAN cells
+// at another while the report states the run was chosen deliberately — the
+// mismatch selecting a single run exists to remove.
+func TestPrepareSoundPlanRasterCompareUsesSelectedRunHeight(t *testing.T) {
+	t.Parallel()
+
+	projectRoot, modelPath := rasterCompareProject(t)
+
+	writeRasterCompareGridMap(t, projectRoot, "RS02", "RRLK0020.GM",
+		[]testGridCell{{ground: -1, day: 0, night: 0, flag: 1}, {ground: 110, day: 70, night: 60, flag: 1}})
+
+	// The project's RLKHEIGHT is 4 m and RS02 was computed at 2 m. Neither run
+	// carries the barrier and the model has none, so nothing but the explicit
+	// flag picks RS02 — and the height then has to follow the flag.
+	report := soundPlanImportReport{
+		SourcePath:      "soundplan",
+		ProjectCRS:      "EPSG:25832",
+		GridResolutionM: 5,
+		GridMapHeightM:  4,
+		CalcArea:        &soundPlanImportCalcArea{Points: []soundPlanPoint{{X: 0, Y: 0}, {X: 5, Y: 0}, {X: 5, Y: 5}, {X: 0, Y: 5}, {X: 0, Y: 0}}},
+		GridMaps: []soundplanimport.GridMapMetadata{
+			withGridMapFile(referenceGridMapRun("RS01", false, 4), "RRLK0010.GM"),
+			withGridMapFile(referenceGridMapRun("RS02", false, 2), "RRLK0020.GM"),
+		},
+	}
+
+	prep, hasPrep, err := prepareSoundPlanRasterCompare(projectRoot, report, modelPath, "RS02")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	if !hasPrep {
+		t.Fatal("expected a raster comparison preparation")
+	}
+
+	t.Cleanup(func() { cleanupRasterComparePreparation(prep) })
+
+	if got, want := prep.report.SoundPlanRasterRun, "RS02"; got != want {
+		t.Fatalf("soundplan_raster_run = %q, want %q", got, want)
+	}
+
+	if got := prep.report.ReceiverHeightM; got != 2 {
+		t.Fatalf("receiver_height_m = %v, want 2 — the selected run's height, not RLKHEIGHT", got)
+	}
+
+	// What the report states has to be what the receivers were built at, so the
+	// heights are read back out of the model the run will actually consume.
+	for id, heightM := range syntheticRasterReceiverHeights(t, prep) {
+		if heightM != 2 {
+			t.Fatalf("synthetic receiver %q sits at %v m, want 2 m", id, heightM)
+		}
+	}
+
+	// A disagreement with the project's own setting is the user's call, but it
+	// is not allowed to be silent: the warning names both numbers.
+	var found string
+
+	for _, warning := range prep.report.Warnings {
+		if strings.Contains(warning, "RLKHEIGHT") {
+			found = warning
+		}
+	}
+
+	if found == "" {
+		t.Fatalf("no warning names the height disagreement; warnings = %v", prep.report.Warnings)
+	}
+
+	for _, want := range []string{"RS02", "2 m", "4 m"} {
+		if !strings.Contains(found, want) {
+			t.Fatalf("warning %q does not mention %q", found, want)
+		}
+	}
+}
+
+// TestSelectedRunReceiverHeightFallsBackToProject covers the runs that declared
+// no usable layout, which is every import report written before
+// GridMapMetadata.RunLayout existed.
+func TestSelectedRunReceiverHeightFallsBackToProject(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		meta        soundplanimport.GridMapMetadata
+		imported    soundPlanImportReport
+		wantHeight  float64
+		wantWarning bool
+	}{
+		{
+			name:       "no layout falls back to RLKHEIGHT",
+			meta:       soundplanimport.GridMapMetadata{ResultSubFolder: "RS01"},
+			imported:   soundPlanImportReport{GridMapHeightM: 2},
+			wantHeight: 2,
+		},
+		{
+			name:       "no layout and no RLKHEIGHT falls back to the stated default",
+			meta:       soundplanimport.GridMapMetadata{ResultSubFolder: "RS01"},
+			imported:   soundPlanImportReport{},
+			wantHeight: defaultGridMapReceiverHeightM,
+		},
+		{
+			// Nothing places receivers at ground level, so a zero is a parse
+			// artefact rather than a grid the comparison should honour.
+			name:       "a zero height is not a height",
+			meta:       referenceGridMapRun("RS01", false, 0),
+			imported:   soundPlanImportReport{GridMapHeightM: 2},
+			wantHeight: 2,
+		},
+		{
+			// The bundle recorded no RLKHEIGHT, so there is nothing for the run
+			// to contradict — warning against an assumed default would be noise.
+			name:       "an unrecorded RLKHEIGHT cannot disagree",
+			meta:       referenceGridMapRun("RS01", false, 2),
+			imported:   soundPlanImportReport{},
+			wantHeight: 2,
+		},
+		{
+			name:       "agreement is silent",
+			meta:       referenceGridMapRun("RS01", false, 2),
+			imported:   soundPlanImportReport{GridMapHeightM: 2},
+			wantHeight: 2,
+		},
+		{
+			name:        "disagreement takes the run and says so",
+			meta:        referenceGridMapRun("RS01", false, 4),
+			imported:    soundPlanImportReport{GridMapHeightM: 2},
+			wantHeight:  4,
+			wantWarning: true,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			height, warnings := selectedRunReceiverHeight(testCase.meta, testCase.imported)
+			if height != testCase.wantHeight {
+				t.Fatalf("height = %v, want %v", height, testCase.wantHeight)
+			}
+
+			if got := len(warnings) > 0; got != testCase.wantWarning {
+				t.Fatalf("warnings = %v, want a warning: %v", warnings, testCase.wantWarning)
+			}
+		})
+	}
+}
+
+// syntheticRasterReceiverHeights reads the synthesized raster receivers' heights
+// back out of the temporary model the preparation wrote, which is what the
+// Aconiq run will compute at.
+func syntheticRasterReceiverHeights(t *testing.T, prep *rasterComparePreparation) map[string]float64 {
+	t.Helper()
+
+	payload, err := os.ReadFile(prep.tempModelPath)
+	if err != nil {
+		t.Fatalf("read temp model: %v", err)
+	}
+
+	var collection struct {
+		Features []struct {
+			Properties map[string]any `json:"properties"`
+		} `json:"features"`
+	}
+
+	if err := json.Unmarshal(payload, &collection); err != nil {
+		t.Fatalf("decode temp model: %v", err)
+	}
+
+	out := make(map[string]float64)
+
+	for _, feature := range collection.Features {
+		id, _ := feature.Properties["id"].(string)
+		if !strings.HasPrefix(id, soundPlanRasterReceiverPrefix) {
+			continue
+		}
+
+		heightM, ok := feature.Properties["height_m"].(float64)
+		if !ok {
+			t.Fatalf("synthetic receiver %q carries no height_m", id)
+		}
+
+		out[id] = heightM
+	}
+
+	if len(out) == 0 {
+		t.Fatal("the temporary model carries no synthetic raster receivers")
+	}
+
+	return out
 }

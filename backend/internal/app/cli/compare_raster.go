@@ -324,7 +324,8 @@ func prepareSoundPlanRasterCompare(
 	report.CalcAreaBoundsDeltaUnit = calcArea.boundsDeltaUnit
 	report.Warnings = append(report.Warnings, calcArea.warnings...)
 
-	syntheticReceiverHeight := syntheticRasterReceiverHeight(importReport)
+	syntheticReceiverHeight, heightWarnings := selectedRunReceiverHeight(decodedRuns[0].metadata, importReport)
+	report.Warnings = append(report.Warnings, heightWarnings...)
 
 	syntheticReceivers, ids, synthesized := synthesizeRasterReceivers(
 		report, importReport, decodedRuns[0].metadata, calcArea.area, syntheticReceiverHeight, layoutRows,
@@ -631,6 +632,47 @@ func syntheticRasterReceiverHeight(importReport soundPlanImportReport) float64 {
 	}
 
 	return defaultGridMapReceiverHeightM
+}
+
+// selectedRunReceiverHeight returns the height the synthetic raster receivers
+// are placed at for the one grid map that was selected, plus any warning the
+// choice owes the reader.
+//
+// The height has to come from the run being compared, not from the project.
+// RLKHEIGHT is the project's *current* grid-map setting, and the selection can
+// legitimately land on a run computed at another: --soundplan-grid-run names a
+// run outright, and the geometry signal alone can settle the choice before the
+// height is ever consulted. Placing the Aconiq receivers at RLKHEIGHT then
+// compares Aconiq levels at one height against SoundPLAN cells at another while
+// the report states the run was chosen on purpose — the very mismatch selecting
+// a single run exists to remove.
+//
+// The project value stays the fallback for a run that declared no layout, which
+// is every import report written before GridMapMetadata.RunLayout existed. A
+// declared height of zero is treated the same way: nothing places receivers at
+// ground level, so it is a parse artefact rather than a grid.
+func selectedRunReceiverHeight(
+	meta soundplanimport.GridMapMetadata,
+	importReport soundPlanImportReport,
+) (float64, []string) {
+	layout := meta.RunLayout
+	if layout == nil || layout.HeightM <= 0 {
+		return syntheticRasterReceiverHeight(importReport), nil
+	}
+
+	// Only a recorded RLKHEIGHT can disagree. When the bundle recorded none,
+	// syntheticRasterReceiverHeight would have answered with an assumed default,
+	// and warning that the run contradicts an assumption would be noise.
+	projectHeightM := importReport.GridMapHeightM
+	if projectHeightM <= 0 || math.Abs(layout.HeightM-projectHeightM) <= gridMapHeightToleranceM {
+		return layout.HeightM, nil
+	}
+
+	return layout.HeightM, []string{fmt.Sprintf(
+		"SoundPLAN grid map %s was computed at %g m, but the project records RLKHEIGHT %g m; "+
+			"the synthetic raster receivers are placed at %g m so both sides of the comparison sit at the same height",
+		meta.ResultSubFolder, layout.HeightM, projectHeightM, layout.HeightM,
+	)}
 }
 
 // compareDecodedGridMapRun compares one decoded SoundPLAN grid map against the

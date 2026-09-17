@@ -39,17 +39,27 @@ type soundPlanResultRunSelection struct {
 // How a result run was chosen, as recorded in soundplan_result_run_selection
 // and in soundplan_raster_run_selection.
 //
-// gridRunSelectionGridHeight is reachable only from the grid-map side: it
-// records a run chosen on the receiver height it was computed at, which is the
-// discriminator the geometry list cannot supply. A project holds the same site
-// computed with and without the barrier *and* at two grid heights, so the
-// barrier signal alone leaves two runs standing.
+// gridRunSelectionGridHeight and gridRunSelectionContradicted are reachable
+// only from the grid-map side. The first records a run chosen on the receiver
+// height it was computed at, which is the discriminator the geometry list
+// cannot supply: a project holds the same site computed with and without the
+// barrier *and* at two grid heights, so the barrier signal alone leaves two
+// runs standing.
+//
+// The second is what the grid-map side needs and the receiver side does not.
+// Only the grid-map side has a second discriminator to fall through to, so only
+// it can turn "every candidate's geometry is known and every one of them
+// disagrees with the model" into a confident-looking answer. That case is not
+// undecided, it is decided against: the comparison is being run over a scenario
+// the model provably does not describe, and it has to say so in its own words
+// rather than borrow resultRunSelectionAmbiguous's.
 const (
-	resultRunSelectionExplicit  = "explicit"
-	resultRunSelectionGeometry  = "geometry_match"
-	resultRunSelectionOnly      = "only_candidate"
-	resultRunSelectionAmbiguous = "ambiguous"
-	gridRunSelectionGridHeight  = "grid_height_match"
+	resultRunSelectionExplicit   = "explicit"
+	resultRunSelectionGeometry   = "geometry_match"
+	resultRunSelectionOnly       = "only_candidate"
+	resultRunSelectionAmbiguous  = "ambiguous"
+	gridRunSelectionGridHeight   = "grid_height_match"
+	gridRunSelectionContradicted = "geometry_contradicted"
 )
 
 // discoverSoundPlanReceiverResultDirs lists the result directories that carry
@@ -200,6 +210,13 @@ const gridMapHeightToleranceM = 1e-6
 // before those fields existed carries no evidence — which lands on the
 // ambiguous branch, with a warning, rather than on a wrong answer.
 //
+// Absent evidence and contradicted evidence are not the same branch. When every
+// candidate declared its geometry and every one of them disagrees with the
+// model, the height is not consulted at all: it would find one run and report
+// gridRunSelectionGridHeight for a scenario already proven wrong. That lands on
+// gridRunSelectionContradicted instead — still a selection, so the command stays
+// usable, but named and warned about as the mismatch it is.
+//
 // A Dir of "" means no grid map named a result subfolder at all; the caller
 // reports that rather than selecting nothing silently.
 func selectSoundPlanGridMapRun(
@@ -240,7 +257,8 @@ func selectSoundPlanGridMapRun(
 
 	pool := candidates
 
-	if matching := filterGridMapRunsByBarrier(pool, byName, modelHasBarriers); len(matching) > 0 {
+	matching, contradicted := filterGridMapRunsByBarrier(pool, byName, modelHasBarriers)
+	if len(matching) > 0 {
 		pool = matching
 
 		if len(pool) == 1 {
@@ -251,14 +269,36 @@ func selectSoundPlanGridMapRun(
 		}
 	}
 
-	if matching := filterGridMapRunsByHeight(pool, byName, gridMapHeightM); len(matching) == 1 {
-		selection.Dir = matching[0]
-		selection.Selection = gridRunSelectionGridHeight
+	// The height is only allowed to settle the choice while the geometry has
+	// not already ruled every candidate out. Falling through to it here is what
+	// turns a proven mismatch into a `grid_height_match` nobody warned about:
+	// an edited model that adds a barrier none of the imported grid maps used
+	// still finds exactly one run at RLKHEIGHT, and the report then presents
+	// the wrong scenario as the confidently chosen one.
+	if !contradicted {
+		if byHeight := filterGridMapRunsByHeight(pool, byName, gridMapHeightM); len(byHeight) == 1 {
+			selection.Dir = byHeight[0]
+			selection.Selection = gridRunSelectionGridHeight
+
+			return selection, nil
+		}
+	}
+
+	selection.Dir = pool[len(pool)-1]
+
+	if contradicted {
+		selection.Selection = gridRunSelectionContradicted
+		selection.Warnings = append(selection.Warnings, fmt.Sprintf(
+			"none of the SoundPLAN grid-map runs %s was computed with the geometry the model describes: "+
+				"the model %s, and every run says the opposite. Compared against %s by name order, so these deltas "+
+				"measure a scenario the model does not describe. Pass --soundplan-grid-run to choose deliberately, "+
+				"or re-import the bundle the model was edited away from.",
+			strings.Join(pool, ", "), modelBarrierPhrase(modelHasBarriers), selection.Dir,
+		))
 
 		return selection, nil
 	}
 
-	selection.Dir = pool[len(pool)-1]
 	selection.Selection = resultRunSelectionAmbiguous
 	selection.Warnings = append(selection.Warnings, fmt.Sprintf(
 		"SoundPLAN grid-map runs %s could not be told apart by the geometry they used or the height they were computed at; "+
@@ -267,6 +307,17 @@ func selectSoundPlanGridMapRun(
 	))
 
 	return selection, nil
+}
+
+// modelBarrierPhrase names the model's barrier state the way the contradiction
+// warning reads it, so the message says which side of the disagreement the
+// model is on rather than printing a bare boolean.
+func modelBarrierPhrase(modelHasBarriers bool) string {
+	if modelHasBarriers {
+		return "carries a noise barrier"
+	}
+
+	return "carries no noise barrier"
 }
 
 // gridMapRunCandidates lists the grid maps that name a result subfolder, sorted
@@ -298,29 +349,55 @@ func gridMapRunCandidates(gridMaps []soundplanimport.GridMapMetadata) ([]string,
 
 // filterGridMapRunsByBarrier keeps the runs whose geometry list agrees with
 // whether the model carries barriers. A run that declared no geometry is
-// unknown and is kept out of the answer rather than guessed at, so an empty
-// result means "no evidence" and the caller carries on with the full pool.
+// unknown and is kept out of the answer rather than guessed at.
+//
+// The second return separates the two ways the first can come back empty, which
+// the caller must not treat alike:
+//
+//   - *no evidence*: at least one candidate declared no geometry at all, so the
+//     pool has not been ruled out, only left unproven. An import report written
+//     before GridMapMetadata.GeometryFiles existed is the whole of this case.
+//   - *contradicted* (true): every candidate declared its geometry and every one
+//     of them disagrees with the model. Nothing in the pool can be the scenario
+//     the model describes, and no later discriminator can change that.
+//
+// A partial list — some known and disagreeing, some unknown — counts as no
+// evidence: an unknown candidate could still be the right run, and refusing to
+// look at the height would throw away the one signal left.
 func filterGridMapRunsByBarrier(
 	candidates []string,
 	byName map[string]soundplanimport.GridMapMetadata,
 	modelHasBarriers bool,
-) []string {
+) ([]string, bool) {
 	matching := make([]string, 0, len(candidates))
+	knownCount := 0
 
 	for _, name := range candidates {
 		usedBarrier, known := soundPlanGeometryUsedBarrier(byName[name].GeometryFiles)
-		if known && usedBarrier == modelHasBarriers {
+		if !known {
+			continue
+		}
+
+		knownCount++
+
+		if usedBarrier == modelHasBarriers {
 			matching = append(matching, name)
 		}
 	}
 
-	return matching
+	contradicted := len(matching) == 0 && knownCount == len(candidates) && knownCount > 0
+
+	return matching, contradicted
 }
 
 // filterGridMapRunsByHeight keeps the runs computed at the project's grid-map
-// height (RLKHEIGHT), which is the height the synthetic raster receivers are
-// placed at — see syntheticRasterReceiverHeight. A project that recorded no
-// height, or a run that declared none, is no evidence and matches nothing.
+// height (RLKHEIGHT). A project that recorded no height, or a run that declared
+// none, is no evidence and matches nothing.
+//
+// This decides which run is compared, not where the receivers go: the synthetic
+// receivers take the selected run's own height, so that a run reached by any
+// other branch is still compared at the height it was computed at — see
+// selectedRunReceiverHeight.
 func filterGridMapRunsByHeight(
 	candidates []string,
 	byName map[string]soundplanimport.GridMapMetadata,
