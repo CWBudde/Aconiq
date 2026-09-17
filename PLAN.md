@@ -1512,19 +1512,20 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       computes no Tailwind stylesheet, so a `hover` + `findByRole("tooltip")` assertion passes
       over a real `disabled` button too — `aria-disabled` and Tab-reachability are what catch the
       regression (`map/draw-toolbar.test.tsx`, `map/undo-redo-bar.test.tsx`).
-- [x] **The stale `compare_raster.go` comment is corrected, and the reread it asked for found
-      nothing else.** The sentence claimed the map drops `soundplan_base_elevation_m` on the first
-      save; `calcAreaToGeoJSON`'s properties passthrough ended that, and the comment now says what
-      an absent value actually means — an area that was drawn rather than imported. The reread was
-      the point of the item and it came back empty: the whole Go surface for this property is two
-      writes in `import_soundplan.go` (a building's and a calc-area's) and the single read at
-      `compare_raster.go:449`, so no other site had been reasoning from the loss.
-      The premise that outlived it: nothing reads the z, and the raster comparison treats its
-      absence as elevation 0 rather than as "no area", so this was always metadata loss and never a
-      numeric defect. The passthrough carries one rule of its own — a carried `properties.id` is
-      rewritten to the id `resolveCalcAreaID` settled on, because `featureID` reads
-      `properties.id` before the GeoJSON `id` member and a stale one would recreate the
-      `feature.id.duplicate` the resolution just stepped past.
+- [x] **The stale `soundplan_base_elevation_m` comments are corrected** (#51). Two sites claimed a
+      save from the map drops the property, which `calcAreaToGeoJSON`'s passthrough ended:
+      `calcAreaFromModel` and the `without base elevation` case in `compare_raster_test.go`.
+      Two live constraints, and the second is why this took a second pass.
+      **An absent property records no provenance.** The first correction asserted that an absent
+      value meant a _drawn_ area — trading one over-claim for another, since an ordinary GeoJSON
+      import carries the property only if its source did. Absence says that no base elevation was
+      recorded and nothing more; 0 is the right reading either way.
+      **This entry's own claim that the reread "came back empty" was false**, and review caught what
+      a grep over non-test files did not: the test comment repeated the same stale sentence. The
+      passthrough also carries a rule worth keeping — a carried `properties.id` is rewritten to the
+      id `resolveCalcAreaID` settled on, because `featureID` reads `properties.id` before the
+      GeoJSON `id` member and a stale one would recreate the `feature.id.duplicate` the resolution
+      just stepped past.
 - [x] **The selected feature is marked, and `FeaturePopup` is gone** (#50). Two constraints it
       leaves live: the highlight is a `feature-state` and never a model property, because the map
       is a projection of the model and a highlight that reached the store would be an input to a

@@ -443,11 +443,14 @@ func calcAreaFromModel(model modelgeojson.Model) (*soundplanimport.CalcArea, str
 		// — calcAreaBounds, calcAreaHorizontalSpan, metadataAlignedRowCenters —
 		// is purely 2D. It is carried so the two areas have the same shape.
 		//
-		// Its absence is never "no area". A save from the map no longer drops it
-		// — frontend/src/model/to-geojson.ts's calcAreaToGeoJSON carries the
-		// area's own properties through — so an absent value means the area was
-		// drawn rather than imported, and 0 is the right reading for one that
-		// was never given a base elevation.
+		// Its absence is never "no area" — it says only that no base elevation
+		// was recorded, and 0 is the right reading for that. It does not say
+		// where the area came from: an ordinary GeoJSON import carries the
+		// property only if the file did, and a SoundPLAN model saved from the
+		// map before calcAreaToGeoJSON's properties passthrough lost it. What
+		// is no longer true is the reverse claim this comment used to make,
+		// that a save from the map drops it in every case; the passthrough
+		// carries the area's own properties through now.
 		baseElevationM, _, err := featurePropertyFloat(feature, "soundplan_base_elevation_m")
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf(
