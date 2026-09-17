@@ -8,7 +8,8 @@ import type { CalcArea, ModelFeature, ModelReceiver } from "@/model/types";
 import { MapContext } from "./use-map";
 import { useDisplayModel } from "./display-model";
 import { ModelLayers } from "./model-layers";
-import { SOURCE_IDS } from "./layers";
+import { useMapStore } from "./map-store";
+import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
 /**
  * What the map does with a model it cannot draw in the CRS the model is in.
@@ -69,6 +70,8 @@ class FakeMap {
   readonly fitBoundsCalls: [[number, number], [number, number]][] = [];
   /** Feature states by `${source}/${id}`, the way MapLibre keys them. */
   readonly featureStates = new Map<string, Record<string, unknown>>();
+  /** The last `visibility` written per layer id. */
+  readonly layout = new Map<string, string>();
 
   getStyle() {
     return { sources: {} };
@@ -94,6 +97,13 @@ class FakeMap {
 
   addLayer(layer: { id: string }) {
     this.layers.add(layer.id);
+  }
+
+  setLayoutProperty(id: string, property: string, value: string) {
+    // MapLibre throws for a layer that is not on the style; the caller relies
+    // on that being harmless.
+    if (!this.layers.has(id)) throw new Error(`no layer ${id}`);
+    this.layout.set(`${id}/${property}`, value);
   }
 
   setFeatureState(
@@ -202,6 +212,7 @@ beforeEach(() => {
   state.canReprojectForDisplay = true;
   state.requests = [];
   useModelStore.getState().reset();
+  useMapStore.setState({ layerVisibility: {} });
 });
 
 describe("ModelLayers", () => {
@@ -407,6 +418,37 @@ describe("ModelLayers", () => {
  * kind, and a state written against the wrong one paints nothing and reports
  * no error.
  */
+describe("ModelLayers layer visibility", () => {
+  it("re-applies what the layer control hid when the layers are added again", () => {
+    // A basemap switch and a tile-failure fallback both rebuild the map, which
+    // is how the model layers come back at all. They come back at the
+    // visibility their specification declares, so the store is the only record
+    // of the user's choice — without this the group reappears on the canvas
+    // while `LayerControl` still labels it as hidden.
+    useMapStore.getState().setLayerVisible("buildings", false);
+    useModelStore.getState().loadModel({
+      features: [WGS84_FEATURE],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+    const map = new FakeMap();
+
+    renderLayers(map);
+
+    expect(map.layout.get(`${LAYER_IDS.buildingsFill}/visibility`)).toBe(
+      "none",
+    );
+    expect(map.layout.get(`${LAYER_IDS.buildingsOutline}/visibility`)).toBe(
+      "none",
+    );
+    // A group with no stored answer keeps its own default.
+    expect(map.layout.get(`${LAYER_IDS.receiversPoint}/visibility`)).toBe(
+      "visible",
+    );
+  });
+});
+
 describe("ModelLayers selection", () => {
   const WGS84_BUILDING: ModelFeature = {
     id: "bld-1",

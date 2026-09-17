@@ -113,7 +113,11 @@ export function basemapLabel(id: BasemapId): string {
 }
 
 export function isBasemapId(value: unknown): value is BasemapId {
-  return typeof value === "string" && value in BASEMAP_RECIPES;
+  // `Object.hasOwn` rather than `in`: `in` walks the prototype chain, so
+  // `"constructor"` and `"toString"` would pass as ids and `basemapStyle`
+  // would read a function off `Object.prototype` as a recipe — a style with no
+  // background colour, which MapLibre rejects instead of falling back.
+  return typeof value === "string" && Object.hasOwn(BASEMAP_RECIPES, value);
 }
 
 /**

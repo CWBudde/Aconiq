@@ -83,4 +83,15 @@ describe("the stored basemap choice", () => {
     expect(isBasemapId("satellite")).toBe(false);
     expect(isBasemapId("dark")).toBe(true);
   });
+
+  it("ignores an inherited object key stored as a basemap", () => {
+    // `"constructor" in BASEMAP_RECIPES` is true, so an `in` check would take
+    // `Object.prototype.constructor` for a recipe and build a style with no
+    // background colour rather than falling back.
+    localStorage.setItem(BASEMAP_STORAGE_KEY, "constructor");
+    expect(readStoredBasemap()).toBe(DEFAULT_BASEMAP);
+    expect(isBasemapId("constructor")).toBe(false);
+    expect(isBasemapId("toString")).toBe(false);
+    expect(isBasemapId("__proto__")).toBe(false);
+  });
 });
