@@ -462,5 +462,18 @@
   "label_basemap_tile_url": "Basemap tile URL",
   "msg_basemap_tile_url_help": "Raster tile template for the map basemap, with the usual z, x and y placeholders in curly braces. Leave it blank to use the OpenStreetMap default.",
   "msg_basemap_tile_url_current": "Current tile URL",
-  "msg_basemap_tile_url_note": "Stored locally in this browser only. A change takes effect the next time the map is built — reload the page, or switch the basemap."
+  "msg_basemap_tile_url_note": "Stored locally in this browser only. A change takes effect the next time the map is built — reload the page, or switch the basemap.",
+  "action_enter_coordinates": "Enter coordinates",
+  "dialog_title_coordinate_feature": "New feature from coordinates",
+  "label_coordinates": "Coordinates",
+  "label_coordinate_x": "X ({crs})",
+  "label_coordinate_y": "Y ({crs})",
+  "label_vertices": "Points",
+  "action_add_vertex": "Add point",
+  "action_remove_vertex": "Remove point {index}",
+  "msg_coordinate_entry_crs": "Coordinates are read as {crs}, the coordinate system the model is stored in, and nothing is transformed. The readout at the bottom of the map gives the pointer in {crs} as well as in WGS 84, so a target can be read off the map.",
+  "msg_coordinate_entry_incomplete": "Every X and Y has to be a number. A point needs one pair, a line two, an area three distinct corners — a repeated closing point does not count.",
+  "msg_vertex_minimum": "At least {count} points are needed.",
+  "label_feature_list": "Features",
+  "msg_feature_list_empty": "Nothing in the model yet. Draw on the map, or enter coordinates."
 }

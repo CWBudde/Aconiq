@@ -56,17 +56,52 @@ vi.mock("@/map/draw-toolbar", () => ({
     activeMode,
     disabled,
     disabledReason,
+    onCoordinateEntry,
   }: {
     activeMode: string;
     disabled?: boolean;
     disabledReason?: string;
+    onCoordinateEntry: () => void;
   }) => (
     <div
       data-testid="draw-toolbar"
       data-mode={activeMode}
       data-disabled={String(disabled === true)}
       data-disabled-reason={disabledReason ?? ""}
-    />
+    >
+      {/* The one prop that is a way *in* rather than a state to echo: the page
+          has to open the dialog with no geometry when it fires. */}
+      <button
+        type="button"
+        data-testid="coordinate-entry"
+        onClick={onCoordinateEntry}
+      >
+        {m.action_enter_coordinates()}
+      </button>
+    </div>
+  ),
+}));
+// Echoes the selected id, and offers the one move the page cares about:
+// reporting an id back, which is what a click on the canvas also does.
+vi.mock("@/map/feature-list", () => ({
+  FeatureList: ({
+    selectedId,
+    onSelect,
+  }: {
+    selectedId: string | null;
+    onSelect: (id: string) => void;
+  }) => (
+    <div data-testid="feature-list" data-selected={selectedId ?? ""}>
+      <button
+        type="button"
+        data-testid="feature-list-select"
+        onClick={() => {
+          onSelect("src-1");
+        }}
+      >
+        src-1
+      </button>
+    </div>
   ),
 }));
 // Renders the id it was handed, which is what `?select=` has to reach.
@@ -691,6 +726,88 @@ describe("MapPage", () => {
     expect(
       screen.getByRole("button", { name: m.action_start_drawing() }),
     ).toBeEnabled();
+  });
+
+  it("opens the dialog with no geometry for the typed path", () => {
+    // The keyboard way in. `geometry` stays null, which is how the dialog
+    // tells the two paths apart — a placeholder shape here would be a
+    // coordinate this page invented.
+    renderPage();
+
+    fireEvent.click(screen.getByTestId("coordinate-entry"));
+
+    const dialog = screen.getByTestId("new-feature-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(JSON.parse(dialog.dataset["geometry"] ?? '"missing"')).toBeNull();
+    // Nothing was projected, because nothing needed to be.
+    expect(projection.requests).toEqual([]);
+  });
+
+  it("offers the typed path over a model no projector can reach", () => {
+    // The state where every drawing tool is refused. Typed numbers are already
+    // in the store's CRS, so the dialog still opens — and it is then the only
+    // way to add a feature at all.
+    projection.canReprojectForDisplay = false;
+    useModelStore.getState().loadModel({
+      features: [source],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    renderPage();
+
+    expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+      "data-disabled",
+      "true",
+    );
+    fireEvent.click(screen.getByTestId("coordinate-entry"));
+
+    expect(screen.getByTestId("new-feature-dialog")).toBeInTheDocument();
+    expect(projection.requests).toEqual([]);
+  });
+
+  it("opens the feature list from its toggle and closes it again", () => {
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPage();
+
+    const toggle = screen.getByRole("button", {
+      name: new RegExp(m.label_feature_list()),
+    });
+    expect(screen.queryByTestId("feature-list")).toBeNull();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("feature-list")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("feature-list")).toBeNull();
+  });
+
+  it("selecting from the list marks the feature and opens the editor", () => {
+    // Exactly what a click on the canvas does — the list sets the same
+    // `editingFeatureId`, so there is no second selection path to keep in step.
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPage();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(m.label_feature_list()) }),
+    );
+    fireEvent.click(screen.getByTestId("feature-list-select"));
+
+    expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+    expect(screen.getByTestId("model-layers")).toHaveAttribute(
+      "data-selected",
+      "src-1",
+    );
+    expect(screen.getByTestId("feature-list")).toHaveAttribute(
+      "data-selected",
+      "src-1",
+    );
   });
 
   it("cancels the armed tool on Escape", () => {

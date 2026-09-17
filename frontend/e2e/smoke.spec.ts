@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { appPath, message, navLink, useLocale, waitForPage } from "./app";
 
 /**
@@ -64,6 +65,79 @@ test.describe("Keyboard navigation", () => {
     await expect(skip).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.locator("#main-content")).toBeFocused();
+  });
+
+  /**
+   * Presses Tab until `focused` matches something, then asserts it does. The
+   * counting pattern is the one the sidebar test below uses: a `:focus`
+   * locator and a bounded loop, rather than `evaluate` against
+   * `document.activeElement`, because the E2E tsconfig has no DOM lib.
+   */
+  async function tabUntil(page: Page, focused: Locator, limit = 60) {
+    for (let i = 0; i < limit && (await focused.count()) === 0; i++) {
+      await page.keyboard.press("Tab");
+    }
+    await expect(focused).toHaveCount(1);
+  }
+
+  test("places a feature by typing coordinates, and selects it from the list", async ({
+    page,
+  }) => {
+    // The map is a canvas: its selection is a hit-tested click, which no
+    // keyboard produces. This is the whole keyboard path end to end — reach
+    // the coordinate-entry control by Tab, type a position, and then find the
+    // feature again in the list and open its editor without a pointer.
+    //
+    // The coordinates are typed in the CRS the model is stored in and go into
+    // the store untouched; nothing on this path is projected, which is why it
+    // is not a second coordinate writer beside `use-draw-projection.ts`.
+    await useLocale(page, "en");
+    await page.goto(appPath("/model"));
+    await waitForPage(page);
+
+    const entryLabel = message("en", "action_enter_coordinates");
+    await tabUntil(
+      page,
+      page.locator(`button[aria-label="${entryLabel}"]:focus`),
+      40,
+    );
+    await page.keyboard.press("Enter");
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // EPSG:4326 is the store's default, and the field labels say so.
+    await dialog.getByLabel("X (EPSG:4326)").fill("10.5");
+    await dialog.getByLabel("Y (EPSG:4326)").fill("51.5");
+
+    const addLabel = message("en", "action_add_feature");
+    await tabUntil(
+      page,
+      page.locator("button:focus").filter({ hasText: addLabel }),
+    );
+    await page.keyboard.press("Enter");
+    await expect(dialog).toBeHidden();
+
+    // The list counts what the dialog added, and Enter on its entry opens the
+    // docked editor — the same thing a click on the canvas does.
+    const listLabel = message("en", "label_feature_list");
+    await tabUntil(
+      page,
+      page.locator("button:focus").filter({ hasText: listLabel }),
+    );
+    await page.keyboard.press("Enter");
+
+    const list = page.getByRole("region", { name: listLabel });
+    await expect(list.getByRole("button")).toHaveCount(1);
+    await tabUntil(
+      page,
+      list.locator("button:focus").filter({
+        hasText: message("en", "option_source"),
+      }),
+    );
+    await page.keyboard.press("Enter");
+
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 
   test("sidebar links are reachable by Tab", async ({ page }) => {

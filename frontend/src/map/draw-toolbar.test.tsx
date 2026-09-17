@@ -35,18 +35,20 @@ function renderToolbar({
 }: ToolbarOptions = {}) {
   const onModeChange = vi.fn<(mode: DrawMode) => void>();
   const onCancel = vi.fn();
+  const onCoordinateEntry = vi.fn();
   render(
     <TooltipProvider delayDuration={0}>
       <DrawToolbar
         activeMode={activeMode}
         onModeChange={onModeChange}
         onCancel={onCancel}
+        onCoordinateEntry={onCoordinateEntry}
         disabled={disabled}
         {...(disabledReason === undefined ? {} : { disabledReason })}
       />
     </TooltipProvider>,
   );
-  return { onModeChange, onCancel };
+  return { onModeChange, onCancel, onCoordinateEntry };
 }
 
 function button(name: string): HTMLElement {
@@ -240,5 +242,51 @@ describe("DrawToolbar when drawing is refused", () => {
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DrawToolbar coordinate entry", () => {
+  it("offers a labelled control that opens the typed path", async () => {
+    const { onCoordinateEntry } = renderToolbar();
+
+    await userEvent.click(button(m.action_enter_coordinates()));
+
+    expect(onCoordinateEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays usable in exactly the state every drawing tool is refused in", async () => {
+    // The point of this control. `disabled` means terra-draw's WGS 84 output
+    // could not be moved into the model's CRS; typed numbers are already in
+    // it, so there is nothing to project and nothing to refuse. On a model in
+    // a CRS the kernel cannot handle, this is the only way to add a feature.
+    const { onCoordinateEntry } = renderToolbar({
+      disabled: true,
+      disabledReason: "Model is in EPSG:3035",
+    });
+
+    const control = button(m.action_enter_coordinates());
+    expect(control).not.toHaveAttribute("aria-disabled");
+    expect(control).toBeEnabled();
+
+    await userEvent.click(control);
+
+    expect(onCoordinateEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("is reachable by Tab, which is the whole point of it", async () => {
+    renderToolbar();
+
+    // Five drawing tools come first in the toolbar, then this one.
+    for (let i = 0; i < 6; i++) await userEvent.tab();
+
+    expect(button(m.action_enter_coordinates())).toHaveFocus();
+  });
+
+  it("names itself in its tooltip rather than repeating the draw reason", async () => {
+    renderToolbar({ disabled: true, disabledReason: "Model is in EPSG:3035" });
+
+    expect(await tooltipFor(m.action_enter_coordinates())).toBe(
+      m.action_enter_coordinates(),
+    );
   });
 });

@@ -1,5 +1,13 @@
 import type * as React from "react";
-import { MousePointer, Circle, Minus, Pentagon, Crop, X } from "lucide-react";
+import {
+  MousePointer,
+  Circle,
+  Minus,
+  Pentagon,
+  Crop,
+  Keyboard,
+  X,
+} from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { cn } from "@/ui/lib/utils";
 import { Separator } from "@/ui/components/separator";
@@ -24,6 +32,19 @@ interface DrawToolbarProps {
   disabled?: boolean;
   /** Why, shown in each tool's own tooltip in place of its label. */
   disabledReason?: string;
+  /**
+   * Opens the new-feature dialog with no drawn geometry, so the coordinates
+   * are typed instead of pointed at.
+   *
+   * Deliberately **not** covered by `disabled`. Every reason the pointer tools
+   * are refused is a reason terra-draw's WGS 84 output could not be moved into
+   * the model's CRS; typed numbers are already in it, so nothing has to be
+   * projected and nothing can go wrong in the way `disabled` guards against.
+   * On a model in a CRS the kernel cannot project — where the map draws
+   * nothing and every tool here is dead — this is the only way to add a
+   * feature at all.
+   */
+  onCoordinateEntry: () => void;
 }
 
 const modelTools: {
@@ -43,6 +64,7 @@ export function DrawToolbar({
   onCancel,
   disabled = false,
   disabledReason,
+  onCoordinateEntry,
 }: DrawToolbarProps) {
   const isDrawing = activeMode !== "static";
   // The reason replaces the label rather than joining it: the tooltip is the
@@ -127,6 +149,26 @@ export function DrawToolbar({
         </TooltipTrigger>
         <TooltipContent side="right">
           {reason(m.tool_draw_calc_area())}
+        </TooltipContent>
+      </Tooltip>
+      <Separator className="my-1" />
+      {/* Below the separator and never greyed: this is not a drawing tool and
+          it is not gated on the projection, for the reason `onCoordinateEntry`
+          carries. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={onCoordinateEntry}
+            aria-label={m.action_enter_coordinates()}
+          >
+            <Keyboard aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {m.action_enter_coordinates()}
         </TooltipContent>
       </Tooltip>
       {isDrawing ? (

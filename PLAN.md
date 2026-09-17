@@ -1609,8 +1609,16 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       needs arguing for. Drawing is gated on `backend.capabilities.canReprojectForDisplay`, not on
       the store's CRS — keep new gates on the capability, or a model the map can project will be
       refused for being metric.
-- [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
-      feature list, so the map is not mouse-only.
+- [x] **Keyboard path** (#54). `NewFeatureDialog` takes typed coordinates when it is opened with no
+      drawn geometry, and `map/feature-list.tsx` lists features and receivers as Tab-reachable
+      controls that set the page's `editingFeatureId`. Two constraints stay live. **The typed
+      numbers are read as the store's own CRS and written into the store untouched, and no transform
+      may be added to that path** — that is why it is no second exception to "a projection _of_ the
+      model, never a source _for_ it"; `use-draw-projection.ts` needs its inverse only because
+      terra-draw emits 4326 whatever the model holds. And the coordinate control must **not** take
+      the `drawingDisabled` gate the drawing tools take: every reason that gate fires is a reason
+      terra-draw's 4326 output could not be moved into the model's CRS, and on such a model typing is
+      the only way left to add a feature.
 
 ### Phase E — i18n and German
 
