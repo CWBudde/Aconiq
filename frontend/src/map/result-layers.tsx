@@ -9,6 +9,11 @@
  * `ArtifactRef` so no URL reaches them, and `results.RasterMetadata` carries no
  * geotransform to place a raster with. See PLAN.md, "Results on the map".
  *
+ * It draws a table that declares decibels and no other: `NOISE_LEVEL_RAMP` is
+ * a decibel ramp, and not every receiver table holds levels — see
+ * {@link declaresLevels}. The run's evidence tier rides along beside its id,
+ * so a scaffold run is not read under the same legend as a normative one.
+ *
  * The coordinates are projected through `backend.transformCoordinates` — the
  * kernel's own projection, the same one `display-model.ts` draws the model
  * with — so a run and the model it came from land in the same place. The CRS
@@ -22,6 +27,7 @@ import { backend } from "@/api/backend";
 import type { ReceiverRecord, RunSummary } from "@/api/client";
 import { useArtifactContent, useReceiverTable, useRuns } from "@/api/hooks";
 import { Button } from "@/ui/components/button";
+import { EvidenceTierBadge } from "@/ui/evidence-tier-badge";
 import { m } from "@/i18n/messages";
 import { NOISE_LEVEL_RAMP } from "./color-ramp";
 import { DISPLAY_CRS } from "./display-model";
@@ -53,11 +59,14 @@ type ProjectedPositions =
   | { status: "projecting" }
   /** No projector in this mode — see `BackendCapabilities.canReprojectForDisplay`. */
   | { status: "unsupported"; crs: string }
+  /** The run never recorded the CRS its receiver coordinates are in. */
+  | { status: "unknown-crs" }
   | { status: "failed" }
   /** Parallel to the records they were built from, index for index. */
   | { status: "ready"; positions: GeoJSON.Position[] };
 
 const IDLE: ProjectedPositions = { status: "idle" };
+const UNKNOWN_CRS: ProjectedPositions = { status: "unknown-crs" };
 
 /**
  * The newest completed run, by the time it finished.
@@ -84,6 +93,14 @@ function finishOrder(run: RunSummary): string {
   return run.finished_at === "" ? run.started_at : run.finished_at;
 }
 
+/** One non-empty string off the parsed `run-summary.json`, or nothing. */
+function summaryField(summary: unknown, key: string): string | undefined {
+  if (typeof summary !== "object" || summary === null) return undefined;
+
+  const value = (summary as Record<string, unknown>)[key];
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
 /**
  * The CRS the run's receiver coordinates are in, read off its own run summary.
  *
@@ -92,10 +109,26 @@ function finishOrder(run: RunSummary): string {
  * and drawing them as degrees is the bug this whole file is careful about.
  */
 function computeCRSOf(summary: unknown): string | null {
-  if (typeof summary !== "object" || summary === null) return null;
+  return summaryField(summary, "compute_crs") ?? null;
+}
 
-  const value = (summary as Record<string, unknown>)["compute_crs"];
-  return typeof value === "string" && value !== "" ? value : null;
+/**
+ * Whether a receiver table says its values are decibels at all.
+ *
+ * `NOISE_LEVEL_RAMP` is a decibel ramp with fixed 35–80 dB stops, so it may
+ * only paint a table that claims to hold levels. Every level-producing module
+ * writes `"dB"`; `beb-exposure` writes `"mixed"`, because its
+ * `indicator_order` puts Lden and Lnight beside dwelling and person *counts*
+ * (`standards/beb/exposure/export.go`). Running one of those counts through
+ * the ramp would present a population total as an acoustic level, under a
+ * legend that still reads in dB.
+ *
+ * Decided on the unit rather than on a list of indicator names: the names are
+ * the backend's and would have to be copied here and kept in step, while the
+ * unit is a field the result container already carries.
+ */
+function declaresLevels(unit: string): boolean {
+  return unit.trim().toLowerCase().startsWith("db");
 }
 
 /**
@@ -109,6 +142,7 @@ function computeCRSOf(summary: unknown): string | null {
 function useProjectedPositions(
   records: ReceiverRecord[],
   computeCRS: string | null,
+  crsPending: boolean,
 ): ProjectedPositions {
   const canReproject = backend.capabilities.canReprojectForDisplay;
   const [state, setState] = useState<ProjectedPositions>(IDLE);
@@ -119,9 +153,19 @@ function useProjectedPositions(
   const requestRef = useRef(0);
 
   useEffect(() => {
-    if (records.length === 0 || computeCRS === null) {
+    if (records.length === 0) {
       requestRef.current += 1;
       setState(IDLE);
+      return;
+    }
+
+    // No CRS, and none still on its way: the run summary either predates the
+    // two keys or never had them. `idle` would leave the panel showing a
+    // legend over an empty map with nothing to explain it, so this case gets
+    // a state of its own and a sentence to go with it.
+    if (computeCRS === null) {
+      requestRef.current += 1;
+      setState(crsPending ? IDLE : UNKNOWN_CRS);
       return;
     }
 
@@ -165,7 +209,7 @@ function useProjectedPositions(
           setState({ status: "failed" });
         },
       );
-  }, [records, computeCRS, canReproject]);
+  }, [records, computeCRS, crsPending, canReproject]);
 
   return state;
 }
@@ -241,15 +285,32 @@ export function ResultLayers() {
     (artifact) => artifact.kind === "run.result.summary",
   );
 
-  const { data: table } = useReceiverTable(tableArtifact?.id ?? null);
-  const { data: summary } = useArtifactContent<unknown>(
-    summaryArtifact?.id ?? null,
+  const { data: table, error: tableError } = useReceiverTable(
+    tableArtifact?.id ?? null,
   );
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    error: summaryError,
+  } = useArtifactContent<unknown>(summaryArtifact?.id ?? null);
 
-  const records = table?.records ?? NO_RECORDS;
-  const indicators = table?.indicator_order ?? NO_INDICATORS;
+  // A failed fetch is not absent data. Dropping the error left the panel
+  // showing a picker and a legend over an empty source, indistinguishable
+  // from a run whose coordinates could not be projected.
+  const loadFailed = tableError != null || summaryError != null;
+
   const unit = table?.unit ?? "";
+  // Unknown until the table arrives, and `declaresLevels("")` is false, so the
+  // gate has to let an absent table through rather than call it a count table.
+  const levelTable = table === undefined || declaresLevels(unit);
+
+  const records = levelTable ? (table?.records ?? NO_RECORDS) : NO_RECORDS;
+  const indicators = levelTable
+    ? (table?.indicator_order ?? NO_INDICATORS)
+    : NO_INDICATORS;
   const computeCRS = computeCRSOf(summary);
+  // Still being fetched, so "no CRS" is not yet an answer.
+  const crsPending = summaryArtifact !== undefined && summaryLoading;
 
   // The band on screen. `null` means "whatever the table lists first", which
   // is resolved on read rather than written into state: seeding it from an
@@ -261,7 +322,7 @@ export function ResultLayers() {
       ? chosen
       : (indicators[0] ?? "");
 
-  const projected = useProjectedPositions(records, computeCRS);
+  const projected = useProjectedPositions(records, computeCRS, crsPending);
 
   const collection = useMemo(() => {
     if (projected.status !== "ready" || indicator === "") {
@@ -327,17 +388,81 @@ export function ResultLayers() {
       aria-label={m.label_result_levels()}
       className="space-y-2"
     >
-      <p className="truncate font-mono text-2xs text-muted-foreground">
-        {run.id}
+      {/* The run's identity, and how far its numbers can be trusted. A
+          scaffold run painted under the same legend as a normative one tells
+          a viewer who did not start it nothing about which it is. */}
+      <div className="flex items-center gap-1.5">
+        <p className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
+          {run.id}
+        </p>
+        <EvidenceTierBadge
+          tier={summaryField(summary, "evidence_tier")}
+          className="shrink-0"
+        />
+      </div>
+      <PanelBody
+        loadFailed={loadFailed}
+        levelTable={levelTable}
+        unit={unit}
+        indicators={indicators}
+        indicator={indicator}
+        onSelect={setChosen}
+        projected={projected}
+      />
+    </MapPanel>
+  );
+}
+
+/**
+ * What the panel says under the run id, which is not always a legend.
+ *
+ * Three mutually exclusive answers, in the order a reader needs them: the
+ * results could not be fetched at all; they were fetched but are not levels;
+ * or they are, and here is what the colours mean.
+ */
+function PanelBody({
+  loadFailed,
+  levelTable,
+  unit,
+  indicators,
+  indicator,
+  onSelect,
+  projected,
+}: {
+  loadFailed: boolean;
+  levelTable: boolean;
+  unit: string;
+  indicators: string[];
+  indicator: string;
+  onSelect: (indicator: string) => void;
+  projected: ProjectedPositions;
+}) {
+  if (loadFailed) {
+    return (
+      <p role="status" className="text-2xs text-destructive">
+        {m.error_load_result_levels()}
       </p>
+    );
+  }
+
+  if (!levelTable) {
+    return (
+      <p role="status" className="text-2xs text-muted-foreground">
+        {m.msg_result_table_not_levels({ unit })}
+      </p>
+    );
+  }
+
+  return (
+    <>
       <IndicatorPicker
         indicators={indicators}
         selected={indicator}
-        onSelect={setChosen}
+        onSelect={onSelect}
       />
       <ProjectionNotice projected={projected} />
       <Legend unit={unit} />
-    </MapPanel>
+    </>
   );
 }
 
@@ -415,6 +540,14 @@ function ProjectionNotice({ projected }: { projected: ProjectedPositions }) {
     return (
       <p role="status" className="text-2xs text-muted-foreground">
         {m.msg_result_levels_unprojectable({ crs: projected.crs })}
+      </p>
+    );
+  }
+
+  if (projected.status === "unknown-crs") {
+    return (
+      <p role="status" className="text-2xs text-muted-foreground">
+        {m.msg_result_levels_unknown_crs()}
       </p>
     );
   }

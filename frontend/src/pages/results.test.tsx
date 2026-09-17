@@ -653,8 +653,27 @@ describe("ResultsPage receiver rows link to the map", () => {
    * highlight anything live — there is no map on this page to highlight on.
    * What it can do is take the reader to the one that has it, and `/model`
    * already knows how to honour `?select=` and strip it again.
+   *
+   * Only for a row the map can actually open, though: an `auto-grid` run names
+   * its receivers itself, none of those ids is in the model store, and a link
+   * there would navigate and then open nothing.
    */
+
+  /** Puts the given ids into the model store as explicit receivers. */
+  function seedReceivers(...ids: string[]) {
+    useModelStore.getState().hydrateModel({
+      features: [],
+      receivers: ids.map((id) => ({
+        id,
+        heightM: 4,
+        geometry: { type: "Point" as const, coordinates: [0, 0] },
+      })),
+      calcArea: null,
+    });
+  }
+
   it("sends each row to the map with the receiver selected", () => {
+    seedReceivers("R1", "R2", "R10");
     renderResults();
 
     const link = screen.getByRole("link", {
@@ -668,6 +687,7 @@ describe("ResultsPage receiver rows link to the map", () => {
     // A button that navigates has no href, no middle-click, no context menu
     // and no entry in a screen reader's links rotor — and no axe rule catches
     // the substitution.
+    seedReceivers("R1", "R2", "R10");
     renderResults();
 
     const row = within(screen.getByRole("table")).getAllByRole("row")[1];
@@ -687,6 +707,7 @@ describe("ResultsPage receiver rows link to the map", () => {
       ...table,
       records: [{ id: "R&1 #2", x: 0, y: 0, height_m: 4, values: {} }],
     } satisfies ReceiverTable;
+    seedReceivers("R&1 #2");
     renderResults();
 
     expect(
@@ -694,6 +715,21 @@ describe("ResultsPage receiver rows link to the map", () => {
         name: m.action_show_receiver_on_map({ id: "R&1 #2" }),
       }),
     ).toHaveAttribute("href", "/model?select=R%261%20%232");
+  });
+
+  it("leaves a generated auto-grid id as plain text", () => {
+    // `grid-000000` is named by the run, not by the model. `SelectRequest`
+    // would hand it to `FeatureEditor`, which finds neither a feature nor a
+    // receiver under it and renders nothing — a link promising a selection
+    // that never happens.
+    state.receiverTable = {
+      ...table,
+      records: [{ id: "grid-000000", x: 0, y: 0, height_m: 4, values: {} }],
+    } satisfies ReceiverTable;
+    renderResults();
+
+    expect(screen.queryByRole("link", { name: /grid-000000/ })).toBeNull();
+    expect(screen.getByText("grid-000000")).toBeInTheDocument();
   });
 });
 

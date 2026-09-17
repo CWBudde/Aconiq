@@ -23,14 +23,20 @@ const state = vi.hoisted(() => {
     canReprojectForDisplay: boolean;
     runs: RunSummary[];
     table: ReceiverTable | undefined;
+    tableError: Error | null;
     summary: unknown;
+    summaryLoading: boolean;
+    summaryError: Error | null;
     requests: TransformRequest[];
     respond: (req: TransformRequest) => Promise<TransformResponse>;
   } = {
     canReprojectForDisplay: true,
     runs: [],
     table: undefined,
+    tableError: null,
     summary: { compute_crs: "EPSG:25832", project_crs: "EPSG:25832" },
+    summaryLoading: false,
+    summaryError: null,
     requests: [],
     // A stand-in for the kernel: the numbers only have to be distinguishable
     // from the input, because what is asserted is which CRS was asked for and
@@ -69,10 +75,15 @@ vi.mock("@/api/backend", () => ({
 vi.mock("@/api/hooks", () => ({
   useRuns: () => ({ data: state.runs }),
   useReceiverTable: (artifactId: string | null) => ({
-    data: artifactId === null ? undefined : state.table,
+    data: artifactId === null || state.tableError ? undefined : state.table,
+    isLoading: false,
+    error: artifactId === null ? null : state.tableError,
   }),
   useArtifactContent: (artifactId: string | null) => ({
-    data: artifactId === null ? undefined : state.summary,
+    data:
+      artifactId === null || state.summaryLoading ? undefined : state.summary,
+    isLoading: artifactId !== null && state.summaryLoading,
+    error: artifactId === null ? null : state.summaryError,
   }),
 }));
 
@@ -183,7 +194,14 @@ beforeEach(() => {
   state.canReprojectForDisplay = true;
   state.runs = [completedRun("run-1", "2026-01-01T10:00:05Z")];
   state.table = TABLE;
-  state.summary = { compute_crs: "EPSG:25832", project_crs: "EPSG:25832" };
+  state.tableError = null;
+  state.summary = {
+    compute_crs: "EPSG:25832",
+    project_crs: "EPSG:25832",
+    evidence_tier: "normative",
+  };
+  state.summaryLoading = false;
+  state.summaryError = null;
   state.requests = [];
   useMapStore.setState({ basemap: "light", layerVisibility: {} });
 });
@@ -348,5 +366,91 @@ describe("ResultLayers", () => {
     expect(
       screen.queryByRole("region", { name: m.label_result_levels() }),
     ).not.toBeInTheDocument();
+  });
+
+  it("names the evidence tier the run summary carries", async () => {
+    // A scaffold run's dB(A) are invented, and under the same legend as a
+    // normative run's they read the same. The run id alone does not say which
+    // of the two a viewer who did not start the run is looking at.
+    state.summary = {
+      compute_crs: "EPSG:25832",
+      project_crs: "EPSG:25832",
+      evidence_tier: "scaffold",
+    };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    const badge = await screen.findByTestId("evidence-tier-badge");
+    expect(badge).toHaveAttribute("data-tier", "scaffold");
+  });
+
+  it("refuses to paint a table that does not report decibels", async () => {
+    // `beb-exposure` writes `unit: "mixed"` and puts dwelling and person
+    // counts in `indicator_order` beside Lden and Lnight. Feeding a count
+    // through the 35–80 dB ramp would present a population total as an
+    // acoustic level, under a legend that still reads in dB.
+    state.table = {
+      indicator_order: ["Lden", "estimated_persons"],
+      unit: "mixed",
+      records: [
+        {
+          id: "B1",
+          x: 6660000,
+          y: 564400000,
+          height_m: 9,
+          values: { Lden: 62.4, estimated_persons: 12 },
+        },
+      ],
+    };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.msg_result_table_not_levels({ unit: "mixed" })),
+    ).toBeInTheDocument();
+    expect(drawn(map).features).toEqual([]);
+    expect(state.requests).toEqual([]);
+    expect(
+      screen.queryByRole("button", { name: "estimated_persons" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says the CRS is unknown rather than showing a legend over nothing", async () => {
+    // A run summary written before either target recorded the CRS. `idle`
+    // left the picker and the legend up describing colours that were nowhere.
+    state.summary = { project_crs: "EPSG:25832" };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.msg_result_levels_unknown_crs()),
+    ).toBeInTheDocument();
+    expect(drawn(map).features).toEqual([]);
+  });
+
+  it("waits for the summary before calling the CRS unknown", () => {
+    state.summaryLoading = true;
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(screen.queryByText(m.msg_result_levels_unknown_crs())).toBeNull();
+  });
+
+  it("distinguishes a failed fetch from absent data", async () => {
+    // A transient 404/500 used to leave the source empty and the panel
+    // showing a picker and a legend with nothing to explain either.
+    state.tableError = new Error("boom");
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.error_load_result_levels()),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(m.label_result_legend())).toBeNull();
   });
 });
