@@ -13,21 +13,52 @@ import { MapContext } from "./use-map";
  * survive — `pages/map.test.tsx` stubbed the hook out, so nothing exercised
  * the path from the toolbar to terra-draw.
  */
-const instances: {
+interface DrawStub {
   setMode: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
-}[] = [];
+  addFeatures: ReturnType<typeof vi.fn>;
+  selectFeature: ReturnType<typeof vi.fn>;
+  removeFeatures: ReturnType<typeof vi.fn>;
+  features: GeoJSON.Feature[];
+  /** Plays a terra-draw event, which is how a test stands in for the user. */
+  emit: (event: string, ...args: unknown[]) => void;
+}
+
+const instances: DrawStub[] = [];
 
 vi.mock("terra-draw", () => {
+  type Handler = (...args: never[]) => void;
+
   class TerraDraw {
+    features: GeoJSON.Feature[] = [];
+    private handlers: Record<string, Handler[]> = {};
     setMode = vi.fn();
     start = vi.fn();
     stop = vi.fn();
-    on = vi.fn();
-    getSnapshot = vi.fn(() => []);
-    removeFeatures = vi.fn();
+    on = vi.fn((event: string, handler: Handler) => {
+      (this.handlers[event] ??= []).push(handler);
+    });
+    // A real store, not an empty snapshot: the editing path adds a feature,
+    // drags it and reads it back, so a stub that forgets what it was given
+    // could not tell a committed reshape from a dropped one.
+    getSnapshot = vi.fn(() => this.features);
+    addFeatures = vi.fn((features: GeoJSON.Feature[]) => {
+      this.features.push(...features);
+      return features.map((feature) => ({ id: feature.id, valid: true }));
+    });
+    selectFeature = vi.fn();
+    removeFeatures = vi.fn((ids: (string | number)[]) => {
+      this.features = this.features.filter(
+        (feature) => !ids.includes(feature.id as string),
+      );
+    });
+    emit(event: string, ...args: unknown[]) {
+      for (const handler of this.handlers[event] ?? []) {
+        (handler as (...a: unknown[]) => void)(...args);
+      }
+    }
     constructor() {
-      instances.push(this as unknown as (typeof instances)[number]);
+      instances.push(this as unknown as DrawStub);
     }
   }
   // `vi.fn()` rather than an empty class: the modes are only ever constructed
@@ -48,6 +79,7 @@ vi.mock("terra-draw-maplibre-gl-adapter", () => ({
 }));
 
 let api: ReturnType<typeof useDrawContext> | null = null;
+const finished: string[] = [];
 
 function Consumer() {
   api = useDrawContext();
@@ -60,7 +92,11 @@ const stubMap = {} as Map;
 function tree(map: Map | null) {
   return (
     <MapContext value={map}>
-      <DrawProvider onFinish={() => undefined}>
+      <DrawProvider
+        onFinish={(mode) => {
+          finished.push(mode);
+        }}
+      >
         <Consumer />
       </DrawProvider>
     </MapContext>
@@ -73,6 +109,7 @@ function renderWithin(map: Map | null) {
 
 beforeEach(() => {
   instances.length = 0;
+  finished.length = 0;
   api = null;
 });
 
@@ -154,5 +191,130 @@ describe("DrawProvider", () => {
     expect(() => {
       view.unmount();
     }).not.toThrow();
+  });
+});
+
+describe("DrawProvider editing surface", () => {
+  const point: GeoJSON.Feature = {
+    type: "Feature",
+    id: "src-1",
+    properties: { mode: "point" },
+    geometry: { type: "Point", coordinates: [10, 51] },
+  };
+
+  it("feeds a feature into terra-draw and takes it back out", () => {
+    // Select mode was built with draggable features and draggable, deletable
+    // midpoints from the start — it was simply never given anything, because
+    // nothing in the app called `addFeatures`. This is that path.
+    renderWithin(stubMap);
+
+    act(() => {
+      expect(api?.addFeatures([point])).toBe(true);
+      api?.selectFeature("src-1");
+    });
+
+    expect(instances[0]?.addFeatures).toHaveBeenCalledWith([point]);
+    expect(instances[0]?.selectFeature).toHaveBeenCalledWith("src-1");
+    expect(api?.getFeature("src-1")).toEqual(point);
+
+    act(() => {
+      api?.removeFeatures(["src-1"]);
+    });
+    expect(api?.getFeature("src-1")).toBeUndefined();
+  });
+
+  it("swallows a removal of a feature terra-draw no longer holds", () => {
+    // Every caller is a teardown path that cannot know whether a mode change
+    // or a map rebuild already cleared the store underneath it.
+    renderWithin(stubMap);
+    instances[0]?.removeFeatures.mockImplementation(() => {
+      throw new Error("No feature with this id");
+    });
+
+    expect(() => {
+      api?.removeFeatures(["gone"]);
+    }).not.toThrow();
+  });
+
+  it("fans terra-draw's selection events out to its subscribers", () => {
+    renderWithin(stubMap);
+    const onChange = vi.fn();
+    const onSelect = vi.fn();
+    const onDeselect = vi.fn();
+
+    let unsubscribe: (() => void) | undefined;
+    act(() => {
+      unsubscribe = api?.subscribeSelection({ onChange, onSelect, onDeselect });
+    });
+
+    act(() => {
+      instances[0]?.emit("select", "src-1");
+      instances[0]?.emit("change", ["src-1", 7], "update");
+      instances[0]?.emit("deselect", "src-1");
+    });
+
+    expect(onSelect).toHaveBeenCalledWith("src-1");
+    // Ids arrive as strings whatever terra-draw's id strategy mints, so a
+    // subscriber can compare them against a model id without converting.
+    expect(onChange).toHaveBeenCalledWith(["src-1", "7"], "update");
+    expect(onDeselect).toHaveBeenCalledWith("src-1");
+
+    act(() => {
+      unsubscribe?.();
+      instances[0]?.emit("select", "src-2");
+    });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a finish while select mode is armed", () => {
+    // The regression guard for the editing path. Terra-draw fires "finish" at
+    // the end of a *drag* too, and the finish handler is written for a newly
+    // drawn shape: it resets the mode to "static" and removes the feature. Run
+    // in select mode it disarms the tool mid-edit and deletes the feature being
+    // reshaped.
+    vi.useFakeTimers();
+    try {
+      renderWithin(stubMap);
+      act(() => {
+        api?.addFeatures([point]);
+        api?.setMode("select");
+      });
+      instances[0]?.setMode.mockClear();
+
+      act(() => {
+        instances[0]?.emit("finish", "src-1");
+        vi.runAllTimers();
+      });
+
+      expect(finished).toEqual([]);
+      expect(instances[0]?.setMode).not.toHaveBeenCalled();
+      expect(instances[0]?.removeFeatures).not.toHaveBeenCalled();
+      expect(screen.getByTestId("mode")).toHaveTextContent("select");
+      expect(api?.getFeature("src-1")).toEqual(point);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still finishes a drawn shape in every other mode", () => {
+    vi.useFakeTimers();
+    try {
+      renderWithin(stubMap);
+      act(() => {
+        api?.addFeatures([point]);
+        api?.setMode("point");
+      });
+
+      act(() => {
+        instances[0]?.emit("finish", "src-1");
+        vi.runAllTimers();
+      });
+
+      expect(finished).toEqual(["point"]);
+      expect(instances[0]?.removeFeatures).toHaveBeenCalledWith(["src-1"]);
+      expect(screen.getByTestId("mode")).toHaveTextContent("static");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1535,9 +1535,28 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       from — a state written against the wrong source paints nothing and reports no error. The
       docked editor is now the one click surface, and it shows a feature's properties as form
       fields rather than as an HTML string built by concatenation from values an import supplied.
-- [ ] **Geometry editing**: on click in select mode `draw.addFeatures([feature])`, listen for
-      change/deselect, commit as one `updateFeature` command; add coalescing (`mergeWith`) to
-      `CommandStack` first so drags do not become one step per mousemove.
+- [x] **Geometry editing**: the selected feature is fed into select mode and reshaped back into the
+      model (`map/use-geometry-edit.ts`). The belief this corrects is that select mode needed
+      building: it was already constructed with draggable features and draggable, deletable
+      midpoints and was simply never fed — nothing in the app had ever called `draw.addFeatures`,
+      so it armed over an empty terra-draw store and a click did nothing. Four constraints it
+      leaves live. **A reshape is not a finish**: terra-draw fires `finish` at the end of a drag
+      too, and `use-draw.ts`'s handler is written for a newly drawn shape — it resets the mode to
+      "static" and removes the feature — so it early-returns in select mode, and anything added to
+      it has to keep doing so. **There are two commit triggers, chosen by the store's CRS**: in
+      `DISPLAY_CRS` the inverse is the identity, so every `change` commits and the model follows the
+      pointer; over a metric model the latest display geometry is held and projected once, at seal
+      time, or a drag costs one `POST /api/v1/transform` per mousemove. **The merge keeps the newest
+      `execute` and the oldest `undo`** (`model/command-stack.ts`), because the geometry commands
+      capture `previous` before they run — keeping the newest `undo` would undo a drag to one
+      mousemove before its end. `seal()` ends the run, since the stack cannot tell a second drag
+      from a continuation of the first. And the inverse transform is now one implementation with two
+      callers (`map/use-inverse-projection.ts`): the draw-finish path and this one, so the map still
+      has exactly one place where a coordinate travels into the model. Two things were left out:
+      terra-draw models no `Multi*` geometry, so a multipart building is refused rather than
+      silently reduced to its first ring; and a metric reshape whose projection fails is reported by
+      the feature snapping back to what the model still holds, rather than by a notice — unlike a
+      drawn shape, it exists somewhere other than the map.
 - [ ] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
       are still reported by count and not edited, so a rail model's Zugarten still have to be
       written into the model file by hand. That is a decision rather than a gap: a form for them is

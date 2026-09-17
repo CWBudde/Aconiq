@@ -21,10 +21,36 @@ import { m } from "@/i18n/messages";
  * went unnoticed. This one keeps both: it renders the children and provides
  * the context, so everything laid over the map is exercised.
  */
+/** A stand-in for the MapLibre map; everything that touches it is stubbed. */
+const stubMap = vi.hoisted(() => ({}) as Map);
+
 vi.mock("@/map/map-view", () => ({
-  MapView: ({ children }: { children?: React.ReactNode }) => (
-    <MapContext value={{} as Map}>
-      <div data-testid="map-view">{children}</div>
+  MapView: ({
+    children,
+    onFeatureClick,
+  }: {
+    children?: React.ReactNode;
+    onFeatureClick?: (features: { properties: unknown }[]) => void;
+  }) => (
+    // One stable object, because the real `MapView` holds the map in state:
+    // a fresh one per render changes `useMap()`'s identity, which tears
+    // terra-draw down and builds a new one on every keystroke.
+    <MapContext value={stubMap}>
+      <div data-testid="map-view">
+        {/* A click on a model feature, which is the real `MapView`'s own
+            `queryRenderedFeatures` call reduced to what it hands the page.
+            The page treats a repeat click on the feature it already holds as a
+            fresh selection, and nothing else here can produce one. */}
+        <button
+          type="button"
+          onClick={() => {
+            onFeatureClick?.([{ properties: { id: mapClick.featureId } }]);
+          }}
+        >
+          click-feature
+        </button>
+        {children}
+      </div>
     </MapContext>
   ),
 }));
@@ -54,11 +80,13 @@ vi.mock("@/map/coordinate-display", () => ({
 vi.mock("@/map/draw-toolbar", () => ({
   DrawToolbar: ({
     activeMode,
+    onModeChange,
     disabled,
     disabledReason,
     onCoordinateEntry,
   }: {
     activeMode: string;
+    onModeChange: (mode: string) => void;
     disabled?: boolean;
     disabledReason?: string;
     onCoordinateEntry: () => void;
@@ -77,6 +105,18 @@ vi.mock("@/map/draw-toolbar", () => ({
         onClick={onCoordinateEntry}
       >
         {m.action_enter_coordinates()}
+      </button>
+      {/* The real toolbar's select button, reduced to what a test needs of
+          it: `map/draw-toolbar.test.tsx` owns how it looks and how it refuses.
+          Without a way to arm select mode there is no way to reach the editing
+          path from the page at all. */}
+      <button
+        type="button"
+        onClick={() => {
+          onModeChange("select");
+        }}
+      >
+        arm-select
       </button>
     </div>
   ),
@@ -142,27 +182,52 @@ vi.mock("@/map/undo-redo-bar", () => ({
 // detail.
 vi.mock("terra-draw", () => {
   const mode = vi.fn();
+  type Handler = (...args: never[]) => void;
   return {
     TerraDraw: class {
-      setMode = vi.fn();
-      start = vi.fn();
-      stop = vi.fn();
-      // Captured so a test can play terra-draw finishing a shape. The adapter
-      // hands the page WGS84 coordinates whatever the model is stored in,
-      // which is the whole reason the finish path has an inverse transform on
-      // it.
-      on = vi.fn((event: string, handler: (id: string) => void) => {
-        if (event === "finish") draw.finish = handler;
-      });
-      getSnapshot = vi.fn(() => [
+      // A real store, not a fixed snapshot. Editing puts the selected feature
+      // in here, drags it and reads it back out, so the stub has to remember
+      // what it was given — a snapshot that answered the same thing forever
+      // could not tell a committed reshape from a dropped one.
+      features: GeoJSON.Feature[] = [
         {
           id: "drawn-1",
           type: "Feature",
           properties: {},
           geometry: { type: "Polygon", coordinates: [DRAWN_RING] },
         },
-      ]);
-      removeFeatures = vi.fn();
+      ];
+      private handlers: Record<string, Handler[]> = {};
+      setMode = vi.fn();
+      start = vi.fn();
+      stop = vi.fn();
+      // Captured so a test can play terra-draw finishing a shape, or dragging
+      // one. The adapter hands the page WGS84 coordinates whatever the model
+      // is stored in, which is the whole reason both paths have an inverse
+      // transform on them.
+      on = vi.fn((event: string, handler: Handler) => {
+        (this.handlers[event] ??= []).push(handler);
+        if (event === "finish") draw.finish = handler as (id: string) => void;
+      });
+      getSnapshot = vi.fn(() => this.features);
+      addFeatures = vi.fn((features: GeoJSON.Feature[]) => {
+        this.features.push(...features);
+        return features.map((feature) => ({ id: feature.id, valid: true }));
+      });
+      selectFeature = vi.fn();
+      removeFeatures = vi.fn((ids: (string | number)[]) => {
+        this.features = this.features.filter(
+          (feature) => !ids.includes(feature.id as string),
+        );
+      });
+      emit(event: string, ...args: unknown[]) {
+        for (const handler of this.handlers[event] ?? []) {
+          (handler as (...a: unknown[]) => void)(...args);
+        }
+      }
+      constructor() {
+        draw.instance = this as unknown as DrawStub;
+      }
     },
     TerraDrawPointMode: mode,
     TerraDrawLineStringMode: mode,
@@ -224,8 +289,26 @@ vi.mock("@/api/backend", () => ({
   },
 }));
 
-/** The handler `useDraw` registers on terra-draw's "finish" event. */
-const draw: { finish: ((id: string) => void) | null } = { finish: null };
+interface DrawStub {
+  features: GeoJSON.Feature[];
+  addFeatures: ReturnType<typeof vi.fn>;
+  selectFeature: ReturnType<typeof vi.fn>;
+  removeFeatures: ReturnType<typeof vi.fn>;
+  /** Plays a terra-draw event, which is how a test stands in for the user. */
+  emit: (event: string, ...args: unknown[]) => void;
+}
+
+/**
+ * The handler `useDraw` registers on terra-draw's "finish" event, and the stub
+ * instance itself — the editing path needs both directions.
+ */
+const draw: {
+  finish: ((id: string) => void) | null;
+  instance: DrawStub | null;
+} = { finish: null, instance: null };
+
+/** Which feature the `MapView` stub's click button reports. */
+const mapClick = { featureId: "" };
 
 /** A ring in WGS84, which is all terra-draw ever emits. */
 const DRAWN_RING = [
@@ -238,6 +321,7 @@ const DRAWN_RING = [
 describe("MapPage", () => {
   beforeEach(() => {
     draw.finish = null;
+    draw.instance = null;
     useModelStore.getState().reset();
     projection.canReprojectForDisplay = true;
     projection.requests = [];
@@ -831,5 +915,284 @@ describe("MapPage", () => {
       "data-mode",
       "static",
     );
+  });
+
+  describe("geometry editing", () => {
+    /** Arms select mode on the selected feature, the way the toolbar does. */
+    function armSelect() {
+      fireEvent.click(screen.getByRole("button", { name: "arm-select" }));
+    }
+
+    /** One pointer move: terra-draw's copy changes and it says so. */
+    function dragTo(id: string, coordinates: [number, number]) {
+      const instance = draw.instance;
+      const held = instance?.features.find((f) => f.id === id);
+      if (held) {
+        held.geometry = { type: "Point", coordinates };
+      }
+      act(() => {
+        instance?.emit("change", [id], "update");
+      });
+    }
+
+    it("hands the selected feature to terra-draw and selects it", async () => {
+      // Select mode was always built with draggable features and draggable,
+      // deletable midpoints — nothing had ever called `addFeatures`, so it was
+      // armed over an empty store and clicking a feature did nothing.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+
+      armSelect();
+
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+      expect(draw.instance?.addFeatures).toHaveBeenCalledWith([
+        {
+          type: "Feature",
+          id: "src-1",
+          // Terra-draw keys a feature to the mode that owns it and rejects one
+          // naming a mode the instance does not hold.
+          properties: { mode: "point" },
+          geometry: { type: "Point", coordinates: [10, 51] },
+        },
+      ]);
+      expect(draw.instance?.selectFeature).toHaveBeenCalledWith("src-1");
+    });
+
+    it("commits every change, and a whole drag is one undo step", async () => {
+      // The store is in WGS84, so the inverse is the identity and a commit is
+      // free: the model follows the pointer. What must not follow it is the
+      // undo stack — each command carries `geometry:<id>` and the stack merges
+      // the run.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("src-1", [10.5, 51.5]);
+      dragTo("src-1", [11, 52]);
+      dragTo("src-1", [12, 53]);
+
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [12, 53],
+      });
+      // No transform was asked for on the way in, and none on the way out.
+      expect(projection.requests).toEqual([]);
+
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      // The geometry the drag started from, not the pointer move before its
+      // end — the merge keeps the *oldest* undo.
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10, 51],
+      });
+      expect(useModelStore.getState().canUndo).toBe(false);
+
+      act(() => {
+        useModelStore.getState().redo();
+      });
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [12, 53],
+      });
+    });
+
+    it("starts a new undo step for a second drag of the same feature", async () => {
+      // The stack cannot see that a gesture ended: a second drag carries the
+      // same key and looks like a continuation. `sealHistory` on deselect is
+      // what separates them.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("src-1", [10.5, 51.5]);
+      act(() => {
+        draw.instance?.emit("deselect", "src-1");
+      });
+      expect(draw.instance?.removeFeatures).toHaveBeenCalledWith(["src-1"]);
+
+      // The feature is picked up again — which is what `selectionEpoch` is for:
+      // the page already holds this id, so without it the click changes nothing
+      // and the feature the user just clicked stays uneditable.
+      mapClick.featureId = "src-1";
+      fireEvent.click(screen.getByRole("button", { name: "click-feature" }));
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalledTimes(2);
+      });
+      dragTo("src-1", [13, 54]);
+
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10.5, 51.5],
+      });
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10, 51],
+      });
+    });
+
+    it("projects a metric reshape once, when the gesture ends", async () => {
+      // One `POST /api/v1/transform` per drag rather than one per pointer move.
+      // The asymmetry with the synchronous path above is the point: the cheap
+      // path gets live feedback, the expensive one gets a single round trip,
+      // and both are one undo step.
+      useModelStore.getState().loadModel({
+        features: [source],
+        receivers: [],
+        calcArea: null,
+        crs: "EPSG:25832",
+      });
+      renderPageAt("/model?select=src-1");
+      await waitFor(() => {
+        expect(projection.requests).toHaveLength(1);
+      });
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+      // The shape terra-draw is given is the *display* geometry, so the handle
+      // lands on the feature the user can see rather than a few hundred
+      // kilometres off the coast of Africa.
+      expect(draw.instance?.addFeatures).toHaveBeenCalledWith([
+        {
+          type: "Feature",
+          id: "src-1",
+          properties: { mode: "point" },
+          geometry: { type: "Point", coordinates: [1000000, 5100000] },
+        },
+      ]);
+
+      const beforeDrag = projection.requests.length;
+      dragTo("src-1", [1, 2]);
+      dragTo("src-1", [3, 4]);
+      dragTo("src-1", [5, 6]);
+
+      // Nothing has been asked of the kernel, and nothing has been written.
+      expect(projection.requests).toHaveLength(beforeDrag);
+      expect(useModelStore.getState().features[0]?.geometry).toEqual({
+        type: "Point",
+        coordinates: [10, 51],
+      });
+
+      act(() => {
+        draw.instance?.emit("deselect", "src-1");
+      });
+
+      await waitFor(() => {
+        expect(useModelStore.getState().features[0]?.geometry).toEqual({
+          type: "Point",
+          coordinates: [500000, 600000],
+        });
+      });
+      // Exactly one inverse request across the whole gesture, carrying only the
+      // last position, and with the target named rather than left to `auto`.
+      // (The forward requests around it are `useDisplayModel` drawing the model
+      // the commit has just changed.)
+      expect(
+        projection.requests.filter((req) => req.source_crs === "EPSG:4326"),
+      ).toEqual([
+        {
+          source_crs: "EPSG:4326",
+          target_crs: "EPSG:25832",
+          coordinates: [5, 6],
+        },
+      ]);
+    });
+
+    it("refuses to arm editing on a model the map cannot project", async () => {
+      // The same gate every way into an active tool takes. A reshape goes back
+      // through the same inverse transform a drawn shape does, so refusing
+      // afterwards would mean refusing a shape the user had already moved.
+      projection.canReprojectForDisplay = false;
+      useModelStore.getState().loadModel({
+        features: [source],
+        receivers: [],
+        calcArea: null,
+        crs: "EPSG:25832",
+      });
+      const fixtureFeatures = useModelStore.getState().features;
+      renderPageAt("/model?select=src-1");
+
+      armSelect();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+      });
+      expect(draw.instance?.addFeatures).not.toHaveBeenCalled();
+      // Reference identity: nothing on the map side may write a coordinate back.
+      expect(useModelStore.getState().features).toBe(fixtureFeatures);
+    });
+
+    it("takes the feature back out when select mode is put away", async () => {
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPageAt("/model?select=src-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(draw.instance?.removeFeatures).toHaveBeenCalledWith(["src-1"]);
+      });
+      expect(screen.getByTestId("draw-toolbar")).toHaveAttribute(
+        "data-mode",
+        "static",
+      );
+    });
+
+    it("moves a receiver through its own command", async () => {
+      // Receivers are a separate store array, so a reshape of one is a separate
+      // command — `updateFeatureGeometry` would not find it and would silently
+      // do nothing.
+      useModelStore.getState().loadModel({
+        features: [],
+        receivers: [
+          {
+            id: "rcv-1",
+            heightM: 4,
+            geometry: { type: "Point", coordinates: [10, 51] },
+          },
+        ],
+        calcArea: null,
+      });
+      renderPageAt("/model?select=rcv-1");
+      armSelect();
+      await waitFor(() => {
+        expect(draw.instance?.addFeatures).toHaveBeenCalled();
+      });
+
+      dragTo("rcv-1", [10.25, 51.25]);
+
+      expect(useModelStore.getState().receivers[0]).toEqual({
+        id: "rcv-1",
+        heightM: 4,
+        geometry: { type: "Point", coordinates: [10.25, 51.25] },
+      });
+    });
   });
 });
