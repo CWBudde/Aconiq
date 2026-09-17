@@ -1587,17 +1587,31 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       receiver clicked on the map to scroll and mark its row; carrying the viewed run through to
       `/model`, so a row followed from an older run does not land on the newest run's levels; and a
       per-indicator unit on the receiver table, without which a mixed-unit run gets no map at all.
-- [ ] **CRS and basemap**: tile-error → `OFFLINE_STYLE` with a notice; basemap picker; tile URL in
-      Connection settings (`basemap.ts:28` hardcodes `tile.openstreetmap.org`). The `fitBounds` and
-      coordinate-readout halves are closed. No proj4 may be added for any of the rest: the
-      projection is `aconiq.transform`'s, so the frontend cannot place a model where `aconiq run`
-      would not — which now also covers the one direction that writes, `use-draw-projection.ts`'s
-      inverse 4326 → `store.crs` transform on the draw-finish path. That path is the single
-      deliberate exception to "a projection _of_ the model, never a source _for_ it"; anything else
-      on the map side that wants to write a coordinate is a second exception and needs arguing for.
-      Drawing is gated on `backend.capabilities.canReprojectForDisplay`, not on the store's CRS —
-      keep new gates on the capability, or a model the map can project will be refused for being
-      metric.
+- [x] **CRS and basemap**. The tile URL is no longer hardcoded: `basemap.ts` builds its three styles
+      on demand from `map/tile-source.ts`, a localStorage override shaped like `api/mode.ts`, so an
+      air-gapped install can point the map at a tile server it can reach. It is edited in Connection
+      settings under the API base URL's draft/committed split, and it takes effect on the _next_ map
+      build — nothing re-reads the key until a `Map` is constructed, and the copy says so. A picker
+      in the layer control writes `setBasemap`, which until now had no caller but its own test.
+      A tile failure falls back to `OFFLINE_STYLE` by **rebuilding** the map: a `tilesFailed` flag in
+      `map-store.ts` selects the style and sits in the init effect's dependency list. Not by
+      `map.setStyle` — `ModelLayers` syncs on data and not on `styledata`, so swapping the style in
+      place drops every model layer until the next model edit. A rebuild therefore has to carry the
+      viewport, which `map-view.tsx` now reads off the dying instance in its cleanup; the workspace
+      page computes `center`/`zoom` once on mount and nothing else would put them back. The failure
+      must **not** reach `mapError`: that panel unmounts the canvas, and "Map unavailable" means the
+      map could not be constructed at all — a failed tile is not a failed map, the same distinction
+      a lost WebGL context already relies on. It gets a `role="status"` notice with a Retry instead,
+      on its own inset. Only an `error` naming the basemap source counts; a model source that fails
+      is a model problem an offline basemap would hide.
+      No proj4 was added and nothing here touched projection, which stays `aconiq.transform`'s, so
+      the frontend cannot place a model where `aconiq run` would not — including the one direction
+      that writes, `use-draw-projection.ts`'s inverse 4326 → `store.crs` transform on the
+      draw-finish path. That path is the single deliberate exception to "a projection _of_ the
+      model, never a source _for_ it"; anything else on the map side that wants to write a
+      coordinate is a second exception and needs arguing for. Drawing is gated on
+      `backend.capabilities.canReprojectForDisplay`, not on the store's CRS — keep new gates on the
+      capability, or a model the map can project will be refused for being metric.
 - [ ] **Keyboard path**: coordinate-entry form in `NewFeatureDialog` and a keyboard-navigable
       feature list, so the map is not mouse-only.
 

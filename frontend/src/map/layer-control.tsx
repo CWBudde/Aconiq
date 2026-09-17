@@ -8,6 +8,7 @@ import {
 import { MapPanel } from "./map-panel";
 import { useMapStore } from "./map-store";
 import { useMap } from "./use-map";
+import { BASEMAP_IDS, basemapLabel } from "./basemap";
 import { m } from "@/i18n/messages";
 
 function LayerToggle({ group }: { group: LayerGroup }) {
@@ -54,6 +55,49 @@ function LayerToggle({ group }: { group: LayerGroup }) {
   );
 }
 
+/**
+ * Which basemap the map is drawn on.
+ *
+ * `aria-pressed` on three ordinary buttons rather than a select: there are
+ * three of them, they are mutually exclusive, and the choice is visible on the
+ * canvas the instant it is made. Nothing here is ever refused, so nothing needs
+ * `aria-disabled` — the current basemap's button stays pressable, and pressing
+ * it again is a no-op the store absorbs.
+ *
+ * Switching rebuilds the map (`map-view.tsx` keys its init effect on it), which
+ * is also what restores the model layers; the viewport is carried across.
+ */
+function BasemapPicker() {
+  const basemap = useMapStore((s) => s.basemap);
+  const setBasemap = useMapStore((s) => s.setBasemap);
+
+  return (
+    <div
+      role="group"
+      aria-label={m.section_basemap()}
+      className="grid grid-cols-3 gap-0.5"
+    >
+      {BASEMAP_IDS.map((id) => {
+        const active = basemap === id;
+        return (
+          <Button
+            key={id}
+            variant={active ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            aria-pressed={active}
+            onClick={() => {
+              setBasemap(id);
+            }}
+          >
+            {basemapLabel(id)}
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Sits beside MapLibre's navigation control, which owns the top-right corner.
 export function LayerControl() {
   return (
@@ -80,6 +124,10 @@ export function LayerControl() {
           <LayerToggle key={g.id} group={g} />
         ))}
       </div>
+      <div className="mb-1 mt-2 text-xs font-medium text-muted-foreground">
+        {m.section_basemap()}
+      </div>
+      <BasemapPicker />
     </MapPanel>
   );
 }

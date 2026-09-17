@@ -5,8 +5,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
 import { MapContext } from "./use-map";
-import { BASEMAP_STYLES } from "./basemap";
+import { BASEMAP_SOURCE_ID, basemapStyle, OFFLINE_STYLE } from "./basemap";
 import { useMapStore } from "./map-store";
+import { OfflineNotice } from "./offline-notice";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
 /**
@@ -58,6 +59,25 @@ function enableWebGLForSession(): void {
   webglDisabledForSession = false;
 }
 
+/**
+ * Does this MapLibre `error` event say the basemap tiles are unreachable?
+ *
+ * MapLibre funnels everything through one `error` event: a failed tile request,
+ * a malformed style, a GeoJSON source that could not be parsed. Only the first
+ * is a reason to fall back to a plain background, so the test is the source id
+ * — `ModelLayers` adds its own sources under the ids in `layers.ts`, and one of
+ * those failing means the *model* is broken, which the offline basemap would
+ * hide rather than help.
+ *
+ * Typed structurally rather than against `ErrorEvent`: the events maplibre
+ * emits for tile failures carry `sourceId` at runtime, but the published type
+ * for `map.on("error")` is the bare `ErrorEvent`, which does not declare it.
+ */
+function isBasemapTileFailure(event: unknown): boolean {
+  if (typeof event !== "object" || event === null) return false;
+  return (event as { sourceId?: unknown }).sourceId === BASEMAP_SOURCE_ID;
+}
+
 /** Layers that are interactive (click/hover targets) */
 const INTERACTIVE_LAYERS = [
   LAYER_IDS.sourcesPoint,
@@ -97,13 +117,20 @@ export function MapView({
     webglDisabledForSession ? MAP_UNAVAILABLE_MESSAGE : null,
   );
   const basemap = useMapStore((s) => s.basemap);
+  const tilesFailed = useMapStore((s) => s.tilesFailed);
+  const reportTilesFailed = useMapStore((s) => s.reportTilesFailed);
 
   // `center`/`zoom` are documented as the *initial* viewport, so they are read
-  // through a ref that is never updated. Keeping them in the init effect's
-  // dependency list tore the map down and rebuilt it on every model edit (the
-  // caller re-derives the view from the model), losing the user's pan/zoom,
-  // re-adding every layer and re-arming the load-timeout fallback.
-  const initialViewRef = useRef({ center, zoom });
+  // through a ref that the props never update. Keeping them in the init
+  // effect's dependency list tore the map down and rebuilt it on every model
+  // edit (the caller re-derives the view from the model), losing the user's
+  // pan/zoom, re-adding every layer and re-arming the load-timeout fallback.
+  //
+  // The *map* does update it, on teardown: a basemap switch and a tile-failure
+  // fallback both rebuild the map, and a rebuild that read the mount-time
+  // props would throw the user back to the initial view. The workspace page
+  // computes its view once, so nothing else would ever put them back.
+  const viewRef = useRef({ center, zoom });
 
   // Initialize map
   useEffect(() => {
@@ -114,9 +141,9 @@ export function MapView({
     try {
       m = new maplibregl.Map({
         container: containerRef.current,
-        style: BASEMAP_STYLES[basemap],
-        center: initialViewRef.current.center,
-        zoom: initialViewRef.current.zoom,
+        style: tilesFailed ? OFFLINE_STYLE : basemapStyle(basemap),
+        center: viewRef.current.center,
+        zoom: viewRef.current.zoom,
         attributionControl: {},
       });
     } catch {
@@ -143,6 +170,15 @@ export function MapView({
       setMap(m);
     });
 
+    // A tile source that cannot be reached is a basemap problem, not a map
+    // problem: the canvas, the model layers and every interaction still work.
+    // So it raises a flag the style is selected from and leaves `mapError`
+    // alone — see `offline-notice.tsx` for why the two stay separate.
+    const handleError = (event: unknown) => {
+      if (isBasemapTileFailure(event)) reportTilesFailed();
+    };
+    m.on("error", handleError);
+
     const fallbackTimer = window.setTimeout(() => {
       if (!mapRef.current) {
         setMapError(MAP_TIMEOUT_MESSAGE);
@@ -151,12 +187,25 @@ export function MapView({
 
     return () => {
       window.clearTimeout(fallbackTimer);
+      // Remember where the user was before the instance goes: this cleanup is
+      // the last moment the viewport exists, and the next instance reads it.
+      try {
+        const center = m.getCenter();
+        viewRef.current = {
+          center: [center.lng, center.lat],
+          zoom: m.getZoom(),
+        };
+      } catch {
+        // A map that never painted has no viewport to remember; the last
+        // known one stays in force.
+      }
+      m.off("error", handleError);
       mapRef.current = null;
       setMap(null);
       m.remove();
     };
-    // Rebuilds the map only on a basemap or error-state change.
-  }, [basemap, mapError]);
+    // Rebuilds the map on a basemap, tile-failure or error-state change.
+  }, [basemap, mapError, tilesFailed, reportTilesFailed]);
 
   // Clearing `mapError` re-runs the init effect; the session switch is reset
   // unconditionally because a timeout never set it and a throw needs it reset.
@@ -237,7 +286,13 @@ export function MapView({
             </Card>
           </div>
         ) : (
-          <div ref={containerRef} className="absolute inset-0" />
+          <>
+            <div ref={containerRef} className="absolute inset-0" />
+            {/* Rendered here rather than by the page: the listener that raises
+                the flag lives in this component, so every map that uses it
+                explains a failed basemap the same way. */}
+            <OfflineNotice />
+          </>
         )}
         {children}
       </div>

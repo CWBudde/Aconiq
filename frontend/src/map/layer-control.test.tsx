@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { LayerControl } from "./layer-control";
+import {
+  BASEMAP_IDS,
+  basemapLabel,
+  readStoredBasemap,
+  type BasemapId,
+} from "./basemap";
 import {
   MODEL_LAYER_GROUPS,
   RESULT_LAYER_GROUPS,
@@ -199,5 +205,57 @@ describe("LayerControl", () => {
         name: m.action_show_layer({ label: receivers.label() }),
       }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("the basemap picker", () => {
+  function pickerButton(id: BasemapId): HTMLElement {
+    return within(
+      screen.getByRole("group", { name: m.section_basemap() }),
+    ).getByRole("button", { name: basemapLabel(id) });
+  }
+
+  it("offers every basemap and marks the current one", () => {
+    // `aria-pressed`, not a disabled current option: the picker refuses
+    // nothing, and a disabled button would drop out of the tab order.
+    renderControl(new FakeMap());
+
+    for (const id of BASEMAP_IDS) {
+      expect(pickerButton(id)).toHaveAttribute(
+        "aria-pressed",
+        String(id === "light"),
+      );
+      expect(pickerButton(id)).not.toBeDisabled();
+      expect(pickerButton(id)).not.toHaveAttribute("aria-disabled");
+    }
+  });
+
+  it("writes the choice to the store, which is what rebuilds the map", () => {
+    // The store is the only channel: `MapView` keys its init effect on it, so
+    // nothing here touches MapLibre. A picker that called `setStyle` instead
+    // would drop every model layer until the next model edit.
+    const map = new FakeMap();
+    renderControl(map);
+
+    fireEvent.click(pickerButton("dark"));
+
+    expect(useMapStore.getState().basemap).toBe("dark");
+    expect(map.calls).toEqual([]);
+    expect(pickerButton("dark")).toHaveAttribute("aria-pressed", "true");
+    expect(pickerButton("light")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("persists the choice across a remount", () => {
+    renderControl(new FakeMap());
+    fireEvent.click(pickerButton("bright"));
+
+    expect(readStoredBasemap()).toBe("bright");
+  });
+
+  it("reflects a basemap already in the store when it mounts", () => {
+    useMapStore.setState({ basemap: "dark" });
+    renderControl(new FakeMap());
+
+    expect(pickerButton("dark")).toHaveAttribute("aria-pressed", "true");
   });
 });

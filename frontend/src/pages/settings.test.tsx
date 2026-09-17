@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { API_BASE_URL_OVERRIDE_KEY } from "@/api/mode";
+import { DEFAULT_TILE_URL, TILE_URL_OVERRIDE_KEY } from "@/map/tile-source";
 import { DRAFT_KEY } from "@/model/use-autosave";
 import { ThemeProvider } from "@/ui/theme-provider";
 import SettingsPage from "./settings";
@@ -37,6 +38,30 @@ function renderPage(initialEntries: string[] = ["/settings"]) {
   );
 }
 
+// The category strip is a Radix Tabs list, which activates a tab on pointer
+// down rather than on click; `userEvent` fires the full pointer sequence. The
+// tab's accessible name is its title *and* its description, so the match is on
+// the title rather than the whole string.
+async function openConnection() {
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(
+    screen.getByRole("tab", {
+      name: new RegExp(m.settings_category_advanced(), "i"),
+    }),
+  );
+}
+
+/**
+ * One of the Connection card's two settings, by the group it is labelled with.
+ * Both carry a "Save changes" and a "Reset to default" button, so every query
+ * for one has to say which setting it means — as does a screen reader, which
+ * is why the groups are there in the first place.
+ */
+function connectionField(label: string): HTMLElement {
+  return screen.getByRole("group", { name: label });
+}
+
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.classList.remove("light", "dark");
@@ -57,19 +82,8 @@ describe("SettingsPage", () => {
     ).toBeInTheDocument();
   });
 
-  // The category strip is a Radix Tabs list, which activates a tab on pointer
-  // down rather than on click; `userEvent` fires the full pointer sequence.
   it("switches to the Connection category", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(
-      // The tab's accessible name is its title *and* its description, so this
-      // matches on the title rather than the whole string.
-      screen.getByRole("tab", {
-        name: new RegExp(m.settings_category_advanced(), "i"),
-      }),
-    );
+    await openConnection();
 
     expect(
       screen.getByRole("heading", { name: m.settings_category_advanced() }),
@@ -103,23 +117,15 @@ describe("SettingsPage", () => {
   });
 
   it("saves and clears the advanced API endpoint override", async () => {
-    const user = userEvent.setup();
-    renderPage();
+    await openConnection();
 
-    await user.click(
-      // The tab's accessible name is its title *and* its description, so this
-      // matches on the title rather than the whole string.
-      screen.getByRole("tab", {
-        name: new RegExp(m.settings_category_advanced(), "i"),
-      }),
-    );
-
-    const endpointInput = screen.getByLabelText(m.label_api_base_url());
+    const field = connectionField(m.label_api_base_url());
+    const endpointInput = within(field).getByLabelText(m.label_api_base_url());
     fireEvent.change(endpointInput, {
       target: { value: "https://example.com/" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: m.action_save_changes() }),
+      within(field).getByRole("button", { name: m.action_save_changes() }),
     );
 
     expect(localStorage.getItem(API_BASE_URL_OVERRIDE_KEY)).toBe(
@@ -128,10 +134,72 @@ describe("SettingsPage", () => {
     expect(endpointInput).toHaveValue("https://example.com");
 
     fireEvent.click(
-      screen.getByRole("button", { name: m.action_reset_to_default() }),
+      within(field).getByRole("button", { name: m.action_reset_to_default() }),
     );
 
     expect(localStorage.getItem(API_BASE_URL_OVERRIDE_KEY)).toBeNull();
+  });
+
+  it("saves and clears the basemap tile URL override", async () => {
+    // The map is built from this key, not from a prop: nothing on this page
+    // holds a map, so committing the setting *is* writing the key.
+    await openConnection();
+
+    const field = connectionField(m.label_basemap_tile_url());
+    const tileInput = within(field).getByLabelText(m.label_basemap_tile_url());
+    expect(tileInput).toHaveValue(DEFAULT_TILE_URL);
+
+    fireEvent.change(tileInput, {
+      target: { value: "  https://tiles.internal/{z}/{x}/{y}.png  " },
+    });
+    fireEvent.click(
+      within(field).getByRole("button", { name: m.action_save_changes() }),
+    );
+
+    expect(localStorage.getItem(TILE_URL_OVERRIDE_KEY)).toBe(
+      "https://tiles.internal/{z}/{x}/{y}.png",
+    );
+    // Saving commits the draft: the input shows what was stored, trimmed.
+    expect(tileInput).toHaveValue("https://tiles.internal/{z}/{x}/{y}.png");
+
+    fireEvent.click(
+      within(field).getByRole("button", { name: m.action_reset_to_default() }),
+    );
+
+    expect(localStorage.getItem(TILE_URL_OVERRIDE_KEY)).toBeNull();
+    expect(tileInput).toHaveValue(DEFAULT_TILE_URL);
+  });
+
+  it("holds the tile URL as a draft until it is saved", async () => {
+    // The draft/committed split: typing must not reach storage, or a half-typed
+    // host would be what the next map build asks for tiles.
+    await openConnection();
+
+    const field = connectionField(m.label_basemap_tile_url());
+    const save = within(field).getByRole("button", {
+      name: m.action_save_changes(),
+    });
+    const reset = within(field).getByRole("button", {
+      name: m.action_reset_to_default(),
+    });
+    expect(save).toBeDisabled();
+    expect(reset).toBeDisabled();
+
+    fireEvent.change(within(field).getByLabelText(m.label_basemap_tile_url()), {
+      target: { value: "https://tiles.internal/{z}" },
+    });
+
+    expect(localStorage.getItem(TILE_URL_OVERRIDE_KEY)).toBeNull();
+    expect(save).toBeEnabled();
+    expect(reset).toBeDisabled();
+  });
+
+  it("says when a tile URL change takes effect", () => {
+    // A change here does nothing to a map that is already built, and the map
+    // is on another route — so the copy has to say so.
+    renderPage(["/settings?category=advanced"]);
+
+    expect(screen.getByText(m.msg_basemap_tile_url_note())).toBeInTheDocument();
   });
 
   it("switches the stored theme preference", () => {
