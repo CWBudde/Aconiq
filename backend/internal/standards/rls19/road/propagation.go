@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/numeric"
 )
@@ -349,8 +350,8 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	}
 
 	return PeriodLevels{
-		LrDay:   energySumDB(dayContrib),
-		LrNight: energySumDB(nightContrib),
+		LrDay:   acoustics.EnergySum(dayContrib),
+		LrNight: acoustics.EnergySum(nightContrib),
 	}, nil
 }
 

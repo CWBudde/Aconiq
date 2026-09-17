@@ -12,11 +12,19 @@
 // no claim on the ones that do not: rls19/road and schall03 publish the German
 // Beurteilungspegel LrDay/LrNight and keep their own indicator model.
 //
-// What is deliberately *not* here yet: the energy summation helper, which
-// exists in nine copies with three different silence semantics (-999 in some
-// modules, -Inf in others, and one that returns NaN). Unifying those changes
-// numbers, so it is its own piece of work — see PLAN.md Priority 7, "Extract a
-// shared acoustics core".
+// It also owns the energetic summation of dB levels — EnergySum in sum.go —
+// together with the silence sentinel pair it reads and writes (SilenceDB,
+// SilenceThresholdDB). Seven standards modules carried behaviourally identical
+// copies of that sum; they now call this one.
+//
+// What is deliberately still outside it: the two summations whose semantics
+// genuinely differ, and which cannot be converged without changing numbers.
+// assessment/bimschv16 sums with no NaN/Inf guard and no silence threshold, and
+// sits in the assessment layer rather than in a standards module;
+// standards/schall03.EnergeticSumLevels works in -Inf internally and converts
+// to the sentinel at its own output boundary. Each decision is a behaviour
+// change, not a refactor — see PLAN.md Priority 7, "Extract a shared acoustics
+// core", which also tracks the remaining single-sentinel and Level-type work.
 package acoustics
 
 import (

@@ -435,7 +435,7 @@ func appendParkingContributions(
 		// A silent lot stays silent: ComputeParkingEmission returns the
 		// silenceDB sentinel for a zero movement rate, and a mirrored path only
 		// subtracts from it, so the contribution stays below silenceThresholdDB
-		// and energySumDB still drops it.
+		// and acoustics.EnergySum still drops it.
 		appendReflectedContribs(
 			dayContrib, nightContrib,
 			emission.LWDay, emission.LWNight,

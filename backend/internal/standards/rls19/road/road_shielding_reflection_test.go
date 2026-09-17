@@ -265,30 +265,6 @@ func TestComputeAttenuation_DAtmFormula(t *testing.T) {
 	}
 }
 
-// --- energySumDB tests ---
-
-func TestEnergySumDB(t *testing.T) {
-	t.Parallel()
-
-	// Two equal levels: +3 dB.
-	result := energySumDB([]float64{60, 60})
-	if !almostEqual(result, 63.01, 0.01) {
-		t.Fatalf("60+60 dB: expected ~63.01, got %f", result)
-	}
-
-	// Empty: -999.
-	result = energySumDB(nil)
-	if result > -900 {
-		t.Fatalf("empty sum: expected -999, got %f", result)
-	}
-
-	// Single value passes through.
-	result = energySumDB([]float64{55.0})
-	if !almostEqual(result, 55.0, 0.01) {
-		t.Fatalf("single value: expected 55, got %f", result)
-	}
-}
-
 // --- topography tests ---
 
 // sampleTieflageSource returns a source at Z=100 (road in cut, terrain at Z=105.5).

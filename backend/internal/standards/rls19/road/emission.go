@@ -143,25 +143,6 @@ func MultipleReflectionSurcharge(buildingHeightM, streetWidthM float64) float64 
 	return math.Min(2*buildingHeightM/streetWidthM, 1.6)
 }
 
-// energySumDB performs an energetic summation of dB(A) values.
-func energySumDB(levels []float64) float64 {
-	sum := 0.0
-
-	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) || level <= silenceThresholdDB {
-			continue
-		}
-
-		sum += math.Pow(10, level/10)
-	}
-
-	if sum <= 0 {
-		return silenceDB
-	}
-
-	return 10 * math.Log10(sum)
-}
-
 // ComputeVehicleGroupEmissions returns detailed per-vehicle-group emission
 // breakdown for diagnostic/reporting purposes.
 func ComputeVehicleGroupEmissions(source RoadSource) ([]VehicleGroupEmission, error) {

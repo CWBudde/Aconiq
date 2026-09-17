@@ -194,6 +194,18 @@ func combineLevels(inputs ...*PeriodLevels) *PeriodLevels {
 	}
 }
 
+// energySumDB adds dB levels energetically, deliberately without the guards
+// acoustics.EnergySum applies.
+//
+// It is not a copy of that helper and must not be replaced by one as it stands:
+// it has no NaN/Inf guard and no silence threshold, so a -999 sentinel reaching
+// it is summed as energy rather than dropped, and an empty input yields -Inf
+// rather than the sentinel. It also sits in the assessment layer, which
+// consumes levels a standards module already finished, so "what is silence
+// here" is a different question from the one the standards modules answer.
+// Converging it would change assessed Beurteilungspegel values; that decision
+// belongs to a behaviour change, not to a deduplication — see PLAN.md
+// Priority 7.
 func energySumDB(levels []float64) float64 {
 	sum := 0.0
 	for _, level := range levels {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 )
 
@@ -152,7 +153,7 @@ func lineSourceLevelAtReceiver(emissionDB float64, receiver geo.Point2D, centerl
 		}
 	}
 
-	return energySumDB(contribs)
+	return acoustics.EnergySum(contribs)
 }
 
 // ComputeReceiverPeriodLevels computes Lday/Levening/Lnight at one receiver.
@@ -191,8 +192,8 @@ func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RoadSource, cfg
 	}
 
 	return PeriodLevels{
-		Lday:     energySumDB(dayContrib),
-		Levening: energySumDB(eveningContrib),
-		Lnight:   energySumDB(nightContrib),
+		Lday:     acoustics.EnergySum(dayContrib),
+		Levening: acoustics.EnergySum(eveningContrib),
+		Lnight:   acoustics.EnergySum(nightContrib),
 	}, nil
 }
