@@ -33,11 +33,18 @@ import {
   getFeatureNumber,
   getFeatureString,
   getInferredFlag,
+  getReceiverString,
   getRLS19ReviewRequired,
   RLS19_JUNCTION_TYPES,
   RLS19_SURFACE_TYPES,
   setFeatureProperty,
+  setReceiverProperty,
 } from "@/model/source-acoustics";
+import {
+  BIMSCHV16_AREA_CATEGORIES,
+  bimschv16AreaCategoryLabel,
+  PROP_BIMSCHV16_AREA_CATEGORY,
+} from "@/model/bimschv16";
 import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import {
   PROP_PARKING_FACILITY_TYPE,
@@ -197,6 +204,19 @@ function ReceiverEditor({
     onClose();
   }, [receiverId, removeReceiver, onClose]);
 
+  // `updateReceiver` is a full-object replace through the command stack, so
+  // the write is the whole receiver with one property changed — one undoable
+  // edit, the same as a feature's.
+  const handleAreaCategory = useCallback(
+    (value: string | undefined) => {
+      if (!receiver) return;
+      updateReceiver(
+        setReceiverProperty(receiver, PROP_BIMSCHV16_AREA_CATEGORY, value),
+      );
+    },
+    [receiver, updateReceiver],
+  );
+
   if (!receiver) return null;
 
   return (
@@ -220,6 +240,13 @@ function ReceiverEditor({
           onBlur={handleHeightBlur}
         />
       </div>
+      <PropertySelectField
+        fieldId={`${receiver.id}-${PROP_BIMSCHV16_AREA_CATEGORY}`}
+        spec={RECEIVER_AREA_CATEGORY_FIELD}
+        value={getReceiverString(receiver, PROP_BIMSCHV16_AREA_CATEGORY)}
+        helper={m.msg_bimschv16_area_category_absent()}
+        onCommit={handleAreaCategory}
+      />
       <DeleteButton
         title={m.confirm_delete_receiver_title()}
         description={m.confirm_delete_receiver_desc({ id: receiver.id })}
@@ -600,6 +627,12 @@ interface SelectFieldSpec {
   aliases?: string[];
   label: () => string;
   options: readonly string[];
+  /**
+   * What an option reads as, where the stored value is not itself readable.
+   * The default is the value — `schwellengleis`, `park-and-ride` — which is
+   * what a Schall 03 or RLS-19 vocabulary is already written as.
+   */
+  optionLabel?: (option: string) => string;
   /** The option that clears the property. */
   emptyLabel?: () => string;
   helper?: () => string;
@@ -698,11 +731,11 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
           : undefined
       }
     >
-      <PropertySelectField feature={feature} spec={ROAD_SURFACE_FIELD} />
+      <FeatureSelectField feature={feature} spec={ROAD_SURFACE_FIELD} />
       <PropertyNumberField feature={feature} spec={ROAD_UNIFORM_SPEED_FIELD} />
       <NumberFieldGrid feature={feature} fields={SPEED_FIELDS} columns={2} />
       <PropertyNumberField feature={feature} spec={ROAD_GRADIENT_FIELD} />
-      <PropertySelectField feature={feature} spec={ROAD_JUNCTION_TYPE_FIELD} />
+      <FeatureSelectField feature={feature} spec={ROAD_JUNCTION_TYPE_FIELD} />
       <NumberFieldGrid
         feature={feature}
         fields={ROAD_JUNCTION_FIELDS}
@@ -798,8 +831,8 @@ function RLS19ParkingFields({ feature }: { feature: ModelFeature }) {
       note={m.msg_parking_section_note()}
     >
       <NumberFieldGrid feature={feature} fields={PARKING_NUMBER_FIELDS} />
-      <PropertySelectField feature={feature} spec={PARKING_TYPE_FIELD} />
-      <PropertySelectField feature={feature} spec={PARKING_FACILITY_FIELD} />
+      <FeatureSelectField feature={feature} spec={PARKING_TYPE_FIELD} />
+      <FeatureSelectField feature={feature} spec={PARKING_FACILITY_FIELD} />
       <NumberFieldGrid feature={feature} fields={PARKING_MOVEMENT_FIELDS} />
       <PropertyNumberField feature={feature} spec={PARKING_ELEVATION_FIELD} />
     </FieldSection>
@@ -932,6 +965,24 @@ const RAIL_BUILDING_BOOLEAN_FIELDS: BooleanFieldSpec[] = [
   },
 ];
 
+/**
+ * The one property a receiver carries beyond its height.
+ *
+ * `emptyLabel` is "not set" rather than "use run default" because there is no
+ * run default to use: an absent category is not a quieter or louder one, it is
+ * a receiver `assessment/bimschv16` refuses — `assessReceiverFeature` reports
+ * "missing 16. BImSchV area category property" and the receiver lands in
+ * `ExportEnvelope.Skipped`. The helper says exactly that.
+ */
+const RECEIVER_AREA_CATEGORY_FIELD: SelectFieldSpec = {
+  propertyKey: PROP_BIMSCHV16_AREA_CATEGORY,
+  label: m.label_bimschv16_area_category,
+  options: BIMSCHV16_AREA_CATEGORIES,
+  optionLabel: bimschv16AreaCategoryLabel,
+  emptyLabel: m.option_not_set,
+  helper: m.msg_bimschv16_area_category_absent,
+};
+
 function Schall03TrackFields({ feature }: { feature: ModelFeature }) {
   const operations = arrayPropertyLength(
     feature.properties,
@@ -962,7 +1013,7 @@ function Schall03TrackFields({ feature }: { feature: ModelFeature }) {
       ) : null}
       <NumberFieldGrid feature={feature} fields={RAIL_TRACK_NUMBER_FIELDS} />
       {RAIL_TRACK_SELECT_FIELDS.map((spec) => (
-        <PropertySelectField
+        <FeatureSelectField
           key={spec.propertyKey}
           feature={feature}
           spec={spec}
@@ -984,7 +1035,7 @@ function Schall03BarrierFields({ feature }: { feature: ModelFeature }) {
         fields={RAIL_BARRIER_BOOLEAN_FIELDS}
       />
       <NumberFieldGrid feature={feature} fields={RAIL_BARRIER_NUMBER_FIELDS} />
-      <PropertySelectField feature={feature} spec={RAIL_WALL_SURFACE_FIELD} />
+      <FeatureSelectField feature={feature} spec={RAIL_WALL_SURFACE_FIELD} />
     </FieldSection>
   );
 }
@@ -999,7 +1050,7 @@ function Schall03BuildingFields({ feature }: { feature: ModelFeature }) {
         feature={feature}
         fields={RAIL_BUILDING_BOOLEAN_FIELDS}
       />
-      <PropertySelectField feature={feature} spec={RAIL_WALL_SURFACE_FIELD} />
+      <FeatureSelectField feature={feature} spec={RAIL_WALL_SURFACE_FIELD} />
     </FieldSection>
   );
 }
@@ -1239,42 +1290,60 @@ function PropertyNumberField({
 /** The sentinel the empty option carries; never written to the model. */
 const UNSET_OPTION = "__default__";
 
+/**
+ * One vocabulary select, over a value and a commit rather than over a feature.
+ *
+ * It started out typed on `ModelFeature` + `updateFeature`, which is the one
+ * thing a receiver is not: `ModelReceiver` carries the same property bag but
+ * no `kind`, and it is written through `updateReceiver`. Splitting it into a
+ * twin would have given the two panels two sets of commit-on-change and
+ * empty-option semantics to keep in step, so the value and the write are
+ * parameters and both panels render this.
+ */
 function PropertySelectField({
-  feature,
+  fieldId,
   spec,
+  value,
+  helper,
+  onCommit,
 }: {
-  feature: ModelFeature;
+  /**
+   * The id the label points at, and the id the trigger takes. Without the
+   * pairing the only accessible name a Radix trigger has is its own current
+   * value, so three selects in a row read as "SMA", "none", "none" and a test
+   * can address them by position alone.
+   */
+  fieldId: string;
   spec: SelectFieldSpec;
+  value: string | undefined;
+  /** What an absent value means here — see {@link fieldHelper}. */
+  helper: string;
+  onCommit: (value: string | undefined) => void;
 }) {
-  const { propertyKey, aliases = [], options } = spec;
-  const updateFeature = useModelStore((s) => s.updateFeature);
-  const current = getFeatureString(feature, propertyKey, ...aliases);
-  // The trigger takes the id the label points at. Without the pairing the only
-  // accessible name a Radix trigger has is its own current value, so three
-  // selects in a row read as "SMA", "none", "none" and a test can address them
-  // by position alone.
-  const fieldId = `${feature.id}-${propertyKey}`;
-
   const handleChange = useCallback(
-    (value: string) => {
-      updateFeature(
-        setFeatureProperty(
-          feature,
-          propertyKey,
-          value === UNSET_OPTION ? undefined : value,
-          ...aliases,
-        ),
-      );
+    (next: string) => {
+      onCommit(next === UNSET_OPTION ? undefined : next);
     },
-    [aliases, feature, propertyKey, updateFeature],
+    [onCommit],
   );
+
+  // A stored value the vocabulary does not list gets an item of its own.
+  // Radix matches the trigger's text to an item, so without one an imported
+  // spelling the backend still reads — `ParseAreaCategory` accepts
+  // "allgemeines Wohngebiet", `normalizeCategory` folds it to `residential` —
+  // would render as the placeholder, and a set receiver would read as unset.
+  // Showing it is also the only thing that calls `optionLabel`'s fallback.
+  const strayValue =
+    value !== undefined && value !== "" && !spec.options.includes(value)
+      ? value
+      : undefined;
 
   return (
     <div className="grid gap-1">
       <Label htmlFor={fieldId} className="text-2xs">
         {spec.label()}
       </Label>
-      <Select value={current ?? UNSET_OPTION} onValueChange={handleChange}>
+      <Select value={value ?? UNSET_OPTION} onValueChange={handleChange}>
         <SelectTrigger id={fieldId} className="h-8 text-xs">
           <SelectValue placeholder={m.placeholder_use_run_default()} />
         </SelectTrigger>
@@ -1282,17 +1351,51 @@ function PropertySelectField({
           <SelectItem value={UNSET_OPTION}>
             {spec.emptyLabel?.() ?? m.option_use_run_default()}
           </SelectItem>
-          {options.map((option) => (
+          {spec.options.map((option) => (
             <SelectItem key={option} value={option}>
-              {option}
+              {spec.optionLabel?.(option) ?? option}
             </SelectItem>
           ))}
+          {strayValue !== undefined && (
+            <SelectItem value={strayValue}>
+              {spec.optionLabel?.(strayValue) ?? strayValue}
+            </SelectItem>
+          )}
         </SelectContent>
       </Select>
-      <p className="text-2xs text-muted-foreground">
-        {fieldHelper(feature, spec)}
-      </p>
+      <p className="text-2xs text-muted-foreground">{helper}</p>
     </div>
+  );
+}
+
+/** The select bound to a feature property, which is most of them. */
+function FeatureSelectField({
+  feature,
+  spec,
+}: {
+  feature: ModelFeature;
+  spec: SelectFieldSpec;
+}) {
+  const { propertyKey, aliases = [] } = spec;
+  const updateFeature = useModelStore((s) => s.updateFeature);
+
+  const handleCommit = useCallback(
+    (value: string | undefined) => {
+      updateFeature(
+        setFeatureProperty(feature, propertyKey, value, ...aliases),
+      );
+    },
+    [aliases, feature, propertyKey, updateFeature],
+  );
+
+  return (
+    <PropertySelectField
+      fieldId={`${feature.id}-${propertyKey}`}
+      spec={spec}
+      value={getFeatureString(feature, propertyKey, ...aliases)}
+      helper={fieldHelper(feature, spec)}
+      onCommit={handleCommit}
+    />
   );
 }
 

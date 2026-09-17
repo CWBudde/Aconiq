@@ -1,4 +1,4 @@
-import type { ModelFeature } from "./types";
+import type { ModelFeature, ModelReceiver } from "./types";
 
 export const RLS19_SURFACE_TYPES = [
   "SMA",
@@ -51,13 +51,13 @@ export function getFeatureProperties(
   return feature.properties ?? {};
 }
 
-export function getFeatureString(
-  feature: ModelFeature,
-  ...keys: string[]
+/** The first key holding a non-blank string, trimmed. */
+function readString(
+  properties: Record<string, unknown>,
+  keys: string[],
 ): string | undefined {
-  const props = getFeatureProperties(feature);
   for (const key of keys) {
-    const value = props[key];
+    const value = properties[key];
     if (typeof value !== "string") {
       continue;
     }
@@ -67,6 +67,28 @@ export function getFeatureString(
     }
   }
   return undefined;
+}
+
+export function getFeatureString(
+  feature: ModelFeature,
+  ...keys: string[]
+): string | undefined {
+  return readString(getFeatureProperties(feature), keys);
+}
+
+/**
+ * The same read against a receiver.
+ *
+ * A receiver is not a {@link ModelFeature} — it has no `kind` and no geometry
+ * type beyond Point — but it carries the same free-form property bag, and
+ * `bimschv16_area_category` lives in it. Without this the editor could show a
+ * receiver's height and nothing else.
+ */
+export function getReceiverString(
+  receiver: ModelReceiver,
+  ...keys: string[]
+): string | undefined {
+  return readString(receiver.properties ?? {}, keys);
 }
 
 export function getFeatureNumber(
@@ -97,30 +119,77 @@ export function getFeatureBoolean(
   return typeof value === "boolean" ? value : undefined;
 }
 
+/**
+ * The property bag a write leaves behind, or undefined once it holds nothing.
+ *
+ * An empty string and `undefined` both remove the key: an emptied field means
+ * "unset", never "the empty string". The `_inferred` marker goes with it,
+ * because a value chosen by hand is no longer an import's guess, and so do the
+ * aliases, so two spellings of the same property cannot end up disagreeing.
+ */
+function writeProperty(
+  properties: Record<string, unknown> | undefined,
+  key: string,
+  value: string | number | boolean | undefined,
+  aliases: string[],
+): Record<string, unknown> | undefined {
+  const next = { ...(properties ?? {}) };
+  Reflect.deleteProperty(next, `${key}_inferred`);
+  for (const alias of aliases) {
+    Reflect.deleteProperty(next, alias);
+    Reflect.deleteProperty(next, `${alias}_inferred`);
+  }
+  if (value == null || value === "") {
+    Reflect.deleteProperty(next, key);
+  } else {
+    next[key] = value;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 export function setFeatureProperty(
   feature: ModelFeature,
   key: string,
   value: string | number | boolean | undefined,
   ...aliases: string[]
 ): ModelFeature {
-  const nextProperties = { ...(feature.properties ?? {}) };
-  Reflect.deleteProperty(nextProperties, `${key}_inferred`);
-  for (const alias of aliases) {
-    Reflect.deleteProperty(nextProperties, alias);
-    Reflect.deleteProperty(nextProperties, `${alias}_inferred`);
-  }
-  if (value == null || value === "") {
-    Reflect.deleteProperty(nextProperties, key);
-  } else {
-    nextProperties[key] = value;
-  }
+  const nextProperties = writeProperty(feature.properties, key, value, aliases);
 
   const next: ModelFeature = { ...feature };
-  if (Object.keys(nextProperties).length > 0) {
+  if (nextProperties !== undefined) {
     next.properties = nextProperties;
   } else {
     // Drop the key entirely rather than assigning `undefined`
     // (ModelFeature.properties is "absent or a value").
+    Reflect.deleteProperty(next, "properties");
+  }
+  return next;
+}
+
+/**
+ * The same write against a receiver, returning the whole receiver.
+ *
+ * `updateReceiver` is a full-object replace through the command stack, so the
+ * caller hands it this result and gets one undoable edit — the same shape
+ * `setFeatureProperty` plus `updateFeature` has on the feature side.
+ */
+export function setReceiverProperty(
+  receiver: ModelReceiver,
+  key: string,
+  value: string | number | boolean | undefined,
+  ...aliases: string[]
+): ModelReceiver {
+  const nextProperties = writeProperty(
+    receiver.properties,
+    key,
+    value,
+    aliases,
+  );
+
+  const next: ModelReceiver = { ...receiver };
+  if (nextProperties !== undefined) {
+    next.properties = nextProperties;
+  } else {
     Reflect.deleteProperty(next, "properties");
   }
   return next;

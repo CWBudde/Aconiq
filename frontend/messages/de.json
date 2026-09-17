@@ -441,5 +441,7 @@
   "msg_draw_projecting": "Die gezeichnete Geometrie wird nach {crs} umgerechnet, dem Koordinatensystem des Modells.",
   "msg_draw_projection_failed": "Die gezeichnete Geometrie konnte nicht nach {crs} umgerechnet werden und wurde verworfen: {reason}",
   "label_draw_projection": "Gezeichnete Geometrie",
-  "label_crs_notice": "Koordinatenreferenzsystem"
+  "label_crs_notice": "Koordinatenreferenzsystem",
+  "label_bimschv16_area_category": "Gebietskategorie (16. BImSchV)",
+  "msg_bimschv16_area_category_absent": "Nicht gesetzt = dieser Immissionsort wird von der Beurteilung nach 16. BImSchV übersprungen; eine Vorgabekategorie gibt es nicht."
 }
