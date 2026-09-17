@@ -18,6 +18,13 @@ import {
   hasAPIBaseURLOverride,
   setAPIBaseURLOverride,
 } from "@/api/mode";
+import {
+  DEFAULT_TILE_URL,
+  clearTileURLOverride,
+  getTileURL,
+  hasTileURLOverride,
+  setTileURLOverride,
+} from "@/map/tile-source";
 import { m } from "@/i18n/messages";
 import {
   getLocale,
@@ -277,6 +284,12 @@ function AdvancedSettings({
   onSave,
   onReset,
   hasOverride,
+  tileUrl,
+  tileUrlDraft,
+  setTileUrlDraft,
+  onSaveTileUrl,
+  onResetTileUrl,
+  hasTileOverride,
 }: {
   apiBaseUrl: string;
   apiBaseUrlDraft: string;
@@ -284,6 +297,12 @@ function AdvancedSettings({
   onSave: () => void;
   onReset: () => void;
   hasOverride: boolean;
+  tileUrl: string;
+  tileUrlDraft: string;
+  setTileUrlDraft: (value: string) => void;
+  onSaveTileUrl: () => void;
+  onResetTileUrl: () => void;
+  hasTileOverride: boolean;
 }) {
   const effectiveApiBaseUrl = apiBaseUrl || "same-origin";
 
@@ -310,7 +329,14 @@ function AdvancedSettings({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* Two settings on one card, each with its own Save and Reset. Without
+          the groups a screen reader reads four buttons called "Save changes"
+          and "Reset to default" with nothing to tell them apart. */}
+      <div
+        role="group"
+        aria-label={m.label_api_base_url()}
+        className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]"
+      >
         <div className="space-y-4">
           <FormField
             id="api-base-url"
@@ -348,6 +374,50 @@ function AdvancedSettings({
           </Button>
         </div>
       </div>
+
+      {/* The same draft/committed split as the field above: the input edits a
+          draft, Save normalises and commits it. Unlike the API base URL, this
+          one is not read again until a map is built — see the note below. */}
+      <div
+        role="group"
+        aria-label={m.label_basemap_tile_url()}
+        className="mt-6 grid gap-5 border-t pt-6 lg:grid-cols-[minmax(0,1fr)_18rem]"
+      >
+        <div className="space-y-4">
+          <FormField
+            id="basemap-tile-url"
+            label={m.label_basemap_tile_url()}
+            hint={m.msg_basemap_tile_url_help()}
+            value={tileUrlDraft}
+            onChange={(event) => {
+              setTileUrlDraft(event.target.value);
+            }}
+            placeholder={DEFAULT_TILE_URL}
+          />
+          <Callout variant="neutral" title={m.msg_basemap_tile_url_current()}>
+            <p className="break-all font-mono text-foreground">{tileUrl}</p>
+            <p className="mt-2">{m.msg_basemap_tile_url_note()}</p>
+          </Callout>
+        </div>
+
+        <div className="space-y-2 self-start rounded-md border p-4">
+          <Button
+            className="w-full"
+            onClick={onSaveTileUrl}
+            disabled={tileUrlDraft.trim() === tileUrl}
+          >
+            {m.action_save_changes()}
+          </Button>
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={onResetTileUrl}
+            disabled={!hasTileOverride}
+          >
+            {m.action_reset_to_default()}
+          </Button>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -362,6 +432,11 @@ export default function SettingsPage() {
   const [apiBaseUrlDraft, setApiBaseUrlDraft] = useState(() => getAPIBaseURL());
   const [apiBaseUrlOverridePresent, setApiBaseUrlOverridePresent] = useState(
     () => hasAPIBaseURLOverride(),
+  );
+  const [tileUrl, setTileUrl] = useState(() => getTileURL());
+  const [tileUrlDraft, setTileUrlDraft] = useState(() => getTileURL());
+  const [tileUrlOverridePresent, setTileUrlOverridePresent] = useState(() =>
+    hasTileURLOverride(),
   );
 
   const visibleApiBaseUrl = apiBaseUrl || "same-origin";
@@ -433,6 +508,24 @@ export default function SettingsPage() {
     setApiBaseUrlOverridePresent(hasAPIBaseURLOverride());
   }
 
+  // Writing the key is the whole commit: nothing re-reads it until a map is
+  // built, so there is no live map to push the new tiles into from here.
+  function saveTileUrl() {
+    setTileURLOverride(tileUrlDraft.trim());
+    const next = getTileURL();
+    setTileUrl(next);
+    setTileUrlDraft(next);
+    setTileUrlOverridePresent(hasTileURLOverride());
+  }
+
+  function resetTileUrl() {
+    clearTileURLOverride();
+    const next = getTileURL();
+    setTileUrl(next);
+    setTileUrlDraft(next);
+    setTileUrlOverridePresent(hasTileURLOverride());
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       {/* The active category lives in the URL, so the tabs are controlled:
@@ -480,6 +573,12 @@ export default function SettingsPage() {
               onSave={saveApiBaseUrl}
               onReset={resetApiBaseUrl}
               hasOverride={apiBaseUrlOverridePresent}
+              tileUrl={tileUrl}
+              tileUrlDraft={tileUrlDraft}
+              setTileUrlDraft={setTileUrlDraft}
+              onSaveTileUrl={saveTileUrl}
+              onResetTileUrl={resetTileUrl}
+              hasTileOverride={tileUrlOverridePresent}
             />
           </TabsContent>
         </div>

@@ -14,7 +14,9 @@ import {
   SOURCE_LAYERS,
   RECEIVER_LAYERS,
   CALC_AREA_LAYERS,
+  MODEL_LAYER_GROUPS,
 } from "./layers";
+import { useMapStore } from "./map-store";
 
 const EMPTY_COLLECTION: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
@@ -132,6 +134,18 @@ export function ModelLayers({
         return;
       }
     }
+
+    // A layer comes back at the visibility its specification declares, which is
+    // not necessarily the one the user chose: `LayerControl` writes a toggle
+    // straight onto the map and keeps the same answer in the store, and a
+    // basemap switch or a tile-failure fallback tears the map down and has this
+    // effect add the layers again. Without this the hidden group reappears on
+    // the canvas while the control still labels it as hidden.
+    //
+    // Read imperatively rather than subscribed to: the store is consulted at
+    // the moment the layers exist, so a toggle does not have to re-run the
+    // source sync above to be honoured — the control has already applied it.
+    applyLayerVisibility(map, useMapStore.getState().layerVisibility);
 
     // A fit only makes sense over a model that is actually being drawn, and
     // the counter must only advance on `ready` — advancing it on the
@@ -289,6 +303,33 @@ function fitToWorkspace(
     map.fitBounds(lngLat, { padding: 48, duration: 0 });
   } catch (error) {
     console.error("ModelLayers: could not fit the view to the model", error);
+  }
+}
+
+/**
+ * Puts the stored show/hide answer back onto the layers that are on the map.
+ *
+ * Model groups only: they are the layers this component adds, and the result
+ * groups are not on the map yet. A group with no stored answer falls back to
+ * its own `defaultVisible`, the same reading `LayerControl` shows.
+ */
+function applyLayerVisibility(
+  map: maplibregl.Map,
+  visibility: Record<string, boolean>,
+): void {
+  for (const group of MODEL_LAYER_GROUPS) {
+    const visible = visibility[group.id] ?? group.defaultVisible;
+    for (const layerId of group.layerIds) {
+      try {
+        map.setLayoutProperty(
+          layerId,
+          "visibility",
+          visible ? "visible" : "none",
+        );
+      } catch {
+        // The layer is not on this style. The next sync adds it and reapplies.
+      }
+    }
   }
 }
 

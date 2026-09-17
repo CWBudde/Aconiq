@@ -452,5 +452,15 @@
   "label_draw_projection": "Drawn geometry",
   "label_crs_notice": "Coordinate reference system",
   "label_bimschv16_area_category": "Area category (16. BImSchV)",
-  "msg_bimschv16_area_category_absent": "Not set = this receiver is skipped by the 16. BImSchV assessment; there is no default category."
+  "msg_bimschv16_area_category_absent": "Not set = this receiver is skipped by the 16. BImSchV assessment; there is no default category.",
+  "section_basemap": "Basemap",
+  "label_basemap_light": "Light",
+  "label_basemap_bright": "Bright",
+  "label_basemap_dark": "Dark",
+  "label_basemap_offline": "Basemap unavailable",
+  "msg_basemap_tiles_failed": "The basemap tiles could not be loaded, so the map is drawn on a plain background. The model and the results are unaffected.",
+  "label_basemap_tile_url": "Basemap tile URL",
+  "msg_basemap_tile_url_help": "Raster tile template for the map basemap, with the usual z, x and y placeholders in curly braces. Leave it blank to use the OpenStreetMap default.",
+  "msg_basemap_tile_url_current": "Current tile URL",
+  "msg_basemap_tile_url_note": "Stored locally in this browser only. A change takes effect the next time the map is built — reload the page, or switch the basemap."
 }

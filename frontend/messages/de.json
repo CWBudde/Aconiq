@@ -452,5 +452,15 @@
   "label_draw_projection": "Gezeichnete Geometrie",
   "label_crs_notice": "Koordinatenreferenzsystem",
   "label_bimschv16_area_category": "Gebietskategorie (16. BImSchV)",
-  "msg_bimschv16_area_category_absent": "Nicht gesetzt = dieser Immissionsort wird von der Beurteilung nach 16. BImSchV übersprungen; eine Vorgabekategorie gibt es nicht."
+  "msg_bimschv16_area_category_absent": "Nicht gesetzt = dieser Immissionsort wird von der Beurteilung nach 16. BImSchV übersprungen; eine Vorgabekategorie gibt es nicht.",
+  "section_basemap": "Hintergrundkarte",
+  "label_basemap_light": "Hell",
+  "label_basemap_bright": "Kräftig",
+  "label_basemap_dark": "Dunkel",
+  "label_basemap_offline": "Hintergrundkarte nicht verfügbar",
+  "msg_basemap_tiles_failed": "Die Kacheln der Hintergrundkarte konnten nicht geladen werden; die Karte wird auf einem einfarbigen Hintergrund gezeichnet. Modell und Ergebnisse sind davon nicht betroffen.",
+  "label_basemap_tile_url": "Kachel-URL der Hintergrundkarte",
+  "msg_basemap_tile_url_help": "Vorlage für die Rasterkacheln der Hintergrundkarte, mit den üblichen Platzhaltern z, x und y in geschweiften Klammern. Leer lassen, um die OpenStreetMap-Vorgabe zu verwenden.",
+  "msg_basemap_tile_url_current": "Aktuelle Kachel-URL",
+  "msg_basemap_tile_url_note": "Wird nur lokal in diesem Browser gespeichert. Eine Änderung wirkt beim nächsten Aufbau der Karte — die Seite neu laden oder die Hintergrundkarte wechseln."
 }
