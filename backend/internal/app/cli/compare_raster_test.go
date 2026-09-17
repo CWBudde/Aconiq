@@ -67,8 +67,9 @@ func TestCalcAreaFromModelReadsClosedRing(t *testing.T) {
 		wantZ      float64
 	}{
 		{"with base elevation", map[string]any{"soundplan_base_elevation_m": 117.5}, 117.5},
-		// The property is gone after the first save from the map, which must
-		// read as "elevation 0", never as "no calculation area".
+		// An area that carries no base elevation must read as "elevation 0",
+		// never as "no calculation area". The property is absent whenever none
+		// was recorded — a drawn area, or an import whose source had none.
 		{"without base elevation", map[string]any{}, 0},
 	}
 
