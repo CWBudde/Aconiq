@@ -127,15 +127,51 @@ func LoadRaster(metadataPath string) (*Raster, error) {
 		return nil, fmt.Errorf("read raster binary %s: %w", dataPath, err)
 	}
 
-	expectedBytes := raster.CellCount() * 8
-	if len(binaryPayload) != expectedBytes {
-		return nil, fmt.Errorf("raster binary size mismatch: got %d bytes, expected %d", len(binaryPayload), expectedBytes)
-	}
-
-	for i := range raster.data {
-		value := math.Float64frombits(binary.LittleEndian.Uint64(binaryPayload[i*8:]))
-		raster.data[i] = value
+	err = raster.decode(binaryPayload)
+	if err != nil {
+		return nil, err
 	}
 
 	return raster, nil
+}
+
+// DecodeRaster rebuilds a raster from its sidecar metadata and the bytes of its
+// `.bin` payload, without either being on disk.
+//
+// LoadRaster is this plus reading two files. It is split out because the
+// WebAssembly kernel is handed the payload by the browser, which is holding it
+// in IndexedDB — so there is exactly one decoder of the byte contract, and the
+// kernel does not carry a second copy of "band-major, row-major within a band,
+// little-endian float64" for a browser to get subtly wrong.
+func DecodeRaster(meta RasterMetadata, payload []byte) (*Raster, error) {
+	raster, err := NewRaster(meta)
+	if err != nil {
+		return nil, err
+	}
+
+	err = raster.decode(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return raster, nil
+}
+
+// decode fills the raster from a headerless little-endian float64 payload,
+// refusing one whose length does not match the shape it was declared with.
+//
+// The length is the only thing that says the payload matches the sidecar: the
+// file carries no header, so a truncated or over-long one read against the
+// declared shape reports cells from the wrong band, or past the end.
+func (r *Raster) decode(payload []byte) error {
+	expectedBytes := r.CellCount() * 8
+	if len(payload) != expectedBytes {
+		return fmt.Errorf("raster binary size mismatch: got %d bytes, expected %d", len(payload), expectedBytes)
+	}
+
+	for i := range r.data {
+		r.data[i] = math.Float64frombits(binary.LittleEndian.Uint64(payload[i*8:]))
+	}
+
+	return nil
 }
