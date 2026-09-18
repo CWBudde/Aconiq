@@ -279,9 +279,20 @@ function isCompleted(run: RunSummary): boolean {
  */
 export function ResultLayers({
   requestedRunId,
+  onRunDrawn,
 }: {
   /** The run `/model` was asked for, or `null`. See `map-params.ts`. */
   requestedRunId: string | null;
+  /**
+   * The run these layers are actually drawing, reported whenever it changes.
+   *
+   * The page needs it and cannot work it out: the fallback to the newest
+   * completed run is made here, on a run list this component holds and the
+   * page deliberately does not fetch. Without it a click on a circle would
+   * have to guess a run, and `requestedRunId` is `null` for every reader who
+   * did not arrive from a results row.
+   */
+  onRunDrawn?: (run: RunSummary | null) => void;
 }) {
   const map = useMap();
 
@@ -298,6 +309,14 @@ export function ResultLayers({
   const newest = useMemo(() => latestCompletedRun(runs), [runs]);
   const run = requested ?? newest;
   const substituted = runState === "ineligible" || runState === "unknown";
+
+  // Reported from an effect rather than during render, because the listener
+  // is a `setState` in the page above: calling it while this component renders
+  // would be a write to another component mid-render. `run` is a value out of
+  // the cached run list, so this fires when the run changes and not per render.
+  useEffect(() => {
+    onRunDrawn?.(run);
+  }, [run, onRunDrawn]);
 
   const tableArtifact = run?.artifacts.find(
     (artifact) => artifact.kind === "run.result.receiver_table_json",

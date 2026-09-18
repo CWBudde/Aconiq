@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { List, ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature } from "maplibre-gl";
-import { Link, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { TooltipProvider } from "@/ui/components/tooltip";
 import { Badge } from "@/ui/components/badge";
 import { Button } from "@/ui/components/button";
@@ -30,6 +30,8 @@ import { useGeometryEdit } from "@/map/use-geometry-edit";
 import type { DisplayModel } from "@/map/display-model";
 import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { backend } from "@/api/backend";
+import type { RunSummary } from "@/api/client";
+import { RECEIVER_PARAM } from "@/results/results-params";
 import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
@@ -138,6 +140,29 @@ function WorkspaceStart({
   );
 }
 
+/**
+ * The id a clicked MapLibre feature stands for, or `null` if it carries none.
+ *
+ * `properties.id` before `feature.id` because the property is the app's own —
+ * `ModelLayers` and `ResultLayers` both write the two together — while
+ * `feature.id` is MapLibre's, optional, and typed `string | number`. The
+ * fallback is kept for a source that set only the latter, and the
+ * stringification with it: a numeric id would reach a URL and a store lookup
+ * as a different key from the one the model holds.
+ *
+ * Shared by both click paths so that "which object was clicked" is answered
+ * once. It used to be inline in the model handler, which is where a second
+ * copy for the result handler would have started to drift from it.
+ */
+function clickedFeatureId(feature: MapGeoJSONFeature): string | null {
+  const props = feature.properties as Record<string, unknown>;
+  const featureId = props["id"] ?? feature.id;
+  if (featureId == null) return null;
+  return typeof featureId === "string"
+    ? featureId
+    : String(featureId as number);
+}
+
 function MapWorkspace() {
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   // Bumped on every selection, a repeat of the id already open included.
@@ -162,6 +187,13 @@ function MapWorkspace() {
   // while the choice has to outlive it; `null` means "the newest completed
   // run", which is what `ResultLayers` falls back to.
   const [requestedRunId, setRequestedRunId] = useState<string | null>(null);
+  // Which run the map ended up drawing, reported by `ResultLayers` — not the
+  // same thing as `requestedRunId`, which is `null` for every reader who did
+  // not arrive from a results row, while the map still draws the newest
+  // completed run for them. Both ways back to the table are keyed on this: a
+  // click on a circle, and the editor's link for a model receiver.
+  const [resultRun, setResultRun] = useState<RunSummary | null>(null);
+  const navigate = useNavigate();
   const setCalcArea = useModelStore((s) => s.setCalcArea);
   const clearCalcArea = useModelStore((s) => s.clearCalcArea);
   const calcArea = useModelStore((s) => s.calcArea);
@@ -289,15 +321,49 @@ function MapWorkspace() {
     const feature = features[0];
     if (!feature) return;
 
-    const props = feature.properties as Record<string, unknown>;
-    const featureId = props["id"] ?? feature.id;
-    if (featureId == null) return;
+    const featureId = clickedFeatureId(feature);
+    if (featureId === null) return;
 
-    setEditingFeatureId(
-      typeof featureId === "string" ? featureId : String(featureId as number),
-    );
+    setEditingFeatureId(featureId);
     setSelectionEpoch((epoch) => epoch + 1);
   }, []);
+
+  /**
+   * A click that found a computed receiver and no model object under it: the
+   * reader is taken to that receiver's row in the results table.
+   *
+   * The other half of one rule, and the half that carries most of the traffic.
+   * In the default `auto-grid` receiver mode the CLI names the receivers
+   * itself — `grid-000000`… — so nothing under the pointer is in the model
+   * store and the editor has nothing to open. `MapView` decides which of the
+   * two happened, by which layer the hit came from, so there is no id-sniffing
+   * here and no way for the two paths to disagree.
+   *
+   * The run is the one the map is drawing, which is why it is read from state
+   * rather than from the URL: `?run=` was stripped on arrival, and a reader
+   * who never carried one is still looking at the newest completed run's
+   * levels. Both segments are escaped — a receiver id comes out of an import
+   * and is constrained to nothing, so a `/` in one would otherwise become a
+   * path of its own.
+   */
+  const handleResultReceiverClick = useCallback(
+    (features: MapGeoJSONFeature[]) => {
+      const feature = features[0];
+      if (!feature) return;
+
+      const receiverId = clickedFeatureId(feature);
+      // No run means no circles were drawn, so this cannot be reached through
+      // the canvas; refusing is still cheaper than proving it unreachable, and
+      // `/results/` with no id is a page that explains nothing.
+      if (receiverId === null || resultRun === null) return;
+
+      const params = new URLSearchParams({ [RECEIVER_PARAM]: receiverId });
+      void navigate(
+        `/results/${encodeURIComponent(resultRun.id)}?${params.toString()}`,
+      );
+    },
+    [navigate, resultRun],
+  );
 
   const handleSelectFromValidation = useCallback((featureId: string) => {
     setEditingFeatureId(featureId);
@@ -320,6 +386,7 @@ function MapWorkspace() {
         center={workspaceView.center}
         zoom={workspaceView.zoom}
         onFeatureClick={handleFeatureClick}
+        onResultReceiverClick={handleResultReceiverClick}
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers display={display} selectedFeatureId={editingFeatureId} />
@@ -327,7 +394,10 @@ function MapWorkspace() {
               the sources that produced them rather than under a building fill.
               The result *raster* goes the other way and is inserted below them
               with a `beforeId`, because it arrives long after this commit. */}
-          <ResultLayers requestedRunId={requestedRunId} />
+          <ResultLayers
+            requestedRunId={requestedRunId}
+            onRunDrawn={setResultRun}
+          />
           <GeometryEdit
             display={display}
             featureId={editingFeatureId}
@@ -351,6 +421,7 @@ function MapWorkspace() {
           <CoordinateDisplay />
           <FeatureEditor
             featureId={editingFeatureId}
+            resultRun={resultRun}
             onClose={() => {
               setEditingFeatureId(null);
             }}

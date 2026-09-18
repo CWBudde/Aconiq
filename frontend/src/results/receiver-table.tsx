@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Link } from "react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -65,6 +65,28 @@ const idCollator = new Intl.Collator();
  */
 const ROW_HEIGHT_PX = 29;
 const ROW_CLASS = "h-[29px] border-b last:border-0 hover:bg-muted/30";
+
+/**
+ * How the row the reader arrived on is marked.
+ *
+ * Paint only — a background and a foreground colour, nothing that changes the
+ * box. A marked row that were one pixel taller than the others would make
+ * `estimateSize` an estimate again: the virtualizer would place every row
+ * after it at the wrong offset and the window would drift away from the
+ * scroll position as the reader moved.
+ *
+ * The hover colour is re-declared over the row's own, which Tailwind would
+ * otherwise emit after this one and paint over it: the mark disappearing
+ * under the pointer is exactly when the reader is checking they have the
+ * right row.
+ *
+ * The visual mark is not the whole signal. `aria-current` on the row carries
+ * it to a reader who cannot see the colour, and it is `aria-current` rather
+ * than `aria-selected` because the latter is not valid on a plain `<tr>`
+ * outside a grid — `/results` is listed as clean in `e2e/a11y.spec.ts`, which
+ * fails on a new violation.
+ */
+const MARKED_ROW_CLASS = `${ROW_CLASS} bg-accent text-accent-foreground hover:bg-accent`;
 
 /**
  * How many rows beyond the viewport to keep mounted, so a fast scroll does not
@@ -196,7 +218,19 @@ function columnLabel(
   return col;
 }
 
-export function ReceiversTab({ run }: { run: RunSummary }) {
+export function ReceiversTab({
+  run,
+  receiverId = null,
+}: {
+  run: RunSummary;
+  /**
+   * The receiver the reader arrived on from the map, scrolled to and marked.
+   *
+   * Handed down rather than read from the URL here: `/results` strips the
+   * parameter as soon as it has been honoured, and the mark outlives it.
+   */
+  receiverId?: string | null;
+}) {
   const artifact = run.artifacts.find(
     (a) => a.kind === "run.result.receiver_table_json",
   );
@@ -273,6 +307,53 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
     estimateSize: () => ROW_HEIGHT_PX,
     overscan: ROW_OVERSCAN,
   });
+
+  /*
+   * Takes the reader to the row the map sent them to.
+   *
+   * The index is found in `sortedRecords`, not in `data.records`: the reader
+   * can have sorted the table by any column and the virtualizer addresses the
+   * list it is actually windowing, so an index from the unsorted array would
+   * scroll to a different row — or, on a 250 000-row table, to somewhere in
+   * the middle of nowhere.
+   *
+   * **The `-1` case is decided, not tolerated.** A row the filter is hiding is
+   * still a row this run computed, and the honest answer is to show it: the
+   * filter is cleared and this effect runs again over the widened list. A
+   * silent no-op would leave the reader looking at a table that visibly does
+   * not contain what they clicked, with nothing on screen saying why. An id
+   * the *table* does not hold is a different thing — there is nothing to
+   * reveal and clearing the filter would throw away the reader's state for
+   * nothing — so that case is marked handled and left alone.
+   *
+   * Guarded by a ref on the id rather than by its dependencies, because
+   * `sortedRecords` is in them: the effect has to re-run when the list changes
+   * (the table arrives asynchronously, and the filter above widens it), but it
+   * must act exactly once per arrival. A reader who lands on a row and then
+   * filters it away meant to, and a second run of this would snap their filter
+   * back.
+   */
+  const arrivedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (receiverId === null) return;
+    if (arrivedRef.current === receiverId) return;
+
+    const index = sortedRecords.findIndex((record) => record.id === receiverId);
+    if (index === -1) {
+      if (data?.records.some((record) => record.id === receiverId)) {
+        setFilter("");
+      } else {
+        arrivedRef.current = receiverId;
+      }
+      return;
+    }
+
+    arrivedRef.current = receiverId;
+    // Centred rather than `"start"`: a row pinned to the top edge reads as
+    // the top of the table, and the rows around it are the context that says
+    // it is not.
+    rowVirtualizer.scrollToIndex(index, { align: "center" });
+  }, [receiverId, sortedRecords, data, rowVirtualizer]);
 
   function toggleSort(col: string) {
     if (sortCol === col) {
@@ -460,7 +541,8 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
                 <tr
                   key={r.id}
                   aria-rowindex={virtualRow.index + 2}
-                  className={ROW_CLASS}
+                  aria-current={r.id === receiverId ? "true" : undefined}
+                  className={r.id === receiverId ? MARKED_ROW_CLASS : ROW_CLASS}
                 >
                   <td className="px-3 py-1.5 font-mono">
                     {selectableIds.has(r.id) ? (
