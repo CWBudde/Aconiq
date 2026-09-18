@@ -24,6 +24,7 @@ import type {
   ComputeRequest,
   PropagationConfig,
   ReceiverOutput,
+  TerrainInfo,
   TransformRequest,
   TransformResponse,
 } from "./types";
@@ -61,6 +62,8 @@ interface GoRuntimeGlobal {
     rls19Road: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     standards: () => string;
+    loadTerrain: (data: Uint8Array, crs: string) => string;
+    clearTerrain: () => void;
     defaultConfig: () => string;
   };
 }
@@ -156,6 +159,12 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
     },
     standards(): StandardDescriptor[] {
       return JSON.parse(exports.standards()) as StandardDescriptor[];
+    },
+    loadTerrain(data: Uint8Array, crs: string): TerrainInfo {
+      return JSON.parse(exports.loadTerrain(data, crs)) as TerrainInfo;
+    },
+    clearTerrain(): void {
+      exports.clearTerrain();
     },
     defaultConfig(): PropagationConfig {
       return JSON.parse(exports.defaultConfig()) as PropagationConfig;

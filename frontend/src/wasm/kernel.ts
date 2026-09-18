@@ -9,6 +9,7 @@ import type {
   ComputeRequest,
   PropagationConfig,
   ReceiverOutput,
+  TerrainInfo,
   TransformRequest,
   TransformResponse,
 } from "./types";
@@ -34,6 +35,23 @@ export interface AconiqKernel {
    * once, by the Go module. The hardcoded copy this replaced had drifted twice.
    */
   standards(): StandardDescriptor[];
+  /**
+   * Load a GeoTIFF DTM into the kernel, replacing whatever was loaded before.
+   *
+   * `crs` names the CRS the raster's own coordinates are in, and it is
+   * required. The Go loader reads the tie point and the pixel scale and no
+   * GeoKeyDirectory, so the file does not say; and a {@link ComputeRequest}
+   * carries bare numbers, so the request does not say either. Without it every
+   * elevation query would be a query into an unknown CRS — which is how a DTM
+   * in degrees comes to be asked about metres, miss on every lookup, and be
+   * read as sea level.
+   *
+   * A run over a loaded terrain must therefore also send
+   * {@link ComputeRequest.projection}; the kernel refuses it otherwise.
+   */
+  loadTerrain(data: Uint8Array, crs: string): TerrainInfo;
+  /** Drop the loaded terrain. Runs afterwards compute without one. */
+  clearTerrain(): void;
   /** Return the default PropagationConfig. */
   defaultConfig(): PropagationConfig;
 }
@@ -116,6 +134,12 @@ async function loadKernel(): Promise<AconiqKernel> {
     },
     standards(): StandardDescriptor[] {
       return JSON.parse(exports.standards()) as StandardDescriptor[];
+    },
+    loadTerrain(data: Uint8Array, crs: string): TerrainInfo {
+      return JSON.parse(exports.loadTerrain(data, crs)) as TerrainInfo;
+    },
+    clearTerrain(): void {
+      exports.clearTerrain();
     },
     defaultConfig(): PropagationConfig {
       return JSON.parse(exports.defaultConfig()) as PropagationConfig;

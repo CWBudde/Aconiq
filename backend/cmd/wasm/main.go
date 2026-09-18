@@ -24,20 +24,22 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/wasmkernel"
 )
-
-// currentTerrain holds the terrain model loaded via loadTerrain().
-// It is automatically used by compute functions when non-nil.
-var currentTerrain terrain.Model
 
 type computeRequest struct {
 	Receivers []geo.PointReceiver    `json:"receivers"`
 	Sources   []road.RoadSource      `json:"sources"`
 	Barriers  []road.Barrier         `json:"barriers"`
 	Config    road.PropagationConfig `json:"config"`
+
+	// Projection is the CRS pair the caller resolved before it built this
+	// scene. It is optional — a request that loads no terrain needs nothing
+	// from it — and required the moment a terrain model is loaded, because the
+	// coordinates in this request name no CRS of their own and a DTM has to be
+	// queried in the one it was written in. See wasmkernel.ComputeProjection.
+	Projection *wasmkernel.ComputeProjection `json:"projection,omitempty"`
 }
 
 // rls19RoadFunc computes RLS-19 road traffic noise levels.
@@ -60,16 +62,19 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 
 		req.Config = withPropagationDefaults(req.Config)
 
-		// Apply terrain elevation if a terrain model is loaded.
-		if currentTerrain != nil && len(req.Receivers) > 0 {
-			req.Config.ReceiverTerrainZ = terrainAtGridCenter(currentTerrain, req.Receivers)
+		// The terrain is the ground h_m is measured above as well as the one
+		// elevation the receiver heights stack on, so both travel into the
+		// config — and both in the CRS this request computes in. Browser mode
+		// resolves the ground the way `aconiq run` does or it is answering a
+		// different question.
+		cfg, err := wasmkernel.ApplyTerrain(req.Config, req.Receivers, req.Projection)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: %v", err)))
+
+			return nil
 		}
 
-		// The terrain is also the ground h_m is measured above, so the model
-		// itself travels into the config and not just the one elevation above.
-		// Browser mode resolves the ground the way `aconiq run` does or it is
-		// answering a different question.
-		req.Config.TerrainModel = currentTerrain
+		req.Config = cfg
 
 		outputs, err := road.ComputeReceiverOutputs(req.Receivers, req.Sources, req.Barriers, req.Config)
 		if err != nil {
@@ -140,10 +145,16 @@ func standardsFunc(_ js.Value, _ []js.Value) any {
 }
 
 // loadTerrainFunc loads a GeoTIFF terrain model from a Uint8Array.
-// Returns a JSON string with terrain metadata (bounds, pixelSize, gridSize).
+// Signature: (data: Uint8Array, crs: string) => string (terrain.Info JSON)
+//
+// The CRS is a second argument rather than something the kernel works out: the
+// GeoTIFF loader reads the tie point and the pixel scale and no
+// GeoKeyDirectory, so the file does not say what it is in, and the request that
+// later queries it carries coordinates that name no CRS either. The caller is
+// the only one who knows, so the caller states it.
 func loadTerrainFunc(_ js.Value, args []js.Value) any {
-	if len(args) != 1 {
-		return jsReject("loadTerrain: expected exactly 1 Uint8Array argument")
+	if len(args) != 2 {
+		return jsReject("loadTerrain: expected 2 arguments (Uint8Array data, string crs)")
 	}
 
 	jsArr := args[0]
@@ -151,21 +162,18 @@ func loadTerrainFunc(_ js.Value, args []js.Value) any {
 	buf := make([]byte, length)
 	js.CopyBytesToGo(buf, jsArr)
 
-	model, err := terrain.LoadFromBytes(buf)
+	info, err := wasmkernel.LoadTerrain(buf, args[1].String())
 	if err != nil {
 		return jsReject(fmt.Sprintf("loadTerrain: %v", err))
 	}
-
-	currentTerrain = model
-
-	info, _ := json.Marshal(model.Info())
 
 	return js.ValueOf(string(info))
 }
 
 // clearTerrainFunc removes the currently loaded terrain model.
 func clearTerrainFunc(_ js.Value, _ []js.Value) any {
-	currentTerrain = nil
+	wasmkernel.ClearTerrain()
+
 	return js.Undefined()
 }
 
@@ -193,24 +201,6 @@ func withPropagationDefaults(cfg road.PropagationConfig) road.PropagationConfig 
 	}
 
 	return cfg
-}
-
-// terrainAtGridCenter queries terrain elevation at the centroid of receivers.
-func terrainAtGridCenter(tm terrain.Model, receivers []geo.PointReceiver) float64 {
-	var sumX, sumY float64
-
-	for _, r := range receivers {
-		sumX += r.Point.X
-		sumY += r.Point.Y
-	}
-
-	n := float64(len(receivers))
-	elev, ok := tm.ElevationAt(sumX/n, sumY/n)
-	if !ok {
-		return 0
-	}
-
-	return elev
 }
 
 // defaultConfigFunc returns the default PropagationConfig as a JSON string.

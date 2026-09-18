@@ -110,7 +110,7 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `transform`, `standards`, `loadTerrain`, `clearTerrain`,
-`defaultConfig`, `health` and `projectStatus`. Two of those carry contracts worth knowing before
+`defaultConfig`, `health` and `projectStatus`. Three of those carry contracts worth knowing before
 writing browser-mode code:
 
 - **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
@@ -120,9 +120,17 @@ writing browser-mode code:
 - **`standards`** publishes what the kernel can actually run, in the same JSON shape
   `GET /api/v1/standards` answers with. Both go through `internal/standards/descriptorjson`, so
   the evidence tier, the parameter defaults and the enums are declared once, by the Go module.
+- **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
+  GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
+  and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
+  model itself, through `transform`, so a compute request reaches the kernel as bare numbers that
+  name no CRS either. The caller is the only one who knows. A request computing over a loaded
+  terrain must therefore also carry `projection` (`project_crs`, `compute_crs`, `applied`) — the
+  same pair `cli.computeProjection` records — and is refused without it rather than answered from
+  a grid queried in the wrong CRS. `terrain.InComputeCRS` is the wrapper both targets use.
 
-The logic behind both lives in `internal/wasmkernel`, which carries **no build tag** so that a host
-`go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and has no tests.
+The logic behind all three lives in `internal/wasmkernel`, which carries **no build tag** so that a
+host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and has no tests.
 
 ### Go Package Structure (`backend/internal/`)
 
