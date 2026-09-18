@@ -23,6 +23,11 @@ code-coverage-results-frontend.md
 
 # Build artifacts
 *.wasm
+# `go build ./cmd/wasm` run from backend/ names its output after the package
+# directory, so the artifact has no extension and the glob above misses it.
+# The kernel the frontend actually loads is frontend/public/aconiq.wasm, which
+# `just wasm-build` writes with an explicit -o.
+/backend/wasm
 frontend/public/wasm_exec.js
 
 # Node/Bun
