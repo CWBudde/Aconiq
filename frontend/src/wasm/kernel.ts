@@ -7,6 +7,8 @@
 import type { StandardDescriptor } from "@/standards/descriptor";
 import type {
   ComputeRequest,
+  ContourRequest,
+  ContourResult,
   PropagationConfig,
   ReceiverOutput,
   TerrainInfo,
@@ -26,6 +28,28 @@ export interface AconiqKernel {
    * to where a model sits. See `@/model/compute-crs`, which is the only caller.
    */
   transform(req: TransformRequest): Promise<TransformResponse>;
+  /**
+   * Trace ISO-band contour lines over a run's raster.
+   *
+   * `payload` is the raw `.bin` the run wrote — band-major, row-major within a
+   * band, little-endian float64 — and `req.raster` is the `.json` sidecar that
+   * says how to read it. The values stay out of the JSON deliberately: a
+   * 500x500 two-band grid is four megabytes of float64, and rendering those as
+   * JSON numbers and parsing them back would cost more than the marching
+   * squares does. Nothing here decodes the bytes; Go does, through the one
+   * decoder `aconiq export` uses, so the browser never carries a second reading
+   * of the byte contract.
+   *
+   * Every band is traced in one call and told apart by
+   * {@link ContourLine.band_name}; a caller showing one band filters rather
+   * than asking again.
+   *
+   * The tracing itself is `internal/report/contour`, which
+   * `GET /api/v1/runs/{id}/contours` and `aconiq export --format
+   * contour-geojson` also call — where a 55 dB line falls is read as an
+   * assessment, so the three must not be able to disagree.
+   */
+  contours(payload: Uint8Array, req: ContourRequest): Promise<ContourResult>;
   /**
    * The standards this kernel can actually run, in the same shape `GET
    * /api/v1/standards` answers with.
@@ -131,6 +155,13 @@ async function loadKernel(): Promise<AconiqKernel> {
     async transform(req: TransformRequest): Promise<TransformResponse> {
       const json = await exports.transform(JSON.stringify(req));
       return JSON.parse(json) as TransformResponse;
+    },
+    async contours(
+      payload: Uint8Array,
+      req: ContourRequest,
+    ): Promise<ContourResult> {
+      const json = await exports.contours(payload, JSON.stringify(req));
+      return JSON.parse(json) as ContourResult;
     },
     standards(): StandardDescriptor[] {
       return JSON.parse(exports.standards()) as StandardDescriptor[];

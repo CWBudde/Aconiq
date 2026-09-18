@@ -31,6 +31,9 @@ const (
 	// evidenceTierField is the JSON member the evidence tier travels under, in
 	// responses, in error details and in the OpenAPI document alike.
 	evidenceTierField = "evidence_tier"
+	// messageRunIDRequired is shared by every run-scoped endpoint, so that the
+	// three of them answer an empty {id} in one voice rather than three.
+	messageRunIDRequired = "run id is required"
 )
 
 // apiError.Code values. They are part of the HTTP API contract: clients switch
@@ -52,6 +55,18 @@ const (
 	// be able to tell "no project" from "no model", and the two want different
 	// hints.
 	errorCodeModelNotFound = "model_not_found"
+	// errorCodeRunHasNoRaster answers a contour request for a run that exists but
+	// recorded no result raster. It is deliberately not errorCodeNotFound, for
+	// the reason errorCodeModelNotFound is not: "no such run" and "this run was
+	// not computed over a grid" send a client to two different remedies, and
+	// only one of them is checking the id.
+	errorCodeRunHasNoRaster = "run_has_no_raster"
+
+	// errorCodeRunHasNoGrid answers a contour request for a run whose raster
+	// exists but was computed over receivers placed individually. It is not
+	// run_has_no_raster: there is one, it simply records no cell size, and the
+	// remedy is a different receiver mode rather than a different run.
+	errorCodeRunHasNoGrid = "run_has_no_grid"
 	// errorCodeRunNotFinished answers a delete of a run that is still pending or
 	// running: its directory is being written by a live `aconiq run`.
 	errorCodeRunNotFinished = "run_not_finished"
@@ -276,6 +291,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
 	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
+	mux.HandleFunc("/api/v1/runs/{id}/contours", handler.handleRunContours)
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
@@ -742,7 +758,7 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 	if runID == "" {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
-			Message: "run id is required",
+			Message: messageRunIDRequired,
 		})
 
 		return

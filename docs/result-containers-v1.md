@@ -10,6 +10,21 @@ Status date: 2026-03-06
 - GeoTIFF is no longer deferred: `backend/internal/report/export` writes GeoTIFF,
   COG, GeoPackage and contours, and reads its georeferencing out of the sidecar
   described below.
+- The contour _geometry_ is not in `export`: it is
+  `backend/internal/report/contour`, which `export` re-exports by alias. The
+  package sits below its three callers — `aconiq export`, the WASM kernel's
+  `contours` and `GET /api/v1/runs/{id}/contours` — so a level line has one
+  implementation, the way `geo/crstransform` gives the projection one. It is a
+  separate package rather than a subset of `export` because the kernel cannot
+  import `export`: the GeoPackage writer reaches `modernc.org/sqlite` through
+  `database/sql`, and linking that into the WASM binary to reach one file of
+  marching squares is not a trade worth making. `report/results`, which the
+  geometry does need, has no non-stdlib dependency at all.
+- `contour.FromRaster` requires a **declared** georeference and refuses a raster
+  without one (`ErrNotAGrid`), where `aconiq export` can still infer the
+  transform from receiver coordinates for sidecars written before the
+  georeference existed. That is not a gap: a raster does not carry the receiver
+  table inference reads.
 
 2. Receiver tables: **CSV + JSON selected for v1**
 

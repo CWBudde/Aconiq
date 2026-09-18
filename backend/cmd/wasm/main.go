@@ -128,6 +128,52 @@ func transformFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// contoursFunc traces ISO-band contour lines over a run's raster.
+// Signature: (payload: Uint8Array, request: string) => Promise<string> (JSON)
+//
+// The raster values arrive as bytes rather than inside the JSON because a
+// 500x500 two-band grid is four megabytes of float64: rendering those as JSON
+// numbers and parsing them back would cost more than the tracing does. The
+// sidecar metadata that says how to read them travels in the request, which is
+// why this entry point takes two arguments where transform takes one.
+//
+// It answers with a Promise, like rls19Road and transform and unlike
+// standards: marching squares over that grid is not work to do inside a
+// synchronous call, and jsReject hands back a rejected *Promise*, so a
+// synchronous export that failed would give the caller "[object Promise]"
+// where it expected JSON.
+func contoursFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return jsReject("contours: expected 2 arguments (Uint8Array payload, string request JSON)")
+	}
+
+	jsArr := args[0]
+	length := jsArr.Get("byteLength").Int()
+	payload := make([]byte, length)
+	js.CopyBytesToGo(payload, jsArr)
+
+	input := args[1].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.Contours(payload, []byte(input))
+		if err != nil {
+			// Verbatim, as in transformFunc: contour.FromRaster's refusals are
+			// the ones `aconiq export` and the API print, and a reader
+			// comparing browser mode against a bundle has to read the same
+			// sentence in both.
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // standardsFunc returns the standards this kernel can run, in the same JSON
 // shape `GET /api/v1/standards` answers with.
 // Signature: () => string (JSON)
@@ -256,6 +302,7 @@ func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
+	aconiq.Set("contours", js.FuncOf(contoursFunc))
 	aconiq.Set("standards", js.FuncOf(standardsFunc))
 	aconiq.Set("loadTerrain", js.FuncOf(loadTerrainFunc))
 	aconiq.Set("clearTerrain", js.FuncOf(clearTerrainFunc))

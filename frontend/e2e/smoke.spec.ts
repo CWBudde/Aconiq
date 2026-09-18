@@ -187,8 +187,10 @@ test.describe("Locale", () => {
   });
 });
 
-test.describe("The result raster", () => {
-  test("a completed run paints a raster the map accepts", async ({ page }) => {
+test.describe("The result raster and its contours", () => {
+  test("a completed run paints a raster and contours the map accepts", async ({
+    page,
+  }) => {
     // The one thing jsdom cannot answer. `raster-canvas.ts` is mocked in every
     // unit test because `HTMLCanvasElement.prototype.getContext` throws there,
     // so until here nothing had run a real `getContext("2d")`, a real
@@ -282,9 +284,24 @@ test.describe("The result raster", () => {
       page.getByText(message("en", "msg_result_raster_not_grid")),
     ).toHaveCount(0);
 
+    // And the contours, off the same run and the same raster. The toggle being
+    // *present and on* is the assertion that matters: the group spent a
+    // release out of the control because `aconiq export` was the only producer
+    // of a contour, and browser mode — which is what this suite runs — wrote
+    // none at all. It is here now because the tracing moved behind the kernel,
+    // so this is the check that the kernel export is reachable end to end.
+    await expect(
+      page
+        .getByRole("group", { name: message("en", "label_layers") })
+        .getByText(message("en", "label_result_contours")),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText(message("en", "msg_result_contours_failed")),
+    ).toHaveCount(0);
+
     expect(
-      problems.filter((text) => /raster/i.test(text)),
-      `console errors mentioning the raster:\n${problems.join("\n")}`,
+      problems.filter((text) => /raster|contour/i.test(text)),
+      `console errors mentioning the raster or the contours:\n${problems.join("\n")}`,
     ).toEqual([]);
   });
 });

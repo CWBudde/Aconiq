@@ -5,9 +5,11 @@
    it does on the HTTP path. */
 import type {
   Backend,
+  ContourOptions,
   DeleteRunResult,
   ModelSaveResult,
   OsmImportRequest,
+  RunContours,
   RunSpec,
 } from "./backend";
 import type {
@@ -1754,6 +1756,45 @@ export const browserBackend = {
       );
     }
     return readArtifactBytes(artifactId);
+  },
+
+  async getRunContours(
+    runId: string,
+    options: ContourOptions,
+  ): Promise<RunContours> {
+    const state = await ensureLoaded();
+    const run = findRunByID(state, runId).run;
+
+    const metadataArtifact = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_metadata",
+    );
+    const binaryArtifact = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_binary",
+    );
+
+    if (metadataArtifact === undefined || binaryArtifact === undefined) {
+      // The same distinction the API route draws with `run_has_no_raster`: the
+      // run is real, it simply placed receivers individually, and no interval
+      // or CRS would change that.
+      throw new Error(
+        `Run ${runId} wrote no result raster, so it has no contours: ` +
+          "only an auto-grid receiver mode produces one",
+      );
+    }
+
+    const metadata = await browserBackend.getArtifactContent<RasterMetadata>(
+      metadataArtifact.id,
+    );
+    const payload = await browserBackend.getArtifactBytes(binaryArtifact.id);
+
+    // Every refusal past this point is the kernel's, in the contour package's
+    // own words — the same words `aconiq export` and the API route use.
+    const kernel = await getKernel();
+    return kernel.contours(new Uint8Array(payload), {
+      raster: metadata,
+      target_crs: options.crs,
+      ...(options.interval === undefined ? {} : { interval: options.interval }),
+    });
   },
 
   /**

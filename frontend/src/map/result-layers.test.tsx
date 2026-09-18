@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Map as MapLibreMap } from "maplibre-gl";
+import type { RunContours } from "@/api/backend";
 import type { RasterMetadata, ReceiverTable, RunSummary } from "@/api/client";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import { m } from "@/i18n/messages";
@@ -9,6 +10,8 @@ import { useMapStore } from "./map-store";
 import {
   BOTTOM_MODEL_LAYER_ID,
   LAYER_IDS,
+  RESULT_CONTOURS_GROUP_ID,
+  RESULT_LEVEL_PROPERTY,
   RESULT_RASTER_GROUP_ID,
   RESULT_RECEIVERS_GROUP_ID,
   SOURCE_IDS,
@@ -38,6 +41,8 @@ const state = vi.hoisted(() => {
     rasterBytes: ArrayBuffer | undefined;
     /** Every id `useArtifactBytes` was called with, `null` when disabled. */
     bytesAskedFor: (string | null)[];
+    contours: RunContours | undefined;
+    contoursError: Error | null;
     requests: TransformRequest[];
     respond: (req: TransformRequest) => Promise<TransformResponse>;
   } = {
@@ -51,6 +56,8 @@ const state = vi.hoisted(() => {
     rasterMetadata: undefined,
     rasterBytes: undefined,
     bytesAskedFor: [],
+    contours: undefined,
+    contoursError: null,
     requests: [],
     // A stand-in for the kernel: the numbers only have to be distinguishable
     // from the input, because what is asserted is which CRS was asked for and
@@ -115,6 +122,14 @@ vi.mock("@/api/hooks", () => ({
       error: null,
     };
   },
+  // Keyed off the run id the hook passes, which is null for every case the
+  // hook refuses before asking — no run, no raster artifact, no projector. A
+  // mock that answered regardless would hide those refusals.
+  useRunContours: (runId: string | null) => ({
+    data: runId === null || state.contoursError ? undefined : state.contours,
+    isLoading: false,
+    error: runId === null ? null : state.contoursError,
+  }),
 }));
 
 // jsdom has no 2D context, so the encoder is the seam: everything above it is
@@ -219,6 +234,25 @@ function renderLayers(map: FakeMap, requestedRunId: string | null = null) {
   );
 }
 
+/**
+ * The result layers in draw order, with the model's anchor kept for reference.
+ *
+ * Asserted as a sequence rather than as a pair of `indexOf` comparisons: the
+ * raster, the halo and the line are stacked against *each other*, and two
+ * separate "below the model" checks pass just as happily with the raster on
+ * top of the contours it is supposed to sit under.
+ */
+function stackOf(map: FakeMap): string[] {
+  const interesting = new Set<string>([
+    LAYER_IDS.resultRaster,
+    LAYER_IDS.resultContoursHalo,
+    LAYER_IDS.resultContours,
+    BOTTOM_MODEL_LAYER_ID,
+  ]);
+
+  return map.order.filter((id) => interesting.has(id));
+}
+
 function drawn(map: FakeMap): GeoJSON.FeatureCollection {
   const source = map.sources.get(SOURCE_IDS.resultReceivers);
   if (!source) throw new Error("the receiver source was never added");
@@ -294,6 +328,8 @@ beforeEach(() => {
   };
   state.summaryLoading = false;
   state.summaryError = null;
+  state.contours = undefined;
+  state.contoursError = null;
   state.requests = [];
   state.bytesAskedFor = [];
   useMapStore.setState({ basemap: "light", layerVisibility: {} });
@@ -625,15 +661,21 @@ describe("ResultLayers: the result raster", () => {
     map.withModelLayers();
     fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
 
+    // Sunk under the contours rather than under the model directly, which is
+    // the whole point of the anchor list: naming the model here would lift the
+    // raster over the lines it is the backdrop for.
     await waitFor(() => {
       expect(map.moves).toContainEqual([
         LAYER_IDS.resultRaster,
-        BOTTOM_MODEL_LAYER_ID,
+        LAYER_IDS.resultContoursHalo,
       ]);
     });
-    expect(map.order.indexOf(LAYER_IDS.resultRaster)).toBeLessThan(
-      map.order.indexOf(BOTTOM_MODEL_LAYER_ID),
-    );
+    expect(stackOf(map)).toEqual([
+      LAYER_IDS.resultRaster,
+      LAYER_IDS.resultContoursHalo,
+      LAYER_IDS.resultContours,
+      BOTTOM_MODEL_LAYER_ID,
+    ]);
   });
 
   it("anchors the image under the model when the model is already there", async () => {
@@ -644,9 +686,12 @@ describe("ResultLayers: the result raster", () => {
       expect(map.getLayer(LAYER_IDS.resultRaster)).toBeDefined();
     });
 
-    expect(map.order.indexOf(LAYER_IDS.resultRaster)).toBeLessThan(
-      map.order.indexOf(BOTTOM_MODEL_LAYER_ID),
-    );
+    expect(stackOf(map)).toEqual([
+      LAYER_IDS.resultRaster,
+      LAYER_IDS.resultContoursHalo,
+      LAYER_IDS.resultContours,
+      BOTTOM_MODEL_LAYER_ID,
+    ]);
   });
 
   it("places the image on the outer corners of the outer cells", async () => {
@@ -685,7 +730,10 @@ describe("ResultLayers: the result raster", () => {
     await waitFor(() => {
       expect(map.imageUpdates).toHaveLength(1);
     });
-    expect(map.sources.size).toBe(2); // the receivers and the raster, no more
+    // The receivers, the raster and the contours — the three a run draws, and
+    // no fourth. The contour source is added whether or not there are lines to
+    // put in it, so its toggle answers the same way in every state.
+    expect(map.sources.size).toBe(3);
   });
 
   it("brings the raster back after a newer run has loaded", async () => {
@@ -884,5 +932,269 @@ describe("ResultLayers: the run a link asked for", () => {
       await screen.findByText(m.msg_result_run_unavailable({ runId: "run-3" })),
     ).toBeInTheDocument();
     expect(screen.getByText("run-2")).toBeInTheDocument();
+  });
+});
+
+/**
+ * What the map does with the lines Go traced.
+ *
+ * Nothing here checks *where* a contour falls — that is
+ * `contour/parity_test.go` and `wasm/contours.parity.test.ts`, which pin the
+ * two boundaries against one golden. What is pinned here is everything between
+ * the answer and the screen: the band filter, the stacking, the refusal, and
+ * the toggle.
+ */
+describe("ResultLayers: the result contours", () => {
+  const CONTOURS: RunContours = {
+    crs: "EPSG:4326",
+    interval: 5,
+    lines: [
+      {
+        level: 55,
+        band_name: "LrDay",
+        points: [
+          [10, 50],
+          [11, 50],
+          [11, 51],
+        ],
+      },
+      {
+        level: 60,
+        band_name: "LrDay",
+        points: [
+          [10.2, 50.2],
+          [10.8, 50.2],
+        ],
+      },
+      {
+        level: 45,
+        band_name: "LrNight",
+        points: [
+          [10.1, 50.1],
+          [10.9, 50.1],
+        ],
+      },
+      // Dropped: MapLibre accepts a one-vertex LineString and draws nothing,
+      // so it would be a feature that exists and is invisible.
+      { level: 65, band_name: "LrDay", points: [[10.5, 50.5]] },
+    ],
+  };
+
+  function contourRun(id: string, finishedAt: string): RunSummary {
+    const run = completedRun(id, finishedAt);
+    return {
+      ...run,
+      artifacts: [
+        ...run.artifacts,
+        {
+          id: `${id}-raster-meta`,
+          kind: "run.result.raster_metadata",
+          path: `runs/${id}/results/rls19-road.json`,
+          created_at: finishedAt,
+        },
+      ],
+    };
+  }
+
+  function contoursOf(map: FakeMap): GeoJSON.FeatureCollection {
+    const source = map.sources.get(SOURCE_IDS.resultContours);
+    if (!source) throw new Error("the contour source was never added");
+    return source.data as GeoJSON.FeatureCollection;
+  }
+
+  /** The level each drawn line carries, in draw order. */
+  function levelsOf(map: FakeMap): unknown[] {
+    return contoursOf(map).features.map((feature) => {
+      const properties = feature.properties as Record<string, unknown> | null;
+      return properties?.[RESULT_LEVEL_PROPERTY];
+    });
+  }
+
+  beforeEach(() => {
+    state.runs = [contourRun("run-1", "2026-01-01T10:00:05Z")];
+    state.contours = CONTOURS;
+    // No sidecar, so the raster layer is inert and every assertion below is
+    // about the lines alone. `contourRun` carries no binary artifact either.
+    state.rasterMetadata = undefined;
+  });
+
+  it("draws the chosen band's lines, each carrying its own level", async () => {
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(contoursOf(map).features).toHaveLength(2);
+    });
+
+    // The level rides on the property `RESULT_CONTOUR_LAYERS` interpolates
+    // over, which is what makes one source paint five colours.
+    expect(levelsOf(map)).toEqual([55, 60]);
+    expect(contoursOf(map).features[0]?.geometry).toEqual({
+      type: "LineString",
+      coordinates: [
+        [10, 50],
+        [11, 50],
+        [11, 51],
+      ],
+    });
+  });
+
+  it("moves to the other band without asking for the lines again", async () => {
+    // One request carries every band — `GenerateContours` walks them all — so
+    // the picker filters what is already here. Re-requesting would put a
+    // round trip behind a click that has the answer in hand.
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(contoursOf(map).features).toHaveLength(2);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+
+    await waitFor(() => {
+      expect(contoursOf(map).features).toHaveLength(1);
+    });
+    expect(levelsOf(map)).toEqual([45]);
+    expect(map.sources.size).toBe(2); // the receivers and the contours, no more
+  });
+
+  it("empties the source when the backend refuses, rather than stranding a band", async () => {
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(contoursOf(map).features).toHaveLength(2);
+    });
+
+    state.contoursError = new Error(
+      "this run's raster declares no georeference",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+
+    await waitFor(() => {
+      expect(contoursOf(map).features).toHaveLength(0);
+    });
+    // The layer stays where the control put it: hiding it here would make the
+    // toggle report a state nothing set.
+    expect(map.getLayer(LAYER_IDS.resultContours)?.layout?.visibility).toBe(
+      "visible",
+    );
+  });
+
+  it("says so in its own words, with the backend's reachable", async () => {
+    state.contoursError = new Error("contours can only be moved between CRS…");
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    const notice = await screen.findByText(m.msg_result_contours_failed());
+    expect(notice).toHaveAttribute(
+      "title",
+      "contours can only be moved between CRS…",
+    );
+  });
+
+  it("stays silent when the panel has already said the receivers are no grid", async () => {
+    // `ErrNotAGrid` is raised on exactly the condition `useResultRaster`
+    // reports as `not-a-grid`, so both notices would name one cause twice.
+    // The raster path needs both artifacts before it will say anything.
+    const run = contourRun("run-1", "2026-01-01T10:00:05Z");
+    state.runs = [
+      {
+        ...run,
+        artifacts: [
+          ...run.artifacts,
+          {
+            id: "run-1-raster-bin",
+            kind: "run.result.raster_binary",
+            path: "runs/run-1/results/rls19-road.bin",
+            created_at: "2026-01-01T10:00:05Z",
+          },
+        ],
+      },
+    ];
+    state.rasterMetadata = {
+      width: 2,
+      height: 1,
+      bands: 2,
+      nodata: -9999,
+      unit: "dB(A)",
+      band_names: ["LrDay", "LrNight"],
+      crs: "EPSG:4326",
+    };
+    state.contoursError = new Error(
+      "this run's raster declares no georeference",
+    );
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.msg_result_raster_not_grid()),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_result_contours_failed()),
+    ).not.toBeInTheDocument();
+  });
+
+  it("honours a group switched off before the layers existed", async () => {
+    useMapStore.setState({
+      layerVisibility: { [RESULT_CONTOURS_GROUP_ID]: false },
+    });
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultContours)).toBeDefined();
+    });
+
+    expect(map.getLayer(LAYER_IDS.resultContoursHalo)?.layout?.visibility).toBe(
+      "none",
+    );
+    expect(map.getLayer(LAYER_IDS.resultContours)?.layout?.visibility).toBe(
+      "none",
+    );
+  });
+
+  it("keeps the line over its own halo when both are sunk under the model", async () => {
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultContours)).toBeDefined();
+    });
+
+    map.withModelLayers();
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+
+    await waitFor(() => {
+      expect(map.moves).toContainEqual([
+        LAYER_IDS.resultContours,
+        BOTTOM_MODEL_LAYER_ID,
+      ]);
+    });
+    expect(stackOf(map)).toEqual([
+      LAYER_IDS.resultContoursHalo,
+      LAYER_IDS.resultContours,
+      BOTTOM_MODEL_LAYER_ID,
+    ]);
+  });
+
+  it("asks for nothing when the run wrote no raster to trace", async () => {
+    // The refusal is knowable from the artifact list, so it costs no request.
+    state.runs = [completedRun("run-1", "2026-01-01T10:00:05Z")];
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.sources.get(SOURCE_IDS.resultContours)).toBeDefined();
+    });
+    expect(contoursOf(map).features).toHaveLength(0);
+    expect(
+      screen.queryByText(m.msg_result_contours_failed()),
+    ).not.toBeInTheDocument();
   });
 });

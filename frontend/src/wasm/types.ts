@@ -242,3 +242,89 @@ export interface TransformResponse {
   applied: boolean;
   coordinates: number[];
 }
+
+/**
+ * Where a raster's cells sit on the ground. Mirrors `results.Georeference`.
+ *
+ * `origin_x`/`origin_y` is the *centre* of cell (0,0), not a corner: a grid
+ * receiver is a point in the middle of the cell it stands for. `row_order` is
+ * always `"south-up"` — row 0 holds the southernmost cells — and the Go side
+ * refuses any other value rather than guessing, because a north-up raster read
+ * as south-up is a vertically mirrored noise map that looks entirely plausible.
+ */
+export interface RasterGeoreference {
+  origin_x: number;
+  origin_y: number;
+  pixel_size_m: number;
+  row_order: string;
+}
+
+/**
+ * A run's raster sidecar. Mirrors `results.RasterMetadata`.
+ *
+ * This is the parsed `.json` the run wrote, and browser mode hands it back
+ * untouched beside the `.bin` bytes rather than reconstructing it: the shape,
+ * the nodata value, the band names and the georeference have to be the ones
+ * the run recorded. The sidecar carries a few further bookkeeping keys
+ * (`data_file`, `encoding`, `cell_count`) that describe a file on disk; the
+ * kernel ignores them, and passing the whole object through is fine.
+ */
+export interface RasterMetadata {
+  width: number;
+  height: number;
+  bands: number;
+  nodata: number;
+  unit: string;
+  band_names?: string[];
+  crs?: string;
+  georeference?: RasterGeoreference;
+}
+
+/**
+ * What to trace, and where to put the result. Mirrors
+ * `wasmkernel.ContourRequest`.
+ *
+ * The raster *values* are not in here — they travel beside this JSON as a
+ * `Uint8Array`, because a 500x500 two-band grid is four megabytes of float64
+ * and rendering those as JSON numbers would cost more than the tracing does.
+ *
+ * `target_crs` is required, and unlike {@link TransformRequest} it has no
+ * `auto`: a map asking for contours already knows which CRS it draws in.
+ *
+ * `interval` defaults to 5 dB (the EU END convention) when omitted.
+ * `min_level` and `max_level` default to the raster's own data range.
+ */
+export interface ContourRequest {
+  raster: RasterMetadata;
+  target_crs: string;
+  interval?: number;
+  min_level?: number;
+  max_level?: number;
+}
+
+/** One contour line at one dB level. Mirrors `contour.Line`. */
+export interface ContourLine {
+  level: number;
+  band_name: string;
+  /** Vertices as `[x, y]` pairs, in {@link ContourResult.crs}. */
+  points: [number, number][];
+}
+
+/**
+ * The traced contours and the CRS they are in. Mirrors `contour.Result`.
+ *
+ * `crs` is always populated, because a consumer handed bare lines guesses
+ * WGS84 — which for a metric run puts the site off the coast of Africa.
+ * `interval` is echoed for the same reason: the caller may have omitted it and
+ * taken the default, and a legend naming the step has to know which it got.
+ *
+ * `lines` is always an array, never `null`. `contour.FromRaster` substitutes an
+ * empty slice before returning, precisely so that a raster with no valid data
+ * in any band does not marshal as `"lines": null` over both boundaries and
+ * leave every consumer to defend against it separately.
+ */
+export interface ContourResult {
+  crs: string;
+  interval: number;
+  lines: ContourLine[];
+}

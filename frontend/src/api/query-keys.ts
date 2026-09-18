@@ -30,4 +30,12 @@ export const queryKeys = {
     // metadata read and a raster read overwriting each other's cached value.
     bytes: (id: string) => [...queryKeys.artifacts.all, id, "bytes"] as const,
   },
+  contours: {
+    all: ["contours"] as const,
+    // Keyed on the options as well as the run: a different interval or a
+    // different CRS is a different answer, not a stale one, so they must not
+    // share a cache entry.
+    forRun: (runId: string, crs: string, interval: number | undefined) =>
+      ["contours", runId, crs, interval ?? "default"] as const,
+  },
 } as const;

@@ -81,6 +81,35 @@ export interface BackendCapabilities {
 }
 
 /** What the UI needs from a run deletion, mode-independent. */
+/** What a caller may vary about a contour request. */
+export interface ContourOptions {
+  /** The dB step between levels. Omitted, the backend uses 5 dB (EU END). */
+  interval?: number;
+  /** The CRS to return the vertices in. */
+  crs: string;
+}
+
+/**
+ * A run's contours, and the CRS they are in.
+ *
+ * `crs` is always populated. A consumer handed bare lines guesses WGS84, which
+ * for a metric run is the site off the coast of Africa. `interval` is echoed
+ * because the caller may have omitted it, and a legend naming the step has to
+ * know which step it got.
+ */
+export interface RunContours {
+  crs: string;
+  interval: number;
+  lines: ContourLine[];
+}
+
+/** One contour at one dB level, in {@link RunContours.crs}. */
+export interface ContourLine {
+  level: number;
+  band_name: string;
+  points: [number, number][];
+}
+
 export interface DeleteRunResult {
   runId: string;
   /**
@@ -164,6 +193,29 @@ export interface Backend {
    * button the other cannot serve.
    */
   getArtifactBytes(artifactId: string): Promise<ArrayBuffer>;
+  /**
+   * A run's noise contours, traced from its result raster.
+   *
+   * Both modes answer from the same Go marching squares — API mode over
+   * `GET /api/v1/runs/{id}/contours`, browser mode through the WASM kernel —
+   * so the two cannot put a 55 dB line in different places. The frontend
+   * deliberately has no tracer of its own, for the reason it has no projection
+   * of its own.
+   *
+   * The two modes ask differently and that is correct rather than tolerated:
+   * the server is holding the raster on disk and the browser is holding it in
+   * IndexedDB, so each asks with what it has. What must not differ is the
+   * answer, which is why both return the same shape.
+   *
+   * No capability flag guards it: both modes can do it, and a capability says
+   * what the UI may offer. That was not true before the kernel gained the
+   * export — which is exactly why the layer control had no contours toggle.
+   *
+   * Rejects when the run wrote no raster, when its receivers were not a grid,
+   * or when the contours cannot be moved into `crs`. Each refusal carries the
+   * contour package's own words.
+   */
+  getRunContours(runId: string, options: ContourOptions): Promise<RunContours>;
   /** A URL the browser can open or download the artifact from. */
   getArtifactURL(artifactId: string): string;
   importFromOSM(req: OsmImportRequest): Promise<GeoJSONFeatureCollection>;

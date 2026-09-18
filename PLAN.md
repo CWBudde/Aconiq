@@ -1624,12 +1624,18 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `ModelLayers` has run. The band is resolved by name, never by index — the picker's names are
       the receiver table's and the bands are the sidecar's. And `MAX_RASTER_DIMENSION` is a
       correctness cap, not a performance one, needed because only API mode caps its receivers.
-- [ ] **Results on the map: the contours.** No longer the same case as the raster.
-      `export.GenerateContours` has one caller — the `contour-geojson` and `contour-gpkg` formats
-      of `aconiq export` — so in API mode a contour artifact exists only after an explicit export
-      and in browser mode `createExport` writes none at all; a toggle would be live in one mode and
-      dead in the other. It needs Go's marching squares behind the kernel boundary first, the way
-      `transform` and `standards` already are. A TypeScript second implementation is not an option.
+- [x] **Results on the map: the contours** (#61). The blocker was never the layer:
+      `GenerateContours` had one caller, so browser mode wrote no contour at all. The geometry is
+      now `internal/report/contour`, below the CLI, the kernel and `httpv1` the way
+      `geo/crstransform` is, and `window.aconiq.contours` and `GET /api/v1/runs/{id}/contours` both
+      answer from `contour.FromRaster`. Three constraints stay live. The kernel **cannot** import
+      `internal/report/export` — its GeoPackage writer pulls eight `modernc.org/sqlite` packages
+      into a 4.4 MB WASM binary — which is why the geometry had to move out rather than be
+      re-exported from there. `FromRaster` refuses a CRS with no EPSG code where
+      `cli.contoursInWGS84` passes one through, and the split is deliberate: a file opened in QGIS
+      is a different risk from a layer this app draws under its own legend. And labels remain out
+      structurally, not by omission — no style in `basemap.ts` declares `glyphs`, and adding one
+      means adding it to `OFFLINE_STYLE`, which exists to survive without a network.
 - [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
 - [ ] **A per-indicator unit on the receiver table**, without which a mixed-unit run still gets no
       map at all. `ReceiverTable.Unit` is one string per table on both sides; making it per
@@ -2025,7 +2031,8 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] TypeScript client-generation pipeline for frontend API types.
 - [ ] Headless E2E smoke flow on the API side: import → validate → run → export.
 - [ ] Box select and multi-select on the map.
-- [ ] Contour overlays and labels on the result map.
+- [ ] Contour labels on the result map (the overlay itself landed in #61). Blocked on a glyph
+      source: see the Phase D entry for why `OFFLINE_STYLE` is what makes that a real decision.
 - [ ] Contribution breakdown per receiver or selected result.
 - [ ] Run-to-run diff layer; scenario change-set summary for model and parameter differences.
 - [ ] Performance guardrails for large feature counts — clustering or tile fallback.

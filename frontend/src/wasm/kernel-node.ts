@@ -22,6 +22,8 @@ import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel } from "./kernel";
 import type {
   ComputeRequest,
+  ContourRequest,
+  ContourResult,
   PropagationConfig,
   ReceiverOutput,
   TerrainInfo,
@@ -61,6 +63,7 @@ interface GoRuntimeGlobal {
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
+    contours: (payload: Uint8Array, json: string) => Promise<string>;
     standards: () => string;
     loadTerrain: (data: Uint8Array, crs: string) => string;
     clearTerrain: () => void;
@@ -156,6 +159,13 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
     async transform(req: TransformRequest): Promise<TransformResponse> {
       const json = await exports.transform(JSON.stringify(req));
       return JSON.parse(json) as TransformResponse;
+    },
+    async contours(
+      payload: Uint8Array,
+      req: ContourRequest,
+    ): Promise<ContourResult> {
+      const json = await exports.contours(payload, JSON.stringify(req));
+      return JSON.parse(json) as ContourResult;
     },
     standards(): StandardDescriptor[] {
       return JSON.parse(exports.standards()) as StandardDescriptor[];

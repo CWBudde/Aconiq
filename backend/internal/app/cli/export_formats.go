@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/contour"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
 	"github.com/aconiq/backend/internal/report/results"
 )
@@ -410,30 +411,16 @@ func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exp
 		return nil, fmt.Errorf("parse %s: %w", geoJSONCRS, err)
 	}
 
-	pipeline, err := geo.BuildTransformPipeline(to, from)
+	// The loop itself is contour.Reproject, shared with the two wire boundaries
+	// so a vertex moves the same way whichever asked. The two guard clauses
+	// above are what is *not* shared: they are this function's policy, and
+	// contour.FromRaster deliberately makes the opposite call.
+	moved, err := contour.Reproject(contours, from, to)
 	if err != nil {
-		return nil, fmt.Errorf("build transform %s -> %s: %w", from.ID, geoJSONCRS, err)
+		return nil, fmt.Errorf("reproject contours: %w", err)
 	}
 
-	out := make([]exportfmt.ContourLine, len(contours))
-
-	for i, contour := range contours {
-		moved := contour
-		moved.Points = make([][2]float64, len(contour.Points))
-
-		for j, point := range contour.Points {
-			transformed, err := pipeline.ApplyPoint(geo.Point2D{X: point[0], Y: point[1]})
-			if err != nil {
-				return nil, fmt.Errorf("contour %d vertex %d: %w", i, j, err)
-			}
-
-			moved.Points[j] = [2]float64{transformed.X, transformed.Y}
-		}
-
-		out[i] = moved
-	}
-
-	return out, nil
+	return moved, nil
 }
 
 func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
