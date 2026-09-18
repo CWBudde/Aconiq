@@ -206,11 +206,18 @@ async function withStore<T>(
  * success — and still listens on each request, because it can also surface
  * there, on the one write that did not fit.
  *
- * `operations` returns the requests it made so both can be watched.
+ * `operations` hands each request it makes to `watch`, which is generic so a
+ * `put` and a `delete` — `IDBRequest<IDBValidKey>` and `IDBRequest<undefined>`
+ * — can both be listened to. Collecting them into one array cannot: `onerror`
+ * carries a `this` of the request's own type, which makes `IDBRequest<T>`
+ * invariant, so there is no element type the two share.
  */
 async function withWriteTransaction(
   context: string,
-  operations: (store: IDBObjectStore) => IDBRequest<unknown>[],
+  operations: (
+    store: IDBObjectStore,
+    watch: <T>(request: IDBRequest<T>) => void,
+  ) => void,
 ): Promise<void> {
   const db = await openDatabase();
   return new Promise<void>((resolve, reject) => {
@@ -247,18 +254,16 @@ async function withWriteTransaction(
       settle(resolve);
     };
 
-    let requests: IDBRequest<unknown>[];
-    try {
-      requests = operations(tx.objectStore(STORE_NAME));
-    } catch (error) {
-      fail(error);
-      return;
-    }
-
-    for (const request of requests) {
+    const watch = <T>(request: IDBRequest<T>): void => {
       request.onerror = () => {
         fail(request.error);
       };
+    };
+
+    try {
+      operations(tx.objectStore(STORE_NAME), watch);
+    } catch (error) {
+      fail(error);
     }
   });
 }
@@ -280,9 +285,12 @@ export async function loadPersistedState(): Promise<unknown> {
  * through a function whose subject is what a write removes.
  */
 export async function savePersistedState(value: unknown): Promise<void> {
-  await withWriteTransaction("Browser-mode runs cannot be stored", (store) => [
-    store.put(value, STATE_KEY),
-  ]);
+  await withWriteTransaction(
+    "Browser-mode runs cannot be stored",
+    (store, watch) => {
+      watch(store.put(value, STATE_KEY));
+    },
+  );
 }
 
 /**
@@ -299,14 +307,17 @@ export async function savePersistedStateForgetting(
   value: unknown,
   artifactIds: readonly string[],
 ): Promise<void> {
-  await withWriteTransaction("Browser-mode runs cannot be stored", (store) => [
-    // Deletes before the put: within one transaction that is the order that
-    // gives the document the space the eviction just freed.
-    ...artifactIds.map((artifactId) =>
-      store.delete(artifactBytesKey(artifactId)),
-    ),
-    store.put(value, STATE_KEY),
-  ]);
+  await withWriteTransaction(
+    "Browser-mode runs cannot be stored",
+    (store, watch) => {
+      // Deletes before the put: within one transaction that is the order that
+      // gives the document the space the eviction just freed.
+      for (const artifactId of artifactIds) {
+        watch(store.delete(artifactBytesKey(artifactId)));
+      }
+      watch(store.put(value, STATE_KEY));
+    },
+  );
 }
 
 /**
@@ -384,10 +395,11 @@ export async function deleteArtifactBytes(
 ): Promise<void> {
   await withWriteTransaction(
     "Browser-mode raster data cannot be removed",
-    (store) =>
-      artifactIds.map((artifactId) =>
-        store.delete(artifactBytesKey(artifactId)),
-      ),
+    (store, watch) => {
+      for (const artifactId of artifactIds) {
+        watch(store.delete(artifactBytesKey(artifactId)));
+      }
+    },
   );
 }
 
