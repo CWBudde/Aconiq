@@ -429,6 +429,38 @@ function runFixture(index: number, startedAt: string) {
   };
 }
 
+/**
+ * A stored run whose raster bytes really are in the byte store, which is what
+ * makes "were they deleted?" a question with an answer.
+ */
+async function runFixtureWithRaster(index: number, startedAt: string) {
+  const fixture = runFixture(index, startedAt);
+  const artifactId = `artifact-${fixture.run.id}-raster-bin`;
+  await storage.saveArtifactBytes(artifactId, new ArrayBuffer(64));
+  return {
+    ...fixture,
+    run: {
+      ...fixture.run,
+      artifacts: [
+        {
+          id: artifactId,
+          kind: "run.result.raster_binary",
+          path: `${fixture.run.id}/results/rls19-road.bin`,
+          created_at: startedAt,
+        },
+      ],
+    },
+    artifacts: {
+      [artifactId]: {
+        kind: "run.result.raster_binary",
+        mimeType: "application/octet-stream",
+        encoding: "binary",
+        value: null,
+      },
+    },
+  };
+}
+
 async function persisted(): Promise<{ version: number; state: unknown }> {
   return (await storage.loadPersistedState()) as {
     version: number;
@@ -592,6 +624,44 @@ describe("persisted state", () => {
 
     const runs = await browserBackend.getRuns();
     expect(runs.map((run) => run.id)).toEqual(["run-0001"]);
+  });
+
+  /*
+   * `run.result.raster_binary` used to be stored as `text` whose value was the
+   * run's SHA-256 hex string. Those documents are still at version 1 — the
+   * version deliberately did not move, because a bump costs the reader its
+   * whole run list where this costs one raster that was never really stored.
+   * What the missing bump must not cost is a caller asking for an ArrayBuffer
+   * and being handed 64 characters of hex that decode as a raster of nothing.
+   */
+  it("refuses a pre-binary raster artifact instead of serving its digest", async () => {
+    const legacy = runFixture(1, "2026-01-01T10:00:00.000Z");
+    const artifactID = "artifact-run-0001-raster-bin";
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        runs: [
+          {
+            ...legacy,
+            artifacts: {
+              [artifactID]: {
+                kind: "run.result.raster_binary",
+                mimeType: "application/octet-stream",
+                encoding: "text",
+                value: "a".repeat(64),
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    // The run itself survives: its receiver table, sidecar and summary are
+    // still exactly what it wrote.
+    await expect(browserBackend.getRuns()).resolves.toHaveLength(1);
+    await expect(browserBackend.getArtifactContent(artifactID)).rejects.toThrow(
+      /bytes are not stored/,
+    );
   });
 
   it.each([
@@ -959,6 +1029,28 @@ describe("persisted state", () => {
       expect(runIDs((await persisted()).state)).toEqual(["run-0001"]);
     });
 
+    /*
+     * "Everything stored under it" has to include the bytes beside the
+     * document. Deleting only the document entry reclaims almost nothing, and
+     * run-then-delete, repeated, fills the origin's quota with rasters that no
+     * run names and only `clearPersistedState` would ever sweep.
+     */
+    it("removes the raster bytes the document stopped naming", async () => {
+      const stored = await runFixtureWithRaster(2, "2026-01-01T02:00:00.000Z");
+      const bytesID = stored.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [stored], runHighWaterMark: 2 },
+      });
+      resetBrowserBackendForTests();
+
+      await browserBackend.deleteRun("run-0002");
+
+      await vi.waitFor(async () => {
+        expect(await storage.loadArtifactBytes(bytesID)).toBeNull();
+      });
+    });
+
     it("does not free the id of the run it deleted", async () => {
       // The hazard the high-water mark exists for: without it the next run
       // would be `run-0002` again, `setRun` would replace a run that is
@@ -1146,6 +1238,55 @@ describe("persisted state", () => {
         "run-0002",
         "run-0001",
       ]);
+    });
+
+    /*
+     * The byte records are keyed outside the document, so deleting them is
+     * only safe once the document that stopped naming them is on disk. This
+     * is the path that used to lose data: the eviction deleted the victim's
+     * raster up front, the retry then failed, `persistRun` put the un-evicted
+     * list back — and the run it had just restored could no longer read its
+     * own raster.
+     */
+    it("keeps an evicted run's raster bytes when the retry fails too", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      const victimBytesID = victim.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      vi.spyOn(storage, "savePersistedState").mockRejectedValue(quota());
+
+      await browserBackend.startRun(RUN_SPEC).catch(() => undefined);
+
+      // The store still holds the run, so it must still hold its raster.
+      expect(runIDs((await persisted()).state)).toContain("run-0001");
+      expect(await storage.loadArtifactBytes(victimBytesID)).not.toBeNull();
+    });
+
+    it("deletes the evicted run's raster bytes once the eviction is stored", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      const victimBytesID = victim.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      vi.spyOn(storage, "savePersistedState").mockRejectedValueOnce(quota());
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(runIDs((await persisted()).state)).not.toContain("run-0001");
+      // Eviction exists to free quota, and the raster is the largest thing a
+      // run owns. The delete is deliberately not awaited by the writer.
+      await vi.waitFor(async () => {
+        expect(await storage.loadArtifactBytes(victimBytesID)).toBeNull();
+      });
     });
 
     it("surfaces a non-quota storage failure without evicting", async () => {

@@ -230,6 +230,9 @@ function decodeState(value: unknown): BrowserBackendState {
   const runs = (Array.isArray(value["runs"]) ? value["runs"] : []).filter(
     isStoredRun,
   );
+  for (const storedRun of runs) {
+    markLegacyRasterBytesMissing(storedRun);
+  }
   // A document written before the mark existed carries none, and the highest
   // stored id is exactly right for it: nothing could delete a run then, so no
   // id above the surviving ones was ever handed out.
@@ -244,6 +247,34 @@ function decodeState(value: unknown): BrowserBackendState {
         ? Math.max(storedMark, highestRunIndex(runs))
         : highestRunIndex(runs),
   };
+}
+
+/**
+ * Turns a pre-`binary` raster artifact into one that admits it has no bytes.
+ *
+ * Browser mode used to store `run.result.raster_binary` as `text` whose value
+ * was the run's SHA-256 hex string — 64 characters where a float64 array
+ * belongs. Those records are still in the store and `PERSISTED_STATE_VERSION`
+ * deliberately did not move for the change: a bump makes an older document
+ * unreadable and throws twenty runs away, where the cost here is one raster
+ * that was never really stored.
+ *
+ * What the missing bump would otherwise cost is the reason this exists.
+ * `getArtifactContent` reads bytes only for `encoding === "binary"`, so such an
+ * artifact would hand a caller asking for an `ArrayBuffer` a digest string that
+ * decodes as a raster of nothing. Relabelling it puts it on the path that
+ * already covers a document and a byte store that disagree, and it says so:
+ * "declares binary content, but its bytes are not stored". The run's other
+ * artifacts — receiver table, sidecar, summary — are untouched and still open.
+ */
+function markLegacyRasterBytesMissing(storedRun: StoredRun): void {
+  for (const content of Object.values(storedRun.artifacts)) {
+    if (content.kind !== "run.result.raster_binary") continue;
+    if (content.encoding === "binary") continue;
+    content.encoding = "binary";
+    content.mimeType = "application/octet-stream";
+    content.value = null;
+  }
 }
 
 /** The largest `run-NNNN` index among the stored runs, or 0. */
@@ -435,21 +466,23 @@ async function persistRun(
 ): Promise<void> {
   const next = setRun(await reloadState(), storedRun);
   try {
-    await persist(next);
+    await persist(next.state);
+    forgetArtifactBytes(next.dropped);
     return;
   } catch (error) {
     if (!isBrowserStorageError(error, "quota")) throw storeFailure(what, error);
   }
-  const evicted = evictOldestRun(next, storedRun.run.id);
+  const evicted = evictOldestRun(next.state, storedRun.run.id);
   if (evicted !== null) {
     try {
-      await persist(evicted);
+      await persist(evicted.state);
+      forgetArtifactBytes([...next.dropped, ...evicted.dropped]);
       return;
     } catch (error) {
       // The eviction never reached the store, so it must not reach the list
       // either — whatever the retry failed with: the user would see a run
       // vanish alongside an error about a different one.
-      state = next;
+      state = next.state;
       if (!isBrowserStorageError(error, "quota")) {
         throw storeFailure(what, error);
       }
@@ -472,11 +505,24 @@ function storeFailure(what: "run" | "export", error: unknown): Error {
   );
 }
 
+/**
+ * A state the caller has yet to commit, and the runs committing it drops.
+ *
+ * The two travel together because the byte records are keyed outside the
+ * document: deleting them is only safe once the document that stopped naming
+ * those runs is on disk. A write that fails leaves the old document in place,
+ * still naming them.
+ */
+type PendingState = {
+  state: BrowserBackendState;
+  dropped: StoredRun[];
+};
+
 /** Drops the oldest run other than `keepId`; `null` when there is none. */
 function evictOldestRun(
   current: BrowserBackendState,
   keepId: string,
-): BrowserBackendState | null {
+): PendingState | null {
   // `setRun` keeps the list newest first, so the victim is the last entry
   // that is not the run being written.
   const runs = [...current.runs];
@@ -486,24 +532,33 @@ function evictOldestRun(
     runs.splice(index, 1);
     // Eviction exists to free quota, and the raster bytes are the largest
     // thing a run owns — dropping the document entry while leaving them
-    // behind would evict a run and reclaim almost nothing.
-    forgetArtifactBytes(victim);
-    return { ...current, runs };
+    // behind would evict a run and reclaim almost nothing. The caller deletes
+    // them once this state is stored; an eviction that never commits is the
+    // retry path, and the run it would have dropped is still on disk.
+    return { state: { ...current, runs }, dropped: [victim] };
   }
   return null;
 }
 
 /**
- * Deletes the byte records of a run that is no longer in the document.
+ * Deletes the byte records of runs the stored document no longer names.
  *
- * Deliberately not awaited by its callers: the run is already gone from the
- * state they are about to write, and a failure here leaves an orphan record
- * rather than a broken run. `clearPersistedState` sweeps whatever is left.
+ * Call this only after the write that dropped them has committed. Doing it
+ * before is the one ordering that loses data: `persistRun` restores the
+ * un-evicted list when a retry fails, and the old document on disk still names
+ * the run, so bytes deleted ahead of the write leave a run whose raster reads
+ * as missing.
+ *
+ * Deliberately not awaited: by the time it runs the document is already
+ * written, and a failure here leaves an orphan record rather than a broken
+ * run. `clearPersistedState` sweeps whatever is left.
  */
-function forgetArtifactBytes(storedRun: StoredRun): void {
-  const binaryIds = Object.entries(storedRun.artifacts)
-    .filter(([, content]) => content.encoding === "binary")
-    .map(([artifactId]) => artifactId);
+function forgetArtifactBytes(storedRuns: StoredRun[]): void {
+  const binaryIds = storedRuns.flatMap((storedRun) =>
+    Object.entries(storedRun.artifacts)
+      .filter(([, content]) => content.encoding === "binary")
+      .map(([artifactId]) => artifactId),
+  );
   if (binaryIds.length === 0) return;
   void deleteArtifactBytes(binaryIds).catch(() => {
     // An orphaned byte record costs quota, not correctness.
@@ -579,28 +634,29 @@ function findArtifact(
 function setRun(
   current: BrowserBackendState,
   storedRun: StoredRun,
-): BrowserBackendState {
+): PendingState {
   const nextRuns = current.runs.filter(
     (entry) => entry.run.id !== storedRun.run.id,
   );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
   const kept = nextRuns.slice(0, MAX_STORED_RUNS);
-  // Whatever the cap drops takes its byte records with it. They are keyed
-  // separately from the document, so trimming the list alone would leave the
-  // largest part of every run past the cap in the store forever.
-  for (const dropped of nextRuns.slice(MAX_STORED_RUNS)) {
-    forgetArtifactBytes(dropped);
-  }
   return {
-    ...current,
-    runs: kept,
-    // Raised here rather than at mint time: this is the moment an id becomes
-    // real, and an eviction or a delete afterwards must not lower it.
-    runHighWaterMark: Math.max(
-      current.runHighWaterMark,
-      highestRunIndex([storedRun]),
-    ),
+    state: {
+      ...current,
+      runs: kept,
+      // Raised here rather than at mint time: this is the moment an id becomes
+      // real, and an eviction or a delete afterwards must not lower it.
+      runHighWaterMark: Math.max(
+        current.runHighWaterMark,
+        highestRunIndex([storedRun]),
+      ),
+    },
+    // Whatever the cap drops takes its byte records with it — once this state
+    // is stored. They are keyed separately from the document, so trimming the
+    // list alone would leave the largest part of every run past the cap in the
+    // store forever.
+    dropped: nextRuns.slice(MAX_STORED_RUNS),
   };
 }
 
@@ -1864,6 +1920,11 @@ out geom;`;
         ...current,
         runs: current.runs.filter((entry) => entry.run.id !== runId),
       });
+      // The raster bytes are keyed outside the document, so removing the run
+      // from it reclaims nothing on its own: run, delete, repeat would fill
+      // the origin's quota with rasters no run names. After the write, not
+      // before — a delete that did not commit still has a run to serve.
+      forgetArtifactBytes([storedRun]);
       // No paths and no surviving bundle: the export artifacts lived inside
       // the record just removed.
       return { runId, retainedPaths: [] };
