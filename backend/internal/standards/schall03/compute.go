@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/numeric"
 )
 
@@ -109,6 +110,11 @@ func normativeSinDelta2(rvX, rvY, dp, tvX, tvY, tvLen float64) float64 {
 // that crosses water bodies (Wasserflächen). It splits dp into a land portion
 // and a water portion to compute Gl. 13: A_gr = A_gr,B + A_gr,W.
 //
+// groundOffsetM is the mean elevation of the ground along the path above the
+// receiver's ground plane (Gl. 15, resolvePathGroundOffset).  It is resolved by
+// the caller, once per subsegment→receiver path, because it does not depend on
+// the Teilquelle height h and the loop below runs three times.
+//
 // The per-band accumulation is a plain float64 sum by design.  It runs over at
 // most 3 Teilquelle heights × NumBeiblattOctaveBands terms — the fixed-length
 // reduction docs/policies/determinism.md §3 exempts from compensated
@@ -119,7 +125,7 @@ func subsegmentContrib(
 	elevationM float64,
 	receiver ReceiverInput,
 	rayOrigin geo.Point2D,
-	dp, stepLen, sinDelta2, waterFractionW, dRho float64,
+	dp, stepLen, sinDelta2, waterFractionW, dRho, groundOffsetM float64,
 	barriers []BarrierSegment,
 ) float64 {
 	dI := directivityDI(sinDelta2)
@@ -139,7 +145,7 @@ func subsegmentContrib(
 			continue
 		}
 
-		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp)
+		path := newPathGeometry(elevationM+heightAboveSO[h], receiver.TerrainZ, receiver.HeightM, dp, groundOffsetM)
 		adivVal := adiv(path.SlantDistanceM)
 
 		// Gl. 13: A_gr = A_gr,B + A_gr,W.
@@ -186,16 +192,17 @@ func subsegmentContrib(
 // and no barriers.
 //
 // waterFractionW is the fraction [0, 1] of the horizontal source–receiver path
-// that crosses water bodies (Wasserflächen), for Gl. 13.
+// that crosses water bodies (Wasserflächen), for Gl. 13.  groundOffsetM is the
+// ground under the path, per Gl. 15.
 func normativeSubsegmentContrib(
 	emission *StreckeEmissionResult,
 	elevationM float64,
 	receiver ReceiverInput,
-	dp, stepLen, sinDelta2, waterFractionW float64,
+	dp, stepLen, sinDelta2, waterFractionW, groundOffsetM float64,
 ) float64 {
 	return subsegmentContrib(
 		emission, elevationM, receiver, geo.Point2D{},
-		dp, stepLen, sinDelta2, waterFractionW, 0,
+		dp, stepLen, sinDelta2, waterFractionW, 0, groundOffsetM,
 		nil,
 	)
 }
@@ -263,93 +270,38 @@ func lineSourceLevel(total float64) float64 {
 // centerline and returns the A-weighted equivalent continuous level L_pAeq at
 // the receiver per the normative propagation chain (Gl. 6, 8-16).
 //
-// waterFractionW is forwarded to normativeSubsegmentContrib for Gl. 13.
+// waterFractionW is forwarded to normativeSubsegmentContrib for Gl. 13.  dtm is
+// the terrain model the run computes over, or nil; it is sampled once per
+// subsegment for Gl. 15's ground term.
 func normativeLineSourceLpAeq(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
 	elevationM float64,
 	receiver ReceiverInput,
 	waterFractionW float64,
+	dtm terrain.Model,
 ) float64 {
 	var total numeric.CompensatedSum
 
 	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		dp, sd2 := directRayTerms(receiver, pt, tvX, tvY, tvLen)
-		total.Add(normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW))
+		groundOffsetM := resolvePathGroundOffset(dtm, pt, receiver)
+		total.Add(normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW, groundOffsetM))
 	})
 
 	return lineSourceLevel(total.Sum())
 }
 
-// ComputeNormativeReceiverLevels computes L_pAeq and L_r for one receiver
-// over all TrackSegments using the normative Gl. 1-2 + Gl. 8-16 + Gl. 33-34
-// pipeline.  K_S = 0 dB (Schienenbonus abolished since 2015 for Eisenbahnen).
+// ComputeNormativeReceiverLevels computes L_pAeq and L_r for one receiver over
+// all TrackSegments on the free-field path: no walls, no barriers, no terrain.
+//
+// K_S = 0 dB (Schienenbonus abolished since 2015 for Eisenbahnen), as for every
+// other entry point here.
 func ComputeNormativeReceiverLevels(
 	receiver ReceiverInput,
 	segments []TrackSegment,
 ) (NormativeReceiverLevels, error) {
-	if len(segments) == 0 {
-		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
-	}
-
-	err := receiver.Validate()
-	if err != nil {
-		return NormativeReceiverLevels{}, err
-	}
-
-	var daySum, nightSum numeric.CompensatedSum
-
-	parts, err := prepareSpeedZoneParts(segments)
-	if err != nil {
-		return NormativeReceiverLevels{}, err
-	}
-
-	for _, part := range parts {
-		seg := part.segment
-
-		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
-			}
-
-			dayLp := normativeLineSourceLpAeq(dayEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
-
-			if !math.IsInf(dayLp, -1) {
-				daySum.Add(math.Pow(10, 0.1*dayLp))
-			}
-
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
-			}
-
-			nightLp := normativeLineSourceLpAeq(nightEmission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
-
-			if !math.IsInf(nightLp, -1) {
-				nightSum.Add(math.Pow(10, 0.1*nightLp))
-			}
-		}
-	}
-
-	lpAeqDay := math.Inf(-1)
-	if daySum.Sum() > 0 {
-		lpAeqDay = 10 * math.Log10(daySum.Sum())
-	}
-
-	lpAeqNight := math.Inf(-1)
-	if nightSum.Sum() > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum.Sum())
-	}
-
-	const ks = 0.0 // K_S abolished for Eisenbahnen since 2015
-
-	return NormativeReceiverLevels{
-		LpAeqDay:   lpAeqDay,
-		LpAeqNight: lpAeqNight,
-		LrDay:      beurteilungspegel(lpAeqDay, ks),
-		LrNight:    beurteilungspegel(lpAeqNight, ks),
-	}, nil
+	return ComputeNormativeReceiverLevelsForScene(receiver, NormativeScene{Segments: segments})
 }
 
 // normativeSubsegmentContribWithBarriers is like normativeSubsegmentContrib but
@@ -360,16 +312,16 @@ func normativeSubsegmentContribWithBarriers(
 	elevationM float64,
 	receiver ReceiverInput,
 	sourcePoint geo.Point2D,
-	dp, stepLen, sinDelta2, waterFractionW float64,
+	dp, stepLen, sinDelta2, waterFractionW, groundOffsetM float64,
 	barriers []BarrierSegment,
 ) float64 {
 	if len(barriers) == 0 {
-		return normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW)
+		return normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, groundOffsetM)
 	}
 
 	return subsegmentContrib(
 		emission, elevationM, receiver, sourcePoint,
-		dp, stepLen, sinDelta2, waterFractionW, 0,
+		dp, stepLen, sinDelta2, waterFractionW, 0, groundOffsetM,
 		barriers,
 	)
 }
@@ -383,17 +335,19 @@ func normativeLineSourceLpAeqWithBarriers(
 	receiver ReceiverInput,
 	waterFractionW float64,
 	barriers []BarrierSegment,
+	dtm terrain.Model,
 ) float64 {
 	if len(barriers) == 0 {
-		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW)
+		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, dtm)
 	}
 
 	var total numeric.CompensatedSum
 
 	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		dp, sd2 := directRayTerms(receiver, pt, tvX, tvY, tvLen)
+		groundOffsetM := resolvePathGroundOffset(dtm, pt, receiver)
 		total.Add(normativeSubsegmentContribWithBarriers(
-			emission, elevationM, receiver, pt, dp, stepLen, sd2, waterFractionW, barriers,
+			emission, elevationM, receiver, pt, dp, stepLen, sd2, waterFractionW, groundOffsetM, barriers,
 		))
 	})
 
@@ -409,10 +363,11 @@ func addDirectWithBarriersAndReflected(
 	receiver ReceiverInput,
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
+	dtm terrain.Model,
 	sum *numeric.CompensatedSum,
 ) {
 	lp := normativeLineSourceLpAeqWithBarriers(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers,
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers, dtm,
 	)
 	if !math.IsInf(lp, -1) {
 		sum.Add(math.Pow(10, 0.1*lp))
@@ -423,22 +378,48 @@ func addDirectWithBarriersAndReflected(
 		return
 	}
 
-	reflLp := ComputeReflectedLineSourceLpAeqWithBarriers(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers,
+	reflLp := reflectedLineSourceLpAeqWithBarriers(
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers, dtm,
 	)
 	if !math.IsInf(reflLp, -1) {
 		sum.Add(math.Pow(10, 0.1*reflLp))
 	}
 }
 
-// ComputeNormativeReceiverLevelsWithScene computes L_pAeq and L_r including
-// both reflected paths (walls) and barrier diffraction (barriers).
-func ComputeNormativeReceiverLevelsWithScene(
+// NormativeScene is everything the Anlage-2 chain computes over, beyond the
+// receiver itself: the track segments that emit, the walls that reflect, the
+// barrier panels that shield, and the ground it all stands on.
+//
+// It exists so that the ground can reach the propagation kernel at all.  The
+// four older entry points take positional arguments and are called from about
+// forty places, so growing each of them a terrain parameter would have been a
+// change to every call site to say "no terrain" — and would have had to be made
+// again for the next scene-wide input.  They are now thin wrappers that build a
+// NormativeScene with no Terrain, which is exactly the flat-ground case they
+// already computed.
+//
+// Terrain is optional and may be nil.  It is the imported DTM, in the CRS the
+// run computes in; where it is absent, or does not reach a path, the ground
+// falls back to the receiver's own plane (resolvePathGroundOffset).
+type NormativeScene struct {
+	Segments []TrackSegment
+	Walls    []ReflectingWall
+	Barriers []BarrierSegment
+	Terrain  terrain.Model
+}
+
+// ComputeNormativeReceiverLevelsForScene computes L_pAeq and L_r for one
+// receiver over a whole scene: direct paths, reflected paths (walls), barrier
+// diffraction (barriers) and the ground beneath all of them (Gl. 15).
+//
+// It is the single normative propagation entry point; every other one in this
+// file delegates to it.
+func ComputeNormativeReceiverLevelsForScene(
 	receiver ReceiverInput,
-	segments []TrackSegment,
-	walls []ReflectingWall,
-	barriers []BarrierSegment,
+	scene NormativeScene,
 ) (NormativeReceiverLevels, error) {
+	segments, walls, barriers := scene.Segments, scene.Walls, scene.Barriers
+
 	if len(segments) == 0 {
 		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
 	}
@@ -478,14 +459,14 @@ func ComputeNormativeReceiverLevelsWithScene(
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
 
-			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, &daySum)
+			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, scene.Terrain, &daySum)
 
 			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}
 
-			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, &nightSum)
+			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, scene.Terrain, &nightSum)
 		}
 	}
 
@@ -509,100 +490,31 @@ func ComputeNormativeReceiverLevelsWithScene(
 	}, nil
 }
 
-// addDirectAndReflected computes the direct and reflected line-source
-// contributions for one emission result and adds the linear power to *sum.
-func addDirectAndReflected(
-	emission *StreckeEmissionResult,
-	seg TrackSegment,
-	receiver ReceiverInput,
-	walls []ReflectingWall,
-	sum *numeric.CompensatedSum,
-) {
-	lp := normativeLineSourceLpAeq(emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW)
-	if !math.IsInf(lp, -1) {
-		sum.Add(math.Pow(10, 0.1*lp))
-	}
-
-	if len(walls) == 0 {
-		return
-	}
-
-	reflLp := ComputeReflectedLineSourceLpAeq(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls,
-	)
-	if !math.IsInf(reflLp, -1) {
-		sum.Add(math.Pow(10, 0.1*reflLp))
-	}
-}
-
 // ComputeNormativeReceiverLevelsWithWalls computes L_pAeq and L_r including
-// reflected path contributions from the given walls.
+// reflected path contributions from the given walls, over flat ground.
 func ComputeNormativeReceiverLevelsWithWalls(
 	receiver ReceiverInput,
 	segments []TrackSegment,
 	walls []ReflectingWall,
 ) (NormativeReceiverLevels, error) {
-	if len(segments) == 0 {
-		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
-	}
+	return ComputeNormativeReceiverLevelsForScene(receiver, NormativeScene{Segments: segments, Walls: walls})
+}
 
-	err := receiver.Validate()
-	if err != nil {
-		return NormativeReceiverLevels{}, err
-	}
-
-	for i, w := range walls {
-		wallErr := w.Validate()
-		if wallErr != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("wall[%d]: %w", i, wallErr)
-		}
-	}
-
-	var daySum, nightSum numeric.CompensatedSum
-
-	parts, err := prepareSpeedZoneParts(segments)
-	if err != nil {
-		return NormativeReceiverLevels{}, err
-	}
-
-	for _, part := range parts {
-		seg := part.segment
-
-		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
-			}
-
-			addDirectAndReflected(dayEmission, seg, receiver, walls, &daySum)
-
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
-			}
-
-			addDirectAndReflected(nightEmission, seg, receiver, walls, &nightSum)
-		}
-	}
-
-	lpAeqDay := math.Inf(-1)
-	if daySum.Sum() > 0 {
-		lpAeqDay = 10 * math.Log10(daySum.Sum())
-	}
-
-	lpAeqNight := math.Inf(-1)
-	if nightSum.Sum() > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum.Sum())
-	}
-
-	const ks = 0.0
-
-	return NormativeReceiverLevels{
-		LpAeqDay:   lpAeqDay,
-		LpAeqNight: lpAeqNight,
-		LrDay:      beurteilungspegel(lpAeqDay, ks),
-		LrNight:    beurteilungspegel(lpAeqNight, ks),
-	}, nil
+// ComputeNormativeReceiverLevelsWithScene computes L_pAeq and L_r including
+// both reflected paths (walls) and barrier diffraction (barriers), over flat
+// ground.  Pass a NormativeScene to ComputeNormativeReceiverLevelsForScene to
+// put the path on real terrain.
+func ComputeNormativeReceiverLevelsWithScene(
+	receiver ReceiverInput,
+	segments []TrackSegment,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+) (NormativeReceiverLevels, error) {
+	return ComputeNormativeReceiverLevelsForScene(receiver, NormativeScene{
+		Segments: segments,
+		Walls:    walls,
+		Barriers: barriers,
+	})
 }
 
 // ReceiverOutput stores one computed receiver record.
@@ -647,7 +559,7 @@ func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources [
 	return outputs, nil
 }
 
-// ComputeNormativeReceiverOutputs runs the normative Anlage-2 chain for every
+// ComputeNormativeReceiverOutputsForScene runs the normative Anlage-2 chain for every
 // receiver in order and returns the same ReceiverOutput shape the preview
 // data-pack path produces, so both paths share one persistence layer.
 //
@@ -659,12 +571,12 @@ func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources [
 // Receivers arrive as ReceiverInput rather than geo.PointReceiver because each
 // one carries the elevation of the ground it stands on, which geo has no field
 // for and which every vertical propagation term is measured from.
-func ComputeNormativeReceiverOutputs(
+func ComputeNormativeReceiverOutputsForScene(
 	receivers []ReceiverInput,
-	segments []TrackSegment,
-	walls []ReflectingWall,
-	barriers []BarrierSegment,
+	scene NormativeScene,
 ) ([]ReceiverOutput, error) {
+	segments := scene.Segments
+
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -676,7 +588,7 @@ func ComputeNormativeReceiverOutputs(
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
 	for _, receiver := range receivers {
-		levels, err := ComputeNormativeReceiverLevelsWithScene(receiver, segments, walls, barriers)
+		levels, err := ComputeNormativeReceiverLevelsForScene(receiver, scene)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
@@ -691,6 +603,22 @@ func ComputeNormativeReceiverOutputs(
 	}
 
 	return outputs, nil
+}
+
+// ComputeNormativeReceiverOutputs is ComputeNormativeReceiverOutputsForScene
+// over a scene with no terrain: every path is measured against the flat ground
+// plane each receiver carries.
+func ComputeNormativeReceiverOutputs(
+	receivers []ReceiverInput,
+	segments []TrackSegment,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+) ([]ReceiverOutput, error) {
+	return ComputeNormativeReceiverOutputsForScene(receivers, NormativeScene{
+		Segments: segments,
+		Walls:    walls,
+		Barriers: barriers,
+	})
 }
 
 // finiteOrSilence replaces a -Inf level with the silenceDB sentinel.

@@ -277,11 +277,11 @@ func TestReflectedContribIsLowerThanDirect(t *testing.T) {
 	}
 
 	noLoss := schall03.ReflectedSubsegmentContrib(
-		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0, 0,
 	)
 
 	withLoss := schall03.ReflectedSubsegmentContrib(
-		emission, 0, receiver, 50.0, 10.0, 1.0, 0, -1,
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, -1, 0,
 	)
 
 	if withLoss >= noLoss {
@@ -303,11 +303,11 @@ func TestReflectedContribHardWallNoLoss(t *testing.T) {
 	}
 
 	a := schall03.ReflectedSubsegmentContrib(
-		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0, 0,
 	)
 
 	b := schall03.ReflectedSubsegmentContrib(
-		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0,
+		emission, 0, receiver, 50.0, 10.0, 1.0, 0, 0, 0,
 	)
 
 	assertApproxRefl(t, a, b, 0.001, "hard wall same dist")

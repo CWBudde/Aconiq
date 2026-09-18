@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 )
 
 const maxIntegrationStepM = 10.0
@@ -150,19 +151,33 @@ func agrB(hm, d float64) float64 {
 	return math.Max(val, 0.0)
 }
 
-// meanPathHeight returns h_m, the mean height of the propagation path above
-// ground, for Gl. 14.  hg and hr are heights *above ground*, never absolute
-// elevations; newPathGeometry is what converts one into the other.
+// meanPathHeight returns h_m, the mean height of the propagation path above the
+// ground beneath it, for Gl. 14.
 //
-// KNOWN SIMPLIFICATION: Gl. 15 defines h_m = S/d, with S the area between the
-// propagation path and the terrain profile (Bild 4).  This implementation has
-// no terrain profile and therefore evaluates the flat-ground special case, for
-// which the area under the straight source→receiver path is a trapezoid and
-// S/d reduces exactly to (h_g + h_r)/2.  Over sloping or undulating ground the
-// value deviates from the normative h_m.  Listed in
-// docs/conformance/schall03-konformitaetserklaerung.md as a known limitation.
-func meanPathHeight(hg, hr float64) float64 {
-	hm := (hg + hr) / 2
+// Gl. 15 defines h_m = S/d, with S the area between the propagation path and
+// the terrain profile (Bild 4).  Divided by d, that is the mean height of the
+// straight source→receiver path above the terrain, which separates into two
+// means that can be taken independently:
+//
+//	h_m = mean height of the path − mean elevation of the ground under it.
+//
+// The path is straight, so its mean height over the receiver's own ground plane
+// is the trapezoid (h_g + h_r)/2 — exactly the value Gl. 15 collapses to over
+// level ground.  groundOffsetM is what the ground actually does underneath:
+// the mean elevation of the terrain along the path, measured from that same
+// plane.  It is 0 for level ground, positive where the path crosses a ridge or
+// climbs towards the source, negative over a valley or a falling slope, and it
+// is resolved once per subsegment→receiver path by resolvePathGroundOffset.
+//
+// hg and hr are heights *above that plane*, never absolute elevations;
+// newPathGeometry is what converts one into the other.
+//
+// The ≥ 0 floor keeps a path that runs below the mean ground — a cutting, or a
+// receiver in a hollow — out of the negative branch of Gl. 14, where the
+// bracket would grow without limit and A_gr,B with it.  Gl. 15 defines no such
+// case; refusing to extrapolate it is the conservative reading.
+func meanPathHeight(hg, hr, groundOffsetM float64) float64 {
+	hm := (hg+hr)/2 - groundOffsetM
 	if hm < 0 {
 		hm = 0
 	}
@@ -182,8 +197,11 @@ func meanPathHeight(hg, hr float64) float64 {
 // — at a site 400 m above sea level it drove h_m to ~202 m, where Gl. 14's
 // bracket goes negative and the ≥ 0 dB clamp erases the Bodendämpfung.
 //
-// Both groups are served from the same two numbers, because Anlage 2's ground
-// model is flat: one ground plane carries the whole path (see meanPathHeight).
+// D_Ω and the Abschirmprüfung are served from the same two numbers, measured
+// against one reference plane: Gl. 9 mirrors the source in a plane, and
+// BarrierSegment.TopHeightM is a height above one.  That plane is flat, which
+// is the residual approximation declared as deviation 4.  h_m is not tied to
+// it: MeanHeightM carries the ground under the path (see meanPathHeight).
 type pathGeometry struct {
 	// SourceHeightM is h_g, the Teilquelle's height above the ground plane [m].
 	SourceHeightM float64
@@ -198,25 +216,34 @@ type pathGeometry struct {
 	DOmega float64
 }
 
-// newPathGeometry resolves one propagation path.
+// newPathGeometry resolves one propagation path.  It is a pure function of
+// numbers already resolved: the ground arrives as groundOffsetM, never as a
+// terrain model, so the DTM is sampled once per subsegment→receiver path
+// rather than once per Teilquelle height.
 //
 // sourceZ is the absolute Z of the Teilquelle — the track's elevation_m plus
 // the Teilquelle's height above Schienenoberkante.  groundZ is the absolute Z
-// of the ground plane the path runs over, taken from the receiver because that
-// is where the assessment happens and because the flat-ground model gives
-// source and receiver one shared plane.  receiverHeightM is the receiver's
-// height above that plane, and dp the horizontal source–receiver distance.
+// of the reference plane the path is measured against, taken from the receiver
+// because that is where the assessment happens.  receiverHeightM is the
+// receiver's height above that plane, and dp the horizontal source–receiver
+// distance.
 //
-// A scene whose ground sits at Z = 0 is the identity case: sourceZ is then
-// already a height above ground and every term comes out as it did before the
-// ground plane existed.
-func newPathGeometry(sourceZ, groundZ, receiverHeightM, dp float64) pathGeometry {
+// groundOffsetM is the mean elevation of the terrain along the path, measured
+// from that same plane, and enters h_m alone (Gl. 15).  D_Ω (Gl. 9), d
+// (Gl. 11/12) and the heights handed to the Abschirmprüfung (Nr. 6.5) stay on
+// the reference plane: Gl. 9 mirrors the source in a plane and Nr. 6.5 needs
+// two endpoint heights in one datum, and neither has a terrain profile to
+// stand on.
+//
+// groundOffsetM = 0 is the identity case — level ground, or no terrain model at
+// all — and reproduces bit for bit what the flat-ground reading computed.
+func newPathGeometry(sourceZ, groundZ, receiverHeightM, dp, groundOffsetM float64) pathGeometry {
 	path := pathGeometry{
 		SourceHeightM:   sourceZ - groundZ,
 		ReceiverHeightM: receiverHeightM,
 	}
 
-	path.MeanHeightM = meanPathHeight(path.SourceHeightM, path.ReceiverHeightM)
+	path.MeanHeightM = meanPathHeight(path.SourceHeightM, path.ReceiverHeightM, groundOffsetM)
 
 	// Both heights are measured from the same plane, so their difference is the
 	// vertical separation of the two points and the plane cancels out of d.
@@ -230,6 +257,85 @@ func newPathGeometry(sourceZ, groundZ, receiverHeightM, dp float64) pathGeometry
 	path.DOmega = solidAngleDOmega(dp, path.SourceHeightM, path.ReceiverHeightM)
 
 	return path
+}
+
+// terrainSampleStepM is the nominal spacing at which a DTM is sampled along one
+// propagation path for h_m (Gl. 15).
+//
+// It is deliberately coarser than maxIntegrationStepM = 10 m, the length of a
+// track subsegment, because the two steps discretise different things.  The
+// integration step cuts the *line source* into point sources, and its length
+// bounds the error of Gl. 6's summation; the sampling step resolves the *ground
+// profile* under one such point source's path, and the profile enters the
+// result only through its mean, through the single term 2·h_m/d of Gl. 14.
+// Sampling the ground at the integration step would multiply the DTM queries
+// per run by roughly the ratio of the two — the terrain sampling of RLS-19 was
+// measured at about 28 % of its runtime — and buy accuracy that one averaged
+// term cannot express.  25 m resolves an embankment, a cutting or a valley
+// floor at the distances Anlage 2 assesses, and terrain.MeanRiseAboveChord
+// caps the sample count per path in any case.
+const terrainSampleStepM = 25.0
+
+// resolvePathGroundOffset returns the mean elevation of the ground along one
+// subsegment→receiver path, measured from the receiver's own ground plane —
+// the groundOffsetM that newPathGeometry and Gl. 15 consume.
+//
+// The composition is the one terrain.MeanRiseAboveChord's doc comment
+// prescribes.  The mean ground elevation along the path is
+//
+//	avgGroundZ = (sourceGroundZ + receiverGroundZ)/2 + MeanRiseAboveChord(…)
+//
+// and this function returns avgGroundZ − receiverGroundZ.  It is expressed as a
+// difference from the receiver's plane rather than as an absolute Z so that the
+// no-terrain case cancels exactly rather than nearly: with no DTM the offset is
+// the literal 0 that leaves h_m at (h_g + h_r)/2 bit for bit.
+//
+// receiverGroundZ is ReceiverInput.TerrainZ, which the CLI already fills per
+// receiver from the DTM; sampling the grid again under the receiver could only
+// disagree with the datum every other term is measured against.
+//
+// **A path the DTM does not span end to end gets no ground term at all.**  Not
+// a partial one: the rule is all or nothing, and MeanRiseAboveChord's ok is the
+// test, because it reports false unless *both* endpoints fall inside the grid.
+// The trap it closes is that TerrainZ is not always a measurement — for a
+// receiver the DTM misses, schall03ReceiverGroundZ substitutes the mean of the
+// receivers it does reach — so halving the difference between that inherited
+// mean and a real sample at the source end would apply a correction built on a
+// number nobody measured there, while d, D_Ω and the Abschirmprüfung all stayed
+// on the TerrainZ plane.  Falling back to the flat-plane reading keeps the
+// whole path on one datum, and a miss is still never read as an elevation of
+// zero.
+//
+// Do NOT substitute TrackSegment.ElevationM for a missing sourceGroundZ: that
+// is the Schienenoberkante, not the ground under it, and it would move every
+// scene declaring a bridge or an embankment whether or not a DTM exists.
+func resolvePathGroundOffset(dtm terrain.Model, source geo.Point2D, receiver ReceiverInput) float64 {
+	if dtm == nil {
+		return 0
+	}
+
+	// Asked first, for its ok as much as for its value: it is the one call that
+	// answers "does the terrain span this whole path".
+	rise, ok := terrain.MeanRiseAboveChord(
+		dtm,
+		source.X, source.Y,
+		receiver.Point.X, receiver.Point.Y,
+		terrainSampleStepM,
+	)
+	if !ok {
+		return 0
+	}
+
+	// Guarded rather than assumed.  MeanRiseAboveChord has already sampled this
+	// point, so ok here is implied today — but relying on the order another
+	// package happens to do its work in is how a partial correction gets back
+	// in.
+	sourceGroundZ, ok := dtm.ElevationAt(source.X, source.Y)
+	if !ok {
+		return 0
+	}
+
+	return (sourceGroundZ-receiver.TerrainZ)/2 + rise
 }
 
 // agrW computes the water-body ground correction per Gl. 16.

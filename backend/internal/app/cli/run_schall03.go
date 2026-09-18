@@ -144,7 +144,15 @@ func computeSchall03Normative(
 
 	result.warnOnUngroundedElevation(terrainModel, scene.Segments)
 
-	result.Outputs, err = schall03.ComputeNormativeReceiverOutputs(receiverInputs, scene.Segments, scene.Walls, scene.Barriers)
+	// The DTM goes into the scene, not just into the receivers' datum: the
+	// propagation chain samples it along every subsegment→receiver path for
+	// Gl. 15's h_m.
+	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForScene(receiverInputs, schall03.NormativeScene{
+		Segments: scene.Segments,
+		Walls:    scene.Walls,
+		Barriers: scene.Barriers,
+		Terrain:  terrainModel,
+	})
 	if err != nil {
 		return schall03RunResult{}, fmt.Errorf("compute Schall 03 normative receiver levels: %w", err)
 	}
@@ -187,7 +195,7 @@ func computeSchall03Preview(
 }
 
 // warnOnUngroundedElevation says out loud which of the two readings of
-// elevation_m the run just used.
+// elevation_m the run just used, and what else the run gave up with the DTM.
 //
 // With no DTM every receiver's ground sits at Z = 0, so a track's elevation_m
 // is read as a height above that ground — the right reading for a hand-written
@@ -199,6 +207,13 @@ func computeSchall03Preview(
 // project carries no DTM today because that import creates no terrain
 // artifact. There the levels are computed as though the whole site stood
 // hundreds of metres above its own ground.
+//
+// The DTM now does more than set that datum. It is also the terrain profile
+// Gl. 15 measures h_m against: with one, the ground under each
+// subsegment→receiver path is sampled and the Bodendämpfung of Gl. 14 follows
+// the hillside; without one, every path runs over one flat plane, which is the
+// special case S/d = (h_g + h_r)/2 and deviation 4 of the conformance
+// declaration. Both facts have the same remedy, so they are said together.
 func (r *schall03RunResult) warnOnUngroundedElevation(terrainModel terrain.Model, segments []schall03.TrackSegment) {
 	if terrainModel != nil {
 		return
@@ -209,10 +224,12 @@ func (r *schall03RunResult) warnOnUngroundedElevation(terrainModel terrain.Model
 	}
 
 	r.logf(
-		"WARNING no terrain model: elevation_m is read as a height above the ground under each receiver. " +
-			"That is correct where it means a bridge or embankment height, and wrong where it is an absolute Z — " +
-			"a SoundPLAN-imported project is the case in point, because its elevation_m is the rail's ZTrack and the " +
-			"SoundPLAN import does not yet produce a DTM. Import one with `aconiq import --terrain` to put the path on real ground.",
+		"WARNING no terrain model: elevation_m is read as a height above the ground under each receiver, and " +
+			"h_m (Gl. 15) falls back to the flat-ground case (h_g + h_r)/2 because there is no terrain profile to " +
+			"measure the propagation path against. The first is correct where elevation_m means a bridge or " +
+			"embankment height, and wrong where it is an absolute Z — a SoundPLAN-imported project is the case in " +
+			"point, because its elevation_m is the rail's ZTrack and the SoundPLAN import does not yet produce a DTM. " +
+			"Import one with `aconiq import --terrain` to put the path on real ground.",
 	)
 }
 

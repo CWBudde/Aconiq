@@ -27,7 +27,13 @@ interface Window {
     rls19Road: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     standards: () => string;
-    loadTerrain: (data: Uint8Array) => string;
+    /**
+     * The CRS is a required second argument: the Go GeoTIFF loader reads the
+     * tie point and the pixel scale and no GeoKeyDirectory, so the raster does
+     * not say what it is in, and a compute request carries bare numbers. See
+     * `AconiqKernel.loadTerrain`.
+     */
+    loadTerrain: (data: Uint8Array, crs: string) => string;
     clearTerrain: () => void;
     defaultConfig: () => string;
     health: () => string;

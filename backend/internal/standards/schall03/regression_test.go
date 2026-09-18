@@ -542,10 +542,10 @@ func TestSubsegmentContribIsOrderDeterministic(t *testing.T) {
 		HeightM: 4.7,
 	}
 
-	first := normativeSubsegmentContrib(emission, 1.3, receiver, 137.0, 3.7, 0.83, 0.0)
+	first := normativeSubsegmentContrib(emission, 1.3, receiver, 137.0, 3.7, 0.83, 0.0, 0.0)
 
 	for i := range 500 {
-		got := normativeSubsegmentContrib(emission, 1.3, receiver, 137.0, 3.7, 0.83, 0.0)
+		got := normativeSubsegmentContrib(emission, 1.3, receiver, 137.0, 3.7, 0.83, 0.0, 0.0)
 		if got != first {
 			t.Fatalf("run %d: summation is not bit-identical: %.20g vs %.20g", i, got, first)
 		}

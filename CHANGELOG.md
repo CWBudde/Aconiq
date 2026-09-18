@@ -158,6 +158,34 @@ with results produced after them.
   bit-identical. The correction reaches a project that carries a DTM; a SoundPLAN-imported project
   does not yet carry one (see `Known limitations`), and a run in that state now warns in `run.log`
   which of the two readings of `elevation_m` it took.
+- **numeric**, **breaking** Schall 03: `h_m` (Gl. 15) ignored the terrain between source and
+  receiver. Gl. 15 defines `h_m = S/d`, the area between the propagation path and the terrain
+  profile; the chain evaluated the flat-ground special case `(h_g + h_r)/2` at every site, whatever
+  lay in between. `h_m` carries a minus sign in Gl. 14, so a path the terrain falls away under was
+  credited with ground attenuation the ground does not provide. A run that carries a DTM now samples
+  it along every subsegment→receiver path and measures `h_m` against the mean ground beneath, using
+  the same `terrain.MeanRiseAboveChord` composition RLS-19 uses. Measured end to end through the
+  CLI: an unscreened receiver 60 m from the track whose path crosses a 3 m hollow read **1.16 dB
+  low** (`L_r,Tag` 57.65 dB against 58.81 dB); a ridge moves it the other way. `schall03` is a
+  normative-tier module, so per `docs/policies/releases.md` this counts as a **breaking** change
+  even though it is a correction and no signature moved — results from before it are not comparable
+  with results from after it. A run with no DTM, or a path whose ends fall outside the one it has,
+  keeps the flat-ground value bit for bit and says so in `run.log`; every existing golden snapshot
+  is unchanged. What stays flat is the reference plane for `D_Ω` (Gl. 9) and for the
+  Abschirmprüfung (Nr. 6.5) — terrain still does not screen — and the Rangierbahnhof entry point,
+  which no CLI command can reach.
+- WebAssembly kernel: a terrain model is now queried in the CRS it was written in, not in the CRS
+  the run computes in. `cmd/wasm/main.go` handed the DTM compute-CRS coordinates twice — once at
+  the receiver centroid for `ReceiverTerrainZ`, and once as `PropagationConfig.TerrainModel`, which
+  is the ground `h_m` is measured above on every path — while `loadTerrain` took no CRS at all and
+  the GeoTIFF loader reads none from the file. Every lookup would have fallen outside the grid, and
+  a miss reads as sea level. **No computed level moves:** nothing in `frontend/src` called
+  `loadTerrain`, so the defect was latent on every reachable path and is closed before a call site
+  existed to be wrong. `loadTerrain(data, crs)` now requires the DTM's own CRS, a compute request
+  carries the `projection` the browser already resolved, and a run over a loaded terrain without
+  one is refused rather than answered from a grid queried in the wrong CRS. The wrapper is
+  `terrain.InComputeCRS`, shared with `aconiq run`; the kernel-side logic moved into
+  `internal/wasmkernel`, where a host `go test` can reach it.
 - Schall 03 refused to admit that a DTM covering no receiver at all left every receiver on the
   sea-level datum. A terrain model whose extent and the receivers' have nothing in common — almost
   always a CRS mismatch — now fails the run as a user error, quoting both extents, instead of

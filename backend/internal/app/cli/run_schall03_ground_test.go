@@ -34,6 +34,18 @@ const schall03TranslationM = 400.0
 // The two scenes below are the same site: one at sea level, one lifted 400 m —
 // track, receiver and the ground beneath the receiver all together. Nothing
 // about the acoustics changes, so neither may the level.
+//
+// The comparison is exact, and stays exact now that the propagation path also
+// samples the DTM along its length — but that exactness rests on the grid. A
+// terrain model interpolates bilinearly, v00·(1−fx)(1−fy) + v10·fx(1−fy) +
+// v01·(1−fx)fy + v11·fx·fy, whose four weights sum to 1 only up to rounding: at
+// a plateau of 0 m every product is exactly 0, while at 400 m an awkward
+// fraction returns 400 ± one ULP (≈ 5.7e−14 m). Here every sample lands on a
+// pixel centre or exactly half way between two (the DTM is 10 m and so is the
+// integration step), where the weights are 0, 1 or ½ and the sum is exact. At
+// 50 m pixels the same scene drifts by 1.4e−14 dB. So a failure here in the
+// 1e−13 dB range means the grid changed, not the physics; anything larger is
+// the real thing — the defect this test guards against was 7.0 dB.
 func TestRunSchall03IsInvariantWhenTheWholeSceneMovesUphill(t *testing.T) {
 	t.Parallel()
 
@@ -60,7 +72,7 @@ func TestRunSchall03IsInvariantWhenTheWholeSceneMovesUphill(t *testing.T) {
 		for indicator, level := range sea {
 			lifted := plateau[indicator]
 			if lifted != level {
-				t.Errorf("receiver %q %s: %.6f dB at sea level, %.6f dB 400 m up (%.6f dB)",
+				t.Errorf("receiver %q %s: %.6f dB at sea level, %.6f dB 400 m up (%.6g dB)",
 					id, indicator, level, lifted, lifted-level)
 			}
 		}
@@ -99,6 +111,16 @@ func assertSchall03WallStillScreens(t *testing.T, levels map[string]map[string]f
 func runSchall03GroundScene(t *testing.T, groundZ float64) map[string]map[string]float64 {
 	t.Helper()
 
+	return runSchall03GroundSceneOn(t, groundZ, func(_, _ float64) float64 { return groundZ })
+}
+
+// runSchall03GroundSceneOn is runSchall03GroundScene over an arbitrary surface:
+// surfaceZ gives the DTM elevation at a point in the project CRS, so the same
+// scene can be run over a plateau, a slope or a ridge without a second copy of
+// the pipeline. groundZ still sets the track's elevation_m.
+func runSchall03GroundSceneOn(t *testing.T, groundZ float64, surfaceZ func(x, y float64) float64) map[string]map[string]float64 {
+	t.Helper()
+
 	projectDir := t.TempDir()
 
 	modelPath := filepath.Join(projectDir, "model.geojson")
@@ -108,10 +130,15 @@ func runSchall03GroundScene(t *testing.T, groundZ float64) map[string]map[string
 		t.Fatalf("write model: %v", err)
 	}
 
-	// The DTM covers x, y ∈ [-200, 600] at 50 m resolution, comfortably around
-	// the track and all three receivers.
+	// The DTM covers x ∈ [-200, 750] and y ∈ [-350, 600] at 10 m resolution,
+	// comfortably around the track and all three receivers. The resolution is
+	// what lets a caller put relief *between* the track and a receiver without
+	// disturbing the ground either of them stands on: the track (y = 0) and all
+	// three receivers (y = 60, 250, −60; x = 200) sit exactly on pixel centres,
+	// so their own elevations are read straight off the grid with no
+	// interpolation across a neighbouring row.
 	terrainPath := filepath.Join(projectDir, "dtm.tif")
-	writeFlatGeoTIFF(t, terrainPath, 16, 16, -200, 600, 50, groundZ)
+	writeGeoTIFF(t, terrainPath, 96, 96, -200, 600, 10, surfaceZ)
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Ground", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath, "--terrain", terrainPath)
@@ -235,11 +262,20 @@ func schall03GroundModelJSON(groundZ float64) string {
 }`, groundZ)
 }
 
-// writeFlatGeoTIFF writes an uncompressed single-strip float32 GeoTIFF whose
-// every pixel holds the same elevation — a level plateau, which is exactly the
-// flat ground Anlage 2's h_m simplification assumes. originX/originY are the
-// upper-left corner in the project CRS.
+// writeFlatGeoTIFF writes a DTM whose every pixel holds the same elevation — a
+// level plateau, which is the flat ground the old h_m simplification assumed
+// everywhere.
 func writeFlatGeoTIFF(t *testing.T, path string, width, height int, originX, originY, pixelSize, elevation float64) {
+	t.Helper()
+
+	writeGeoTIFF(t, path, width, height, originX, originY, pixelSize, func(_, _ float64) float64 { return elevation })
+}
+
+// writeGeoTIFF writes an uncompressed single-strip float32 GeoTIFF sampling
+// surfaceZ at each pixel centre. originX/originY are the upper-left *pixel
+// centre* in the project CRS, which is the tie point the reader expects, so
+// pixel (col, row) sits at (originX + col·pixelSize, originY − row·pixelSize).
+func writeGeoTIFF(t *testing.T, path string, width, height int, originX, originY, pixelSize float64, surfaceZ func(x, y float64) float64) {
 	t.Helper()
 
 	order := binary.LittleEndian
@@ -264,7 +300,10 @@ func writeFlatGeoTIFF(t *testing.T, path string, width, height int, originX, ori
 	order.PutUint32(buf[4:], uint32(ifdOffset))
 
 	for i := range width * height {
-		order.PutUint32(buf[pixelOffset+i*bytesPerPixel:], math.Float32bits(float32(elevation)))
+		x := originX + float64(i%width)*pixelSize
+		y := originY - float64(i/width)*pixelSize
+
+		order.PutUint32(buf[pixelOffset+i*bytesPerPixel:], math.Float32bits(float32(surfaceZ(x, y))))
 	}
 
 	pos := ifdOffset
@@ -407,5 +446,79 @@ func TestRunSchall03WarnsWhenElevationHasNoGroundUnderIt(t *testing.T) {
 		if !strings.Contains(string(logPayload), want) {
 			t.Errorf("run.log does not mention %q:\n%s", want, logPayload)
 		}
+	}
+}
+
+// schall03HollowDepthM is the depth of the hollow the test below puts between
+// the track and the `open` receiver. Three metres is a drainage swale or an old
+// borrow pit: ordinary relief, chosen shallow so the measured delta is what a
+// commonplace site costs rather than a worst case, and so that Gl. 14's ≥ 0 dB
+// clamp does not fire and flatten the comparison.
+const schall03HollowDepthM = 3.0
+
+// TestRunSchall03FollowsTheTerrainBetweenSourceAndReceiver is the end-to-end
+// statement of Gl. 15: h_m = S/d is the mean height of the path above the
+// *terrain profile*, not above one level plane carrying the whole site.
+//
+// Both runs use the same model. The two DTMs agree exactly at the track and at
+// every receiver — the hollow lives on the pixel rows y = −20, −30 and −40 m,
+// and the track and all three receivers sit on rows of their own that bilinear
+// interpolation never mixes it into — so the reference plane of deviation 10 is
+// identical in both runs and the only thing that differs is the ground
+// *between* the ends. That isolates the term under test: any level change is
+// the h_m correction and nothing else.
+//
+// `near` (60 m out, behind the wall) and `far` (250 m out, behind the wall)
+// have paths on the other side of the track and must not move at all. `open`
+// is 60 m out on the hollow's side with nothing between it and the track: its
+// path runs over the hollow, the mean ground under it drops, and h_m — the mean
+// height of the path *above that ground* — grows. Gl. 14 carries h_m with a
+// minus sign, so A_gr,B shrinks and the receiver gets louder. This is the
+// direction that matters: the flat-ground reading claimed a ground attenuation
+// the terrain does not provide.
+func TestRunSchall03FollowsTheTerrainBetweenSourceAndReceiver(t *testing.T) {
+	t.Parallel()
+
+	const groundZ = 100.0
+
+	level := runSchall03GroundSceneOn(t, groundZ, func(_, _ float64) float64 { return groundZ })
+
+	hollow := runSchall03GroundSceneOn(t, groundZ, func(_, y float64) float64 {
+		if y == -20 || y == -30 || y == -40 {
+			return groundZ - schall03HollowDepthM
+		}
+
+		return groundZ
+	})
+
+	for _, id := range []string{"near", "far"} {
+		for _, indicator := range []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight} {
+			if hollow[id][indicator] != level[id][indicator] {
+				t.Errorf("receiver %q %s moved although its path never reaches the hollow: %.6f dB against %.6f dB",
+					id, indicator, hollow[id][indicator], level[id][indicator])
+			}
+		}
+	}
+
+	for _, indicator := range []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight} {
+		flat := level["open"][indicator]
+
+		corrected := hollow["open"][indicator]
+		if corrected <= flat {
+			t.Errorf("%s at `open`: %.6f dB over the hollow against %.6f dB over level ground — Gl. 14 requires the hollow to remove ground attenuation",
+				indicator, corrected, flat)
+		}
+
+		// The measured magnitude, recorded here and in CHANGELOG.md. It is
+		// asserted as a band rather than a point so that an unrelated change to
+		// the emission chain does not rewrite this test, while losing the terrain
+		// term altogether (delta 0) or double-counting it does.
+		delta := corrected - flat
+		if delta < 0.5 || delta > 2.0 {
+			t.Errorf("%s at `open`: the hollow changed the level by %.4f dB, expected 0.5 to 2.0 dB", indicator, delta)
+		}
+
+		t.Logf("%s at `open`: level ground %.4f dB, %g m hollow %.4f dB (%.4f dB louder)",
+			indicator, flat, schall03HollowDepthM, corrected, delta)
 	}
 }

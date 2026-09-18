@@ -1382,6 +1382,16 @@ async function runRLS19Road(
       receivers: gridReceivers,
       sources,
       barriers,
+      // The kernel is told which CRS this scene is in; it cannot read one off
+      // the coordinates, which are bare numbers by the time they cross. It
+      // needs it for the terrain — a DTM has to be queried in the CRS its
+      // raster was written in — and sending it always keeps that from
+      // depending on whether a terrain happens to be loaded.
+      projection: {
+        project_crs: projection.projectCRS,
+        compute_crs: projection.computeCRS,
+        applied: projection.applied,
+      },
       config: {
         SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
         MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),

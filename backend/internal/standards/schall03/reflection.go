@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/numeric"
 )
 
@@ -238,13 +239,13 @@ func ReflectedSubsegmentContrib(
 	elevationM float64,
 	receiver ReceiverInput,
 	dp, stepLen, sinDelta2, waterFractionW float64,
-	dRho float64,
+	dRho, groundOffsetM float64,
 ) float64 {
 	// Gl. 28: the image source level includes D_ρ; the rest of the chain is the
 	// direct-path kernel, here without barriers.
 	return subsegmentContrib(
 		emission, elevationM, receiver, geo.Point2D{},
-		dp, stepLen, sinDelta2, waterFractionW, dRho,
+		dp, stepLen, sinDelta2, waterFractionW, dRho, groundOffsetM,
 		nil,
 	)
 }
@@ -264,20 +265,20 @@ func ReflectedSubsegmentContribWithBarriers(
 	receiver ReceiverInput,
 	imageSource geo.Point2D,
 	dp, stepLen, sinDelta2, waterFractionW float64,
-	dRho float64,
+	dRho, groundOffsetM float64,
 	barriers []BarrierSegment,
 	excludeObstacleIDs []string,
 ) float64 {
 	barriers = barriersExcludingObstacles(barriers, excludeObstacleIDs)
 	if len(barriers) == 0 {
-		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho)
+		return ReflectedSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sinDelta2, waterFractionW, dRho, groundOffsetM)
 	}
 
 	// Gl. 28 for D_ρ, and the diffraction check along the unfolded ray
 	// imageSource → receiver.
 	return subsegmentContrib(
 		emission, elevationM, receiver, imageSource,
-		dp, stepLen, sinDelta2, waterFractionW, dRho,
+		dp, stepLen, sinDelta2, waterFractionW, dRho, groundOffsetM,
 		barriers,
 	)
 }
@@ -517,6 +518,21 @@ func ComputeReflectedLineSourceLpAeq(
 	waterFractionW float64,
 	walls []ReflectingWall,
 ) float64 {
+	return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, nil)
+}
+
+// reflectedLineSourceLpAeq is ComputeReflectedLineSourceLpAeq with the run's
+// terrain model in hand.  See reflectedPathGroundOffset for which ground a
+// mirrored path is measured against.
+func reflectedLineSourceLpAeq(
+	emission *StreckeEmissionResult,
+	centerline []geo.Point2D,
+	elevationM float64,
+	receiver ReceiverInput,
+	waterFractionW float64,
+	walls []ReflectingWall,
+	dtm terrain.Model,
+) float64 {
 	if len(walls) == 0 {
 		return math.Inf(-1)
 	}
@@ -525,18 +541,43 @@ func ComputeReflectedLineSourceLpAeq(
 
 	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
+		if len(paths) == 0 {
+			return
+		}
+
+		groundOffsetM := reflectedPathGroundOffset(dtm, pt, receiver)
 
 		for _, rp := range paths {
 			reflDist, sd2 := reflectedRayTerms(pt, rp, tvX, tvY, tvLen)
 
 			total.Add(ReflectedSubsegmentContrib(
 				emission, elevationM, receiver,
-				reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+				reflDist, stepLen, sd2, waterFractionW, rp.DRho, groundOffsetM,
 			))
 		}
 	})
 
 	return lineSourceLevel(total.Sum())
+}
+
+// reflectedPathGroundOffset resolves the ground under a *mirrored* path.
+//
+// It is measured along the real subsegment→receiver line, not along the
+// unfolded image-source ray.  The unfolded ray's origin is a construction, not
+// a place: it can land inside a hillside, on the far side of a valley, or
+// outside the DTM entirely, and the terrain it would cross is terrain the sound
+// never travels over.  The sound does travel from this subsegment to this
+// receiver — by a detour — and the ground along that corridor is the only
+// physical ground the path has.
+//
+// RLS-19 draws the same line at rls19/road/propagation.go (hmRefl): declared
+// terrain edges are left off the mirrored leg, and h_m is taken from the ground
+// each real end stands on.  Schall 03 additionally keeps the rise along that
+// real corridor, because here the DTM is the only ground description there is
+// and dropping it would put a reflected path back on the flat plane while the
+// direct path from the same subsegment stands on the hill.
+func reflectedPathGroundOffset(dtm terrain.Model, source geo.Point2D, receiver ReceiverInput) float64 {
+	return resolvePathGroundOffset(dtm, source, receiver)
 }
 
 // reflectedRayTerms returns the propagation distance and sin²(δ) for one
@@ -594,18 +635,41 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
 ) float64 {
+	return reflectedLineSourceLpAeqWithBarriers(
+		emission, centerline, elevationM, receiver, waterFractionW, walls, barriers, nil,
+	)
+}
+
+// reflectedLineSourceLpAeqWithBarriers is
+// ComputeReflectedLineSourceLpAeqWithBarriers with the run's terrain model in
+// hand.
+func reflectedLineSourceLpAeqWithBarriers(
+	emission *StreckeEmissionResult,
+	centerline []geo.Point2D,
+	elevationM float64,
+	receiver ReceiverInput,
+	waterFractionW float64,
+	walls []ReflectingWall,
+	barriers []BarrierSegment,
+	dtm terrain.Model,
+) float64 {
 	if len(walls) == 0 {
 		return math.Inf(-1)
 	}
 
 	if len(barriers) == 0 {
-		return ComputeReflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls)
+		return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, dtm)
 	}
 
 	var total numeric.CompensatedSum
 
 	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
+		if len(paths) == 0 {
+			return
+		}
+
+		groundOffsetM := reflectedPathGroundOffset(dtm, pt, receiver)
 
 		for _, rp := range paths {
 			reflDist, sd2 := reflectedRayTerms(pt, rp, tvX, tvY, tvLen)
@@ -613,7 +677,7 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 			total.Add(ReflectedSubsegmentContribWithBarriers(
 				emission, elevationM, receiver,
 				rp.EffectiveSource(),
-				reflDist, stepLen, sd2, waterFractionW, rp.DRho,
+				reflDist, stepLen, sd2, waterFractionW, rp.DRho, groundOffsetM,
 				barriers,
 				reflectionPathObstacleIDs(rp, walls),
 			))

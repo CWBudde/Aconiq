@@ -156,11 +156,53 @@ export interface ReceiverOutput {
   Indicators: ReceiverIndicators;
 }
 
+/**
+ * Which CRS a request computes in, as the kernel reads it.
+ *
+ * The same fact `@/model/compute-crs`'s `ComputeProjection` carries, in the
+ * snake_case every CRS on a wire in this project is spelled with —
+ * {@link TransformRequest}'s `source_crs`, a run summary's `compute_crs`, a
+ * run's provenance. Mirrors `wasmkernel.ComputeProjection`.
+ *
+ * The kernel cannot work this out for itself. `aconiq run` reads the project
+ * CRS off the manifest; browser mode projects the model here, in TypeScript,
+ * and hands the kernel coordinates that are already metric — so by the time a
+ * request arrives, nothing in it names a CRS. A terrain model has to be queried
+ * in the CRS its raster was written in, and this is the only thing that says
+ * what to transform through.
+ */
+export interface KernelProjection {
+  project_crs: string;
+  compute_crs: string;
+  applied: boolean;
+}
+
 export interface ComputeRequest {
   receivers: PointReceiver[];
   sources: RoadSource[];
   barriers: Barrier[];
   config?: PropagationConfig;
+  /**
+   * Optional, and required the moment a terrain model is loaded: a request that
+   * computes over a DTM without saying which CRS it computes in is refused by
+   * the kernel rather than answered from a grid queried in the wrong one.
+   */
+  projection?: KernelProjection;
+}
+
+/**
+ * What `aconiq.loadTerrain` answers with — the grid it just took, described in
+ * the terrain's own CRS. Mirrors Go's `terrain.Info`.
+ *
+ * The bounds are deliberately *not* converted into the CRS a run computes in:
+ * the projection of a rectangle is not a rectangle, so any four numbers would
+ * be too large or too small somewhere.
+ */
+export interface TerrainInfo {
+  /** [minX, minY, maxX, maxY], in the CRS the DTM was declared in. */
+  bounds: [number, number, number, number];
+  pixel_size: [number, number];
+  grid_size: [number, number];
 }
 
 /**
