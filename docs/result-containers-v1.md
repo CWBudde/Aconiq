@@ -67,12 +67,30 @@ The conversion to GDAL's corner-based affine transform happens in exactly one
 place, `exportfmt.GeoTransformFromGeoreference`: half a pixel west, and
 `(height-1)` rows plus half a pixel north, because row 0 is the southernmost.
 
+In the browser it happens in one place too, and they are pinned together.
+`frontend/src/map/raster-extent.ts` mirrors that function so the map can place
+an `image` source on the raster's outer corners; the fixture is
+`backend/internal/report/export/testdata/raster-parity/geotransform.golden.json`,
+written by `formats_parity_test.go` and read by `raster-extent.parity.test.ts`.
+It lives under `export/` rather than beside the raster fixture in `results/`
+because `export` imports `results`, so generating it from the `results` package
+would close an import cycle. The mirror refuses a `row_order` it does not
+recognise, exactly as `Georeference.Validate` does: a grid placed upside down
+looks entirely plausible.
+
 ### Raster binary — the browser mirror
 
 `frontend/src/model/raster-bin.ts` is the TypeScript half, as
 `receiver-csv.ts` is for the CSV. Go is canonical; the mirror is pinned against
 it by `backend/internal/report/results/testdata/raster-parity/`, written by
 `raster_parity_test.go` and read by `raster-bin.parity.test.ts`.
+
+It is **both halves of the contract**, not just the writer. `buildRasterBinary`
+is what a browser-mode run writes; `readRasterBand` is what the map reads back
+to paint a result raster, and it makes the same length check `LoadRaster` does.
+The band it returns is **unflipped** — row 0 stays southernmost — because the
+flip into canvas order is a display concern and belongs with whatever draws the
+raster, under `frontend/src/map/`.
 
 The part a mirror gets wrong is the index order, not the encoding: a run
 produces one value per receiver in receiver order, and writing them in arrival
@@ -83,9 +101,11 @@ bands, so that a width/height swap and a band/row swap both change the bytes.
 Browser mode stores the bytes in their own IndexedDB record rather than inside
 the state document (`browser-storage.saveArtifactBytes`). The document is
 written whole on every change, so a raster inside it would be structured-cloned,
-every stored run included, on every save. `getArtifactContent` reads the record
-on demand; `getArtifactURL` is synchronous and refuses binary content rather
-than minting a blob from a placeholder.
+every stored run included, on every save. `Backend.getArtifactBytes` reads the
+record on demand — a method of its own, because `getArtifactContent` is the
+JSON/text reader and the HTTP backend parses every response it handles as JSON.
+`getArtifactURL` stays synchronous and keeps refusing binary content rather than
+minting a blob from a placeholder: the raster is read as bytes, never as a URL.
 
 `exportfmt.InferGeoTransformFromReceivers` reconstructs the same transform from
 the receiver table's coordinates. It is the **fallback**, for sidecars written

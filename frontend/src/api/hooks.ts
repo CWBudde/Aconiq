@@ -131,6 +131,28 @@ export function useArtifactContent<T>(artifactId: string | null) {
   });
 }
 
+/**
+ * The raw bytes of a binary artifact — the result raster the map draws.
+ *
+ * `staleTime: Infinity` because these bytes are a file inside a finished run:
+ * nothing rewrites them, so a refetch could only return what is already held.
+ * `gcTime` is bounded all the same, and deliberately not infinite — the entry
+ * is megabytes, and once the user has switched away from the run there is no
+ * one left to hold them for.
+ */
+export function useArtifactBytes(artifactId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.artifacts.bytes(artifactId ?? ""),
+    queryFn: () => {
+      if (!artifactId) throw new Error("Artifact ID is required");
+      return backend.getArtifactBytes(artifactId);
+    },
+    enabled: artifactId !== null,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+  });
+}
+
 export function useReceiverTable(artifactId: string | null) {
   return useArtifactContent<ReceiverTable>(artifactId);
 }
@@ -170,9 +192,10 @@ export function useCreateExport() {
  * What `useDeleteRun` needs to clear up after itself.
  *
  * The artifact ids travel with the request rather than being looked up here:
- * artifact payloads are cached under `queryKeys.artifacts.content(id)`, which
- * `runId` alone cannot address, and by the time the deletion has succeeded the
- * run that listed them is gone. The caller holds `run.artifacts` already.
+ * artifact payloads are cached under `queryKeys.artifacts.content(id)` and
+ * `.bytes(id)`, which `runId` alone cannot address, and by the time the
+ * deletion has succeeded the run that listed them is gone. The caller holds
+ * `run.artifacts` already.
  */
 export interface DeleteRunVariables {
   runId: string;
@@ -191,6 +214,12 @@ export function useDeleteRun() {
       for (const artifactId of artifactIds) {
         queryClient.removeQueries({
           queryKey: queryKeys.artifacts.content(artifactId),
+        });
+        // Both keys, because the raster is cached under `bytes` and would
+        // otherwise outlive the run it belongs to for the whole `gcTime` —
+        // megabytes held for something that no longer exists.
+        queryClient.removeQueries({
+          queryKey: queryKeys.artifacts.bytes(artifactId),
         });
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });

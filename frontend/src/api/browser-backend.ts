@@ -650,6 +650,26 @@ function findArtifact(
 }
 
 /**
+ * The one reader of the byte store, shared by `getArtifactBytes` and the
+ * binary branch of `getArtifactContent` so the two cannot disagree about a
+ * record that is not there.
+ *
+ * The bytes live beside the document, not in it. A missing record means the
+ * document and the byte store disagree — a partial quota eviction, or a
+ * document restored without them — and an empty buffer read as a raster is a
+ * grid of zeroes, so it says so instead.
+ */
+async function readArtifactBytes(artifactId: string): Promise<ArrayBuffer> {
+  const bytes = await loadArtifactBytes(artifactId);
+  if (bytes === null) {
+    throw new Error(
+      `Artifact ${artifactId} declares binary content, but its bytes are not stored`,
+    );
+  }
+  return bytes;
+}
+
+/**
  * Replaces or inserts a run and keeps the list newest first, capped at
  * `MAX_STORED_RUNS`; whatever falls off the end is the oldest.
  */
@@ -1703,20 +1723,27 @@ export const browserBackend = {
 
   async getArtifactContent<T>(artifactId: string): Promise<T> {
     const content = findArtifact(await ensureLoaded(), artifactId);
+    // Browser mode can answer for bytes here, and a caller written against
+    // this mode alone does ask — so the branch stays. It delegates rather
+    // than repeating the read: two readers of the same byte store would drift
+    // on the missing-record case, and only one of them would say so.
     if (content.encoding === "binary") {
-      // The bytes are beside the document, not in it. A missing record means
-      // the document and the byte store disagree — a partial quota eviction,
-      // or a document restored without them — and an empty buffer read as a
-      // raster is a grid of zeroes, so it says so instead.
-      const bytes = await loadArtifactBytes(artifactId);
-      if (bytes === null) {
-        throw new Error(
-          `Artifact ${artifactId} declares binary content, but its bytes are not stored`,
-        );
-      }
-      return bytes as T;
+      return (await readArtifactBytes(artifactId)) as T;
     }
     return content.value as T;
+  },
+
+  async getArtifactBytes(artifactId: string): Promise<ArrayBuffer> {
+    const content = findArtifact(await ensureLoaded(), artifactId);
+    if (content.encoding !== "binary") {
+      // Not a fallback to serialising the document value: a caller asking for
+      // bytes is about to read them as float64, and JSON text reinterpreted
+      // that way is noise rather than an error.
+      throw new Error(
+        `Artifact ${artifactId} holds ${content.encoding} content, not bytes; read it with getArtifactContent`,
+      );
+    }
+    return readArtifactBytes(artifactId);
   },
 
   /**

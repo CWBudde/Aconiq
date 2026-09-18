@@ -25,5 +25,9 @@ export const queryKeys = {
     all: ["artifacts"] as const,
     content: (id: string) =>
       [...queryKeys.artifacts.all, id, "content"] as const,
+    // Keyed apart from `content`, not alongside it: the bytes of one artifact
+    // are megabytes, and sharing an entry with the parsed JSON would mean a
+    // metadata read and a raster read overwriting each other's cached value.
+    bytes: (id: string) => [...queryKeys.artifacts.all, id, "bytes"] as const,
   },
 } as const;

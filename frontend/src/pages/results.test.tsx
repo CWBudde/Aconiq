@@ -652,7 +652,7 @@ describe("ResultsPage receiver rows link to the map", () => {
    * The table is on `/results` and the map on `/model`, so the row cannot
    * highlight anything live — there is no map on this page to highlight on.
    * What it can do is take the reader to the one that has it, and `/model`
-   * already knows how to honour `?select=` and strip it again.
+   * already knows how to honour `?select=` and `?run=` and strip them again.
    *
    * Only for a row the map can actually open, though: an `auto-grid` run names
    * its receivers itself, none of those ids is in the model store, and a link
@@ -672,7 +672,10 @@ describe("ResultsPage receiver rows link to the map", () => {
     });
   }
 
-  it("sends each row to the map with the receiver selected", () => {
+  it("sends each row to the map with the receiver selected, and the run with it", () => {
+    // The run travels with the receiver. Without it the map drew whichever run
+    // finished last, so a row followed from an older run landed on a different
+    // run's levels under the id of the one that was clicked.
     seedReceivers("R1", "R2", "R10");
     renderResults();
 
@@ -680,7 +683,7 @@ describe("ResultsPage receiver rows link to the map", () => {
       name: m.action_show_receiver_on_map({ id: "R2" }),
     });
 
-    expect(link).toHaveAttribute("href", "/model?select=R2");
+    expect(link).toHaveAttribute("href", "/model?select=R2&run=run-1");
   });
 
   it("is a link and not a button, so it has an href to copy", () => {
@@ -714,7 +717,7 @@ describe("ResultsPage receiver rows link to the map", () => {
       screen.getByRole("link", {
         name: m.action_show_receiver_on_map({ id: "R&1 #2" }),
       }),
-    ).toHaveAttribute("href", "/model?select=R%261%20%232");
+    ).toHaveAttribute("href", "/model?select=R%261+%232&run=run-1");
   });
 
   it("leaves a generated auto-grid id as plain text", () => {

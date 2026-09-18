@@ -442,3 +442,46 @@ describe("httpBackend.createExport", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("httpBackend.getArtifactBytes", () => {
+  it("reads the content endpoint and hands the body back unparsed", async () => {
+    // Exactly what `results.SaveRaster` writes: little-endian float64, no
+    // header. The shared request helper's unconditional `.json()` throws a
+    // SyntaxError on this, which is why a separate method exists at all.
+    const levels = new Float64Array([55.5, 61.25, -3]);
+    const mock = stubFetch(
+      new Response(levels.buffer, {
+        headers: { "Content-Type": "application/octet-stream" },
+      }),
+    );
+
+    const bytes = await httpBackend.getArtifactBytes("artifact-1");
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/artifacts/artifact-1/content"));
+    // Still one of the API's own requests, token header and all — it just
+    // does not parse the answer.
+    expect(headersOf(init)).toHaveProperty(CLIENT_HEADER_NAME);
+    expect(new Float64Array(bytes)).toEqual(levels);
+  });
+
+  it("escapes an id that would otherwise change the path", async () => {
+    const mock = stubFetch(new Response(new ArrayBuffer(8)));
+
+    await httpBackend.getArtifactBytes("a/b");
+
+    expect(requestOf(mock)[0]).toBe(apiURL("/api/v1/artifacts/a%2Fb/content"));
+  });
+
+  it("keeps the envelope of a refusal", async () => {
+    stubFetch(
+      jsonResponse(envelope(ERROR_CODE_NOT_FOUND, "artifact not found"), 404),
+    );
+
+    const error = await httpBackend
+      .getArtifactBytes("missing")
+      .catch((e: unknown) => e);
+
+    expect(asAPIRequestError(error)?.code).toBe(ERROR_CODE_NOT_FOUND);
+  });
+});

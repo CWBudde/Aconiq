@@ -25,3 +25,17 @@ export const DRAW_PARAM = "draw";
  * outcome for a link followed after the feature was deleted.
  */
 export const SELECT_PARAM = "select";
+
+/**
+ * The run `/model` should draw results for, set by the results page's row→map
+ * link so a row followed from an older run does not land on the newest run's
+ * levels.
+ *
+ * Honoured once and stripped like the two above, but the *choice* outlives the
+ * parameter: the map keeps drawing that run until the page is left. A run id
+ * the project does not hold, or one that has not completed, draws the newest
+ * completed run instead and says which run was asked for — the map is not a
+ * run-detail page, and an empty canvas with no explanation is worse than the
+ * newest run under a sentence.
+ */
+export const RUN_PARAM = "run";

@@ -28,7 +28,13 @@ export const NOISE_LEVEL_RAMP: ColorStop[] = [
 
 /**
  * Build a MapLibre interpolate expression from a color ramp.
- * Suitable for use in paint properties like `fill-color` or `raster-color`.
+ *
+ * For a paint property that reads a feature property, such as `fill-color` or
+ * `circle-color`. Deliberately not for a raster: MapLibre 5's style
+ * specification has no `raster-color` and no `["raster-value"]` — both are
+ * Mapbox GL JS v3 — so the result raster is coloured cell by cell in
+ * `raster-image.ts` instead, against this same ramp and with the same
+ * component-wise sRGB interpolation `Color.interpolate` performs here.
  */
 export function rampToExpression(
   ramp: ColorStop[],

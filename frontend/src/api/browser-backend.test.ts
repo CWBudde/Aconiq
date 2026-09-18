@@ -1646,3 +1646,58 @@ describe("browser-mode raster artifacts", () => {
     );
   });
 });
+
+describe("browserBackend.getArtifactBytes", () => {
+  beforeEach(async () => {
+    await resetStores();
+  });
+
+  /**
+   * Seeds one stored run whose raster artifact is declared in the document,
+   * and puts its bytes in the byte store only when asked — which is what
+   * makes "the two disagree" a state a test can create.
+   */
+  async function seedRasterRun(options: { withBytes: boolean }) {
+    const fixture = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+    const artifactId = fixture.run.artifacts[0]?.id ?? "";
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [fixture] },
+    });
+    // The document keeps naming the artifact; only the bytes go. That is the
+    // shape a partial quota eviction leaves behind.
+    if (!options.withBytes) await storage.deleteArtifactBytes([artifactId]);
+    resetBrowserBackendForTests();
+    return artifactId;
+  }
+
+  it("returns the bytes stored beside the document", async () => {
+    const artifactId = await seedRasterRun({ withBytes: true });
+
+    const bytes = await browserBackend.getArtifactBytes(artifactId);
+
+    // Not `toBeInstanceOf`: fake-indexeddb clones across a realm boundary, so
+    // the buffer that comes back has every internal slot and still fails
+    // `instanceof` — the same reason `browser-storage` checks the tag.
+    expect(Object.prototype.toString.call(bytes)).toBe("[object ArrayBuffer]");
+    expect(bytes.byteLength).toBe(64);
+  });
+
+  it("says so when the document names bytes the store does not hold", async () => {
+    const artifactId = await seedRasterRun({ withBytes: false });
+
+    // An empty buffer read as a raster is a grid of zeroes, which looks like
+    // a result. The refusal is the whole point of the branch.
+    await expect(browserBackend.getArtifactBytes(artifactId)).rejects.toThrow(
+      "its bytes are not stored",
+    );
+  });
+
+  it("refuses an artifact whose content is not binary", async () => {
+    await seedState();
+
+    await expect(
+      browserBackend.getArtifactBytes(TABLE_ARTIFACT_ID),
+    ).rejects.toThrow("not bytes");
+  });
+});

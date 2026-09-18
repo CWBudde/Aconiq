@@ -1,45 +1,57 @@
 /**
- * The computed levels of the latest completed run, drawn on the workspace map.
+ * The computed levels of a completed run, drawn on the workspace map.
  *
- * It draws the **receiver table** and nothing else, which is the only result
- * container both modes produce in the same shape. The raster half of this is
- * not merely unwritten — it is unreachable: browser mode stores the run's
- * SHA-256 where the raster binary belongs and `StoredArtifactContent.encoding`
- * has no case for binary at all, the GeoTIFF/COG/contour exports get no
- * `ArtifactRef` so no URL reaches them, and `results.RasterMetadata` carries no
- * geotransform to place a raster with. See PLAN.md, "Results on the map".
+ * Two layers, from the two result containers a run writes. The **receiver
+ * table** becomes one circle per receiver; the **raster** becomes one image
+ * under the model, through `use-result-raster.ts`. The raster was unreachable
+ * until recently and this file said so — browser mode stored the run's
+ * SHA-256 where the binary belonged, `StoredArtifactContent.encoding` had no
+ * binary case, and `results.RasterMetadata` carried no geotransform to place a
+ * grid with. All three are closed. Contours are still out, and for a reason of
+ * their own — see `layers.ts`, {@link RESULT_LAYER_GROUPS}.
  *
- * It draws a table that declares decibels and no other: `NOISE_LEVEL_RAMP` is
- * a decibel ramp, and not every receiver table holds levels — see
- * {@link declaresLevels}. The run's evidence tier rides along beside its id,
- * so a scaffold run is not read under the same legend as a normative one.
+ * Both draw a container that declares decibels and no other: `NOISE_LEVEL_RAMP`
+ * is a decibel ramp, and not every receiver table holds levels — see
+ * `result-units.ts`. The run's evidence tier rides along beside its id, so a
+ * scaffold run is not read under the same legend as a normative one.
+ *
+ * Which run is drawn: the one the reader came from, when `/model` was asked
+ * for one, and the newest completed run otherwise. A substitution is said out
+ * loud rather than made quietly — a row followed from an older run used to
+ * land on the newest run's levels, under nothing that said the two differed.
  *
  * The coordinates are projected through `backend.transformCoordinates` — the
  * kernel's own projection, the same one `display-model.ts` draws the model
- * with — so a run and the model it came from land in the same place. The CRS
- * they start in is read off the run summary, which is where both targets
- * record it: provenance is not an artifact, so the API never serves it.
+ * with — so a run and the model it came from land in the same place. The
+ * receiver table's CRS is read off the run summary, which is where both
+ * targets record it; the raster's is read off its own sidecar.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type maplibregl from "maplibre-gl";
 import { backend } from "@/api/backend";
 import type { ReceiverRecord, RunSummary } from "@/api/client";
-import { useArtifactContent, useReceiverTable, useRuns } from "@/api/hooks";
+import { useArtifactContent, useReceiverTable } from "@/api/hooks";
+import { useRunFromRoute } from "@/run/use-run-from-route";
 import { Button } from "@/ui/components/button";
 import { EvidenceTierBadge } from "@/ui/evidence-tier-badge";
 import { m } from "@/i18n/messages";
 import { NOISE_LEVEL_RAMP } from "./color-ramp";
 import { DISPLAY_CRS } from "./display-model";
 import {
+  BOTTOM_MODEL_LAYER_ID,
   RESULT_LEVEL_PROPERTY,
+  RESULT_RASTER_GROUP_ID,
+  RESULT_RASTER_LAYERS,
   RESULT_RECEIVER_LAYERS,
   RESULT_RECEIVERS_GROUP_ID,
   SOURCE_IDS,
 } from "./layers";
 import { MapPanel } from "./map-panel";
 import { useMapStore } from "./map-store";
+import { declaresLevels } from "./result-units";
 import { useMap } from "./use-map";
+import { useResultRaster, type ResultRaster } from "./use-result-raster";
 
 /**
  * Module-level, so "nothing to draw" is the *same* value on every render. A
@@ -110,25 +122,6 @@ function summaryField(summary: unknown, key: string): string | undefined {
  */
 function computeCRSOf(summary: unknown): string | null {
   return summaryField(summary, "compute_crs") ?? null;
-}
-
-/**
- * Whether a receiver table says its values are decibels at all.
- *
- * `NOISE_LEVEL_RAMP` is a decibel ramp with fixed 35–80 dB stops, so it may
- * only paint a table that claims to hold levels. Every level-producing module
- * writes `"dB"`; `beb-exposure` writes `"mixed"`, because its
- * `indicator_order` puts Lden and Lnight beside dwelling and person *counts*
- * (`standards/beb/exposure/export.go`). Running one of those counts through
- * the ramp would present a population total as an acoustic level, under a
- * legend that still reads in dB.
- *
- * Decided on the unit rather than on a list of indicator names: the names are
- * the backend's and would have to be copied here and kept in step, while the
- * unit is a field the result container already carries.
- */
-function declaresLevels(unit: string): boolean {
-  return unit.trim().toLowerCase().startsWith("db");
 }
 
 /**
@@ -267,16 +260,40 @@ function toCollection(
 }
 
 /**
- * Draws the latest completed run's receiver levels, and offers the picker and
- * the legend that make them readable.
+ * `useRunFromRoute`'s eligibility rule, at module scope so its memo identity is
+ * stable across renders — the same reason `results.tsx` hoists its own.
+ */
+function isCompleted(run: RunSummary): boolean {
+  return run.status === "completed";
+}
+
+/**
+ * Draws a completed run's receiver levels and result raster, and offers the
+ * picker and the legend that make them readable.
  *
  * Must be rendered as a child of MapView (inside MapContext).
  */
-export function ResultLayers() {
+export function ResultLayers({
+  requestedRunId,
+}: {
+  /** The run `/model` was asked for, or `null`. See `map-params.ts`. */
+  requestedRunId: string | null;
+}) {
   const map = useMap();
-  const { data: runs } = useRuns();
 
-  const run = useMemo(() => latestCompletedRun(runs ?? []), [runs]);
+  // The same resolver `/results` and `/export` use, so "which run does this id
+  // mean" is answered once in the app. It refuses to fall back on its own;
+  // falling back to the newest completed run is this page's decision, because
+  // the map is not a run-detail page and an empty canvas explains nothing.
+  const {
+    runs,
+    run: requested,
+    state: runState,
+  } = useRunFromRoute(requestedRunId ?? undefined, isCompleted);
+
+  const newest = useMemo(() => latestCompletedRun(runs), [runs]);
+  const run = requested ?? newest;
+  const substituted = runState === "ineligible" || runState === "unknown";
 
   const tableArtifact = run?.artifacts.find(
     (artifact) => artifact.kind === "run.result.receiver_table_json",
@@ -323,6 +340,10 @@ export function ResultLayers() {
       : (indicators[0] ?? "");
 
   const projected = useProjectedPositions(records, computeCRS, crsPending);
+  // The same `indicator` the circles use, so one picker click moves both
+  // layers. The raster resolves it against the sidecar's own `band_names`
+  // rather than trusting the two lists to agree.
+  const raster = useResultRaster(run, indicator);
 
   const collection = useMemo(() => {
     if (projected.status !== "ready" || indicator === "") {
@@ -337,6 +358,9 @@ export function ResultLayers() {
   // back on by itself the moment one arrived.
   const groupVisible = useMapStore(
     (s) => s.layerVisibility[RESULT_RECEIVERS_GROUP_ID] ?? true,
+  );
+  const rasterVisible = useMapStore(
+    (s) => s.layerVisibility[RESULT_RASTER_GROUP_ID] ?? true,
   );
 
   useEffect(() => {
@@ -376,6 +400,93 @@ export function ResultLayers() {
     }
   }, [map, collection, groupVisible]);
 
+  useEffect(() => {
+    if (!map) return;
+    if (!isMapStyleReady(map)) return;
+
+    // Anything but `ready` hides the layer rather than leaving it alone. The
+    // image source keeps whatever it was last given, so a refusal that only
+    // stopped updating would leave the previous band's pixels on screen under
+    // a sentence saying that band could not be drawn.
+    if (raster.status !== "ready") {
+      try {
+        for (const layer of RESULT_RASTER_LAYERS) {
+          if (map.getLayer(layer.id)) {
+            map.setLayoutProperty(layer.id, "visibility", "none");
+          }
+        }
+      } catch (error) {
+        console.error("ResultLayers: could not hide the result raster", error);
+      }
+      return;
+    }
+
+    try {
+      const existing = map.getSource(SOURCE_IDS.resultRaster);
+      if (existing && "updateImage" in existing) {
+        // Both, always: the run can change under the picker, so the pixels and
+        // the ground they sit on have to move together or one frame draws this
+        // run's image on the previous run's extent.
+        (existing as maplibregl.ImageSource).updateImage({
+          url: raster.url,
+          coordinates: raster.coordinates,
+        });
+      } else if (!existing) {
+        map.addSource(SOURCE_IDS.resultRaster, {
+          type: "image",
+          url: raster.url,
+          coordinates: raster.coordinates,
+        });
+      }
+    } catch (error) {
+      console.error(
+        `ResultLayers: could not sync image source "${SOURCE_IDS.resultRaster}"`,
+        error,
+      );
+      return;
+    }
+
+    for (const layer of RESULT_RASTER_LAYERS) {
+      try {
+        // The anchor has to exist before it is named: MapLibre throws on a
+        // `beforeId` its style does not hold, and this layer is usually added
+        // before `ModelLayers` has added any of its own.
+        const anchored = Boolean(map.getLayer(BOTTOM_MODEL_LAYER_ID));
+
+        if (!map.getLayer(layer.id)) {
+          map.addLayer(
+            {
+              ...layer,
+              layout: { visibility: rasterVisible ? "visible" : "none" },
+            },
+            anchored ? BOTTOM_MODEL_LAYER_ID : undefined,
+          );
+          // Back on after a refusal hid it. The control's own choice still
+          // wins — `rasterVisible` is what it wrote — so this restores the
+          // user's state, not "visible".
+          map.setLayoutProperty(
+            layer.id,
+            "visibility",
+            rasterVisible ? "visible" : "none",
+          );
+        } else if (anchored) {
+          // Re-asserted rather than asserted once. The raster is normally the
+          // first result to arrive and starts on top of nothing; the model
+          // layers are added afterwards, over it, and this is what sinks it
+          // back under them the first time the anchor appears. `moveLayer` to
+          // a position a layer already holds is a no-op.
+          map.moveLayer(layer.id, BOTTOM_MODEL_LAYER_ID);
+        }
+      } catch (error) {
+        console.error(`ResultLayers: could not add layer "${layer.id}"`, error);
+        return;
+      }
+    }
+  }, [map, raster, rasterVisible]);
+
+  // No run, or a run whose receiver table never existed. The indicator list is
+  // the table's, and the raster follows it band for band, so there is nothing
+  // for the panel to offer without one — both targets write the two together.
   if (run === null || tableArtifact === undefined) return null;
 
   return (
@@ -400,6 +511,11 @@ export function ResultLayers() {
           className="shrink-0"
         />
       </div>
+      {substituted && requestedRunId !== null ? (
+        <p role="status" className="text-2xs text-muted-foreground">
+          {m.msg_result_run_unavailable({ runId: requestedRunId })}
+        </p>
+      ) : null}
       <PanelBody
         loadFailed={loadFailed}
         levelTable={levelTable}
@@ -408,6 +524,7 @@ export function ResultLayers() {
         indicator={indicator}
         onSelect={setChosen}
         projected={projected}
+        raster={raster}
       />
     </MapPanel>
   );
@@ -428,6 +545,7 @@ function PanelBody({
   indicator,
   onSelect,
   projected,
+  raster,
 }: {
   loadFailed: boolean;
   levelTable: boolean;
@@ -436,6 +554,7 @@ function PanelBody({
   indicator: string;
   onSelect: (indicator: string) => void;
   projected: ProjectedPositions;
+  raster: ResultRaster;
 }) {
   if (loadFailed) {
     return (
@@ -461,6 +580,7 @@ function PanelBody({
         onSelect={onSelect}
       />
       <ProjectionNotice projected={projected} />
+      <RasterNotice raster={raster} />
       <Legend unit={unit} />
     </>
   );
@@ -561,6 +681,52 @@ function ProjectionNotice({ projected }: { projected: ProjectedPositions }) {
   }
 
   return null;
+}
+
+/**
+ * Why there is no raster under the circles, when there is a reason worth one.
+ *
+ * Silent for the cases the notices around it already cover in the same words.
+ * `unsupported` and `unknown-crs` are the projection's, and `ProjectionNotice`
+ * says them about the receivers with the same cause and the same remedy; a
+ * second sentence beside it would read as a second problem. `not-levels` is
+ * the gate `PanelBody` already refused the whole panel on, so it cannot reach
+ * here. What is left is the four a reader could not otherwise account for: a
+ * run whose receivers were never a grid, a grid too large to draw, a band the
+ * sidecar does not carry, and a failure while drawing it.
+ */
+function RasterNotice({ raster }: { raster: ResultRaster }) {
+  switch (raster.status) {
+    case "not-a-grid":
+      return (
+        <p role="status" className="text-2xs text-muted-foreground">
+          {m.msg_result_raster_not_grid()}
+        </p>
+      );
+    case "no-such-band":
+      return (
+        <p role="status" className="text-2xs text-muted-foreground">
+          {m.msg_result_raster_no_band({ indicator: raster.indicator })}
+        </p>
+      );
+    case "too-large":
+      return (
+        <p role="status" className="text-2xs text-muted-foreground">
+          {m.msg_result_raster_too_large({
+            width: raster.width,
+            height: raster.height,
+          })}
+        </p>
+      );
+    case "failed":
+      return (
+        <p role="status" className="text-2xs text-destructive">
+          {m.msg_result_raster_failed()}
+        </p>
+      );
+    default:
+      return null;
+  }
 }
 
 /**

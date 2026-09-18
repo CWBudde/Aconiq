@@ -11,6 +11,7 @@ import {
 import {
   MODEL_LAYER_GROUPS,
   RESULT_LAYER_GROUPS,
+  RESULT_RASTER_LAYERS,
   RESULT_RECEIVER_LAYERS,
   type LayerGroup,
 } from "./layers";
@@ -158,14 +159,21 @@ describe("LayerControl", () => {
   });
 
   it("offers no toggle for a layer nothing draws", () => {
-    // `raster` and `contours` sat here for layers no component ever added:
-    // browser mode cannot represent a binary artifact at all and the GIS
-    // exports get no ArtifactRef, so neither had a source to switch. A dead
-    // control is worse than a missing one — it reports a state that is not
-    // there — and this is what would notice one coming back.
-    const drawn = new Set(RESULT_LAYER_GROUPS.flatMap((g) => g.layerIds));
+    // The invariant is that every id in a result group is added by some
+    // component, so the set is compared against the layer specifications
+    // `ResultLayers` actually adds. A dead control is worse than a missing one:
+    // it reports a state that is not there.
+    //
+    // `contours` is the live case. It sat in this list for a layer nothing
+    // added, and still would: `aconiq export --format contour-geojson` is the
+    // only producer, so browser mode writes none at all. It stays out until
+    // the generation moves behind the kernel boundary.
+    const offered = new Set(RESULT_LAYER_GROUPS.flatMap((g) => g.layerIds));
+    const added = [...RESULT_RASTER_LAYERS, ...RESULT_RECEIVER_LAYERS].map(
+      (layer) => layer.id,
+    );
 
-    expect([...drawn]).toEqual(RESULT_RECEIVER_LAYERS.map((layer) => layer.id));
+    expect([...offered].sort()).toEqual([...added].sort());
   });
 
   it("still records the choice when there is no map", () => {

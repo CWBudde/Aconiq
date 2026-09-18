@@ -1,13 +1,18 @@
 /**
- * The raster binary builder — the browser half of a byte contract.
+ * The raster binary codec — the browser half of a byte contract.
  *
- * `results.SaveRaster` in `backend/internal/report/results/raster_io.go` is
- * canonical. It writes a headerless little-endian `float64` array, tagged
- * `float64-le-v1` in the sidecar, and a browser-mode run must produce the same
- * bytes for the same grid. The contract is written out in
+ * `results.SaveRaster` / `results.LoadRaster` in
+ * `backend/internal/report/results/raster_io.go` are canonical. They write and
+ * read a headerless little-endian `float64` array, tagged `float64-le-v1` in
+ * the sidecar, and a browser-mode run must produce the same bytes for the same
+ * grid — and read back what the CLI wrote. The contract is written out in
  * `docs/result-containers-v1.md`, section "Raster binary — byte contract", and
  * pinned from both sides by
  * `backend/internal/report/results/testdata/raster-parity/`.
+ *
+ * Both halves live here on purpose. The writer used to be the only one, and a
+ * one-way mirror is where the two directions drift: a reader written beside
+ * its caller picks up that caller's idea of the layout rather than this one's.
  *
  * The part a mirror gets wrong is the **index order**, not the encoding. A
  * raster is band-major and row-major within a band, while a run produces one
@@ -38,6 +43,36 @@ const BYTES_PER_CELL = 8;
 const LITTLE_ENDIAN = true;
 
 /**
+ * The shape checks both halves make, in one place so they cannot drift apart:
+ * a buffer the reader accepts must be one the writer could have produced.
+ *
+ * Returns the cells per band, which both callers need next.
+ */
+function checkedCellsPerBand(shape: RasterBinaryShape): number {
+  const { width, height, bands } = shape;
+
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new Error(
+      `raster width must be a positive integer, got ${String(width)}`,
+    );
+  }
+
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new Error(
+      `raster height must be a positive integer, got ${String(height)}`,
+    );
+  }
+
+  if (!Number.isInteger(bands) || bands <= 0) {
+    throw new Error(
+      `raster bands must be a positive integer, got ${String(bands)}`,
+    );
+  }
+
+  return width * height;
+}
+
+/**
  * Builds the `.bin` payload from per-band values in **receiver** order.
  *
  * `bands[b][i]` is band `b`'s value at receiver index `i`, where the receiver
@@ -54,24 +89,7 @@ export function buildRasterBinary(
   bands: readonly (readonly number[])[],
 ): ArrayBuffer {
   const { width, height, bands: bandCount } = shape;
-
-  if (!Number.isInteger(width) || width <= 0) {
-    throw new Error(
-      `raster width must be a positive integer, got ${String(width)}`,
-    );
-  }
-
-  if (!Number.isInteger(height) || height <= 0) {
-    throw new Error(
-      `raster height must be a positive integer, got ${String(height)}`,
-    );
-  }
-
-  if (!Number.isInteger(bandCount) || bandCount <= 0) {
-    throw new Error(
-      `raster bands must be a positive integer, got ${String(bandCount)}`,
-    );
-  }
+  const cellsPerBand = checkedCellsPerBand(shape);
 
   if (bands.length !== bandCount) {
     throw new Error(
@@ -79,7 +97,6 @@ export function buildRasterBinary(
     );
   }
 
-  const cellsPerBand = width * height;
   const buffer = new ArrayBuffer(cellsPerBand * bandCount * BYTES_PER_CELL);
   const view = new DataView(buffer);
 
@@ -114,4 +131,59 @@ export function buildRasterBinary(
   }
 
   return buffer;
+}
+
+/**
+ * One band of a raster binary, in raster order: `(band * height + y) * width + x`.
+ *
+ * The band comes back **unflipped** — row 0 is still the southernmost, as
+ * `RowOrderSouthUp` declares and as every value in the file was written. The
+ * flip into canvas order (row 0 northernmost) is a display concern and belongs
+ * with whatever draws the raster, under `map/`. Doing it here would mean the
+ * bytes this module reads and the bytes it writes no longer describe the same
+ * grid, and the round trip through `buildRasterBinary` would mirror the map.
+ */
+export function readRasterBand(
+  buffer: ArrayBuffer,
+  shape: RasterBinaryShape,
+  band: number,
+): Float64Array {
+  const { bands: bandCount } = shape;
+  const cellsPerBand = checkedCellsPerBand(shape);
+
+  const expectedBytes = cellsPerBand * bandCount * BYTES_PER_CELL;
+
+  // The length check `LoadRaster` makes. The payload is headerless, so its
+  // length is the only thing that says the file matches the sidecar: a
+  // truncated or over-long buffer read against the declared shape silently
+  // reports cells from the wrong band, or past the end.
+  if (buffer.byteLength !== expectedBytes) {
+    throw new Error(
+      `raster binary is ${String(buffer.byteLength)} bytes, expected ${String(expectedBytes)} for a ${String(shape.width)}x${String(shape.height)} grid over ${String(bandCount)} band(s)`,
+    );
+  }
+
+  if (!Number.isInteger(band) || band < 0 || band >= bandCount) {
+    throw new Error(
+      `band index ${String(band)} is out of range for ${String(bandCount)} band(s)`,
+    );
+  }
+
+  const view = new DataView(buffer);
+  const values = new Float64Array(cellsPerBand);
+  const start = band * cellsPerBand;
+
+  // Read cell by cell through the DataView rather than wrapping the buffer in
+  // a `Float64Array`: a typed-array view decodes in *host* byte order, which
+  // would byte-swap every level on a big-endian host while the writer above
+  // stays explicitly little-endian. That asymmetry is exactly what the
+  // LITTLE_ENDIAN constant exists to prevent, and it cannot be tested here.
+  for (let index = 0; index < cellsPerBand; index++) {
+    values[index] = view.getFloat64(
+      (start + index) * BYTES_PER_CELL,
+      LITTLE_ENDIAN,
+    );
+  }
+
+  return values;
 }

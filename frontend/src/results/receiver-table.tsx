@@ -18,7 +18,7 @@ import { useReceiverTable } from "@/api/hooks";
 import type { RunSummary } from "@/api/client";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { summariseIndicators } from "@/results/summarise";
-import { SELECT_PARAM } from "@/map/map-params";
+import { RUN_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useModelStore } from "@/model/model-store";
 import { m } from "@/i18n/messages";
 
@@ -104,14 +104,23 @@ const TABLE_MAX_HEIGHT = "70vh";
  * menu and no entry in a screen reader's links rotor. No axe rule catches that
  * substitution, so it has to be made deliberately.
  *
- * `/model` honours the parameter once and strips it (`SelectRequest`), so a
+ * `/model` honours both parameters once and strips them (`ArrivalParams`), so a
  * Back does not re-open the editor on a receiver the reader has moved on from.
  *
- * Offered only for a row the model can actually open — see
+ * The run travels with the receiver. Without it the map draws whichever run
+ * finished last, so a row followed from an older run landed on a *different*
+ * run's levels, under the id of the one that was clicked — the map names the
+ * run it drew, so nothing on screen was false, but nothing said the two were
+ * not the same either. The run id does not make an unselectable row selectable:
+ * the link is still offered only for a row the model can open — see
  * {@link useSelectableIds}.
  */
-function receiverOnMapPath(id: string): string {
-  return `/model?${SELECT_PARAM}=${encodeURIComponent(id)}`;
+function receiverOnMapPath(id: string, runId: string): string {
+  const params = new URLSearchParams({
+    [SELECT_PARAM]: id,
+    [RUN_PARAM]: runId,
+  });
+  return `/model?${params.toString()}`;
 }
 
 /**
@@ -444,7 +453,7 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
                   <td className="px-3 py-1.5 font-mono">
                     {selectableIds.has(r.id) ? (
                       <Link
-                        to={receiverOnMapPath(r.id)}
+                        to={receiverOnMapPath(r.id, run.id)}
                         aria-label={m.action_show_receiver_on_map({ id: r.id })}
                         className="rounded-sm underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >

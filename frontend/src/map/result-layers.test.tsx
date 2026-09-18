@@ -1,12 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import type { ReceiverTable, RunSummary } from "@/api/client";
+import type { RasterMetadata, ReceiverTable, RunSummary } from "@/api/client";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
 import { m } from "@/i18n/messages";
 import { MapContext } from "./use-map";
 import { useMapStore } from "./map-store";
-import { LAYER_IDS, RESULT_RECEIVERS_GROUP_ID, SOURCE_IDS } from "./layers";
+import {
+  BOTTOM_MODEL_LAYER_ID,
+  LAYER_IDS,
+  RESULT_RASTER_GROUP_ID,
+  RESULT_RECEIVERS_GROUP_ID,
+  SOURCE_IDS,
+} from "./layers";
+import { buildRasterBinary } from "@/model/raster-bin";
 import { ResultLayers } from "./result-layers";
 
 /**
@@ -27,6 +34,8 @@ const state = vi.hoisted(() => {
     summary: unknown;
     summaryLoading: boolean;
     summaryError: Error | null;
+    rasterMetadata: RasterMetadata | undefined;
+    rasterBytes: ArrayBuffer | undefined;
     requests: TransformRequest[];
     respond: (req: TransformRequest) => Promise<TransformResponse>;
   } = {
@@ -37,6 +46,8 @@ const state = vi.hoisted(() => {
     summary: { compute_crs: "EPSG:25832", project_crs: "EPSG:25832" },
     summaryLoading: false,
     summaryError: null,
+    rasterMetadata: undefined,
+    rasterBytes: undefined,
     requests: [],
     // A stand-in for the kernel: the numbers only have to be distinguishable
     // from the input, because what is asserted is which CRS was asked for and
@@ -85,12 +96,48 @@ vi.mock("@/api/hooks", () => ({
     isLoading: artifactId !== null && state.summaryLoading,
     error: artifactId === null ? null : state.summaryError,
   }),
+  useRasterMetadata: (artifactId: string | null) => ({
+    data: artifactId === null ? undefined : state.rasterMetadata,
+    isLoading: false,
+    error: null,
+  }),
+  useArtifactBytes: (artifactId: string | null) => ({
+    data: artifactId === null ? undefined : state.rasterBytes,
+    isLoading: false,
+    error: null,
+  }),
 }));
 
-/** The MapLibre surface `ResultLayers` touches, and only that. */
+// jsdom has no 2D context, so the encoder is the seam: everything above it is
+// arithmetic with its own tests, and the real canvas is `frontend/e2e/`'s.
+vi.mock("./raster-canvas", () => ({
+  encodeRasterPNG: (_rgba: Uint8ClampedArray, width: number, height: number) =>
+    `data:image/png;base64,${String(width)}x${String(height)}`,
+}));
+
+interface FakeSource {
+  type?: string;
+  data?: unknown;
+  url?: string;
+  coordinates?: unknown;
+}
+
+/**
+ * The MapLibre surface `ResultLayers` touches, and only that.
+ *
+ * `order` and `moveLayer` are not decoration. The result raster is the one
+ * layer in this app inserted with a `beforeId`, because it arrives long after
+ * `ModelLayers` has added its own and appending would draw it over the
+ * buildings it is a result for — and a FakeMap that did not record insertion
+ * position would pass whether that worked or not.
+ */
 class FakeMap {
-  readonly sources = new Map<string, { data: unknown }>();
+  readonly sources = new Map<string, FakeSource>();
   readonly layers = new Map<string, { layout?: { visibility?: string } }>();
+  /** Layer ids bottom to top, as MapLibre would hold them. */
+  order: string[] = [];
+  readonly moves: [string, string | undefined][] = [];
+  readonly imageUpdates: { url: string; coordinates: unknown }[] = [];
 
   getStyle() {
     return { sources: {} };
@@ -99,6 +146,15 @@ class FakeMap {
   getSource(id: string) {
     const source = this.sources.get(id);
     if (!source) return undefined;
+    if (source.type === "image") {
+      return {
+        updateImage: (update: { url: string; coordinates: unknown }) => {
+          source.url = update.url;
+          source.coordinates = update.coordinates;
+          this.imageUpdates.push(update);
+        },
+      };
+    }
     return {
       setData: (data: unknown) => {
         source.data = data;
@@ -106,23 +162,50 @@ class FakeMap {
     };
   }
 
-  addSource(id: string, source: { data: unknown }) {
-    this.sources.set(id, { data: source.data });
+  addSource(id: string, source: FakeSource) {
+    this.sources.set(id, { ...source });
   }
 
   getLayer(id: string) {
     return this.layers.get(id);
   }
 
-  addLayer(layer: { id: string; layout?: { visibility?: string } }) {
+  addLayer(
+    layer: { id: string; layout?: { visibility?: string } },
+    beforeId?: string,
+  ) {
     this.layers.set(layer.id, layer);
+    const at = beforeId === undefined ? -1 : this.order.indexOf(beforeId);
+    if (at < 0) this.order.push(layer.id);
+    else this.order.splice(at, 0, layer.id);
+  }
+
+  setLayoutProperty(id: string, name: string, value: string) {
+    const layer = this.layers.get(id);
+    if (!layer) throw new Error(`no layer ${id}`);
+    layer.layout = { ...layer.layout, [name]: value };
+  }
+
+  moveLayer(id: string, beforeId?: string) {
+    this.moves.push([id, beforeId]);
+    this.order = this.order.filter((existing) => existing !== id);
+    const at = beforeId === undefined ? -1 : this.order.indexOf(beforeId);
+    if (at < 0) this.order.push(id);
+    else this.order.splice(at, 0, id);
+  }
+
+  /** What `ModelLayers` would already have added by the time a run arrives. */
+  withModelLayers() {
+    this.layers.set(BOTTOM_MODEL_LAYER_ID, {});
+    this.order.push(BOTTOM_MODEL_LAYER_ID);
+    return this;
   }
 }
 
-function renderLayers(map: FakeMap) {
+function renderLayers(map: FakeMap, requestedRunId: string | null = null) {
   render(
     <MapContext value={map as unknown as MapLibreMap | null}>
-      <ResultLayers />
+      <ResultLayers requestedRunId={requestedRunId} />
     </MapContext>,
   );
 }
@@ -269,7 +352,7 @@ describe("ResultLayers", () => {
     const map = new FakeMap();
     const { rerender } = render(
       <MapContext value={map as unknown as MapLibreMap | null}>
-        <ResultLayers />
+        <ResultLayers requestedRunId={null} />
       </MapContext>,
     );
 
@@ -284,7 +367,7 @@ describe("ResultLayers", () => {
     state.runs = [completedRun("run-9", "2026-02-01T10:00:00Z")];
     rerender(
       <MapContext value={map as unknown as MapLibreMap | null}>
-        <ResultLayers />
+        <ResultLayers requestedRunId={null} />
       </MapContext>,
     );
 
@@ -452,5 +535,286 @@ describe("ResultLayers", () => {
       await screen.findByText(m.error_load_result_levels()),
     ).toBeInTheDocument();
     expect(screen.queryByText(m.label_result_legend())).toBeNull();
+  });
+});
+
+/**
+ * The result raster: one image under the model, from the run's `.bin`.
+ *
+ * What these pin is placement and refusal. The pixels have their own tests in
+ * `raster-image.test.ts` and the extent arithmetic in `raster-extent.test.ts`;
+ * what only a map can answer is where the layer lands in the stack, that a
+ * picker click updates the image instead of adding a second one, and that a
+ * raster which cannot be drawn says why rather than simply not appearing.
+ */
+describe("ResultLayers: the result raster", () => {
+  /** A 2x1 grid over two bands, already in EPSG:4326 so no transform is needed. */
+  const RASTER_METADATA: RasterMetadata = {
+    width: 2,
+    height: 1,
+    bands: 2,
+    nodata: -9999,
+    unit: "dB(A)",
+    band_names: ["LrDay", "LrNight"],
+    crs: "EPSG:4326",
+    georeference: {
+      origin_x: 10,
+      origin_y: 50,
+      pixel_size_m: 2,
+      row_order: "south-up",
+    },
+  };
+
+  function rasterRun(id: string, finishedAt: string): RunSummary {
+    const run = completedRun(id, finishedAt);
+    return {
+      ...run,
+      artifacts: [
+        ...run.artifacts,
+        {
+          id: `${id}-raster-meta`,
+          kind: "run.result.raster_metadata",
+          path: `runs/${id}/results/rls19-road.json`,
+          created_at: finishedAt,
+        },
+        {
+          id: `${id}-raster-bin`,
+          kind: "run.result.raster_binary",
+          path: `runs/${id}/results/rls19-road.bin`,
+          created_at: finishedAt,
+        },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    state.runs = [rasterRun("run-1", "2026-01-01T10:00:05Z")];
+    state.rasterMetadata = RASTER_METADATA;
+    state.rasterBytes = buildRasterBinary({ width: 2, height: 1, bands: 2 }, [
+      [55, 65],
+      [45, 50],
+    ]);
+  });
+
+  it("adds the image below the model layers, and sinks it when they arrive later", async () => {
+    // The order the raster is added in is the one it cannot rely on: the bytes
+    // arrive long after `ModelLayers` has run, so appending would draw the
+    // result over the buildings that produced it.
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)).toBeDefined();
+    });
+
+    // No anchor existed, so it was appended and no `beforeId` was passed —
+    // MapLibre throws on one its style does not hold.
+    expect(map.moves).toEqual([]);
+
+    // The model layers land afterwards, over it. The next sync must sink it.
+    map.withModelLayers();
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+
+    await waitFor(() => {
+      expect(map.moves).toContainEqual([
+        LAYER_IDS.resultRaster,
+        BOTTOM_MODEL_LAYER_ID,
+      ]);
+    });
+    expect(map.order.indexOf(LAYER_IDS.resultRaster)).toBeLessThan(
+      map.order.indexOf(BOTTOM_MODEL_LAYER_ID),
+    );
+  });
+
+  it("anchors the image under the model when the model is already there", async () => {
+    const map = new FakeMap().withModelLayers();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)).toBeDefined();
+    });
+
+    expect(map.order.indexOf(LAYER_IDS.resultRaster)).toBeLessThan(
+      map.order.indexOf(BOTTOM_MODEL_LAYER_ID),
+    );
+  });
+
+  it("places the image on the outer corners of the outer cells", async () => {
+    // A 2x1 grid of 2 m cells centred on (10, 50) and (12, 50) covers 9..13 by
+    // 49..51 — half a pixel beyond the receivers at its edges, in TL/TR/BR/BL.
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeDefined();
+    });
+
+    expect(map.sources.get(SOURCE_IDS.resultRaster)?.coordinates).toEqual([
+      [9, 51],
+      [13, 51],
+      [13, 49],
+      [9, 49],
+    ]);
+    // Already in the display CRS, so no projection was asked for on its
+    // account. The one request in flight is the receiver table's, whose CRS
+    // comes off the run summary and is metric.
+    expect(state.requests).toHaveLength(1);
+    expect(state.requests[0]?.coordinates).toHaveLength(4);
+  });
+
+  it("updates the image on a picker click rather than adding a second source", async () => {
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+
+    await waitFor(() => {
+      expect(map.imageUpdates).toHaveLength(1);
+    });
+    expect(map.sources.size).toBe(2); // the receivers and the raster, no more
+  });
+
+  it("honours a group switched off before the layer existed", async () => {
+    useMapStore.setState({
+      layerVisibility: { [RESULT_RASTER_GROUP_ID]: false },
+    });
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)).toBeDefined();
+    });
+
+    expect(map.getLayer(LAYER_IDS.resultRaster)?.layout?.visibility).toBe(
+      "none",
+    );
+  });
+
+  it("says the receivers were not a grid, and draws no image", async () => {
+    // `exactOptionalPropertyTypes` refuses an explicit `undefined` here, so the
+    // key is removed rather than blanked — which is what an explicit-receiver
+    // run's sidecar actually looks like.
+    const withoutGeoreference: RasterMetadata = { ...RASTER_METADATA };
+    delete withoutGeoreference.georeference;
+    state.rasterMetadata = withoutGeoreference;
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.msg_result_raster_not_grid()),
+    ).toBeInTheDocument();
+    expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeUndefined();
+  });
+
+  it("refuses a band the sidecar does not name, rather than painting band 0", async () => {
+    // The picker's names are the receiver table's and the bands are the
+    // sidecar's. They agree today; a fallback to band 0 would paint LrNight
+    // under the label LrDay the day they stop.
+    state.rasterMetadata = { ...RASTER_METADATA, band_names: ["LrDay"] };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    fireEvent.click(await screen.findByRole("button", { name: "LrNight" }));
+
+    expect(
+      await screen.findByText(
+        m.msg_result_raster_no_band({ indicator: "LrNight" }),
+      ),
+    ).toBeInTheDocument();
+    // The image source still holds LrDay's pixels — an image source keeps
+    // whatever it was last given — so the layer is hidden. Leaving it visible
+    // would show one band under a sentence naming another.
+    expect(map.getLayer(LAYER_IDS.resultRaster)?.layout?.visibility).toBe(
+      "none",
+    );
+  });
+
+  it("refuses a grid larger than one texture, and keeps the receiver levels", async () => {
+    state.rasterMetadata = { ...RASTER_METADATA, width: 5000, height: 2 };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(
+        m.msg_result_raster_too_large({ width: 5000, height: 2 }),
+      ),
+    ).toBeInTheDocument();
+    expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeUndefined();
+    expect(map.getLayer(LAYER_IDS.resultReceiverLevel)).toBeDefined();
+  });
+
+  it("draws nothing and says nothing for a run that wrote no raster", async () => {
+    // An explicit-receiver run places no grid. That is not a failure, so the
+    // panel carries no sentence about it.
+    state.runs = [completedRun("run-1", "2026-01-01T10:00:05Z")];
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultReceiverLevel)).toBeDefined();
+    });
+
+    expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeUndefined();
+    expect(screen.queryByText(m.msg_result_raster_not_grid())).toBeNull();
+    expect(screen.queryByText(m.msg_result_raster_failed())).toBeNull();
+  });
+});
+
+/**
+ * Which run the map draws, when a link named one.
+ *
+ * The substitution is the point. A row followed from an older run used to land
+ * on the newest run's levels with nothing on screen saying the two differed.
+ */
+describe("ResultLayers: the run a link asked for", () => {
+  beforeEach(() => {
+    state.runs = [
+      completedRun("run-2", "2026-01-02T10:00:00Z"),
+      completedRun("run-1", "2026-01-01T10:00:00Z"),
+    ];
+  });
+
+  it("draws the run the link named, not the newest one", async () => {
+    const map = new FakeMap();
+    renderLayers(map, "run-1");
+
+    expect(await screen.findByText("run-1")).toBeInTheDocument();
+  });
+
+  it("falls back to the newest run and names the one it could not show", async () => {
+    const map = new FakeMap();
+    renderLayers(map, "run-404");
+
+    expect(
+      await screen.findByText(
+        m.msg_result_run_unavailable({ runId: "run-404" }),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("run-2")).toBeInTheDocument();
+  });
+
+  it("treats a run that has not completed the same way, and says which", async () => {
+    // Not "unknown": the run exists and the reader can see it in the run list.
+    state.runs = [
+      ...state.runs,
+      { ...completedRun("run-3", ""), status: "running" },
+    ];
+
+    const map = new FakeMap();
+    renderLayers(map, "run-3");
+
+    expect(
+      await screen.findByText(m.msg_result_run_unavailable({ runId: "run-3" })),
+    ).toBeInTheDocument();
+    expect(screen.getByText("run-2")).toBeInTheDocument();
   });
 });

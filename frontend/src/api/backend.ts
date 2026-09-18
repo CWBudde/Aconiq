@@ -141,7 +141,29 @@ export interface Backend {
   getStandards(): Promise<StandardDescriptor[]>;
   getRuns(): Promise<RunSummary[]>;
   getRunLog(runId: string): Promise<RunLog>;
+  /**
+   * The artifact's content decoded as JSON, or — in browser mode, where the
+   * value is stored rather than fetched — as the stored text. It is the
+   * JSON/text reader: bytes are `getArtifactBytes`'s business, whatever
+   * browser mode happens to tolerate here.
+   */
   getArtifactContent<T>(artifactId: string): Promise<T>;
+  /**
+   * The raw bytes of a binary artifact — today only `run.result.raster_binary`.
+   * Rejects for an artifact whose content is not binary.
+   *
+   * A separate method rather than a widening of `getArtifactContent<T>`,
+   * because the two modes disagree about what that method can return:
+   * `httpBackend` parses every response as JSON, and a headerless float64
+   * array is not JSON. A `getArtifactContent<ArrayBuffer>` that answers in
+   * browser mode and throws a SyntaxError in API mode is worse than two
+   * honest methods.
+   *
+   * No capability flag guards it: both modes can do it, and a capability says
+   * what the UI may do — there is no page here that would offer one mode a
+   * button the other cannot serve.
+   */
+  getArtifactBytes(artifactId: string): Promise<ArrayBuffer>;
   /** A URL the browser can open or download the artifact from. */
   getArtifactURL(artifactId: string): string;
   importFromOSM(req: OsmImportRequest): Promise<GeoJSONFeatureCollection>;

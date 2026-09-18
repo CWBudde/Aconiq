@@ -72,7 +72,12 @@ vi.mock("@/map/layer-control", () => ({
 // up. What it draws is pinned in `map/result-layers.test.tsx`; the page's own
 // half is that it is mounted inside the map at all.
 vi.mock("@/map/result-layers", () => ({
-  ResultLayers: () => <div data-testid="result-layers" />,
+  ResultLayers: ({ requestedRunId }: { requestedRunId: string | null }) => (
+    <div
+      data-testid="result-layers"
+      data-requested-run={requestedRunId ?? ""}
+    />
+  ),
 }));
 vi.mock("@/map/coordinate-display", () => ({
   CoordinateDisplay: () => null,
@@ -462,6 +467,44 @@ describe("MapPage", () => {
     renderPageAt("/model?select=src-1");
 
     expect(screen.getByTestId("location-search").textContent).toBe("");
+  });
+
+  it("hands the run parameter to the result layers", () => {
+    // The results page links with the receiver *and* the run, so a row
+    // followed from an older run does not land on the newest run's levels.
+    renderPageAt("/model?run=run-7");
+
+    expect(screen.getByTestId("result-layers")).toHaveAttribute(
+      "data-requested-run",
+      "run-7",
+    );
+  });
+
+  it("honours a select and a run arriving together, and strips both at once", () => {
+    // The case that forced one arrival reader. Two effects each calling
+    // `setSearchParams({})` in the same commit would have deleted the other's
+    // key before it was read, and a per-key fix in each would still race:
+    // React Router's updater sees the params of the render it was called from.
+    useModelStore
+      .getState()
+      .loadModel({ features: [source], receivers: [], calcArea: null });
+    renderPageAt("/model?select=src-1&run=run-7");
+
+    expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+    expect(screen.getByTestId("result-layers")).toHaveAttribute(
+      "data-requested-run",
+      "run-7",
+    );
+    expect(screen.getByTestId("location-search").textContent).toBe("");
+  });
+
+  it("leaves a query parameter it does not own alone", () => {
+    // It strips its own three keys, not the URL.
+    renderPageAt("/model?run=run-7&utm_source=mail");
+
+    expect(screen.getByTestId("location-search").textContent).toBe(
+      "?utm_source=mail",
+    );
   });
 
   it("does not show the panel when the model already has content", () => {

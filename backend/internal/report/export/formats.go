@@ -159,6 +159,11 @@ type GeoTransform struct {
 // It refuses a row order it does not know rather than guessing: a north-up
 // raster read as south-up is a vertically mirrored noise map that looks
 // entirely plausible.
+//
+// Browser mode cannot call it, so it is mirrored in
+// frontend/src/map/raster-extent.ts and pinned from both sides by
+// testdata/raster-parity/geotransform.golden.json — see formats_parity_test.go
+// before changing the arithmetic here.
 func GeoTransformFromGeoreference(georef results.Georeference, gridHeight int) (GeoTransform, error) {
 	err := georef.Validate()
 	if err != nil {
