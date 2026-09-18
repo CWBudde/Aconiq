@@ -1726,15 +1726,9 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase E — i18n and German
 
-The item this phase used to open with bundled five sub-parts. Three have landed and are below;
-the two that have not are the last `- [ ]` pair, with the German pass.
-
-- [x] **A validation finding is a code and its parameters** (2026-09-19). `validate.ts` built its
-      sentences with template literals in English and four places rendered `issue.message` verbatim,
-      so a German reader got `Geometry Point incompatible with source_type line` under a heading the
-      catalogue had already translated. `ValidationIssueParams` in `model/types.ts` is now the
-      vocabulary — thirty codes, each declaring exactly the values its sentence needs — and
-      `ValidationIssue` is a union over it. Four constraints stay live.
+- [x] **A validation finding is a code and its parameters** (#66). `ValidationIssueParams` in
+      `model/types.ts` is the vocabulary and `ValidationIssue` a union over it. Four constraints
+      stay live.
       **`model/validation-message.ts` is the only place a finding becomes a sentence**, and it is a
       `switch`, not a table keyed by code: TypeScript narrows `issue.params` per branch where an
       index into a `Record` cannot without a cast, and the exhaustive `switch` makes an added code a
@@ -1747,11 +1741,8 @@ the two that have not are the last `- [ ]` pair, with the German pass.
       the raw name stays on screen because it is what `--param` takes.
       **A German key missing from the catalogue is invisible to the compiler** — it falls back to
       English and renders — so `validation-message.test.ts` asserts that no code's two locales agree.
-- [x] **Counts select their own plural** (2026-09-19). Four conventions became one: fourteen messages
-      declare `count: plural`, replacing twenty keys and deleting ten call-site ternaries. The
-      frozen-noun bugs went with them — the run log read "1 lines" and the import button offered
-      "Import 1 objects". `@inlang/plugin-message-format` had carried ICU variants the whole time
-      and nothing used them. Three constraints stay live.
+- [x] **Counts select their own plural** (#66). Fourteen messages declare `count: plural`; the four
+      hand-rolled conventions are gone. Three constraints stay live.
       **`locale-parity.test.ts` reads `patterns()`, every string a message can render.** A variant
       is an array of objects, so the old "no blank message" check failed on one outright and the
       placeholder check passed _vacuously_ — its helper returned `[]` for a non-string, which is
@@ -1763,37 +1754,32 @@ the two that have not are the last `- [ ]` pair, with the German pass.
       _is_ declared is fine.
       **`e2e/app.ts`'s `message()` throws on a variant** rather than casting one to `string`, which
       would hand a spec `[object Object]` and fail it far from the cause.
-- [x] **The language switch stops reloading the page** (2026-09-19). `location.reload()` was never in
-      `src/`, which is what this file used to say: paraglide's `setLocale` defaults `reload: true`
-      and ends in `window.location.reload()` under the localStorage strategy. `src/locale.ts` passes
-      `reload: false` and is the subscription React needs — the compiled accessors resolve the locale
-      per call, so nothing was ever frozen; nothing asked again. Four constraints stay live.
+- [x] **The language switch stops reloading the page** (#66). `src/locale.ts` passes `reload: false`
+      and carries the subscription React needs. One belief this corrected: **there was never a
+      `location.reload()` in `src/`**, which is what this file used to say — paraglide's `setLocale`
+      defaults `reload: true`, so a grep for the call reports the item done. Four constraints stay
+      live.
       **`App` keys `RouterProvider` on the locale, and the remount is the mechanism rather than a
-      workaround.** A context reaches only its own consumers and the seventy-eight modules calling
-      `m` consume nothing, while `RouterProvider` renders its routes through a memo on router state,
-      so a plain re-render from above stops there. The remount costs component state inside the
-      routes — the map instance, an open dialog, the scroll position — and costs nothing that
-      matters more: the model and its command stack are at module scope, the query cache sits above
-      the key, and the URL is the router's. A reload lost all of those _plus_ the bundle and a second
-      project hydration.
+      workaround.** A context reaches only its own consumers and the modules calling `m` consume
+      nothing, while `RouterProvider` renders its routes through a memo on router state, so a plain
+      re-render from above stops there. The remount costs component state inside the routes — the
+      map instance, an open dialog, the scroll position — and nothing above them: the model and its
+      command stack are at module scope, the query cache sits above the key, the URL is the router's.
       **`src/locale.ts` is not in `src/i18n/`.** That directory is paraglide's output — gitignored,
       wiped and rewritten by `compile:i18n`, and excluded from eslint — so hand-written code placed
-      there vanishes on the next compile, which is how this was found.
-      **`<html lang>` moves with the switch.** The reload used to do it for free, because `main.tsx`
-      set it once at startup and every switch came back through startup; no axe rule fires on a
-      `lang` that is merely wrong. `ui/format.ts` needed nothing: its `Intl` formatters are built
-      inside the functions, so numbers and dates follow on their own.
+      there vanishes on the next compile.
+      **`<html lang>` moves with the switch**, because `main.tsx` only ever set it at startup and no
+      axe rule fires on a `lang` that is merely wrong. `ui/format.ts` needs nothing: its `Intl`
+      formatters are built inside the functions, so numbers and dates follow on their own.
       **jsdom cannot prove a reload did not happen** — its `location` is non-configurable and
       `reload()` is a console notice, not an exception. `src/locale.test.tsx` asserts the argument
       through `overwriteSetLocale`; `e2e/smoke.spec.ts` asserts the absence, with a `window` marker a
       reload would wipe.
-- [x] **The two paraglide option sites are held in lockstep** (2026-09-19).
-      `scripts/compile-i18n.mjs` and `vite.config.ts` must agree on `project`, `outdir` and
-      `strategy`, and until now only a comment in each said so — while the "Order and gates" note
-      below records what a wrong catalogue compile did to this repo. `src/paraglide-options.test.ts`
-      reads both files as text, because `vite.config.ts` pulls the plugin graph into the test
-      environment and `compile-i18n.mjs` spawns a compiler on import; a regex that stops matching
-      fails the test rather than comparing nothing.
+- [x] **The two paraglide option sites are held in lockstep** (#66). `src/paraglide-options.test.ts`
+      holds `scripts/compile-i18n.mjs` and `vite.config.ts` to the same `project`, `outdir` and
+      `strategy`. It reads both files as text, because `vite.config.ts` pulls the plugin graph into
+      the test environment and `compile-i18n.mjs` spawns a compiler on import; a regex that stops
+      matching fails the test rather than comparing nothing.
 - [ ] Add the keys still missing after Phase B: the "Map unavailable"/"Retry" strings in
       `map-view.tsx` — plus its two module-scope English constants, `MAP_TIMEOUT_MESSAGE` and
       `MAP_UNAVAILABLE_MESSAGE`, which are rendered into the same panel and which no lint rule would
