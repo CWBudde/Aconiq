@@ -14,7 +14,11 @@ import { useModelStore } from "@/model/model-store";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { ModelFeature } from "@/model/types";
 import type { ComputeRequest, TransformRequest } from "@/wasm/types";
-import type { StandardDescriptor } from "./client";
+import type {
+  RasterMetadata,
+  ReceiverTable,
+  StandardDescriptor,
+} from "./client";
 
 /**
  * Records every `transform` request `startRun` makes, so a test can ask what
@@ -1290,5 +1294,146 @@ describe("receiver grid extent", () => {
     ]);
 
     expect(bbox).toEqual({ minX: 0, minY: 0, maxX: 200, maxY: 100 });
+  });
+});
+
+describe("browser-mode raster artifacts", () => {
+  beforeEach(async () => {
+    await resetStores();
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+  });
+
+  /*
+   * This slot held the run's SHA-256 hex string — 64 characters where a
+   * float64 array belongs — because `StoredArtifactContent` could not
+   * represent bytes at all. Nothing could read back the raster a browser run
+   * had just computed, which is what blocked drawing it on the map.
+   */
+  it("stores the raster binary as bytes, not as a digest of it", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "25",
+        grid_padding_m: "0",
+      },
+    });
+
+    const binary = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_binary",
+    );
+    expect(binary).toBeDefined();
+
+    const bytes = await browserBackend.getArtifactContent<ArrayBuffer>(
+      binary?.id ?? "",
+    );
+    // Not `toBeInstanceOf`: fake-indexeddb clones across a realm boundary, so
+    // the buffer that comes back has every internal slot and still fails
+    // `instanceof` — the same reason `browser-storage` checks the tag.
+    expect(Object.prototype.toString.call(bytes)).toBe("[object ArrayBuffer]");
+
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+    // Exactly what `results.SaveRaster` writes: one float64 per cell per band.
+    expect(bytes.byteLength).toBe(meta.width * meta.height * meta.bands * 8);
+  });
+
+  /*
+   * The georeference is what lets anything place the raster. It has to be the
+   * padded grid's south-west corner — the centre of cell (0,0) — which is the
+   * same convention `buildReceiversFromPoints` records on the CLI side.
+   */
+  it("records where the grid sits, in the compute CRS", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "25",
+        grid_padding_m: "50",
+      },
+    });
+
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+
+    expect(meta.crs).toBe("EPSG:25832");
+    expect(meta.georeference).toEqual({
+      // ROAD spans x 0..100, y 0..0; padding 50 puts the origin at (-50, -50).
+      origin_x: -50,
+      origin_y: -50,
+      pixel_size_m: 25,
+      row_order: "south-up",
+    });
+
+    const table = await browserBackend.getArtifactContent<ReceiverTable>(
+      run.artifacts.find((a) => a.kind === "run.result.receiver_table_json")
+        ?.id ?? "",
+    );
+    // The origin is the first receiver, on both targets.
+    expect([table.records[0]?.x, table.records[0]?.y]).toEqual([-50, -50]);
+  });
+
+  /*
+   * Explicit receivers are points the user placed. No cell size describes
+   * them, and an invented georeference would be read by every GIS consumer
+   * without a second opinion.
+   */
+  it("records no georeference for explicit receivers", async () => {
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+
+    expect(meta.georeference).toBeUndefined();
+    expect(meta.crs).toBe("EPSG:25832");
+  });
+
+  /*
+   * `getArtifactURL` is synchronous because pages put its result straight into
+   * `<iframe src>`. Binary content is not in the document, so it cannot answer
+   * — and a blob minted from `null` would read "null" to whoever opened it.
+   */
+  it("refuses to mint a synchronous URL for binary content", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "50",
+        grid_padding_m: "0",
+      },
+    });
+    const binaryId =
+      run.artifacts.find((a) => a.kind === "run.result.raster_binary")?.id ??
+      "";
+
+    expect(() => browserBackend.getArtifactURL(binaryId)).toThrow(
+      "holds binary content",
+    );
   });
 });

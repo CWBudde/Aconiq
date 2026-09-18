@@ -1,0 +1,23 @@
+{
+  "band_names": [
+    "LrDay",
+    "LrNight"
+  ],
+  "bands": 2,
+  "cell_count": 12,
+  "crs": "EPSG:25832",
+  "data_bytes": 96,
+  "data_file": "raster.bin",
+  "encoding": "float64-le-v1",
+  "georeference": {
+    "origin_x": -50.5,
+    "origin_y": 5600000.25,
+    "pixel_size_m": 12.5,
+    "row_order": "south-up"
+  },
+  "height": 2,
+  "nodata": -9999,
+  "schema_name": "aconiq.raster.v1",
+  "unit": "dB",
+  "width": 3
+}

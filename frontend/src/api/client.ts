@@ -196,6 +196,26 @@ export interface ReceiverTable {
   records: ReceiverRecord[];
 }
 
+/**
+ * Where a raster's cells sit on the ground. Mirrors `results.Georeference` in
+ * `backend/internal/report/results/raster.go`.
+ *
+ * `origin_x`/`origin_y` is the **centre of cell (0,0)**, not a corner: a grid
+ * receiver is a point in the middle of the cell it stands for, so the origin is
+ * exactly the first row of `receivers.csv`. Anything drawing this raster has to
+ * offset by half a pixel to get a corner-based extent.
+ *
+ * `row_order` is `"south-up"`: row 0 holds the southernmost cells. Nothing
+ * writes anything else today, and the Go side refuses a value it does not
+ * recognise rather than reading it as south-up.
+ */
+export interface RasterGeoreference {
+  origin_x: number;
+  origin_y: number;
+  pixel_size_m: number;
+  row_order: string;
+}
+
 export interface RasterMetadata {
   width: number;
   height: number;
@@ -203,6 +223,14 @@ export interface RasterMetadata {
   nodata: number;
   unit: string;
   band_names?: string[];
+  /** The CRS the values are in — the run's *compute* CRS, not the project's. */
+  crs?: string;
+  /**
+   * Absent when the receivers are not a grid: explicit receiver mode places
+   * points, and no cell size describes them. Absence means "not a grid", never
+   * "a grid at the origin".
+   */
+  georeference?: RasterGeoreference;
 }
 
 /**

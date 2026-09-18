@@ -67,6 +67,26 @@ The conversion to GDAL's corner-based affine transform happens in exactly one
 place, `exportfmt.GeoTransformFromGeoreference`: half a pixel west, and
 `(height-1)` rows plus half a pixel north, because row 0 is the southernmost.
 
+### Raster binary — the browser mirror
+
+`frontend/src/model/raster-bin.ts` is the TypeScript half, as
+`receiver-csv.ts` is for the CSV. Go is canonical; the mirror is pinned against
+it by `backend/internal/report/results/testdata/raster-parity/`, written by
+`raster_parity_test.go` and read by `raster-bin.parity.test.ts`.
+
+The part a mirror gets wrong is the index order, not the encoding: a run
+produces one value per receiver in receiver order, and writing them in arrival
+order gives a file of exactly the right length, full of finite values, with
+every cell in the wrong place. The parity fixture is therefore 3x2 over two
+bands, so that a width/height swap and a band/row swap both change the bytes.
+
+Browser mode stores the bytes in their own IndexedDB record rather than inside
+the state document (`browser-storage.saveArtifactBytes`). The document is
+written whole on every change, so a raster inside it would be structured-cloned,
+every stored run included, on every save. `getArtifactContent` reads the record
+on demand; `getArtifactURL` is synchronous and refuses binary content rather
+than minting a blob from a placeholder.
+
 `exportfmt.InferGeoTransformFromReceivers` reconstructs the same transform from
 the receiver table's coordinates. It is the **fallback**, for sidecars written
 before `georeference` existed, and it is never preferred where a declaration

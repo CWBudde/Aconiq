@@ -207,10 +207,106 @@ export async function savePersistedState(value: unknown): Promise<void> {
   );
 }
 
+/**
+ * Artifact bytes live under their own key, one record per artifact, rather than
+ * inside the state document.
+ *
+ * The document is written *whole* on every change — `persist` structured-clones
+ * it, runs and all — so a raster binary stored inside it would be re-cloned on
+ * every save. A 250 000-cell grid over two bands is 4 MB, and the store keeps
+ * twenty runs. Keeping the bytes beside the document costs one extra request on
+ * the rare path that reads them and nothing at all on the common path that does
+ * not.
+ *
+ * This is not the per-run record split PLAN.md's Phase F describes; it is one
+ * key space for the one thing that is actually large.
+ */
+const ARTIFACT_BYTES_PREFIX = "artifact-bytes:";
+
+function artifactBytesKey(artifactId: string): string {
+  return ARTIFACT_BYTES_PREFIX + artifactId;
+}
+
+export async function saveArtifactBytes(
+  artifactId: string,
+  bytes: ArrayBuffer,
+): Promise<void> {
+  await withStore(
+    "readwrite",
+    "Browser-mode raster data cannot be stored",
+    (store) => store.put(bytes, artifactBytesKey(artifactId)),
+  );
+}
+
+/**
+ * Whether a value read back from the store is an `ArrayBuffer`.
+ *
+ * **Not `instanceof`.** IndexedDB hands back a structured clone, and the clone
+ * can be constructed in a different realm from the one this module runs in —
+ * `fake-indexeddb` does exactly that under vitest. A cross-realm `ArrayBuffer`
+ * has every internal slot and fails `instanceof` anyway, so the branded tag is
+ * what actually answers the question.
+ */
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return Object.prototype.toString.call(value) === "[object ArrayBuffer]";
+}
+
+/** Resolves with the stored bytes, or `null` when nothing is stored. */
+export async function loadArtifactBytes(
+  artifactId: string,
+): Promise<ArrayBuffer | null> {
+  const value: unknown = await withStore(
+    "readonly",
+    "Browser-mode raster data cannot be read",
+    (store) => store.get(artifactBytesKey(artifactId)),
+  );
+  if (isArrayBuffer(value)) return value;
+  // A view is not what saveArtifactBytes stores, but a store that normalises
+  // buffers to typed arrays would otherwise silently read as "nothing stored".
+  if (ArrayBuffer.isView(value)) {
+    return value.buffer.slice(
+      value.byteOffset,
+      value.byteOffset + value.byteLength,
+    ) as ArrayBuffer;
+  }
+  return null;
+}
+
+/**
+ * Removes the bytes of artifacts whose run is gone. A failure here is not worth
+ * failing the caller over — the record is orphaned, not corrupting — so it is
+ * reported through the returned promise and callers may ignore it.
+ */
+export async function deleteArtifactBytes(
+  artifactIds: readonly string[],
+): Promise<void> {
+  for (const artifactId of artifactIds) {
+    await withStore(
+      "readwrite",
+      "Browser-mode raster data cannot be removed",
+      (store) => store.delete(artifactBytesKey(artifactId)),
+    );
+  }
+}
+
 export async function clearPersistedState(): Promise<void> {
   await withStore(
     "readwrite",
     "Stored browser-mode runs cannot be removed",
     (store) => store.delete(STATE_KEY),
+  );
+  // The artifact byte records outlive the document that referenced them, so
+  // clearing only STATE_KEY would leave every raster this origin ever stored
+  // occupying quota with nothing able to name it again.
+  await withStore(
+    "readwrite",
+    "Stored browser-mode raster data cannot be removed",
+    (store) =>
+      store.delete(
+        IDBKeyRange.bound(
+          ARTIFACT_BYTES_PREFIX,
+          ARTIFACT_BYTES_PREFIX + "\uffff",
+        ),
+      ),
   );
 }

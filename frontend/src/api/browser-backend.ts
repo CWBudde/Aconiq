@@ -16,6 +16,7 @@ import type {
   ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
+  RasterGeoreference,
   RasterMetadata,
   ReceiverTable,
   RunLog,
@@ -32,6 +33,7 @@ import {
 } from "@/model/source-acoustics";
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
+import { buildRasterBinary } from "@/model/raster-bin";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { type AconiqKernel, getKernel } from "@/wasm/kernel";
 import type {
@@ -46,8 +48,11 @@ import type {
 } from "@/wasm/types";
 import {
   BrowserStorageError,
+  deleteArtifactBytes,
   isBrowserStorageError,
+  loadArtifactBytes,
   loadPersistedState,
+  saveArtifactBytes,
   savePersistedState,
 } from "./browser-storage";
 
@@ -87,10 +92,20 @@ const DEFAULT_OSM_ENDPOINT = "https://overpass-api.de/api/interpreter";
  */
 const CRS_NOT_RECORDED = "CRS not recorded";
 
+/**
+ * One stored artifact's content.
+ *
+ * `encoding` says how `value` is to be read: a `json` value is the decoded
+ * object, a `text` value is the string, and a `binary` value is **not here at
+ * all** — the bytes live under their own IndexedDB key
+ * (`browser-storage.saveArtifactBytes`) and `value` is null. The document is
+ * written whole on every change, so a raster binary inside it would be
+ * structured-cloned, runs and all, on every save.
+ */
 type StoredArtifactContent = {
   mimeType: string;
   kind: string;
-  encoding: "json" | "text";
+  encoding: "json" | "text" | "binary";
   value: unknown;
 };
 
@@ -166,7 +181,9 @@ function isStoredArtifactContent(
     isRecord(value) &&
     typeof value["mimeType"] === "string" &&
     typeof value["kind"] === "string" &&
-    (value["encoding"] === "json" || value["encoding"] === "text") &&
+    (value["encoding"] === "json" ||
+      value["encoding"] === "text" ||
+      value["encoding"] === "binary") &&
     "value" in value
   );
 }
@@ -464,11 +481,33 @@ function evictOldestRun(
   // that is not the run being written.
   const runs = [...current.runs];
   for (let index = runs.length - 1; index >= 0; index -= 1) {
-    if (runs[index]?.run.id === keepId) continue;
+    const victim = runs[index];
+    if (victim === undefined || victim.run.id === keepId) continue;
     runs.splice(index, 1);
+    // Eviction exists to free quota, and the raster bytes are the largest
+    // thing a run owns — dropping the document entry while leaving them
+    // behind would evict a run and reclaim almost nothing.
+    forgetArtifactBytes(victim);
     return { ...current, runs };
   }
   return null;
+}
+
+/**
+ * Deletes the byte records of a run that is no longer in the document.
+ *
+ * Deliberately not awaited by its callers: the run is already gone from the
+ * state they are about to write, and a failure here leaves an orphan record
+ * rather than a broken run. `clearPersistedState` sweeps whatever is left.
+ */
+function forgetArtifactBytes(storedRun: StoredRun): void {
+  const binaryIds = Object.entries(storedRun.artifacts)
+    .filter(([, content]) => content.encoding === "binary")
+    .map(([artifactId]) => artifactId);
+  if (binaryIds.length === 0) return;
+  void deleteArtifactBytes(binaryIds).catch(() => {
+    // An orphaned byte record costs quota, not correctness.
+  });
 }
 
 /**
@@ -546,9 +585,16 @@ function setRun(
   );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
+  const kept = nextRuns.slice(0, MAX_STORED_RUNS);
+  // Whatever the cap drops takes its byte records with it. They are keyed
+  // separately from the document, so trimming the list alone would leave the
+  // largest part of every run past the cap in the store forever.
+  for (const dropped of nextRuns.slice(MAX_STORED_RUNS)) {
+    forgetArtifactBytes(dropped);
+  }
   return {
     ...current,
-    runs: nextRuns.slice(0, MAX_STORED_RUNS),
+    runs: kept,
     // Raised here rather than at mint time: this is the moment an id becomes
     // real, and an eviction or a delete afterwards must not lower it.
     runHighWaterMark: Math.max(
@@ -942,10 +988,21 @@ export function buildBuildings(features: ModelFeature[]): Building[] {
   return buildings;
 }
 
+/**
+ * The grid layout a run computed on, mirroring `results.GridLayout` on the Go
+ * side: the shape, and where it sits. `georeference` is absent for explicit
+ * receivers, which are points rather than a grid.
+ */
+type BrowserGridLayout = {
+  width: number;
+  height: number;
+  georeference?: RasterGeoreference;
+};
+
 function buildReceiverGrid(
   bbox: { minX: number; minY: number; maxX: number; maxY: number },
   params: Record<string, string>,
-): { receivers: PointReceiver[]; width: number; height: number } {
+): { receivers: PointReceiver[] } & BrowserGridLayout {
   const resolution = parseNumber(params, "grid_resolution_m", 10);
   const padding = parseNumber(params, "grid_padding_m", 20);
   const receiverHeight = parseNumber(params, "receiver_height_m", 4);
@@ -973,8 +1030,28 @@ function buildReceiverGrid(
     }
   }
 
-  return { receivers, width, height };
+  return {
+    receivers,
+    width,
+    height,
+    // The padded south-west corner is where the loop above starts, so it is
+    // the centre of cell (0,0) — the same convention `buildReceiversFromPoints`
+    // records on the CLI side, and the reason `receivers[0]` and `origin` are
+    // the same coordinate on both targets.
+    georeference: {
+      origin_x: minX,
+      origin_y: minY,
+      pixel_size_m: resolution,
+      row_order: ROW_ORDER_SOUTH_UP,
+    },
+  };
 }
+
+/**
+ * `results.RowOrderSouthUp`. The loop above walks Y ascending, as
+ * `geo.GridReceiverSet.Generate` does, so row 0 is the southernmost.
+ */
+const ROW_ORDER_SOUTH_UP = "south-up";
 
 async function sha256Hex(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
@@ -1160,8 +1237,7 @@ async function runRLS19Road(
   const buildings = buildBuildings(features);
 
   let gridReceivers: PointReceiver[];
-  let rasterWidth: number;
-  let rasterHeight: number;
+  let layout: BrowserGridLayout;
 
   if (spec.receiverMode === "custom") {
     const storeReceivers = computeModel.receivers;
@@ -1180,8 +1256,10 @@ async function runRLS19Road(
       point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
       height_m: r.heightM,
     }));
-    rasterWidth = 1;
-    rasterHeight = storeReceivers.length;
+    // Not a grid, and the layout says so: explicit receivers are points the
+    // user placed, and no cell size describes where they sit. The shape still
+    // describes the raster truthfully — one column, one row per receiver.
+    layout = { width: 1, height: storeReceivers.length };
   } else {
     const calcArea = computeModel.calcArea;
     let bbox: {
@@ -1203,8 +1281,13 @@ async function runRLS19Road(
     }
     const receiverGrid = buildReceiverGrid(bbox, spec.params);
     gridReceivers = receiverGrid.receivers;
-    rasterWidth = receiverGrid.width;
-    rasterHeight = receiverGrid.height;
+    layout = {
+      width: receiverGrid.width,
+      height: receiverGrid.height,
+      ...(receiverGrid.georeference
+        ? { georeference: receiverGrid.georeference }
+        : undefined),
+    };
   }
 
   // The lock spans the compute, not just the persist: the id is minted
@@ -1234,18 +1317,33 @@ async function runRLS19Road(
     const receiverTable = buildReceiverTable(outputs);
     const receiverCSV = buildReceiverTableCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
-      width: rasterWidth,
-      height: rasterHeight,
+      width: layout.width,
+      height: layout.height,
       bands: 2,
       nodata: -9999,
       unit: "dB(A)",
       band_names: ["LrDay", "LrNight"],
+      // Both mirror what `results.RasterMetadata` carries on the CLI side.
+      // The CRS is the compute CRS, as it is there: results are expressed in
+      // it, and the sidecar is the only place a consumer can ask.
+      crs: projection.computeCRS,
+      ...(layout.georeference
+        ? { georeference: layout.georeference }
+        : undefined),
     };
+    // The real thing, not a digest of it. This slot held the run's SHA-256 hex
+    // string — 64 characters where a float64 array belongs — because
+    // `StoredArtifactContent` could not represent bytes at all, so nothing
+    // could read back the raster a browser run had just computed.
+    const rasterBinary = buildRasterBinary(rasterMetadata, [
+      outputs.map((output) => output.Indicators.lr_day),
+      outputs.map((output) => output.Indicators.lr_night),
+    ]);
     const summary = {
       run_id: runId,
       status: "completed",
-      grid_width: rasterWidth,
-      grid_height: rasterHeight,
+      grid_width: layout.width,
+      grid_height: layout.height,
       source_count: sources.length,
       parking_source_count: parking.sources.length,
       receiver_count: outputs.length,
@@ -1371,8 +1469,8 @@ async function runRLS19Road(
       [rasterBinArtifact.id]: {
         kind: rasterBinArtifact.kind,
         mimeType: "application/octet-stream",
-        encoding: "text",
-        value: outputHash,
+        encoding: "binary",
+        value: null,
       },
       [summaryArtifact.id]: {
         kind: summaryArtifact.kind,
@@ -1382,6 +1480,10 @@ async function runRLS19Road(
       },
     };
 
+    // The bytes go in first: a document referencing an artifact whose record
+    // is missing reads as a corrupted run, while a byte record no document
+    // names is merely orphaned and is cleaned up by the next eviction.
+    await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
     await persistRun({ run, log, artifacts: artifactMap }, "run");
     return run;
   });
@@ -1484,7 +1586,21 @@ export const browserBackend = {
   },
 
   async getArtifactContent<T>(artifactId: string): Promise<T> {
-    return findArtifact(await ensureLoaded(), artifactId).value as T;
+    const content = findArtifact(await ensureLoaded(), artifactId);
+    if (content.encoding === "binary") {
+      // The bytes are beside the document, not in it. A missing record means
+      // the document and the byte store disagree — a partial quota eviction,
+      // or a document restored without them — and an empty buffer read as a
+      // raster is a grid of zeroes, so it says so instead.
+      const bytes = await loadArtifactBytes(artifactId);
+      if (bytes === null) {
+        throw new Error(
+          `Artifact ${artifactId} declares binary content, but its bytes are not stored`,
+        );
+      }
+      return bytes as T;
+    }
+    return content.value as T;
   },
 
   /**
@@ -1504,6 +1620,15 @@ export const browserBackend = {
       );
     }
     const content = findArtifact(state, artifactId);
+    if (content.encoding === "binary") {
+      // Binary content is not in the document, and this is synchronous
+      // because pages put the result straight into `<iframe src>` and
+      // `<a href>`. Nothing asks for a URL to a raster today; when something
+      // does it needs an async path, not a blob minted from `null`.
+      throw new Error(
+        `Artifact ${artifactId} holds binary content; read it with getArtifactContent`,
+      );
+    }
     const body =
       content.encoding === "json"
         ? JSON.stringify(content.value, null, 2)
