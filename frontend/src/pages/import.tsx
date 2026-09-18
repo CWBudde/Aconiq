@@ -17,6 +17,7 @@ import {
 import type { LoadedModel } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { validateProjectModel } from "@/model/validate";
+import { validationIssueText } from "@/model/validation-message";
 import type {
   CalcArea,
   GeoJSONFeatureCollection,
@@ -367,7 +368,7 @@ export default function ImportPage() {
                 <ul className="mt-2 space-y-1">
                   {doneErrors.map((issue, i) => (
                     <li key={i}>
-                      {issue.message}{" "}
+                      {validationIssueText(issue)}{" "}
                       <Button
                         asChild
                         variant="link"

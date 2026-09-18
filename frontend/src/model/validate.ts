@@ -1,7 +1,9 @@
 import type {
   ModelFeature,
   ModelReceiver,
+  ValidationCode,
   ValidationIssue,
+  ValidationIssueParams,
   ValidationReport,
 } from "./types";
 import { isGeometryCompatible } from "./types";
@@ -25,6 +27,15 @@ import {
   RLS19_TRAFFIC_KEYS,
 } from "./source-acoustics";
 
+// The RLS-19 gradient band, as numbers rather than as prose.
+//
+// They used to be spelled twice — once in the comparison and once inside the
+// English sentence beside it — which is precisely the drift a parameterised
+// message removes: the bounds the check enforces are now the bounds the
+// reader is shown, in whichever language they are shown in.
+const RLS19_GRADIENT_MIN_PERCENT = -12;
+const RLS19_GRADIENT_MAX_PERCENT = 12;
+
 /**
  * The model's findings: the features, the receivers, and the ids they share.
  *
@@ -44,14 +55,15 @@ export function validateProjectModel(
   // An empty model is an error, not merely "nothing to say": without it the
   // run gate would accept a model with nothing in it. `useModelValidation`
   // answers "empty" before calling this rather than filtering the code out
-  // afterwards, which would leave the count disagreeing with `valid` — and
-  // this message is hardcoded English, so it must never reach the UI.
+  // afterwards, which would leave the count disagreeing with `valid`. The code
+  // still carries a message of its own — a finding the renderer cannot render
+  // would be a worse exception than one nobody shows.
   if (features.length === 0 && receivers.length === 0) {
     errors.push({
       level: "error",
       code: "model.empty",
       featureId: "",
-      message: "Model contains no features or receivers",
+      params: {},
     });
     return {
       valid: false,
@@ -98,7 +110,7 @@ function validateFeature(
           level: "error",
           code: "source.type.required",
           featureId: id,
-          message: "Source requires source_type (point|line|area)",
+          params: {},
         });
       } else if (
         !isGeometryCompatible(feature.geometry.type, feature.sourceType)
@@ -107,7 +119,10 @@ function validateFeature(
           level: "error",
           code: "source.geometry.mismatch",
           featureId: id,
-          message: `Geometry ${feature.geometry.type} incompatible with source_type ${feature.sourceType}`,
+          params: {
+            geometry: feature.geometry.type,
+            sourceType: feature.sourceType,
+          },
         });
       }
       validateRLS19SourceAcoustics(feature, errors, warnings);
@@ -119,14 +134,14 @@ function validateFeature(
           level: "error",
           code: "building.height.required",
           featureId: id,
-          message: "Building requires height_m",
+          params: {},
         });
       } else if (feature.heightM <= 0) {
         errors.push({
           level: "error",
           code: "building.height.invalid",
           featureId: id,
-          message: "Building height_m must be > 0",
+          params: {},
         });
       }
       if (
@@ -137,7 +152,7 @@ function validateFeature(
           level: "error",
           code: "building.geometry.invalid",
           featureId: id,
-          message: "Building geometry must be Polygon or MultiPolygon",
+          params: {},
         });
       }
       break;
@@ -148,14 +163,14 @@ function validateFeature(
           level: "error",
           code: "barrier.height.required",
           featureId: id,
-          message: "Barrier requires height_m",
+          params: {},
         });
       } else if (feature.heightM <= 0) {
         errors.push({
           level: "error",
           code: "barrier.height.invalid",
           featureId: id,
-          message: "Barrier height_m must be > 0",
+          params: {},
         });
       }
       if (
@@ -166,7 +181,7 @@ function validateFeature(
           level: "error",
           code: "barrier.geometry.invalid",
           featureId: id,
-          message: "Barrier geometry must be LineString or MultiLineString",
+          params: {},
         });
       }
       break;
@@ -204,7 +219,7 @@ function validateRLS19SourceAcoustics(
       level: "error",
       code: "source.rls19.surface_type.invalid",
       featureId: feature.id,
-      message: `RLS-19 surface_type "${surfaceType}" is not supported`,
+      params: { value: surfaceType },
     });
   }
 
@@ -223,7 +238,7 @@ function validateRLS19SourceAcoustics(
       level: "error",
       code: "source.rls19.junction_type.invalid",
       featureId: feature.id,
-      message: `RLS-19 junction_type "${junctionType}" is not supported`,
+      params: { value: junctionType },
     });
   }
 
@@ -234,13 +249,18 @@ function validateRLS19SourceAcoustics(
   );
   if (
     gradient != null &&
-    (!Number.isFinite(gradient) || gradient < -12 || gradient > 12)
+    (!Number.isFinite(gradient) ||
+      gradient < RLS19_GRADIENT_MIN_PERCENT ||
+      gradient > RLS19_GRADIENT_MAX_PERCENT)
   ) {
     errors.push({
       level: "error",
       code: "source.rls19.gradient.invalid",
       featureId: feature.id,
-      message: "RLS-19 gradient_percent must be between -12 and 12",
+      params: {
+        min: RLS19_GRADIENT_MIN_PERCENT,
+        max: RLS19_GRADIENT_MAX_PERCENT,
+      },
     });
   }
 
@@ -257,7 +277,7 @@ function validateRLS19SourceAcoustics(
       level: "error",
       code: "source.rls19.junction_distance.invalid",
       featureId: feature.id,
-      message: "RLS-19 junction_distance_m must be >= 0",
+      params: {},
     });
   }
 
@@ -270,7 +290,7 @@ function validateRLS19SourceAcoustics(
       level: "error",
       code: "source.rls19.reflection_surcharge.invalid",
       featureId: feature.id,
-      message: "RLS-19 reflection_surcharge_db must be finite",
+      params: {},
     });
   }
 
@@ -283,7 +303,7 @@ function validateRLS19SourceAcoustics(
       level: "error",
       code: "source.rls19.road_speed.invalid",
       featureId: feature.id,
-      message: "RLS-19 road_speed_kph must be > 0",
+      params: {},
     });
   }
 
@@ -294,7 +314,7 @@ function validateRLS19SourceAcoustics(
         level: "error",
         code: "source.rls19.speed.invalid",
         featureId: feature.id,
-        message: `RLS-19 ${key} must be > 0`,
+        params: { field: key },
       });
     }
   }
@@ -306,7 +326,7 @@ function validateRLS19SourceAcoustics(
         level: "error",
         code: "source.rls19.traffic.invalid",
         featureId: feature.id,
-        message: `RLS-19 ${key} must be >= 0`,
+        params: { field: key },
       });
     }
   }
@@ -316,7 +336,7 @@ function validateRLS19SourceAcoustics(
       level: "warning",
       code: "source.rls19.review_required",
       featureId: feature.id,
-      message: "Review imported source acoustics before running RLS-19",
+      params: {},
     });
   }
 }
@@ -349,6 +369,14 @@ function isRLS19Parking(feature: ModelFeature): boolean {
   return PARKING_PROPERTIES.some((key) => properties[key] !== undefined);
 }
 
+/** The §3.4 codes, each paired with exactly the parameters its sentence needs. */
+type ParkingIssueSpec = {
+  [Code in Extract<ValidationCode, `source.rls19.parking.${string}`>]: {
+    code: Code;
+    params: ValidationIssueParams[Code];
+  };
+}[Extract<ValidationCode, `source.rls19.parking.${string}`>];
+
 // validateRLS19Parking surfaces the §3.4 refusals here rather than letting them
 // arrive as a kernel error. An omitted Parkplatztyp is not Pkw and an omitted
 // movement rate is not zero — zero is the silence sentinel, which would report
@@ -364,8 +392,14 @@ function validateRLS19Parking(
     return;
   }
 
-  const push = (code: string, message: string): void => {
-    errors.push({ level: "error", code, featureId: feature.id, message });
+  // A code and its parameters, with the level and the feature id filled in.
+  //
+  // The spec is a union over the codes, not `{ code: string; params: object }`,
+  // so naming the wrong parameter for a code does not compile. That is the
+  // whole reason the helper survived the move away from prose: it used to save
+  // two repeated fields, and it now also carries the correlation.
+  const push = (spec: ParkingIssueSpec): void => {
+    errors.push({ level: "error", featureId: feature.id, ...spec });
   };
 
   // The one §3.4 refusal that is about the geometry rather than a property, and
@@ -379,40 +413,43 @@ function validateRLS19Parking(
   // `isGeometryCompatible` already refuses as a source-type mismatch.
   const parts = polygonParts(feature);
   if (parts !== null && parts.length !== 1) {
-    push(
-      "source.rls19.parking.geometry.multipart",
-      `RLS-19 parking source must be a single Polygon, got ${String(parts.length)} parts; model each Teilfläche (§3.4, Bild 10) as its own feature with its own ${PROP_PARKING_NUM_SPACES}`,
-    );
+    push({
+      code: "source.rls19.parking.geometry.multipart",
+      params: { parts: parts.length, field: PROP_PARKING_NUM_SPACES },
+    });
   }
 
   const numSpaces = getFeatureNumber(feature, PROP_PARKING_NUM_SPACES);
   if (numSpaces === undefined) {
-    push(
-      "source.rls19.parking.num_spaces.missing",
-      `RLS-19 ${PROP_PARKING_NUM_SPACES} is required: the number of Stellplätze n has no default`,
-    );
+    push({
+      code: "source.rls19.parking.num_spaces.missing",
+      params: { field: PROP_PARKING_NUM_SPACES },
+    });
   } else if (numSpaces < 1 || Math.trunc(numSpaces) !== numSpaces) {
-    push(
-      "source.rls19.parking.num_spaces.invalid",
-      `RLS-19 ${PROP_PARKING_NUM_SPACES} must be an integer >= 1`,
-    );
+    push({
+      code: "source.rls19.parking.num_spaces.invalid",
+      params: { field: PROP_PARKING_NUM_SPACES },
+    });
   }
 
   const lotType = getFeatureString(feature, PROP_PARKING_TYPE)?.trim();
   if (!lotType) {
-    push(
-      "source.rls19.parking.parking_type.missing",
-      `RLS-19 ${PROP_PARKING_TYPE} is required, expected one of ${RLS19_PARKING_LOT_TYPES.join(", ")}; it selects the Tabelle 6 row and has no default`,
-    );
+    push({
+      code: "source.rls19.parking.parking_type.missing",
+      params: {
+        field: PROP_PARKING_TYPE,
+        expected: RLS19_PARKING_LOT_TYPES.join(", "),
+      },
+    });
   } else if (
     !RLS19_PARKING_LOT_TYPES.includes(
       lotType.toLowerCase() as (typeof RLS19_PARKING_LOT_TYPES)[number],
     )
   ) {
-    push(
-      "source.rls19.parking.parking_type.invalid",
-      `RLS-19 parking_type "${lotType}" is not supported`,
-    );
+    push({
+      code: "source.rls19.parking.parking_type.invalid",
+      params: { value: lotType },
+    });
   }
 
   const facility = getFeatureString(
@@ -427,10 +464,14 @@ function validateRLS19Parking(
     );
 
   if (facility && !seeded) {
-    push(
-      "source.rls19.parking.facility_type.invalid",
-      `RLS-19 ${PROP_PARKING_FACILITY_TYPE} "${facility}" is not supported, expected one of ${RLS19_PARKING_FACILITY_TYPES.join(", ")}`,
-    );
+    push({
+      code: "source.rls19.parking.facility_type.invalid",
+      params: {
+        field: PROP_PARKING_FACILITY_TYPE,
+        value: facility,
+        expected: RLS19_PARKING_FACILITY_TYPES.join(", "),
+      },
+    });
   }
 
   for (const key of [
@@ -439,15 +480,15 @@ function validateRLS19Parking(
   ]) {
     const rate = getFeatureNumber(feature, key);
     if (rate === undefined && !seeded) {
-      push(
-        "source.rls19.parking.movements.missing",
-        `RLS-19 ${key} is required unless ${PROP_PARKING_FACILITY_TYPE} states a Tabelle 7 Parkplatztyp; state 0 explicitly for a period with no movements`,
-      );
+      push({
+        code: "source.rls19.parking.movements.missing",
+        params: { field: key, facilityField: PROP_PARKING_FACILITY_TYPE },
+      });
     } else if (rate !== undefined && (!Number.isFinite(rate) || rate < 0)) {
-      push(
-        "source.rls19.parking.movements.invalid",
-        `RLS-19 ${key} must be >= 0`,
-      );
+      push({
+        code: "source.rls19.parking.movements.invalid",
+        params: { field: key },
+      });
     }
   }
 }
@@ -462,7 +503,7 @@ function validateReceiver(
       level: "error",
       code: "receiver.coordinates.invalid",
       featureId: receiver.id,
-      message: "Receiver coordinates must be finite",
+      params: {},
     });
   }
 
@@ -471,7 +512,7 @@ function validateReceiver(
       level: "error",
       code: "receiver.height.invalid",
       featureId: receiver.id,
-      message: "Receiver height_m must be > 0",
+      params: {},
     });
   }
 }
@@ -483,11 +524,15 @@ function validateUniqueID(
   errors: ValidationIssue[],
 ): void {
   if (ids.has(id)) {
+    // Spelled out rather than composed from `kind`, because the two codes buy
+    // two separate messages: the kind is a noun inside the sentence, and a
+    // language that declines it cannot take it as a parameter.
     errors.push({
       level: "error",
-      code: `${kind}.id.duplicate`,
+      code:
+        kind === "feature" ? "feature.id.duplicate" : "receiver.id.duplicate",
       featureId: id,
-      message: `Duplicate ${kind} ID`,
+      params: {},
     });
   }
 }

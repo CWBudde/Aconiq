@@ -86,11 +86,25 @@ export function messages(locale: Locale): Record<string, string> {
   return JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
 }
 
-/** One UI string; throws when the key is missing so a typo cannot pass as a match. */
+/**
+ * One UI string; throws when the key is missing so a typo cannot pass as a
+ * match.
+ *
+ * It also throws on a variant message — the array-wrapped form the catalogue
+ * uses for anything selected by a plural category. Such a message has no single
+ * string to assert on, and casting one to `string` would hand the spec
+ * `[object Object]` and fail somewhere far from the cause. A spec that needs one
+ * has to pick the variant it means.
+ */
 export function message(locale: Locale, key: string): string {
   const value = messages(locale)[key];
   if (value === undefined) {
     throw new Error(`messages/${locale}.json has no key "${key}"`);
+  }
+  if (typeof value !== "string") {
+    throw new Error(
+      `messages/${locale}.json key "${key}" is a variant message, which has no single string`,
+    );
   }
   return value;
 }

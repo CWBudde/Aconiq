@@ -33,9 +33,7 @@ type SortDir = "asc" | "desc";
  * count the noun names; the filtered count only qualifies it.
  */
 function recordCount(shown: number, total: number): string {
-  return total === 1
-    ? m.msg_records_count_one({ shown, total })
-    : m.msg_records_count_other({ shown, total });
+  return m.msg_records_count({ shown, total });
 }
 
 /**

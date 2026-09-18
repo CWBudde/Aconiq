@@ -267,11 +267,11 @@ describe("ImportPage", () => {
     });
   }
 
-  it("refuses an empty file without showing the validator's English", async () => {
-    // `validateProjectModel` answers an empty model with `model.empty`, whose
-    // message is hardcoded English and whose own comment says it must never
-    // reach the UI. This page calls the validator directly, so the refusal has
-    // to happen above it.
+  it("refuses an empty file above the validator", async () => {
+    // `validateProjectModel` answers an empty model with `model.empty`, which
+    // its own comment says must never reach the UI: the page's refusal names
+    // the file, the validator's names the model. This page calls the validator
+    // directly, so the refusal has to happen above it.
     renderImportPage();
     const input = getFileInput();
     fireEvent.change(input, {
@@ -283,7 +283,7 @@ describe("ImportPage", () => {
     await waitFor(() => {
       expect(screen.getByText(m.msg_import_nothing())).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+    expect(screen.queryByText(m.msg_validation_model_empty())).toBeNull();
     // Still on the upload step, where another file can be chosen.
     expect(screen.getByText("Import GeoJSON")).toBeInTheDocument();
   });
@@ -324,7 +324,7 @@ describe("ImportPage", () => {
 
     await waitFor(() => screen.getByText("Import Preview"));
     expect(screen.getByText(m.label_calc_area())).toBeInTheDocument();
-    expect(screen.queryByText(/Model contains no features/i)).toBeNull();
+    expect(screen.queryByText(m.msg_validation_model_empty())).toBeNull();
   });
 
   it("asks before replacing the workspace, and replaces nothing until then", async () => {
@@ -477,7 +477,9 @@ describe("ImportPage", () => {
       target: { files: [makeFile(collidingKindsGeoJSON)] },
     });
     await waitFor(() => screen.getByText("Import Preview"));
-    expect(screen.getByText(/Duplicate receiver ID/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_validation_receiver_id_duplicate()),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -485,7 +487,9 @@ describe("ImportPage", () => {
       }),
     );
 
-    expect(screen.queryByText(/Duplicate receiver ID/i)).toBeNull();
+    expect(
+      screen.queryByText(m.msg_validation_receiver_id_duplicate()),
+    ).toBeNull();
   });
 
   it("loads features into the model store on confirm", async () => {

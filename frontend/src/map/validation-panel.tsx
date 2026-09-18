@@ -1,6 +1,7 @@
 import { AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { useModelValidation } from "@/model/use-model-validation";
+import { validationIssueText } from "@/model/validation-message";
 import type { ValidationIssue } from "@/model/types";
 import { m } from "@/i18n/messages";
 
@@ -35,15 +36,11 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
     <div className="max-h-64 overflow-y-auto">
       <div className="border-b px-3 py-2 text-xs font-medium">
         {errorCount > 0
-          ? errorCount === 1
-            ? m.msg_validation_error_count_one({ count: errorCount })
-            : m.msg_validation_error_count_other({ count: errorCount })
+          ? m.msg_validation_error_count({ count: errorCount })
           : ""}
         {errorCount > 0 && warningCount > 0 ? ", " : ""}
         {warningCount > 0
-          ? warningCount === 1
-            ? m.msg_validation_warning_count_one({ count: warningCount })
-            : m.msg_validation_warning_count_other({ count: warningCount })
+          ? m.msg_validation_warning_count({ count: warningCount })
           : ""}
       </div>
       <ul className="divide-y">
@@ -61,7 +58,7 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
               />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-xs">{issue.message}</p>
+              <p className="text-xs">{validationIssueText(issue)}</p>
               <p className="font-mono text-2xs text-muted-foreground">
                 {issue.code}
               </p>

@@ -26,6 +26,7 @@ import {
 import { Switch } from "@/ui/components/switch";
 import { useModelStore } from "@/model/model-store";
 import { useModelValidation } from "@/model/use-model-validation";
+import { validationIssueText } from "@/model/validation-message";
 import type {
   GeometryType,
   ModelFeature,
@@ -502,9 +503,9 @@ function IdentityFields({
  * missing its `rls19_parking_num_spaces` is the case that made this
  * unavoidable: the field is now here, and so is the sentence asking for it.
  *
- * The messages are `validate.ts`'s English strings; localising them is Phase E
- * (they become codes plus parameters) and is not worked around here with a
- * second set of strings that would then drift.
+ * The sentences come from `validationIssueText`, the one renderer for a
+ * finding's code and parameters, so this panel holds no strings of its own to
+ * drift from the workspace panel's.
  */
 function FeatureIssues({ featureId }: { featureId: string }) {
   const { report } = useModelValidation();
@@ -541,7 +542,9 @@ function FeatureIssues({ featureId }: { featureId: string }) {
             />
           )}
           <div className="min-w-0">
-            <p className="text-2xs leading-relaxed">{issue.message}</p>
+            <p className="text-2xs leading-relaxed">
+              {validationIssueText(issue)}
+            </p>
             <p className="font-mono text-2xs text-muted-foreground">
               {issue.code}
             </p>

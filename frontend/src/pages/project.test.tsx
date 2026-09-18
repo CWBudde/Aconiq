@@ -123,16 +123,16 @@ describe("ProjectPage", () => {
 
 describe("ProjectPage validation summary", () => {
   it("says there is nothing to validate yet, not that there is one error", () => {
-    // `validateProjectModel` pushes a synthetic `model.empty` error whose text
-    // is hardcoded English. Reported as a finding, a fresh install would read
-    // "1 error" — in English, in the German UI.
+    // `validateProjectModel` pushes a synthetic `model.empty` error. Reported
+    // as a finding, a fresh install would read "1 error" for having nothing in
+    // it yet.
     renderPage();
 
     expect(
       screen.getByText(m.msg_validation_nothing_yet()),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(m.msg_validation_error_count_one({ count: 1 })),
+      screen.queryByText(m.msg_validation_error_count({ count: 1 })),
     ).toBeNull();
   });
 

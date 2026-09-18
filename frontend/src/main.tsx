@@ -1,13 +1,13 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { getLocale } from "./i18n/runtime";
+import { syncDocumentLocale } from "./locale";
 import "./styles/globals.css";
 
-// index.html hardcodes lang="en"; the UI may be German. Set it once at
-// startup: paraglide's `setLocale` reloads the page under the localStorage
-// strategy, so a locale switch comes back through here.
-document.documentElement.lang = getLocale();
+// index.html hardcodes lang="en"; the UI may be German. This is the startup
+// half only — a switch no longer reloads the page, so `changeLocale` moves
+// `lang` itself rather than coming back through here.
+syncDocumentLocale();
 
 // Dev-mode long-task telemetry.
 // Logs interactions that block the main thread for more than 50 ms.

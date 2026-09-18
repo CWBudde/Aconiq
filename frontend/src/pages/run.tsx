@@ -83,9 +83,7 @@ export default function RunPage() {
             </span>
           ) : (
             <span className="text-xs">
-              {runs.length === 1
-                ? m.msg_run_count_one({ count: runs.length })
-                : m.msg_run_count_other({ count: runs.length })}
+              {m.msg_run_count({ count: runs.length })}
             </span>
           )
         }

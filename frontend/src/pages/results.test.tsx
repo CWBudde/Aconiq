@@ -468,14 +468,16 @@ describe("ResultsPage shell", () => {
     expect(screen.queryByText("run-2")).toBeNull();
     expect(screen.queryByText("run-3")).toBeNull();
     expect(
-      screen.getByText(`2 ${m.msg_completed_runs_plural()}`),
+      screen.getByText(m.msg_completed_runs({ count: 2 })),
     ).toBeInTheDocument();
   });
 
   it("uses the singular count for exactly one completed run", () => {
     renderResults([run("run-1")]);
 
-    expect(screen.getByText(`1 ${m.msg_completed_runs()}`)).toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_completed_runs({ count: 1 })),
+    ).toBeInTheDocument();
   });
 
   it("selects nothing until a run id is in the URL", () => {
@@ -1062,7 +1064,7 @@ describe("ResultsPage receiver filtering", () => {
     renderResults();
 
     expect(
-      screen.getByText(m.msg_records_count_other({ shown: 3, total: 3 })),
+      screen.getByText(m.msg_records_count({ shown: 3, total: 3 })),
     ).toBeInTheDocument();
   });
 
@@ -1075,7 +1077,7 @@ describe("ResultsPage receiver filtering", () => {
 
     // The plural follows the total, which is what the noun counts.
     expect(
-      screen.getByText(m.msg_records_count_one({ shown: 1, total: 1 })),
+      screen.getByText(m.msg_records_count({ shown: 1, total: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -1086,7 +1088,7 @@ describe("ResultsPage receiver filtering", () => {
 
     expect(rowIds()).toEqual(["R1", "R10"]);
     expect(
-      screen.getByText(m.msg_records_count_other({ shown: 2, total: 3 })),
+      screen.getByText(m.msg_records_count({ shown: 2, total: 3 })),
     ).toBeInTheDocument();
   });
 
@@ -1115,7 +1117,7 @@ describe("ResultsPage receiver filtering", () => {
       screen.getByText(m.msg_no_records_match_filter()),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(m.msg_records_count_other({ shown: 0, total: 3 })),
+      screen.getByText(m.msg_records_count({ shown: 0, total: 3 })),
     ).toBeInTheDocument();
   });
 });
@@ -1397,7 +1399,7 @@ describe("ResultsPage receiver table windowing", () => {
         Array.from({ length: 10 }, (_, i) => `R490${String(i)}`),
       );
       expect(
-        screen.getByText(m.msg_records_count_other({ shown: 10, total: BIG })),
+        screen.getByText(m.msg_records_count({ shown: 10, total: BIG })),
       ).toBeInTheDocument();
       expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "11");
     },

@@ -5,6 +5,7 @@ import { Callout } from "@/ui/callout";
 import { KeyValueList } from "@/ui/key-value-list";
 import { PageHeader } from "@/ui/page-header";
 import { countModelObjects } from "@/model/model-store";
+import { validationIssueText } from "@/model/validation-message";
 import type { MergeSkips } from "@/model/model-store";
 import type {
   CalcArea,
@@ -108,7 +109,7 @@ export function PreviewStep({
                 links the findings that survived the import. */}
             {report.errors.slice(0, PREVIEW_ERROR_LIMIT).map((e, i) => (
               <li key={i}>
-                {e.message}
+                {validationIssueText(e)}
                 {e.featureId === "" ? null : (
                   <span className="ml-1 font-mono text-xs opacity-80">
                     {e.featureId}

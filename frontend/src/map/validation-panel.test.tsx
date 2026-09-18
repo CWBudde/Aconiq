@@ -71,9 +71,9 @@ beforeEach(() => {
 describe("ValidationPanel on an empty model", () => {
   it("says there is nothing to check yet, not that there is an error", () => {
     // The validator answers an empty model with a synthetic `model.empty`
-    // error whose message is hardcoded English. Showing it would greet a fresh
-    // project with "1 error" — in English, whatever the UI language — and the
-    // map is now mounted from the start, so this is the first thing seen.
+    // error. Showing it would greet a fresh project with "1 error" for having
+    // nothing in it yet, and the map is now mounted from the start, so this is
+    // the first thing seen.
     renderPanel();
 
     expect(
@@ -121,7 +121,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_error_count_one({ count: 1 })),
+      screen.getByText(m.msg_validation_error_count({ count: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -136,7 +136,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_error_count_other({ count: 2 })),
+      screen.getByText(m.msg_validation_error_count({ count: 2 })),
     ).toBeInTheDocument();
   });
 
@@ -145,7 +145,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_warning_count_one({ count: 1 })),
+      screen.getByText(m.msg_validation_warning_count({ count: 1 })),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
@@ -156,7 +156,7 @@ describe("ValidationPanel on a model with findings", () => {
     useModelStore.getState().addFeature(roadNeedingReview);
     renderPanel();
 
-    const header = `${m.msg_validation_error_count_one({ count: 1 })}, ${m.msg_validation_warning_count_one({ count: 1 })}`;
+    const header = `${m.msg_validation_error_count({ count: 1 })}, ${m.msg_validation_warning_count({ count: 1 })}`;
     expect(screen.getByText(header)).toBeInTheDocument();
   });
 

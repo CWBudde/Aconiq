@@ -355,10 +355,7 @@ function exportMeta(run: RunSummary): string {
   const bundle = run.artifacts.find((a) => a.kind === "export.bundle");
   const count = run.artifacts.filter(isExportArtifact).length;
   const when = formatDateTime(bundle ? bundle.created_at : run.finished_at);
-  const files =
-    count === 1
-      ? m.msg_artifact_count_one({ count })
-      : m.msg_artifact_count_other({ count });
+  const files = m.msg_artifact_count({ count });
   return `${when} · ${files}`;
 }
 
@@ -422,10 +419,7 @@ export default function ExportPage() {
             title={m.page_title_exports()}
             description={
               <span className="text-xs">
-                {String(runsWithExports.length)}{" "}
-                {runsWithExports.length === 1
-                  ? m.msg_runs_with_exports()
-                  : m.msg_runs_with_exports_plural()}
+                {m.msg_runs_with_exports({ count: runsWithExports.length })}
               </span>
             }
             actions={

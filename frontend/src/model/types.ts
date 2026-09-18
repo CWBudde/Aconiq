@@ -35,13 +35,94 @@ export interface ModelFeature {
 /** Validation issue severity */
 export type IssueSeverity = "error" | "warning";
 
-/** A single validation finding */
-export interface ValidationIssue {
-  level: IssueSeverity;
-  code: string;
-  featureId: string;
-  message: string;
+/** A finding that interpolates nothing. */
+export type NoIssueParams = Record<string, never>;
+
+/**
+ * Every finding `validate.ts` can produce, and the values its sentence needs.
+ *
+ * This map is the vocabulary. A finding is a code plus parameters and carries
+ * no prose, because prose is a locale's business: `validation-message.ts`
+ * turns the pair into a sentence and is the only place that knows any. The map
+ * is what makes both halves total — a code missing from here cannot be pushed,
+ * and a code missing from the renderer's `switch` is a compile error.
+ *
+ * The parameter values are deliberately narrow. A name the user must type back
+ * — a property key like `traffic_day_lkw1`, an enum member like `asphalt` — is
+ * carried raw and rendered raw, which is the rule Phase C settled for parameter
+ * labels: the raw name stays on screen because it is what `--param` takes.
+ * Nothing here is a number the reader would expect formatted for their locale;
+ * `parts` is a count of polygon rings in a refusal, not a measurement.
+ */
+export interface ValidationIssueParams {
+  "model.empty": NoIssueParams;
+
+  "feature.id.duplicate": NoIssueParams;
+  "receiver.id.duplicate": NoIssueParams;
+
+  "source.type.required": NoIssueParams;
+  "source.geometry.mismatch": { geometry: string; sourceType: string };
+
+  "building.height.required": NoIssueParams;
+  "building.height.invalid": NoIssueParams;
+  "building.geometry.invalid": NoIssueParams;
+
+  "barrier.height.required": NoIssueParams;
+  "barrier.height.invalid": NoIssueParams;
+  "barrier.geometry.invalid": NoIssueParams;
+
+  "receiver.coordinates.invalid": NoIssueParams;
+  "receiver.height.invalid": NoIssueParams;
+
+  "source.rls19.surface_type.invalid": { value: string };
+  "source.rls19.junction_type.invalid": { value: string };
+  "source.rls19.gradient.invalid": { min: number; max: number };
+  "source.rls19.junction_distance.invalid": NoIssueParams;
+  "source.rls19.reflection_surcharge.invalid": NoIssueParams;
+  "source.rls19.road_speed.invalid": NoIssueParams;
+  "source.rls19.speed.invalid": { field: string };
+  "source.rls19.traffic.invalid": { field: string };
+  "source.rls19.review_required": NoIssueParams;
+
+  "source.rls19.parking.geometry.multipart": { parts: number; field: string };
+  "source.rls19.parking.num_spaces.missing": { field: string };
+  "source.rls19.parking.num_spaces.invalid": { field: string };
+  "source.rls19.parking.parking_type.missing": {
+    field: string;
+    expected: string;
+  };
+  "source.rls19.parking.parking_type.invalid": { value: string };
+  "source.rls19.parking.facility_type.invalid": {
+    field: string;
+    value: string;
+    expected: string;
+  };
+  "source.rls19.parking.movements.missing": {
+    field: string;
+    facilityField: string;
+  };
+  "source.rls19.parking.movements.invalid": { field: string };
 }
+
+/** The codes `ValidationIssueParams` declares, as a type. */
+export type ValidationCode = keyof ValidationIssueParams;
+
+/**
+ * A single validation finding.
+ *
+ * A union over the codes rather than one shape with a loose `params` bag, so
+ * that a construction site naming the wrong parameter — or forgetting one —
+ * does not compile. `params` is always present; a finding that interpolates
+ * nothing carries `{}`.
+ */
+export type ValidationIssue = {
+  [Code in ValidationCode]: {
+    level: IssueSeverity;
+    code: Code;
+    featureId: string;
+    params: ValidationIssueParams[Code];
+  };
+}[ValidationCode];
 
 /** Full validation report */
 export interface ValidationReport {

@@ -140,15 +140,11 @@ function ValidationSummary() {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span>
           {errorCount > 0
-            ? errorCount === 1
-              ? m.msg_validation_error_count_one({ count: errorCount })
-              : m.msg_validation_error_count_other({ count: errorCount })
+            ? m.msg_validation_error_count({ count: errorCount })
             : null}
           {errorCount > 0 && warningCount > 0 ? ", " : null}
           {warningCount > 0
-            ? warningCount === 1
-              ? m.msg_validation_warning_count_one({ count: warningCount })
-              : m.msg_validation_warning_count_other({ count: warningCount })
+            ? m.msg_validation_warning_count({ count: warningCount })
             : null}
         </span>
         <Button asChild size="sm" variant="outline">

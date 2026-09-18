@@ -1726,16 +1726,99 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase E — i18n and German
 
-- [ ] Validation messages become codes + params (`validate.ts:43-437` is English-only and rendered
-      verbatim); add the keys still missing after Phase B (the "Map unavailable"/"Retry" strings in
-      `map-view.tsx`, whose test mocks the messages module to `""` and has to stop first, and
-      `ui/components/sidebar.tsx:276`'s hardcoded English "Toggle Sidebar" — a rendered control,
-      found while localising the dialog and sheet close buttons); paraglide
-      plural variants for `run{s}`; language switch without `location.reload()`; enable
-      `react/jsx-no-literals` for `pages/`, `map/`, `ui/`.
+- [x] **A validation finding is a code and its parameters** (#66). `ValidationIssueParams` in
+      `model/types.ts` is the vocabulary and `ValidationIssue` a union over it. Four constraints
+      stay live.
+      **`model/validation-message.ts` is the only place a finding becomes a sentence**, and it is a
+      `switch`, not a table keyed by code: TypeScript narrows `issue.params` per branch where an
+      index into a `Record` cannot without a cast, and the exhaustive `switch` makes an added code a
+      compile error rather than a blank row on screen.
+      **`${kind}.id.duplicate` is two spelled-out codes**, not one with a `kind` parameter — the
+      kind is a noun inside the sentence, and a language that declines it cannot take it as a
+      parameter.
+      **Parameters are rendered unformatted.** They are property keys (`traffic_day_lkw1`), enum
+      members and the joined vocabularies a reader has to type back, which is Phase C's rule that
+      the raw name stays on screen because it is what `--param` takes.
+      **A German key missing from the catalogue is invisible to the compiler** — it falls back to
+      English and renders — so `validation-message.test.ts` asserts that no code's two locales agree.
+- [x] **Counts select their own plural** (#66). Fourteen messages declare `count: plural`; the four
+      hand-rolled conventions are gone. Three constraints stay live.
+      **`locale-parity.test.ts` reads `patterns()`, every string a message can render.** A variant
+      is an array of objects, so the old "no blank message" check failed on one outright and the
+      placeholder check passed _vacuously_ — its helper returned `[]` for a non-string, which is
+      silent agreement rather than agreement. Placeholders are compared as the union across
+      variants, because a locale may drop the number from one arm while the compiled function still
+      takes the same parameters.
+      **Every variant needs an `other` arm**, now asserted: without one, a plural category the
+      catalogue did not list renders empty, and the blank check cannot see it because every arm that
+      _is_ declared is fine.
+      **`e2e/app.ts`'s `message()` throws on a variant** rather than casting one to `string`, which
+      would hand a spec `[object Object]` and fail it far from the cause.
+- [x] **The language switch stops reloading the page** (#66). `src/locale.ts` passes `reload: false`
+      and carries the subscription React needs. One belief this corrected: **there was never a
+      `location.reload()` in `src/`**, which is what this file used to say — paraglide's `setLocale`
+      defaults `reload: true`, so a grep for the call reports the item done. Four constraints stay
+      live.
+      **`App` keys `RouterProvider` on the locale, and the remount is the mechanism rather than a
+      workaround.** A context reaches only its own consumers and the modules calling `m` consume
+      nothing, while `RouterProvider` renders its routes through a memo on router state, so a plain
+      re-render from above stops there. The remount costs component state inside the routes — the
+      map instance, an open dialog, the scroll position — and nothing above them: the model and its
+      command stack are at module scope, the query cache sits above the key, the URL is the router's.
+      **`src/locale.ts` is not in `src/i18n/`.** That directory is paraglide's output — gitignored,
+      wiped and rewritten by `compile:i18n`, and excluded from eslint — so hand-written code placed
+      there vanishes on the next compile.
+      **`<html lang>` moves with the switch**, because `main.tsx` only ever set it at startup and no
+      axe rule fires on a `lang` that is merely wrong. `ui/format.ts` needs nothing: its `Intl`
+      formatters are built inside the functions, so numbers and dates follow on their own.
+      **jsdom cannot prove a reload did not happen** — its `location` is non-configurable and
+      `reload()` is a console notice, not an exception. `src/locale.test.tsx` asserts the argument
+      through `overwriteSetLocale`; `e2e/smoke.spec.ts` asserts the absence, with a `window` marker a
+      reload would wipe.
+- [x] **The two paraglide option sites are held in lockstep** (#66). `src/paraglide-options.test.ts`
+      holds `scripts/compile-i18n.mjs` and `vite.config.ts` to the same `project`, `outdir` and
+      `strategy`. It reads both files as text, because `vite.config.ts` pulls the plugin graph into
+      the test environment and `compile-i18n.mjs` spawns a compiler on import; a regex that stops
+      matching fails the test rather than comparing nothing.
+- [ ] Add the keys still missing after Phase B: the "Map unavailable"/"Retry" strings in
+      `map-view.tsx` — plus its two module-scope English constants, `MAP_TIMEOUT_MESSAGE` and
+      `MAP_UNAVAILABLE_MESSAGE`, which are rendered into the same panel and which no lint rule would
+      catch — and `ui/components/sidebar.tsx`'s "Toggle Sidebar" (as `sr-only` text at `:276` **and**
+      as `aria-label`/`title` at `:292,295`), "Sidebar" and "Displays the mobile sidebar." at
+      `:214-215`. `map-view.test.tsx` mocks `@/i18n/messages` to a proxy returning `""` and has to
+      stop first: sixteen of its assertions match on those two English strings, and the negative ones
+      would pass vacuously rather than fail. Then enable `react/jsx-no-literals` for `pages/`, `map/`
+      and `ui/` — `eslint-plugin-react` is **not** a dependency yet, the rule flags 41 JSX text nodes
+      of which only those 5 are prose (the rest are `:`, `(`, `/`, `×`, `·` and the `AconiQ`
+      wordmark, so it wants an `allowedStrings` list), the glob has to exclude `*.test.tsx` (57 more)
+      and the existing `src/ui/components/**` relax block covers the vendored shadcn this rule would
+      otherwise police.
 - [ ] German terminology and register pass: Immissionsort, Schallquelle,
-      Schallschirm/Lärmschutzwand, "Norm" consistently; Sie/impersonal register throughout (mixed
-      du/Sie today); welcome copy aligned between `de.json` and `en.json`.
+      Schallschirm/Lärmschutzwand, "Norm" consistently; Sie/impersonal register throughout; welcome
+      copy aligned between `de.json` and `en.json`. The counts, so the work can be sized: `Empfänger`
+      25× against `Immissionsort` 7×, `Schallquelle` and `Schallschirm` 0×, `Lärmschutzwand` 1×,
+      `Norm` 10× against `Standard` 15×. The register is **mixed by imperative, not by pronoun** —
+      there is no `du`/`dein`/`dich`/`dir` anywhere, and a grep for those alone reports the phase
+      clean. What is actually informal is `msg_no_project_yet_help` ("Importiere … und kehre …
+      zurück"), `msg_settings_appearance_help` and `msg_settings_language_help` ("Wähle …"), against
+      13 strings in the Sie form. The four `Lade …` status strings are the app narrating, not an
+      imperative, and are not part of this.
+- [ ] **The backend's own findings are still English.** `ui/save-status.tsx` renders
+      `APIValidationIssue.message` from `POST /api/v1/model`, and
+      `backend/internal/geo/modelgeojson/types.go` carries the same message-only shape the frontend
+      just left: `Code`, `Message`, `FeatureID` and no parameters. Giving it `{code, params}` means
+      ~28 more codes, a change to the API schema and the OpenAPI document, and a second catalogue
+      block — about 7 of those codes overlap the frontend's, and the messages differ even there
+      ("Building requires height_m" against "building feature requires height_m"), so the two
+      vocabularies are a partial mirror rather than one list.
+- [ ] **Three messages still carry a literal `(s)`**: `msg_run_deleted_exports_kept` ("export
+      bundle(s)"), `status_validation_errors` ("validation error(s)") and
+      `status_validation_warnings`. They were left out of the plural work deliberately — their call
+      sites glue a bare number in JSX (`pages/import.tsx:364`, `import/preview-step.tsx:102,132`),
+      so converting the message means restructuring the call site, which is a different change.
+      Note that `msg_validation_source_rls19_parking_geometry_multipart` is **not** one of these: its
+      `parts` is never 1, because the check that produces it fires on `!== 1`, so a singular arm
+      would be dead code.
 
 ### Phase F — Tests, types and the kernel boundary
 
