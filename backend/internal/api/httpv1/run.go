@@ -45,7 +45,7 @@ func (h Handler) handleRunDelete(w http.ResponseWriter, r *http.Request) {
 	if runID == "" {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
-			Message: "run id is required",
+			Message: messageRunIDRequired,
 		})
 
 		return

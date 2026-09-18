@@ -18,10 +18,7 @@ import (
 func TestEveryStandardHasItsEntryPoint(t *testing.T) {
 	t.Parallel()
 
-	source, err := os.ReadFile(filepath.Join("..", "..", "cmd", "wasm", "main.go"))
-	if err != nil {
-		t.Fatalf("read cmd/wasm/main.go: %v", err)
-	}
+	source := wasmEntryPointSource(t)
 
 	standards := wasmkernel.Standards()
 	if len(standards) == 0 {
@@ -36,9 +33,42 @@ func TestEveryStandardHasItsEntryPoint(t *testing.T) {
 		}
 
 		want := `aconiq.Set("` + standard.Entry + `"`
-		if !strings.Contains(string(source), want) {
+		if !strings.Contains(source, want) {
 			t.Errorf("standard %q names entry point %q, which cmd/wasm/main.go does not register",
 				standard.Descriptor.ID, standard.Entry)
+		}
+	}
+}
+
+// wasmEntryPointSource reads cmd/wasm/main.go as text.
+//
+// Grepping a source file is a blunt assertion, and it is the only one available
+// here: that file is `//go:build js && wasm`, so a host `go test` cannot link
+// it, let alone call it. What it buys is that a Go function and the JavaScript
+// name it is reached by cannot part company without a test failing.
+func wasmEntryPointSource(t *testing.T) string {
+	t.Helper()
+
+	source, err := os.ReadFile(filepath.Join("..", "..", "cmd", "wasm", "main.go"))
+	if err != nil {
+		t.Fatalf("read cmd/wasm/main.go: %v", err)
+	}
+
+	return string(source)
+}
+
+// The entry points that are not standards need the same guard. wasmkernel
+// exports the logic, cmd/wasm registers the name, and only this file holds the
+// two together — a Contours that nothing calls `contours` is a TypeError in the
+// browser and nothing at all in CI.
+func TestNonStandardEntryPointsAreRegistered(t *testing.T) {
+	t.Parallel()
+
+	source := wasmEntryPointSource(t)
+
+	for _, entry := range []string{"transform", "contours", "loadTerrain", "clearTerrain"} {
+		if !strings.Contains(source, `aconiq.Set("`+entry+`"`) {
+			t.Errorf("cmd/wasm/main.go registers no %q entry point", entry)
 		}
 	}
 }

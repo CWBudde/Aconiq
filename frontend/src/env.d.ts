@@ -26,6 +26,12 @@ interface Window {
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
+    /**
+     * Two arguments, and the raster values are the first: they cross as raw
+     * bytes rather than inside the JSON, because a 500x500 two-band grid is
+     * four megabytes of float64. See `AconiqKernel.contours`.
+     */
+    contours: (payload: Uint8Array, json: string) => Promise<string>;
     standards: () => string;
     /**
      * The CRS is a required second argument: the Go GeoTIFF loader reads the

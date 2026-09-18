@@ -195,6 +195,7 @@ GET  /api/v1/runs                      list runs
 POST /api/v1/runs                      start a run
 DELETE /api/v1/runs/{id}               delete a run
 GET  /api/v1/runs/{id}/log
+GET  /api/v1/runs/{id}/contours        contour lines from the run's result raster (`?interval=` dB step, `?crs=`)
 GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                    SSE: heartbeat + project status snapshots
 POST /api/v1/import/osm
