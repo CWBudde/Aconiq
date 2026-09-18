@@ -1525,7 +1525,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
-- [ ] **A `disabled` Button under a Radix tooltip is the live constraint, not an open item.**
+- [x] **A `disabled` Button under a Radix tooltip is the live constraint, not an open item.**
+      (2026-09-19) — ticked as what it always was: a recorded constraint, not work. It is enforced
+      in the code today (`map/draw-toolbar.tsx:113,137`, `map/undo-redo-bar.tsx:65,86`), so an open
+      box here only ever misread as a pending fix.
       Every control on the map that refuses an action now uses `aria-disabled` plus a
       click handler that swallows activation — `ui/mode-gate.tsx` carries the argument,
       `map/draw-toolbar.tsx` and `map/undo-redo-bar.tsx` both use it. `disabled` puts
@@ -1579,13 +1582,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       that is safe here only because terra-draw's geometry is cumulative. Left out: `Multi*`
       geometry is refused rather than silently reduced to its first ring, and a metric reshape whose
       projection fails is reported by the feature snapping back rather than by a notice.
-- [ ] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
+- [x] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
       are still reported by count and not edited, so a rail model's Zugarten still have to be
       written into the model file by hand. That is a decision rather than a gap: a form for them is
       a second model editor, and half of one is how an Fz composition silently loses a vehicle.
       `schall03_track_features` carries coordinates in its properties besides, which puts it in
       `PROPERTY_GEOMETRIES` — browser mode cannot move those and refuses a model that carries one
       outright — so an editor for it would be filling in a model that half the app cannot run.
+      (2026-09-19) — ticked as a decision taken, not a gap closed. The choice is pinned by the
+      comment at `map/feature-editor.test.tsx:1300`; an open box implied an editor was still owed.
 - [x] **The receiver's Gebietskategorie** (#52). The receiver panel writes
       `bimschv16_area_category`, the first of `categoryFromFeature`'s five tries, so a value set
       here outranks an older spelling the same receiver still carries;
@@ -1614,7 +1619,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       The ramp is a decibel ramp and only paints a table whose `unit` says decibels: `beb-exposure`
       writes `"mixed"` and puts dwelling and person counts in `indicator_order`.
       The row→map link is offered only for an id the model store holds — `auto-grid` receiver ids
-      are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
+      are the run's own and `ArrivalParams`/`FeatureEditor` find nothing under them — and is a real
       `<a>`, never a button that navigates, which no axe rule would catch.
       No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
 - [x] **Results on the map: the raster** (#60). Four constraints stay live. MapLibre 5 has no
@@ -1636,7 +1641,32 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       is a different risk from a layer this app draws under its own legend. And labels remain out
       structurally, not by omission — no style in `basemap.ts` declares `glyphs`, and adding one
       means adding it to `OFFLINE_STYLE`, which exists to survive without a network.
-- [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
+- [x] **The map→table direction**: a receiver clicked on the map scrolls to and marks its row
+      (2026-09-19). `LAYER_IDS.resultReceiverLevel` was in no interactive list, so a result circle
+      was not a click target at all. `INTERACTIVE_LAYERS` is now `MODEL_LAYERS` + `RESULT_LAYERS`,
+      queried in that order, and `/results` gained an `ArrivalReceiver` mirroring `ArrivalParams`.
+      Five constraints follow.
+      **One precedence rule, expressed structurally**: a model feature under the pointer wins and
+      opens the editor as before; the result circle is reported through its _own_ callback, so the
+      two paths cannot be confused at the call site. Model receivers reach the table instead
+      through a real `<a>` in the docked editor — the mirror of the row→map link, and offered only
+      for an id that run's table holds, because a link that opens nothing is the promise
+      `useSelectableIds` already refuses to make in the other direction.
+      **The run has to come from whoever resolves it.** `requestedRunId` is `null` for a reader who
+      did not arrive from a results row, while the map still draws the newest completed run, so
+      `ResultLayers` reports the run it actually drew (`onRunDrawn`). Resolving it a second time in
+      `pages/map.tsx` would have meant a second answer to "which run is on screen" and a
+      `QueryClient` the map page's tests deliberately do not set up.
+      **An arrival is a run and an id, never a bare id.** `RunResultDetail` is not remounted when
+      the run-list selection changes, and two runs of one scenario share receiver ids — so a bare
+      id reappeared on the next run's identically named row. Found by a test, not by review.
+      **`aria-current`, and paint only.** `ROW_HEIGHT_PX` and `ROW_CLASS`'s `h-[29px]` are one fact
+      spelled twice; a mark that touched the box would make the virtualizer mismeasure. `/results`
+      stays `NONE` in `e2e/a11y.spec.ts`, which is checked in both directions.
+      **The filtered-out branch is nearly unreachable and implemented anyway**: the filter starts
+      empty and the arrival is honoured on mount, so nothing can be hiding the row today. It fires
+      only if `ReceiversTab` is later kept mounted across a second arrival, which is why its three
+      tests drive the component directly — through the page they would assert nothing.
 - [x] **A per-indicator unit on the receiver table and the raster sidecar** (#64). Both containers
       carry `Units map[string]string` keyed by channel name. Four constraints stay live. The units
       are **not** in the receivers CSV and must not be — that byte contract is mirrored in
@@ -1653,27 +1683,47 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       could read becomes unreachable the moment its run is deleted, because an `ArtifactRef` id is
       the only handle `GET /api/v1/artifacts/{id}/content` takes. Decide whether a delivered
       bundle should keep addressable refs; do not change it as a side effect of the map work.
-- [ ] **A raster byte write that hits quota is not retried.** `persistRun` recovers from quota by
-      dropping the oldest run and writing again, but `startRun` writes the raster bytes _before_
-      there is any document change to pair the eviction with, so it reports the failure instead.
-      Covering it means inverting that order for the retry alone: evict (a document write, which
-      frees the victim's bytes in the same transaction), then write the bytes, then the document
-      naming them. Worth doing only alongside the sweep below, because the intermediate state —
+      (2026-09-19) — still open, and re-checked rather than inherited: the claim holds exactly.
+      `dropRunArtifacts` never appends a matching ref to `kept`, export or not, and
+      `handleArtifactContent` scans `proj.Artifacts` for the id with no path or kind fallback, so
+      the 404 is certain. One correction to the wording above: **the test is on `ref.Kind`, not on
+      the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
+      bundles anywhere and a path test would recognise only the ones that landed in the default
+      directory. The affected kinds are the five `export.format_*` ones.
+- [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
+      nothing names** (2026-09-19). Shipped together, because the retry's intermediate state —
       bytes stored under a document that does not yet name them — is exactly what the sweep
-      reclaims.
-- [ ] **Browser mode has no sweep for byte records nothing names.** Every deliberate path now
-      deletes them — the run cap, eviction, `deleteRun`, and `startRun` when its own persist fails
-      — but each is a caller that knows which ids it orphaned. A tab closed between
-      `saveArtifactBytes` and the document write leaves a record no caller ever knew about, and
-      only `clearPersistedState` removes it. `browser-storage` already keys these under
-      `artifact-bytes:` and range-deletes the prefix, so listing them is a `getAllKeys` away; the
-      work is the ordering, not the query. A sweep must run **once per session and under
-      `withStoreLock`**, because `startRun` holds that lock across both writes and a sweep that
-      does not would delete the bytes of a run another tab is mid-way through storing. It must
-      also not run when the document was unreadable or the store unavailable: both leave the
-      document in place deliberately, so what it names is unknown. Note that `reloadState()` calls
-      `loadState()` on every write — a sweep placed there would delete the bytes of the run being
-      written, and one placed in `ensureLoaded` can be reached from inside the lock it would need.
+      reclaims. Both files are `src/api/browser-storage.ts` and `src/api/browser-backend.ts` —
+      named bare everywhere above, which reads as `src/wasm/` to anyone who takes "browser mode"
+      for "the kernel"; `src/wasm/` holds only the kernel itself.
+      The retry inverts the order for itself alone: `saveRasterBytes` evicts (a document write,
+      which frees the victim's bytes in the same transaction), then writes the bytes, then the
+      document naming them. Five constraints follow.
+      **`loadState` had to gain a discriminator first, and this file did not say so.** "Store
+      unavailable", "document corrupt" and "nothing stored" all returned an indistinguishable
+      `BrowserBackendState`, and all three can carry `runs: []` — so "do not sweep when the
+      document was unreadable or the store unavailable" was not expressible. `loadState` now
+      returns `{ state, origin }`. A module-scope flag was rejected deliberately: it is a second
+      place the truth lives, only right until the next load, so the sweep would read the origin of
+      _some_ load rather than of the load whose run list it is about to delete against.
+      **The sweep hangs off `withStoreLock` itself, not off its three call sites**, so a fourth
+      writer added later inherits it; and it runs _before_ the body, because the retry creates the
+      orphan intermediate state inside that body and a sweep afterwards would reclaim the raster
+      of the run just stored. Safe only because `withStoreLock` is never nested — an exclusive Web
+      Lock would deadlock if it were.
+      **The latch is set before the first await**, so a failing sweep is not retried on every
+      write and two writers cannot both pass the guard in one tick where `navigator.locks` is
+      missing. It is reset by `resetBrowserBackendForTests`, or tests stop being independent.
+      **Entries `decodeState` rejected are swept**, stated in the code rather than fallen into:
+      nothing will ever name them again. Note the fixture trap the test comment records — a
+      rejected entry raises no high-water mark, so the next run reuses its raster key.
+      **The eviction stands when the byte retry fails after it committed**, unlike `persistRun`'s
+      in-memory rollback: the eviction took the victim's raster with it in the same transaction,
+      so there is nothing to put back. `deleteArtifactBytes` is awaited here, unlike
+      `forgetArtifactBytes`, because the whole point is that it must not overlap the guarded write.
+      `clearPersistedState`'s range delete and the new `listArtifactBytesIDs` share one
+      `artifactBytesRange()`, so a listing cannot grow wider than the delete and hand the sweep the
+      document's own key.
 - [x] **CRS and basemap** (#53). The constraints it leaves live. The tile URL is a per-browser
       localStorage override (`map/tile-source.ts`, edited in Connection settings), so `basemap.ts`
       builds its styles on demand — one captured at import time would ignore the override — and a
@@ -1734,15 +1784,18 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       by an advisory `frontend-coverage` job, because a coverage regression must not be able to fail
       a required check. That job published a number less than half the truth from the day it was
       created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
-- [ ] **Four vendored shadcn components have no importers anywhere.**
-      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` are 176
-      statements that nothing in `src/` or `e2e/` imports. They are most of what keeps `src/ui` at
-      77% while this repository's **own** shared components under `src/ui` sit at 91.5%, most of
-      them at 100%. Testing them would be the purest coverage theatre available here, so the choice
-      is to delete them or to keep them deliberately as design-system stock — a decision about what
-      the design system holds on hand, not a coverage question.
-      The remaining honest gaps after that are `src/wasm` (45.2%, the browser-side kernel loader —
-      `kernel-node.ts` is what the parity suites exercise) and `src/layouts` (41.7%, 24 statements).
+- [x] **The four vendored shadcn components with no importers are deleted** (2026-09-19).
+      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` — 251 lines,
+      no importer in `src/` or `e2e/`, no barrel file to re-export them. The decision this file
+      asked for was "delete or keep as design-system stock", and it is delete: stock nothing has
+      reached for since it was vendored is not stock, it is a second answer to what a table or a
+      textarea looks like here, waiting to disagree with the first.
+      `@radix-ui/react-scroll-area` and `react-resizable-panels` went with them — two of the four
+      files were their only importers.
+      Coverage rises as a side effect and that is **not** the reason; `bun run typecheck` is what
+      proves nothing imported them. The honest gaps named beside this entry are unchanged:
+      `src/wasm` (the browser-side kernel loader — `kernel-node.ts` is what the parity suites
+      exercise) and `src/layouts`.
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
