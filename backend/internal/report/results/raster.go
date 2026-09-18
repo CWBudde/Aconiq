@@ -64,9 +64,11 @@ func (g Georeference) Validate() error {
 // receiver table. Keeping them in one value is what stops the third from being
 // dropped again.
 //
-// Geo is nil for a run whose receivers are not a grid (explicit receiver mode).
-// Width is then 1 and Height the receiver count, which describes the raster's
-// shape truthfully and says nothing about the ground.
+// A run whose receivers are not a grid (explicit receiver mode) carries the
+// **zero** layout: no width, no height, no georeference. Not a 1xN shape — a
+// scatter of points the user placed has no raster shape to report, and
+// `persistDummyRunOutputs` keys its no-raster short circuit on `Width <= 0`,
+// so a layout invented to look grid-like would make it write one.
 type GridLayout struct {
 	Width  int
 	Height int
