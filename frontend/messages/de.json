@@ -64,7 +64,16 @@
   "confirm_delete_receiver_title": "Diesen Immissionsort löschen?",
   "confirm_delete_receiver_desc": "Immissionsort {id} wird aus dem Arbeitsbereich entfernt. Rückgängig holt ihn zurück, solange Sie die Seite nicht verlassen.",
   "confirm_import_replace_title": "Modell im Arbeitsbereich ersetzen?",
-  "confirm_import_replace_desc": "Die {count} importierten Objekte ersetzen alles, was der Arbeitsbereich enthält — Objekte, Immissionsorte und das Berechnungsgebiet. „Zum Arbeitsbereich hinzufügen“ behält den Bestand. Das Projekt auf der Festplatte bleibt unverändert, bis Sie speichern.",
+  "confirm_import_replace_desc": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Das {count} importierte Objekt ersetzt alles, was der Arbeitsbereich enthält — Objekte, Immissionsorte und das Berechnungsgebiet. „Zum Arbeitsbereich hinzufügen“ behält den Bestand. Das Projekt auf der Festplatte bleibt unverändert, bis Sie speichern.",
+        "countPlural=other": "Die {count} importierten Objekte ersetzen alles, was der Arbeitsbereich enthält — Objekte, Immissionsorte und das Berechnungsgebiet. „Zum Arbeitsbereich hinzufügen“ behält den Bestand. Das Projekt auf der Festplatte bleibt unverändert, bis Sie speichern."
+      }
+    }
+  ],
   "action_discard": "Verwerfen",
   "action_download_csv": "CSV herunterladen",
   "action_fetch_from_osm": "Von OSM laden",
@@ -82,7 +91,16 @@
   "action_use_current_location": "Aktuellen Standort verwenden",
   "action_cancel_drawing": "Zeichnung abbrechen",
   "action_add_feature": "Objekt hinzufügen",
-  "action_import_features": "{count} Objekte importieren",
+  "action_import_features": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Objekt importieren",
+        "countPlural=other": "{count} Objekte importieren"
+      }
+    }
+  ],
   "action_clear_filters": "Zurücksetzen",
   "action_copy_path": "Pfad kopieren",
   "action_choose_file": "Datei auswählen",
@@ -332,8 +350,16 @@
   "msg_api_error_run": "Berechnungen konnten nicht geladen werden. Läuft der API-Server?",
   "msg_api_error_standards": "Standards konnten nicht geladen werden. Läuft der API-Server?",
   "msg_bbox_required": "Alle vier Begrenzungsrahmen-Werte sind erforderlich",
-  "msg_completed_runs": "abgeschlossene Berechnung",
-  "msg_completed_runs_plural": "abgeschlossene Berechnungen",
+  "msg_completed_runs": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} abgeschlossene Berechnung",
+        "countPlural=other": "{count} abgeschlossene Berechnungen"
+      }
+    }
+  ],
   "msg_determinism_hint": "Die erneute Ausführung mit denselben Eingaben, Standard, Version und Profil liefert identische Ergebnisse.",
   "msg_determinism_hint_dialog": "Deterministisch. Dieselben Eingaben, Standard, Version und Profil liefern stets identische Ergebnisse — unabhängig von Worker-Anzahl oder Ausführungsreihenfolge.",
   "msg_drag_or_click": "GeoJSON-Datei hier ablegen oder klicken zum Durchsuchen",
@@ -364,24 +390,60 @@
   "msg_raster_export_hint": "Die CLI schreibt diese Bänder als GeoTIFF in ein Exportpaket.",
   "msg_receiver_auto_grid_desc": "Regelmäßiges Raster aus der Quellausdehnung und den Parametern grid_resolution_m / grid_padding_m.",
   "msg_receiver_custom_set_desc": "Die im Arbeitsbereich platzierten Empfänger, unverändert übernommen.",
-  "msg_records_count_one": "{shown} / {total} Datensatz",
-  "msg_records_count_other": "{shown} / {total} Datensätze",
+  "msg_records_count": [
+    {
+      "declarations": [
+        "input shown",
+        "input total",
+        "local totalPlural = total: plural"
+      ],
+      "selectors": ["totalPlural"],
+      "match": {
+        "totalPlural=one": "{shown} / {total} Datensatz",
+        "totalPlural=other": "{shown} / {total} Datensätze"
+      }
+    }
+  ],
   "msg_run_in_progress": "Berechnung läuft…",
   "msg_run_column_selected": "Berechnung A (ausgewählt)",
   "msg_run_column_compare": "Berechnung B",
   "msg_run_not_completed": "Die Berechnung {runId} ist nicht abgeschlossen und hat daher keine Ergebnisse.",
-  "msg_runs_with_exports": "Berechnung mit Exporten",
-  "msg_runs_with_exports_plural": "Berechnungen mit Exporten",
+  "msg_runs_with_exports": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Berechnung mit Exporten",
+        "countPlural=other": "{count} Berechnungen mit Exporten"
+      }
+    }
+  ],
   "msg_select_completed_run_details": "Abgeschlossene Berechnung auswählen, um die Ergebnisse anzuzeigen.",
   "msg_select_run_compare": "Zweite abgeschlossene Berechnung auswählen, um Parameter und Metadaten zu vergleichen.",
   "msg_select_run_details": "Berechnung auswählen, um Details anzuzeigen",
   "msg_select_run_for_details": "Berechnung auswählen, um Export-Artefakte anzuzeigen.",
   "msg_unknown_run_id": "Es gibt keine Berechnung mit der ID {runId}.",
   "msg_unsaved_draft_found": "Nicht gespeicherter Entwurf gefunden. Frühere Arbeit wiederherstellen?",
-  "msg_validation_error_count_one": "{count} Fehler",
-  "msg_validation_error_count_other": "{count} Fehler",
-  "msg_validation_warning_count_one": "{count} Warnung",
-  "msg_validation_warning_count_other": "{count} Warnungen",
+  "msg_validation_error_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Fehler",
+        "countPlural=other": "{count} Fehler"
+      }
+    }
+  ],
+  "msg_validation_warning_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Warnung",
+        "countPlural=other": "{count} Warnungen"
+      }
+    }
+  ],
   "msg_validation_model_empty": "Das Modell enthält weder Objekte noch Immissionsorte",
   "msg_validation_feature_id_duplicate": "Doppelte Objekt-ID",
   "msg_validation_receiver_id_duplicate": "Doppelte Immissionsort-ID",
@@ -457,18 +519,60 @@
   "nav_primary_label": "Hauptnavigation",
   "action_skip_to_content": "Zum Inhalt springen",
   "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen",
-  "msg_log_line_count": "{count} Zeilen",
-  "msg_run_count_one": "{count} Berechnung",
-  "msg_run_count_other": "{count} Berechnungen",
-  "msg_receivers_placed_one": "{count} Empfänger platziert.",
-  "msg_receivers_placed_other": "{count} Empfänger platziert.",
-  "msg_artifact_count_one": "{count} Artefakt",
-  "msg_artifact_count_other": "{count} Artefakte",
+  "msg_log_line_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Zeile",
+        "countPlural=other": "{count} Zeilen"
+      }
+    }
+  ],
+  "msg_run_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Berechnung",
+        "countPlural=other": "{count} Berechnungen"
+      }
+    }
+  ],
+  "msg_receivers_placed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Immissionsort platziert.",
+        "countPlural=other": "{count} Immissionsorte platziert."
+      }
+    }
+  ],
+  "msg_artifact_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Artefakt",
+        "countPlural=other": "{count} Artefakte"
+      }
+    }
+  ],
   "dialog_desc_new_export_browser": "Erzeugt ein Offline-Exportpaket direkt im Browser.",
   "status_generating": "Wird erzeugt…",
   "msg_no_html_report_yet": "Noch kein HTML-Bericht. Führen Sie den unten stehenden CLI-Befehl aus, um einen zu erzeugen.",
   "label_html_report_preview": "Vorschau des HTML-Berichts",
-  "msg_and_more": "… und {count} weitere",
+  "msg_and_more": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "… und {count} weiterer",
+        "countPlural=other": "… und {count} weitere"
+      }
+    }
+  ],
   "error_osm_fetch_failed": "Abruf aus OpenStreetMap fehlgeschlagen",
   "label_layers": "Ebenen",
   "label_draw_tools": "Zeichenwerkzeuge",
@@ -479,7 +583,16 @@
   "msg_calc_area_included": "Enthalten",
   "action_import_add": "Zum Arbeitsbereich hinzufügen",
   "action_import_replace": "Arbeitsbereich ersetzen",
-  "msg_import_skips_existing": "{count} davon sind bereits im Arbeitsbereich vorhanden. Beim Hinzufügen bleibt der Bestand erhalten, der Rest wird importiert.",
+  "msg_import_skips_existing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} davon ist bereits im Arbeitsbereich vorhanden. Beim Hinzufügen bleibt der Bestand erhalten, der Rest wird importiert.",
+        "countPlural=other": "{count} davon sind bereits im Arbeitsbereich vorhanden. Beim Hinzufügen bleibt der Bestand erhalten, der Rest wird importiert."
+      }
+    }
+  ],
   "msg_import_skips_calc_area": "Der Arbeitsbereich enthält bereits ein Berechnungsgebiet. Beim Hinzufügen bleibt das vorhandene erhalten.",
   "msg_import_nothing": "Es gibt nichts zu importieren — die Datei enthält keine Objekte, Immissionsorte und kein Berechnungsgebiet, die das Modell liest.",
   "msg_import_errors_remain": "Diese Befunde sind mit dem Import gekommen und stehen jetzt im Modell.",
@@ -517,7 +630,16 @@
   "action_remove_vertex": "Stützpunkt {index} entfernen",
   "msg_coordinate_entry_crs": "Die Koordinaten werden als {crs} gelesen, dem Koordinatensystem des Modells, und nicht umgerechnet. Die Anzeige am unteren Kartenrand gibt die Zeigerposition neben WGS 84 auch in {crs} an, sodass sich ein Ziel von der Karte ablesen lässt.",
   "msg_coordinate_entry_incomplete": "Jeder X- und Y-Wert muss eine Zahl sein. Ein Punkt braucht ein Wertepaar, eine Linie zwei, eine Fläche drei verschiedene Eckpunkte — ein wiederholter Schlusspunkt zählt nicht mit.",
-  "msg_vertex_minimum": "Es sind mindestens {count} Stützpunkte erforderlich.",
+  "msg_vertex_minimum": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Es ist mindestens {count} Stützpunkt erforderlich.",
+        "countPlural=other": "Es sind mindestens {count} Stützpunkte erforderlich."
+      }
+    }
+  ],
   "label_feature_list": "Objekte",
   "msg_feature_list_empty": "Das Modell ist noch leer. Zeichnen Sie auf der Karte oder geben Sie Koordinaten ein."
 }

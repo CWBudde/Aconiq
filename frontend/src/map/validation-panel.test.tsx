@@ -121,7 +121,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_error_count_one({ count: 1 })),
+      screen.getByText(m.msg_validation_error_count({ count: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -136,7 +136,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_error_count_other({ count: 2 })),
+      screen.getByText(m.msg_validation_error_count({ count: 2 })),
     ).toBeInTheDocument();
   });
 
@@ -145,7 +145,7 @@ describe("ValidationPanel on a model with findings", () => {
     renderPanel();
 
     expect(
-      screen.getByText(m.msg_validation_warning_count_one({ count: 1 })),
+      screen.getByText(m.msg_validation_warning_count({ count: 1 })),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
@@ -156,7 +156,7 @@ describe("ValidationPanel on a model with findings", () => {
     useModelStore.getState().addFeature(roadNeedingReview);
     renderPanel();
 
-    const header = `${m.msg_validation_error_count_one({ count: 1 })}, ${m.msg_validation_warning_count_one({ count: 1 })}`;
+    const header = `${m.msg_validation_error_count({ count: 1 })}, ${m.msg_validation_warning_count({ count: 1 })}`;
     expect(screen.getByText(header)).toBeInTheDocument();
   });
 

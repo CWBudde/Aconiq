@@ -442,7 +442,7 @@ describe("ExportPage list meta", () => {
     renderPage([run("run-1", [bundle])]);
 
     expect(listItem("run-1")).toHaveTextContent(
-      m.msg_artifact_count_one({ count: 1 }),
+      m.msg_artifact_count({ count: 1 }),
     );
   });
 
@@ -450,7 +450,7 @@ describe("ExportPage list meta", () => {
     renderPage([run("run-1", [bundle, htmlReport, markdownReport])]);
 
     expect(listItem("run-1")).toHaveTextContent(
-      m.msg_artifact_count_other({ count: 3 }),
+      m.msg_artifact_count({ count: 3 }),
     );
   });
 
@@ -463,7 +463,7 @@ describe("ExportPage list meta", () => {
     ]);
 
     expect(listItem("run-1")).toHaveTextContent(
-      m.msg_artifact_count_one({ count: 1 }),
+      m.msg_artifact_count({ count: 1 }),
     );
   });
 
@@ -486,9 +486,11 @@ describe("ExportPage list meta", () => {
   it("counts one run with exports in the header in the singular", () => {
     renderPage([run("run-1", [bundle]), run("run-2", [])]);
 
-    expect(pageHeader()).toHaveTextContent(`1 ${m.msg_runs_with_exports()}`);
+    expect(pageHeader()).toHaveTextContent(
+      m.msg_runs_with_exports({ count: 1 }),
+    );
     expect(pageHeader()).not.toHaveTextContent(
-      m.msg_runs_with_exports_plural(),
+      m.msg_runs_with_exports({ count: 2 }),
     );
   });
 
@@ -496,7 +498,7 @@ describe("ExportPage list meta", () => {
     renderPage([run("run-1", [bundle]), run("run-2", [htmlReport])]);
 
     expect(pageHeader()).toHaveTextContent(
-      `2 ${m.msg_runs_with_exports_plural()}`,
+      m.msg_runs_with_exports({ count: 2 }),
     );
   });
 });
@@ -713,7 +715,7 @@ describe("ExportPage unknown artifact kinds", () => {
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     // It is still counted and still an export artifact.
     expect(listItem("run-1")).toHaveTextContent(
-      m.msg_artifact_count_other({ count: 2 }),
+      m.msg_artifact_count({ count: 2 }),
     );
     // And it gets no Open in browser affordance, unlike the HTML report.
     expect(
@@ -825,7 +827,7 @@ describe("ExportPage empty state", () => {
       screen.getByText(m.msg_select_run_for_details()),
     ).toBeInTheDocument();
     expect(pageHeader()).toHaveTextContent(
-      `0 ${m.msg_runs_with_exports_plural()}`,
+      m.msg_runs_with_exports({ count: 0 }),
     );
   });
 

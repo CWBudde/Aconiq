@@ -30,11 +30,45 @@ function isMessageKey(key: string): boolean {
   return !key.startsWith("$");
 }
 
+/**
+ * A complex message: the array-wrapped form `@inlang/plugin-message-format`
+ * takes for anything selected by a plural category. The array wrapper is what
+ * distinguishes it from a nested object holding more messages.
+ */
+interface VariantMessage {
+  declarations?: string[];
+  selectors?: string[];
+  match: Record<string, string>;
+}
+
+type Message = string | VariantMessage[];
+
 // Resolved against the Vitest root (frontend/) rather than `import.meta.url`:
 // the jsdom environment does not give this module a file: URL.
-function catalogue(locale: Locale): Record<string, string> {
+function catalogue(locale: Locale): Record<string, Message> {
   const file = join(process.cwd(), "messages", `${locale}.json`);
-  return JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
+  return JSON.parse(readFileSync(file, "utf8")) as Record<string, Message>;
+}
+
+/**
+ * Every string a message can render.
+ *
+ * One for a simple message, one per variant for a complex one. Every check
+ * below runs over this rather than over the raw value, because a variant's
+ * value is an array and `typeof value !== "string"` would either fail the whole
+ * file or, for the placeholder check, quietly return nothing and pass.
+ */
+function patterns(message: Message): string[] {
+  if (typeof message === "string") {
+    return [message];
+  }
+
+  return message.flatMap((variant) => Object.values(variant.match));
+}
+
+/** The variants of a complex message; empty for a simple one. */
+function variants(message: Message): VariantMessage[] {
+  return typeof message === "string" ? [] : message;
 }
 
 function messageKeys(locale: Locale): string[] {
@@ -42,10 +76,22 @@ function messageKeys(locale: Locale): string[] {
 }
 
 /** `{name}` placeholders paraglide turns into function parameters. */
-function placeholders(message: string): string[] {
-  return [...message.matchAll(/\{([A-Za-z0-9_]+)\}/g)]
-    .map((match) => match[1] ?? "")
-    .sort();
+function placeholders(pattern: string): string[] {
+  return [...pattern.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(
+    (match) => match[1] ?? "",
+  );
+}
+
+/**
+ * The placeholders a message uses, across every variant it holds.
+ *
+ * A union rather than a per-variant comparison: a locale may legitimately drop
+ * the number from one arm — English "one item" against German "{count} Eintrag"
+ * — while the *function* paraglide compiles still takes the same parameters.
+ * What must not differ is the set the two catalogues ask the call sites for.
+ */
+function placeholdersOf(message: Message): string[] {
+  return [...new Set(patterns(message).flatMap(placeholders))].sort();
 }
 
 describe("message catalogues", () => {
@@ -71,10 +117,43 @@ describe("message catalogues", () => {
   it.each(LOCALES)("have no blank message in %s", (locale) => {
     const blank = Object.entries(catalogue(locale))
       .filter(([key]) => isMessageKey(key))
-      .filter(([, value]) => typeof value !== "string" || value.trim() === "")
+      .filter(([, value]) => {
+        const rendered = patterns(value);
+        return (
+          rendered.length === 0 ||
+          rendered.some(
+            (pattern) => typeof pattern !== "string" || pattern.trim() === "",
+          )
+        );
+      })
       .map(([key]) => key);
 
     expect(blank).toEqual([]);
+  });
+
+  it.each(LOCALES)("give every variant message a catch-all in %s", (locale) => {
+    // `Intl.PluralRules` answers with a category this catalogue may not list —
+    // `many` for a language added later, or simply a count no branch matched.
+    // Without an `other` (or `*`) arm paraglide has nothing to return and the
+    // sentence renders empty, which is a blank the check above cannot see
+    // because every arm it *does* declare is fine.
+    const uncovered = Object.entries(catalogue(locale))
+      .filter(([key]) => isMessageKey(key))
+      .filter(([, value]) =>
+        variants(value).some(
+          (variant) =>
+            !Object.keys(variant.match).some((arm) =>
+              arm
+                .split(",")
+                .every((clause) =>
+                  ["other", "*"].includes(clause.split("=")[1]?.trim() ?? ""),
+                ),
+            ),
+        ),
+      )
+      .map(([key]) => key);
+
+    expect(uncovered).toEqual([]);
   });
 
   it.each(LOCALES)("punctuate no label_* message in %s", (locale) => {
@@ -84,7 +163,9 @@ describe("message catalogues", () => {
     // catalogue reappears next to the one the page already adds.
     const punctuated = Object.entries(catalogue(locale))
       .filter(([key]) => isMessageKey(key) && key.startsWith("label_"))
-      .filter(([, value]) => value.trimEnd().endsWith(":"))
+      .filter(([, value]) =>
+        patterns(value).some((pattern) => pattern.trimEnd().endsWith(":")),
+      )
       .map(([key]) => key);
 
     expect(punctuated).toEqual([]);
@@ -100,8 +181,8 @@ describe("message catalogues", () => {
     const mismatched = messageKeys("en")
       .map((key) => ({
         key,
-        en: placeholders(en[key] ?? ""),
-        de: placeholders(de[key] ?? ""),
+        en: placeholdersOf(en[key] ?? ""),
+        de: placeholdersOf(de[key] ?? ""),
       }))
       .filter(({ en: a, de: b }) => a.join(",") !== b.join(","));
 

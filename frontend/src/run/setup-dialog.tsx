@@ -495,9 +495,7 @@ function RunSetupForm({
             ) : null}
             {receiverMode === "custom" && receiverCount > 0 ? (
               <p className="text-xs text-muted-foreground">
-                {receiverCount === 1
-                  ? m.msg_receivers_placed_one({ count: receiverCount })
-                  : m.msg_receivers_placed_other({ count: receiverCount })}
+                {m.msg_receivers_placed({ count: receiverCount })}
               </p>
             ) : null}
             {receiverMode === "custom" &&
@@ -588,15 +586,9 @@ function RunSetupForm({
                 <span className="flex-1">
                   {validation.state === "empty"
                     ? m.msg_model_empty_before_run()
-                    : `${m.msg_model_invalid_before_run()} ${
-                        validation.errorCount === 1
-                          ? m.msg_validation_error_count_one({
-                              count: validation.errorCount,
-                            })
-                          : m.msg_validation_error_count_other({
-                              count: validation.errorCount,
-                            })
-                      }.`}
+                    : `${m.msg_model_invalid_before_run()} ${m.msg_validation_error_count(
+                        { count: validation.errorCount },
+                      )}.`}
                 </span>
                 <Button asChild size="sm" variant="outline">
                   <Link to="/model">{m.action_open_model()}</Link>

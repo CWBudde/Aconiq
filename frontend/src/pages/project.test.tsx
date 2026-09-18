@@ -132,7 +132,7 @@ describe("ProjectPage validation summary", () => {
       screen.getByText(m.msg_validation_nothing_yet()),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(m.msg_validation_error_count_one({ count: 1 })),
+      screen.queryByText(m.msg_validation_error_count({ count: 1 })),
     ).toBeNull();
   });
 

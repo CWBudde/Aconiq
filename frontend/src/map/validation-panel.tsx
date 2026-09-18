@@ -36,15 +36,11 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
     <div className="max-h-64 overflow-y-auto">
       <div className="border-b px-3 py-2 text-xs font-medium">
         {errorCount > 0
-          ? errorCount === 1
-            ? m.msg_validation_error_count_one({ count: errorCount })
-            : m.msg_validation_error_count_other({ count: errorCount })
+          ? m.msg_validation_error_count({ count: errorCount })
           : ""}
         {errorCount > 0 && warningCount > 0 ? ", " : ""}
         {warningCount > 0
-          ? warningCount === 1
-            ? m.msg_validation_warning_count_one({ count: warningCount })
-            : m.msg_validation_warning_count_other({ count: warningCount })
+          ? m.msg_validation_warning_count({ count: warningCount })
           : ""}
       </div>
       <ul className="divide-y">

@@ -534,7 +534,7 @@ describe("RunPage model gate", () => {
     // an untouched model is not reported as a defective one.
     expect(invalidCallout()).toHaveTextContent(m.msg_model_empty_before_run());
     expect(invalidCallout()).not.toHaveTextContent(
-      m.msg_validation_error_count_one({ count: 1 }),
+      m.msg_validation_error_count({ count: 1 }),
     );
     expect(startRunButton()).toBeDisabled();
   });

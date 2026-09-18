@@ -479,10 +479,7 @@ export default function ResultsPage() {
           title={m.page_title_results()}
           description={
             <span className="text-xs">
-              {String(completedRuns.length)}{" "}
-              {completedRuns.length === 1
-                ? m.msg_completed_runs()
-                : m.msg_completed_runs_plural()}
+              {m.msg_completed_runs({ count: completedRuns.length })}
             </span>
           }
         />
