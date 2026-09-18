@@ -36,6 +36,8 @@ const state = vi.hoisted(() => {
     summaryError: Error | null;
     rasterMetadata: RasterMetadata | undefined;
     rasterBytes: ArrayBuffer | undefined;
+    /** Every id `useArtifactBytes` was called with, `null` when disabled. */
+    bytesAskedFor: (string | null)[];
     requests: TransformRequest[];
     respond: (req: TransformRequest) => Promise<TransformResponse>;
   } = {
@@ -48,6 +50,7 @@ const state = vi.hoisted(() => {
     summaryError: null,
     rasterMetadata: undefined,
     rasterBytes: undefined,
+    bytesAskedFor: [],
     requests: [],
     // A stand-in for the kernel: the numbers only have to be distinguishable
     // from the input, because what is asserted is which CRS was asked for and
@@ -101,11 +104,17 @@ vi.mock("@/api/hooks", () => ({
     isLoading: false,
     error: null,
   }),
-  useArtifactBytes: (artifactId: string | null) => ({
-    data: artifactId === null ? undefined : state.rasterBytes,
-    isLoading: false,
-    error: null,
-  }),
+  useArtifactBytes: (artifactId: string | null) => {
+    // Recorded, not just answered: a refusal the sidecar settles on its own
+    // must never reach the network, and `null` here is what "never asked" is
+    // spelled as — a query with no id does not fetch.
+    state.bytesAskedFor.push(artifactId);
+    return {
+      data: artifactId === null ? undefined : state.rasterBytes,
+      isLoading: false,
+      error: null,
+    };
+  },
 }));
 
 // jsdom has no 2D context, so the encoder is the seam: everything above it is
@@ -286,6 +295,7 @@ beforeEach(() => {
   state.summaryLoading = false;
   state.summaryError = null;
   state.requests = [];
+  state.bytesAskedFor = [];
   useMapStore.setState({ basemap: "light", layerVisibility: {} });
 });
 
@@ -757,6 +767,7 @@ describe("ResultLayers: the result raster", () => {
       await screen.findByText(m.msg_result_raster_not_grid()),
     ).toBeInTheDocument();
     expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeUndefined();
+    expect(state.bytesAskedFor.every((id) => id === null)).toBe(true);
   });
 
   it("refuses a band the sidecar does not name, rather than painting band 0", async () => {
@@ -802,6 +813,10 @@ describe("ResultLayers: the result raster", () => {
     ).toBeInTheDocument();
     expect(map.sources.get(SOURCE_IDS.resultRaster)).toBeUndefined();
     expect(map.getLayer(LAYER_IDS.resultReceiverLevel)).toBeDefined();
+    // And never asked for them either: withholding the bytes proves the memo
+    // did not decode them, this proves the hook did not download them. The
+    // grid this cap exists for is tens of megabytes.
+    expect(state.bytesAskedFor.every((id) => id === null)).toBe(true);
   });
 
   it("draws nothing and says nothing for a run that wrote no raster", async () => {

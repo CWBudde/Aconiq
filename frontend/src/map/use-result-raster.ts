@@ -257,6 +257,37 @@ function bandIndex(metadata: RasterMetadata, indicator: string): number {
 }
 
 /**
+ * The refusal the sidecar alone settles, or `null` when the bytes are worth
+ * fetching.
+ *
+ * One function so that three callers cannot drift apart: `resolveRaster`
+ * reports it, the memo below refuses to colourise past it, and the hook uses
+ * it to decide whether to ask for the binary at all. That last use is the
+ * reason it exists as a function — a `too-large` grid is precisely the one
+ * whose bytes are too big to download for the sake of a one-line refusal.
+ */
+function sidecarRefusal(
+  metadata: RasterMetadata,
+  indicator: string,
+): ResultRaster | null {
+  if (!declaresLevels(metadata.unit)) {
+    return { status: "not-levels", unit: metadata.unit };
+  }
+  if (metadata.georeference === undefined) return { status: "not-a-grid" };
+  if (exceedsOneImage(metadata)) {
+    return {
+      status: "too-large",
+      width: metadata.width,
+      height: metadata.height,
+    };
+  }
+  if (bandIndex(metadata, indicator) < 0) {
+    return { status: "no-such-band", indicator };
+  }
+  return null;
+}
+
+/**
  * The decision, as a function of what was fetched — no hooks, so the whole
  * table of outcomes is one `expect` away and the hook below is only plumbing.
  */
@@ -280,23 +311,10 @@ function resolveRaster(input: {
   if (metadata === undefined) return input.loading ? LOADING : NONE;
 
   // Every refusal decidable from the sidecar alone is answered here, before
-  // the bytes are looked at — because in two of these cases the hook
-  // deliberately never asked for them, so an absent payload is the answer
-  // rather than a wait.
-  if (!declaresLevels(metadata.unit)) {
-    return { status: "not-levels", unit: metadata.unit };
-  }
-  if (metadata.georeference === undefined) return { status: "not-a-grid" };
-  if (exceedsOneImage(metadata)) {
-    return {
-      status: "too-large",
-      width: metadata.width,
-      height: metadata.height,
-    };
-  }
-  if (bandIndex(metadata, indicator) < 0) {
-    return { status: "no-such-band", indicator };
-  }
+  // the bytes are looked at — because in these cases the hook never asked for
+  // them, so an absent payload is the answer rather than a wait.
+  const refusal = sidecarRefusal(metadata, indicator);
+  if (refusal !== null) return refusal;
 
   if (bytes === undefined) return input.loading ? LOADING : NONE;
 
@@ -336,11 +354,18 @@ export function useResultRaster(
     isLoading: metadataLoading,
     error: metadataError,
   } = useRasterMetadata(metadataArtifact?.id ?? null);
+  // The binary is asked for only once the sidecar has failed to rule it out.
+  // That costs a round trip — the two fetches no longer overlap — and buys the
+  // case the dimension cap exists for: a grid too wide to draw never has its
+  // megabytes pulled over the wire to put one sentence on screen. The sidecar
+  // is a few hundred bytes, so the trip it adds is the cheap one.
+  const wantsBytes =
+    metadata !== undefined && sidecarRefusal(metadata, indicator) === null;
   const {
     data: bytes,
     isLoading: bytesLoading,
     error: bytesError,
-  } = useArtifactBytes(binaryArtifact?.id ?? null);
+  } = useArtifactBytes(wantsBytes ? (binaryArtifact?.id ?? null) : null);
 
   const corners = usePlacedCorners(
     metadata,
@@ -349,10 +374,9 @@ export function useResultRaster(
 
   const image = useMemo(() => {
     if (metadata === undefined || bytes === undefined) return undefined;
-    if (exceedsOneImage(metadata)) return null;
+    if (sidecarRefusal(metadata, indicator) !== null) return null;
 
     const band = bandIndex(metadata, indicator);
-    if (band < 0) return null;
 
     try {
       const values = readRasterBand(bytes, metadata, band);
@@ -376,7 +400,14 @@ export function useResultRaster(
   const hasArtifacts =
     metadataArtifact !== undefined && binaryArtifact !== undefined;
   const failed = metadataError != null || bytesError != null;
-  const loading = metadataLoading || bytesLoading;
+  // `bytesLoading` is false for the render in which the query is still
+  // disabled, so waiting for bytes that have been asked for but have not
+  // arrived is spelled out rather than read off the query — otherwise the
+  // handover from the sidecar to the binary shows one frame of "no raster".
+  const loading =
+    metadataLoading ||
+    bytesLoading ||
+    (wantsBytes && bytes === undefined && bytesError == null);
 
   // Memoised because the caller feeds this straight into an effect's
   // dependency list. A fresh object literal per render would re-run that

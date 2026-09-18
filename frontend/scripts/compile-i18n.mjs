@@ -33,7 +33,7 @@
  * Or via justfile: just fe-i18n
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const FRONTEND_DIR = fileURLToPath(new URL("..", import.meta.url));
@@ -47,11 +47,26 @@ const settings = JSON.parse(
   readFileSync(new URL("../project.inlang/settings.json", import.meta.url)),
 );
 
-// The binary from node_modules, not `bunx`: this must not reach a registry
-// either, and the version that runs has to be the one bun.lock pins.
+// The compiler from node_modules, not `bunx`: this must not reach a registry
+// either, and the version that runs has to be the one bun.lock pins. It is the
+// package's own entry module rather than the `.bin/` shim, run by whatever
+// runtime started this script: on Windows a package manager writes
+// `paraglide-js.cmd` and `.ps1` there and often no bare `paraglide-js` at all,
+// so spawning that path is a file-not-found before the compiler ever runs.
+const COMPILER = fileURLToPath(
+  new URL("../node_modules/@inlang/paraglide-js/bin/run.js", import.meta.url),
+);
+
+if (!existsSync(COMPILER)) {
+  fail(
+    `the compiler is not installed at ${COMPILER}.\nRun \`bun install\` in frontend/ first.`,
+  );
+}
+
 const compile = spawnSync(
-  "./node_modules/.bin/paraglide-js",
+  process.execPath,
   [
+    COMPILER,
     "compile",
     "--project",
     PROJECT,
