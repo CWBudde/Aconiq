@@ -494,14 +494,23 @@ async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
   // `startRun`'s quota retry deliberately leaves bytes under a document that
   // does not yet name them, and a sweep after the body would reclaim the
   // raster of the run that body just stored.
-  const body = async (): Promise<T> => {
-    await sweepOrphanedArtifactBytes();
-    return fn();
-  };
   // lib.dom declares `locks` as always present; the browsers above disagree.
   const locks = navigator.locks as LockManager | undefined;
-  if (locks === undefined) return body();
-  return locks.request(STORE_LOCK_NAME, body);
+  // No lock, no sweep. The unlocked fallback is survivable for the writes
+  // themselves — `reloadState()` before each one keeps *sequential* cross-tab
+  // writes from dropping each other's runs — but it is not survivable for the
+  // sweep, and the difference is which way the damage runs. A lost write can
+  // be repeated; a deleted raster cannot. `sweptOrphanedBytes` is per module,
+  // so it says nothing about the other tab: without an origin-wide lock,
+  // tab B's first writer can list the bytes tab A has written but not yet
+  // named and delete them, leaving tab A's run pointing at nothing. Skipping
+  // costs an orphaned record its quota until a browser that has the API
+  // clears it, which is the cheaper of the two failures by a wide margin.
+  if (locks === undefined) return fn();
+  return locks.request(STORE_LOCK_NAME, async () => {
+    await sweepOrphanedArtifactBytes();
+    return fn();
+  });
 }
 
 /**
@@ -539,9 +548,7 @@ let sweptOrphanedBytes = false;
 async function sweepOrphanedArtifactBytes(): Promise<void> {
   if (sweptOrphanedBytes) return;
   // Set before the first await, not after the work: a sweep that fails is a
-  // sweep that must not be retried on every subsequent write, and where
-  // `navigator.locks` is missing two writers can otherwise both pass this
-  // guard in the same tick.
+  // sweep that must not be retried on every subsequent write.
   sweptOrphanedBytes = true;
 
   let loaded: LoadedState;

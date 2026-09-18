@@ -1478,6 +1478,32 @@ describe("persisted state", () => {
   describe("orphaned raster bytes", () => {
     const ORPHAN_ID = "artifact-run-0099-raster-bin";
 
+    /*
+     * The sweep only runs where the Web Locks API does, so every test that
+     * expects it to happen has to supply one. jsdom has none, and that is not
+     * an accident of the harness being thin — it is the same condition an old
+     * Safari presents, and the code refuses to sweep in it deliberately: the
+     * per-module latch says nothing about another tab, so an unlocked sweep
+     * can delete the bytes a second tab has written and not yet named.
+     *
+     * The stub grants immediately and serialises nothing, which is all these
+     * tests need; `sweeps while holding the store lock` below supplies a
+     * stricter one that tracks whether the lock is actually held.
+     */
+    beforeEach(() => {
+      Object.defineProperty(navigator, "locks", {
+        value: {
+          request: (_name: string, callback: () => Promise<unknown>) =>
+            callback(),
+        },
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "locks");
+    });
+
     /** One stored run whose raster really is in the byte store. */
     async function seedOneRunWithRaster(): Promise<string> {
       const kept = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
@@ -1496,6 +1522,24 @@ describe("persisted state", () => {
       await browserBackend.startRun(RUN_SPEC);
 
       expect(await storage.loadArtifactBytes(ORPHAN_ID)).toBeNull();
+      expect(await storage.loadArtifactBytes(keptBytesID)).not.toBeNull();
+    });
+
+    it("does not sweep at all where the Web Locks API is missing", async () => {
+      // The condition the sweep refuses to run in, asserted rather than left
+      // to the absence of an assertion. `sweptOrphanedBytes` is per module,
+      // so it cannot serialise anything across tabs: without an origin-wide
+      // lock, this tab could list the bytes another tab has just written and
+      // not yet named, and delete a raster out from under a run that is
+      // about to reference it. An orphan left alive costs quota; this would
+      // cost the run.
+      Reflect.deleteProperty(navigator, "locks");
+      const keptBytesID = await seedOneRunWithRaster();
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(await storage.loadArtifactBytes(ORPHAN_ID)).not.toBeNull();
       expect(await storage.loadArtifactBytes(keptBytesID)).not.toBeNull();
     });
 
