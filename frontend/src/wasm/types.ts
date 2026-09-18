@@ -318,12 +318,13 @@ export interface ContourLine {
  * `interval` is echoed for the same reason: the caller may have omitted it and
  * taken the default, and a legend naming the step has to know which it got.
  *
- * `lines` is `null`, not `[]`, when a raster holds no valid data in any band:
- * Go marshals a nil slice that way, and the API route over the same type
- * answers identically, so handling it is not optional.
+ * `lines` is always an array, never `null`. `contour.FromRaster` substitutes an
+ * empty slice before returning, precisely so that a raster with no valid data
+ * in any band does not marshal as `"lines": null` over both boundaries and
+ * leave every consumer to defend against it separately.
  */
 export interface ContourResult {
   crs: string;
   interval: number;
-  lines: ContourLine[] | null;
+  lines: ContourLine[];
 }

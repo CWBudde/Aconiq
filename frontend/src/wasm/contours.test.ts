@@ -74,13 +74,13 @@ describe.skipIf(skipReason !== null)("kernel.contours", () => {
     // Omitted in the request, so the EU END default comes back stated.
     expect(result.interval).toBe(5);
 
-    const bands = new Set((result.lines ?? []).map((line) => line.band_name));
+    const bands = new Set(result.lines.map((line) => line.band_name));
     expect([...bands].sort()).toEqual(["lr_day", "lr_night"]);
 
     // Target equal to the raster's CRS means no reprojection, so the vertices
     // are still the metres the georeference places the grid on. Degrees here
     // would mean the reprojection ran when it should not have.
-    for (const line of result.lines ?? []) {
+    for (const line of result.lines) {
       for (const [x, y] of line.points) {
         expect(x).toBeGreaterThan(680_000);
         expect(y).toBeGreaterThan(5_645_000);
@@ -97,9 +97,9 @@ describe.skipIf(skipReason !== null)("kernel.contours", () => {
 
     expect(result.crs).toBe("EPSG:4326");
     expect(result.interval).toBe(10);
-    expect(result.lines?.length).toBeGreaterThan(0);
+    expect(result.lines.length).toBeGreaterThan(0);
 
-    for (const line of result.lines ?? []) {
+    for (const line of result.lines) {
       for (const [lon, lat] of line.points) {
         expect(lon).toBeGreaterThan(11);
         expect(lon).toBeLessThan(12);
