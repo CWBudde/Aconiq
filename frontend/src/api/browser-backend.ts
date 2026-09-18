@@ -1536,11 +1536,36 @@ async function runRLS19Road(
       },
     };
 
+    const storedRun: StoredRun = { run, log, artifacts: artifactMap };
+
     // The bytes go in first: a document referencing an artifact whose record
     // is missing reads as a corrupted run, while a byte record no document
-    // names is merely orphaned and is cleaned up by the next eviction.
-    await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
-    await persistRun({ run, log, artifacts: artifactMap }, "run");
+    // names is merely orphaned.
+    try {
+      await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
+    } catch (error) {
+      // Eviction cannot rescue this one, which is why it is not routed through
+      // `persistRun`. That retry drops the oldest run to make room, but the
+      // victim's bytes are only deleted once the document recording the drop
+      // is stored — so at this point there is no freed space to retry into.
+      // What is left to get right is the wording: this is a storage failure
+      // like any other, and the dialogs render `error.message`.
+      throw storeFailure("run", error);
+    }
+
+    try {
+      await persistRun(storedRun, "run");
+    } catch (error) {
+      // Nothing else will ever find these. `forgetArtifactBytes` walks the
+      // runs the stored document holds, and a run whose persist failed is not
+      // one of them — the next `reloadState` drops it from memory too. Left
+      // behind, they would cost the origin a raster's worth of quota per
+      // failed run, permanently, and on the quota path that is the very
+      // resource that failed.
+      forgetArtifactBytes([storedRun]);
+      throw error;
+    }
+
     return run;
   });
 }

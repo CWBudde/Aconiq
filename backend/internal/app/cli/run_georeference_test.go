@@ -309,6 +309,32 @@ func TestFormatExportContextRefusesAnUnreadableReceiverTable(t *testing.T) {
 	}
 }
 
+// And the same for the bundle's model GeoJSON, which GeoPackage reads. The
+// path is only set once the file is in the bundle, so a load failure is a file
+// that is there and will not parse — skipping it writes a bundle missing
+// `model.gpkg` and reports one artifact where the caller asked for two.
+func TestExportGeoPackageRefusesAnUnreadableModelGeoJSON(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	modelPath := filepath.Join(dir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte("{not json"), 0o600)
+	if err != nil {
+		t.Fatalf("write the model: %v", err)
+	}
+
+	ctx, err := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{}, 5.0, modelPath)
+	if err != nil {
+		t.Fatalf("new format export context: %v", err)
+	}
+
+	err = ctx.exportGeoPackage(map[string][]string{})
+	if err == nil {
+		t.Fatal("an unreadable model GeoJSON exported as though the bundle carried none")
+	}
+}
+
 // A declared georeference that will not convert is a refusal, and the refusal
 // must name the declaration rather than reading as "no georeference" — the
 // latter is what sends `resolveGeoTransform` to inference.

@@ -1612,10 +1612,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       had been mislabelling `run.result.raster_binary` and `export.report_pdf` all along.
       **Browser mode stores real bytes**, through `model/raster-bin.ts` pinned to Go's writer by
       `testdata/raster-parity/`, in their own IndexedDB record rather than inside the state
-      document — `persist` clones that document whole on every save. Two constraints worth
-      carrying: `getArtifactURL` is synchronous and therefore refuses binary content, and
+      document — `persist` clones that document whole on every save. Three constraints worth
+      carrying: `getArtifactURL` is synchronous and therefore refuses binary content;
       `instanceof ArrayBuffer` is the wrong check on a value read back from IndexedDB, because the
-      structured clone can come from another realm.
+      structured clone can come from another realm; and **a byte record is deleted only after the
+      document that stopped naming it is stored**, never before. `persistRun` puts the un-evicted
+      list back when its retry fails, so a delete that runs first leaves a retained run whose
+      raster reads as missing — which also means eviction frees no space in time to rescue the
+      byte write itself, and `startRun` reports that failure directly rather than retrying into
+      room that is not there.
       Still open, and the next batch: **the map layer itself** — `map/layers.ts` records that the
       `raster` and `contours` layer groups were removed because nothing added them. Then the
       map→table direction, which wants a receiver clicked on the map to scroll and mark its row;
@@ -1630,6 +1635,19 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       could read becomes unreachable the moment its run is deleted, because an `ArtifactRef` id is
       the only handle `GET /api/v1/artifacts/{id}/content` takes. Decide whether a delivered
       bundle should keep addressable refs; do not change it as a side effect of the map work.
+- [ ] **Browser mode has no sweep for byte records nothing names.** Every deliberate path now
+      deletes them — the run cap, eviction, `deleteRun`, and `startRun` when its own persist fails
+      — but each is a caller that knows which ids it orphaned. A tab closed between
+      `saveArtifactBytes` and the document write leaves a record no caller ever knew about, and
+      only `clearPersistedState` removes it. `browser-storage` already keys these under
+      `artifact-bytes:` and range-deletes the prefix, so listing them is a `getAllKeys` away; the
+      work is the ordering, not the query. A sweep must run **once per session and under
+      `withStoreLock`**, because `startRun` holds that lock across both writes and a sweep that
+      does not would delete the bytes of a run another tab is mid-way through storing. It must
+      also not run when the document was unreadable or the store unavailable: both leave the
+      document in place deliberately, so what it names is unknown. Note that `reloadState()` calls
+      `loadState()` on every write — a sweep placed there would delete the bytes of the run being
+      written, and one placed in `ensureLoaded` can be reached from inside the lock it would need.
 - [x] **CRS and basemap** (#53). The constraints it leaves live. The tile URL is a per-browser
       localStorage override (`map/tile-source.ts`, edited in Connection settings), so `basemap.ts`
       builds its styles on demand — one captured at import time would ignore the override — and a

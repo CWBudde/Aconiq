@@ -306,8 +306,19 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 	}
 
 	if c.modelGeoJSONPath != "" {
+		// Refused rather than skipped, for the reason the two loads in
+		// `newFormatExportContext` are. The path is only set once the model
+		// GeoJSON has been copied into the bundle, so a load failure here is a
+		// file that is present and will not parse — and skipping it writes a
+		// bundle quietly missing `model.gpkg`, with one artifact ref where the
+		// caller asked for two. An empty model is a different thing and stays
+		// a skip: nothing to write is a legitimate answer.
 		modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(c.modelGeoJSONPath)
-		if loadErr == nil && len(modelFeatures) > 0 {
+		if loadErr != nil {
+			return fmt.Errorf("read the bundle's model GeoJSON for export: %w", loadErr)
+		}
+
+		if len(modelFeatures) > 0 {
 			modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
 
 			exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)

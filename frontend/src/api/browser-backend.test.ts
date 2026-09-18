@@ -1306,6 +1306,68 @@ describe("persisted state", () => {
       expect((failure as Error).message).toMatch(/could not be stored/);
       expect(await browserBackend.getRuns()).toHaveLength(1);
     });
+
+    /*
+     * The raster bytes are written before the document, and eviction cannot
+     * rescue that write: the retry frees the victim's bytes only after the
+     * document recording the drop is stored, so there is no freed space to
+     * retry into. What it must still do is read like every other storage
+     * failure — the dialogs render `error.message`, and a raw DOMException
+     * text is not what they are written for.
+     */
+    it("reports a quota failure on the raster write in the run's words", async () => {
+      vi.spyOn(storage, "saveArtifactBytes").mockRejectedValue(quota());
+
+      const failure = await browserBackend
+        .startRun({
+          ...RUN_SPEC,
+          receiverMode: "auto-grid",
+          params: {
+            ...RUN_SPEC.params,
+            grid_resolution_m: "50",
+            grid_padding_m: "0",
+          },
+        })
+        .catch((error: unknown) => error);
+
+      expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
+      expect((failure as Error).message).toMatch(
+        /run completed but could not be stored/,
+      );
+    });
+
+    /*
+     * Bytes written for a run whose document never landed are unreachable:
+     * `forgetArtifactBytes` walks the runs the document holds, and the next
+     * `reloadState` drops the failed run from memory too. Left behind they
+     * cost a raster's worth of quota per failed run, permanently — and on the
+     * quota path that is the resource that just ran out.
+     */
+    it("reclaims the raster bytes of a run that could not be stored", async () => {
+      vi.spyOn(storage, "savePersistedState").mockRejectedValue(
+        new storage.BrowserStorageError("unavailable", "no IndexedDB"),
+      );
+
+      const failure = await browserBackend
+        .startRun({
+          ...RUN_SPEC,
+          receiverMode: "auto-grid",
+          params: {
+            ...RUN_SPEC.params,
+            grid_resolution_m: "50",
+            grid_padding_m: "0",
+          },
+        })
+        .catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      const runID = `run-${String(1).padStart(4, "0")}`;
+      await vi.waitFor(async () => {
+        expect(
+          await storage.loadArtifactBytes(`artifact-${runID}-raster-bin`),
+        ).toBeNull();
+      });
+    });
   });
 });
 
