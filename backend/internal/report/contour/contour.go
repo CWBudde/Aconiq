@@ -32,15 +32,15 @@ import (
 	"github.com/aconiq/backend/internal/report/results"
 )
 
-// ContourLine represents a single contour at a given dB level.
-type ContourLine struct {
+// Line is a single contour at a given dB level.
+type Line struct {
 	Level    float64      `json:"level"`
 	BandName string       `json:"band_name"`
 	Points   [][2]float64 `json:"points"`
 }
 
-// ContourOptions configures contour generation.
-type ContourOptions struct {
+// Options configures contour generation.
+type Options struct {
 	// Interval is the dB step between contour levels (default 5 per EU END convention).
 	Interval float64
 
@@ -51,11 +51,11 @@ type ContourOptions struct {
 	MaxLevel float64
 }
 
-// DefaultContourInterval is 5 dB per EU Environmental Noise Directive convention.
-const DefaultContourInterval = 5.0
+// DefaultInterval is 5 dB per EU Environmental Noise Directive convention.
+const DefaultInterval = 5.0
 
 // GenerateContours generates ISO-band contour lines from a raster using marching squares.
-func GenerateContours(raster *results.Raster, gt GeoTransform, opts ContourOptions) ([]ContourLine, error) {
+func GenerateContours(raster *results.Raster, gt GeoTransform, opts Options) ([]Line, error) {
 	if raster == nil {
 		return nil, errors.New("raster is nil")
 	}
@@ -66,10 +66,10 @@ func GenerateContours(raster *results.Raster, gt GeoTransform, opts ContourOptio
 	}
 
 	if opts.Interval <= 0 {
-		opts.Interval = DefaultContourInterval
+		opts.Interval = DefaultInterval
 	}
 
-	var allContours []ContourLine
+	var allContours []Line
 
 	for band := range meta.Bands {
 		bandName := contourBandName(meta, band)
@@ -135,7 +135,7 @@ func extractBandGrid(raster *results.Raster, meta results.RasterMetadata, band i
 }
 
 // contourLevelRange determines the min/max contour levels, auto-detecting from data when unset.
-func contourLevelRange(opts ContourOptions, dataMin float64, dataMax float64) (float64, float64) {
+func contourLevelRange(opts Options, dataMin float64, dataMax float64) (float64, float64) {
 	minLevel := opts.MinLevel
 	if minLevel == 0 {
 		minLevel = math.Floor(dataMin/opts.Interval) * opts.Interval
@@ -150,11 +150,11 @@ func contourLevelRange(opts ContourOptions, dataMin float64, dataMax float64) (f
 }
 
 // contoursForLevel builds the projected contour lines of a single level for one band.
-func contoursForLevel(grid [][]float64, meta results.RasterMetadata, gt GeoTransform, level float64, bandName string) []ContourLine {
+func contoursForLevel(grid [][]float64, meta results.RasterMetadata, gt GeoTransform, level float64, bandName string) []Line {
 	segments := marchingSquares(grid, level, meta.NoData)
 	lines := joinSegments(segments)
 
-	out := make([]ContourLine, 0, len(lines))
+	out := make([]Line, 0, len(lines))
 
 	for _, pts := range lines {
 		// Transform pixel coordinates to projected coordinates.
@@ -168,7 +168,7 @@ func contoursForLevel(grid [][]float64, meta results.RasterMetadata, gt GeoTrans
 			projected[i] = [2]float64{gx, gy}
 		}
 
-		out = append(out, ContourLine{
+		out = append(out, Line{
 			Level:    level,
 			BandName: bandName,
 			Points:   projected,

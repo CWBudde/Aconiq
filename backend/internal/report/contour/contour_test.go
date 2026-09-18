@@ -38,7 +38,7 @@ func TestGenerateContours(t *testing.T) {
 		PixelSizeY: -10,
 	}
 
-	contours, err := GenerateContours(raster, gt, ContourOptions{Interval: 5})
+	contours, err := GenerateContours(raster, gt, Options{Interval: 5})
 	if err != nil {
 		t.Fatalf("generate contours: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestGenerateContoursSmallRaster(t *testing.T) {
 		t.Fatalf("create raster: %v", err)
 	}
 
-	_, err = GenerateContours(raster, GeoTransform{}, ContourOptions{})
+	_, err = GenerateContours(raster, GeoTransform{}, Options{})
 	if err == nil {
 		t.Fatal("expected error for 1x1 raster")
 	}
@@ -78,7 +78,7 @@ func TestGenerateContoursSmallRaster(t *testing.T) {
 func TestGenerateContoursNilRaster(t *testing.T) {
 	t.Parallel()
 
-	_, err := GenerateContours(nil, GeoTransform{}, ContourOptions{})
+	_, err := GenerateContours(nil, GeoTransform{}, Options{})
 	if err == nil {
 		t.Fatal("expected error for nil raster")
 	}
@@ -96,7 +96,7 @@ func TestGenerateContoursAllNoData(t *testing.T) {
 	}
 
 	// NewRaster fills with NoData by default.
-	contours, err := GenerateContours(raster, GeoTransform{PixelSizeX: 1, PixelSizeY: -1}, ContourOptions{Interval: 5})
+	contours, err := GenerateContours(raster, GeoTransform{PixelSizeX: 1, PixelSizeY: -1}, Options{Interval: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -24,15 +24,15 @@ import (
 // so a value crosses between the two packages without a conversion.
 type (
 	// ContourLine is a single contour at a given dB level.
-	ContourLine = contour.ContourLine
+	ContourLine = contour.Line
 	// ContourOptions configures contour generation.
-	ContourOptions = contour.ContourOptions
+	ContourOptions = contour.Options
 	// GeoTransform is the affine mapping from pixel to projected coordinates.
 	GeoTransform = contour.GeoTransform
 )
 
 // DefaultContourInterval is 5 dB per EU Environmental Noise Directive convention.
-const DefaultContourInterval = contour.DefaultContourInterval
+const DefaultContourInterval = contour.DefaultInterval
 
 // GenerateContours, GeoTransformFromGeoreference and InferGeoTransformFromReceivers
 // are the functions that moved, forwarded by value rather than by a wrapper.
