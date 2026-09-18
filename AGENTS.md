@@ -109,9 +109,9 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
-`window.aconiq` exposes `rls19Road`, `transform`, `standards`, `loadTerrain`, `clearTerrain`,
-`defaultConfig`, `health` and `projectStatus`. Three of those carry contracts worth knowing before
-writing browser-mode code:
+`window.aconiq` exposes `rls19Road`, `transform`, `standards`, `contours`, `loadTerrain`,
+`clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Four of those carry contracts worth
+knowing before writing browser-mode code:
 
 - **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
   coordinates and a `target_crs` of `"auto"`, and makes the CRS decision `aconiq run` makes — so
@@ -120,6 +120,13 @@ writing browser-mode code:
 - **`standards`** publishes what the kernel can actually run, in the same JSON shape
   `GET /api/v1/standards` answers with. Both go through `internal/standards/descriptorjson`, so
   the evidence tier, the parameter defaults and the enums are declared once, by the Go module.
+- **`contours(bytes, request)`** traces a run's result raster, and is the frontend's only source
+  of a contour line. It takes the `.bin` payload as a `Uint8Array` with the sidecar metadata
+  beside it, and answers from `contour.FromRaster` — the same call behind
+  `GET /api/v1/runs/{id}/contours`, so the two modes cannot place a 55 dB line differently. The
+  frontend must not grow a marching squares of its own, for the reason it must not grow a second
+  projection. It is a Promise, unlike `transform`: tracing a 500×500 grid is not work to hand back
+  synchronously.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -129,7 +136,7 @@ writing browser-mode code:
   same pair `cli.computeProjection` records — and is refused without it rather than answered from
   a grid queried in the wrong CRS. `terrain.InComputeCRS` is the wrapper both targets use.
 
-The logic behind all three lives in `internal/wasmkernel`, which carries **no build tag** so that a
+The logic behind all four lives in `internal/wasmkernel`, which carries **no build tag** so that a
 host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and has no tests.
 
 ### Go Package Structure (`backend/internal/`)
@@ -158,6 +165,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `io/soundplanimport/`       | SoundPLAN project bundle import (geometry, terrain, rail ops, grids, absolute results)                             |
 | `qa/acceptance/`            | Acceptance fixture catalog and hook registry, with per-standard runners (`rls19_test20/`, `schall03/`)             |
 | `qa/golden/`                | Golden snapshot helper                                                                                             |
+| `report/contour/`           | Marching squares and contour reprojection — below the CLI, the kernel and `httpv1`, which all call it              |
 | `report/export/`            | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
 | `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
 | `report/results/`           | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |

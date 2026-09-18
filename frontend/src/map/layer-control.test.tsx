@@ -10,6 +10,7 @@ import {
 } from "./basemap";
 import {
   MODEL_LAYER_GROUPS,
+  RESULT_CONTOUR_LAYERS,
   RESULT_LAYER_GROUPS,
   RESULT_RASTER_LAYERS,
   RESULT_RECEIVER_LAYERS,
@@ -164,14 +165,19 @@ describe("LayerControl", () => {
     // `ResultLayers` actually adds. A dead control is worse than a missing one:
     // it reports a state that is not there.
     //
-    // `contours` is the live case. It sat in this list for a layer nothing
-    // added, and still would: `aconiq export --format contour-geojson` is the
-    // only producer, so browser mode writes none at all. It stays out until
-    // the generation moves behind the kernel boundary.
+    // `contours` is why this test exists. The group sat in the control for a
+    // layer nothing added, because `aconiq export --format contour-geojson`
+    // was the only producer and browser mode wrote none at all. It is in the
+    // list now because the generation moved behind the kernel boundary and
+    // `ResultLayers` adds the layers in both modes — so the group and the
+    // specifications have to be added or removed together, which is exactly
+    // what this compares.
     const offered = new Set(RESULT_LAYER_GROUPS.flatMap((g) => g.layerIds));
-    const added = [...RESULT_RASTER_LAYERS, ...RESULT_RECEIVER_LAYERS].map(
-      (layer) => layer.id,
-    );
+    const added = [
+      ...RESULT_RASTER_LAYERS,
+      ...RESULT_CONTOUR_LAYERS,
+      ...RESULT_RECEIVER_LAYERS,
+    ].map((layer) => layer.id);
 
     expect([...offered].sort()).toEqual([...added].sort());
   });

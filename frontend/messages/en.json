@@ -31,6 +31,8 @@
   "msg_result_raster_no_band": "The result raster holds no band named {indicator}, so it is not painted.",
   "msg_result_raster_too_large": "The result raster is {width}×{height} cells, larger than this browser can draw as one image. The receiver levels are still shown.",
   "msg_result_raster_failed": "The result raster could not be drawn.",
+  "label_result_contours": "Noise contours",
+  "msg_result_contours_failed": "The contour lines could not be traced.",
   "msg_result_run_unavailable": "Run {runId} is not available here, so the newest completed run is shown.",
   "action_show_receiver_on_map": "Show receiver {id} on the map",
   "nav_model": "Map",

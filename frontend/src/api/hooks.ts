@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { backend } from "./backend";
-import type { OsmImportRequest, RunSpec } from "./backend";
+import type { ContourOptions, OsmImportRequest, RunSpec } from "./backend";
 import type {
   ModelSaveRequest,
   RasterMetadata,
@@ -150,6 +150,40 @@ export function useArtifactBytes(artifactId: string | null) {
     enabled: artifactId !== null,
     staleTime: Infinity,
     gcTime: 5 * 60_000,
+  });
+}
+
+/**
+ * A run's contours, traced by the same Go marching squares in both modes.
+ *
+ * `staleTime: Infinity` for the reason `useArtifactBytes` has it: the raster
+ * behind this is a file in a finished run, so a refetch could only return what
+ * is already held. `gcTime` is bounded all the same — a dense grid is a lot of
+ * vertices to hold for a run the user has switched away from.
+ *
+ * `null` disables it, which is how a caller says "this run has no raster" or
+ * "the panel has no CRS to ask in" without the hook having to know either.
+ */
+export function useRunContours(
+  runId: string | null,
+  options: ContourOptions | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.contours.forRun(
+      runId ?? "",
+      options?.crs ?? "",
+      options?.interval,
+    ),
+    queryFn: () => {
+      if (!runId || !options) throw new Error("A run and a CRS are required");
+      return backend.getRunContours(runId, options);
+    },
+    enabled: runId !== null && options !== null,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    // A run whose receivers were not a grid refuses every time, in the same
+    // words. Retrying spends three round trips to be told so three times.
+    retry: false,
   });
 }
 

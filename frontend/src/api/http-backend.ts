@@ -4,7 +4,12 @@ import {
   errorFromResponse,
   parseErrorEnvelope,
 } from "./api-error";
-import type { Backend, OsmImportRequest, RunSpec } from "./backend";
+import type {
+  Backend,
+  OsmImportRequest,
+  RunContours,
+  RunSpec,
+} from "./backend";
 import { apiHeaders } from "./client";
 import type {
   CreateRunRequest,
@@ -161,6 +166,20 @@ export const httpBackend: Backend = {
       throw await errorFromResponse(response);
     }
     return await response.arrayBuffer();
+  },
+
+  async getRunContours(runId, options) {
+    const query = new URLSearchParams({ crs: options.crs });
+    if (options.interval !== undefined) {
+      // Omitted rather than sent as an empty string: the route reads an empty
+      // `interval` as "use the default", but sending one would mean the client
+      // had an opinion it does not have.
+      query.set("interval", String(options.interval));
+    }
+
+    return request<RunContours>(
+      `/api/v1/runs/${encodeURIComponent(runId)}/contours?${query.toString()}`,
+    );
   },
 
   getArtifactURL(artifactId) {

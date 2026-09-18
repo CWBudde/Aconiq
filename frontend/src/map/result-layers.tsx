@@ -40,6 +40,9 @@ import { NOISE_LEVEL_RAMP } from "./color-ramp";
 import { DISPLAY_CRS } from "./display-model";
 import {
   BOTTOM_MODEL_LAYER_ID,
+  LAYER_IDS,
+  RESULT_CONTOURS_GROUP_ID,
+  RESULT_CONTOUR_LAYERS,
   RESULT_LEVEL_PROPERTY,
   RESULT_RASTER_GROUP_ID,
   RESULT_RASTER_LAYERS,
@@ -52,6 +55,7 @@ import { useMapStore } from "./map-store";
 import { declaresLevels } from "./result-units";
 import { useMap } from "./use-map";
 import { useResultRaster, type ResultRaster } from "./use-result-raster";
+import { useResultContours, type ResultContours } from "./use-result-contours";
 
 /**
  * Module-level, so "nothing to draw" is the *same* value on every render. A
@@ -344,6 +348,9 @@ export function ResultLayers({
   // layers. The raster resolves it against the sidecar's own `band_names`
   // rather than trusting the two lists to agree.
   const raster = useResultRaster(run, indicator);
+  // The same `indicator` again: one request carries every band, so the picker
+  // filters rather than re-asking, exactly as the raster's band index does.
+  const contours = useResultContours(run, indicator);
 
   const collection = useMemo(() => {
     if (projected.status !== "ready" || indicator === "") {
@@ -361,6 +368,9 @@ export function ResultLayers({
   );
   const rasterVisible = useMapStore(
     (s) => s.layerVisibility[RESULT_RASTER_GROUP_ID] ?? true,
+  );
+  const contoursVisible = useMapStore(
+    (s) => s.layerVisibility[RESULT_CONTOURS_GROUP_ID] ?? true,
   );
 
   useEffect(() => {
@@ -448,10 +458,14 @@ export function ResultLayers({
 
     for (const layer of RESULT_RASTER_LAYERS) {
       try {
-        // The anchor has to exist before it is named: MapLibre throws on a
-        // `beforeId` its style does not hold, and this layer is usually added
-        // before `ModelLayers` has added any of its own.
-        const anchored = Boolean(map.getLayer(BOTTOM_MODEL_LAYER_ID));
+        // Under the contours first and the model second. Naming only the
+        // model would be wrong the moment this effect re-ran after the
+        // contours were added: `moveLayer` would lift the raster to directly
+        // under the model, which is over the lines it is the backdrop for.
+        const anchor = anchorBelow(map, [
+          LAYER_IDS.resultContoursHalo,
+          BOTTOM_MODEL_LAYER_ID,
+        ]);
 
         if (!map.getLayer(layer.id)) {
           map.addLayer(
@@ -459,15 +473,15 @@ export function ResultLayers({
               ...layer,
               layout: { visibility: rasterVisible ? "visible" : "none" },
             },
-            anchored ? BOTTOM_MODEL_LAYER_ID : undefined,
+            anchor,
           );
-        } else if (anchored) {
+        } else if (anchor !== undefined) {
           // Re-asserted rather than asserted once. The raster is normally the
           // first result to arrive and starts on top of nothing; the model
           // layers are added afterwards, over it, and this is what sinks it
           // back under them the first time the anchor appears. `moveLayer` to
           // a position a layer already holds is a no-op.
-          map.moveLayer(layer.id, BOTTOM_MODEL_LAYER_ID);
+          map.moveLayer(layer.id, anchor);
         }
 
         // Outside both branches, because every path back to `ready` has to
@@ -492,6 +506,60 @@ export function ResultLayers({
       }
     }
   }, [map, raster, rasterVisible]);
+
+  useEffect(() => {
+    if (!map) return;
+    if (!isMapStyleReady(map)) return;
+
+    // A GeoJSON source, so unlike the raster's image there is no stale payload
+    // to hide: feeding it an empty collection *is* the refusal, and it keeps
+    // the layer's visibility answering to the control alone.
+    const collection =
+      contours.status === "ready" ? contours.collection : EMPTY_COLLECTION;
+
+    try {
+      const existing = map.getSource(SOURCE_IDS.resultContours);
+      if (existing && "setData" in existing) {
+        (existing as maplibregl.GeoJSONSource).setData(collection);
+      } else if (!existing) {
+        map.addSource(SOURCE_IDS.resultContours, {
+          type: "geojson",
+          data: collection,
+        });
+      }
+    } catch (error) {
+      console.error(
+        `ResultLayers: could not sync GeoJSON source "${SOURCE_IDS.resultContours}"`,
+        error,
+      );
+      return;
+    }
+
+    for (const layer of RESULT_CONTOUR_LAYERS) {
+      try {
+        // Directly under the model, which puts both lines over the raster:
+        // the raster anchors under the halo, so whichever effect runs last
+        // lands on the same stack. The halo is moved before the line, so the
+        // line stays over its own outline.
+        const anchor = anchorBelow(map, [BOTTOM_MODEL_LAYER_ID]);
+
+        if (!map.getLayer(layer.id)) {
+          map.addLayer(layer, anchor);
+        } else if (anchor !== undefined) {
+          map.moveLayer(layer.id, anchor);
+        }
+
+        map.setLayoutProperty(
+          layer.id,
+          "visibility",
+          contoursVisible ? "visible" : "none",
+        );
+      } catch (error) {
+        console.error(`ResultLayers: could not add layer "${layer.id}"`, error);
+        return;
+      }
+    }
+  }, [map, contours, contoursVisible]);
 
   // No run, or a run whose receiver table never existed. The indicator list is
   // the table's, and the raster follows it band for band, so there is nothing
@@ -534,6 +602,7 @@ export function ResultLayers({
         onSelect={setChosen}
         projected={projected}
         raster={raster}
+        contours={contours}
       />
     </MapPanel>
   );
@@ -555,6 +624,7 @@ function PanelBody({
   onSelect,
   projected,
   raster,
+  contours,
 }: {
   loadFailed: boolean;
   levelTable: boolean;
@@ -564,6 +634,7 @@ function PanelBody({
   onSelect: (indicator: string) => void;
   projected: ProjectedPositions;
   raster: ResultRaster;
+  contours: ResultContours;
 }) {
   if (loadFailed) {
     return (
@@ -590,6 +661,7 @@ function PanelBody({
       />
       <ProjectionNotice projected={projected} />
       <RasterNotice raster={raster} />
+      <ContourNotice contours={contours} raster={raster} />
       <Legend unit={unit} />
     </>
   );
@@ -739,6 +811,51 @@ function RasterNotice({ raster }: { raster: ResultRaster }) {
 }
 
 /**
+ * Why there are no contour lines, on the one occasion a reader needs telling.
+ *
+ * `loading` and `none` are silent because the raster beneath is the thing on
+ * screen and it says both already. `unsupported` is `ProjectionNotice`'s
+ * sentence with the same cause and the same remedy. That leaves `failed`, and
+ * even that is silent when `RasterNotice` has just explained it: the backend
+ * refuses `ErrNotAGrid` exactly when the sidecar carries no georeference,
+ * which is the same condition `useResultRaster` reports as `not-a-grid`, so
+ * the two would print one cause twice in different words.
+ *
+ * The sentence is this app's, not the backend's. The refusal arrives in
+ * English whichever boundary answered, and this panel is localised; the
+ * backend's own wording — which names the remedy — stays reachable as the
+ * element's tooltip rather than being dropped or shown untranslated.
+ */
+function ContourNotice({
+  contours,
+  raster,
+}: {
+  contours: ResultContours;
+  raster: ResultRaster;
+}) {
+  if (contours.status !== "failed") return null;
+
+  if (
+    raster.status === "not-a-grid" ||
+    raster.status === "failed" ||
+    raster.status === "unsupported" ||
+    raster.status === "unknown-crs"
+  ) {
+    return null;
+  }
+
+  return (
+    <p
+      role="status"
+      title={contours.reason}
+      className="text-2xs text-destructive"
+    >
+      {m.msg_result_contours_failed()}
+    </p>
+  );
+}
+
+/**
  * What the colours mean, straight off {@link NOISE_LEVEL_RAMP}.
  *
  * The labels are the ramp's own, so the legend cannot drift from the paint
@@ -766,6 +883,25 @@ function Legend({ unit }: { unit: string }) {
       </ul>
     </div>
   );
+}
+
+/**
+ * The first of these ids the style already holds, or `undefined` for "append".
+ *
+ * MapLibre throws on a `beforeId` its style does not know, and result layers
+ * are normally added before `ModelLayers` has added any of its own, so the
+ * anchor a layer wants is often not there yet. The list is the stack read
+ * upwards: the raster wants to sit under the contours, and under the model
+ * when there are no contours.
+ */
+function anchorBelow(
+  map: maplibregl.Map,
+  ids: readonly string[],
+): string | undefined {
+  for (const id of ids) {
+    if (map.getLayer(id)) return id;
+  }
+  return undefined;
 }
 
 function isMapStyleReady(map: maplibregl.Map): boolean {

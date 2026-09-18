@@ -13,8 +13,8 @@ import { m } from "@/i18n/messages";
  * - One or more MapLibre layer specs for rendering
  *
  * Layer ordering (bottom to top):
- *   basemap → result raster → calc area → buildings → barriers → sources →
- *   receivers → result receivers
+ *   basemap → result raster → result contours → calc area → buildings →
+ *   barriers → sources → receivers → result receivers
  *
  * Everything but the result raster gets that order from the order it is added
  * in — `ModelLayers` adds its own in one pass and `pages/map.tsx` renders
@@ -34,6 +34,7 @@ export const SOURCE_IDS = {
   calcArea: "calc-area",
   resultReceivers: "result-receivers",
   resultRaster: "result-raster",
+  resultContours: "result-contours",
 } as const;
 
 // --- Layer IDs ---
@@ -50,6 +51,8 @@ export const LAYER_IDS = {
   calcAreaOutline: "calc-area-outline",
   resultReceiverLevel: "result-receiver-level",
   resultRaster: "result-raster-fill",
+  resultContoursHalo: "result-contour-halo",
+  resultContours: "result-contour-line",
 } as const;
 
 // --- Selection ---
@@ -409,25 +412,68 @@ export const RESULT_RASTER_LAYERS: LayerSpecification[] = [
   },
 ];
 
+/** The id of the group {@link RESULT_CONTOUR_LAYERS} belongs to. */
+export const RESULT_CONTOURS_GROUP_ID = "result-contours";
+
+/**
+ * The computed grid as ISO-band lines, over the raster and under the model.
+ *
+ * Coloured by the same ramp the raster and the receiver circles use, off each
+ * feature's own level under {@link RESULT_LEVEL_PROPERTY} — the ramp's stops
+ * are 5 dB apart and `contour.DefaultInterval` is 5 dB, so a line lands on a
+ * stop rather than between two.
+ *
+ * This is the tree's first data-driven `line-color`: every other one is a
+ * constant or a `feature-state` case. It works because `rampToExpression` is
+ * generic over the property name, and because each contour carries exactly one
+ * level, so the interpolation resolves per feature rather than along the line.
+ *
+ * Unlabelled, and that is structural rather than an omission: no style in
+ * `basemap.ts` declares `glyphs`, so a `symbol` layer with a `text-field`
+ * renders nothing and logs a font error per tile. Adding a glyph source means
+ * adding one to `OFFLINE_STYLE` too — a network dependency on the one path
+ * that exists to survive without one. The legend names the levels instead.
+ */
+export const RESULT_CONTOUR_LAYERS: LayerSpecification[] = [
+  {
+    // The halo, under the line and wider. MapLibre has no `line-halo`, and a
+    // contour needs one more than most lines do: it sits on the raster band
+    // whose upper edge it *is*, so an unhaloed line is drawn in very nearly
+    // the colour of the cells directly beneath it. The receiver circles solve
+    // the same problem with `circle-stroke-color: #ffffff`.
+    id: LAYER_IDS.resultContoursHalo,
+    type: "line",
+    source: SOURCE_IDS.resultContours,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#ffffff", "line-width": 3.5, "line-opacity": 0.8 },
+  },
+  {
+    id: LAYER_IDS.resultContours,
+    type: "line",
+    source: SOURCE_IDS.resultContours,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: {
+      "line-color": rampToExpression(
+        NOISE_LEVEL_RAMP,
+        RESULT_LEVEL_PROPERTY,
+      ) as DataDrivenPropertyValueSpecification<string>,
+      "line-width": 1.5,
+    },
+  },
+];
+
 /**
  * The result groups the layer control offers.
  *
- * It held two more, `raster` and `contours`, for layers nothing ever added.
- * The two are no longer the same case.
- *
- * **The raster is back.** Its three blockers are closed: browser mode stores
- * the real bytes (`StoredArtifactContent.encoding` has a `binary` case),
- * `results.RasterMetadata` carries a `georeference` to place them with, and
- * `Backend.getArtifactBytes` reaches them in both modes.
- *
- * **Contours stay out**, and not for the reason that used to cover both.
- * `export.GenerateContours` has exactly one caller, `aconiq export --format
- * contour-geojson|contour-gpkg`, so in API mode a contour artifact exists only
- * after an explicit export, and in browser mode `createExport` writes none at
- * all. A toggle for it would be a live control in one mode and a dead one in
- * the other. Putting Go's marching squares behind the kernel boundary, the way
- * `transform` and `standards` already are, is what that needs first — a
- * TypeScript second implementation is not an option.
+ * Both of the two this list once lost are back, and the second took longer
+ * for a reason worth keeping: `export.GenerateContours` had exactly one
+ * caller, `aconiq export --format contour-geojson|contour-gpkg`, so a contour
+ * artifact existed only after an explicit export in API mode and never at all
+ * in browser mode. A toggle would have been a live control in one mode and a
+ * dead one in the other. What fixed that was not a layer — it was moving Go's
+ * marching squares behind the kernel boundary, the way `transform` and
+ * `standards` already were, so both modes ask the same implementation. A
+ * TypeScript tracer was never an option.
  *
  * The two groups overlap on screen and both default to visible, which is
  * deliberate: `layerVisibility` is keyed by group id alone and cannot express
@@ -440,6 +486,12 @@ export const RESULT_LAYER_GROUPS: LayerGroup[] = [
     id: RESULT_RASTER_GROUP_ID,
     label: m.label_result_raster,
     layerIds: [LAYER_IDS.resultRaster],
+    defaultVisible: true,
+  },
+  {
+    id: RESULT_CONTOURS_GROUP_ID,
+    label: m.label_result_contours,
+    layerIds: [LAYER_IDS.resultContoursHalo, LAYER_IDS.resultContours],
     defaultVisible: true,
   },
   {
