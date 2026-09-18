@@ -11,6 +11,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/numeric"
+	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
@@ -20,8 +21,7 @@ type schall03RunResult struct {
 	Engine      string
 	Outputs     []schall03.ReceiverOutput
 	SourceCount int
-	GridWidth   int
-	GridHeight  int
+	Layout      results.GridLayout
 	LogLines    []string
 }
 
@@ -116,7 +116,7 @@ func computeSchall03Normative(
 		return schall03RunResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03NormativeReceivers(scene.Segments, calcArea, options)
 	})
 	if err != nil {
@@ -124,14 +124,13 @@ func computeSchall03Normative(
 	}
 
 	result.SourceCount = len(scene.Segments)
-	result.GridWidth = gridWidth
-	result.GridHeight = gridHeight
+	result.Layout = layout
 
 	// Barrier panels, not obstacles: one building footprint contributes one
 	// panel per outer-ring edge, so this count is no longer the number of
 	// barrier features in the model.
 	result.logf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
-	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
+	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
 	result.logGridExtent(receiverMode, calcArea)
 
 	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
@@ -165,7 +164,7 @@ func computeSchall03Preview(
 		return schall03RunResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03Receivers(railSources, calcArea, options)
 	})
 	if err != nil {
@@ -173,11 +172,10 @@ func computeSchall03Preview(
 	}
 
 	result.SourceCount = len(railSources)
-	result.GridWidth = gridWidth
-	result.GridHeight = gridHeight
+	result.Layout = layout
 
 	result.logf("schall03_sources=%d", len(railSources))
-	result.logReceivers(receiverMode, len(receivers), gridWidth, gridHeight)
+	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
 	result.logGridExtent(receiverMode, calcArea)
 
 	result.Outputs, err = schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
@@ -339,7 +337,7 @@ func schall03TerrainCoversNoReceiverError(receivers []geo.PointReceiver, terrain
 
 // buildSchall03NormativeReceivers derives the auto grid from the normative
 // track centerlines.
-func buildSchall03NormativeReceivers(segments []schall03.TrackSegment, calcArea *geo.BBox, options schall03RunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildSchall03NormativeReceivers(segments []schall03.TrackSegment, calcArea *geo.BBox, options schall03RunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(segments)*2)
 	for _, segment := range segments {
 		sourcePoints = append(sourcePoints, segment.TrackCenterline...)

@@ -3,7 +3,7 @@
   "fixture": "phase11/rail_model.geojson",
   "files": {
     "bub-rail.bin": "sha256:21bd1e3a2849833d5adc69a52e7971995d1ffc3784a9729ec70e0d4fa07f6d1a bytes=2080",
-    "bub-rail.json": "sha256:325319767e3474a7a80c88d5ad9ae1ccbc44eada5e96d51bddb68938eb3bf5e5 bytes=214",
+    "bub-rail.json": "sha256:a95ccce75289818772fc928c2018286b43b5878d1c3be07b6e52d06a465dacbd bytes=321",
     "receivers.csv": "sha256:56dc778d4c0f2ab51c8624aa86ab6abe67b8a00254fc22534cc114014cf23cef bytes=12307",
     "receivers.json": "sha256:50a952f5fd150494a6fbb343a9da4f626503571a9d99d69a9c5753a459a33f5e bytes=21834",
     "run-summary.json": "sha256:e44a0e8b5800894c7754f76a6aa485b1d15d7e5a61715a3a39a9d2901836b9fa bytes=355"

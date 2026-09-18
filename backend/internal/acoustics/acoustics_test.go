@@ -110,7 +110,7 @@ func TestExportENDBundleWritesTheSharedLayout(t *testing.T) {
 
 	dir := t.TempDir()
 
-	exported, err := ExportENDBundle(dir, "some-standard", sampleOutputs(), 2, 2)
+	exported, err := ExportENDBundle(dir, "some-standard", sampleOutputs(), results.GridLayout{Width: 2, Height: 2})
 	if err != nil {
 		t.Fatalf("export bundle: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestExportENDBundleRejectsInputItCannotWrite(t *testing.T) {
 				baseDir = t.TempDir()
 			}
 
-			_, err := ExportENDBundle(baseDir, testCase.standardID, testCase.outputs, testCase.gridWidth, testCase.gridHeight)
+			_, err := ExportENDBundle(baseDir, testCase.standardID, testCase.outputs, results.GridLayout{Width: testCase.gridWidth, Height: testCase.gridHeight})
 			if err == nil {
 				t.Fatal("expected an error")
 			}

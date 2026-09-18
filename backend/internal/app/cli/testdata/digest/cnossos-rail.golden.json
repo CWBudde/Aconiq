@@ -3,7 +3,7 @@
   "fixture": "phase11/rail_model.geojson",
   "files": {
     "cnossos-rail.bin": "sha256:c7ee5f5f95b2a8b316ac9414effeaea54bb9798454ddd59a8be92244fee4ba26 bytes=3536",
-    "cnossos-rail.json": "sha256:64f253cee077e5324c57046129fcded58992a6e4a84d64da58339e5522451cfc bytes=218",
+    "cnossos-rail.json": "sha256:95c3f0ca41f1525445af9f277f29864cc4c153326356281968a736dc3bcd82cd bytes=325",
     "receivers.csv": "sha256:a4421be0146391f74ff7bc307264ff0af495a28bed860c647ecd5ff58454c37e bytes=20796",
     "receivers.json": "sha256:48408c424f211656d06e65ed2f52bfe9d8c0de93ce65802cc238af86032a8c69 bytes=36966",
     "run-summary.json": "sha256:dcba677e41f46390c499b92a111320207679eaf0dbd1792ec53a2bcca471f36a bytes=355"

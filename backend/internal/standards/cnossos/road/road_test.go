@@ -295,7 +295,7 @@ func TestExportResultBundle(t *testing.T) {
 
 	dir := t.TempDir()
 
-	exported, err := ExportResultBundle(dir, outputs, 2, 2)
+	exported, err := ExportResultBundle(dir, outputs, results.GridLayout{Width: 2, Height: 2})
 	if err != nil {
 		t.Fatalf("export bundle: %v", err)
 	}

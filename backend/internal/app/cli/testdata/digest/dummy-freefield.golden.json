@@ -3,7 +3,7 @@
   "fixture": "phase8/model.geojson",
   "files": {
     "ldummy.bin": "sha256:907db85af6fba4401123cabba3a00160e1618530dee4066532aefd1464d49e25 bytes=392",
-    "ldummy.json": "sha256:088d1780331c80898a050915728d9e6c9c67da2eb8021460003d7f1fb17b2e32 bytes=201",
+    "ldummy.json": "sha256:50ad7a3972f9626f4ac36397a16a9285c89a819dac1ef85529919e7bd1e58452 bytes=308",
     "receivers.csv": "sha256:3303f2b5f63cc73aefb2a35efa0b91c7a0cee142b1fb161d85d763af7769159d bytes=1852",
     "receivers.json": "sha256:a0a1f1afdc3b22c9d0de31c109a5d7bcd297df205fc93ceea64844e4135b4015 bytes=4235",
     "run-summary.json": "sha256:b9b77af43a91b8ae5068232bf2835a35140e8eec7987c987f44b6d511fc5342f bytes=324"

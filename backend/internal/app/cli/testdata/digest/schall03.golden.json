@@ -6,7 +6,7 @@
     "receivers.json": "sha256:1875b6083d22958653ea873d1b4a9c936d570c1813ecb3eb63773e9e6af73bb0 bytes=21623",
     "run-summary.json": "sha256:4dd3854c1b0928458a3e64a64bdcce78cf1e8ce3bb259453f1f1ee05b47a0498 bytes=486",
     "schall03.bin": "sha256:e4cc0ed26c1212985ce763d0b93de0a3937bb7c22399b500edafcef70ea2c76d bytes=3024",
-    "schall03.json": "sha256:0409cae53196f33b411a25f8836420c0f2c99bfa44df5c6fb1fad2465d2117b9 bytes=215"
+    "schall03.json": "sha256:9bfb2f8946d996adc65864cf08fe4853f1a53c44ecade850a9ced15335759bc5 bytes=322"
   },
   "run_summary": {
     "band_model": "octave-63Hz-8000Hz",

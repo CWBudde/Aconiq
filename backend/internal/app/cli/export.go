@@ -986,19 +986,39 @@ func newFormatExportContext(
 		}
 	}
 
-	ctx.inferGeoTransform()
+	ctx.resolveGeoTransform()
 
 	return ctx
 }
 
-// inferGeoTransform derives the raster geo-transform from receiver coordinates
-// when both a receiver table and a raster are available.
-func (c *formatExportContext) inferGeoTransform() {
-	if c.receiverTable == nil || c.raster == nil {
+// resolveGeoTransform settles where this run's raster sits on the ground.
+//
+// The sidecar's own georeference wins. It is what the run recorded, it
+// distinguishes a grid from a scatter of receivers, and it needs no second
+// file. Inference from the receiver table is the fallback for a run written
+// before the sidecar carried one — it cannot tell those two cases apart, so it
+// is never preferred where a declaration exists.
+func (c *formatExportContext) resolveGeoTransform() {
+	if c.raster == nil {
 		return
 	}
 
 	meta := c.raster.Metadata()
+
+	if meta.Geo != nil {
+		declared, err := exportfmt.GeoTransformFromGeoreference(*meta.Geo, meta.Height)
+		if err == nil {
+			c.geoTransform = declared
+			c.hasGeoTransform = true
+
+			return
+		}
+	}
+
+	if c.receiverTable == nil {
+		return
+	}
+
 	xs := make([]float64, 0, len(c.receiverTable.Records))
 	ys := make([]float64, 0, len(c.receiverTable.Records))
 
@@ -1018,17 +1038,27 @@ func (c *formatExportContext) inferGeoTransform() {
 	}
 }
 
-// rasterGeoTransform returns the inferred transform, or a default identity
-// transform when inference was not possible.
-func (c *formatExportContext) rasterGeoTransform() exportfmt.GeoTransform {
+// errNoGeoTransform refuses a georeferenced format for a raster whose position
+// on the ground is unknown.
+//
+// This used to be an identity transform — origin (0, height), one unit per
+// pixel — written silently. A GeoTIFF carrying it opens in any GIS, sits off
+// the coast of Africa, and says nothing about being wrong. A refusal naming
+// the run is the only honest answer, and it is reachable: explicit receivers
+// are not a grid, and no georeference describes them.
+var errNoGeoTransform = errors.New(
+	"the run's raster carries no georeference and none could be inferred from its receivers, " +
+		"so a georeferenced format would have to invent one; re-run with --receiver-mode auto-grid, " +
+		"or export a format that carries no coordinates",
+)
+
+// rasterGeoTransform returns the resolved transform, or refuses.
+func (c *formatExportContext) rasterGeoTransform() (exportfmt.GeoTransform, error) {
 	if c.hasGeoTransform {
-		return c.geoTransform
+		return c.geoTransform, nil
 	}
 
-	return exportfmt.GeoTransform{
-		OriginX: 0, OriginY: float64(c.raster.Metadata().Height),
-		PixelSizeX: 1, PixelSizeY: -1,
-	}
+	return exportfmt.GeoTransform{}, errNoGeoTransform
 }
 
 func (c *formatExportContext) exportFormat(f exportfmt.Format, out map[string][]string) error {
@@ -1053,9 +1083,14 @@ func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
 		return nil // skip if no raster available
 	}
 
+	geoTransform, err := c.rasterGeoTransform()
+	if err != nil {
+		return fmt.Errorf("geotiff export: %w", err)
+	}
+
 	basePath := filepath.Join(c.formatsDir, "raster")
 
-	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
+	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, geoTransform, c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("geotiff export: %w", err)
 	}
@@ -1075,9 +1110,14 @@ func (c *formatExportContext) exportCOG(out map[string][]string) error {
 		return nil
 	}
 
+	geoTransform, err := c.rasterGeoTransform()
+	if err != nil {
+		return fmt.Errorf("cog export: %w", err)
+	}
+
 	cogBasePath := filepath.Join(c.formatsDir, "raster")
 
-	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
+	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, geoTransform, c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("cog export: %w", err)
 	}
@@ -1187,7 +1227,12 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 		return nil
 	}
 
-	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
+	geoTransform, err := c.rasterGeoTransform()
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	contours, err := exportfmt.GenerateContours(c.raster, geoTransform, exportfmt.ContourOptions{
 		Interval: c.contourInterval,
 	})
 	if err != nil {
@@ -1216,7 +1261,12 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 		return nil
 	}
 
-	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
+	geoTransform, err := c.rasterGeoTransform()
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	contours, err := exportfmt.GenerateContours(c.raster, geoTransform, exportfmt.ContourOptions{
 		Interval: c.contourInterval,
 	})
 	if err != nil {

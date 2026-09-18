@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 func TestDescriptorValidates(t *testing.T) {
@@ -51,7 +52,7 @@ func TestExportResultBundle(t *testing.T) {
 		t.Fatalf("compute outputs: %v", err)
 	}
 
-	exported, err := ExportResultBundle(t.TempDir(), outputs, 2, 2)
+	exported, err := ExportResultBundle(t.TempDir(), outputs, results.GridLayout{Width: 2, Height: 2})
 	if err != nil {
 		t.Fatalf("export result bundle: %v", err)
 	}

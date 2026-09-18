@@ -2,7 +2,9 @@ package results
 
 import (
 	"math"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +76,140 @@ func TestRasterBoundsError(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected bounds error")
 		}
+	}
+}
+
+func TestGeoreferenceValidate(t *testing.T) {
+	t.Parallel()
+
+	valid := Georeference{OriginX: 500000, OriginY: 5600000, PixelSizeM: 10, RowOrder: RowOrderSouthUp}
+
+	err := valid.Validate()
+	if err != nil {
+		t.Fatalf("valid georeference: %v", err)
+	}
+
+	cases := map[string]Georeference{
+		"zero pixel size":     {OriginX: 1, OriginY: 1, PixelSizeM: 0, RowOrder: RowOrderSouthUp},
+		"negative pixel size": {OriginX: 1, OriginY: 1, PixelSizeM: -10, RowOrder: RowOrderSouthUp},
+		"non-finite origin x": {OriginX: math.Inf(1), OriginY: 1, PixelSizeM: 10, RowOrder: RowOrderSouthUp},
+		"non-finite origin y": {OriginX: 1, OriginY: math.NaN(), PixelSizeM: 10, RowOrder: RowOrderSouthUp},
+		"unset row order":     {OriginX: 1, OriginY: 1, PixelSizeM: 10},
+		"unknown row order":   {OriginX: 1, OriginY: 1, PixelSizeM: 10, RowOrder: "north-up"},
+	}
+
+	for name, georef := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := georef.Validate()
+			if err == nil {
+				t.Fatalf("expected %s to be refused", name)
+			}
+		})
+	}
+}
+
+// A raster cannot be created with a georeference that does not describe a
+// grid: the sidecar is what every downstream GIS format reads its transform
+// from, so a bad one is worse than none at all.
+func TestNewRasterRefusesInvalidGeoreference(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRaster(RasterMetadata{
+		Width: 1, Height: 1, Bands: 1, NoData: -1, Unit: "dB",
+		Geo: &Georeference{OriginX: 0, OriginY: 0, PixelSizeM: 0, RowOrder: RowOrderSouthUp},
+	})
+	if err == nil {
+		t.Fatal("expected a raster with a zero pixel size to be refused")
+	}
+}
+
+// Metadata() hands back a value, and a pointer field would have made that a
+// half-truth: mutating the returned georeference must not reach the raster.
+func TestRasterMetadataCopiesGeoreference(t *testing.T) {
+	t.Parallel()
+
+	raster, err := NewRaster(RasterMetadata{
+		Width: 2, Height: 2, Bands: 1, NoData: -1, Unit: "dB",
+		Geo: &Georeference{OriginX: 100, OriginY: 200, PixelSizeM: 10, RowOrder: RowOrderSouthUp},
+	})
+	if err != nil {
+		t.Fatalf("new raster: %v", err)
+	}
+
+	meta := raster.Metadata()
+	meta.Geo.OriginX = -1
+
+	if raster.Metadata().Geo.OriginX != 100 {
+		t.Fatal("mutating the returned metadata reached the raster's georeference")
+	}
+}
+
+// The sidecar is the only place the georeference and the CRS survive, so the
+// round trip is the contract every GIS export depends on.
+func TestSaveRasterRoundTripsGeoreferenceAndCRS(t *testing.T) {
+	t.Parallel()
+
+	raster, err := NewRaster(RasterMetadata{
+		Width: 2, Height: 3, Bands: 1, NoData: -9999, Unit: "dB",
+		BandNames: []string{"Lden"},
+		CRS:       "EPSG:25832",
+		Geo:       &Georeference{OriginX: 500000, OriginY: 5600000, PixelSizeM: 10, RowOrder: RowOrderSouthUp},
+	})
+	if err != nil {
+		t.Fatalf("new raster: %v", err)
+	}
+
+	paths, err := SaveRaster(filepath.Join(t.TempDir(), "grid"), raster)
+	if err != nil {
+		t.Fatalf("save raster: %v", err)
+	}
+
+	loaded, err := LoadRaster(paths.MetadataPath)
+	if err != nil {
+		t.Fatalf("load raster: %v", err)
+	}
+
+	meta := loaded.Metadata()
+	if meta.CRS != "EPSG:25832" {
+		t.Fatalf("crs did not survive the round trip: %q", meta.CRS)
+	}
+
+	if meta.Geo == nil {
+		t.Fatal("georeference did not survive the round trip")
+	}
+
+	if meta.Geo.OriginX != 500000 || meta.Geo.OriginY != 5600000 || meta.Geo.PixelSizeM != 10 {
+		t.Fatalf("unexpected georeference %+v", *meta.Geo)
+	}
+
+	if meta.Geo.RowOrder != RowOrderSouthUp {
+		t.Fatalf("unexpected row order %q", meta.Geo.RowOrder)
+	}
+}
+
+// A raster with no georeference must not gain one by being written: absence is
+// the signal that the receivers were not a grid.
+func TestSaveRasterOmitsAbsentGeoreference(t *testing.T) {
+	t.Parallel()
+
+	raster, err := NewRaster(RasterMetadata{Width: 1, Height: 2, Bands: 1, NoData: -1, Unit: "dB"})
+	if err != nil {
+		t.Fatalf("new raster: %v", err)
+	}
+
+	paths, err := SaveRaster(filepath.Join(t.TempDir(), "scattered"), raster)
+	if err != nil {
+		t.Fatalf("save raster: %v", err)
+	}
+
+	encoded, err := os.ReadFile(paths.MetadataPath)
+	if err != nil {
+		t.Fatalf("read sidecar: %v", err)
+	}
+
+	if strings.Contains(string(encoded), "georeference") {
+		t.Fatalf("sidecar carries a georeference it was never given:\n%s", encoded)
 	}
 }

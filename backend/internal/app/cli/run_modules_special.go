@@ -6,6 +6,7 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/report/results"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -94,7 +95,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	barriers, buildings := scene.barriers, scene.buildings
 	parkingSources, parkingExtent := scene.parkingSources, scene.parkingExtent
 
-	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildRLS19RoadReceivers(roadSources, parkingExtent, calcArea, options)
 	})
 	if err != nil {
@@ -108,7 +109,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	input.log.addf("rls19_barriers=%d", len(barriers))
 	input.log.addf("rls19_buildings=%d", len(buildings))
 	input.log.addf("rls19_parking_sources=%d", len(parkingSources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	propagationConfig := options.PropagationConfig()
@@ -135,7 +136,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	}
 
 	persisted, outputHash, finishedAt, err := persistRLS19RoadRunOutputs(
-		input.runDir, receiverOutputs, gridWidth, gridHeight, len(roadSources), sourceOverrideCount,
+		input.runDir, receiverOutputs, layout, len(roadSources), sourceOverrideCount,
 		len(parkingSources), input.receiverMode, input.standard.EvidenceTier, input.projection,
 	)
 	if err != nil {
@@ -181,8 +182,7 @@ func runSchall03Module(input runModuleInput) (runModuleResult, error) {
 	persisted, outputHash, finishedAt, err := persistSchall03RunOutputs(
 		input.runDir,
 		result.Outputs,
-		result.GridWidth,
-		result.GridHeight,
+		result.Layout,
 		result.SourceCount,
 		input.receiverMode,
 		result.Engine,

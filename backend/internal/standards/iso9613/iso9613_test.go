@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 func TestComputeReceiverOutputsDeterministicPointScope(t *testing.T) {
@@ -72,7 +73,7 @@ func TestExportResultBundleWritesExpectedFiles(t *testing.T) {
 		},
 	}
 
-	exported, err := ExportResultBundle(baseDir, outputs, 2, 1)
+	exported, err := ExportResultBundle(baseDir, outputs, results.GridLayout{Width: 2, Height: 1})
 	if err != nil {
 		t.Fatalf("export result bundle: %v", err)
 	}
@@ -239,7 +240,7 @@ func TestExportResultBundleRejectsShapeMismatch(t *testing.T) {
 			Receiver:   geo.PointReceiver{ID: "r1", Point: geo.Point2D{X: 0, Y: 0}, HeightM: 4},
 			Indicators: ReceiverIndicators{LpAeqDW: 55, LpAeqLT: 55},
 		},
-	}, 2, 1)
+	}, results.GridLayout{Width: 2, Height: 1})
 	if err == nil || !strings.Contains(err.Error(), "do not match") {
 		t.Fatalf("expected grid shape error, got %v", err)
 	}

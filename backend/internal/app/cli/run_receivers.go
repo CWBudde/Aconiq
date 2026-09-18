@@ -7,6 +7,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/results"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
@@ -36,10 +37,10 @@ func buildReceiversFromPoints(
 	resolutionM float64,
 	paddingM float64,
 	receiverHeightM float64,
-) ([]geo.PointReceiver, int, int, error) {
+) ([]geo.PointReceiver, results.GridLayout, error) {
 	bbox, extentSource, err := gridExtent(sourcePoints, calcArea, operation)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, results.GridLayout{}, err
 	}
 
 	grid := geo.GridReceiverSet{
@@ -60,35 +61,56 @@ func buildReceiversFromPoints(
 	// kilometres exhausts memory long before anything gets to refuse it.
 	cells, err := grid.CellCount()
 	if err != nil {
-		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "size receiver grid", err)
+		return nil, results.GridLayout{}, domainerrors.New(domainerrors.KindValidation, operation, "size receiver grid", err)
 	}
 
 	if cells > float64(maxDummyReceivers) {
-		return nil, 0, 0, gridTooLargeError(operation, cells, extentSource)
+		return nil, results.GridLayout{}, gridTooLargeError(operation, cells, extentSource)
 	}
 
 	receivers, err := grid.Generate()
 	if err != nil {
-		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "generate receiver grid", err)
+		return nil, results.GridLayout{}, domainerrors.New(domainerrors.KindValidation, operation, "generate receiver grid", err)
 	}
 
 	if len(receivers) == 0 {
-		return nil, 0, 0, domainerrors.New(domainerrors.KindValidation, operation, "receiver grid is empty", nil)
+		return nil, results.GridLayout{}, domainerrors.New(domainerrors.KindValidation, operation, "receiver grid is empty", nil)
 	}
 
 	// The count above can sit a row or a column away from what the loop emits
 	// once accumulated rounding exceeds the step tolerance, so the generated
 	// length stays the authority on the boundary itself.
 	if len(receivers) > maxDummyReceivers {
-		return nil, 0, 0, gridTooLargeError(operation, float64(len(receivers)), extentSource)
+		return nil, results.GridLayout{}, gridTooLargeError(operation, float64(len(receivers)), extentSource)
 	}
 
 	width, height, err := inferGridShape(receivers)
 	if err != nil {
-		return nil, 0, 0, domainerrors.New(domainerrors.KindInternal, operation, "infer receiver grid dimensions", err)
+		return nil, results.GridLayout{}, domainerrors.New(domainerrors.KindInternal, operation, "infer receiver grid dimensions", err)
 	}
 
-	return receivers, width, height, nil
+	// The origin is the padded extent's south-west corner, which is where
+	// Generate starts and therefore the centre of cell (0,0) — the grid's
+	// receivers are points, not cell outlines. This is the only place the
+	// origin and the step are known; before this they were local loop state
+	// in geo.GridReceiverSet.Generate and were dropped on return, leaving
+	// every GIS export to rebuild them by arithmetic over the receiver table.
+	//
+	// The CRS is not filled in here. buildReceiversFromPoints works in the
+	// compute CRS without being told which one it is; the persist layer, which
+	// does know, stamps it on.
+	layout := results.GridLayout{
+		Width:  width,
+		Height: height,
+		Geo: &results.Georeference{
+			OriginX:    grid.Extent.MinX,
+			OriginY:    grid.Extent.MinY,
+			PixelSizeM: grid.Resolution,
+			RowOrder:   results.RowOrderSouthUp,
+		},
+	}
+
+	return receivers, layout, nil
 }
 
 // gridTooLargeError refuses a receiver grid that exceeds the cap. Naming the
@@ -136,7 +158,7 @@ func gridExtentLabel(calcArea *geo.BBox) string {
 	return gridExtentSource
 }
 
-func buildDummyReceivers(sources []freefield.Source, calcArea *geo.BBox, options dummyRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildDummyReceivers(sources []freefield.Source, calcArea *geo.BBox, options dummyRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources))
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.Point)
@@ -145,7 +167,7 @@ func buildDummyReceivers(sources []freefield.Source, calcArea *geo.BBox, options
 	return buildReceiversFromPoints("cli.buildDummyReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildCnossosRoadReceivers(sources []cnossosroad.RoadSource, calcArea *geo.BBox, options cnossosRoadRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildCnossosRoadReceivers(sources []cnossosroad.RoadSource, calcArea *geo.BBox, options cnossosRoadRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.Centerline...)
@@ -154,7 +176,7 @@ func buildCnossosRoadReceivers(sources []cnossosroad.RoadSource, calcArea *geo.B
 	return buildReceiversFromPoints("cli.buildCnossosRoadReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildCnossosRailReceivers(sources []cnossosrail.RailSource, calcArea *geo.BBox, options cnossosRailRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildCnossosRailReceivers(sources []cnossosrail.RailSource, calcArea *geo.BBox, options cnossosRailRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.TrackCenterline...)
@@ -163,7 +185,7 @@ func buildCnossosRailReceivers(sources []cnossosrail.RailSource, calcArea *geo.B
 	return buildReceiversFromPoints("cli.buildCnossosRailReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildBUBRoadReceivers(sources []bubroad.RoadSource, calcArea *geo.BBox, options bubRoadRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildBUBRoadReceivers(sources []bubroad.RoadSource, calcArea *geo.BBox, options bubRoadRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.Centerline...)
@@ -186,7 +208,7 @@ func buildRLS19RoadReceivers(
 	parkingExtent []geo.Point2D,
 	calcArea *geo.BBox,
 	options rls19RoadRunOptions,
-) ([]geo.PointReceiver, int, int, error) {
+) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2+len(parkingExtent))
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.EffectiveCenterline()...)
@@ -197,7 +219,7 @@ func buildRLS19RoadReceivers(
 	return buildReceiversFromPoints("cli.buildRLS19RoadReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildSchall03Receivers(sources []schall03.RailSource, calcArea *geo.BBox, options schall03RunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildSchall03Receivers(sources []schall03.RailSource, calcArea *geo.BBox, options schall03RunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources)*2)
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.TrackCenterline...)
@@ -206,7 +228,7 @@ func buildSchall03Receivers(sources []schall03.RailSource, calcArea *geo.BBox, o
 	return buildReceiversFromPoints("cli.buildSchall03Receivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, calcArea *geo.BBox, options cnossosAircraftRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, calcArea *geo.BBox, options cnossosAircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0)
 
 	for _, source := range sources {
@@ -218,7 +240,7 @@ func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, cal
 	return buildReceiversFromPoints("cli.buildCnossosAircraftReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildBUFAircraftReceivers(sources []bufaircraft.AircraftSource, calcArea *geo.BBox, options bufAircraftRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildBUFAircraftReceivers(sources []bufaircraft.AircraftSource, calcArea *geo.BBox, options bufAircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0)
 
 	for _, source := range sources {
@@ -230,7 +252,7 @@ func buildBUFAircraftReceivers(sources []bufaircraft.AircraftSource, calcArea *g
 	return buildReceiversFromPoints("cli.buildBUFAircraftReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildCnossosIndustryReceivers(sources []cnossosindustry.IndustrySource, calcArea *geo.BBox, options cnossosIndustryRunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildCnossosIndustryReceivers(sources []cnossosindustry.IndustrySource, calcArea *geo.BBox, options cnossosIndustryRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0)
 
 	for _, source := range sources {
@@ -247,7 +269,7 @@ func buildCnossosIndustryReceivers(sources []cnossosindustry.IndustrySource, cal
 	return buildReceiversFromPoints("cli.buildCnossosIndustryReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildISO9613Receivers(sources []iso9613.PointSource, calcArea *geo.BBox, options iso9613RunOptions) ([]geo.PointReceiver, int, int, error) {
+func buildISO9613Receivers(sources []iso9613.PointSource, calcArea *geo.BBox, options iso9613RunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0, len(sources))
 	for _, source := range sources {
 		sourcePoints = append(sourcePoints, source.Point)

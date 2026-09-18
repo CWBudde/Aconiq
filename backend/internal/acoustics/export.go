@@ -26,7 +26,7 @@ type ExportOutputs struct {
 // order, the band layout, the no-data value and the validation — is the same
 // for every module reporting the END set, and has to be: a consumer reading two
 // bundles must be able to compare them.
-func ExportENDBundle(baseDir string, standardID string, outputs []ReceiverOutput, gridWidth int, gridHeight int) (ExportOutputs, error) {
+func ExportENDBundle(baseDir string, standardID string, outputs []ReceiverOutput, grid results.GridLayout) (ExportOutputs, error) {
 	if baseDir == "" {
 		return ExportOutputs{}, errors.New("base dir is required")
 	}
@@ -39,12 +39,12 @@ func ExportENDBundle(baseDir string, standardID string, outputs []ReceiverOutput
 		return ExportOutputs{}, errors.New("at least one receiver output is required")
 	}
 
-	if gridWidth <= 0 || gridHeight <= 0 {
+	if grid.Width <= 0 || grid.Height <= 0 {
 		return ExportOutputs{}, errors.New("grid dimensions must be > 0")
 	}
 
-	if gridWidth*gridHeight != len(outputs) {
-		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", gridWidth, gridHeight, len(outputs))
+	if grid.Width*grid.Height != len(outputs) {
+		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", grid.Width, grid.Height, len(outputs))
 	}
 
 	err := os.MkdirAll(baseDir, 0o750)
@@ -57,7 +57,7 @@ func ExportENDBundle(baseDir string, standardID string, outputs []ReceiverOutput
 		return ExportOutputs{}, err
 	}
 
-	metaPath, dataPath, err := writeIndicatorRaster(baseDir, standardID, outputs, gridWidth, gridHeight)
+	metaPath, dataPath, err := writeIndicatorRaster(baseDir, standardID, outputs, grid)
 	if err != nil {
 		return ExportOutputs{}, err
 	}
@@ -106,23 +106,25 @@ func writeReceiverTable(baseDir string, outputs []ReceiverOutput) (string, strin
 // writeIndicatorRaster writes the Lden/Lnight grid. Receiver order is the grid
 // order — row-major from the origin — which is what lets the index arithmetic
 // below stand in for coordinates.
-func writeIndicatorRaster(baseDir string, standardID string, outputs []ReceiverOutput, gridWidth int, gridHeight int) (string, string, error) {
+func writeIndicatorRaster(baseDir string, standardID string, outputs []ReceiverOutput, grid results.GridLayout) (string, string, error) {
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width:     gridWidth,
-		Height:    gridHeight,
+		Width:     grid.Width,
+		Height:    grid.Height,
 		Bands:     2,
 		NoData:    -9999,
 		Unit:      "dB",
 		BandNames: []string{IndicatorLden, IndicatorLnight},
+		CRS:       grid.CRS,
+		Geo:       grid.Geo,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("create raster: %w", err)
 	}
 
 	for index, output := range outputs {
-		x := index % gridWidth
+		x := index % grid.Width
 
-		y := index / gridWidth
+		y := index / grid.Width
 
 		err := raster.Set(x, y, 0, output.Indicators.Lden)
 		if err != nil {
