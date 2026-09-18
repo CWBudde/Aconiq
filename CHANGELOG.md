@@ -174,6 +174,18 @@ with results produced after them.
   is unchanged. What stays flat is the reference plane for `D_Ω` (Gl. 9) and for the
   Abschirmprüfung (Nr. 6.5) — terrain still does not screen — and the Rangierbahnhof entry point,
   which no CLI command can reach.
+- WebAssembly kernel: a terrain model is now queried in the CRS it was written in, not in the CRS
+  the run computes in. `cmd/wasm/main.go` handed the DTM compute-CRS coordinates twice — once at
+  the receiver centroid for `ReceiverTerrainZ`, and once as `PropagationConfig.TerrainModel`, which
+  is the ground `h_m` is measured above on every path — while `loadTerrain` took no CRS at all and
+  the GeoTIFF loader reads none from the file. Every lookup would have fallen outside the grid, and
+  a miss reads as sea level. **No computed level moves:** nothing in `frontend/src` called
+  `loadTerrain`, so the defect was latent on every reachable path and is closed before a call site
+  existed to be wrong. `loadTerrain(data, crs)` now requires the DTM's own CRS, a compute request
+  carries the `projection` the browser already resolved, and a run over a loaded terrain without
+  one is refused rather than answered from a grid queried in the wrong CRS. The wrapper is
+  `terrain.InComputeCRS`, shared with `aconiq run`; the kernel-side logic moved into
+  `internal/wasmkernel`, where a host `go test` can reach it.
 - Schall 03 refused to admit that a DTM covering no receiver at all left every receiver on the
   sea-level datum. A terrain model whose extent and the receivers' have nothing in common — almost
   always a CRS mismatch — now fails the run as a user error, quoting both extents, instead of

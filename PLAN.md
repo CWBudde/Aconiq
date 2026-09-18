@@ -600,6 +600,24 @@ in IndexedDB keep their old rows and their old hash, so re-running the same mode
 a stored run; `PERSISTED_STATE_VERSION` stayed at 1 deliberately, because the stored documents still
 parse and discarding a user's model and runs over a row order is the larger harm.
 
+**The kernel is told which CRS a run computes in; it cannot resolve one itself.** `aconiq run`
+reads the project CRS off the manifest and projects the model. Browser mode projects the model in
+TypeScript, through `aconiq.transform`, and hands the kernel coordinates that are already metric —
+so a compute request arrives as bare numbers naming no CRS, and the GeoTIFF loader reads the tie
+point and the pixel scale and no GeoKeyDirectory, so the raster names none either. `loadTerrain`
+therefore takes the DTM's CRS as a required second argument, and a request computing over a loaded
+terrain must carry `projection` (`project_crs`, `compute_crs`, `applied`) or it is refused. Anything
+new that crosses into the kernel and needs to know where the model sits has to be handed the same
+pair; there is nothing in the request for it to infer one from.
+
+**An uncovered terrain query reads 0 m in both targets, on purpose.** `cli.terrainElevationAt` and
+`wasmkernel.TerrainAtGridCenter` both turn a DTM miss into an elevation of zero. Sea level is a poor
+reading of "the DTM does not reach here" — it is indistinguishable from a genuine 0 m plain unless
+`ok` is read — but the two targets have to agree on it or the same model answers differently in the
+browser and on the command line. Changing it is a decision that moves both targets in one commit,
+not a divergence introduced on one side. (Schall 03 already refuses a terrain that covers no
+receiver rather than taking Z = 0; RLS-19 does not, in either target.)
+
 ### Open
 
 The geographic refusal is no longer written out twice. `crstransform.GeographicRefusal` is the
@@ -629,11 +647,6 @@ byte at both refusal sites. Four things it leaves live:
       metric model puts a directional source millions of metres from its own receivers. Reaching
       them needs either a nested-batch transform contract or a second collection pass that walks
       the property trees; neither is worth building until a browser-mode model can express one.
-- [ ] **Browser terrain would be queried in the compute CRS.** `terrainAtGridCenter`
-      (`cmd/wasm/main.go`) queries the DTM at the receiver centroid, which is now a UTM metre pair,
-      while the GeoTIFF stays in whatever CRS it was written in. The CLI answers this with
-      `newTerrainInComputeCRS`; the kernel has no equivalent. It is latent — browser mode never
-      calls `loadTerrain` — and becomes live the moment it does.
 - [ ] **`aconiq compare` still runs the preview chain, by explicit opt-in.** The SoundPLAN import
       produces the `rail_*` preview vocabulary only, so `compare_test.go` and `cmdoutput_test.go`
       now pass `--param schall03_engine=preview` rather than reaching it by accident. The ~25 dB
@@ -662,6 +675,16 @@ byte at both refusal sites. Four things it leaves live:
       edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is
       consistent rather than novel, but it is a visible output change on urban grid runs and the
       value at such a point is not an Immissionsort.
+      The shape of the fix is decided, so that it is not re-argued: **compute the receiver, keep it
+      in the table, and write its raster cell as the existing `-9999` nodata sentinel.** Dropping
+      masked receivers from the slice is the tempting option and it does not work —
+      `inferGridShape` requires `len(receivers) % width == 0` and `persistDummyRaster` maps
+      `x = i % gridWidth`, so a punched grid stops being a raster. Keeping membership and row order
+      also keeps `output_hash` comparable and moves the parity goldens by value rather than by
+      shape. Two things it has to settle when taken: `geo.pointInRing` treats an on-edge point as
+      inside, so a grid aligned to a footprint edge masks that edge; and `browser-backend.ts`'s
+      `buildReceiverGrid` is a second grid builder that already has the footprints in hand at the
+      call site, so both targets move together or `browser-parity.test.ts` fails.
 - [ ] **The SoundPLAN import produces no DTM, so the Schall 03 ground-datum fix does not reach it.**
       `import_soundplan.go` records only the _name_ of the file the elevation data came from
       (`GeoTmp.geo`, `Höhen.txt`, `.dgm`) in its import report, and registers no `artifact-terrain` —
