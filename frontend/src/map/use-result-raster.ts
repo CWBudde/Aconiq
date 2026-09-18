@@ -47,6 +47,24 @@ import { declaresLevels } from "./result-units";
  */
 const MAX_RASTER_DIMENSION = 4096;
 
+/**
+ * Whether this raster is past what one image can carry.
+ *
+ * Shared by the memo below and by `resolveRaster`, and that sharing is the
+ * point: the cap used to live only in the resolver, so an oversized grid was
+ * fully read, colourised and PNG-encoded *before* anything returned
+ * `too-large`. A long thin browser grid — the case the cap exists for, since
+ * only API mode has a receiver cap — allocated hundreds of megabytes to put a
+ * one-line refusal on screen. A guard that runs after the work it guards is
+ * not a guard.
+ */
+function exceedsOneImage(metadata: RasterMetadata): boolean {
+  return (
+    metadata.width > MAX_RASTER_DIMENSION ||
+    metadata.height > MAX_RASTER_DIMENSION
+  );
+}
+
 /** Placed pixels, or the reason there are none. */
 export type ResultRaster =
   /** No run, or a run that wrote no raster — explicit receivers place no grid. */
@@ -259,18 +277,17 @@ function resolveRaster(input: {
   // about the data, then the ones that are about drawing it.
   if (run === null || !input.hasArtifacts) return NONE;
   if (input.failed) return { status: "failed" };
-  if (metadata === undefined || bytes === undefined) {
-    return input.loading ? LOADING : NONE;
-  }
+  if (metadata === undefined) return input.loading ? LOADING : NONE;
 
+  // Every refusal decidable from the sidecar alone is answered here, before
+  // the bytes are looked at — because in two of these cases the hook
+  // deliberately never asked for them, so an absent payload is the answer
+  // rather than a wait.
   if (!declaresLevels(metadata.unit)) {
     return { status: "not-levels", unit: metadata.unit };
   }
   if (metadata.georeference === undefined) return { status: "not-a-grid" };
-  if (
-    metadata.width > MAX_RASTER_DIMENSION ||
-    metadata.height > MAX_RASTER_DIMENSION
-  ) {
+  if (exceedsOneImage(metadata)) {
     return {
       status: "too-large",
       width: metadata.width,
@@ -280,6 +297,8 @@ function resolveRaster(input: {
   if (bandIndex(metadata, indicator) < 0) {
     return { status: "no-such-band", indicator };
   }
+
+  if (bytes === undefined) return input.loading ? LOADING : NONE;
 
   switch (corners.status) {
     case "idle":
@@ -330,6 +349,7 @@ export function useResultRaster(
 
   const image = useMemo(() => {
     if (metadata === undefined || bytes === undefined) return undefined;
+    if (exceedsOneImage(metadata)) return null;
 
     const band = bandIndex(metadata, indicator);
     if (band < 0) return null;

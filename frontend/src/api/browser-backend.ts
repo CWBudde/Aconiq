@@ -1464,6 +1464,16 @@ async function runRLS19Road(
       // browser-side would fork the format.
       project_crs: projection.projectCRS,
       compute_crs: projection.computeCRS,
+      // Read off the kernel's own descriptor rather than named here. AGENTS.md
+      // requires the tier to travel with the result — "a consumer that never
+      // reads the docs still sees it" — and browser-mode summaries carried no
+      // tier at all, so the map's evidence badge was blank in one of the two
+      // shipped modes. Declaring it a second time is the exact duplication
+      // `framework.StandardDescriptor.EvidenceTier` exists to prevent, which
+      // is why this asks the kernel instead.
+      evidence_tier: kernel
+        .standards()
+        .find((standard) => standard.id === spec.standardId)?.evidence_tier,
     };
 
     const hashPayload = outputs.map((output) => ({

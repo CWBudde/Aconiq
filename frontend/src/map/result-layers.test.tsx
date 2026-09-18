@@ -678,6 +678,53 @@ describe("ResultLayers: the result raster", () => {
     expect(map.sources.size).toBe(2); // the receivers and the raster, no more
   });
 
+  it("brings the raster back after a newer run has loaded", async () => {
+    // The regression Codex caught on #60. A newer run's artifacts pass through
+    // `loading`, which hides the layer; the layer then *exists*, so the add
+    // branch that restored visibility never ran again and the raster stayed
+    // hidden until the user toggled it or the map was rebuilt. Everything here
+    // is the ordinary case: no refusal, no toggle, just a second run finishing.
+    const map = new FakeMap().withModelLayers();
+    const { rerender } = render(
+      <MapContext value={map as unknown as MapLibreMap | null}>
+        <ResultLayers requestedRunId={null} />
+      </MapContext>,
+    );
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)).toBeDefined();
+    });
+
+    // The newer run's metadata has not arrived yet — the status the effect
+    // hides on.
+    state.rasterMetadata = undefined;
+    rerender(
+      <MapContext value={map as unknown as MapLibreMap | null}>
+        <ResultLayers requestedRunId={null} />
+      </MapContext>,
+    );
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)?.layout?.visibility).toBe(
+        "none",
+      );
+    });
+
+    // And now it has.
+    state.rasterMetadata = RASTER_METADATA;
+    rerender(
+      <MapContext value={map as unknown as MapLibreMap | null}>
+        <ResultLayers requestedRunId={null} />
+      </MapContext>,
+    );
+
+    await waitFor(() => {
+      expect(map.getLayer(LAYER_IDS.resultRaster)?.layout?.visibility).toBe(
+        "visible",
+      );
+    });
+  });
+
   it("honours a group switched off before the layer existed", async () => {
     useMapStore.setState({
       layerVisibility: { [RESULT_RASTER_GROUP_ID]: false },
@@ -736,8 +783,14 @@ describe("ResultLayers: the result raster", () => {
     );
   });
 
-  it("refuses a grid larger than one texture, and keeps the receiver levels", async () => {
+  it("refuses a grid larger than one texture without ever reading its bytes", async () => {
+    // The cap used to be applied *after* the memo had read the band, allocated
+    // the RGBA buffer and encoded a PNG — so the long thin browser grid the cap
+    // exists for allocated hundreds of megabytes to put a one-line refusal on
+    // screen. Withholding the bytes is what proves the order: nothing can have
+    // decoded them.
     state.rasterMetadata = { ...RASTER_METADATA, width: 5000, height: 2 };
+    state.rasterBytes = undefined;
 
     const map = new FakeMap();
     renderLayers(map);

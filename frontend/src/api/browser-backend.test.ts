@@ -37,6 +37,11 @@ function descriptorFor(id: string): StandardDescriptor {
     description: `${id} (stub)`,
     default_version: "2019",
     versions: [],
+    // Not optional in practice: `framework.StandardDescriptor.Validate()`
+    // refuses a module that declares no tier, so every descriptor a real
+    // kernel publishes carries one, and a stub without it would let a
+    // regression in the summary's tier pass unnoticed.
+    evidence_tier: "normative",
   };
 }
 
@@ -770,6 +775,21 @@ describe("persisted state", () => {
     expect(
       log.lines.some((line) => line.includes("compute_crs=EPSG:25832")),
     ).toBe(true);
+  });
+
+  it("stamps the run summary with the tier the kernel declares", async () => {
+    // AGENTS.md requires the evidence tier to travel with the result, so that
+    // "a consumer that never reads the docs still sees it". Browser-mode
+    // summaries carried none, which left the map's evidence badge blank in one
+    // of the two shipped modes while API mode showed it.
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const summary = run.artifacts.find(
+      (entry) => entry.kind === "run.result.summary",
+    );
+
+    await expect(
+      browserBackend.getArtifactContent(summary?.id ?? ""),
+    ).resolves.toMatchObject({ evidence_tier: "normative" });
   });
 
   it("refuses a model whose property geometry it cannot project", async () => {

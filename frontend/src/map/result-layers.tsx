@@ -461,14 +461,6 @@ export function ResultLayers({
             },
             anchored ? BOTTOM_MODEL_LAYER_ID : undefined,
           );
-          // Back on after a refusal hid it. The control's own choice still
-          // wins — `rasterVisible` is what it wrote — so this restores the
-          // user's state, not "visible".
-          map.setLayoutProperty(
-            layer.id,
-            "visibility",
-            rasterVisible ? "visible" : "none",
-          );
         } else if (anchored) {
           // Re-asserted rather than asserted once. The raster is normally the
           // first result to arrive and starts on top of nothing; the model
@@ -477,6 +469,23 @@ export function ResultLayers({
           // a position a layer already holds is a no-op.
           map.moveLayer(layer.id, BOTTOM_MODEL_LAYER_ID);
         }
+
+        // Outside both branches, because every path back to `ready` has to
+        // restore it and only one of them used to. A newer run arriving is the
+        // case that broke: its artifacts pass through `loading`, the refusal
+        // branch above hides the layer, and then the layer *exists*, so the
+        // add branch that used to carry this line never ran again — the raster
+        // disappeared until the user toggled it or the map was rebuilt. (An
+        // existing layer with no anchor yet hit the same hole from the other
+        // side, taking neither branch.)
+        //
+        // The control's own choice still wins: `rasterVisible` is what it
+        // wrote, so this restores the user's state rather than "visible".
+        map.setLayoutProperty(
+          layer.id,
+          "visibility",
+          rasterVisible ? "visible" : "none",
+        );
       } catch (error) {
         console.error(`ResultLayers: could not add layer "${layer.id}"`, error);
         return;

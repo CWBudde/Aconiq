@@ -1617,71 +1617,24 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
       `<a>`, never a button that navigates, which no axe rule would catch.
       No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
-- [x] **Results on the map: the raster.** (2026-09-18) — the three blockers closed first, then the
-      layer. What landed, and the constraints each leaves live.
-      **`results.RasterMetadata` carries a `georeference`** — the centre of cell (0,0), the pixel
-      size and the row order — and populates the `CRS` field it had carried unwritten since it was
-      added. Width, height and the georeference now travel as one `results.GridLayout` through all
-      eleven standards modules, because the pair of loose ints threaded through a dozen signatures
-      is how the third went missing. **Absence means "not a grid"**, never a grid at the origin:
-      explicit receivers get no georeference, and a georeferenced format is then refused rather
-      than written at the identity transform `rasterGeoTransform()` used to invent in silence.
-      `exportfmt.GeoTransformFromGeoreference` is the one conversion to GDAL's corner convention,
-      pinned against `InferGeoTransformFromReceivers` on the same grid so the switch could not move
-      a raster already written; inference stays as the fallback for older sidecars.
-      **Every `--format` file gets an `ArtifactRef`** — one per file, not per format, since GeoTIFF
-      and COG write one per band — under `export.`-prefixed kinds, which is load-bearing because
-      `projectfs.DeleteRun` selects on that prefix to keep a delivered bundle's bytes. The content
-      endpoint stops answering `application/json` for everything that is not HTML or Markdown; it
-      had been mislabelling `run.result.raster_binary` and `export.report_pdf` all along.
-      **Browser mode stores real bytes**, through `model/raster-bin.ts` pinned to Go's writer by
-      `testdata/raster-parity/`, in their own IndexedDB record rather than inside the state
-      document — `persist` clones that document whole on every save. Three constraints worth
-      carrying: `getArtifactURL` is synchronous and therefore refuses binary content;
-      `instanceof ArrayBuffer` is the wrong check on a value read back from IndexedDB, because the
-      structured clone can come from another realm; and **a byte record is deleted in the same
-      IndexedDB transaction as the document that stopped naming it**. Neither order works across
-      two transactions: delete first and a failed write leaves a retained run — `persistRun` puts
-      the un-evicted list back — whose raster reads as missing, delete second and the eviction
-      that exists to make room retries while the room is still occupied. `savePersistedStateForgetting`
-      commits both or neither, deletes before the put.
-      **The layer is drawn**, and the run the reader came from is drawn with it. Five constraints.
-      **MapLibre 5 cannot colour a raster from its values** — it has no `raster-color` and no
-      `["raster-value"]`, both of which are Mapbox GL JS v3 — so the ramp is applied cell by cell in
-      `map/raster-image.ts` and the layer is handed finished pixels through an `image` source.
-      `map/raster-canvas.ts` is the only file in the tree that touches a 2D context, because jsdom
-      has none; everything above it is arithmetic with its own tests, and the real canvas belongs to
-      `frontend/e2e/`. **It is the one layer inserted with a `beforeId`**, re-asserted with
-      `moveLayer` on every sync: it arrives several commits after `ModelLayers` has added its own,
-      so appending would draw the result over the buildings that produced it, and the anchor must be
-      checked with `getLayer` first because MapLibre throws on one its style does not hold.
-      **The dimension cap is correctness, not performance** — an `image` source becomes a GL texture
-      and a dimension past `MAX_TEXTURE_SIZE` fails at upload with nothing on screen — and it is not
-      redundant with the receiver cap, because only API mode has one: `buildReceiverGrid` divides the
-      calculation area by the resolution and stops there. **The band is resolved by name, never by
-      index**: the picker's names are the receiver table's and the bands are the sidecar's, they
-      agree today, and a fallback to band 0 would paint Lr,Nacht under the label Lr,Tag. **Four
-      corners are projected, not one per cell** — the affine interior is off by the non-linear part
-      of Mercator's scale, a few centimetres over a 1 km grid at 50°N against a 5–20 m cell, growing
-      with the square of the north–south extent. And a status that is not `ready` **hides** the
-      layer rather than leaving it alone, because an image source keeps whatever it was last given.
-      `routes.tsx` still has no params: `/model` takes `?run=`, honoured once and stripped, and the
-      choice then lives in page state. That forced one **`ArrivalParams`** in place of the two
-      readers — each had cleared the whole query string, which was safe only while exactly one
-      parameter was ever honoured, and a per-key fix in each would still race, because React
-      Router's updater sees the params of the render it was called from. A requested run that is
-      unknown or has not completed falls back to the newest and **says which run it could not show**.
-      Still open: **contours**, which are no longer the same case as the raster.
-      `export.GenerateContours` has exactly one caller — the `contour-geojson` and `contour-gpkg`
-      formats of `aconiq export` — so in API mode a contour artifact exists only after an explicit
-      export and in browser mode `createExport` writes none at all — a toggle would be a live
-      control in one mode and a dead one in the other. What it needs first is Go's marching squares
-      behind the kernel boundary, the way `transform` and `standards` already are; a TypeScript
-      second implementation is not an option. Then the map→table direction, which wants a receiver
-      clicked on the map to scroll and mark its row; and a per-indicator unit on the receiver table,
-      without which a mixed-unit run still gets no map at all — `ReceiverTable.Unit` is one string
-      per table on both sides, and making it per indicator touches six Go writers, `Validate`, the
-      Markdown/HTML/Typst report templates and ten digest goldens.
+- [x] **Results on the map: the raster** (#60). Four constraints stay live. MapLibre 5 has no
+      `raster-color` and no `["raster-value"]`, so the ramp is applied cell by cell and
+      `map/raster-canvas.ts` is the only file that touches a 2D context. It is the one layer
+      inserted with a `beforeId` and re-asserted with `moveLayer`, because it arrives after
+      `ModelLayers` has run. The band is resolved by name, never by index — the picker's names are
+      the receiver table's and the bands are the sidecar's. And `MAX_RASTER_DIMENSION` is a
+      correctness cap, not a performance one, needed because only API mode caps its receivers.
+- [ ] **Results on the map: the contours.** No longer the same case as the raster.
+      `export.GenerateContours` has one caller — the `contour-geojson` and `contour-gpkg` formats
+      of `aconiq export` — so in API mode a contour artifact exists only after an explicit export
+      and in browser mode `createExport` writes none at all; a toggle would be live in one mode and
+      dead in the other. It needs Go's marching squares behind the kernel boundary first, the way
+      `transform` and `standards` already are. A TypeScript second implementation is not an option.
+- [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
+- [ ] **A per-indicator unit on the receiver table**, without which a mixed-unit run still gets no
+      map at all. `ReceiverTable.Unit` is one string per table on both sides; making it per
+      indicator touches six Go writers, `Validate`, the Markdown/HTML/Typst report templates and
+      ten digest goldens.
 - [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
       (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
       `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do
