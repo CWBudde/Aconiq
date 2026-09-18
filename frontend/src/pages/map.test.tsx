@@ -6,8 +6,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useEffect } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 import type { Map } from "maplibre-gl";
+import type { RunSummary } from "@/api/client";
 import MapPage from "./map";
 import { MapContext } from "@/map/use-map";
 import { useModelStore } from "@/model/model-store";
@@ -28,9 +30,11 @@ vi.mock("@/map/map-view", () => ({
   MapView: ({
     children,
     onFeatureClick,
+    onResultReceiverClick,
   }: {
     children?: React.ReactNode;
     onFeatureClick?: (features: { properties: unknown }[]) => void;
+    onResultReceiverClick?: (features: { properties: unknown }[]) => void;
   }) => (
     // One stable object, because the real `MapView` holds the map in state:
     // a fresh one per render changes `useMap()`'s identity, which tears
@@ -48,6 +52,21 @@ vi.mock("@/map/map-view", () => ({
           }}
         >
           click-feature
+        </button>
+        {/* The other half of the real `MapView`'s click: a hit on the run's
+            own result circles with no model feature over it. A separate
+            button because it is a separate callback — the precedence between
+            the two is decided in `MapView`, and a page test that could only
+            fire one of them could not show that the page keeps them apart. */}
+        <button
+          type="button"
+          onClick={() => {
+            onResultReceiverClick?.([
+              { properties: { id: mapClick.resultReceiverId } },
+            ]);
+          }}
+        >
+          click-result
         </button>
         {children}
       </div>
@@ -72,12 +91,29 @@ vi.mock("@/map/layer-control", () => ({
 // up. What it draws is pinned in `map/result-layers.test.tsx`; the page's own
 // half is that it is mounted inside the map at all.
 vi.mock("@/map/result-layers", () => ({
-  ResultLayers: ({ requestedRunId }: { requestedRunId: string | null }) => (
-    <div
-      data-testid="result-layers"
-      data-requested-run={requestedRunId ?? ""}
-    />
-  ),
+  ResultLayers: ({
+    requestedRunId,
+    onRunDrawn,
+  }: {
+    requestedRunId: string | null;
+    onRunDrawn?: (run: RunSummary | null) => void;
+  }) => {
+    // The real component resolves the requested id against the run list and
+    // falls back to the newest completed run, then reports what it drew. The
+    // stub reports whatever the test put in `drawnRun` — which run is the
+    // right one is `map/result-layers.test.tsx`'s question; this file's is
+    // what the page does with the answer.
+    useEffect(() => {
+      onRunDrawn?.(drawnRun.current);
+    }, [onRunDrawn]);
+
+    return (
+      <div
+        data-testid="result-layers"
+        data-requested-run={requestedRunId ?? ""}
+      />
+    );
+  },
 }));
 vi.mock("@/map/coordinate-display", () => ({
   CoordinateDisplay: () => null,
@@ -151,9 +187,20 @@ vi.mock("@/map/feature-list", () => ({
 }));
 // Renders the id it was handed, which is what `?select=` has to reach.
 vi.mock("@/map/feature-editor", () => ({
-  FeatureEditor: ({ featureId }: { featureId: string | null }) =>
+  FeatureEditor: ({
+    featureId,
+    resultRun,
+  }: {
+    featureId: string | null;
+    resultRun?: RunSummary | null;
+  }) =>
     featureId === null ? null : (
-      <div data-testid="feature-editor">{featureId}</div>
+      // The run is echoed, not rendered as a link: whether the editor offers
+      // one, and for which ids, is `map/feature-editor.test.tsx`'s question.
+      // The page's half is handing the editor the run its circles came from.
+      <div data-testid="feature-editor" data-result-run={resultRun?.id ?? ""}>
+        {featureId}
+      </div>
     ),
 }));
 // Renders only when it is open, which is the signal that a drawn shape
@@ -312,8 +359,25 @@ const draw: {
   instance: DrawStub | null;
 } = { finish: null, instance: null };
 
-/** Which feature the `MapView` stub's click button reports. */
-const mapClick = { featureId: "" };
+/** Which feature, and which result receiver, the `MapView` stub reports. */
+const mapClick = { featureId: "", resultReceiverId: "" };
+
+/** The run the `ResultLayers` stub says it is drawing. */
+const drawnRun: { current: RunSummary | null } = { current: null };
+
+function completedRun(id: string): RunSummary {
+  return {
+    id,
+    scenario_id: "default",
+    standard_id: "rls19-road",
+    version: "2019",
+    status: "completed",
+    started_at: "2026-01-01T10:00:00Z",
+    finished_at: "2026-01-01T10:00:05Z",
+    log_path: `runs/${id}/run.log`,
+    artifacts: [],
+  };
+}
 
 /** A ring in WGS84, which is all terra-draw ever emits. */
 const DRAWN_RING = [
@@ -327,6 +391,9 @@ describe("MapPage", () => {
   beforeEach(() => {
     draw.finish = null;
     draw.instance = null;
+    mapClick.featureId = "";
+    mapClick.resultReceiverId = "";
+    drawnRun.current = null;
     useModelStore.getState().reset();
     projection.canReprojectForDisplay = true;
     projection.requests = [];
@@ -342,7 +409,13 @@ describe("MapPage", () => {
   }
 
   function LocationProbe() {
-    return <div data-testid="location-search">{useLocation().search}</div>;
+    const location = useLocation();
+    return (
+      <>
+        <div data-testid="location-search">{location.search}</div>
+        <div data-testid="location-pathname">{location.pathname}</div>
+      </>
+    );
   }
 
   function renderPageAt(entry: string) {
@@ -1374,6 +1447,108 @@ describe("MapPage", () => {
         type: "Point",
         coordinates: [10.2, 51.2],
       });
+    });
+  });
+  describe("the map→table direction", () => {
+    /*
+     * A receiver clicked on the map takes the reader to its row.
+     *
+     * One precedence rule, and it is `MapView` that applies it: a click
+     * selects the model object if there is one — the editor opens, exactly as
+     * before — and otherwise it is a result receiver and the reader goes to
+     * the table. That covers both populations, because most of a run's rows
+     * are `auto-grid` receivers the CLI named itself and which are in no model
+     * store at all; a model receiver reaches the table through the editor's
+     * own link instead.
+     *
+     * The run travels with the id, and it is the run the map is *drawing* —
+     * not the `?run=` the URL carried, which has been stripped by now, and not
+     * the newest run the results page would otherwise open on its own.
+     */
+
+    it("takes a clicked result receiver to that run's row", () => {
+      drawnRun.current = completedRun("run-7");
+      mapClick.resultReceiverId = "grid-000042";
+      renderPageAt("/model");
+
+      fireEvent.click(screen.getByRole("button", { name: "click-result" }));
+
+      expect(screen.getByTestId("location-pathname").textContent).toBe(
+        "/results/run-7",
+      );
+      expect(screen.getByTestId("location-search").textContent).toBe(
+        "?receiver=grid-000042",
+      );
+    });
+
+    it("escapes an id that would otherwise change the query or the path", () => {
+      // Receiver ids come out of an import and are constrained to nothing. An
+      // id holding `&`, `#` or `/` would end the parameter, or the path
+      // segment, and land somewhere else entirely.
+      drawnRun.current = completedRun("run-7");
+      mapClick.resultReceiverId = "R&1 #2/3";
+      renderPageAt("/model");
+
+      fireEvent.click(screen.getByRole("button", { name: "click-result" }));
+
+      expect(screen.getByTestId("location-pathname").textContent).toBe(
+        "/results/run-7",
+      );
+      expect(screen.getByTestId("location-search").textContent).toBe(
+        "?receiver=R%261+%232%2F3",
+      );
+    });
+
+    it("stays on the map when a model feature is under the pointer", () => {
+      // The editor path is unchanged: the click never reaches the navigation
+      // at all, because `MapView` reports a model hit through the other
+      // callback. Asserted here as well as in `map/map-view.test.tsx` because
+      // this is where a regression would be felt.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      drawnRun.current = completedRun("run-7");
+      mapClick.featureId = "src-1";
+      renderPageAt("/model");
+
+      fireEvent.click(screen.getByRole("button", { name: "click-feature" }));
+
+      expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+      expect(screen.getByTestId("location-pathname").textContent).toBe(
+        "/model",
+      );
+      expect(screen.getByTestId("location-search").textContent).toBe("");
+    });
+
+    it("goes nowhere while no run is being drawn", () => {
+      // There are no circles to click in that state, so this cannot happen
+      // through the UI — but a navigation to `/results/` with no run id would
+      // be a dead link, and refusing is cheaper than proving it unreachable.
+      drawnRun.current = null;
+      mapClick.resultReceiverId = "grid-000042";
+      renderPageAt("/model");
+
+      fireEvent.click(screen.getByRole("button", { name: "click-result" }));
+
+      expect(screen.getByTestId("location-pathname").textContent).toBe(
+        "/model",
+      );
+    });
+
+    it("hands the drawn run to the editor, for its own way into the table", () => {
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      drawnRun.current = completedRun("run-7");
+      mapClick.featureId = "src-1";
+      renderPageAt("/model");
+
+      fireEvent.click(screen.getByRole("button", { name: "click-feature" }));
+
+      expect(screen.getByTestId("feature-editor")).toHaveAttribute(
+        "data-result-run",
+        "run-7",
+      );
     });
   });
 });

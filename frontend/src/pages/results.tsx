@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
 import {
   BarChart3,
   Table2,
@@ -35,6 +35,7 @@ import { useRunFromRoute } from "@/run/use-run-from-route";
 import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { ReceiversTab } from "@/results/receiver-table";
+import { RECEIVER_PARAM } from "@/results/results-params";
 import { m } from "@/i18n/messages";
 import { unitFor } from "@/map/result-units";
 
@@ -270,6 +271,36 @@ function RunResultDetail({
 }) {
   const standardLabel = useStandardLabel();
   const [tab, setTab] = useState<ResultTab>("receivers");
+  /*
+   * The receiver the reader arrived on, held here rather than read from the
+   * URL by the table: the parameter is stripped as soon as it is honoured,
+   * while the mark has to outlive it.
+   *
+   * Stored with the run it arrived at, and read back only for that run. This
+   * panel is *not* remounted when the list selection changes — same component,
+   * new `run` prop — and two runs of one scenario share their receiver ids, so
+   * an unscoped mark reappeared on the next run's identically named row as if
+   * the reader had been sent there by a link that named the first run.
+   */
+  const [arrival, setArrival] = useState<{
+    runId: string;
+    receiverId: string;
+  } | null>(null);
+  const arrivedReceiver = arrival?.runId === run.id ? arrival.receiverId : null;
+
+  // Stable per run: `ArrivalReceiver` has it in an effect's dependency list,
+  // and an inline arrow would re-run that effect on every render.
+  const handleArrivedReceiver = useCallback(
+    (receiverId: string) => {
+      setArrival({ runId: run.id, receiverId });
+      // Forced, not assumed. "receivers" is the tab this panel opens on
+      // today, but an arrival that landed on the raster tab would have
+      // scrolled to a row nobody can see, and that must not depend on a
+      // default written elsewhere in this file.
+      setTab("receivers");
+    },
+    [run.id],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -301,6 +332,8 @@ function RunResultDetail({
         </p>
       </div>
 
+      <ArrivalReceiver onReceiver={handleArrivedReceiver} />
+
       <Tabs
         value={tab}
         onValueChange={(value) => {
@@ -327,7 +360,7 @@ function RunResultDetail({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <TabsContent value="receivers" className="mt-0 p-5">
-            <ReceiversTab run={run} />
+            <ReceiversTab run={run} receiverId={arrivedReceiver} />
           </TabsContent>
           <TabsContent value="raster" className="mt-0 p-5">
             <RasterTab run={run} />
@@ -339,6 +372,53 @@ function RunResultDetail({
       </Tabs>
     </div>
   );
+}
+
+/**
+ * Honours `?receiver=` on arrival and then strips it.
+ *
+ * The mirror of `/model`'s `ArrivalParams`, down to the `handled` ref: the
+ * parameter is read once per mount, acted on, and removed with `replace`, so a
+ * reload or a Back does not drag the reader back to a row they have scrolled
+ * away from. `/results` takes exactly one parameter, so unlike `/model` there
+ * is no second key to race with — but the shape is kept, because the reason
+ * `/model` needed one reader was that a second parameter arrived later.
+ *
+ * It is a child of the run detail rather than of the page, which is what makes
+ * the timing right without a guard: the detail only exists once the run list
+ * has arrived and the run in the path was found, so the parameter is not
+ * stripped while there is still no table to scroll.
+ *
+ * Anything else in the query string is left alone — this strips its own key,
+ * not the URL.
+ */
+function ArrivalReceiver({
+  onReceiver,
+}: {
+  onReceiver: (receiverId: string) => void;
+}) {
+  const [params, setParams] = useSearchParams();
+  const receiver = params.get(RECEIVER_PARAM) ?? "";
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (handled.current) return;
+    if (receiver === "") return;
+    handled.current = true;
+
+    onReceiver(receiver);
+
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete(RECEIVER_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [receiver, onReceiver, setParams]);
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------

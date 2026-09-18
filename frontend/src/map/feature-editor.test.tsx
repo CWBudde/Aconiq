@@ -7,6 +7,8 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import type { ReceiverTable, RunSummary } from "@/api/client";
 import { FeatureEditor } from "./feature-editor";
 import { useModelStore } from "@/model/model-store";
 import {
@@ -26,6 +28,31 @@ import type { ModelFeature, ModelReceiver } from "@/model/types";
 import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { getLocale, overwriteGetLocale, type Locale } from "@/i18n/runtime";
 import { m } from "@/i18n/messages";
+
+/**
+ * The one hook the editor reaches for, and only when it is handed a run: the
+ * link into the results table is offered for an id that run's table actually
+ * holds, which is a question only the table can answer.
+ */
+const api = vi.hoisted(() => {
+  const value: {
+    table: ReceiverTable | undefined;
+    /** Every artifact id `useReceiverTable` was asked for, `null` included. */
+    askedFor: (string | null)[];
+  } = { table: undefined, askedFor: [] };
+  return value;
+});
+
+vi.mock("@/api/hooks", () => ({
+  useReceiverTable: (artifactId: string | null) => {
+    api.askedFor.push(artifactId);
+    return {
+      data: artifactId === null ? undefined : api.table,
+      isLoading: false,
+      error: null,
+    };
+  },
+}));
 
 const originalGetLocale = getLocale;
 
@@ -1502,5 +1529,131 @@ describe("FeatureEditor inline issues", () => {
     edit(building);
 
     expect(screen.queryByText("building.height.required")).toBeNull();
+  });
+});
+
+describe("FeatureEditor link into the results", () => {
+  /*
+   * The other direction of the map→table move, for the population the map
+   * click cannot serve.
+   *
+   * A click on a model receiver opens this editor rather than navigating —
+   * that is the precedence rule, and it is the right one, because the editor
+   * is the only thing that can change the receiver. So the way on to the row
+   * has to be *in* the editor, and it is a real `<a>`: the same argument
+   * `receiver-table.tsx` makes in the opposite direction. A button that
+   * navigates has no href to copy, no middle-click, no context menu and no
+   * entry in a screen reader's links rotor, and no axe rule catches the
+   * substitution.
+   *
+   * Offered only for an id the run's own table holds. `useSelectableIds` is
+   * the mirror of this on the results side, and the honesty rule is the same:
+   * a link that navigates and then marks nothing is a promise the page cannot
+   * keep.
+   */
+
+  const table: ReceiverTable = {
+    indicator_order: ["Lden"],
+    units: { Lden: "dB(A)" },
+    records: [{ id: "rcv-1", x: 0, y: 0, height_m: 4, values: { Lden: 62.4 } }],
+  };
+
+  function completedRun(overrides: Partial<RunSummary> = {}): RunSummary {
+    return {
+      id: "run-7",
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "2019",
+      status: "completed",
+      started_at: "2026-01-01T10:00:00Z",
+      finished_at: "2026-01-01T10:00:05Z",
+      log_path: "runs/run-7/run.log",
+      artifacts: [
+        {
+          id: "art-receivers",
+          kind: "run.result.receiver_table_json",
+          path: "runs/run-7/results/receivers.json",
+          created_at: "2026-01-01T10:00:05Z",
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  function editReceiver(id: string, run: RunSummary | null) {
+    render(
+      <MemoryRouter>
+        <FeatureEditor featureId={id} resultRun={run} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+  }
+
+  function resultsLink(id: string): HTMLElement | null {
+    return screen.queryByRole("link", {
+      name: m.action_show_receiver_in_results({ id }),
+    });
+  }
+
+  beforeEach(() => {
+    api.table = table;
+    api.askedFor = [];
+    useModelStore.getState().addReceiver(receiver);
+  });
+
+  it("offers a link to the row for a receiver the run computed", () => {
+    editReceiver("rcv-1", completedRun());
+
+    const link = resultsLink("rcv-1");
+    expect(link).toHaveAttribute("href", "/results/run-7?receiver=rcv-1");
+  });
+
+  it("offers nothing when the run's table does not hold the receiver", () => {
+    // A receiver added after the run, or one outside its calculation area:
+    // the row is not there to scroll to, so there is nothing to link to.
+    api.table = { ...table, records: [] };
+    editReceiver("rcv-1", completedRun());
+
+    expect(resultsLink("rcv-1")).toBeNull();
+  });
+
+  it("offers nothing, and asks for nothing, while no run is drawn", () => {
+    // Nothing to link *to*. The hook must not even be called with an id: a
+    // table fetched for a page with no results on it is a quarter of a
+    // million rows nobody asked for.
+    editReceiver("rcv-1", null);
+
+    expect(resultsLink("rcv-1")).toBeNull();
+    expect(api.askedFor).toEqual([]);
+  });
+
+  it("offers nothing for a run that wrote no receiver table", () => {
+    editReceiver("rcv-1", completedRun({ artifacts: [] }));
+
+    expect(resultsLink("rcv-1")).toBeNull();
+    expect(api.askedFor).toEqual([null]);
+  });
+
+  it("escapes an id that would otherwise change the query", () => {
+    const odd = { ...receiver, id: "R&1 #2" };
+    useModelStore.getState().reset();
+    useModelStore.getState().addReceiver(odd);
+    api.table = {
+      ...table,
+      records: [{ id: "R&1 #2", x: 0, y: 0, height_m: 4, values: {} }],
+    };
+    editReceiver("R&1 #2", completedRun());
+
+    expect(resultsLink("R&1 #2")).toHaveAttribute(
+      "href",
+      "/results/run-7?receiver=R%261+%232",
+    );
+  });
+
+  it("offers nothing on a feature that is not a receiver", () => {
+    // The run's table is receivers only; a source has no row in it.
+    useModelStore.getState().addFeature(source);
+    editReceiver("src-1", completedRun());
+
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

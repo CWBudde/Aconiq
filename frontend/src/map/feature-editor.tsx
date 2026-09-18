@@ -7,6 +7,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { AlertTriangle, Trash2, XCircle } from "lucide-react";
+import { Link } from "react-router";
+import type { RunSummary } from "@/api/client";
+import { useReceiverTable } from "@/api/hooks";
+import { RECEIVER_PARAM } from "@/results/results-params";
 import { Button } from "@/ui/components/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { focusMainContent } from "@/ui/main-content";
@@ -130,9 +134,23 @@ function sourceTypeLabel(sourceType: SourceType): string {
 interface FeatureEditorProps {
   featureId: string | null;
   onClose: () => void;
+  /**
+   * The run whose levels the map is currently drawing, or `null`.
+   *
+   * Only the receiver branch uses it, and only to offer the way on to that
+   * receiver's row. It is a prop rather than something this file resolves
+   * because the fallback to the newest completed run is `ResultLayers`'s
+   * decision — two components answering "which run is on screen" separately
+   * is how the editor would come to link to a run the map is not drawing.
+   */
+  resultRun?: RunSummary | null;
 }
 
-export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
+export function FeatureEditor({
+  featureId,
+  onClose,
+  resultRun = null,
+}: FeatureEditorProps) {
   const feature = useModelStore((s) =>
     featureId ? s.getFeatureById(featureId) : undefined,
   );
@@ -148,7 +166,13 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
   }, [feature, removeFeature, onClose]);
 
   if (receiver) {
-    return <ReceiverEditor receiverId={receiver.id} onClose={onClose} />;
+    return (
+      <ReceiverEditor
+        receiverId={receiver.id}
+        resultRun={resultRun}
+        onClose={onClose}
+      />
+    );
   }
 
   if (!feature) return null;
@@ -172,9 +196,11 @@ export function FeatureEditor({ featureId, onClose }: FeatureEditorProps) {
 
 function ReceiverEditor({
   receiverId,
+  resultRun,
   onClose,
 }: {
   receiverId: string;
+  resultRun: RunSummary | null;
   onClose: () => void;
 }) {
   const receiver = useModelStore((s) => s.getReceiverById(receiverId));
@@ -247,12 +273,72 @@ function ReceiverEditor({
         helper={m.msg_bimschv16_area_category_absent()}
         onCommit={handleAreaCategory}
       />
+      {/* Mounted only when a run is on screen, which is also what keeps the
+          table request from being made on a map with no results drawn. */}
+      {resultRun === null ? null : (
+        <ShowInResultsLink receiverId={receiver.id} run={resultRun} />
+      )}
       <DeleteButton
         title={m.confirm_delete_receiver_title()}
         description={m.confirm_delete_receiver_desc({ id: receiver.id })}
         onDelete={handleDelete}
       />
     </EditorPanel>
+  );
+}
+
+/**
+ * The way from a receiver on the map to its row in the results table.
+ *
+ * The editor is where this lives because a click on a model receiver opens the
+ * editor rather than navigating — that is the map's one precedence rule, and
+ * it is the right way round: the editor is the only thing that can change the
+ * receiver, and most of a run's rows are `auto-grid` receivers that reach the
+ * table by the click itself, having no model object to open.
+ *
+ * **A real `<a>`, never a button that navigates.** `/model` and `/results` are
+ * separate routes, so this is a navigation, and a button has no href to copy,
+ * no middle-click, no context menu and no entry in a screen reader's links
+ * rotor. No axe rule catches the substitution — `receiver-table.tsx` makes the
+ * same argument for the link going the other way, and it holds in both
+ * directions or in neither.
+ *
+ * **Offered only for an id the run's table holds**, which is the mirror of
+ * `useSelectableIds` in `results/receiver-table.tsx`, and the same honesty
+ * rule read from the other end. A receiver drawn after the run,
+ * or one outside its calculation area, has no row: the link would navigate,
+ * strip its parameter and mark nothing — a promise the page cannot keep. The
+ * whole table is read to answer that, which sounds heavy for a membership
+ * test, but `ResultLayers` is already drawing this run's levels from the same
+ * artifact through the same query cache, so the answer is in memory by the
+ * time the editor can be open at all.
+ */
+function ShowInResultsLink({
+  receiverId,
+  run,
+}: {
+  receiverId: string;
+  run: RunSummary;
+}) {
+  const artifact = run.artifacts.find(
+    (candidate) => candidate.kind === "run.result.receiver_table_json",
+  );
+  const { data } = useReceiverTable(artifact?.id ?? null);
+
+  // Absent while the table is still loading, and absent for good for a run
+  // that never wrote one. Both are "no row to point at" and neither is worth a
+  // sentence in a panel this narrow.
+  if (!data?.records.some((record) => record.id === receiverId)) return null;
+
+  const params = new URLSearchParams({ [RECEIVER_PARAM]: receiverId });
+
+  return (
+    <Link
+      to={`/results/${encodeURIComponent(run.id)}?${params.toString()}`}
+      className="rounded-sm text-xs underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {m.action_show_receiver_in_results({ id: receiverId })}
+    </Link>
   );
 }
 

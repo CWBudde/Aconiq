@@ -18,6 +18,7 @@ import type {
   RunSummary,
 } from "@/api/client";
 import ResultsPage from "./results";
+import { ReceiversTab } from "@/results/receiver-table";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
 import { m } from "@/i18n/messages";
@@ -233,6 +234,28 @@ beforeAll(() => {
     return "blob:aconiq/receivers.csv";
   });
   URL.revokeObjectURL = revokeObjectURL;
+
+  /*
+   * jsdom implements no scrolling at all: `Element.prototype.scrollTo` is not
+   * defined, so the virtualizer's programmatic scroll is an optional call that
+   * lands nowhere and the window never moves. The shim turns it into what a
+   * browser produces — a new `scrollTop` and a `scroll` event — which is what
+   * the mounted rows are recomputed from, and which is exactly what the
+   * `scrollTo()` helper below does for a scroll the *user* makes.
+   */
+  window.HTMLElement.prototype.scrollTo = function (
+    this: HTMLElement,
+    options?: ScrollToOptions | number,
+    y?: number,
+  ) {
+    const top = typeof options === "number" ? (y ?? 0) : (options?.top ?? 0);
+    // A browser fires no `scroll` event for a scroll that moves nothing, and
+    // neither does this: the virtualizer re-asserts its current offset often,
+    // and an event per assertion would be a re-render per keystroke.
+    if (this.scrollTop === top) return;
+    this.scrollTop = top;
+    this.dispatchEvent(new Event("scroll"));
+  };
   window.HTMLAnchorElement.prototype.click = function (
     this: HTMLAnchorElement,
   ) {
@@ -247,6 +270,9 @@ beforeAll(() => {
  */
 const VIEWPORT_PX = 640;
 const ROW_PX = 29;
+
+/** See the `scrollHeight` stub below: a ceiling, not a measurement. */
+const SCROLL_HEIGHT_PX = 1_000_000;
 
 beforeEach(() => {
   /*
@@ -265,6 +291,20 @@ beforeEach(() => {
   );
   vi.spyOn(window.HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(
     800,
+  );
+  /*
+   * And the pair the virtualizer clamps a *programmatic* scroll against:
+   * `scrollHeight - clientHeight`, both of which jsdom reports as 0. Left
+   * alone, every `scrollToIndex` resolves to offset 0 — the table would look
+   * as if the arrival had simply not scrolled, which is the one thing these
+   * tests must be able to tell apart.
+   *
+   * A constant larger than any table this file builds, because the number
+   * only has to not be the binding constraint: which rows end up mounted is
+   * decided by the row measurements, not by this.
+   */
+  vi.spyOn(window.HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(
+    SCROLL_HEIGHT_PX,
   );
 
   state.runs = [];
@@ -291,13 +331,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Reads the current path out, so a click's navigation is asserted directly. */
+/** Reads the current URL out, so a click's navigation is asserted directly. */
 function PathProbe() {
-  return <span data-testid="pathname">{useLocation().pathname}</span>;
+  const location = useLocation();
+  return (
+    <>
+      <span data-testid="pathname">{location.pathname}</span>
+      <span data-testid="search">{location.search}</span>
+    </>
+  );
 }
 
 function pathname(): string {
   return screen.getByTestId("pathname").textContent;
+}
+
+/** The query string, so an arrival parameter's removal is asserted directly. */
+function search(): string {
+  return screen.getByTestId("search").textContent;
 }
 
 /**
@@ -314,7 +365,7 @@ function renderResults(runs: RunSummary[] = [run("run-1")], path?: string) {
   const firstCompleted = runs.find((r) => r.status === "completed");
   const entry =
     path ?? (firstCompleted ? `/results/${firstCompleted.id}` : "/results");
-  render(
+  const tree = () => (
     <MemoryRouter initialEntries={[entry]}>
       <PathProbe />
       <Routes>
@@ -323,8 +374,21 @@ function renderResults(runs: RunSummary[] = [run("run-1")], path?: string) {
           <Route path=":runId" element={<ResultsPage />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  // `repaint` re-renders the same *shape*, for callers that let a query
+  // resolve between renders. It has to be a fresh element each time — React
+  // bails out of re-rendering a subtree handed the identical element
+  // reference — but the same shape, or the router remounts and an arrival
+  // already stripped from the URL would not survive it. `initialEntries` is
+  // read on mount only, so repeating it here changes nothing.
+  return {
+    ...view,
+    repaint: () => {
+      view.rerender(tree());
+    },
+  };
 }
 
 function tab(name: string): HTMLElement {
@@ -734,6 +798,256 @@ describe("ResultsPage receiver rows link to the map", () => {
 
     expect(screen.queryByRole("link", { name: /grid-000000/ })).toBeNull();
     expect(screen.getByText("grid-000000")).toBeInTheDocument();
+  });
+});
+
+describe("ResultsPage arrival from the map", () => {
+  /*
+   * The other half of the row↔map pair: a receiver clicked on the map lands
+   * here, and the reader has to end up looking at its row.
+   *
+   * Three things have to happen for that, and each is its own assertion below:
+   * the receivers tab is the one on screen, the row is inside the mounted
+   * window, and it is marked. The parameter is then stripped, for the reason
+   * `/model`'s three are — a Back that re-fired the arrival would drag the
+   * reader back to a row they had scrolled away from.
+   *
+   * `aria-current` and not `aria-selected`: the latter is not valid on a plain
+   * `<tr>` outside a grid, and `/results` is listed as having *no* known
+   * violations in `e2e/a11y.spec.ts`, which is checked in both directions.
+   */
+
+  const BIG = 5000;
+
+  const big: ReceiverTable = {
+    indicator_order: ["Lden"],
+    units: { Lden: "dB(A)" },
+    records: Array.from({ length: BIG }, (_, i) => ({
+      id: `R${String(i).padStart(4, "0")}`,
+      x: i,
+      y: i,
+      height_m: 4,
+      values: { Lden: 50 + (i % 20) },
+    })),
+  };
+
+  const TIMEOUT_MS = 30_000;
+
+  /** The id cell of every row the table marks as the current one. */
+  function markedIds(): string[] {
+    return within(screen.getByRole("table"))
+      .getAllByRole("row")
+      .filter((row) => row.getAttribute("aria-current") !== null)
+      .map((row) => within(row).getAllByRole("cell")[0]?.textContent ?? "");
+  }
+
+  it("opens the receivers tab and marks the row the map sent", () => {
+    renderResults([run("run-1")], "/results/run-1?receiver=R2");
+
+    // The receivers tab is the default today, so this passes either way —
+    // which is the point of forcing it rather than relying on that: an
+    // arrival that landed on the raster tab would show the reader nothing.
+    expect(tab(m.tab_receivers())).toHaveAttribute("aria-selected", "true");
+    expect(markedIds()).toEqual(["R2"]);
+  });
+
+  it("strips the parameter once it has been honoured", () => {
+    renderResults([run("run-1")], "/results/run-1?receiver=R2");
+
+    expect(pathname()).toBe("/results/run-1");
+    expect(search()).toBe("");
+    // Stripped, not forgotten: the row stays marked after the URL is clean.
+    expect(markedIds()).toEqual(["R2"]);
+  });
+
+  it("leaves a query parameter it does not own alone", () => {
+    renderResults([run("run-1")], "/results/run-1?receiver=R2&utm_source=mail");
+
+    expect(search()).toBe("?utm_source=mail");
+  });
+
+  it("marks nothing for an id this run's table does not hold", () => {
+    // A link followed after the run was deleted and recomputed. There is no
+    // row to mark and nothing to say about it — the table is complete and the
+    // reader can see that the id is not in it.
+    renderResults([run("run-1")], "/results/run-1?receiver=R999");
+
+    expect(markedIds()).toEqual([]);
+    expect(search()).toBe("");
+  });
+
+  it("forgets the mark when another run is opened", () => {
+    // The detail panel is not remounted when the list selection changes, so
+    // the arrival has to be scoped to the run it arrived at. Two runs of the
+    // same scenario share their receiver ids, and without the scoping the
+    // second run's identically named row was marked as if the reader had been
+    // sent to it — by a link that named the first run.
+    renderResults([run("run-1"), run("run-2")], "/results/run-1?receiver=R2");
+    expect(markedIds()).toEqual(["R2"]);
+
+    fireEvent.click(listItem(1));
+
+    expect(pathname()).toBe("/results/run-2");
+    expect(markedIds()).toEqual([]);
+  });
+
+  it("marks no row when the reader arrives without a receiver", () => {
+    renderResults();
+
+    expect(markedIds()).toEqual([]);
+  });
+
+  it(
+    "scrolls a row far down the table into the mounted window",
+    () => {
+      // The whole point of the move: R3000 is nowhere near the window the
+      // table opens on, and a mark on an unmounted row is a mark on nothing.
+      state.receiverTable = big;
+      renderResults([run("run-1")], "/results/run-1?receiver=R3000");
+
+      const ids = rowIds();
+      expect(ids).toContain("R3000");
+      expect(ids).not.toContain("R0000");
+      // Still a window: the scroll must not have pulled the table in behind
+      // it, which is the failure mode a `scrollIntoView` on a mounted-only
+      // row would have been fixed with.
+      expect(ids.length).toBeLessThan(BIG / 10);
+      expect(markedIds()).toEqual(["R3000"]);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "waits for the table before deciding the row is not there",
+    () => {
+      // The cold load, which every other test here skips by handing the hook
+      // its data synchronously: on the first render `useReceiverTable` has
+      // nothing yet. An arrival answered from that state is answered from no
+      // evidence, and because the answer is recorded it is also final — the
+      // run that happens once the rows arrive is refused by the guard, and
+      // R3000 stays outside the window under a URL that was already stripped.
+      state.receiverTable = undefined;
+      state.receiverTableLoading = true;
+      const { repaint } = renderResults(
+        [run("run-1")],
+        "/results/run-1?receiver=R3000",
+      );
+
+      state.receiverTable = big;
+      state.receiverTableLoading = false;
+      repaint();
+
+      const ids = rowIds();
+      expect(ids).toContain("R3000");
+      expect(ids).not.toContain("R0000");
+      expect(markedIds()).toEqual(["R3000"]);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "keeps the row indices right after the scroll",
+    () => {
+      // `aria-rowindex` travels with the row, so the marked row announces the
+      // position it has in the whole table rather than in the window.
+      state.receiverTable = big;
+      renderResults([run("run-1")], "/results/run-1?receiver=R3000");
+
+      const marked = within(screen.getByRole("table"))
+        .getAllByRole("row")
+        .find((row) => row.getAttribute("aria-current") !== null);
+      expect(marked).toHaveAttribute("aria-rowindex", "3002");
+      expect(screen.getByRole("table")).toHaveAttribute(
+        "aria-rowcount",
+        String(BIG + 1),
+      );
+    },
+    TIMEOUT_MS,
+  );
+
+  it("introduces no axe violations with a row marked", async () => {
+    renderResults([run("run-1")], "/results/run-1?receiver=R2");
+
+    const results = await axe.run(screen.getByRole("table"), {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "best-practice"] },
+    });
+
+    expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  }, 30_000);
+});
+
+describe("ReceiversTab arriving at a filtered-out row", () => {
+  /*
+   * The row the arrival names can be filtered out, and the decision taken is
+   * to clear the filter rather than to do nothing.
+   *
+   * A silent no-op would leave the reader on a table that visibly does not
+   * contain what they clicked, with nothing on screen saying why; the filter
+   * is the reader's own state, but it is also the only thing standing between
+   * them and the row they asked for. Clearing it is the answer that can be
+   * seen.
+   *
+   * Driven against the tab directly, because through the page the filter can
+   * only be typed *after* the arrival has been honoured — and an arrival is
+   * honoured once, which is what keeps this from fighting a filter the reader
+   * types later.
+   */
+
+  function renderTab(receiverId: string | null) {
+    return render(
+      <MemoryRouter>
+        <ReceiversTab run={run("run-1")} receiverId={receiverId} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("clears a filter that is hiding the arriving row", () => {
+    const { rerender } = renderTab(null);
+    fireEvent.change(filterInput(), { target: { value: "R10" } });
+    expect(rowIds()).toEqual(["R10"]);
+
+    rerender(
+      <MemoryRouter>
+        <ReceiversTab run={run("run-1")} receiverId="R2" />
+      </MemoryRouter>,
+    );
+
+    expect(filterInput()).toHaveValue("");
+    expect(rowIds()).toEqual(["R1", "R10", "R2"]);
+    expect(
+      within(screen.getByRole("table"))
+        .getAllByRole("row")
+        .filter((row) => row.getAttribute("aria-current") !== null)
+        .map((row) => within(row).getAllByRole("cell")[0]?.textContent),
+    ).toEqual(["R2"]);
+  });
+
+  it("leaves the filter alone for an id no filter is hiding", () => {
+    // The id is not in the table at all, so clearing the filter would reveal
+    // nothing and would throw away the reader's state for no reason.
+    const { rerender } = renderTab(null);
+    fireEvent.change(filterInput(), { target: { value: "R10" } });
+
+    rerender(
+      <MemoryRouter>
+        <ReceiversTab run={run("run-1")} receiverId="R999" />
+      </MemoryRouter>,
+    );
+
+    expect(filterInput()).toHaveValue("R10");
+    expect(rowIds()).toEqual(["R10"]);
+  });
+
+  it("does not fight a filter typed after the arrival", () => {
+    // The arrival is honoured once. A reader who lands on a row and then
+    // filters it away meant to: the table must not snap the filter back.
+    renderTab("R2");
+    expect(rowIds()).toEqual(["R1", "R10", "R2"]);
+
+    fireEvent.change(filterInput(), { target: { value: "R10" } });
+
+    expect(filterInput()).toHaveValue("R10");
+    expect(rowIds()).toEqual(["R10"]);
   });
 });
 

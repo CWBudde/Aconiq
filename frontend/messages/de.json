@@ -35,6 +35,7 @@
   "msg_result_contours_failed": "Die Isophonen konnten nicht berechnet werden.",
   "msg_result_run_unavailable": "Die Berechnung {runId} ist hier nicht verfügbar; angezeigt wird deshalb die neueste abgeschlossene Berechnung.",
   "action_show_receiver_on_map": "Empfänger {id} auf der Karte zeigen",
+  "action_show_receiver_in_results": "Empfänger {id} in den Ergebnissen zeigen",
   "nav_model": "Karte",
   "nav_import": "Import",
   "nav_run": "Berechnung",

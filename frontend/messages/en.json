@@ -35,6 +35,7 @@
   "msg_result_contours_failed": "The contour lines could not be traced.",
   "msg_result_run_unavailable": "Run {runId} is not available here, so the newest completed run is shown.",
   "action_show_receiver_on_map": "Show receiver {id} on the map",
+  "action_show_receiver_in_results": "Show receiver {id} in the results",
   "nav_model": "Map",
   "nav_import": "Import",
   "nav_run": "Run",

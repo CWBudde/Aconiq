@@ -1525,7 +1525,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase D — Map workspace
 
-- [ ] **A `disabled` Button under a Radix tooltip is the live constraint, not an open item.**
+- [x] **A `disabled` Button under a Radix tooltip is the live constraint, not an open item.**
+      (2026-09-19) — ticked as what it always was: a recorded constraint, not work. It is enforced
+      in the code today (`map/draw-toolbar.tsx:113,137`, `map/undo-redo-bar.tsx:65,86`), so an open
+      box here only ever misread as a pending fix.
       Every control on the map that refuses an action now uses `aria-disabled` plus a
       click handler that swallows activation — `ui/mode-gate.tsx` carries the argument,
       `map/draw-toolbar.tsx` and `map/undo-redo-bar.tsx` both use it. `disabled` puts
@@ -1579,13 +1582,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       that is safe here only because terra-draw's geometry is cumulative. Left out: `Multi*`
       geometry is refused rather than silently reduced to its first ring, and a metric reshape whose
       projection fails is reported by the feature snapping back rather than by a notice.
-- [ ] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
+- [x] **Editor completeness**: the array-valued `schall03_operations` and `schall03_track_features`
       are still reported by count and not edited, so a rail model's Zugarten still have to be
       written into the model file by hand. That is a decision rather than a gap: a form for them is
       a second model editor, and half of one is how an Fz composition silently loses a vehicle.
       `schall03_track_features` carries coordinates in its properties besides, which puts it in
       `PROPERTY_GEOMETRIES` — browser mode cannot move those and refuses a model that carries one
       outright — so an editor for it would be filling in a model that half the app cannot run.
+      (2026-09-19) — ticked as a decision taken, not a gap closed. The choice is pinned by the
+      comment at `map/feature-editor.test.tsx:1300`; an open box implied an editor was still owed.
 - [x] **The receiver's Gebietskategorie** (#52). The receiver panel writes
       `bimschv16_area_category`, the first of `categoryFromFeature`'s five tries, so a value set
       here outranks an older spelling the same receiver still carries;
@@ -1614,7 +1619,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       The ramp is a decibel ramp and only paints a table whose `unit` says decibels: `beb-exposure`
       writes `"mixed"` and puts dwelling and person counts in `indicator_order`.
       The row→map link is offered only for an id the model store holds — `auto-grid` receiver ids
-      are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
+      are the run's own and `ArrivalParams`/`FeatureEditor` find nothing under them — and is a real
       `<a>`, never a button that navigates, which no axe rule would catch.
       No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
 - [x] **Results on the map: the raster** (#60). Four constraints stay live. MapLibre 5 has no
@@ -1636,16 +1641,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       is a different risk from a layer this app draws under its own legend. And labels remain out
       structurally, not by omission — no style in `basemap.ts` declares `glyphs`, and adding one
       means adding it to `OFFLINE_STYLE`, which exists to survive without a network.
-- [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
-- [x] **A per-indicator unit on the receiver table and the raster sidecar** (#64). Both containers
-      carry `Units map[string]string` keyed by channel name. Four constraints stay live. The units
-      are **not** in the receivers CSV and must not be — that byte contract is mirrored in
-      `frontend/src/model/receiver-csv.ts`. A container is refused unless its units name every
-      declared channel exactly once, and a raster naming no bands may carry none. A legacy scalar
-      `unit` is expanded **on read, by every reader**: `LoadReceiverTableJSON`,
-      `RasterMetadata.UnmarshalJSON` and the frontend's `withLegacyUnits`; a reader that decodes
-      these artifacts itself will silently strand every run already on disk. And the map filters
-      rather than gating, so a mixed table paints its decibel indicators.
+- [x] **The map→table direction** (2026-09-19). `INTERACTIVE_LAYERS` splits into `MODEL_LAYERS` and
+      `RESULT_LAYERS`, queried in that order, and `/results` honours a `receiver` param the way
+      `/model` honours its three. Four constraints stay live.
+      A model feature under the pointer wins and opens the editor; the result circle is reported
+      through its **own** callback, so the two paths cannot be confused at the call site. Model
+      receivers reach the table through a real `<a>` in the editor instead, offered only for an id
+      that run's table holds.
+      **`ResultLayers` reports the run it drew** (`onRunDrawn`), because `requestedRunId` is `null`
+      for a reader who did not arrive from a results row while the map still draws the newest
+      completed run — resolving it again on the map page would be a second answer to which run is
+      on screen.
+      **An arrival is a run and an id, never a bare id**: `RunResultDetail` is not remounted when
+      the run-list selection changes, and two runs of one scenario share receiver ids.
+      **The mark is `aria-current` and paint only** — `ROW_HEIGHT_PX` and `ROW_CLASS`'s `h-[29px]`
+      are one fact spelled twice, and a mark that touched the box would make the virtualizer
+      mismeasure. **The arrival must not be decided before the table loads**: `useReceiverTable`
+      answers `undefined` first, and recording "not in this table" from that is permanent.
 - [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
       (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
       `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do
@@ -1653,27 +1665,32 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       could read becomes unreachable the moment its run is deleted, because an `ArtifactRef` id is
       the only handle `GET /api/v1/artifacts/{id}/content` takes. Decide whether a delivered
       bundle should keep addressable refs; do not change it as a side effect of the map work.
-- [ ] **A raster byte write that hits quota is not retried.** `persistRun` recovers from quota by
-      dropping the oldest run and writing again, but `startRun` writes the raster bytes _before_
-      there is any document change to pair the eviction with, so it reports the failure instead.
-      Covering it means inverting that order for the retry alone: evict (a document write, which
-      frees the victim's bytes in the same transaction), then write the bytes, then the document
-      naming them. Worth doing only alongside the sweep below, because the intermediate state —
-      bytes stored under a document that does not yet name them — is exactly what the sweep
-      reclaims.
-- [ ] **Browser mode has no sweep for byte records nothing names.** Every deliberate path now
-      deletes them — the run cap, eviction, `deleteRun`, and `startRun` when its own persist fails
-      — but each is a caller that knows which ids it orphaned. A tab closed between
-      `saveArtifactBytes` and the document write leaves a record no caller ever knew about, and
-      only `clearPersistedState` removes it. `browser-storage` already keys these under
-      `artifact-bytes:` and range-deletes the prefix, so listing them is a `getAllKeys` away; the
-      work is the ordering, not the query. A sweep must run **once per session and under
-      `withStoreLock`**, because `startRun` holds that lock across both writes and a sweep that
-      does not would delete the bytes of a run another tab is mid-way through storing. It must
-      also not run when the document was unreadable or the store unavailable: both leave the
-      document in place deliberately, so what it names is unknown. Note that `reloadState()` calls
-      `loadState()` on every write — a sweep placed there would delete the bytes of the run being
-      written, and one placed in `ensureLoaded` can be reached from inside the lock it would need.
+      (2026-09-19) — still open, and re-checked rather than inherited: the claim holds exactly.
+      `dropRunArtifacts` never appends a matching ref to `kept`, export or not, and
+      `handleArtifactContent` scans `proj.Artifacts` for the id with no path or kind fallback, so
+      the 404 is certain. One correction to the wording above: **the test is on `ref.Kind`, not on
+      the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
+      bundles anywhere and a path test would recognise only the ones that landed in the default
+      directory. The affected kinds are the five `export.format_*` ones.
+- [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
+      nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
+      under a document that does not yet name them — is what the sweep reclaims. Both files are
+      `src/api/browser-storage.ts` and `src/api/browser-backend.ts`; `src/wasm/` holds only the
+      kernel. Four constraints stay live.
+      **`loadState` returns `{ state, origin }`.** Without it "store unavailable", "document
+      corrupt" and "nothing stored" are indistinguishable and all can carry an empty run list, so
+      "do not sweep when the document was unreadable" is not expressible. A module-scope flag is
+      the wrong shape: it is only right until the next load, so the sweep would read the origin of
+      _some_ load rather than of the one whose run list it is about to delete against.
+      **The sweep runs under `withStoreLock` and before its body**, because the retry leaves the
+      orphan state inside that body; a sweep afterwards reclaims the raster just stored. Safe only
+      because `withStoreLock` is never nested.
+      **No Web Locks, no sweep.** The unlocked fallback is survivable for the writes themselves —
+      `reloadState()` keeps sequential cross-tab writes from dropping each other — but not for the
+      sweep: the latch is per module, so another tab's in-flight bytes look like orphans. A lost
+      write can be repeated; a deleted raster cannot.
+      **The eviction stands when the byte retry fails after it committed**, unlike `persistRun`'s
+      rollback: it took the victim's raster with it in the same transaction.
 - [x] **CRS and basemap** (#53). The constraints it leaves live. The tile URL is a per-browser
       localStorage override (`map/tile-source.ts`, edited in Connection settings), so `basemap.ts`
       builds its styles on demand — one captured at import time would ignore the override — and a
@@ -1734,15 +1751,13 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       by an advisory `frontend-coverage` job, because a coverage regression must not be able to fail
       a required check. That job published a number less than half the truth from the day it was
       created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
-- [ ] **Four vendored shadcn components have no importers anywhere.**
-      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` are 176
-      statements that nothing in `src/` or `e2e/` imports. They are most of what keeps `src/ui` at
-      77% while this repository's **own** shared components under `src/ui` sit at 91.5%, most of
-      them at 100%. Testing them would be the purest coverage theatre available here, so the choice
-      is to delete them or to keep them deliberately as design-system stock — a decision about what
-      the design system holds on hand, not a coverage question.
-      The remaining honest gaps after that are `src/wasm` (45.2%, the browser-side kernel loader —
-      `kernel-node.ts` is what the parity suites exercise) and `src/layouts` (41.7%, 24 statements).
+- [x] **The four vendored shadcn components with no importers are deleted** (2026-09-19).
+      `table.tsx`, `resizable.tsx`, `scroll-area.tsx`, `textarea.tsx`, and with them
+      `@radix-ui/react-scroll-area` and `react-resizable-panels`. The decision this file asked for
+      was delete or keep as design-system stock, and it is delete: stock nothing has reached for is
+      a second answer to what a table looks like here, waiting to disagree with the first.
+      The honest gaps named beside this entry are unchanged: `src/wasm` (the browser-side kernel
+      loader — `kernel-node.ts` is what the parity suites exercise) and `src/layouts`.
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three

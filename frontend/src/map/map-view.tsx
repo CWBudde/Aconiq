@@ -78,8 +78,8 @@ function isBasemapTileFailure(event: unknown): boolean {
   return (event as { sourceId?: unknown }).sourceId === BASEMAP_SOURCE_ID;
 }
 
-/** Layers that are interactive (click/hover targets) */
-const INTERACTIVE_LAYERS = [
+/** The model's own layers: a click here is a selection. */
+const MODEL_LAYERS = [
   LAYER_IDS.sourcesPoint,
   LAYER_IDS.sourcesLine,
   LAYER_IDS.sourcesArea,
@@ -87,6 +87,42 @@ const INTERACTIVE_LAYERS = [
   LAYER_IDS.barrierLine,
   LAYER_IDS.receiversPoint,
 ];
+
+/**
+ * A run's computed receivers: a click here is a question about a *result*, and
+ * it is reported through `onResultReceiverClick` rather than `onFeatureClick`.
+ *
+ * Two lists and not one, because the two populations are not the same thing.
+ * Most of a run's circles are `auto-grid` receivers the CLI named itself
+ * (`grid-000000`…); nothing of that kind is in the model store, so a page
+ * handed one through the selection callback would open an editor on an id it
+ * cannot find. Splitting the query is what makes the precedence rule — the
+ * model object if there is one, the result row otherwise — a property of this
+ * component instead of an id-sniffing convention at every call site.
+ */
+const RESULT_LAYERS = [LAYER_IDS.resultReceiverLevel];
+
+/** Both, for the cursor: everything clickable has to look clickable. */
+const INTERACTIVE_LAYERS = [...MODEL_LAYERS, ...RESULT_LAYERS];
+
+/**
+ * The subset of `ids` the style actually holds.
+ *
+ * `queryRenderedFeatures` throws on a layer the style does not know, and these
+ * layers come and go: `ModelLayers` adds its own once a model is loaded, and
+ * the result layers only exist once a run has been drawn. So the filter runs
+ * per event rather than once — `getLayer` itself throws while the style is
+ * still being swapped, which is why it is wrapped as well.
+ */
+function presentLayers(map: Map, ids: readonly string[]): string[] {
+  return ids.filter((id) => {
+    try {
+      return map.getLayer(id) != null;
+    } catch {
+      return false;
+    }
+  });
+}
 
 interface MapViewProps {
   children?: React.ReactNode;
@@ -97,8 +133,16 @@ interface MapViewProps {
   center?: [number, number];
   /** Initial zoom level. Read once on mount, like `center`. */
   zoom?: number;
-  /** Called when a feature is clicked. */
+  /** Called when a model feature is clicked. */
   onFeatureClick?: (features: MapGeoJSONFeature[], e: MapMouseEvent) => void;
+  /**
+   * Called when a run's result receiver is clicked with no model feature over
+   * it. See {@link RESULT_LAYERS} for why this is not `onFeatureClick`.
+   */
+  onResultReceiverClick?: (
+    features: MapGeoJSONFeature[],
+    e: MapMouseEvent,
+  ) => void;
   /** Called when the hovered feature changes. */
   onFeatureHover?: (feature: MapGeoJSONFeature | null) => void;
 }
@@ -108,6 +152,7 @@ export function MapView({
   center = [10.45, 51.16],
   zoom = 6,
   onFeatureClick,
+  onResultReceiverClick,
   onFeatureHover,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -217,20 +262,27 @@ export function MapView({
   // Feature click handler
   useEffect(() => {
     const m = mapRef.current;
-    if (!m || !onFeatureClick) return;
+    if (!m) return;
+    if (!onFeatureClick && !onResultReceiverClick) return;
 
     const handler = (e: MapMouseEvent) => {
-      const features = m.queryRenderedFeatures(e.point, {
-        layers: INTERACTIVE_LAYERS.filter((id) => {
-          try {
-            return m.getLayer(id) != null;
-          } catch {
-            return false;
-          }
-        }),
+      // Two queries, in precedence order, rather than one query and a test on
+      // what came back. The model layers are asked first and answered first,
+      // so a result circle under a building is never reported at all — which
+      // is the same thing the user sees, the model being drawn on top.
+      const model = m.queryRenderedFeatures(e.point, {
+        layers: presentLayers(m, MODEL_LAYERS),
       });
-      if (features.length > 0) {
-        onFeatureClick(features, e);
+      if (model.length > 0) {
+        onFeatureClick?.(model, e);
+        return;
+      }
+
+      const results = m.queryRenderedFeatures(e.point, {
+        layers: presentLayers(m, RESULT_LAYERS),
+      });
+      if (results.length > 0) {
+        onResultReceiverClick?.(results, e);
       }
     };
 
@@ -238,7 +290,7 @@ export function MapView({
     return () => {
       m.off("click", handler);
     };
-  }, [map, onFeatureClick]);
+  }, [map, onFeatureClick, onResultReceiverClick]);
 
   // Feature hover handler (cursor + callback)
   useEffect(() => {
@@ -246,14 +298,11 @@ export function MapView({
     if (!m) return;
 
     const handleMove = (e: MapMouseEvent) => {
+      // One query over both lists here, unlike the click above: the cursor is
+      // the same answer for either population, and a clickable circle that
+      // does not show a pointer is a control nobody discovers.
       const features = m.queryRenderedFeatures(e.point, {
-        layers: INTERACTIVE_LAYERS.filter((id) => {
-          try {
-            return m.getLayer(id) != null;
-          } catch {
-            return false;
-          }
-        }),
+        layers: presentLayers(m, INTERACTIVE_LAYERS),
       });
 
       const canvas = m.getCanvas();

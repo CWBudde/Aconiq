@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { LAYER_IDS } from "./layers";
 
 // maplibre-gl cannot run in jsdom (no WebGL), so the whole module is replaced
 // by a fake whose `Map` records instances and can be told to throw. The fake
@@ -22,10 +23,26 @@ const fake = vi.hoisted(() => {
     /** What `getCenter`/`getZoom` report; the component reads them on teardown. */
     center: { lng: number; lat: number };
     zoom: number;
+    /**
+     * The layer ids this style holds, and what a query over each answers.
+     *
+     * Both are empty by default, which is the state every test written before
+     * the result layers existed assumed: `getLayer` returns nothing, the
+     * component filters every id out of its query, and no callback fires.
+     * `withLayer` is how a test says a layer is on the map and what is under
+     * the pointer in it.
+     */
+    readonly layers = new Set<string>();
+    readonly rendered = new Map<string, { properties: unknown }[]>();
     readonly addControl = vi.fn();
     readonly remove = vi.fn();
-    readonly getLayer = vi.fn(() => undefined);
-    readonly queryRenderedFeatures = vi.fn(() => []);
+    readonly getLayer = vi.fn((id: string) =>
+      this.layers.has(id) ? { id } : undefined,
+    );
+    readonly queryRenderedFeatures = vi.fn(
+      (_point: unknown, options?: { layers?: string[] }) =>
+        (options?.layers ?? []).flatMap((id) => this.rendered.get(id) ?? []),
+    );
 
     constructor(options: MapOptions) {
       state.constructCalls += 1;
@@ -64,6 +81,13 @@ const fake = vi.hoisted(() => {
 
     getZoom(): number {
       return this.zoom;
+    }
+
+    /** Add a layer to the style, holding the features a query over it finds. */
+    withLayer(id: string, features: { properties: unknown }[] = []): this {
+      this.layers.add(id);
+      this.rendered.set(id, features);
+      return this;
     }
 
     /** Move the viewport the way a user's pan and zoom would. */
@@ -129,6 +153,11 @@ function latestInstance() {
 }
 
 const MAP_LOAD_TIMEOUT_MS = 15000;
+
+/** A rendered feature as `queryRenderedFeatures` hands it over. */
+function hit(id: string) {
+  return { properties: { id } };
+}
 
 beforeEach(() => {
   vi.resetModules();
@@ -358,5 +387,122 @@ describe("MapView", () => {
       vi.advanceTimersByTime(MAP_LOAD_TIMEOUT_MS);
     });
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("MapView result receivers", () => {
+  /*
+   * A receiver drawn by `ResultLayers` is a click target like any model
+   * feature, and it must not arrive through the same callback.
+   *
+   * The precedence rule — a click selects the model object if there is one and
+   * goes to the results table otherwise — is expressed by *which* callback
+   * fires, not by the page sniffing an id afterwards. That is the whole point
+   * of the second prop: `auto-grid` receivers are named by the run and are in
+   * no model store, so a page told only "a feature was clicked" would have to
+   * guess which population the id belonged to.
+   */
+
+  /** A loaded map holding the given layers, with the given handlers bound. */
+  async function loadedMap(
+    handlers: {
+      onFeatureClick?: (features: unknown[]) => void;
+      onResultReceiverClick?: (features: unknown[]) => void;
+    },
+    layers: Record<string, { properties: unknown }[]>,
+  ) {
+    const MapView = await loadMapView();
+    render(<MapView {...handlers} />);
+    const instance = latestInstance();
+    for (const [id, features] of Object.entries(layers)) {
+      instance.withLayer(id, features);
+    }
+    // The click and hover effects read the map through the ref the `load`
+    // handler fills, so nothing is bound until the map has loaded.
+    act(() => {
+      instance.fire("load");
+    });
+    return instance;
+  }
+
+  const POINTER = { point: { x: 10, y: 10 } };
+
+  it("reports a result receiver through its own callback", async () => {
+    const onFeatureClick = vi.fn();
+    const onResultReceiverClick = vi.fn();
+    const map = await loadedMap(
+      { onFeatureClick, onResultReceiverClick },
+      { [LAYER_IDS.resultReceiverLevel]: [hit("grid-000042")] },
+    );
+
+    act(() => {
+      map.fire("click", POINTER);
+    });
+
+    expect(onResultReceiverClick).toHaveBeenCalledTimes(1);
+    expect(onResultReceiverClick.mock.calls[0]?.[0]).toEqual([
+      hit("grid-000042"),
+    ]);
+    // The editor path is untouched: nothing in the model was clicked.
+    expect(onFeatureClick).not.toHaveBeenCalled();
+  });
+
+  it("gives a model feature under the pointer precedence over a circle", async () => {
+    // A receiver the user placed and the run's own circle for it are under the
+    // same pixel. The model object wins: the editor is the only thing that can
+    // change it, and it is the editor that offers the way on to the table.
+    const onFeatureClick = vi.fn();
+    const onResultReceiverClick = vi.fn();
+    const map = await loadedMap(
+      { onFeatureClick, onResultReceiverClick },
+      {
+        [LAYER_IDS.receiversPoint]: [hit("rcv-1")],
+        [LAYER_IDS.resultReceiverLevel]: [hit("rcv-1")],
+      },
+    );
+
+    act(() => {
+      map.fire("click", POINTER);
+    });
+
+    expect(onFeatureClick).toHaveBeenCalledTimes(1);
+    expect(onFeatureClick.mock.calls[0]?.[0]).toEqual([hit("rcv-1")]);
+    expect(onResultReceiverClick).not.toHaveBeenCalled();
+  });
+
+  it("shows the pointer cursor over a result receiver", async () => {
+    // The cursor comes off the same layer list the click does. A circle that
+    // can be clicked and does not say so is a control nobody finds.
+    const map = await loadedMap(
+      {},
+      { [LAYER_IDS.resultReceiverLevel]: [hit("grid-000042")] },
+    );
+
+    act(() => {
+      map.fire("mousemove", POINTER);
+    });
+    expect(map.getCanvas().style.cursor).toBe("pointer");
+
+    map.rendered.set(LAYER_IDS.resultReceiverLevel, []);
+    act(() => {
+      map.fire("mousemove", POINTER);
+    });
+    expect(map.getCanvas().style.cursor).toBe("");
+  });
+
+  it("does nothing on a circle when no result handler was given", async () => {
+    // `pages/map.tsx` passes both, but nothing forces a caller to, and a map
+    // without the second handler must not route a circle into the first.
+    const onFeatureClick = vi.fn();
+    const map = await loadedMap(
+      { onFeatureClick },
+      { [LAYER_IDS.resultReceiverLevel]: [hit("grid-000042")] },
+    );
+
+    act(() => {
+      map.fire("click", POINTER);
+    });
+
+    expect(onFeatureClick).not.toHaveBeenCalled();
   });
 });

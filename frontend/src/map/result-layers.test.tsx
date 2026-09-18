@@ -226,10 +226,17 @@ class FakeMap {
   }
 }
 
-function renderLayers(map: FakeMap, requestedRunId: string | null = null) {
+function renderLayers(
+  map: FakeMap,
+  requestedRunId: string | null = null,
+  // A no-op default rather than an optional prop: `exactOptionalPropertyTypes`
+  // refuses an explicit `undefined` for a `?:` prop, and the alternative —
+  // spreading the prop in conditionally — reads as if the two cases differed.
+  onRunDrawn: (run: RunSummary | null) => void = () => {},
+) {
   render(
     <MapContext value={map as unknown as MapLibreMap | null}>
-      <ResultLayers requestedRunId={requestedRunId} />
+      <ResultLayers requestedRunId={requestedRunId} onRunDrawn={onRunDrawn} />
     </MapContext>,
   );
 }
@@ -372,6 +379,95 @@ describe("ResultLayers", () => {
     renderLayers(map);
 
     expect(await screen.findByText("run-2")).toBeInTheDocument();
+  });
+
+  /*
+   * `onRunDrawn` is the only thing that tells the page which run these layers
+   * resolved, and the page cannot work it out: the fallback to the newest
+   * completed run is made here, over a run list the page deliberately does
+   * not fetch. A click on a circle then links to whatever this reported.
+   *
+   * Tested against the real component, because the one other place it appears
+   * is a stub in `pages/map.test.tsx` — a stub cannot catch the producer
+   * drifting, and a wrong run here is not visible on screen: the map names
+   * the run it drew, so a link to a stale one looks entirely ordinary.
+   */
+  describe("reporting the run it drew", () => {
+    it("reports the requested run when the route names one", async () => {
+      state.runs = [
+        completedRun("run-1", "2026-01-01T10:00:00Z"),
+        completedRun("run-2", "2026-01-02T10:00:00Z"),
+      ];
+      const drawn = vi.fn<(run: RunSummary | null) => void>();
+
+      const map = new FakeMap();
+      renderLayers(map, "run-1", drawn);
+
+      await screen.findByText("run-1");
+      expect(drawn.mock.calls.at(-1)?.[0]?.id).toBe("run-1");
+    });
+
+    it("reports the newest completed run when the route names none", async () => {
+      state.runs = [
+        completedRun("run-2", "2026-01-02T10:00:00Z"),
+        completedRun("run-1", "2026-01-01T10:00:00Z"),
+      ];
+      const drawn = vi.fn<(run: RunSummary | null) => void>();
+
+      const map = new FakeMap();
+      renderLayers(map, null, drawn);
+
+      await screen.findByText("run-2");
+      expect(drawn.mock.calls.at(-1)?.[0]?.id).toBe("run-2");
+    });
+
+    it("reports the substitute, not the run that was asked for", async () => {
+      // An id the project does not hold draws the newest completed run
+      // instead. Reporting the *requested* id here would hand the page a run
+      // the layers are not drawing, and a row link built from it would open a
+      // different run's table than the circles the reader clicked.
+      state.runs = [completedRun("run-2", "2026-01-02T10:00:00Z")];
+      const drawn = vi.fn<(run: RunSummary | null) => void>();
+
+      const map = new FakeMap();
+      renderLayers(map, "run-does-not-exist", drawn);
+
+      await screen.findByText("run-2");
+      expect(drawn.mock.calls.at(-1)?.[0]?.id).toBe("run-2");
+    });
+
+    it("reports null while no run has completed", () => {
+      state.runs = [];
+      const drawn = vi.fn<(run: RunSummary | null) => void>();
+
+      const map = new FakeMap();
+      renderLayers(map, null, drawn);
+
+      expect(drawn).toHaveBeenCalledWith(null);
+    });
+
+    it("reports the change when the requested run moves", async () => {
+      state.runs = [
+        completedRun("run-1", "2026-01-01T10:00:00Z"),
+        completedRun("run-2", "2026-01-02T10:00:00Z"),
+      ];
+      const drawn = vi.fn<(run: RunSummary | null) => void>();
+      const map = new FakeMap();
+
+      const tree = (requested: string | null) => (
+        <MapContext value={map as unknown as MapLibreMap | null}>
+          <ResultLayers requestedRunId={requested} onRunDrawn={drawn} />
+        </MapContext>
+      );
+      const { rerender } = render(tree("run-1"));
+      await screen.findByText("run-1");
+      expect(drawn.mock.calls.at(-1)?.[0]?.id).toBe("run-1");
+
+      rerender(tree("run-2"));
+
+      await screen.findByText("run-2");
+      expect(drawn.mock.calls.at(-1)?.[0]?.id).toBe("run-2");
+    });
   });
 
   it("paints the indicator the picker names, and only that one", async () => {
