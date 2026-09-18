@@ -40,6 +40,10 @@ type formatExportContext struct {
 	raster           *results.Raster
 	geoTransform     exportfmt.GeoTransform
 	hasGeoTransform  bool
+	// Why the declared georeference could not be used, where one was declared.
+	// Held rather than swallowed: a declaration that will not convert is a
+	// refusal, not a cue to infer.
+	geoTransformErr error
 }
 
 func executeFormatExports(
@@ -51,12 +55,15 @@ func executeFormatExports(
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) (map[string][]string, error) {
-	ctx := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
+	ctx, err := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
+	if err != nil {
+		return nil, err
+	}
 
 	out := make(map[string][]string)
 
 	for _, f := range formats {
-		err := ctx.exportFormat(f, out)
+		err = ctx.exportFormat(f, out)
 		if err != nil {
 			return nil, err
 		}
@@ -65,6 +72,16 @@ func executeFormatExports(
 	return out, nil
 }
 
+// newFormatExportContext loads what the formats read, and refuses what it
+// cannot read.
+//
+// Both loads used to drop their error on the floor. A raster sidecar that would
+// not parse left `ctx.raster` nil, which every raster format reads as "this run
+// has no raster" and skips — so `aconiq export --format geotiff` reported
+// success over a bundle holding no GeoTIFF. That is the same silence the
+// georeference refusal exists to remove, one file earlier: absence is a
+// legitimate answer only when the run wrote nothing, never when it wrote
+// something this command could not read.
 func newFormatExportContext(
 	bundleDir string,
 	projectCRS string,
@@ -72,7 +89,7 @@ func newFormatExportContext(
 	copiedResults copiedRunResults,
 	contourInterval float64,
 	modelGeoJSONPath string,
-) formatExportContext {
+) (formatExportContext, error) {
 	if strings.TrimSpace(resultsCRS) == "" {
 		resultsCRS = projectCRS
 	}
@@ -92,22 +109,26 @@ func newFormatExportContext(
 	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
 	if copiedResults.ReceiverTableJSON != "" {
 		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
-		if err == nil {
-			ctx.receiverTable = &table
+		if err != nil {
+			return formatExportContext{}, fmt.Errorf("read the run's receiver table for export: %w", err)
 		}
+
+		ctx.receiverTable = &table
 	}
 
 	// Load raster if available (needed for GeoTIFF + contours).
 	if len(copiedResults.RasterMetadataList) > 0 {
 		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
-		if err == nil {
-			ctx.raster = r
+		if err != nil {
+			return formatExportContext{}, fmt.Errorf("read the run's raster for export: %w", err)
 		}
+
+		ctx.raster = r
 	}
 
 	ctx.resolveGeoTransform()
 
-	return ctx
+	return ctx, nil
 }
 
 // resolveGeoTransform settles where this run's raster sits on the ground.
@@ -124,14 +145,26 @@ func (c *formatExportContext) resolveGeoTransform() {
 
 	meta := c.raster.Metadata()
 
+	// A declaration is the answer or it is a refusal — never a reason to go
+	// looking for a second opinion. Falling through to inference would answer
+	// an unreadable row order with a guess, and a north-up raster guessed
+	// south-up is a vertically mirrored noise map that looks entirely
+	// plausible. `results.NewRaster` validates the georeference on load, so a
+	// sidecar that reaches here with an invalid one cannot exist today; the
+	// branch is what keeps "declared, not assumed" true of this function
+	// rather than of a check three packages away.
 	if meta.Geo != nil {
 		declared, err := exportfmt.GeoTransformFromGeoreference(*meta.Geo, meta.Height)
-		if err == nil {
-			c.geoTransform = declared
-			c.hasGeoTransform = true
+		if err != nil {
+			c.geoTransformErr = err
 
 			return
 		}
+
+		c.geoTransform = declared
+		c.hasGeoTransform = true
+
+		return
 	}
 
 	if c.receiverTable == nil {
@@ -175,6 +208,13 @@ var errNoGeoTransform = errors.New(
 func (c *formatExportContext) rasterGeoTransform() (exportfmt.GeoTransform, error) {
 	if c.hasGeoTransform {
 		return c.geoTransform, nil
+	}
+
+	if c.geoTransformErr != nil {
+		return exportfmt.GeoTransform{}, fmt.Errorf(
+			"the run's raster declares a georeference this build cannot read, and a georeferenced format "+
+				"would have to reinterpret it: %w", c.geoTransformErr,
+		)
 	}
 
 	return exportfmt.GeoTransform{}, errNoGeoTransform

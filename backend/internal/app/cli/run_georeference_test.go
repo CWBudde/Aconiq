@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	exportfmt "github.com/aconiq/backend/internal/report/export"
@@ -170,10 +171,10 @@ func TestFormatExportContextPrefersTheSidecarGeoreference(t *testing.T) {
 		OriginX: 700000, OriginY: 5700000, PixelSizeM: 25, RowOrder: results.RowOrderSouthUp,
 	})
 
-	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
 		ReceiverTableJSON:  tablePath,
 		RasterMetadataList: []string{rasterPath},
-	}, 5.0, "")
+	})
 
 	got, err := ctx.rasterGeoTransform()
 	if err != nil {
@@ -198,10 +199,10 @@ func TestFormatExportContextFallsBackToInferenceForAnOlderSidecar(t *testing.T) 
 
 	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
 
-	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
 		ReceiverTableJSON:  tablePath,
 		RasterMetadataList: []string{rasterPath},
-	}, 5.0, "")
+	})
 
 	got, err := ctx.rasterGeoTransform()
 	if err != nil {
@@ -223,9 +224,9 @@ func TestFormatExportContextRefusesToInventATransform(t *testing.T) {
 	dir := t.TempDir()
 	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
 
-	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
 		RasterMetadataList: []string{rasterPath},
-	}, 5.0, "")
+	})
 
 	_, err := ctx.rasterGeoTransform()
 	if !errors.Is(err, errNoGeoTransform) {
@@ -241,9 +242,9 @@ func TestExportRefusesAGeoreferencedFormatWithoutATransform(t *testing.T) {
 	dir := t.TempDir()
 	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
 
-	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
 		RasterMetadataList: []string{rasterPath},
-	}, 5.0, "")
+	})
 
 	for name, export := range map[string]func(map[string][]string) error{
 		"geotiff":         ctx.exportGeoTIFF,
@@ -260,6 +261,99 @@ func TestExportRefusesAGeoreferencedFormatWithoutATransform(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A raster sidecar that will not load is a refusal, not an absent raster.
+//
+// The load error used to be dropped, which left the context without a raster —
+// and every raster format reads a missing raster as "this run computed none"
+// and skips it. `--format geotiff` then reported success over a bundle with no
+// GeoTIFF in it.
+func TestFormatExportContextRefusesAnUnreadableRaster(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
+
+	err := os.WriteFile(rasterPath, []byte("{not json"), 0o600)
+	if err != nil {
+		t.Fatalf("corrupt the sidecar: %v", err)
+	}
+
+	_, err = newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+		RasterMetadataList: []string{rasterPath},
+	}, 5.0, "")
+	if err == nil {
+		t.Fatal("an unreadable raster sidecar exported as though the run had no raster")
+	}
+}
+
+// The same for the receiver table: GeoPackage is built from it, and a table
+// that will not parse must not come out as a bundle quietly missing one.
+func TestFormatExportContextRefusesAnUnreadableReceiverTable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tablePath := filepath.Join(dir, "receivers.json")
+
+	err := os.WriteFile(tablePath, []byte("{not json"), 0o600)
+	if err != nil {
+		t.Fatalf("write the table: %v", err)
+	}
+
+	_, err = newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+		ReceiverTableJSON: tablePath,
+	}, 5.0, "")
+	if err == nil {
+		t.Fatal("an unreadable receiver table exported as though the run had none")
+	}
+}
+
+// A declared georeference that will not convert is a refusal, and the refusal
+// must name the declaration rather than reading as "no georeference" — the
+// latter is what sends `resolveGeoTransform` to inference.
+//
+// The state is built directly because no stored raster can reach it:
+// `results.NewRaster` validates the georeference on load, so a sidecar
+// carrying an unreadable row order never becomes a raster in the first place.
+// The branch is what keeps "declared, not assumed" a property of this
+// resolver instead of a check three packages away.
+func TestRasterGeoTransformRefusalNamesABadDeclaration(t *testing.T) {
+	t.Parallel()
+
+	ctx := formatExportContext{
+		geoTransformErr: errors.New("georeference row_order \"north-up\" is not supported"),
+	}
+
+	_, err := ctx.rasterGeoTransform()
+	if err == nil {
+		t.Fatal("an unreadable row order resolved to a transform")
+	}
+
+	if errors.Is(err, errNoGeoTransform) {
+		t.Fatalf("got the no-georeference refusal, which is the one that licenses inference: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "north-up") {
+		t.Fatalf("the refusal does not say what it could not read: %v", err)
+	}
+}
+
+func mustFormatExportContext(
+	t *testing.T,
+	bundleDir string,
+	projectCRS string,
+	resultsCRS string,
+	copiedResults copiedRunResults,
+) formatExportContext {
+	t.Helper()
+
+	ctx, err := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, 5.0, "")
+	if err != nil {
+		t.Fatalf("new format export context: %v", err)
+	}
+
+	return ctx
 }
 
 // writeGridReceiverTable writes a row-major, Y-ascending receiver table — the

@@ -92,9 +92,9 @@ func TestComputeCRSFromProvenance(t *testing.T) {
 func TestFormatExportContextLabelsResultsWithTheComputeCRS(t *testing.T) {
 	t.Parallel()
 
-	ctx := newFormatExportContext(
-		t.TempDir(), "EPSG:4326", "EPSG:25832",
-		copiedRunResults{}, 5.0, "",
+	ctx := mustFormatExportContext(
+		t, t.TempDir(), "EPSG:4326", "EPSG:25832",
+		copiedRunResults{},
 	)
 
 	if ctx.resultsCRS != "EPSG:25832" || ctx.resultsEPSG != 25832 {
@@ -112,9 +112,9 @@ func TestFormatExportContextFallsBackToTheProjectCRS(t *testing.T) {
 	t.Parallel()
 
 	for _, resultsCRS := range []string{"", "   "} {
-		ctx := newFormatExportContext(
-			t.TempDir(), "EPSG:25832", resultsCRS,
-			copiedRunResults{}, 5.0, "",
+		ctx := mustFormatExportContext(
+			t, t.TempDir(), "EPSG:25832", resultsCRS,
+			copiedRunResults{},
 		)
 
 		if ctx.resultsCRS != "EPSG:25832" || ctx.resultsEPSG != 25832 {
