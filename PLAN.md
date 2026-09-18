@@ -1615,12 +1615,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       document — `persist` clones that document whole on every save. Three constraints worth
       carrying: `getArtifactURL` is synchronous and therefore refuses binary content;
       `instanceof ArrayBuffer` is the wrong check on a value read back from IndexedDB, because the
-      structured clone can come from another realm; and **a byte record is deleted only after the
-      document that stopped naming it is stored**, never before. `persistRun` puts the un-evicted
-      list back when its retry fails, so a delete that runs first leaves a retained run whose
-      raster reads as missing — which also means eviction frees no space in time to rescue the
-      byte write itself, and `startRun` reports that failure directly rather than retrying into
-      room that is not there.
+      structured clone can come from another realm; and **a byte record is deleted in the same
+      IndexedDB transaction as the document that stopped naming it**. Neither order works across
+      two transactions: delete first and a failed write leaves a retained run — `persistRun` puts
+      the un-evicted list back — whose raster reads as missing, delete second and the eviction
+      that exists to make room retries while the room is still occupied. `savePersistedStateForgetting`
+      commits both or neither, deletes before the put.
       Still open, and the next batch: **the map layer itself** — `map/layers.ts` records that the
       `raster` and `contours` layer groups were removed because nothing added them. Then the
       map→table direction, which wants a receiver clicked on the map to scroll and mark its row;
@@ -1635,6 +1635,14 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       could read becomes unreachable the moment its run is deleted, because an `ArtifactRef` id is
       the only handle `GET /api/v1/artifacts/{id}/content` takes. Decide whether a delivered
       bundle should keep addressable refs; do not change it as a side effect of the map work.
+- [ ] **A raster byte write that hits quota is not retried.** `persistRun` recovers from quota by
+      dropping the oldest run and writing again, but `startRun` writes the raster bytes _before_
+      there is any document change to pair the eviction with, so it reports the failure instead.
+      Covering it means inverting that order for the retry alone: evict (a document write, which
+      frees the victim's bytes in the same transaction), then write the bytes, then the document
+      naming them. Worth doing only alongside the sweep below, because the intermediate state —
+      bytes stored under a document that does not yet name them — is exactly what the sweep
+      reclaims.
 - [ ] **Browser mode has no sweep for byte records nothing names.** Every deliberate path now
       deletes them — the run cap, eviction, `deleteRun`, and `startRun` when its own persist fails
       — but each is a caller that knows which ids it orphaned. A tab closed between

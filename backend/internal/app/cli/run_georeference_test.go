@@ -263,37 +263,71 @@ func TestExportRefusesAGeoreferencedFormatWithoutATransform(t *testing.T) {
 	}
 }
 
-// A raster sidecar that will not load is a refusal, not an absent raster.
+// A raster sidecar that will not load is a refusal, not an absent raster —
+// but only for the formats that read one.
 //
-// The load error used to be dropped, which left the context without a raster —
+// The load error used to be dropped, which left the context without a raster,
 // and every raster format reads a missing raster as "this run computed none"
-// and skips it. `--format geotiff` then reported success over a bundle with no
-// GeoTIFF in it.
-func TestFormatExportContextRefusesAnUnreadableRaster(t *testing.T) {
+// and skips it: `--format geotiff` reported success over a bundle with no
+// GeoTIFF in it. Raising it from the constructor instead over-corrected, and
+// took `--format gpkg` down with it — the GeoPackage is built from the
+// receiver table and the model and never opens the raster at all.
+func TestAnUnreadableRasterRefusesOnlyTheFormatsThatReadIt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
+	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), &results.Georeference{
+		OriginX: 700000, OriginY: 5700000, PixelSizeM: 25, RowOrder: results.RowOrderSouthUp,
+	})
+
+	tablePath := filepath.Join(dir, "receivers.json")
+	writeGridReceiverTable(t, tablePath, 700000, 5700000, 25)
 
 	err := os.WriteFile(rasterPath, []byte("{not json"), 0o600)
 	if err != nil {
 		t.Fatalf("corrupt the sidecar: %v", err)
 	}
 
-	_, err = newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+		ReceiverTableJSON:  tablePath,
 		RasterMetadataList: []string{rasterPath},
-	}, 5.0, "")
-	if err == nil {
-		t.Fatal("an unreadable raster sidecar exported as though the run had no raster")
+	})
+
+	for name, export := range map[string]func(map[string][]string) error{
+		"geotiff":         ctx.exportGeoTIFF,
+		"cog":             ctx.exportCOG,
+		"contour-geojson": ctx.exportContourGeoJSON,
+		"contour-gpkg":    ctx.exportContourGeoPackage,
+	} {
+		err := export(map[string][]string{})
+		if err == nil {
+			t.Fatalf("%s exported as though the run had written no raster", name)
+		}
+	}
+
+	out := map[string][]string{}
+
+	err = ctx.exportGeoPackage(out)
+	if err != nil {
+		t.Fatalf("gpkg refused over a raster it never reads: %v", err)
+	}
+
+	if len(out[string(exportfmt.FormatGeoPackage)]) == 0 {
+		t.Fatal("gpkg wrote nothing")
 	}
 }
 
-// The same for the receiver table: GeoPackage is built from it, and a table
-// that will not parse must not come out as a bundle quietly missing one.
-func TestFormatExportContextRefusesAnUnreadableReceiverTable(t *testing.T) {
+// The same for the receiver table, in the other direction: GeoPackage is built
+// from it and must refuse, while a raster carrying its own georeference needs
+// no receivers and must still export.
+func TestAnUnreadableReceiverTableRefusesOnlyTheFormatsThatReadIt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
+	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), &results.Georeference{
+		OriginX: 700000, OriginY: 5700000, PixelSizeM: 25, RowOrder: results.RowOrderSouthUp,
+	})
+
 	tablePath := filepath.Join(dir, "receivers.json")
 
 	err := os.WriteFile(tablePath, []byte("{not json"), 0o600)
@@ -301,11 +335,56 @@ func TestFormatExportContextRefusesAnUnreadableReceiverTable(t *testing.T) {
 		t.Fatalf("write the table: %v", err)
 	}
 
-	_, err = newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
-		ReceiverTableJSON: tablePath,
-	}, 5.0, "")
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+		ReceiverTableJSON:  tablePath,
+		RasterMetadataList: []string{rasterPath},
+	})
+
+	err = ctx.exportGeoPackage(map[string][]string{})
 	if err == nil {
 		t.Fatal("an unreadable receiver table exported as though the run had none")
+	}
+
+	out := map[string][]string{}
+
+	err = ctx.exportGeoTIFF(out)
+	if err != nil {
+		t.Fatalf("geotiff refused over a receiver table its sidecar makes unnecessary: %v", err)
+	}
+
+	if len(out[string(exportfmt.FormatGeoTIFF)]) == 0 {
+		t.Fatal("geotiff wrote nothing")
+	}
+}
+
+// Where the sidecar carries no georeference, inference is the only thing left
+// that can place the raster — so there the unreadable table *is* the raster
+// formats' problem, and they have to say so rather than skip.
+func TestAnUnreadableReceiverTableRefusesARasterThatNeedsInference(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	rasterPath := writeGridRaster(t, filepath.Join(dir, "grid"), nil)
+
+	tablePath := filepath.Join(dir, "receivers.json")
+
+	err := os.WriteFile(tablePath, []byte("{not json"), 0o600)
+	if err != nil {
+		t.Fatalf("write the table: %v", err)
+	}
+
+	ctx := mustFormatExportContext(t, dir, "EPSG:25832", "EPSG:25832", copiedRunResults{
+		ReceiverTableJSON:  tablePath,
+		RasterMetadataList: []string{rasterPath},
+	})
+
+	err = ctx.exportGeoTIFF(map[string][]string{})
+	if err == nil {
+		t.Fatal("geotiff wrote a raster it had no way to place")
+	}
+
+	if errors.Is(err, errNoGeoTransform) {
+		t.Fatalf("the refusal blames a missing georeference, not the table it could not read: %v", err)
 	}
 }
 
@@ -324,10 +403,7 @@ func TestExportGeoPackageRefusesAnUnreadableModelGeoJSON(t *testing.T) {
 		t.Fatalf("write the model: %v", err)
 	}
 
-	ctx, err := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{}, 5.0, modelPath)
-	if err != nil {
-		t.Fatalf("new format export context: %v", err)
-	}
+	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{}, 5.0, modelPath)
 
 	err = ctx.exportGeoPackage(map[string][]string{})
 	if err == nil {
@@ -374,12 +450,7 @@ func mustFormatExportContext(
 ) formatExportContext {
 	t.Helper()
 
-	ctx, err := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, 5.0, "")
-	if err != nil {
-		t.Fatalf("new format export context: %v", err)
-	}
-
-	return ctx
+	return newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, 5.0, "")
 }
 
 // writeGridReceiverTable writes a row-major, Y-ascending receiver table — the

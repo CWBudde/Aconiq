@@ -1129,7 +1129,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValueOnce(quota());
 
       const run = await browserBackend.startRun(RUN_SPEC);
@@ -1152,7 +1152,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValue(quota());
 
       const failure = await browserBackend
@@ -1189,7 +1189,9 @@ describe("persisted state", () => {
 
     it("reports an export the same way", async () => {
       await seedState();
-      vi.spyOn(storage, "savePersistedState").mockRejectedValue(quota());
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
+        quota(),
+      );
 
       const failure = await browserBackend
         .createExport(RUN_ID)
@@ -1215,7 +1217,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValueOnce(quota())
         .mockRejectedValueOnce(
           new storage.BrowserStorageError("unavailable", "gone away"),
@@ -1258,7 +1260,9 @@ describe("persisted state", () => {
         },
       });
       await browserBackend.getRuns();
-      vi.spyOn(storage, "savePersistedState").mockRejectedValue(quota());
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
+        quota(),
+      );
 
       await browserBackend.startRun(RUN_SPEC).catch(() => undefined);
 
@@ -1277,7 +1281,9 @@ describe("persisted state", () => {
         },
       });
       await browserBackend.getRuns();
-      vi.spyOn(storage, "savePersistedState").mockRejectedValueOnce(quota());
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValueOnce(
+        quota(),
+      );
 
       await browserBackend.startRun(RUN_SPEC);
 
@@ -1292,7 +1298,7 @@ describe("persisted state", () => {
     it("surfaces a non-quota storage failure without evicting", async () => {
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValue(
           new storage.BrowserStorageError("unavailable", "no IndexedDB"),
         );
@@ -1344,7 +1350,7 @@ describe("persisted state", () => {
      * quota path that is the resource that just ran out.
      */
     it("reclaims the raster bytes of a run that could not be stored", async () => {
-      vi.spyOn(storage, "savePersistedState").mockRejectedValue(
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
         new storage.BrowserStorageError("unavailable", "no IndexedDB"),
       );
 

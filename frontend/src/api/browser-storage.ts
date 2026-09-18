@@ -191,6 +191,78 @@ async function withStore<T>(
   });
 }
 
+/**
+ * Runs several writes inside one transaction and resolves when it commits.
+ *
+ * IndexedDB transactions are all-or-nothing, which is the only way two records
+ * that describe one change can stay consistent: the document naming a run and
+ * the bytes keyed beside it. Split across two transactions there is no safe
+ * order — delete first and a failed document write leaves a run whose raster is
+ * gone, delete second and the write that was supposed to make room runs while
+ * the space it needs is still occupied.
+ *
+ * Resolves on `oncomplete` rather than on the last request, because a quota
+ * failure can surface at commit time after every `put` has already reported
+ * success — and still listens on each request, because it can also surface
+ * there, on the one write that did not fit.
+ *
+ * `operations` returns the requests it made so both can be watched.
+ */
+async function withWriteTransaction(
+  context: string,
+  operations: (store: IDBObjectStore) => IDBRequest<unknown>[],
+): Promise<void> {
+  const db = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+    const fail = (error: unknown) => {
+      settle(() => {
+        reject(toStorageError(error, "unavailable", context));
+      });
+    };
+
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(STORE_NAME, "readwrite");
+    } catch (error) {
+      db.close();
+      reject(toStorageError(error, "unavailable", context));
+      return;
+    }
+
+    tx.onabort = () => {
+      db.close();
+      fail(tx.error);
+    };
+    tx.onerror = () => {
+      fail(tx.error);
+    };
+    tx.oncomplete = () => {
+      db.close();
+      settle(resolve);
+    };
+
+    let requests: IDBRequest<unknown>[];
+    try {
+      requests = operations(tx.objectStore(STORE_NAME));
+    } catch (error) {
+      fail(error);
+      return;
+    }
+
+    for (const request of requests) {
+      request.onerror = () => {
+        fail(request.error);
+      };
+    }
+  });
+}
+
 /** Resolves with the stored document, or `null` when nothing is stored. */
 export async function loadPersistedState(): Promise<unknown> {
   const value: unknown = await withStore(
@@ -201,10 +273,40 @@ export async function loadPersistedState(): Promise<unknown> {
   return value ?? null;
 }
 
+/**
+ * Stores the document alone. Kept separate from the pair below rather than
+ * delegating to it: the callers that give nothing up — the localStorage
+ * migration, and every test that seeds a store — should not be reaching
+ * through a function whose subject is what a write removes.
+ */
 export async function savePersistedState(value: unknown): Promise<void> {
-  await withStore("readwrite", "Browser-mode runs cannot be stored", (store) =>
+  await withWriteTransaction("Browser-mode runs cannot be stored", (store) => [
     store.put(value, STATE_KEY),
-  );
+  ]);
+}
+
+/**
+ * Stores the document and removes the byte records it stopped naming, as one
+ * change.
+ *
+ * Every caller that drops a run — the run cap, quota eviction, `deleteRun` —
+ * has exactly this pair to write, and the eviction case is why they must
+ * commit together: it writes a smaller document *in order to* free space, and
+ * doing so while the evicted run's raster still occupies the quota is the one
+ * situation eviction exists for and the one where it would achieve nothing.
+ */
+export async function savePersistedStateForgetting(
+  value: unknown,
+  artifactIds: readonly string[],
+): Promise<void> {
+  await withWriteTransaction("Browser-mode runs cannot be stored", (store) => [
+    // Deletes before the put: within one transaction that is the order that
+    // gives the document the space the eviction just freed.
+    ...artifactIds.map((artifactId) =>
+      store.delete(artifactBytesKey(artifactId)),
+    ),
+    store.put(value, STATE_KEY),
+  ]);
 }
 
 /**
@@ -280,13 +382,13 @@ export async function loadArtifactBytes(
 export async function deleteArtifactBytes(
   artifactIds: readonly string[],
 ): Promise<void> {
-  for (const artifactId of artifactIds) {
-    await withStore(
-      "readwrite",
-      "Browser-mode raster data cannot be removed",
-      (store) => store.delete(artifactBytesKey(artifactId)),
-    );
-  }
+  await withWriteTransaction(
+    "Browser-mode raster data cannot be removed",
+    (store) =>
+      artifactIds.map((artifactId) =>
+        store.delete(artifactBytesKey(artifactId)),
+      ),
+  );
 }
 
 export async function clearPersistedState(): Promise<void> {

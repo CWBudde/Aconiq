@@ -40,6 +40,20 @@ type formatExportContext struct {
 	raster           *results.Raster
 	geoTransform     exportfmt.GeoTransform
 	hasGeoTransform  bool
+	// Why a run result could not be read, held rather than raised.
+	//
+	// Held, because a format that never touches the artifact must not fail over
+	// it: `--format gpkg` reads the receiver table and the model, never the
+	// raster, and a corrupt raster sidecar is no reason to refuse it a
+	// GeoPackage it can write correctly. Each format asks for what it reads,
+	// and gets the reason if that one thing is unreadable.
+	//
+	// Rather than raised, because the alternative was to drop these on the
+	// floor — which left `ctx.raster` nil, which every raster format reads as
+	// "this run computed none" and skips. `aconiq export --format geotiff` then
+	// printed its success line over a bundle with no GeoTIFF in it.
+	rasterErr        error
+	receiverTableErr error
 	// Why the declared georeference could not be used, where one was declared.
 	// Held rather than swallowed: a declaration that will not convert is a
 	// refusal, not a cue to infer.
@@ -55,15 +69,12 @@ func executeFormatExports(
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) (map[string][]string, error) {
-	ctx, err := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
-	if err != nil {
-		return nil, err
-	}
+	ctx := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
 
 	out := make(map[string][]string)
 
 	for _, f := range formats {
-		err = ctx.exportFormat(f, out)
+		err := ctx.exportFormat(f, out)
 		if err != nil {
 			return nil, err
 		}
@@ -72,16 +83,12 @@ func executeFormatExports(
 	return out, nil
 }
 
-// newFormatExportContext loads what the formats read, and refuses what it
-// cannot read.
+// newFormatExportContext loads what the formats read, and records why anything
+// it could not read is missing.
 //
-// Both loads used to drop their error on the floor. A raster sidecar that would
-// not parse left `ctx.raster` nil, which every raster format reads as "this run
-// has no raster" and skips — so `aconiq export --format geotiff` reported
-// success over a bundle holding no GeoTIFF. That is the same silence the
-// georeference refusal exists to remove, one file earlier: absence is a
-// legitimate answer only when the run wrote nothing, never when it wrote
-// something this command could not read.
+// It does not refuse here. The refusal belongs to the format that needs the
+// artifact — see `rasterErr` on the struct — so a corrupt raster sidecar costs
+// the GeoTIFF and the contours, not the GeoPackage that never opens it.
 func newFormatExportContext(
 	bundleDir string,
 	projectCRS string,
@@ -89,7 +96,7 @@ func newFormatExportContext(
 	copiedResults copiedRunResults,
 	contourInterval float64,
 	modelGeoJSONPath string,
-) (formatExportContext, error) {
+) formatExportContext {
 	if strings.TrimSpace(resultsCRS) == "" {
 		resultsCRS = projectCRS
 	}
@@ -110,25 +117,37 @@ func newFormatExportContext(
 	if copiedResults.ReceiverTableJSON != "" {
 		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
 		if err != nil {
-			return formatExportContext{}, fmt.Errorf("read the run's receiver table for export: %w", err)
+			ctx.receiverTableErr = fmt.Errorf("read the run's receiver table for export: %w", err)
+		} else {
+			ctx.receiverTable = &table
 		}
-
-		ctx.receiverTable = &table
 	}
 
 	// Load raster if available (needed for GeoTIFF + contours).
 	if len(copiedResults.RasterMetadataList) > 0 {
 		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
 		if err != nil {
-			return formatExportContext{}, fmt.Errorf("read the run's raster for export: %w", err)
+			ctx.rasterErr = fmt.Errorf("read the run's raster for export: %w", err)
+		} else {
+			ctx.raster = r
 		}
-
-		ctx.raster = r
 	}
 
 	ctx.resolveGeoTransform()
 
-	return ctx, nil
+	return ctx
+}
+
+// rasterForExport returns the run's raster, the reason it is unreadable, or
+// nil for a run that wrote none. The three are different answers and only the
+// last one is a skip.
+func (c *formatExportContext) rasterForExport() (*results.Raster, error) {
+	return c.raster, c.rasterErr
+}
+
+// receiverTableForExport is the same contract for the receiver table.
+func (c *formatExportContext) receiverTableForExport() (*results.ReceiverTable, error) {
+	return c.receiverTable, c.receiverTableErr
 }
 
 // resolveGeoTransform settles where this run's raster sits on the ground.
@@ -163,6 +182,16 @@ func (c *formatExportContext) resolveGeoTransform() {
 
 		c.geoTransform = declared
 		c.hasGeoTransform = true
+
+		return
+	}
+
+	// Only now does the receiver table matter to a raster format: without a
+	// declaration, inference is the one thing left that can place the raster,
+	// so a table that will not load is the reason a georeferenced format has to
+	// refuse rather than a detail of a different export.
+	if c.receiverTableErr != nil {
+		c.geoTransformErr = c.receiverTableErr
 
 		return
 	}
@@ -238,7 +267,12 @@ func (c *formatExportContext) exportFormat(f exportfmt.Format, out map[string][]
 }
 
 func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
-	if c.raster == nil {
+	raster, err := c.rasterForExport()
+	if err != nil {
+		return fmt.Errorf("geotiff export: %w", err)
+	}
+
+	if raster == nil {
 		return nil // skip if no raster available
 	}
 
@@ -249,7 +283,7 @@ func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
 
 	basePath := filepath.Join(c.formatsDir, "raster")
 
-	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, geoTransform, c.resultsCRS)
+	paths, err := exportfmt.ExportGeoTIFF(basePath, raster, geoTransform, c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("geotiff export: %w", err)
 	}
@@ -265,7 +299,12 @@ func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
 }
 
 func (c *formatExportContext) exportCOG(out map[string][]string) error {
-	if c.raster == nil {
+	raster, err := c.rasterForExport()
+	if err != nil {
+		return fmt.Errorf("cog export: %w", err)
+	}
+
+	if raster == nil {
 		return nil
 	}
 
@@ -276,7 +315,7 @@ func (c *formatExportContext) exportCOG(out map[string][]string) error {
 
 	cogBasePath := filepath.Join(c.formatsDir, "raster")
 
-	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, geoTransform, c.resultsCRS)
+	cogPaths, err := exportfmt.ExportCOG(cogBasePath, raster, geoTransform, c.resultsCRS)
 	if err != nil {
 		return fmt.Errorf("cog export: %w", err)
 	}
@@ -294,10 +333,15 @@ func (c *formatExportContext) exportCOG(out map[string][]string) error {
 func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 	var gpkgPaths []string
 
-	if c.receiverTable != nil {
+	receiverTable, err := c.receiverTableForExport()
+	if err != nil {
+		return fmt.Errorf("geopackage export: %w", err)
+	}
+
+	if receiverTable != nil {
 		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
 
-		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *c.receiverTable, c.resultsCRS, c.resultsEPSG)
+		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, c.resultsCRS, c.resultsEPSG)
 		if err != nil {
 			return fmt.Errorf("geopackage export: %w", err)
 		}
@@ -393,7 +437,12 @@ func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exp
 }
 
 func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
-	if c.raster == nil {
+	raster, err := c.rasterForExport()
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	if raster == nil {
 		return nil
 	}
 
@@ -402,7 +451,7 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 		return fmt.Errorf("contour generation: %w", err)
 	}
 
-	contours, err := exportfmt.GenerateContours(c.raster, geoTransform, exportfmt.ContourOptions{
+	contours, err := exportfmt.GenerateContours(raster, geoTransform, exportfmt.ContourOptions{
 		Interval: c.contourInterval,
 	})
 	if err != nil {
@@ -427,7 +476,12 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 }
 
 func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) error {
-	if c.raster == nil {
+	raster, err := c.rasterForExport()
+	if err != nil {
+		return fmt.Errorf("contour generation: %w", err)
+	}
+
+	if raster == nil {
 		return nil
 	}
 
@@ -436,7 +490,7 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 		return fmt.Errorf("contour generation: %w", err)
 	}
 
-	contours, err := exportfmt.GenerateContours(c.raster, geoTransform, exportfmt.ContourOptions{
+	contours, err := exportfmt.GenerateContours(raster, geoTransform, exportfmt.ContourOptions{
 		Interval: c.contourInterval,
 	})
 	if err != nil {

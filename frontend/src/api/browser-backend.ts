@@ -54,6 +54,7 @@ import {
   loadPersistedState,
   saveArtifactBytes,
   savePersistedState,
+  savePersistedStateForgetting,
 } from "./browser-storage";
 
 /**
@@ -445,10 +446,23 @@ async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
   return locks.request(STORE_LOCK_NAME, fn);
 }
 
-async function persist(next: BrowserBackendState): Promise<void> {
-  state = next;
-  pruneURLCache(next);
-  await savePersistedState({ version: PERSISTED_STATE_VERSION, state: next });
+/**
+ * Writes the document, and in the same transaction removes the byte records
+ * `dropped` took with it.
+ *
+ * One transaction, not two, because the pair is one change. Splitting them
+ * forces a choice with no good answer: delete first and a failed write leaves a
+ * retained run whose raster is gone, delete second and the eviction that exists
+ * to make room retries while the room is still occupied. IndexedDB commits both
+ * or neither, so neither half can be observed alone.
+ */
+async function persist(pending: PendingState): Promise<void> {
+  state = pending.state;
+  pruneURLCache(pending.state);
+  await savePersistedStateForgetting(
+    { version: PERSISTED_STATE_VERSION, state: pending.state },
+    binaryArtifactIDs(pending.dropped),
+  );
 }
 
 /**
@@ -466,17 +480,15 @@ async function persistRun(
 ): Promise<void> {
   const next = setRun(await reloadState(), storedRun);
   try {
-    await persist(next.state);
-    forgetArtifactBytes(next.dropped);
+    await persist(next);
     return;
   } catch (error) {
     if (!isBrowserStorageError(error, "quota")) throw storeFailure(what, error);
   }
-  const evicted = evictOldestRun(next.state, storedRun.run.id);
+  const evicted = evictOldestRun(next, storedRun.run.id);
   if (evicted !== null) {
     try {
-      await persist(evicted.state);
-      forgetArtifactBytes([...next.dropped, ...evicted.dropped]);
+      await persist(evicted);
       return;
     } catch (error) {
       // The eviction never reached the store, so it must not reach the list
@@ -518,47 +530,57 @@ type PendingState = {
   dropped: StoredRun[];
 };
 
-/** Drops the oldest run other than `keepId`; `null` when there is none. */
+/**
+ * Drops the oldest run other than `keepId`; `null` when there is none.
+ *
+ * Carries the victim forward rather than deleting its bytes: eviction exists to
+ * free quota, and the raster is the largest thing a run owns, so `persist`
+ * removes the two together. Dropping the document entry alone would evict a run
+ * and reclaim almost nothing.
+ */
 function evictOldestRun(
-  current: BrowserBackendState,
+  current: PendingState,
   keepId: string,
 ): PendingState | null {
   // `setRun` keeps the list newest first, so the victim is the last entry
   // that is not the run being written.
-  const runs = [...current.runs];
+  const runs = [...current.state.runs];
   for (let index = runs.length - 1; index >= 0; index -= 1) {
     const victim = runs[index];
     if (victim === undefined || victim.run.id === keepId) continue;
     runs.splice(index, 1);
-    // Eviction exists to free quota, and the raster bytes are the largest
-    // thing a run owns — dropping the document entry while leaving them
-    // behind would evict a run and reclaim almost nothing. The caller deletes
-    // them once this state is stored; an eviction that never commits is the
-    // retry path, and the run it would have dropped is still on disk.
-    return { state: { ...current, runs }, dropped: [victim] };
+    return {
+      state: { ...current.state, runs },
+      // The retry writes the whole change again, so it carries what the first
+      // attempt would have dropped as well: that attempt committed nothing.
+      dropped: [...current.dropped, victim],
+    };
   }
   return null;
 }
 
-/**
- * Deletes the byte records of runs the stored document no longer names.
- *
- * Call this only after the write that dropped them has committed. Doing it
- * before is the one ordering that loses data: `persistRun` restores the
- * un-evicted list when a retry fails, and the old document on disk still names
- * the run, so bytes deleted ahead of the write leave a run whose raster reads
- * as missing.
- *
- * Deliberately not awaited: by the time it runs the document is already
- * written, and a failure here leaves an orphan record rather than a broken
- * run. `clearPersistedState` sweeps whatever is left.
- */
-function forgetArtifactBytes(storedRuns: StoredRun[]): void {
-  const binaryIds = storedRuns.flatMap((storedRun) =>
+/** The ids of every artifact these runs keep outside the document. */
+function binaryArtifactIDs(storedRuns: readonly StoredRun[]): string[] {
+  return storedRuns.flatMap((storedRun) =>
     Object.entries(storedRun.artifacts)
       .filter(([, content]) => content.encoding === "binary")
       .map(([artifactId]) => artifactId),
   );
+}
+
+/**
+ * Deletes byte records no document will ever name.
+ *
+ * Only for bytes that are *already* unreachable — a run written before a
+ * persist that then failed. Bytes a stored document is giving up travel with
+ * that document's own write instead, through `persist`, so the two commit
+ * together.
+ *
+ * Deliberately not awaited: nothing depends on the outcome, and a failure
+ * leaves an orphan record rather than a broken run.
+ */
+function forgetArtifactBytes(storedRuns: readonly StoredRun[]): void {
+  const binaryIds = binaryArtifactIDs(storedRuns);
   if (binaryIds.length === 0) return;
   void deleteArtifactBytes(binaryIds).catch(() => {
     // An orphaned byte record costs quota, not correctness.
@@ -1544,12 +1566,15 @@ async function runRLS19Road(
     try {
       await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
     } catch (error) {
-      // Eviction cannot rescue this one, which is why it is not routed through
-      // `persistRun`. That retry drops the oldest run to make room, but the
-      // victim's bytes are only deleted once the document recording the drop
-      // is stored — so at this point there is no freed space to retry into.
-      // What is left to get right is the wording: this is a storage failure
-      // like any other, and the dialogs render `error.message`.
+      // No eviction-and-retry here, unlike `persistRun`. Eviction is a
+      // *document* write — it frees space by storing a smaller document, with
+      // the dropped run's bytes removed in the same transaction — and this
+      // write happens before there is any document change to pair it with.
+      // Giving the raster its own evict-and-retry means writing the smaller
+      // document first and the bytes after; PLAN.md carries it as open rather
+      // than pretending the case is covered. What is in reach is the wording:
+      // this is a storage failure like any other, and the dialogs render
+      // `error.message`.
       throw storeFailure("run", error);
     }
 
@@ -1942,14 +1967,17 @@ out geom;`;
         throw new Error(`Run ${runId} is still running`);
       }
       await persist({
-        ...current,
-        runs: current.runs.filter((entry) => entry.run.id !== runId),
+        state: {
+          ...current,
+          runs: current.runs.filter((entry) => entry.run.id !== runId),
+        },
+        // The raster bytes are keyed outside the document, so removing the run
+        // from it reclaims nothing on its own: run, delete, repeat would fill
+        // the origin's quota with rasters no run names. In the same
+        // transaction, so a delete that does not commit still has a run with a
+        // readable raster.
+        dropped: [storedRun],
       });
-      // The raster bytes are keyed outside the document, so removing the run
-      // from it reclaims nothing on its own: run, delete, repeat would fill
-      // the origin's quota with rasters no run names. After the write, not
-      // before — a delete that did not commit still has a run to serve.
-      forgetArtifactBytes([storedRun]);
       // No paths and no surviving bundle: the export artifacts lived inside
       // the record just removed.
       return { runId, retainedPaths: [] };
