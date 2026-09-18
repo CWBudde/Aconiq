@@ -644,7 +644,9 @@ byte at both refusal sites. Four things it leaves live:
       Beiblatt 3 source catalogue have no GeoJSON representation and no run-pipeline branch, so
       Gl. 35-36 combined assessment is unreachable from a run. The conformance declaration now says
       so under "Reachability from the CLI"; it needs a `schall03_yard_*` vocabulary to stop being
-      true.
+      true. Constraint on that work: `ComputeYardPointSourceImmission` still evaluates Gl. 15's
+      flat-ground `h_m`, because no caller can hand it a DTM — whatever makes it reachable has to
+      thread one in, the way `NormativeScene.Terrain` does for the Strecken chain.
 - [ ] **Obstacles are not mirrored into a reflection's unfolded frame.** Found while fixing the
       order-≥2 origin, which is closed: `ReflectionPath.EffectiveSource` is now the last bounce's
       image source, so the diffraction check and `TotalDist` describe one ray, and a barrier across
@@ -667,7 +669,9 @@ byte at both refusal sites. Four things it leaves live:
       absolute `elevation_m` (the rail's `ZTrack`) against a ground plane at Z = 0: the datum mix,
       unfixed, for exactly the projects that motivated fixing it. A normative run in that state now
       warns in `run.log`, and the gap is declared in `CHANGELOG.md` and in entry 10 of the
-      Konformitätserklärung — **but the numbers are still wrong**. Closing it means converting
+      Konformitätserklärung — **but the numbers are still wrong**. Two corrections now miss such a
+      project, not one: without a terrain artifact the propagation path also falls back to Gl. 15's
+      flat-ground `h_m`, worth 1.16 dB on a measured 3 m hollow. Closing it means converting
       SoundPLAN contour lines, elevation points and `.dgm` files into a terrain artifact the run
       pipeline can load. Found by a review bot, not by the tests, and the claim it falsified was this
       project's own: the fix was announced as reaching "every SoundPLAN-imported project".
@@ -685,9 +689,6 @@ byte at both refusal sites. Four things it leaves live:
       builds road sources, barriers, buildings and Parkplätze, and `wasm/types.ts` now mirrors the
       terrain and reflector types because the kernel accepts them — but no model can express them
       in the browser, so the parity fixtures cannot cover them.
-- [ ] **No terrain on the Schall 03 propagation path.** `elevation_m` is per segment and h_m falls
-      back to the flat-ground special case (deviation 4 in the conformance declaration), even when
-      the project carries a DTM the RLS-19 path already reads.
 
 ## Priority 3 — Establish real validation evidence
 

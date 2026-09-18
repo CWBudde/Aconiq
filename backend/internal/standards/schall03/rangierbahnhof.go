@@ -170,7 +170,14 @@ func ComputeYardPointSourceImmission(inp YardPointImmissionInput) (float64, erro
 	dOmega := solidAngleDOmega(dp, inp.SourceHeightM, inp.ReceiverHeightM)
 	adivVal := adiv(dSlant)
 
-	hm := meanPathHeight(inp.SourceHeightM, inp.ReceiverHeightM)
+	// Ground offset 0: the Rangierbahnhof chain stays on the flat-ground reading
+	// of Gl. 15 on purpose.  Rangier- und Umschlagbahnhöfe are a library-only
+	// surface — no CLI command and no API route builds a YardPointImmissionInput
+	// — so no run can hand this path a DTM to sample, and inventing a terrain
+	// parameter no caller can fill would only make the limitation harder to see.
+	// The Strecken chain carries the terrain (resolvePathGroundOffset); this one
+	// keeps deviation 4's flat ground until it is reachable.
+	hm := meanPathHeight(inp.SourceHeightM, inp.ReceiverHeightM, 0)
 
 	dLand := dp * (1 - inp.WaterFractionW)
 	dWater := dp * inp.WaterFractionW

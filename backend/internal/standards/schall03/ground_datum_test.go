@@ -67,8 +67,8 @@ func TestPathGeometryIsInvariantUnderVerticalTranslation(t *testing.T) {
 	const receiverHeightM = 3.5
 
 	for _, h := range teilquelleHeightIndices {
-		atSeaLevel := newPathGeometry(heightAboveSO[h], 0, receiverHeightM, dp)
-		translated := newPathGeometry(translationM+heightAboveSO[h], translationM, receiverHeightM, dp)
+		atSeaLevel := newPathGeometry(heightAboveSO[h], 0, receiverHeightM, dp, 0)
+		translated := newPathGeometry(translationM+heightAboveSO[h], translationM, receiverHeightM, dp, 0)
 
 		if translated != atSeaLevel {
 			t.Errorf("h=%d: translating the scene %g m changed the path geometry:\n at sea level: %+v\n translated:  %+v",
@@ -96,12 +96,12 @@ func TestPathGeometryRejectsTheAbsoluteElevationAsAHeight(t *testing.T) {
 		h               = 2 // the pantograph Teilquelle, 4 m above Schienenoberkante
 	)
 
-	correct := newPathGeometry(translationM+heightAboveSO[h], translationM, receiverHeightM, dp)
+	correct := newPathGeometry(translationM+heightAboveSO[h], translationM, receiverHeightM, dp, 0)
 
 	// The old expression, reproduced here rather than called, because the
 	// production code no longer has a way to say it.
 	defectiveHg := translationM + heightAboveSO[h]
-	defectiveHm := meanPathHeight(defectiveHg, receiverHeightM)
+	defectiveHm := meanPathHeight(defectiveHg, receiverHeightM, 0)
 	defectiveD := math.Sqrt(dp*dp + (defectiveHg-receiverHeightM)*(defectiveHg-receiverHeightM))
 
 	checks := []struct {
