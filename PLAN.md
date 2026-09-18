@@ -1593,17 +1593,69 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
       `<a>`, never a button that navigates, which no axe rule would catch.
       No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
-- [ ] **Results on the map: the raster and the contours.** Three things block it, and none is
-      frontend work. Browser mode stores the run's SHA-256 hex string where the raster binary
-      belongs (`api/browser-backend.ts`) and `StoredArtifactContent.encoding` is `"json" | "text"`,
-      so a binary artifact cannot be represented there at all. The GeoTIFF, COG and contour
-      GeoJSON exports get no `ArtifactRef` — `cli/export.go` registers `export.bundle` and the
-      report kinds and nothing else — so no URL reaches them. And `results.RasterMetadata` carries
-      no geotransform; only `InferGeoTransformFromReceivers` reconstructs one, which is not
-      something a map should be doing. Also still open: the map→table direction, which wants a
-      receiver clicked on the map to scroll and mark its row; carrying the viewed run through to
-      `/model`, so a row followed from an older run does not land on the newest run's levels; and a
-      per-indicator unit on the receiver table, without which a mixed-unit run gets no map at all.
+- [ ] **Results on the map: the raster and the contours.** (2026-09-18) — partial: the three
+      blockers are closed, the map layer is not. What landed, and the constraints each leaves live.
+      **`results.RasterMetadata` carries a `georeference`** — the centre of cell (0,0), the pixel
+      size and the row order — and populates the `CRS` field it had carried unwritten since it was
+      added. Width, height and the georeference now travel as one `results.GridLayout` through all
+      eleven standards modules, because the pair of loose ints threaded through a dozen signatures
+      is how the third went missing. **Absence means "not a grid"**, never a grid at the origin:
+      explicit receivers get no georeference, and a georeferenced format is then refused rather
+      than written at the identity transform `rasterGeoTransform()` used to invent in silence.
+      `exportfmt.GeoTransformFromGeoreference` is the one conversion to GDAL's corner convention,
+      pinned against `InferGeoTransformFromReceivers` on the same grid so the switch could not move
+      a raster already written; inference stays as the fallback for older sidecars.
+      **Every `--format` file gets an `ArtifactRef`** — one per file, not per format, since GeoTIFF
+      and COG write one per band — under `export.`-prefixed kinds, which is load-bearing because
+      `projectfs.DeleteRun` selects on that prefix to keep a delivered bundle's bytes. The content
+      endpoint stops answering `application/json` for everything that is not HTML or Markdown; it
+      had been mislabelling `run.result.raster_binary` and `export.report_pdf` all along.
+      **Browser mode stores real bytes**, through `model/raster-bin.ts` pinned to Go's writer by
+      `testdata/raster-parity/`, in their own IndexedDB record rather than inside the state
+      document — `persist` clones that document whole on every save. Three constraints worth
+      carrying: `getArtifactURL` is synchronous and therefore refuses binary content;
+      `instanceof ArrayBuffer` is the wrong check on a value read back from IndexedDB, because the
+      structured clone can come from another realm; and **a byte record is deleted in the same
+      IndexedDB transaction as the document that stopped naming it**. Neither order works across
+      two transactions: delete first and a failed write leaves a retained run — `persistRun` puts
+      the un-evicted list back — whose raster reads as missing, delete second and the eviction
+      that exists to make room retries while the room is still occupied. `savePersistedStateForgetting`
+      commits both or neither, deletes before the put.
+      Still open, and the next batch: **the map layer itself** — `map/layers.ts` records that the
+      `raster` and `contours` layer groups were removed because nothing added them. Then the
+      map→table direction, which wants a receiver clicked on the map to scroll and mark its row;
+      carrying the viewed run through to `/model` (`routes.tsx` has no params and `ResultLayers`
+      always takes the newest completed run), so a row followed from an older run does not land on
+      the newest run's levels; and a per-indicator unit on the receiver table, without which a
+      mixed-unit run gets no map at all.
+- [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
+      (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
+      `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do
+      not. That is deliberate and predates the format artifacts, but it now means a GeoTIFF the map
+      could read becomes unreachable the moment its run is deleted, because an `ArtifactRef` id is
+      the only handle `GET /api/v1/artifacts/{id}/content` takes. Decide whether a delivered
+      bundle should keep addressable refs; do not change it as a side effect of the map work.
+- [ ] **A raster byte write that hits quota is not retried.** `persistRun` recovers from quota by
+      dropping the oldest run and writing again, but `startRun` writes the raster bytes _before_
+      there is any document change to pair the eviction with, so it reports the failure instead.
+      Covering it means inverting that order for the retry alone: evict (a document write, which
+      frees the victim's bytes in the same transaction), then write the bytes, then the document
+      naming them. Worth doing only alongside the sweep below, because the intermediate state —
+      bytes stored under a document that does not yet name them — is exactly what the sweep
+      reclaims.
+- [ ] **Browser mode has no sweep for byte records nothing names.** Every deliberate path now
+      deletes them — the run cap, eviction, `deleteRun`, and `startRun` when its own persist fails
+      — but each is a caller that knows which ids it orphaned. A tab closed between
+      `saveArtifactBytes` and the document write leaves a record no caller ever knew about, and
+      only `clearPersistedState` removes it. `browser-storage` already keys these under
+      `artifact-bytes:` and range-deletes the prefix, so listing them is a `getAllKeys` away; the
+      work is the ordering, not the query. A sweep must run **once per session and under
+      `withStoreLock`**, because `startRun` holds that lock across both writes and a sweep that
+      does not would delete the bytes of a run another tab is mid-way through storing. It must
+      also not run when the document was unreadable or the store unavailable: both leave the
+      document in place deliberately, so what it names is unknown. Note that `reloadState()` calls
+      `loadState()` on every write — a sweep placed there would delete the bytes of the run being
+      written, and one placed in `ensureLoaded` can be reached from inside the lock it would need.
 - [x] **CRS and basemap** (#53). The constraints it leaves live. The tile URL is a per-browser
       localStorage override (`map/tile-source.ts`, edited in Connection settings), so `basemap.ts`
       builds its styles on demand — one captured at import time would ignore the override — and a
@@ -1685,7 +1737,11 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `road.ComputeReceiverOutputs` synchronously inside the Promise executor and there is no
       `Worker` anywhere in `src/`, so a grid run freezes the UI. While there: store one IndexedDB
       record per run instead of one document — `persist` in `browser-backend.ts` structured-clones
-      every stored run (receiver tables, CSV, export HTML) on each write.
+      every stored run (receiver tables, CSV, export HTML) on each write. The raster bytes are
+      already out of that document, under an `artifact-bytes:` key each
+      (`browser-storage.ts`), because they were the one part large enough to make the re-clone
+      matter; that is one key space for one payload, not the split this item asks for, and the
+      eviction, cap and clear paths each have to forget those records by hand today.
 
 ### Order and gates
 

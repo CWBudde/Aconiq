@@ -3,7 +3,7 @@
   "fixture": "phase19/iso9613_industry_model.geojson",
   "files": {
     "iso9613.bin": "sha256:a560dc3a9f61639489d46d6491ea5d358784efb15197646fe3a8bc40f6d85771 bytes=504",
-    "iso9613.json": "sha256:d36ec113454886f5e0d9b5df3a1b1260dc35320fe753393e7c48f7d1776dd684 bytes=204",
+    "iso9613.json": "sha256:f0f766c1b97d19795767c15b747ec4d704ef57c2157fce8816845cec284570b2 bytes=311",
     "receivers.csv": "sha256:4381d4af04351aaf8d90bf5868de6724f52e4deba6a3d00ffec699c08fd26a2d bytes=3578",
     "receivers.json": "sha256:d151e0e02a9540f199e0704927f430a4ef529fbfd0978ddbe6468c7d61a06c60 bytes=7454",
     "run-summary.json": "sha256:2cae0e0b19c18a485a82b6fdfe8c224843dc353ad087dbe3c9d294f62c5523f8 bytes=344"

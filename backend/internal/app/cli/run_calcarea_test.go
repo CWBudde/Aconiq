@@ -12,6 +12,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
@@ -133,7 +134,7 @@ func TestAutoGridUsesTheCalcAreaInsteadOfTheSourceExtent(t *testing.T) {
 		t.Fatalf("calc area extent: %v", err)
 	}
 
-	receivers, _, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(0))
+	receivers, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(0))
 	if err != nil {
 		t.Fatalf("build receivers: %v", err)
 	}
@@ -148,7 +149,7 @@ func TestAutoGridUsesTheCalcAreaInsteadOfTheSourceExtent(t *testing.T) {
 func TestAutoGridFallsBackToTheSourceExtent(t *testing.T) {
 	t.Parallel()
 
-	receivers, _, _, err := buildDummyReceivers(calcAreaTestSources(), nil, calcAreaTestOptions(0))
+	receivers, _, err := buildDummyReceivers(calcAreaTestSources(), nil, calcAreaTestOptions(0))
 	if err != nil {
 		t.Fatalf("build receivers: %v", err)
 	}
@@ -173,12 +174,12 @@ func TestGridPaddingStillAppliesToTheCalcArea(t *testing.T) {
 
 	const paddingM = 100.0
 
-	unpadded, _, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(0))
+	unpadded, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(0))
 	if err != nil {
 		t.Fatalf("build unpadded receivers: %v", err)
 	}
 
-	padded, _, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(paddingM))
+	padded, _, err := buildDummyReceivers(calcAreaTestSources(), extent, calcAreaTestOptions(paddingM))
 	if err != nil {
 		t.Fatalf("build padded receivers: %v", err)
 	}
@@ -228,7 +229,7 @@ func TestOversizedGridNamesTheExtentItCameFrom(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, _, _, err := buildDummyReceivers(testCase.sources, testCase.calcArea, options)
+			_, _, err := buildDummyReceivers(testCase.sources, testCase.calcArea, options)
 			if err == nil {
 				t.Fatal("expected the over-cap refusal")
 			}
@@ -258,7 +259,7 @@ func TestOversizedGridIsRefusedBeforeItIsBuilt(t *testing.T) {
 	options := calcAreaTestOptions(0)
 	options.GridResolutionM = 1
 
-	receivers, _, _, err := buildDummyReceivers(calcAreaTestSources(), &impossible, options)
+	receivers, _, err := buildDummyReceivers(calcAreaTestSources(), &impossible, options)
 	if err == nil {
 		t.Fatal("expected the over-cap refusal")
 	}
@@ -313,10 +314,10 @@ func TestCustomReceiverModeIgnoresTheCalcArea(t *testing.T) {
 
 	gridBuilt := false
 
-	receivers, _, _, calcArea, err := resolveGridReceivers(model, receiverModeCustom, func(*geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverModeCustom, func(*geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		gridBuilt = true
 
-		return nil, 0, 0, nil
+		return nil, results.GridLayout{}, nil
 	})
 	if err != nil {
 		t.Fatalf("resolve receivers: %v", err)
@@ -324,6 +325,13 @@ func TestCustomReceiverModeIgnoresTheCalcArea(t *testing.T) {
 
 	if gridBuilt {
 		t.Fatal("custom receiver mode must not build a grid")
+	}
+
+	// Explicit receivers are not a grid, and the layout has to say so: a
+	// georeference here would be an invented cell size, and every GIS export
+	// downstream reads the sidecar's transform without a second opinion.
+	if layout.Geo != nil {
+		t.Fatalf("custom receiver mode must not carry a georeference, got %+v", *layout.Geo)
 	}
 
 	if len(receivers) != 1 || receivers[0].ID != "rcv-1" {

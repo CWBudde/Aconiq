@@ -85,9 +85,9 @@ func addComputeCRS(summary map[string]any, projection computeProjection) {
 
 // writeGridRunSummary stamps the raster grid dimensions onto a run summary and
 // writes it next to the exported result bundle.
-func writeGridRunSummary(resultsDir string, summary map[string]any, gridWidth int, gridHeight int) (string, error) {
-	summary["grid_width"] = gridWidth
-	summary["grid_height"] = gridHeight
+func writeGridRunSummary(resultsDir string, summary map[string]any, layout results.GridLayout) (string, error) {
+	summary["grid_width"] = layout.Width
+	summary["grid_height"] = layout.Height
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 
@@ -171,17 +171,18 @@ func persistDummyRaster(
 	resultsDir string,
 	receivers []geo.PointReceiver,
 	levelByReceiver map[string]float64,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	indicator string,
 ) (results.RasterPersistence, error) {
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width:     gridWidth,
-		Height:    gridHeight,
+		Width:     layout.Width,
+		Height:    layout.Height,
 		Bands:     1,
 		NoData:    -9999,
 		Unit:      dummyResultUnit,
 		BandNames: []string{indicator},
+		CRS:       layout.CRS,
+		Geo:       layout.Geo,
 	})
 	if err != nil {
 		return results.RasterPersistence{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "build raster", err)
@@ -189,8 +190,8 @@ func persistDummyRaster(
 
 	for receiverIndex, receiver := range receivers {
 		level := levelByReceiver[receiver.ID]
-		x := receiverIndex % gridWidth
-		y := receiverIndex / gridWidth
+		x := receiverIndex % layout.Width
+		y := receiverIndex / layout.Width
 
 		err := raster.Set(x, y, 0, level)
 		if err != nil {
@@ -208,17 +209,31 @@ func persistDummyRaster(
 	return rasterPersistence, nil
 }
 
+// withComputeCRS stamps the CRS the run computed in onto the grid layout.
+//
+// buildReceiversFromPoints builds the layout without knowing which CRS it is
+// working in — it is handed coordinates, not a projection. The persist layer
+// is the first place that knows, and the raster sidecar is the only artifact
+// that carries the CRS to a consumer: provenance is not an ArtifactRef, so the
+// API never serves it, and a GIS export reading a sidecar has nowhere else to
+// ask.
+func withComputeCRS(layout results.GridLayout, projection computeProjection) results.GridLayout {
+	layout.CRS = projection.ComputeCRS
+
+	return layout
+}
+
 func persistDummyRunOutputs(
 	runDir string,
 	runOutput engine.RunOutput,
 	receivers []geo.PointReceiver,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	indicator string,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, error) {
 	resultsDir := filepath.Join(runDir, "results")
+	layout = withComputeCRS(layout, projection)
 
 	err := os.MkdirAll(resultsDir, 0o750)
 	if err != nil {
@@ -256,7 +271,7 @@ func persistDummyRunOutputs(
 	summary["total_chunks"] = runOutput.TotalChunks
 	summary["used_cached_chunks"] = runOutput.UsedCachedChunks
 
-	if gridWidth <= 0 || gridHeight <= 0 {
+	if layout.Width <= 0 || layout.Height <= 0 {
 		summary["receiver_mode"] = receiverModeCustom
 
 		summaryPath := filepath.Join(resultsDir, "run-summary.json")
@@ -273,12 +288,12 @@ func persistDummyRunOutputs(
 		}, nil
 	}
 
-	rasterPersistence, err := persistDummyRaster(resultsDir, receivers, levelByReceiver, gridWidth, gridHeight, indicator)
+	rasterPersistence, err := persistDummyRaster(resultsDir, receivers, levelByReceiver, layout, indicator)
 	if err != nil {
 		return persistedRunOutputs{}, err
 	}
 
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
+	summaryPath, err := writeGridRunSummary(resultsDir, summary, layout)
 	if err != nil {
 		return persistedRunOutputs{}, err
 	}
@@ -310,13 +325,12 @@ type exportOutputs interface {
 func exportBundle[Output any, Bundle exportOutputs](
 	scope string,
 	message string,
-	export func(string, []Output, int, int) (Bundle, error),
+	export func(string, []Output, results.GridLayout) (Bundle, error),
 	outputs []Output,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 ) func(resultsDir string) (exportedBundle, error) {
 	return func(resultsDir string) (exportedBundle, error) {
-		exported, err := export(resultsDir, outputs, gridWidth, gridHeight)
+		exported, err := export(resultsDir, outputs, layout)
 		if err != nil {
 			return exportedBundle{}, domainerrors.New(domainerrors.KindInternal, scope, message, err)
 		}
@@ -356,14 +370,14 @@ func persistReceiverRunOutputs[Output any](
 	plan receiverPersistPlan[Output],
 	runDir string,
 	outputs []Output,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	resultsDir := filepath.Join(runDir, "results")
+	layout = withComputeCRS(layout, projection)
 
 	outputHash, err := hashReceiverOutputs(
 		plan.hashLabel,
@@ -408,7 +422,7 @@ func persistReceiverRunOutputs[Output any](
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
 
-	summaryPath, err := writeGridRunSummary(resultsDir, summary, gridWidth, gridHeight)
+	summaryPath, err := writeGridRunSummary(resultsDir, summary, layout)
 	if err != nil {
 		return persistedRunOutputs{}, "", time.Time{}, err
 	}
@@ -442,7 +456,7 @@ type endPersistSpec struct {
 	// export is the module's own bundle writer. The layout is shared, but the
 	// raster files are named after the standard that produced them, so an alias
 	// module still writes its own.
-	export func(baseDir string, outputs []acoustics.ReceiverOutput, gridWidth int, gridHeight int) (acoustics.ExportOutputs, error)
+	export func(baseDir string, outputs []acoustics.ReceiverOutput, layout results.GridLayout) (acoustics.ExportOutputs, error)
 }
 
 // endPersistSpecs holds one entry per module reporting the END day/evening/night
@@ -502,14 +516,17 @@ func persistENDRunOutputs(
 	standardID string,
 	runDir string,
 	outputs []acoustics.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistENDRunOutputs"
+
+	// Before the plan literal: `export` closes over layout, so a stamp
+	// applied later would reach the run summary and miss the raster sidecar.
+	layout = withComputeCRS(layout, projection)
 
 	spec, ok := endPersistSpecs[standardID]
 	if !ok {
@@ -525,7 +542,7 @@ func persistENDRunOutputs(
 		receiver:       func(output acoustics.ReceiverOutput) geo.PointReceiver { return output.Receiver },
 		indicators:     func(output acoustics.ReceiverOutput) any { return output.Indicators },
 		values:         func(output acoustics.ReceiverOutput) map[string]float64 { return output.Indicators.Values() },
-		export:         exportBundle(scope, "export "+standardID+" results", spec.export, outputs, gridWidth, gridHeight),
+		export:         exportBundle(scope, "export "+standardID+" results", spec.export, outputs, layout),
 	}
 
 	if spec.reportingPrecisionDB != 0 {
@@ -534,7 +551,7 @@ func persistENDRunOutputs(
 		}
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
 }
 
 // persistRLS19RoadRunOutputs writes an RLS-19 run. RLS-19 has no model
@@ -543,8 +560,7 @@ func persistENDRunOutputs(
 func persistRLS19RoadRunOutputs(
 	runDir string,
 	outputs []rls19road.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	sourceCount int,
 	sourceOverrideCount int,
 	parkingSourceCount int,
@@ -553,6 +569,10 @@ func persistRLS19RoadRunOutputs(
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistRLS19RoadRunOutputs"
+
+	// Before the plan literal: `export` closes over layout, so a stamp
+	// applied later would reach the run summary and miss the raster sidecar.
+	layout = withComputeCRS(layout, projection)
 
 	plan := receiverPersistPlan[rls19road.ReceiverOutput]{
 		scope:          scope,
@@ -575,17 +595,16 @@ func persistRLS19RoadRunOutputs(
 				rls19road.IndicatorLrNight: output.Indicators.LrNight,
 			}
 		},
-		export: exportBundle(scope, "export RLS-19 road results", rls19road.ExportResultBundle, outputs, gridWidth, gridHeight),
+		export: exportBundle(scope, "export RLS-19 road results", rls19road.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
 }
 
 func persistSchall03RunOutputs(
 	runDir string,
 	outputs []schall03.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	sourceCount int,
 	receiverMode string,
 	engine string,
@@ -593,6 +612,10 @@ func persistSchall03RunOutputs(
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistSchall03RunOutputs"
+
+	// Before the plan literal: `export` closes over layout, so a stamp
+	// applied later would reach the run summary and miss the raster sidecar.
+	layout = withComputeCRS(layout, projection)
 
 	plan := receiverPersistPlan[schall03.ReceiverOutput]{
 		scope:          scope,
@@ -620,23 +643,26 @@ func persistSchall03RunOutputs(
 				schall03.IndicatorLrNight: output.Indicators.LrNight,
 			}
 		},
-		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, gridWidth, gridHeight),
+		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
 }
 
 func persistISO9613RunOutputs(
 	runDir string,
 	outputs []iso9613.ReceiverOutput,
-	gridWidth int,
-	gridHeight int,
+	layout results.GridLayout,
 	sourceCount int,
 	receiverMode string,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
 	const scope = "cli.persistISO9613RunOutputs"
+
+	// Before the plan literal: `export` closes over layout, so a stamp
+	// applied later would reach the run summary and miss the raster sidecar.
+	layout = withComputeCRS(layout, projection)
 
 	plan := receiverPersistPlan[iso9613.ReceiverOutput]{
 		scope:           scope,
@@ -653,10 +679,10 @@ func persistISO9613RunOutputs(
 				iso9613.IndicatorLpAeqLT: output.Indicators.LpAeqLT,
 			}
 		},
-		export: exportBundle(scope, "export iso9613 results", iso9613.ExportResultBundle, outputs, gridWidth, gridHeight),
+		export: exportBundle(scope, "export iso9613 results", iso9613.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
 }
 
 // exportedBundle is the shape every standards module's ExportResultBundle

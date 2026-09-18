@@ -3,7 +3,7 @@
   "fixture": "phase10/road_model.geojson",
   "files": {
     "cnossos-road.bin": "sha256:b9ead54ab25ee05f7e4b9bb65e07852542497cfababbddbde751d623d96a0f87 bytes=2640",
-    "cnossos-road.json": "sha256:86beacc56057d4df0a71ea110bc8daa6977544d6073792532fefc383a60d13c0 bytes=218",
+    "cnossos-road.json": "sha256:58dc7eaec699a7fea8fcfa432ea1e8fc286e447423622f2f343d9e11ca24b209 bytes=325",
     "receivers.csv": "sha256:ba5310bcdbc4812c0247ba9f86e7efd91de77c6f64f85ed8e9bec607aa672dac bytes=15428",
     "receivers.json": "sha256:584cf0b5dbc209c95420e11f43aae713f0d22105b8c8cae02bec658d741fc663 bytes=27510",
     "run-summary.json": "sha256:601240a16db75fa9e5938d3a98bceec3ca50d6a4f471e143aa17ec08b20d1605 bytes=355"

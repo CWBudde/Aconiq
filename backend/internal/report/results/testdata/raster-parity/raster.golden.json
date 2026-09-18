@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "width": 3,
+    "height": 2,
+    "bands": 2,
+    "nodata": -9999,
+    "unit": "dB",
+    "band_names": [
+      "LrDay",
+      "LrNight"
+    ],
+    "crs": "EPSG:25832",
+    "georeference": {
+      "origin_x": -50.5,
+      "origin_y": 5600000.25,
+      "pixel_size_m": 12.5,
+      "row_order": "south-up"
+    }
+  },
+  "bands": [
+    [
+      62.4,
+      55.125,
+      71,
+      -0.5,
+      48.75,
+      60
+    ],
+    [
+      55.1,
+      47.875,
+      63.5,
+      -9999,
+      41.25,
+      52
+    ]
+  ]
+}

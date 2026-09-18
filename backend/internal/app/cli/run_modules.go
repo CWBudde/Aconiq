@@ -11,6 +11,7 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
+	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
 
@@ -146,9 +147,9 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 
 	parseOptions   func(map[string]string) (Opt, error)
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
-	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, int, int, error)
+	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, results.GridLayout, error)
 	compute        func([]geo.PointReceiver, []Src, Opt) ([]Out, error)
-	persist        func(runDir string, outputs []Out, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
+	persist        func(runDir string, outputs []Out, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
 }
 
 func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleResult, error) {
@@ -167,7 +168,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 	// The calculation area comes off input.model, which runModuleInput already
 	// carries. Adding a field for it would be a decision about all thirteen
 	// standards (see the comment on runModuleInput); this does not need one.
-	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return m.buildReceivers(sources, calcArea, options)
 	})
 	if err != nil {
@@ -177,7 +178,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 	}
 
 	input.log.addf("%s=%d", m.sourceCountKey, len(sources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	outputs, err := m.compute(receivers, sources, options)
@@ -188,7 +189,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 	}
 
 	persisted, outputHash, finishedAt, err := m.persist(
-		input.runDir, outputs, gridWidth, gridHeight, len(sources), input.receiverMode, input.standard.EvidenceTier,
+		input.runDir, outputs, layout, len(sources), input.receiverMode, input.standard.EvidenceTier,
 		input.projection,
 	)
 	if err != nil {
@@ -207,9 +208,9 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 // endPersist binds the shared END persist path to one standard, so a table
 // entry names its standard once. Every END module computes
 // acoustics.ReceiverOutput, which is what lets one persist function serve them.
-func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, int, int, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
-	return func(runDir string, outputs []acoustics.ReceiverOutput, gridWidth int, gridHeight int, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error) {
-		return persistENDRunOutputs(standardID, runDir, outputs, gridWidth, gridHeight, sourceCount, receiverMode, tier, projection)
+func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, results.GridLayout, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
+	return func(runDir string, outputs []acoustics.ReceiverOutput, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error) {
+		return persistENDRunOutputs(standardID, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
 	}
 }
 
@@ -230,7 +231,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
-	receivers, gridWidth, gridHeight, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildDummyReceivers(sources, calcArea, options)
 	})
 	if err != nil {
@@ -240,7 +241,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 	}
 
 	input.log.addf("sources=%d", len(sources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), gridWidth, gridHeight)
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
@@ -279,7 +280,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 	}
 
 	persisted, err := persistDummyRunOutputs(
-		input.runDir, runOutput, receivers, gridWidth, gridHeight,
+		input.runDir, runOutput, receivers, layout,
 		firstIndicator(input.standard.SupportedIndicators), input.standard.EvidenceTier, input.projection,
 	)
 	if err != nil {

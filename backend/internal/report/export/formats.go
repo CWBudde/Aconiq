@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 // Format identifies an export output format.
@@ -145,8 +147,43 @@ type GeoTransform struct {
 	PixelSizeY float64 // pixel height in CRS units (negative = south)
 }
 
+// GeoTransformFromGeoreference converts a raster's declared georeference into
+// the corner-based affine transform every GIS format wants.
+//
+// This is the only place the two conventions meet. The sidecar records the
+// centre of cell (0,0) — a grid receiver is a point in the middle of the cell
+// it stands for — while GeoTransform records the top-left corner of the
+// top-left pixel, so the conversion walks half a pixel west and, because
+// row 0 is the southernmost, the full height plus half a pixel north.
+//
+// It refuses a row order it does not know rather than guessing: a north-up
+// raster read as south-up is a vertically mirrored noise map that looks
+// entirely plausible.
+func GeoTransformFromGeoreference(georef results.Georeference, gridHeight int) (GeoTransform, error) {
+	err := georef.Validate()
+	if err != nil {
+		return GeoTransform{}, fmt.Errorf("raster georeference: %w", err)
+	}
+
+	if gridHeight <= 0 {
+		return GeoTransform{}, errors.New("grid height must be positive")
+	}
+
+	return GeoTransform{
+		OriginX:    georef.OriginX - georef.PixelSizeM/2,
+		OriginY:    georef.OriginY + float64(gridHeight-1)*georef.PixelSizeM + georef.PixelSizeM/2,
+		PixelSizeX: georef.PixelSizeM,
+		PixelSizeY: -georef.PixelSizeM,
+	}, nil
+}
+
 // InferGeoTransformFromReceivers derives the grid geo-transform from receiver coordinates.
 // It expects receivers ordered row-major (Y ascending, X ascending within row).
+//
+// It is the fallback, not the source of truth: a run written since the raster
+// sidecar carried a georeference uses GeoTransformFromGeoreference instead.
+// This exists for the sidecars written before it did, and it cannot tell a
+// grid from a scatter of receivers that happens to have the right count.
 func InferGeoTransformFromReceivers(xs []float64, ys []float64, gridWidth int, gridHeight int) (GeoTransform, error) {
 	if len(xs) == 0 || len(ys) == 0 {
 		return GeoTransform{}, errors.New("no receiver coordinates to infer geo-transform")

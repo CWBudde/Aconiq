@@ -13,6 +13,7 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
@@ -169,32 +170,35 @@ func calcAreaExtent(model modelgeojson.Model) (*geo.BBox, error) {
 func resolveGridReceivers(
 	model modelgeojson.Model,
 	receiverMode string,
-	buildGrid func(calcArea *geo.BBox) ([]geo.PointReceiver, int, int, error),
-) ([]geo.PointReceiver, int, int, *geo.BBox, error) {
+	buildGrid func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error),
+) ([]geo.PointReceiver, results.GridLayout, *geo.BBox, error) {
 	calcArea, err := calcAreaExtent(model)
 	if err != nil {
-		return nil, 0, 0, nil, err
+		return nil, results.GridLayout{}, nil, err
 	}
 
-	receivers, gridWidth, gridHeight, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, int, int, error) {
+	receivers, layout, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildGrid(calcArea)
 	})
 
-	return receivers, gridWidth, gridHeight, calcArea, err
+	return receivers, layout, calcArea, err
 }
 
 func resolveReceiverSet(
 	mode string,
 	model modelgeojson.Model,
-	buildGrid func() ([]geo.PointReceiver, int, int, error),
-) ([]geo.PointReceiver, int, int, error) {
+	buildGrid func() ([]geo.PointReceiver, results.GridLayout, error),
+) ([]geo.PointReceiver, results.GridLayout, error) {
 	if mode == receiverModeCustom {
 		receivers, err := extractExplicitReceivers(model)
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, results.GridLayout{}, err
 		}
 
-		return receivers, 0, 0, nil
+		// Explicit receivers are points the user placed, not a grid. The zero
+		// layout says exactly that: no shape, and no georeference, because
+		// there is no cell size that would describe where these sit.
+		return receivers, results.GridLayout{}, nil
 	}
 
 	return buildGrid()

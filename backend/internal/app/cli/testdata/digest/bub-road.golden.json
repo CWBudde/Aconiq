@@ -3,7 +3,7 @@
   "fixture": "phase14/bub_road_model.geojson",
   "files": {
     "bub-road.bin": "sha256:8cf1fbdc34392048a5470959e03937ecce947ff8a0130299b645ebf3d9d16581 bytes=1680",
-    "bub-road.json": "sha256:4bed90a63531ebdc47b12c714170a3a5c22b0289d86fbca23dd7af7ae46bfc5e bytes=213",
+    "bub-road.json": "sha256:d758822d83de0ebe3d385a7cc631e10d3cef4744e51fa5c47134de126a22fd8f bytes=321",
     "receivers.csv": "sha256:78900897f0220cb9db65133038a5cd588afaffc67d3f9f6af112f07c4c3f6355 bytes=9904",
     "receivers.json": "sha256:1c68a7d3d149a8c4078bd246614e0f573adb762f7a2595ea9e2f556c60a0216b bytes=17606",
     "run-summary.json": "sha256:98b5e4dd017ea7fec1a04dd0060566293fb779097f07d35d3db7a5b62db36edb bytes=362"

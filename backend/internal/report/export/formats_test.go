@@ -2,6 +2,8 @@ package export
 
 import (
 	"testing"
+
+	"github.com/aconiq/backend/internal/report/results"
 )
 
 func TestParseFormats(t *testing.T) {
@@ -135,5 +137,91 @@ func TestParseEPSGCode(t *testing.T) {
 		if got != tt.want {
 			t.Fatalf("parseEPSGCode(%q) = %d, want %d", tt.input, got, tt.want)
 		}
+	}
+}
+
+// The declared georeference and the inferred one must describe the same grid,
+// or switching export over to the sidecar would silently move every raster
+// this project has already written.
+func TestGeoTransformFromGeoreferenceAgreesWithInference(t *testing.T) {
+	t.Parallel()
+
+	const (
+		width      = 4
+		height     = 3
+		originX    = 500000.0
+		originY    = 5600000.0
+		pixelSizeM = 10.0
+	)
+
+	xs := make([]float64, 0, width*height)
+	ys := make([]float64, 0, width*height)
+
+	// Row-major, Y ascending: exactly what geo.GridReceiverSet.Generate emits.
+	for row := range height {
+		for col := range width {
+			xs = append(xs, originX+float64(col)*pixelSizeM)
+			ys = append(ys, originY+float64(row)*pixelSizeM)
+		}
+	}
+
+	inferred, err := InferGeoTransformFromReceivers(xs, ys, width, height)
+	if err != nil {
+		t.Fatalf("infer geo transform: %v", err)
+	}
+
+	declared, err := GeoTransformFromGeoreference(results.Georeference{
+		OriginX:    originX,
+		OriginY:    originY,
+		PixelSizeM: pixelSizeM,
+		RowOrder:   results.RowOrderSouthUp,
+	}, height)
+	if err != nil {
+		t.Fatalf("geo transform from georeference: %v", err)
+	}
+
+	if declared != inferred {
+		t.Fatalf("declared %+v does not match inferred %+v", declared, inferred)
+	}
+}
+
+// Inference has no answer for a one-row or one-column grid — it divides by
+// n-1 and falls back to a pixel size of 1 — which is exactly the case a
+// declared georeference exists to cover.
+func TestGeoTransformFromGeoreferenceHandlesASingleRow(t *testing.T) {
+	t.Parallel()
+
+	declared, err := GeoTransformFromGeoreference(results.Georeference{
+		OriginX:    100,
+		OriginY:    200,
+		PixelSizeM: 25,
+		RowOrder:   results.RowOrderSouthUp,
+	}, 1)
+	if err != nil {
+		t.Fatalf("geo transform from georeference: %v", err)
+	}
+
+	want := GeoTransform{OriginX: 87.5, OriginY: 212.5, PixelSizeX: 25, PixelSizeY: -25}
+	if declared != want {
+		t.Fatalf("got %+v, want %+v", declared, want)
+	}
+}
+
+func TestGeoTransformFromGeoreferenceRefusesWhatItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	valid := results.Georeference{OriginX: 1, OriginY: 1, PixelSizeM: 10, RowOrder: results.RowOrderSouthUp}
+
+	_, err := GeoTransformFromGeoreference(valid, 0)
+	if err == nil {
+		t.Fatal("expected a zero grid height to be refused")
+	}
+
+	northUp := valid
+	northUp.RowOrder = "north-up"
+
+	_, err = GeoTransformFromGeoreference(northUp, 3)
+	if err == nil {
+		t.Fatal("expected an unknown row order to be refused rather than guessed")
 	}
 }

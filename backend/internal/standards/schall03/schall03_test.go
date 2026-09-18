@@ -256,7 +256,7 @@ func TestExportResultBundle(t *testing.T) {
 				LrNight: 45,
 			},
 		},
-	}, 1, 1)
+	}, results.GridLayout{Width: 1, Height: 1})
 	if err != nil {
 		t.Fatalf("export result bundle: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestExportGoldenSnapshot(t *testing.T) {
 
 	baseDir := t.TempDir()
 
-	exported, err := ExportResultBundle(baseDir, outputs, 2, 1)
+	exported, err := ExportResultBundle(baseDir, outputs, results.GridLayout{Width: 2, Height: 1})
 	if err != nil {
 		t.Fatalf("export result bundle: %v", err)
 	}

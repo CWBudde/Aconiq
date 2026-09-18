@@ -90,7 +90,28 @@ const (
 	ArtifactKindRunResultRasterMetadata    = "run.result.raster_metadata"
 	ArtifactKindRunResultRasterBinary      = "run.result.raster_binary"
 	ArtifactKindRunResultSummary           = "run.result.summary"
+
+	ArtifactKindExportBundle               = "export.bundle"
+	ArtifactKindExportAssessment16BImSchV  = "export.assessment_16bimschv_json"
+	ArtifactKindExportReportContextJSON    = "export.report_context_json"
+	ArtifactKindExportReportMarkdown       = "export.report_markdown"
+	ArtifactKindExportReportHTML           = "export.report_html"
+	ArtifactKindExportReportTypst          = "export.report_typst"
+	ArtifactKindExportReportPDF            = "export.report_pdf"
+	ArtifactKindExportFormatGeoTIFF        = "export.format_geotiff"
+	ArtifactKindExportFormatCOG            = "export.format_cog"
+	ArtifactKindExportFormatGeoPackage     = "export.format_gpkg"
+	ArtifactKindExportFormatContourGeoJSON = "export.format_contour_geojson"
+	ArtifactKindExportFormatContourGPKG    = "export.format_contour_gpkg"
 )
+
+// ArtifactKindExportPrefix is the common prefix of every artifact `aconiq
+// export` writes. It is load-bearing rather than cosmetic: `aconiq delete-run`
+// selects on it to keep an export bundle's bytes on disk when the run that
+// produced them is deleted, because a bundle may already have been delivered.
+// An export kind that does not carry it will have its ref dropped while its
+// files survive, leaving a manifest that lies by omission.
+const ArtifactKindExportPrefix = "export."
 
 // ArtifactKindRunResultPrefix is the common prefix of every run-result artifact
 // kind; `aconiq export` uses it to select the artifacts of a single run.

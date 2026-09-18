@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
-	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
@@ -88,6 +89,66 @@ func newExportCommand() *cobra.Command {
 	return cmd
 }
 
+// finishExportInputs is what the tail of an export needs: the optional format
+// outputs, and then the one manifest write that records everything.
+type finishExportInputs struct {
+	store           projectfs.Store
+	proj            project.Project
+	run             project.Run
+	bundleDir       string
+	exportID        string
+	opts            exportOptions
+	staged          stagedExportBundle
+	reportArtifacts []project.ArtifactRef
+}
+
+// finishExportBundle runs the --format and --emit-sample-results outputs and
+// persists the bundle. The format artifacts join the report ones in a single
+// manifest write, so a failed save leaves no half-registered bundle.
+func finishExportBundle(in finishExportInputs, summary *exportSummary) (string, error) {
+	formatArtifacts, err := applyOptionalExportOutputs(
+		summary, in.opts, in.bundleDir, in.proj.CRS, in.staged,
+		formatArtifactInputs{
+			storeRoot: in.store.Root(),
+			runID:     in.run.ID,
+			exportID:  in.exportID,
+			createdAt: nowUTC(),
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return persistExportBundle(
+		in.store, in.proj, in.run, in.bundleDir, *summary,
+		append(in.reportArtifacts, formatArtifacts...),
+	)
+}
+
+// openExportTarget resolves the project and the run an export is about.
+//
+// Selecting the run is a user-input failure — the id names a run that is not
+// there — while opening the project is not, and the two exit differently.
+func openExportTarget(projectPath string, runID string) (projectfs.Store, project.Project, project.Run, error) {
+	store, err := projectfs.New(projectPath)
+	if err != nil {
+		return projectfs.Store{}, project.Project{}, project.Run{}, fmt.Errorf("open project %s: %w", projectPath, err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		return projectfs.Store{}, project.Project{}, project.Run{}, fmt.Errorf("load project manifest: %w", err)
+	}
+
+	run, err := findRunForExport(proj.Runs, runID)
+	if err != nil {
+		return projectfs.Store{}, project.Project{}, project.Run{},
+			domainerrors.New(domainerrors.KindUserInput, "cli.export", err.Error(), nil)
+	}
+
+	return store, proj, run, nil
+}
+
 func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {
@@ -98,19 +159,9 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.export", "--pdf cannot be used together with --skip-report", nil)
 	}
 
-	store, err := projectfs.New(state.Config.ProjectPath)
+	store, proj, run, err := openExportTarget(state.Config.ProjectPath, opts.runID)
 	if err != nil {
-		return fmt.Errorf("open project %s: %w", state.Config.ProjectPath, err)
-	}
-
-	proj, err := store.Load()
-	if err != nil {
-		return fmt.Errorf("load project manifest: %w", err)
-	}
-
-	run, err := findRunForExport(proj.Runs, opts.runID)
-	if err != nil {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.export", err.Error(), nil)
+		return err
 	}
 
 	if opts.outDir == "" {
@@ -156,12 +207,16 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 		return err
 	}
 
-	err = applyOptionalExportOutputs(&summary, opts, bundleDir, proj.CRS, staged)
-	if err != nil {
-		return err
-	}
-
-	summaryPath, err := persistExportBundle(store, proj, run, bundleDir, summary, reportArtifacts)
+	summaryPath, err := finishExportBundle(finishExportInputs{
+		store:           store,
+		proj:            proj,
+		run:             run,
+		bundleDir:       bundleDir,
+		exportID:        exportID,
+		opts:            opts,
+		staged:          staged,
+		reportArtifacts: reportArtifacts,
+	}, &summary)
 	if err != nil {
 		return err
 	}
@@ -280,7 +335,7 @@ func persistExportBundle(
 	proj.Artifacts = append(proj.Artifacts, project.ArtifactRef{
 		ID:        fmt.Sprintf("artifact-export-%s-%d", run.ID, time.Now().UTC().UnixNano()),
 		RunID:     run.ID,
-		Kind:      "export.bundle",
+		Kind:      project.ArtifactKindExportBundle,
 		Path:      relativePath(store.Root(), summaryPath),
 		CreatedAt: nowUTC(),
 	})
@@ -406,7 +461,7 @@ func buildExportReports(in exportReportInputs, summary *exportSummary) ([]projec
 		reportArtifacts = append(reportArtifacts, project.ArtifactRef{
 			ID:        fmt.Sprintf("artifact-export-%s-assessment-16bimschv", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.assessment_16bimschv_json",
+			Kind:      project.ArtifactKindExportAssessment16BImSchV,
 			Path:      relativePath(in.storeRoot, assessmentPath),
 			CreatedAt: nowUTC(),
 		})
@@ -463,28 +518,28 @@ func buildReportBundleArtifacts(
 		{
 			ID:        fmt.Sprintf("artifact-export-%s-report-context", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.report_context_json",
+			Kind:      project.ArtifactKindExportReportContextJSON,
 			Path:      relativePath(in.storeRoot, reportBundle.ContextPath),
 			CreatedAt: nowUTC(),
 		},
 		{
 			ID:        fmt.Sprintf("artifact-export-%s-report-markdown", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.report_markdown",
+			Kind:      project.ArtifactKindExportReportMarkdown,
 			Path:      relativePath(in.storeRoot, reportBundle.MarkdownPath),
 			CreatedAt: nowUTC(),
 		},
 		{
 			ID:        fmt.Sprintf("artifact-export-%s-report-html", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.report_html",
+			Kind:      project.ArtifactKindExportReportHTML,
 			Path:      relativePath(in.storeRoot, reportBundle.HTMLPath),
 			CreatedAt: nowUTC(),
 		},
 		{
 			ID:        fmt.Sprintf("artifact-export-%s-report-typst", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.report_typst",
+			Kind:      project.ArtifactKindExportReportTypst,
 			Path:      relativePath(in.storeRoot, reportBundle.TypstPath),
 			CreatedAt: nowUTC(),
 		},
@@ -494,7 +549,7 @@ func buildReportBundleArtifacts(
 		artifacts = append(artifacts, project.ArtifactRef{
 			ID:        fmt.Sprintf("artifact-export-%s-report-pdf", in.exportID),
 			RunID:     in.run.ID,
-			Kind:      "export.report_pdf",
+			Kind:      project.ArtifactKindExportReportPDF,
 			Path:      relativePath(in.storeRoot, reportBundle.PDFPath),
 			CreatedAt: nowUTC(),
 		})
@@ -511,28 +566,29 @@ func applyOptionalExportOutputs(
 	bundleDir string,
 	projectCRS string,
 	staged stagedExportBundle,
-) error {
+	refs formatArtifactInputs,
+) ([]project.ArtifactRef, error) {
 	if opts.emitSampleResults {
 		generated, err := emitSampleResultBundle(bundleDir)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		summary.GeneratedSampleData = generated
 	}
 
 	if opts.formatList == "" {
-		return nil
+		return nil, nil
 	}
 
 	formats, parseErr := exportfmt.ParseFormats(opts.formatList)
 	if parseErr != nil {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
+		return nil, domainerrors.New(domainerrors.KindUserInput, "cli.export", parseErr.Error(), nil)
 	}
 
 	resultsCRS, crsErr := computeCRSFromProvenance(staged.provenancePath)
 	if crsErr != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.export",
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export",
 			"read the CRS the run's results are in", crsErr)
 	}
 
@@ -542,12 +598,80 @@ func applyOptionalExportOutputs(
 		staged.modelGeoJSONPath,
 	)
 	if fmtErr != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
+		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
 	}
 
 	summary.ExportedFormats = exportedPaths
 
-	return nil
+	return formatExportArtifacts(exportedPaths, bundleDir, refs), nil
+}
+
+// formatArtifactInputs is what an artifact ref needs beyond the file itself.
+type formatArtifactInputs struct {
+	storeRoot string
+	runID     string
+	exportID  string
+	createdAt time.Time
+}
+
+// formatArtifactKinds maps a format name to the artifact kind its files get.
+//
+// A format missing from this map produces no ref rather than a generic one: a
+// consumer switching on `Kind` would render an unlabelled row, and the export
+// page's kind table is explicitly required to carry a row per kind.
+var formatArtifactKinds = map[string]string{
+	string(exportfmt.FormatGeoTIFF):           project.ArtifactKindExportFormatGeoTIFF,
+	string(exportfmt.FormatCOG):               project.ArtifactKindExportFormatCOG,
+	string(exportfmt.FormatGeoPackage):        project.ArtifactKindExportFormatGeoPackage,
+	string(exportfmt.FormatContourGeoJSON):    project.ArtifactKindExportFormatContourGeoJSON,
+	string(exportfmt.FormatContourGeoPackage): project.ArtifactKindExportFormatContourGPKG,
+}
+
+// formatExportArtifacts turns the written format files into manifest entries.
+//
+// Until now these files existed only in `export-summary.json`'s
+// `exported_formats` — reachable by reading that one file and by nothing else.
+// No `ArtifactRef` meant no id, so `GET /api/v1/artifacts/{id}/content` could
+// not serve them and the frontend had no URL for a GeoTIFF or a contour set.
+//
+// The paths arrive bundle-relative, because that is what the summary records;
+// an `ArtifactRef.Path` is project-root-relative, so each is rejoined to the
+// bundle and re-relativised. One ref per file, not per format: GeoTIFF and COG
+// write one file per raster band.
+func formatExportArtifacts(
+	exportedPaths map[string][]string,
+	bundleDir string,
+	in formatArtifactInputs,
+) []project.ArtifactRef {
+	// Map iteration order must not reach the manifest: the artifact list is
+	// part of a file this project hashes and diffs.
+	formatNames := slices.Sorted(maps.Keys(exportedPaths))
+
+	refs := make([]project.ArtifactRef, 0, len(exportedPaths))
+
+	for _, formatName := range formatNames {
+		kind, ok := formatArtifactKinds[formatName]
+		if !ok {
+			continue
+		}
+
+		for index, bundleRelative := range exportedPaths[formatName] {
+			absolute := filepath.Join(bundleDir, filepath.FromSlash(bundleRelative))
+
+			refs = append(refs, project.ArtifactRef{
+				// The export id makes the ref unique per bundle and the index
+				// unique per file within it, so re-exporting one run replaces
+				// nothing and collides with nothing.
+				ID:        fmt.Sprintf("artifact-export-%s-%s-%d", in.exportID, formatName, index),
+				RunID:     in.runID,
+				Kind:      kind,
+				Path:      relativePath(in.storeRoot, absolute),
+				CreatedAt: in.createdAt,
+			})
+		}
+	}
+
+	return refs
 }
 
 func writeExportSummaryText(
@@ -897,342 +1021,6 @@ func collectQASuites(artifacts []project.ArtifactRef, runID string) []reporting.
 	})
 
 	return suites
-}
-
-// formatExportContext holds the data shared by all per-format export helpers.
-//
-// A bundle can legitimately hold two CRS. The model GeoJSON is the project's
-// stored model and is in projectCRS; the receiver table, the raster and the
-// contours derived from it come out of a run and are in resultsCRS, which
-// differs whenever the run had to project a geographic project CRS into a
-// metric one before computing. Labelling each file with the CRS it is actually
-// in is what lets a GIS overlay them; one shared label would be wrong for one
-// of the two.
-type formatExportContext struct {
-	bundleDir        string
-	formatsDir       string
-	projectCRS       string
-	epsgCode         int
-	resultsCRS       string
-	resultsEPSG      int
-	contourInterval  float64
-	modelGeoJSONPath string
-	receiverTable    *results.ReceiverTable
-	raster           *results.Raster
-	geoTransform     exportfmt.GeoTransform
-	hasGeoTransform  bool
-}
-
-func executeFormatExports(
-	formats []exportfmt.Format,
-	bundleDir string,
-	projectCRS string,
-	resultsCRS string,
-	copiedResults copiedRunResults,
-	contourInterval float64,
-	modelGeoJSONPath string,
-) (map[string][]string, error) {
-	ctx := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
-
-	out := make(map[string][]string)
-
-	for _, f := range formats {
-		err := ctx.exportFormat(f, out)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return out, nil
-}
-
-func newFormatExportContext(
-	bundleDir string,
-	projectCRS string,
-	resultsCRS string,
-	copiedResults copiedRunResults,
-	contourInterval float64,
-	modelGeoJSONPath string,
-) formatExportContext {
-	if strings.TrimSpace(resultsCRS) == "" {
-		resultsCRS = projectCRS
-	}
-
-	ctx := formatExportContext{
-		bundleDir:        bundleDir,
-		formatsDir:       filepath.Join(bundleDir, "formats"),
-		projectCRS:       projectCRS,
-		resultsCRS:       resultsCRS,
-		contourInterval:  contourInterval,
-		modelGeoJSONPath: modelGeoJSONPath,
-	}
-
-	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &ctx.epsgCode)
-	_, _ = fmt.Sscanf(resultsCRS, "EPSG:%d", &ctx.resultsEPSG)
-
-	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
-	if copiedResults.ReceiverTableJSON != "" {
-		table, err := results.LoadReceiverTableJSON(copiedResults.ReceiverTableJSON)
-		if err == nil {
-			ctx.receiverTable = &table
-		}
-	}
-
-	// Load raster if available (needed for GeoTIFF + contours).
-	if len(copiedResults.RasterMetadataList) > 0 {
-		r, err := results.LoadRaster(copiedResults.RasterMetadataList[0])
-		if err == nil {
-			ctx.raster = r
-		}
-	}
-
-	ctx.inferGeoTransform()
-
-	return ctx
-}
-
-// inferGeoTransform derives the raster geo-transform from receiver coordinates
-// when both a receiver table and a raster are available.
-func (c *formatExportContext) inferGeoTransform() {
-	if c.receiverTable == nil || c.raster == nil {
-		return
-	}
-
-	meta := c.raster.Metadata()
-	xs := make([]float64, 0, len(c.receiverTable.Records))
-	ys := make([]float64, 0, len(c.receiverTable.Records))
-
-	for _, r := range c.receiverTable.Records {
-		xs = append(xs, r.X)
-		ys = append(ys, r.Y)
-	}
-
-	if len(xs) != meta.Width*meta.Height {
-		return
-	}
-
-	inferred, err := exportfmt.InferGeoTransformFromReceivers(xs, ys, meta.Width, meta.Height)
-	if err == nil {
-		c.geoTransform = inferred
-		c.hasGeoTransform = true
-	}
-}
-
-// rasterGeoTransform returns the inferred transform, or a default identity
-// transform when inference was not possible.
-func (c *formatExportContext) rasterGeoTransform() exportfmt.GeoTransform {
-	if c.hasGeoTransform {
-		return c.geoTransform
-	}
-
-	return exportfmt.GeoTransform{
-		OriginX: 0, OriginY: float64(c.raster.Metadata().Height),
-		PixelSizeX: 1, PixelSizeY: -1,
-	}
-}
-
-func (c *formatExportContext) exportFormat(f exportfmt.Format, out map[string][]string) error {
-	switch f {
-	case exportfmt.FormatGeoTIFF:
-		return c.exportGeoTIFF(out)
-	case exportfmt.FormatCOG:
-		return c.exportCOG(out)
-	case exportfmt.FormatGeoPackage:
-		return c.exportGeoPackage(out)
-	case exportfmt.FormatContourGeoJSON:
-		return c.exportContourGeoJSON(out)
-	case exportfmt.FormatContourGeoPackage:
-		return c.exportContourGeoPackage(out)
-	}
-
-	return nil
-}
-
-func (c *formatExportContext) exportGeoTIFF(out map[string][]string) error {
-	if c.raster == nil {
-		return nil // skip if no raster available
-	}
-
-	basePath := filepath.Join(c.formatsDir, "raster")
-
-	paths, err := exportfmt.ExportGeoTIFF(basePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
-	if err != nil {
-		return fmt.Errorf("geotiff export: %w", err)
-	}
-
-	relPaths := make([]string, len(paths))
-	for i, p := range paths {
-		relPaths[i] = relativePath(c.bundleDir, p)
-	}
-
-	out[string(exportfmt.FormatGeoTIFF)] = relPaths
-
-	return nil
-}
-
-func (c *formatExportContext) exportCOG(out map[string][]string) error {
-	if c.raster == nil {
-		return nil
-	}
-
-	cogBasePath := filepath.Join(c.formatsDir, "raster")
-
-	cogPaths, err := exportfmt.ExportCOG(cogBasePath, c.raster, c.rasterGeoTransform(), c.resultsCRS)
-	if err != nil {
-		return fmt.Errorf("cog export: %w", err)
-	}
-
-	cogRelPaths := make([]string, len(cogPaths))
-	for i, p := range cogPaths {
-		cogRelPaths[i] = relativePath(c.bundleDir, p)
-	}
-
-	out[string(exportfmt.FormatCOG)] = cogRelPaths
-
-	return nil
-}
-
-func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
-	var gpkgPaths []string
-
-	if c.receiverTable != nil {
-		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
-
-		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *c.receiverTable, c.resultsCRS, c.resultsEPSG)
-		if err != nil {
-			return fmt.Errorf("geopackage export: %w", err)
-		}
-
-		gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, gpkgPath))
-	}
-
-	if c.modelGeoJSONPath != "" {
-		modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(c.modelGeoJSONPath)
-		if loadErr == nil && len(modelFeatures) > 0 {
-			modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
-
-			exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
-			if exportErr != nil {
-				return fmt.Errorf("model geopackage export: %w", exportErr)
-			}
-
-			gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, modelGpkgPath))
-		}
-	}
-
-	if len(gpkgPaths) > 0 {
-		out[string(exportfmt.FormatGeoPackage)] = gpkgPaths
-	}
-
-	return nil
-}
-
-// geoJSONCRS is the only CRS a GeoJSON file may be in. RFC 7946 §4 fixes it:
-// a consumer reads a bare FeatureCollection as WGS84 whatever produced it.
-const geoJSONCRS = "EPSG:4326"
-
-// contoursInWGS84 moves contour vertices out of the CRS the results are in and
-// into the one GeoJSON is defined in.
-//
-// The other formats in this bundle carry their CRS in their own metadata and
-// so can stay in the results' CRS; GeoJSON cannot, which is why this format
-// alone is reprojected rather than labelled.
-//
-// A results CRS with no EPSG code — a WKT: identifier — is left alone. There
-// is nothing to transform through, and failing the export would break bundles
-// that are produced today in exchange for nothing.
-func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exportfmt.ContourLine, error) {
-	if strings.EqualFold(strings.TrimSpace(resultsCRS), geoJSONCRS) {
-		return contours, nil
-	}
-
-	from, ok := epsgCRS(resultsCRS)
-	if !ok {
-		return contours, nil
-	}
-
-	to, err := geo.ParseCRS(geoJSONCRS)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", geoJSONCRS, err)
-	}
-
-	pipeline, err := geo.BuildTransformPipeline(to, from)
-	if err != nil {
-		return nil, fmt.Errorf("build transform %s -> %s: %w", from.ID, geoJSONCRS, err)
-	}
-
-	out := make([]exportfmt.ContourLine, len(contours))
-
-	for i, contour := range contours {
-		moved := contour
-		moved.Points = make([][2]float64, len(contour.Points))
-
-		for j, point := range contour.Points {
-			transformed, err := pipeline.ApplyPoint(geo.Point2D{X: point[0], Y: point[1]})
-			if err != nil {
-				return nil, fmt.Errorf("contour %d vertex %d: %w", i, j, err)
-			}
-
-			moved.Points[j] = [2]float64{transformed.X, transformed.Y}
-		}
-
-		out[i] = moved
-	}
-
-	return out, nil
-}
-
-func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
-	if c.raster == nil {
-		return nil
-	}
-
-	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
-		Interval: c.contourInterval,
-	})
-	if err != nil {
-		return fmt.Errorf("contour generation: %w", err)
-	}
-
-	contours, err = contoursInWGS84(contours, c.resultsCRS)
-	if err != nil {
-		return fmt.Errorf("contour reprojection: %w", err)
-	}
-
-	contourPath := filepath.Join(c.formatsDir, "contours.geojson")
-
-	err = exportfmt.ExportContourGeoJSON(contourPath, contours)
-	if err != nil {
-		return fmt.Errorf("contour geojson export: %w", err)
-	}
-
-	out[string(exportfmt.FormatContourGeoJSON)] = []string{relativePath(c.bundleDir, contourPath)}
-
-	return nil
-}
-
-func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) error {
-	if c.raster == nil {
-		return nil
-	}
-
-	contours, err := exportfmt.GenerateContours(c.raster, c.rasterGeoTransform(), exportfmt.ContourOptions{
-		Interval: c.contourInterval,
-	})
-	if err != nil {
-		return fmt.Errorf("contour generation: %w", err)
-	}
-
-	contourGpkgPath := filepath.Join(c.formatsDir, "contours.gpkg")
-
-	err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, c.resultsCRS, c.resultsEPSG)
-	if err != nil {
-		return fmt.Errorf("contour geopackage export: %w", err)
-	}
-
-	out[string(exportfmt.FormatContourGeoPackage)] = []string{relativePath(c.bundleDir, contourGpkgPath)}
-
-	return nil
 }
 
 // Indicator names used by the sample result bundle emitted with

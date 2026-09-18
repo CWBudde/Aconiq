@@ -14,7 +14,11 @@ import { useModelStore } from "@/model/model-store";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { ModelFeature } from "@/model/types";
 import type { ComputeRequest, TransformRequest } from "@/wasm/types";
-import type { StandardDescriptor } from "./client";
+import type {
+  RasterMetadata,
+  ReceiverTable,
+  StandardDescriptor,
+} from "./client";
 
 /**
  * Records every `transform` request `startRun` makes, so a test can ask what
@@ -425,6 +429,38 @@ function runFixture(index: number, startedAt: string) {
   };
 }
 
+/**
+ * A stored run whose raster bytes really are in the byte store, which is what
+ * makes "were they deleted?" a question with an answer.
+ */
+async function runFixtureWithRaster(index: number, startedAt: string) {
+  const fixture = runFixture(index, startedAt);
+  const artifactId = `artifact-${fixture.run.id}-raster-bin`;
+  await storage.saveArtifactBytes(artifactId, new ArrayBuffer(64));
+  return {
+    ...fixture,
+    run: {
+      ...fixture.run,
+      artifacts: [
+        {
+          id: artifactId,
+          kind: "run.result.raster_binary",
+          path: `${fixture.run.id}/results/rls19-road.bin`,
+          created_at: startedAt,
+        },
+      ],
+    },
+    artifacts: {
+      [artifactId]: {
+        kind: "run.result.raster_binary",
+        mimeType: "application/octet-stream",
+        encoding: "binary",
+        value: null,
+      },
+    },
+  };
+}
+
 async function persisted(): Promise<{ version: number; state: unknown }> {
   return (await storage.loadPersistedState()) as {
     version: number;
@@ -588,6 +624,44 @@ describe("persisted state", () => {
 
     const runs = await browserBackend.getRuns();
     expect(runs.map((run) => run.id)).toEqual(["run-0001"]);
+  });
+
+  /*
+   * `run.result.raster_binary` used to be stored as `text` whose value was the
+   * run's SHA-256 hex string. Those documents are still at version 1 — the
+   * version deliberately did not move, because a bump costs the reader its
+   * whole run list where this costs one raster that was never really stored.
+   * What the missing bump must not cost is a caller asking for an ArrayBuffer
+   * and being handed 64 characters of hex that decode as a raster of nothing.
+   */
+  it("refuses a pre-binary raster artifact instead of serving its digest", async () => {
+    const legacy = runFixture(1, "2026-01-01T10:00:00.000Z");
+    const artifactID = "artifact-run-0001-raster-bin";
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: {
+        runs: [
+          {
+            ...legacy,
+            artifacts: {
+              [artifactID]: {
+                kind: "run.result.raster_binary",
+                mimeType: "application/octet-stream",
+                encoding: "text",
+                value: "a".repeat(64),
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    // The run itself survives: its receiver table, sidecar and summary are
+    // still exactly what it wrote.
+    await expect(browserBackend.getRuns()).resolves.toHaveLength(1);
+    await expect(browserBackend.getArtifactContent(artifactID)).rejects.toThrow(
+      /bytes are not stored/,
+    );
   });
 
   it.each([
@@ -955,6 +1029,28 @@ describe("persisted state", () => {
       expect(runIDs((await persisted()).state)).toEqual(["run-0001"]);
     });
 
+    /*
+     * "Everything stored under it" has to include the bytes beside the
+     * document. Deleting only the document entry reclaims almost nothing, and
+     * run-then-delete, repeated, fills the origin's quota with rasters that no
+     * run names and only `clearPersistedState` would ever sweep.
+     */
+    it("removes the raster bytes the document stopped naming", async () => {
+      const stored = await runFixtureWithRaster(2, "2026-01-01T02:00:00.000Z");
+      const bytesID = stored.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [stored], runHighWaterMark: 2 },
+      });
+      resetBrowserBackendForTests();
+
+      await browserBackend.deleteRun("run-0002");
+
+      await vi.waitFor(async () => {
+        expect(await storage.loadArtifactBytes(bytesID)).toBeNull();
+      });
+    });
+
     it("does not free the id of the run it deleted", async () => {
       // The hazard the high-water mark exists for: without it the next run
       // would be `run-0002` again, `setRun` would replace a run that is
@@ -1033,7 +1129,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValueOnce(quota());
 
       const run = await browserBackend.startRun(RUN_SPEC);
@@ -1056,7 +1152,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValue(quota());
 
       const failure = await browserBackend
@@ -1093,7 +1189,9 @@ describe("persisted state", () => {
 
     it("reports an export the same way", async () => {
       await seedState();
-      vi.spyOn(storage, "savePersistedState").mockRejectedValue(quota());
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
+        quota(),
+      );
 
       const failure = await browserBackend
         .createExport(RUN_ID)
@@ -1119,7 +1217,7 @@ describe("persisted state", () => {
       });
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValueOnce(quota())
         .mockRejectedValueOnce(
           new storage.BrowserStorageError("unavailable", "gone away"),
@@ -1144,10 +1242,63 @@ describe("persisted state", () => {
       ]);
     });
 
+    /*
+     * The byte records are keyed outside the document, so deleting them is
+     * only safe once the document that stopped naming them is on disk. This
+     * is the path that used to lose data: the eviction deleted the victim's
+     * raster up front, the retry then failed, `persistRun` put the un-evicted
+     * list back — and the run it had just restored could no longer read its
+     * own raster.
+     */
+    it("keeps an evicted run's raster bytes when the retry fails too", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      const victimBytesID = victim.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
+        quota(),
+      );
+
+      await browserBackend.startRun(RUN_SPEC).catch(() => undefined);
+
+      // The store still holds the run, so it must still hold its raster.
+      expect(runIDs((await persisted()).state)).toContain("run-0001");
+      expect(await storage.loadArtifactBytes(victimBytesID)).not.toBeNull();
+    });
+
+    it("deletes the evicted run's raster bytes once the eviction is stored", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      const victimBytesID = victim.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValueOnce(
+        quota(),
+      );
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(runIDs((await persisted()).state)).not.toContain("run-0001");
+      // Eviction exists to free quota, and the raster is the largest thing a
+      // run owns. The delete is deliberately not awaited by the writer.
+      await vi.waitFor(async () => {
+        expect(await storage.loadArtifactBytes(victimBytesID)).toBeNull();
+      });
+    });
+
     it("surfaces a non-quota storage failure without evicting", async () => {
       await browserBackend.getRuns();
       const save = vi
-        .spyOn(storage, "savePersistedState")
+        .spyOn(storage, "savePersistedStateForgetting")
         .mockRejectedValue(
           new storage.BrowserStorageError("unavailable", "no IndexedDB"),
         );
@@ -1160,6 +1311,68 @@ describe("persisted state", () => {
       expect(storage.isBrowserStorageError(failure, "unavailable")).toBe(true);
       expect((failure as Error).message).toMatch(/could not be stored/);
       expect(await browserBackend.getRuns()).toHaveLength(1);
+    });
+
+    /*
+     * The raster bytes are written before the document, and eviction cannot
+     * rescue that write: the retry frees the victim's bytes only after the
+     * document recording the drop is stored, so there is no freed space to
+     * retry into. What it must still do is read like every other storage
+     * failure — the dialogs render `error.message`, and a raw DOMException
+     * text is not what they are written for.
+     */
+    it("reports a quota failure on the raster write in the run's words", async () => {
+      vi.spyOn(storage, "saveArtifactBytes").mockRejectedValue(quota());
+
+      const failure = await browserBackend
+        .startRun({
+          ...RUN_SPEC,
+          receiverMode: "auto-grid",
+          params: {
+            ...RUN_SPEC.params,
+            grid_resolution_m: "50",
+            grid_padding_m: "0",
+          },
+        })
+        .catch((error: unknown) => error);
+
+      expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
+      expect((failure as Error).message).toMatch(
+        /run completed but could not be stored/,
+      );
+    });
+
+    /*
+     * Bytes written for a run whose document never landed are unreachable:
+     * `forgetArtifactBytes` walks the runs the document holds, and the next
+     * `reloadState` drops the failed run from memory too. Left behind they
+     * cost a raster's worth of quota per failed run, permanently — and on the
+     * quota path that is the resource that just ran out.
+     */
+    it("reclaims the raster bytes of a run that could not be stored", async () => {
+      vi.spyOn(storage, "savePersistedStateForgetting").mockRejectedValue(
+        new storage.BrowserStorageError("unavailable", "no IndexedDB"),
+      );
+
+      const failure = await browserBackend
+        .startRun({
+          ...RUN_SPEC,
+          receiverMode: "auto-grid",
+          params: {
+            ...RUN_SPEC.params,
+            grid_resolution_m: "50",
+            grid_padding_m: "0",
+          },
+        })
+        .catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      const runID = `run-${String(1).padStart(4, "0")}`;
+      await vi.waitFor(async () => {
+        expect(
+          await storage.loadArtifactBytes(`artifact-${runID}-raster-bin`),
+        ).toBeNull();
+      });
     });
   });
 });
@@ -1290,5 +1503,146 @@ describe("receiver grid extent", () => {
     ]);
 
     expect(bbox).toEqual({ minX: 0, minY: 0, maxX: 200, maxY: 100 });
+  });
+});
+
+describe("browser-mode raster artifacts", () => {
+  beforeEach(async () => {
+    await resetStores();
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+  });
+
+  /*
+   * This slot held the run's SHA-256 hex string — 64 characters where a
+   * float64 array belongs — because `StoredArtifactContent` could not
+   * represent bytes at all. Nothing could read back the raster a browser run
+   * had just computed, which is what blocked drawing it on the map.
+   */
+  it("stores the raster binary as bytes, not as a digest of it", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "25",
+        grid_padding_m: "0",
+      },
+    });
+
+    const binary = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_binary",
+    );
+    expect(binary).toBeDefined();
+
+    const bytes = await browserBackend.getArtifactContent<ArrayBuffer>(
+      binary?.id ?? "",
+    );
+    // Not `toBeInstanceOf`: fake-indexeddb clones across a realm boundary, so
+    // the buffer that comes back has every internal slot and still fails
+    // `instanceof` — the same reason `browser-storage` checks the tag.
+    expect(Object.prototype.toString.call(bytes)).toBe("[object ArrayBuffer]");
+
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+    // Exactly what `results.SaveRaster` writes: one float64 per cell per band.
+    expect(bytes.byteLength).toBe(meta.width * meta.height * meta.bands * 8);
+  });
+
+  /*
+   * The georeference is what lets anything place the raster. It has to be the
+   * padded grid's south-west corner — the centre of cell (0,0) — which is the
+   * same convention `buildReceiversFromPoints` records on the CLI side.
+   */
+  it("records where the grid sits, in the compute CRS", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "25",
+        grid_padding_m: "50",
+      },
+    });
+
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+
+    expect(meta.crs).toBe("EPSG:25832");
+    expect(meta.georeference).toEqual({
+      // ROAD spans x 0..100, y 0..0; padding 50 puts the origin at (-50, -50).
+      origin_x: -50,
+      origin_y: -50,
+      pixel_size_m: 25,
+      row_order: "south-up",
+    });
+
+    const table = await browserBackend.getArtifactContent<ReceiverTable>(
+      run.artifacts.find((a) => a.kind === "run.result.receiver_table_json")
+        ?.id ?? "",
+    );
+    // The origin is the first receiver, on both targets.
+    expect([table.records[0]?.x, table.records[0]?.y]).toEqual([-50, -50]);
+  });
+
+  /*
+   * Explicit receivers are points the user placed. No cell size describes
+   * them, and an invented georeference would be read by every GIS consumer
+   * without a second opinion.
+   */
+  it("records no georeference for explicit receivers", async () => {
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const meta = await browserBackend.getArtifactContent<RasterMetadata>(
+      run.artifacts.find((a) => a.kind === "run.result.raster_metadata")?.id ??
+        "",
+    );
+
+    expect(meta.georeference).toBeUndefined();
+    expect(meta.crs).toBe("EPSG:25832");
+  });
+
+  /*
+   * `getArtifactURL` is synchronous because pages put its result straight into
+   * `<iframe src>`. Binary content is not in the document, so it cannot answer
+   * — and a blob minted from `null` would read "null" to whoever opened it.
+   */
+  it("refuses to mint a synchronous URL for binary content", async () => {
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      receiverMode: "auto-grid",
+      params: {
+        ...RUN_SPEC.params,
+        grid_resolution_m: "50",
+        grid_padding_m: "0",
+      },
+    });
+    const binaryId =
+      run.artifacts.find((a) => a.kind === "run.result.raster_binary")?.id ??
+      "";
+
+    expect(() => browserBackend.getArtifactURL(binaryId)).toThrow(
+      "holds binary content",
+    );
   });
 });

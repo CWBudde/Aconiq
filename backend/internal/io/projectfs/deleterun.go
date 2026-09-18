@@ -24,7 +24,9 @@ var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // bundles wherever it is pointed, so testing for the default directory would
 // recognise only the bundles that happened to land there and drop the rest
 // without a word.
-const exportArtifactKindPrefix = "export."
+// It is `project.ArtifactKindExportPrefix`, not a second copy of the string:
+// the two drifting apart would silently change what a delete keeps.
+const exportArtifactKindPrefix = project.ArtifactKindExportPrefix
 
 // The refusals DeleteRun makes about a named run. They are sentinels rather
 // than error kinds because a caller has to answer them differently — the HTTP

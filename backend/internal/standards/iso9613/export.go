@@ -18,7 +18,7 @@ type ExportOutputs struct {
 }
 
 // ExportResultBundle exports receiver-table and raster outputs for ISO 9613 preview runs.
-func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int, gridHeight int) (ExportOutputs, error) {
+func ExportResultBundle(baseDir string, outputs []ReceiverOutput, grid results.GridLayout) (ExportOutputs, error) {
 	if baseDir == "" {
 		return ExportOutputs{}, errors.New("base dir is required")
 	}
@@ -27,12 +27,12 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 		return ExportOutputs{}, errors.New("at least one receiver output is required")
 	}
 
-	if gridWidth <= 0 || gridHeight <= 0 {
+	if grid.Width <= 0 || grid.Height <= 0 {
 		return ExportOutputs{}, errors.New("grid dimensions must be > 0")
 	}
 
-	if gridWidth*gridHeight != len(outputs) {
-		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", gridWidth, gridHeight, len(outputs))
+	if grid.Width*grid.Height != len(outputs) {
+		return ExportOutputs{}, fmt.Errorf("grid dimensions (%dx%d) do not match receiver output count (%d)", grid.Width, grid.Height, len(outputs))
 	}
 
 	err := os.MkdirAll(baseDir, 0o750)
@@ -73,20 +73,22 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, gridWidth int,
 	}
 
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width:     gridWidth,
-		Height:    gridHeight,
+		Width:     grid.Width,
+		Height:    grid.Height,
 		Bands:     1,
 		NoData:    -9999,
 		Unit:      "dB",
 		BandNames: []string{IndicatorLpAeqDW},
+		CRS:       grid.CRS,
+		Geo:       grid.Geo,
 	})
 	if err != nil {
 		return ExportOutputs{}, fmt.Errorf("create raster: %w", err)
 	}
 
 	for index, output := range outputs {
-		x := index % gridWidth
-		y := index / gridWidth
+		x := index % grid.Width
+		y := index / grid.Width
 
 		err := raster.Set(x, y, 0, output.Indicators.LpAeqDW)
 		if err != nil {

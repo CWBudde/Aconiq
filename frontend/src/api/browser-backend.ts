@@ -16,6 +16,7 @@ import type {
   ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
+  RasterGeoreference,
   RasterMetadata,
   ReceiverTable,
   RunLog,
@@ -32,6 +33,7 @@ import {
 } from "@/model/source-acoustics";
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
+import { buildRasterBinary } from "@/model/raster-bin";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { type AconiqKernel, getKernel } from "@/wasm/kernel";
 import type {
@@ -46,9 +48,13 @@ import type {
 } from "@/wasm/types";
 import {
   BrowserStorageError,
+  deleteArtifactBytes,
   isBrowserStorageError,
+  loadArtifactBytes,
   loadPersistedState,
+  saveArtifactBytes,
   savePersistedState,
+  savePersistedStateForgetting,
 } from "./browser-storage";
 
 /**
@@ -87,10 +93,20 @@ const DEFAULT_OSM_ENDPOINT = "https://overpass-api.de/api/interpreter";
  */
 const CRS_NOT_RECORDED = "CRS not recorded";
 
+/**
+ * One stored artifact's content.
+ *
+ * `encoding` says how `value` is to be read: a `json` value is the decoded
+ * object, a `text` value is the string, and a `binary` value is **not here at
+ * all** — the bytes live under their own IndexedDB key
+ * (`browser-storage.saveArtifactBytes`) and `value` is null. The document is
+ * written whole on every change, so a raster binary inside it would be
+ * structured-cloned, runs and all, on every save.
+ */
 type StoredArtifactContent = {
   mimeType: string;
   kind: string;
-  encoding: "json" | "text";
+  encoding: "json" | "text" | "binary";
   value: unknown;
 };
 
@@ -166,7 +182,9 @@ function isStoredArtifactContent(
     isRecord(value) &&
     typeof value["mimeType"] === "string" &&
     typeof value["kind"] === "string" &&
-    (value["encoding"] === "json" || value["encoding"] === "text") &&
+    (value["encoding"] === "json" ||
+      value["encoding"] === "text" ||
+      value["encoding"] === "binary") &&
     "value" in value
   );
 }
@@ -213,6 +231,9 @@ function decodeState(value: unknown): BrowserBackendState {
   const runs = (Array.isArray(value["runs"]) ? value["runs"] : []).filter(
     isStoredRun,
   );
+  for (const storedRun of runs) {
+    markLegacyRasterBytesMissing(storedRun);
+  }
   // A document written before the mark existed carries none, and the highest
   // stored id is exactly right for it: nothing could delete a run then, so no
   // id above the surviving ones was ever handed out.
@@ -227,6 +248,34 @@ function decodeState(value: unknown): BrowserBackendState {
         ? Math.max(storedMark, highestRunIndex(runs))
         : highestRunIndex(runs),
   };
+}
+
+/**
+ * Turns a pre-`binary` raster artifact into one that admits it has no bytes.
+ *
+ * Browser mode used to store `run.result.raster_binary` as `text` whose value
+ * was the run's SHA-256 hex string — 64 characters where a float64 array
+ * belongs. Those records are still in the store and `PERSISTED_STATE_VERSION`
+ * deliberately did not move for the change: a bump makes an older document
+ * unreadable and throws twenty runs away, where the cost here is one raster
+ * that was never really stored.
+ *
+ * What the missing bump would otherwise cost is the reason this exists.
+ * `getArtifactContent` reads bytes only for `encoding === "binary"`, so such an
+ * artifact would hand a caller asking for an `ArrayBuffer` a digest string that
+ * decodes as a raster of nothing. Relabelling it puts it on the path that
+ * already covers a document and a byte store that disagree, and it says so:
+ * "declares binary content, but its bytes are not stored". The run's other
+ * artifacts — receiver table, sidecar, summary — are untouched and still open.
+ */
+function markLegacyRasterBytesMissing(storedRun: StoredRun): void {
+  for (const content of Object.values(storedRun.artifacts)) {
+    if (content.kind !== "run.result.raster_binary") continue;
+    if (content.encoding === "binary") continue;
+    content.encoding = "binary";
+    content.mimeType = "application/octet-stream";
+    content.value = null;
+  }
 }
 
 /** The largest `run-NNNN` index among the stored runs, or 0. */
@@ -397,10 +446,23 @@ async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
   return locks.request(STORE_LOCK_NAME, fn);
 }
 
-async function persist(next: BrowserBackendState): Promise<void> {
-  state = next;
-  pruneURLCache(next);
-  await savePersistedState({ version: PERSISTED_STATE_VERSION, state: next });
+/**
+ * Writes the document, and in the same transaction removes the byte records
+ * `dropped` took with it.
+ *
+ * One transaction, not two, because the pair is one change. Splitting them
+ * forces a choice with no good answer: delete first and a failed write leaves a
+ * retained run whose raster is gone, delete second and the eviction that exists
+ * to make room retries while the room is still occupied. IndexedDB commits both
+ * or neither, so neither half can be observed alone.
+ */
+async function persist(pending: PendingState): Promise<void> {
+  state = pending.state;
+  pruneURLCache(pending.state);
+  await savePersistedStateForgetting(
+    { version: PERSISTED_STATE_VERSION, state: pending.state },
+    binaryArtifactIDs(pending.dropped),
+  );
 }
 
 /**
@@ -432,7 +494,7 @@ async function persistRun(
       // The eviction never reached the store, so it must not reach the list
       // either — whatever the retry failed with: the user would see a run
       // vanish alongside an error about a different one.
-      state = next;
+      state = next.state;
       if (!isBrowserStorageError(error, "quota")) {
         throw storeFailure(what, error);
       }
@@ -455,20 +517,74 @@ function storeFailure(what: "run" | "export", error: unknown): Error {
   );
 }
 
-/** Drops the oldest run other than `keepId`; `null` when there is none. */
+/**
+ * A state the caller has yet to commit, and the runs committing it drops.
+ *
+ * The two travel together because the byte records are keyed outside the
+ * document: deleting them is only safe once the document that stopped naming
+ * those runs is on disk. A write that fails leaves the old document in place,
+ * still naming them.
+ */
+type PendingState = {
+  state: BrowserBackendState;
+  dropped: StoredRun[];
+};
+
+/**
+ * Drops the oldest run other than `keepId`; `null` when there is none.
+ *
+ * Carries the victim forward rather than deleting its bytes: eviction exists to
+ * free quota, and the raster is the largest thing a run owns, so `persist`
+ * removes the two together. Dropping the document entry alone would evict a run
+ * and reclaim almost nothing.
+ */
 function evictOldestRun(
-  current: BrowserBackendState,
+  current: PendingState,
   keepId: string,
-): BrowserBackendState | null {
+): PendingState | null {
   // `setRun` keeps the list newest first, so the victim is the last entry
   // that is not the run being written.
-  const runs = [...current.runs];
+  const runs = [...current.state.runs];
   for (let index = runs.length - 1; index >= 0; index -= 1) {
-    if (runs[index]?.run.id === keepId) continue;
+    const victim = runs[index];
+    if (victim === undefined || victim.run.id === keepId) continue;
     runs.splice(index, 1);
-    return { ...current, runs };
+    return {
+      state: { ...current.state, runs },
+      // The retry writes the whole change again, so it carries what the first
+      // attempt would have dropped as well: that attempt committed nothing.
+      dropped: [...current.dropped, victim],
+    };
   }
   return null;
+}
+
+/** The ids of every artifact these runs keep outside the document. */
+function binaryArtifactIDs(storedRuns: readonly StoredRun[]): string[] {
+  return storedRuns.flatMap((storedRun) =>
+    Object.entries(storedRun.artifacts)
+      .filter(([, content]) => content.encoding === "binary")
+      .map(([artifactId]) => artifactId),
+  );
+}
+
+/**
+ * Deletes byte records no document will ever name.
+ *
+ * Only for bytes that are *already* unreachable — a run written before a
+ * persist that then failed. Bytes a stored document is giving up travel with
+ * that document's own write instead, through `persist`, so the two commit
+ * together.
+ *
+ * Deliberately not awaited: nothing depends on the outcome, and a failure
+ * leaves an orphan record rather than a broken run.
+ */
+function forgetArtifactBytes(storedRuns: readonly StoredRun[]): void {
+  const binaryIds = binaryArtifactIDs(storedRuns);
+  if (binaryIds.length === 0) return;
+  void deleteArtifactBytes(binaryIds).catch(() => {
+    // An orphaned byte record costs quota, not correctness.
+  });
 }
 
 /**
@@ -540,21 +656,29 @@ function findArtifact(
 function setRun(
   current: BrowserBackendState,
   storedRun: StoredRun,
-): BrowserBackendState {
+): PendingState {
   const nextRuns = current.runs.filter(
     (entry) => entry.run.id !== storedRun.run.id,
   );
   nextRuns.push(storedRun);
   nextRuns.sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
+  const kept = nextRuns.slice(0, MAX_STORED_RUNS);
   return {
-    ...current,
-    runs: nextRuns.slice(0, MAX_STORED_RUNS),
-    // Raised here rather than at mint time: this is the moment an id becomes
-    // real, and an eviction or a delete afterwards must not lower it.
-    runHighWaterMark: Math.max(
-      current.runHighWaterMark,
-      highestRunIndex([storedRun]),
-    ),
+    state: {
+      ...current,
+      runs: kept,
+      // Raised here rather than at mint time: this is the moment an id becomes
+      // real, and an eviction or a delete afterwards must not lower it.
+      runHighWaterMark: Math.max(
+        current.runHighWaterMark,
+        highestRunIndex([storedRun]),
+      ),
+    },
+    // Whatever the cap drops takes its byte records with it — once this state
+    // is stored. They are keyed separately from the document, so trimming the
+    // list alone would leave the largest part of every run past the cap in the
+    // store forever.
+    dropped: nextRuns.slice(MAX_STORED_RUNS),
   };
 }
 
@@ -942,10 +1066,21 @@ export function buildBuildings(features: ModelFeature[]): Building[] {
   return buildings;
 }
 
+/**
+ * The grid layout a run computed on, mirroring `results.GridLayout` on the Go
+ * side: the shape, and where it sits. `georeference` is absent for explicit
+ * receivers, which are points rather than a grid.
+ */
+type BrowserGridLayout = {
+  width: number;
+  height: number;
+  georeference?: RasterGeoreference;
+};
+
 function buildReceiverGrid(
   bbox: { minX: number; minY: number; maxX: number; maxY: number },
   params: Record<string, string>,
-): { receivers: PointReceiver[]; width: number; height: number } {
+): { receivers: PointReceiver[] } & BrowserGridLayout {
   const resolution = parseNumber(params, "grid_resolution_m", 10);
   const padding = parseNumber(params, "grid_padding_m", 20);
   const receiverHeight = parseNumber(params, "receiver_height_m", 4);
@@ -973,8 +1108,28 @@ function buildReceiverGrid(
     }
   }
 
-  return { receivers, width, height };
+  return {
+    receivers,
+    width,
+    height,
+    // The padded south-west corner is where the loop above starts, so it is
+    // the centre of cell (0,0) — the same convention `buildReceiversFromPoints`
+    // records on the CLI side, and the reason `receivers[0]` and `origin` are
+    // the same coordinate on both targets.
+    georeference: {
+      origin_x: minX,
+      origin_y: minY,
+      pixel_size_m: resolution,
+      row_order: ROW_ORDER_SOUTH_UP,
+    },
+  };
 }
+
+/**
+ * `results.RowOrderSouthUp`. The loop above walks Y ascending, as
+ * `geo.GridReceiverSet.Generate` does, so row 0 is the southernmost.
+ */
+const ROW_ORDER_SOUTH_UP = "south-up";
 
 async function sha256Hex(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
@@ -1160,8 +1315,7 @@ async function runRLS19Road(
   const buildings = buildBuildings(features);
 
   let gridReceivers: PointReceiver[];
-  let rasterWidth: number;
-  let rasterHeight: number;
+  let layout: BrowserGridLayout;
 
   if (spec.receiverMode === "custom") {
     const storeReceivers = computeModel.receivers;
@@ -1180,8 +1334,10 @@ async function runRLS19Road(
       point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
       height_m: r.heightM,
     }));
-    rasterWidth = 1;
-    rasterHeight = storeReceivers.length;
+    // Not a grid, and the layout says so: explicit receivers are points the
+    // user placed, and no cell size describes where they sit. The shape still
+    // describes the raster truthfully — one column, one row per receiver.
+    layout = { width: 1, height: storeReceivers.length };
   } else {
     const calcArea = computeModel.calcArea;
     let bbox: {
@@ -1203,8 +1359,13 @@ async function runRLS19Road(
     }
     const receiverGrid = buildReceiverGrid(bbox, spec.params);
     gridReceivers = receiverGrid.receivers;
-    rasterWidth = receiverGrid.width;
-    rasterHeight = receiverGrid.height;
+    layout = {
+      width: receiverGrid.width,
+      height: receiverGrid.height,
+      ...(receiverGrid.georeference
+        ? { georeference: receiverGrid.georeference }
+        : undefined),
+    };
   }
 
   // The lock spans the compute, not just the persist: the id is minted
@@ -1234,18 +1395,33 @@ async function runRLS19Road(
     const receiverTable = buildReceiverTable(outputs);
     const receiverCSV = buildReceiverTableCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
-      width: rasterWidth,
-      height: rasterHeight,
+      width: layout.width,
+      height: layout.height,
       bands: 2,
       nodata: -9999,
       unit: "dB(A)",
       band_names: ["LrDay", "LrNight"],
+      // Both mirror what `results.RasterMetadata` carries on the CLI side.
+      // The CRS is the compute CRS, as it is there: results are expressed in
+      // it, and the sidecar is the only place a consumer can ask.
+      crs: projection.computeCRS,
+      ...(layout.georeference
+        ? { georeference: layout.georeference }
+        : undefined),
     };
+    // The real thing, not a digest of it. This slot held the run's SHA-256 hex
+    // string — 64 characters where a float64 array belongs — because
+    // `StoredArtifactContent` could not represent bytes at all, so nothing
+    // could read back the raster a browser run had just computed.
+    const rasterBinary = buildRasterBinary(rasterMetadata, [
+      outputs.map((output) => output.Indicators.lr_day),
+      outputs.map((output) => output.Indicators.lr_night),
+    ]);
     const summary = {
       run_id: runId,
       status: "completed",
-      grid_width: rasterWidth,
-      grid_height: rasterHeight,
+      grid_width: layout.width,
+      grid_height: layout.height,
       source_count: sources.length,
       parking_source_count: parking.sources.length,
       receiver_count: outputs.length,
@@ -1371,8 +1547,8 @@ async function runRLS19Road(
       [rasterBinArtifact.id]: {
         kind: rasterBinArtifact.kind,
         mimeType: "application/octet-stream",
-        encoding: "text",
-        value: outputHash,
+        encoding: "binary",
+        value: null,
       },
       [summaryArtifact.id]: {
         kind: summaryArtifact.kind,
@@ -1382,7 +1558,39 @@ async function runRLS19Road(
       },
     };
 
-    await persistRun({ run, log, artifacts: artifactMap }, "run");
+    const storedRun: StoredRun = { run, log, artifacts: artifactMap };
+
+    // The bytes go in first: a document referencing an artifact whose record
+    // is missing reads as a corrupted run, while a byte record no document
+    // names is merely orphaned.
+    try {
+      await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
+    } catch (error) {
+      // No eviction-and-retry here, unlike `persistRun`. Eviction is a
+      // *document* write — it frees space by storing a smaller document, with
+      // the dropped run's bytes removed in the same transaction — and this
+      // write happens before there is any document change to pair it with.
+      // Giving the raster its own evict-and-retry means writing the smaller
+      // document first and the bytes after; PLAN.md carries it as open rather
+      // than pretending the case is covered. What is in reach is the wording:
+      // this is a storage failure like any other, and the dialogs render
+      // `error.message`.
+      throw storeFailure("run", error);
+    }
+
+    try {
+      await persistRun(storedRun, "run");
+    } catch (error) {
+      // Nothing else will ever find these. `forgetArtifactBytes` walks the
+      // runs the stored document holds, and a run whose persist failed is not
+      // one of them — the next `reloadState` drops it from memory too. Left
+      // behind, they would cost the origin a raster's worth of quota per
+      // failed run, permanently, and on the quota path that is the very
+      // resource that failed.
+      forgetArtifactBytes([storedRun]);
+      throw error;
+    }
+
     return run;
   });
 }
@@ -1484,7 +1692,21 @@ export const browserBackend = {
   },
 
   async getArtifactContent<T>(artifactId: string): Promise<T> {
-    return findArtifact(await ensureLoaded(), artifactId).value as T;
+    const content = findArtifact(await ensureLoaded(), artifactId);
+    if (content.encoding === "binary") {
+      // The bytes are beside the document, not in it. A missing record means
+      // the document and the byte store disagree — a partial quota eviction,
+      // or a document restored without them — and an empty buffer read as a
+      // raster is a grid of zeroes, so it says so instead.
+      const bytes = await loadArtifactBytes(artifactId);
+      if (bytes === null) {
+        throw new Error(
+          `Artifact ${artifactId} declares binary content, but its bytes are not stored`,
+        );
+      }
+      return bytes as T;
+    }
+    return content.value as T;
   },
 
   /**
@@ -1504,6 +1726,15 @@ export const browserBackend = {
       );
     }
     const content = findArtifact(state, artifactId);
+    if (content.encoding === "binary") {
+      // Binary content is not in the document, and this is synchronous
+      // because pages put the result straight into `<iframe src>` and
+      // `<a href>`. Nothing asks for a URL to a raster today; when something
+      // does it needs an async path, not a blob minted from `null`.
+      throw new Error(
+        `Artifact ${artifactId} holds binary content; read it with getArtifactContent`,
+      );
+    }
     const body =
       content.encoding === "json"
         ? JSON.stringify(content.value, null, 2)
@@ -1736,8 +1967,16 @@ out geom;`;
         throw new Error(`Run ${runId} is still running`);
       }
       await persist({
-        ...current,
-        runs: current.runs.filter((entry) => entry.run.id !== runId),
+        state: {
+          ...current,
+          runs: current.runs.filter((entry) => entry.run.id !== runId),
+        },
+        // The raster bytes are keyed outside the document, so removing the run
+        // from it reclaims nothing on its own: run, delete, repeat would fill
+        // the origin's quota with rasters no run names. In the same
+        // transaction, so a delete that does not commit still has a run with a
+        // readable raster.
+        dropped: [storedRun],
       });
       // No paths and no surviving bundle: the export artifacts lived inside
       // the record just removed.
