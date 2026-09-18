@@ -51,6 +51,9 @@ type geoTransformParityCase struct {
 	Want       geoTransformJSON     `json:"geo_transform"`
 }
 
+// The JSON shape of GeoTransform, whose own fields carry no tags. Its fields
+// must stay identical to GeoTransform's, in the same order: the conversion
+// below depends on it, and so does the golden the TypeScript mirror reads.
 type geoTransformJSON struct {
 	OriginX    float64 `json:"origin_x"`
 	OriginY    float64 `json:"origin_y"`
@@ -113,12 +116,12 @@ func TestGeoTransformFromGeoreferenceParityFixture(t *testing.T) {
 			t.Fatalf("case %q: geo transform from georeference: %v", cases[index].Name, err)
 		}
 
-		cases[index].Want = geoTransformJSON{
-			OriginX:    transform.OriginX,
-			OriginY:    transform.OriginY,
-			PixelSizeX: transform.PixelSizeX,
-			PixelSizeY: transform.PixelSizeY,
-		}
+		// A conversion and not a field-by-field literal: the two structs have
+		// identical fields, and staticcheck's S1016 is right that spelling
+		// them out only creates a second place to forget one. It also means a
+		// field added to GeoTransform breaks this line rather than being
+		// silently dropped from the golden the mirror is checked against.
+		cases[index].Want = geoTransformJSON(transform)
 	}
 
 	golden.AssertJSONSnapshot(t, "testdata/raster-parity/geotransform.golden.json", cases)

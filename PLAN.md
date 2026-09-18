@@ -1813,7 +1813,7 @@ the project directory's **parent**, so the settings read `./node_modules/...` an
 in `vite.config.ts` by hand.
 
 B before C; D and E can run in parallel with C once B is green. The coverage floor is now live
-(73.6% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),
+(84% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),
 so every refit from here is measured — advisory, so it reports rather than blocks. Each phase ends
 with `just fe-ci` and `just fe-e2e` green, which includes the axe baseline on every route in `de`
 and `en`.
