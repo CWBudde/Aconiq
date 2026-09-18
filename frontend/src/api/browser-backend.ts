@@ -488,12 +488,6 @@ const STORE_LOCK_NAME = "aconiq-browser-backend";
  * that truly overlap can collide.
  */
 async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
-  // The sweep goes here rather than at each of the three call sites because
-  // this is the one place that already holds what it needs, and a fourth
-  // writer added later gets it without being told. It runs *before* `fn`:
-  // `startRun`'s quota retry deliberately leaves bytes under a document that
-  // does not yet name them, and a sweep after the body would reclaim the
-  // raster of the run that body just stored.
   // lib.dom declares `locks` as always present; the browsers above disagree.
   const locks = navigator.locks as LockManager | undefined;
   // No lock, no sweep. The unlocked fallback is survivable for the writes
@@ -507,6 +501,12 @@ async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
   // costs an orphaned record its quota until a browser that has the API
   // clears it, which is the cheaper of the two failures by a wide margin.
   if (locks === undefined) return fn();
+  // The sweep goes here rather than at each of the three call sites because
+  // this is the one place that already holds what it needs, and a fourth
+  // writer added later gets it without being told. It runs *before* `fn`:
+  // `startRun`'s quota retry deliberately leaves bytes under a document that
+  // does not yet name them, and a sweep after the body would reclaim the
+  // raster of the run that body just stored.
   return locks.request(STORE_LOCK_NAME, async () => {
     await sweepOrphanedArtifactBytes();
     return fn();
