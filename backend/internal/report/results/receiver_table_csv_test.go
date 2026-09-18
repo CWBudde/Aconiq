@@ -43,11 +43,13 @@ import (
 func csvParityTable() ReceiverTable {
 	negZero := math.Copysign(0, -1)
 
+	// The second indicator carries a comma, so the *header* needs quoting
+	// too — a builder that only escapes data rows fails here.
+	indicators := []string{"Lden", "Lr,Night"}
+
 	return ReceiverTable{
-		// The second indicator carries a comma, so the *header* needs quoting
-		// too — a builder that only escapes data rows fails here.
-		IndicatorOrder: []string{"Lden", "Lr,Night"},
-		Unit:           "dB(A)",
+		IndicatorOrder: indicators,
+		Units:          UniformUnits(indicators, "dB(A)"),
 		Records: []ReceiverRecord{
 			// Plain: nothing needs quoting, nothing needs expanding.
 			{

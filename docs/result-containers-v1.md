@@ -36,7 +36,7 @@ Status date: 2026-03-06
 
 Implemented in `backend/internal/report/results`:
 
-- Metadata: width, height, bands, nodata, unit, band names, CRS, georeference
+- Metadata: width, height, bands, nodata, units, band names, CRS, georeference
 - Indexing: `At(x,y,band)`, `Set(x,y,band,value)`
 - Utilities: `Fill`, `Values`, validation
 
@@ -133,10 +133,40 @@ rather than writing one at the origin — which is what it used to do, silently.
 
 Implemented in `backend/internal/report/results`:
 
-- `ReceiverTable` with ordered indicators and unit
+- `ReceiverTable` with ordered indicators and a unit **per indicator**
 - `ReceiverRecord` with coordinates, height, and per-indicator values
 - Validation for duplicate IDs, required indicators, and finite numeric values
 - Writers for JSON and CSV outputs
+
+## Units are per channel
+
+Both containers name several channels — the table's `indicator_order`, the
+raster's `band_names` — and both declare a `units` **object keyed by channel
+name**, not one string for the whole container:
+
+```json
+"indicator_order": ["Lden", "estimated_persons"],
+"units": { "Lden": "dB", "estimated_persons": "count" }
+```
+
+Keyed by name and not a list parallel to the order, for the reason the band
+index is resolved by name everywhere else: a reorder of the names would
+silently relabel every value and nothing downstream could detect it.
+`results.Validate` and `results.NewRaster` refuse a map that does not name
+every declared channel and only those, which is the field's first-ever
+validation. A raster that declares no `band_names` has nothing to hang a unit
+on and must carry no units.
+
+`beb-exposure` is why. Its table lists `Lden` and `Lnight` beside six dwelling
+and person counts; under a single unit it wrote `"mixed"`, which was true of no
+column, and every consumer had to treat the whole container as unreadable.
+
+**Reading an older container.** A document carrying the scalar `"unit"` and no
+`"units"` has that unit expanded across every declared channel on read —
+`LoadReceiverTableJSON` for the table, `RasterMetadata.UnmarshalJSON` for the
+sidecar. Lossless, because the scalar really was true of every channel in the
+documents that carry it. Nothing is rewritten: runs already on disk keep their
+bytes and no project has to be migrated before it can be opened.
 
 ## Receiver table CSV — byte contract
 
@@ -158,7 +188,8 @@ The contract, in full:
   is terminated by `\n`, including the last one and including a header with no
   records — so an empty table is exactly `id,x,y,height_m,Lden\n`. No BOM.
 - Header: `id`, `x`, `y`, `height_m`, then every entry of `indicator_order` in
-  order. Data fields follow the same order. `unit` is not represented in the CSV.
+  order. Data fields follow the same order. The units are not represented in the
+  CSV at all — see "Units are per channel" below.
 - A field is written verbatim unless one of these holds:
   - it is empty — then it is zero bytes, **not** `""`;
   - it is exactly the two characters `\.`, the Postgres-COPY end-of-data

@@ -139,9 +139,11 @@ func TestBuildExportEnvelope(t *testing.T) {
 			{ID: "rx-2", Kind: "receiver", Properties: map[string]any{}},
 		},
 	}
+	indicators := []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-1", Values: map[string]float64{rls19road.IndicatorLrDay: 60.1, rls19road.IndicatorLrNight: 49.2}},
 		},

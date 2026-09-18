@@ -3,10 +3,10 @@
   "fixture": "phase18/schall03_normative_model.geojson",
   "files": {
     "receivers.csv": "sha256:678eeef7a3ff0392b82d23d982e70f7dc7d4fd2569b5e62de285e6a78db9c51b bytes=10817",
-    "receivers.json": "sha256:1875b6083d22958653ea873d1b4a9c936d570c1813ecb3eb63773e9e6af73bb0 bytes=21623",
+    "receivers.json": "sha256:a10b0c54423fdd16c5f79ea1e8bdc4ba94525b207794d1a514d146b5db9ccaa8 bytes=21649",
     "run-summary.json": "sha256:4dd3854c1b0928458a3e64a64bdcce78cf1e8ce3bb259453f1f1ee05b47a0498 bytes=486",
     "schall03.bin": "sha256:e4cc0ed26c1212985ce763d0b93de0a3937bb7c22399b500edafcef70ea2c76d bytes=3024",
-    "schall03.json": "sha256:9bfb2f8946d996adc65864cf08fe4853f1a53c44ecade850a9ced15335759bc5 bytes=322"
+    "schall03.json": "sha256:36e008468683206939a3606853f6f563c61fc8f550f119291ad5a0a799c6935e bytes=348"
   },
   "run_summary": {
     "band_model": "octave-63Hz-8000Hz",

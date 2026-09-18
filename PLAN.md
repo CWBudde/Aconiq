@@ -1637,10 +1637,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       structurally, not by omission — no style in `basemap.ts` declares `glyphs`, and adding one
       means adding it to `OFFLINE_STYLE`, which exists to survive without a network.
 - [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
-- [ ] **A per-indicator unit on the receiver table**, without which a mixed-unit run still gets no
-      map at all. `ReceiverTable.Unit` is one string per table on both sides; making it per
-      indicator touches six Go writers, `Validate`, the Markdown/HTML/Typst report templates and
-      ten digest goldens.
+- [x] **A per-indicator unit on the receiver table and the raster sidecar** (#64). Both containers
+      carry `Units map[string]string` keyed by channel name. Four constraints stay live. The units
+      are **not** in the receivers CSV and must not be — that byte contract is mirrored in
+      `frontend/src/model/receiver-csv.ts`. A container is refused unless its units name every
+      declared channel exactly once, and a raster naming no bands may carry none. A legacy scalar
+      `unit` is expanded **on read, by every reader**: `LoadReceiverTableJSON`,
+      `RasterMetadata.UnmarshalJSON` and the frontend's `withLegacyUnits`; a reader that decodes
+      these artifacts itself will silently strand every run already on disk. And the map filters
+      rather than gating, so a mixed table paints its decibel indicators.
 - [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
       (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
       `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do

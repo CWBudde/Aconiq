@@ -25,5 +25,8 @@
       "y": 100
     }
   ],
-  "unit": "dB"
+  "units": {
+    "LrDay": "dB",
+    "LrNight": "dB"
+  }
 }

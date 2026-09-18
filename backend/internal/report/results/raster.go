@@ -1,6 +1,7 @@
 package results
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -78,14 +79,45 @@ type GridLayout struct {
 
 // RasterMetadata describes a dense raster container.
 type RasterMetadata struct {
-	Width     int           `json:"width"`
-	Height    int           `json:"height"`
-	Bands     int           `json:"bands"`
-	NoData    float64       `json:"nodata"`
-	Unit      string        `json:"unit"`
-	BandNames []string      `json:"band_names,omitempty"`
-	CRS       string        `json:"crs,omitempty"`
-	Geo       *Georeference `json:"georeference,omitempty"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Bands  int     `json:"bands"`
+	NoData float64 `json:"nodata"`
+	// Units maps each entry of BandNames to the unit that band's cells carry.
+	// See units.go for why it is a map and not a parallel slice.
+	Units     map[string]string `json:"units"`
+	BandNames []string          `json:"band_names,omitempty"`
+	CRS       string            `json:"crs,omitempty"`
+	Geo       *Georeference     `json:"georeference,omitempty"`
+}
+
+// UnmarshalJSON reads a sidecar written before the unit was per band.
+//
+// The same expansion ReceiverTable.UnmarshalJSON makes, for the same reason
+// and with one extra consequence worth naming: a sidecar that declared no band
+// names has nowhere to put the scalar, so it comes back with no units at all
+// rather than one filed under an invented key. Such a raster could not say
+// which band held what in the first place.
+func (m *RasterMetadata) UnmarshalJSON(data []byte) error {
+	// An alias, so unmarshalling into it does not call this method again.
+	type plain RasterMetadata
+
+	aux := struct {
+		*plain
+
+		LegacyUnit string `json:"unit"`
+	}{plain: (*plain)(m)}
+
+	err := json.Unmarshal(data, &aux)
+	if err != nil {
+		return fmt.Errorf("raster metadata: %w", err)
+	}
+
+	if len(m.Units) == 0 && aux.LegacyUnit != "" {
+		m.Units = UniformUnits(m.BandNames, aux.LegacyUnit)
+	}
+
+	return nil
 }
 
 // Raster stores banded grid values in row-major order.
@@ -115,6 +147,14 @@ func NewRaster(meta RasterMetadata) (*Raster, error) {
 		return nil, fmt.Errorf("band_names length (%d) must match bands (%d)", len(meta.BandNames), meta.Bands)
 	}
 
+	// Bands are named or they are not, and a unit hangs off the name. A raster
+	// that declares no band names has nothing to attach a unit to, so it may
+	// not carry one — rather than carrying one under a key that names nothing.
+	err := validateUnits("raster", meta.BandNames, meta.Units)
+	if err != nil {
+		return nil, err
+	}
+
 	if meta.Geo != nil {
 		err := meta.Geo.Validate()
 		if err != nil {
@@ -137,6 +177,8 @@ func (r *Raster) Metadata() RasterMetadata {
 	if len(copyMeta.BandNames) > 0 {
 		copyMeta.BandNames = append([]string(nil), copyMeta.BandNames...)
 	}
+
+	copyMeta.Units = CopyUnits(copyMeta.Units)
 
 	// Geo is a pointer, so the shallow struct copy above would hand the
 	// caller a handle on the raster's own georeference. Metadata() exists to

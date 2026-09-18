@@ -192,7 +192,20 @@ export interface ReceiverRecord {
 
 export interface ReceiverTable {
   indicator_order: string[];
-  unit: string;
+  /**
+   * The unit each indicator's values carry, keyed by indicator name.
+   *
+   * Per indicator because the values are: `beb-exposure` lists Lden and
+   * Lnight beside six dwelling and person counts. It used to be one string
+   * for the whole table, which forced that module to write `"mixed"` — a word
+   * true of no column, and one this app read as "not decibels" and refused
+   * the whole run over.
+   *
+   * Keyed by name and not a slice parallel to `indicator_order`, matching
+   * `results.ReceiverTable` in Go: a reorder of the names would silently
+   * relabel every value.
+   */
+  units: Record<string, string>;
   records: ReceiverRecord[];
 }
 
@@ -221,7 +234,8 @@ export interface RasterMetadata {
   height: number;
   bands: number;
   nodata: number;
-  unit: string;
+  /** The unit each band's cells carry, keyed by band name. See {@link ReceiverTable.units}. */
+  units: Record<string, string>;
   band_names?: string[];
   /** The CRS the values are in — the run's *compute* CRS, not the project's. */
   crs?: string;

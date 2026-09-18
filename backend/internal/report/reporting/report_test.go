@@ -87,9 +87,11 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("write run summary: %v", err)
 	}
 
+	tableIndicators := []string{"Lden", "Lnight"}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
-		Unit:           "dB",
+		IndicatorOrder: tableIndicators,
+		Units:          results.UniformUnits(tableIndicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-1", X: 0, Y: 0, HeightM: 4, Values: map[string]float64{"Lden": 50, "Lnight": 40}},
 			{ID: "rx-2", X: 1, Y: 0, HeightM: 4, Values: map[string]float64{"Lden": 55, "Lnight": 45}},
@@ -205,7 +207,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("expected the scaffold disclosure note in markdown: %s", markdownText)
 	}
 
-	if !strings.Contains(markdownText, "Lden | 50.000 | 52.667 | 55.000") {
+	// The unit is a column of the stats table, so it sits between the
+	// indicator and its numbers: a row that lost it would still read as a row.
+	if !strings.Contains(markdownText, "Lden | dB | 50.000 | 52.667 | 55.000") {
 		t.Fatalf("expected receiver stats row in markdown: %s", markdownText)
 	}
 
@@ -635,5 +639,56 @@ func TestBuildRunReportCountsParkingSourcesSeparately(t *testing.T) {
 
 	if context["parking_source_count"] != "1" {
 		t.Fatalf("unexpected parking source count in context: %#v", context["parking_source_count"])
+	}
+}
+
+// A run exported after upgrading, whose artifacts were written before the unit
+// was per indicator.
+//
+// This broke: loadReceiverTable decoded the artifact itself rather than going
+// through results.LoadReceiverTableJSON, so the scalar "unit" was dropped and
+// Validate then refused the table for carrying no units at all — `aconiq
+// export` aborted on every run already on disk. The fix is that reporting owns
+// no second decoder; the legacy expansion lives in one place and every reader
+// goes through it.
+func TestBuildRunReportReadsAReceiverTableWrittenBeforePerIndicatorUnits(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+	receiverPath := filepath.Join(bundleDir, "receivers.json")
+
+	// Written by hand in the old shape: a scalar "unit", no "units".
+	legacy := `{
+		"indicator_order": ["Lden", "Lnight"],
+		"unit": "dB",
+		"records": [
+			{"id": "rx-1", "x": 1, "y": 2, "height_m": 4, "values": {"Lden": 55, "Lnight": 45}}
+		]
+	}`
+
+	err := os.WriteFile(receiverPath, []byte(legacy), 0o600)
+	if err != nil {
+		t.Fatalf("write legacy receiver table: %v", err)
+	}
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir:         bundleDir,
+		Project:           project.Project{ProjectID: "proj-1", Name: "Demo", CRS: "EPSG:25832"},
+		Run:               project.Run{ID: "run-1", ScenarioID: "default", Status: "completed"},
+		ReceiverTablePath: receiverPath,
+		GeneratedAt:       time.Unix(300, 0),
+	})
+	if err != nil {
+		t.Fatalf("build run report over a legacy table: %v", err)
+	}
+
+	// And the expansion reached the rendered table, not just the validation.
+	markdown, err := os.ReadFile(report.MarkdownPath)
+	if err != nil {
+		t.Fatalf("read markdown: %v", err)
+	}
+
+	if !strings.Contains(string(markdown), "| Lden | dB |") {
+		t.Fatalf("markdown does not name the expanded unit:\n%s", markdown)
 	}
 }

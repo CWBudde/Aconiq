@@ -18,13 +18,15 @@ func gridRaster(t *testing.T, crs string, georef *results.Georeference) *results
 		height = 3
 	)
 
+	bandNames := []string{"LrDay", "LrNight"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     width,
 		Height:    height,
 		Bands:     2,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"LrDay", "LrNight"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 		CRS:       crs,
 		Geo:       georef,
 	})

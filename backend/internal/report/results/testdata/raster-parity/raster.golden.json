@@ -4,7 +4,10 @@
     "height": 2,
     "bands": 2,
     "nodata": -9999,
-    "unit": "dB",
+    "units": {
+      "LrDay": "dB",
+      "LrNight": "dB"
+    },
     "band_names": [
       "LrDay",
       "LrNight"

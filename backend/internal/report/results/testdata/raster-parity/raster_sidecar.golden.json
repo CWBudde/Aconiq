@@ -18,6 +18,9 @@
   "height": 2,
   "nodata": -9999,
   "schema_name": "aconiq.raster.v1",
-  "unit": "dB",
+  "units": {
+    "LrDay": "dB",
+    "LrNight": "dB"
+  },
   "width": 3
 }

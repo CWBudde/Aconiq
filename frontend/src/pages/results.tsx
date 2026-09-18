@@ -36,6 +36,7 @@ import { exportCommand } from "@/api/cli";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { ReceiversTab } from "@/results/receiver-table";
 import { m } from "@/i18n/messages";
+import { unitFor } from "@/map/result-units";
 
 // ---------------------------------------------------------------------------
 // Raster tab
@@ -84,15 +85,24 @@ function RasterArtifactCard({
           <span className="text-muted-foreground">{m.label_nodata()}:</span>{" "}
           <span className="font-medium">{String(data.nodata)}</span>
         </div>
-        <div>
-          <span className="text-muted-foreground">{m.label_unit()}:</span>{" "}
-          <span className="font-medium">{data.unit}</span>
-        </div>
+        {/* No standalone Unit row: the unit is per band, so one value here
+            would either repeat itself four times over or summarise away a
+            disagreement. The bands below carry their own, as the generated
+            report's map table does. */}
         {data.band_names && data.band_names.length > 0 ? (
           <div className="col-span-2">
-            <span className="text-muted-foreground">{m.label_bands()}:</span>{" "}
+            {/* Not `label_bands`: that one heads the band *count* two rows up,
+                and one label over two different facts reads as a repeat. */}
+            <span className="text-muted-foreground">
+              {m.label_band_names()}:
+            </span>{" "}
             <span className="font-mono font-medium">
-              {data.band_names.join(", ")}
+              {data.band_names
+                .map((band) => {
+                  const unit = unitFor(data.units, band);
+                  return unit === "" ? band : `${band} (${unit})`;
+                })
+                .join(", ")}
             </span>
           </div>
         ) : null}

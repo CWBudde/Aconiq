@@ -22,7 +22,7 @@ const metadata: RasterMetadata = {
   height: 8,
   bands: 2,
   nodata: -999,
-  unit: "dB(A)",
+  units: { lr_day: "dB(A)", lr_night: "dB(A)" },
   band_names: ["lr_day", "lr_night"],
   crs: CRS,
   georeference: {

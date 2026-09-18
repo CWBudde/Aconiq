@@ -3,9 +3,9 @@
   "fixture": "phase15/aircraft_model.geojson",
   "files": {
     "buf-aircraft.bin": "sha256:7c4b244834840eed22656ac31152cef463ab65e934e99d0e46dc4ad2beb7e89d bytes=6032",
-    "buf-aircraft.json": "sha256:f2dbae5632f800338e0972e24aba45bd88ec871b53b460b6938161f821d547c5 bytes=327",
+    "buf-aircraft.json": "sha256:5a61caa470ab0c33847b73b37fff691d68af2db37b86142a592073922980019a bytes=351",
     "receivers.csv": "sha256:019c4ce01b8d44a377c9560693a105dcca39c55aeb2a894d2e568ec3ed4cf31b bytes=35215",
-    "receivers.json": "sha256:06e723575605155151e786716ee3c7b5e846a1b1f0893ed346b8d375b07de6b0 bytes=62773",
+    "receivers.json": "sha256:201326dc0516f6b278da147efb070d279934df1f07688b7b3dd44aefdc08056e bytes=62825",
     "run-summary.json": "sha256:f47c0641eae7144d11f33d017325780a3722e3c2d681c8fac07f19c9914b5169 bytes=338"
   },
   "run_summary": {

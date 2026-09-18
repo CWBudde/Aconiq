@@ -10,9 +10,11 @@ import (
 func TestReceiverTableSaveJSONAndCSV(t *testing.T) {
 	t.Parallel()
 
+	indicators := []string{"Lden", "Lnight"}
+
 	table := ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          UniformUnits(indicators, UnitDecibel),
 		Records: []ReceiverRecord{
 			{ID: "r1", X: 10, Y: 20, HeightM: 4, Values: map[string]float64{"Lden": 55.2, "Lnight": 45.1}},
 			{ID: "r2", X: 12, Y: 21, HeightM: 4, Values: map[string]float64{"Lden": 56.0, "Lnight": 46.4}},
@@ -46,9 +48,11 @@ func TestReceiverTableSaveJSONAndCSV(t *testing.T) {
 func TestLoadReceiverTableJSON(t *testing.T) {
 	t.Parallel()
 
+	indicators := []string{"Lden", "Lnight"}
+
 	table := ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          UniformUnits(indicators, "dB"),
 		Records: []ReceiverRecord{
 			{ID: "r1", X: 10, Y: 20, HeightM: 4, Values: map[string]float64{"Lden": 55.2, "Lnight": 45.1}},
 			{ID: "r2", X: 12, Y: 21, HeightM: 4, Values: map[string]float64{"Lden": 56.0, "Lnight": 46.4}},
@@ -80,8 +84,10 @@ func TestLoadReceiverTableJSON(t *testing.T) {
 		t.Fatalf("r1 Lden = %v, want 55.2", loaded.Records[0].Values["Lden"])
 	}
 
-	if loaded.Unit != "dB" {
-		t.Fatalf("unit = %q, want dB", loaded.Unit)
+	for _, indicator := range indicators {
+		if loaded.Units[indicator] != "dB" {
+			t.Fatalf("unit for %s = %q, want dB", indicator, loaded.Units[indicator])
+		}
 	}
 }
 
@@ -97,8 +103,11 @@ func TestLoadReceiverTableJSONNotFound(t *testing.T) {
 func TestReceiverTableValidation(t *testing.T) {
 	t.Parallel()
 
+	indicators := []string{"Lden"}
+
 	table := ReceiverTable{
-		IndicatorOrder: []string{"Lden"},
+		IndicatorOrder: indicators,
+		Units:          UniformUnits(indicators, UnitDecibel),
 		Records: []ReceiverRecord{
 			{ID: "r1", X: 1, Y: 2, HeightM: 4, Values: map[string]float64{}},
 		},

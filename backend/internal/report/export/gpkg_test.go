@@ -12,9 +12,11 @@ import (
 func TestExportReceiverGeoPackage(t *testing.T) {
 	t.Parallel()
 
+	indicators := []string{"Lden", "Lnight"}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 56.3, "Lnight": 47.8}},
 			{ID: "rx-002", X: 110, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 58.1, "Lnight": 49.2}},

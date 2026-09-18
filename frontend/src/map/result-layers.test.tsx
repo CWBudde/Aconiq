@@ -295,7 +295,7 @@ function completedRun(id: string, finishedAt: string): RunSummary {
 
 const TABLE: ReceiverTable = {
   indicator_order: ["LrDay", "LrNight"],
-  unit: "dB(A)",
+  units: { LrDay: "dB(A)", LrNight: "dB(A)" },
   records: [
     {
       id: "R1",
@@ -514,14 +514,16 @@ describe("ResultLayers", () => {
     expect(badge).toHaveAttribute("data-tier", "scaffold");
   });
 
-  it("refuses to paint a table that does not report decibels", async () => {
-    // `beb-exposure` writes `unit: "mixed"` and puts dwelling and person
-    // counts in `indicator_order` beside Lden and Lnight. Feeding a count
-    // through the 35–80 dB ramp would present a population total as an
-    // acoustic level, under a legend that still reads in dB.
+  it("paints a mixed table's decibel indicators and withholds its counts", async () => {
+    // `beb-exposure` lists Lden and Lnight beside dwelling and person counts.
+    // It used to declare one unit for the table — `"mixed"`, true of no column
+    // — and this panel refused the whole run over it, so a reader got nothing
+    // rather than the two indicators that really are decibels. Feeding a count
+    // through the 35–80 dB ramp is still refused: that is what the per
+    // indicator unit buys, and it is the half that must not regress.
     state.table = {
       indicator_order: ["Lden", "estimated_persons"],
-      unit: "mixed",
+      units: { Lden: "dB", estimated_persons: "count" },
       records: [
         {
           id: "B1",
@@ -536,14 +538,51 @@ describe("ResultLayers", () => {
     const map = new FakeMap();
     renderLayers(map);
 
-    expect(
-      await screen.findByText(m.msg_result_table_not_levels({ unit: "mixed" })),
-    ).toBeInTheDocument();
-    expect(drawn(map).features).toEqual([]);
-    expect(state.requests).toEqual([]);
+    await waitFor(() => {
+      expect(drawn(map).features).toHaveLength(1);
+    });
+
+    // Offered, and the only one offered. A single indicator renders as a
+    // label rather than a button, so the count's absence is asserted on the
+    // text and the dB one on the panel reading it back.
+    expect(screen.getByText("Lden")).toBeInTheDocument();
+    expect(screen.queryByText("estimated_persons")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "estimated_persons" }),
     ).not.toBeInTheDocument();
+
+    // The legend names the selected indicator's own unit, not the table's.
+    expect(screen.getByText("(dB)", { exact: false })).toBeInTheDocument();
+    expect(
+      screen.queryByText(m.msg_result_table_not_levels()),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still refuses a table whose every indicator is a count", async () => {
+    // The refusal did not go away, it narrowed: with no decibel indicator at
+    // all there is nothing for the ramp to paint and the panel says so.
+    state.table = {
+      indicator_order: ["estimated_dwellings", "estimated_persons"],
+      units: { estimated_dwellings: "count", estimated_persons: "count" },
+      records: [
+        {
+          id: "B1",
+          x: 6660000,
+          y: 564400000,
+          height_m: 9,
+          values: { estimated_dwellings: 4, estimated_persons: 12 },
+        },
+      ],
+    };
+
+    const map = new FakeMap();
+    renderLayers(map);
+
+    expect(
+      await screen.findByText(m.msg_result_table_not_levels()),
+    ).toBeInTheDocument();
+    expect(drawn(map).features).toEqual([]);
+    expect(state.requests).toEqual([]);
   });
 
   it("says the CRS is unknown rather than showing a legend over nothing", async () => {
@@ -600,7 +639,7 @@ describe("ResultLayers: the result raster", () => {
     height: 1,
     bands: 2,
     nodata: -9999,
-    unit: "dB(A)",
+    units: { LrDay: "dB(A)", LrNight: "dB(A)" },
     band_names: ["LrDay", "LrNight"],
     crs: "EPSG:4326",
     georeference: {
@@ -1119,7 +1158,7 @@ describe("ResultLayers: the result contours", () => {
       height: 1,
       bands: 2,
       nodata: -9999,
-      unit: "dB(A)",
+      units: { LrDay: "dB(A)", LrNight: "dB(A)" },
       band_names: ["LrDay", "LrNight"],
       crs: "EPSG:4326",
     };

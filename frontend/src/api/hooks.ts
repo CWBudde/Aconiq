@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { backend } from "./backend";
@@ -11,6 +11,7 @@ import type {
 } from "./client";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
+import { withLegacyUnits } from "@/map/result-units";
 
 export function useHealth() {
   return useQuery({
@@ -187,12 +188,42 @@ export function useRunContours(
   });
 }
 
+// Both of these read an artifact that may predate the per-channel unit, and
+// `useArtifactContent` is a type assertion over raw JSON — it converts
+// nothing. `withLegacyUnits` is where the old scalar is expanded, mirroring
+// what Go does in `LoadReceiverTableJSON` and `RasterMetadata.UnmarshalJSON`.
+// Applied here rather than at each call site so a new consumer cannot forget.
 export function useReceiverTable(artifactId: string | null) {
-  return useArtifactContent<ReceiverTable>(artifactId);
+  const query = useArtifactContent<ReceiverTable>(artifactId);
+  const { data } = query;
+
+  // Memoised on the fetched value. `withLegacyUnits` returns its argument
+  // untouched for a current container, but builds a new object for a legacy
+  // one — and react-query hands back a stable reference, so without this an
+  // old run would produce a fresh table every render and re-run every memo
+  // and effect keyed on it, the raster's colourising among them.
+  const withUnits = useMemo(
+    () =>
+      data === undefined
+        ? undefined
+        : withLegacyUnits(data, data.indicator_order),
+    [data],
+  );
+
+  return { ...query, data: withUnits };
 }
 
 export function useRasterMetadata(artifactId: string | null) {
-  return useArtifactContent<RasterMetadata>(artifactId);
+  const query = useArtifactContent<RasterMetadata>(artifactId);
+  const { data } = query;
+
+  const withUnits = useMemo(
+    () =>
+      data === undefined ? undefined : withLegacyUnits(data, data.band_names),
+    [data],
+  );
+
+  return { ...query, data: withUnits };
 }
 
 export function useImportFromOSM() {

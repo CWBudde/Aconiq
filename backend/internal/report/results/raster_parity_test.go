@@ -47,14 +47,16 @@ type rasterParityInput struct {
 // bands — so that a width/height swap and a band/row swap both change the
 // bytes. A square single-band raster would pass either way.
 func rasterParityFixture() rasterParityInput {
+	bandNames := []string{"LrDay", "LrNight"}
+
 	return rasterParityInput{
 		Metadata: RasterMetadata{
 			Width:     3,
 			Height:    2,
 			Bands:     2,
 			NoData:    -9999,
-			Unit:      "dB",
-			BandNames: []string{"LrDay", "LrNight"},
+			Units:     UniformUnits(bandNames, UnitDecibel),
+			BandNames: bandNames,
 			CRS:       "EPSG:25832",
 			Geo: &Georeference{
 				// Values a float64 round-trips exactly through both

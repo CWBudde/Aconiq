@@ -535,9 +535,11 @@ func TestPrepareAndFinalizeSoundPlanRasterCompareFallsBackToImportReport(t *test
 	}
 
 	receiverID := prep.syntheticReceiverIDs[0]
+	indicators := []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{schall03.IndicatorLrDay, schall03.IndicatorLrNight},
-		Unit:           "dB(A)",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, "dB(A)"),
 		Records: []results.ReceiverRecord{{
 			ID:      receiverID,
 			X:       0,

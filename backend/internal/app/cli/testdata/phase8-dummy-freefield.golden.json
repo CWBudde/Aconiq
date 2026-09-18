@@ -5,7 +5,9 @@
     ],
     "bands": 1,
     "height": 3,
-    "unit": "dB",
+    "units": {
+      "Ldummy": "dB"
+    },
     "values": [
       90.005425,
       70.791812,

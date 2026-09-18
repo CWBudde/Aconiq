@@ -458,9 +458,11 @@ func mustFormatExportContext(
 func writeGridReceiverTable(t *testing.T, path string, originX, originY, step float64) {
 	t.Helper()
 
+	indicators := []string{"Lden"}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{"Lden"},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records:        make([]results.ReceiverRecord, 0, gridParityWidth*gridParityHeight),
 	}
 
@@ -488,9 +490,12 @@ func writeGridReceiverTable(t *testing.T, path string, originX, originY, step fl
 func writeGridRaster(t *testing.T, basePath string, georef *results.Georeference) string {
 	t.Helper()
 
+	bandNames := []string{"Lden"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width: gridParityWidth, Height: gridParityHeight, Bands: 1, NoData: -9999, Unit: "dB",
-		BandNames: []string{"Lden"}, CRS: "EPSG:25832", Geo: georef,
+		Width: gridParityWidth, Height: gridParityHeight, Bands: 1, NoData: -9999,
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames, CRS: "EPSG:25832", Geo: georef,
 	})
 	if err != nil {
 		t.Fatalf("new raster: %v", err)

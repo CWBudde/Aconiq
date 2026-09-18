@@ -90,14 +90,16 @@ type contourParityInput struct {
 func contourParityFixture() contourParityInput {
 	const nodata = -9999.0
 
+	bandNames := []string{"LrDay", "LrNight"}
+
 	return contourParityInput{
 		Metadata: results.RasterMetadata{
 			Width:     5,
 			Height:    4,
 			Bands:     2,
 			NoData:    nodata,
-			Unit:      "dB(A)",
-			BandNames: []string{"LrDay", "LrNight"},
+			Units:     results.UniformUnits(bandNames, "dB(A)"),
+			BandNames: bandNames,
 			CRS:       "EPSG:25832",
 			Geo: &results.Georeference{
 				// A real site in UTM zone 32 — the reprojection has to land

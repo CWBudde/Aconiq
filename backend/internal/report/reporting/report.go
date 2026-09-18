@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -109,13 +110,12 @@ type reportContext struct {
 	StandardDataDigest string                  `json:"standard_data_digest"`
 	StandardDataTables []standardDataTableView `json:"standard_data_tables"`
 
-	Parameters   []kvPairView    `json:"parameters"`
-	Maps         []rasterMapView `json:"maps"`
-	ReceiverUnit string          `json:"receiver_unit,omitempty"`
-	Indicators   []indicatorView `json:"indicators"`
-	Assessment   *assessmentView `json:"assessment,omitempty"`
-	QASuites     []qaSuiteView   `json:"qa_suites"`
-	Notes        []string        `json:"notes,omitempty"`
+	Parameters []kvPairView    `json:"parameters"`
+	Maps       []rasterMapView `json:"maps"`
+	Indicators []indicatorView `json:"indicators"`
+	Assessment *assessmentView `json:"assessment,omitempty"`
+	QASuites   []qaSuiteView   `json:"qa_suites"`
+	Notes      []string        `json:"notes,omitempty"`
 }
 
 type inputFileView struct {
@@ -144,15 +144,20 @@ type rasterMapView struct {
 	Width        int    `json:"width"`
 	Height       int    `json:"height"`
 	Bands        int    `json:"bands"`
-	Unit         string `json:"unit,omitempty"`
-	BandNames    string `json:"band_names,omitempty"`
+	// BandNames reads "name (unit)" per band — see bandsWithUnits for why the
+	// unit is not a column of its own.
+	BandNames string `json:"band_names,omitempty"`
 }
 
 type indicatorView struct {
-	Indicator string  `json:"indicator"`
-	Min       float64 `json:"min"`
-	Mean      float64 `json:"mean"`
-	Max       float64 `json:"max"`
+	Indicator string `json:"indicator"`
+	// Unit belongs on the row because it varies by row: beb-exposure lists
+	// two decibel indicators beside six counts. A single unit above the table
+	// was true of neither.
+	Unit string  `json:"unit"`
+	Min  float64 `json:"min"`
+	Mean float64 `json:"mean"`
+	Max  float64 `json:"max"`
 }
 
 type qaSuiteView struct {
@@ -195,13 +200,50 @@ type modelDumpEnvelope struct {
 	CountsByKind map[string]int `json:"counts_by_kind"`
 }
 
+// rasterMetaEnvelope is reporting's own reading of a raster sidecar: it takes
+// the four fields a report names and does not depend on results.RasterMetadata.
+//
+// LegacyUnit is the pre-per-band spelling. Sidecars already on disk carry it
+// and nothing rewrites them, so a report generated over an old bundle has to
+// keep naming the unit it found — see bandsWithUnits.
 type rasterMetaEnvelope struct {
-	Width     int      `json:"width"`
-	Height    int      `json:"height"`
-	Bands     int      `json:"bands"`
-	Unit      string   `json:"unit"`
-	BandNames []string `json:"band_names"`
-	DataFile  string   `json:"data_file"`
+	Width      int               `json:"width"`
+	Height     int               `json:"height"`
+	Bands      int               `json:"bands"`
+	Units      map[string]string `json:"units"`
+	LegacyUnit string            `json:"unit"`
+	BandNames  []string          `json:"band_names"`
+	DataFile   string            `json:"data_file"`
+}
+
+// bandsWithUnits renders a raster's bands as "name (unit)", in band order.
+//
+// One column rather than a names column beside a unit column, because the
+// units are per band: a single unit cell next to four names either repeats
+// itself or summarises away the disagreement it exists to show. Iterating
+// BandNames and not the map also keeps the order the raster declares.
+func bandsWithUnits(meta rasterMetaEnvelope) string {
+	if len(meta.BandNames) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(meta.BandNames))
+
+	for _, name := range meta.BandNames {
+		unit, ok := meta.Units[name]
+		if !ok {
+			unit = meta.LegacyUnit
+		}
+
+		if unit == "" {
+			parts = append(parts, name)
+			continue
+		}
+
+		parts = append(parts, fmt.Sprintf("%s (%s)", name, unit))
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 func BuildRunReport(opts BuildOptions) (GeneratedReport, error) {
@@ -342,8 +384,6 @@ func buildContext(opts BuildOptions, generatedAt time.Time) (reportContext, erro
 	}
 
 	if hasTable {
-		ctx.ReceiverUnit = table.Unit
-
 		ctx.Indicators = buildIndicatorStats(table)
 		if ctx.ReceiverCount == "" {
 			ctx.ReceiverCount = strconv.Itoa(len(table.Records))
@@ -610,20 +650,20 @@ func loadReceiverTable(path string) (results.ReceiverTable, bool, error) {
 		return results.ReceiverTable{}, false, nil
 	}
 
-	payload, err := os.ReadFile(path)
+	// Through results' own loader, not a json.Unmarshal of our own. That
+	// loader is where a table written before the unit was per indicator has
+	// its scalar "unit" expanded across the indicator list, and Validate below
+	// refuses a table with no units at all — so decoding it here instead meant
+	// `aconiq export` aborted on every run created before that change.
+	table, err := results.LoadReceiverTableJSON(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return results.ReceiverTable{}, false, nil
 		}
 
-		return results.ReceiverTable{}, false, fmt.Errorf("read receiver table %s: %w", path, err)
-	}
-
-	var table results.ReceiverTable
-
-	err = json.Unmarshal(payload, &table)
-	if err != nil {
-		return results.ReceiverTable{}, false, fmt.Errorf("decode receiver table %s: %w", path, err)
+		// results names the path already; this says which consumer wanted it,
+		// since the same table is read by export and by compare.
+		return results.ReceiverTable{}, false, fmt.Errorf("report: %w", err)
 	}
 
 	err = table.Validate()
@@ -677,8 +717,7 @@ func loadRasterMaps(bundleDir string, metaPaths []string) ([]rasterMapView, erro
 			Width:        meta.Width,
 			Height:       meta.Height,
 			Bands:        meta.Bands,
-			Unit:         meta.Unit,
-			BandNames:    strings.Join(meta.BandNames, ", "),
+			BandNames:    bandsWithUnits(meta),
 		})
 	}
 
@@ -824,6 +863,7 @@ func buildIndicatorStats(table results.ReceiverTable) []indicatorView {
 
 		stats = append(stats, indicatorView{
 			Indicator: indicator,
+			Unit:      table.Units[indicator],
 			Min:       minValue,
 			Mean:      sum / float64(count),
 			Max:       maxValue,
@@ -984,9 +1024,9 @@ Generated: {{.GeneratedAt}}
 ## Maps/images
 
 {{if .Maps}}
-| Metadata | Data | Width | Height | Bands | Unit | Band names |
-| --- | --- | ---: | ---: | ---: | --- | --- |
-{{range .Maps}}| ` + "`" + `{{.MetadataPath}}` + "`" + ` | ` + "`" + `{{.DataPath}}` + "`" + ` | {{.Width}} | {{.Height}} | {{.Bands}} | {{.Unit}} | {{.BandNames}} |
+| Metadata | Data | Width | Height | Bands | Band names |
+| --- | --- | ---: | ---: | ---: | --- |
+{{range .Maps}}| ` + "`" + `{{.MetadataPath}}` + "`" + ` | ` + "`" + `{{.DataPath}}` + "`" + ` | {{.Width}} | {{.Height}} | {{.Bands}} | {{.BandNames}} |
 {{end}}
 {{else}}
 No map/image artifacts were available for this run export.
@@ -995,11 +1035,9 @@ No map/image artifacts were available for this run export.
 ## Tables (receiver stats)
 
 {{if .Indicators}}
-Unit: {{.ReceiverUnit}}
-
-| Indicator | Min | Mean | Max |
-| --- | ---: | ---: | ---: |
-{{range .Indicators}}| {{.Indicator}} | {{printf "%.3f" .Min}} | {{printf "%.3f" .Mean}} | {{printf "%.3f" .Max}} |
+| Indicator | Unit | Min | Mean | Max |
+| --- | --- | ---: | ---: | ---: |
+{{range .Indicators}}| {{.Indicator}} | {{.Unit}} | {{printf "%.3f" .Min}} | {{printf "%.3f" .Mean}} | {{printf "%.3f" .Max}} |
 {{end}}
 {{else}}
 No receiver statistics were available.
@@ -1132,7 +1170,7 @@ const htmlTemplate = `<!doctype html>
   <h2>Maps/images</h2>
   {{if .Maps}}
   <table>
-    <thead><tr><th>Metadata</th><th>Data</th><th>Width</th><th>Height</th><th>Bands</th><th>Unit</th><th>Band names</th></tr></thead>
+    <thead><tr><th>Metadata</th><th>Data</th><th>Width</th><th>Height</th><th>Bands</th><th>Band names</th></tr></thead>
     <tbody>
     {{range .Maps}}
       <tr>
@@ -1141,7 +1179,6 @@ const htmlTemplate = `<!doctype html>
         <td>{{.Width}}</td>
         <td>{{.Height}}</td>
         <td>{{.Bands}}</td>
-        <td>{{.Unit}}</td>
         <td>{{.BandNames}}</td>
       </tr>
     {{end}}
@@ -1153,10 +1190,9 @@ const htmlTemplate = `<!doctype html>
 
   <h2>Tables (receiver stats)</h2>
   {{if .Indicators}}
-  <p>Unit: {{.ReceiverUnit}}</p>
   <table>
-    <thead><tr><th>Indicator</th><th>Min</th><th>Mean</th><th>Max</th></tr></thead>
-    <tbody>{{range .Indicators}}<tr><td>{{.Indicator}}</td><td>{{printf "%.3f" .Min}}</td><td>{{printf "%.3f" .Mean}}</td><td>{{printf "%.3f" .Max}}</td></tr>{{end}}</tbody>
+    <thead><tr><th>Indicator</th><th>Unit</th><th>Min</th><th>Mean</th><th>Max</th></tr></thead>
+    <tbody>{{range .Indicators}}<tr><td>{{.Indicator}}</td><td>{{.Unit}}</td><td>{{printf "%.3f" .Min}}</td><td>{{printf "%.3f" .Mean}}</td><td>{{printf "%.3f" .Max}}</td></tr>{{end}}</tbody>
   </table>
   {{else}}
   <p>No receiver statistics were available.</p>

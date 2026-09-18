@@ -1161,10 +1161,29 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+/**
+ * The two indicators this build computes, and their unit.
+ *
+ * Named once because the receiver table and the raster sidecar have to agree
+ * on both: the sidecar's bands are the table's indicators, and a unit filed
+ * under a name neither carries is refused by `results` on the CLI side.
+ *
+ * `"dB(A)"` rather than the CLI's `"dB"` is a pre-existing difference between
+ * the two targets, left as it was — the map's decibel gate accepts either, and
+ * changing it here would move browser runs' stored tables for no reason.
+ */
+const BROWSER_INDICATORS = ["LrDay", "LrNight"];
+
+function browserUnits(): Record<string, string> {
+  return Object.fromEntries(
+    BROWSER_INDICATORS.map((indicator) => [indicator, "dB(A)"]),
+  );
+}
+
 function buildReceiverTable(outputs: ReceiverOutput[]): ReceiverTable {
   return {
-    indicator_order: ["LrDay", "LrNight"],
-    unit: "dB(A)",
+    indicator_order: BROWSER_INDICATORS,
+    units: browserUnits(),
     records: outputs.map((output) => ({
       id: output.Receiver.id,
       x: output.Receiver.point.x,
@@ -1431,8 +1450,8 @@ async function runRLS19Road(
       height: layout.height,
       bands: 2,
       nodata: -9999,
-      unit: "dB(A)",
-      band_names: ["LrDay", "LrNight"],
+      units: browserUnits(),
+      band_names: BROWSER_INDICATORS,
       // Both mirror what `results.RasterMetadata` carries on the CLI side.
       // The CRS is the compute CRS, as it is there: results are expressed in
       // it, and the sidecar is the only place a consumer can ask.

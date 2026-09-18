@@ -80,6 +80,28 @@ func ExportResultBundle(baseDir string, outputs []BuildingExposureOutput, summar
 	}, nil
 }
 
+// bebIndicatorUnits is the reason the unit is per indicator at all.
+//
+// Two of these eight are decibels and six are tallies of dwellings and people.
+// The table used to declare "mixed" over the lot, which is true of no single
+// column: the report then printed one unit above a table listing 58.2 dB and
+// 15.4 persons, and the map refused to paint Lden because the word it was
+// handed was not a decibel. Spelled out here rather than derived from a name
+// prefix, because the names are a vocabulary and a prefix rule would be a
+// second, weaker declaration of the same thing.
+func bebIndicatorUnits() map[string]string {
+	return map[string]string{
+		IndicatorLden:                    results.UnitDecibel,
+		IndicatorLnight:                  results.UnitDecibel,
+		IndicatorEstimatedDwellings:      results.UnitCount,
+		IndicatorEstimatedPersons:        results.UnitCount,
+		IndicatorAffectedDwellingsLden:   results.UnitCount,
+		IndicatorAffectedPersonsLden:     results.UnitCount,
+		IndicatorAffectedDwellingsLnight: results.UnitCount,
+		IndicatorAffectedPersonsLnight:   results.UnitCount,
+	}
+}
+
 func buildBEBReceiverTable(outputs []BuildingExposureOutput) results.ReceiverTable {
 	table := results.ReceiverTable{
 		IndicatorOrder: []string{
@@ -92,7 +114,7 @@ func buildBEBReceiverTable(outputs []BuildingExposureOutput) results.ReceiverTab
 			IndicatorAffectedDwellingsLnight,
 			IndicatorAffectedPersonsLnight,
 		},
-		Unit:    "mixed",
+		Units:   bebIndicatorUnits(),
 		Records: make([]results.ReceiverRecord, 0, len(outputs)),
 	}
 
@@ -119,13 +141,23 @@ func buildBEBReceiverTable(outputs []BuildingExposureOutput) results.ReceiverTab
 }
 
 func buildBEBResultRaster(summary Summary) (*results.Raster, error) {
+	// Unlike the table above, these four bands agree: the raster carries only
+	// the affected-count bands, which is why this one could already say
+	// something true under the old single-unit field.
+	bands := []string{
+		IndicatorAffectedPersonsLden,
+		IndicatorAffectedPersonsLnight,
+		IndicatorAffectedDwellingsLden,
+		IndicatorAffectedDwellingsLnight,
+	}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     1,
 		Height:    1,
 		Bands:     4,
 		NoData:    -9999,
-		Unit:      "count",
-		BandNames: []string{IndicatorAffectedPersonsLden, IndicatorAffectedPersonsLnight, IndicatorAffectedDwellingsLden, IndicatorAffectedDwellingsLnight},
+		Units:     results.UniformUnits(bands, results.UnitCount),
+		BandNames: bands,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create raster: %w", err)

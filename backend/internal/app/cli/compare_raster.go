@@ -844,9 +844,11 @@ func cleanupRasterComparePreparation(prep *rasterComparePreparation) {
 }
 
 func filterOutSyntheticRasterReceivers(table results.ReceiverTable) results.ReceiverTable {
+	// Records are dropped here, never indicators, so the units come across
+	// whole. Copied rather than shared, for the same reason IndicatorOrder is.
 	filtered := results.ReceiverTable{
 		IndicatorOrder: append([]string(nil), table.IndicatorOrder...),
-		Unit:           table.Unit,
+		Units:          results.CopyUnits(table.Units),
 		Records:        make([]results.ReceiverRecord, 0, len(table.Records)),
 	}
 
