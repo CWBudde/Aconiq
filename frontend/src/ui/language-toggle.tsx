@@ -6,7 +6,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/components/dropdown-menu";
-import { getLocale, setLocale, locales } from "@/i18n/runtime";
+import { changeLocale, useLocale } from "@/locale";
+import { locales } from "@/i18n/runtime";
 import { m } from "@/i18n/messages";
 
 type Locale = (typeof locales)[number];
@@ -17,6 +18,8 @@ const LOCALE_LABELS: Record<Locale, () => string> = {
 };
 
 export function LanguageToggle() {
+  const active = useLocale();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -29,9 +32,9 @@ export function LanguageToggle() {
           <DropdownMenuItem
             key={locale}
             onClick={() => {
-              void setLocale(locale);
+              changeLocale(locale);
             }}
-            data-active={getLocale() === locale}
+            data-active={active === locale}
             className="data-[active=true]:font-semibold"
           >
             {LOCALE_LABELS[locale]()}

@@ -26,11 +26,8 @@ import {
   setTileURLOverride,
 } from "@/map/tile-source";
 import { m } from "@/i18n/messages";
-import {
-  getLocale,
-  setLocale,
-  localStorageKey as localeStorageKey,
-} from "@/i18n/runtime";
+import { changeLocale, useLocale } from "@/locale";
+import { localStorageKey as localeStorageKey } from "@/i18n/runtime";
 import { DRAFT_KEY, discardDraft, hasDraft } from "@/model/use-autosave";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
@@ -208,7 +205,7 @@ function AppSettings({
               variant={locale === "en" ? "default" : "outline"}
               aria-pressed={locale === "en"}
               onClick={() => {
-                void setLocale("en");
+                changeLocale("en");
               }}
             >
               {m.language_en()}
@@ -217,7 +214,7 @@ function AppSettings({
               variant={locale === "de" ? "default" : "outline"}
               aria-pressed={locale === "de"}
               onClick={() => {
-                void setLocale("de");
+                changeLocale("de");
               }}
             >
               {m.language_de()}
@@ -424,7 +421,7 @@ function AdvancedSettings({
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const locale = getLocale();
+  const locale = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
   const [draftPresent, setDraftPresent] = useState(() => hasDraft());

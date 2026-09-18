@@ -51,6 +51,33 @@ test.describe("App shell", () => {
   });
 });
 
+test.describe("Language switch", () => {
+  test("changes the UI language without navigating", async ({ page }) => {
+    // The one assertion jsdom cannot make. `src/locale.test.tsx` proves the
+    // argument — `setLocale(next, { reload: false })` — while only a real
+    // browser can show that no navigation followed it. A marker on `window`
+    // that a reload would wipe is the evidence; `page.on("framenavigated")`
+    // would not fire for a same-document re-render either way, so it cannot
+    // tell a reload apart from a switch that did nothing.
+    await useLocale(page, "en");
+    await page.goto(appPath("/settings"));
+    await waitForPage(page);
+    await page.evaluate("window.__aconiqNotReloaded = true;");
+
+    await page
+      .getByRole("button", { name: message("en", "language_de"), exact: true })
+      .click();
+
+    await expect(
+      page.getByRole("heading", {
+        name: message("de", "settings_category_app"),
+      }),
+    ).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    expect(await page.evaluate("window.__aconiqNotReloaded")).toBe(true);
+  });
+});
+
 test.describe("Keyboard navigation", () => {
   test("the skip link is the first Tab stop and moves focus to the content", async ({
     page,
