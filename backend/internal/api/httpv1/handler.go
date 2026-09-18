@@ -830,16 +830,66 @@ func (h Handler) handleArtifactContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contentType := "application/json; charset=utf-8"
-	if strings.HasSuffix(artifactPath, ".html") {
-		contentType = "text/html; charset=utf-8"
-	} else if strings.HasSuffix(artifactPath, ".md") {
-		contentType = "text/markdown; charset=utf-8"
-	}
-
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", artifactContentType(artifactPath))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// artifactContentTypes maps an artifact's extension to what it actually is.
+//
+// The default used to be `application/json` for everything but `.html` and
+// `.md`, which made the endpoint lie about two artifacts it was already
+// serving: `run.result.raster_binary` is a headerless float64 array and
+// `export.report_pdf` is a PDF, both announced as JSON. A browser handed that
+// header renders bytes as text; a fetch() that trusts it and calls .json()
+// throws on the first byte.
+//
+// The extensions are matched longest-first, because `.cog.tif` has to beat
+// `.tif` to the answer.
+const (
+	contentTypeTIFF   = "image/tiff"
+	contentTypeBinary = "application/octet-stream"
+	contentTypeText   = "text/plain; charset=utf-8"
+)
+
+var artifactContentTypes = []struct {
+	suffix      string
+	contentType string
+}{
+	{".html", "text/html; charset=utf-8"},
+	{".md", "text/markdown; charset=utf-8"},
+	{".geojson", "application/geo+json"},
+	{".json", "application/json; charset=utf-8"},
+	{".csv", "text/csv; charset=utf-8"},
+	{".typ", contentTypeText},
+	{".log", contentTypeText},
+	{".pdf", "application/pdf"},
+	{".cog.tif", contentTypeTIFF},
+	{".tif", contentTypeTIFF},
+	{".tiff", contentTypeTIFF},
+	{".gpkg", "application/geopackage+sqlite3"},
+	{".bin", contentTypeBinary},
+}
+
+// artifactContentType answers for a path, falling back to octet-stream.
+//
+// Unknown is `application/octet-stream`, not JSON: an unrecognised artifact is
+// far more likely to be the next binary format than the next JSON one, and
+// bytes labelled octet-stream are downloaded rather than mis-parsed.
+func artifactContentType(artifactPath string) string {
+	lower := strings.ToLower(artifactPath)
+
+	best := ""
+	bestType := contentTypeBinary
+
+	for _, candidate := range artifactContentTypes {
+		if strings.HasSuffix(lower, candidate.suffix) && len(candidate.suffix) > len(best) {
+			best = candidate.suffix
+			bestType = candidate.contentType
+		}
+	}
+
+	return bestType
 }
 
 func (h Handler) handleStandards(w http.ResponseWriter, r *http.Request) {

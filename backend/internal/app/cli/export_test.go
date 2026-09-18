@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/report/reporting"
 )
@@ -480,4 +481,127 @@ func anySliceToStrings(value any) []string {
 	}
 
 	return out
+}
+
+// Every file `--format` writes has to reach the manifest. Before this it
+// reached `export-summary.json` and nothing else: no ArtifactRef meant no id,
+// and `GET /api/v1/artifacts/{id}/content` had nothing to serve, so the
+// frontend had no URL for a GeoTIFF or a contour set.
+func TestExportRegistersAnArtifactForEveryFormatFile(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Formats", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "phase8", "model.geojson"))
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield",
+		"--param", "grid_resolution_m=10", "--param", "grid_padding_m=0")
+	mustRunCLI(t, "--project", projectDir, "export",
+		"--format", "geotiff,cog,gpkg,contour-geojson,contour-gpkg")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("open project: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	byKind := map[string][]project.ArtifactRef{}
+
+	for _, ref := range proj.Artifacts {
+		if strings.HasPrefix(ref.Kind, "export.format_") {
+			byKind[ref.Kind] = append(byKind[ref.Kind], ref)
+		}
+	}
+
+	for _, kind := range []string{
+		project.ArtifactKindExportFormatGeoTIFF,
+		project.ArtifactKindExportFormatCOG,
+		project.ArtifactKindExportFormatGeoPackage,
+		project.ArtifactKindExportFormatContourGeoJSON,
+		project.ArtifactKindExportFormatContourGPKG,
+	} {
+		if len(byKind[kind]) == 0 {
+			t.Errorf("no artifact registered for %s", kind)
+		}
+	}
+
+	seenIDs := map[string]string{}
+
+	for kind, refs := range byKind {
+		for _, ref := range refs {
+			if previous, clash := seenIDs[ref.ID]; clash {
+				t.Fatalf("artifact id %q is used by both %s and %s", ref.ID, previous, kind)
+			}
+
+			seenIDs[ref.ID] = kind
+
+			if ref.RunID == "" {
+				t.Errorf("%s artifact %q carries no run id", kind, ref.ID)
+			}
+
+			// The path must be project-root-relative, not bundle-relative:
+			// that is the only form readProjectFile can resolve.
+			assertFileExists(t, filepath.Join(store.Root(), filepath.FromSlash(ref.Path)))
+		}
+	}
+
+	// GeoTIFF and COG write one file per raster band, so one ref per format
+	// would silently drop every band after the first.
+	if len(byKind[project.ArtifactKindExportFormatGeoPackage]) < 2 {
+		t.Errorf("gpkg writes receivers.gpkg and model.gpkg; got %d refs",
+			len(byKind[project.ArtifactKindExportFormatGeoPackage]))
+	}
+}
+
+// `aconiq delete-run` drops every artifact ref belonging to the run and keeps
+// the export bundle's bytes, reporting their paths as retained — a bundle may
+// already have been delivered. The format artifacts have to be inside that
+// promise, which is what the `export.` prefix on their kinds buys: a kind
+// without it would have its files deleted along with the run directory.
+func TestDeleteRunRetainsTheFormatExportFiles(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "Formats", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "phase8", "model.geojson"))
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield",
+		"--param", "grid_resolution_m=10", "--param", "grid_padding_m=0")
+	mustRunCLI(t, "--project", projectDir, "export", "--format", "geotiff")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("open project: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	if len(proj.Runs) != 1 {
+		t.Fatalf("expected exactly one run, got %d", len(proj.Runs))
+	}
+
+	tiffPaths := []string{}
+
+	for _, ref := range proj.Artifacts {
+		if ref.Kind == project.ArtifactKindExportFormatGeoTIFF {
+			tiffPaths = append(tiffPaths, ref.Path)
+		}
+	}
+
+	if len(tiffPaths) == 0 {
+		t.Fatal("export registered no GeoTIFF artifacts to retain")
+	}
+
+	mustRunCLI(t, "--project", projectDir, "delete-run", "--run", proj.Runs[0].ID)
+
+	for _, path := range tiffPaths {
+		assertFileExists(t, filepath.Join(store.Root(), filepath.FromSlash(path)))
+	}
 }

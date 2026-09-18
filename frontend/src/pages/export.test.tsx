@@ -757,6 +757,46 @@ describe("ExportPage unknown artifact kinds", () => {
     expect(screen.getByText("assessment-16bimschv.json")).toBeInTheDocument();
   });
 
+  /*
+   * The `--format` outputs get an ArtifactRef each, one per written file, so
+   * every one of them lands in this list. They are the artifacts the map will
+   * read the raster and the contours from, and an unlabelled row of them is
+   * the kind string in a user's face.
+   */
+  it.each([
+    [
+      "export.format_geotiff",
+      "formats/raster_LrDay.tif",
+      m.export_artifact_label_geotiff,
+    ],
+    [
+      "export.format_cog",
+      "formats/raster_LrDay.cog.tif",
+      m.export_artifact_label_cog,
+    ],
+    [
+      "export.format_gpkg",
+      "formats/receivers.gpkg",
+      m.export_artifact_label_gpkg,
+    ],
+    [
+      "export.format_contour_geojson",
+      "formats/contours.geojson",
+      m.export_artifact_label_contour_geojson,
+    ],
+    [
+      "export.format_contour_gpkg",
+      "formats/contours.gpkg",
+      m.export_artifact_label_contour_gpkg,
+    ],
+  ])("labels %s rather than printing its kind", (kind, path, label) => {
+    const formatArtifact = artifact("a-fmt", kind, `exports/run-1/${path}`);
+    renderPage([run("run-1", [bundle, formatArtifact])]);
+
+    expect(screen.getByText(label())).toBeInTheDocument();
+    expect(screen.queryByText(kind)).toBeNull();
+  });
+
   it("prints the raw kind of any other unknown export kind", () => {
     renderPage([
       run("run-1", [

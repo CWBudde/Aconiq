@@ -11,6 +11,9 @@ import {
   FileCode,
   FileType,
   FileCheck,
+  Image,
+  Database,
+  Spline,
 } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import {
@@ -82,6 +85,26 @@ const EXPORT_KIND_LABELS: Record<
   "export.assessment_16bimschv_json": {
     label: m.export_artifact_label_bimschv16_assessment,
     icon: FileCheck,
+  },
+  "export.format_geotiff": {
+    label: m.export_artifact_label_geotiff,
+    icon: Image,
+  },
+  "export.format_cog": {
+    label: m.export_artifact_label_cog,
+    icon: Image,
+  },
+  "export.format_gpkg": {
+    label: m.export_artifact_label_gpkg,
+    icon: Database,
+  },
+  "export.format_contour_geojson": {
+    label: m.export_artifact_label_contour_geojson,
+    icon: Spline,
+  },
+  "export.format_contour_gpkg": {
+    label: m.export_artifact_label_contour_gpkg,
+    icon: Spline,
   },
 };
 

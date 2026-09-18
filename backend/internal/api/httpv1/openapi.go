@@ -344,22 +344,43 @@ func openapiArtifactPathItems() map[string]any {
 				},
 				"responses": map[string]any{
 					"200": map[string]any{
-						"description": "Artifact file content",
+						// The media type follows the artifact's extension; see
+						// artifactContentType in handler.go, which this list
+						// mirrors. The binary entries are not decoration:
+						// run.result.raster_binary and the GeoTIFF/COG/GeoPackage
+						// exports are bytes, and a generated client that only
+						// knows application/json parses them as text.
+						"description": "Artifact file content, typed by the artifact's format",
 						"content": map[string]any{
 							"application/json": map[string]any{
-								"schema": map[string]any{
-									"type": "object",
-								},
+								"schema": map[string]any{"type": "object"},
+							},
+							"application/geo+json": map[string]any{
+								"schema": map[string]any{"type": "object"},
 							},
 							"text/html": map[string]any{
-								"schema": map[string]any{
-									"type": "string",
-								},
+								"schema": map[string]any{"type": "string"},
 							},
 							"text/markdown": map[string]any{
-								"schema": map[string]any{
-									"type": "string",
-								},
+								"schema": map[string]any{"type": "string"},
+							},
+							"text/csv": map[string]any{
+								"schema": map[string]any{"type": "string"},
+							},
+							"text/plain": map[string]any{
+								"schema": map[string]any{"type": "string"},
+							},
+							"application/pdf": map[string]any{
+								"schema": map[string]any{"type": "string", "format": "binary"},
+							},
+							"image/tiff": map[string]any{
+								"schema": map[string]any{"type": "string", "format": "binary"},
+							},
+							"application/geopackage+sqlite3": map[string]any{
+								"schema": map[string]any{"type": "string", "format": "binary"},
+							},
+							"application/octet-stream": map[string]any{
+								"schema": map[string]any{"type": "string", "format": "binary"},
 							},
 						},
 					},
