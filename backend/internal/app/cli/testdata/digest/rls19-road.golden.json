@@ -3,9 +3,9 @@
   "fixture": "phase17/rls19_road_model.geojson",
   "files": {
     "receivers.csv": "sha256:880e60a2d767f9d9dc43aecc0dc6c2cfe2388f93e976342ae5f09324282a2e6c bytes=9584",
-    "receivers.json": "sha256:a1cae05d2e71cf5ce084549a00181e72eb8f7fe6a7ed8012722e358f41a724cc bytes=19307",
+    "receivers.json": "sha256:f841c00c4ed9265612ed673703fdeb9ac1d8318c1ec72a8022bba8d361000906 bytes=19333",
     "rls19-road.bin": "sha256:3013a2624c445cd516728be869c6093dfec4730045a29258dc4ef3ba829faafa bytes=2720",
-    "rls19-road.json": "sha256:8e2e65f1d9dcd1f31365591bde099c5b8fa7294242bae4138ff4fe61194f9f2a bytes=325",
+    "rls19-road.json": "sha256:0c0181092a2bf44a32a9eaeb9d8a5da36b5a2762db94f2f128dffaa509ee9424 bytes=351",
     "run-summary.json": "sha256:42a956756510f3e1fa9222ed6d8ab75b48d3065e6b83961c7e4d74bee192090f bytes=423"
   },
   "run_summary": {

@@ -13,13 +13,15 @@ import (
 func TestExportGeoTIFF(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     4,
 		Height:    3,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 		CRS:       "EPSG:25832",
 	})
 	if err != nil {
@@ -99,13 +101,15 @@ func TestExportGeoTIFF(t *testing.T) {
 func TestExportGeoTIFFMultiBand(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden", "Lnight"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     2,
 		Height:    2,
 		Bands:     2,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden", "Lnight"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 	})
 	if err != nil {
 		t.Fatalf("create raster: %v", err)
@@ -152,8 +156,11 @@ func TestExportGeoTIFFRowFlip(t *testing.T) {
 	t.Parallel()
 
 	// Create a 2x2 raster where row 0 (bottom) has value 10, row 1 (top) has value 20.
+	bandNames := []string{"test"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width: 2, Height: 2, Bands: 1, NoData: -9999, Unit: "dB", BandNames: []string{"test"},
+		Width: 2, Height: 2, Bands: 1, NoData: -9999,
+		Units: results.UniformUnits(bandNames, results.UnitDecibel), BandNames: bandNames,
 	})
 	if err != nil {
 		t.Fatalf("create raster: %v", err)
@@ -217,13 +224,15 @@ func TestExportGeoTIFFRowFlip(t *testing.T) {
 func TestExportCOG(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     300,
 		Height:    200,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 		CRS:       "EPSG:25832",
 	})
 	if err != nil {
@@ -313,13 +322,15 @@ func TestExportCOGNilRaster(t *testing.T) {
 func TestExportCOGOverviews(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     600,
 		Height:    400,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 		CRS:       "EPSG:25832",
 	})
 	if err != nil {

@@ -40,9 +40,10 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, grid results.G
 		return ExportOutputs{}, fmt.Errorf("create output directory: %w", err)
 	}
 
+	indicators := []string{IndicatorLpAeqDW, IndicatorLpAeqLT}
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{IndicatorLpAeqDW, IndicatorLpAeqLT},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records:        make([]results.ReceiverRecord, 0, len(outputs)),
 	}
 
@@ -72,13 +73,15 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, grid results.G
 		return ExportOutputs{}, fmt.Errorf("save receiver table csv %s: %w", receiverCSVPath, err)
 	}
 
+	bands := []string{IndicatorLpAeqDW}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     grid.Width,
 		Height:    grid.Height,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{IndicatorLpAeqDW},
+		Units:     results.UniformUnits(bands, results.UnitDecibel),
+		BandNames: bands,
 		CRS:       grid.CRS,
 		Geo:       grid.Geo,
 	})

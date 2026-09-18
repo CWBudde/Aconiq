@@ -10,13 +10,15 @@ func TestGenerateContours(t *testing.T) {
 	t.Parallel()
 
 	// Create a 4x4 raster with a gradient: values go from 40 to 55.
+	bandNames := []string{"Lden"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     4,
 		Height:    4,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden"},
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
 	})
 	if err != nil {
 		t.Fatalf("create raster: %v", err)
@@ -63,7 +65,7 @@ func TestGenerateContoursSmallRaster(t *testing.T) {
 	t.Parallel()
 
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width: 1, Height: 1, Bands: 1, NoData: -9999, Unit: "dB",
+		Width: 1, Height: 1, Bands: 1, NoData: -9999,
 	})
 	if err != nil {
 		t.Fatalf("create raster: %v", err)
@@ -88,8 +90,11 @@ func TestGenerateContoursAllNoData(t *testing.T) {
 	t.Parallel()
 
 	// Raster filled with NoData — should produce no contours.
+	bandNames := []string{"test"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
-		Width: 3, Height: 3, Bands: 1, NoData: -9999, Unit: "dB", BandNames: []string{"test"},
+		Width: 3, Height: 3, Bands: 1, NoData: -9999,
+		Units: results.UniformUnits(bandNames, results.UnitDecibel), BandNames: bandNames,
 	})
 	if err != nil {
 		t.Fatalf("create raster: %v", err)

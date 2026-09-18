@@ -274,7 +274,8 @@ export interface RasterMetadata {
   height: number;
   bands: number;
   nodata: number;
-  unit: string;
+  /** Per band, keyed by band name — the kernel passes it through untouched. */
+  units: Record<string, string>;
   band_names?: string[];
   crs?: string;
   georeference?: RasterGeoreference;

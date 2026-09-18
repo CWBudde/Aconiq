@@ -71,9 +71,10 @@ func ExportENDBundle(baseDir string, standardID string, outputs []ReceiverOutput
 }
 
 func writeReceiverTable(baseDir string, outputs []ReceiverOutput) (string, string, error) {
+	indicators := IndicatorOrder()
 	table := results.ReceiverTable{
-		IndicatorOrder: IndicatorOrder(),
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records:        make([]results.ReceiverRecord, 0, len(outputs)),
 	}
 
@@ -107,13 +108,15 @@ func writeReceiverTable(baseDir string, outputs []ReceiverOutput) (string, strin
 // order — row-major from the origin — which is what lets the index arithmetic
 // below stand in for coordinates.
 func writeIndicatorRaster(baseDir string, standardID string, outputs []ReceiverOutput, grid results.GridLayout) (string, string, error) {
+	bands := []string{IndicatorLden, IndicatorLnight}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     grid.Width,
 		Height:    grid.Height,
 		Bands:     2,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{IndicatorLden, IndicatorLnight},
+		Units:     results.UniformUnits(bands, results.UnitDecibel),
+		BandNames: bands,
 		CRS:       grid.CRS,
 		Geo:       grid.Geo,
 	})

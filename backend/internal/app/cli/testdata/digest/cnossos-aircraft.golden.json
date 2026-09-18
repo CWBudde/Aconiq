@@ -3,9 +3,9 @@
   "fixture": "phase13/aircraft_model.geojson",
   "files": {
     "cnossos-aircraft.bin": "sha256:d93c67585e0eb96e0c651e6b1202f423c7d85371256751443dc25ea2a0466ea5 bytes=6032",
-    "cnossos-aircraft.json": "sha256:ecc7d2e49bf545bd07669ee417c5b484b0016b8b130942fa66f90fd1d190cd58 bytes=331",
+    "cnossos-aircraft.json": "sha256:fb4bd3be7a31085e160a33bce8c1645cfd37e41de267245a07f5ba4b12390ce9 bytes=355",
     "receivers.csv": "sha256:39399c459c3c6bb9ca35a97e5031ac1ef294af0e93c1f49cfb9ec7c906ae5335 bytes=35258",
-    "receivers.json": "sha256:dce447b3cab29cba47b1f07edb8bf022ffcc90d7f47af39abfd0c0d9eeb96dc7 bytes=62816",
+    "receivers.json": "sha256:85dfd5f6ceca50271085a57fe4a10955b196c650ea9d339a9b3bc9f69c3a4e05 bytes=62868",
     "run-summary.json": "sha256:7975584cea56a47b0a0cb6afa1f43f95fb978d2a1abbffa0bfaf5a1c4b65fe66 bytes=359"
   },
   "run_summary": {

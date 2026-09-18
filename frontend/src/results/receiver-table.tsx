@@ -16,6 +16,7 @@ import { formatCoordinate, formatLevel, formatNumber } from "@/ui/format";
 import { LoadingLine } from "@/ui/loading-line";
 import { useReceiverTable } from "@/api/hooks";
 import type { RunSummary } from "@/api/client";
+import { unitFor } from "@/map/result-units";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import { summariseIndicators } from "@/results/summarise";
 import { RUN_PARAM, SELECT_PARAM } from "@/map/map-params";
@@ -178,9 +179,20 @@ function level(value: number, unit: string): string {
   return unit === "" ? formatNumber(value) : formatLevel(value, unit);
 }
 
-function columnLabel(col: string, indicators: string[], unit: string): string {
+// The unit comes off the indicator, not off the table: `beb-exposure` heads
+// two decibel columns and six count columns in the same row of `<th>`s.
+function columnLabel(
+  col: string,
+  indicators: string[],
+  units: Record<string, string> | undefined,
+): string {
   if (col === "height_m") return m.table_header_height_m();
-  if (indicators.includes(col) && unit !== "") return `${col} (${unit})`;
+
+  if (indicators.includes(col)) {
+    const unit = unitFor(units, col);
+    if (unit !== "") return `${col} (${unit})`;
+  }
+
   return col;
 }
 
@@ -198,7 +210,7 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
   const selectableIds = useSelectableIds();
 
   const indicators = useMemo(() => data?.indicator_order ?? [], [data]);
-  const unit = data?.unit ?? "";
+  const units = data?.units;
 
   const summaryCards = useMemo(
     () => (data ? summariseIndicators(data.records, indicators) : []),
@@ -355,7 +367,7 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
                     <div key={label} className="flex gap-1">
                       <dt className="text-muted-foreground">{label}:</dt>
                       <dd className="font-medium tabular-nums">
-                        {level(value, unit)}
+                        {level(value, unitFor(units, ind))}
                       </dd>
                     </div>
                   ))}
@@ -417,7 +429,7 @@ export function ReceiversTab({ run }: { run: RunSummary }) {
                     }}
                     className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {columnLabel(col, indicators, unit)}
+                    {columnLabel(col, indicators, units)}
                     <SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
                   </button>
                 </th>

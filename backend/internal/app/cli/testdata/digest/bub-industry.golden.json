@@ -3,9 +3,9 @@
   "fixture": "phase12/industry_model.geojson",
   "files": {
     "bub-industry.bin": "sha256:2ea14f5cada7b036ad2d1d5d589138124e828ed58f4941ea91d0dab018bfb30a bytes=896",
-    "bub-industry.json": "sha256:3e2ba4be711930de779fd381cac882a94e3be128f06ee96a846d80831ff411ee bytes=322",
+    "bub-industry.json": "sha256:0ba03adcb828fdbceba357b0f79e5f9af630f15e9d79b102f5f80323ca0b3102 bytes=346",
     "receivers.csv": "sha256:0f096e6b3dbe8648b7525b2f59884090af333a901c6c98210611dd9befe23031 bytes=5219",
-    "receivers.json": "sha256:ba4fcccf8b2399239cb54b949b73e86434c3dcd471027df3be321ee8b11a5938 bytes=9344",
+    "receivers.json": "sha256:08441bdaaa89b216651705da66dd1b2ecae9787bd16628e85270779683e4da10 bytes=9396",
     "run-summary.json": "sha256:c8094229bb56374b4812ac90e6bc77d379d27fccb5dd806de7ea42ed295b2ae3 bytes=327"
   },
   "run_summary": {

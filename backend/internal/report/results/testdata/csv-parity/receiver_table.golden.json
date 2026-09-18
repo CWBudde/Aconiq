@@ -3,7 +3,10 @@
     "Lden",
     "Lr,Night"
   ],
-  "unit": "dB(A)",
+  "units": {
+    "Lden": "dB(A)",
+    "Lr,Night": "dB(A)"
+  },
   "records": [
     {
       "id": "R1",

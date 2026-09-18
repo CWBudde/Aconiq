@@ -22,13 +22,15 @@ const (
 // carries a georeference, because a raster without one is how the domain
 // refusal below is provoked.
 func contourRasterMeta(georeferenced bool) results.RasterMetadata {
+	bandNames := []string{"lr_day", "lr_night"}
+
 	meta := results.RasterMetadata{
 		Width:     contourWidth,
 		Height:    contourHeight,
 		Bands:     2,
 		NoData:    -999,
-		Unit:      "dB(A)",
-		BandNames: []string{"lr_day", "lr_night"},
+		Units:     results.UniformUnits(bandNames, "dB(A)"),
+		BandNames: bandNames,
 		CRS:       contourCRS,
 	}
 

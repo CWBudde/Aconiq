@@ -339,7 +339,7 @@ func TestExportGoldenSnapshot(t *testing.T) {
 
 	receiverSnapshot := map[string]any{
 		"indicator_order": receiverTable.IndicatorOrder,
-		"unit":            receiverTable.Unit,
+		"units":           receiverTable.Units,
 		"records":         roundedRecords(receiverTable.Records),
 	}
 

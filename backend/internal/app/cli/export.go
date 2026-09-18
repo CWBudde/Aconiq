@@ -1039,13 +1039,15 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "create sample results directory", err)
 	}
 
+	rasterBands := []string{sampleIndicatorLden}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     32,
 		Height:    24,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{sampleIndicatorLden},
+		Units:     results.UniformUnits(rasterBands, results.UnitDecibel),
+		BandNames: rasterBands,
 	})
 	if err != nil {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "build sample raster", err)
@@ -1067,9 +1069,10 @@ func emitSampleResultBundle(bundleDir string) ([]string, error) {
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.emitSampleResultBundle", "save sample raster", err)
 	}
 
+	sampleIndicators := []string{sampleIndicatorLden, sampleIndicatorLnight}
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{sampleIndicatorLden, sampleIndicatorLnight},
-		Unit:           "dB",
+		IndicatorOrder: sampleIndicators,
+		Units:          results.UniformUnits(sampleIndicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{sampleIndicatorLden: 56.3, sampleIndicatorLnight: 47.8}},
 			{ID: "rx-002", X: 110, Y: 200, HeightM: 4, Values: map[string]float64{sampleIndicatorLden: 58.1, sampleIndicatorLnight: 49.2}},

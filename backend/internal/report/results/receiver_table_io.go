@@ -10,6 +10,25 @@ import (
 	"strconv"
 )
 
+// receiverTableFile is a table as it may be found on disk: the current shape,
+// plus the scalar "unit" written before the unit was per indicator.
+//
+// The expansion lives here and not on ReceiverTable.UnmarshalJSON, because a
+// legacy spelling is a property of the file rather than of the type — and
+// because a method on the type would be promoted into anything embedding it,
+// which is exactly how rasterMetadataFile lost its own fields for a while.
+//
+// The scalar was true of every indicator in the documents that carry it: the
+// one writer whose indicators disagreed said "mixed", which is the case the
+// per-indicator field exists to stop. Expanding it is therefore lossless, and
+// it is a read — the bytes on disk are left as they were, so no run has to be
+// migrated before it can be opened.
+type receiverTableFile struct {
+	ReceiverTable
+
+	LegacyUnit string `json:"unit"`
+}
+
 // LoadReceiverTableJSON reads a receiver table from a JSON file.
 func LoadReceiverTableJSON(path string) (ReceiverTable, error) {
 	data, err := os.ReadFile(path)
@@ -17,11 +36,16 @@ func LoadReceiverTableJSON(path string) (ReceiverTable, error) {
 		return ReceiverTable{}, fmt.Errorf("read receiver table json %s: %w", path, err)
 	}
 
-	var table ReceiverTable
+	var file receiverTableFile
 
-	err = json.Unmarshal(data, &table)
+	err = json.Unmarshal(data, &file)
 	if err != nil {
 		return ReceiverTable{}, fmt.Errorf("decode receiver table json %s: %w", path, err)
+	}
+
+	table := file.ReceiverTable
+	if len(table.Units) == 0 && file.LegacyUnit != "" {
+		table.Units = UniformUnits(table.IndicatorOrder, file.LegacyUnit)
 	}
 
 	return table, nil

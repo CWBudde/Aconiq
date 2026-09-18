@@ -110,7 +110,7 @@ func TestRunDummyFreefieldPhase8Golden(t *testing.T) {
 			"height":     meta.Height,
 			"bands":      meta.Bands,
 			"band_names": meta.BandNames,
-			"unit":       meta.Unit,
+			"units":      meta.Units,
 			"values":     rasterValuesRounded,
 		},
 		"receivers": recordsSnapshot,

@@ -11,13 +11,15 @@ import (
 func TestRasterIndexingAndRoundtrip(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden", "Lnight"}
+
 	raster, err := NewRaster(RasterMetadata{
 		Width:     3,
 		Height:    2,
 		Bands:     2,
 		NoData:    -9999,
-		Unit:      "dB",
-		BandNames: []string{"Lden", "Lnight"},
+		Units:     UniformUnits(bandNames, UnitDecibel),
+		BandNames: bandNames,
 	})
 	if err != nil {
 		t.Fatalf("new raster: %v", err)
@@ -67,7 +69,7 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 func TestRasterBoundsError(t *testing.T) {
 	t.Parallel()
 
-	raster, err := NewRaster(RasterMetadata{Width: 1, Height: 1, Bands: 1, NoData: -1, Unit: "dB"})
+	raster, err := NewRaster(RasterMetadata{Width: 1, Height: 1, Bands: 1, NoData: -1})
 	if err != nil {
 		t.Fatalf("new raster: %v", err)
 	}
@@ -117,7 +119,7 @@ func TestNewRasterRefusesInvalidGeoreference(t *testing.T) {
 	t.Parallel()
 
 	_, err := NewRaster(RasterMetadata{
-		Width: 1, Height: 1, Bands: 1, NoData: -1, Unit: "dB",
+		Width: 1, Height: 1, Bands: 1, NoData: -1,
 		Geo: &Georeference{OriginX: 0, OriginY: 0, PixelSizeM: 0, RowOrder: RowOrderSouthUp},
 	})
 	if err == nil {
@@ -131,7 +133,7 @@ func TestRasterMetadataCopiesGeoreference(t *testing.T) {
 	t.Parallel()
 
 	raster, err := NewRaster(RasterMetadata{
-		Width: 2, Height: 2, Bands: 1, NoData: -1, Unit: "dB",
+		Width: 2, Height: 2, Bands: 1, NoData: -1,
 		Geo: &Georeference{OriginX: 100, OriginY: 200, PixelSizeM: 10, RowOrder: RowOrderSouthUp},
 	})
 	if err != nil {
@@ -151,9 +153,12 @@ func TestRasterMetadataCopiesGeoreference(t *testing.T) {
 func TestSaveRasterRoundTripsGeoreferenceAndCRS(t *testing.T) {
 	t.Parallel()
 
+	bandNames := []string{"Lden"}
+
 	raster, err := NewRaster(RasterMetadata{
-		Width: 2, Height: 3, Bands: 1, NoData: -9999, Unit: "dB",
-		BandNames: []string{"Lden"},
+		Width: 2, Height: 3, Bands: 1, NoData: -9999,
+		Units:     UniformUnits(bandNames, UnitDecibel),
+		BandNames: bandNames,
 		CRS:       "EPSG:25832",
 		Geo:       &Georeference{OriginX: 500000, OriginY: 5600000, PixelSizeM: 10, RowOrder: RowOrderSouthUp},
 	})
@@ -194,7 +199,7 @@ func TestSaveRasterRoundTripsGeoreferenceAndCRS(t *testing.T) {
 func TestSaveRasterOmitsAbsentGeoreference(t *testing.T) {
 	t.Parallel()
 
-	raster, err := NewRaster(RasterMetadata{Width: 1, Height: 2, Bands: 1, NoData: -1, Unit: "dB"})
+	raster, err := NewRaster(RasterMetadata{Width: 1, Height: 2, Bands: 1, NoData: -1})
 	if err != nil {
 		t.Fatalf("new raster: %v", err)
 	}

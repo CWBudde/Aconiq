@@ -21,6 +21,7 @@ import ResultsPage from "./results";
 import { useModelStore } from "@/model/model-store";
 import { resetProjectSyncStore } from "@/model/use-project-sync";
 import { m } from "@/i18n/messages";
+import { unitFor } from "@/map/result-units";
 
 /**
  * Mostly characterisation tests: they describe what the results page does
@@ -169,7 +170,7 @@ function run(id: string, overrides: Partial<RunSummary> = {}): RunSummary {
  */
 const table: ReceiverTable = {
   indicator_order: ["Lden", "Lnight"],
-  unit: "dB(A)",
+  units: { Lden: "dB(A)", Lnight: "dB(A)" },
   records: [
     {
       id: "R1",
@@ -194,7 +195,7 @@ const rasterMetadata: RasterMetadata = {
   height: 80,
   bands: 2,
   nodata: -9999,
-  unit: "dB(A)",
+  units: { Lden: "dB(A)", Lnight: "dB(A)" },
   band_names: ["Lden", "Lnight"],
 };
 
@@ -866,11 +867,11 @@ describe("ResultsPage receiver sorting", () => {
 
     // `R10` has no `Lnight`; `sortedRecords` substitutes 0, so ascending puts
     // it below every measured receiver instead of at the end or out of the way.
-    fireEvent.click(sortHeader(`Lnight (${table.unit})`));
+    fireEvent.click(sortHeader(`Lnight (${unitFor(table.units, "Lnight")})`));
 
     expect(rowIds()).toEqual(["R10", "R2", "R1"]);
 
-    fireEvent.click(sortHeader(`Lnight (${table.unit})`));
+    fireEvent.click(sortHeader(`Lnight (${unitFor(table.units, "Lnight")})`));
 
     // Descending it is last, again as a 0 — never flagged as absent.
     expect(rowIds()).toEqual(["R1", "R2", "R10"]);
@@ -911,7 +912,7 @@ describe("ResultsPage receiver table windowing", () => {
    */
   const big: ReceiverTable = {
     indicator_order: ["Lden"],
-    unit: "dB(A)",
+    units: { Lden: "dB(A)" },
     records: Array.from({ length: BIG }, (_, i) => ({
       // Zero-padded, so the id order the page sorts by is the index order and
       // "the row after this one" is a claim a test can make.
@@ -1231,8 +1232,14 @@ describe("ResultsPage label punctuation", () => {
 
     expect(screen.getByText(`${m.label_dimensions()}:`)).toBeInTheDocument();
     expect(screen.getByText(`${m.label_nodata()}:`)).toBeInTheDocument();
-    expect(screen.getByText(`${m.label_unit()}:`)).toBeInTheDocument();
+    expect(screen.getByText(`${m.label_bands()}:`)).toBeInTheDocument();
+    expect(screen.getByText(`${m.label_band_names()}:`)).toBeInTheDocument();
     expect(screen.queryByText(`${m.label_dimensions()}::`)).toBeNull();
+
+    // The card has no Unit row any more: the unit is per band, so each band
+    // carries its own in the list above rather than one value standing for
+    // however many disagree.
+    expect(screen.getByText(/Lden \(dB\(A\)\)/)).toBeInTheDocument();
   });
 });
 
@@ -1301,7 +1308,7 @@ describe("ResultsPage windowed table accessibility", () => {
   it("introduces no axe violations with the window in place", async () => {
     state.receiverTable = {
       indicator_order: ["Lden"],
-      unit: "dB(A)",
+      units: { Lden: "dB(A)" },
       records: Array.from({ length: 5000 }, (_, i) => ({
         id: `R${String(i).padStart(4, "0")}`,
         x: i,

@@ -25,7 +25,7 @@ import {
 } from "./raster-extent";
 import { rasterToRGBA } from "./raster-image";
 import { readRasterBand } from "@/model/raster-bin";
-import { declaresLevels } from "./result-units";
+import { declaresLevels, unitFor } from "./result-units";
 
 /**
  * The largest raster drawn as one image.
@@ -270,9 +270,6 @@ function sidecarRefusal(
   metadata: RasterMetadata,
   indicator: string,
 ): ResultRaster | null {
-  if (!declaresLevels(metadata.unit)) {
-    return { status: "not-levels", unit: metadata.unit };
-  }
   if (metadata.georeference === undefined) return { status: "not-a-grid" };
   if (exceedsOneImage(metadata)) {
     return {
@@ -284,6 +281,19 @@ function sidecarRefusal(
   if (bandIndex(metadata, indicator) < 0) {
     return { status: "no-such-band", indicator };
   }
+
+  // Last, and that ordering is forced rather than chosen. The unit is per
+  // band now, so there is no unit to judge until a band has been resolved:
+  // asked about a band this sidecar does not carry, `unitFor` answers `""`
+  // and the run would be refused for holding no decibels when the real
+  // complaint is the band. `not-levels` used to be checked first, so a
+  // raster that is also not a grid now reports the grid instead — the more
+  // fundamental of the two.
+  const unit = unitFor(metadata.units, indicator);
+  if (!declaresLevels(unit)) {
+    return { status: "not-levels", unit };
+  }
+
   return null;
 }
 

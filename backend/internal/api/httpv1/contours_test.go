@@ -36,10 +36,13 @@ func seedRunWithRaster(t *testing.T, store projectfs.Store, georef *results.Geor
 
 	run := seedRun(t, store, project.RunStatusCompleted)
 
+	bandNames := []string{"Lden", "Lnight"}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width: contourFixtureWidth, Height: contourFixtureHeight, Bands: 2,
-		NoData: -9999, Unit: "dB", BandNames: []string{"Lden", "Lnight"},
-		CRS: contourFixtureCRS, Geo: georef,
+		NoData: -9999, Units: results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
+		CRS:       contourFixtureCRS, Geo: georef,
 	})
 	if err != nil {
 		t.Fatalf("new raster: %v", err)

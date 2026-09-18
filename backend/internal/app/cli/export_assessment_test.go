@@ -38,9 +38,11 @@ func TestMaybeBuild16BImSchVAssessment(t *testing.T) {
 		t.Fatalf("write model: %v", err)
 	}
 
+	indicators := []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{rls19road.IndicatorLrDay, rls19road.IndicatorLrNight},
-		Unit:           "dB",
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-1", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{
 				rls19road.IndicatorLrDay:   61.1,

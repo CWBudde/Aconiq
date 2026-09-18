@@ -139,9 +139,10 @@ func persistReceiverTableOnly(
 // buildDummyReceiverTable maps engine results onto the receiver set. Every
 // receiver must have a result; a missing one is an internal inconsistency.
 func buildDummyReceiverTable(receivers []geo.PointReceiver, levelByReceiver map[string]float64, indicator string) (results.ReceiverTable, error) {
+	indicators := []string{indicator}
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{indicator},
-		Unit:           dummyResultUnit,
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, dummyResultUnit),
 		Records:        make([]results.ReceiverRecord, 0, len(receivers)),
 	}
 
@@ -174,13 +175,15 @@ func persistDummyRaster(
 	layout results.GridLayout,
 	indicator string,
 ) (results.RasterPersistence, error) {
+	bands := []string{indicator}
+
 	raster, err := results.NewRaster(results.RasterMetadata{
 		Width:     layout.Width,
 		Height:    layout.Height,
 		Bands:     1,
 		NoData:    -9999,
-		Unit:      dummyResultUnit,
-		BandNames: []string{indicator},
+		Units:     results.UniformUnits(bands, dummyResultUnit),
+		BandNames: bands,
 		CRS:       layout.CRS,
 		Geo:       layout.Geo,
 	})
@@ -397,7 +400,7 @@ func persistReceiverRunOutputs[Output any](
 	if receiverMode == receiverModeCustom {
 		table := results.ReceiverTable{
 			IndicatorOrder: plan.indicatorOrder,
-			Unit:           "dB",
+			Units:          results.UniformUnits(plan.indicatorOrder, results.UnitDecibel),
 			Records:        make([]results.ReceiverRecord, 0, len(outputs)),
 		}
 

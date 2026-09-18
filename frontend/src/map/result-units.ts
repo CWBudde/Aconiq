@@ -24,3 +24,38 @@
 export function declaresLevels(unit: string): boolean {
   return unit.trim().toLowerCase().startsWith("db");
 }
+
+/**
+ * The unit a named channel's values carry, or `""` when the container names
+ * none.
+ *
+ * `""` rather than a thrown error or a guessed default: a container written
+ * before the unit was per channel expands its old scalar across every channel
+ * on read, so a genuinely absent unit means the writer never said — and the
+ * callers below all have something sensible to do with that (print the bare
+ * number, refuse the ramp) which is better than inventing "dB".
+ */
+export function unitFor(
+  units: Record<string, string> | undefined,
+  name: string,
+): string {
+  return units?.[name] ?? "";
+}
+
+/**
+ * The subset of `order` whose values are decibels, in the order given.
+ *
+ * This is what replaced the all-or-nothing gate. The unit used to be one
+ * string per container, so `beb-exposure`'s `"mixed"` refused Lden and Lnight
+ * along with the six counts they sat beside — the run drew nothing at all.
+ * Now each channel answers for itself and only the counts are withheld.
+ *
+ * Iterating `order` and not the map keeps the container's declared order,
+ * which is what the indicator picker shows.
+ */
+export function levelIndicators(
+  order: readonly string[],
+  units: Record<string, string> | undefined,
+): string[] {
+  return order.filter((name) => declaresLevels(unitFor(units, name)));
+}

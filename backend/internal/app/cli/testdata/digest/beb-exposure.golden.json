@@ -3,10 +3,10 @@
   "fixture": "phase16/beb_model.geojson",
   "files": {
     "beb-exposure.bin": "sha256:dea04c0576b7c9033162c0617b9812f20fc5b316000322f455cafd24146323bd bytes=32",
-    "beb-exposure.json": "sha256:d97c2df680af9674556f64e3a2aee9ea8d73a4ef7a88e8396bc80e2a229eaf0e bytes=303",
+    "beb-exposure.json": "sha256:67b54421846c0ee9fc9389fedc258bf1ef6032c688de4c6dcf65bc31150808d1 bytes=434",
     "beb-summary.json": "sha256:5278aa7765515e055739c1abd11dd3198124389077d87852fde64bd9709cfef6 bytes=1430",
     "buildings.csv": "sha256:59229f653ea7acac6d02b808ad46ad952c50554fbae73fe3488fba4d240c5636 bytes=372",
-    "buildings.json": "sha256:bfcf1c80671aa9c1b1ef3bf55d3160cbf572e44933d3274b2e13e9f6c22ae725 bytes=822",
+    "buildings.json": "sha256:39e266160cd75286c4dcad37f394dac05ad24c472696be7297bd370d58722474 bytes=1037",
     "run-summary.json": "sha256:77dca4049808fd702aeb7381b1a2dae5e9d01a98844a683e0762f505bbd66165 bytes=1669"
   },
   "run_summary": {

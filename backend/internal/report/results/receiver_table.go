@@ -18,13 +18,20 @@ type ReceiverRecord struct {
 
 // ReceiverTable stores tabular receiver output for one run.
 type ReceiverTable struct {
-	IndicatorOrder []string         `json:"indicator_order"`
-	Unit           string           `json:"unit"`
-	Records        []ReceiverRecord `json:"records"`
+	IndicatorOrder []string `json:"indicator_order"`
+	// Units maps each entry of IndicatorOrder to the unit its values carry.
+	// See units.go for why it is a map and not a parallel slice.
+	Units   map[string]string `json:"units"`
+	Records []ReceiverRecord  `json:"records"`
 }
 
 func (t ReceiverTable) Validate() error {
 	err := t.validateIndicatorOrder()
+	if err != nil {
+		return err
+	}
+
+	err = validateUnits("receiver table", t.IndicatorOrder, t.Units)
 	if err != nil {
 		return err
 	}

@@ -52,7 +52,7 @@ import {
 } from "./layers";
 import { MapPanel } from "./map-panel";
 import { useMapStore } from "./map-store";
-import { declaresLevels } from "./result-units";
+import { levelIndicators, unitFor } from "./result-units";
 import { useMap } from "./use-map";
 import { useResultRaster, type ResultRaster } from "./use-result-raster";
 import { useResultContours, type ResultContours } from "./use-result-contours";
@@ -320,15 +320,23 @@ export function ResultLayers({
   // from a run whose coordinates could not be projected.
   const loadFailed = tableError != null || summaryError != null;
 
-  const unit = table?.unit ?? "";
-  // Unknown until the table arrives, and `declaresLevels("")` is false, so the
-  // gate has to let an absent table through rather than call it a count table.
-  const levelTable = table === undefined || declaresLevels(unit);
+  // Per indicator, not per table. `beb-exposure` puts Lden and Lnight beside
+  // six dwelling and person counts; the picker offers the two that are
+  // decibels and the ramp never sees the six that are not. It used to be one
+  // gate over the whole table, so that run drew nothing at all.
+  const units = table?.units;
+  const indicators = useMemo(
+    () =>
+      table === undefined
+        ? NO_INDICATORS
+        : levelIndicators(table.indicator_order, table.units),
+    [table],
+  );
 
+  // An absent table is not a refusal — it has not arrived. Only a table that
+  // arrived and named no decibel indicator is.
+  const levelTable = table === undefined || indicators.length > 0;
   const records = levelTable ? (table?.records ?? NO_RECORDS) : NO_RECORDS;
-  const indicators = levelTable
-    ? (table?.indicator_order ?? NO_INDICATORS)
-    : NO_INDICATORS;
   const computeCRS = computeCRSOf(summary);
   // Still being fetched, so "no CRS" is not yet an answer.
   const crsPending = summaryArtifact !== undefined && summaryLoading;
@@ -596,7 +604,7 @@ export function ResultLayers({
       <PanelBody
         loadFailed={loadFailed}
         levelTable={levelTable}
-        unit={unit}
+        units={units}
         indicators={indicators}
         indicator={indicator}
         onSelect={setChosen}
@@ -618,7 +626,7 @@ export function ResultLayers({
 function PanelBody({
   loadFailed,
   levelTable,
-  unit,
+  units,
   indicators,
   indicator,
   onSelect,
@@ -628,7 +636,7 @@ function PanelBody({
 }: {
   loadFailed: boolean;
   levelTable: boolean;
-  unit: string;
+  units: Record<string, string> | undefined;
   indicators: string[];
   indicator: string;
   onSelect: (indicator: string) => void;
@@ -647,7 +655,7 @@ function PanelBody({
   if (!levelTable) {
     return (
       <p role="status" className="text-2xs text-muted-foreground">
-        {m.msg_result_table_not_levels({ unit })}
+        {m.msg_result_table_not_levels()}
       </p>
     );
   }
@@ -662,7 +670,9 @@ function PanelBody({
       <ProjectionNotice projected={projected} />
       <RasterNotice raster={raster} />
       <ContourNotice contours={contours} raster={raster} />
-      <Legend unit={unit} />
+      {/* The selected indicator's unit, because the table's indicators no
+          longer have to agree on one. */}
+      <Legend unit={unitFor(units, indicator)} />
     </>
   );
 }

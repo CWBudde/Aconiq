@@ -170,7 +170,7 @@ const reportTypstTemplate = `
   [== Maps/images]
   if report.Maps.len() > 0 [
     #for item in report.Maps [
-      - #item.MetadataPath -> #item.DataPath, #item.Width x #item.Height, #item.Bands band(s)#if item.Unit != "" { ", unit " + item.Unit }#if item.BandNames != "" { ", names " + item.BandNames }
+      - #item.MetadataPath -> #item.DataPath, #item.Width x #item.Height, #item.Bands band(s)#if item.BandNames != "" { ", bands " + item.BandNames }
     ]
   ] else [
     No map/image artifacts were available for this run export.
@@ -178,11 +178,8 @@ const reportTypstTemplate = `
 
   [== Tables (receiver stats)]
   if report.Indicators.len() > 0 [
-    #if report.ReceiverUnit != "" [
-      Unit: #report.ReceiverUnit
-    ]
     #for indicator in report.Indicators [
-      - #indicator.Indicator: min #indicator.Min, mean #indicator.Mean, max #indicator.Max
+      - #indicator.Indicator#if indicator.Unit != "" { " (" + indicator.Unit + ")" }: min #indicator.Min, mean #indicator.Mean, max #indicator.Max
     ]
   ] else [
     No receiver statistics were available.

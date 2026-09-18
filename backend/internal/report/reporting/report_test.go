@@ -87,9 +87,11 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("write run summary: %v", err)
 	}
 
+	tableIndicators := []string{"Lden", "Lnight"}
+
 	table := results.ReceiverTable{
-		IndicatorOrder: []string{"Lden", "Lnight"},
-		Unit:           "dB",
+		IndicatorOrder: tableIndicators,
+		Units:          results.UniformUnits(tableIndicators, results.UnitDecibel),
 		Records: []results.ReceiverRecord{
 			{ID: "rx-1", X: 0, Y: 0, HeightM: 4, Values: map[string]float64{"Lden": 50, "Lnight": 40}},
 			{ID: "rx-2", X: 1, Y: 0, HeightM: 4, Values: map[string]float64{"Lden": 55, "Lnight": 45}},
@@ -205,7 +207,9 @@ func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {
 		t.Fatalf("expected the scaffold disclosure note in markdown: %s", markdownText)
 	}
 
-	if !strings.Contains(markdownText, "Lden | 50.000 | 52.667 | 55.000") {
+	// The unit is a column of the stats table, so it sits between the
+	// indicator and its numbers: a row that lost it would still read as a row.
+	if !strings.Contains(markdownText, "Lden | dB | 50.000 | 52.667 | 55.000") {
 		t.Fatalf("expected receiver stats row in markdown: %s", markdownText)
 	}
 

@@ -30,6 +30,50 @@ type rasterMetadataFile struct {
 	SchemaName string    `json:"schema_name"`
 }
 
+// UnmarshalJSON decodes the sidecar's two halves from the same flat object.
+//
+// It has to exist. RasterMetadata carries its own UnmarshalJSON — the one that
+// expands a legacy scalar unit — and an embedded field's methods are promoted,
+// so without this the decoder would fill the metadata and silently drop
+// data_file, encoding, created_at and the rest beside it. LoadRaster then
+// refused every sidecar it had just written, for an empty encoding.
+//
+// The usual `type plain T` trick does not help: promotion comes from the
+// embedded field's type, so the alias inherits the same method. The two halves
+// are therefore decoded explicitly, over the same bytes.
+func (f *rasterMetadataFile) UnmarshalJSON(data []byte) error {
+	var sidecar struct {
+		DataFile   string    `json:"data_file"`
+		Encoding   string    `json:"encoding"`
+		CreatedAt  time.Time `json:"created_at"`
+		CellCount  int       `json:"cell_count"`
+		DataBytes  int       `json:"data_bytes"`
+		SchemaName string    `json:"schema_name"`
+	}
+
+	err := json.Unmarshal(data, &sidecar)
+	if err != nil {
+		return fmt.Errorf("raster sidecar: %w", err)
+	}
+
+	// Its own method, called directly: routing through json.Unmarshal would
+	// reach the same code by promotion, and naming it says which decoder the
+	// legacy scalar unit is expanded by.
+	err = f.RasterMetadata.UnmarshalJSON(data)
+	if err != nil {
+		return err
+	}
+
+	f.DataFile = sidecar.DataFile
+	f.Encoding = sidecar.Encoding
+	f.CreatedAt = sidecar.CreatedAt
+	f.CellCount = sidecar.CellCount
+	f.DataBytes = sidecar.DataBytes
+	f.SchemaName = sidecar.SchemaName
+
+	return nil
+}
+
 // SaveRaster stores a raster as JSON metadata + custom binary values.
 // basePath is the file prefix without extension.
 func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
