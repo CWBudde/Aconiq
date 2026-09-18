@@ -22,12 +22,14 @@ var (
 	ErrNotAGrid = errors.New(
 		"this run's raster declares no georeference, so there is nothing to place its " +
 			"contours on: only a grid receiver set records a cell size, and these receivers " +
-			"were placed individually")
+			"were placed individually",
+	)
 
 	// ErrCRSNotTransformable is a CRS at either end with no EPSG code.
 	// geo.BuildTransformPipeline needs one at both.
 	ErrCRSNotTransformable = errors.New(
-		"contours can only be moved between CRS that carry an EPSG code")
+		"contours can only be moved between CRS that carry an EPSG code",
+	)
 )
 
 // Result is one run's contours, and the CRS they are in.
@@ -176,7 +178,8 @@ func transformableCRS(value string, which string) (geo.CRS, error) {
 		// gets told which end failed and what to send instead.
 		return geo.CRS{}, fmt.Errorf(
 			"%w: %s CRS %q carries none, so send an EPSG identifier such as \"EPSG:25832\"",
-			ErrCRSNotTransformable, which, parsed.ID)
+			ErrCRSNotTransformable, which, parsed.ID,
+		)
 	}
 
 	return parsed, nil

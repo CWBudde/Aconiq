@@ -68,7 +68,8 @@ func seedRunWithRaster(t *testing.T, store projectfs.Store, georef *results.Geor
 		t.Fatalf("load project: %v", err)
 	}
 
-	proj.Artifacts = append(proj.Artifacts,
+	proj.Artifacts = append(
+		proj.Artifacts,
 		project.ArtifactRef{
 			ID: run.ID + "-raster-meta", RunID: run.ID,
 			Kind: project.ArtifactKindRunResultRasterMetadata, Path: relBase + ".json",

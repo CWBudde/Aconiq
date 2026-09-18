@@ -151,7 +151,8 @@ func parseContourQuery(w http.ResponseWriter, r *http.Request) (float64, string,
 				Details: map[string]any{contourIntervalParam: raw},
 				Hint: fmt.Sprintf(
 					"Send a positive dB step such as `interval=2.5`, or omit interval to take the default %g dB.",
-					contour.DefaultInterval),
+					contour.DefaultInterval,
+				),
 			})
 
 			return 0, "", false
