@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -649,20 +650,20 @@ func loadReceiverTable(path string) (results.ReceiverTable, bool, error) {
 		return results.ReceiverTable{}, false, nil
 	}
 
-	payload, err := os.ReadFile(path)
+	// Through results' own loader, not a json.Unmarshal of our own. That
+	// loader is where a table written before the unit was per indicator has
+	// its scalar "unit" expanded across the indicator list, and Validate below
+	// refuses a table with no units at all — so decoding it here instead meant
+	// `aconiq export` aborted on every run created before that change.
+	table, err := results.LoadReceiverTableJSON(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return results.ReceiverTable{}, false, nil
 		}
 
-		return results.ReceiverTable{}, false, fmt.Errorf("read receiver table %s: %w", path, err)
-	}
-
-	var table results.ReceiverTable
-
-	err = json.Unmarshal(payload, &table)
-	if err != nil {
-		return results.ReceiverTable{}, false, fmt.Errorf("decode receiver table %s: %w", path, err)
+		// results names the path already; this says which consumer wanted it,
+		// since the same table is read by export and by compare.
+		return results.ReceiverTable{}, false, fmt.Errorf("report: %w", err)
 	}
 
 	err = table.Validate()

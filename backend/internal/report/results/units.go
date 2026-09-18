@@ -52,9 +52,27 @@ func UniformUnits(names []string, unit string) map[string]string {
 // a name that no longer exists, which is what a renamed indicator leaves
 // behind and what would otherwise sit in the file until somebody noticed.
 //
+// Duplicate names are refused before either check. A unit hangs off a name, so
+// two channels sharing one cannot be told apart — and the arithmetic below
+// assumed distinctness: a raster declaring ["Lden", "Lden"] needs one map
+// entry to satisfy the loop, which made len(units) < len(names) and sized the
+// slice below at a negative capacity. ReceiverTable already refused duplicate
+// indicators; the raster never did, and a legacy scalar unit expanded over
+// duplicate band names produced exactly that shape.
+//
 // The report is deterministic: the offending names are sorted before they are
 // named, because they come out of a map.
 func validateUnits(what string, names []string, units map[string]string) error {
+	declared := make(map[string]struct{}, len(names))
+
+	for _, name := range names {
+		if _, seen := declared[name]; seen {
+			return fmt.Errorf("%s declares %q twice", what, name)
+		}
+
+		declared[name] = struct{}{}
+	}
+
 	for _, name := range names {
 		unit, ok := units[name]
 		if !ok {
@@ -66,16 +84,11 @@ func validateUnits(what string, names []string, units map[string]string) error {
 		}
 	}
 
-	if len(units) == len(names) {
+	if len(units) == len(declared) {
 		return nil
 	}
 
-	declared := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		declared[name] = struct{}{}
-	}
-
-	unknown := make([]string, 0, len(units)-len(names))
+	unknown := make([]string, 0, len(units))
 
 	for name := range units {
 		if _, ok := declared[name]; !ok {

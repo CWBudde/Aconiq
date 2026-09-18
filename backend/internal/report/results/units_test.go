@@ -296,3 +296,46 @@ func TestCopyUnitsIsIndependentOfTheOriginal(t *testing.T) {
 		t.Fatal("copying no units must yield no units")
 	}
 }
+
+// Codex found this by reading, and it panicked rather than refusing: a unit
+// map needs one entry per *distinct* name, so two bands sharing a name made
+// len(units) < len(names) and sized a slice at a negative capacity. Expanding
+// a legacy scalar over duplicate band names produced exactly that shape.
+func TestNewRasterRefusesDuplicateBandNamesInsteadOfPanicking(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRaster(RasterMetadata{
+		Width: 1, Height: 1, Bands: 2, NoData: -9999,
+		BandNames: []string{"Lden", "Lden"},
+		Units:     map[string]string{"Lden": UnitDecibel},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate band names to be refused")
+	}
+
+	if !strings.Contains(err.Error(), `"Lden"`) {
+		t.Fatalf("error %q does not name the duplicated band", err)
+	}
+}
+
+// The same shape reached through the legacy path, which is how it would have
+// arrived in practice.
+func TestALegacyScalarOverDuplicateBandNamesIsRefused(t *testing.T) {
+	t.Parallel()
+
+	var meta RasterMetadata
+
+	err := json.Unmarshal([]byte(`{
+		"width": 1, "height": 1, "bands": 2, "nodata": -9999,
+		"unit": "dB",
+		"band_names": ["Lden", "Lden"]
+	}`), &meta)
+	if err != nil {
+		t.Fatalf("decode sidecar: %v", err)
+	}
+
+	_, err = NewRaster(meta)
+	if err == nil {
+		t.Fatal("expected the expanded duplicate to be refused")
+	}
+}

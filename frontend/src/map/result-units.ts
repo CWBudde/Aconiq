@@ -59,3 +59,50 @@ export function levelIndicators(
 ): string[] {
   return order.filter((name) => declaresLevels(unitFor(units, name)));
 }
+
+/**
+ * A container as it may arrive: the current shape, or the one written before
+ * the unit was per channel.
+ *
+ * Runs persist — on disk under `.noise/runs/`, and in IndexedDB for browser
+ * mode — and nothing rewrites them, so the reader is what has to cope. Go does
+ * this in `LoadReceiverTableJSON` and `RasterMetadata.UnmarshalJSON`; this is
+ * the same expansion on the side that reads the artifact as JSON and asserts a
+ * type over it, which performs no conversion of its own.
+ *
+ * Without it the upgrade is silent and total: `units` comes back `undefined`,
+ * `levelIndicators` finds no decibel indicator, and every existing run loses
+ * its circles, its picker and its raster — with the panel reporting that the
+ * table holds no decibels, which is exactly wrong.
+ */
+type LegacyUnitContainer = {
+  units?: Record<string, string>;
+  unit?: string;
+};
+
+/**
+ * Fills in `units` from a legacy scalar `unit`, spread over the channels the
+ * container declares.
+ *
+ * Returns the value unchanged when it already carries units, so a current
+ * container is not copied on every render. Lossless for every container ever
+ * written: the scalar really was true of all of them — the one writer whose
+ * channels disagreed said `"mixed"`, and that is the case the per-channel
+ * field exists to stop.
+ */
+export function withLegacyUnits<T extends LegacyUnitContainer>(
+  container: T,
+  channels: readonly string[] | undefined,
+): T {
+  if (container.units !== undefined) return container;
+
+  const scalar = container.unit;
+  if (scalar === undefined || scalar === "" || channels === undefined) {
+    return container;
+  }
+
+  return {
+    ...container,
+    units: Object.fromEntries(channels.map((name) => [name, scalar])),
+  };
+}
