@@ -1641,41 +1641,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       is a different risk from a layer this app draws under its own legend. And labels remain out
       structurally, not by omission — no style in `basemap.ts` declares `glyphs`, and adding one
       means adding it to `OFFLINE_STYLE`, which exists to survive without a network.
-- [x] **The map→table direction**: a receiver clicked on the map scrolls to and marks its row
-      (2026-09-19). `LAYER_IDS.resultReceiverLevel` was in no interactive list, so a result circle
-      was not a click target at all. `INTERACTIVE_LAYERS` is now `MODEL_LAYERS` + `RESULT_LAYERS`,
-      queried in that order, and `/results` gained an `ArrivalReceiver` mirroring `ArrivalParams`.
-      Five constraints follow.
-      **One precedence rule, expressed structurally**: a model feature under the pointer wins and
-      opens the editor as before; the result circle is reported through its _own_ callback, so the
-      two paths cannot be confused at the call site. Model receivers reach the table instead
-      through a real `<a>` in the docked editor — the mirror of the row→map link, and offered only
-      for an id that run's table holds, because a link that opens nothing is the promise
-      `useSelectableIds` already refuses to make in the other direction.
-      **The run has to come from whoever resolves it.** `requestedRunId` is `null` for a reader who
-      did not arrive from a results row, while the map still draws the newest completed run, so
-      `ResultLayers` reports the run it actually drew (`onRunDrawn`). Resolving it a second time in
-      `pages/map.tsx` would have meant a second answer to "which run is on screen" and a
-      `QueryClient` the map page's tests deliberately do not set up.
-      **An arrival is a run and an id, never a bare id.** `RunResultDetail` is not remounted when
-      the run-list selection changes, and two runs of one scenario share receiver ids — so a bare
-      id reappeared on the next run's identically named row. Found by a test, not by review.
-      **`aria-current`, and paint only.** `ROW_HEIGHT_PX` and `ROW_CLASS`'s `h-[29px]` are one fact
-      spelled twice; a mark that touched the box would make the virtualizer mismeasure. `/results`
-      stays `NONE` in `e2e/a11y.spec.ts`, which is checked in both directions.
-      **The filtered-out branch is nearly unreachable and implemented anyway**: the filter starts
-      empty and the arrival is honoured on mount, so nothing can be hiding the row today. It fires
-      only if `ReceiversTab` is later kept mounted across a second arrival, which is why its three
-      tests drive the component directly — through the page they would assert nothing.
-- [x] **A per-indicator unit on the receiver table and the raster sidecar** (#64). Both containers
-      carry `Units map[string]string` keyed by channel name. Four constraints stay live. The units
-      are **not** in the receivers CSV and must not be — that byte contract is mirrored in
-      `frontend/src/model/receiver-csv.ts`. A container is refused unless its units name every
-      declared channel exactly once, and a raster naming no bands may carry none. A legacy scalar
-      `unit` is expanded **on read, by every reader**: `LoadReceiverTableJSON`,
-      `RasterMetadata.UnmarshalJSON` and the frontend's `withLegacyUnits`; a reader that decodes
-      these artifacts itself will silently strand every run already on disk. And the map filters
-      rather than gating, so a mixed table paints its decibel indicators.
+- [x] **The map→table direction** (2026-09-19). `INTERACTIVE_LAYERS` splits into `MODEL_LAYERS` and
+      `RESULT_LAYERS`, queried in that order, and `/results` honours a `receiver` param the way
+      `/model` honours its three. Four constraints stay live.
+      A model feature under the pointer wins and opens the editor; the result circle is reported
+      through its **own** callback, so the two paths cannot be confused at the call site. Model
+      receivers reach the table through a real `<a>` in the editor instead, offered only for an id
+      that run's table holds.
+      **`ResultLayers` reports the run it drew** (`onRunDrawn`), because `requestedRunId` is `null`
+      for a reader who did not arrive from a results row while the map still draws the newest
+      completed run — resolving it again on the map page would be a second answer to which run is
+      on screen.
+      **An arrival is a run and an id, never a bare id**: `RunResultDetail` is not remounted when
+      the run-list selection changes, and two runs of one scenario share receiver ids.
+      **The mark is `aria-current` and paint only** — `ROW_HEIGHT_PX` and `ROW_CLASS`'s `h-[29px]`
+      are one fact spelled twice, and a mark that touched the box would make the virtualizer
+      mismeasure. **The arrival must not be decided before the table loads**: `useReceiverTable`
+      answers `undefined` first, and recording "not in this table" from that is permanent.
 - [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
       (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
       `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do
@@ -1691,39 +1673,24 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
 - [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
-      nothing names** (2026-09-19). Shipped together, because the retry's intermediate state —
-      bytes stored under a document that does not yet name them — is exactly what the sweep
-      reclaims. Both files are `src/api/browser-storage.ts` and `src/api/browser-backend.ts` —
-      named bare everywhere above, which reads as `src/wasm/` to anyone who takes "browser mode"
-      for "the kernel"; `src/wasm/` holds only the kernel itself.
-      The retry inverts the order for itself alone: `saveRasterBytes` evicts (a document write,
-      which frees the victim's bytes in the same transaction), then writes the bytes, then the
-      document naming them. Five constraints follow.
-      **`loadState` had to gain a discriminator first, and this file did not say so.** "Store
-      unavailable", "document corrupt" and "nothing stored" all returned an indistinguishable
-      `BrowserBackendState`, and all three can carry `runs: []` — so "do not sweep when the
-      document was unreadable or the store unavailable" was not expressible. `loadState` now
-      returns `{ state, origin }`. A module-scope flag was rejected deliberately: it is a second
-      place the truth lives, only right until the next load, so the sweep would read the origin of
-      _some_ load rather than of the load whose run list it is about to delete against.
-      **The sweep hangs off `withStoreLock` itself, not off its three call sites**, so a fourth
-      writer added later inherits it; and it runs _before_ the body, because the retry creates the
-      orphan intermediate state inside that body and a sweep afterwards would reclaim the raster
-      of the run just stored. Safe only because `withStoreLock` is never nested — an exclusive Web
-      Lock would deadlock if it were.
-      **The latch is set before the first await**, so a failing sweep is not retried on every
-      write and two writers cannot both pass the guard in one tick where `navigator.locks` is
-      missing. It is reset by `resetBrowserBackendForTests`, or tests stop being independent.
-      **Entries `decodeState` rejected are swept**, stated in the code rather than fallen into:
-      nothing will ever name them again. Note the fixture trap the test comment records — a
-      rejected entry raises no high-water mark, so the next run reuses its raster key.
+      nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
+      under a document that does not yet name them — is what the sweep reclaims. Both files are
+      `src/api/browser-storage.ts` and `src/api/browser-backend.ts`; `src/wasm/` holds only the
+      kernel. Four constraints stay live.
+      **`loadState` returns `{ state, origin }`.** Without it "store unavailable", "document
+      corrupt" and "nothing stored" are indistinguishable and all can carry an empty run list, so
+      "do not sweep when the document was unreadable" is not expressible. A module-scope flag is
+      the wrong shape: it is only right until the next load, so the sweep would read the origin of
+      _some_ load rather than of the one whose run list it is about to delete against.
+      **The sweep runs under `withStoreLock` and before its body**, because the retry leaves the
+      orphan state inside that body; a sweep afterwards reclaims the raster just stored. Safe only
+      because `withStoreLock` is never nested.
+      **No Web Locks, no sweep.** The unlocked fallback is survivable for the writes themselves —
+      `reloadState()` keeps sequential cross-tab writes from dropping each other — but not for the
+      sweep: the latch is per module, so another tab's in-flight bytes look like orphans. A lost
+      write can be repeated; a deleted raster cannot.
       **The eviction stands when the byte retry fails after it committed**, unlike `persistRun`'s
-      in-memory rollback: the eviction took the victim's raster with it in the same transaction,
-      so there is nothing to put back. `deleteArtifactBytes` is awaited here, unlike
-      `forgetArtifactBytes`, because the whole point is that it must not overlap the guarded write.
-      `clearPersistedState`'s range delete and the new `listArtifactBytesIDs` share one
-      `artifactBytesRange()`, so a listing cannot grow wider than the delete and hand the sweep the
-      document's own key.
+      rollback: it took the victim's raster with it in the same transaction.
 - [x] **CRS and basemap** (#53). The constraints it leaves live. The tile URL is a per-browser
       localStorage override (`map/tile-source.ts`, edited in Connection settings), so `basemap.ts`
       builds its styles on demand — one captured at import time would ignore the override — and a
@@ -1785,17 +1752,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       a required check. That job published a number less than half the truth from the day it was
       created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
 - [x] **The four vendored shadcn components with no importers are deleted** (2026-09-19).
-      `ui/components/table.tsx`, `resizable.tsx`, `scroll-area.tsx` and `textarea.tsx` — 251 lines,
-      no importer in `src/` or `e2e/`, no barrel file to re-export them. The decision this file
-      asked for was "delete or keep as design-system stock", and it is delete: stock nothing has
-      reached for since it was vendored is not stock, it is a second answer to what a table or a
-      textarea looks like here, waiting to disagree with the first.
-      `@radix-ui/react-scroll-area` and `react-resizable-panels` went with them — two of the four
-      files were their only importers.
-      Coverage rises as a side effect and that is **not** the reason; `bun run typecheck` is what
-      proves nothing imported them. The honest gaps named beside this entry are unchanged:
-      `src/wasm` (the browser-side kernel loader — `kernel-node.ts` is what the parity suites
-      exercise) and `src/layouts`.
+      `table.tsx`, `resizable.tsx`, `scroll-area.tsx`, `textarea.tsx`, and with them
+      `@radix-ui/react-scroll-area` and `react-resizable-panels`. The decision this file asked for
+      was delete or keep as design-system stock, and it is delete: stock nothing has reached for is
+      a second answer to what a table looks like here, waiting to disagree with the first.
+      The honest gaps named beside this entry are unchanged: `src/wasm` (the browser-side kernel
+      loader — `kernel-node.ts` is what the parity suites exercise) and `src/layouts`.
 - [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
       delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
       `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
