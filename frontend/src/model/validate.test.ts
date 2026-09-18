@@ -412,8 +412,13 @@ describe("RLS-19 Parkplatz validation", () => {
       (candidate) =>
         candidate.code === "source.rls19.parking.geometry.multipart",
     );
-    expect(issue?.message).toContain("2 parts");
-    expect(issue?.message).toContain("Teilfläche");
+    // The part count is the finding's payload and is asserted here; that it
+    // reaches a sentence naming the Teilfläche is `validation-message.test.ts`'s
+    // business, because the sentence is now per locale and this file is not.
+    expect(issue?.params).toEqual({
+      parts: 2,
+      field: "rls19_parking_num_spaces",
+    });
   });
 
   it("accepts a MultiPolygon carrying exactly one part, as the extractors do", () => {

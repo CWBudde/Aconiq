@@ -27,11 +27,10 @@ export interface ModelValidationSummary {
  *
  * And it answers "empty" with an early return **above** the validator rather
  * than by filtering the result. `validateProjectModel` pushes a synthetic
- * `model.empty` error, so a fresh install would otherwise read "1 error" — and
- * that message is hardcoded English, which the German UI would show verbatim.
- * Filtering it out afterwards is the tempting alternative and is worse: the
- * displayed count would then disagree with `report.valid`, which the run gate
- * reads from the same report.
+ * `model.empty` error, so a fresh install would otherwise be greeted with
+ * "1 error" for having nothing in it yet. Filtering it out afterwards is the
+ * tempting alternative and is worse: the displayed count would then disagree
+ * with `report.valid`, which the run gate reads from the same report.
  */
 export function useModelValidation(): ModelValidationSummary {
   const features = useModelStore((s) => s.features);

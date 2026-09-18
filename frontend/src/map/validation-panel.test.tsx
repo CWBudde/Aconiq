@@ -71,9 +71,9 @@ beforeEach(() => {
 describe("ValidationPanel on an empty model", () => {
   it("says there is nothing to check yet, not that there is an error", () => {
     // The validator answers an empty model with a synthetic `model.empty`
-    // error whose message is hardcoded English. Showing it would greet a fresh
-    // project with "1 error" — in English, whatever the UI language — and the
-    // map is now mounted from the start, so this is the first thing seen.
+    // error. Showing it would greet a fresh project with "1 error" for having
+    // nothing in it yet, and the map is now mounted from the start, so this is
+    // the first thing seen.
     renderPanel();
 
     expect(

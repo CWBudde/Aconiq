@@ -529,9 +529,9 @@ describe("RunPage model gate", () => {
   it("refuses a run against a model with nothing in it", () => {
     openRunDialog([standard("rls19-road", "normative")], { seedModel: false });
 
-    // Not "1 error": `validateProjectModel` pushes a synthetic `model.empty`
-    // whose message is hardcoded English, and `useModelValidation` answers
-    // "empty" above the validator precisely so it never reaches the UI.
+    // Not "1 error": `validateProjectModel` pushes a synthetic `model.empty`,
+    // and `useModelValidation` answers "empty" above the validator precisely so
+    // an untouched model is not reported as a defective one.
     expect(invalidCallout()).toHaveTextContent(m.msg_model_empty_before_run());
     expect(invalidCallout()).not.toHaveTextContent(
       m.msg_validation_error_count_one({ count: 1 }),

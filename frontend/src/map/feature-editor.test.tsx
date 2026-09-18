@@ -16,6 +16,7 @@ import {
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
 import {
+  PROP_PARKING_TYPE,
   RLS19_PARKING_FACILITY_TYPES,
   RLS19_PARKING_LOT_TYPES,
 } from "@/model/rls19-parking";
@@ -25,6 +26,7 @@ import {
   PROP_BIMSCHV16_AREA_CATEGORY,
 } from "@/model/bimschv16";
 import type { ModelFeature, ModelReceiver } from "@/model/types";
+import { validationIssueText } from "@/model/validation-message";
 import { MAIN_CONTENT_ID } from "@/ui/main-content";
 import { getLocale, overwriteGetLocale, type Locale } from "@/i18n/runtime";
 import { m } from "@/i18n/messages";
@@ -1257,6 +1259,19 @@ describe("FeatureEditor Parkplatz fields", () => {
     ).toBeInTheDocument();
   });
 
+  // Built from the renderer rather than typed out, so the assertion follows the
+  // catalogue instead of pinning one locale's wording to this file.
+  const parkingTypeMissing = (): string =>
+    validationIssueText({
+      level: "error",
+      code: "source.rls19.parking.parking_type.missing",
+      featureId: "lot-1",
+      params: {
+        field: PROP_PARKING_TYPE,
+        expected: RLS19_PARKING_LOT_TYPES.join(", "),
+      },
+    });
+
   it("writes a Parkplatztyp and clears the finding that asked for it", () => {
     // One parking property present is what marks the feature as a Parkplatz at
     // all, so the rest become findings rather than silence.
@@ -1266,15 +1281,13 @@ describe("FeatureEditor Parkplatz fields", () => {
     });
     render(<FeatureEditor featureId="lot-1" onClose={vi.fn()} />);
 
-    expect(
-      screen.getByText(/rls19_parking_type is required/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(parkingTypeMissing())).toBeInTheDocument();
 
     fireEvent.click(selectField("lot-1", "rls19_parking_type"));
     fireEvent.click(screen.getByRole("option", { name: "lkw-omnibus" }));
 
     expect(storedProperties("lot-1")["rls19_parking_type"]).toBe("lkw-omnibus");
-    expect(screen.queryByText(/rls19_parking_type is required/)).toBeNull();
+    expect(screen.queryByText(parkingTypeMissing())).toBeNull();
   });
 
   it("does not promise a run default for the movement rates", () => {
@@ -1484,7 +1497,9 @@ describe("FeatureEditor inline issues", () => {
   it("shows the feature's own findings, code and all", () => {
     edit(heightless);
 
-    expect(screen.getByText("Building requires height_m")).toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_validation_building_height_required()),
+    ).toBeInTheDocument();
     expect(screen.getByText("building.height.required")).toBeInTheDocument();
   });
 
