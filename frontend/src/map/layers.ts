@@ -13,7 +13,15 @@ import { m } from "@/i18n/messages";
  * - One or more MapLibre layer specs for rendering
  *
  * Layer ordering (bottom to top):
- *   basemap → buildings → barriers → sources → receivers → results
+ *   basemap → result raster → calc area → buildings → barriers → sources →
+ *   receivers → result receivers
+ *
+ * Everything but the result raster gets that order from the order it is added
+ * in — `ModelLayers` adds its own in one pass and `pages/map.tsx` renders
+ * `ResultLayers` after it. The raster cannot: it is added several commits
+ * later, once a run's bytes have been fetched and its corners projected, so
+ * appending would draw it over the buildings it is a result for. It is the one
+ * layer here inserted with a `beforeId` — see {@link BOTTOM_MODEL_LAYER_ID}.
  */
 
 // --- Source IDs ---
@@ -25,6 +33,7 @@ export const SOURCE_IDS = {
   receivers: "model-receivers",
   calcArea: "calc-area",
   resultReceivers: "result-receivers",
+  resultRaster: "result-raster",
 } as const;
 
 // --- Layer IDs ---
@@ -40,6 +49,7 @@ export const LAYER_IDS = {
   calcAreaFill: "calc-area-fill",
   calcAreaOutline: "calc-area-outline",
   resultReceiverLevel: "result-receiver-level",
+  resultRaster: "result-raster-fill",
 } as const;
 
 // --- Selection ---
@@ -352,16 +362,86 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
 export const RESULT_RECEIVERS_GROUP_ID = "receiver-levels";
 
 /**
+ * The model layer the result raster is inserted *below*.
+ *
+ * `calc-area-fill` and not a building layer: `ModelLayers` adds
+ * `CALC_AREA_LAYERS` first and unconditionally, whether or not a calculation
+ * area exists, so it is the one model layer that is always there to anchor to.
+ * A `beforeId` naming a layer the style does not hold makes MapLibre throw, so
+ * the caller still has to check before passing it.
+ */
+export const BOTTOM_MODEL_LAYER_ID: string = LAYER_IDS.calcAreaFill;
+
+/** The id of the group {@link RESULT_RASTER_LAYERS} belongs to. */
+export const RESULT_RASTER_GROUP_ID = "result-raster";
+
+/**
+ * The computed grid, as one image under the model.
+ *
+ * MapLibre 5 has no `raster-color` and no `["raster-value"]` — both are Mapbox
+ * GL JS v3 — so the values are coloured in `raster-image.ts` and this layer is
+ * handed finished pixels through an `image` source. Three paint choices carry
+ * an argument:
+ *
+ * `raster-resampling: "nearest"`, because a cell *is* a computed receiver.
+ * Bilinear smoothing would invent levels between two grid points and blur the
+ * 55/60 dB boundary, which is the line a reader is looking for, and would make
+ * a cell disagree with the circle standing in the middle of it.
+ *
+ * `raster-opacity: 0.7`, so the basemap's streets and the model's buildings
+ * read through the surface they are the cause of. The receiver circles stay
+ * fully opaque on top.
+ *
+ * `raster-fade-duration: 0`, because the default cross-fade would blend the
+ * previous indicator's image into the new one for 300 ms after a picker click
+ * — showing a mixture of Lr,Tag and Lr,Nacht and labelling it neither.
+ */
+export const RESULT_RASTER_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.resultRaster,
+    type: "raster",
+    source: SOURCE_IDS.resultRaster,
+    paint: {
+      "raster-opacity": 0.7,
+      "raster-resampling": "nearest",
+      "raster-fade-duration": 0,
+    },
+  },
+];
+
+/**
  * The result groups the layer control offers.
  *
- * It held two more — `raster` and `contours` — for layers nothing ever added:
- * the raster bytes reach neither mode (browser mode stores the run hash where
- * the binary belongs, and `StoredArtifactContent.encoding` has no case for a
- * binary payload), and the GeoTIFF/COG/contour exports get no `ArtifactRef`,
- * so no URL reaches the map. Both toggles were therefore permanently dead
- * controls, and are gone until the artifact side of that exists.
+ * It held two more, `raster` and `contours`, for layers nothing ever added.
+ * The two are no longer the same case.
+ *
+ * **The raster is back.** Its three blockers are closed: browser mode stores
+ * the real bytes (`StoredArtifactContent.encoding` has a `binary` case),
+ * `results.RasterMetadata` carries a `georeference` to place them with, and
+ * `Backend.getArtifactBytes` reaches them in both modes.
+ *
+ * **Contours stay out**, and not for the reason that used to cover both.
+ * `export.GenerateContours` has exactly one caller, `aconiq export --format
+ * contour-geojson|contour-gpkg`, so in API mode a contour artifact exists only
+ * after an explicit export, and in browser mode `createExport` writes none at
+ * all. A toggle for it would be a live control in one mode and a dead one in
+ * the other. Putting Go's marching squares behind the kernel boundary, the way
+ * `transform` and `standards` already are, is what that needs first — a
+ * TypeScript second implementation is not an option.
+ *
+ * The two groups overlap on screen and both default to visible, which is
+ * deliberate: `layerVisibility` is keyed by group id alone and cannot express
+ * "off, but only for runs that have a raster", so a default that depended on
+ * the data would flip a choice the user had already made. The control is how
+ * one of them goes away.
  */
 export const RESULT_LAYER_GROUPS: LayerGroup[] = [
+  {
+    id: RESULT_RASTER_GROUP_ID,
+    label: m.label_result_raster,
+    layerIds: [LAYER_IDS.resultRaster],
+    defaultVisible: true,
+  },
   {
     id: RESULT_RECEIVERS_GROUP_ID,
     label: m.label_result_receiver_levels,

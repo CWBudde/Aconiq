@@ -1617,41 +1617,24 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       are the run's own and `SelectRequest`/`FeatureEditor` find nothing under them — and is a real
       `<a>`, never a button that navigates, which no axe rule would catch.
       No style in `basemap.ts` declares `glyphs`, so a future label layer needs one added first.
-- [ ] **Results on the map: the raster and the contours.** (2026-09-18) — partial: the three
-      blockers are closed, the map layer is not. What landed, and the constraints each leaves live.
-      **`results.RasterMetadata` carries a `georeference`** — the centre of cell (0,0), the pixel
-      size and the row order — and populates the `CRS` field it had carried unwritten since it was
-      added. Width, height and the georeference now travel as one `results.GridLayout` through all
-      eleven standards modules, because the pair of loose ints threaded through a dozen signatures
-      is how the third went missing. **Absence means "not a grid"**, never a grid at the origin:
-      explicit receivers get no georeference, and a georeferenced format is then refused rather
-      than written at the identity transform `rasterGeoTransform()` used to invent in silence.
-      `exportfmt.GeoTransformFromGeoreference` is the one conversion to GDAL's corner convention,
-      pinned against `InferGeoTransformFromReceivers` on the same grid so the switch could not move
-      a raster already written; inference stays as the fallback for older sidecars.
-      **Every `--format` file gets an `ArtifactRef`** — one per file, not per format, since GeoTIFF
-      and COG write one per band — under `export.`-prefixed kinds, which is load-bearing because
-      `projectfs.DeleteRun` selects on that prefix to keep a delivered bundle's bytes. The content
-      endpoint stops answering `application/json` for everything that is not HTML or Markdown; it
-      had been mislabelling `run.result.raster_binary` and `export.report_pdf` all along.
-      **Browser mode stores real bytes**, through `model/raster-bin.ts` pinned to Go's writer by
-      `testdata/raster-parity/`, in their own IndexedDB record rather than inside the state
-      document — `persist` clones that document whole on every save. Three constraints worth
-      carrying: `getArtifactURL` is synchronous and therefore refuses binary content;
-      `instanceof ArrayBuffer` is the wrong check on a value read back from IndexedDB, because the
-      structured clone can come from another realm; and **a byte record is deleted in the same
-      IndexedDB transaction as the document that stopped naming it**. Neither order works across
-      two transactions: delete first and a failed write leaves a retained run — `persistRun` puts
-      the un-evicted list back — whose raster reads as missing, delete second and the eviction
-      that exists to make room retries while the room is still occupied. `savePersistedStateForgetting`
-      commits both or neither, deletes before the put.
-      Still open, and the next batch: **the map layer itself** — `map/layers.ts` records that the
-      `raster` and `contours` layer groups were removed because nothing added them. Then the
-      map→table direction, which wants a receiver clicked on the map to scroll and mark its row;
-      carrying the viewed run through to `/model` (`routes.tsx` has no params and `ResultLayers`
-      always takes the newest completed run), so a row followed from an older run does not land on
-      the newest run's levels; and a per-indicator unit on the receiver table, without which a
-      mixed-unit run gets no map at all.
+- [x] **Results on the map: the raster** (#60). Four constraints stay live. MapLibre 5 has no
+      `raster-color` and no `["raster-value"]`, so the ramp is applied cell by cell and
+      `map/raster-canvas.ts` is the only file that touches a 2D context. It is the one layer
+      inserted with a `beforeId` and re-asserted with `moveLayer`, because it arrives after
+      `ModelLayers` has run. The band is resolved by name, never by index — the picker's names are
+      the receiver table's and the bands are the sidecar's. And `MAX_RASTER_DIMENSION` is a
+      correctness cap, not a performance one, needed because only API mode caps its receivers.
+- [ ] **Results on the map: the contours.** No longer the same case as the raster.
+      `export.GenerateContours` has one caller — the `contour-geojson` and `contour-gpkg` formats
+      of `aconiq export` — so in API mode a contour artifact exists only after an explicit export
+      and in browser mode `createExport` writes none at all; a toggle would be live in one mode and
+      dead in the other. It needs Go's marching squares behind the kernel boundary first, the way
+      `transform` and `standards` already are. A TypeScript second implementation is not an option.
+- [ ] **The map→table direction**: a receiver clicked on the map should scroll to and mark its row.
+- [ ] **A per-indicator unit on the receiver table**, without which a mixed-unit run still gets no
+      map at all. `ReceiverTable.Unit` is one string per table on both sides; making it per
+      indicator touches six Go writers, `Validate`, the Markdown/HTML/Typst report templates and
+      ten digest goldens.
 - [ ] **A deleted run takes its export artifact refs with it.** `dropRunArtifacts`
       (`io/projectfs/deleterun.go`) removes every ref belonging to the run and reports the
       `export.`-prefixed paths as `retained_paths` — the bytes survive, the manifest entries do
@@ -1769,17 +1752,21 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Order and gates
 
-**`just fe-ci` needs the public internet, and fails misleadingly without it.**
-`frontend/project.inlang/settings.json` loads both inlang plugins from
-`cdn.jsdelivr.net`, and `compile:i18n` treats a failed plugin import as a warning: it then writes an
-**empty** message catalogue and exits 0. Everything downstream reads as catastrophe — ~2 200 eslint
-findings and ~325 test failures, all of them `m.<key>` resolution noise — with nothing pointing at
-the cause. Vendoring the two plugins, or failing the compile on a plugin import error, would make
-an offline or network-restricted checkout say what is actually wrong. Until then, the two
-`PluginImportError` warnings above a green compile are the tell.
+**`just fe-ci` no longer needs the public internet.** `frontend/project.inlang/settings.json` used
+to load both inlang plugins from `cdn.jsdelivr.net`, and `paraglide-js compile` treats a failed
+plugin import as a warning: it wrote an **empty** message catalogue and exited 0, after which
+everything downstream read as catastrophe — ~2 200 eslint findings and ~325 test failures, all of
+them `m.<key>` resolution noise — with nothing pointing at the cause. Both remedies this file named
+were taken: the plugins are pinned npm devDependencies loaded off disk, and `compile:i18n` runs
+`frontend/scripts/compile-i18n.mjs`, which refuses a `PluginImportError` by name and then counts
+what was written against the base locale's catalogue. The count is the load-bearing check — it does
+not care why the catalogue came out short. Two live details: a local module path resolves against
+the project directory's **parent**, so the settings read `./node_modules/...` and not
+`../node_modules/...`, and the compiler's three options still have to match `paraglideVitePlugin`
+in `vite.config.ts` by hand.
 
 B before C; D and E can run in parallel with C once B is green. The coverage floor is now live
-(73.6% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),
+(84% of statements, floors in `frontend/vitest.config.ts`, ledger in `docs/testing/coverage.md`),
 so every refit from here is measured — advisory, so it reports rather than blocks. Each phase ends
 with `just fe-ci` and `just fe-e2e` green, which includes the axe baseline on every route in `de`
 and `en`.

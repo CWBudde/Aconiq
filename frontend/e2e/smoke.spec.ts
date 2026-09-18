@@ -186,3 +186,105 @@ test.describe("Locale", () => {
     await expect(page).toHaveURL(/\/Aconiq\/results$/);
   });
 });
+
+test.describe("The result raster", () => {
+  test("a completed run paints a raster the map accepts", async ({ page }) => {
+    // The one thing jsdom cannot answer. `raster-canvas.ts` is mocked in every
+    // unit test because `HTMLCanvasElement.prototype.getContext` throws there,
+    // so until here nothing had run a real `getContext("2d")`, a real
+    // `toDataURL`, or handed MapLibre an `image` source to upload as a texture.
+    //
+    // Asserted through the console rather than through a map handle. Every
+    // failure on that path is reported by `ResultLayers` or `useResultRaster`
+    // with `console.error` — a refused source, an encoder that returned null, a
+    // georeference the mirror would not place — so watching for those covers
+    // the whole path without exposing the map on `window` for a test's
+    // convenience. No pixels are asserted: a WebGL screenshot varies by GPU and
+    // driver and would fail for reasons unrelated to this.
+    const problems: string[] = [];
+    page.on("console", (entry) => {
+      if (entry.type() === "error") problems.push(entry.text());
+    });
+    page.on("pageerror", (error) => problems.push(error.message));
+
+    await useLocale(page, "en");
+    await page.goto(appPath("/import"));
+    await waitForPage(page);
+
+    // A road, imported rather than drawn. RLS-19 refuses a model with no line
+    // source, and the map is a canvas whose clicks are hit-tested — which is
+    // why the keyboard spec above types a *point*. A file is the deterministic
+    // way to a completed run, and this test is about what happens after one.
+    await page.setInputFiles('input[type="file"]', {
+      name: "road.geojson",
+      mimeType: "application/geo+json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: { kind: "source", source_type: "line" },
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [10.5, 51.5],
+                  [10.503, 51.5],
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    });
+
+    // The label counts objects, not features, and is built from a message
+    // with a `{count}` — matched by prefix so the count does not pin the test.
+    await page.getByRole("button", { name: /^Import \d+ /i }).click();
+
+    // In-app navigation from here on. A `page.goto` is a full load, and the
+    // imported model lives in the store with an IndexedDB draft behind it —
+    // the run dialog would open on an empty model before the draft had been
+    // rehydrated.
+    await navLink(page, message("en", "nav_run")).click();
+    await waitForPage(page);
+    await page
+      .getByRole("button", { name: message("en", "action_new_run") })
+      .click();
+    // No Save step: an import through this page reaches the project itself, so
+    // the dialog's unsaved-changes gate does not fire here. That is an
+    // assertion and not an omission — if the gate ever did fire, this is where
+    // the test would stop, on a Start Run that never enabled.
+    const start = page.getByRole("button", {
+      name: message("en", "action_start_run"),
+    });
+    await expect(start).toBeEnabled({ timeout: 15_000 });
+    await start.click();
+
+    // The dialog is modal, so the sidebar is unreachable until it closes.
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 30_000 });
+
+    await navLink(page, message("en", "nav_model")).click();
+    await waitForPage(page);
+
+    // The panel is only rendered once a completed run has been resolved, so
+    // waiting for the legend is waiting for the whole result path.
+    await expect(
+      page.getByText(message("en", "label_result_legend"), { exact: false }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // No refusal reached the panel either: those are the states that mean the
+    // raster was not drawn, and this run is an ordinary auto-grid.
+    await expect(
+      page.getByText(message("en", "msg_result_raster_failed")),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(message("en", "msg_result_raster_not_grid")),
+    ).toHaveCount(0);
+
+    expect(
+      problems.filter((text) => /raster/i.test(text)),
+      `console errors mentioning the raster:\n${problems.join("\n")}`,
+    ).toEqual([]);
+  });
+});

@@ -22,7 +22,7 @@ import { ResultLayers } from "@/map/result-layers";
 import { fitViewToWorkspace } from "@/map/extent";
 import { DISPLAY_CRS, useDisplayModel } from "@/map/display-model";
 import { DrawProvider } from "@/map/draw-provider";
-import { DRAW_PARAM, SELECT_PARAM } from "@/map/map-params";
+import { DRAW_PARAM, RUN_PARAM, SELECT_PARAM } from "@/map/map-params";
 import { useDrawContext } from "@/map/use-draw-context";
 import { useDrawProjection } from "@/map/use-draw-projection";
 import type { DrawProjectionStatus } from "@/map/use-draw-projection";
@@ -157,6 +157,11 @@ function MapWorkspace() {
   // the route is left. Persisting the dismissal would hide the only pointer
   // to "Start drawing" from the one user who needs it.
   const [startDismissed, setStartDismissed] = useState(false);
+  // Which run's results the map draws, when the reader arrived from one. State
+  // and not the URL parameter, because the parameter is stripped on arrival
+  // while the choice has to outlive it; `null` means "the newest completed
+  // run", which is what `ResultLayers` falls back to.
+  const [requestedRunId, setRequestedRunId] = useState<string | null>(null);
   const setCalcArea = useModelStore((s) => s.setCalcArea);
   const clearCalcArea = useModelStore((s) => s.clearCalcArea);
   const calcArea = useModelStore((s) => s.calcArea);
@@ -300,6 +305,12 @@ function MapWorkspace() {
     setShowValidation(false);
   }, []);
 
+  // Stable, because `ArrivalParams` has it in an effect's dependency list and
+  // an inline arrow there would re-run the effect on every render.
+  const handleStartDismissed = useCallback(() => {
+    setStartDismissed(true);
+  }, []);
+
   return (
     <TooltipProvider>
       {/* The map canvas carries no visible heading; the page outline still
@@ -312,9 +323,11 @@ function MapWorkspace() {
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers display={display} selectedFeatureId={editingFeatureId} />
-          {/* After the model layers, so the computed levels read on top of the
-              sources that produced them rather than under a building fill. */}
-          <ResultLayers />
+          {/* After the model layers, so the computed levels read on top of
+              the sources that produced them rather than under a building fill.
+              The result *raster* goes the other way and is inserted below them
+              with a `beforeId`, because it arrives long after this commit. */}
+          <ResultLayers requestedRunId={requestedRunId} />
           <GeometryEdit
             display={display}
             featureId={editingFeatureId}
@@ -392,13 +405,12 @@ function MapWorkspace() {
               <ValidationPanel onSelectFeature={handleSelectFromValidation} />
             </MapPanel>
           ) : null}
-          <DrawRequest
-            disabled={drawingDisabled}
-            onDismiss={() => {
-              setStartDismissed(true);
-            }}
+          <ArrivalParams
+            drawDisabled={drawingDisabled}
+            onDismiss={handleStartDismissed}
+            onSelect={handleSelectFromValidation}
+            onRun={setRequestedRunId}
           />
-          <SelectRequest onSelect={handleSelectFromValidation} />
           {showStart ? (
             <WorkspaceStart
               drawingDisabled={drawingDisabled}
@@ -429,36 +441,81 @@ function MapWorkspace() {
 }
 
 /**
- * Honours `?draw=1`, the flag the project page's "Start drawing" sets, then
- * strips it so a reload or a Back does not arm the tool again. A boolean
- * rather than a mode name, so which mode drawing starts in stays a decision
- * this file makes once.
+ * Honours every parameter `/model` takes on arrival, then strips them all in
+ * one navigation.
  *
- * `disabled` is the same CRS gate the toolbar takes. Without it the link armed
- * point mode over a metric model, the user drew a shape, and `handleDrawFinish`
- * dropped it without a word — the parameter was a way past a disabled toolbar.
+ * One component and one effect, which is what this replaced. `DrawRequest` and
+ * `SelectRequest` each cleared the **whole** query string with
+ * `setParams({}, { replace: true })`, and that was safe only while exactly one
+ * parameter was ever honoured. The results page now links with two at once, and
+ * two effects in one commit would each delete the other's key before it had
+ * been read. A per-key fix in each would still race: React Router's updater
+ * sees the search params of the render it was called from, not of the sibling
+ * effect that just ran.
+ *
+ * Each handler keeps the meaning it had:
+ *
+ * `?draw=1` is the project page's "Start drawing" — a boolean rather than a
+ * mode name, so which mode drawing starts in stays a decision this file makes
+ * once. `drawDisabled` is the same CRS gate the toolbar takes; without it the
+ * link armed point mode over a metric model, the user drew a shape, and
+ * `handleDrawFinish` dropped it without a word. A refused request is still
+ * stripped, or it would be re-asked on every reload, and it leaves the start
+ * panel standing, because that panel is where the reason is written.
+ *
+ * `?select=<featureId>` is the import page's finding link. `onSelect` is
+ * `handleSelectFromValidation`, the move the validation panel already makes;
+ * a second one written here would be two ways to select a feature that must
+ * not diverge.
+ *
+ * `?run=<runId>` is the results page's row link. It is handed to state rather
+ * than acted on, because unlike the other two its effect lasts: the map keeps
+ * drawing that run until the page is left.
+ *
+ * Anything else in the query string is preserved — this strips its own three
+ * keys and not the URL.
  */
-function DrawRequest({
-  disabled,
+function ArrivalParams({
+  drawDisabled,
   onDismiss,
+  onSelect,
+  onRun,
 }: {
-  disabled: boolean;
+  drawDisabled: boolean;
   onDismiss: () => void;
+  onSelect: (featureId: string) => void;
+  onRun: (runId: string) => void;
 }) {
+  // Must therefore sit inside `DrawProvider`, as its predecessor did.
+  const onDraw = useStartDrawing(onDismiss);
   const [params, setParams] = useSearchParams();
-  const startDrawing = useStartDrawing(onDismiss);
-  const requested = params.get(DRAW_PARAM) === "1";
+  const draw = params.get(DRAW_PARAM) === "1";
+  const select = params.get(SELECT_PARAM) ?? "";
+  const run = params.get(RUN_PARAM) ?? "";
   const handled = useRef(false);
 
   useEffect(() => {
-    if (!requested || handled.current) return;
+    if (handled.current) return;
+    if (!draw && select === "" && run === "") return;
     handled.current = true;
-    // The parameter goes either way: a refused request that stayed in the URL
-    // would be re-asked on every reload. A refused request also leaves the
-    // start panel standing, because that panel is where the reason is written.
-    if (!disabled) startDrawing();
-    setParams({}, { replace: true });
-  }, [requested, disabled, startDrawing, setParams]);
+
+    // The run first: it decides which run's levels the map draws, and the
+    // selection below may be a receiver read off that run's table.
+    if (run !== "") onRun(run);
+    if (select !== "") onSelect(select);
+    if (draw && !drawDisabled) onDraw();
+
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete(DRAW_PARAM);
+        next.delete(SELECT_PARAM);
+        next.delete(RUN_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [draw, select, run, drawDisabled, onDraw, onSelect, onRun, setParams]);
 
   return null;
 }
@@ -586,35 +643,6 @@ function DrawProjectionNotice({
       )}
     </MapPanel>
   );
-}
-
-/**
- * Honours `?select=<featureId>`, the link the import page's done step builds
- * for a finding, then strips it so a Back does not re-open the editor on a
- * feature the reader has moved on from.
- *
- * `onSelect` is `handleSelectFromValidation`, the move the validation panel
- * already makes: open the editor on that feature and close the panel. A second
- * one written here would be two ways to select a feature that must not
- * diverge.
- */
-function SelectRequest({
-  onSelect,
-}: {
-  onSelect: (featureId: string) => void;
-}) {
-  const [params, setParams] = useSearchParams();
-  const requested = params.get(SELECT_PARAM) ?? "";
-  const handled = useRef(false);
-
-  useEffect(() => {
-    if (requested === "" || handled.current) return;
-    handled.current = true;
-    onSelect(requested);
-    setParams({}, { replace: true });
-  }, [requested, onSelect, setParams]);
-
-  return null;
 }
 
 /** Binds the presentational toolbar to the provider above it. */

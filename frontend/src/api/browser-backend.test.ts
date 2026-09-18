@@ -37,6 +37,11 @@ function descriptorFor(id: string): StandardDescriptor {
     description: `${id} (stub)`,
     default_version: "2019",
     versions: [],
+    // Not optional in practice: `framework.StandardDescriptor.Validate()`
+    // refuses a module that declares no tier, so every descriptor a real
+    // kernel publishes carries one, and a stub without it would let a
+    // regression in the summary's tier pass unnoticed.
+    evidence_tier: "normative",
   };
 }
 
@@ -770,6 +775,21 @@ describe("persisted state", () => {
     expect(
       log.lines.some((line) => line.includes("compute_crs=EPSG:25832")),
     ).toBe(true);
+  });
+
+  it("stamps the run summary with the tier the kernel declares", async () => {
+    // AGENTS.md requires the evidence tier to travel with the result, so that
+    // "a consumer that never reads the docs still sees it". Browser-mode
+    // summaries carried none, which left the map's evidence badge blank in one
+    // of the two shipped modes while API mode showed it.
+    const run = await browserBackend.startRun(RUN_SPEC);
+    const summary = run.artifacts.find(
+      (entry) => entry.kind === "run.result.summary",
+    );
+
+    await expect(
+      browserBackend.getArtifactContent(summary?.id ?? ""),
+    ).resolves.toMatchObject({ evidence_tier: "normative" });
   });
 
   it("refuses a model whose property geometry it cannot project", async () => {
@@ -1644,5 +1664,60 @@ describe("browser-mode raster artifacts", () => {
     expect(() => browserBackend.getArtifactURL(binaryId)).toThrow(
       "holds binary content",
     );
+  });
+});
+
+describe("browserBackend.getArtifactBytes", () => {
+  beforeEach(async () => {
+    await resetStores();
+  });
+
+  /**
+   * Seeds one stored run whose raster artifact is declared in the document,
+   * and puts its bytes in the byte store only when asked — which is what
+   * makes "the two disagree" a state a test can create.
+   */
+  async function seedRasterRun(options: { withBytes: boolean }) {
+    const fixture = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+    const artifactId = fixture.run.artifacts[0]?.id ?? "";
+    await storage.savePersistedState({
+      version: PERSISTED_STATE_VERSION,
+      state: { runs: [fixture] },
+    });
+    // The document keeps naming the artifact; only the bytes go. That is the
+    // shape a partial quota eviction leaves behind.
+    if (!options.withBytes) await storage.deleteArtifactBytes([artifactId]);
+    resetBrowserBackendForTests();
+    return artifactId;
+  }
+
+  it("returns the bytes stored beside the document", async () => {
+    const artifactId = await seedRasterRun({ withBytes: true });
+
+    const bytes = await browserBackend.getArtifactBytes(artifactId);
+
+    // Not `toBeInstanceOf`: fake-indexeddb clones across a realm boundary, so
+    // the buffer that comes back has every internal slot and still fails
+    // `instanceof` — the same reason `browser-storage` checks the tag.
+    expect(Object.prototype.toString.call(bytes)).toBe("[object ArrayBuffer]");
+    expect(bytes.byteLength).toBe(64);
+  });
+
+  it("says so when the document names bytes the store does not hold", async () => {
+    const artifactId = await seedRasterRun({ withBytes: false });
+
+    // An empty buffer read as a raster is a grid of zeroes, which looks like
+    // a result. The refusal is the whole point of the branch.
+    await expect(browserBackend.getArtifactBytes(artifactId)).rejects.toThrow(
+      "its bytes are not stored",
+    );
+  });
+
+  it("refuses an artifact whose content is not binary", async () => {
+    await seedState();
+
+    await expect(
+      browserBackend.getArtifactBytes(TABLE_ARTIFACT_ID),
+    ).rejects.toThrow("not bytes");
   });
 });

@@ -128,16 +128,45 @@ export const httpBackend: Backend = {
     return request<RunSummary[]>("/api/v1/runs");
   },
 
+  // Every id in a path is escaped, `deleteRun` included. Ids are server-minted
+  // today, so one holding `/`, `?` or `#` is latent rather than live — but
+  // three of these five used to interpolate raw, which meant two methods could
+  // build different URLs for the same artifact and only one of them would find
+  // it.
   getRunLog(runId) {
-    return request<RunLog>(`/api/v1/runs/${runId}/log`);
+    return request<RunLog>(`/api/v1/runs/${encodeURIComponent(runId)}/log`);
   },
 
   getArtifactContent<T>(artifactId: string) {
-    return request<T>(`/api/v1/artifacts/${artifactId}/content`);
+    return request<T>(
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}/content`,
+    );
+  },
+
+  async getArtifactBytes(artifactId: string) {
+    // Deliberately not `request`: its unconditional `.json()` is the very bug
+    // this method exists to avoid, and a raster binary — headerless float64,
+    // as `results.SaveRaster` writes it — dies on it with a SyntaxError that
+    // names nothing. Routing this through the shared helper again would
+    // reintroduce that parse quietly, so the fetch stays here in the open.
+    // The refusal path is still `errorFromResponse`, so a 404 surfaces as the
+    // same envelope every other call throws.
+    const response = await send(
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}/content`,
+      // The default Accept says `application/json`, which is the one thing
+      // this response is not.
+      { headers: { Accept: "application/octet-stream" } },
+    );
+    if (!response.ok) {
+      throw await errorFromResponse(response);
+    }
+    return await response.arrayBuffer();
   },
 
   getArtifactURL(artifactId) {
-    return apiURL(`/api/v1/artifacts/${artifactId}/content`);
+    return apiURL(
+      `/api/v1/artifacts/${encodeURIComponent(artifactId)}/content`,
+    );
   },
 
   importFromOSM(req: OsmImportRequest) {

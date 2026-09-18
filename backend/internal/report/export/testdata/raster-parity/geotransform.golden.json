@@ -1,0 +1,87 @@
+[
+  {
+    "name": "raster binary parity fixture",
+    "why": "the same grid results' raster-parity fixture describes, so both goldens speak about one raster",
+    "georeference": {
+      "origin_x": -50.5,
+      "origin_y": 5600000.25,
+      "pixel_size_m": 12.5,
+      "row_order": "south-up"
+    },
+    "grid_height": 2,
+    "geo_transform": {
+      "origin_x": -56.75,
+      "origin_y": 5600019,
+      "pixel_size_x": 12.5,
+      "pixel_size_y": -12.5
+    }
+  },
+  {
+    "name": "single row",
+    "why": "the (height-1) term vanishes, so an off-by-one in it is invisible here and visible everywhere else",
+    "georeference": {
+      "origin_x": 100,
+      "origin_y": 200,
+      "pixel_size_m": 25,
+      "row_order": "south-up"
+    },
+    "grid_height": 1,
+    "geo_transform": {
+      "origin_x": 87.5,
+      "origin_y": 212.5,
+      "pixel_size_x": 25,
+      "pixel_size_y": -25
+    }
+  },
+  {
+    "name": "negative origin",
+    "why": "a sign error in the half-pixel step is otherwise hidden by a positive UTM easting",
+    "georeference": {
+      "origin_x": -1200.5,
+      "origin_y": -300.25,
+      "pixel_size_m": 5,
+      "row_order": "south-up"
+    },
+    "grid_height": 4,
+    "geo_transform": {
+      "origin_x": -1203,
+      "origin_y": -282.75,
+      "pixel_size_x": 5,
+      "pixel_size_y": -5
+    }
+  },
+  {
+    "name": "non-integral pixel size",
+    "why": "halving an odd pixel size is where a mirror that rounds to whole metres parts company",
+    "georeference": {
+      "origin_x": 412345.75,
+      "origin_y": 5321000.5,
+      "pixel_size_m": 2.5,
+      "row_order": "south-up"
+    },
+    "grid_height": 7,
+    "geo_transform": {
+      "origin_x": 412344.5,
+      "origin_y": 5321016.75,
+      "pixel_size_x": 2.5,
+      "pixel_size_y": -2.5
+    }
+  },
+  {
+    "name": "pixel size whose half is not exact in binary",
+    "why": "0.1/2 is not representable, so both sides must divide rather than multiply by 0.5 of a decimal literal",
+    "georeference": {
+      "origin_x": 10,
+      "origin_y": 20,
+      "pixel_size_m": 0.1,
+      "row_order": "south-up"
+    },
+    "grid_height": 3,
+    "geo_transform": {
+      "origin_x": 9.95,
+      "origin_y": 20.25,
+      "pixel_size_x": 0.1,
+      "pixel_size_y": -0.1
+    }
+  }
+]
