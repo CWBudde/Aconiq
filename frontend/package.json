@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "compile:i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/i18n --strategy localStorage preferredLanguage baseLocale",
+    "compile:i18n": "node scripts/compile-i18n.mjs",
     "build": "bun run compile:i18n && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "bun run compile:i18n && tsc -b --force --noEmit",
@@ -58,6 +58,8 @@
     "@eslint/js": "^9.28.0",
     "@inlang/cli": "^3.1.6",
     "@inlang/paraglide-js": "^2.5.0",
+    "@inlang/plugin-m-function-matcher": "^2.2.16",
+    "@inlang/plugin-message-format": "^4.4.4",
     "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
