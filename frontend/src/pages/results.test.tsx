@@ -365,7 +365,7 @@ function renderResults(runs: RunSummary[] = [run("run-1")], path?: string) {
   const firstCompleted = runs.find((r) => r.status === "completed");
   const entry =
     path ?? (firstCompleted ? `/results/${firstCompleted.id}` : "/results");
-  render(
+  const tree = () => (
     <MemoryRouter initialEntries={[entry]}>
       <PathProbe />
       <Routes>
@@ -374,8 +374,21 @@ function renderResults(runs: RunSummary[] = [run("run-1")], path?: string) {
           <Route path=":runId" element={<ResultsPage />} />
         </Route>
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  // `repaint` re-renders the same *shape*, for callers that let a query
+  // resolve between renders. It has to be a fresh element each time — React
+  // bails out of re-rendering a subtree handed the identical element
+  // reference — but the same shape, or the router remounts and an arrival
+  // already stripped from the URL would not survive it. `initialEntries` is
+  // read on mount only, so repeating it here changes nothing.
+  return {
+    ...view,
+    repaint: () => {
+      view.rerender(tree());
+    },
+  };
 }
 
 function tab(name: string): HTMLElement {
@@ -899,6 +912,34 @@ describe("ResultsPage arrival from the map", () => {
       // it, which is the failure mode a `scrollIntoView` on a mounted-only
       // row would have been fixed with.
       expect(ids.length).toBeLessThan(BIG / 10);
+      expect(markedIds()).toEqual(["R3000"]);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "waits for the table before deciding the row is not there",
+    () => {
+      // The cold load, which every other test here skips by handing the hook
+      // its data synchronously: on the first render `useReceiverTable` has
+      // nothing yet. An arrival answered from that state is answered from no
+      // evidence, and because the answer is recorded it is also final — the
+      // run that happens once the rows arrive is refused by the guard, and
+      // R3000 stays outside the window under a URL that was already stripped.
+      state.receiverTable = undefined;
+      state.receiverTableLoading = true;
+      const { repaint } = renderResults(
+        [run("run-1")],
+        "/results/run-1?receiver=R3000",
+      );
+
+      state.receiverTable = big;
+      state.receiverTableLoading = false;
+      repaint();
+
+      const ids = rowIds();
+      expect(ids).toContain("R3000");
+      expect(ids).not.toContain("R0000");
       expect(markedIds()).toEqual(["R3000"]);
     },
     TIMEOUT_MS,

@@ -337,10 +337,16 @@ export function ReceiversTab({
   useEffect(() => {
     if (receiverId === null) return;
     if (arrivedRef.current === receiverId) return;
+    // Nothing has been read yet, so "the table does not hold this id" is not
+    // an answer this effect is entitled to give. Marking the arrival handled
+    // here would be permanent: the guard above then refuses the run that
+    // happens once the table arrives, and a row outside the initial window
+    // stays invisible under a URL that has already been stripped.
+    if (data === undefined) return;
 
     const index = sortedRecords.findIndex((record) => record.id === receiverId);
     if (index === -1) {
-      if (data?.records.some((record) => record.id === receiverId)) {
+      if (data.records.some((record) => record.id === receiverId)) {
         setFilter("");
       } else {
         arrivedRef.current = receiverId;
