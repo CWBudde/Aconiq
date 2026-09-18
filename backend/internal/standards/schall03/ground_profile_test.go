@@ -338,3 +338,83 @@ func TestNilTerrainSceneIsBitIdenticalToTheFlatGroundEntryPoints(t *testing.T) {
 		t.Fatalf("the wrapper disagrees with the scene entry point:\n wrapper: %+v\n scene:   %+v", legacy, scene)
 	}
 }
+
+// TestATerrainCoveringOnlyTheSourceEndFallsBackToTheFlatPlane is the fourth and
+// last of the coverage cases, and the one that is not symmetric with the
+// others. The four are: no DTM at all
+// (TestGroundOffsetIsExactlyZeroWithoutTerrain), neither endpoint covered
+// (TestAPathOutsideTheTerrainFallsBackToTheFlatPlane), the source end covered
+// but not the receiver (here), and both covered (every other test in this
+// file).
+//
+// This row is the one that can go wrong quietly. ReceiverInput.TerrainZ is a
+// measurement only where the DTM reaches: schall03ReceiverGroundZ substitutes
+// the mean of the receivers it does cover for one it does not. Taking half the
+// difference between that inherited mean and a real sample at the source end
+// would feed h_m a number nobody measured at either end of the path, while d,
+// D_Ω and the Abschirmprüfung all stayed on the TerrainZ plane — a correction
+// whose size is whatever the substitution happened to be wrong by. The ground
+// term is therefore all or nothing.
+//
+// The two elevations below are deliberately far apart: the old partial reading
+// would have returned (150 − 137)/2 = 6.5 m here, which is not a rounding
+// difference but roughly twice the receiver's own height.
+func TestATerrainCoveringOnlyTheSourceEndFallsBackToTheFlatPlane(t *testing.T) {
+	t.Parallel()
+
+	const (
+		receiverGroundZ = 137.0
+		terrainZ        = 150.0
+	)
+
+	// Bounds that hold the whole track centerline (-500..500 in x, y = 0) and
+	// stop short of the receiver at y = 200.
+	overTheTrackOnly := profileTerrain{
+		bounds: [4]float64{-600, -100, 600, 100},
+		z:      func(_, _ float64) float64 { return terrainZ },
+	}
+
+	source, receiver := groundProfileScene(receiverGroundZ)
+
+	if _, ok := overTheTrackOnly.ElevationAt(source.X, source.Y); !ok {
+		t.Fatal("the terrain must cover the source end, or this test proves nothing")
+	}
+
+	if _, ok := overTheTrackOnly.ElevationAt(receiver.Point.X, receiver.Point.Y); ok {
+		t.Fatal("the terrain must not cover the receiver end, or this test proves nothing")
+	}
+
+	offset := resolvePathGroundOffset(overTheTrackOnly, source, receiver)
+	if offset != 0 {
+		t.Fatalf("ground offset = %.20g for a path the terrain covers at one end only, want exactly 0"+
+			" (the partial reading this guards against returns %.20g)",
+			offset, (terrainZ-receiverGroundZ)/2)
+	}
+
+	// And through the whole chain: such a scene computes bit for bit what the
+	// same scene with no terrain at all computes. This is what pins the
+	// sentence in docs/conformance/schall03-konformitaetserklaerung.md,
+	// deviation 4, that a path whose endpoints fall outside the raster reads
+	// bit-identically to the flat-ground case.
+	segment, sceneReceiver := testScene(t, receiverGroundZ)
+
+	withoutTerrain, err := ComputeNormativeReceiverLevelsForScene(sceneReceiver, NormativeScene{
+		Segments: []TrackSegment{segment},
+	})
+	if err != nil {
+		t.Fatalf("compute without terrain: %v", err)
+	}
+
+	withHalfCoverage, err := ComputeNormativeReceiverLevelsForScene(sceneReceiver, NormativeScene{
+		Segments: []TrackSegment{segment},
+		Terrain:  overTheTrackOnly,
+	})
+	if err != nil {
+		t.Fatalf("compute with terrain over the track only: %v", err)
+	}
+
+	if withHalfCoverage != withoutTerrain {
+		t.Fatalf("a terrain reaching only the source end changed the levels:\n without: %+v\n with:    %+v",
+			withoutTerrain, withHalfCoverage)
+	}
+}

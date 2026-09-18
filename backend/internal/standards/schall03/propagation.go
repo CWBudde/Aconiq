@@ -287,18 +287,24 @@ const terrainSampleStepM = 25.0
 //
 // and this function returns avgGroundZ − receiverGroundZ.  It is expressed as a
 // difference from the receiver's plane rather than as an absolute Z so that the
-// no-terrain case cancels exactly rather than nearly: with no DTM the two
-// ground elevations are the same number and the rise is unavailable, so the
-// offset is the literal 0 that leaves h_m at (h_g + h_r)/2 bit for bit.
+// no-terrain case cancels exactly rather than nearly: with no DTM the offset is
+// the literal 0 that leaves h_m at (h_g + h_r)/2 bit for bit.
 //
 // receiverGroundZ is ReceiverInput.TerrainZ, which the CLI already fills per
 // receiver from the DTM; sampling the grid again under the receiver could only
 // disagree with the datum every other term is measured against.
 //
-// A miss is not an elevation of zero.  A source point outside the grid falls
-// back to the receiver's ground, and a chord the DTM cannot span contributes no
-// rise; both reduce this path to the flat-plane reading rather than dropping it
-// to sea level.
+// **A path the DTM does not span end to end gets no ground term at all.**  Not
+// a partial one: the rule is all or nothing, and MeanRiseAboveChord's ok is the
+// test, because it reports false unless *both* endpoints fall inside the grid.
+// The trap it closes is that TerrainZ is not always a measurement — for a
+// receiver the DTM misses, schall03ReceiverGroundZ substitutes the mean of the
+// receivers it does reach — so halving the difference between that inherited
+// mean and a real sample at the source end would apply a correction built on a
+// number nobody measured there, while d, D_Ω and the Abschirmprüfung all stayed
+// on the TerrainZ plane.  Falling back to the flat-plane reading keeps the
+// whole path on one datum, and a miss is still never read as an elevation of
+// zero.
 //
 // Do NOT substitute TrackSegment.ElevationM for a missing sourceGroundZ: that
 // is the Schienenoberkante, not the ground under it, and it would move every
@@ -308,24 +314,28 @@ func resolvePathGroundOffset(dtm terrain.Model, source geo.Point2D, receiver Rec
 		return 0
 	}
 
-	sourceGroundZ, ok := dtm.ElevationAt(source.X, source.Y)
-	if !ok {
-		sourceGroundZ = receiver.TerrainZ
-	}
-
-	offset := (sourceGroundZ - receiver.TerrainZ) / 2
-
+	// Asked first, for its ok as much as for its value: it is the one call that
+	// answers "does the terrain span this whole path".
 	rise, ok := terrain.MeanRiseAboveChord(
 		dtm,
 		source.X, source.Y,
 		receiver.Point.X, receiver.Point.Y,
 		terrainSampleStepM,
 	)
-	if ok {
-		offset += rise
+	if !ok {
+		return 0
 	}
 
-	return offset
+	// Guarded rather than assumed.  MeanRiseAboveChord has already sampled this
+	// point, so ok here is implied today — but relying on the order another
+	// package happens to do its work in is how a partial correction gets back
+	// in.
+	sourceGroundZ, ok := dtm.ElevationAt(source.X, source.Y)
+	if !ok {
+		return 0
+	}
+
+	return (sourceGroundZ-receiver.TerrainZ)/2 + rise
 }
 
 // agrW computes the water-body ground correction per Gl. 16.
