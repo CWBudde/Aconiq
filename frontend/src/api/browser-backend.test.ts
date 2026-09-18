@@ -1334,15 +1334,56 @@ describe("persisted state", () => {
     });
 
     /*
-     * The raster bytes are written before the document, and eviction cannot
-     * rescue that write: the retry frees the victim's bytes only after the
-     * document recording the drop is stored, so there is no freed space to
-     * retry into. What it must still do is read like every other storage
-     * failure — the dialogs render `error.message`, and a raw DOMException
-     * text is not what they are written for.
+     * The raster bytes are written before the document, so the retry has to
+     * run the other way round: evict first — a *document* write, which frees
+     * the victim's bytes in the same transaction — then write the bytes into
+     * the space that freed, then the document naming them. In between, the
+     * bytes are stored under a document that does not yet name them; that is
+     * the orphan the session sweep reclaims, which is why the two ship
+     * together.
      */
-    it("reports a quota failure on the raster write in the run's words", async () => {
-      vi.spyOn(storage, "saveArtifactBytes").mockRejectedValue(quota());
+    it("evicts the oldest run and retries the raster write", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      const victimBytesID = victim.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "saveArtifactBytes")
+        .mockRejectedValueOnce(quota());
+
+      const run = await browserBackend.startRun(RUN_SPEC);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      // The eviction is a document write, so it is visible in the store, and
+      // the victim's bytes went with it in the same transaction.
+      expect(runIDs((await persisted()).state)).toEqual([run.id, "run-0002"]);
+      expect(await storage.loadArtifactBytes(victimBytesID)).toBeNull();
+      // The whole point of the retry: the raster the run just computed is
+      // readable, where it used to be a reported failure.
+      const binary = run.artifacts.find(
+        (entry) => entry.kind === "run.result.raster_binary",
+      );
+      await expect(
+        browserBackend.getArtifactBytes(binary?.id ?? ""),
+      ).resolves.toBeDefined();
+    });
+
+    /*
+     * Eviction needs a victim. A first run in an empty store that cannot write
+     * its raster has nothing to drop, so there is no second attempt to make —
+     * and the failure must still read like every other storage failure,
+     * because the dialogs render `error.message` and a raw DOMException text
+     * is not what they are written for.
+     */
+    it("reports a quota failure on the raster write when there is nothing to evict", async () => {
+      const save = vi
+        .spyOn(storage, "saveArtifactBytes")
+        .mockRejectedValue(quota());
 
       const failure = await browserBackend
         .startRun({
@@ -1356,10 +1397,41 @@ describe("persisted state", () => {
         })
         .catch((error: unknown) => error);
 
+      expect(save).toHaveBeenCalledOnce();
       expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
       expect((failure as Error).message).toMatch(
         /run completed but could not be stored/,
       );
+    });
+
+    it("reports the failure when the raster write fails again after evicting", async () => {
+      const victim = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: {
+          runs: [runFixture(2, "2026-01-01T02:00:00.000Z"), victim],
+        },
+      });
+      await browserBackend.getRuns();
+      const save = vi
+        .spyOn(storage, "saveArtifactBytes")
+        .mockRejectedValue(quota());
+
+      const failure = await browserBackend
+        .startRun(RUN_SPEC)
+        .catch((error: unknown) => error);
+
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(storage.isBrowserStorageError(failure, "quota")).toBe(true);
+      expect((failure as Error).message).toMatch(
+        /run completed but could not be stored/,
+      );
+      // The eviction committed before the retry, and a committed document
+      // write cannot be taken back once the victim's bytes are gone with it.
+      // The run list the user sees has to agree with the store.
+      expect(runIDs((await persisted()).state)).toEqual(["run-0002"]);
+      const runs = await browserBackend.getRuns();
+      expect(runs.map((entry) => entry.id)).not.toContain("run-0001");
     });
 
     /*
@@ -1393,6 +1465,160 @@ describe("persisted state", () => {
           await storage.loadArtifactBytes(`artifact-${runID}-raster-bin`),
         ).toBeNull();
       });
+    });
+  });
+
+  /*
+   * Every deliberate path deletes the byte records it orphans — the run cap,
+   * eviction, `deleteRun`, and `startRun` when its own persist fails. Each of
+   * those is a caller that knows which ids it dropped. A tab closed between
+   * the byte write and the document write leaves a record no caller ever knew
+   * about, and until this sweep only `clearPersistedState` removed it.
+   */
+  describe("orphaned raster bytes", () => {
+    const ORPHAN_ID = "artifact-run-0099-raster-bin";
+
+    /** One stored run whose raster really is in the byte store. */
+    async function seedOneRunWithRaster(): Promise<string> {
+      const kept = await runFixtureWithRaster(1, "2026-01-01T01:00:00.000Z");
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [kept] },
+      });
+      resetBrowserBackendForTests();
+      return kept.run.artifacts[0]?.id ?? "";
+    }
+
+    it("reclaims a byte record no stored document names", async () => {
+      const keptBytesID = await seedOneRunWithRaster();
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(await storage.loadArtifactBytes(ORPHAN_ID)).toBeNull();
+      expect(await storage.loadArtifactBytes(keptBytesID)).not.toBeNull();
+    });
+
+    it("sweeps once per session, not on every write", async () => {
+      await seedOneRunWithRaster();
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+
+      await browserBackend.startRun(RUN_SPEC);
+      expect(await storage.loadArtifactBytes(ORPHAN_ID)).toBeNull();
+
+      // A record that appears after the sweep waits for the next session.
+      // That is the cost of the constraint, not an oversight: `reloadState()`
+      // runs on every write, and a sweep hung off it would be deleting the
+      // bytes of the very run that write is storing.
+      const later = "artifact-run-0098-raster-bin";
+      await storage.saveArtifactBytes(later, new ArrayBuffer(8));
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(await storage.loadArtifactBytes(later)).not.toBeNull();
+    });
+
+    it("does not sweep when the stored document was unreadable", async () => {
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION + 1,
+        state: {},
+      });
+      resetBrowserBackendForTests();
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      // An unreadable document is left in place on purpose, so a later build
+      // can still read it. What it names is therefore unknown, and a record
+      // this session cannot account for is not a record it may delete.
+      expect(await storage.loadArtifactBytes(ORPHAN_ID)).not.toBeNull();
+    });
+
+    it("does not sweep when the store was unavailable", async () => {
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+      resetBrowserBackendForTests();
+      vi.spyOn(storage, "loadPersistedState").mockRejectedValue(
+        new storage.BrowserStorageError("unavailable", "no IndexedDB"),
+      );
+
+      await browserBackend.startRun(RUN_SPEC).catch(() => undefined);
+      vi.restoreAllMocks();
+
+      // Same reason: a store that could not be read said nothing about what
+      // the document names, and "nothing named it" is not the same answer.
+      expect(await storage.loadArtifactBytes(ORPHAN_ID)).not.toBeNull();
+    });
+
+    /*
+     * `decodeState` silently drops a run entry that fails `isStoredRun`, so
+     * its bytes look like orphans here. Sweeping them is the deliberate
+     * choice: the entry is gone from every decoded state, and the next write
+     * removes it from the document too, so nothing will ever name them again.
+     */
+    it("reclaims the bytes of a run entry the decoder rejected", async () => {
+      // Index 5, not 1: a rejected entry raises no high-water mark, so the run
+      // below is minted as `run-0001` and would write its own raster to the
+      // very key this asserts about.
+      const broken = await runFixtureWithRaster(5, "2026-01-01T05:00:00.000Z");
+      const brokenBytesID = broken.run.artifacts[0]?.id ?? "";
+      await storage.savePersistedState({
+        version: PERSISTED_STATE_VERSION,
+        state: { runs: [{ ...broken, log: "not a log" }] },
+      });
+      resetBrowserBackendForTests();
+
+      await browserBackend.startRun(RUN_SPEC);
+
+      expect(await storage.loadArtifactBytes(brokenBytesID)).toBeNull();
+    });
+
+    it("sweeps while holding the store lock", async () => {
+      const keptBytesID = await seedOneRunWithRaster();
+      await storage.saveArtifactBytes(ORPHAN_ID, new ArrayBuffer(8));
+
+      let held = false;
+      let heldDuringSweep: boolean | null = null;
+      const request = vi.fn(
+        async (_name: string, callback: () => Promise<unknown>) => {
+          held = true;
+          try {
+            return await callback();
+          } finally {
+            held = false;
+          }
+        },
+      );
+      Object.defineProperty(navigator, "locks", {
+        value: { request },
+        configurable: true,
+      });
+      const swept: string[][] = [];
+      // Records rather than deletes: what this test is about is *when* the
+      // sweep runs, and a real delete would make the records it asserts on
+      // disappear.
+      vi.spyOn(storage, "deleteArtifactBytes").mockImplementation(
+        (artifactIds: readonly string[]) => {
+          heldDuringSweep = held;
+          swept.push([...artifactIds]);
+          return Promise.resolve();
+        },
+      );
+
+      try {
+        await browserBackend.startRun(RUN_SPEC);
+      } finally {
+        Reflect.deleteProperty(navigator, "locks");
+      }
+
+      // `startRun` holds this lock across its byte write and its document
+      // write, so a sweep outside it could delete the bytes of a run another
+      // tab is sitting between the two of.
+      expect(request).toHaveBeenCalledWith(
+        "aconiq-browser-backend",
+        expect.any(Function),
+      );
+      expect(swept).toEqual([[ORPHAN_ID]]);
+      expect(heldDuringSweep).toBe(true);
+      expect(await storage.loadArtifactBytes(keptBytesID)).not.toBeNull();
     });
   });
 });

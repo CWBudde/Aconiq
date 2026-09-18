@@ -340,6 +340,44 @@ function artifactBytesKey(artifactId: string): string {
   return ARTIFACT_BYTES_PREFIX + artifactId;
 }
 
+/**
+ * Every key in the byte space and nothing else.
+ *
+ * Shared by the listing and by `clearPersistedState`'s range delete so the two
+ * cannot disagree: a listing narrower than the delete would report a store as
+ * empty that clearing still had work in, and a listing wider than it would
+ * hand a sweep the document's own key to delete.
+ */
+function artifactBytesRange(): IDBKeyRange {
+  return IDBKeyRange.bound(
+    ARTIFACT_BYTES_PREFIX,
+    ARTIFACT_BYTES_PREFIX + "\uffff",
+  );
+}
+
+/**
+ * The artifact ids the byte store holds, whether or not a document names them.
+ *
+ * The one query a sweep needs, and the reason the key prefix is worth having:
+ * the records are keyed *beside* the document rather than inside it, so a tab
+ * that dies between `saveArtifactBytes` and the document write leaves a record
+ * no caller ever knew about. Every caller that orphans a record deliberately
+ * deletes it; only listing finds the ones nobody meant to leave.
+ *
+ * Returns ids, not keys. The prefix is this module's private business — a
+ * caller comparing a key against an artifact id would silently match nothing.
+ */
+export async function listArtifactBytesIDs(): Promise<string[]> {
+  const keys = await withStore<IDBValidKey[]>(
+    "readonly",
+    "Browser-mode raster data cannot be listed",
+    (store) => store.getAllKeys(artifactBytesRange()),
+  );
+  return keys
+    .filter((key): key is string => typeof key === "string")
+    .map((key) => key.slice(ARTIFACT_BYTES_PREFIX.length));
+}
+
 export async function saveArtifactBytes(
   artifactId: string,
   bytes: ArrayBuffer,
@@ -415,12 +453,6 @@ export async function clearPersistedState(): Promise<void> {
   await withStore(
     "readwrite",
     "Stored browser-mode raster data cannot be removed",
-    (store) =>
-      store.delete(
-        IDBKeyRange.bound(
-          ARTIFACT_BYTES_PREFIX,
-          ARTIFACT_BYTES_PREFIX + "\uffff",
-        ),
-      ),
+    (store) => store.delete(artifactBytesRange()),
   );
 }

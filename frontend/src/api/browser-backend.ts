@@ -52,6 +52,7 @@ import {
   BrowserStorageError,
   deleteArtifactBytes,
   isBrowserStorageError,
+  listArtifactBytesIDs,
   loadArtifactBytes,
   loadPersistedState,
   saveArtifactBytes,
@@ -349,6 +350,39 @@ async function migrateLegacyState(): Promise<BrowserBackendState | null> {
 }
 
 /**
+ * Where a loaded state came from.
+ *
+ * Three of these yield a state with `runs: []` and used to be
+ * indistinguishable, which was fine while every caller only wanted the state.
+ * The byte sweep wants the opposite: it needs to know that the empty list is
+ * the *whole truth about the store*, because it deletes every byte record the
+ * list does not name. After `corrupt` or `unavailable` the list is not that —
+ * the document is deliberately left in place in both cases (see `loadState`),
+ * so what it names is unknown, and unknown is not "nothing".
+ *
+ * `empty` is swept: nothing is stored, so nothing can name a record. The
+ * localStorage migration that runs on this branch cannot change that — the
+ * runs it brings across never had bytes in the byte store, and
+ * `markLegacyRasterBytesMissing` is the code that says so.
+ */
+type StateOrigin = "stored" | "empty" | "corrupt" | "unavailable";
+
+/**
+ * A state and the fact about the store that produced it.
+ *
+ * Returned as a pair rather than recorded in a module-scope flag on purpose.
+ * A flag is a second place the truth lives and is only right until the next
+ * load: the sweep would then be reading the origin of *some* load, not of the
+ * load whose run list it is about to delete against. It would also have to be
+ * reset in `resetBrowserBackendForTests`, and a reset someone forgets makes
+ * tests depend on their order rather than fail.
+ */
+type LoadedState = {
+  state: BrowserBackendState;
+  origin: StateOrigin;
+};
+
+/**
  * A corrupt or unavailable store never blocks the UI: the backend starts
  * fresh in memory and warns. The corrupt document is left in place until the
  * next successful write replaces it, so a bug in the guard cannot erase data
@@ -361,7 +395,7 @@ async function migrateLegacyState(): Promise<BrowserBackendState | null> {
  */
 async function loadState(
   whenUnavailable: () => BrowserBackendState = initialState,
-): Promise<BrowserBackendState> {
+): Promise<LoadedState> {
   let stored: unknown;
   try {
     stored = await loadPersistedState();
@@ -370,19 +404,22 @@ async function loadState(
       "Browser-mode runs cannot be persisted in this browser; they will be kept in memory for this session only",
       error,
     );
-    return whenUnavailable();
+    return { state: whenUnavailable(), origin: "unavailable" };
   }
   if (stored === null) {
-    return (await migrateLegacyState()) ?? initialState();
+    return {
+      state: (await migrateLegacyState()) ?? initialState(),
+      origin: "empty",
+    };
   }
   try {
-    return decodePersisted(stored);
+    return { state: decodePersisted(stored), origin: "stored" };
   } catch (error) {
     console.warn(
       "Ignoring unreadable stored browser-mode runs; the next completed run replaces them",
       error,
     );
-    return initialState();
+    return { state: initialState(), origin: "corrupt" };
   }
 }
 
@@ -401,8 +438,8 @@ function ensureLoaded(): Promise<BrowserBackendState> {
   if (state !== null) return Promise.resolve(state);
   loadPromise ??= loadState().then(
     (loaded) => {
-      state = loaded;
-      return loaded;
+      state = loaded.state;
+      return loaded.state;
     },
     (error: unknown) => {
       loadPromise = null;
@@ -421,9 +458,18 @@ function ensureLoaded(): Promise<BrowserBackendState> {
  * write reloads; the error the user saw already says it is not kept.
  */
 async function reloadState(): Promise<BrowserBackendState> {
+  return (await reloadStateWithOrigin()).state;
+}
+
+/**
+ * `reloadState` for the one caller that needs to know *why* the state looks
+ * the way it does — the byte sweep, which reads an empty run list as licence
+ * to delete and must not read a failed load that way.
+ */
+async function reloadStateWithOrigin(): Promise<LoadedState> {
   const cached = await ensureLoaded();
   const fresh = await loadState(() => cached);
-  state = fresh;
+  state = fresh.state;
   return fresh;
 }
 
@@ -442,10 +488,89 @@ const STORE_LOCK_NAME = "aconiq-browser-backend";
  * that truly overlap can collide.
  */
 async function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
+  // The sweep goes here rather than at each of the three call sites because
+  // this is the one place that already holds what it needs, and a fourth
+  // writer added later gets it without being told. It runs *before* `fn`:
+  // `startRun`'s quota retry deliberately leaves bytes under a document that
+  // does not yet name them, and a sweep after the body would reclaim the
+  // raster of the run that body just stored.
+  const body = async (): Promise<T> => {
+    await sweepOrphanedArtifactBytes();
+    return fn();
+  };
   // lib.dom declares `locks` as always present; the browsers above disagree.
   const locks = navigator.locks as LockManager | undefined;
-  if (locks === undefined) return fn();
-  return locks.request(STORE_LOCK_NAME, fn);
+  if (locks === undefined) return body();
+  return locks.request(STORE_LOCK_NAME, body);
+}
+
+/**
+ * Whether this session has already looked for byte records nothing names.
+ *
+ * Once per session, not once per write. Every deliberate path — the run cap,
+ * eviction, `deleteRun`, `startRun` when its own persist fails — deletes the
+ * records it orphaned, because each of those callers knows which ids it
+ * dropped. What none of them covers is a tab closed between
+ * `saveArtifactBytes` and the document write: nobody ever knew that record
+ * existed, and before this only `clearPersistedState` removed it.
+ */
+let sweptOrphanedBytes = false;
+
+/**
+ * Deletes byte records the stored document does not name.
+ *
+ * Runs under `withStoreLock`, which is not decoration: `startRun` holds that
+ * lock across its byte write and its document write, and in between the bytes
+ * are stored under a document that has yet to name them. A sweep that did not
+ * take the lock would see exactly that record and delete the raster of a run
+ * another tab is halfway through storing.
+ *
+ * It refuses to run on a state it did not read out of the store. `corrupt`
+ * and `unavailable` both leave the document in place deliberately — see
+ * `loadState` — so the run list they yield is empty for want of an answer,
+ * not because the store holds no runs, and deleting every record it fails to
+ * name would throw away the rasters of the runs that document still holds.
+ *
+ * Run entries `decodeState` rejected are swept, and that is a choice rather
+ * than an oversight: such an entry is absent from every decoded state and the
+ * next write drops it from the document too, so nothing will ever name its
+ * bytes again.
+ */
+async function sweepOrphanedArtifactBytes(): Promise<void> {
+  if (sweptOrphanedBytes) return;
+  // Set before the first await, not after the work: a sweep that fails is a
+  // sweep that must not be retried on every subsequent write, and where
+  // `navigator.locks` is missing two writers can otherwise both pass this
+  // guard in the same tick.
+  sweptOrphanedBytes = true;
+
+  let loaded: LoadedState;
+  try {
+    loaded = await reloadStateWithOrigin();
+  } catch {
+    // `ensureLoaded` rejected; the session has no state to compare against.
+    return;
+  }
+  if (loaded.origin === "corrupt" || loaded.origin === "unavailable") return;
+
+  let storedIds: string[];
+  try {
+    storedIds = await listArtifactBytesIDs();
+  } catch {
+    // Reading the key space is the whole sweep. A store that cannot answer
+    // leaves the records where they are, which is where they already were.
+    return;
+  }
+  const named = new Set(binaryArtifactIDs(loaded.state.runs));
+  const orphans = storedIds.filter((artifactId) => !named.has(artifactId));
+  if (orphans.length === 0) return;
+  try {
+    await deleteArtifactBytes(orphans);
+  } catch {
+    // Awaited, unlike `forgetArtifactBytes`, so the delete cannot overlap the
+    // write this lock is held for — but still not worth failing that write
+    // over: an orphaned record costs quota, not correctness.
+  }
 }
 
 /**
@@ -517,6 +642,64 @@ function storeFailure(what: "run" | "export", error: unknown): Error {
     `The ${what} completed but could not be stored (${error.message}). Its results stay available only until the next run or export, or until this page is reloaded.`,
     { cause: error },
   );
+}
+
+/**
+ * Stores a run's raster bytes, evicting the oldest run once when the quota is
+ * exhausted.
+ *
+ * The retry runs the opposite way round from `persistRun`'s, and has to.
+ * Eviction frees space by *writing a document* — a shorter run list, with the
+ * dropped run's bytes removed in the same transaction — and this write happens
+ * before there is any document change to pair it with. So the order here is:
+ * evict, then the bytes, then (back in the caller) the document naming them.
+ *
+ * That order puts an intermediate state on disk: bytes stored under a document
+ * that does not yet name them. It is deliberate, and it is precisely what
+ * `sweepOrphanedArtifactBytes` reclaims — the two were written together
+ * because neither is safe alone.
+ */
+async function saveRasterBytes(
+  artifactId: string,
+  bytes: ArrayBuffer,
+  keepRunId: string,
+): Promise<void> {
+  try {
+    await saveArtifactBytes(artifactId, bytes);
+    return;
+  } catch (error) {
+    if (!isBrowserStorageError(error, "quota")) {
+      throw storeFailure("run", error);
+    }
+    const current = await reloadState();
+    // The run being written is not in the stored document yet, so there is no
+    // pending change to carry: whatever eviction drops, it drops on its own.
+    const evicted = evictOldestRun({ state: current, dropped: [] }, keepRunId);
+    if (evicted === null) {
+      // Nothing to evict, so there is no space to retry into and no second
+      // attempt to make. What is left in reach is the wording: this reads like
+      // every other storage failure, and the dialogs render `error.message`.
+      throw storeFailure("run", error);
+    }
+    try {
+      await persist(evicted);
+    } catch (evictionError) {
+      // The eviction never reached the store, so it must not reach the run
+      // list either — the user would see a run vanish alongside an error about
+      // a different one. `persistRun` restores it for the same reason.
+      state = current;
+      throw storeFailure("run", evictionError);
+    }
+  }
+
+  // Into the space the eviction just freed. A failure here leaves the eviction
+  // standing: it committed, and the victim's raster went with it in the same
+  // transaction, so there is nothing left to put back.
+  try {
+    await saveArtifactBytes(artifactId, bytes);
+  } catch (error) {
+    throw storeFailure("run", error);
+  }
 }
 
 /**
@@ -598,6 +781,9 @@ function forgetArtifactBytes(storedRuns: readonly StoredRun[]): void {
 export function resetBrowserBackendForTests(): void {
   state = null;
   loadPromise = null;
+  // "Once per session" is module state like the cache above it, so a test
+  // that did not reset it would silently inherit the previous test's sweep.
+  sweptOrphanedBytes = false;
 }
 
 /**
@@ -1624,20 +1810,7 @@ async function runRLS19Road(
     // The bytes go in first: a document referencing an artifact whose record
     // is missing reads as a corrupted run, while a byte record no document
     // names is merely orphaned.
-    try {
-      await saveArtifactBytes(rasterBinArtifact.id, rasterBinary);
-    } catch (error) {
-      // No eviction-and-retry here, unlike `persistRun`. Eviction is a
-      // *document* write — it frees space by storing a smaller document, with
-      // the dropped run's bytes removed in the same transaction — and this
-      // write happens before there is any document change to pair it with.
-      // Giving the raster its own evict-and-retry means writing the smaller
-      // document first and the bytes after; PLAN.md carries it as open rather
-      // than pretending the case is covered. What is in reach is the wording:
-      // this is a storage failure like any other, and the dialogs render
-      // `error.message`.
-      throw storeFailure("run", error);
-    }
+    await saveRasterBytes(rasterBinArtifact.id, rasterBinary, runId);
 
     try {
       await persistRun(storedRun, "run");
