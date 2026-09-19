@@ -76,10 +76,6 @@ func effectivePropagationDistance(distanceM float64, cfg PropagationConfig) floa
 	return distanceM
 }
 
-func geometricDivergence(distanceM float64) float64 {
-	return 20*math.Log10(distanceM) + 11.0
-}
-
 func airAbsorption(distanceM float64, cfg PropagationConfig) float64 {
 	return cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)
 }
@@ -101,7 +97,7 @@ func attenuationTerms(distanceM float64, cfg PropagationConfig) propagationTerms
 
 	return propagationTerms{
 		DistanceM:      effectiveDistance,
-		GeometricDB:    geometricDivergence(effectiveDistance),
+		GeometricDB:    acoustics.GeometricDivergence(effectiveDistance),
 		AirDB:          airAbsorption(effectiveDistance, cfg),
 		GroundDB:       groundEffect(cfg),
 		UrbanCanyonDB:  urbanCanyonEffect(cfg),

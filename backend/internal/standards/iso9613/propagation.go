@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 )
 
@@ -112,10 +113,6 @@ func sourceDistance(receiver geo.PointReceiver, source PointSource) float64 {
 	return math.Hypot(horizontal, heightDelta)
 }
 
-func geometricDivergence(distanceM float64) float64 {
-	return 20*math.Log10(distanceM) + 11
-}
-
 // BandAttenuation computes per-octave-band attenuation A(j) for one source-receiver path.
 // Returns the 8-band attenuation and the effective source-receiver distance.
 func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) (BandLevels, float64) {
@@ -124,7 +121,7 @@ func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg Propaga
 	hr := receiver.HeightM
 	dp := geo.Distance(receiver.Point, source.Point) // projected ground distance
 
-	adiv := geometricDivergence(distance)
+	adiv := acoustics.GeometricDivergence(distance)
 	aatm := AtmosphericAbsorptionBands(cfg.AirTemperatureC, cfg.RelativeHumidityPercent, distance)
 	agr := GroundEffectBands(cfg.GroundFactor, cfg.GroundFactor, cfg.GroundFactor, hs, hr, dp)
 	abar := BarrierAttenuationBands(cfg.Barrier, agr, 20)

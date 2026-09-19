@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/qa/acceptance"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 )
@@ -492,12 +493,10 @@ func decodeJSONFile(path string, target any) error {
 }
 
 func writeJSONFile(path string, value any) error {
-	payload, err := json.MarshalIndent(value, "", "  ")
+	payload, err := jsonio.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", path, err)
 	}
-
-	payload = append(payload, '\n')
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {

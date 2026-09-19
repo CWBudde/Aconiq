@@ -2,6 +2,7 @@ package aircraft
 
 import (
 	"github.com/aconiq/backend/internal/acoustics"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 const (
@@ -36,7 +37,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"emission_model":         "class-operation-procedure-thrust-components",
 	}
 
-	for _, key := range []string{
+	return framework.StampKeyParameters(metadata, params, []string{
 		"grid_resolution_m",
 		"grid_padding_m",
 		"receiver_height_m",
@@ -61,11 +62,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"approach_correction_db",
 		"climb_correction_db",
 		"min_slant_distance_m",
-	} {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	})
 }

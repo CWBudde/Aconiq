@@ -481,6 +481,25 @@ func TestBeiblatt3RetarderBeharrunglBaseLevel(t *testing.T) {
 	}
 }
 
+func TestBeiblatt3RetarderRangierenLevel(t *testing.T) {
+	t.Parallel()
+
+	// L_WA = 72 + 10·lg(n_ret). The 72 dB base is the same one the published
+	// Beiblatt3RetarderRangierenBase carries, and standarddata.go exports that
+	// struct, so asserting against the field rather than the literal is what
+	// stops the formula and the published table drifting apart.
+	lwa := Beiblatt3RetarderRangierenLevel(1.0)
+	if lwa != Beiblatt3RetarderRangierenBase.LWA {
+		t.Errorf("n_ret=1: expected %g, got %g", Beiblatt3RetarderRangierenBase.LWA, lwa)
+	}
+
+	// n_ret=4: L_WA = 72 + 10·lg(4) = 72 + 6.02 = 78.02
+	lwa4 := Beiblatt3RetarderRangierenLevel(4.0)
+	if math.Abs(lwa4-78.021) > 0.01 {
+		t.Errorf("n_ret=4: expected ~78.02, got %g", lwa4)
+	}
+}
+
 func TestBeiblatt3AuflaufstossModern(t *testing.T) {
 	t.Parallel()
 

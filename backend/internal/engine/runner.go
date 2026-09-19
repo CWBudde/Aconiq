@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 )
 
@@ -700,12 +701,10 @@ func writeRunState(path string, state RunState) error {
 }
 
 func writeJSONFile(path string, value any) error {
-	encoded, err := json.MarshalIndent(value, "", "  ")
+	encoded, err := jsonio.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode json %s: %w", path, err)
 	}
-
-	encoded = append(encoded, '\n')
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {

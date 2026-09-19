@@ -1,5 +1,9 @@
 package exposure
 
+import (
+	"github.com/aconiq/backend/internal/standards/framework"
+)
+
 const (
 	// BuiltinModelVersion identifies the current bundled preview aggregation model.
 	BuiltinModelVersion = "baseline-preview-exposure-aggregation-v2"
@@ -22,7 +26,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 			IndicatorAffectedDwellingsLnight + "," + IndicatorAffectedPersonsLnight,
 	}
 
-	for _, key := range []string{
+	return framework.StampKeyParameters(metadata, params, []string{
 		"upstream_mapping_standard",
 		"building_usage_type",
 		"minimum_building_height_m",
@@ -34,11 +38,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"occupancy_mode",
 		"facade_evaluation_mode",
 		"facade_receiver_height_m",
-	} {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	})
 }

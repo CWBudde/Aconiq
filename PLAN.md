@@ -1099,14 +1099,29 @@ editing several of its files rather than one package of its own.
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
-  - [ ] Lift `ComputeReceiverOutputs` (12 copies), `ProvenanceMetadata` (10) and
-        `geometricDivergence` (8). `PeriodLevels`/`ReceiverIndicators`/`ComputeLden` are done — the
-        END directive's defining formula had six byte-identical copies and now lives once in
-        `internal/acoustics` — and `ExportResultBundle` is down from 12 copies to 4: the eight END
-        modules delegate to `acoustics.ExportENDBundle`, and what is left (`rls19`, `schall03`,
-        `iso9613`, `beb`) publishes a different indicator set, so it is a second shared bundle
-        rather than the same one.
   - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
+  - [ ] The same lift again, for the three helpers the bullet above did not count.
+        `airAbsorption` — `cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)` — has **6**
+        byte-identical copies, in exactly the six `propagation.go` files `GeometricDivergence`
+        just touched; it needs a `(distanceM, dbPerKM float64)` signature because the config type is
+        per package. The minimum-distance clamp has **7** copies under **three names** —
+        `effectivePropagationDistance` (cnossos road/rail/industry, bub/road),
+        `effectiveSlantDistance` (cnossos/aircraft, buf/aircraft), `effectiveDistance` (iso9613) —
+        and the three names are the only reason they read as distinct. `groundEffect` has 6 copies
+        but each returns its own config field, so it is not the same shape.
+  - [ ] The encode step is still inlined in 8 places that are not named `writeJSONFile`:
+        `report/results/{raster_io.go,receiver_table_io.go}`, `report/export/contour.go`,
+        `app/cli/{export_assessment.go,export.go}`, `qa/golden/snapshot.go`,
+        `api/httpv1/openapi.go`, and `standards/beb/exposure/export.go` (which appends the newline
+        at the `os.WriteFile` call rather than as its own statement). Constraint: the first two are
+        result containers whose bytes `TestRunResultsDigestsAreStable` pins, so that gate applies
+        to this follow-up too.
+  - [ ] Decide whether the eight hand-maintained provenance key lists should be derived from the
+        descriptor instead. `iso9613` and `schall03` already pass `parameterNames()` /
+        `provenanceParameterNames()`; the other eight carry a slice that must stay in step with the
+        parameter schema by discipline alone. **This is not a refactor** — converging them changes
+        _which_ `key_parameter.*` entries land in `provenance.json`, so it moves the digests and is
+        a release decision under Priority 5's versioning rule.
   - [x] ~~Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`.~~ Done in the
         extraction pass: one `buildAircraftSource` serves both, and the BUF path maps the result
         across. **This item's premise was wrong** — the old directive's "the source/output types
@@ -1115,7 +1130,6 @@ editing several of its files rather than one package of its own.
         `MovementPeriod` are declared per package, so the compiler rejects a conversion between
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
-  - [ ] Consolidate 7 copies of `writeJSONFile`/`writeJSON`.
   - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
         `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
         `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
@@ -1142,10 +1156,6 @@ editing several of its files rather than one package of its own.
       neither `point` nor `area` yields no sources and no error. Preserved and documented by the
       extraction pass rather than changed inside a behaviour-preserving refactor; decide whether it
       should be an error.
-- [ ] Delete dead code: `newPlaceholderCommand` (`root.go:107`), `mustFinite`
-      (`cnossos/road/emission.go:344`), the unused `cfg` param (`cnossos/industry/propagation.go:126`),
-      `schall03`'s unexported-candidate `Beiblatt3RetarderRangierenLevel` and `OctaveBands`, and the
-      never-called `roundToWholeDB` (`schall03/indicators.go:38`).
 
 ## Priority 8 — Frontend correctness and rework
 
@@ -1888,6 +1898,17 @@ package table and all ten CLI commands, and describes the standards modules by e
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
+- [ ] **`just lint` has no toolchain guard, and a wrong binary invents ~1 900 findings.**
+      `just check-formatted` refuses to run when the formatters do not match `tools.versions`,
+      precisely because treefmt runs whatever is on `PATH` — but `just lint` runs whatever
+      `golangci-lint` is on `PATH` with no such check, although `tools.versions` pins
+      `GOLANGCI_LINT_VERSION` and CI installs exactly it. A v2.13.2 binary on a machine pinned to
+      v2.12.2 reports **1 917 `exhaustruct_v5` findings** on a tree whose `Go CI` is green, because
+      `.golangci.yml` runs `default: all` and disables `exhaustruct` but not the renamed successor —
+      the same `wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2` shape the config already handles
+      twice. Give `lint` the same `check-tools` gate `check-formatted` has, and add `exhaustruct_v5`
+      to the disable list so a version bump does not reopen this.
+
 - [ ] Promote the security scanners that only exist in a developer's `.trunk/`. That directory is
       gitignored and was never tracked, so it is one machine's tooling, not a second lint stack in
       the repository — "drop trunk" would change nothing here. What it does hold is `osv-scanner`,
@@ -1915,7 +1936,24 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
 - [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,
       cooling towers, facades).
 - [ ] Add spatial ground zones so per-region G values come from polygon geometry instead of a
-      single global ground factor.
+      single global ground factor. Cheaper than it reads: `GroundEffectBands(gs, gr, gm, …)`
+      already implements the full three-region Table 3 model and `propagation.go` simply passes the
+      one global `ground_factor` three times, and a `GroundZone` type carrying a polygon and a
+      factor already exists in `iso9613/model.go` with no caller. What is missing is the plumbing —
+      `iso9613` runs through the generic `receiverRunModule`, whose contract carries sources and
+      receivers and no scene, so zones need the bespoke module shape `rls19-road` and `schall03`
+      already have.
+- [ ] **A_bar is identically zero in every ISO 9613-2 run, and a fixture claims otherwise.**
+      The screening formulas are complete and tested (Gl. 12–18), but `PropagationConfig.Barrier` is
+      a pre-computed `*BarrierGeometry` that `iso9613RunOptions.PropagationConfig()` never sets, and
+      no descriptor parameter can supply one — so every run on the CLI and in the browser takes the
+      nil path and adds 0 dB. The Konformitätserklärung declares "keine automatische
+      Strahl-Barriere-Verschneidung" but not that no caller can hand one in at all.
+      Worse, `qa/acceptance/testdata/iso9613/point_contextual.scenario.json` sets
+      `"barrier_attenuation_db": 3.5` and the acceptance decoder has no such field for this standard
+      — only the RLS-19 branch decodes barriers — so the value is dropped in silence while
+      `catalog.go` describes the fixture as "stressing ... barrier attenuation". It stresses none.
+      Fix the fixture and the catalogue text when the geometry lands, or before, if that slips.
 - [x] **The ISO 9613-1 α model replaced the nearest-row Table 2 lookup.** `AlphaForBand` evaluates
       the analytical model — classical absorption plus O₂ and N₂ relaxation — at every condition.
       **This entry understated the defect by describing the table's span rather than the resulting

@@ -91,6 +91,10 @@ const (
 	OctaveBand8000Hz OctaveBand = 8000
 )
 
+// octaveBandOrder is read by OctaveSpectrum.Validate to name the band a
+// non-finite level sits in. That is its only use, and it is in this file, so a
+// search that excludes model.go reports the whole OctaveBand cluster as dead.
+// It is not: deleting it does not compile.
 var octaveBandOrder = [...]OctaveBand{
 	OctaveBand63Hz,
 	OctaveBand125Hz,
@@ -100,11 +104,6 @@ var octaveBandOrder = [...]OctaveBand{
 	OctaveBand2000Hz,
 	OctaveBand4000Hz,
 	OctaveBand8000Hz,
-}
-
-// OctaveBands returns the canonical Schall 03 octave-band order.
-func OctaveBands() []OctaveBand {
-	return append([]OctaveBand(nil), octaveBandOrder[:]...)
 }
 
 // OctaveSpectrum stores one level per Schall 03 octave band in canonical order.

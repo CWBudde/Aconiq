@@ -17,6 +17,15 @@
 // SilenceThresholdDB). Seven standards modules carried behaviourally identical
 // copies of that sum; they now call this one.
 //
+// Two more shapes that were copied rather than shared live here now.
+// GeometricDivergence in propagation.go is the free-hemisphere spreading loss
+// that seven modules spelled out identically, including the one normative
+// module that computes it, iso9613. ComputeReceiverOutputs in compute.go is the
+// walk over a receiver list that every module reporting the END set performs
+// before handing each receiver to its own acoustics; it is generic over the
+// source type so that each module keeps passing its own typed slice. Modules
+// keep their exported names and delegate, so no caller of theirs had to move.
+//
 // What is deliberately still outside it: the two summations whose semantics
 // genuinely differ, and which cannot be converged without changing numbers.
 // assessment/bimschv16 sums with no NaN/Inf guard and no silence threshold, and

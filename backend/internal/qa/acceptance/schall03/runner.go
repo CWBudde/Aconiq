@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/qa/acceptance"
 	schall03 "github.com/aconiq/backend/internal/standards/schall03"
 )
@@ -456,12 +457,10 @@ func decodeJSONFile(path string, target any) error {
 }
 
 func writeJSONFile(path string, value any) error {
-	payload, err := json.MarshalIndent(value, "", "  ")
+	payload, err := jsonio.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-
-	payload = append(payload, '\n')
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {

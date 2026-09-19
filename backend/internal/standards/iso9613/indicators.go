@@ -1,5 +1,9 @@
 package iso9613
 
+import (
+	"github.com/aconiq/backend/internal/standards/framework"
+)
+
 const (
 	// BuiltinModelVersion identifies the octave-band engineering method.
 	BuiltinModelVersion = "iso9613-octaveband-v1"
@@ -20,11 +24,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		paramMeteorologyAssumption: MeteorologyDownwind,
 	}
 
-	for _, key := range parameterNames() {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	return framework.StampKeyParameters(metadata, params, parameterNames())
 }

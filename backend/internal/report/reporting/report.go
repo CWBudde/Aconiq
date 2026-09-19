@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
@@ -915,12 +916,10 @@ func relativeFrom(baseDir string, fullPath string) string {
 }
 
 func writeJSON(path string, value any) error {
-	encoded, err := json.MarshalIndent(value, "", "  ")
+	encoded, err := jsonio.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode report json: %w", err)
 	}
-
-	encoded = append(encoded, '\n')
 
 	err = os.WriteFile(path, encoded, 0o600)
 	if err != nil {

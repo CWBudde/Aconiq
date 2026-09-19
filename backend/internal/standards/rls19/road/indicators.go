@@ -1,5 +1,9 @@
 package road
 
+import (
+	"github.com/aconiq/backend/internal/standards/framework"
+)
+
 const (
 	// BuiltinDataPackVersion identifies the bundled coefficient/table set.
 	BuiltinDataPackVersion = "builtin-rls19-2019-v1"
@@ -38,7 +42,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"indicator_order":        IndicatorLrDay + "," + IndicatorLrNight,
 	}
 
-	for _, key := range []string{
+	return framework.StampKeyParameters(metadata, params, []string{
 		"surface_type",
 		"receiver_height_m",
 		"segment_length_m",
@@ -51,12 +55,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"traffic_night_lkw1",
 		"traffic_night_lkw2",
 		"traffic_night_krad",
-	} {
-		value, ok := params[key]
-		if ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	})
 }

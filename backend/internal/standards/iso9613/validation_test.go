@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 )
 
@@ -73,7 +74,7 @@ func TestValidationSingleSourceFullChain(t *testing.T) {
 	// Since A_div is a common offset, the difference between band attenuations
 	// should equal (A_atm[i] + A_gr[i]) - (A_atm[j] + A_gr[j]).
 	// Instead, directly verify A_div via the exported function.
-	gotAdiv := geometricDivergence(dist)
+	gotAdiv := acoustics.GeometricDivergence(dist)
 	if math.Abs(gotAdiv-expectedAdiv) > 0.001 {
 		t.Errorf("A_div: expected %.3f, got %.3f", expectedAdiv, gotAdiv)
 	}
