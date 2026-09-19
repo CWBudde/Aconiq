@@ -211,6 +211,12 @@ with results produced after them.
 - `just license-report` produced nothing usable: it misclassified the whole standard library
   whenever a `toolchain` directive moved `GOROOT` into the module cache, and only ever reported one
   `GOOS`, which is how three dependencies went missing from `NOTICE`.
+- Exported GeoPackages declared the wrong SRS inside every receiver and contour geometry. The
+  `gpkg_contents` and `gpkg_geometry_columns` rows carried the project's EPSG code, but the
+  GeoPackageBinaryHeader of each geometry blob carried a hardcoded `0` — "Undefined geographic
+  SRS". GDAL reads the metadata tables and so showed the right CRS anyway, which is why this went
+  unnoticed; a reader that trusts the geometry header did not. No computed level changes, but the
+  bytes of every `receivers.gpkg` and `contours.gpkg` do.
 
 ### Security
 

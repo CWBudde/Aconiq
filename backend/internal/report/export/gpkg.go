@@ -58,7 +58,7 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 		return fmt.Errorf("create receiver table: %w", err)
 	}
 
-	err = insertReceivers(db, table)
+	err = insertReceivers(db, table, srsID)
 	if err != nil {
 		return fmt.Errorf("insert receivers: %w", err)
 	}
@@ -101,7 +101,7 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 		return fmt.Errorf("create contour table: %w", err)
 	}
 
-	err = insertContours(db, contours)
+	err = insertContours(db, contours, srsID)
 	if err != nil {
 		return fmt.Errorf("insert contours: %w", err)
 	}
@@ -264,7 +264,7 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 	return nil
 }
 
-func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
+func insertReceivers(db *sql.DB, table results.ReceiverTable, srsID int) error {
 	ctx := context.Background()
 
 	// Build the INSERT statement.
@@ -305,7 +305,7 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable) error {
 	defer func() { _ = stmt.Close() }()
 
 	for _, record := range table.Records {
-		geomBlob := encodeGPKGPoint(record.X, record.Y, record.HeightM, 0)
+		geomBlob := encodeGPKGPoint(record.X, record.Y, record.HeightM, srsID)
 
 		args := make([]any, 0, len(colNames))
 		args = append(args, geomBlob, record.ID, record.X, record.Y, record.HeightM)
@@ -362,7 +362,7 @@ func createContourTable(db *sql.DB, srsID int) error {
 	return nil
 }
 
-func insertContours(db *sql.DB, contours []ContourLine) error {
+func insertContours(db *sql.DB, contours []ContourLine, srsID int) error {
 	ctx := context.Background()
 
 	if len(contours) == 0 {
@@ -389,7 +389,7 @@ func insertContours(db *sql.DB, contours []ContourLine) error {
 			continue
 		}
 
-		geomBlob := encodeGPKGLineString(c.Points, 0)
+		geomBlob := encodeGPKGLineString(c.Points, srsID)
 
 		_, err = stmt.ExecContext(ctx, geomBlob, c.Level, c.BandName)
 		if err != nil {
