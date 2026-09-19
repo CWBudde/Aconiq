@@ -449,11 +449,12 @@ type endPersistSpec struct {
 	// the module whose numbers it publishes, not itself.
 	modelVersion string
 
-	// reportingPrecisionDB is stamped into the run summary when non-zero.
-	// cnossos-industry, bub-industry and buf-aircraft leave it out, which is an
-	// inconsistency this collapse preserved rather than fixed: the digest
-	// goldens pin the run summary, so changing it here would be a behaviour
-	// change smuggled inside a refactor. Tracked in PLAN.md Priority 7.
+	// reportingPrecisionDB is stamped into the run summary when non-zero. All
+	// eight END modules set it; three of them — cnossos-industry, bub-industry
+	// and buf-aircraft — did not until the value was written everywhere, and
+	// their digest goldens moved by that one key when it was. The zero check
+	// stays for a future module that reports no precision of its own: such a
+	// module must leave the key out rather than publish a 0 dB one.
 	reportingPrecisionDB float64
 
 	// export is the module's own bundle writer. The layout is shared, but the
@@ -487,12 +488,14 @@ var endPersistSpecs = map[string]endPersistSpec{
 		export:               bubrail.ExportResultBundle,
 	},
 	cnossosindustry.StandardID: {
-		modelVersion: cnossosindustry.BuiltinModelVersion,
-		export:       cnossosindustry.ExportResultBundle,
+		modelVersion:         cnossosindustry.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosindustry.ReportingPrecisionDB,
+		export:               cnossosindustry.ExportResultBundle,
 	},
 	bubindustry.StandardID: {
-		modelVersion: cnossosindustry.BuiltinModelVersion,
-		export:       bubindustry.ExportResultBundle,
+		modelVersion:         cnossosindustry.BuiltinModelVersion,
+		reportingPrecisionDB: cnossosindustry.ReportingPrecisionDB,
+		export:               bubindustry.ExportResultBundle,
 	},
 	cnossosaircraft.StandardID: {
 		modelVersion:         cnossosaircraft.BuiltinModelVersion,
@@ -500,8 +503,9 @@ var endPersistSpecs = map[string]endPersistSpec{
 		export:               cnossosaircraft.ExportResultBundle,
 	},
 	bufaircraft.StandardID: {
-		modelVersion: bufaircraft.BuiltinModelVersion,
-		export:       bufaircraft.ExportResultBundle,
+		modelVersion:         bufaircraft.BuiltinModelVersion,
+		reportingPrecisionDB: bufaircraft.ReportingPrecisionDB,
+		export:               bufaircraft.ExportResultBundle,
 	},
 }
 

@@ -6,7 +6,7 @@
     "cnossos-industry.json": "sha256:0f845414859000c07c185dbb4ad7065426b5a34830d0a8fe8415e8ef0f9b3018 bytes=352",
     "receivers.csv": "sha256:0a6410cadfb4a780d01fd09133dbea9487afdc919f93773065c6cf157f5b520d bytes=7470",
     "receivers.json": "sha256:25392dc9d531ae8a791e50780230c2bb6e57d4d1ca2aaa4f35e7b16c8bbe9e1c bytes=13399",
-    "run-summary.json": "sha256:87f5b3e9ebceb27438588385255dc8fff8b2f4cae6f0a991761e2ba0dd07dd83 bytes=328"
+    "run-summary.json": "sha256:7ee0f378316c1df81252c936130efab723876b51fdc3a5827b0a135547fd96aa bytes=357"
   },
   "run_summary": {
     "compute_crs": "EPSG:25832",
@@ -18,6 +18,7 @@
     "project_crs": "EPSG:25832",
     "receiver_count": 80,
     "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
     "source_count": 2,
     "status": "completed"
   },

@@ -1082,12 +1082,19 @@ normalized `run-summary.json` and `provenance.json` for every registered standar
 indicator, a changed raster layout or a changed summary key would show. `just lint` is 0 and the
 whole suite passes without a single test assertion being edited.
 
-### One inconsistency preserved rather than fixed
+### One inconsistency preserved rather than fixed — and since closed
 
-`cnossos-industry`, `bub-industry` and `buf-aircraft` do not write `reporting_precision_db` into
-their run summary; the other five END standards do. The table reproduces that difference exactly.
-Fixing it moves three digest goldens, which is a behaviour change and does not belong inside a
-refactor — it is now an open item in `PLAN.md` Priority 7.
+`cnossos-industry`, `bub-industry` and `buf-aircraft` did not write `reporting_precision_db` into
+their run summary; the other five END standards did. The table reproduced that difference exactly,
+because fixing it moves three digest goldens and a behaviour change does not belong inside a
+refactor.
+
+It has since been fixed on its own: all eight entries now carry the value, `bub-industry` publishing
+its upstream's exactly as it already publishes its upstream's `modelVersion`. The three goldens moved
+by that one key and by the `run-summary.json` digest, and by nothing else — `output_hash` hashes the
+receiver outputs, not the summary, so it stayed put and is the check that the change was confined.
+The zero check in `persistENDRunOutputs` stays: a future END module that reports no precision of its
+own must leave the key out rather than publish a 0 dB one.
 
 ### Where this leaves `just lint`, after the END indicator pass
 
@@ -1153,6 +1160,39 @@ rather than tidied:
 **244, from 557 when the debt item opened.** The 27 directives are 18 named `gosec`, the 8 genuine
 `dupl` coefficient tables in `schall03/beiblatt1.go`, and one `tagliatelle`. Four of the `gosec`
 ones are in `internal/app/cli`, and they are the only directives left there.
+
+## Toolchain guard — 2026-09-19
+
+Every number in this document is a count from **one** binary. `tools.versions` pins
+`GOLANGCI_LINT_VERSION=v2.12.2` and `.github/workflows/go-ci.yml` installs exactly that, but
+`just lint` used to run whatever `golangci-lint` was on `PATH`, with no check — the hazard
+`AGENTS.md` describes for treefmt, one gate short.
+
+It is not a theoretical hazard, because `.golangci.yml` runs `default: all`. The enabled set is
+therefore the binary's, not the config's, so a newer binary enables checks this document has never
+seen. A v2.13.2 binary ahead of the pin on one developer's `PATH` reported **1917 `exhaustruct_v5`
+findings** on a clean checkout of `origin/main` whose `Go CI` was green at that exact commit:
+v2.13 renamed `exhaustruct` to `exhaustruct_v5`, the disable list names only the old spelling, and
+the successor came up enabled. It is the same rename this config already absorbs twice, for
+`wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2`. The quickest tell is that
+`golangci-lint linters` lists `exhaustruct` and not `exhaustruct_v5` — i.e. the binary answering
+the question is not the one that produced the findings.
+
+`lint` and `lint-fix` now depend on a private `check-linters` recipe, which runs
+`scripts/check-tools.sh --quiet lint` — the same shape `fmt` and `check-formatted` have had through
+`check-formatters`. `lint-fix` is gated for the stronger reason: it rewrites code.
+
+**`exhaustruct_v5` is deliberately _not_ in the disable list, and cannot be while the pin is
+v2.12.2.** golangci-lint v2 errors on a name it does not know rather than ignoring it:
+
+```
+$ golangci-lint linters --disable exhaustruct_v5     # v2.12.2
+Error: unknown linters: 'exhaustruct_v5', run 'golangci-lint help linters' …
+```
+
+So pre-adding the line to insure against a future bump would break `just lint` today, for everyone
+including CI. The disable line belongs in the same commit as the pin bump, not before it; that bump
+is tracked in `PLAN.md` Priority 9.
 
 ## Reproducing these numbers
 

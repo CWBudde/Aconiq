@@ -1099,23 +1099,46 @@ editing several of its files rather than one package of its own.
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
-  - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
+  - [ ] Finish the persist/hash generics. **The "11 `persist*RunOutputs` and 10 `hash*Outputs`
+        clones" this entry used to describe are gone** — `persistReceiverRunOutputs[Output any]`
+        and `hashReceiverOutputs[Output, Indicators any]` exist, and five per-standard functions are
+        now thin adapters building a `receiverPersistPlan[T]` rather than clones. What is left
+        outside them is three: `persistDummyRunOutputs`, `persistBEBExposureRunOutputs` and
+        `hashBEBExposureOutputs`, each of which writes a different shape and may well be right as
+        it stands. Decide that before generalising further.
   - [ ] The same lift again, for the three helpers the bullet above did not count.
         `airAbsorption` — `cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)` — has **6**
         byte-identical copies, in exactly the six `propagation.go` files `GeometricDivergence`
         just touched; it needs a `(distanceM, dbPerKM float64)` signature because the config type is
-        per package. The minimum-distance clamp has **7** copies under **three names** —
+        per package. Keep the parenthesisation: `a * (d / 1000)` and `(a * d) / 1000` differ in the
+        last ulp, and the digests hash receiver tables at full `float64` precision.
+        The minimum-distance clamp has **7** copies under **three names** —
         `effectivePropagationDistance` (cnossos road/rail/industry, bub/road),
-        `effectiveSlantDistance` (cnossos/aircraft, buf/aircraft), `effectiveDistance` (iso9613) —
-        and the three names are the only reason they read as distinct. `groundEffect` has 6 copies
-        but each returns its own config field, so it is not the same shape.
-  - [ ] The encode step is still inlined in 8 places that are not named `writeJSONFile`:
+        `effectiveSlantDistance` (cnossos/aircraft, buf/aircraft), `effectiveDistance` (iso9613).
+        **The names are not the only reason they read as distinct**, as this entry used to claim:
+        there are three bodies, not one. A direct compare (2), the same with a dead local `d` (3),
+        and `math.Max` (2) — and the `math.Max` pair clamps `MinSlantDistanceM`, not
+        `MinDistanceM`, so the lift needs bare `float64` parameters here too. The three agree on
+        every input `Validate` admits, including NaN; they part only on signed zero, which
+        `min_distance_m must be finite and > 0` rules out. `groundEffect` has 6 copies but each
+        returns its own config field, so it is not the same shape. Two clamps are inlined rather
+        than named, in `schall03/propagation.go` and `rls19/road/propagation.go`, and a **seventh**
+        `GeometricDivergence` survives the same way at `schall03/propagation.go:45`.
+  - [ ] The encode step is still inlined in **9** places that are not named `writeJSONFile`:
         `report/results/{raster_io.go,receiver_table_io.go}`, `report/export/contour.go`,
         `app/cli/{export_assessment.go,export.go}`, `qa/golden/snapshot.go`,
-        `api/httpv1/openapi.go`, and `standards/beb/exposure/export.go` (which appends the newline
-        at the `os.WriteFile` call rather than as its own statement). Constraint: the first two are
-        result containers whose bytes `TestRunResultsDigestsAreStable` pins, so that gate applies
-        to this follow-up too.
+        `api/httpv1/openapi.go`, `standards/beb/exposure/export.go` (which appends the newline
+        at the `os.WriteFile` call rather than as its own statement), and `api/httpv1/handler.go`'s
+        `writeJSON`, which this entry used to miss. **Migrate that last one deliberately or not at
+        all**: it swallows the marshal error, substitutes a canned body and rewrites the HTTP
+        status, so a naive swap discards the branch that does it.
+        Constraints. Three of the nine write into `.noise/runs/<id>/results/` and are therefore
+        inside `TestRunResultsDigestsAreStable` — the two result containers **and**
+        `beb-summary.json`. But that gate does not pin formatting: `digestPayload` re-encodes every
+        `.json` compact and key-sorted before hashing, so what actually pins the indentation and the
+        trailing newline is `qa/golden/snapshot.go` — one of the nine. `api/httpv1/openapi.go` is
+        the safest: its bytes are pinned nowhere, because `just fe-api-check` parses the spec and
+        discards it, comparing the generated `schema.ts` instead.
   - [ ] Decide whether the eight hand-maintained provenance key lists should be derived from the
         descriptor instead. `iso9613` and `schall03` already pass `parameterNames()` /
         `provenanceParameterNames()`; the other eight carry a slice that must stay in step with the
@@ -1130,11 +1153,6 @@ editing several of its files rather than one package of its own.
         `MovementPeriod` are declared per package, so the compiler rejects a conversion between
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
-  - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
-        `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
-        `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
-        pin the summary and a behaviour change does not belong inside a refactor. Decide which way
-        it goes and regenerate the three goldens deliberately.
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
@@ -1898,16 +1916,16 @@ package table and all ten CLI commands, and describes the standards modules by e
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
-- [ ] **`just lint` has no toolchain guard, and a wrong binary invents ~1 900 findings.**
-      `just check-formatted` refuses to run when the formatters do not match `tools.versions`,
-      precisely because treefmt runs whatever is on `PATH` — but `just lint` runs whatever
-      `golangci-lint` is on `PATH` with no such check, although `tools.versions` pins
-      `GOLANGCI_LINT_VERSION` and CI installs exactly it. A v2.13.2 binary on a machine pinned to
-      v2.12.2 reports **1 917 `exhaustruct_v5` findings** on a tree whose `Go CI` is green, because
-      `.golangci.yml` runs `default: all` and disables `exhaustruct` but not the renamed successor —
-      the same `wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2` shape the config already handles
-      twice. Give `lint` the same `check-tools` gate `check-formatted` has, and add `exhaustruct_v5`
-      to the disable list so a version bump does not reopen this.
+- [ ] **Bump `GOLANGCI_LINT_VERSION` past the `exhaustruct` rename, and absorb it.** `lint` and
+      `lint-fix` now gate on `check-tools.sh --quiet lint`, so a binary off the pin refuses to run
+      rather than inventing findings — but the pin is still v2.12.2, and the second half of this
+      item could not ship with the first. **golangci-lint v2 errors on a linter name it does not
+      know**, so `exhaustruct_v5` cannot be added to the disable list until the binary that reads
+      the config recognises it; adding it early breaks `just lint` for everyone, CI included.
+      Bump the pin, add the line in the same commit, and re-measure: `default: all` means the
+      enabled set is the binary's, so a minor bump can enable more than the one renamed linter, and
+      `docs/lint-triage.md`'s counts are all from v2.12.2. The rename itself is the third of its
+      kind here, after `wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2`.
 
 - [ ] Promote the security scanners that only exist in a developer's `.trunk/`. That directory is
       gitignored and was never tracked, so it is one machine's tooling, not a second lint stack in

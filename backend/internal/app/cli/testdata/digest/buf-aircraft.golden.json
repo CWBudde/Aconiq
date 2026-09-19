@@ -6,7 +6,7 @@
     "buf-aircraft.json": "sha256:5a61caa470ab0c33847b73b37fff691d68af2db37b86142a592073922980019a bytes=351",
     "receivers.csv": "sha256:019c4ce01b8d44a377c9560693a105dcca39c55aeb2a894d2e568ec3ed4cf31b bytes=35215",
     "receivers.json": "sha256:201326dc0516f6b278da147efb070d279934df1f07688b7b3dd44aefdc08056e bytes=62825",
-    "run-summary.json": "sha256:f47c0641eae7144d11f33d017325780a3722e3c2d681c8fac07f19c9914b5169 bytes=338"
+    "run-summary.json": "sha256:9c8920e256c1506403ed30ee96791d812d1b0c697e4130fd069b9d760eec42e5 bytes=367"
   },
   "run_summary": {
     "compute_crs": "EPSG:25832",
@@ -18,6 +18,7 @@
     "project_crs": "EPSG:25832",
     "receiver_count": 377,
     "receiver_mode": "auto-grid",
+    "reporting_precision_db": 0.1,
     "source_count": 2,
     "status": "completed"
   },

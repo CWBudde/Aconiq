@@ -35,16 +35,26 @@ install-tools:
 check-formatters:
     ./scripts/check-tools.sh --quiet format
 
+# The linter subset of `check-tools`, quiet unless something is wrong. Both lint
+# recipes depend on it, for the reason `check-formatters` exists: golangci-lint
+# runs whatever is on PATH, and `.golangci.yml` says `default: all`, so the
+# enabled set is the binary's rather than the config's. A v2.13 binary on a tree
+# pinned to v2.12 enables `exhaustruct_v5` — the renamed `exhaustruct`, which the
+# disable list cannot name yet — and reports 1917 findings CI does not see.
+[private]
+check-linters:
+    ./scripts/check-tools.sh --quiet lint
+
 # Run linters (from backend/)
 # No --timeout flag: a CLI flag silently overrides `run.timeout` in
 # .golangci.yml, and the two disagreed (2m here vs 5m there). The config is the
 # single source of truth, so a slow cold run in CI fails on findings rather than
 # on a timeout that only this file knew about.
-lint:
+lint: check-linters
     cd backend && golangci-lint run ./...
 
 # Run linters with auto-fix
-lint-fix:
+lint-fix: check-linters
     cd backend && golangci-lint run --fix ./...
 
 # Run go vet (compiler-adjacent checks not covered by golangci-lint)
