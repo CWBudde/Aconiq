@@ -1,5 +1,7 @@
-// Package atomicfile holds one way of replacing a file's contents, and since
-// this pass it is the only one two of the three JSON writers use.
+// Package atomicfile holds one way of replacing a file's contents: write a
+// temporary file beside the destination, then rename it over the top. Both
+// JSON writers that persist project artifacts - `app/cli.writeJSONFile` and
+// `io/projectfs.writeJSONFile` - go through it.
 //
 // It exists for the reason internal/jsonio exists: the bytes were already
 // shared, the mechanism around them was not. `io/projectfs` replaced a file
@@ -39,6 +41,13 @@ import (
 // mode that directory should carry is theirs to decide.
 //
 // os.CreateTemp creates with 0o600, which is the mode every call site wrote.
+//
+// The rename replaces an existing destination on every target this project
+// releases for, Windows included: os.Rename documents that contract, and on
+// Windows it reaches MoveFileEx with MOVEFILE_REPLACE_EXISTING rather than the
+// bare MoveFile that syscall.Rename uses and that does refuse an existing
+// name. io/projectfs has replaced the manifest this way since before this
+// package existed.
 func WriteFile(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {

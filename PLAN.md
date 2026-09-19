@@ -1085,13 +1085,13 @@ editing several of its files rather than one package of its own.
       writer was atomicity, not duplication**: `cli.writeJSONFile` writes in place, so the model
       files were replaced atomically through the API and non-atomically through this importer.
       And **the import report stays in the importer** — it is not part of the model.
-      `cli.writeJSONFile` is still non-atomic for its other 17 call sites; see below.
+      `cli.writeJSONFile`'s other call sites were non-atomic too; that is closed below.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
       vacuous for everything a user would actually run. Parameterise on a
       `Kernel func(ctx, []Receiver) ([]ReceiverResult, error)`.
-- [x] **The shared chunk cache key names the resolved standard.** (2026-09-20, `70da0dc`)
+- [x] **The shared chunk cache key names the resolved standard.** (2026-09-20, #75)
       `RunConfig.StandardKey` carries id, version and profile — three fields, because a joined
       string needs an escaping rule the first time an id contains the separator — and
       `chunkCacheFormatVersion` is at `v3` so the cold entries have a greppable reason.
@@ -1201,7 +1201,7 @@ editing several of its files rather than one package of its own.
       This entry knew about one panic; `mustUint32` had the same one, reachable because
       `export_formats.go:115` discards the error from its `Sscanf`, and its `//nolint:gosec`
       claimed a bounds check it only half did.
-- [x] **Every GeoPackage geometry header carries the caller's SRS id.** (2026-09-20, `294f094`)
+- [x] **Every GeoPackage geometry header carries the caller's SRS id.** (2026-09-20, #75)
       The bytes of `receivers.gpkg` and `contours.gpkg` move, so it carries a non-numeric
       `CHANGELOG.md` entry; no computed level does, so Priority 5's versioning rule does not bite.
       **This entry named the wrong functions.** `createReceiverTable` and `createContourTable`
@@ -1212,7 +1212,7 @@ editing several of its files rather than one package of its own.
       And **the pinning test only ever covered the receiver path**, never the contour path its
       name claimed. Both are covered now, and both halves were seen failing before the fix.
 - [x] **The atomic file replacement has one home, and `app/cli` goes through it.** (2026-09-20,
-      `3f8d6a4`) `internal/atomicfile` holds what was `projectfs.writeFileAtomic`; both JSON
+      #75) `internal/atomicfile` holds what was `projectfs.writeFileAtomic`; both JSON
       writers call it, and no bytes changed.
       Two constraints are live. **This does not reopen the `json.MarshalIndent` decision** — that
       one kept the error taxonomies apart on purpose, and they stay apart; only the write moved,
@@ -1225,13 +1225,19 @@ editing several of its files rather than one package of its own.
       lists. It and `geo.IsSupportedEPSG` are still called from **no** non-test code. This is a
       product decision, not a bug fix: it would refuse projects that run end to end today whenever
       the import CRS matches.
-      The mechanical half is closed (2026-09-20, `58e9e11`). `report/export.parseEPSGCode` and
+      The mechanical half is closed (2026-09-20, #75). `report/export.parseEPSGCode` and
       `app/cli`'s two `Sscanf` copies now go through `geo.ParseCRS`, the one parser that
       validates, and return the error instead of answering `0`. Three constraints are live.
       **The refusal is at the export boundary**, so `init --crs garbage` and `run` still succeed.
       **An empty CRS stays legal and stays `0`** — it means no projection was declared — and so
       does a `WKT:` identifier. And **`app/cli` holds the reason on the context rather than
       raising it in the constructor**, because only the GeoPackage formats read an EPSG code.
+- [ ] **Every commit hash this file cites from a merged PR is unresolvable.** `main` is built by
+      squash merge, so the branch commits vanish: of `015be47`, `420735b`, `84b62e0`, `86d3bd6`
+      (#74), `c331b48`, `72d24b9`, `4ca3910` (#73) and `27d2d52`, **none** is an ancestor of
+      `main`. They resolve on a machine whose branches are unpruned and nowhere else. Retrofit
+      them to PR numbers, which is what the entries above now cite: every squash commit's subject
+      ends with `(#NN)`, so a PR number is both stable and greppable in `git log`.
 - [ ] **The other in-place writers have not been reviewed.** `internal/atomicfile` now exists and
       the two JSON writers use it; `jsonio`'s package doc names nine more sites that write at
       their `os.WriteFile` call, in `report/results`, `report/export`, `app/cli`, `qa/golden`,

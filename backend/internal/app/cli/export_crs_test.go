@@ -176,11 +176,88 @@ func TestExportStillAcceptsAnAbsentCRS(t *testing.T) {
 
 	ctx := newFormatExportContext(t.TempDir(), "", "", copiedRunResults{}, 5.0, "")
 
-	if ctx.crsErr != nil {
-		t.Fatalf("an absent CRS was recorded as unreadable: %v", ctx.crsErr)
+	if ctx.projectCRSErr != nil || ctx.resultsCRSErr != nil {
+		t.Fatalf("an absent CRS was recorded as unreadable: %v / %v", ctx.projectCRSErr, ctx.resultsCRSErr)
 	}
 
 	if ctx.epsgCode != 0 || ctx.resultsEPSG != 0 {
 		t.Fatalf("epsgCode = %d, resultsEPSG = %d, want 0 and 0", ctx.epsgCode, ctx.resultsEPSG)
 	}
+}
+
+// The two CRS label different files and no format reads both, so an
+// unreadable one must cost only the formats that carry it.
+//
+// They can diverge in practice: the results CRS is the metric one a
+// geographic project was projected into before computing, and it is read from
+// a run's metadata rather than from the manifest. A single shared error field
+// made an unreadable project CRS refuse the contours, which are labelled with
+// the results CRS and never look at the project's.
+func TestExportRefusesOnlyTheFormatsThatCarryTheUnreadableCRS(t *testing.T) {
+	t.Parallel()
+
+	const badCRS = "EPSG:not-a-number"
+
+	t.Run("a bad project CRS leaves the contours alone", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := newFormatExportContext(t.TempDir(), badCRS, "EPSG:25832", copiedRunResults{}, 5.0, "")
+
+		if ctx.projectCRSErr == nil {
+			t.Fatal("the unreadable project CRS was not recorded")
+		}
+
+		if ctx.resultsCRSErr != nil {
+			t.Fatalf("the valid results CRS was recorded as unreadable: %v", ctx.resultsCRSErr)
+		}
+
+		if ctx.resultsEPSG != 25832 {
+			t.Fatalf("resultsEPSG = %d, want 25832 — a bad project CRS must not stop the results CRS being read", ctx.resultsEPSG)
+		}
+
+		// No raster, so this returns before it would need the results CRS;
+		// what matters is that it does not refuse over the project's.
+		err := ctx.exportContourGeoPackage(map[string][]string{})
+		if err != nil {
+			t.Fatalf("the contour export refused over a CRS it does not carry: %v", err)
+		}
+	})
+
+	t.Run("a bad results CRS leaves the model GeoPackage alone", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		modelPath := filepath.Join(dir, "model.geojson")
+
+		err := os.WriteFile(modelPath, []byte(`{
+			"type": "FeatureCollection",
+			"features": [
+				{
+					"type": "Feature",
+					"properties": {"kind": "receiver", "height_m": 4},
+					"geometry": {"type": "Point", "coordinates": [100, 200]}
+				}
+			]
+		}`), 0o600)
+		if err != nil {
+			t.Fatalf("write the model: %v", err)
+		}
+
+		ctx := newFormatExportContext(dir, "EPSG:25832", badCRS, copiedRunResults{}, 5.0, modelPath)
+
+		if ctx.resultsCRSErr == nil {
+			t.Fatal("the unreadable results CRS was not recorded")
+		}
+
+		if ctx.projectCRSErr != nil {
+			t.Fatalf("the valid project CRS was recorded as unreadable: %v", ctx.projectCRSErr)
+		}
+
+		// No receiver table, so the only thing this writes is model.gpkg,
+		// which is labelled with the project CRS.
+		err = ctx.exportGeoPackage(map[string][]string{})
+		if err != nil {
+			t.Fatalf("the model GeoPackage refused over a CRS it does not carry: %v", err)
+		}
+	})
 }
