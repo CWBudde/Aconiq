@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -438,4 +439,89 @@ func hashOfSavedModel(t *testing.T, model modelgeojson.Model) string {
 	}
 
 	return sum
+}
+
+// TestSaveModelCarriesExtraArtifactRefsIntoTheSameManifestSave covers what the
+// SoundPLAN importer needed and did not have.
+//
+// It registers a fourth artifact of its own, and writing the three model refs
+// and that one in two separate saves would be the read-modify-write race this
+// store now serialises elsewhere. Taking them in one call keeps the model and
+// the importer's own report in a single manifest write.
+func TestSaveModelCarriesExtraArtifactRefsIntoTheSameManifestSave(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Extra Refs", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	height := 4.0
+	model := modelgeojson.Model{
+		SchemaVersion: 1,
+		ProjectCRS:    "EPSG:25832",
+		ImportedAt:    time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+		SourcePath:    "soundplan:test",
+		Features: []modelgeojson.Feature{
+			{ID: "r1", Kind: modelgeojson.FeatureKindReceiver, HeightM: &height, GeometryType: "Point", Coordinates: []any{1.0, 2.0}},
+		},
+	}
+
+	extra := project.ArtifactRef{
+		ID:   "artifact-soundplan-import-report",
+		Kind: "model.soundplan_import_report",
+		Path: ".noise/model/soundplan-import-report.json",
+	}
+
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model), extra)
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	reloaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	want := []string{
+		project.ArtifactIDModelNormalized,
+		project.ArtifactIDModelDump,
+		project.ArtifactIDModelValidation,
+		extra.ID,
+	}
+
+	for _, id := range want {
+		if !slices.ContainsFunc(reloaded.Artifacts, func(a project.ArtifactRef) bool { return a.ID == id }) {
+			t.Fatalf("manifest has no artifact %q", id)
+		}
+	}
+
+	// A second save with the same extra ref must replace it, not duplicate it —
+	// the three model refs already behave that way.
+	err = store.SaveModel(&proj, model, modelgeojson.Validate(model), extra)
+	if err != nil {
+		t.Fatalf("second save model: %v", err)
+	}
+
+	reloaded, err = store.Load()
+	if err != nil {
+		t.Fatalf("reload project: %v", err)
+	}
+
+	count := 0
+
+	for _, artifact := range reloaded.Artifacts {
+		if artifact.ID == extra.ID {
+			count++
+		}
+	}
+
+	if count != 1 {
+		t.Fatalf("extra artifact ref appears %d times, want 1", count)
+	}
 }

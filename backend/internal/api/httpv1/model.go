@@ -220,6 +220,11 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Held for the rest of the handler, not just across Load and SaveModel:
+	// the normalisation and validation between them can return early, and a
+	// lock released on some paths and not others is the bug this prevents.
+	defer h.lockManifest()()
+
 	proj, err := h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)

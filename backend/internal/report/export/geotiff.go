@@ -96,6 +96,12 @@ func exportRasterBands(
 	}
 
 	epsgCode := parseEPSGCode(crs)
+
+	err = validateGeoKeyEPSG(epsgCode)
+	if err != nil {
+		return nil, err
+	}
+
 	paths := make([]string, 0, meta.Bands)
 
 	for band := range meta.Bands {

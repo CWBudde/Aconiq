@@ -110,7 +110,7 @@ func runSoundPlanImport(
 		return fmt.Errorf("soundplan import produced invalid model: %s", summarizeValidationErrors(messages, 5))
 	}
 
-	err = persistSoundPlanArtifacts(store, proj, model, report, importReport, normalizedPath, dumpPath, reportPath, importReportPath)
+	err = persistSoundPlanArtifacts(store, proj, model, report, importReport, importReportPath)
 	if err != nil {
 		return err
 	}
@@ -846,45 +846,40 @@ func coalesceString(value string, fallback string) string {
 	return fallback
 }
 
+// persistSoundPlanArtifacts writes the import report and hands the model to
+// the store.
+//
+// The three model files used to be written here, through cli.writeJSONFile,
+// because the importer registers a fourth artifact and wanted it in the same
+// manifest save. That cost more than the duplication: cli.writeJSONFile writes
+// in place, so a SoundPLAN import left the model files replaceable only
+// non-atomically, while `POST /api/v1/model` wrote the same three files
+// through the store's temp-file-and-rename. SaveModel takes the extra ref now,
+// so there is one writer and one save, and its doc comment stops being a
+// claim this function contradicted.
+//
+// The import report stays here. It is the importer's own artifact, not part of
+// the model, and the store has no business knowing its shape.
 func persistSoundPlanArtifacts(
 	store projectfs.Store,
 	proj *project.Project,
 	model modelgeojson.Model,
 	report modelgeojson.ValidationReport,
 	importReport soundPlanImportReport,
-	normalizedPath string,
-	dumpPath string,
-	reportPath string,
 	importReportPath string,
 ) error {
-	if err := writeJSONFile(normalizedPath, model.ToFeatureCollection()); err != nil {
-		return err
-	}
-
-	if err := writeJSONFile(dumpPath, model.ToDump()); err != nil {
-		return err
-	}
-
-	if err := writeJSONFile(reportPath, report); err != nil {
-		return err
-	}
-
 	if err := writeJSONFile(importReportPath, importReport); err != nil {
 		return err
 	}
 
-	now := nowUTC()
-	for _, ref := range []project.ArtifactRef{
-		{ID: project.ArtifactIDModelNormalized, Kind: project.ArtifactKindModelNormalizedGeoJSON, Path: relativePath(store.Root(), normalizedPath), CreatedAt: now},
-		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: relativePath(store.Root(), dumpPath), CreatedAt: now},
-		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: relativePath(store.Root(), reportPath), CreatedAt: now},
-		{ID: "artifact-soundplan-import-report", Kind: "model.soundplan_import_report", Path: relativePath(store.Root(), importReportPath), CreatedAt: now},
-	} {
-		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
-	}
-
-	if err := store.Save(*proj); err != nil {
-		return fmt.Errorf("save project manifest: %w", err)
+	err := store.SaveModel(proj, model, report, project.ArtifactRef{
+		ID:        "artifact-soundplan-import-report",
+		Kind:      "model.soundplan_import_report",
+		Path:      relativePath(store.Root(), importReportPath),
+		CreatedAt: nowUTC(),
+	})
+	if err != nil {
+		return fmt.Errorf("save model and project manifest: %w", err)
 	}
 
 	return nil

@@ -2,6 +2,8 @@ package export
 
 import (
 	"database/sql"
+	"encoding/binary"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -363,5 +365,89 @@ func TestSanitizeColumnName(t *testing.T) {
 		if got != tt.want {
 			t.Fatalf("sanitizeColumnName(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestExportModelFeaturesGeoPackageAcceptsTheUndefinedCartesianSRS(t *testing.T) {
+	t.Parallel()
+
+	// initGeoPackage writes a gpkg_spatial_ref_sys row for srs_id -1 itself,
+	// so the geometry encoder must be able to reference it. It used to panic:
+	// the GeoPackageBinaryHeader srs_id field is int32 by the specification,
+	// and -1 is its "undefined cartesian" sentinel, not an error.
+	//
+	// This is the only one of the three GeoPackage entry points that reaches
+	// the encoder with the caller's srs_id at all - see
+	// TestReceiverAndContourGeometriesStillCarrySRSIDZero.
+	features := []ModelFeature{
+		{ID: "src-1", Kind: "source", SourceType: "point", GeometryType: "Point", Coordinates: []any{100.0, 200.0}},
+	}
+
+	gpkgPath := filepath.Join(t.TempDir(), "model.gpkg")
+
+	err := ExportModelFeaturesGeoPackage(gpkgPath, features, "", -1)
+	if err != nil {
+		t.Fatalf("export with the undefined cartesian SRS: %v", err)
+	}
+
+	if _, statErr := os.Stat(gpkgPath); statErr != nil {
+		t.Fatalf("stat gpkg: %v", statErr)
+	}
+}
+
+func TestExportGeoPackageRefusesAnSRSIDOutsideInt32(t *testing.T) {
+	t.Parallel()
+
+	features := []ModelFeature{
+		{ID: "src-1", Kind: "source", SourceType: "point", GeometryType: "Point", Coordinates: []any{100.0, 200.0}},
+	}
+
+	err := ExportModelFeaturesGeoPackage(filepath.Join(t.TempDir(), "model.gpkg"), features, "EPSG:99999999999", math.MaxInt32+1)
+	if err == nil {
+		t.Fatal("expected an error for an srs_id outside int32")
+	}
+}
+
+func TestReceiverAndContourGeometriesStillCarrySRSIDZero(t *testing.T) {
+	t.Parallel()
+
+	// createReceiverTable and createContourTable pass a literal 0 to the
+	// geometry encoder instead of the caller's srsID, so the blob header
+	// disagrees with gpkg_contents and gpkg_geometry_columns. That is a real
+	// defect, filed in PLAN.md rather than fixed here, because correcting it
+	// changes the bytes of a shipped format. This test pins the current
+	// behaviour so the fix is a deliberate, visible diff.
+	indicators := []string{"Lden"}
+
+	table := results.ReceiverTable{
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
+		Records: []results.ReceiverRecord{
+			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 56.3}},
+		},
+	}
+
+	gpkgPath := filepath.Join(t.TempDir(), "receivers.gpkg")
+
+	err := ExportReceiverGeoPackage(gpkgPath, table, "EPSG:25832", 25832)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", gpkgPath)
+	if err != nil {
+		t.Fatalf("open gpkg: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	var geom []byte
+
+	err = db.QueryRow("SELECT geom FROM receivers LIMIT 1").Scan(&geom)
+	if err != nil {
+		t.Fatalf("read geometry: %v", err)
+	}
+
+	if got := binary.LittleEndian.Uint32(geom[4:8]); got != 0 {
+		t.Fatalf("receiver geometry srs_id = %d, want 0 (the value this test pins); if you fixed that, update this test", got)
 	}
 }

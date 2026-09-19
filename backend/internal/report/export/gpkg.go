@@ -19,6 +19,11 @@ import (
 // ExportReceiverGeoPackage writes a receiver table as an OGC GeoPackage
 // with attributed point features.
 func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) (err error) {
+	err = validateSRSID(srsID)
+	if err != nil {
+		return err
+	}
+
 	err = table.Validate()
 	if err != nil {
 		return fmt.Errorf("validate receiver table: %w", err)
@@ -63,6 +68,11 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 
 // ExportContourGeoPackage writes contour lines as an OGC GeoPackage.
 func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) (err error) {
+	err = validateSRSID(srsID)
+	if err != nil {
+		return err
+	}
+
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
@@ -414,7 +424,7 @@ func encodeGPKGPoint(x float64, y float64, z float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0    // version
 	buf[3] = 0x01 // flags: little-endian, no envelope
-	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], srsIDBits(srsID))
 
 	// WKB PointZ.
 	offset := 8
@@ -441,7 +451,7 @@ func encodeGPKGLineString(points [][2]float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], srsIDBits(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian
@@ -504,6 +514,11 @@ type ModelFeature struct {
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
 // as an OGC GeoPackage with mixed geometry types.
 func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) (err error) {
+	err = validateSRSID(srsID)
+	if err != nil {
+		return err
+	}
+
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {
 		return fmt.Errorf("create gpkg directory: %w", err)
@@ -768,7 +783,7 @@ func encodeGPKGPoint2D(x float64, y float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], srsIDBits(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian
@@ -797,7 +812,7 @@ func encodeGPKGPolygon(rings [][][2]float64, srsID int) []byte {
 	buf[1] = 'P'
 	buf[2] = 0
 	buf[3] = 0x01
-	binary.LittleEndian.PutUint32(buf[4:], mustUint32(srsID))
+	binary.LittleEndian.PutUint32(buf[4:], srsIDBits(srsID))
 
 	offset := 8
 	buf[offset] = 1 // little-endian

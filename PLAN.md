@@ -1066,32 +1066,53 @@ editing several of its files rather than one package of its own.
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
-- [ ] **Serialise manifest read-modify-write.** `POST /api/v1/model`, `POST /api/v1/runs` and
-      the two import handlers each `Load` → mutate → `Save` `.noise/project.json` with no lock, and
-      the `aconiq run` subprocess writes the same manifest from another process, so two concurrent
-      requests can drop each other's change. A `sync.Mutex` shared by the handlers would cover the
-      in-process half (`Handler` uses value receivers, so it has to be a pointer field or a
-      package-level lock); the cross-process half needs a file lock or waits for the run pipeline
-      to move in-process (item above), after which the mutex is the whole fix.
-- [ ] **Route the SoundPLAN import through `Store.SaveModel`.** `persistSoundPlanArtifacts`
-      (`import_soundplan.go`) still writes the three model files itself because it adds a fourth
-      artifact ref in the same manifest save; let `SaveModel` take extra refs so `.noise/model/`
-      has one writer.
+- [x] **The in-process manifest read-modify-write is serialised.** (2026-09-19, `420735b`)
+      Two constraints are live. **The `Handler` mutex must stay a pointer**: `mux.HandleFunc` takes
+      a method value, which copies the `Handler` once per route, so a `sync.Mutex` value becomes
+      fourteen independent mutexes — with one, `go vet` reports "passes lock by value" for all 25
+      receivers and the race test still fails. And **`POST /runs` is still open against the
+      `aconiq run` child**, deliberately: closing it needs a file lock, `go.mod` has no locking
+      dependency, and it would touch seven more CLI writers. It becomes the mutex's job once the
+      run pipeline moves in-process.
+      This entry named the wrong routes: `POST /import/osm` writes no manifest, `POST /runs` has
+      no in-process `Save`, and the unlisted `DELETE /runs/{id}` is the third. And it missed that
+      both writers derived the temp file from the destination, so every writer in every process
+      shared one name — `writeFileAtomic` is the only half of this a cross-process writer reaches.
+- [x] **The SoundPLAN import goes through `Store.SaveModel`.** (2026-09-19, `84b62e0`)
+      `SaveModel` takes variadic extra artifact refs, so the importer's report lands in the same
+      manifest save and the three path parameters are gone — the caller seeded all three from
+      `store.ModelArtifactPaths()` anyway. Two constraints are live. **The real cost of the second
+      writer was atomicity, not duplication**: `cli.writeJSONFile` writes in place, so the model
+      files were replaced atomically through the API and non-atomically through this importer.
+      And **the import report stays in the importer** — it is not part of the model.
+      `cli.writeJSONFile` is still non-atomic for its other 17 call sites; see below.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
       vacuous for everything a user would actually run. Parameterise on a
       `Kernel func(ctx, []Receiver) ([]ReceiverResult, error)`.
-- [ ] Include the resolved standard tuple in the chunk cache key (`runner.go:549-573` omits it) —
-      harmless only while the engine is single-standard.
-- [ ] **Thread `cmd.Context()` end to end.** `run_pipeline.go:192` and `bench.go:395` pass
+- [ ] Include the resolved standard tuple in the chunk cache key (`chunkCacheKeyPayload`,
+      `runner.go:632`, hashes format version + receivers + sources + cell size only) — harmless
+      only while the engine is single-standard. **`DeterminismTag` cannot serve as the key**,
+      though it looks made for it: `aconiq bench` sets it to `"bench-cold"` and `"bench-warm"`
+      precisely so those two runs _share_ the cache. It needs a field of its own.
+- [ ] **Thread `cmd.Context()` end to end.** `run_modules.go:266` and `bench.go:422` pass
       `context.Background()`, so Ctrl-C during a long grid calculation does nothing; the engine's
-      full `context.Canceled` handling (`runner.go:210-244`) is unreachable. **No `Compute*` in any
-      standards module takes a context** — 10 modules, zero cancellation. `report/export/gpkg.go`
-      calls `context.Background()` 7 times on the export path for the same reason.
-- [ ] Fix the feeder-goroutine leak: `runner.go:346-389` returns on error without cancelling, so
-      if every worker has exited the feeder blocks forever on `jobs <- chunk`. Use
-      `errgroup.WithContext` or `defer cancel()`.
+      full `context.Canceled` handling (`handleRunComputeError`, `runner.go:211-245`) is reachable
+      only from `TestCancellationLeavesConsistentState`. **No `Compute*` in any standards module
+      takes a context** — 10 modules, zero cancellation. `report/export/gpkg.go` calls
+      `context.Background()` 7 times on the export path for the same reason.
+      (The line numbers this entry used to carry pointed at `run_pipeline.go`, which no longer
+      exists. Cite a function name, not a line, for anything that will outlive one commit.)
+- [x] **The feeder-goroutine leak is closed** — by `ac33895`, not by the batch that ticked this.
+      (2026-09-19) The live constraint is the one `computeChunks` now states in a comment: the
+      feeder's `select` must watch `computeCtx`, not `ctx`, because production passes
+      `context.Background()` and a guard on `ctx` never fires.
+      Two beliefs this entry carried were wrong. **`errgroup` is not a dependency**, so its
+      suggested remedy would have added one where the stdlib `sync.WaitGroup.Go` sufficed; and the
+      leak was never at the lines it cited.
+      Still missing here: **no test injects a non-cancel engine error**, because `RunConfig` has
+      no error hook, so `collectChunkResults`' `firstErr` branch is unreachable from tests.
 - [ ] Collapse the mechanical duplication — ~4 300 non-test LOC, about 9 % of the backend.
       Live constraint for anything touching `bub/road`: it aliases `cnossos/road`'s `RoadSource`,
       whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
@@ -1161,18 +1182,48 @@ editing several of its files rather than one package of its own.
       where the failure occurs. There are 690 inline `errors.New` strings in non-test code and zero
       package-level sentinels; add typed/sentinel errors for the recurring conditions and classify
       at the source. This is what makes the exit-code taxonomy testable (Priority 3).
-- [ ] Fix the reachable panic on user input: `report/export/conversion.go:14` `mustUint16` is
-      called with the user-supplied project CRS's EPSG code (`geotiff.go:337,345`).
+- [x] **The export panics on a user-supplied CRS are errors.** (2026-09-19, `015be47`)
+      Three constraints are live. **The refusal sits at the export boundary, not at `init`**: what
+      a project may contain is unchanged, so `init --crs EPSG:102100` and `run` still succeed and
+      only the export says no. **A GeoKey value is `uint16` by the GeoTIFF specification**, so a
+      larger code is unrepresentable rather than merely awkward to narrow, and the message names
+      the format's limit. And **negative GeoPackage srs_ids are legal** — the header field is
+      `int32` and `initGeoPackage` writes rows for -1 and 0 itself — so `srsIDBits` encodes two's
+      complement where `mustUint32` used to panic on the very sentinel its neighbour registered.
+      This entry knew about one panic; `mustUint32` had the same one, reachable because
+      `export_formats.go:115` discards the error from its `Sscanf`, and its `//nolint:gosec`
+      claimed a bounds check it only half did.
+- [ ] `createReceiverTable` and `createContourTable` pass a literal `0` to the geometry encoder
+      instead of the caller's `srsID` (`gpkg.go:298,382`), so every receiver and contour geometry's
+      GeoPackageBinaryHeader disagrees with `gpkg_contents` and `gpkg_geometry_columns`. Readers
+      that trust `gpkg_geometry_columns` — GDAL does — see the right CRS anyway, which is why this
+      has gone unnoticed. Fixing it changes the bytes of a shipped format;
+      `TestReceiverAndContourGeometriesStillCarrySRSIDZero` pins the current behaviour so the fix
+      is a visible diff rather than a silent one.
+- [ ] `cli.writeJSONFile` writes in place while its `projectfs` twin writes a temp file and
+      renames, so a crash part-way through leaves a truncated artifact. 17 call sites, covering
+      run summaries, validation reports, compare artifacts and bench output. Converging them
+      writes no different bytes — only the mechanism changes.
+- [ ] The project CRS goes through two parsers, neither of which validates it. `geo.ParseCRS`
+      canonicalises and classifies but is never called on it; `report/export.parseEPSGCode` and
+      `app/cli/export_formats.go:115` each re-implement it with `Sscanf` and discard the error.
+      `geo.IsSupportedEPSG` and `geo.SupportedEPSGCodes` exist and are called from **no** non-test
+      code at all. Validating `--crs` at `init` against the 13 supported codes is the product
+      decision here: it would refuse projects that run end to end today whenever the import CRS
+      matches, so it is a scope change, not a bug fix.
 - [ ] Split the god files. Re-measured: `api/httpv1/handler.go` (1 358), `app/cli/export.go`
       (1 244), `report/reporting/report.go` (1 192), `run_options.go` (1 016), `run_persist.go`
       (914). `run_extract.go` and `run_pipeline.go` are done — 3 087 → 36 and 887 → 238 — and
       nothing now exceeds the project's own configured `revive file-length-limit: 1500`, so the
       remaining question is readability rather than a breached limit.
-- [ ] `extractCnossosIndustrySources` silently drops a supported source type. Its geometry switch
-      has no `default` arm, so a type listed in the standard's `SupportedSourceTypes` that is
-      neither `point` nor `area` yields no sources and no error. Preserved and documented by the
-      extraction pass rather than changed inside a behaviour-preserving refactor; decide whether it
-      should be an error.
+- [x] **`cnossosIndustryParts` refuses a source type it has no geometry handler for.**
+      (2026-09-19, `86d3bd6`) Decided: an error, not a silent drop. The live constraint is that
+      **the arm is unreachable, and the two declarations that keep it so are the thing to watch** —
+      the guard above the switch admits only a `source_type` the profile lists in
+      `SupportedSourceTypes`, and cnossos-industry's single profile lists exactly the two the
+      switch builds, which are also the only two `SourceType` constants the package defines. So
+      the cost was never a live defect: it was that whoever adds a third type would otherwise get
+      a successful run with every source of that type missing from the result.
 
 ## Priority 8 — Frontend correctness and rework
 
