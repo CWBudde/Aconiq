@@ -53,6 +53,14 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
+      # Before the typecheck, because a stale client is the one defect the
+      # typecheck cannot see: src/api/schema.ts compiles perfectly well while
+      # describing an API the server stopped serving. The Go toolchain this
+      # needs is already here — the wasm-kernel action above set it up.
+      - name: API client contract
+        working-directory: frontend
+        run: bun run check:api
+
       - name: Typecheck
         working-directory: frontend
         run: bun run typecheck

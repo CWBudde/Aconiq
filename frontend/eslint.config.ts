@@ -18,6 +18,14 @@ export default tseslint.config(
       // when the frontend gate started building the kernel, and it is not ours
       // to lint or to add to tsconfig.
       "public/",
+      // Generated from the API's OpenAPI document by
+      // scripts/generate-api-client.mjs, which owns its bytes outright. It is
+      // committed rather than gitignored -- `tsc` has to resolve it on a fresh
+      // clone with no Go toolchain -- but it is reviewed by `just fe-api-check`
+      // comparing it against the document, not by lint rules it was never
+      // written to satisfy. The hand-written half of the contract is in
+      // src/api/client.ts and is linted normally.
+      "src/api/schema.ts",
       // Same: the HTML coverage report ships its own bundled scripts
       // (block-navigation.js, prettify.js, sorter.js), which eslint's project
       // service cannot resolve because they are in no tsconfig. Gitignored, and

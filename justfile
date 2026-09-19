@@ -280,8 +280,23 @@ fe-bundle-check:
 fe-e2e: wasm-build
     cd frontend && bun run test:e2e
 
-# Run all frontend checks (typecheck, lint, test, build, bundle-check)
-fe-ci: fe-typecheck fe-lint fe-test-wasm fe-build fe-bundle-check
+# Regenerate frontend/src/api/schema.ts from the API's OpenAPI document
+fe-api:
+    cd frontend && bun run generate:api
+
+# Check that frontend/src/api/schema.ts still matches the OpenAPI document
+#
+# This is the gate an `openapi.go` edit that never reached the frontend trips.
+# Nothing else in the tree can see that drift: both sides are TypeScript and Go
+# respectively, they never meet at compile time, and the stale client keeps
+# typechecking and passing tests while describing an API the server no longer
+# serves. The check needs the Go toolchain, which the frontend CI job already
+# has -- .github/actions/wasm-kernel sets Go up to build the kernel.
+fe-api-check:
+    cd frontend && bun run check:api
+
+# Run all frontend checks (api contract, typecheck, lint, test, build, bundle-check)
+fe-ci: fe-api-check fe-typecheck fe-lint fe-test-wasm fe-build fe-bundle-check
 
 # Refuse tracked interoperability/ paths
 #
