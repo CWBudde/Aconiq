@@ -85,10 +85,21 @@ func DefaultPropagationConfig() PropagationConfig {
 }
 
 // ComputeEmission computes day/evening/night emission levels for one source.
+//
+// The conversion is what stops this being a plain delegation: cnossos/aircraft
+// returns an unexported periodEmission, which an alias cannot name.
+//
+// The error travels unchanged, here and in the two functions below. Each
+// callee already carries whatever context it means to — ComputeReceiverOutputs
+// says "compute receiver outputs", the other two return their validation
+// errors bare — and the implementation these wrappers replaced was that same
+// code, so adding a prefix here would put a second one on a message that had
+// one, or a first on a message that had none.
 func ComputeEmission(source AircraftSource) (PeriodLevels, error) {
 	emission, err := cnossosaircraft.ComputeEmission(source)
 	if err != nil {
-		return PeriodLevels{}, fmt.Errorf("compute emission: %w", err)
+		//nolint:wrapcheck // preserves the error text of the implementation this alias replaced
+		return PeriodLevels{}, err
 	}
 
 	return PeriodLevels(emission), nil
@@ -100,21 +111,15 @@ func ComputeLden(levels PeriodLevels) float64 {
 }
 
 // ComputeReceiverPeriodLevels computes Lday/Levening/Lnight at one receiver.
+//
+//nolint:wrapcheck // preserves the error text of the implementation this alias replaced
 func ComputeReceiverPeriodLevels(receiver geo.PointReceiver, sources []AircraftSource, cfg PropagationConfig) (PeriodLevels, error) {
-	levels, err := cnossosaircraft.ComputeReceiverPeriodLevels(receiver, sources, cfg)
-	if err != nil {
-		return PeriodLevels{}, fmt.Errorf("compute receiver period levels: %w", err)
-	}
-
-	return levels, nil
+	return cnossosaircraft.ComputeReceiverPeriodLevels(receiver, sources, cfg)
 }
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
+//
+//nolint:wrapcheck // preserves the error text of the implementation this alias replaced
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []AircraftSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	outputs, err := cnossosaircraft.ComputeReceiverOutputs(receivers, sources, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("compute receiver outputs: %w", err)
-	}
-
-	return outputs, nil
+	return cnossosaircraft.ComputeReceiverOutputs(receivers, sources, cfg)
 }

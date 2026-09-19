@@ -1098,29 +1098,16 @@ editing several of its files rather than one package of its own.
       through `bubroad.ValidateSource`; the struct's JSON tag is `road_category` for both
       standards, while the CLI parameter stays `road_function_class`.
   - [x] **`buf/aircraft` is an alias package over `cnossos/aircraft`.** (2026-09-19, `c331b48`)
-        `compute.go`, `emission.go` and `export.go` were byte-identical — **three** files, not the
-        two this entry claimed — and `propagation.go` differed by one line. All four are gone,
-        replaced by the `bub/rail` shape: a const block, a type alias block and thin delegating
-        wrappers. **−657 LOC across the change**, not the −1 050 this entry promised, and the gap
-        is the point below.
-        Three constraints are live. **The alias is digest-neutral, and had to be**: `buf-aircraft`
-        keeps its own descriptor with all seven divergent parameter defaults, its
-        `BuiltinModelVersion`, its compliance boundary, its `StandardData()` under the
-        `preview-aircraft-mapping/` table names, and `LateralDirectivityDB = 1.0`, which
-        `DefaultPropagationConfig` now sets over the cnossos baseline. Sharing those the way
-        `run_options.go` and `run_persist.go` share them for the bub pair would move three goldens
-        — a deliberate number change under Priority 5's versioning rule, not a deduplication. That
-        is also why `model.go`, `indicators.go` and `standarddata.go` survive, and why the saving
-        is half what this entry expected.
-        **`standarddata.go` is what forced cnossos/aircraft's API open.** It samples the model to
-        build its tables and reached seven unexported helpers in the deleted files, so
-        `LateralDirectivity`, `OperationModeAdjustment`, `BankAngleCorrection`,
-        `AircraftClassCorrection`, `OperationCorrection`, `ProcedureCorrection` and
-        `ThrustModeCorrection` are now exported and say why in their doc comments. `bub/rail` never
-        met this, because it has no `StandardData()` of its own.
-        **`ComputeEmission` still cannot be a pure delegation**: it returns the unexported
-        `periodEmission`, which an alias cannot name, so the wrapper converts to `PeriodLevels`
-        exactly as `bub/rail` does.
+        Three constraints are live. **Keeping it digest-neutral is what bounds the saving to
+        −657 LOC** rather than the −1 050 this entry promised: the descriptor with its seven
+        divergent defaults, `BuiltinModelVersion`, the compliance boundary, `StandardData()`'s
+        `preview-aircraft-mapping/` names and `LateralDirectivityDB = 1.0` all stay, so
+        `model.go`, `indicators.go` and `standarddata.go` stay with them. Sharing them the way the
+        bub pair does moves three goldens. **`standarddata.go` samples the model**, which is why
+        seven helpers in `cnossos/aircraft` are now exported. And **the delegations return the
+        callee's error unchanged**, under a `wrapcheck` suppression each: wrapping would double
+        `compute receiver outputs:` and put a first prefix on two messages that had none.
+        This entry claimed `compute.go` and `emission.go`; `export.go` was byte-identical too.
   - [ ] Finish the persist/hash generics. **The "11 `persist*RunOutputs` and 10 `hash*Outputs`
         clones" this entry used to describe are gone** — `persistReceiverRunOutputs[Output any]`
         and `hashReceiverOutputs[Output, Indicators any]` exist, and five per-standard functions are
@@ -1129,67 +1116,42 @@ editing several of its files rather than one package of its own.
         `hashBEBExposureOutputs`, each of which writes a different shape and may well be right as
         it stands. Decide that before generalising further.
   - [x] **`AirAbsorption` and `ClampDistance` have one home too.** (2026-09-19, `72d24b9`)
-        Both live in `internal/acoustics/propagation.go` beside `GeometricDivergence`, lifted with
-        the `70990fb` pattern: new function, own test, local helper deleted outright, call site
-        qualified. Every golden held.
-        Four things this entry got wrong, corrected here because each cost a re-count.
-        `airAbsorption`'s six copies are **six of the seven** `propagation.go` files
-        `GeometricDivergence` touched, not all of them — `iso9613` is the exception and has none,
-        because its absorption is the frequency-dependent normative `AtmosphericAbsorptionBands`.
-        A **seventh** liftable site went uncounted in `rls19/road`, which spells the same
-        expression against the package constant `PropagationConstants.AirAbsorptionCoeff`; that,
-        not the per-package config type, is the reason the signature is
-        `AirAbsorption(coefficientDBPerKM, distanceM float64)`.
-        The clamp has **eleven** call sites, not seven plus two: seven named, and **four** inlined.
-        The two inlined ones this entry missed are `rls19/road`'s second clamp, for the plan
-        distance `sgr`, and a `math.Max` in `cnossos/industry` sitting thirty-five lines below that
-        same package's named helper. The kept body is the direct compare.
-        And **`groundEffect`'s six copies all return the same field**, `GroundAttenuationDB` — the
-        stated reason for excluding it was false. The conclusion stands for a different reason:
-        `acoustics` cannot import `standards/*`, so a shared version takes a `float64` and
-        degrades to `func(x float64) float64 { return x }`. The same argument disposes of
-        `barrierEffect`, `screeningEffect`, `facadeEffect` and `urbanCanyonEffect`.
-        Two constraints are live. **The parenthesisation is pinned by a test now**, not by
-        convention: `TestAirAbsorptionDividesBeforeMultiplying` fails if `a * (d / 1000)` becomes
-        `(a * d) / 1000`, which differ in the last ulp at 0.7 dB/km over 3 m. It uses variables
-        rather than constants, because untyped constant arithmetic folds at arbitrary precision and
-        would make both associations agree; every per-module unit test compares with a `1e-9`
-        tolerance and would not notice. And **schall03 keeps its own air term** — the band factor
-        sits between the two operands — while `rls19/road` keeps its own geometric term, for the
-        2π convention of Eq. 12. `schall03`'s geometric term was the seventh inlined
-        `GeometricDivergence` and is lifted.
+        Two constraints are live. **The parenthesisation is test-pinned now**, by
+        `TestAirAbsorptionDividesBeforeMultiplying`: `a * (d / 1000)` and `(a * d) / 1000` differ
+        in the last ulp, and every per-module test compares at `1e-9` and would not notice. It
+        uses variables, not constants, because untyped constant arithmetic folds at arbitrary
+        precision. And **`schall03` keeps its own air term** (a band factor sits between the
+        operands) while **`rls19/road` keeps its own geometric term** (the 2π convention of
+        Eq. 12); only schall03's geometric term was lifted.
+        Four counts in this entry were wrong. `airAbsorption` is in six of the **seven** files
+        `GeometricDivergence` touched — `iso9613` has none — plus an uncounted seventh site in
+        `rls19/road` reading a package constant, which is the real reason the signature takes two
+        floats. The clamp has **eleven** call sites, not nine: four inlined, not two.
+        `groundEffect`'s six copies all return the **same** field, so the stated reason to exclude
+        it was false; it stays excluded because `acoustics` cannot import `standards/*`, which
+        makes any shared version an identity wrapper.
   - [x] **`json.MarshalIndent` appears in exactly one place in non-test code.** (2026-09-19,
-        `4ca3910`) All nine inlined sites call `jsonio.Marshal`: `report/results`' two containers,
-        `report/export/contour.go`, `app/cli/{export_assessment.go,export.go}`,
-        `api/httpv1/{openapi.go,handler.go}`, `standards/beb/exposure/export.go` and
-        `qa/golden/snapshot.go`. Output is byte-identical at all nine, so no golden moved and
-        `just fe-api-check` still reports `schema.ts` up to date.
-        **This entry's framing was wrong.** There was never a `writeJSONFile` to consolidate into:
-        `internal/jsonio.Marshal` already was the encode step, and the six package-local writers
-        around it differ **on purpose** — atomic rename against plain `WriteFile`, `MkdirAll` or
-        not, `domainerrors` against `fmt.Errorf`, the last of which the CLI derives its exit code
-        from. The work was the encoding; the writers stay apart. `jsonio.go`'s own package doc
-        carries this now.
-        Two constraints are live. `qa/golden.AssertJSONSnapshot` **compares rather than writes**,
-        and is what pins the indentation and the trailing newline of 59 golden files — a run digest
-        does not, because `digestPayload` re-encodes every `.json` compact and key-sorted before
-        hashing. `api/httpv1.writeJSON` answers an `http.ResponseWriter` and, on a marshal failure,
-        substitutes a canned body **and** rewrites the status to 500; that branch is intact, and
-        the canned body carries the trailing newline itself so both paths still end the same way.
+        `4ca3910`) Two constraints are live. **`qa/golden.AssertJSONSnapshot` compares rather than
+        writes**, and is what pins the indentation and trailing newline of 59 goldens — a run
+        digest does not, because `digestPayload` re-encodes compact and key-sorted before hashing.
+        **`api/httpv1.writeJSON`'s marshal-failure branch is intact** — canned body, status
+        rewritten to 500 — and that body now carries its own newline.
+        **This entry's framing was wrong**: there was never a `writeJSONFile` to consolidate into.
+        `jsonio.Marshal` was already the encode step, and the writers around it differ on purpose
+        — atomic rename against plain `WriteFile`, `domainerrors` against `fmt.Errorf`. The
+        writers stay apart; `jsonio.go`'s package doc carries the reasoning.
   - [ ] Decide whether the eight hand-maintained provenance key lists should be derived from the
         descriptor instead. `iso9613` and `schall03` already pass `parameterNames()` /
         `provenanceParameterNames()`; the other eight carry a slice that must stay in step with the
         parameter schema by discipline alone. **This is not a refactor** — converging them changes
         _which_ `key_parameter.*` entries land in `provenance.json`, so it moves the digests and is
         a release decision under Priority 5's versioning rule.
-  - [x] ~~Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`.~~ Done in the
-        extraction pass: one `buildAircraftSource` serves both, and the BUF path maps the result
-        across. **This item's premise was wrong** — the old directive's "the source/output types
-        differ" was _true_. `cnossosaircraft.AircraftSource` and `bufaircraft.AircraftSource` are
-        field-for-field identical but are distinct Go types whose nested `AirportRef` and
-        `MovementPeriod` are declared per package, so the compiler rejects a conversion between
-        them; the line cited above converts the _options_ type, which is a different thing. The
-        mapping disappears when `buf/aircraft` becomes an alias package, above.
+  - [x] ~~Merge `extractCnossosAircraftSources` / `extractBUFAircraftSources`.~~ One
+        `buildAircraftSource` serves both, and since the alias above the BUF path reuses the
+        result rather than mapping it across — `toBUFAircraftSource` is gone. **This item's
+        premise was wrong** while it stood: the source types really were distinct Go types, whose
+        nested `AirportRef` and `MovementPeriod` were declared per package, so no conversion was
+        possible. That is what the alias removed.
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
