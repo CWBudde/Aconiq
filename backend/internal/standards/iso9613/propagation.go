@@ -130,14 +130,6 @@ func greaterThan(minimum float64) func(float64) bool {
 	return func(v float64) bool { return isFinite(v) && v > minimum }
 }
 
-func effectiveDistance(distanceM float64, cfg PropagationConfig) float64 {
-	if distanceM < cfg.MinDistanceM {
-		return cfg.MinDistanceM
-	}
-
-	return distanceM
-}
-
 func sourceDistance(receiver geo.PointReceiver, source PointSource) float64 {
 	horizontal := geo.Distance(receiver.Point, source.Point)
 	heightDelta := receiver.HeightM - source.SourceHeightM
@@ -148,7 +140,7 @@ func sourceDistance(receiver geo.PointReceiver, source PointSource) float64 {
 // BandAttenuation computes per-octave-band attenuation A(j) for one source-receiver path.
 // Returns the 8-band attenuation and the effective source-receiver distance.
 func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) (BandLevels, float64) {
-	distance := effectiveDistance(sourceDistance(receiver, source), cfg)
+	distance := acoustics.ClampDistance(sourceDistance(receiver, source), cfg.MinDistanceM)
 	hs := source.SourceHeightM
 	hr := receiver.HeightM
 	dp := geo.Distance(receiver.Point, source.Point) // projected ground distance

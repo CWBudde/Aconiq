@@ -68,14 +68,6 @@ func (cfg PropagationConfig) Validate() error {
 	return nil
 }
 
-func effectiveSlantDistance(distanceM float64, cfg PropagationConfig) float64 {
-	return math.Max(distanceM, cfg.MinSlantDistanceM)
-}
-
-func airAbsorption(distanceM float64, cfg PropagationConfig) float64 {
-	return cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)
-}
-
 func groundEffect(cfg PropagationConfig) float64 {
 	return cfg.GroundAttenuationDB
 }
@@ -102,12 +94,12 @@ func OperationModeAdjustment(source AircraftSource, cfg PropagationConfig) float
 }
 
 func attenuationTerms(distanceM float64, source AircraftSource, cfg PropagationConfig) propagationTerms {
-	effectiveDistance := effectiveSlantDistance(distanceM, cfg)
+	effectiveDistance := acoustics.ClampDistance(distanceM, cfg.MinSlantDistanceM)
 
 	return propagationTerms{
 		DistanceM:   effectiveDistance,
 		GeometricDB: acoustics.GeometricDivergence(effectiveDistance),
-		AirDB:       airAbsorption(effectiveDistance, cfg),
+		AirDB:       acoustics.AirAbsorption(cfg.AirAbsorptionDBPerKM, effectiveDistance),
 		GroundDB:    groundEffect(cfg),
 		LateralDB:   LateralDirectivity(source, cfg),
 		OperationDB: OperationModeAdjustment(source, cfg),
