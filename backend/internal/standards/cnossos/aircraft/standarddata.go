@@ -51,7 +51,7 @@ func aircraftClassCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(classes))
 	for _, class := range classes {
-		values = append(values, aircraftClassCorrection(class))
+		values = append(values, AircraftClassCorrection(class))
 	}
 
 	return values
@@ -64,7 +64,7 @@ func operationCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(operations))
 	for _, operation := range operations {
-		values = append(values, operationCorrection(operation))
+		values = append(values, OperationCorrection(operation))
 	}
 
 	return values
@@ -77,7 +77,7 @@ func procedureCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(procedures))
 	for _, procedure := range procedures {
-		values = append(values, procedureCorrection(procedure))
+		values = append(values, ProcedureCorrection(procedure))
 	}
 
 	return values
@@ -90,7 +90,7 @@ func thrustModeCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(modes))
 	for _, mode := range modes {
-		values = append(values, thrustModeCorrection(mode))
+		values = append(values, ThrustModeCorrection(mode))
 	}
 
 	return values
@@ -105,7 +105,7 @@ func operationModeAdjustmentTable() []float64 {
 
 	values := make([]float64, 0, len(operations))
 	for _, operation := range operations {
-		values = append(values, operationModeAdjustment(AircraftSource{OperationType: operation}, cfg))
+		values = append(values, OperationModeAdjustment(AircraftSource{OperationType: operation}, cfg))
 	}
 
 	return values
@@ -119,7 +119,7 @@ func bankAngleSampleTable() []float64 {
 
 	values := make([]float64, 0, len(angles))
 	for _, angle := range angles {
-		values = append(values, bankAngleCorrection(angle))
+		values = append(values, BankAngleCorrection(angle))
 	}
 
 	return values
@@ -135,7 +135,7 @@ func lateralOffsetSampleTable() []float64 {
 
 	values := make([]float64, 0, len(offsets))
 	for _, offset := range offsets {
-		values = append(values, lateralDirectivity(AircraftSource{LateralOffsetM: offset}, PropagationConfig{}))
+		values = append(values, LateralDirectivity(AircraftSource{LateralOffsetM: offset}, PropagationConfig{}))
 	}
 
 	return values

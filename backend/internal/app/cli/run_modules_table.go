@@ -128,14 +128,18 @@ var runModuleTable = map[string]runModule{
 		persist: endPersist(bubroad.StandardID),
 	}.run,
 
-	bufaircraft.StandardID: receiverRunModule[bufAircraftRunOptions, bufaircraft.AircraftSource, acoustics.ReceiverOutput]{
+	// buf-aircraft is an alias module over cnossos/aircraft in the same sense,
+	// so the source type is that package's. Unlike the bub pair it keeps its own
+	// extraction: the source ids and the descriptor defaults it extracts with
+	// are its own.
+	bufaircraft.StandardID: receiverRunModule[bufAircraftRunOptions, cnossosaircraft.AircraftSource, acoustics.ReceiverOutput]{
 		sourceCountKey: "buf_aircraft_sources",
 		extractFailure: "failed to extract BUF aircraft sources",
 		computeFailure: "buf aircraft compute failed",
 		parseOptions:   parseBUFAircraftRunOptions,
 		extract:        extractBUFAircraftSources,
 		buildReceivers: buildBUFAircraftReceivers,
-		compute: func(receivers []geo.PointReceiver, sources []bufaircraft.AircraftSource, options bufAircraftRunOptions) ([]acoustics.ReceiverOutput, error) {
+		compute: func(receivers []geo.PointReceiver, sources []cnossosaircraft.AircraftSource, options bufAircraftRunOptions) ([]acoustics.ReceiverOutput, error) {
 			return bufaircraft.ComputeReceiverOutputs(receivers, sources, options.PropagationConfig())
 		},
 		persist: endPersist(bufaircraft.StandardID),

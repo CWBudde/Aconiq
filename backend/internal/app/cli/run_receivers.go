@@ -228,7 +228,10 @@ func buildSchall03Receivers(sources []schall03.RailSource, calcArea *geo.BBox, o
 	return buildReceiversFromPoints("cli.buildSchall03Receivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
 }
 
-func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, calcArea *geo.BBox, options cnossosAircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
+// buildAircraftReceivers serves both aircraft modules: buf/aircraft aliases
+// cnossos/aircraft, so the source type is one. The op is a parameter because it
+// names the caller in an error, and the two callers are still two commands.
+func buildAircraftReceivers(op string, sources []cnossosaircraft.AircraftSource, calcArea *geo.BBox, options aircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
 	sourcePoints := make([]geo.Point2D, 0)
 
 	for _, source := range sources {
@@ -237,19 +240,15 @@ func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, cal
 		}
 	}
 
-	return buildReceiversFromPoints("cli.buildCnossosAircraftReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
+	return buildReceiversFromPoints(op, sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
+}
+
+func buildCnossosAircraftReceivers(sources []cnossosaircraft.AircraftSource, calcArea *geo.BBox, options cnossosAircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
+	return buildAircraftReceivers("cli.buildCnossosAircraftReceivers", sources, calcArea, aircraftRunOptions(options))
 }
 
 func buildBUFAircraftReceivers(sources []bufaircraft.AircraftSource, calcArea *geo.BBox, options bufAircraftRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {
-	sourcePoints := make([]geo.Point2D, 0)
-
-	for _, source := range sources {
-		for _, point := range source.FlightTrack {
-			sourcePoints = append(sourcePoints, point.XY())
-		}
-	}
-
-	return buildReceiversFromPoints("cli.buildBUFAircraftReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
+	return buildAircraftReceivers("cli.buildBUFAircraftReceivers", sources, calcArea, aircraftRunOptions(options))
 }
 
 func buildCnossosIndustryReceivers(sources []cnossosindustry.IndustrySource, calcArea *geo.BBox, options cnossosIndustryRunOptions) ([]geo.PointReceiver, results.GridLayout, error) {

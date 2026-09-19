@@ -1,9 +1,6 @@
 package aircraft
 
-import (
-	"github.com/aconiq/backend/internal/acoustics"
-	"github.com/aconiq/backend/internal/standards/framework"
-)
+import "github.com/aconiq/backend/internal/standards/framework"
 
 const (
 	// BuiltinModelVersion identifies the current bundled preview coefficient set.
@@ -13,19 +10,6 @@ const (
 	// indicators. Internal computation remains float64 without intermediate rounding.
 	ReportingPrecisionDB = 0.1
 )
-
-// The day/evening/night model is the directive's, not this module's: these are
-// aliases of internal/acoustics, so the Lden formula and the payload it fills
-// exist once for every module that reports the END set.
-type (
-	PeriodLevels       = acoustics.PeriodLevels
-	ReceiverIndicators = acoustics.ReceiverIndicators
-)
-
-// ComputeLden computes the day-evening-night indicator from period levels.
-func ComputeLden(levels PeriodLevels) float64 {
-	return acoustics.ComputeLden(levels)
-}
 
 // ProvenanceMetadata returns BUF aircraft baseline metadata for run provenance.
 func ProvenanceMetadata(params map[string]string) map[string]string {

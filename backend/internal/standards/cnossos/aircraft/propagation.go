@@ -80,12 +80,17 @@ func groundEffect(cfg PropagationConfig) float64 {
 	return cfg.GroundAttenuationDB
 }
 
-func lateralDirectivity(source AircraftSource, cfg PropagationConfig) float64 {
+// LateralDirectivity returns the directivity term for one source. It is
+// exported because buf/aircraft aliases this package and samples the term to
+// build its own standard-data table.
+func LateralDirectivity(source AircraftSource, cfg PropagationConfig) float64 {
 	offsetInfluence := math.Min(1.5, math.Abs(source.LateralOffsetM)/150.0)
 	return cfg.LateralDirectivityDB + offsetInfluence
 }
 
-func operationModeAdjustment(source AircraftSource, cfg PropagationConfig) float64 {
+// OperationModeAdjustment returns the climb or approach term for one source.
+// Exported for the same reason as LateralDirectivity.
+func OperationModeAdjustment(source AircraftSource, cfg PropagationConfig) float64 {
 	switch source.OperationType {
 	case OperationDeparture:
 		return cfg.ClimbCorrectionDB
@@ -104,9 +109,9 @@ func attenuationTerms(distanceM float64, source AircraftSource, cfg PropagationC
 		GeometricDB: acoustics.GeometricDivergence(effectiveDistance),
 		AirDB:       airAbsorption(effectiveDistance, cfg),
 		GroundDB:    groundEffect(cfg),
-		LateralDB:   lateralDirectivity(source, cfg),
-		OperationDB: operationModeAdjustment(source, cfg),
-		BankDB:      bankAngleCorrection(source.BankAngleDeg),
+		LateralDB:   LateralDirectivity(source, cfg),
+		OperationDB: OperationModeAdjustment(source, cfg),
+		BankDB:      BankAngleCorrection(source.BankAngleDeg),
 	}
 }
 
@@ -121,7 +126,9 @@ func lineSourceLevelAtReceiver(emissionDB float64, receiver geo.PointReceiver, s
 	return emissionDB - totalAttenuation(terms)
 }
 
-func bankAngleCorrection(bankAngleDeg float64) float64 {
+// BankAngleCorrection returns the bank-angle term, capped at 2.5 dB.
+// Exported for the same reason as LateralDirectivity.
+func BankAngleCorrection(bankAngleDeg float64) float64 {
 	absBank := math.Abs(bankAngleDeg)
 	if absBank <= 0 {
 		return 0

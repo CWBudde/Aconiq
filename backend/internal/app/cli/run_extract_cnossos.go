@@ -381,9 +381,9 @@ func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]fu
 // buildAircraftSource merges the run options with one feature's property
 // overrides into a single aircraft source.
 //
-// It serves both cnossos-aircraft and buf-aircraft, whose source structs are
-// field-for-field identical but are separate Go types, so the BUF path maps
-// the result across rather than converting it.
+// It serves both cnossos-aircraft and buf-aircraft. Since buf/aircraft became
+// an alias package the source type is one, so the BUF path reuses the result
+// rather than mapping it across.
 func buildAircraftSource(feature modelgeojson.Feature, options cnossosAircraftRunOptions, scope, sourceID string, track []geo.Point3D) (cnossosaircraft.AircraftSource, error) {
 	source := cnossosaircraft.AircraftSource{
 		ID:         sourceID,
