@@ -35,7 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/tabs";
 import { Callout } from "@/ui/callout";
 import { FormField } from "@/ui/form-field";
 import { PageHeader, SectionHeading } from "@/ui/page-header";
-import { useTheme } from "@/ui/theme-provider";
+import { THEME_STORAGE_KEY, useTheme } from "@/ui/theme-provider";
 import { cn } from "@/ui/lib/utils";
 
 /**
@@ -264,7 +264,7 @@ function AppSettings({
             <div className="rounded-md border p-4 text-sm text-muted-foreground">
               <p>{m.msg_settings_storage_summary()}</p>
               <p className="mt-3 font-mono text-xs text-foreground">
-                {localeStorageKey} · {DRAFT_KEY} · aconiq-theme
+                {localeStorageKey} · {DRAFT_KEY} · {THEME_STORAGE_KEY}
               </p>
             </div>
           </div>

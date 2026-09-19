@@ -4,6 +4,7 @@ import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
+import { m } from "@/i18n/messages";
 import { MapContext } from "./use-map";
 import { BASEMAP_SOURCE_ID, basemapStyle, OFFLINE_STYLE } from "./basemap";
 import { useMapStore } from "./map-store";
@@ -25,10 +26,21 @@ import { LAYER_IDS, SOURCE_IDS } from "./layers";
  */
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
-const MAP_TIMEOUT_MESSAGE =
-  "The map did not finish loading. WebGL rendering may be blocked or unavailable in this browser.";
+/**
+ * Why the map is not drawn, as a discriminant rather than a sentence.
+ *
+ * The state holds the reason and the render resolves it, because a message
+ * read at module scope — which is what the two English constants here used to
+ * be — is frozen in whichever locale was active when the module was imported,
+ * and the language switch no longer reloads the page (`src/locale.ts`).
+ */
+type MapErrorKind = "timeout" | "unavailable";
 
-const MAP_UNAVAILABLE_MESSAGE = "Map rendering is unavailable in this browser.";
+function mapErrorMessage(kind: MapErrorKind): string {
+  return kind === "timeout"
+    ? m.error_map_load_timeout()
+    : m.error_map_webgl_unavailable();
+}
 
 /**
  * Session-scoped kill switch for WebGL map rendering.
@@ -158,8 +170,8 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const [map, setMap] = useState<Map | null>(null);
-  const [mapError, setMapError] = useState<string | null>(
-    webglDisabledForSession ? MAP_UNAVAILABLE_MESSAGE : null,
+  const [mapError, setMapError] = useState<MapErrorKind | null>(
+    webglDisabledForSession ? "unavailable" : null,
   );
   const basemap = useMapStore((s) => s.basemap);
   const tilesFailed = useMapStore((s) => s.tilesFailed);
@@ -193,7 +205,7 @@ export function MapView({
       });
     } catch {
       disableWebGLForSession();
-      setMapError(MAP_UNAVAILABLE_MESSAGE);
+      setMapError("unavailable");
       return;
     }
 
@@ -226,7 +238,7 @@ export function MapView({
 
     const fallbackTimer = window.setTimeout(() => {
       if (!mapRef.current) {
-        setMapError(MAP_TIMEOUT_MESSAGE);
+        setMapError("timeout");
       }
     }, MAP_LOAD_TIMEOUT_MS);
 
@@ -327,10 +339,14 @@ export function MapView({
         {mapError ? (
           <div className="absolute inset-0 flex items-center justify-center bg-background p-8 text-center">
             <Card className="max-w-md space-y-2 p-6">
-              <p className="text-lg font-semibold">Map unavailable</p>
-              <p className="text-sm text-muted-foreground">{mapError}</p>
+              <p className="text-lg font-semibold">
+                {m.label_map_unavailable()}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {mapErrorMessage(mapError)}
+              </p>
               <Button variant="outline" size="sm" onClick={retryMapInit}>
-                Retry
+                {m.action_retry()}
               </Button>
             </Card>
           </div>

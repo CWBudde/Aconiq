@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
@@ -54,6 +55,53 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  // No user-visible prose outside the message catalogue.
+  //
+  // Scoped to the three directories that render the product: `src/pages`,
+  // `src/map` and `src/ui`. Everything the rule reports here is either a
+  // sentence that belongs in `messages/*.json` or one of the punctuation and
+  // separator nodes below, which are presentation and translate to nothing.
+  //
+  // `noStrings` stays off on purpose: with it on the rule also polices every
+  // string-valued prop, and the props that legitimately carry a literal
+  // (`variant`, `side`, `data-*`, a Tailwind `className`) outnumber the prose
+  // by two orders of magnitude. Bare JSX text is where English has actually
+  // been leaking in — `map-view.tsx` and `sidebar.tsx` both leaked exactly
+  // that way — so that is what this guards.
+  //
+  // Tests are excluded: they assert on rendered copy and `m.key()` is how they
+  // do it, but the fixtures and labels they build are not shipped strings.
+  {
+    files: ["src/pages/**", "src/map/**", "src/ui/**"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    plugins: { react },
+    rules: {
+      "react/jsx-no-literals": [
+        "error",
+        {
+          allowedStrings: [
+            // The wordmark. A brand name is the same in every locale.
+            "AconiQ",
+            "AQ",
+            // Punctuation and separators the JSX adds around a message,
+            // because the catalogue holds the bare term — see the
+            // `label_*` colon rule in `src/locale-parity.test.ts`.
+            ":",
+            "·",
+            "×",
+            "/",
+            "(",
+            ")",
+            ",",
+            "—",
+            "–",
+            "-",
+            "…",
+          ],
+        },
+      ],
     },
   },
   // Relax rules for shadcn/ui generated components (vendor-like code)

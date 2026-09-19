@@ -518,6 +518,9 @@
   "msg_unsaved_changes_before_run": "Die Berechnung verwendet das im Projekt gespeicherte Modell. Speichern Sie Ihre Änderungen zuerst.",
   "nav_primary_label": "Hauptnavigation",
   "action_skip_to_content": "Zum Inhalt springen",
+  "label_sidebar": "Seitenleiste",
+  "msg_sidebar_mobile_description": "Zeigt die mobile Seitenleiste an.",
+  "action_toggle_sidebar": "Seitenleiste ein- oder ausblenden",
   "msg_copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen",
   "msg_log_line_count": [
     {
@@ -597,6 +600,9 @@
   "msg_import_nothing": "Es gibt nichts zu importieren — die Datei enthält keine Objekte, Immissionsorte und kein Berechnungsgebiet, die das Modell liest.",
   "msg_import_errors_remain": "Diese Befunde sind mit dem Import gekommen und stehen jetzt im Modell.",
   "action_show_feature_on_map": "{id} auf der Karte zeigen",
+  "label_map_unavailable": "Karte nicht verfügbar",
+  "error_map_load_timeout": "Die Karte wurde nicht fertig geladen. Die WebGL-Darstellung ist in diesem Browser möglicherweise blockiert oder nicht verfügbar.",
+  "error_map_webgl_unavailable": "Die Kartendarstellung ist in diesem Browser nicht verfügbar.",
   "msg_map_crs_projecting": "Das Modell ist in {crs} gespeichert. Es wird für die Darstellung nach WGS 84 umgerechnet.",
   "msg_map_crs_reprojected": "Dargestellt in WGS 84, gespeichert in {crs}.",
   "msg_map_crs_unsupported": "Das Modell ist in {crs} gespeichert und in diesem Modus steht keine Umrechnung zur Verfügung, sodass es nicht dargestellt werden kann. Ein Backend mit Umrechnung — der Desktop- oder Browsermodus — zeigt es an der richtigen Stelle.",

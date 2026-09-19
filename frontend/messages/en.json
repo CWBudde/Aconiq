@@ -518,6 +518,9 @@
   "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
   "nav_primary_label": "Main navigation",
   "action_skip_to_content": "Skip to content",
+  "label_sidebar": "Sidebar",
+  "msg_sidebar_mobile_description": "Displays the mobile sidebar.",
+  "action_toggle_sidebar": "Toggle sidebar",
   "msg_copy_failed": "Copying to the clipboard failed",
   "msg_log_line_count": [
     {
@@ -597,6 +600,9 @@
   "msg_import_nothing": "There is nothing to import — the file holds no features, receivers or calculation area the model reads.",
   "msg_import_errors_remain": "These findings came in with the import and are in the model now.",
   "action_show_feature_on_map": "Show {id} on the map",
+  "label_map_unavailable": "Map unavailable",
+  "error_map_load_timeout": "The map did not finish loading. WebGL rendering may be blocked or unavailable in this browser.",
+  "error_map_webgl_unavailable": "Map rendering is unavailable in this browser.",
   "msg_map_crs_projecting": "The model is stored in {crs}. It is being projected into WGS 84 for display.",
   "msg_map_crs_reprojected": "Displayed in WGS 84, stored in {crs}.",
   "msg_map_crs_unsupported": "The model is stored in {crs} and no projection is available in this mode, so it cannot be drawn. A backend that can project it — the desktop or browser mode — shows it in place.",

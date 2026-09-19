@@ -22,10 +22,19 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 
+/**
+ * Where the chosen theme is remembered.
+ *
+ * Exported because the settings page lists the keys this app writes to
+ * `localStorage`, and a key spelled a second time there is a key that goes
+ * stale the moment this one changes.
+ */
+export const THEME_STORAGE_KEY = "aconiq-theme";
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "aconiq-theme",
+  storageKey = THEME_STORAGE_KEY,
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(
