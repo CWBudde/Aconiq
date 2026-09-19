@@ -33,7 +33,7 @@ func parameterDefinitions() []framework.ParameterDefinition {
 		{Name: "iso9613_directivity_correction_db", Kind: framework.ParameterKindFloat, Unit: framework.UnitDecibel, DefaultValue: "0", Description: "Directivity correction applied at the source"},
 		{Name: "iso9613_tonality_correction_db", Kind: framework.ParameterKindFloat, Unit: framework.UnitDecibel, DefaultValue: "0", Description: "Tonality correction applied at the reporting boundary"},
 		{Name: "iso9613_impulsivity_correction_db", Kind: framework.ParameterKindFloat, Unit: framework.UnitDecibel, DefaultValue: "0", Description: "Impulsivity correction applied at the reporting boundary"},
-		{Name: "ground_factor", Kind: framework.ParameterKindFloat, DefaultValue: "0.5", Min: &minZero, Max: &maxGroundFactor, Description: "Normalized ground factor G for the initial homogeneous-ground scaffold"},
+		{Name: "ground_factor", Kind: framework.ParameterKindFloat, DefaultValue: "0.5", Min: &minZero, Max: &maxGroundFactor, Description: "Normalized ground factor G for ground no ground-zone feature covers"},
 		// Bounded because the ISO 9613-1 absorption coefficient divides by the
 		// absolute temperature: unbounded, -273 °C was accepted and produced
 		// infinite attenuation rather than a refusal. See minAirTemperatureC.

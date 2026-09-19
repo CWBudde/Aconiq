@@ -335,6 +335,13 @@ func runISO9613Module(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
+	groundZones, err := extractISO9613GroundZones(input.model)
+	if err != nil {
+		input.log.addf("failed to extract ISO 9613 ground zones: %v", err)
+
+		return runModuleResult{}, err
+	}
+
 	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildISO9613Receivers(sources, calcArea, options)
 	})
@@ -346,11 +353,13 @@ func runISO9613Module(input runModuleInput) (runModuleResult, error) {
 
 	input.log.addf("iso9613_sources=%d", len(sources))
 	input.log.addf("iso9613_barriers=%d", len(barriers))
+	input.log.addf("iso9613_ground_zones=%d", len(groundZones))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea)
 
 	propagationConfig := options.PropagationConfig()
 	propagationConfig.Barriers = barriers
+	propagationConfig.GroundZones = groundZones
 
 	outputs, err := iso9613.ComputeReceiverOutputs(receivers, sources, propagationConfig)
 	if err != nil {

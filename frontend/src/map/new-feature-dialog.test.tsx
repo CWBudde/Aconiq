@@ -74,6 +74,59 @@ describe("NewFeatureDialog", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers the ground zone only for polygon geometry", () => {
+    renderDialog(polygon);
+    openKindPicker();
+
+    expect(
+      screen.getByRole("option", { name: m.option_ground_zone() }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the ground zone option for non-polygon geometry", () => {
+    renderDialog(point);
+    openKindPicker();
+
+    expect(
+      screen.queryByRole("option", { name: m.option_ground_zone() }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("adds a ground zone carrying its factor", () => {
+    renderDialog(polygon);
+
+    selectKind(m.option_ground_zone());
+    fireEvent.change(screen.getByLabelText(m.label_ground_factor()), {
+      target: { value: "0.8" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    const state = useModelStore.getState();
+    expect(state.features).toHaveLength(1);
+    expect(state.features[0]?.kind).toBe("ground-zone");
+    expect(state.features[0]?.properties?.["ground_factor"]).toBe(0.8);
+    // A footprint on the ground, not an object sound travels around.
+    expect(state.features[0]?.heightM).toBeUndefined();
+  });
+
+  it("clamps a factor typed outside [0,1] rather than saving it", () => {
+    renderDialog(polygon);
+
+    selectKind(m.option_ground_zone());
+    fireEvent.change(screen.getByLabelText(m.label_ground_factor()), {
+      target: { value: "4" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    expect(
+      useModelStore.getState().features[0]?.properties?.["ground_factor"],
+    ).toBe(1);
+  });
+
   it("hides the receiver option for non-point geometry", () => {
     renderDialog(polygon);
     openKindPicker();
@@ -91,6 +144,7 @@ describe("NewFeatureDialog", () => {
       m.option_building(),
       m.option_barrier(),
       m.option_receiver(),
+      m.option_ground_zone(),
     ]) {
       expect(label).not.toMatch(/^option_/);
       expect(label.trim()).not.toBe("");

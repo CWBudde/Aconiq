@@ -88,6 +88,24 @@ const ISSUES: {
     featureId: "w1",
     params: {},
   },
+  "groundzone.factor.required": {
+    level: "error",
+    code: "groundzone.factor.required",
+    featureId: "z1",
+    params: {},
+  },
+  "groundzone.factor.invalid": {
+    level: "error",
+    code: "groundzone.factor.invalid",
+    featureId: "z1",
+    params: {},
+  },
+  "groundzone.geometry.invalid": {
+    level: "error",
+    code: "groundzone.geometry.invalid",
+    featureId: "z1",
+    params: {},
+  },
   "receiver.coordinates.invalid": {
     level: "error",
     code: "receiver.coordinates.invalid",

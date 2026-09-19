@@ -29,6 +29,7 @@ import { m } from "@/i18n/messages";
 export const SOURCE_IDS = {
   buildings: "model-buildings",
   barriers: "model-barriers",
+  groundZones: "model-ground-zones",
   sources: "model-sources",
   receivers: "model-receivers",
   calcArea: "calc-area",
@@ -43,6 +44,8 @@ export const LAYER_IDS = {
   buildingsFill: "buildings-fill",
   buildingsOutline: "buildings-outline",
   barrierLine: "barrier-line",
+  groundZoneFill: "ground-zone-fill",
+  groundZoneOutline: "ground-zone-outline",
   sourcesPoint: "sources-point",
   sourcesLine: "sources-line",
   sourcesArea: "sources-area-fill",
@@ -242,6 +245,36 @@ export const RECEIVER_LAYERS: LayerSpecification[] = [
   },
 ];
 
+/**
+ * A ground-category area, drawn as the ground rather than as an object.
+ *
+ * Brown-green and unstroked-looking on purpose: a zone is not a thing sound
+ * travels around, and giving it a building's weight would read as one. The
+ * outline is solid where `calc-area`'s is dashed, because the two overlap
+ * constantly — a yard with one calculation area over several ground zones is
+ * the ordinary case — and the dash is what tells them apart at a glance.
+ */
+export const GROUND_ZONE_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.groundZoneFill,
+    type: "fill",
+    source: SOURCE_IDS.groundZones,
+    paint: {
+      "fill-color": "#84cc16",
+      "fill-opacity": 0.14,
+    },
+  },
+  {
+    id: LAYER_IDS.groundZoneOutline,
+    type: "line",
+    source: SOURCE_IDS.groundZones,
+    paint: {
+      "line-color": "#65a30d",
+      "line-width": 1.5,
+    },
+  },
+];
+
 export const CALC_AREA_LAYERS: LayerSpecification[] = [
   {
     id: LAYER_IDS.calcAreaFill,
@@ -324,6 +357,12 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
     id: "calc-area",
     label: m.label_calc_area,
     layerIds: [LAYER_IDS.calcAreaFill, LAYER_IDS.calcAreaOutline],
+    defaultVisible: true,
+  },
+  {
+    id: "ground-zones",
+    label: m.label_ground_zones,
+    layerIds: [LAYER_IDS.groundZoneFill, LAYER_IDS.groundZoneOutline],
     defaultVisible: true,
   },
   {

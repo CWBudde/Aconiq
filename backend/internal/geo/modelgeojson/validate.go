@@ -124,6 +124,15 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		if geomType != GeometryTypePoint {
 			addError(report, "receiver.geometry.invalid", id, "receiver geometry must be Point")
 		}
+	case FeatureKindGroundZone:
+		validateGroundFactor(feature, report)
+
+		// Polygon only, for calc-area's reason: a multi-part zone is a shape
+		// the UI cannot draw, and accepting one now fixes how its parts
+		// combine before anything needs them to.
+		if geomType != GeometryTypePolygon {
+			addError(report, "groundzone.geometry.invalid", id, "ground-zone geometry must be Polygon")
+		}
 	case FeatureKindCalcArea:
 		// No height_m check: a calculation area is a footprint on the ground
 		// bounding the receiver grid, not an object sound travels around.
@@ -159,6 +168,30 @@ func validateSourceKind(feature Feature, geomType string, report *ValidationRepo
 		addError(report, "source.type.invalid", id, "source_type must be one of point|line|area")
 	case !geometryCompatibleWithSourceType(geomType, sourceType):
 		addError(report, "source.geometry.mismatch", id, fmt.Sprintf("geometry type %s does not match source_type %s", geomType, sourceType))
+	}
+}
+
+// validateGroundFactor checks a ground zone's ground_factor property.
+//
+// It is required rather than defaulted: a zone whose factor is missing is
+// indistinguishable from ground the model says nothing about, and the run
+// already has a global fallback for that. Defaulting it here would make a
+// typo in the property name read as hard ground.
+func validateGroundFactor(feature Feature, report *ValidationReport) {
+	id := feature.ID
+
+	raw, present := feature.Properties[PropertyGroundFactor]
+	if !present {
+		addError(report, "groundzone.factor.required", id,
+			"ground-zone feature requires "+PropertyGroundFactor)
+
+		return
+	}
+
+	factor, ok := asFiniteFloat(raw)
+	if !ok || factor < 0 || factor > 1 {
+		addError(report, "groundzone.factor.invalid", id,
+			"ground-zone "+PropertyGroundFactor+" must be a finite number within [0,1]")
 	}
 }
 

@@ -49,6 +49,9 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Gl. 9 — Drei-Regionen-Modell: A_gr = A_s + A_r + A_m
 - [x] Tabelle 3 — Frequenzabhängige Ausdrücke mit Funktionen a'(h), b'(h), c'(h), d'(h)
 - [x] Gewichtungsfaktor q für die Mittelregion
+- [x] G_s, G_r und G_m werden je Ausbreitungsweg aus den Bodenzonen des Modells
+      (`kind: ground-zone`) ermittelt: Quellregion 30·h_s, Empfängerregion 30·h_r, Mittelregion
+      dazwischen, jeweils als längengewichtetes Mittel der überstrichenen Zonen
 - [x] Gl. 10 — Vereinfachtes Verfahren für A-bewertete Pegel
 - [ ] Gl. 11 — D_Ω Nahfeldkorrektur bei vereinfachtem Verfahren
 
@@ -89,7 +92,11 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 
 - Luftabsorption wird beim Referenzluftdruck (101,325 kPa) berechnet; ein abweichender
   Standortluftdruck ist nicht parametrierbar. Die Lufttemperatur ist auf [−60, 60] °C begrenzt.
-- Bodendämpfung nutzt einen einzigen globalen Bodenfaktor G für alle drei Regionen
+- Bodendämpfung ermittelt G je Region aus Bodenzonen-Polygonen; Boden, den keine Zone abdeckt,
+  erhält den globalen Parameter `ground_factor`. Bei überlappenden Zonen gilt die in der Datei
+  zuerst genannte. Die Zonen sind horizontale Polygone ohne Höhenbezug; eine Zone, die ein
+  Ausbreitungsweg nur streift, wird über die tatsächlich überstrichene Länge gewichtet und nicht
+  auf die ganze Region ausgedehnt.
 - Barrierendämpfung wird nur für die Beugung über die Oberkante berechnet; seitliche Beugung um
   vertikale Kanten (Gl. 13) entfällt weiterhin.
 - Der Abstandsanteil a parallel zur Beugungskante (Bild 6) wird aus der Ausrichtung des

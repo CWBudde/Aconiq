@@ -31,12 +31,19 @@ const (
 // Multi-word kinds are hyphenated, matching the enum values elsewhere in this
 // codebase (`auto-grid`, `test-fixture`); snake_case is reserved for property
 // names (`source_type`, `height_m`).
+//
+// FeatureKindGroundZone is a ground-category area: a polygon carrying a
+// `ground_factor` in [0,1], from which ISO 9613-2 resolves G for the source,
+// middle and receiver regions of each path instead of reading one global
+// number three times. Like calc-area it is a footprint on the ground rather
+// than an object sound travels around, so it carries no height_m.
 const (
-	FeatureKindSource   = "source"
-	FeatureKindBuilding = "building"
-	FeatureKindBarrier  = "barrier"
-	FeatureKindReceiver = "receiver"
-	FeatureKindCalcArea = "calc-area"
+	FeatureKindSource     = "source"
+	FeatureKindBuilding   = "building"
+	FeatureKindBarrier    = "barrier"
+	FeatureKindReceiver   = "receiver"
+	FeatureKindCalcArea   = "calc-area"
+	FeatureKindGroundZone = "ground-zone"
 )
 
 // FeatureKinds is every kind schema v1 accepts. The validator builds its
@@ -48,7 +55,16 @@ var FeatureKinds = []string{
 	FeatureKindBarrier,
 	FeatureKindReceiver,
 	FeatureKindCalcArea,
+	FeatureKindGroundZone,
 }
+
+// Property names schema v1 reads off a feature, for the kinds whose payload is
+// not a typed field on Feature.
+const (
+	// PropertyGroundFactor is a ground zone's normalized ground factor G,
+	// 0 for acoustically hard and 1 for porous ground.
+	PropertyGroundFactor = "ground_factor"
+)
 
 // Source geometry classes accepted by model schema v1 (Feature.SourceType).
 const (

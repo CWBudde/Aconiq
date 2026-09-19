@@ -90,7 +90,14 @@ function isBasemapTileFailure(event: unknown): boolean {
   return (event as { sourceId?: unknown }).sourceId === BASEMAP_SOURCE_ID;
 }
 
-/** The model's own layers: a click here is a selection. */
+/**
+ * The model's own layers: a click here is a selection.
+ *
+ * Ground zones come last because the caller takes the first hit and maplibre
+ * answers topmost first. A zone is the one model object drawn *under* all the
+ * others — it is ground, not an obstacle — so a source standing on it has to
+ * win the click, and the order here is what says so in the tests' fake map.
+ */
 const MODEL_LAYERS = [
   LAYER_IDS.sourcesPoint,
   LAYER_IDS.sourcesLine,
@@ -98,6 +105,8 @@ const MODEL_LAYERS = [
   LAYER_IDS.buildingsFill,
   LAYER_IDS.barrierLine,
   LAYER_IDS.receiversPoint,
+  LAYER_IDS.groundZoneFill,
+  LAYER_IDS.groundZoneOutline,
 ];
 
 /**
