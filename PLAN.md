@@ -1099,25 +1099,6 @@ editing several of its files rather than one package of its own.
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
-  - [x] ~~Lift `ComputeReceiverOutputs` (12 copies), `ProvenanceMetadata` (10) and
-        `geometricDivergence` (8).~~ (2026-09-19) `acoustics.GeometricDivergence`,
-        `acoustics.ComputeReceiverOutputs[S]` and `framework.StampKeyParameters` are the three
-        shared homes; every module keeps its exported name as a thin delegation, so no caller moved.
-        **Two of the three counts were wrong, and the shape of the error matters.**
-        `geometricDivergence` was **7**, not 8 — `rls19/road` has a _field_ named
-        `GeometricDivergence` and computes `A_div` by the RLS-19 formula, which is what inflated the
-        count. `ComputeReceiverOutputs` has **11** declarations, not 12 (the twelfth is
-        `schall03.ComputeReceiverOutputsWithDataPack`, a variant), and only **6** carried a
-        duplicated body: `bub/rail` and `bub/industry` were already one-line delegations and
-        `beb/exposure` has no such function at all. Count the bodies, not the names.
-        **The closure is where the modules genuinely differ**: `cnossos/{road,rail}` and `bub/road`
-        pass `receiver.Point` to `ComputeReceiverPeriodLevels` while `cnossos/{industry,aircraft}`
-        and `buf/aircraft` pass the whole `geo.PointReceiver`. That is why the shared function takes
-        a `PeriodLevelsFunc[S]` rather than being generic over the config type too.
-        **Delegating to a shared package costs a `fmt.Errorf` wrap**: `wrapcheck` treats
-        `internal/acoustics` as external, so all six delegations wrap, as
-        `ExportResultBundle` and `bub/rail`'s own delegation already did. Do not reach for
-        `//nolint:wrapcheck` — the repo has no such precedent.
   - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
   - [ ] The same lift again, for the three helpers the bullet above did not count.
         `airAbsorption` — `cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)` — has **6**
@@ -1149,18 +1130,6 @@ editing several of its files rather than one package of its own.
         `MovementPeriod` are declared per package, so the compiler rejects a conversion between
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
-  - [x] ~~Consolidate 7 copies of `writeJSONFile`/`writeJSON`.~~ (2026-09-19) `jsonio.Marshal`
-        owns the encode step — `MarshalIndent(v, "", "  ")` plus the trailing newline — and the
-        seven callers keep everything else. **The count was right and a narrower reading of it was
-        wrong**: the seven include `qa/acceptance/rls19_test20` and a test-local helper in
-        `report/reporting`, and `httpv1.writeJSON` is _not_ among them — it writes an HTTP response,
-        not a file, and only shares the name. `projectfs.Save` inlined the same two lines a few
-        lines above its own `writeJSONFile` and was folded in as an eighth.
-        **Only the encode step is shared, deliberately.** Each caller wraps all three stages in its
-        own text — `domainerrors` with its own op in `app/cli` and `projectfs`, `fmt.Errorf`
-        elsewhere — so a shared writer could not say which stage failed without converging messages
-        that feed the CLI exit-code taxonomy. `projectfs`'s `.tmp` + `os.Rename` and its cleanup on
-        a partial write stay where they are.
   - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
         `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
         `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
@@ -1187,23 +1156,6 @@ editing several of its files rather than one package of its own.
       neither `point` nor `area` yields no sources and no error. Preserved and documented by the
       extraction pass rather than changed inside a behaviour-preserving refactor; decide whether it
       should be an error.
-- [x] ~~Delete dead code: `newPlaceholderCommand`, `mustFinite`, the unused `cfg` param,
-      `schall03`'s `Beiblatt3RetarderRangierenLevel` and `OctaveBands`, and the never-called
-      `roundToWholeDB`.~~ (2026-09-19) **Four of the six entries were wrong, so the list cost more
-      to check than to act on.** `newPlaceholderCommand` and `mustFinite` were already gone.
-      The `cfg` parameter at `cnossos/industry/propagation.go` is read — `areaGeometryEffect` uses
-      `cfg.MinDistanceM`. `roundToWholeDB` is not never-called: `schall03/assessment_test.go` calls
-      it, so it is a documented rounding rule with a test, and deleting it inside a dedup pass would
-      have deleted the test with it. Only `schall03.OctaveBands()` was actually dead and it is gone.
-      **`octaveBandOrder` is not dead and must stay** — `OctaveSpectrum.Validate` reads it to name
-      the band in its error, which a grep that excludes `model.go` will not show you; deleting the
-      whole `OctaveBand` cluster breaks the build.
-      **`Beiblatt3RetarderRangierenLevel` was kept and given a test instead of being deleted.** It
-      was the only member of the Beiblatt 3 catalogue with zero references, but its twin
-      `Beiblatt3RetarderBeharrungsstreckeLevel` is identical in shape and has one, and its own
-      72 dB base is published through `standarddata.go` as `Beiblatt3RetarderRangierenBase`. The new
-      test asserts the formula against that struct's field rather than a literal, so the two cannot
-      drift. Unexporting it was not an option: an unused unexported function fails `unused`.
 
 ## Priority 8 — Frontend correctness and rework
 
