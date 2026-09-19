@@ -72,7 +72,7 @@ an unlabelled module cannot be registered at all. This table is the declared sta
 | ------------------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
 | `rls19-road`                          | normative              | Real Eq. 4/6 structure and coefficients; length weighting fixed (`4142444`)  |
 | `schall03`                            | normative              | Anlage-2 tables correct, and `aconiq run` now calls them (`schall03_engine`) |
-| `iso9613`                             | normative              | Table 2/3 verbatim correct; three defects fixed (`775c7f5`)                  |
+| `iso9613`                             | normative              | Table 2/3 correct; three defects fixed (`775c7f5`); A_bar now reachable      |
 | `talaerm`, `bimschv16`                | normative (assessment) | Threshold tables and logic sound                                             |
 | `beb-exposure`                        | preview                | Aggregation logic reasonable; consumes preview levels                        |
 | `cnossos-road/rail/industry/aircraft` | **scaffold**           | No directive coefficients. Invented base levels, no octave bands             |
@@ -1941,14 +1941,37 @@ than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 Everything below was already on the roadmap and remains open. It is deliberately behind Gates 1
 and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
 
+**The gate is about the work, not about where a line sits in this file.** Priority 10 carried two
+items that belonged above it and were worked on 2026-09-19 for that reason: "A_bar is identically
+zero in every ISO 9613-2 run" was a Gate 1 numeric defect in a normative module — a whole term of
+Gl. 4 missing — and the shared-geometry extraction beside it was Gate 2 architecture. Both had been
+filed under a feature heading because they read like geometry features. Before inheriting "this is
+behind the gate" from a heading, check what the item actually is.
+
 ## Priority 10 — ISO 9613-2 geometry extensions
 
-- [ ] Extract the shared barrier-intersection/ray-geometry logic from RLS-19 into a common package
-      and wire automatic barrier detection for ISO 9613-2 diffraction inputs. _(Overlaps P7's
-      acoustics-core extraction — do them together.)_ What is shared is the polyline/ray primitive.
-      Schall 03's obstacle-grouping rule is **not** shareable: only Schall 03 has lateral
-      diffraction, so only it needs to know which vertex a path may round. Lift the primitive, leave
-      the rule with its caller.
+- [x] **The screening geometry is one implementation, in `internal/geo/screening.go`.** (2026-09-19)
+      `UpperConvexHull`, `ObstructsLineOfSight` and `SelectDiffractionEdges`, plus `RayCrossings`
+      for the polyline case. The duplication was verbatim, not merely similar: `upperConvexHull`
+      and its `hullPoint` were identical down to the cross-product expression, and the crossing
+      insertion sort was character-for-character the same apart from field capitalisation.
+      This entry's guess at the home was wrong. `internal/acoustics` holds **zero** geometry and
+      its package doc disclaims both German modules, so the primitive went to `internal/geo`,
+      beside `SegmentIntersection` and `LineStringIntersectsSegment` — which it uses rather than
+      re-deriving. The overlap with P7's acoustics-core extraction was therefore nil; that item is
+      untouched and still open.
+      **The rule the entry protected held.** Schall 03's `dedupeCoincidentCrossings`,
+      `obstacleGroups`, `obstacleLateralCandidates` and `silhouetteVertices` stayed put.
+      Three contract decisions are live for anyone adding a fourth caller. `SelectDiffractionEdges`
+      takes **pre-filtered** candidates and returns indices, because Schall 03 must merge the two
+      crossings a ray makes through a footprint corner and can only do that once the crossings are
+      known. The endpoint tolerance is a **parameter** (RLS-19 passes 1e-6, Schall 03 passes 0);
+      collapsing it would have moved Schall 03's numbers. And Schall 03 keeps its own segment-based
+      `FindBarrierCrossings` deliberately — converting its `BarrierSegment` pairs into polylines
+      would allocate per path on a hot loop, and its dedupe there is normative rather than
+      incidental.
+      Both modules kept their own function signatures as thin wrappers, so their existing tests
+      were the equivalence oracle. Every RLS-19 and Schall 03 golden is byte-identical.
 - [ ] Add reflections via image sources for enclosed industrial-yard cases, once building geometry
       is readily available from the SoundPLAN import path.
 - [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,
@@ -1957,21 +1980,45 @@ and 2: a nicer Gutachten template does not help if the level in it is 23 dB low.
       single global ground factor. Cheaper than it reads: `GroundEffectBands(gs, gr, gm, …)`
       already implements the full three-region Table 3 model and `propagation.go` simply passes the
       one global `ground_factor` three times, and a `GroundZone` type carrying a polygon and a
-      factor already exists in `iso9613/model.go` with no caller. What is missing is the plumbing —
-      `iso9613` runs through the generic `receiverRunModule`, whose contract carries sources and
-      receivers and no scene, so zones need the bespoke module shape `rls19-road` and `schall03`
-      already have.
-- [ ] **A_bar is identically zero in every ISO 9613-2 run, and a fixture claims otherwise.**
-      The screening formulas are complete and tested (Gl. 12–18), but `PropagationConfig.Barrier` is
-      a pre-computed `*BarrierGeometry` that `iso9613RunOptions.PropagationConfig()` never sets, and
-      no descriptor parameter can supply one — so every run on the CLI and in the browser takes the
-      nil path and adds 0 dB. The Konformitätserklärung declares "keine automatische
-      Strahl-Barriere-Verschneidung" but not that no caller can hand one in at all.
-      Worse, `qa/acceptance/testdata/iso9613/point_contextual.scenario.json` sets
-      `"barrier_attenuation_db": 3.5` and the acceptance decoder has no such field for this standard
-      — only the RLS-19 branch decodes barriers — so the value is dropped in silence while
-      `catalog.go` describes the fixture as "stressing ... barrier attenuation". It stresses none.
-      Fix the fixture and the catalogue text when the geometry lands, or before, if that slips.
+      factor already exists in `iso9613/model.go` with no caller.
+      **(2026-09-19) The blocker this item named is gone.** It said zones need the bespoke module
+      shape `rls19-road` and `schall03` have, because `iso9613` ran through the generic
+      `receiverRunModule`, which carries no scene. `iso9613` now has that shape, for the barrier
+      work above: `runISO9613Module` reads the model, and `PropagationConfig` already carries one
+      scene collection. What is left is genuinely only the zone half — an extractor for the
+      polygons, a point-in-polygon lookup per region, and the three arguments of
+      `GroundEffectBands(gs, gr, gm, …)` resolved per path instead of passed the one global
+      `ground_factor` three times. Note it changes computed levels for a normative module wherever
+      a project defines zones, the same release question the barrier work raised.
+- [x] **A_bar is reachable: ISO 9613-2 detects its barriers from the model.** (2026-09-19)
+      The screening scene travels on `PropagationConfig.Barriers`, the way RLS-19 already carries
+      buildings and its terrain model, so `ComputeReceiverOutputs` keeps its signature and the
+      acceptance decoder, the WASM kernel and every other caller were untouched. `BandAttenuation`
+      is the one per-path chokepoint and derives the geometry there. `iso9613` now has the bespoke
+      module shape `rls19-road` and `schall03` have, and `extractISO9613Barriers` reads the same
+      `kind: barrier` features `extractRLS19Barriers` does — through one `extractBarrierFeatures`,
+      because `dupl` was right that a second copy had been written.
+      **`PropagationConfig.Barrier` is kept and still wins when set.** A caller that computed its
+      own geometry has already decided what screens the path, and that is the path the
+      Konformitätserklärung declared; it does not disappear under anyone.
+      **Two fields of a derived geometry are fixed, and both are boundaries rather than
+      approximations.** `A` is 0 — Bild 6's a is non-zero only on the lateral path, and this module
+      diffracts over the top edge in the vertical plane. `LineOfSightClear` is false, because an
+      edge only reaches the derivation once it has been found to obstruct.
+      **No existing golden moved.** Every fixture in the repository was barrier-free, so a model
+      without barrier features computes exactly what it did before and the change is strictly
+      additive for existing inputs — which is not what this plan assumed when it called the wiring
+      a breaking change. It is one, but only for a user whose model carries barrier features that
+      were until now silently ignored. End to end on a 9 m barrier along one side: the seven
+      receivers behind it drop 11.8–14.0 dB and every other receiver is bit-identical.
+      **This entry blamed the wrong thing for the fixture.** It said the acceptance decoder has no
+      barrier field "only the RLS-19 branch decodes barriers". The RLS-19 branch decodes a
+      top-level `barriers` array of real geometry and has never decoded `barrier_attenuation_db`
+      either: **no Go struct in the backend has that JSON tag.** It is a _cnossos-road CLI
+      parameter_ name, and `point_preview.scenario.json` carried the same dead key with value 0.
+      Both keys are gone, the contextual fixture carries a wall that screens part of the grid and
+      not the rest, and `TestContextualFixtureActuallyScreens` requires both halves — a description
+      cannot assert anything, which is how the old claim survived.
 - [x] **The ISO 9613-1 α model replaced the nearest-row Table 2 lookup.** `AlphaForBand` evaluates
       the analytical model — classical absorption plus O₂ and N₂ relaxation — at every condition.
       **This entry understated the defect by describing the table's span rather than the resulting
