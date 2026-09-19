@@ -386,7 +386,7 @@ export interface components {
         ModelSaveRequest: {
             /** @description CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on a web map. Like `aconiq import --input-crs`: when it differs from the project CRS every coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already. */
             crs?: string;
-            /** @description GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area. */
+            /** @description GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area | ground-zone. */
             model: Record<string, never>;
         };
         ModelSaveResponse: {
