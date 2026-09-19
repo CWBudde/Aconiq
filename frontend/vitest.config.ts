@@ -50,10 +50,10 @@ export default defineConfig({
       // Advisory: the `frontend-coverage` job that applies them is not a
       // required status check, so a breach is visible without blocking a merge.
       thresholds: {
-        lines: 84,
-        statements: 84,
-        functions: 84,
-        branches: 85,
+        lines: 89,
+        statements: 89,
+        functions: 89,
+        branches: 88,
       },
     },
   },

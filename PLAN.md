@@ -1812,18 +1812,21 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
 
 ### Phase F — Tests, types and the kernel boundary
 
-- [ ] `hooks.test.ts` against mocked `fetch` (`api/hooks.ts` leaves a third of its hooks
-      unexercised), and a `browserBackend.startRun` test with a stubbed kernel compared to a backend
-      golden. **`use-draw` and `model-layers` are done** — 95.6% and 89.8%, via
-      `draw-provider.test.tsx` and `model-layers.test.tsx` — and `src/map` as a whole is now 94.0%,
-      not the 37.3% over 1,765 statements this bullet used to quote. What survives of the original
-      claim is narrower and still true: **the map-rebuild fix in `ad47eaa` has no test**, because
-      `map-view.tsx`'s residual statements are MapLibre lifecycle that jsdom cannot reach. Faking a
-      WebGL context would test the fake; it belongs in `frontend/e2e/`.
+- [x] The hooks and the run assembly are tested (#68). Three constraints stay live.
+      **Two seams, two files**: `hooks.test.ts` mocks `./backend`, which its polling cases need
+      because a `fetch` stub cannot say `capabilities.kind === "browser"`; `hooks.http.test.ts`
+      stubs `fetch` and lets the real HTTP layer run underneath, which is what puts the URL, the
+      headers and the envelope under assertion. Write the next hook test into the file whose seam
+      it needs.
+      **The `startRun` golden test asserts the assembly, not the numbers** — those come from the
+      stub. The parity suites already compare numbers, and a flat 50/40 agrees with every column,
+      so swapping the raster's two bands passed both suites until this test existed.
+      **What is left is out of jsdom's reach**: `map-view.tsx` is MapLibre lifecycle, so the
+      rebuild fix in `ad47eaa` still has no test, and `src/wasm` is the browser loader, since every
+      test reaches the kernel through `kernel-node.ts`. Both belong in `frontend/e2e/`.
       The floors are **not** in `fe-ci` — they live in `frontend/vitest.config.ts` and are applied
       by an advisory `frontend-coverage` job, because a coverage regression must not be able to fail
-      a required check. That job published a number less than half the truth from the day it was
-      created until `45c98ef`; see `docs/testing/coverage.md` for what it was and why.
+      a required check. The numbers and the ratchet are in `docs/testing/coverage.md`.
 - [x] **The four vendored shadcn components with no importers are deleted** (2026-09-19).
       `table.tsx`, `resizable.tsx`, `scroll-area.tsx`, `textarea.tsx`, and with them
       `@radix-ui/react-scroll-area` and `react-resizable-panels`. The decision this file asked for
@@ -1831,12 +1834,19 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       a second answer to what a table looks like here, waiting to disagree with the first.
       The honest gaps named beside this entry are unchanged: `src/wasm` (the browser-side kernel
       loader — `kernel-node.ts` is what the parity suites exercise) and `src/layouts`.
-- [ ] Generate `client.ts` from `aconiq openapi` (openapi-typescript) and fail `fe-ci` on diff;
-      delete the hand-written DTOs and the missing `generate-api-client.mjs` entry that
-      `package.json` declares (`/api/v1/import/terrain` has no binding today). The three
-      `context` schema gaps this bullet used to carry — `StandardDescriptor`, and the same defect
-      found twice more in `RunSummary` and `LastRunStatus` — are closed (`3f7e861`), so a generated
-      strict client no longer rejects live responses on day one.
+- [x] `src/api/schema.ts` is generated from `aconiq openapi`, and `just fe-api-check` fails on
+      drift (#68). Three constraints stay live.
+      **`client.ts` is not the generated file** — it stays hand-written as the façade, aliasing the
+      generated schemas under the names the app already imported. Three things there cannot come
+      from the document, each marked: the two model endpoints, whose GeoJSON body it declares as a
+      bare `object`; the artifact-content payloads `ReceiverTable` and `RasterMetadata`, which are
+      files a run writes rather than schemas the API declares; and `apiHeaders`, which is transport.
+      **`src/api/schema.ts` has one writer.** It is excluded from eslint and from treefmt's
+      prettier, or two formatters over one generated file would make `fe-api-check` report an API
+      change on every run. It is _not_ excluded from coverage — it compiles to nothing.
+      **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
+      exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
+      each decision. `/api/v1/import/terrain` has generated types now and still no caller.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
@@ -2121,7 +2131,6 @@ Three things it leaves live:
 Distinct from Priority 8, which is correctness. These are genuinely optional.
 
 - [ ] WebSocket progress streaming (SSE already works).
-- [ ] TypeScript client-generation pipeline for frontend API types.
 - [ ] Headless E2E smoke flow on the API side: import → validate → run → export.
 - [ ] Box select and multi-select on the map.
 - [ ] Contour labels on the result map (the overlay itself landed in #61). Blocked on a glyph

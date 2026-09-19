@@ -128,12 +128,36 @@ carrying 4,333 statements, a quarter of the tree.
 | 2026-09-12 | `87da006` | 73.6%      | 83.9%    | 77.9%     | 73.6% | 71 / 71 / 75 / 81 |
 | 2026-09-17 | `f7e0885` | 81.8%      | 87.0%    | 83.3%     | 81.8% | 71 / 71 / 75 / 81 |
 | 2026-09-17 | `317fdfa` | 86.8%      | 87.8%    | 86.1%     | 86.8% | 84 / 84 / 84 / 85 |
+| 2026-09-19 | `7c7fc05` | 91.1%      | 89.1%    | 91.4%     | 91.1% | 89 / 89 / 89 / 88 |
 
-At the last row, 11,360 / 13,087 statements over 89 test files. By area:
-`src/results` 99.7%, `src/pages` 94.4%, `src/map` 94.0%, `src/model` 91.5%,
-`src/run` 90.0%, `src/(root)` 85.7%, `src/import` 84.7%, `src/api` 82.7%,
-`src/ui` 77.0%, `src/wasm` **45.2%**, `src/layouts` **41.7%** — the last two are
-what is left.
+At the last row, 15,357 / 16,861 statements over 113 test files. By area:
+`src/results` 99.7%, `src/map` 96.1%, `src/pages` 95.8%, `src/model` 93.2%,
+`src/run` 90.3%, `src/(root)` 89.8%, `src/api` 88.2%, `src/import` 85.6%,
+`src/ui` 83.3%, `src/wasm` **43.6%**, `src/layouts` **41.7%** — the last two are
+still what is left, and `src/wasm` slipped rather than moved: its denominator
+is 181 statements, so it reads whatever `kernel.ts` is, and nothing exercises
+the browser loader (see below).
+
+That row is two things at once. The denominator grew from 13,087 to 16,861
+between the two measurements, most of it Phase C–E work, so the headline is not
+a like-for-like comparison. What _is_ like-for-like is `src/api`, 82.7% → 88.2%,
+and the two files this round aimed at: `hooks.ts` went 62.5% lines / 52.4%
+functions to **99.0% / 97.2%**, and `http-backend.ts` 85.7% / 60.0% to
+**98.7% / 95.0%**.
+
+`http-backend.ts` moved because of _how_ the hook tests were written.
+`hooks.test.ts` mocks `./backend`, which its polling cases need; the new
+`hooks.http.test.ts` stubs `fetch` instead and lets the real `httpBackend` run
+underneath, so one set of tests covers both layers. Mocking the module would
+have left the URL building, the header set and the envelope decoding untested
+in the same run.
+
+`src/api/schema.ts` is generated and is **not** excluded from the measurement,
+although it looked like it should be. It is a module of pure type declarations,
+so it compiles to nothing and v8 reports 0 / 0 statements at 100%: it is already
+absent from the denominator by construction, and an `exclude` entry would be a
+line that reads like it is doing work. The `src/i18n/**` entry is not the same
+case — Paraglide emits real functions.
 
 At the `f7e0885` row before it, 10,706 / 13,087 over 83 files, differing where
 this round's work went in: `src/map` 62.6% and `src/model` 89.4%. `src/ui` sits

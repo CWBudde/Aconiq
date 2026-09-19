@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   browserBackend,
@@ -11,12 +15,14 @@ import {
 } from "./browser-backend";
 import * as storage from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
+import { normalizeModelGeoJSON } from "@/model/normalize";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
-import type { ModelFeature } from "@/model/types";
+import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import type { ComputeRequest, TransformRequest } from "@/wasm/types";
 import type {
   RasterMetadata,
   ReceiverTable,
+  RunSummary,
   StandardDescriptor,
 } from "./client";
 
@@ -57,6 +63,20 @@ function descriptorFor(id: string): StandardDescriptor {
 const RLS19_ROAD_DESCRIPTOR = descriptorFor("rls19-road");
 let publishedStandards: StandardDescriptor[] = [RLS19_ROAD_DESCRIPTOR];
 
+/** What the stubbed kernel answers `rls19Road` with, per receiver. */
+type Levels = { lr_day: number; lr_night: number };
+
+/**
+ * A flat 50/40 for every receiver. Most of this file drives `startRun` to see
+ * what it *stores*, and cares only that a number arrived, not which.
+ *
+ * Mutable for the same reason `publishedStandards` is: the golden test below
+ * has an opinion about the levels, because its whole point is to follow known
+ * values through the assembly the parity suites step over.
+ */
+const FLAT_LEVELS = (): Levels => ({ lr_day: 50, lr_night: 40 });
+let kernelLevels: (receiverID: string) => Levels = FLAT_LEVELS;
+
 // The persistence tests drive `startRun` end to end, but what the kernel
 // computes is the parity suite's business; here it only has to answer.
 //
@@ -75,7 +95,7 @@ vi.mock("@/wasm/kernel", () => ({
         Promise.resolve(
           req.receivers.map((receiver) => ({
             Receiver: receiver,
-            Indicators: { lr_day: 50, lr_night: 40 },
+            Indicators: kernelLevels(receiver.id),
           })),
         ),
       transform: (req: TransformRequest) => {
@@ -1989,5 +2009,286 @@ describe("browserBackend.getArtifactBytes", () => {
     await expect(
       browserBackend.getArtifactBytes(TABLE_ARTIFACT_ID),
     ).rejects.toThrow("not bytes");
+  });
+});
+
+/**
+ * The run assembly, with known levels going in.
+ *
+ * Two suites already drive `startRun`, and neither can see this layer. The
+ * parity suites (`browser-parity.test.ts`, `kernel-parity.test.ts`) run the
+ * real kernel and compare the numbers, so a defect in what surrounds the
+ * numbers — a mislabelled band, a receiver table whose rows drifted out of the
+ * golden's order, a summary field silently dropped — reads there as a passing
+ * comparison. The rest of this file drives `startRun` for its persistence and
+ * feeds it a flat 50/40, which every column agrees with, so a swap of two
+ * columns is invisible.
+ *
+ * So: the CLI's own golden goes in through the stub, keyed by receiver id, and
+ * everything the run *writes around* those values is asserted against it. The
+ * dB values prove nothing here — they came from the stub — but they are
+ * distinguishable per receiver and per indicator, which is what makes the
+ * plumbing legible.
+ *
+ * The fixture is `backend/internal/app/cli/testdata/parity/`, written by
+ * `parity_golden_test.go` through the CLI's own extraction; `just update-golden`
+ * regenerates it.
+ */
+describe("browserBackend.startRun result assembly", () => {
+  const PARITY_DIR = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../backend/internal/app/cli/testdata/parity",
+  );
+
+  interface GoldenReceiver {
+    id: string;
+    x: number;
+    y: number;
+    height_m: number;
+    lr_day: number;
+    lr_night: number;
+  }
+
+  const golden = JSON.parse(
+    readFileSync(
+      resolve(PARITY_DIR, "road_building_barrier.golden.json"),
+      "utf8",
+    ),
+  ) as { receivers: GoldenReceiver[] };
+
+  const collection = JSON.parse(
+    readFileSync(resolve(PARITY_DIR, "road_building_barrier.geojson"), "utf8"),
+  ) as GeoJSONFeatureCollection;
+
+  /** The golden's levels, by receiver id — what the stubbed kernel reports. */
+  const goldenLevels = new Map(
+    golden.receivers.map((receiver) => [
+      receiver.id,
+      { lr_day: receiver.lr_day, lr_night: receiver.lr_night },
+    ]),
+  );
+
+  let run: RunSummary;
+
+  beforeEach(async () => {
+    await resetStores();
+
+    const { features, skipped } = normalizeModelGeoJSON(collection);
+    // A silently skipped source or building would make the run smaller than
+    // the golden and every count below would then be measuring the wrong
+    // scene.
+    expect(skipped).toEqual([]);
+
+    useModelStore.setState({
+      features,
+      receivers: golden.receivers.map((receiver) => ({
+        id: receiver.id,
+        heightM: receiver.height_m,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [receiver.x, receiver.y] as [number, number],
+        },
+      })),
+      calcArea: null,
+      // The fixture is authored in metres. The stubbed `transform` reports
+      // coordinates unmoved, so stating 4326 here would leave the numbers
+      // right and the CRS fields wrong.
+      crs: "EPSG:25832",
+    });
+
+    kernelLevels = (receiverID) =>
+      goldenLevels.get(receiverID) ?? { lr_day: NaN, lr_night: NaN };
+
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => "blob:mock/assembly",
+      revokeObjectURL: () => undefined,
+    });
+
+    run = await browserBackend.startRun({
+      standardId: "rls19-road",
+      version: "2019",
+      profile: "default",
+      params: {},
+      receiverMode: "custom",
+    });
+  });
+
+  afterEach(() => {
+    kernelLevels = FLAT_LEVELS;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function artifactOf<T>(kind: string): Promise<T> {
+    const ref = run.artifacts.find((artifact) => artifact.kind === kind);
+    expect(ref, `no artifact of kind ${kind}`).toBeDefined();
+    return browserBackend.getArtifactContent<T>(ref?.id ?? "");
+  }
+
+  it("writes every receiver's levels into the table, in model order", async () => {
+    const table = await artifactOf<ReceiverTable>(
+      "run.result.receiver_table_json",
+    );
+
+    expect(table.records.map((record) => record.id)).toEqual(
+      golden.receivers.map((receiver) => receiver.id),
+    );
+    // Column for column. A stub reporting one value for both indicators would
+    // pass this with the two swapped; the golden's do not agree.
+    for (const want of golden.receivers) {
+      const record = table.records.find((entry) => entry.id === want.id);
+      expect(record?.values["LrDay"], `${want.id} LrDay`).toBe(want.lr_day);
+      expect(record?.values["LrNight"], `${want.id} LrNight`).toBe(
+        want.lr_night,
+      );
+    }
+    // The CLI's own indicator names, which is why the golden's snake_case
+    // field names do not appear here: `parity_golden_test.go` writes its
+    // snapshot in its own shape, and the container keeps the names a reader of
+    // `receivers.csv` sees.
+    expect(table.indicator_order).toEqual(["LrDay", "LrNight"]);
+  });
+
+  it("carries a unit per indicator, not one for the table", async () => {
+    const table = await artifactOf<ReceiverTable>(
+      "run.result.receiver_table_json",
+    );
+
+    expect(table.units).toEqual({ LrDay: "dB(A)", LrNight: "dB(A)" });
+  });
+
+  it("renders the CSV from the same table", async () => {
+    const table = await artifactOf<ReceiverTable>(
+      "run.result.receiver_table_json",
+    );
+    const csv = await artifactOf<string>("run.result.receiver_table_csv");
+
+    // The canonical writer, not a second rendering: the CSV a browser run
+    // stores has to be the bytes `receiver-csv.parity.test.ts` pins against
+    // the Go writer.
+    expect(csv).toBe(buildReceiverTableCSV(table));
+    expect(csv.split("\n")[0]).toBe("id,x,y,height_m,LrDay,LrNight");
+  });
+
+  it("names the raster after the standard and labels both bands", async () => {
+    const meta = await artifactOf<RasterMetadata>("run.result.raster_metadata");
+    const ref = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_metadata",
+    );
+
+    expect(ref?.path).toMatch(/\/results\/rls19-road\.json$/);
+    expect(meta.bands).toBe(2);
+    expect(meta.band_names).toEqual(["LrDay", "LrNight"]);
+    expect(meta.nodata).toBe(-9999);
+    expect(meta.crs).toBe("EPSG:25832");
+    // Explicit receivers are not a grid, and no cell size describes them.
+    expect(meta.georeference).toBeUndefined();
+  });
+
+  it("writes the raster bytes band by band, day before night", async () => {
+    const ref = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.raster_binary",
+    );
+    const bytes = await browserBackend.getArtifactBytes(ref?.id ?? "");
+    const values = Array.from(new Float64Array(bytes));
+
+    expect(ref?.path).toMatch(/\/results\/rls19-road\.bin$/);
+    expect(values).toEqual([
+      ...golden.receivers.map((receiver) => receiver.lr_day),
+      ...golden.receivers.map((receiver) => receiver.lr_night),
+    ]);
+  });
+
+  it("summarises the run with the counts and both CRS", async () => {
+    const summary =
+      await artifactOf<Record<string, unknown>>("run.result.summary");
+
+    expect(summary).toMatchObject({
+      run_id: run.id,
+      status: "completed",
+      receiver_count: golden.receivers.length,
+      grid_width: 1,
+      grid_height: golden.receivers.length,
+      reporting_precision_db: 0.1,
+      project_crs: "EPSG:25832",
+      compute_crs: "EPSG:25832",
+      // AGENTS.md requires the tier to travel with the result, and it is read
+      // off the kernel's descriptor rather than named in browser-backend.ts.
+      evidence_tier: "normative",
+    });
+    expect(summary["source_count"]).toBeGreaterThan(0);
+  });
+
+  it("produces exactly the five result artifacts", () => {
+    expect(run.artifacts.map((artifact) => artifact.kind)).toEqual([
+      "run.result.receiver_table_json",
+      "run.result.receiver_table_csv",
+      "run.result.raster_metadata",
+      "run.result.raster_binary",
+      "run.result.summary",
+    ]);
+  });
+
+  it("logs the output hash of the receiver ids and their indicators", async () => {
+    const log = await browserBackend.getRunLog(run.id);
+    const line = log.lines.find((entry) => entry.includes("output_hash="));
+
+    // Node's digest rather than the module's own `sha256Hex`, which is not
+    // exported: a hash checked with the function that produced it agrees with
+    // itself whatever either of them does.
+    const expected = createHash("sha256")
+      .update(
+        JSON.stringify(
+          golden.receivers.map((receiver) => ({
+            receiver_id: receiver.id,
+            indicators: {
+              lr_day: receiver.lr_day,
+              lr_night: receiver.lr_night,
+            },
+          })),
+        ),
+      )
+      .digest("hex");
+
+    // Recomputed here rather than snapshotted: a snapshot would be updated
+    // along with whatever changed the hash, which is the one thing a run
+    // digest must not let happen quietly.
+    expect(line).toContain(`output_hash=${expected}`);
+  });
+
+  it("writes the raster bytes before the document that names them", async () => {
+    // The order is the recovery story: a document naming bytes that are not
+    // there reads as a corrupted run, while bytes no document names are merely
+    // orphaned and get swept. Asserting it needs a second run, because the
+    // first one already happened in beforeEach.
+    const order: string[] = [];
+    const realSaveBytes = storage.saveArtifactBytes;
+    vi.spyOn(storage, "saveArtifactBytes").mockImplementation(
+      async (artifactId, bytes) => {
+        order.push("bytes");
+        await realSaveBytes(artifactId, bytes);
+      },
+    );
+    const realForgetting = storage.savePersistedStateForgetting;
+    vi.spyOn(storage, "savePersistedStateForgetting").mockImplementation(
+      async (value, forget) => {
+        order.push("document");
+        await realForgetting(value, forget);
+      },
+    );
+
+    await browserBackend.startRun({
+      standardId: "rls19-road",
+      version: "2019",
+      profile: "default",
+      params: {},
+      receiverMode: "custom",
+    });
+
+    // The whole sequence, not the two indices: `indexOf` on a missing entry
+    // is -1, so "bytes first" would read as satisfied by a run that never
+    // wrote any.
+    expect(order).toEqual(["bytes", "document"]);
   });
 });

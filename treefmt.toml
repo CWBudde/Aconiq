@@ -79,4 +79,12 @@ excludes = [
     "**/*.sops.*",
     # Go files are handled by gofumpt/gci
     "*.go",
+    # Generated from the API's OpenAPI document by
+    # frontend/scripts/generate-api-client.mjs, which writes it with the
+    # TypeScript printer and then compares the bytes against the committed
+    # copy. Two writers for one file is two formatters disagreeing: prettier
+    # would reformat what the generator wrote, and `just fe-api-check` would
+    # then report an API change on every run. One writer, and the diff check
+    # is the review.
+    "frontend/src/api/schema.ts",
 ]

@@ -1,4 +1,31 @@
 import type { GeoJSONFeatureCollection } from "@/model/types";
+import type { components } from "./schema";
+
+/**
+ * The wire contract with the local API.
+ *
+ * The DTOs below are **not written here**. They are aliases onto
+ * `./schema.ts`, which `scripts/generate-api-client.mjs` generates from the
+ * document `aconiq openapi` exports, and `just fe-api-check` fails the build
+ * when the two have drifted. This file exists so that the app keeps importing
+ * the names it always did — `RunSummary`, not
+ * `components["schemas"]["RunSummary"]` — and so that the parts of the contract
+ * the document *cannot* state have one place to be stated in.
+ *
+ * There are three of those, each marked below:
+ *
+ *   1. the two model endpoints, whose GeoJSON body the spec declares as a bare
+ *      `object`;
+ *   2. the artifact-content endpoint, whose payloads are files rather than
+ *      schemas — `ReceiverTable` and `RasterMetadata` are the shapes the run
+ *      writes into a project, not shapes the API declares;
+ *   3. the request headers, which are transport and not a schema at all.
+ *
+ * Anything else added here is drift waiting to happen: put it in `openapi.go`
+ * and regenerate.
+ */
+
+type Schemas = components["schemas"];
 
 /**
  * The custom request header the local API requires on every state-changing
@@ -38,142 +65,70 @@ export function apiHeaders(
   return headers;
 }
 
-export interface APIError {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-  hint?: string;
-}
+/* -------------------------------------------------------------------------
+ * Generated schemas, under the names the app uses.
+ * ---------------------------------------------------------------------- */
 
-export interface ErrorEnvelope {
-  error: APIError;
-}
-
-export interface HealthResponse {
-  status: string;
-  version: string;
-  time: string;
-}
-
-export interface LastRunStatus {
-  id: string;
-  status: string;
-  /**
-   * Which assessment question the standard answers: `planning` for an
-   * individual project's approval case, `mapping` for area-wide strategic
-   * noise mapping. Typed as a plain string because older backends omit it.
-   */
-  context?: string;
-  standard_id: string;
-  version: string;
-  profile?: string;
-  started_at: string;
-  finished_at: string;
-}
-
-export interface ProjectStatusResponse {
-  project_id: string;
-  name: string;
-  project_path: string;
-  manifest_version: number;
-  crs: string;
-  scenario_count: number;
-  run_count: number;
-  last_run?: LastRunStatus;
-  /** Absent until a model has been saved. */
-  model?: ProjectModelStatus;
-}
+export type APIError = Schemas["APIError"];
+export type ErrorEnvelope = Schemas["ErrorEnvelope"];
+export type HealthResponse = Schemas["HealthResponse"];
+export type LastRunStatus = Schemas["LastRunStatus"];
+export type ProjectStatusResponse = Schemas["ProjectStatusResponse"];
 
 /**
- * The saved model's receipt (schema `ProjectModelStatus`). A client that kept
- * the `hash` from its last `POST /api/v1/model` compares the two as strings to
- * learn whether its local draft is still the project's model, without fetching
- * anything. Never recompute the hash locally: a re-serialised model is not the
- * same bytes.
+ * The saved model's receipt. A client that kept the `hash` from its last
+ * `POST /api/v1/model` compares the two as strings to learn whether its local
+ * draft is still the project's model, without fetching anything. Never
+ * recompute the hash locally: a re-serialised model is not the same bytes.
  */
-export interface ProjectModelStatus {
-  hash: string;
-  updated_at: string;
-}
+export type ProjectModelStatus = Schemas["ProjectModelStatus"];
 
-export interface ArtifactRef {
-  id: string;
-  kind: string;
-  path: string;
-  created_at: string;
-}
-
-export interface RunSummary {
-  id: string;
-  scenario_id: string;
-  /**
-   * Which assessment question the standard answers: `planning` for an
-   * individual project's approval case, `mapping` for area-wide strategic
-   * noise mapping. Typed as a plain string because older backends omit it.
-   */
-  context?: string;
-  standard_id: string;
-  version: string;
-  profile?: string;
-  receiver_mode?: string;
-  receiver_set_id?: string;
-  status: "pending" | "running" | "completed" | "failed";
-  started_at: string;
-  finished_at: string;
-  log_path: string;
-  artifacts: ArtifactRef[];
-}
-
-export interface CreateRunRequest {
-  scenario_id?: string;
-  standard_id?: string;
-  standard_version?: string;
-  standard_profile?: string;
-  model_path?: string;
-  receiver_mode?: "auto-grid" | "custom";
-  params?: Record<string, string>;
-  input_paths?: string[];
-  /**
-   * Acknowledges that the selected standard is scaffold tier: it carries no
-   * normative coefficients, its base levels are invented and it has no octave
-   * bands. The API refuses a run against such a standard without it, with
-   * error code `experimental_opt_in_required`.
-   *
-   * Omitted rather than sent as `false`, matching the Go struct's
-   * `json:"experimental,omitempty"`.
-   */
-  experimental?: boolean;
-}
-
-export interface RunLog {
-  run_id: string;
-  lines: string[];
-}
+export type ArtifactRef = Schemas["ArtifactRef"];
+export type RunSummary = Schemas["RunSummary"];
+export type CreateRunRequest = Schemas["CreateRunRequest"];
+export type RunLog = Schemas["RunLog"];
 
 /**
- * Response of `DELETE /api/v1/runs/{id}` (schema `DeleteRunResponse`). Both
- * arrays are always present, empty rather than null.
+ * Response of `DELETE /api/v1/runs/{id}`. Both arrays are always present,
+ * empty rather than null.
  *
  * A run that is still `pending` or `running` is refused with 409 and error code
  * `run_not_finished` — its directory is still being written.
  */
-export interface DeleteRunResponse {
-  run_id: string;
-  /** Project-relative paths that were deleted. */
-  removed_paths: string[];
-  /**
-   * Files whose manifest refs were dropped but whose bytes were deliberately
-   * left in place — export bundles. A bundle may already have been delivered,
-   * so deleting a run never deletes one.
-   */
-  retained_paths: string[];
-}
+export type DeleteRunResponse = Schemas["DeleteRunResponse"];
+
+/**
+ * One validation finding as the API reports it. Named apart from the model
+ * store's own `ValidationIssue`, which carries a level and camel-cased fields;
+ * this one is the wire shape.
+ */
+export type APIValidationIssue = Schemas["ValidationIssue"];
+
+/**
+ * Response of a successful model save. A model with validation errors is
+ * refused instead, with error code `model_invalid` and the findings under
+ * `details.errors` as `APIValidationIssue[]`.
+ */
+export type ModelSaveResponse = Schemas["ModelSaveResponse"];
+
+/**
+ * The terrain import's receipt (`POST /api/v1/import/terrain`).
+ *
+ * Nothing in the app calls that endpoint yet — the type is here because the
+ * generated schema carries it, and because the binding is the next thing an
+ * upload control would need. See `PLAN.md`, Priority 8 Phase F.
+ */
+export type TerrainInfo = Schemas["TerrainInfo"];
 
 /**
  * The standards descriptor contract. It is declared in `@/standards/descriptor`
  * because both backends publish it and neither owns it — `aconiq serve` through
  * `GET /api/v1/standards`, the WASM kernel through `aconiq.standards()` — and
  * re-exported here so that an existing `from "./client"` import keeps working.
+ *
+ * The generated `Schemas["StandardDescriptor"]` describes the same shape, but
+ * only the HTTP half of it: aliasing it here would quietly make the API the
+ * owner of a contract the kernel serves too.
  */
 export type {
   ParameterDefinition,
@@ -181,6 +136,41 @@ export type {
   StandardDescriptor,
   VersionInfo,
 } from "@/standards/descriptor";
+
+/* -------------------------------------------------------------------------
+ * (1) The model endpoints.
+ *
+ * `openapi.go` declares both bodies as `{"type": "object"}` with the schema in
+ * prose — a GeoJSON FeatureCollection in the v1 input schema
+ * (docs/geojson-schema-v1.md). The generator can only read that as
+ * `Record<string, never>`, which is an object with no properties: assigning a
+ * FeatureCollection to it is an error. So the `model` field is replaced with
+ * the type the app actually holds, and the rest of each body stays generated.
+ * ---------------------------------------------------------------------- */
+
+/** Body of `POST /api/v1/model`. The model is handed over unparsed. */
+export type ModelSaveRequest = Omit<Schemas["ModelSaveRequest"], "model"> & {
+  model: GeoJSONFeatureCollection;
+};
+
+/**
+ * Response of `GET /api/v1/model`. A project that loaded but has no model yet
+ * is refused with error code `model_not_found`, which is deliberately not the
+ * `not_found` a missing project produces.
+ */
+export type ModelResponse = Omit<Schemas["ModelResponse"], "model"> & {
+  model: GeoJSONFeatureCollection;
+};
+
+/* -------------------------------------------------------------------------
+ * (2) Artifact payloads.
+ *
+ * `GET /api/v1/artifacts/{id}/content` streams whatever file the ref names —
+ * JSON for a receiver table or a raster sidecar, `application/octet-stream`
+ * for the raster itself. The endpoint declares no schema because it has no one
+ * schema, so these mirror the Go writers in
+ * `backend/internal/report/results/` rather than the API document.
+ * ---------------------------------------------------------------------- */
 
 export interface ReceiverRecord {
   id: string;
@@ -245,68 +235,4 @@ export interface RasterMetadata {
    * "a grid at the origin".
    */
   georeference?: RasterGeoreference;
-}
-
-/**
- * Body of `POST /api/v1/model` (schema `ModelSaveRequest`). The model is a
- * GeoJSON FeatureCollection in the v1 input schema, handed over unparsed.
- */
-export interface ModelSaveRequest {
-  /**
-   * CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on
-   * a web map. When omitted the coordinates are taken to be in the project CRS
-   * already.
-   */
-  crs?: string;
-  model: GeoJSONFeatureCollection;
-}
-
-/**
- * One validation finding as the API reports it (schema `ValidationIssue`).
- * Named apart from the model store's own `ValidationIssue`, which carries a
- * level and camel-cased fields; this one is the wire shape.
- */
-export interface APIValidationIssue {
-  code: string;
-  message: string;
-  /** The feature the finding is about; absent for model-wide findings. */
-  feature_id?: string;
-}
-
-/**
- * Response of a successful model save (schema `ModelSaveResponse`). A model
- * with validation errors is refused instead, with error code `model_invalid`
- * and the findings under `details.errors` as `APIValidationIssue[]`.
- */
-export interface ModelSaveResponse {
-  normalized_path: string;
-  dump_path: string;
-  validation_report_path: string;
-  feature_count: number;
-  /**
-   * Receipt for what was just written — the SHA-256 of the normalized file, as
-   * bare lowercase hex. Store it beside the local draft and compare it against
-   * `ProjectStatusResponse.model.hash` later.
-   */
-  hash: string;
-  /** Validation warnings. The model was written despite them. */
-  warnings: APIValidationIssue[];
-}
-
-/**
- * Response of `GET /api/v1/model` (schema `ModelResponse`). A project that
- * loaded but has no model yet is refused with error code `model_not_found`,
- * which is deliberately not the `not_found` a missing project produces.
- */
-export interface ModelResponse {
-  /**
-   * The CRS the returned coordinates are actually in: the one asked for via
-   * `?crs=`, or the project CRS when none was asked for.
-   */
-  crs: string;
-  project_crs: string;
-  /** Receipt for the stored file. Unaffected by a reprojection. */
-  hash: string;
-  feature_count: number;
-  model: GeoJSONFeatureCollection;
 }
