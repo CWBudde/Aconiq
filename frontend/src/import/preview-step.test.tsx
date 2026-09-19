@@ -12,7 +12,11 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PreviewStep } from "./preview-step";
 import { m } from "@/i18n/messages";
-import type { ValidationIssue, ValidationReport } from "@/model/types";
+import type {
+  ModelFeature,
+  ValidationIssue,
+  ValidationReport,
+} from "@/model/types";
 
 function issue(featureId: string, level: "error" | "warning"): ValidationIssue {
   return {
@@ -103,5 +107,54 @@ describe("PreviewStep finding counts", () => {
         ).not.toMatch(/\((s|e|en|n)\)/);
       }
     }
+  });
+});
+
+describe("PreviewStep kind breakdown", () => {
+  /*
+   * Every kind the normalizer keeps needs a row here. The count above the list
+   * comes off `features.length`, so a kind with no row of its own is imported
+   * and paid for in that total while no line accounts for it — a zone-only
+   * file then reads as one feature of nothing.
+   */
+
+  function groundZone(id: string): ModelFeature {
+    return {
+      id,
+      kind: "ground-zone",
+      properties: { ground_factor: 0.7 },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    };
+  }
+
+  it("counts ground zones under their own label", () => {
+    render(
+      <PreviewStep
+        features={[groundZone("z1"), groundZone("z2")]}
+        receivers={[]}
+        calcArea={null}
+        skippedCount={0}
+        report={null}
+        workspaceEmpty
+        mergeSkips={{ features: 0, receivers: 0, calcArea: false }}
+        onBack={() => undefined}
+        onAdd={() => undefined}
+        onReplace={() => undefined}
+      />,
+    );
+
+    const label = screen.getByText(m.label_ground_zones());
+    expect(label.parentElement?.textContent).toContain("2");
   });
 });
