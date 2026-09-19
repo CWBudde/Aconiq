@@ -16,42 +16,28 @@ type barrierCrossing struct {
 	barrier        *Barrier
 }
 
+// barrierEndpointToleranceM is the distance from either end of the
+// source→receiver line below which a crossing is a graze rather than a
+// barrier standing between the two.
+const barrierEndpointToleranceM = 1e-6
+
 // findBarrierCrossings returns all barriers that intersect the line from
 // source to receiver in plan view, sorted by distance from source.
 func findBarrierCrossings(source, receiver geo.Point2D, barriers []Barrier) []barrierCrossing {
-	var crossings []barrierCrossing
+	rayCrossings := geo.RayCrossings(
+		source, receiver, barriers,
+		func(b Barrier) []geo.Point2D { return b.Geometry },
+		barrierEndpointToleranceM,
+	)
 
-	for i := range barriers {
-		b := &barriers[i]
+	crossings := make([]barrierCrossing, 0, len(rayCrossings))
 
-		crossPt, _, intersects := geo.LineStringIntersectsSegment(b.Geometry, source, receiver)
-		if !intersects {
-			continue
-		}
-
-		d := dist2D(source, crossPt)
-		if d < 1e-6 || dist2D(crossPt, receiver) < 1e-6 {
-			continue // at endpoint, not truly between
-		}
-
+	for _, crossing := range rayCrossings {
 		crossings = append(crossings, barrierCrossing{
-			point:          crossPt,
-			distFromSource: d,
-			barrier:        b,
+			point:          crossing.Point,
+			distFromSource: crossing.DistFromSource,
+			barrier:        &barriers[crossing.ObstacleIndex],
 		})
-	}
-
-	// Sort by distance from source (insertion sort — n is small).
-	for i := 1; i < len(crossings); i++ {
-		key := crossings[i]
-
-		j := i - 1
-		for j >= 0 && crossings[j].distFromSource > key.distFromSource {
-			crossings[j+1] = crossings[j]
-			j--
-		}
-
-		crossings[j+1] = key
 	}
 
 	return crossings
@@ -63,13 +49,6 @@ type diffractionEdge struct {
 	distFromSource float64  // 2D plan distance from source [m]
 	heightM        float64  // barrier top height [m]
 	barrier        *Barrier // source barrier
-}
-
-// hullPoint is a point in the vertical cross-section for the upper convex hull.
-type hullPoint struct {
-	dist        float64
-	height      float64
-	crossingIdx int // index into crossings; -1 for source/receiver
 }
 
 // selectDiffractionEdges implements the Gummibandmethode to select significant
@@ -94,10 +73,7 @@ func selectDiffractionEdges(
 	var obstructing []barrierCrossing
 
 	for _, c := range crossings {
-		frac := c.distFromSource / totalDistM
-
-		losHeight := sourceHeightM + frac*(receiverHeightM-sourceHeightM)
-		if c.barrier.HeightM > losHeight {
+		if geo.ObstructsLineOfSight(c.distFromSource, c.barrier.HeightM, sourceHeightM, receiverHeightM, totalDistM) {
 			obstructing = append(obstructing, c)
 		}
 	}
@@ -106,43 +82,18 @@ func selectDiffractionEdges(
 		return nil
 	}
 
-	// For a single obstructing barrier, skip the hull computation.
-	if len(obstructing) == 1 {
-		c := obstructing[0]
-
-		return []diffractionEdge{{
-			distFromSource: c.distFromSource,
-			heightM:        c.barrier.HeightM,
-			barrier:        c.barrier,
-		}}
-	}
-
-	// Build points for upper convex hull: source, obstructing tops, receiver.
-	points := make([]hullPoint, 0, len(obstructing)+2)
-
-	points = append(points, hullPoint{dist: 0, height: sourceHeightM, crossingIdx: -1})
-	for i, c := range obstructing {
-		points = append(points, hullPoint{
-			dist:        c.distFromSource,
-			height:      c.barrier.HeightM,
-			crossingIdx: i,
+	candidates := make([]geo.ScreeningPoint, 0, len(obstructing))
+	for _, c := range obstructing {
+		candidates = append(candidates, geo.ScreeningPoint{
+			DistFromSource: c.distFromSource,
+			TopHeightM:     c.barrier.HeightM,
 		})
 	}
 
-	points = append(points, hullPoint{dist: totalDistM, height: receiverHeightM, crossingIdx: -1})
-
-	// Upper convex hull (Andrew's monotone chain, upper hull only).
-	hull := upperConvexHull(points)
-
-	// Extract edges: hull vertices that are not source or receiver.
 	var edges []diffractionEdge
 
-	for _, hp := range hull {
-		if hp.crossingIdx < 0 {
-			continue
-		}
-
-		c := obstructing[hp.crossingIdx]
+	for _, index := range geo.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDistM, candidates) {
+		c := obstructing[index]
 		edges = append(edges, diffractionEdge{
 			distFromSource: c.distFromSource,
 			heightM:        c.barrier.HeightM,
@@ -151,36 +102,6 @@ func selectDiffractionEdges(
 	}
 
 	return edges
-}
-
-// upperConvexHull computes the upper convex hull of points sorted by dist.
-// Points on or below the line from their neighbours are removed.
-func upperConvexHull(points []hullPoint) []hullPoint {
-	n := len(points)
-	if n <= 2 {
-		return points
-	}
-
-	hull := make([]hullPoint, 0, n)
-	for i := range n {
-		for len(hull) >= 2 {
-			a := hull[len(hull)-2]
-			b := hull[len(hull)-1]
-			c := points[i]
-			// Cross product: if >= 0, b is on or below line a→c → remove.
-			cross := (b.dist-a.dist)*(c.height-a.height) -
-				(b.height-a.height)*(c.dist-a.dist)
-			if cross < 0 {
-				break
-			}
-
-			hull = hull[:len(hull)-1]
-		}
-
-		hull = append(hull, points[i])
-	}
-
-	return hull
 }
 
 // Barrier represents a noise barrier or shielding obstacle (wall, berm, building edge).
