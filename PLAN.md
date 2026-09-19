@@ -1964,18 +1964,43 @@ behind the gate" from a heading, check what the item actually is.
       with the acoustics-core extraction was nil. That P7 item is untouched and still open.
 - [ ] Add reflections via image sources for enclosed industrial-yard cases, once building geometry
       is readily available from the SoundPLAN import path.
+      **(2026-09-19) The gate was re-checked and still holds.** Priority 13's "Convert SoundPLAN
+      buildings, barriers, terrain, receivers and calculation areas" is open, so the import path
+      this names produces no buildings. Buildings _are_ reachable from a GeoJSON import, so the
+      item could be re-scoped off SoundPLAN — that is a scoping decision, not an inference to make
+      here. Note the neighbouring Schall 03 defect in Priority 2: obstacles are not mirrored into a
+      reflection's unfolded frame, which is the same geometry this would need.
 - [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,
       cooling towers, facades).
-- [ ] Add spatial ground zones so per-region G values come from polygon geometry instead of a
-      single global ground factor. Cheaper than it reads: `GroundEffectBands(gs, gr, gm, …)`
-      already implements the full three-region Table 3 model and `propagation.go` simply passes the
-      one global `ground_factor` three times, and a `GroundZone` type carrying a polygon and a
-      factor already exists in `iso9613/model.go` with no caller.
-      **(2026-09-19) The blocker this item named is gone**: it said zones need the bespoke module
-      shape, and `iso9613` now has one. What is left is the zone half — an extractor, a
-      point-in-polygon lookup per region, and `GroundEffectBands`' three arguments resolved per path
-      instead of passed the one global factor. It changes levels for a normative module wherever a
-      project defines zones.
+      **(2026-09-19) Blocked on a scope decision, not on code.** `Descriptor()` declares
+      `SupportedSourceTypes: []string{SourceTypePoint}` and `iso9613-konformitaetserklaerung.md`
+      declares point-source-only scope; widening either is a claim about what the module conforms
+      to, which is the user's call.
+- [x] **Spatial ground zones: G is resolved per region from polygon geometry.** (2026-09-19)
+      A `ground-zone` feature kind carries a `Polygon` and a `ground_factor` in [0,1];
+      `ResolveRegionFactors` hands `GroundEffectBands` three different numbers, from the zones each
+      path actually crosses. Reaches the CLI, the local API and the map, which can draw and edit a
+      zone.
+      Four constraints are live. **A region's G is the length-weighted mean over its own span**,
+      not the factor under a probe point — ISO 9613-2 Abschnitt 7.3.1 defines G as the porous
+      fraction of a region, and a probe at the source would let a puddle at its feet speak for
+      30·h_s of ground. The weighting rests on `geo.SegmentPolygonSpans`, which cuts the path at
+      every ring crossing and classifies each interval by its midpoint; it is exact rather than
+      sampled, so it carries no resolution parameter. **Overlapping zones resolve by file order**,
+      first one wins. **`ground_factor` is required rather than defaulted**, so a typo in the
+      property name cannot read as hard ground; the run's global `ground_factor` remains the
+      fallback for ground no zone covers, which is why no golden moved. And **`ResolveRegionFactors`
+      returns `(gs, gr, gm)` in `GroundEffectBands`' argument order**, not in path order, so the two
+      cannot be wired up transposed.
+      **The estimate in this entry was wrong in one place**: it called for "a point-in-polygon
+      lookup per region", which would have been the probe-point reading the standard does not
+      support. `geo.PointInPolygon` is still what classifies an interval, but a lookup alone would
+      have over-stated a zone that a path merely clips.
+      Two things it does not reach. **Browser mode still cannot run `iso9613` at all** — the kernel
+      accepts only the RLS-19 request — so a zone drawn on the map is saved, validated and drawn,
+      and computed by the CLI or the local API alone; that is P4's "model extraction is still
+      RLS-19-only". And the zone is a horizontal polygon with no height reference, so it says
+      nothing about terrain.
 - [x] **A_bar is reachable: ISO 9613-2 detects its barriers from the model.** (2026-09-19,
       `1efc6d8`, `ec607ae`) The scene travels on `PropagationConfig.Barriers`, `BandAttenuation`
       derives the per-path geometry, and `iso9613` has the bespoke module shape `rls19-road` and
