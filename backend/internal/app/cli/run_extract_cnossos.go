@@ -374,7 +374,17 @@ func cnossosIndustryParts(feature modelgeojson.Feature, sourceType string) ([]fu
 
 		return parts, nil
 	default:
-		return nil, nil
+		// Unreachable today, and worth keeping that way loudly. The caller
+		// admits only a source_type the profile lists in SupportedSourceTypes,
+		// and cnossos-industry's single profile lists exactly the two arms
+		// above. Whoever adds a third would otherwise get a run that succeeds
+		// with every source of that type silently missing from the result.
+		return nil, domainerrors.New(
+			domainerrors.KindValidation,
+			"cli.cnossosIndustryParts",
+			fmt.Sprintf("source_type %q is declared supported by cnossos-industry but has no geometry handler", sourceType),
+			nil,
+		)
 	}
 }
 
