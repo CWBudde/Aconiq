@@ -102,11 +102,6 @@ var octaveBandOrder = [...]OctaveBand{
 	OctaveBand8000Hz,
 }
 
-// OctaveBands returns the canonical Schall 03 octave-band order.
-func OctaveBands() []OctaveBand {
-	return append([]OctaveBand(nil), octaveBandOrder[:]...)
-}
-
 // OctaveSpectrum stores one level per Schall 03 octave band in canonical order.
 type OctaveSpectrum [8]float64
 
