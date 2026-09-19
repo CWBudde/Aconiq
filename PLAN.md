@@ -1780,40 +1780,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `strategy`. It reads both files as text, because `vite.config.ts` pulls the plugin graph into
       the test environment and `compile-i18n.mjs` spawns a compiler on import; a regex that stops
       matching fails the test rather than comparing nothing.
-- [x] **The last English strings are in the catalogue, and a rule keeps them there** (2026-09-19).
-      Six keys: `label_map_unavailable`, `error_map_load_timeout`, `error_map_webgl_unavailable`,
-      `label_sidebar`, `msg_sidebar_mobile_description` and `action_toggle_sidebar`; `Retry` reuses
-      the `action_retry` that already existed. `map-view.tsx` no longer holds a sentence at all —
-      `mapError` is a `MapErrorKind` (`"timeout" | "unavailable"`) and the render resolves it, which
-      is the only shape that survives a language switch now that one does not reload the page.
-      Three corrections to the bullet this replaces. **Fourteen assertions, not sixteen**, matched
-      the two English strings in `map-view.test.tsx`; the mock is gone and they now read the real
-      catalogue through `m`. **`react/jsx-no-literals` flagged two nodes, not 41** — Phase B had
-      already closed the rest — and neither was prose: `AQ`, the compact wordmark, which joined
-      `AconiQ` in `allowedStrings`, and `aconiq-theme` in the settings page's storage-key list,
-      which is now `THEME_STORAGE_KEY` exported from `ui/theme-provider.tsx` rather than the
-      default spelled a second time. The `allowedStrings` list is the wordmarks plus the
-      punctuation the JSX adds around a message, because the catalogue holds the bare term.
-      **`noStrings` stays off**: with it on the rule also polices every string-valued prop, and
-      `variant`/`side`/`data-*`/`className` outnumber the prose by two orders of magnitude. Bare
-      JSX text is where English actually leaked — both these files leaked exactly that way.
-- [x] **German terminology and register pass** (2026-09-19). 57 messages in `de.json`. `Empfänger`
-      is gone (25 → 0) and `Immissionsort` carries the term throughout (14 → 33), including the
-      compounds: `Empfängerpegel` is `Immissionspegel`, `Empfängertabelle` is "Tabelle der
-      Immissionsorte". `Schallquelle` 1 → 12 and `Schallschirm` 0 → 6; the established acoustic
-      compounds (`Flächenquelle`, `Punktquelle`) are left alone, because they are the German terms
-      and not a shortening of this one. **`Standard` is now 0**, which is the part worth knowing:
-      it was doing two jobs, and the norm took `Norm` (6 → 13) while the default took `Vorgabe`
-      ("Vorgabe wird verwendet", "Auf Vorgabe zurücksetzen", "Vorgabe der Berechnung verwenden").
-      Two decisions inside it. **`label_experimental_opt_in` keeps "Gerüst-Modul" and does not
-      become "Gerüst-Norm"**: a scaffold is not a Norm, and the German must not assert what the
-      evidence tier denies. **`Lärmschutzwand` stays at 1 and `Hindernis` at 1**, both in the
-      Schall 03 rail-wall fields, where the wall and the wide obstacle are the specific things the
-      standard names — the model _kind_ is `Schallschirm`, and the three
-      `msg_validation_barrier_*` findings moved to it so the kind is one word everywhere.
-      One correction: the register is informal in **four** strings, not three. The bullet's grep
-      missed `msg_api_endpoint_help` ("Überschreibe die Backend-URL"), which is now "Überschreibt".
-      The other three went as described.
+- [x] The last English strings moved into the catalogue, and `react/jsx-no-literals` now guards
+      `src/pages`, `src/map` and `src/ui` (#67). Two constraints stay live. **A message must not be
+      read at module scope** — `mapError` carries a `MapErrorKind` and the render resolves it,
+      because the language switch no longer reloads the page. **`noStrings` stays off**: with it on
+      the rule also polices every string-valued prop, which outnumbers the prose by two orders of
+      magnitude. Two beliefs this file carried were wrong: `map-view.test.tsx` had fourteen English
+      assertions, not sixteen, and the rule reported two nodes, not 41 — Phase B had closed the
+      rest.
+- [x] German terminology and register pass over 57 messages: `Empfänger` → `Immissionsort`,
+      `Schallquelle`, `Schallschirm`, and `Standard` split into `Norm` and `Vorgabe` (#67). Three
+      constraints stay live. **`label_experimental_opt_in` says "Gerüst-Modul", not "Gerüst-Norm"**
+      — the German must not assert what the evidence tier denies. **`Lärmschutzwand` and
+      `Hindernis` are reserved for the Schall 03 rail-wall fields**; the model kind is
+      `Schallschirm` everywhere else. **The established acoustic compounds (`Flächenquelle`,
+      `Punktquelle`) are not shortenings of `Schallquelle`** and stay. The counts this file used to
+      quote were stale, and the register was informal in four strings, not three —
+      `msg_api_endpoint_help` was missed by a grep for du-forms, as the others were.
 - [ ] **The backend's own findings are still English.** `ui/save-status.tsx` renders
       `APIValidationIssue.message` from `POST /api/v1/model`, and
       `backend/internal/geo/modelgeojson/types.go` carries the same message-only shape the frontend
@@ -1822,18 +1805,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       block — about 7 of those codes overlap the frontend's, and the messages differ even there
       ("Building requires height_m" against "building feature requires height_m"), so the two
       vocabularies are a partial mirror rather than one list.
-- [x] **No message spells a plural in parentheses any more** (2026-09-19). Two of the three became
-      variant messages — `msg_run_deleted_exports_kept`, which already took `{count}` and needed no
-      call-site change, and `status_validation_errors`, whose three call sites
-      (`pages/import.tsx`, `import/preview-step.tsx` ×2) stopped gluing `String(n)` in front of it
-      and pass `{ count }` instead. **The third was deleted rather than pluralised**:
-      `status_validation_warnings` rendered "2 warning(s)" beside a number, which is exactly what
-      `msg_validation_warning_count` already says with a plural rule, so the call site reaches for
-      that and the duplicate is gone. The guard is `locale-parity.test.ts`'s new "spell no plural
-      in parentheses" check, which runs over both catalogues and every variant arm — the defect was
-      never one of these three keys in particular, it was the shortcut, and a check on the
-      catalogue catches the next one in a locale nobody is reading. `preview-step.test.tsx` is new
-      and covers both arms of both callouts.
+- [x] No message spells a plural in parentheses; `locale-parity.test.ts` checks every locale and
+      every variant arm (#67). One constraint stays live: **`status_validation_warnings` was
+      deleted, not pluralised**, because `msg_validation_warning_count` already said "2 warnings"
+      with a rule — reach for that one.
 
 ### Phase F — Tests, types and the kernel boundary
 

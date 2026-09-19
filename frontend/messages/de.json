@@ -330,7 +330,7 @@
   "msg_settings_language_help": "Legt die in der Oberfläche verwendete Sprache fest.",
   "msg_settings_storage_help": "Gespeicherte Entwürfe liegen in localStorage und können hier gelöscht werden.",
   "msg_settings_storage_note": "Gespeicherte Entwürfe bleiben in localStorage des Browsers und können entfernt werden, ohne das Backend-Projekt zu beeinflussen.",
-  "msg_settings_storage_summary": "Die Design-Einstellung liegt in `aconiq-theme`, die Sprache in `PARAGLIDE_LOCALE` und gespeicherte Entwürfe in `aconiq.model.draft`.",
+  "msg_settings_storage_summary": "Die Design-Einstellung liegt in {themeKey}, die Sprache in {localeKey} und gespeicherte Entwürfe in {draftKey}.",
   "msg_settings_runtime_help": "Hier wird angezeigt, welcher Frontend-Modus aktiv ist.",
   "msg_api_endpoint_help": "Überschreibt die Backend-URL für diesen Browser. Leer lassen, um die Vorgabe aus der Umgebung zu verwenden.",
   "msg_api_endpoint_note": "Das betrifft alle browserseitigen API-Anfragen und wird nur lokal in diesem Browser gespeichert.",

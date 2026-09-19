@@ -330,7 +330,7 @@
   "msg_settings_language_help": "Choose the language used across the UI.",
   "msg_settings_storage_help": "Saved drafts live in localStorage and can be cleared here.",
   "msg_settings_storage_note": "Saved drafts stay in browser localStorage and can be removed without affecting the backend project.",
-  "msg_settings_storage_summary": "Theme preference is stored in `aconiq-theme`, locale preference in `PARAGLIDE_LOCALE`, and saved drafts in `aconiq.model.draft`.",
+  "msg_settings_storage_summary": "Theme preference is stored in {themeKey}, locale preference in {localeKey}, and saved drafts in {draftKey}.",
   "msg_settings_runtime_help": "This page shows which frontend runtime mode is active.",
   "msg_api_endpoint_help": "Override the backend URL for this browser. Leave it blank to use the environment default.",
   "msg_api_endpoint_note": "This affects all browser-side API requests and is stored locally in this browser only.",
