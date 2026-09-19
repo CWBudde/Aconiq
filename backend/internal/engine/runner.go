@@ -26,7 +26,10 @@ type Runner struct {
 	progress ProgressSink
 }
 
-const chunkCacheFormatVersion = "engine-chunk-v2"
+// Bumped to v3 when the resolved standard entered the key. Adding the field
+// already changes every hash, so the bump buys no invalidation - it buys a
+// greppable reason why every existing shared-chunks entry went cold.
+const chunkCacheFormatVersion = "engine-chunk-v3"
 
 func NewRunner(progress ProgressSink) *Runner {
 	return &Runner{progress: progress}
@@ -630,15 +633,17 @@ func hashResults(results []ReceiverResult) (string, error) {
 }
 
 type chunkCacheKeyPayload struct {
-	Version          string     `json:"version"`
-	Receivers        []Receiver `json:"receivers"`
-	Sources          []Source   `json:"sources"`
-	SourceIndexCellM float64    `json:"source_index_cell_m"`
+	Version          string      `json:"version"`
+	Standard         StandardKey `json:"standard"`
+	Receivers        []Receiver  `json:"receivers"`
+	Sources          []Source    `json:"sources"`
+	SourceIndexCellM float64     `json:"source_index_cell_m"`
 }
 
 func sharedChunkCachePath(sharedChunksDir string, cfg RunConfig, chunk receiverChunk) (string, error) {
 	keyPayload := chunkCacheKeyPayload{
 		Version:          chunkCacheFormatVersion,
+		Standard:         cfg.StandardKey,
 		Receivers:        chunk.Receivers,
 		Sources:          cfg.Sources,
 		SourceIndexCellM: cfg.SourceIndexCellM,

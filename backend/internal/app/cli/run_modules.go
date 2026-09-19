@@ -272,6 +272,11 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		Sources:        engineSources,
 		DisableCache:   options.DisableCache,
 		DeterminismTag: "dummy-freefield",
+		StandardKey: engine.StandardKey{
+			StandardID: input.standard.StandardID,
+			Version:    input.standard.Version,
+			Profile:    input.standard.Profile,
+		},
 	})
 	if err != nil {
 		input.log.addf("engine failed: %v", err)
