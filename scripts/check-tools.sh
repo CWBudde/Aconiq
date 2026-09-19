@@ -7,7 +7,14 @@
 # CI rejected, and `just check-formatted` reported a backlog that did not exist.
 # So `fmt` and `check-formatted` run this first, for the `format` group.
 #
-# Usage: check-tools.sh [--quiet] [format|all]
+# `golangci-lint` fails the same way one step further on. It does not rewrite
+# the tree, but `default: all` means the set of enabled linters is whatever the
+# binary carries, so a newer one enables checks `.golangci.yml` has never seen:
+# v2.13 renamed `exhaustruct` to `exhaustruct_v5`, which no disable line covers,
+# and reported 1917 findings on a tree whose Go CI was green at that commit.
+# `lint` and `lint-fix` run this first, for the `lint` group.
+#
+# Usage: check-tools.sh [--quiet] [format|lint|all]
 
 set -euo pipefail
 
@@ -24,9 +31,9 @@ group=all
 for arg in "$@"; do
 	case "$arg" in
 	--quiet) quiet=true ;;
-	format | all) group="$arg" ;;
+	format | lint | all) group="$arg" ;;
 	*)
-		echo "usage: $(basename "$0") [--quiet] [format|all]" >&2
+		echo "usage: $(basename "$0") [--quiet] [format|lint|all]" >&2
 		exit 2
 		;;
 	esac
@@ -36,17 +43,21 @@ done
 # match, which is also why treefmt no longer runs with --allow-missing-formatter.
 format_tools=(treefmt gofumpt gci shfmt shellcheck prettier)
 
+# What `just lint` invokes. Its own group, because `lint` and `lint-fix` gate on
+# it and have no reason to wait on the formatters.
+lint_tools=(golangci-lint)
+
 # The remaining gates. Two pins are deliberately not listed: go-licenses, whose
 # binary reports no version of its own, and goreleaser, which only ever runs in
 # CI. Unlike the formatters, a mismatch in this group changes a verdict rather
 # than the tree.
-other_tools=(just bun golangci-lint govulncheck)
+other_tools=(just bun govulncheck)
 
-if [[ $group == format ]]; then
-	tools=("${format_tools[@]}")
-else
-	tools=("${format_tools[@]}" "${other_tools[@]}")
-fi
+case "$group" in
+format) tools=("${format_tools[@]}") ;;
+lint) tools=("${lint_tools[@]}") ;;
+*) tools=("${format_tools[@]}" "${lint_tools[@]}" "${other_tools[@]}") ;;
+esac
 
 # expected_version maps a tool name onto its tools.versions entry: gofumpt ->
 # $GOFUMPT_VERSION, golangci-lint -> $GOLANGCI_LINT_VERSION.

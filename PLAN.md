@@ -1898,16 +1898,16 @@ package table and all ten CLI commands, and describes the standards modules by e
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
-- [ ] **`just lint` has no toolchain guard, and a wrong binary invents ~1 900 findings.**
-      `just check-formatted` refuses to run when the formatters do not match `tools.versions`,
-      precisely because treefmt runs whatever is on `PATH` — but `just lint` runs whatever
-      `golangci-lint` is on `PATH` with no such check, although `tools.versions` pins
-      `GOLANGCI_LINT_VERSION` and CI installs exactly it. A v2.13.2 binary on a machine pinned to
-      v2.12.2 reports **1 917 `exhaustruct_v5` findings** on a tree whose `Go CI` is green, because
-      `.golangci.yml` runs `default: all` and disables `exhaustruct` but not the renamed successor —
-      the same `wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2` shape the config already handles
-      twice. Give `lint` the same `check-tools` gate `check-formatted` has, and add `exhaustruct_v5`
-      to the disable list so a version bump does not reopen this.
+- [ ] **Bump `GOLANGCI_LINT_VERSION` past the `exhaustruct` rename, and absorb it.** `lint` and
+      `lint-fix` now gate on `check-tools.sh --quiet lint`, so a binary off the pin refuses to run
+      rather than inventing findings — but the pin is still v2.12.2, and the second half of this
+      item could not ship with the first. **golangci-lint v2 errors on a linter name it does not
+      know**, so `exhaustruct_v5` cannot be added to the disable list until the binary that reads
+      the config recognises it; adding it early breaks `just lint` for everyone, CI included.
+      Bump the pin, add the line in the same commit, and re-measure: `default: all` means the
+      enabled set is the binary's, so a minor bump can enable more than the one renamed linter, and
+      `docs/lint-triage.md`'s counts are all from v2.12.2. The rename itself is the third of its
+      kind here, after `wsl` → `wsl_v5` and `gomodguard` → `gomodguard_v2`.
 
 - [ ] Promote the security scanners that only exist in a developer's `.trunk/`. That directory is
       gitignored and was never tracked, so it is one machine's tooling, not a second lint stack in
