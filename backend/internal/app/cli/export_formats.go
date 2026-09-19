@@ -59,6 +59,25 @@ type formatExportContext struct {
 	// Held rather than swallowed: a declaration that will not convert is a
 	// refusal, not a cue to infer.
 	geoTransformErr error
+	// Why a CRS string could not be resolved to an EPSG code.
+	//
+	// Both codes used to come from `_, _ = fmt.Sscanf(crs, "EPSG:%d", &code)`,
+	// with the error discarded, so a project CRS that is a typo became code 0
+	// — which a GeoPackage spells "Undefined geographic SRS" — and the export
+	// succeeded with every geometry claiming a CRS the model is not in.
+	//
+	// Held rather than raised here for the reason the loads above are: only
+	// the GeoPackage formats read an EPSG code, and the raster formats get
+	// their own refusal from `report/export.parseEPSGCode`.
+	//
+	// One reason per CRS, not one shared between them, because the two label
+	// different files and no format reads both: `model.gpkg` carries the
+	// project CRS, `receivers.gpkg` and `contours.gpkg` the results CRS. A
+	// single field made an unreadable project CRS refuse the contours, which
+	// never look at it. The two can diverge — the results CRS is the metric
+	// one a geographic project was projected into before computing.
+	projectCRSErr error
+	resultsCRSErr error
 }
 
 func executeFormatExports(
@@ -111,8 +130,8 @@ func newFormatExportContext(
 		modelGeoJSONPath: modelGeoJSONPath,
 	}
 
-	_, _ = fmt.Sscanf(projectCRS, "EPSG:%d", &ctx.epsgCode)
-	_, _ = fmt.Sscanf(resultsCRS, "EPSG:%d", &ctx.resultsEPSG)
+	ctx.epsgCode, ctx.projectCRSErr = epsgCodeForExport(projectCRS)
+	ctx.resultsEPSG, ctx.resultsCRSErr = epsgCodeForExport(resultsCRS)
 
 	// Load receiver table if available (needed for GeoPackage + geo-transform inference).
 	if copiedResults.ReceiverTableJSON != "" {
@@ -142,6 +161,26 @@ func newFormatExportContext(
 // rasterForExport returns the run's raster, the reason it is unreadable, or
 // nil for a run that wrote none. The three are different answers and only the
 // last one is a skip.
+// epsgCodeForExport resolves a CRS string to its EPSG code through
+// geo.ParseCRS, the one parser in this repository that validates one.
+//
+// An empty CRS is not an error: it means no projection was declared, which is
+// a state a project can legitimately be in, and it resolves to 0 exactly as
+// before. A non-empty value that is not a CRS is the case that used to become
+// 0 silently.
+func epsgCodeForExport(crs string) (int, error) {
+	if strings.TrimSpace(crs) == "" {
+		return 0, nil
+	}
+
+	parsed, err := geo.ParseCRS(crs)
+	if err != nil {
+		return 0, fmt.Errorf("read the CRS %q this export is labelled with: %w", crs, err)
+	}
+
+	return parsed.EPSGCode(), nil
+}
+
 func (c *formatExportContext) rasterForExport() (*results.Raster, error) {
 	return c.raster, c.rasterErr
 }
@@ -340,6 +379,10 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 	}
 
 	if receiverTable != nil {
+		if c.resultsCRSErr != nil {
+			return fmt.Errorf("geopackage export: %w", c.resultsCRSErr)
+		}
+
 		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
 
 		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, c.resultsCRS, c.resultsEPSG)
@@ -350,29 +393,13 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 		gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, gpkgPath))
 	}
 
-	if c.modelGeoJSONPath != "" {
-		// Refused rather than skipped, for the reason the two loads in
-		// `newFormatExportContext` are. The path is only set once the model
-		// GeoJSON has been copied into the bundle, so a load failure here is a
-		// file that is present and will not parse — and skipping it writes a
-		// bundle quietly missing `model.gpkg`, with one artifact ref where the
-		// caller asked for two. An empty model is a different thing and stays
-		// a skip: nothing to write is a legitimate answer.
-		modelFeatures, loadErr := loadModelFeaturesFromGeoJSON(c.modelGeoJSONPath)
-		if loadErr != nil {
-			return fmt.Errorf("read the bundle's model GeoJSON for export: %w", loadErr)
-		}
+	modelPath, err := c.exportModelGeoPackage()
+	if err != nil {
+		return err
+	}
 
-		if len(modelFeatures) > 0 {
-			modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
-
-			exportErr := exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
-			if exportErr != nil {
-				return fmt.Errorf("model geopackage export: %w", exportErr)
-			}
-
-			gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, modelGpkgPath))
-		}
+	if modelPath != "" {
+		gpkgPaths = append(gpkgPaths, modelPath)
 	}
 
 	if len(gpkgPaths) > 0 {
@@ -423,6 +450,47 @@ func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exp
 	return moved, nil
 }
 
+// exportModelGeoPackage writes `model.gpkg` and answers its bundle-relative
+// path, or "" where the bundle carries no model to write.
+//
+// Split out of exportGeoPackage because the two halves write different files
+// under different CRS - `model.gpkg` carries the project CRS, `receivers.gpkg`
+// the results CRS - and holding both in one function nested three deep.
+func (c *formatExportContext) exportModelGeoPackage() (string, error) {
+	if c.modelGeoJSONPath == "" {
+		return "", nil
+	}
+
+	// Refused rather than skipped, for the reason the two loads in
+	// `newFormatExportContext` are. The path is only set once the model
+	// GeoJSON has been copied into the bundle, so a load failure here is a
+	// file that is present and will not parse — and skipping it writes a
+	// bundle quietly missing `model.gpkg`, with one artifact ref where the
+	// caller asked for two. An empty model is a different thing and stays
+	// a skip: nothing to write is a legitimate answer.
+	modelFeatures, err := loadModelFeaturesFromGeoJSON(c.modelGeoJSONPath)
+	if err != nil {
+		return "", fmt.Errorf("read the bundle's model GeoJSON for export: %w", err)
+	}
+
+	if len(modelFeatures) == 0 {
+		return "", nil
+	}
+
+	if c.projectCRSErr != nil {
+		return "", fmt.Errorf("model geopackage export: %w", c.projectCRSErr)
+	}
+
+	modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
+
+	err = exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
+	if err != nil {
+		return "", fmt.Errorf("model geopackage export: %w", err)
+	}
+
+	return relativePath(c.bundleDir, modelGpkgPath), nil
+}
+
 func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) error {
 	raster, err := c.rasterForExport()
 	if err != nil {
@@ -463,6 +531,10 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 }
 
 func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) error {
+	if c.resultsCRSErr != nil {
+		return fmt.Errorf("contour geopackage export: %w", c.resultsCRSErr)
+	}
+
 	raster, err := c.rasterForExport()
 	if err != nil {
 		return fmt.Errorf("contour generation: %w", err)

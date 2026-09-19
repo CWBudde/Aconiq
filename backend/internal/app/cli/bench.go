@@ -290,6 +290,13 @@ func runBenchScenario(
 ) (benchScenarioResult, error) {
 	receivers, sources := buildBenchScenario(spec)
 	scenarioDir := filepath.Join(suiteDir, spec.Name)
+	// One key for all three bench configs, and that is the constraint rather
+	// than a convenience: the cold and the warm run must hash to the same
+	// shared-cache entries or the warm run measures a cold one. `bench` feeds
+	// synthetic sources through the engine's hard-coded freefield kernel, so
+	// there is no resolved standard to name here.
+	benchStandard := engine.StandardKey{StandardID: "dummy-freefield", Version: "bench", Profile: "synthetic"}
+
 	runner := engine.NewRunner(nil)
 
 	reference, referenceOut, err := measureBenchRun(runner, scenarioDir, "reference", engine.RunConfig{
@@ -302,6 +309,7 @@ func runBenchScenario(
 		DisableCache:     true,
 		SourceIndexCellM: sourceIndexCellM,
 		DeterminismTag:   "bench-reference",
+		StandardKey:      benchStandard,
 	})
 	if err != nil {
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run reference benchmark scenario "+spec.Name, err)
@@ -317,6 +325,7 @@ func runBenchScenario(
 		DisableCache:     false,
 		SourceIndexCellM: sourceIndexCellM,
 		DeterminismTag:   "bench-cold",
+		StandardKey:      benchStandard,
 	})
 	if err != nil {
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run cold benchmark scenario "+spec.Name, err)
@@ -332,6 +341,7 @@ func runBenchScenario(
 		DisableCache:     false,
 		SourceIndexCellM: sourceIndexCellM,
 		DeterminismTag:   "bench-warm",
+		StandardKey:      benchStandard,
 	})
 	if err != nil {
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run warm benchmark scenario "+spec.Name, err)

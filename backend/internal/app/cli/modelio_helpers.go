@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/jsonio"
@@ -40,12 +41,16 @@ func writeJSONFile(path string, value any) error {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "create directory for "+path, err)
 	}
 
-	// G703 follows the taint from the CLI's --project / --out flags. Callers
-	// build path from the project root plus a fixed artifact name, and a CLI
-	// writes with the invoking user's own rights; request-supplied paths on the
-	// HTTP path are constrained in httpv1.createRunRequest.validate.
-	//nolint:gosec // path is project-root derived, not caller-controlled text
-	err = os.WriteFile(path, encoded, 0o600)
+	// Atomic, so a crash part-way through leaves the previous artifact rather
+	// than a truncated one. This used to be a bare os.WriteFile while the
+	// projectfs twin renamed a temporary file into place, which meant the same
+	// model files were replaced atomically through the HTTP API and
+	// non-atomically through the CLI.
+	//
+	// The G703 suppression the direct write carried is gone with it: the taint
+	// followed the CLI's --project / --out flags into os.WriteFile, and callers
+	// build path from the project root plus a fixed artifact name.
+	err = atomicfile.WriteFile(path, encoded)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "write "+path, err)
 	}

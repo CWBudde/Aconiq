@@ -485,3 +485,57 @@ func singleValueRaster(t *testing.T, crs string) *results.Raster {
 
 	return raster
 }
+
+func TestExportGeoTIFFRefusesACRSItCannotParse(t *testing.T) {
+	t.Parallel()
+
+	// parseEPSGCode used to answer 0 for anything Sscanf could not read, and
+	// buildGeoKeys omits the ProjectedCSTypeGeoKey for a code <= 0 - so a
+	// project whose CRS is a typo exported a GeoTIFF carrying no CRS at all,
+	// with nothing said. Empty is still legal and still means "no CRS
+	// declared"; only a non-empty value that is not a CRS is refused.
+	for _, export := range []struct {
+		name string
+		call func(string, *results.Raster, GeoTransform, string) ([]string, error)
+	}{
+		{"geotiff", ExportGeoTIFF},
+		{"cog", ExportCOG},
+	} {
+		t.Run(export.name, func(t *testing.T) {
+			t.Parallel()
+
+			raster := singleValueRaster(t, "EPSG:two-five-eight-three-two")
+
+			_, err := export.call(filepath.Join(t.TempDir(), "out"), raster, GeoTransform{
+				OriginX: 0, OriginY: 10, PixelSizeX: 1, PixelSizeY: -1,
+			}, "EPSG:two-five-eight-three-two")
+			if err == nil {
+				t.Fatal("expected an error for a CRS that is not parseable")
+			}
+
+			if !strings.Contains(err.Error(), "two-five-eight-three-two") {
+				t.Fatalf("error does not name the offending CRS: %v", err)
+			}
+		})
+	}
+}
+
+func TestExportGeoTIFFStillAcceptsAnAbsentCRS(t *testing.T) {
+	t.Parallel()
+
+	// The other half of the contract above: an empty CRS is not an error, it
+	// is a raster that declares no projection, and the GeoTIFF is written
+	// without a ProjectedCSTypeGeoKey exactly as before.
+	raster := singleValueRaster(t, "")
+
+	paths, err := ExportGeoTIFF(filepath.Join(t.TempDir(), "out"), raster, GeoTransform{
+		OriginX: 0, OriginY: 10, PixelSizeX: 1, PixelSizeY: -1,
+	}, "")
+	if err != nil {
+		t.Fatalf("export with no CRS: %v", err)
+	}
+
+	if len(paths) != 1 {
+		t.Fatalf("wrote %d files, want 1", len(paths))
+	}
+}

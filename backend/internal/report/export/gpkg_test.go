@@ -408,15 +408,20 @@ func TestExportGeoPackageRefusesAnSRSIDOutsideInt32(t *testing.T) {
 	}
 }
 
-func TestReceiverAndContourGeometriesStillCarrySRSIDZero(t *testing.T) {
+func TestReceiverAndContourGeometriesCarryTheCallersSRSID(t *testing.T) {
 	t.Parallel()
 
-	// createReceiverTable and createContourTable pass a literal 0 to the
-	// geometry encoder instead of the caller's srsID, so the blob header
-	// disagrees with gpkg_contents and gpkg_geometry_columns. That is a real
-	// defect, filed in PLAN.md rather than fixed here, because correcting it
-	// changes the bytes of a shipped format. This test pins the current
-	// behaviour so the fix is a deliberate, visible diff.
+	// insertReceivers and insertContours used to pass a literal 0 to the
+	// geometry encoder while their create* siblings wrote the caller's srsID
+	// into gpkg_contents and gpkg_geometry_columns, so every geometry blob
+	// disagreed with the two metadata tables describing it. GDAL trusts
+	// gpkg_geometry_columns, which is why nothing noticed.
+	//
+	// The predecessor of this test pinned the defect rather than the fix, and
+	// it only ever drove ExportReceiverGeoPackage - the contour path its name
+	// claimed to cover was never exercised at all. Both are here now.
+	const srsID = 25832
+
 	indicators := []string{"Lden"}
 
 	table := results.ReceiverTable{
@@ -427,27 +432,68 @@ func TestReceiverAndContourGeometriesStillCarrySRSIDZero(t *testing.T) {
 		},
 	}
 
-	gpkgPath := filepath.Join(t.TempDir(), "receivers.gpkg")
-
-	err := ExportReceiverGeoPackage(gpkgPath, table, "EPSG:25832", 25832)
-	if err != nil {
-		t.Fatalf("export: %v", err)
+	contours := []ContourLine{
+		{Level: 55, BandName: "Lden", Points: [][2]float64{{0, 0}, {10, 10}, {20, 0}}},
 	}
 
-	db, err := sql.Open("sqlite", gpkgPath)
+	dir := t.TempDir()
+	receiverPath := filepath.Join(dir, "receivers.gpkg")
+	contourPath := filepath.Join(dir, "contours.gpkg")
+
+	err := ExportReceiverGeoPackage(receiverPath, table, "EPSG:25832", srsID)
+	if err != nil {
+		t.Fatalf("export receivers: %v", err)
+	}
+
+	err = ExportContourGeoPackage(contourPath, contours, "EPSG:25832", srsID)
+	if err != nil {
+		t.Fatalf("export contours: %v", err)
+	}
+
+	cases := []struct {
+		name  string
+		path  string
+		query string
+	}{
+		{"receivers", receiverPath, "SELECT geom FROM receivers LIMIT 1"},
+		{"contours", contourPath, "SELECT geom FROM contours LIMIT 1"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := geometryHeaderSRSID(t, testCase.path, testCase.query)
+			if got != srsID {
+				t.Fatalf("%s geometry header srs_id = %d, want %d - the value gpkg_contents and gpkg_geometry_columns carry", testCase.name, got, srsID)
+			}
+		})
+	}
+}
+
+// geometryHeaderSRSID reads the srs_id out of the first geometry blob a query
+// returns. Bytes [4:8] are the GeoPackageBinaryHeader's srs_id field, little
+// endian, as encodeGPKGPoint documents the layout.
+func geometryHeaderSRSID(t *testing.T, path string, query string) int32 {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatalf("open gpkg: %v", err)
 	}
+
 	defer func() { _ = db.Close() }()
 
 	var geom []byte
 
-	err = db.QueryRow("SELECT geom FROM receivers LIMIT 1").Scan(&geom)
+	err = db.QueryRow(query).Scan(&geom)
 	if err != nil {
 		t.Fatalf("read geometry: %v", err)
 	}
 
-	if got := binary.LittleEndian.Uint32(geom[4:8]); got != 0 {
-		t.Fatalf("receiver geometry srs_id = %d, want 0 (the value this test pins); if you fixed that, update this test", got)
+	if len(geom) < 8 {
+		t.Fatalf("geometry blob is %d bytes, too short to hold a header", len(geom))
 	}
+
+	return int32(binary.LittleEndian.Uint32(geom[4:8]))
 }

@@ -1085,17 +1085,25 @@ editing several of its files rather than one package of its own.
       writer was atomicity, not duplication**: `cli.writeJSONFile` writes in place, so the model
       files were replaced atomically through the API and non-atomically through this importer.
       And **the import report stays in the importer** — it is not part of the model.
-      `cli.writeJSONFile` is still non-atomic for its other 17 call sites; see below.
+      `cli.writeJSONFile`'s other call sites were non-atomic too; that is closed below.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
       real standards run single-threaded from the CLI, bypassing chunking, caching and
       cancellation — which makes the "identical output regardless of worker count" guarantee
       vacuous for everything a user would actually run. Parameterise on a
       `Kernel func(ctx, []Receiver) ([]ReceiverResult, error)`.
-- [ ] Include the resolved standard tuple in the chunk cache key (`chunkCacheKeyPayload`,
-      `runner.go:632`, hashes format version + receivers + sources + cell size only) — harmless
-      only while the engine is single-standard. **`DeterminismTag` cannot serve as the key**,
-      though it looks made for it: `aconiq bench` sets it to `"bench-cold"` and `"bench-warm"`
-      precisely so those two runs _share_ the cache. It needs a field of its own.
+- [x] **The shared chunk cache key names the resolved standard.** (2026-09-20, #75)
+      `RunConfig.StandardKey` carries id, version and profile — three fields, because a joined
+      string needs an escaping rule the first time an id contains the separator — and
+      `chunkCacheFormatVersion` is at `v3` so the cold entries have a greppable reason.
+      Two constraints are live. **`DeterminismTag` still must not be the key**: two runs of one
+      calculation routinely carry different tags, so keying on it makes the shared cache miss
+      wherever it should hit. And **`bench` has no standard to resolve** — it feeds synthetic
+      sources through the hard-coded freefield kernel — so its three configs pass one constant.
+      This entry had the right conclusion for the wrong mechanism. `aconiq bench`'s cold and warm
+      runs do not share the cache "precisely" through the tag; the tag reaches no cache path at
+      all. They share it because both pass the same `RunID` and `computeOrLoadChunk` consults the
+      run-local cache first — which is also why `TestBenchGeneratesSummaryAndReusesCache` passes
+      with a sabotaged warm key and cannot guard this.
 - [ ] **Thread `cmd.Context()` end to end.** `run_modules.go:266` and `bench.go:422` pass
       `context.Background()`, so Ctrl-C during a long grid calculation does nothing; the engine's
       full `context.Canceled` handling (`handleRunComputeError`, `runner.go:211-245`) is reachable
@@ -1193,24 +1201,57 @@ editing several of its files rather than one package of its own.
       This entry knew about one panic; `mustUint32` had the same one, reachable because
       `export_formats.go:115` discards the error from its `Sscanf`, and its `//nolint:gosec`
       claimed a bounds check it only half did.
-- [ ] `createReceiverTable` and `createContourTable` pass a literal `0` to the geometry encoder
-      instead of the caller's `srsID` (`gpkg.go:298,382`), so every receiver and contour geometry's
-      GeoPackageBinaryHeader disagrees with `gpkg_contents` and `gpkg_geometry_columns`. Readers
-      that trust `gpkg_geometry_columns` — GDAL does — see the right CRS anyway, which is why this
-      has gone unnoticed. Fixing it changes the bytes of a shipped format;
-      `TestReceiverAndContourGeometriesStillCarrySRSIDZero` pins the current behaviour so the fix
-      is a visible diff rather than a silent one.
-- [ ] `cli.writeJSONFile` writes in place while its `projectfs` twin writes a temp file and
-      renames, so a crash part-way through leaves a truncated artifact. 17 call sites, covering
-      run summaries, validation reports, compare artifacts and bench output. Converging them
-      writes no different bytes — only the mechanism changes.
-- [ ] The project CRS goes through two parsers, neither of which validates it. `geo.ParseCRS`
-      canonicalises and classifies but is never called on it; `report/export.parseEPSGCode` and
-      `app/cli/export_formats.go:115` each re-implement it with `Sscanf` and discard the error.
-      `geo.IsSupportedEPSG` and `geo.SupportedEPSGCodes` exist and are called from **no** non-test
-      code at all. Validating `--crs` at `init` against the 13 supported codes is the product
-      decision here: it would refuse projects that run end to end today whenever the import CRS
-      matches, so it is a scope change, not a bug fix.
+- [x] **Every GeoPackage geometry header carries the caller's SRS id.** (2026-09-20, #75)
+      The bytes of `receivers.gpkg` and `contours.gpkg` move, so it carries a non-numeric
+      `CHANGELOG.md` entry; no computed level does, so Priority 5's versioning rule does not bite.
+      **This entry named the wrong functions.** `createReceiverTable` and `createContourTable`
+      both take `srsID` and both write it into `gpkg_contents` and `gpkg_geometry_columns`
+      correctly. The literal `0` was one level down, in `insertReceivers` and `insertContours`,
+      which did not receive `srsID` at all — which is why it was a hardcoded literal rather than a
+      mistyped variable.
+      And **the pinning test only ever covered the receiver path**, never the contour path its
+      name claimed. Both are covered now, and both halves were seen failing before the fix.
+- [x] **The atomic file replacement has one home, and `app/cli` goes through it.** (2026-09-20,
+      #75) `internal/atomicfile` holds what was `projectfs.writeFileAtomic`; both JSON
+      writers call it, and no bytes changed.
+      Two constraints are live. **This does not reopen the `json.MarshalIndent` decision** — that
+      one kept the error taxonomies apart on purpose, and they stay apart; only the write moved,
+      and `jsonio`'s package doc no longer claims the mechanism difference was deliberate. And
+      **`atomicfile.WriteFile` does not create the parent directory**, because the mode it should
+      carry is the caller's to decide; both callers still `MkdirAll` first.
+      This entry said 17 call sites. There are **14**, all non-test — `cli.writeJSONFile` had no
+      test of its own, which is part of how it stayed in place while its twin did not.
+- [ ] **Validate the project CRS at `init`** against the 13 codes `geo.SupportedEPSGCodes`
+      lists. It and `geo.IsSupportedEPSG` are still called from **no** non-test code. This is a
+      product decision, not a bug fix: it would refuse projects that run end to end today whenever
+      the import CRS matches.
+      The mechanical half is closed (2026-09-20, #75). `report/export.parseEPSGCode` and
+      `app/cli`'s two `Sscanf` copies now go through `geo.ParseCRS`, the one parser that
+      validates, and return the error instead of answering `0`. Three constraints are live.
+      **The refusal is at the export boundary**, so `init --crs garbage` and `run` still succeed.
+      **An empty CRS stays legal and stays `0`** — it means no projection was declared — and so
+      does a `WKT:` identifier. And **`app/cli` holds the reason on the context rather than
+      raising it in the constructor**, because only the GeoPackage formats read an EPSG code.
+- [ ] **Every commit hash this file cites from a merged PR is unresolvable.** `main` is built by
+      squash merge, so the branch commits vanish: of `015be47`, `420735b`, `84b62e0`, `86d3bd6`
+      (#74), `c331b48`, `72d24b9`, `4ca3910` (#73) and `27d2d52`, **none** is an ancestor of
+      `main`. They resolve on a machine whose branches are unpruned and nowhere else. Retrofit
+      them to PR numbers, which is what the entries above now cite: every squash commit's subject
+      ends with `(#NN)`, so a PR number is both stable and greppable in `git log`.
+- [ ] **The other in-place writers have not been reviewed.** `internal/atomicfile` now exists and
+      the two JSON writers use it; `jsonio`'s package doc names nine more sites that write at
+      their `os.WriteFile` call, in `report/results`, `report/export`, `app/cli`, `qa/golden`,
+      `api/httpv1` and `standards/beb/exposure`. Decide which of them should replace rather than
+      overwrite. Two are already settled and stay as they are: `qa/golden.AssertJSONSnapshot`
+      compares rather than writes, and `api/httpv1.writeJSON` answers an `http.ResponseWriter`.
+- [ ] **`engine.writeChunk` builds its temporary name from the clock**,
+      `fmt.Sprintf("%s.%d.tmp", path, time.Now().UnixNano())` — a third mechanism beside in-place
+      and `os.CreateTemp`, unique in practice rather than by construction. It is the pattern
+      `atomicfile.WriteFile`'s doc comment warns about, one step less broken: a nanosecond
+      timestamp collides less often than a fixed name, not never.
+- [ ] **`projectfs.writeRunLog` writes plain text in place**, the one writer in that package that
+      does not go through `atomicfile`. It is not JSON, which is why the pass that converged the
+      others left it.
 - [ ] Split the god files. Re-measured: `api/httpv1/handler.go` (1 358), `app/cli/export.go`
       (1 244), `report/reporting/report.go` (1 192), `run_options.go` (1 016), `run_persist.go`
       (914). `run_extract.go` and `run_pipeline.go` are done — 3 087 → 36 and 887 → 238 — and

@@ -30,6 +30,20 @@ type RunConfig struct {
 	SourceIndexCellM float64
 	DeterminismTag   string
 
+	// StandardKey names the resolved standard whose kernel produced the
+	// levels, and is part of the shared chunk cache key.
+	//
+	// It is separate from DeterminismTag, which looks made for the job and is
+	// not: `aconiq bench` sets that tag to "bench-cold" and "bench-warm"
+	// precisely so those two runs SHARE a cache entry, and keying on it would
+	// make the warm run cold. The tag describes the run; this describes the
+	// calculation.
+	//
+	// The engine hard-codes dummy/freefield today, so every real run passes
+	// the same value and nothing can collide. That stops being true when the
+	// kernel is parameterised, which is why the key carries it already.
+	StandardKey StandardKey
+
 	// OnReceiverComputed, when non-nil, is invoked once per receiver right
 	// after its level has been evaluated, with the receiver ID.
 	//
@@ -40,6 +54,18 @@ type RunConfig struct {
 	// must not influence the computed values - the determinism policy in
 	// docs/policies/determinism.md applies unchanged.
 	OnReceiverComputed func(receiverID string)
+}
+
+// StandardKey identifies the resolved standard a set of levels came from.
+//
+// Three fields rather than one string because that is what resolution
+// produces - framework.ResolvedProfile carries StandardID, Version and Profile
+// - and because a joined string would need an escaping rule the moment an id
+// contained the separator.
+type StandardKey struct {
+	StandardID string `json:"standard_id"`
+	Version    string `json:"version"`
+	Profile    string `json:"profile"`
 }
 
 // ReceiverResult stores one computed indicator value.

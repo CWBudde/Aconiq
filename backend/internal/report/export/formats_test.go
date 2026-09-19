@@ -122,18 +122,39 @@ func TestInferGeoTransformErrors(t *testing.T) {
 func TestParseEPSGCode(t *testing.T) {
 	t.Parallel()
 
+	// The first four cases are what this function always answered. The fifth
+	// is what it used to answer 0 for: a value that is not a CRS at all now
+	// produces an error instead of a raster exported without one. The sixth
+	// falls out of routing through geo.ParseCRS, which upper-cases before it
+	// matches - the hand-rolled Sscanf refused a lower-case prefix.
 	tests := []struct {
-		input string
-		want  int
+		input   string
+		want    int
+		wantErr bool
 	}{
-		{"EPSG:25832", 25832},
-		{"EPSG:4326", 4326},
-		{"", 0},
-		{"WKT:something", 0},
+		{input: "EPSG:25832", want: 25832},
+		{input: "EPSG:4326", want: 4326},
+		{input: "", want: 0},
+		{input: "WKT:something", want: 0},
+		{input: "EPSG:two-five-eight-three-two", wantErr: true},
+		{input: "epsg:25832", want: 25832},
 	}
 
 	for _, tt := range tests {
-		got := parseEPSGCode(tt.input)
+		got, err := parseEPSGCode(tt.input)
+
+		if tt.wantErr {
+			if err == nil {
+				t.Fatalf("parseEPSGCode(%q) = %d, want an error", tt.input, got)
+			}
+
+			continue
+		}
+
+		if err != nil {
+			t.Fatalf("parseEPSGCode(%q): %v", tt.input, err)
+		}
+
 		if got != tt.want {
 			t.Fatalf("parseEPSGCode(%q) = %d, want %d", tt.input, got, tt.want)
 		}
