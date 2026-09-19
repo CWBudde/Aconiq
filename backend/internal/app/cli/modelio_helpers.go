@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 func resolvePath(baseDir string, value string) string {
@@ -30,12 +30,10 @@ func relativePath(baseDir string, absPath string) string {
 }
 
 func writeJSONFile(path string, value any) error {
-	encoded, err := json.MarshalIndent(value, "", "  ")
+	encoded, err := jsonio.Marshal(value)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.writeJSONFile", "encode "+path, err)
 	}
-
-	encoded = append(encoded, '\n')
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 
 	typst "github.com/Dadido3/go-typst"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
 )
 
@@ -553,12 +554,10 @@ func assertFileContents(t *testing.T, path string, expected string) {
 }
 
 func writeJSONFile(path string, value any) error {
-	encoded, err := json.MarshalIndent(value, "", "  ")
+	encoded, err := jsonio.Marshal(value)
 	if err != nil {
 		return err
 	}
-
-	encoded = append(encoded, '\n')
 
 	return os.WriteFile(path, encoded, 0o600)
 }

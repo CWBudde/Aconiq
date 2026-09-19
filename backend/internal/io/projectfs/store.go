@@ -18,6 +18,7 @@ import (
 	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 const (
@@ -192,12 +193,10 @@ func (s Store) Load() (project.Project, error) {
 func (s Store) Save(proj project.Project) error {
 	proj.UpdatedAt = time.Now().UTC()
 
-	serialized, err := json.MarshalIndent(proj, "", "  ")
+	serialized, err := jsonio.Marshal(proj)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "encode project manifest", err)
 	}
-
-	serialized = append(serialized, '\n')
 
 	err = os.MkdirAll(filepath.Dir(s.manifestPath()), 0o750)
 	if err != nil {
@@ -477,12 +476,10 @@ func writeRunLog(path string, lines []string) error {
 // The messages name the file, not its location: they travel into HTTP error
 // envelopes, and the absolute path belongs in the wrapped cause only.
 func writeJSONFile(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := jsonio.Marshal(v)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
 	}
-
-	data = append(data, '\n')
 
 	tmpPath := path + ".tmp"
 
