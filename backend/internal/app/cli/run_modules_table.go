@@ -141,19 +141,7 @@ var runModuleTable = map[string]runModule{
 		persist: endPersist(bufaircraft.StandardID),
 	}.run,
 
-	iso9613.StandardID: receiverRunModule[iso9613RunOptions, iso9613.PointSource, iso9613.ReceiverOutput]{
-		sourceCountKey: "iso9613_sources",
-		extractFailure: "failed to extract ISO 9613 point sources",
-		computeFailure: "iso9613 compute failed",
-		parseOptions:   parseISO9613RunOptions,
-		extract:        extractISO9613Sources,
-		buildReceivers: buildISO9613Receivers,
-		compute: func(receivers []geo.PointReceiver, sources []iso9613.PointSource, options iso9613RunOptions) ([]iso9613.ReceiverOutput, error) {
-			return iso9613.ComputeReceiverOutputs(receivers, sources, options.PropagationConfig())
-		},
-		persist: persistISO9613RunOutputs,
-	}.run,
-
+	iso9613.StandardID:     runISO9613Module,
 	rls19road.StandardID:   runRLS19RoadModule,
 	schall03.StandardID:    runSchall03Module,
 	bebexposure.StandardID: runBEBExposureModule,

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
+	"github.com/aconiq/backend/internal/geo"
 )
 
 // BarrierGeometry holds pre-computed diffraction path geometry.
@@ -161,4 +163,125 @@ func BarrierAttenuationBands(g *BarrierGeometry, groundAtten BandLevels, c2 floa
 	}
 
 	return result
+}
+
+// barrierEndpointToleranceM is the distance from either end of the
+// source→receiver line below which a crossing is a graze rather than an
+// obstacle standing between the two. It matches the tolerance RLS-19 applies
+// to the same question.
+const barrierEndpointToleranceM = 1e-6
+
+// DeriveBarrierGeometry builds the per-path diffraction geometry of Gl. 16/17
+// by intersecting the source→receiver ray with a scene of barriers, selecting
+// the significant diffraction edges with the rubber band method, and measuring
+// the diffracted path over them.
+//
+// It returns nil when nothing screens the path, which is the same input
+// BarrierAttenuationBands already reads as "no barrier" and which therefore
+// leaves A_bar at 0 and A_gr of Gl. 4 at its full effect.
+//
+// sourceHeightM and receiverHeightM must be on the same datum as
+// Barrier.HeightM.
+//
+// Two fields of the result are fixed by what this module computes, and both
+// are boundaries rather than approximations:
+//
+//   - A is 0. Fig. 6's a is the component of the source→receiver distance
+//     parallel to the barrier edge, and it is non-zero only on the *lateral*
+//     diffraction path around the end of an obstacle. This module diffracts
+//     over the top edge, in the vertical source→receiver plane, where a is
+//     zero by construction.
+//   - LineOfSightClear is false. That flag carries 7.4's negative sign for a
+//     geometry the caller supplies whose sight line passes above the top
+//     edge. An edge only reaches this function once ObstructsLineOfSight has
+//     accepted it, so the case cannot arise on a derived path.
+func DeriveBarrierGeometry(
+	source geo.Point2D, sourceHeightM float64,
+	receiver geo.Point2D, receiverHeightM float64,
+	barriers []Barrier,
+) *BarrierGeometry {
+	if len(barriers) == 0 {
+		return nil
+	}
+
+	horizontalDist := geo.Distance(source, receiver)
+	if horizontalDist <= 0 {
+		return nil
+	}
+
+	crossings := geo.RayCrossings(
+		source, receiver, barriers,
+		func(b Barrier) []geo.Point2D { return b.Geometry },
+		barrierEndpointToleranceM,
+	)
+
+	candidates := make([]geo.ScreeningPoint, 0, len(crossings))
+
+	for _, crossing := range crossings {
+		height := barriers[crossing.ObstacleIndex].HeightM
+		if !geo.ObstructsLineOfSight(crossing.DistFromSource, height, sourceHeightM, receiverHeightM, horizontalDist) {
+			continue
+		}
+
+		candidates = append(candidates, geo.ScreeningPoint{
+			DistFromSource: crossing.DistFromSource,
+			TopHeightM:     height,
+		})
+	}
+
+	selected := geo.SelectDiffractionEdges(sourceHeightM, receiverHeightM, horizontalDist, candidates)
+	if len(selected) == 0 {
+		return nil
+	}
+
+	edges := make([]geo.ScreeningPoint, 0, len(selected))
+	for _, index := range selected {
+		edges = append(edges, candidates[index])
+	}
+
+	geometry := barrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, horizontalDist)
+
+	// A derived geometry that cannot describe a real path is a defect in this
+	// derivation, not a user input to refuse mid-computation. Dropping it
+	// leaves A_bar at 0, which is the unscreened answer.
+	if geometry.Validate() != nil {
+		return nil
+	}
+
+	return &geometry
+}
+
+// barrierGeometryFromEdges measures the diffracted path over the selected
+// edges: d_ss to the first edge, d_sr from the last, e along the path between
+// them, and d straight through.
+func barrierGeometryFromEdges(
+	edges []geo.ScreeningPoint,
+	sourceHeightM, receiverHeightM, horizontalDistM float64,
+) BarrierGeometry {
+	first := edges[0]
+	last := edges[len(edges)-1]
+
+	dss := math.Hypot(first.DistFromSource, first.TopHeightM-sourceHeightM)
+	dsr := math.Hypot(horizontalDistM-last.DistFromSource, receiverHeightM-last.TopHeightM)
+
+	// e is the travel path length between the first and the last diffraction
+	// edge, i.e. the sum over every consecutive pair, not the straight chord
+	// between them: the ray runs edge to edge. The chord would under-estimate
+	// e and therefore z.
+	var e float64
+
+	for i := 1; i < len(edges); i++ {
+		e += math.Hypot(
+			edges[i].DistFromSource-edges[i-1].DistFromSource,
+			edges[i].TopHeightM-edges[i-1].TopHeightM,
+		)
+	}
+
+	return BarrierGeometry{
+		Dss: dss,
+		Dsr: dsr,
+		E:   e,
+		A:   0,
+		D:   math.Hypot(horizontalDistM, receiverHeightM-sourceHeightM),
+	}
 }

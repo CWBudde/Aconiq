@@ -15,9 +15,21 @@ type PropagationConfig struct {
 	AirTemperatureC         float64
 	RelativeHumidityPercent float64
 	MeteorologyAssumption   string
-	Barrier                 *BarrierGeometry
-	C0                      float64
-	MinDistanceM            float64
+
+	// Barrier is a diffraction geometry the caller computed itself. It applies
+	// to every source/receiver pair alike, so it describes a scene of one
+	// path; it is kept because a caller that knows its geometry may still hand
+	// it in, and it wins over Barriers when both are set.
+	Barrier *BarrierGeometry
+
+	// Barriers is the screening scene. The geometry Gl. 12-18 read is derived
+	// from it per source/receiver pair by DeriveBarrierGeometry, which is what
+	// makes A_bar reachable from an imported model rather than only from a
+	// caller that already did the geometry.
+	Barriers []Barrier
+
+	C0           float64
+	MinDistanceM float64
 }
 
 // DefaultPropagationConfig returns the default ISO 9613-2 propagation configuration.
@@ -78,6 +90,13 @@ func (cfg PropagationConfig) Validate() error {
 		}
 	}
 
+	for _, barrier := range cfg.Barriers {
+		err := barrier.Validate()
+		if err != nil {
+			return fmt.Errorf("barriers: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -124,7 +143,7 @@ func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg Propaga
 	adiv := acoustics.GeometricDivergence(distance)
 	aatm := AtmosphericAbsorptionBands(cfg.AirTemperatureC, cfg.RelativeHumidityPercent, distance)
 	agr := GroundEffectBands(cfg.GroundFactor, cfg.GroundFactor, cfg.GroundFactor, hs, hr, dp)
-	abar := BarrierAttenuationBands(cfg.Barrier, agr, 20)
+	abar := BarrierAttenuationBands(pathBarrier(receiver, source, cfg), agr, 20)
 
 	var totalAtten BandLevels
 	for i := range NumBands {
@@ -132,6 +151,24 @@ func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg Propaga
 	}
 
 	return totalAtten, distance
+}
+
+// pathBarrier returns the diffraction geometry that screens this one
+// source→receiver path.
+//
+// An explicitly supplied geometry wins: a caller that hands one in has
+// already decided what screens the path, and deriving a second answer from
+// the scene would silently overrule it.
+func pathBarrier(receiver geo.PointReceiver, source PointSource, cfg PropagationConfig) *BarrierGeometry {
+	if cfg.Barrier != nil {
+		return cfg.Barrier
+	}
+
+	return DeriveBarrierGeometry(
+		source.Point, source.SourceHeightM,
+		receiver.Point, receiver.HeightM,
+		cfg.Barriers,
+	)
 }
 
 // sourcePressureRatio returns the A-weighted mean-square pressure ratio that

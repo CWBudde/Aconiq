@@ -378,51 +378,22 @@ func normalizeDirectionalSourceID(raw string, fallbackIndex int) string {
 }
 
 func extractRLS19Barriers(model modelgeojson.Model) ([]rls19road.Barrier, error) {
-	barriers := make([]rls19road.Barrier, 0)
+	features, err := extractBarrierFeatures(model, rls19road.StandardID, "rls19-barrier", "cli.extractRLS19Barriers")
+	if err != nil {
+		return nil, err
+	}
 
-	for featureIndex, feature := range model.Features {
-		if feature.Kind != modelgeojson.FeatureKindBarrier {
-			continue
-		}
+	barriers := make([]rls19road.Barrier, 0, len(features))
 
-		lines, err := lineStringsFromFeature(feature, rls19road.StandardID)
+	for _, feature := range features {
+		barrier := rls19road.Barrier{ID: feature.ID, Geometry: feature.Geometry, HeightM: feature.HeightM}
+
+		err := barrier.Validate()
 		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q", feature.ID), err)
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("barrier %q", feature.ID), err)
 		}
 
-		heightM, ok, err := featurePropertyFloat(feature, "height_m", "barrier_height_m")
-		if err != nil {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q", feature.ID), err)
-		}
-
-		if !ok {
-			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q missing barrier height_m", feature.ID), nil)
-		}
-
-		baseID := strings.TrimSpace(feature.ID)
-		if baseID == "" {
-			baseID = fmt.Sprintf("rls19-barrier-%03d", featureIndex)
-		}
-
-		for lineIndex, line := range lines {
-			barrierID := baseID
-			if len(lines) > 1 {
-				barrierID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
-			}
-
-			barrier := rls19road.Barrier{
-				ID:       barrierID,
-				Geometry: line,
-				HeightM:  heightM,
-			}
-
-			err := barrier.Validate()
-			if err != nil {
-				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractRLS19Barriers", fmt.Sprintf("feature %q", feature.ID), err)
-			}
-
-			barriers = append(barriers, barrier)
-		}
+		barriers = append(barriers, barrier)
 	}
 
 	return barriers, nil

@@ -88,3 +88,33 @@ func extractISO9613Sources(model modelgeojson.Model, options iso9613RunOptions, 
 
 	return sources, nil
 }
+
+// extractISO9613Barriers reads the screening scene out of the model, the same
+// `kind: barrier` features `extractRLS19Barriers` reads. Before this, ISO
+// 9613-2 discarded them: its extraction kept source features only, so the
+// screening formulas of Gl. 12-18 could never be reached from a project.
+//
+// A model with no barrier features yields an empty scene rather than an error.
+// ISO 9613-2 over open ground is a legitimate calculation, and the great
+// majority of runs are exactly that.
+func extractISO9613Barriers(model modelgeojson.Model) ([]iso9613.Barrier, error) {
+	features, err := extractBarrierFeatures(model, iso9613.StandardID, "iso9613-barrier", "cli.extractISO9613Barriers")
+	if err != nil {
+		return nil, err
+	}
+
+	barriers := make([]iso9613.Barrier, 0, len(features))
+
+	for _, feature := range features {
+		barrier := iso9613.Barrier{ID: feature.ID, Geometry: feature.Geometry, HeightM: feature.HeightM}
+
+		err := barrier.Validate()
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613Barriers", fmt.Sprintf("barrier %q", feature.ID), err)
+		}
+
+		barriers = append(barriers, barrier)
+	}
+
+	return barriers, nil
+}
