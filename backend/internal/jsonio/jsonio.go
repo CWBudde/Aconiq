@@ -20,14 +20,19 @@
 // and rewrites the status to 500; that branch is intact, and carries the
 // trailing newline itself so both paths still end the same way.
 //
-// What stays with the callers is everything around the encoding, because none
-// of it is shared: `io/projectfs` replaces a file through a temp file and a
-// rename while the others write in place, and the error taxonomies differ on
-// purpose — `app/cli` and `io/projectfs` wrap a failure as `domainerrors.New`
-// under their own op string, which is what the CLI derives its exit code from,
-// and the rest use `fmt.Errorf` with their own wording. Marshal says only that
-// marshalling failed, and each caller keeps its own kind, op string and wording
-// around that.
+// What stays with the callers is the error taxonomy, because it is not shared:
+// `app/cli` and `io/projectfs` wrap a failure as `domainerrors.New` under their
+// own op string, which is what the CLI derives its exit code from, and the rest
+// use `fmt.Errorf` with their own wording. Marshal says only that marshalling
+// failed, and each caller keeps its own kind, op string and wording around that.
+//
+// The write mechanism no longer does. This doc used to say `io/projectfs`
+// replaced a file through a temp file and a rename "while the others write in
+// place", and that difference was not a decision — it meant the same artifacts
+// were replaced atomically through the HTTP API and non-atomically through the
+// CLI. `internal/atomicfile` now holds that mechanism, and both
+// `projectfs.writeJSONFile` and `cli.writeJSONFile` go through it. The
+// remaining in-place writers are listed above and have not been reviewed.
 package jsonio
 
 import (
