@@ -28,6 +28,7 @@ import { useModelStore } from "@/model/model-store";
 import { useModelValidation } from "@/model/use-model-validation";
 import { validationIssueText } from "@/model/validation-message";
 import type {
+  FeatureKind,
   GeometryType,
   ModelFeature,
   SourceType,
@@ -95,7 +96,7 @@ import { m } from "@/i18n/messages";
 // the rest of the app and left this editor in English until a full reload.
 // `draw-toolbar.tsx` has the pattern these follow, and it is also why every
 // field table below holds a label *function* rather than a string.
-function featureKindLabel(kind: "source" | "building" | "barrier"): string {
+function featureKindLabel(kind: FeatureKind): string {
   switch (kind) {
     case "source":
       return m.option_source();
@@ -103,6 +104,8 @@ function featureKindLabel(kind: "source" | "building" | "barrier"): string {
       return m.option_building();
     case "barrier":
       return m.option_barrier();
+    case "ground-zone":
+      return m.option_ground_zone();
   }
 }
 
@@ -573,6 +576,10 @@ function FeatureFields({ feature }: { feature: ModelFeature }) {
           <Schall03BarrierFields feature={feature} />
         </>
       );
+    case "ground-zone":
+      // No height: a ground zone is a footprint on the ground, not an object
+      // sound travels around. Its whole payload is the one factor.
+      return <NumberFieldGrid feature={feature} fields={[GROUND_ZONE_FIELD]} />;
   }
 }
 
@@ -1037,6 +1044,21 @@ const RAIL_BARRIER_BOOLEAN_FIELDS: BooleanFieldSpec[] = [
     label: m.label_rail_parallel_edges,
   },
 ];
+
+// ISO 9613-2 Abschnitt 7.3: G is 0 for acoustically hard ground and 1 for
+// porous ground, and the run resolves it per region from the zones a path
+// crosses. `defaultable: false` because an empty field is not "use the run
+// default" — a zone without a factor is refused, by this validator and by the
+// Go one, so that a typo does not read as hard ground.
+const GROUND_ZONE_FIELD: NumberFieldSpec = {
+  propertyKey: "ground_factor",
+  label: () => m.label_ground_factor(),
+  helper: () => m.msg_ground_factor_hint(),
+  min: 0,
+  max: 1,
+  step: 0.05,
+  defaultable: false,
+};
 
 const RAIL_WALL_SURFACE_FIELD: SelectFieldSpec = {
   propertyKey: PROP_SCHALL03_WALL_SURFACE,

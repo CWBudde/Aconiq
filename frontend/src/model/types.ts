@@ -1,5 +1,5 @@
 /** Feature kind — matches Go backend's normalized model */
-export type FeatureKind = "source" | "building" | "barrier";
+export type FeatureKind = "source" | "building" | "barrier" | "ground-zone";
 
 /** Source geometry subtype */
 export type SourceType = "point" | "line" | "area";
@@ -70,6 +70,10 @@ export interface ValidationIssueParams {
   "barrier.height.required": NoIssueParams;
   "barrier.height.invalid": NoIssueParams;
   "barrier.geometry.invalid": NoIssueParams;
+
+  "groundzone.factor.required": NoIssueParams;
+  "groundzone.factor.invalid": NoIssueParams;
+  "groundzone.geometry.invalid": NoIssueParams;
 
   "receiver.coordinates.invalid": NoIssueParams;
   "receiver.height.invalid": NoIssueParams;

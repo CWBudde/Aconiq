@@ -157,6 +157,10 @@ function validateFeature(
       }
       break;
     }
+    case "ground-zone": {
+      validateGroundZone(feature, errors);
+      break;
+    }
     case "barrier": {
       if (feature.heightM == null) {
         errors.push({
@@ -186,6 +190,53 @@ function validateFeature(
       }
       break;
     }
+  }
+}
+
+/**
+ * A ground zone is a polygon carrying a `ground_factor` in [0,1], from which
+ * ISO 9613-2 resolves G per region instead of reading one global number three
+ * times.
+ *
+ * The factor is required rather than defaulted, matching the backend: a zone
+ * without one is indistinguishable from ground the model says nothing about,
+ * which the run already answers with its global fallback.
+ */
+function validateGroundZone(
+  feature: ModelFeature,
+  errors: ValidationIssue[],
+): void {
+  const { id } = feature;
+  const factor = feature.properties?.["ground_factor"];
+
+  if (factor == null) {
+    errors.push({
+      level: "error",
+      code: "groundzone.factor.required",
+      featureId: id,
+      params: {},
+    });
+  } else if (
+    typeof factor !== "number" ||
+    !Number.isFinite(factor) ||
+    factor < 0 ||
+    factor > 1
+  ) {
+    errors.push({
+      level: "error",
+      code: "groundzone.factor.invalid",
+      featureId: id,
+      params: {},
+    });
+  }
+
+  if (feature.geometry.type !== "Polygon") {
+    errors.push({
+      level: "error",
+      code: "groundzone.geometry.invalid",
+      featureId: id,
+      params: {},
+    });
   }
 }
 

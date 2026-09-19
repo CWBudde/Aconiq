@@ -84,6 +84,7 @@ interface SourceGroups {
   sources: GeoJSONFeatureCollection;
   buildings: GeoJSONFeatureCollection;
   barriers: GeoJSONFeatureCollection;
+  groundZones: GeoJSONFeatureCollection;
 }
 
 export function featuresToSourceGroups(features: ModelFeature[]): SourceGroups {
@@ -91,6 +92,9 @@ export function featuresToSourceGroups(features: ModelFeature[]): SourceGroups {
     sources: featuresToGeoJSON(features.filter((f) => f.kind === "source")),
     buildings: featuresToGeoJSON(features.filter((f) => f.kind === "building")),
     barriers: featuresToGeoJSON(features.filter((f) => f.kind === "barrier")),
+    groundZones: featuresToGeoJSON(
+      features.filter((f) => f.kind === "ground-zone"),
+    ),
   };
 }
 
