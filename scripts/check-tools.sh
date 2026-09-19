@@ -67,15 +67,21 @@ expected_version() {
 	echo "${!var:-}"
 }
 
-# installed_version reads the version out of an installed binary. Every Go tool
-# here carries its module version in its build info, which is exact and needs no
-# per-tool output parsing; the three non-Go tools are parsed individually.
+# installed_version reads the version out of an installed binary. Most Go tools
+# here carry their module version in their build info, which is exact and needs
+# no per-tool output parsing; the non-Go tools are parsed individually, and so is
+# `golangci-lint`: CI installs it from a release archive via
+# golangci-lint-action, and whether such an archive carries module build info at
+# all is a property of how it was built, not something the tool promises. Its own
+# `version --short` is the documented interface and answers for both a release
+# build and a `go install` one.
 installed_version() {
 	local tool="$1" path
 	path="$(command -v "$tool")" || return 1
 
 	case "$tool" in
 	just) just --version | awk '{print $2}' ;;
+	golangci-lint) golangci-lint version --short ;;
 	bun) bun --version ;;
 	prettier) prettier --version ;;
 	shellcheck) shellcheck --version | awk '/^version:/ {print $2}' ;;
