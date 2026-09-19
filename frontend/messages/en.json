@@ -54,7 +54,16 @@
   "confirm_delete_run_desc_exports_kept": "Run {runId} and everything it wrote are removed from the project. Export bundles already generated from it are kept on disk. This cannot be undone.",
   "confirm_delete_run_desc_exports_lost": "Run {runId} is removed, together with its results, its log and any export bundle generated from it. This cannot be undone.",
   "msg_run_deleted": "Run {runId} deleted.",
-  "msg_run_deleted_exports_kept": "Run {runId} deleted. {count} export bundle(s) kept.",
+  "msg_run_deleted_exports_kept": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Run {runId} deleted. {count} export bundle kept.",
+        "countPlural=other": "Run {runId} deleted. {count} export bundles kept."
+      }
+    }
+  ],
   "msg_delete_run_failed": "The run could not be deleted.",
   "action_delete_feature": "Delete Feature",
   "confirm_discard_draft_title": "Discard the recovered draft?",
@@ -113,8 +122,16 @@
   "status_import_complete": "Import Complete",
   "status_loading": "Loading…",
   "status_locating": "Locating…",
-  "status_validation_errors": "validation error(s)",
-  "status_validation_warnings": "warning(s)",
+  "status_validation_errors": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} validation error",
+        "countPlural=other": "{count} validation errors"
+      }
+    }
+  ],
   "label_artifacts": "Artifacts",
   "label_bands": "Bands",
   "label_band_names": "Band names",
@@ -313,7 +330,7 @@
   "msg_settings_language_help": "Choose the language used across the UI.",
   "msg_settings_storage_help": "Saved drafts live in localStorage and can be cleared here.",
   "msg_settings_storage_note": "Saved drafts stay in browser localStorage and can be removed without affecting the backend project.",
-  "msg_settings_storage_summary": "Theme preference is stored in `aconiq-theme`, locale preference in `PARAGLIDE_LOCALE`, and saved drafts in `aconiq.model.draft`.",
+  "msg_settings_storage_summary": "Theme preference is stored in {themeKey}, locale preference in {localeKey}, and saved drafts in {draftKey}.",
   "msg_settings_runtime_help": "This page shows which frontend runtime mode is active.",
   "msg_api_endpoint_help": "Override the backend URL for this browser. Leave it blank to use the environment default.",
   "msg_api_endpoint_note": "This affects all browser-side API requests and is stored locally in this browser only.",
@@ -518,6 +535,9 @@
   "msg_unsaved_changes_before_run": "The run uses the model saved in the project. Save your changes first.",
   "nav_primary_label": "Main navigation",
   "action_skip_to_content": "Skip to content",
+  "label_sidebar": "Sidebar",
+  "msg_sidebar_mobile_description": "Displays the mobile sidebar.",
+  "action_toggle_sidebar": "Toggle sidebar",
   "msg_copy_failed": "Copying to the clipboard failed",
   "msg_log_line_count": [
     {
@@ -597,6 +617,9 @@
   "msg_import_nothing": "There is nothing to import — the file holds no features, receivers or calculation area the model reads.",
   "msg_import_errors_remain": "These findings came in with the import and are in the model now.",
   "action_show_feature_on_map": "Show {id} on the map",
+  "label_map_unavailable": "Map unavailable",
+  "error_map_load_timeout": "The map did not finish loading. WebGL rendering may be blocked or unavailable in this browser.",
+  "error_map_webgl_unavailable": "Map rendering is unavailable in this browser.",
   "msg_map_crs_projecting": "The model is stored in {crs}. It is being projected into WGS 84 for display.",
   "msg_map_crs_reprojected": "Displayed in WGS 84, stored in {crs}.",
   "msg_map_crs_unsupported": "The model is stored in {crs} and no projection is available in this mode, so it cannot be drawn. A backend that can project it — the desktop or browser mode — shows it in place.",

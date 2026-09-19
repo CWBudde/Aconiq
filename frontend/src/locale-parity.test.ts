@@ -171,6 +171,25 @@ describe("message catalogues", () => {
     expect(punctuated).toEqual([]);
   });
 
+  it.each(LOCALES)("spell no plural in parentheses in %s", (locale) => {
+    // "1 export bundle(s)" is a count that was never given to the message:
+    // the sentence was assembled in JSX and the number stayed outside, so no
+    // plural rule could fire and the author wrote both endings at once. The
+    // fix is a variant message, and this is the check that the shortcut does
+    // not come back — including in German, where the endings differ
+    // ("Warnung(en)", "Export-Paket(e)", "Immissionsort(e)").
+    const parenthesised = Object.entries(catalogue(locale))
+      .filter(([key]) => isMessageKey(key))
+      .filter(([, value]) =>
+        patterns(value).some((pattern) =>
+          /\((?:s|e|en|n|er|innen)\)/i.test(pattern),
+        ),
+      )
+      .map(([key]) => key);
+
+    expect(parenthesised).toEqual([]);
+  });
+
   it("use the same placeholders in every locale", () => {
     // A translation that drops a `{count}` compiles and then renders a
     // sentence with a hole in it; one that invents a placeholder paraglide

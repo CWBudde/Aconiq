@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { LAYER_IDS } from "./layers";
+// The real catalogue, not a stub: the unavailable panel is the one part of
+// MapView that renders copy, and asserting on a hardcoded English string
+// would pass just as well after the string stopped going through i18n.
+import { m } from "@/i18n/messages";
 
 // maplibre-gl cannot run in jsdom (no WebGL), so the whole module is replaced
 // by a fake whose `Map` records instances and can be told to throw. The fake
@@ -121,12 +125,6 @@ vi.mock("maplibre-gl", () => ({
   },
 }));
 
-// `layers.ts` pulls in the whole `@/i18n/messages` graph, which dominates the
-// cost of importing MapView; the component itself renders no message text.
-vi.mock("@/i18n/messages", () => ({
-  m: new Proxy({}, { get: () => () => "" }),
-}));
-
 const { state } = fake;
 
 // `webglDisabledForSession` is module-level on purpose (it must survive
@@ -180,12 +178,16 @@ describe("MapView", () => {
       latestInstance().fire("load");
     });
 
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
     expect(container.contains(latestInstance().container)).toBe(true);
     act(() => {
       vi.advanceTimersByTime(MAP_LOAD_TIMEOUT_MS);
     });
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the timeout panel without load and recovers on retry", async () => {
@@ -197,18 +199,20 @@ describe("MapView", () => {
       vi.advanceTimersByTime(MAP_LOAD_TIMEOUT_MS);
     });
 
-    expect(screen.getByText("Map unavailable")).toBeInTheDocument();
-    expect(screen.getByText(/did not finish loading/)).toBeInTheDocument();
+    expect(screen.getByText(m.label_map_unavailable())).toBeInTheDocument();
+    expect(screen.getByText(m.error_map_load_timeout())).toBeInTheDocument();
     // The error re-runs the init effect, whose cleanup removes the stale map.
     expect(first.remove).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: m.action_retry() }));
 
     expect(state.constructCalls).toBe(2);
     act(() => {
       latestInstance().fire("load");
     });
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the unavailable panel when the constructor throws and retries", async () => {
@@ -217,23 +221,25 @@ describe("MapView", () => {
     render(<MapView />);
 
     expect(state.constructCalls).toBe(1);
-    expect(screen.getByText("Map unavailable")).toBeInTheDocument();
+    expect(screen.getByText(m.label_map_unavailable())).toBeInTheDocument();
     expect(screen.getByText(/rendering is unavailable/)).toBeInTheDocument();
 
     // Still broken: the panel persists and the button stays available.
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: m.action_retry() }));
     expect(state.constructCalls).toBe(2);
-    expect(screen.getByText("Map unavailable")).toBeInTheDocument();
+    expect(screen.getByText(m.label_map_unavailable())).toBeInTheDocument();
 
     // Fixed in the meantime: the retry clears the session switch, so the map
     // is created and rendered.
     state.throwOnConstruct = false;
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: m.action_retry() }));
     expect(state.constructCalls).toBe(3);
     act(() => {
       latestInstance().fire("load");
     });
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the session kill switch across remounts until retried", async () => {
@@ -247,7 +253,7 @@ describe("MapView", () => {
     state.throwOnConstruct = false;
     render(<MapView />);
     expect(state.constructCalls).toBe(1);
-    expect(screen.getByText("Map unavailable")).toBeInTheDocument();
+    expect(screen.getByText(m.label_map_unavailable())).toBeInTheDocument();
   });
 
   it("keeps the canvas mounted through a lost WebGL context", async () => {
@@ -266,7 +272,9 @@ describe("MapView", () => {
         .dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
     });
 
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
     expect(instance.remove).not.toHaveBeenCalled();
   });
 
@@ -323,7 +331,9 @@ describe("MapView", () => {
 
     // A failed tile is not a failed map: the canvas stays, and the "Map
     // unavailable" panel — which would unmount it — stays away.
-    expect(screen.queryByText("Map unavailable")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(m.label_map_unavailable()),
+    ).not.toBeInTheDocument();
     const notice = screen.getByRole("status");
     expect(document.body.contains(offline.container)).toBe(true);
 

@@ -1780,29 +1780,23 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `strategy`. It reads both files as text, because `vite.config.ts` pulls the plugin graph into
       the test environment and `compile-i18n.mjs` spawns a compiler on import; a regex that stops
       matching fails the test rather than comparing nothing.
-- [ ] Add the keys still missing after Phase B: the "Map unavailable"/"Retry" strings in
-      `map-view.tsx` — plus its two module-scope English constants, `MAP_TIMEOUT_MESSAGE` and
-      `MAP_UNAVAILABLE_MESSAGE`, which are rendered into the same panel and which no lint rule would
-      catch — and `ui/components/sidebar.tsx`'s "Toggle Sidebar" (as `sr-only` text at `:276` **and**
-      as `aria-label`/`title` at `:292,295`), "Sidebar" and "Displays the mobile sidebar." at
-      `:214-215`. `map-view.test.tsx` mocks `@/i18n/messages` to a proxy returning `""` and has to
-      stop first: sixteen of its assertions match on those two English strings, and the negative ones
-      would pass vacuously rather than fail. Then enable `react/jsx-no-literals` for `pages/`, `map/`
-      and `ui/` — `eslint-plugin-react` is **not** a dependency yet, the rule flags 41 JSX text nodes
-      of which only those 5 are prose (the rest are `:`, `(`, `/`, `×`, `·` and the `AconiQ`
-      wordmark, so it wants an `allowedStrings` list), the glob has to exclude `*.test.tsx` (57 more)
-      and the existing `src/ui/components/**` relax block covers the vendored shadcn this rule would
-      otherwise police.
-- [ ] German terminology and register pass: Immissionsort, Schallquelle,
-      Schallschirm/Lärmschutzwand, "Norm" consistently; Sie/impersonal register throughout; welcome
-      copy aligned between `de.json` and `en.json`. The counts, so the work can be sized: `Empfänger`
-      25× against `Immissionsort` 7×, `Schallquelle` and `Schallschirm` 0×, `Lärmschutzwand` 1×,
-      `Norm` 10× against `Standard` 15×. The register is **mixed by imperative, not by pronoun** —
-      there is no `du`/`dein`/`dich`/`dir` anywhere, and a grep for those alone reports the phase
-      clean. What is actually informal is `msg_no_project_yet_help` ("Importiere … und kehre …
-      zurück"), `msg_settings_appearance_help` and `msg_settings_language_help` ("Wähle …"), against
-      13 strings in the Sie form. The four `Lade …` status strings are the app narrating, not an
-      imperative, and are not part of this.
+- [x] The last English strings moved into the catalogue, and `react/jsx-no-literals` now guards
+      `src/pages`, `src/map` and `src/ui` (#67). Two constraints stay live. **A message must not be
+      read at module scope** — `mapError` carries a `MapErrorKind` and the render resolves it,
+      because the language switch no longer reloads the page. **`noStrings` stays off**: with it on
+      the rule also polices every string-valued prop, which outnumbers the prose by two orders of
+      magnitude. Two beliefs this file carried were wrong: `map-view.test.tsx` had fourteen English
+      assertions, not sixteen, and the rule reported two nodes, not 41 — Phase B had closed the
+      rest.
+- [x] German terminology and register pass over 57 messages: `Empfänger` → `Immissionsort`,
+      `Schallquelle`, `Schallschirm`, and `Standard` split into `Norm` and `Vorgabe` (#67). Three
+      constraints stay live. **`label_experimental_opt_in` says "Gerüst-Modul", not "Gerüst-Norm"**
+      — the German must not assert what the evidence tier denies. **`Lärmschutzwand` and
+      `Hindernis` are reserved for the Schall 03 rail-wall fields**; the model kind is
+      `Schallschirm` everywhere else. **The established acoustic compounds (`Flächenquelle`,
+      `Punktquelle`) are not shortenings of `Schallquelle`** and stay. The counts this file used to
+      quote were stale, and the register was informal in four strings, not three —
+      `msg_api_endpoint_help` was missed by a grep for du-forms, as the others were.
 - [ ] **The backend's own findings are still English.** `ui/save-status.tsx` renders
       `APIValidationIssue.message` from `POST /api/v1/model`, and
       `backend/internal/geo/modelgeojson/types.go` carries the same message-only shape the frontend
@@ -1811,14 +1805,10 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       block — about 7 of those codes overlap the frontend's, and the messages differ even there
       ("Building requires height_m" against "building feature requires height_m"), so the two
       vocabularies are a partial mirror rather than one list.
-- [ ] **Three messages still carry a literal `(s)`**: `msg_run_deleted_exports_kept` ("export
-      bundle(s)"), `status_validation_errors` ("validation error(s)") and
-      `status_validation_warnings`. They were left out of the plural work deliberately — their call
-      sites glue a bare number in JSX (`pages/import.tsx:364`, `import/preview-step.tsx:102,132`),
-      so converting the message means restructuring the call site, which is a different change.
-      Note that `msg_validation_source_rls19_parking_geometry_multipart` is **not** one of these: its
-      `parts` is never 1, because the check that produces it fires on `!== 1`, so a singular arm
-      would be dead code.
+- [x] No message spells a plural in parentheses; `locale-parity.test.ts` checks every locale and
+      every variant arm (#67). One constraint stays live: **`status_validation_warnings` was
+      deleted, not pluralised**, because `msg_validation_warning_count` already said "2 warnings"
+      with a rule — reach for that one.
 
 ### Phase F — Tests, types and the kernel boundary
 

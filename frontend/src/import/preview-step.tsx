@@ -100,7 +100,7 @@ export function PreviewStep({
         <Callout
           variant="destructive"
           icon={XCircle}
-          title={`${String(report.errors.length)} ${m.status_validation_errors()}`}
+          title={m.status_validation_errors({ count: report.errors.length })}
         >
           <ul className="space-y-1">
             {/* The id is named but not linked. These features are not in the
@@ -130,7 +130,7 @@ export function PreviewStep({
 
       {report && report.warnings.length > 0 ? (
         <Callout variant="warning" icon={AlertTriangle}>
-          {String(report.warnings.length)} {m.status_validation_warnings()}
+          {m.msg_validation_warning_count({ count: report.warnings.length })}
         </Callout>
       ) : null}
 
