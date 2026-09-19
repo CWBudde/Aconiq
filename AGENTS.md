@@ -60,7 +60,9 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 ### Frontend
 
-`just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-test-coverage`, `fe-coverage-report`, `fe-e2e`, `fe-bundle-check`, and `fe-ci` (typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
+`just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-test-coverage`, `fe-coverage-report`, `fe-e2e`, `fe-bundle-check`, `fe-api` / `fe-api-check`, and `fe-ci` (api contract + typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
+
+`frontend/src/api/schema.ts` is generated from the API's OpenAPI document by `frontend/scripts/generate-api-client.mjs`, which exports the spec with `go run ./cmd/aconiq openapi` and never stores it. `just fe-api` rewrites the file; `just fe-api-check` regenerates into a temp file and fails on the diff, which is the gate in `fe-ci`. Do not hand-edit that file — put the change in `backend/internal/api/httpv1/openapi.go` and regenerate. The hand-written half of the contract lives in `frontend/src/api/client.ts`.
 
 ### Aggregates
 
