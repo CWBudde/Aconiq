@@ -400,6 +400,35 @@ describe("MapView", () => {
   });
 });
 
+/**
+ * A loaded map holding the given layers, with the given handlers bound.
+ *
+ * Shared by both suites below: a click is one mechanism, and the model half
+ * and the result half only differ in which layer the hit came from.
+ */
+async function loadedMap(
+  handlers: {
+    onFeatureClick?: (features: unknown[]) => void;
+    onResultReceiverClick?: (features: unknown[]) => void;
+  },
+  layers: Record<string, { properties: unknown }[]>,
+) {
+  const MapView = await loadMapView();
+  render(<MapView {...handlers} />);
+  const instance = latestInstance();
+  for (const [id, features] of Object.entries(layers)) {
+    instance.withLayer(id, features);
+  }
+  // The click and hover effects read the map through the ref the `load`
+  // handler fills, so nothing is bound until the map has loaded.
+  act(() => {
+    instance.fire("load");
+  });
+  return instance;
+}
+
+const POINTER = { point: { x: 10, y: 10 } };
+
 describe("MapView result receivers", () => {
   /*
    * A receiver drawn by `ResultLayers` is a click target like any model
@@ -412,30 +441,6 @@ describe("MapView result receivers", () => {
    * no model store, so a page told only "a feature was clicked" would have to
    * guess which population the id belonged to.
    */
-
-  /** A loaded map holding the given layers, with the given handlers bound. */
-  async function loadedMap(
-    handlers: {
-      onFeatureClick?: (features: unknown[]) => void;
-      onResultReceiverClick?: (features: unknown[]) => void;
-    },
-    layers: Record<string, { properties: unknown }[]>,
-  ) {
-    const MapView = await loadMapView();
-    render(<MapView {...handlers} />);
-    const instance = latestInstance();
-    for (const [id, features] of Object.entries(layers)) {
-      instance.withLayer(id, features);
-    }
-    // The click and hover effects read the map through the ref the `load`
-    // handler fills, so nothing is bound until the map has loaded.
-    act(() => {
-      instance.fire("load");
-    });
-    return instance;
-  }
-
-  const POINTER = { point: { x: 10, y: 10 } };
 
   it("reports a result receiver through its own callback", async () => {
     const onFeatureClick = vi.fn();
@@ -514,5 +519,65 @@ describe("MapView result receivers", () => {
     });
 
     expect(onFeatureClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("MapView model feature selection", () => {
+  /*
+   * A ground zone is drawn from its own source, below everything else, and it
+   * is still a model object with a property to edit. It reaches the editor
+   * only if its layers are in the list the click query filters by — being
+   * rendered is not the same as being selectable, and the feature list is not
+   * the path the map's own editing flow takes.
+   */
+
+  it("reports a ground zone through the feature callback", async () => {
+    const onFeatureClick = vi.fn();
+    const map = await loadedMap(
+      { onFeatureClick },
+      { [LAYER_IDS.groundZoneFill]: [hit("zone-1")] },
+    );
+
+    act(() => {
+      map.fire("click", POINTER);
+    });
+
+    expect(onFeatureClick).toHaveBeenCalledTimes(1);
+    expect(onFeatureClick.mock.calls[0]?.[0]).toEqual([hit("zone-1")]);
+  });
+
+  it("gives a source standing on a zone precedence over the zone", async () => {
+    // The caller opens the editor on the first hit, so the object the reader
+    // aimed at has to come first. A zone covers whole hectares; a source on it
+    // that could not be clicked would be unreachable on the map.
+    const onFeatureClick = vi.fn();
+    const map = await loadedMap(
+      { onFeatureClick },
+      {
+        [LAYER_IDS.sourcesPoint]: [hit("src-1")],
+        [LAYER_IDS.groundZoneFill]: [hit("zone-1")],
+      },
+    );
+
+    act(() => {
+      map.fire("click", POINTER);
+    });
+
+    expect(onFeatureClick.mock.calls[0]?.[0]).toEqual([
+      hit("src-1"),
+      hit("zone-1"),
+    ]);
+  });
+
+  it("shows the pointer cursor over a ground zone", async () => {
+    const map = await loadedMap(
+      {},
+      { [LAYER_IDS.groundZoneOutline]: [hit("zone-1")] },
+    );
+
+    act(() => {
+      map.fire("mousemove", POINTER);
+    });
+    expect(map.getCanvas().style.cursor).toBe("pointer");
   });
 });
