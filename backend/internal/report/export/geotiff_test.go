@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/report/results"
@@ -420,4 +421,67 @@ func assertIFDTag(t *testing.T, data []byte, ifdStart int, entryCount uint16, ta
 	}
 
 	t.Fatalf("tag %d not found in IFD", tagID)
+}
+
+func TestExportGeoTIFFRefusesAnEPSGCodeNoGeoKeyCanHold(t *testing.T) {
+	t.Parallel()
+
+	// EPSG:102100 is the ESRI spelling of Web Mercator. classifyEPSG calls
+	// anything >= 2000 projected, and BuildTransformPipeline short-circuits to
+	// identity when the import CRS matches, so a project can be created, run
+	// and only then reach the exporter - where the code used to panic.
+	for _, export := range []struct {
+		name string
+		call func(string, *results.Raster, GeoTransform, string) ([]string, error)
+	}{
+		{"geotiff", ExportGeoTIFF},
+		{"cog", ExportCOG},
+	} {
+		t.Run(export.name, func(t *testing.T) {
+			t.Parallel()
+
+			raster := singleValueRaster(t, "EPSG:102100")
+
+			_, err := export.call(filepath.Join(t.TempDir(), "out"), raster, GeoTransform{
+				OriginX: 0, OriginY: 10, PixelSizeX: 1, PixelSizeY: -1,
+			}, "EPSG:102100")
+			if err == nil {
+				t.Fatal("expected an error for an EPSG code outside uint16")
+			}
+
+			if !strings.Contains(err.Error(), "102100") {
+				t.Fatalf("error does not name the offending code: %v", err)
+			}
+		})
+	}
+}
+
+// singleValueRaster builds the smallest raster the exporters accept.
+func singleValueRaster(t *testing.T, crs string) *results.Raster {
+	t.Helper()
+
+	bandNames := []string{"Lden"}
+
+	raster, err := results.NewRaster(results.RasterMetadata{
+		Width:     2,
+		Height:    2,
+		Bands:     1,
+		NoData:    -9999,
+		Units:     results.UniformUnits(bandNames, results.UnitDecibel),
+		BandNames: bandNames,
+		CRS:       crs,
+	})
+	if err != nil {
+		t.Fatalf("create raster: %v", err)
+	}
+
+	for y := range 2 {
+		for x := range 2 {
+			if setErr := raster.Set(x, y, 0, 50.0); setErr != nil {
+				t.Fatalf("set raster: %v", setErr)
+			}
+		}
+	}
+
+	return raster
 }
