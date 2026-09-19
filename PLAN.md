@@ -1950,28 +1950,18 @@ behind the gate" from a heading, check what the item actually is.
 
 ## Priority 10 — ISO 9613-2 geometry extensions
 
-- [x] **The screening geometry is one implementation, in `internal/geo/screening.go`.** (2026-09-19)
-      `UpperConvexHull`, `ObstructsLineOfSight` and `SelectDiffractionEdges`, plus `RayCrossings`
-      for the polyline case. The duplication was verbatim, not merely similar: `upperConvexHull`
-      and its `hullPoint` were identical down to the cross-product expression, and the crossing
-      insertion sort was character-for-character the same apart from field capitalisation.
-      This entry's guess at the home was wrong. `internal/acoustics` holds **zero** geometry and
-      its package doc disclaims both German modules, so the primitive went to `internal/geo`,
-      beside `SegmentIntersection` and `LineStringIntersectsSegment` — which it uses rather than
-      re-deriving. The overlap with P7's acoustics-core extraction was therefore nil; that item is
-      untouched and still open.
-      **The rule the entry protected held.** Schall 03's `dedupeCoincidentCrossings`,
-      `obstacleGroups`, `obstacleLateralCandidates` and `silhouetteVertices` stayed put.
-      Three contract decisions are live for anyone adding a fourth caller. `SelectDiffractionEdges`
-      takes **pre-filtered** candidates and returns indices, because Schall 03 must merge the two
-      crossings a ray makes through a footprint corner and can only do that once the crossings are
-      known. The endpoint tolerance is a **parameter** (RLS-19 passes 1e-6, Schall 03 passes 0);
-      collapsing it would have moved Schall 03's numbers. And Schall 03 keeps its own segment-based
-      `FindBarrierCrossings` deliberately — converting its `BarrierSegment` pairs into polylines
-      would allocate per path on a hot loop, and its dedupe there is normative rather than
-      incidental.
-      Both modules kept their own function signatures as thin wrappers, so their existing tests
-      were the equivalence oracle. Every RLS-19 and Schall 03 golden is byte-identical.
+- [x] **The screening geometry is one implementation, in `internal/geo/screening.go`.** (2026-09-19,
+      `4329237`) `UpperConvexHull`, `ObstructsLineOfSight`, `SelectDiffractionEdges` and
+      `RayCrossings`, shared by RLS-19, Schall 03 and ISO 9613-2.
+      Three constraints are live for a fourth caller. `SelectDiffractionEdges` takes **pre-filtered**
+      candidates and returns indices, because Schall 03 merges the two crossings a ray makes through
+      a footprint corner and can only do that once the crossings are known. The endpoint tolerance
+      is a **parameter** (RLS-19 passes 1e-6, Schall 03 passes 0); collapsing it moves Schall 03's
+      numbers. Schall 03 keeps its own segment-based `FindBarrierCrossings`, because converting its
+      `BarrierSegment` pairs to polylines would allocate per path on a hot loop.
+      **This entry's guess at the home was wrong**, and P7 is unaffected by it: `internal/acoustics`
+      holds zero geometry and its package doc disclaims both German modules, so the asserted overlap
+      with the acoustics-core extraction was nil. That P7 item is untouched and still open.
 - [ ] Add reflections via image sources for enclosed industrial-yard cases, once building geometry
       is readily available from the SoundPLAN import path.
 - [ ] Add line and area source subdivision for extended industrial sources (conveyor belts,
@@ -1981,44 +1971,30 @@ behind the gate" from a heading, check what the item actually is.
       already implements the full three-region Table 3 model and `propagation.go` simply passes the
       one global `ground_factor` three times, and a `GroundZone` type carrying a polygon and a
       factor already exists in `iso9613/model.go` with no caller.
-      **(2026-09-19) The blocker this item named is gone.** It said zones need the bespoke module
-      shape `rls19-road` and `schall03` have, because `iso9613` ran through the generic
-      `receiverRunModule`, which carries no scene. `iso9613` now has that shape, for the barrier
-      work above: `runISO9613Module` reads the model, and `PropagationConfig` already carries one
-      scene collection. What is left is genuinely only the zone half — an extractor for the
-      polygons, a point-in-polygon lookup per region, and the three arguments of
-      `GroundEffectBands(gs, gr, gm, …)` resolved per path instead of passed the one global
-      `ground_factor` three times. Note it changes computed levels for a normative module wherever
-      a project defines zones, the same release question the barrier work raised.
-- [x] **A_bar is reachable: ISO 9613-2 detects its barriers from the model.** (2026-09-19)
-      The screening scene travels on `PropagationConfig.Barriers`, the way RLS-19 already carries
-      buildings and its terrain model, so `ComputeReceiverOutputs` keeps its signature and the
-      acceptance decoder, the WASM kernel and every other caller were untouched. `BandAttenuation`
-      is the one per-path chokepoint and derives the geometry there. `iso9613` now has the bespoke
-      module shape `rls19-road` and `schall03` have, and `extractISO9613Barriers` reads the same
-      `kind: barrier` features `extractRLS19Barriers` does — through one `extractBarrierFeatures`,
-      because `dupl` was right that a second copy had been written.
-      **`PropagationConfig.Barrier` is kept and still wins when set.** A caller that computed its
-      own geometry has already decided what screens the path, and that is the path the
-      Konformitätserklärung declared; it does not disappear under anyone.
-      **Two fields of a derived geometry are fixed, and both are boundaries rather than
-      approximations.** `A` is 0 — Bild 6's a is non-zero only on the lateral path, and this module
-      diffracts over the top edge in the vertical plane. `LineOfSightClear` is false, because an
-      edge only reaches the derivation once it has been found to obstruct.
-      **No existing golden moved.** Every fixture in the repository was barrier-free, so a model
-      without barrier features computes exactly what it did before and the change is strictly
-      additive for existing inputs — which is not what this plan assumed when it called the wiring
-      a breaking change. It is one, but only for a user whose model carries barrier features that
-      were until now silently ignored. End to end on a 9 m barrier along one side: the seven
-      receivers behind it drop 11.8–14.0 dB and every other receiver is bit-identical.
-      **This entry blamed the wrong thing for the fixture.** It said the acceptance decoder has no
-      barrier field "only the RLS-19 branch decodes barriers". The RLS-19 branch decodes a
-      top-level `barriers` array of real geometry and has never decoded `barrier_attenuation_db`
-      either: **no Go struct in the backend has that JSON tag.** It is a _cnossos-road CLI
-      parameter_ name, and `point_preview.scenario.json` carried the same dead key with value 0.
-      Both keys are gone, the contextual fixture carries a wall that screens part of the grid and
-      not the rest, and `TestContextualFixtureActuallyScreens` requires both halves — a description
-      cannot assert anything, which is how the old claim survived.
+      **(2026-09-19) The blocker this item named is gone**: it said zones need the bespoke module
+      shape, and `iso9613` now has one. What is left is the zone half — an extractor, a
+      point-in-polygon lookup per region, and `GroundEffectBands`' three arguments resolved per path
+      instead of passed the one global factor. It changes levels for a normative module wherever a
+      project defines zones.
+- [x] **A_bar is reachable: ISO 9613-2 detects its barriers from the model.** (2026-09-19,
+      `1efc6d8`, `ec607ae`) The scene travels on `PropagationConfig.Barriers`, `BandAttenuation`
+      derives the per-path geometry, and `iso9613` has the bespoke module shape `rls19-road` and
+      `schall03` already had.
+      Four constraints are live. `PropagationConfig.Barrier` still **wins when set**, so a caller
+      that computed its own geometry keeps it. Gl. 16/17's **a is derived from the crossed segment's
+      orientation**, with d*ss and d_sr measured perpendicular to the diffraction edge; for several
+      edges the source-side edge fixes that plane, which is Bild 7's parallel case and the only one
+      the standard defines. **Browser mode still cannot run `iso9613` at all** — the kernel accepts
+      only the RLS-19 request — so this reaches the CLI alone; the browser half is P4's
+      "model extraction is still RLS-19-only". And `docs/conformance/` carries the boundary that
+      replaced the pre-computed-geometry one.
+      **Three beliefs this entry held were wrong.** It blamed the acceptance decoder for dropping
+      the fixture's barrier value: no Go struct in the backend has a `barrier_attenuation_db` tag at
+      all — it is a \_cnossos-road CLI parameter* name, in two iso9613 fixtures. It called the wiring
+      a breaking change against the repository's goldens: every fixture was barrier-free, so only
+      the one fixture deliberately given a wall moved. And a first cut of the derivation set a = 0,
+      which over-states z for any screen not square to the ray — up to 1.6 dB of D_z at 10° — in the
+      direction that under-states the level.
 - [x] **The ISO 9613-1 α model replaced the nearest-row Table 2 lookup.** `AlphaForBand` evaluates
       the analytical model — classical absorption plus O₂ and N₂ relaxation — at every condition.
       **This entry understated the defect by describing the table's span rather than the resulting

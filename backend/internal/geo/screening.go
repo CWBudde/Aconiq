@@ -145,6 +145,13 @@ type RayCrossing struct {
 	Point          Point2D
 	DistFromSource float64
 	ObstacleIndex  int
+
+	// SegmentIndex is the index, within that obstacle's polyline, of the
+	// segment the ray crosses. The crossed segment's orientation is what a
+	// standard needs to decompose the path into the plane perpendicular to
+	// the diffraction edge and the component parallel to it; without it a
+	// caller can only treat every screen as if it stood square to the ray.
+	SegmentIndex int
 }
 
 // RayCrossings returns every obstacle whose plan-view polyline the line from
@@ -172,7 +179,7 @@ func RayCrossings[T any](
 	var crossings []RayCrossing
 
 	for i, obstacle := range obstacles {
-		point, _, ok := LineStringIntersectsSegment(polyline(obstacle), source, receiver)
+		point, segment, ok := LineStringIntersectsSegment(polyline(obstacle), source, receiver)
 		if !ok {
 			continue
 		}
@@ -187,6 +194,7 @@ func RayCrossings[T any](
 			Point:          point,
 			DistFromSource: distFromSource,
 			ObstacleIndex:  i,
+			SegmentIndex:   segment,
 		})
 	}
 

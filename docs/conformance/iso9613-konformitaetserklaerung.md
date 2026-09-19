@@ -90,10 +90,13 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - Luftabsorption wird beim Referenzluftdruck (101,325 kPa) berechnet; ein abweichender
   Standortluftdruck ist nicht parametrierbar. Die Lufttemperatur ist auf [−60, 60] °C begrenzt.
 - Bodendämpfung nutzt einen einzigen globalen Bodenfaktor G für alle drei Regionen
-- Barrierendämpfung wird nur für die Beugung über die Oberkante berechnet, im Vertikalschnitt
-  zwischen Quelle und Immissionsort. Der Abstandsanteil a parallel zur Beugungskante (Bild 6) ist
-  daher konstruktionsbedingt 0; er wäre nur auf dem seitlichen Beugungsweg von null verschieden,
-  den dieses Modul nicht berechnet.
+- Barrierendämpfung wird nur für die Beugung über die Oberkante berechnet; seitliche Beugung um
+  vertikale Kanten (Gl. 13) entfällt weiterhin.
+- Der Abstandsanteil a parallel zur Beugungskante (Bild 6) wird aus der Ausrichtung des
+  geschnittenen Wandabschnitts bestimmt; d_ss und d_sr werden in der Ebene senkrecht zur
+  Beugungskante gemessen. Für mehrere Beugungskanten wird die quellseitige Kante als Bezugsebene
+  verwendet — das ist der in Bild 7 gezeichnete Fall paralleler Kanten; für nicht parallele Kanten
+  definiert die Norm keine Wegdifferenz.
 - Eine vorberechnete Beugungsgeometrie kann weiterhin übergeben werden und hat Vorrang vor der
   Szene; nur dann ist das Vorzeichen von z nach Abschnitt 7.4 über `LineOfSightClear` vom Aufrufer
   mitzuliefern, und geometrisch inkonsistente Eingaben werden zurückgewiesen. Eine automatisch

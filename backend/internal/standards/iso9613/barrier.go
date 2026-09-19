@@ -195,6 +195,22 @@ const barrierEndpointToleranceM = 1e-6
 //     geometry the caller supplies whose sight line passes above the top
 //     edge. An edge only reaches this function once ObstructsLineOfSight has
 //     accepted it, so the case cannot arise on a derived path.
+//
+// screeningEdge is one selected diffraction edge: where the ray crosses it,
+// how high it stands, and the plan-view orientation of the crossed segment.
+//
+// The orientation is what makes Gl. 16/17 evaluable. Those equations decompose
+// the diffracted path into a component in the plane perpendicular to the
+// diffraction edge — which is what d_ss and d_sr measure — and the component a
+// parallel to that edge. Measuring the legs along the source-receiver ray
+// instead, with a = 0, silently assumes every screen stands square to the ray.
+type screeningEdge struct {
+	point      geo.Point2D
+	topHeightM float64
+	segmentA   geo.Point2D
+	segmentB   geo.Point2D
+}
+
 func DeriveBarrierGeometry(
 	source geo.Point2D, sourceHeightM float64,
 	receiver geo.Point2D, receiverHeightM float64,
@@ -216,9 +232,12 @@ func DeriveBarrierGeometry(
 	)
 
 	candidates := make([]geo.ScreeningPoint, 0, len(crossings))
+	obstructing := make([]screeningEdge, 0, len(crossings))
 
 	for _, crossing := range crossings {
-		height := barriers[crossing.ObstacleIndex].HeightM
+		barrier := barriers[crossing.ObstacleIndex]
+
+		height := barrier.HeightM
 		if !geo.ObstructsLineOfSight(crossing.DistFromSource, height, sourceHeightM, receiverHeightM, horizontalDist) {
 			continue
 		}
@@ -227,19 +246,33 @@ func DeriveBarrierGeometry(
 			DistFromSource: crossing.DistFromSource,
 			TopHeightM:     height,
 		})
+		obstructing = append(obstructing, screeningEdge{
+			point:      crossing.Point,
+			topHeightM: height,
+			segmentA:   barrier.Geometry[crossing.SegmentIndex],
+			segmentB:   barrier.Geometry[crossing.SegmentIndex+1],
+		})
 	}
 
+	// The rubber band runs over distance along the ray, while the geometry
+	// below is measured perpendicular to the edge. For parallel edges the two
+	// differ by one positive factor along the whole section, and scaling the
+	// x axis of an upper convex hull does not change which points it rests on,
+	// so the selection is the same either way.
 	selected := geo.SelectDiffractionEdges(sourceHeightM, receiverHeightM, horizontalDist, candidates)
 	if len(selected) == 0 {
 		return nil
 	}
 
-	edges := make([]geo.ScreeningPoint, 0, len(selected))
+	edges := make([]screeningEdge, 0, len(selected))
 	for _, index := range selected {
-		edges = append(edges, candidates[index])
+		edges = append(edges, obstructing[index])
 	}
 
-	geometry := barrierGeometryFromEdges(edges, sourceHeightM, receiverHeightM, horizontalDist)
+	geometry, ok := barrierGeometryFromEdges(edges, source, sourceHeightM, receiver, receiverHeightM, horizontalDist)
+	if !ok {
+		return nil
+	}
 
 	// A derived geometry that cannot describe a real path is a defect in this
 	// derivation, not a user input to refuse mid-computation. Dropping it
@@ -252,17 +285,47 @@ func DeriveBarrierGeometry(
 }
 
 // barrierGeometryFromEdges measures the diffracted path over the selected
-// edges: d_ss to the first edge, d_sr from the last, e along the path between
-// them, and d straight through.
+// edges in the frame Gl. 16/17 are written in.
+//
+// The first (source-side) edge fixes that frame: its plan-view direction u is
+// the edge direction, and n perpendicular to it spans the section the path is
+// drawn in. Then d_ss and d_sr are the distances from source and receiver to
+// the outer edges *within that section*, e runs between the edges in it, and
+// a is the source-to-receiver component along u. Gl. 16/17 recombine them as
+// hypot(d_ss + d_sr + e, a), which is exactly the length of the shortest path
+// from source to receiver over a straight edge — the unfolded straight line.
+//
+// For several edges this assumes they are effectively parallel, which is the
+// case Bild 7 draws; the standard defines no path difference for edges that
+// are not. Where they are not, the source-side edge governs, because it is the
+// one d_ss is measured to and the one nearest the source.
 func barrierGeometryFromEdges(
-	edges []geo.ScreeningPoint,
-	sourceHeightM, receiverHeightM, horizontalDistM float64,
-) BarrierGeometry {
+	edges []screeningEdge,
+	source geo.Point2D, sourceHeightM float64,
+	receiver geo.Point2D, receiverHeightM float64,
+	horizontalDistM float64,
+) (BarrierGeometry, bool) {
 	first := edges[0]
 	last := edges[len(edges)-1]
 
-	dss := math.Hypot(first.DistFromSource, first.TopHeightM-sourceHeightM)
-	dsr := math.Hypot(horizontalDistM-last.DistFromSource, receiverHeightM-last.TopHeightM)
+	edgeX, edgeY := first.segmentB.X-first.segmentA.X, first.segmentB.Y-first.segmentA.Y
+
+	length := math.Hypot(edgeX, edgeY)
+	if length <= 0 {
+		return BarrierGeometry{}, false
+	}
+
+	edgeX, edgeY = edgeX/length, edgeY/length
+
+	// Signed offset from the first edge's line, measured along its normal.
+	offset := func(p geo.Point2D) float64 {
+		return -(p.X-first.segmentA.X)*edgeY + (p.Y-first.segmentA.Y)*edgeX
+	}
+
+	offsetSource, offsetReceiver := offset(source), offset(receiver)
+
+	dss := math.Hypot(math.Abs(offset(first.point)-offsetSource), first.topHeightM-sourceHeightM)
+	dsr := math.Hypot(math.Abs(offsetReceiver-offset(last.point)), receiverHeightM-last.topHeightM)
 
 	// e is the travel path length between the first and the last diffraction
 	// edge, i.e. the sum over every consecutive pair, not the straight chord
@@ -272,8 +335,8 @@ func barrierGeometryFromEdges(
 
 	for i := 1; i < len(edges); i++ {
 		e += math.Hypot(
-			edges[i].DistFromSource-edges[i-1].DistFromSource,
-			edges[i].TopHeightM-edges[i-1].TopHeightM,
+			math.Abs(offset(edges[i].point)-offset(edges[i-1].point)),
+			edges[i].topHeightM-edges[i-1].topHeightM,
 		)
 	}
 
@@ -281,7 +344,7 @@ func barrierGeometryFromEdges(
 		Dss: dss,
 		Dsr: dsr,
 		E:   e,
-		A:   0,
+		A:   math.Abs((receiver.X-source.X)*edgeX + (receiver.Y-source.Y)*edgeY),
 		D:   math.Hypot(horizontalDistM, receiverHeightM-sourceHeightM),
-	}
+	}, true
 }

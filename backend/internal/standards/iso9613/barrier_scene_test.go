@@ -167,11 +167,13 @@ func TestSceneDerivedGeometryHasNoLateralComponent(t *testing.T) {
 		t.Fatal("expected a geometry")
 	}
 
-	// a is the component parallel to the barrier edge, and it belongs to the
-	// lateral path this module does not compute. It is a declared boundary,
-	// so a test pins it rather than leaving it to be noticed.
+	// a is the source-to-receiver component parallel to the diffraction edge.
+	// It is zero here because this wall stands square to the ray, and only
+	// then — see TestObliqueScreenCarriesAParallelComponent for the general
+	// case. Reading it as "always zero for top diffraction" is what made the
+	// path difference wrong for every oblique screen.
 	if geometry.A != 0 {
-		t.Fatalf("a = %.9f, want 0 for top diffraction", geometry.A)
+		t.Fatalf("a = %.9f, want 0 for a wall square to the ray", geometry.A)
 	}
 
 	if geometry.LineOfSightClear {
@@ -254,5 +256,117 @@ func TestPropagationConfigRejectsAnInvalidSceneBarrier(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("a barrier with no height must be refused")
+	}
+}
+
+// shortestDiffractedPath brute-forces min |SP| + |PR| over points P along a
+// straight horizontal edge. It is the quantity Gl. 16 computes in closed form,
+// so it is an independent oracle for the derivation rather than a restatement
+// of it.
+func shortestDiffractedPath(
+	source geo.Point2D, sourceHeightM float64,
+	receiver geo.Point2D, receiverHeightM float64,
+	edgeA, edgeB geo.Point2D, topHeightM float64,
+) float64 {
+	dirX, dirY := edgeB.X-edgeA.X, edgeB.Y-edgeA.Y
+
+	length := math.Hypot(dirX, dirY)
+	dirX, dirY = dirX/length, dirY/length
+
+	best := math.Inf(1)
+
+	for step := -400000; step <= 400000; step++ {
+		t := float64(step) * 0.002
+		p := geo.Point2D{X: edgeA.X + t*dirX, Y: edgeA.Y + t*dirY}
+
+		total := math.Hypot(geo.Distance(source, p), topHeightM-sourceHeightM) +
+			math.Hypot(geo.Distance(p, receiver), receiverHeightM-topHeightM)
+		if total < best {
+			best = total
+		}
+	}
+
+	return best
+}
+
+// TestObliqueScreenPathDifferenceMatchesTheShortestPath is the case every
+// other barrier test in this package misses: a screen that does not stand
+// square to the source-receiver ray.
+//
+// Gl. 16 decomposes the path into the plane perpendicular to the diffraction
+// edge and the component a parallel to it. Measuring d_ss and d_sr along the
+// ray and setting a = 0 instead over-states z for any oblique screen, which
+// over-states D_z and under-states the level — the wrong direction for an
+// immission assessment.
+func TestObliqueScreenPathDifferenceMatchesTheShortestPath(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sourceHeightM   = 5
+		receiverHeightM = 4
+		topHeightM      = 9
+	)
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 200, Y: 0}
+
+	for _, degrees := range []float64{90, 60, 45, 30, 20, 10} {
+		radians := degrees * math.Pi / 180
+		dirX, dirY := math.Cos(radians), math.Sin(radians)
+
+		// A long wall through (10, 0), so it crosses the ray near the source
+		// and every angle screens the same pair.
+		edgeA := geo.Point2D{X: 10 - 400*dirX, Y: -400 * dirY}
+		edgeB := geo.Point2D{X: 10 + 400*dirX, Y: 400 * dirY}
+
+		barrier := Barrier{ID: "oblique", Geometry: []geo.Point2D{edgeA, edgeB}, HeightM: topHeightM}
+
+		geometry := DeriveBarrierGeometry(source, sourceHeightM, receiver, receiverHeightM, []Barrier{barrier})
+		if geometry == nil {
+			t.Fatalf("%.0f deg: the wall crosses the ray and stands above it, so it must screen", degrees)
+		}
+
+		want := shortestDiffractedPath(source, sourceHeightM, receiver, receiverHeightM, edgeA, edgeB, topHeightM)
+		got := diffractedPathLength(*geometry)
+
+		if math.Abs(got-want) > 1e-3 {
+			t.Errorf("%.0f deg: diffracted path %.6f m, want the shortest path %.6f m (difference %.6f)",
+				degrees, got, want, got-want)
+		}
+	}
+}
+
+// TestObliqueScreenCarriesAParallelComponent pins the direction of the fix: a
+// is zero only for a screen square to the ray, and grows as it turns away.
+func TestObliqueScreenCarriesAParallelComponent(t *testing.T) {
+	t.Parallel()
+
+	source := geo.Point2D{X: 0, Y: 0}
+	receiver := geo.Point2D{X: 100, Y: 0}
+
+	previous := -1.0
+
+	for _, degrees := range []float64{90, 60, 45, 30, 20} {
+		radians := degrees * math.Pi / 180
+		dirX, dirY := math.Cos(radians), math.Sin(radians)
+
+		edgeA := geo.Point2D{X: 50 - 300*dirX, Y: -300 * dirY}
+		edgeB := geo.Point2D{X: 50 + 300*dirX, Y: 300 * dirY}
+
+		geometry := DeriveBarrierGeometry(source, 1, receiver, 2,
+			[]Barrier{{ID: "oblique", Geometry: []geo.Point2D{edgeA, edgeB}, HeightM: 8}})
+		if geometry == nil {
+			t.Fatalf("%.0f deg: expected a geometry", degrees)
+		}
+
+		if degrees == 90 && geometry.A > 1e-9 {
+			t.Fatalf("a screen square to the ray must carry no parallel component, got a = %.9f", geometry.A)
+		}
+
+		if previous >= 0 && geometry.A <= previous {
+			t.Fatalf("%.0f deg: a = %.6f did not grow past the less oblique screen's %.6f", degrees, geometry.A, previous)
+		}
+
+		previous = geometry.A
 	}
 }
