@@ -32,7 +32,6 @@
     "air_temperature_c": 10,
     "relative_humidity_percent": 70,
     "meteorology_assumption": "downwind-or-moderate-inversion",
-    "barrier_attenuation_db": 0,
     "min_distance_m": 1
   }
 }

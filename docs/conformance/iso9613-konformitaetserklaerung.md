@@ -63,7 +63,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Gl. 18 — Meteorologischer Korrekturfaktor K_met
 - [x] Begrenzung D_z ≤ 20 dB (einfach) bzw. ≤ 25 dB (doppelt)
 - [ ] Gl. 13 — Seitliche Beugung um vertikale Kanten (Abschnitt 7.4.3)
-- [ ] Geometrische Barriereerkennung (Strahl-Barriere-Verschneidung)
+- [x] Geometrische Barriereerkennung (Strahl-Barriere-Verschneidung); die Beugungskanten werden nach der Gummibandmethode aus der oberen konvexen Hülle des Vertikalschnitts ausgewählt
 
 ### Reflexionen (Abschnitt 7.5)
 
@@ -90,7 +90,15 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - Luftabsorption wird beim Referenzluftdruck (101,325 kPa) berechnet; ein abweichender
   Standortluftdruck ist nicht parametrierbar. Die Lufttemperatur ist auf [−60, 60] °C begrenzt.
 - Bodendämpfung nutzt einen einzigen globalen Bodenfaktor G für alle drei Regionen
-- Barrierendämpfung erfordert vorberechnete Beugungsgeometrie (keine automatische Strahl-Barriere-Verschneidung); das Vorzeichen von z nach Abschnitt 7.4 muss der Aufrufer über `LineOfSightClear` mitliefern, geometrisch inkonsistente Eingaben werden zurückgewiesen
+- Barrierendämpfung wird nur für die Beugung über die Oberkante berechnet, im Vertikalschnitt
+  zwischen Quelle und Immissionsort. Der Abstandsanteil a parallel zur Beugungskante (Bild 6) ist
+  daher konstruktionsbedingt 0; er wäre nur auf dem seitlichen Beugungsweg von null verschieden,
+  den dieses Modul nicht berechnet.
+- Eine vorberechnete Beugungsgeometrie kann weiterhin übergeben werden und hat Vorrang vor der
+  Szene; nur dann ist das Vorzeichen von z nach Abschnitt 7.4 über `LineOfSightClear` vom Aufrufer
+  mitzuliefern, und geometrisch inkonsistente Eingaben werden zurückgewiesen. Eine automatisch
+  hergeleitete Geometrie entsteht ausschließlich dort, wo eine Kante die Sichtverbindung
+  tatsächlich unterbricht.
 - Keine Reflexionsberechnung (Spiegelquellen)
 - Keine Linien-/Flächenquellzerlegung
 - Keine seitliche Beugung um vertikale Kanten
@@ -116,7 +124,10 @@ Diese Genauigkeitsangaben gelten für Breitbandrauschen unter Mitwind-/Inversion
 Golden-Test-Szenarien in `backend/internal/qa/acceptance/testdata/iso9613/`:
 
 - `point_preview.scenario.json` — 2 Quellen, 4 Empfänger (Gitteranordnung)
-- `point_contextual.scenario.json` — 3 Quellen, 6 Empfänger (abweichender Bodenfaktor, Temperatur, Luftfeuchte und Mindestabstand; ohne Barriere)
+- `point_contextual.scenario.json` — 3 Quellen, 6 Empfänger (abweichender Bodenfaktor, Temperatur,
+  Luftfeuchte und Mindestabstand) mit einer Abschirmwand, die einen Teil der Ausbreitungswege
+  kreuzt und die übrigen nicht: A_bar ist für einen Teil des Gitters von null verschieden und für
+  den Rest null
 
 Einheitentests in `backend/internal/standards/iso9613/`:
 

@@ -146,6 +146,7 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 	case iso9613.StandardID:
 		var scenario struct {
 			Sources           []iso9613.PointSource `json:"sources"`
+			Barriers          []iso9613.Barrier     `json:"barriers"`
 			Receivers         []geo.PointReceiver   `json:"receivers"`
 			GridWidth         int                   `json:"grid_width"`
 			GridHeight        int                   `json:"grid_height"`
@@ -169,6 +170,7 @@ func computeFixtureSnapshot(fixture Fixture) (map[string]any, error) {
 			AirTemperatureC:         scenario.PropagationConfig.AirTemperatureC,
 			RelativeHumidityPercent: scenario.PropagationConfig.RelativeHumidityPercent,
 			MeteorologyAssumption:   scenario.PropagationConfig.MeteorologyAssumption,
+			Barriers:                scenario.Barriers,
 			C0:                      scenario.PropagationConfig.C0Met,
 			MinDistanceM:            scenario.PropagationConfig.MinDistanceM,
 		})
@@ -856,4 +858,110 @@ func snapshotReceivers(t *testing.T, snap map[string]any) []iso9613ReceiverRow {
 	}
 
 	return rows
+}
+
+// TestContextualFixtureActuallyScreens keeps the catalogue honest about the
+// one fixture that claims to stress screening.
+//
+// It used to claim exactly that while stressing none: the scenario carried a
+// `barrier_attenuation_db` key, which is a cnossos-road *parameter* name and
+// was never a field of any ISO 9613-2 decoder, so encoding/json dropped it in
+// silence and the golden was cut from a barrier-less compute. A description
+// cannot assert anything, so this does.
+//
+// The fixture has to discriminate in both directions. A barrier that screens
+// every receiver would be indistinguishable from a global offset, and one
+// that screens none is the defect this closes wearing a new number.
+func TestContextualFixtureActuallyScreens(t *testing.T) {
+	t.Parallel()
+
+	if golden.UpdateEnabled() {
+		t.Skip("the fixture assertion reads a golden TestAcceptanceFixtures is rewriting")
+	}
+
+	var fixture Fixture
+
+	for _, candidate := range Catalog() {
+		if candidate.Name == "iso9613-synthetic-point-contextual" {
+			fixture = candidate
+
+			break
+		}
+	}
+
+	if fixture.Name == "" {
+		t.Fatal("the contextual ISO 9613-2 fixture is gone from the catalog")
+	}
+
+	screened, err := computeFixtureSnapshot(fixture)
+	if err != nil {
+		t.Fatalf("compute the fixture: %v", err)
+	}
+
+	var withoutBarriers struct {
+		Sources           []iso9613.PointSource `json:"sources"`
+		Receivers         []geo.PointReceiver   `json:"receivers"`
+		PropagationConfig struct {
+			GroundFactor            float64 `json:"ground_factor"`
+			AirTemperatureC         float64 `json:"air_temperature_c"`
+			RelativeHumidityPercent float64 `json:"relative_humidity_percent"`
+			MeteorologyAssumption   string  `json:"meteorology_assumption"`
+			C0Met                   float64 `json:"c0_met"`
+			MinDistanceM            float64 `json:"min_distance_m"`
+		} `json:"propagation_config"`
+	}
+
+	err = decodeFixtureJSON(fixture.ScenarioPath, &withoutBarriers)
+	if err != nil {
+		t.Fatalf("decode the scenario: %v", err)
+	}
+
+	open, err := iso9613.ComputeReceiverOutputs(withoutBarriers.Receivers, withoutBarriers.Sources, iso9613.PropagationConfig{
+		GroundFactor:            withoutBarriers.PropagationConfig.GroundFactor,
+		AirTemperatureC:         withoutBarriers.PropagationConfig.AirTemperatureC,
+		RelativeHumidityPercent: withoutBarriers.PropagationConfig.RelativeHumidityPercent,
+		MeteorologyAssumption:   withoutBarriers.PropagationConfig.MeteorologyAssumption,
+		C0:                      withoutBarriers.PropagationConfig.C0Met,
+		MinDistanceM:            withoutBarriers.PropagationConfig.MinDistanceM,
+	})
+	if err != nil {
+		t.Fatalf("compute the same scenario without its barriers: %v", err)
+	}
+
+	screenedRows, ok := screened["receivers"].([]map[string]any)
+	if !ok {
+		t.Fatalf("the fixture snapshot carries no receiver rows, got %T", screened["receivers"])
+	}
+
+	if len(screenedRows) != len(open) {
+		t.Fatalf("the barrier changed the receiver count: %d vs %d", len(screenedRows), len(open))
+	}
+
+	var lowered, untouched int
+
+	for i, row := range screenedRows {
+		screenedLevel, ok := row[iso9613.IndicatorLpAeqDW].(float64)
+		if !ok {
+			t.Fatalf("receiver row %d carries no %s", i, iso9613.IndicatorLpAeqDW)
+		}
+
+		openLevel := open[i].Indicators.LpAeqDW
+
+		switch {
+		case screenedLevel < openLevel-1e-6:
+			lowered++
+		case math.Abs(screenedLevel-openLevel) <= 1e-6:
+			untouched++
+		default:
+			t.Fatalf("receiver %d got louder behind a barrier: %.6f vs %.6f", i, screenedLevel, openLevel)
+		}
+	}
+
+	if lowered == 0 {
+		t.Fatal("the fixture's barrier screens nothing, so the catalog's screening claim is false again")
+	}
+
+	if untouched == 0 {
+		t.Fatal("the fixture's barrier screens every receiver, which does not distinguish screening from a global offset")
+	}
 }

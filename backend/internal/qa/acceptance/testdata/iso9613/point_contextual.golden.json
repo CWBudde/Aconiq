@@ -4,16 +4,16 @@
   "receiver_count": 6,
   "receivers": [
     {
-      "LpAeq_DW": 61.325901,
-      "LpAeq_LT": 61.325901,
+      "LpAeq_DW": 47.988424,
+      "LpAeq_LT": 47.988424,
       "height_m": 4,
       "id": "r1",
       "x": -30,
       "y": -20
     },
     {
-      "LpAeq_DW": 63.385987,
-      "LpAeq_LT": 63.385987,
+      "LpAeq_DW": 51.98315,
+      "LpAeq_LT": 51.98315,
       "height_m": 4,
       "id": "r2",
       "x": 0,
@@ -28,8 +28,8 @@
       "y": -20
     },
     {
-      "LpAeq_DW": 67.812458,
-      "LpAeq_LT": 67.812458,
+      "LpAeq_DW": 67.798082,
+      "LpAeq_LT": 67.798082,
       "height_m": 4,
       "id": "r4",
       "x": -30,

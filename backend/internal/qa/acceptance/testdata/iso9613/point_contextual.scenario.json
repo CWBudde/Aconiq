@@ -43,7 +43,13 @@
     "air_temperature_c": 18,
     "relative_humidity_percent": 55,
     "meteorology_assumption": "downwind-or-moderate-inversion",
-    "barrier_attenuation_db": 3.5,
     "min_distance_m": 2
-  }
+  },
+  "barriers": [
+    {
+      "id": "yard-screen",
+      "geometry": [{ "x": -45, "y": -12 }, { "x": 20, "y": -12 }],
+      "height_m": 11
+    }
+  ]
 }
