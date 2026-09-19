@@ -1082,12 +1082,19 @@ normalized `run-summary.json` and `provenance.json` for every registered standar
 indicator, a changed raster layout or a changed summary key would show. `just lint` is 0 and the
 whole suite passes without a single test assertion being edited.
 
-### One inconsistency preserved rather than fixed
+### One inconsistency preserved rather than fixed — and since closed
 
-`cnossos-industry`, `bub-industry` and `buf-aircraft` do not write `reporting_precision_db` into
-their run summary; the other five END standards do. The table reproduces that difference exactly.
-Fixing it moves three digest goldens, which is a behaviour change and does not belong inside a
-refactor — it is now an open item in `PLAN.md` Priority 7.
+`cnossos-industry`, `bub-industry` and `buf-aircraft` did not write `reporting_precision_db` into
+their run summary; the other five END standards did. The table reproduced that difference exactly,
+because fixing it moves three digest goldens and a behaviour change does not belong inside a
+refactor.
+
+It has since been fixed on its own: all eight entries now carry the value, `bub-industry` publishing
+its upstream's exactly as it already publishes its upstream's `modelVersion`. The three goldens moved
+by that one key and by the `run-summary.json` digest, and by nothing else — `output_hash` hashes the
+receiver outputs, not the summary, so it stayed put and is the check that the change was confined.
+The zero check in `persistENDRunOutputs` stays: a future END module that reports no precision of its
+own must leave the key out rather than publish a 0 dB one.
 
 ### Where this leaves `just lint`, after the END indicator pass
 

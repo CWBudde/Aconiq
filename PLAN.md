@@ -1130,11 +1130,6 @@ editing several of its files rather than one package of its own.
         `MovementPeriod` are declared per package, so the compiler rejects a conversion between
         them; the line cited above converts the _options_ type, which is a different thing. The
         mapping disappears when `buf/aircraft` becomes an alias package, above.
-  - [ ] Three END runs omit `reporting_precision_db` from their run summary — `cnossos-industry`,
-        `bub-industry` and `buf-aircraft` — while the other five write it. The collapse into
-        `endPersistSpecs` preserved the difference rather than fixing it, because the digest goldens
-        pin the summary and a behaviour change does not belong inside a refactor. Decide which way
-        it goes and regenerate the three goldens deliberately.
 - [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
       so compute currently depends on the reporting tree.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
