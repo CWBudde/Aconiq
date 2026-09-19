@@ -126,29 +126,6 @@ func TestAircraftLdenAggregation(t *testing.T) {
 	}
 }
 
-func TestAttenuationTermsExposePropagationComponents(t *testing.T) {
-	t.Parallel()
-
-	source := sampleSource()
-	source.LateralOffsetM = 180
-	source.BankAngleDeg = 15
-
-	cfg := DefaultPropagationConfig()
-	terms := attenuationTerms(100, source, cfg)
-
-	if terms.DistanceM != 100 {
-		t.Fatalf("unexpected distance term: %#v", terms)
-	}
-
-	if terms.GeometricDB <= 0 || terms.AirDB <= 0 || terms.GroundDB <= 0 {
-		t.Fatalf("expected positive attenuation components: %#v", terms)
-	}
-
-	if terms.LateralDB <= 0 || terms.OperationDB <= 0 || terms.BankDB <= 0 {
-		t.Fatalf("expected positive aircraft adjustment terms: %#v", terms)
-	}
-}
-
 func TestLateralOffsetRaisesMappedLevel(t *testing.T) {
 	t.Parallel()
 

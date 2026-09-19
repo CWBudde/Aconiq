@@ -1,6 +1,9 @@
 package aircraft
 
-import "github.com/aconiq/backend/internal/standards/framework"
+import (
+	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
+	"github.com/aconiq/backend/internal/standards/framework"
+)
 
 // StandardData returns the preview coefficient sets this scaffold module
 // computes with.
@@ -57,7 +60,7 @@ func aircraftClassCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(classes))
 	for _, class := range classes {
-		values = append(values, aircraftClassCorrection(class))
+		values = append(values, cnossosaircraft.AircraftClassCorrection(class))
 	}
 
 	return values
@@ -70,7 +73,7 @@ func operationCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(operations))
 	for _, operation := range operations {
-		values = append(values, operationCorrection(operation))
+		values = append(values, cnossosaircraft.OperationCorrection(operation))
 	}
 
 	return values
@@ -83,7 +86,7 @@ func procedureCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(procedures))
 	for _, procedure := range procedures {
-		values = append(values, procedureCorrection(procedure))
+		values = append(values, cnossosaircraft.ProcedureCorrection(procedure))
 	}
 
 	return values
@@ -96,7 +99,7 @@ func thrustModeCorrectionTable() []float64 {
 
 	values := make([]float64, 0, len(modes))
 	for _, mode := range modes {
-		values = append(values, thrustModeCorrection(mode))
+		values = append(values, cnossosaircraft.ThrustModeCorrection(mode))
 	}
 
 	return values
@@ -111,7 +114,7 @@ func operationModeAdjustmentTable() []float64 {
 
 	values := make([]float64, 0, len(operations))
 	for _, operation := range operations {
-		values = append(values, operationModeAdjustment(AircraftSource{OperationType: operation}, cfg))
+		values = append(values, cnossosaircraft.OperationModeAdjustment(AircraftSource{OperationType: operation}, cfg))
 	}
 
 	return values
@@ -125,7 +128,7 @@ func bankAngleSampleTable() []float64 {
 
 	values := make([]float64, 0, len(angles))
 	for _, angle := range angles {
-		values = append(values, bankAngleCorrection(angle))
+		values = append(values, cnossosaircraft.BankAngleCorrection(angle))
 	}
 
 	return values
@@ -142,7 +145,7 @@ func lateralOffsetSampleTable() []float64 {
 
 	values := make([]float64, 0, len(offsets))
 	for _, offset := range offsets {
-		values = append(values, lateralDirectivity(AircraftSource{LateralOffsetM: offset}, PropagationConfig{}))
+		values = append(values, cnossosaircraft.LateralDirectivity(AircraftSource{LateralOffsetM: offset}, PropagationConfig{}))
 	}
 
 	return values

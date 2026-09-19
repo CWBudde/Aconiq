@@ -22,6 +22,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/standards/descriptorjson"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
@@ -1408,13 +1409,13 @@ func writeAPIError(w http.ResponseWriter, status int, apiErr apiError) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
-	encoded, err := json.MarshalIndent(payload, "", "  ")
+	encoded, err := jsonio.Marshal(payload)
 	if err != nil {
-		encoded = []byte(`{"error":{"code":"internal_error","message":"failed to encode response"}}`)
+		// The canned body carries its own newline, because the success path's
+		// came from jsonio.Marshal. Both branches still end the same way.
+		encoded = []byte("{\"error\":{\"code\":\"internal_error\",\"message\":\"failed to encode response\"}}\n")
 		status = http.StatusInternalServerError
 	}
-
-	encoded = append(encoded, '\n')
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)

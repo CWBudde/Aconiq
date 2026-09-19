@@ -61,19 +61,6 @@ func (cfg PropagationConfig) Validate() error {
 	return nil
 }
 
-func effectivePropagationDistance(distanceM float64, cfg PropagationConfig) float64 {
-	d := distanceM
-	if d < cfg.MinDistanceM {
-		return cfg.MinDistanceM
-	}
-
-	return d
-}
-
-func airAbsorption(distanceM float64, cfg PropagationConfig) float64 {
-	return cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)
-}
-
 func groundEffect(cfg PropagationConfig) float64 {
 	return cfg.GroundAttenuationDB
 }
@@ -83,12 +70,12 @@ func barrierEffect(cfg PropagationConfig) float64 {
 }
 
 func attenuationTerms(distanceM float64, cfg PropagationConfig) propagationTerms {
-	effectiveDistance := effectivePropagationDistance(distanceM, cfg)
+	effectiveDistance := acoustics.ClampDistance(distanceM, cfg.MinDistanceM)
 
 	return propagationTerms{
 		DistanceM:   effectiveDistance,
 		GeometricDB: acoustics.GeometricDivergence(effectiveDistance),
-		AirDB:       airAbsorption(effectiveDistance, cfg),
+		AirDB:       acoustics.AirAbsorption(cfg.AirAbsorptionDBPerKM, effectiveDistance),
 		GroundDB:    groundEffect(cfg),
 		BarrierDB:   barrierEffect(cfg),
 	}

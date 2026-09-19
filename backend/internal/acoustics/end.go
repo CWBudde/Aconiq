@@ -17,14 +17,23 @@
 // SilenceThresholdDB). Seven standards modules carried behaviourally identical
 // copies of that sum; they now call this one.
 //
-// Two more shapes that were copied rather than shared live here now.
+// Four more shapes that were copied rather than shared live here now.
 // GeometricDivergence in propagation.go is the free-hemisphere spreading loss
-// that seven modules spelled out identically, including the one normative
-// module that computes it, iso9613. ComputeReceiverOutputs in compute.go is the
-// walk over a receiver list that every module reporting the END set performs
-// before handing each receiver to its own acoustics; it is generic over the
-// source type so that each module keeps passing its own typed slice. Modules
-// keep their exported names and delegate, so no caller of theirs had to move.
+// that eight modules spelled out identically, including the two normative ones
+// that compute it, iso9613 and schall03. AirAbsorption beside it is a single
+// broadband coefficient applied over a distance, which six scaffolds wrote out
+// against a config field and rls19/road against a package constant.
+// ClampDistance is the minimum-distance guard those eleven call sites applied
+// before either term, under three names and in three spellings.
+// ComputeReceiverOutputs in compute.go is the walk over a receiver list that
+// every module reporting the END set performs before handing each receiver to
+// its own acoustics; it is generic over the source type so that each module
+// keeps passing its own typed slice. Modules keep their exported names and
+// delegate, so no caller of theirs had to move.
+//
+// The numeric helpers take bare float64 rather than a config struct, and have
+// to: this package cannot import internal/standards, where every one of those
+// structs is declared per module.
 //
 // What is deliberately still outside it: the two summations whose semantics
 // genuinely differ, and which cannot be converged without changing numbers.

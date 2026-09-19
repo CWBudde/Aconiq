@@ -62,19 +62,6 @@ func (cfg PropagationConfig) Validate() error {
 	return nil
 }
 
-func effectivePropagationDistance(distanceM float64, cfg PropagationConfig) float64 {
-	d := distanceM
-	if d < cfg.MinDistanceM {
-		return cfg.MinDistanceM
-	}
-
-	return d
-}
-
-func airAbsorption(distanceM float64, cfg PropagationConfig) float64 {
-	return cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)
-}
-
 func groundEffect(cfg PropagationConfig) float64 {
 	return cfg.GroundAttenuationDB
 }
@@ -97,18 +84,18 @@ func areaGeometryEffect(receiver geo.PointReceiver, source IndustrySource, cfg P
 		return 0
 	}
 
-	distance := math.Max(sourceDistance(receiver, source), cfg.MinDistanceM)
+	distance := acoustics.ClampDistance(sourceDistance(receiver, source), cfg.MinDistanceM)
 
 	return math.Min(6.0, 10*math.Log10(1+effectiveRadius/distance))
 }
 
 func attenuationTerms(receiver geo.PointReceiver, source IndustrySource, cfg PropagationConfig) propagationTerms {
-	distance := effectivePropagationDistance(sourceDistance(receiver, source), cfg)
+	distance := acoustics.ClampDistance(sourceDistance(receiver, source), cfg.MinDistanceM)
 
 	return propagationTerms{
 		DistanceM:   distance,
 		GeometricDB: acoustics.GeometricDivergence(distance),
-		AirDB:       airAbsorption(distance, cfg),
+		AirDB:       acoustics.AirAbsorption(cfg.AirAbsorptionDBPerKM, distance),
 		GroundDB:    groundEffect(cfg),
 		ScreeningDB: screeningEffect(cfg),
 		FacadeDB:    facadeEffect(cfg),

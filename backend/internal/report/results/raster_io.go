@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 const rasterBinaryEncoding = "float64-le-v1"
@@ -119,12 +121,10 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		SchemaName:     "aconiq.raster.v1",
 	}
 
-	encodedMeta, err := json.MarshalIndent(meta, "", "  ")
+	encodedMeta, err := jsonio.Marshal(meta)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("encode raster metadata: %w", err)
 	}
-
-	encodedMeta = append(encodedMeta, '\n')
 
 	err = os.WriteFile(metadataPath, encodedMeta, 0o600)
 	if err != nil {

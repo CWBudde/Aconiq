@@ -261,15 +261,8 @@ type AttenuationComponents struct {
 // When a barrier or terrain edge shields the path, D_z ≥ D_gr in typical cases;
 // the caller applies max(D_gr, D_z) rather than summing both.
 func computeAttenuation(planDistM, slantDistM, hm float64, cfg PropagationConfig) AttenuationComponents {
-	s := slantDistM
-	if s < cfg.MinDistanceM {
-		s = cfg.MinDistanceM
-	}
-
-	sgr := planDistM
-	if sgr < cfg.MinDistanceM {
-		sgr = cfg.MinDistanceM
-	}
+	s := acoustics.ClampDistance(slantDistM, cfg.MinDistanceM)
+	sgr := acoustics.ClampDistance(planDistM, cfg.MinDistanceM)
 
 	// Geometric divergence (point source, hemispherical radiation into ground half-space).
 	// RLS-19 Eq. 12: D_div = 20·lg(s) + 10·lg(2π) ≈ 20·lg(s) + 7.98 dB
@@ -277,7 +270,7 @@ func computeAttenuation(planDistM, slantDistM, hm float64, cfg PropagationConfig
 	aDiv := 20*math.Log10(s) + 10*math.Log10(2*math.Pi)
 
 	// Air absorption (3D slant distance).
-	aAtm := PropagationConstants.AirAbsorptionCoeff * (s / 1000.0)
+	aAtm := acoustics.AirAbsorption(PropagationConstants.AirAbsorptionCoeff, s)
 
 	// Ground + meteorological correction.
 	aGround := computeGroundCorrection(sgr, hm)

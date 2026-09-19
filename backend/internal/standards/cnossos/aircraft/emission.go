@@ -28,16 +28,19 @@ func emissionForPeriod(source AircraftSource, movement MovementPeriod) float64 {
 	}
 
 	base := source.ReferencePowerLevelDB
-	base += aircraftClassCorrection(source.AircraftClass)
-	base += operationCorrection(source.OperationType)
+	base += AircraftClassCorrection(source.AircraftClass)
+	base += OperationCorrection(source.OperationType)
 	base += engineStateCorrection(source.EngineStateFactor)
-	base += procedureCorrection(source.ProcedureType)
-	base += thrustModeCorrection(source.ThrustMode)
+	base += ProcedureCorrection(source.ProcedureType)
+	base += ThrustModeCorrection(source.ThrustMode)
 
 	return base + 10*math.Log10(movement.MovementsPerHour)
 }
 
-func aircraftClassCorrection(class string) float64 {
+// AircraftClassCorrection returns the emission correction for one aircraft
+// class. Exported for the same reason as LateralDirectivity in propagation.go:
+// buf/aircraft aliases this package and samples the term for its own table.
+func AircraftClassCorrection(class string) float64 {
 	switch class {
 	case AircraftClassRegional:
 		return -4.0
@@ -52,7 +55,9 @@ func aircraftClassCorrection(class string) float64 {
 	}
 }
 
-func operationCorrection(operation string) float64 {
+// OperationCorrection returns the emission-side correction for one operation
+// type. Exported for the same reason as AircraftClassCorrection.
+func OperationCorrection(operation string) float64 {
 	switch operation {
 	case OperationDeparture:
 		return 2.0
@@ -67,7 +72,9 @@ func engineStateCorrection(factor float64) float64 {
 	return 10 * math.Log10(factor)
 }
 
-func procedureCorrection(procedure string) float64 {
+// ProcedureCorrection returns the emission correction for one procedure type.
+// Exported for the same reason as AircraftClassCorrection.
+func ProcedureCorrection(procedure string) float64 {
 	switch procedure {
 	case ProcedureStandardSID:
 		return 1.5
@@ -80,7 +87,9 @@ func procedureCorrection(procedure string) float64 {
 	}
 }
 
-func thrustModeCorrection(mode string) float64 {
+// ThrustModeCorrection returns the emission correction for one thrust mode.
+// Exported for the same reason as AircraftClassCorrection.
+func ThrustModeCorrection(mode string) float64 {
 	switch mode {
 	case ThrustTakeoff:
 		return 2.5

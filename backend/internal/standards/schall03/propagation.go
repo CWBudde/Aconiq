@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/terrain"
 )
@@ -37,12 +38,9 @@ func (cfg PropagationConfig) Validate() error {
 }
 
 func attenuation(distanceM float64, bandIdx int, cfg PropagationConfig, pack DataPack) float64 {
-	d := distanceM
-	if d < cfg.MinDistanceM {
-		d = cfg.MinDistanceM
-	}
+	d := acoustics.ClampDistance(distanceM, cfg.MinDistanceM)
 
-	geometric := 20*math.Log10(d) + 11.0
+	geometric := acoustics.GeometricDivergence(d)
 	air := cfg.AirAbsorptionDBPerKM * pack.Propagation.AirAbsorptionBandFactor[bandIdx] * (d / 1000.0)
 
 	return geometric + air + cfg.GroundAttenuationDB

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/aconiq/backend/internal/assessment/bimschv16"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
@@ -55,12 +55,10 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 
 	outPath := filepath.Join(assessmentDir, "16bimschv-assessment.json")
 
-	payload, err := json.MarshalIndent(envelope, "", "  ")
+	payload, err := jsonio.Marshal(envelope)
 	if err != nil {
 		return "", false, fmt.Errorf("encode 16. BImSchV assessment: %w", err)
 	}
-
-	payload = append(payload, '\n')
 
 	// G703: outPath is bundleDir plus two fixed path segments; only bundleDir
 	// comes from --out, which is the destination the user asked for.
