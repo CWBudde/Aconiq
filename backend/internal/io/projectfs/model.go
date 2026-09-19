@@ -131,7 +131,18 @@ func (s Store) ModelHash() (string, error) {
 // manifest handling. Callers validate before calling: a report with errors is
 // persisted as given, because refusing it is the caller's decision to surface,
 // not the store's.
-func (s Store) SaveModel(proj *project.Project, model modelgeojson.Model, report modelgeojson.ValidationReport) error {
+//
+// extraRefs are upserted into the same manifest save. An importer that writes
+// a report of its own beside the model - the SoundPLAN one does - needs its
+// ref to land with the three model refs rather than in a second
+// read-modify-write. It is variadic because the three callers that register
+// nothing extra should not have to say so.
+func (s Store) SaveModel(
+	proj *project.Project,
+	model modelgeojson.Model,
+	report modelgeojson.ValidationReport,
+	extraRefs ...project.ArtifactRef,
+) error {
 	paths := s.ModelArtifactPaths()
 
 	err := os.MkdirAll(s.modelDir(), modelDirMode)
@@ -159,6 +170,14 @@ func (s Store) SaveModel(proj *project.Project, model modelgeojson.Model, report
 		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: s.RelativePath(paths.Dump), CreatedAt: now},
 		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: s.RelativePath(paths.Validation), CreatedAt: now},
 	} {
+		proj.Artifacts = upsertArtifactRef(proj.Artifacts, ref)
+	}
+
+	for _, ref := range extraRefs {
+		if ref.CreatedAt.IsZero() {
+			ref.CreatedAt = now
+		}
+
 		proj.Artifacts = upsertArtifactRef(proj.Artifacts, ref)
 	}
 

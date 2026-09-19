@@ -254,3 +254,67 @@ func soundPlanInteropPath(t *testing.T) string {
 
 	return fixtures.SoundPLANProjectDir(t)
 }
+
+// TestImportSoundPlanRegistersAllFourModelArtifacts pins what the manifest
+// holds after a SoundPLAN import.
+//
+// Nothing asserted this before, which is why the importer could write the
+// three model files through its own non-atomic writer while claiming, in
+// SaveModel's doc comment, that the store was "the one persistence path for a
+// model". The reroute is only safe if the four IDs, kinds and relative paths
+// come out identical, so this test is the net under it.
+func TestImportSoundPlanRegistersAllFourModelArtifacts(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "SoundPLAN", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--from-soundplan", soundPlanInteropPath(t))
+
+	payload, err := os.ReadFile(filepath.Join(projectDir, ".noise", "project.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	var manifest struct {
+		Artifacts []struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"artifacts"`
+	}
+
+	if err := json.Unmarshal(payload, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+
+	want := map[string][2]string{
+		"artifact-model-normalized":        {"model.normalized_geojson", ".noise/model/model.normalized.geojson"},
+		"artifact-model-dump":              {"model.dump_json", ".noise/model/model.dump.json"},
+		"artifact-model-validation":        {"model.validation_report", ".noise/model/validation-report.json"},
+		"artifact-soundplan-import-report": {"model.soundplan_import_report", ".noise/model/soundplan-import-report.json"},
+	}
+
+	got := make(map[string][2]string, len(manifest.Artifacts))
+	for _, artifact := range manifest.Artifacts {
+		got[artifact.ID] = [2]string{artifact.Kind, artifact.Path}
+	}
+
+	for id, wantPair := range want {
+		gotPair, ok := got[id]
+		if !ok {
+			t.Fatalf("manifest has no artifact %q; it holds %v", id, got)
+		}
+
+		if gotPair != wantPair {
+			t.Fatalf("artifact %q is {kind: %q, path: %q}, want {kind: %q, path: %q}",
+				id, gotPair[0], gotPair[1], wantPair[0], wantPair[1])
+		}
+	}
+
+	for _, pair := range want {
+		if _, statErr := os.Stat(filepath.Join(projectDir, filepath.FromSlash(pair[1]))); statErr != nil {
+			t.Fatalf("artifact file missing: %v", statErr)
+		}
+	}
+}
