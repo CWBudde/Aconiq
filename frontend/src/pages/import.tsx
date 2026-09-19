@@ -362,7 +362,9 @@ export default function ImportPage() {
                 variant="destructive"
                 icon={XCircle}
                 className="text-left"
-                title={`${String(doneErrors.length)} ${m.status_validation_errors()}`}
+                title={m.status_validation_errors({
+                  count: doneErrors.length,
+                })}
               >
                 <p>{m.msg_import_errors_remain()}</p>
                 <ul className="mt-2 space-y-1">

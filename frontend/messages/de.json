@@ -54,7 +54,16 @@
   "confirm_delete_run_desc_exports_kept": "Berechnung {runId} und alles, was sie geschrieben hat, werden aus dem Projekt entfernt. Bereits erzeugte Export-Pakete bleiben auf der Festplatte erhalten. Das lässt sich nicht rückgängig machen.",
   "confirm_delete_run_desc_exports_lost": "Berechnung {runId} wird entfernt, zusammen mit ihren Ergebnissen, ihrem Protokoll und jedem daraus erzeugten Export-Paket. Das lässt sich nicht rückgängig machen.",
   "msg_run_deleted": "Berechnung {runId} gelöscht.",
-  "msg_run_deleted_exports_kept": "Berechnung {runId} gelöscht. {count} Export-Paket(e) bleiben erhalten.",
+  "msg_run_deleted_exports_kept": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Berechnung {runId} gelöscht. {count} Export-Paket bleibt erhalten.",
+        "countPlural=other": "Berechnung {runId} gelöscht. {count} Export-Pakete bleiben erhalten."
+      }
+    }
+  ],
   "msg_delete_run_failed": "Die Berechnung konnte nicht gelöscht werden.",
   "action_delete_feature": "Objekt löschen",
   "confirm_discard_draft_title": "Wiederhergestellten Entwurf verwerfen?",
@@ -113,8 +122,16 @@
   "status_import_complete": "Import abgeschlossen",
   "status_loading": "Lade...",
   "status_locating": "Lade Standort...",
-  "status_validation_errors": "Validierungsfehler",
-  "status_validation_warnings": "Warnung(en)",
+  "status_validation_errors": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Validierungsfehler",
+        "countPlural=other": "{count} Validierungsfehler"
+      }
+    }
+  ],
   "label_artifacts": "Artefakte",
   "label_bands": "Bänder",
   "label_band_names": "Bandnamen",

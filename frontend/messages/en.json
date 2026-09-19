@@ -54,7 +54,16 @@
   "confirm_delete_run_desc_exports_kept": "Run {runId} and everything it wrote are removed from the project. Export bundles already generated from it are kept on disk. This cannot be undone.",
   "confirm_delete_run_desc_exports_lost": "Run {runId} is removed, together with its results, its log and any export bundle generated from it. This cannot be undone.",
   "msg_run_deleted": "Run {runId} deleted.",
-  "msg_run_deleted_exports_kept": "Run {runId} deleted. {count} export bundle(s) kept.",
+  "msg_run_deleted_exports_kept": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Run {runId} deleted. {count} export bundle kept.",
+        "countPlural=other": "Run {runId} deleted. {count} export bundles kept."
+      }
+    }
+  ],
   "msg_delete_run_failed": "The run could not be deleted.",
   "action_delete_feature": "Delete Feature",
   "confirm_discard_draft_title": "Discard the recovered draft?",
@@ -113,8 +122,16 @@
   "status_import_complete": "Import Complete",
   "status_loading": "Loading…",
   "status_locating": "Locating…",
-  "status_validation_errors": "validation error(s)",
-  "status_validation_warnings": "warning(s)",
+  "status_validation_errors": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} validation error",
+        "countPlural=other": "{count} validation errors"
+      }
+    }
+  ],
   "label_artifacts": "Artifacts",
   "label_bands": "Bands",
   "label_band_names": "Band names",
