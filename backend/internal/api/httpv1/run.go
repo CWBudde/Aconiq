@@ -51,7 +51,12 @@ func (h Handler) handleRunDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	unlock := h.lockManifest()
+
 	result, err := h.store.DeleteRun(runID)
+
+	unlock()
+
 	if err != nil {
 		writeDeleteRunError(w, runID, err)
 		return

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -94,6 +95,7 @@ const (
 
 type Handler struct {
 	store       projectfs.Store
+	manifest    *sync.Mutex
 	now         func() time.Time
 	sseInterval time.Duration
 	registry    *framework.Registry
@@ -263,6 +265,28 @@ type handlerOptions struct {
 	runExecutor  runExecutor
 }
 
+// lockManifest serialises one read-modify-write of `.noise/project.json`
+// against the other handlers that do the same, and returns the release.
+//
+// Three routes Load the manifest, mutate the value and Save it back with
+// nothing in between - POST /model, POST /import/terrain and
+// DELETE /runs/{id} - so without this the second Save discards the first
+// one's change. POST /runs is not among them: it Loads, execs `aconiq run`
+// and Loads again, never saving in process.
+//
+// The field is a pointer, and has to be. mux.HandleFunc takes a method value,
+// which copies the Handler once per route, so a sync.Mutex value here would
+// become fourteen independent mutexes that lock nothing against each other.
+//
+// This covers the in-process half only. The `aconiq run` child writes the same
+// file from another process, which no mutex can reach; what protects the
+// manifest's integrity there is projectfs.writeFileAtomic's unique temp name.
+func (h Handler) lockManifest() func() {
+	h.manifest.Lock()
+
+	return h.manifest.Unlock
+}
+
 func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Handler {
 	now := opts.clock
 	if opts.clock == nil {
@@ -280,6 +304,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		sseInterval: sseInterval,
 		registry:    opts.registry,
 		runExecutor: opts.runExecutor,
+		manifest:    &sync.Mutex{},
 	}
 	if handler.runExecutor == nil {
 		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
@@ -1110,6 +1135,8 @@ func (h Handler) storeTerrainArtifact(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to write terrain file: %w", err)
 	}
+
+	defer h.lockManifest()()
 
 	proj, err := h.store.Load()
 	if err != nil {

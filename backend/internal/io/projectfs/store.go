@@ -203,14 +203,7 @@ func (s Store) Save(proj project.Project) error {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "create manifest directory", err)
 	}
 
-	tmpPath := s.manifestPath() + ".tmp"
-
-	err = os.WriteFile(tmpPath, serialized, 0o600)
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "write temporary project manifest", err)
-	}
-
-	err = os.Rename(tmpPath, s.manifestPath())
+	err = writeFileAtomic(s.manifestPath(), serialized)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.Save", "replace project manifest", err)
 	}
@@ -481,21 +474,54 @@ func writeJSONFile(path string, v any) error {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
 	}
 
-	tmpPath := path + ".tmp"
-
-	err = os.WriteFile(tmpPath, data, 0o600)
+	err = writeFileAtomic(path, data)
 	if err != nil {
-		// A partial write (disk full) leaves the temp file behind otherwise.
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
+	}
+
+	return nil
+}
+
+// writeFileAtomic replaces path with data through a temporary file in the same
+// directory, so a reader sees either the old bytes or the new ones.
+//
+// The temporary name is unique per call, and that is the point rather than a
+// detail. Both writers here used to derive it from the destination, so every
+// writer in every process shared one name: two concurrent writes truncated and
+// refilled the same temp file, the first rename carried the second writer's
+// bytes, and the second rename failed because the file it had written was
+// already gone. The manifest has a cross-process writer - the `aconiq run`
+// subprocess - so no in-process lock can close that; a unique name can.
+//
+// os.CreateTemp creates with 0o600, which is the mode both call sites wrote.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary file for %s: %w", filepath.Base(path), err)
+	}
+
+	tmpPath := tmp.Name()
+
+	_, err = tmp.Write(data)
+	if err != nil {
+		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "write temporary "+filepath.Base(path), err)
+		return fmt.Errorf("write temporary %s: %w", filepath.Base(path), err)
+	}
+
+	err = tmp.Close()
+	if err != nil {
+		_ = os.Remove(tmpPath)
+
+		return fmt.Errorf("close temporary %s: %w", filepath.Base(path), err)
 	}
 
 	err = os.Rename(tmpPath, path)
 	if err != nil {
 		_ = os.Remove(tmpPath)
 
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
+		return fmt.Errorf("rename temporary %s: %w", filepath.Base(path), err)
 	}
 
 	return nil
