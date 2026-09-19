@@ -8,6 +8,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/report/results"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
@@ -304,4 +305,73 @@ func logBEBUpstream(input runModuleInput, options bebExposureRunOptions, sourceC
 	input.log.addf("beb_upstream_standard=%s", options.UpstreamMappingStandard)
 	input.log.addf("beb_upstream_sources=%d", sourceCount)
 	input.log.addf("beb_buildings=%d", buildingCount)
+}
+
+// runISO9613Module is the receiver shape plus the one thing ISO 9613-2 needs
+// that the generic receiverRunModule cannot carry: the screening scene.
+//
+// The generic contract hands compute receivers, sources and options and no
+// model, which is why A_bar was unreachable rather than merely unwired — no
+// descriptor parameter can express a per-path diffraction geometry either.
+// This is the same bespoke shape rls19-road and schall03 already have, for
+// the same reason.
+func runISO9613Module(input runModuleInput) (runModuleResult, error) {
+	options, err := parseISO9613RunOptions(input.params)
+	if err != nil {
+		return runModuleResult{}, beforeRunError{err: err}
+	}
+
+	sources, err := extractISO9613Sources(input.model, options, input.standard.SupportedSourceTypes)
+	if err != nil {
+		input.log.addf("failed to extract ISO 9613 point sources: %v", err)
+
+		return runModuleResult{}, err
+	}
+
+	barriers, err := extractISO9613Barriers(input.model)
+	if err != nil {
+		input.log.addf("failed to extract ISO 9613 barriers: %v", err)
+
+		return runModuleResult{}, err
+	}
+
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+		return buildISO9613Receivers(sources, calcArea, options)
+	})
+	if err != nil {
+		input.log.addf("failed to build receivers: %v", err)
+
+		return runModuleResult{}, err
+	}
+
+	input.log.addf("iso9613_sources=%d", len(sources))
+	input.log.addf("iso9613_barriers=%d", len(barriers))
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receiverMode, calcArea)
+
+	propagationConfig := options.PropagationConfig()
+	propagationConfig.Barriers = barriers
+
+	outputs, err := iso9613.ComputeReceiverOutputs(receivers, sources, propagationConfig)
+	if err != nil {
+		input.log.addf("iso9613 compute failed: %v", err)
+
+		return runModuleResult{}, fmt.Errorf("compute ISO 9613-2 receiver outputs: %w", err)
+	}
+
+	persisted, outputHash, finishedAt, err := persistISO9613RunOutputs(
+		input.runDir, outputs, layout, len(sources), input.receiverMode, input.standard.EvidenceTier,
+		input.projection,
+	)
+	if err != nil {
+		input.log.addf("failed to persist outputs: %v", err)
+
+		return runModuleResult{}, err
+	}
+
+	return runModuleResult{
+		persisted:  persisted,
+		outputHash: outputHash,
+		finishedAt: finishedAt,
+	}, nil
 }

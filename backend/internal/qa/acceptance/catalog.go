@@ -127,7 +127,7 @@ func acceptanceFixturesCnossosRailIndustryISO() []Fixture {
 		{
 			Name:             "iso9613-synthetic-point-contextual",
 			StandardID:       iso9613.StandardID,
-			Description:      "Repo-authored synthetic ISO 9613 preview scenario stressing contextual propagation differences from ground factor, favorable-weather inputs, and barrier attenuation.",
+			Description:      "Repo-authored synthetic ISO 9613-2 scenario stressing contextual propagation differences from ground factor and favorable-weather inputs, plus screening: a barrier crosses some source-receiver paths and not others, so A_bar is non-zero for part of the grid and zero for the rest.",
 			EvidenceClass:    evidenceClassSynthetic,
 			Provenance:       provenanceSynthetic,
 			ScenarioPath:     fixturePath("iso9613", "point_contextual.scenario.json"),

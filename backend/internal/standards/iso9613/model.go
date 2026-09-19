@@ -95,6 +95,42 @@ func (r Receiver) Validate() error {
 	return nil
 }
 
+// Barrier is one screening obstacle in plan view: a polyline of uniform top
+// height, the same shape `aconiq import` already accepts as a `kind: barrier`
+// feature and the same shape RLS-19 consumes.
+//
+// It is the scene-level input. The per-path BarrierGeometry that Gl. 12-18
+// read is derived from it for each source/receiver pair, because five
+// distances and a line-of-sight flag describe one path and not one obstacle.
+type Barrier struct {
+	ID       string        `json:"id"`
+	Geometry []geo.Point2D `json:"geometry"` // polyline in plan view
+	HeightM  float64       `json:"height_m"` // top-of-barrier height, on the source and receiver datum
+}
+
+// Validate checks one barrier payload.
+func (b Barrier) Validate() error {
+	if strings.TrimSpace(b.ID) == "" {
+		return errors.New("iso9613 barrier id is required")
+	}
+
+	if len(b.Geometry) < 2 {
+		return fmt.Errorf("iso9613 barrier %q geometry must contain at least 2 points", b.ID)
+	}
+
+	for pointIndex, point := range b.Geometry {
+		if !point.IsFinite() {
+			return fmt.Errorf("iso9613 barrier %q geometry point[%d] is not finite", b.ID, pointIndex)
+		}
+	}
+
+	if math.IsNaN(b.HeightM) || math.IsInf(b.HeightM, 0) || b.HeightM <= 0 {
+		return fmt.Errorf("iso9613 barrier %q height_m must be finite and > 0", b.ID)
+	}
+
+	return nil
+}
+
 // GroundZone records a future ISO 9613-2 ground-category area using a normalized ground factor.
 type GroundZone struct {
 	ID           string          `json:"id"`

@@ -3,6 +3,7 @@ package schall03
 import (
 	"errors"
 	"math"
+	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
 )
@@ -130,18 +131,19 @@ func FindBarrierCrossings(source, receiver geo.Point2D, barriers []BarrierSegmen
 		})
 	}
 
-	// Sort by distance from source (insertion sort — n is small).
-	for i := 1; i < len(crossings); i++ {
-		key := crossings[i]
-		j := i - 1
-
-		for j >= 0 && crossings[j].DistFromSource > key.DistFromSource {
-			crossings[j+1] = crossings[j]
-			j--
+	// Sort by distance from source. The sort is stable, so panels crossed at
+	// the same point stay in barriers order and dedupeCoincidentCrossings
+	// below sees them adjacent, which is what it requires.
+	slices.SortStableFunc(crossings, func(a, b BarrierCrossing) int {
+		switch {
+		case a.DistFromSource < b.DistFromSource:
+			return -1
+		case a.DistFromSource > b.DistFromSource:
+			return 1
+		default:
+			return 0
 		}
-
-		crossings[j+1] = key
-	}
+	})
 
 	return dedupeCoincidentCrossings(crossings)
 }
@@ -171,14 +173,6 @@ func dedupeCoincidentCrossings(crossings []BarrierCrossing) []BarrierCrossing {
 	}
 
 	return kept
-}
-
-// hullPoint is a point in the vertical source→receiver cross-section used by
-// the upper convex hull computation.
-type hullPoint struct {
-	dist        float64 // horizontal distance from source [m]
-	height      float64 // height above ground [m]
-	crossingIdx int     // index into crossings slice; -1 for source/receiver
 }
 
 // DiffractionEdge describes one significant diffraction edge selected by the
@@ -215,35 +209,18 @@ func SelectDiffractionEdges(
 		return nil
 	}
 
-	// Build points in the vertical section: (distance, height).
-	// Include source and receiver as bookends.
-	points := make([]hullPoint, 0, len(crossings)+2)
-	points = append(points, hullPoint{dist: 0, height: sourceHeightM, crossingIdx: -1})
-
-	for i, c := range crossings {
-		points = append(points, hullPoint{
-			dist:        c.DistFromSource,
-			height:      c.Barrier.TopHeightM,
-			crossingIdx: i,
+	candidates := make([]geo.ScreeningPoint, 0, len(crossings))
+	for _, c := range crossings {
+		candidates = append(candidates, geo.ScreeningPoint{
+			DistFromSource: c.DistFromSource,
+			TopHeightM:     c.Barrier.TopHeightM,
 		})
 	}
 
-	points = append(points, hullPoint{dist: totalDistM, height: receiverHeightM, crossingIdx: -1})
-
-	// Compute upper convex hull using Andrew's monotone chain (upper hull only).
-	// Points are already sorted by dist (crossings are sorted, source/receiver
-	// are at the ends).
-	hull := upperConvexHull(points)
-
-	// Extract edges: hull vertices that are not source or receiver.
 	var edges []DiffractionEdge
 
-	for _, hp := range hull {
-		if hp.crossingIdx < 0 {
-			continue // source or receiver
-		}
-
-		c := crossings[hp.crossingIdx]
+	for _, index := range geo.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDistM, candidates) {
+		c := crossings[index]
 		edges = append(edges, DiffractionEdge{
 			Point:          c.Point,
 			HeightM:        c.Barrier.TopHeightM,
@@ -254,43 +231,6 @@ func SelectDiffractionEdges(
 	}
 
 	return edges
-}
-
-// upperConvexHull computes the upper convex hull of points sorted by dist.
-//
-// For the upper hull (keeping points that protrude above the line between
-// their neighbours): we remove the last hull point when the cross product
-// (a→b) × (a→c) is ≥ 0, meaning b lies on or below the line from a to c.
-func upperConvexHull(points []hullPoint) []hullPoint {
-	n := len(points)
-	if n <= 2 {
-		return points
-	}
-
-	hull := make([]hullPoint, 0, n)
-
-	for i := range n {
-		for len(hull) >= 2 {
-			a := hull[len(hull)-2]
-			b := hull[len(hull)-1]
-			c := points[i]
-
-			// Cross product of (a→b) × (a→c).
-			// If cross ≥ 0, point b is on or below line a→c → remove b.
-			// If cross < 0, point b is above line a→c → keep b.
-			cross := (b.dist-a.dist)*(c.height-a.height) - (b.height-a.height)*(c.dist-a.dist)
-
-			if cross < 0 {
-				break // b protrudes above a→c, keep it
-			}
-
-			hull = hull[:len(hull)-1]
-		}
-
-		hull = append(hull, points[i])
-	}
-
-	return hull
 }
 
 // ComputeBarrierGeometryFromEdges builds a BarrierGeometry from the diffraction
@@ -837,8 +777,8 @@ func IsObstructing(crossing BarrierCrossing, sourceHeightM, receiverHeightM, tot
 		return false
 	}
 
-	frac := crossing.DistFromSource / totalDistM
-	losHeight := sourceHeightM + frac*(receiverHeightM-sourceHeightM)
-
-	return crossing.Barrier.TopHeightM > losHeight
+	return geo.ObstructsLineOfSight(
+		crossing.DistFromSource, crossing.Barrier.TopHeightM,
+		sourceHeightM, receiverHeightM, totalDistM,
+	)
 }

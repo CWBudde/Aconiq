@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
@@ -364,4 +365,63 @@ func parseCoordinateNumber(value any) (float64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported coordinate type %T", value)
 	}
+}
+
+// barrierFeature is one `kind: barrier` feature reduced to what a standards
+// module needs from it: an id, one plan-view polyline and a top height.
+//
+// Every module that screens against barriers reads the same three things out
+// of the same feature kind, and differs only in the struct it puts them in —
+// so the reading is done once here and each module maps the result to its own
+// type.
+type barrierFeature struct {
+	ID       string
+	Geometry []geo.Point2D
+	HeightM  float64
+}
+
+// extractBarrierFeatures reads every barrier feature in the model.
+//
+// A multi-linestring feature becomes one barrierFeature per line, with the
+// index appended to the id, because a module screens against one polyline at
+// a time. idPrefix names the synthetic id given to a feature that carries
+// none; op names the calling extractor in the error taxonomy.
+func extractBarrierFeatures(model modelgeojson.Model, standardID, idPrefix, op string) ([]barrierFeature, error) {
+	barriers := make([]barrierFeature, 0)
+
+	for featureIndex, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindBarrier {
+			continue
+		}
+
+		lines, err := lineStringsFromFeature(feature, standardID)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, op, fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		heightM, ok, err := featurePropertyFloat(feature, "height_m", "barrier_height_m")
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, op, fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		if !ok {
+			return nil, domainerrors.New(domainerrors.KindValidation, op, fmt.Sprintf("feature %q missing barrier height_m", feature.ID), nil)
+		}
+
+		baseID := strings.TrimSpace(feature.ID)
+		if baseID == "" {
+			baseID = fmt.Sprintf("%s-%03d", idPrefix, featureIndex)
+		}
+
+		for lineIndex, line := range lines {
+			barrierID := baseID
+			if len(lines) > 1 {
+				barrierID = fmt.Sprintf("%s-%02d", baseID, lineIndex+1)
+			}
+
+			barriers = append(barriers, barrierFeature{ID: barrierID, Geometry: line, HeightM: heightM})
+		}
+	}
+
+	return barriers, nil
 }
