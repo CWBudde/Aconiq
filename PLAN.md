@@ -1099,23 +1099,46 @@ editing several of its files rather than one package of its own.
   - [ ] `buf/aircraft` → alias package over `cnossos/aircraft`. `compute.go` and `emission.go`
         are **byte-identical**; `propagation.go` differs by one constant. `bub/rail` and
         `bub/industry` already demonstrate the correct 211-LOC alias pattern. **−1 050 LOC.**
-  - [ ] Replace the 11 `persist*RunOutputs` and 10 `hash*Outputs` clones with two generics.
+  - [ ] Finish the persist/hash generics. **The "11 `persist*RunOutputs` and 10 `hash*Outputs`
+        clones" this entry used to describe are gone** — `persistReceiverRunOutputs[Output any]`
+        and `hashReceiverOutputs[Output, Indicators any]` exist, and five per-standard functions are
+        now thin adapters building a `receiverPersistPlan[T]` rather than clones. What is left
+        outside them is three: `persistDummyRunOutputs`, `persistBEBExposureRunOutputs` and
+        `hashBEBExposureOutputs`, each of which writes a different shape and may well be right as
+        it stands. Decide that before generalising further.
   - [ ] The same lift again, for the three helpers the bullet above did not count.
         `airAbsorption` — `cfg.AirAbsorptionDBPerKM * (distanceM / 1000.0)` — has **6**
         byte-identical copies, in exactly the six `propagation.go` files `GeometricDivergence`
         just touched; it needs a `(distanceM, dbPerKM float64)` signature because the config type is
-        per package. The minimum-distance clamp has **7** copies under **three names** —
+        per package. Keep the parenthesisation: `a * (d / 1000)` and `(a * d) / 1000` differ in the
+        last ulp, and the digests hash receiver tables at full `float64` precision.
+        The minimum-distance clamp has **7** copies under **three names** —
         `effectivePropagationDistance` (cnossos road/rail/industry, bub/road),
-        `effectiveSlantDistance` (cnossos/aircraft, buf/aircraft), `effectiveDistance` (iso9613) —
-        and the three names are the only reason they read as distinct. `groundEffect` has 6 copies
-        but each returns its own config field, so it is not the same shape.
-  - [ ] The encode step is still inlined in 8 places that are not named `writeJSONFile`:
+        `effectiveSlantDistance` (cnossos/aircraft, buf/aircraft), `effectiveDistance` (iso9613).
+        **The names are not the only reason they read as distinct**, as this entry used to claim:
+        there are three bodies, not one. A direct compare (2), the same with a dead local `d` (3),
+        and `math.Max` (2) — and the `math.Max` pair clamps `MinSlantDistanceM`, not
+        `MinDistanceM`, so the lift needs bare `float64` parameters here too. The three agree on
+        every input `Validate` admits, including NaN; they part only on signed zero, which
+        `min_distance_m must be finite and > 0` rules out. `groundEffect` has 6 copies but each
+        returns its own config field, so it is not the same shape. Two clamps are inlined rather
+        than named, in `schall03/propagation.go` and `rls19/road/propagation.go`, and a **seventh**
+        `GeometricDivergence` survives the same way at `schall03/propagation.go:45`.
+  - [ ] The encode step is still inlined in **9** places that are not named `writeJSONFile`:
         `report/results/{raster_io.go,receiver_table_io.go}`, `report/export/contour.go`,
         `app/cli/{export_assessment.go,export.go}`, `qa/golden/snapshot.go`,
-        `api/httpv1/openapi.go`, and `standards/beb/exposure/export.go` (which appends the newline
-        at the `os.WriteFile` call rather than as its own statement). Constraint: the first two are
-        result containers whose bytes `TestRunResultsDigestsAreStable` pins, so that gate applies
-        to this follow-up too.
+        `api/httpv1/openapi.go`, `standards/beb/exposure/export.go` (which appends the newline
+        at the `os.WriteFile` call rather than as its own statement), and `api/httpv1/handler.go`'s
+        `writeJSON`, which this entry used to miss. **Migrate that last one deliberately or not at
+        all**: it swallows the marshal error, substitutes a canned body and rewrites the HTTP
+        status, so a naive swap discards the branch that does it.
+        Constraints. Three of the nine write into `.noise/runs/<id>/results/` and are therefore
+        inside `TestRunResultsDigestsAreStable` — the two result containers **and**
+        `beb-summary.json`. But that gate does not pin formatting: `digestPayload` re-encodes every
+        `.json` compact and key-sorted before hashing, so what actually pins the indentation and the
+        trailing newline is `qa/golden/snapshot.go` — one of the nine. `api/httpv1/openapi.go` is
+        the safest: its bytes are pinned nowhere, because `just fe-api-check` parses the spec and
+        discards it, comparing the generated `schema.ts` instead.
   - [ ] Decide whether the eight hand-maintained provenance key lists should be derived from the
         descriptor instead. `iso9613` and `schall03` already pass `parameterNames()` /
         `provenanceParameterNames()`; the other eight carry a slice that must stay in step with the
