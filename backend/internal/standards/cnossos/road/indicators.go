@@ -2,6 +2,7 @@ package road
 
 import (
 	"github.com/aconiq/backend/internal/acoustics"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 const (
@@ -36,7 +37,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"emission_model":         "vehicle-class-components-with-road-context",
 	}
 
-	for _, key := range []string{
+	return framework.StampKeyParameters(metadata, params, []string{
 		"receiver_height_m",
 		"road_category",
 		"road_surface_type",
@@ -62,11 +63,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"ground_attenuation_db",
 		"barrier_attenuation_db",
 		"min_distance_m",
-	} {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	})
 }

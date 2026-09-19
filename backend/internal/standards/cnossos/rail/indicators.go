@@ -2,6 +2,7 @@ package rail
 
 import (
 	"github.com/aconiq/backend/internal/acoustics"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 const (
@@ -36,7 +37,7 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"emission_model":         "rolling-traction-braking-infrastructure-components",
 	}
 
-	for _, key := range []string{
+	return framework.StampKeyParameters(metadata, params, []string{
 		"grid_resolution_m",
 		"grid_padding_m",
 		"receiver_height_m",
@@ -55,11 +56,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"bridge_correction_db",
 		"curve_squeal_db",
 		"min_distance_m",
-	} {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	})
 }

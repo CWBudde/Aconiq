@@ -1,6 +1,10 @@
 package schall03
 
-import "math"
+import (
+	"math"
+
+	"github.com/aconiq/backend/internal/standards/framework"
+)
 
 // ParamEngine is the run parameter selecting the computation chain.
 const ParamEngine = "schall03_engine"
@@ -177,11 +181,5 @@ func ProvenanceMetadata(params map[string]string) map[string]string {
 		"band_model":             "octave-63Hz-8000Hz",
 	}
 
-	for _, key := range provenanceParameterNames() {
-		if value, ok := params[key]; ok {
-			metadata["key_parameter."+key] = value
-		}
-	}
-
-	return metadata
+	return framework.StampKeyParameters(metadata, params, provenanceParameterNames())
 }
