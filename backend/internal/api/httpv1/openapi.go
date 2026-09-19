@@ -1190,7 +1190,7 @@ func openapiModelSchemas() map[string]any {
 				},
 				"model": map[string]any{
 					"type":        "object",
-					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area.",
+					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area | ground-zone.",
 				},
 			},
 		},

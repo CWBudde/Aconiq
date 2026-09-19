@@ -34,6 +34,8 @@ function kindLabel(kind: FeatureKind | "receiver"): string {
       return m.option_building();
     case "barrier":
       return m.option_barrier();
+    case "ground-zone":
+      return m.option_ground_zone();
     case "receiver":
       return m.option_receiver();
   }

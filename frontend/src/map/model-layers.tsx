@@ -10,6 +10,7 @@ import {
   SOURCE_IDS,
   SELECTED_STATE_KEY,
   BUILDING_LAYERS,
+  GROUND_ZONE_LAYERS,
   BARRIER_LAYERS,
   SOURCE_LAYERS,
   RECEIVER_LAYERS,
@@ -84,6 +85,7 @@ export function ModelLayers({
 
     const entries = [
       [SOURCE_IDS.calcArea, calcAreaGeoJSON],
+      [SOURCE_IDS.groundZones, groups.groundZones],
       [SOURCE_IDS.buildings, groups.buildings],
       [SOURCE_IDS.barriers, groups.barriers],
       [SOURCE_IDS.sources, groups.sources],
@@ -119,6 +121,9 @@ export function ModelLayers({
     // Calc area layers go below model feature layers
     const allLayers = [
       ...CALC_AREA_LAYERS,
+      // Above the calculation area and below everything else: a ground zone is
+      // the surface the rest of the model stands on.
+      ...GROUND_ZONE_LAYERS,
       ...BUILDING_LAYERS,
       ...BARRIER_LAYERS,
       ...SOURCE_LAYERS,
@@ -177,6 +182,7 @@ const SOURCE_ID_FOR_KIND: Record<ModelFeature["kind"], string> = {
   source: SOURCE_IDS.sources,
   building: SOURCE_IDS.buildings,
   barrier: SOURCE_IDS.barriers,
+  "ground-zone": SOURCE_IDS.groundZones,
 };
 
 interface SelectionTarget {

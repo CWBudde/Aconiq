@@ -38,6 +38,7 @@ so a file Aconiq produced says what it is, and read so one can come back.
   - `barrier`
   - `receiver`
   - `calc-area`
+  - `ground-zone`
 
 ### `source` Features
 
@@ -135,6 +136,36 @@ the raster receivers are synthesized over the area scanline by scanline, and
 `row_direction_only` when the grid map's own origin and spacing were usable: the
 decoded values exist at those cells and nowhere else, so the receivers go there
 and the calculation area only decides which way the rows run.
+
+### `ground-zone` Features
+
+- `ground_factor` required, a finite number within `[0,1]`: 0 for acoustically
+  hard ground, 1 for porous ground. It is **required rather than defaulted** —
+  a zone whose factor is missing is indistinguishable from ground the model says
+  nothing about, which the run already answers with its global `ground_factor`
+  parameter, so defaulting it here would let a typo in the property name read as
+  hard ground. Missing is `groundzone.factor.required`, out of range is
+  `groundzone.factor.invalid`.
+- Geometry must be `Polygon` — **not** `MultiPolygon`, for `calc-area`'s reason:
+  a multi-part zone is a shape the UI cannot draw, and refusing one now settles
+  how its parts combine before anything needs them to.
+- No `height_m`: a ground zone is a footprint on the ground, not an object sound
+  travels around.
+
+A ground zone is where ISO 9613-2 Abschnitt 7.3.1's three regions get their
+ground factors. The standard splits each propagation path into a source region
+reaching 30·h_s from the source, a receiver region reaching 30·h_r back from the
+receiver, and the middle region between them; G for a region is the porous
+fraction of its ground, so a region crossing several zones resolves to the
+**length-weighted mean** of their factors over its own span. Ground no zone
+covers takes the run's global `ground_factor`, which is why a model with no
+zones computes exactly what it always did.
+
+Zones may overlap; the **first one in file order wins** over the stretch they
+share, so the answer never depends on iteration order.
+
+Only `iso9613` reads them today. Other standards ignore the kind rather than
+refusing it, the way they ignore the vocabularies that are not theirs.
 
 ## Standard-Specific Geometry Conventions
 
@@ -350,6 +381,12 @@ Validation uses project CRS from `.noise/project.json`.
 does not reach the file on disk — `ToFeatureCollection` does not emit it — so a
 bump would be a stamp nobody consults. v1 has been widened in place before, for
 `bimschv16_area_category` on `receiver` features.
+
+- **2026-09-19 — `ground-zone` feature kind.** Ground-category areas, from which
+  ISO 9613-2 resolves G per region instead of reading one global number three
+  times. The same older-binary limitation the `calc-area` entry below records
+  applies: a model carrying one fails an older `aconiq` with
+  `feature.kind.invalid`.
 
 - **2026-09-12 — `calc-area` feature kind.** The calculation area a user draws
   on the map, carried as a model feature so that it is reprojected with the rest

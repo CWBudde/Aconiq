@@ -77,6 +77,10 @@ export function PreviewStep({
               value: countByKind("building"),
             },
             { label: m.label_barriers(), value: countByKind("barrier") },
+            {
+              label: m.label_ground_zones(),
+              value: countByKind("ground-zone"),
+            },
             // Receivers and the calculation area are counted because the
             // import now carries them. Listing only source/building/barrier
             // was true of the wizard that dropped the other two.

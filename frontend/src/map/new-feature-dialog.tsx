@@ -59,6 +59,19 @@ interface VertexInput {
   y: string;
 }
 
+/**
+ * The ISO 9613-2 module's own `ground_factor` default, so a zone saved without
+ * touching the field states what the run would have assumed for that ground
+ * anyway.
+ */
+const DEFAULT_GROUND_FACTOR = 0.5;
+
+/** The factor as the model may hold it: G is a fraction of porous ground. */
+function clampGroundFactor(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_GROUND_FACTOR;
+  return Math.min(1, Math.max(0, value));
+}
+
 /** How many vertices the typed geometry needs before it can be built. */
 const MINIMUM_VERTICES: Record<TypedGeometryType, number> = {
   Point: 1,
@@ -100,6 +113,8 @@ function typedGeometryType(
     case "receiver":
       return "Point";
     case "building":
+      return "Polygon";
+    case "ground-zone":
       return "Polygon";
     case "barrier":
       return "LineString";
@@ -217,6 +232,11 @@ export function NewFeatureDialog({
   const [kind, setKind] = useState<FeatureKind | "receiver">(defaultKind);
   const [sourceType, setSourceType] = useState<SourceType>(defaultSourceType);
   const [height, setHeight] = useState("5");
+  // The module's own default (`iso9613` parameter `ground_factor`), so a zone
+  // drawn and saved unchanged states what the run would have assumed anyway.
+  const [groundFactor, setGroundFactor] = useState(
+    String(DEFAULT_GROUND_FACTOR),
+  );
   const [vertices, setVertices] = useState<VertexInput[]>([blankVertex()]);
 
   // Reset the form whenever the dialog is (re)opened, for either path.
@@ -226,11 +246,13 @@ export function NewFeatureDialog({
       setKind(inferKind(geometry.type));
       setSourceType(inferSourceType(geometry.type));
       setHeight("5");
+      setGroundFactor(String(DEFAULT_GROUND_FACTOR));
       return;
     }
     setKind("source");
     setSourceType("point");
     setHeight("5");
+    setGroundFactor(String(DEFAULT_GROUND_FACTOR));
     setVertices([blankVertex()]);
   }, [open, geometry]);
 
@@ -279,6 +301,11 @@ export function NewFeatureDialog({
   const receiverAllowed =
     typing || geometry.type === "Point" || geometry.type === "MultiPoint";
 
+  // A ground zone is a Polygon and only a Polygon — schema v1 refuses a
+  // MultiPolygon one, so the option is not offered for a geometry that could
+  // not be saved. On the typed path the kind decides the geometry.
+  const groundZoneAllowed = typing || geometry.type === "Polygon";
+
   const handleSave = useCallback(() => {
     const saved = geometry ?? typedGeometry(targetType, vertices);
     if (!saved) return;
@@ -302,6 +329,16 @@ export function NewFeatureDialog({
       ...(kind === "building" || kind === "barrier"
         ? { heightM: Math.max(0.1, parseFloat(height) || 5) }
         : {}),
+      // Clamped rather than refused: the field is a bounded slider of a
+      // number, and a zone saved outside [0,1] would be refused by the run
+      // long after the dialog closed on it.
+      ...(kind === "ground-zone"
+        ? {
+            properties: {
+              ground_factor: clampGroundFactor(parseFloat(groundFactor)),
+            },
+          }
+        : {}),
     };
     addFeature(feature);
     onClose();
@@ -312,6 +349,7 @@ export function NewFeatureDialog({
     kind,
     sourceType,
     height,
+    groundFactor,
     addFeature,
     addReceiver,
     onClose,
@@ -354,6 +392,9 @@ export function NewFeatureDialog({
                 } else if (v === "building" || v === "barrier") {
                   setHeight("5");
                 }
+                if (v === "ground-zone") {
+                  setGroundFactor(String(DEFAULT_GROUND_FACTOR));
+                }
               }}
             >
               <SelectTrigger className="h-8 text-xs">
@@ -363,6 +404,11 @@ export function NewFeatureDialog({
                 <SelectItem value="source">{m.option_source()}</SelectItem>
                 <SelectItem value="building">{m.option_building()}</SelectItem>
                 <SelectItem value="barrier">{m.option_barrier()}</SelectItem>
+                {groundZoneAllowed ? (
+                  <SelectItem value="ground-zone">
+                    {m.option_ground_zone()}
+                  </SelectItem>
+                ) : null}
                 {receiverAllowed ? (
                   <SelectItem value="receiver">
                     {m.option_receiver()}
@@ -419,6 +465,29 @@ export function NewFeatureDialog({
           ) : (
             <CoordinateReadback crs={crs} positions={drawnPositions} />
           )}
+
+          {kind === "ground-zone" ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor={`${fieldId}-ground-factor`} className="text-xs">
+                {m.label_ground_factor()}
+              </Label>
+              <Input
+                id={`${fieldId}-ground-factor`}
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                className="h-8 text-xs"
+                value={groundFactor}
+                onChange={(e) => {
+                  setGroundFactor(e.target.value);
+                }}
+              />
+              <p className="text-2xs leading-relaxed text-muted-foreground">
+                {m.msg_ground_factor_hint()}
+              </p>
+            </div>
+          ) : null}
 
           {kind === "building" || kind === "barrier" || kind === "receiver" ? (
             <div className="grid gap-1.5">

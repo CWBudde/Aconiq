@@ -28,6 +28,12 @@ type PropagationConfig struct {
 	// caller that already did the geometry.
 	Barriers []Barrier
 
+	// GroundZones is the ground-category scene. Abschnitt 7.3.1's three
+	// regions resolve their G from it per source/receiver pair, and
+	// GroundFactor is what any region no zone covers falls back to. An empty
+	// scene therefore reproduces the single global factor exactly.
+	GroundZones []GroundZone
+
 	C0           float64
 	MinDistanceM float64
 }
@@ -97,6 +103,13 @@ func (cfg PropagationConfig) Validate() error {
 		}
 	}
 
+	for _, zone := range cfg.GroundZones {
+		err := zone.Validate()
+		if err != nil {
+			return fmt.Errorf("ground_zones: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -142,7 +155,8 @@ func BandAttenuation(receiver geo.PointReceiver, source PointSource, cfg Propaga
 
 	adiv := acoustics.GeometricDivergence(distance)
 	aatm := AtmosphericAbsorptionBands(cfg.AirTemperatureC, cfg.RelativeHumidityPercent, distance)
-	agr := GroundEffectBands(cfg.GroundFactor, cfg.GroundFactor, cfg.GroundFactor, hs, hr, dp)
+	gs, gr, gm := ResolveRegionFactors(source.Point, receiver.Point, hs, hr, cfg.GroundZones, cfg.GroundFactor)
+	agr := GroundEffectBands(gs, gr, gm, hs, hr, dp)
 	abar := BarrierAttenuationBands(pathBarrier(receiver, source, cfg), agr, 20)
 
 	var totalAtten BandLevels

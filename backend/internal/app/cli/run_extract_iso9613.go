@@ -118,3 +118,63 @@ func extractISO9613Barriers(model modelgeojson.Model) ([]iso9613.Barrier, error)
 
 	return barriers, nil
 }
+
+// extractISO9613GroundZones reads the ground-category scene out of the model.
+//
+// A model with no ground-zone features yields an empty scene rather than an
+// error, and the run then resolves every region from the global
+// `iso9613_ground_factor` — which is what every project did before zones
+// existed, so no run changes by having none.
+//
+// Polygon only, as the schema validator already enforces: the zone is a
+// footprint whose covering test is `geo.PointInPolygon`, and a MultiPolygon
+// would have to decide how its parts combine before anything needs them to.
+func extractISO9613GroundZones(model modelgeojson.Model) ([]iso9613.GroundZone, error) {
+	zones := make([]iso9613.GroundZone, 0)
+
+	for featureIndex, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindGroundZone {
+			continue
+		}
+
+		polygons, err := polygonsFromFeature(feature, iso9613.StandardID)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613GroundZones", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		factor, ok, err := featurePropertyFloat(feature, modelgeojson.PropertyGroundFactor)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613GroundZones", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		if !ok {
+			return nil, domainerrors.New(
+				domainerrors.KindValidation, "cli.extractISO9613GroundZones",
+				fmt.Sprintf("feature %q missing %s", feature.ID, modelgeojson.PropertyGroundFactor), nil,
+			)
+		}
+
+		baseID := strings.TrimSpace(feature.ID)
+		if baseID == "" {
+			baseID = fmt.Sprintf("iso9613-ground-zone-%03d", featureIndex)
+		}
+
+		for polygonIndex, polygon := range polygons {
+			zoneID := baseID
+			if len(polygons) > 1 {
+				zoneID = fmt.Sprintf("%s-%02d", baseID, polygonIndex+1)
+			}
+
+			zone := iso9613.GroundZone{ID: zoneID, Polygon: polygon, GroundFactor: factor}
+
+			err := zone.Validate()
+			if err != nil {
+				return nil, domainerrors.New(domainerrors.KindValidation, "cli.extractISO9613GroundZones", fmt.Sprintf("ground zone %q", zoneID), err)
+			}
+
+			zones = append(zones, zone)
+		}
+	}
+
+	return zones, nil
+}

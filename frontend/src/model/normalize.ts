@@ -12,7 +12,12 @@ import type {
 } from "./types";
 import { createFeatureId, DEFAULT_RECEIVER_HEIGHT_M } from "./types";
 
-const VALID_KINDS = new Set<string>(["source", "building", "barrier"]);
+const VALID_KINDS = new Set<string>([
+  "source",
+  "building",
+  "barrier",
+  "ground-zone",
+]);
 const VALID_SOURCE_TYPES = new Set<string>(["point", "line", "area"]);
 const VALID_GEOM_TYPES = new Set<string>([
   "Point",

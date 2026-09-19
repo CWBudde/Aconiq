@@ -53,6 +53,13 @@ export function validationIssueText(issue: ValidationIssue): string {
     case "barrier.geometry.invalid":
       return m.msg_validation_barrier_geometry_invalid();
 
+    case "groundzone.factor.required":
+      return m.msg_validation_groundzone_factor_required();
+    case "groundzone.factor.invalid":
+      return m.msg_validation_groundzone_factor_invalid();
+    case "groundzone.geometry.invalid":
+      return m.msg_validation_groundzone_geometry_invalid();
+
     case "receiver.coordinates.invalid":
       return m.msg_validation_receiver_coordinates_invalid();
     case "receiver.height.invalid":

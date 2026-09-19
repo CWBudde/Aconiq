@@ -2,6 +2,7 @@ package geo
 
 import (
 	"math"
+	"slices"
 
 	"github.com/aconiq/backend/internal/numeric"
 )
@@ -350,4 +351,119 @@ func signedRingArea(ring []Point2D) float64 {
 	}
 
 	return 0.5 * sum.Sum()
+}
+
+// spanParameterEpsilon is the smallest distinguishable interval, measured in
+// the parameter t along a segment. Two crossings closer than this — a ray
+// leaving a polygon through a vertex, say, which every adjacent edge reports —
+// describe one cut, and an interval shorter than it has no midpoint worth
+// classifying.
+const spanParameterEpsilon = 1e-12
+
+// SegmentSpan is one interval of a segment over which the covering polygon does
+// not change, expressed in the parameter t along that segment: Start and End
+// are in [0,1], and Polygon indexes the covering polygon or is -1 where no
+// polygon covers it.
+type SegmentSpan struct {
+	Start   float64
+	End     float64
+	Polygon int
+}
+
+// Length returns the span's share of the segment, in the same t parameter.
+func (s SegmentSpan) Length() float64 {
+	return s.End - s.Start
+}
+
+// SegmentPolygonSpans splits the segment ab into the maximal intervals over
+// which the covering polygon stays the same. Each polygon is a ring set in the
+// PointInPolygon convention — rings[0] exterior, rings[1:] holes.
+//
+// Where polygons overlap the **first** one in slice order wins, so the answer
+// is the caller's declared order and never map iteration; where none covers,
+// the span carries -1 and the caller supplies its own fallback. Spans are
+// returned in order from a to b and cover [0,1] exactly.
+//
+// A segment running exactly along a polygon edge is classified as covered:
+// SegmentIntersection reports no crossing for collinear edges, and
+// PointInPolygon treats an on-edge point as inside. That is the same rule
+// receiver assignment already follows, rather than a second one.
+func SegmentPolygonSpans(a, b Point2D, polygons [][][]Point2D) []SegmentSpan {
+	cuts := segmentCutParameters(a, b, polygons)
+
+	spans := make([]SegmentSpan, 0, len(cuts))
+
+	for i := range len(cuts) - 1 {
+		start, end := cuts[i], cuts[i+1]
+		if end-start <= spanParameterEpsilon {
+			continue
+		}
+
+		midpoint := Point2D{
+			X: a.X + 0.5*(start+end)*(b.X-a.X),
+			Y: a.Y + 0.5*(start+end)*(b.Y-a.Y),
+		}
+
+		span := SegmentSpan{Start: start, End: end, Polygon: coveringPolygon(midpoint, polygons)}
+
+		// Merge with the previous span rather than emitting a boundary the
+		// covering polygon does not actually change across: a crossing into a
+		// hole of one polygon and out of its neighbour cuts the segment twice
+		// without changing the answer.
+		if len(spans) > 0 && spans[len(spans)-1].Polygon == span.Polygon {
+			spans[len(spans)-1].End = span.End
+
+			continue
+		}
+
+		spans = append(spans, span)
+	}
+
+	if len(spans) == 0 {
+		return []SegmentSpan{{Start: 0, End: 1, Polygon: coveringPolygon(a, polygons)}}
+	}
+
+	return spans
+}
+
+// segmentCutParameters returns the sorted, deduplicated parameters along ab at
+// which the covering polygon can change: 0, 1, and every ring-edge crossing.
+func segmentCutParameters(a, b Point2D, polygons [][][]Point2D) []float64 {
+	cuts := []float64{0, 1}
+
+	// Edges are walked with the same wrap-around pointInRing uses, so a ring
+	// written without its closing point is cut where it is tested.
+	for _, rings := range polygons {
+		for _, ring := range rings {
+			for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
+				_, t, ok := SegmentIntersection(a, b, ring[j], ring[i])
+				if ok {
+					cuts = append(cuts, t)
+				}
+			}
+		}
+	}
+
+	slices.Sort(cuts)
+
+	deduplicated := cuts[:1]
+
+	for _, t := range cuts[1:] {
+		if t-deduplicated[len(deduplicated)-1] > spanParameterEpsilon {
+			deduplicated = append(deduplicated, t)
+		}
+	}
+
+	return deduplicated
+}
+
+// coveringPolygon returns the index of the first polygon covering p, or -1.
+func coveringPolygon(p Point2D, polygons [][][]Point2D) int {
+	for index, rings := range polygons {
+		if PointInPolygon(p, rings) {
+			return index
+		}
+	}
+
+	return -1
 }
