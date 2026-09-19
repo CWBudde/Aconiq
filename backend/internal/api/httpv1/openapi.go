@@ -1,7 +1,6 @@
 package httpv1
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/aconiq/backend/internal/geo/crstransform"
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/contour"
 )
 
@@ -1250,12 +1250,10 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 
 	spec := BuildOpenAPISpec(serverURL)
 
-	encoded, err := json.MarshalIndent(spec, "", "  ")
+	encoded, err := jsonio.Marshal(spec)
 	if err != nil {
 		return fmt.Errorf("encode openapi spec: %w", err)
 	}
-
-	encoded = append(encoded, '\n')
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
 	if err != nil {

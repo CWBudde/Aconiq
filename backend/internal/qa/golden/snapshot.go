@@ -2,11 +2,12 @@ package golden
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 // UpdateEnabled reports whether tests should rewrite golden snapshots.
@@ -25,12 +26,10 @@ func UpdateEnabled() bool {
 func AssertJSONSnapshot(t *testing.T, snapshotPath string, got any) {
 	t.Helper()
 
-	serialized, err := json.MarshalIndent(got, "", "  ")
+	serialized, err := jsonio.Marshal(got)
 	if err != nil {
 		t.Fatalf("marshal snapshot value: %v", err)
 	}
-
-	serialized = append(serialized, '\n')
 
 	AssertBytesSnapshot(t, snapshotPath, serialized)
 }

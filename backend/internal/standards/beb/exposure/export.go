@@ -1,12 +1,12 @@
 package exposure
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
 )
 
@@ -193,12 +193,12 @@ func populateBEBResultRaster(raster *results.Raster, summary Summary) error {
 }
 
 func writeBEBSummary(summaryPath string, summary Summary) error {
-	payload, err := json.MarshalIndent(summary, "", "  ")
+	payload, err := jsonio.Marshal(summary)
 	if err != nil {
 		return fmt.Errorf("marshal beb summary: %w", err)
 	}
 
-	err = os.WriteFile(summaryPath, append(payload, '\n'), 0o600)
+	err = os.WriteFile(summaryPath, payload, 0o600)
 	if err != nil {
 		return fmt.Errorf("write beb summary %s: %w", summaryPath, err)
 	}

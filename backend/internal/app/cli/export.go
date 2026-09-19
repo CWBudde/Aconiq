@@ -17,6 +17,7 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/jsonio"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
 	"github.com/aconiq/backend/internal/report/reporting"
 	"github.com/aconiq/backend/internal/report/results"
@@ -875,12 +876,10 @@ func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS stri
 
 	fc := model.ToFeatureCollection()
 
-	out, err := json.MarshalIndent(fc, "", "  ")
+	out, err := jsonio.Marshal(fc)
 	if err != nil {
 		return fmt.Errorf("marshal re-projected GeoJSON: %w", err)
 	}
-
-	out = append(out, '\n')
 
 	// G703: geojsonPath is a file this function has just read from inside the
 	// export bundle the CLI itself laid out; only the bundle root comes from

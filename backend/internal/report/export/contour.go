@@ -1,11 +1,11 @@
 package export
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/contour"
 )
 
@@ -62,12 +62,10 @@ func ExportContourGeoJSON(path string, contours []ContourLine) error {
 
 	fc := buildContourFeatureCollection(contours)
 
-	data, err := json.MarshalIndent(fc, "", "  ")
+	data, err := jsonio.Marshal(fc)
 	if err != nil {
 		return fmt.Errorf("marshal contour geojson: %w", err)
 	}
-
-	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write contour geojson %s: %w", path, err)

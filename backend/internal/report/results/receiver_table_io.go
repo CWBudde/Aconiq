@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 // receiverTableFile is a table as it may be found on disk: the current shape,
@@ -63,12 +65,10 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 		return fmt.Errorf("create receiver table directory: %w", err)
 	}
 
-	payload, err := json.MarshalIndent(table, "", "  ")
+	payload, err := jsonio.Marshal(table)
 	if err != nil {
 		return fmt.Errorf("encode receiver table json: %w", err)
 	}
-
-	payload = append(payload, '\n')
 
 	err = os.WriteFile(path, payload, 0o600)
 	if err != nil {

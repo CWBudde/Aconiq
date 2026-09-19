@@ -1,16 +1,24 @@
 // Package jsonio holds one JSON file encoding — two-space indentation and a
-// trailing newline — for the writers that have been migrated onto it.
+// trailing newline — and since this pass it is the only one in the repository.
+// `json.MarshalIndent` appears in exactly one place in non-test code, below.
 //
-// It is not yet the only such encoding in the repository, and the doc should
-// not be read as claiming so. What it collected were the eight copies that
-// announced themselves by name: seven writers called `writeJSONFile` or
-// `writeJSON`, in `app/cli`, `engine`, `io/projectfs`, `report/reporting` and
-// both `qa/acceptance` runners, plus the same two lines inlined in
-// `projectfs.Save`. Roughly as many again remain inlined at their `os.WriteFile`
-// call — `report/results`, `report/export`, `qa/golden`, `api/httpv1` and
-// `standards/beb/exposure` — and PLAN.md tracks them under Priority 7. Every
-// byte any of them produces is pinned by a golden file or by a run digest, so
-// one copy drifting is a diff in files nobody meant to touch.
+// It first collected the eight copies that announced themselves by name: seven
+// writers called `writeJSONFile` or `writeJSON`, in `app/cli`, `engine`,
+// `io/projectfs`, `report/reporting` and both `qa/acceptance` runners, plus the
+// same two lines inlined in `projectfs.Save`. The nine that stayed inlined at
+// their `os.WriteFile` call followed — in `report/results`, `report/export`,
+// `app/cli`, `qa/golden`, `api/httpv1` and `standards/beb/exposure`. Every byte
+// any of them produces is pinned by a golden file or by a run digest, so one
+// copy drifting is a diff in files nobody meant to touch.
+//
+// Two of the nine are not file writers and kept the shape that makes them what
+// they are. `qa/golden.AssertJSONSnapshot` compares rather than writes, and is
+// what actually pins the indentation and the trailing newline of 59 golden
+// files — a run digest does not, because it re-encodes every `.json` compact
+// and key-sorted before hashing. `api/httpv1.writeJSON` answers an
+// `http.ResponseWriter` and, on a marshal failure, substitutes a canned body
+// and rewrites the status to 500; that branch is intact, and carries the
+// trailing newline itself so both paths still end the same way.
 //
 // What stays with the callers is everything around the encoding, because none
 // of it is shared: `io/projectfs` replaces a file through a temp file and a
