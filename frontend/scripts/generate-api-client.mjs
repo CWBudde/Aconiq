@@ -61,6 +61,19 @@ const HEADER = `/**
 
 `;
 
+// `process.exit()` does not unwind the stack: it terminates the process where
+// it stands, and the `finally` below — the one thing that removes `tmp` — never
+// runs. Exiting from inside this script's own try block would therefore leave an
+// `aconiq-openapi-*` directory in the system temp dir on every single run, the
+// successful ones included. So nothing here calls it. A diagnosed failure throws
+// `Failure`, which the catch turns into a message and an exit *code*, leaving the
+// process to end on its own once the cleanup has happened.
+class Failure extends Error {}
+
+function fail(reason) {
+  throw new Failure(reason);
+}
+
 const tmp = mkdtempSync(join(tmpdir(), "aconiq-openapi-"));
 
 try {
@@ -111,55 +124,58 @@ try {
   const generated =
     HEADER + astToString(await openapiTS(spec, { defaultNonNullable: false }));
 
-  if (!check) {
+  if (check) {
+    let committed;
+    try {
+      committed = readFileSync(OUT_URL, "utf8");
+    } catch {
+      fail(
+        `${OUT_DISPLAY} does not exist.\nRun \`bun run generate:api\` in frontend/.`,
+      );
+    }
+
+    if (committed !== generated) {
+      // The generated text is small enough to diff usefully, and `diff` says
+      // which lines moved far better than a byte count does.
+      const expected = join(tmp, "expected.ts");
+      writeFileSync(expected, generated);
+      const diff = spawnSync(
+        "diff",
+        [
+          "-u",
+          "--label",
+          `${OUT_DISPLAY} (committed)`,
+          "--label",
+          `${OUT_DISPLAY} (generated)`,
+          fileURLToPath(OUT_URL),
+          expected,
+        ],
+        { encoding: "utf8" },
+      );
+      process.stderr.write(diff.stdout ?? "");
+      fail(
+        `${OUT_DISPLAY} does not match the API's OpenAPI document.\n` +
+          "The contract changed in backend/internal/api/httpv1/openapi.go and the\n" +
+          "client was not regenerated. Run `bun run generate:api` in frontend/.",
+      );
+    }
+
+    process.stdout.write(`${OUT_DISPLAY}: up to date\n`);
+  } else {
     writeFileSync(OUT_URL, generated);
     process.stdout.write(
       `${OUT_DISPLAY}: ${String(paths)} paths, ${String(schemas)} schemas\n`,
     );
-    process.exit(0);
   }
-
-  let committed;
-  try {
-    committed = readFileSync(OUT_URL, "utf8");
-  } catch {
-    fail(
-      `${OUT_DISPLAY} does not exist.\nRun \`bun run generate:api\` in frontend/.`,
-    );
+} catch (error) {
+  // A `Failure` is this script's own diagnosis and is already phrased for
+  // whoever has to act on it. Anything else is a defect in here and keeps its
+  // stack trace rather than being reported as an API problem.
+  if (!(error instanceof Failure)) {
+    throw error;
   }
-
-  if (committed !== generated) {
-    // The generated text is small enough to diff usefully, and `diff` says
-    // which lines moved far better than a byte count does.
-    const expected = join(tmp, "expected.ts");
-    writeFileSync(expected, generated);
-    const diff = spawnSync(
-      "diff",
-      [
-        "-u",
-        "--label",
-        `${OUT_DISPLAY} (committed)`,
-        "--label",
-        `${OUT_DISPLAY} (generated)`,
-        fileURLToPath(OUT_URL),
-        expected,
-      ],
-      { encoding: "utf8" },
-    );
-    process.stderr.write(diff.stdout ?? "");
-    fail(
-      `${OUT_DISPLAY} does not match the API's OpenAPI document.\n` +
-        "The contract changed in backend/internal/api/httpv1/openapi.go and the\n" +
-        "client was not regenerated. Run `bun run generate:api` in frontend/.",
-    );
-  }
-
-  process.stdout.write(`${OUT_DISPLAY}: up to date\n`);
+  process.stderr.write(`\ngenerate-api-client: ${error.message}\n`);
+  process.exitCode = 1;
 } finally {
   rmSync(tmp, { recursive: true, force: true });
-}
-
-function fail(reason) {
-  process.stderr.write(`\ngenerate-api-client: ${reason}\n`);
-  process.exit(1);
 }
