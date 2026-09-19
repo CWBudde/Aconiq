@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/report/results"
 )
 
@@ -95,7 +96,10 @@ func exportRasterBands(
 		return nil, fmt.Errorf("create output directory: %w", err)
 	}
 
-	epsgCode := parseEPSGCode(crs)
+	epsgCode, err := parseEPSGCode(crs)
+	if err != nil {
+		return nil, err
+	}
 
 	err = validateGeoKeyEPSG(epsgCode)
 	if err != nil {
@@ -829,17 +833,28 @@ func writeCOGTileData(buf []byte, data []float64, width, height int, nodata floa
 	}
 }
 
-func parseEPSGCode(crs string) int {
+// parseEPSGCode resolves a CRS identifier to its EPSG code through
+// geo.ParseCRS, the one parser that validates one.
+//
+// It used to hand-roll the job with fmt.Sscanf and answer 0 for anything that
+// did not read - and buildGeoKeys omits the ProjectedCSTypeGeoKey for a code
+// <= 0, so a project whose CRS was a typo exported a GeoTIFF carrying no CRS
+// at all, silently. Refusing here is the same boundary the GeoKey range check
+// above sits on: what a project may contain is unchanged, and only the export
+// says no.
+//
+// An empty CRS is not an error. It means the raster declares no projection,
+// which several callers rely on, and it still resolves to 0. So does a WKT: or
+// otherwise non-EPSG identifier, which genuinely has no EPSG code.
+func parseEPSGCode(crs string) (int, error) {
 	if crs == "" {
-		return 0
+		return 0, nil
 	}
 
-	var code int
-
-	_, err := fmt.Sscanf(crs, "EPSG:%d", &code)
+	parsed, err := geo.ParseCRS(crs)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("read the CRS %q the raster is in: %w", crs, err)
 	}
 
-	return code
+	return parsed.EPSGCode(), nil
 }

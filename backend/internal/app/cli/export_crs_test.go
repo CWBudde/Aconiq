@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aconiq/backend/internal/domain/project"
@@ -121,5 +122,65 @@ func TestFormatExportContextFallsBackToTheProjectCRS(t *testing.T) {
 			t.Fatalf("with resultsCRS %q the results were labelled %s/%d, want the project's EPSG:25832/25832",
 				resultsCRS, ctx.resultsCRS, ctx.resultsEPSG)
 		}
+	}
+}
+
+// newFormatExportContext used to read both CRS strings with
+// `_, _ = fmt.Sscanf(crs, "EPSG:%d", &code)` — the error discarded twice over.
+// A project CRS that is a typo therefore became EPSG code 0, which a
+// GeoPackage spells "Undefined geographic SRS", and the export succeeded with
+// every geometry and every metadata row claiming a CRS the model is not in.
+//
+// The reason is held on the context rather than raised in the constructor,
+// which is what the rest of this file does: a format that never reads an EPSG
+// code must not fail over one it does not use.
+func TestExportRefusesACRSItCannotParse(t *testing.T) {
+	t.Parallel()
+
+	const badCRS = "EPSG:two-five-eight-three-two"
+
+	dir := t.TempDir()
+	modelPath := filepath.Join(dir, "model.geojson")
+
+	err := os.WriteFile(modelPath, []byte(`{
+		"type": "FeatureCollection",
+		"features": [
+			{
+				"type": "Feature",
+				"properties": {"kind": "receiver", "height_m": 4},
+				"geometry": {"type": "Point", "coordinates": [100, 200]}
+			}
+		]
+	}`), 0o600)
+	if err != nil {
+		t.Fatalf("write the model: %v", err)
+	}
+
+	ctx := newFormatExportContext(dir, badCRS, badCRS, copiedRunResults{}, 5.0, modelPath)
+
+	err = ctx.exportGeoPackage(map[string][]string{})
+	if err == nil {
+		t.Fatal("a CRS that is not a CRS exported as srs_id 0 without complaint")
+	}
+
+	if !strings.Contains(err.Error(), "two-five-eight-three-two") {
+		t.Fatalf("the refusal does not name the CRS it could not read: %v", err)
+	}
+}
+
+// The other half of that contract. An absent CRS is not a typo: it means no
+// projection was declared, it still resolves to EPSG code 0, and it must not
+// start refusing exports that work today.
+func TestExportStillAcceptsAnAbsentCRS(t *testing.T) {
+	t.Parallel()
+
+	ctx := newFormatExportContext(t.TempDir(), "", "", copiedRunResults{}, 5.0, "")
+
+	if ctx.crsErr != nil {
+		t.Fatalf("an absent CRS was recorded as unreadable: %v", ctx.crsErr)
+	}
+
+	if ctx.epsgCode != 0 || ctx.resultsEPSG != 0 {
+		t.Fatalf("epsgCode = %d, resultsEPSG = %d, want 0 and 0", ctx.epsgCode, ctx.resultsEPSG)
 	}
 }
