@@ -1074,15 +1074,10 @@ editing several of its files rather than one package of its own.
       `aconiq run` child**, deliberately: closing it needs a file lock, `go.mod` has no locking
       dependency, and it would touch seven more CLI writers. It becomes the mutex's job once the
       run pipeline moves in-process.
-      Three counts in this entry were wrong. `POST /api/v1/import/osm` writes **no** manifest at
-      all, `POST /runs` has **no in-process `Save`** (it is Load → exec → Load), and the third real
-      writer was unlisted: `DELETE /runs/{id}`, whose lost update resurrects a run whose files are
-      already gone. Three routes, not four.
-      The entry also missed the sharper half. `Save` and `projectfs.writeJSONFile` both derived the
-      temp file from the destination — **one fixed name shared by every writer in every process**,
-      so two concurrent writes truncated the same file and the second rename failed against bytes
-      it had written correctly (seven failures out of eight writers). `writeFileAtomic` gives each
-      write its own name, which is the only half of this a cross-process writer can benefit from.
+      This entry named the wrong routes: `POST /import/osm` writes no manifest, `POST /runs` has
+      no in-process `Save`, and the unlisted `DELETE /runs/{id}` is the third. And it missed that
+      both writers derived the temp file from the destination, so every writer in every process
+      shared one name — `writeFileAtomic` is the only half of this a cross-process writer reaches.
 - [x] **The SoundPLAN import goes through `Store.SaveModel`.** (2026-09-19, `84b62e0`)
       `SaveModel` takes variadic extra artifact refs, so the importer's report lands in the same
       manifest save and the three path parameters are gone — the caller seeded all three from
@@ -1110,17 +1105,14 @@ editing several of its files rather than one package of its own.
       (The line numbers this entry used to carry pointed at `run_pipeline.go`, which no longer
       exists. Cite a function name, not a line, for anything that will outlive one commit.)
 - [x] **The feeder-goroutine leak is closed** — by `ac33895`, not by the batch that ticked this.
-      (2026-09-19) What fixed it was one line, `ctx.Done()` → `computeCtx.Done()` in the feeder's
-      `select`. The guard had been there from the start and never fired, because production passes
-      `context.Background()`; `computeCtx` is cancelled by `defer cancelCompute()` and by
-      `collectChunkResults` on the first error, so the send can no longer block once the workers
-      have gone. `computeChunks` now states the invariant in a comment.
-      Two beliefs this entry carried were wrong. **`errgroup` is not a dependency** — `go.mod` has
-      no `golang.org/x/sync`, so the suggested remedy would have added one where the stdlib
-      `sync.WaitGroup.Go` already in use sufficed. And the leak was never at `runner.go:346-389`.
-      Still genuinely missing here: **no test injects a non-cancel engine error**. `RunConfig` has
-      no error hook, so the `firstErr` branch and the "still unwinding" skip in
-      `collectChunkResults` are unreachable from tests.
+      (2026-09-19) The live constraint is the one `computeChunks` now states in a comment: the
+      feeder's `select` must watch `computeCtx`, not `ctx`, because production passes
+      `context.Background()` and a guard on `ctx` never fires.
+      Two beliefs this entry carried were wrong. **`errgroup` is not a dependency**, so its
+      suggested remedy would have added one where the stdlib `sync.WaitGroup.Go` sufficed; and the
+      leak was never at the lines it cited.
+      Still missing here: **no test injects a non-cancel engine error**, because `RunConfig` has
+      no error hook, so `collectChunkResults`' `firstErr` branch is unreachable from tests.
 - [ ] Collapse the mechanical duplication — ~4 300 non-test LOC, about 9 % of the backend.
       Live constraint for anything touching `bub/road`: it aliases `cnossos/road`'s `RoadSource`,
       whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
@@ -1198,11 +1190,9 @@ editing several of its files rather than one package of its own.
       the format's limit. And **negative GeoPackage srs_ids are legal** — the header field is
       `int32` and `initGeoPackage` writes rows for -1 and 0 itself — so `srsIDBits` encodes two's
       complement where `mustUint32` used to panic on the very sentinel its neighbour registered.
-      Two things this entry did not know. `mustUint32` had the **same reachable panic**, via
-      `export_formats.go:115` discarding the error from `fmt.Sscanf(resultsCRS, "EPSG:%d", …)`;
-      and its `//nolint:gosec` called it bounds-checked while only the lower bound was checked, so
-      a value above `uint32` truncated in silence. Both bounds are checked now and the suppression
-      is gone. The cited line numbers were stale by eleven.
+      This entry knew about one panic; `mustUint32` had the same one, reachable because
+      `export_formats.go:115` discards the error from its `Sscanf`, and its `//nolint:gosec`
+      claimed a bounds check it only half did.
 - [ ] `createReceiverTable` and `createContourTable` pass a literal `0` to the geometry encoder
       instead of the caller's `srsID` (`gpkg.go:298,382`), so every receiver and contour geometry's
       GeoPackageBinaryHeader disagrees with `gpkg_contents` and `gpkg_geometry_columns`. Readers
@@ -1231,10 +1221,9 @@ editing several of its files rather than one package of its own.
       **the arm is unreachable, and the two declarations that keep it so are the thing to watch** —
       the guard above the switch admits only a `source_type` the profile lists in
       `SupportedSourceTypes`, and cnossos-industry's single profile lists exactly the two the
-      switch builds, which are also the only two `SourceType` constants the package defines. The
-      cost was never a live defect; it was that whoever added a third type would have got a
-      successful run with every source of that type missing from the result. The test drives the
-      function directly, because the public path cannot produce the input.
+      switch builds, which are also the only two `SourceType` constants the package defines. So
+      the cost was never a live defect: it was that whoever adds a third type would otherwise get
+      a successful run with every source of that type missing from the result.
 
 ## Priority 8 — Frontend correctness and rework
 

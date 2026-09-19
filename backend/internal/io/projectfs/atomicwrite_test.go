@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -144,9 +145,20 @@ func TestConcurrentSaveLeavesNoTemporaryFileBehind(t *testing.T) {
 		t.Fatalf("read control dir: %v", err)
 	}
 
+	manifestName := filepath.Base(store.ManifestPath())
+
+	// Prefix rather than index: os.CreateTemp names them project.json.<n>.tmp,
+	// and the control dir holds entries of every length, so slicing a fixed
+	// number of bytes off a name is a panic waiting for `model` or `exports`
+	// to appear beside the manifest.
 	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) == ".tmp" || len(entry.Name()) > 4 && entry.Name()[:8] == "project." && entry.Name() != "project.json" {
-			t.Fatalf("temporary file %q survived the writes", entry.Name())
+		name := entry.Name()
+		if name == manifestName {
+			continue
+		}
+
+		if strings.HasPrefix(name, manifestName) || filepath.Ext(name) == ".tmp" {
+			t.Fatalf("temporary file %q survived the writes", name)
 		}
 	}
 }
