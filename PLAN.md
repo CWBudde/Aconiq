@@ -2077,6 +2077,38 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       (`84c66eb`, `ce5121c`). No golden moved, and no distance cutoff was added: every prune skips
       only work that provably contributes zero. That bound is the constraint to keep — an
       approximate cutoff is a normative decision, not an optimisation.
+- [x] **An RLS-19 grid run is ~9.8x faster, and every byte of it is unchanged** (`a434528`,
+      `012fdf6`, `fc462ef`, `4fa9f73`, `9ebc016`, `f4488c9`). On the 10 000-receiver open-field
+      benchmark: 6.64 s → 2.91 s single-threaded → 0.675 s over eight workers, with allocations
+      down from 328 MB / 20 027 to 699 KB / 11.
+      Two things were paying for nothing. The Teilstück length weighting `10·lg(l_i/l_0)` was
+      computed inside the receiver loop although `SplitLineIntoSegments` fixes `l_i` when the scene
+      is prepared — 2x10^7 `math.Log10` calls for 2 000 distinct arguments, and the sum with
+      `L_m,E` taken twice per Teilstück. And the two contribution slices were reallocated per
+      receiver at 32 KB a time.
+      Then the walk was parallelised, in both targets, which it never had been: `internal/engine`'s
+      pool only ever drove `dummy-freefield` (P7, line 1116), so line 1116's "identical output
+      regardless of worker count" guarantee was vacuous for everything real. It is not vacuous for
+      RLS-19 now — `TestOneWorkerAndNWorkersHashAlike` and `TestShardsReproduceTheWholeWalk` are
+      what make it true.
+      Three constraints are live for anyone extending this. **Bit-identity here is structural, not
+      statistical**: there is no reduction across receivers anywhere in RLS-19, so a split changes
+      no floating-point operation and no operand, and the merge is a concatenation by chunk index.
+      **The browser shards by window, not by slice** — `TerrainAtGridCenter` derives the grid's one
+      ground elevation from the centroid of the receiver list it is handed, so a Worker sent only
+      its own receivers would compute over different ground, silently, across its whole share;
+      `TestShardsAgreeOnTheGridCentreElevation` fails if anyone optimises the whole list back out
+      of the request. **Three cadences are separate on purpose**: the kernel's progress chunk size
+      is adaptive on elapsed time, the worker's postMessage throttle is a wire-rate limiter, and
+      the partition (`internal/partition`) is a pure function of two integers and must never see a
+      clock.
+- [x] **The run dialog says how many receivers the grid will have** (`1f81996`). 10 m over a
+      2 km x 2 km site is ~42 000 receivers and nothing said so; browser mode still has no receiver
+      cap. The arithmetic is extracted rather than duplicated — `buildReceiverGrid` and the dialog
+      call one module, because a preview computed by a second copy would go on quoting a number the
+      run had stopped producing. It also fixes a freeze: `grid_resolution_m = 0` made the cell count
+      `Infinity`. What it cannot give is a _time_; that wants a 16-receiver probe through the
+      kernel, left as a named follow-up at both sites.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM. Only the extraction is left; the threading is done.
@@ -2086,13 +2118,54 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       key each (`browser-storage.ts`), because they were the one part large enough to make the
       re-clone matter; that is one key space for one payload, not the split this item asks for, and
       the eviction, cap and clear paths each have to forget those records by hand today.
-- [ ] **Decide what the reflection model admits.** A building-dense model is out of reach at
-      grid-scale receiver counts, and the ceiling is the model rather than the search: ~307 valid
-      Spiegelschallquellen per (Teilstück, receiver) pair, each of which RLS-19 Nr. 3.5 treats as a
-      source in its own right and so gives its own diffraction search. No exact prune reduces that
-      count, because the model says those paths are there, so this needs a normative decision — an
-      occlusion test on the reflected legs, or a defensible distance cutoff. Until then, browser
-      mode should steer users away from a 1 m Teilstück length over a building-dense extract.
+- [x] **What the reflection model admits: decided, against the standard's own text.** The open
+      question was whether to prune the ~307 Spiegelschallquellen per (Teilstück, receiver) pair by
+      an occlusion test or a distance cutoff. Reading Nr. 3.2, 3.3, 3.5, 3.5.5, 3.6, Tabelle 8 and
+      Bild 14 rejects all three candidates and names a fourth the standard actually licenses. - **Occlusion test on the reflected legs — rejected, not licensed.** Nr. 3.5.5 gives an
+      obstruction a finite `D_z` (Gl. 15), and Nr. 3.6 requires Spiegelschallquellen be treated
+      "wie Originalschallquellen"; the Anmerkung to 3.5.5 goes further and says mirrored paths
+      raise _Spiegelbeugungskanten_ handled by the Gummibandmethode. Dropping a blocked path
+      replaces a finite 5–25 dB loss with −∞, so it **under**-predicts, where every deviation
+      already declared over-predicts. A non-conservative deviation is the hardest kind to defend
+      under 16. BImSchV. The cheap plan-view form is also simply wrong — a 1.5 m screen would
+      "occlude" a path between a 0.5 m source and a 12 m receiver — and the height-aware form
+      costs about what `computeShielding` costs, so it does not buy the 34 % it targets. - **Distance or energy cutoff — rejected on arithmetic.** Nr. 3.6 states no distance, no
+      count and no energy floor. The strongest exact form — bounding a mirrored contribution by
+      divergence and `D_RV` alone and dropping it Δ below the direct one — needs Δ ≈ 160–170 dB
+      to be byte-exact, but the divergence spread across a 2 km model is only ~34 dB plus ≤5 dB
+      of `D_RV`, so **an exact cutoff prunes nothing, ever, on this model**. Δ = 40 dB over ~300
+      paths moves the level ~0.13 dB, which is visible at the 0.1 dB reporting resolution. Useless
+      or normative, with nothing in between. Do not re-propose this without new text. - **First-order-only as a labelled mode — rejected.** Nr. 3.6 is imperative ("Es sind
+      Reflexionen erster und zweiter Ordnung zu berücksichtigen"), and `EvidenceTier` sits on the
+      descriptor rather than the run, so a parameter that downgraded the tier would make one
+      standard ID emit both normative and non-normative levels. The label also reaches neither
+      the receiver CSV nor the GeoTIFF. - Line 2076's doctrine therefore stands unamended: an approximate cutoff is a normative
+      decision, not an optimisation.
+- [ ] **Receiver-dependent Teilstück length — the option the standard does license.** Nr. 3.3
+      requires source lines be split "_abhängig vom Immissionsort_ … in geeignete Teilstücke", and
+      the Anmerkung to Nr. 3.2 publishes the rule `l_i ≤ s_i / 2` for free propagation over flat
+      ground — the direct analogue of the 10 m step cap CNOSSOS has written down, and more
+      permissive. It attacks the `receivers × Teilstücke` factor rather than the `× 307` one, so it
+      multiplies with the pool rather than competing with it: a receiver 200 m out admits 100 m
+      Teilstücke against the 1 m being used.
+      Shape: a level-of-detail ladder built once in `PrepareScene` (splits at `L, 2L, 4L, …`), the
+      coarsest level satisfying `l ≤ s/2` chosen per (source, receiver) and verified per Teilstück
+      against its own midpoint. Do **not** move segmentation back per-receiver — that undoes
+      `84c66eb` and reinstates the O(segments × vertices) cost below.
+      The precondition is the constraint: the Faustregel holds "bei freier Schallausbreitung über
+      ebenem Boden", so coarsening must be inhibited inside a barrier/building plan-shadow and
+      across a Bild-14 active/inactive boundary — both cheap against `Scene.barrierGrid` and
+      `reflectors.grid`. That means it bites hardest on open field and is throttled in dense urban,
+      which is the opposite of where the pain is; measure the conservative form before assuming the
+      aggressive one is needed. Ship it as a declared `segment_length_mode` parameter stamped
+      through `ProvenanceMetadata`, defaulted to `fixed`, so the first release moves no golden.
+- [ ] **Correctness debt the reflection reading exposed, and it is _slower_, not faster.** The
+      Anmerkung to Nr. 3.5.5 requires mirrored paths to raise _Spiegelbeugungskanten_ and be run
+      through the Gummibandmethode over the whole unfolded path. That is exactly declared deviation
+      3 ("obstacles are not mirrored into the unfolded frame, so only the last leg is exact"), and
+      closing it means mirroring barriers into the unfolded frame. It is the change in this area
+      with a sentence of the standard behind it. Likewise per-facade rather than per-reflector
+      exclusion in `dropExcludedBarriers`, which closes deviation 2.
 - [ ] `SplitLineIntoSegments` is O(segments x vertices) even now that it is hoisted out of the
       receiver loop: `interpolateAlongPolyline`/`interpolateZAlongPolyline` re-walk the polyline
       from vertex 0 for every sub-segment. A single-walk rewrite is O(segments + vertices) but
