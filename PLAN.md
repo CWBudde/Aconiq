@@ -2044,15 +2044,32 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       counts.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
-      WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
-      `road.ComputeReceiverOutputs` synchronously inside the Promise executor and there is no
-      `Worker` anywhere in `src/`, so a grid run freezes the UI. While there: store one IndexedDB
-      record per run instead of one document — `persist` in `browser-backend.ts` structured-clones
-      every stored run (receiver tables, CSV, export HTML) on each write. The raster bytes are
-      already out of that document, under an `artifact-bytes:` key each
-      (`browser-storage.ts`), because they were the one part large enough to make the re-clone
-      matter; that is one key space for one payload, not the split this item asks for, and the
-      eviction, cap and clear paths each have to forget those records by hand today.
+      WASM. The kernel itself is **off the main thread now** — it runs in a module Worker behind an
+      RPC client, reports progress per 256-receiver chunk and is cancellable by terminating the
+      worker (the compute is synchronous inside the Promise executor, so the worker's event loop is
+      pinned and a cancel _message_ could never be dequeued in time). What is left here is the
+      extraction, not the threading.
+- [ ] Store one IndexedDB record per run instead of one document — `persist` in
+      `browser-backend.ts` structured-clones every stored run (receiver tables, CSV, export HTML)
+      on each write. The raster bytes are already out of that document, under an `artifact-bytes:`
+      key each (`browser-storage.ts`), because they were the one part large enough to make the
+      re-clone matter; that is one key space for one payload, not the split this item asks for, and
+      the eviction, cap and clear paths each have to forget those records by hand today.
+- [ ] **Decide what the reflection model admits.** A building-dense model is still out of reach at
+      grid-scale receiver counts, and after the spatial pruning landed the reason is no longer the
+      search. On a 200-footprint scene the second-order wall-pair tests fell ~24x and the barrier
+      tests per reflected path ~5.5x, all exactly — the same paths come out. What remains is their
+      _number_: ~307 valid Spiegelschallquellen per (Teilstück, receiver) pair, each of which
+      RLS-19 Nr. 3.5 treats as a source in its own right and so gives its own diffraction search.
+      No exact prune reduces that count, because the model says those paths are there. Closing this
+      needs a normative decision — an occlusion test on the reflected legs, or a defensible
+      distance cutoff — not another optimisation. Until then, browser mode should steer users away
+      from a 1 m Teilstück length over a building-dense extract.
+- [ ] `SplitLineIntoSegments` is O(segments x vertices) even now that it is hoisted out of the
+      receiver loop: `interpolateAlongPolyline`/`interpolateZAlongPolyline` re-walk the polyline
+      from vertex 0 for every sub-segment. A single-walk rewrite is O(segments + vertices) but
+      changes float accumulation order, so it needs its own golden review rather than folding into
+      a performance change.
 
 ### Order and gates
 
