@@ -49,6 +49,7 @@ import {
   retryProjectHydration,
 } from "@/model/use-project-hydration";
 import { useProjectSync } from "@/model/use-project-sync";
+import { GridEstimateNote } from "@/run/grid-estimate-note";
 import { ParameterField } from "@/run/parameter-field";
 import {
   parameterDescription,
@@ -57,6 +58,7 @@ import {
   PARAMETER_GROUP_ORDER,
   type ParameterGroupKey,
 } from "@/run/parameter-meta";
+import { useGridExtent } from "@/run/use-grid-extent";
 import { useRunSetupSelection } from "@/run/use-run-setup-selection";
 import { getStandardDescription, getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
@@ -370,6 +372,12 @@ function RunSetupForm({
 
   const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
 
+  // The extent the automatic grid would cover, in metres. Only in auto-grid
+  // mode: a custom receiver set is the points the user placed, and no
+  // resolution describes it. The projection it needs runs once per model, not
+  // once per keystroke — see `useGridExtent`.
+  const gridExtent = useGridExtent(receiverMode === "auto-grid");
+
   // Asked of the capability, not of the mode: cancelling means terminating
   // the kernel this tab owns, and no such lever exists over a run the API is
   // executing.
@@ -573,6 +581,22 @@ function RunSetupForm({
                       {parameterGroupLabel(group)}
                     </legend>
                     {groupNote(selectedStandard.id, group, members)}
+                    {/* Above the fields rather than below them: the cost of
+                        the grid is what the reader should have in mind while
+                        choosing a resolution, and a number that appears
+                        underneath is a number found after the decision. */}
+                    {group === "grid" ? (
+                      <GridEstimateNote
+                        state={gridExtent}
+                        params={params}
+                        onUseResolution={(resolutionM) => {
+                          selection.setParam(
+                            "grid_resolution_m",
+                            String(resolutionM),
+                          );
+                        }}
+                      />
+                    ) : null}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                       {members.map((param) => (
                         <ParameterField

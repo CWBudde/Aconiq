@@ -783,5 +783,12 @@
         "countPlural=other": "{count} Schallquellen werden als geprüft markiert. Die importierten akustischen Werte ändern sich dabei nicht, und der Schritt lässt sich mit einem Mal rückgängig machen."
       }
     }
-  ]
+  ],
+  "msg_grid_receiver_estimate": "Immissionsorte im Raster: {count} ({width} × {height})",
+  "msg_grid_receiver_warning": "Das sind viele Immissionsorte. Die Berechnung kann sehr lange dauern — eine gröbere Rasterweite verkürzt sie erheblich.",
+  "action_use_grid_resolution": "Rasterweite {resolution} m verwenden",
+  "msg_grid_extent_unknown": "Noch keine Ausdehnung: ohne Schallquelle oder Berechnungsgebiet lässt sich kein Raster aufspannen.",
+  "msg_grid_estimate_failed": "Die Rastergröße lässt sich derzeit nicht ermitteln.",
+  "msg_grid_resolution_invalid": "Die Rasterweite muss größer als 0 m sein.",
+  "status_grid_estimate": "Rastergröße wird ermittelt…"
 }
