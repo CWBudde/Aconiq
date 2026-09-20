@@ -47,12 +47,19 @@ func DefaultWorkers() int {
 //
 // # Refusals
 //
-// Chunks partition the receiver list in input order, and a chunk's refusal is
-// the one the sequential walk would have made over those receivers, because a
-// chunk *is* that walk. So the refusal from the lowest-indexed failing chunk
-// is the sequential refusal, whichever goroutine happened to reach it first.
-// Scene preparation is refused up front by PrepareSceneFor, which reproduces
-// the lazily-prepared walk's wording.
+// Every refusal is decided before a chunk exists, because a pool cannot be
+// trusted to order them. PrepareSceneFor reproduces the lazily-prepared
+// walk's wording for a bad scene, and ValidateReceivers then makes every
+// receiver-shaped refusal in input order.
+//
+// That up-front pass is load-bearing and not belt-and-braces. Relying on "the
+// lowest-indexed failing chunk wins" is not enough on its own: a high-index
+// chunk can fail and cancel the pool before a lower-index chunk has been
+// dispatched, and the skipped chunk then records nothing, so the refusal a
+// user reads would depend on scheduling. What is left reachable inside the
+// walk is receiver-independent — appendParkingContributions refuses a parking
+// source, which every chunk would refuse identically — so which chunk reports
+// it no longer changes the sentence.
 //
 // workers <= 1 delegates and allocates no goroutine, no channel and no chunk
 // list. That is the js/wasm path, and it is a runtime branch rather than a
@@ -75,8 +82,19 @@ func ComputeReceiverOutputsParallel(
 		return ComputeReceiverOutputs(receivers, sources, barriers, cfg)
 	}
 
+	// Order matters between these two, and it is the sequential walk's order.
+	// computeReceivers checks receiver 0, then prepares the scene, then walks
+	// — so a scene that cannot be prepared outranks a bad receiver further
+	// down the list, and PrepareSceneFor is what reproduces that wording.
+	// Only once the scene is good are the remaining refusals purely
+	// receiver-shaped, and only then can ValidateReceivers report them in the
+	// order the sequential walk would have.
 	scene, err := PrepareSceneFor(receivers, sources, barriers, cfg)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := ValidateReceivers(receivers, cfg); err != nil {
 		return nil, err
 	}
 

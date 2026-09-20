@@ -190,6 +190,49 @@ func prepareSource(source RoadSource, segmentLengthM float64) (preparedSource, e
 	return preparedSource{segments: segments, baseDayDB: baseDayDB, baseNightDB: baseNightDB}, nil
 }
 
+// ValidateReceivers makes computeReceivers' per-receiver refusals over the
+// whole list, in input order, and returns the first.
+//
+// A parallel driver needs this because its chunks refuse concurrently. The
+// sequential walk checks and computes one receiver at a time, so it always
+// reports the lowest-index bad receiver; a pool can have a high-index chunk
+// fail, cancel its siblings, and report that refusal while a lower-index
+// chunk was skipped before it reached its own bad receiver. Then the sentence
+// a user reads depends on which goroutine got there first, which is precisely
+// what the sequential-refusal contract promises it does not.
+//
+// Running these checks up front removes the ambiguity rather than papering
+// over it. Every receiver-shaped refusal is found here, in order, before any
+// chunk exists. What remains reachable inside the walk is receiver-
+// *independent* — appendParkingContributions refuses a parking source, and
+// ComputeParkingEmission reads only the source — so every chunk would produce
+// that same sentence and it no longer matters which one reports it.
+//
+// It duplicates the checks in computeReceivers rather than replacing them.
+// The sequential walk is the reference the parallel driver is tested against,
+// and a reference that called out to its challenger for its own refusals
+// would not be one.
+func ValidateReceivers(receivers []geo.PointReceiver, cfg PropagationConfig) error {
+	for _, receiver := range receivers {
+		if receiver.ID == "" {
+			return errors.New("receiver id is required")
+		}
+
+		if !receiver.Point.IsFinite() {
+			return fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
+		}
+
+		receiverCfg := cfg
+		receiverCfg.ReceiverHeightM = receiver.HeightM
+
+		if err := receiverCfg.Validate(); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	return nil
+}
+
 // PrepareSceneFor derives the receiver-independent half once, keeping
 // ComputeReceiverOutputs' order of refusals.
 //

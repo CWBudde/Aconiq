@@ -289,3 +289,104 @@ func TestComputeReceiverOutputsParallelLeavesASmallRunWhole(t *testing.T) {
 		}
 	}
 }
+
+// The refusal a pool reports must not depend on which goroutine lost the
+// race, and the dangerous shape is several bad receivers in different chunks:
+// a high-index chunk can fail and cancel its siblings before a lower-index
+// chunk has been dispatched, and the skipped chunk then records nothing.
+//
+// Be honest about what this test is. It pins the contract; it does not
+// reproduce the race. Chunks are dispatched in index order, so the earliest
+// bad receiver is almost always reached first anyway — checked, and this
+// passes against the version without the up-front validation too. What closes
+// the hole is structural rather than statistical: ValidateReceivers decides
+// every receiver-shaped refusal before a chunk exists, so there is no
+// scheduling for the answer to depend on. The repetition below is cheap
+// insurance against that reasoning being wrong, not the guarantee itself.
+func TestComputeReceiverOutputsParallelReportsTheEarliestRefusalUnderRacing(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, cfg := parallelScene()
+
+	receivers := parallelReceivers(parallelReceiverCount)
+	// Spread across chunks at every worker count under test, with the latest
+	// one first in index order only by accident of nothing: 70 is what the
+	// sequential walk reaches first and must therefore always be reported.
+	receivers[70].ID = ""
+	receivers[300].HeightM = -1
+	receivers[590].Point.X = math.Inf(1)
+
+	_, want := road.ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+	if want == nil {
+		t.Fatal("the sequential walk accepted a receiver set this test needs it to refuse")
+	}
+
+	for _, workers := range parallelWorkerCounts {
+		for attempt := range 25 {
+			_, got := road.ComputeReceiverOutputsParallel(
+				t.Context(), receivers, sources, barriers, cfg, workers,
+			)
+			if got == nil {
+				t.Fatalf("workers=%d attempt %d accepted what the sequential walk refused",
+					workers, attempt)
+			}
+
+			if got.Error() != want.Error() {
+				t.Fatalf("workers=%d attempt %d refused with %q, sequential said %q",
+					workers, attempt, got.Error(), want.Error())
+			}
+		}
+	}
+}
+
+// ValidateReceivers has to agree with the walk it stands in for, including on
+// which of several bad receivers it names.
+func TestValidateReceiversMatchesTheSequentialRefusal(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, cfg := parallelScene()
+
+	spoil := func(spoilers map[int]func(*geo.PointReceiver)) []geo.PointReceiver {
+		receivers := parallelReceivers(parallelReceiverCount)
+		for at, spoiler := range spoilers {
+			spoiler(&receivers[at])
+		}
+
+		return receivers
+	}
+
+	cases := map[string][]geo.PointReceiver{
+		"clean": parallelReceivers(parallelReceiverCount),
+		"missing id": spoil(map[int]func(*geo.PointReceiver){
+			12: func(r *geo.PointReceiver) { r.ID = "" },
+		}),
+		"non-finite point": spoil(map[int]func(*geo.PointReceiver){
+			400: func(r *geo.PointReceiver) { r.Point.Y = math.NaN() },
+		}),
+		"bad height": spoil(map[int]func(*geo.PointReceiver){
+			7: func(r *geo.PointReceiver) { r.HeightM = -3 },
+		}),
+		"several, the earliest wins": spoil(map[int]func(*geo.PointReceiver){
+			5:   func(r *geo.PointReceiver) { r.HeightM = -3 },
+			200: func(r *geo.PointReceiver) { r.ID = "" },
+		}),
+	}
+
+	for name, receivers := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, want := road.ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+			got := road.ValidateReceivers(receivers, cfg)
+
+			switch {
+			case want == nil && got != nil:
+				t.Fatalf("ValidateReceivers refused %q where the walk accepted", got)
+			case want != nil && got == nil:
+				t.Fatalf("ValidateReceivers accepted where the walk refused %q", want)
+			case want != nil && got.Error() != want.Error():
+				t.Fatalf("ValidateReceivers said %q, the walk said %q", got, want)
+			}
+		})
+	}
+}
