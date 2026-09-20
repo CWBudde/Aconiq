@@ -1967,6 +1967,25 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       block — about 7 of those codes overlap the frontend's, and the messages differ even there
       ("Building requires height_m" against "building feature requires height_m"), so the two
       vocabularies are a partial mirror rather than one list.
+- [x] **The run dialog stopped speaking two languages, and a unit stopped being part of a name**
+      (#84). `ui/components/unit-input.tsx` puts the unit on the control; `run/parameter-meta.ts`
+      gained `parameterLabel` and `parameterDescription`, `run/standards-meta.ts`
+      `getStandardDescription` — all keyed on the id or the name the backend already publishes, so
+      `framework.ParameterDefinition` did not have to grow a field. Five constraints stay live.
+      **The gate is on the standard, not the parameter**: a module is catalogued whole — label,
+      sentence and the descriptor's own paragraph — or not at all, because a per-parameter fallback
+      leaves `cnossos-road` half German and half English. **The German terms are written down, not
+      composed**: composing them token by token invents words like `Gleisrauheitsklasse`, so the
+      three normative modules carry 33 hand-written labels that need a reviewer who can defend
+      them. **`sharedDescription`'s membership is an explicit set**, not a `traffic_`/`speed_`
+      prefix, so a later parameter that is not a per-source default gets a missing sentence rather
+      than a wrong one. **The unit vocabulary is the backend's**: `standards/units.ts` names the
+      five symbols the map's own model fields need, and `units.test.ts` reads `framework.Unit*` and
+      refuses a sixth spelling. **`parameter-description.test.ts` reads the Go tables**, so a
+      parameter added to a normative module without German is a red test, not a silent English
+      line. Still open: the ten scaffold modules render the backend's English throughout — whole,
+      which is the point. Closing that means coining German for modules that are not the norms they
+      name, or the standards manifest generated from the Go registry that Phase C left open.
 - [x] No message spells a plural in parentheses; `locale-parity.test.ts` checks every locale and
       every variant arm (#67). One constraint stays live: **`status_validation_warnings` was
       deleted, not pluralised**, because `msg_validation_warning_count` already said "2 warnings"

@@ -594,10 +594,15 @@ describe("FeatureEditor RLS-19 number fields", () => {
     const input = numberField("road-1", "road_speed_kph");
 
     expect(input).toHaveValue(null);
-    expect(input).toHaveAttribute(
-      "placeholder",
-      m.placeholder_use_run_default(),
-    );
+    // What an empty field means is said once, in the note below it, rather than
+    // twice — the placeholder was the same sentence and no longer fits beside
+    // the unit in a panel this narrow.
+    expect(input).not.toHaveAttribute("placeholder");
+    expect(
+      document.getElementById(
+        input.getAttribute("aria-describedby")?.split(" ").pop() ?? "",
+      )?.textContent,
+    ).toBe(m.msg_source_acoustics_default_fallback());
   });
 
   it("commits on blur", () => {
