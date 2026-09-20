@@ -23,12 +23,17 @@
 // the output would depend on how fast the machine happened to be running.
 package partition
 
-// MinChunk is the smallest partition chunk.
+// MinChunk is the smallest partition chunk this package will choose on its
+// own, when there are enough receivers for the choice to be free.
 //
 // Below it the per-chunk bookkeeping — a slice header, a channel receive, a
 // bounds check against the results array — outweighs the propagation work
-// inside the chunk. It also keeps a small run single-chunked, so the 49-receiver
-// digest fixtures take the same path they always have.
+// inside the chunk.
+//
+// It is a floor on the *preferred* size and never on the size actually
+// returned, because a floor that outranks the worker count starves the pool.
+// Size clamps it against ceil(total/workers) for that reason: see the comment
+// there, which records the run that made the distinction necessary.
 const MinChunk = 64
 
 // TargetChunksPerWorker is how many chunks each worker is aimed at.
@@ -78,7 +83,26 @@ func Size(total, workers int) int {
 	// ragged final chunk of one receiver.
 	wanted := (total + workers*TargetChunksPerWorker - 1) / (workers * TargetChunksPerWorker)
 
-	return min(max(wanted, MinChunk), total)
+	// The floor may raise the preferred size, but it may not raise it past the
+	// point where every worker gets a chunk. Whichever of the two the clamp
+	// picks, the result is still a pure function of total and workers.
+	//
+	// Without the clamp, MinChunk silently caps the parallelism of every run
+	// smaller than workers*MinChunk receivers — and those are not the cheap
+	// runs the floor was written for. A 130-receiver grid over a city extract
+	// took chunk size 64 and produced three chunks: three goroutines busy,
+	// nine idle, and a wall clock set by one of them walking 64 receivers back
+	// to back. A receiver in that scene costs minutes; the bookkeeping the
+	// floor protects against costs nanoseconds. Receiver *count* was never a
+	// proxy for receiver cost, and at small counts it is the wrong one by four
+	// orders of magnitude.
+	// Rounded *down*, and at least one. The chunk count at size c is
+	// ceil(total/c), so it reaches workers only when c is at most
+	// floor(total/workers); rounding up here would leave 13 receivers over 8
+	// workers at size 2, which is seven chunks and an idle worker.
+	perWorker := max(total/workers, 1)
+
+	return min(min(max(wanted, MinChunk), perWorker), total)
 }
 
 // Over returns the chunks covering [0, total) at chunkSize, ascending.

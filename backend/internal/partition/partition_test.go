@@ -87,17 +87,92 @@ func TestSizeIsPureInItsArguments(t *testing.T) {
 	}
 }
 
-// A run too small to be worth splitting must come out as one chunk, so the
-// small fixtures keep taking the single-threaded path they always have.
-func TestSizeKeepsSmallRunsWhole(t *testing.T) {
+// A single receiver is one chunk, because there is nothing to split. This is
+// the only run size that may come out single-chunked over a pool: see
+// TestSizeNeverStarvesThePool for why the rest may not.
+func TestSizeKeepsAOneReceiverRunWhole(t *testing.T) {
 	t.Parallel()
 
-	for _, total := range []int{1, 7, 49, partition.MinChunk} {
-		size := partition.Size(total, 8)
+	for _, workers := range []int{1, 2, 8, 64} {
+		size := partition.Size(1, workers)
 
-		if chunks := partition.Over(total, size); len(chunks) != 1 {
-			t.Fatalf("a %d-receiver run split into %d chunks, want 1", total, len(chunks))
+		if chunks := partition.Over(1, size); len(chunks) != 1 {
+			t.Fatalf("Size(1, %d): a 1-receiver run split into %d chunks, want 1", workers, len(chunks))
 		}
+	}
+}
+
+// Every worker must have a chunk to take, whenever there are receivers enough
+// to give it one.
+//
+// This is the property MinChunk used to violate. The floor was written to stop
+// the partition choosing chunks so small that the per-chunk bookkeeping
+// outweighed the work inside them, which is a real concern at 250 000 cheap
+// receivers and no concern at all at 130 expensive ones — but it was applied
+// as an unconditional floor, so it also decided the chunk *count* for every
+// run below workers*MinChunk receivers, and decided it far too low.
+//
+// A 130-receiver grid over a city extract is the case that found it: chunk
+// size 64 gave three chunks, so three of twelve goroutines ran and the wall
+// clock was one goroutine walking 64 receivers in series. Receiver count is
+// not receiver cost — the same 130 receivers are milliseconds over open ground
+// and minutes inside an OSM import — so the partition cannot use the count to
+// decide it is not worth parallelising.
+func TestSizeNeverStarvesThePool(t *testing.T) {
+	t.Parallel()
+
+	totals := []int{2, 7, 13, 49, 64, 65, 130, 999, 9973, 250000}
+	workerCounts := []int{2, 3, 4, 8, 12, 16, 64}
+
+	for _, total := range totals {
+		for _, workers := range workerCounts {
+			chunks := partition.Over(total, partition.Size(total, workers))
+
+			if want := min(total, workers); len(chunks) < want {
+				t.Fatalf("Size(%d, %d) gave %d chunks over %d workers, want at least %d: %d workers would idle",
+					total, workers, len(chunks), workers, want, workers-len(chunks))
+			}
+		}
+	}
+}
+
+// The exact shape of the run that found the defect, kept as its own case so a
+// regression names itself rather than arriving as one row of a property test.
+func TestSizeSpreadsTheCityExtractGridOverEveryWorker(t *testing.T) {
+	t.Parallel()
+
+	const (
+		receivers = 130 // an 86 m x 57 m calculation area on a 10 m grid
+		workers   = 12
+	)
+
+	chunks := partition.Over(receivers, partition.Size(receivers, workers))
+
+	if len(chunks) < workers {
+		t.Fatalf("130 receivers over 12 workers gave %d chunks, want at least %d", len(chunks), workers)
+	}
+
+	// The longest chunk sets the wall clock, and at minutes per receiver the
+	// difference between 11 and 64 is the difference between a run and an
+	// afternoon.
+	longest := 0
+	for _, c := range chunks {
+		longest = max(longest, c.Len())
+	}
+
+	if longest > 11 {
+		t.Fatalf("longest chunk covers %d receivers, want at most 11 (it was 64 before the clamp)", longest)
+	}
+}
+
+// The floor still does its job where it was meant to: with receivers enough to
+// go round, chunks stay big enough that the bookkeeping disappears against the
+// work inside them.
+func TestSizeStillPrefersLargeChunksOnALargeRun(t *testing.T) {
+	t.Parallel()
+
+	if size := partition.Size(250000, 12); size < partition.MinChunk {
+		t.Fatalf("Size(250000, 12) = %d, want at least MinChunk (%d)", size, partition.MinChunk)
 	}
 }
 
