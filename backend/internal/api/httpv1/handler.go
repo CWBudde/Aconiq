@@ -6,6 +6,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -106,6 +107,11 @@ type Handler struct {
 	sseInterval time.Duration
 	registry    *framework.Registry
 	runExecutor runExecutor
+	// logger carries the few things this package has to say that no response
+	// can carry: a cleanup that failed after the request had already been
+	// answered, and a run it declined to attribute. Never nil — the
+	// constructor falls back to slog.Default().
+	logger *slog.Logger
 }
 
 type runExecutor func(context.Context, createRunRequest) error
@@ -246,6 +252,9 @@ type ServeOptions struct {
 	// APIToken, when non-empty, must be presented as a bearer token on every
 	// request. Empty means the transport controls stand alone.
 	APIToken string
+	// Logger receives what the handler cannot put in a response — a failed
+	// cleanup, most of all. Nil falls back to slog.Default().
+	Logger *slog.Logger
 }
 
 // NewServeHandler builds a handler suitable for `aconiq serve` with CORS enabled.
@@ -257,6 +266,7 @@ func NewServeHandler(store projectfs.Store, clock func() time.Time, registry fra
 		corsOrigins:  opts.CORSOrigins,
 		allowedHosts: hostsFromListenAddr(opts.ListenAddr),
 		apiToken:     opts.APIToken,
+		logger:       opts.Logger,
 	})
 }
 
@@ -269,6 +279,7 @@ type handlerOptions struct {
 	allowedHosts []string // extra Host header values beyond loopback
 	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
+	logger       *slog.Logger // nil falls back to slog.Default()
 }
 
 // lockManifest serialises one read-modify-write of `.noise/project.json`
@@ -304,6 +315,11 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		sseInterval = 2 * time.Second
 	}
 
+	logger := opts.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	handler := Handler{
 		store:       store,
 		now:         now,
@@ -311,6 +327,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		registry:    opts.registry,
 		runExecutor: opts.runExecutor,
 		manifest:    &sync.Mutex{},
+		logger:      logger,
 	}
 	if handler.runExecutor == nil {
 		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
@@ -500,22 +517,7 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 
 	err = h.runExecutor(r.Context(), req)
 	if err != nil {
-		// The subprocess writes its own terminal status, so one that died
-		// before it got there — killed, cancelled with this request when the
-		// browser reloaded, or out of memory — has left a row reading
-		// "running" that nothing else will close. Close the rows this request
-		// is responsible for: those the manifest did not already have when it
-		// started.
-		//
-		// Runs it did not create are left alone, so a concurrent run against
-		// the same project is not failed by this one's error.
-		existing := projectfs.RunIDs(before)
-		_, _ = h.store.FailInterruptedRuns(h.now, func(run project.Run) bool {
-			_, existed := existing[run.ID]
-
-			return existed
-		})
-
+		h.closeRunInterruptedBy(before)
 		writeRunCreateError(w, err)
 
 		return

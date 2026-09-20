@@ -124,6 +124,7 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 			CORSOrigins: cfg.corsOrigins,
 			ListenAddr:  cfg.listenAddr,
 			APIToken:    cfg.apiToken,
+			Logger:      state.Logger,
 		}),
 		ReadTimeout: 15 * time.Second,
 
