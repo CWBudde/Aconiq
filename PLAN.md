@@ -2009,7 +2009,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       over the store, fed into layers drawn from the display model, would make the map a source
       _for_ the model. `useModelValidation` is now a process-wide memo: four callers, one
       validation.
-- [x] **An imported source's acoustics can be signed off** (`726672a`, `PR81_SHA`). Three
+- [x] **An imported source's acoustics can be signed off** (`726672a`, `8ce7f1e`). Three
       constraints stay live. **The sign-off is a second property, `source_acoustics_reviewed`, not a
       flip of the import's flag** — the flag records what OSM gave us and a run stamps it into
       provenance, so overwriting it would erase the only evidence the acoustics were guessed. **An
