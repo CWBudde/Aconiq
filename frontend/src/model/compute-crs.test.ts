@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   projectGeometry,
   projectWorkspace,
+  resetComputeModelCacheForTests,
   resolveComputeModel,
 } from "./compute-crs";
 import type { Workspace } from "./compute-crs";
@@ -112,6 +113,12 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
 }
 
 describe("resolveComputeModel", () => {
+  // The memoisation below is module state, so a test that left an entry
+  // behind would decide whether the next one sees a round trip at all.
+  beforeEach(() => {
+    resetComputeModelCacheForTests();
+  });
+
   it("sends every coordinate once, flat and interleaved, in model order", async () => {
     const kernel = fakeKernel(unmoved);
 
@@ -426,5 +433,69 @@ describe("projectGeometry", () => {
     );
 
     expect(projected.geometry.coordinates).toEqual([11, 22, 33]);
+  });
+});
+
+describe("resolveComputeModel memoisation", () => {
+  beforeEach(() => {
+    resetComputeModelCacheForTests();
+  });
+
+  it("projects an unchanged workspace once, however often a run asks", async () => {
+    const kernel = fakeKernel(shiftBy(1000, 2000));
+    const input = workspace();
+
+    const first = await resolveComputeModel(kernel, input);
+    const second = await resolveComputeModel(kernel, input);
+
+    expect(kernel.requests).toHaveLength(1);
+    expect(second).toEqual(first);
+  });
+
+  it("shares one round trip between two runs started back to back", async () => {
+    const kernel = fakeKernel(unmoved);
+    const input = workspace();
+
+    // Both started before either settles: caching the promise rather than the
+    // resolved model is what makes this one transform instead of a race
+    // between two.
+    const [a, b] = await Promise.all([
+      resolveComputeModel(kernel, input),
+      resolveComputeModel(kernel, input),
+    ]);
+
+    expect(kernel.requests).toHaveLength(1);
+    expect(a).toEqual(b);
+  });
+
+  it.each([
+    ["a feature", { features: [LINE] }],
+    ["a receiver", { receivers: [] }],
+    ["the calculation area", { calcArea: null }],
+    ["the CRS", { crs: "EPSG:25832" }],
+  ])("projects again when %s changed", async (_what, change) => {
+    const kernel = fakeKernel(unmoved);
+
+    await resolveComputeModel(kernel, workspace());
+    await resolveComputeModel(kernel, workspace(change as never));
+
+    expect(kernel.requests).toHaveLength(2);
+  });
+
+  it("does not answer a later run from a transform that failed", async () => {
+    const failing = {
+      transform: () => Promise.reject(new Error("worker died")),
+    };
+    const input = workspace();
+
+    await expect(resolveComputeModel(failing, input)).rejects.toThrow(
+      "worker died",
+    );
+
+    // A rejection must not be the answer for the rest of the session: the
+    // next run gets a real attempt, not the cached failure.
+    const kernel = fakeKernel(unmoved);
+    await expect(resolveComputeModel(kernel, input)).resolves.toBeDefined();
+    expect(kernel.requests).toHaveLength(1);
   });
 });
