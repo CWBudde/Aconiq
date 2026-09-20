@@ -1967,45 +1967,25 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       block — about 7 of those codes overlap the frontend's, and the messages differ even there
       ("Building requires height_m" against "building feature requires height_m"), so the two
       vocabularies are a partial mirror rather than one list.
-- [x] **The run dialog stopped speaking two languages, and a unit stopped being part of a name.**
-      `ui/components/unit-input.tsx` renders the unit on the control; `run/parameter-meta.ts` gained
-      `parameterLabel`'s catalogue and `parameterDescription`, and `run/standards-meta.ts` gained
+- [x] **The run dialog stopped speaking two languages, and a unit stopped being part of a name**
+      (#84). `ui/components/unit-input.tsx` puts the unit on the control; `run/parameter-meta.ts`
+      gained `parameterLabel` and `parameterDescription`, `run/standards-meta.ts`
       `getStandardDescription` — all keyed on the id or the name the backend already publishes, so
-      nothing had to be added to `framework.ParameterDefinition`. Six constraints stay live.
-      **The gate is on the standard, not the parameter.** A per-parameter fallback would leave
-      `cnossos-road` half German and half English, which reads worse than the English it replaced,
-      so a module is catalogued whole — label, sentence and the descriptor's own paragraph — or not
-      at all. Doing only the sentences, which is where this landed first, just moved the seam: the
-      screenshot then showed "Grid resolution" over "Rasterweite der … Immissionsorte."
-      **The German terms are written down, not composed.** This file used to say composing them
-      token by token would produce `Gleisrauheitsklasse` out of nowhere, and it was right; the
-      conclusion it drew — leave them English — was the other half of the same mistake. Thirty-three
-      hand-written labels for the three normative modules are the answer, and they need a reviewer
-      who can defend the words.
-      **One sentence carries 25 of the 45 parameters**, and the group prints it once. They are all
-      "the value a source without one of its own is given", which `param_desc_source_default` says
-      and "Night Pkw per hour" did not — that only restated the group, the label and the unit
-      standing beside it. `sharedDescription` hoists a sentence every member of a group agrees on up
-      to the legend, and the fields point `aria-describedby` at it. The membership is an explicit
-      set, not a `traffic_`/`speed_` prefix, so a later parameter that is not a per-source default
-      gets a missing sentence rather than a wrong one.
-      **The backend's parameter name is no longer on screen.** It was printed beside each label on
-      the argument that it is what `--param` takes. That held while the label was the name
-      humanised; once the label became the parameter's own name, the raw one was the same thing said
-      twice, nineteen times down the dialog.
-      **`Fz/h` is gone; the unit vocabulary is the backend's.** `standards/units.ts` names the five
-      symbols the map's own fields need — those are model properties, which no descriptor covers —
-      and `units.test.ts` reads `framework.Unit*` and refuses a sixth spelling. The map's number
-      fields also lost their placeholder: it read "Use run default", word for word what the note
-      under the field says, and at 118 px it no longer fitted beside the unit.
-      **`parameter-description.test.ts` reads the Go tables**, resolving `ParamEngine` and
-      `paramMeteorologyAssumption` rather than skipping what a literal regex cannot see, and reads
-      the declared units too, because `hasCataloguedLabel` must ask the question `parameterLabel`
-      answers. A parameter added to a normative module without German is a red test, not a silent
-      English line. Still open: the ten scaffold modules render the backend's English throughout —
-      whole, which is the point. Closing that means either coining German for modules that are not
-      the norms they name, or the standards manifest generated from the Go registry that Phase C
-      left open.
+      `framework.ParameterDefinition` did not have to grow a field. Five constraints stay live.
+      **The gate is on the standard, not the parameter**: a module is catalogued whole — label,
+      sentence and the descriptor's own paragraph — or not at all, because a per-parameter fallback
+      leaves `cnossos-road` half German and half English. **The German terms are written down, not
+      composed**: composing them token by token invents words like `Gleisrauheitsklasse`, so the
+      three normative modules carry 33 hand-written labels that need a reviewer who can defend
+      them. **`sharedDescription`'s membership is an explicit set**, not a `traffic_`/`speed_`
+      prefix, so a later parameter that is not a per-source default gets a missing sentence rather
+      than a wrong one. **The unit vocabulary is the backend's**: `standards/units.ts` names the
+      five symbols the map's own model fields need, and `units.test.ts` reads `framework.Unit*` and
+      refuses a sixth spelling. **`parameter-description.test.ts` reads the Go tables**, so a
+      parameter added to a normative module without German is a red test, not a silent English
+      line. Still open: the ten scaffold modules render the backend's English throughout — whole,
+      which is the point. Closing that means coining German for modules that are not the norms they
+      name, or the standards manifest generated from the Go registry that Phase C left open.
 - [x] No message spells a plural in parentheses; `locale-parity.test.ts` checks every locale and
       every variant arm (#67). One constraint stays live: **`status_validation_warnings` was
       deleted, not pluralised**, because `msg_validation_warning_count` already said "2 warnings"

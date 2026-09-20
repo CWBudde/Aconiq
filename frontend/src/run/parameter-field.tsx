@@ -39,7 +39,7 @@ function ParameterLabel({
 }
 
 /**
- * What the parameter is for, or nothing.
+ * What the parameter is for.
  *
  * The backend's own name — `traffic_night_pkw` — used to be rendered here, on
  * the argument that it is what `--param` and the request body take. It is gone.
@@ -49,20 +49,16 @@ function ParameterLabel({
  * CLI reads, and a dialog with nineteen of them down the side is answering a
  * question nobody asked while it is open. The CLI documents its own arguments.
  *
- * `null` renders no element at all rather than an empty paragraph, so the
- * caller must not name an id that is not there.
+ * The caller resolves the sentence and renders nothing at all where there is
+ * none, so that the id it names is the id of an element that exists.
  */
 function ParameterNote({
   id,
-  standardId,
-  param,
+  description,
 }: {
   id: string;
-  standardId: string;
-  param: ParameterDefinition;
+  description: string;
 }) {
-  const description = parameterDescription(standardId, param);
-  if (description === null) return null;
   return (
     <p id={id} className="text-xs text-muted-foreground">
       {description}
@@ -90,15 +86,22 @@ export function ParameterField({
 }) {
   const id = `param-${param.name}`;
   const unitId = `${id}-unit`;
+  // Resolved before the element is built, because whether there is a sentence
+  // is what decides both. A dangling `aria-describedby` is a description a
+  // screen reader announces as nothing, which is worse than none — and a
+  // catalogued standard is not the only way a parameter arrives without one.
+  const description =
+    describedById === undefined
+      ? parameterDescription(standardId, param)
+      : null;
+  const noteId = `${id}-note`;
   const note =
-    describedById === undefined ? (
-      <ParameterNote id={`${id}-note`} standardId={standardId} param={param} />
-    ) : null;
-  // Named only when it is rendered: a dangling `aria-describedby` is a
-  // description a screen reader announces as nothing, which is worse than none.
+    description === null ? null : (
+      <ParameterNote id={noteId} description={description} />
+    );
   const describedBy = [
     param.unit ? unitId : null,
-    describedById ?? (note === null ? null : `${id}-note`),
+    describedById ?? (description === null ? null : noteId),
   ]
     .filter((part) => part !== null)
     .join(" ");
