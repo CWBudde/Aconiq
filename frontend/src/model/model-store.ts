@@ -40,6 +40,18 @@ interface ModelState {
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
   /**
+   * Replaces many features as **one** undo step.
+   *
+   * Not a loop over {@link updateFeature}: that would push one command per
+   * feature, so taking back a sign-off over 608 imported sources would be 608
+   * presses of Ctrl+Z. A bulk action the reader cannot take back in one move
+   * is one they are right to be afraid of.
+   *
+   * Ids the store does not hold are skipped rather than added — this replaces
+   * features, it does not create them.
+   */
+  updateFeatures: (features: ModelFeature[]) => void;
+  /**
    * Replaces a feature's geometry and nothing else, as a **coalescing** edit.
    *
    * Separate from {@link updateFeature} because of where it is called from: a
@@ -248,6 +260,41 @@ export const useModelStore = create<ModelState>((set, get) => {
             ),
             dirty: true,
           }));
+        },
+      });
+    },
+
+    updateFeatures: (features) => {
+      const held = get().features;
+      // Indexed both ways before anything is replaced. The obvious spelling —
+      // a `find` over the store per incoming feature — is quadratic, and a
+      // sign-off over an imported district hands this 608 of them.
+      const heldById = new Map(held.map((f) => [f.id, f]));
+
+      const next = new Map<string, ModelFeature>();
+      const previous = new Map<string, ModelFeature>();
+      for (const feature of features) {
+        const current = heldById.get(feature.id);
+        if (current === undefined) continue;
+        next.set(feature.id, feature);
+        previous.set(feature.id, current);
+      }
+      if (next.size === 0) return;
+
+      const swap = (replacements: Map<string, ModelFeature>) => {
+        set((s) => ({
+          features: s.features.map((f) => replacements.get(f.id) ?? f),
+          dirty: true,
+        }));
+      };
+
+      commandStack.execute({
+        description: `Update ${String(next.size)} features`,
+        execute: () => {
+          swap(next);
+        },
+        undo: () => {
+          swap(previous);
         },
       });
     },

@@ -195,9 +195,56 @@ export function setReceiverProperty(
   return next;
 }
 
+/**
+ * The property a reader's sign-off is written to.
+ *
+ * Deliberately *not* a flip of `source_acoustics_review_required` back to
+ * `false`. That flag records what the import found — an OSM way that carried
+ * neither a `maxspeed` nor a usable `surface` — and a run stamps its inputs
+ * into `provenance.json`. Overwriting it would erase the only evidence that
+ * these acoustics were guessed, leaving a model that cannot tell "OSM tagged
+ * this road completely" apart from "nobody knew, and someone accepted it".
+ * Two properties keep both halves: what came in, and who signed it off.
+ */
+export const PROP_ACOUSTICS_REVIEWED = "source_acoustics_reviewed";
+
+/** What the import found. True for a source whose acoustics were guessed. */
 export function getRLS19ReviewRequired(feature: ModelFeature): boolean {
   return (
     getFeatureBoolean(feature, "source_acoustics_review_required") === true
+  );
+}
+
+/** Whether a reader has accepted this source's imported acoustics. */
+export function getAcousticsReviewed(feature: ModelFeature): boolean {
+  return getFeatureBoolean(feature, PROP_ACOUSTICS_REVIEWED) === true;
+}
+
+/**
+ * Whether the source still owes the reader a look.
+ *
+ * The one predicate behind the finding, the editor's banner and the map flag,
+ * so the three cannot disagree about which sources are outstanding.
+ */
+export function needsAcousticsReview(feature: ModelFeature): boolean {
+  return getRLS19ReviewRequired(feature) && !getAcousticsReviewed(feature);
+}
+
+/**
+ * The feature with the sign-off set or withdrawn, for the caller to commit.
+ *
+ * Withdrawing removes the key rather than writing `false`, which is the rule
+ * every other boolean on this model follows: absent and `false` say the same
+ * thing to every reader, and absent keeps a model diff to what was chosen.
+ */
+export function markAcousticsReviewed(
+  feature: ModelFeature,
+  reviewed: boolean,
+): ModelFeature {
+  return setFeatureProperty(
+    feature,
+    PROP_ACOUSTICS_REVIEWED,
+    reviewed ? true : undefined,
   );
 }
 

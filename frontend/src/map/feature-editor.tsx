@@ -40,7 +40,10 @@ import {
   getFeatureString,
   getInferredFlag,
   getReceiverString,
+  getAcousticsReviewed,
   getRLS19ReviewRequired,
+  markAcousticsReviewed,
+  needsAcousticsReview,
   RLS19_JUNCTION_TYPES,
   RLS19_SURFACE_TYPES,
   setFeatureProperty,
@@ -816,15 +819,60 @@ const ROAD_JUNCTION_TYPE_FIELD: SelectFieldSpec = {
   options: RLS19_JUNCTION_TYPES,
 };
 
+/**
+ * The reader's sign-off on acoustics an import had to guess.
+ *
+ * A button and not one more switch among the fields, because "I have looked at
+ * this" is a judgement about the section rather than a value in it — and
+ * because the thing it answers is the warning directly above it.
+ *
+ * It is offered whenever the import left its mark, signed off or not, so the
+ * decision stays visible and reversible. The alternative — hiding the control
+ * once the warning goes — would make an accidental click on 608 sources
+ * something only the undo stack could explain.
+ */
+function AcousticsReviewNotice({ feature }: { feature: ModelFeature }) {
+  const updateFeature = useModelStore((s) => s.updateFeature);
+  const reviewed = getAcousticsReviewed(feature);
+
+  const handleClick = useCallback(() => {
+    updateFeature(markAcousticsReviewed(feature, !reviewed));
+  }, [feature, reviewed, updateFeature]);
+
+  return (
+    <div className="flex items-start justify-between gap-2 pt-1">
+      {reviewed ? (
+        <p className="text-2xs leading-relaxed text-muted-foreground">
+          {m.msg_source_acoustics_reviewed()}
+        </p>
+      ) : null}
+      <Button
+        variant={reviewed ? "ghost" : "outline"}
+        size="sm"
+        className="h-6 shrink-0 px-2 text-2xs"
+        onClick={handleClick}
+      >
+        {reviewed
+          ? m.action_unmark_acoustics_reviewed()
+          : m.action_mark_acoustics_reviewed()}
+      </Button>
+    </div>
+  );
+}
+
 function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
+  const imported = getRLS19ReviewRequired(feature);
   return (
     <FieldSection
       title={m.label_section_source_acoustics()}
       note={m.msg_source_acoustics_defaults()}
       warning={
-        getRLS19ReviewRequired(feature)
+        needsAcousticsReview(feature)
           ? m.msg_source_acoustics_review_required()
           : undefined
+      }
+      action={
+        imported ? <AcousticsReviewNotice feature={feature} /> : undefined
       }
     >
       <FeatureSelectField feature={feature} spec={ROAD_SURFACE_FIELD} />
@@ -1172,11 +1220,18 @@ function FieldSection({
   title,
   note,
   warning,
+  action,
   children,
 }: {
   title: string;
   note: string;
   warning?: string | undefined;
+  /**
+   * A control that acts on the section as a whole, rendered under the prose it
+   * answers. Kept in the header rather than passed as a child so that a button
+   * which responds to the warning cannot drift away from it down the form.
+   */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -1190,6 +1245,7 @@ function FieldSection({
         {warning !== undefined ? (
           <p className="text-2xs leading-relaxed text-warning">{warning}</p>
         ) : null}
+        {action}
       </div>
       {children}
     </section>

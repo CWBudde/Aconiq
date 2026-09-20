@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAcousticsReviewed,
   getFeatureString,
   getReceiverString,
+  markAcousticsReviewed,
+  needsAcousticsReview,
   setFeatureProperty,
   setReceiverProperty,
 } from "./source-acoustics";
@@ -175,5 +178,74 @@ describe("setReceiverProperty", () => {
         "mixed",
       ).properties,
     );
+  });
+});
+
+describe("the acoustics sign-off", () => {
+  const imported: ModelFeature = {
+    ...feature,
+    properties: { source_acoustics_review_required: true },
+  };
+
+  it("leaves the import's own flag alone", () => {
+    // The two properties answer different questions: what the import found,
+    // and what the reader decided. Collapsing them into one would leave a
+    // model that cannot say whether these acoustics were ever guessed.
+    const next = markAcousticsReviewed(imported, true);
+
+    expect(next.properties).toEqual({
+      source_acoustics_review_required: true,
+      source_acoustics_reviewed: true,
+    });
+  });
+
+  it("retires the review, and puts it back when withdrawn", () => {
+    expect(needsAcousticsReview(imported)).toBe(true);
+
+    const signed = markAcousticsReviewed(imported, true);
+    expect(getAcousticsReviewed(signed)).toBe(true);
+    expect(needsAcousticsReview(signed)).toBe(false);
+
+    const withdrawn = markAcousticsReviewed(signed, false);
+    expect(getAcousticsReviewed(withdrawn)).toBe(false);
+    expect(needsAcousticsReview(withdrawn)).toBe(true);
+  });
+
+  it("removes the key rather than writing false", () => {
+    // Absent and `false` say the same thing to every reader of this model, and
+    // absent is what keeps a model diff to the values actually chosen.
+    const withdrawn = markAcousticsReviewed(
+      markAcousticsReviewed(imported, true),
+      false,
+    );
+
+    expect(withdrawn.properties).toEqual({
+      source_acoustics_review_required: true,
+    });
+  });
+
+  it("says nothing is owed on a source the import never flagged", () => {
+    expect(needsAcousticsReview(feature)).toBe(false);
+    // Including one someone signed off anyway: the sign-off answers the flag,
+    // and without a flag there was never a question.
+    expect(needsAcousticsReview(markAcousticsReviewed(feature, true))).toBe(
+      false,
+    );
+  });
+
+  it("accepts a real boolean and nothing else", () => {
+    // The same strictness `getFeatureBoolean` applies everywhere else, and the
+    // reason the MapLibre filter can use `== true` and agree with this by
+    // construction.
+    const stringy: ModelFeature = {
+      ...feature,
+      properties: {
+        source_acoustics_review_required: true,
+        source_acoustics_reviewed: "true",
+      },
+    };
+
+    expect(getAcousticsReviewed(stringy)).toBe(false);
+    expect(needsAcousticsReview(stringy)).toBe(true);
   });
 });

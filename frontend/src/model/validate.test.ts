@@ -256,6 +256,39 @@ describe("validateProjectModel", () => {
     ).toBe(true);
   });
 
+  it("stops warning once the reader has signed the acoustics off", () => {
+    // The import's own flag stays: it records what OSM gave us, and a run
+    // stamps it into provenance. What retires the finding is the second
+    // property, the reader's sign-off — otherwise this is a warning no action
+    // in the app can clear, and an OSM district import raises 608 of them.
+    const report = validateProjectModel(
+      [
+        {
+          ...validSource,
+          sourceType: "line",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [1, 0],
+            ],
+          },
+          properties: {
+            source_acoustics_review_required: true,
+            source_acoustics_reviewed: true,
+          },
+        },
+      ],
+      [],
+    );
+
+    expect(
+      report.warnings.some(
+        (issue) => issue.code === "source.rls19.review_required",
+      ),
+    ).toBe(false);
+  });
+
   it("rejects invalid RLS-19 source override values", () => {
     const report = validateProjectModel(
       [

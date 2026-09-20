@@ -2009,6 +2009,15 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       over the store, fed into layers drawn from the display model, would make the map a source
       _for_ the model. `useModelValidation` is now a process-wide memo: four callers, one
       validation.
+- [x] **An imported source's acoustics can be signed off** (`b7aff5d`). Two constraints stay
+      live. **The sign-off is a second property, `source_acoustics_reviewed`, not a flip of the
+      import's flag** — the flag records what OSM gave us and a run stamps it into provenance, so
+      overwriting it would erase the only evidence the acoustics were guessed. **The MapLibre filter
+      behind the review flags is not exercised by any test**: evaluating one needs
+      `@maplibre/maplibre-gl-style-spec`, which is a transitive dependency only. It was checked
+      against MapLibre's own evaluator by hand for this change; declaring that package as a
+      devDependency would let every data-driven filter and paint expression in `layers.ts` be tested
+      instead.
 - [ ] **The frontend validator is a second code list, and it has drifted once already.**
       (2026-09-20) `model/validate.ts` and `geo/modelgeojson/validate.go` are two hand-maintained
       vocabularies with no generator between them — `schema.ts` types `ValidationIssue.code` as an

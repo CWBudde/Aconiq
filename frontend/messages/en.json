@@ -691,5 +691,21 @@
         "countPlural=other": "{count} more"
       }
     }
+  ],
+  "action_mark_acoustics_reviewed": "Mark as reviewed",
+  "action_unmark_acoustics_reviewed": "Undo review",
+  "action_mark_reviewed_and_next": "Reviewed, next",
+  "action_mark_all_acoustics_reviewed": "Mark all as reviewed",
+  "label_confirm_mark_all_reviewed": "Mark all as reviewed?",
+  "msg_source_acoustics_reviewed": "Marked as reviewed. The imported values are unchanged.",
+  "msg_confirm_mark_all_reviewed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} source will be marked as reviewed. The imported acoustic values are left as they are, and the whole step can be undone in one move.",
+        "countPlural=other": "{count} sources will be marked as reviewed. The imported acoustic values are left as they are, and the whole step can be undone in one move."
+      }
+    }
   ]
 }

@@ -306,3 +306,80 @@ describe("mergeModel", () => {
     expect(useModelStore.getState().dirty).toBe(true);
   });
 });
+
+describe("updateFeatures", () => {
+  /** Three sources, so "one step" is distinguishable from "one per feature". */
+  function threeSources(): ModelFeature[] {
+    return ["a", "b", "c"].map((suffix) => ({
+      ...pointSource,
+      id: `src-${suffix}`,
+    }));
+  }
+
+  it("replaces many features as a single undo step", () => {
+    // The reason it exists. A loop over `updateFeature` would push one command
+    // each, so taking back a sign-off over 608 imported sources would be 608
+    // presses of Ctrl+Z — a bulk action nobody could safely try.
+    const store = useModelStore.getState();
+    for (const feature of threeSources()) store.addFeature(feature);
+
+    store.updateFeatures(
+      threeSources().map((f) => ({ ...f, properties: { reviewed: true } })),
+    );
+    expect(
+      useModelStore
+        .getState()
+        .features.every((f) => f.properties !== undefined),
+    ).toBe(true);
+
+    useModelStore.getState().undo();
+
+    expect(
+      useModelStore
+        .getState()
+        .features.every((f) => f.properties === undefined),
+    ).toBe(true);
+  });
+
+  it("keeps the order and the untouched features", () => {
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+    store.addFeature(building);
+
+    store.updateFeatures([{ ...pointSource, heightM: 3 }]);
+
+    const features = useModelStore.getState().features;
+    expect(features.map((f) => f.id)).toEqual(["src-1", "bld-1"]);
+    expect(features[1]).toEqual(building);
+  });
+
+  it("skips ids the store does not hold rather than adding them", () => {
+    // It replaces features; it does not create them. A caller holding a stale
+    // list must not be able to resurrect a deleted source through it.
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+
+    store.updateFeatures([
+      { ...pointSource, heightM: 3 },
+      { ...pointSource, id: "ghost" },
+    ]);
+
+    const features = useModelStore.getState().features;
+    expect(features).toHaveLength(1);
+    expect(features[0]?.heightM).toBe(3);
+  });
+
+  it("pushes nothing when it would change nothing", () => {
+    // An empty command on the stack is a Ctrl+Z that appears to do nothing,
+    // which reads as broken undo.
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+    const before = useModelStore.getState().features;
+
+    useModelStore.getState().updateFeatures([]);
+    useModelStore.getState().undo();
+
+    expect(useModelStore.getState().features).not.toBe(before);
+    expect(useModelStore.getState().features).toEqual([]);
+  });
+});

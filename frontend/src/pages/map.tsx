@@ -42,10 +42,15 @@ import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { backend } from "@/api/backend";
 import type { RunSummary } from "@/api/client";
 import { RECEIVER_PARAM } from "@/results/results-params";
-import type { CalcArea, Geometry, Position } from "@/model/types";
+import type { CalcArea, Geometry, ModelFeature, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
 import { useModelValidation } from "@/model/use-model-validation";
+import {
+  getAcousticsReviewed,
+  markAcousticsReviewed,
+  needsAcousticsReview,
+} from "@/model/source-acoustics";
 import {
   cursorFor,
   cursorPosition,
@@ -442,6 +447,51 @@ function MapWorkspace() {
     [findings, queueCursor, focusFeature],
   );
 
+  /**
+   * Accepts a set of imported sources as reviewed, in one undoable step.
+   *
+   * The store is read here rather than subscribed to: this runs on a click, and
+   * a page that re-rendered on every feature change to keep 608 of them in hand
+   * would pay for the bulk action on every edit that is not one.
+   */
+  const signOffFeatures = useCallback((featureIds: string[]) => {
+    const { features: held, updateFeatures } = useModelStore.getState();
+    const byId = new Map(held.map((f) => [f.id, f]));
+    const next: ModelFeature[] = [];
+    for (const id of featureIds) {
+      const feature = byId.get(id);
+      // Skip what is already signed off: `markAcousticsReviewed` would return a
+      // new object for it anyway, and the undo step should hold only the
+      // features this click actually changed.
+      if (feature && !getAcousticsReviewed(feature)) {
+        next.push(markAcousticsReviewed(feature, true));
+      }
+    }
+    updateFeatures(next);
+  }, []);
+
+  /**
+   * The stepper's "reviewed, next", or `null` when the finding under the cursor
+   * is not one a sign-off retires.
+   *
+   * Signing off first and stepping second is deliberate: the feature leaves the
+   * queue as it is accepted, and `stepFinding` reads the queue it is handed —
+   * so stepping against the *old* queue is what would skip the source that took
+   * this one's place.
+   */
+  const cursorFeature = useModelStore((s) =>
+    queueCursor === null ? undefined : s.getFeatureById(queueCursor.featureId),
+  );
+  const handleSignOffAndStep = useMemo(() => {
+    if (cursorFeature === undefined || !needsAcousticsReview(cursorFeature)) {
+      return null;
+    }
+    return () => {
+      signOffFeatures([cursorFeature.id]);
+      handleStep(1);
+    };
+  }, [cursorFeature, signOffFeatures, handleStep]);
+
   // Alt+arrows rather than bare keys: the docked editor is full of number
   // fields, and the hook only bows out of text entry, not of the whole panel.
   // `enabled` detaches the listener entirely while nobody is stepping.
@@ -575,7 +625,10 @@ function MapWorkspace() {
               role="region"
               aria-label={m.label_validation()}
             >
-              <ValidationPanel onSelectFeature={handleSelectFromValidation} />
+              <ValidationPanel
+                onSelectFeature={handleSelectFromValidation}
+                onSignOffGroup={signOffFeatures}
+              />
             </MapPanel>
           ) : null}
           {queuePosition !== null ? (
@@ -583,6 +636,7 @@ function MapWorkspace() {
               position={queuePosition}
               total={findings.length}
               onStep={handleStep}
+              onSignOff={handleSignOffAndStep}
               onClose={() => {
                 setQueueCursor(null);
               }}

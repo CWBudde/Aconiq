@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/ui/components/button";
 import { m } from "@/i18n/messages";
 import { MapPanel } from "./map-panel";
@@ -9,6 +9,15 @@ export interface FindingStepperProps {
   total: number;
   onStep: (direction: 1 | -1) => void;
   onClose: () => void;
+  /**
+   * Signs the feature the reader is standing on off and steps to the next one,
+   * or `null` when the current finding is not one a sign-off can retire.
+   *
+   * `null` rather than a disabled button: most findings are defects to be
+   * fixed, and offering a greyed-out "accept this" against a self-intersecting
+   * line would suggest the app can wave it through.
+   */
+  onSignOff: (() => void) | null;
 }
 
 /**
@@ -31,6 +40,7 @@ export function FindingStepper({
   total,
   onStep,
   onClose,
+  onSignOff,
 }: FindingStepperProps) {
   return (
     <MapPanel
@@ -67,6 +77,20 @@ export function FindingStepper({
       >
         <ChevronRight aria-hidden="true" />
       </Button>
+      {onSignOff !== null ? (
+        // The whole point of the walk over an OSM import: look at the road the
+        // camera just flew to, accept its guessed acoustics, and move on in one
+        // press rather than three.
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-1 h-6 px-2 text-2xs"
+          onClick={onSignOff}
+        >
+          <Check aria-hidden="true" className="mr-1 size-3" />
+          {m.action_mark_reviewed_and_next()}
+        </Button>
+      ) : null}
       <Button
         variant="ghost"
         size="icon"
