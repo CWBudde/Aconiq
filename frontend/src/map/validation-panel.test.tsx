@@ -210,3 +210,103 @@ describe("ValidationPanel on a model with findings", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 });
+
+describe("ValidationPanel groups findings that say the same thing", () => {
+  /** What an OSM import of a city district produces, in miniature. */
+  function manyRoadsNeedingReview(count: number): ModelFeature[] {
+    return Array.from({ length: count }, (_, i) => ({
+      ...roadNeedingReview,
+      id: `road-${String(i)}`,
+    }));
+  }
+
+  it("collapses 30 identical warnings into one row with a count", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(30) });
+    });
+    renderPanel();
+
+    // One sentence, one code, one "go to" — not thirty rows of the same text.
+    expect(
+      screen.getAllByText(m.msg_validation_source_rls19_review_required()),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: m.action_go_to() }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByLabelText(m.msg_validation_warning_count({ count: 30 })),
+    ).toHaveTextContent("30");
+  });
+
+  it("goes to the first feature of a collapsed group", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(30) });
+    });
+    const onSelectFeature = renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: m.action_go_to() }));
+
+    expect(onSelectFeature).toHaveBeenCalledWith("road-0");
+  });
+
+  it("keeps two findings apart when they read differently", () => {
+    // Same code, different `params`: grouping by the code alone would put one
+    // headline over rows it is only half true for.
+    act(() => {
+      useModelStore.setState({
+        features: [
+          {
+            ...road,
+            id: "road-a",
+            properties: { speed_pkw_kph: -1 },
+          },
+          {
+            ...road,
+            id: "road-b",
+            properties: { speed_lkw1_kph: -1 },
+          },
+        ],
+      });
+    });
+    renderPanel();
+
+    const codes = screen.getAllByText("source.rls19.speed.invalid");
+    expect(codes).toHaveLength(2);
+  });
+
+  it("caps an expanded group and says how many it did not list", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(30) });
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: m.action_show_all() }));
+
+    // 20 member rows, each with its own "go to", plus the group's own.
+    expect(
+      screen.getAllByRole("button", { name: m.action_go_to() }),
+    ).toHaveLength(21);
+    expect(
+      screen.getByText(m.msg_validation_more_findings({ count: 10 })),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: m.action_show_less() }));
+    expect(
+      screen.getAllByRole("button", { name: m.action_go_to() }),
+    ).toHaveLength(1);
+  });
+
+  it("goes to a named member of an expanded group", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(30) });
+    });
+    const onSelectFeature = renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: m.action_show_all() }));
+    const rows = screen.getAllByRole("button", { name: m.action_go_to() });
+    // The first is the group's own; the next is the first member row.
+    fireEvent.click(rows[1] as HTMLElement);
+
+    expect(onSelectFeature).toHaveBeenCalledWith("road-0");
+  });
+});

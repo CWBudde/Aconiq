@@ -67,6 +67,8 @@ vi.mock("@/api/backend", () => ({
 class FakeMap {
   readonly sources = new Map<string, { data: unknown }>();
   readonly layers = new Set<string>();
+  /** Add order, which a Set does not keep — the z-order is the paint order. */
+  readonly layerOrder: string[] = [];
   readonly fitBoundsCalls: [[number, number], [number, number]][] = [];
   /** Feature states by `${source}/${id}`, the way MapLibre keys them. */
   readonly featureStates = new Map<string, Record<string, unknown>>();
@@ -97,6 +99,7 @@ class FakeMap {
 
   addLayer(layer: { id: string }) {
     this.layers.add(layer.id);
+    this.layerOrder.push(layer.id);
   }
 
   setLayoutProperty(id: string, property: string, value: string) {
@@ -445,6 +448,51 @@ describe("ModelLayers layer visibility", () => {
     // A group with no stored answer keeps its own default.
     expect(map.layout.get(`${LAYER_IDS.receiversPoint}/visibility`)).toBe(
       "visible",
+    );
+  });
+
+  it("lets the review flags be turned off once the review is done", () => {
+    // 608 dashed casings is a lot of ink to leave on the map afterwards, so
+    // the flags are a layer group like any other rather than always-on paint.
+    useMapStore.getState().setLayerVisible("review-required", false);
+    useModelStore.getState().loadModel({
+      features: [WGS84_FEATURE],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+    const map = new FakeMap();
+
+    renderLayers(map);
+
+    expect(map.layout.get(`${LAYER_IDS.sourcesReviewLine}/visibility`)).toBe(
+      "none",
+    );
+    expect(map.layout.get(`${LAYER_IDS.sourcesReviewPoint}/visibility`)).toBe(
+      "none",
+    );
+    // The sources themselves stay: hiding the flag must not hide the road.
+    expect(map.layout.get(`${LAYER_IDS.sourcesLine}/visibility`)).toBe(
+      "visible",
+    );
+  });
+
+  it("draws the review flags under the sources they belong to", () => {
+    // A casing, not a covering: a flagged road has to stay a red road.
+    useModelStore.getState().loadModel({
+      features: [WGS84_FEATURE],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+    const map = new FakeMap();
+
+    renderLayers(map);
+
+    const order = map.layerOrder;
+    expect(order).toContain(LAYER_IDS.sourcesReviewLine);
+    expect(order.indexOf(LAYER_IDS.sourcesReviewLine)).toBeLessThan(
+      order.indexOf(LAYER_IDS.sourcesLine),
     );
   });
 });

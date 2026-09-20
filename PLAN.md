@@ -1999,6 +1999,36 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
       exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
       each decision. `/api/v1/import/terrain` has generated types now and still no caller.
+- [x] **"Gehe zu" takes the reader to the feature, and the other 607 are on the map.** An OSM
+      import of a city district raises `source.rls19.review_required` once per road — 608 rows of
+      the same sentence, whose "Gehe zu" opened the editor and left the camera where it was, so
+      the form described a road that was off-screen. Four constraints it leaves live.
+      **A focus is not a selection.** `pages/map.tsx` builds a `FocusRequest` for every way into a
+      feature the reader cannot see — the validation panel, the feature list, `?select=` and the
+      stepper — and `handleFeatureClick` deliberately builds none: the reader is already looking at
+      the pixel they clicked, and the same click arms terra-draw on it, so a camera flight would
+      slide the vertex handles out from under the drag that follows. Routing the feature list
+      through that funnel also fixed its missing `selectionEpoch` bump.
+      **The camera reads the display model and is retried, not fired and forgotten.**
+      `map/feature-focus.tsx` holds the request until `display.status` is `ready`, which is the only
+      way a `?select=` into a metric project can work at all; once ready, an id that names nothing
+      is given up on rather than retried on every reprojection. `toLngLatBounds` is reused as the
+      guard against a store _labelled_ 4326 that holds metres, and `maxZoom` is what keeps a
+      receiver's zero-area extent from filling the screen with basemap.
+      **The flash is its own source and two layers, not a second `feature-state`.** A state key
+      would have nested a second `case` inside fourteen paint properties for an effect lasting under
+      a second, and still could not draw a halo _around_ a feature. Its phase-2 opacity write must
+      stay deferred a tick: two paint writes in one frame are coalesced and the transition runs from
+      0 to 0.
+      **The review flag is a model property, never the report.** The layer filter tests
+      `source_acoustics_review_required` against a boolean literal, which is exactly
+      `getRLS19ReviewRequired`'s strictness — `getFeatureBoolean` accepts a real boolean and
+      nothing else — so the map and the validator agree by construction, and a source carrying
+      the string `"true"` raises no finding and gets no flag. Feeding a report computed over the store
+      into layers drawn from the display model would make the map a source _for_ it. The flags are a
+      `MODEL_LAYER_GROUPS` entry, because 608 casings are a lot of ink once the review is done.
+      `useModelValidation` is now a process-wide memo keyed on the store's array identities — it has
+      four callers in one commit, and over 608 sources that was four validations per keystroke.
 - [ ] **The frontend validator is a second code list, and it has drifted once already.**
       (2026-09-20) `model/validate.ts` and `geo/modelgeojson/validate.go` are two hand-maintained
       vocabularies with no generator between them — `schema.ts` types `ValidationIssue.code` as an

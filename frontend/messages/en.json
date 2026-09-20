@@ -674,5 +674,22 @@
     }
   ],
   "label_feature_list": "Features",
-  "msg_feature_list_empty": "Nothing in the model yet. Draw on the map, or enter coordinates."
+  "msg_feature_list_empty": "Nothing in the model yet. Draw on the map, or enter coordinates.",
+  "action_next_finding": "Next finding",
+  "action_previous_finding": "Previous finding",
+  "action_step_findings": "Step through findings",
+  "action_stop_stepping": "Stop stepping",
+  "label_findings": "Findings",
+  "label_finding_position": "{position} / {total}",
+  "label_review_required": "Review required",
+  "msg_validation_more_findings": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} more",
+        "countPlural=other": "{count} more"
+      }
+    }
+  ]
 }

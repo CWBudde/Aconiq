@@ -222,8 +222,31 @@ vi.mock("@/map/new-feature-dialog", () => ({
       />
     ) : null,
 }));
+// Not null any more: the panel is how a reader enters the finding queue, and
+// the stepper that appears afterwards is the page's own state.
 vi.mock("@/map/validation-panel", () => ({
-  ValidationPanel: () => null,
+  ValidationPanel: ({
+    onSelectFeature,
+  }: {
+    onSelectFeature: (id: string) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="validation-go-to"
+      onClick={() => {
+        onSelectFeature("src-1");
+      }}
+    >
+      go-to
+    </button>
+  ),
+}));
+// The camera lives inside `MapView`; the page's whole share of it is the
+// request it builds, so that is what this records.
+vi.mock("@/map/feature-focus", () => ({
+  FeatureFocus: ({ request }: { request: { featureId: string } | null }) => (
+    <div data-testid="feature-focus" data-request={request?.featureId ?? ""} />
+  ),
 }));
 vi.mock("@/map/undo-redo-bar", () => ({
   UndoRedoBar: () => null,
@@ -987,8 +1010,9 @@ describe("MapPage", () => {
   });
 
   it("selecting from the list marks the feature and opens the editor", () => {
-    // Exactly what a click on the canvas does — the list sets the same
-    // `editingFeatureId`, so there is no second selection path to keep in step.
+    // The same `editingFeatureId` a click on the canvas sets, so there is no
+    // second selection path to keep in step. The camera is where the two
+    // deliberately differ — see the focus cases below.
     useModelStore
       .getState()
       .loadModel({ features: [source], receivers: [], calcArea: null });
@@ -1549,6 +1573,95 @@ describe("MapPage", () => {
         "data-result-run",
         "run-7",
       );
+    });
+  });
+
+  describe("taking the reader to a feature", () => {
+    /**
+     * A road flagged by the OSM import: acoustics it had to guess. A *line*
+     * source, because the RLS-19 checks are the road checks — a point source
+     * carrying the same property raises nothing, and rightly so.
+     */
+    const sourceNeedingReview: ModelFeature = {
+      ...source,
+      sourceType: "line",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [10, 51],
+          [10.01, 51.01],
+        ],
+      },
+      properties: { source_acoustics_review_required: true },
+    };
+
+    it("does not move the camera under a click on the canvas", () => {
+      // The reader is already looking at the pixel they clicked, and the same
+      // click arms terra-draw on that feature — a camera flight would slide the
+      // vertex handles out from under the drag that follows.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      mapClick.featureId = "src-1";
+      renderPage();
+
+      fireEvent.click(screen.getByText("click-feature"));
+
+      expect(screen.getByTestId("feature-editor")).toHaveTextContent("src-1");
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "",
+      );
+    });
+
+    it("moves the camera for a feature picked out of the list", () => {
+      // Picking row 400 of 608 out of a list is the "I cannot see it" case.
+      useModelStore
+        .getState()
+        .loadModel({ features: [source], receivers: [], calcArea: null });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: new RegExp(m.label_feature_list()),
+        }),
+      );
+      fireEvent.click(screen.getByTestId("feature-list-select"));
+
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "src-1",
+      );
+    });
+
+    it("starts the finding stepper from the validation panel, and stops it", () => {
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      expect(screen.queryByRole("status")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "src-1",
+      );
+      const stepper = screen.getByRole("status");
+      expect(stepper).toHaveTextContent(
+        m.label_finding_position({ position: 1, total: 1 }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_stop_stepping() }),
+      );
+      expect(screen.queryByRole("status")).toBeNull();
     });
   });
 });

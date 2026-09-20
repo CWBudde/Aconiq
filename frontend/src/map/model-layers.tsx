@@ -13,6 +13,7 @@ import {
   GROUND_ZONE_LAYERS,
   BARRIER_LAYERS,
   SOURCE_LAYERS,
+  REVIEW_LAYERS,
   RECEIVER_LAYERS,
   CALC_AREA_LAYERS,
   MODEL_LAYER_GROUPS,
@@ -126,6 +127,9 @@ export function ModelLayers({
       ...GROUND_ZONE_LAYERS,
       ...BUILDING_LAYERS,
       ...BARRIER_LAYERS,
+      // Under the sources, so a flagged road reads as a red line on a violet
+      // casing rather than as a violet line.
+      ...REVIEW_LAYERS,
       ...SOURCE_LAYERS,
       ...RECEIVER_LAYERS,
     ];
