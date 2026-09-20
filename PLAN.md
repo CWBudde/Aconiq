@@ -1022,6 +1022,26 @@ editing several of its files rather than one package of its own.
         **Note what this costs under Priority 5's versioning rule**: `rls19-road` is normative-tier,
         and a change to a normative module's computed levels is a breaking change there regardless
         of direction or size. This is a release decision, not a cleanup.
+        **Take `math.Pow` with it, in the same commit.** `EnergySum` converts each level with
+        `math.Pow(10, level/10)`, and Go's `math.Pow` has no base-10 fast path — it is
+        Frexp/Modf/Log/Exp/Sqrt/Ldexp. `math.Exp(level * ln10Over10)` is one `Exp`. Measured with
+        `BenchmarkLevelToEnergy` over 2 000 terms: **193 µs → 18 µs native (10.7x)** and
+        **482 µs → 118 µs under js/wasm (4.1x)**. Note the browser ratio is the _smaller_ one, the
+        opposite of the intuition — native `math.Exp` has an assembly implementation that
+        `math.Pow` cannot reach, and `js/wasm` has neither. `Pow` is ~95% of `EnergySum`, and
+        `EnergySum` was 51.5% of the open-field profile before the pool landed, so this is worth
+        roughly **1.8x** on an open-field run on its own.
+        It differs by about one ulp, so it moves the same goldens compensation moves — which is
+        exactly why the two belong in one commit and one announced breaking change rather than two.
+        Predict and then verify: compensation _recovers_ low bits (~2.8e-14 dB) while `Exp`
+        _perturbs_ each term by ~4.8e-16 dB through `10·lg`, so the combined delta should stay in
+        the 1e-14 band and be dominated by compensation. A materially larger delta is a finding to
+        chase before re-cutting anything. Report it three ways — `Exp` alone, compensation alone,
+        both — with a column for how many receivers move _after_ 0.1 dB rounding, because that is
+        the column that says whether any assessed result changed.
+        Keep the blast radius to these five. The other ~20 `math.Pow(10, …)` sites
+        (`schall03/compute.go`, `iso9613/propagation.go`, `rls19/road/emission.go`) each belong to
+        a module with its own goldens, and `schall03` is normative tier.
   - [ ] **Decide the two outliers, or declare them.** `bimschv16.energySumDB` has no NaN/Inf guard
         and no silence threshold; `schall03.EnergeticSumLevels` works in `-Inf` internally and
         returns NaN on a `+Inf` term rather than skipping it. Both now carry a comment saying why
@@ -2166,6 +2186,42 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       closing it means mirroring barriers into the unfolded frame. It is the change in this area
       with a sentence of the standard behind it. Likewise per-facade rather than per-reflector
       exclusion in `dropExcludedBarriers`, which closes deviation 2.
+- [ ] **Delete the pre-bitset grid collector.** `bboxGridUseBitset`,
+      `BBoxGridCursor.legacy`/`seen`/`generation`, `nextGeneration`, the legacy branches in
+      `collect` and `finish`, the `collect=legacy` benchmark arm and the two `CollectorsAgree`
+      tests. It is scaffolding that exists so the bitset could be proven equal to what it
+      replaced, and production never allocates it — but it is a second implementation of a
+      contract, and those go stale.
+- [ ] **Send a receiver grid to the kernel as a descriptor, not as JSON objects.** A
+      10 000-receiver run stringifies ~875 KB in and parses ~1.48 MB back, four full passes, all
+      on the main thread at the two moments the UI most needs to be responsive. The receivers are
+      a regular grid — origin, spacing, width, height — and the result echoes each receiver back
+      although the caller already holds it. It also multiplies by the pool: each Worker parses the
+      whole receiver list today, which is the one real cost of sharding by window.
+      Three things have to be pinned or it is not exact: the coordinate expression must not be
+      fused (JS rounds `minX + col*res` twice; Go may contract it to an FMA, and does on arm64),
+      ID synthesis must match `padStart` including the six-character `"R10000"` case, and
+      `hashPayload` must produce the same bytes — which gets its own test, one request down both
+      paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
+- [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
+      of the receivers), show it, then compute the full grid and replace it. The final numbers are
+      the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,
+      spacing an exact multiple — so every coarse receiver _is_ a fine-grid receiver and the
+      refine pass can reuse them. The coarse pass must never persist as a run, or must be marked
+      provisional: a half-resolution raster that later reads as a finished run in the run list is
+      the failure to design against.
+- [ ] **Give browser mode a chunk cache.** Native has a two-tier content-hashed one
+      (`engine/runner.go`); the browser has none, so changing one traffic parameter recomputes
+      every receiver. The same content hash works against IndexedDB, and the chunk the pool hands a Worker is the chunk to key on.
+      It needs its own object store (`DB_VERSION = 2`, upgrade path) plus an eviction policy and a
+      quota check: a cache that fills the origin's quota and then fails every write is worse than
+      no cache.
+- [ ] **A perf gate, once the engine is generalised.** `just bench` exists; what does not is CI
+      comparing it against the merge base with `benchstat`. Gate hard on `allocs/op` and `B/op` —
+      exactly reproducible on a shared runner, and the signal the allocation work moved — and
+      report-only on `sec/op`, which will flap. Do not check in a baseline file; it goes stale and
+      encodes one runner's speed. `aconiq bench` cannot grade RLS-19 until Priority 7's
+      "generalise the engine" lands, because it hard-codes `dummy-freefield`.
 - [ ] `SplitLineIntoSegments` is O(segments x vertices) even now that it is hoisted out of the
       receiver loop: `interpolateAlongPolyline`/`interpolateZAlongPolyline` re-walk the polyline
       from vertex 0 for every sub-segment. A single-walk rewrite is O(segments + vertices) but
