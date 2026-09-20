@@ -2,6 +2,7 @@ package geo
 
 import (
 	"math"
+	"math/bits"
 	"slices"
 )
 
@@ -199,15 +200,60 @@ func gridAxisIndex(offset, cellSize float64, count int) int {
 	return int(cell)
 }
 
+// bboxGridUseBitset selects the candidate collector a cursor is built with.
+//
+// The bitset collector marks one bit per item and emits the marks in index
+// order; the legacy collector it replaced stamped a uint32 generation per item,
+// concatenated the cells' hits in walk order and sorted the tail. Both are
+// still here only so TestBBoxGridCollectorsAgree can hold one against the other
+// over a randomised corpus. Once that has been read and believed, delete this
+// const, BBoxGridCursor.legacy, the seen/generation fields, nextGeneration and
+// the legacy branches in collect and finish — all in one commit.
+const bboxGridUseBitset = true
+
 // BBoxGridCursor is one goroutine's view of a grid. It carries the scratch a
-// query needs — the per-item "already returned" stamps — so that the query
-// itself allocates nothing and the grid stays shareable.
+// query needs — the per-item marks — so that the query itself allocates
+// nothing and the grid stays shareable.
 type BBoxGridCursor struct {
 	grid *BBoxGrid
 
-	// seen[i] == generation means item i is already in the current answer.
-	// Stamping rather than clearing is what keeps a query O(candidates)
-	// instead of O(items).
+	// marks holds two bits per indexed item: a tested bit, set once the walk
+	// has run Intersects on the item in this query, and an answered bit, set
+	// when that test said yes. Two bits rather than one because the questions
+	// differ — an item tested and rejected must not be tested again, and must
+	// not be emitted either.
+	//
+	// The two bitsets are interleaved a word at a time rather than kept in two
+	// arrays: marks[2w] is the tested word for items 64w..64w+63 and
+	// marks[2w|1] the answered word for the same items. The emit pass reads
+	// both for every word a query touched, at an address the item indices —
+	// which follow the caller's slice, not space — scatter across the array,
+	// so keeping the pair sixteen bytes apart turns what were two cache misses
+	// per touched word into one.
+	marks []uint64
+
+	// touched is the second level: bit w of it says word w of marks holds a
+	// mark from the current query. It is what keeps the emit pass
+	// proportional to the answer rather than to the index.
+	//
+	// A bound on the lowest and highest item alone would not do that. A query
+	// is local in space, but an item's index is its position in the caller's
+	// slice, and nothing makes that follow space: over a hundred thousand
+	// scattered boxes even a one-candidate query lands marks near both ends,
+	// so a flat scan between them reads most of the bitset. Measured, that
+	// sank BenchmarkBBoxGridQuerySegment/boxes=100000/candidates=1 to six
+	// times slower than the sort it replaced. The summary shrinks the span
+	// that has to be scanned by another factor of 64 — 25 words for a hundred
+	// thousand items, worst case, which is two cache lines.
+	touched []uint64
+
+	// loTouched and hiTouched bound the summary words this query has written,
+	// so the scan starts and stops at the marks instead of at the array.
+	loTouched, hiTouched int
+
+	// legacy selects the pre-bitset collector; see bboxGridUseBitset. Under it
+	// seen[i] == generation means item i has been tested in the current query.
+	legacy     bool
 	seen       []uint32
 	generation uint32
 }
@@ -215,11 +261,42 @@ type BBoxGridCursor struct {
 // NewCursor returns a cursor over this grid, or nil for a nil grid so that a
 // caller can hold the result unconditionally.
 func (g *BBoxGrid) NewCursor() *BBoxGridCursor {
+	return g.newCursor(!bboxGridUseBitset)
+}
+
+// newCursor builds a cursor over either collector. Tests reach for it to run
+// the two against each other; production goes through NewCursor.
+func (g *BBoxGrid) newCursor(legacy bool) *BBoxGridCursor {
 	if g == nil {
 		return nil
 	}
 
-	return &BBoxGridCursor{grid: g, seen: make([]uint32, len(g.boxes)), generation: 0}
+	cursor := &BBoxGridCursor{
+		grid:      g,
+		marks:     nil,
+		touched:   nil,
+		loTouched: 0,
+		hiTouched: -1,
+		legacy:    legacy,
+		seen:      nil,
+
+		generation: 0,
+	}
+
+	if legacy {
+		cursor.seen = make([]uint32, len(g.boxes))
+
+		return cursor
+	}
+
+	words := (len(g.boxes) + 63) / 64
+	summary := (words + 63) / 64
+
+	cursor.marks = make([]uint64, 2*words)
+	cursor.touched = make([]uint64, summary)
+	cursor.loTouched = summary
+
+	return cursor
 }
 
 // fill lays out the cell lists. It counts first and places second so that the
@@ -304,7 +381,7 @@ func (c *BBoxGridCursor) Query(q BBox, dst []int) []int {
 		return grid.scanAll(q, dst)
 	}
 
-	c.nextGeneration()
+	c.beginQuery()
 
 	start := len(dst)
 
@@ -318,9 +395,7 @@ func (c *BBoxGridCursor) Query(q BBox, dst []int) []int {
 
 	dst = c.collect(grid.wide, q, dst)
 
-	slices.Sort(dst[start:])
-
-	return dst
+	return c.finish(start, dst)
 }
 
 // shadowRowLimit is how many grid rows a shadow query will clip one at a
@@ -361,7 +436,7 @@ func (c *BBoxGridCursor) QueryShadow(shadow *SegmentShadow, marginM float64, dst
 		return c.Query(full, dst)
 	}
 
-	c.nextGeneration()
+	c.beginQuery()
 
 	start := len(dst)
 
@@ -388,9 +463,7 @@ func (c *BBoxGridCursor) QueryShadow(shadow *SegmentShadow, marginM float64, dst
 
 	dst = c.collect(grid.wide, full, dst)
 
-	slices.Sort(dst[start:])
-
-	return dst
+	return c.finish(start, dst)
 }
 
 // QuerySegment appends, in ascending order, the index of every indexed box
@@ -424,7 +497,7 @@ func (c *BBoxGridCursor) QuerySegment(p, q Point2D, marginM float64, dst []int) 
 		return dst
 	}
 
-	c.nextGeneration()
+	c.beginQuery()
 
 	start := len(dst)
 
@@ -452,9 +525,7 @@ func (c *BBoxGridCursor) QuerySegment(p, q Point2D, marginM float64, dst []int) 
 
 	dst = c.collect(grid.wide, bounds, dst)
 
-	slices.Sort(dst[start:])
-
-	return dst
+	return c.finish(start, dst)
 }
 
 // segmentSpanInBand returns the x extent of the part of segment [p,q] whose y
@@ -503,26 +574,139 @@ func (c *BBoxGridCursor) Ready() bool {
 	return c != nil && c.grid != nil
 }
 
-// collect appends the members of one cell list that intersect q and have not
-// been answered yet in this query.
+// beginQuery resets the per-query scratch. Every early return in a query — an
+// unusable cursor, a degenerate or disjoint query box, an unreachable shadow,
+// the scanAll shortcut, QueryShadow's delegation past shadowRowLimit — must
+// come before this call, exactly as it came before nextGeneration: a walk that
+// marks nothing must also leave nothing behind.
+func (c *BBoxGridCursor) beginQuery() {
+	if c.legacy {
+		c.nextGeneration()
+
+		return
+	}
+
+	// An empty [loTouched, hiTouched] range. finish clears every word it
+	// visits, so marks and touched are already zero on entry and only the
+	// bounds need resetting.
+	c.loTouched = len(c.touched)
+	c.hiTouched = -1
+}
+
+// collect takes one cell list — or the wide list — through the Intersects
+// test, skipping the items this query has already tested.
+//
+// Under the bitset collector nothing is appended and dst comes back unchanged;
+// the answer is emitted by finish. Returning dst anyway is what lets the three
+// query walks stay one body across both collectors.
 func (c *BBoxGridCursor) collect(list []int32, q BBox, dst []int) []int {
+	if c.legacy {
+		for _, item := range list {
+			if c.seen[item] == c.generation {
+				continue
+			}
+
+			c.seen[item] = c.generation
+
+			if c.grid.boxes[item].Intersects(q) {
+				dst = append(dst, int(item))
+			}
+		}
+
+		return dst
+	}
+
 	for _, item := range list {
-		if c.seen[item] == c.generation {
+		word := int(item) >> 6
+		slot := word << 1 // The tested word; slot|1 is the answered word.
+		// item & 63 is an int32 in [0,63]: a shift count that is provably
+		// non-negative and needs no conversion to say so.
+		bit := uint64(1) << (item & 63)
+
+		if c.marks[slot]&bit != 0 {
 			continue
 		}
 
-		c.seen[item] = c.generation
+		if c.marks[slot] == 0 {
+			// The first mark in this word, so the summary does not know about
+			// it yet. A cleared word is a reliable signal here because finish
+			// zeroes every word it visits.
+			summary := word >> 6
+			c.touched[summary] |= uint64(1) << (word & 63)
+
+			if summary < c.loTouched {
+				c.loTouched = summary
+			}
+
+			if summary > c.hiTouched {
+				c.hiTouched = summary
+			}
+		}
+
+		c.marks[slot] |= bit
 
 		if c.grid.boxes[item].Intersects(q) {
-			dst = append(dst, int(item))
+			c.marks[slot|1] |= bit
 		}
 	}
 
 	return dst
 }
 
-// nextGeneration advances the stamp, wiping the stamps on the one query in
-// four billion that would otherwise wrap onto a live value.
+// finish turns the marks a walk left into the query's answer, appended to dst
+// in ascending item order, and returns the extended slice. start is where this
+// query's own output begins; everything before it is the caller's and is never
+// read or moved.
+//
+// The bitset path emits nothing that the sort it replaces did not, in the order
+// that sort produced, and the two claims come out of the same property: bit
+// order is item order. Both levels are scanned low to high and TrailingZeros64
+// takes the lowest set bit first, so the nested walk visits summary words, then
+// item words, then items, each ascending — which composes to items ascending,
+// the unique arrangement slices.Sort left behind. The walk's own order never
+// reaches the output, and the duplicates the sort had to carry are the ones the
+// tested bit already suppressed. The set is likewise unchanged: a mark is set on
+// an item's first sighting and only ever suppresses a repeat, never a first
+// occurrence, and Intersects still runs exactly once per distinct candidate.
+// That it now runs in a different order is immaterial — it is a pure predicate
+// over one box and the query.
+//
+// The uint32 generation's wraparound case goes with the legacy path and is not
+// replaced by a wider counter: there is no counter left to wrap, because the
+// emit pass clears every word it reads and hands the next query a zeroed bitset.
+func (c *BBoxGridCursor) finish(start int, dst []int) []int {
+	if c.legacy {
+		slices.Sort(dst[start:])
+
+		return dst
+	}
+
+	for summary := c.loTouched; summary <= c.hiTouched; summary++ {
+		words := c.touched[summary]
+		c.touched[summary] = 0
+
+		for words != 0 {
+			word := summary<<6 + bits.TrailingZeros64(words)
+			words &= words - 1 // Clear the lowest set bit.
+
+			slot := word << 1
+			hits := c.marks[slot|1]
+
+			c.marks[slot] = 0
+			c.marks[slot|1] = 0
+
+			for hits != 0 {
+				dst = append(dst, word<<6+bits.TrailingZeros64(hits))
+				hits &= hits - 1
+			}
+		}
+	}
+
+	return dst
+}
+
+// nextGeneration advances the legacy stamp, wiping the stamps on the one query
+// in four billion that would otherwise wrap onto a live value.
 func (c *BBoxGridCursor) nextGeneration() {
 	c.generation++
 	if c.generation != 0 {

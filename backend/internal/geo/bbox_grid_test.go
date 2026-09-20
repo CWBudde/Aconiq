@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -228,4 +229,248 @@ func TestBBoxGridRefusesUnusableInput(t *testing.T) {
 	if absent.NewCursor().Ready() {
 		t.Fatal("a cursor over no grid must report itself unusable")
 	}
+}
+
+// strictlyAscending reports whether the answer is sorted *and* duplicate-free.
+// slices.IsSorted alone would pass an answer that returned an item twice, and
+// a deduplicating collector is exactly what these tests are guarding.
+func strictlyAscending(got []int) bool {
+	for i := 1; i < len(got); i++ {
+		if got[i] <= got[i-1] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// TestBBoxGridCollectorsAgree holds the bitset collector against the legacy
+// stamp-and-sort one it replaced, over a corpus wide enough to exercise the
+// cell walk, the wide list, the scanAll shortcut and the row-clipped shadow
+// walk. Determinism policy leaves no output tolerance, so "the same set" is
+// not enough: the two must answer element for element, in the same order.
+//
+// Delete this test together with the legacy collector — see bboxGridUseBitset.
+func TestBBoxGridCollectorsAgree(t *testing.T) {
+	t.Parallel()
+
+	for _, count := range []int{1, 7, 64, 65, 400, 2000} {
+		t.Run(fmt.Sprintf("boxes=%d", count), func(t *testing.T) {
+			t.Parallel()
+
+			rng := rand.New(rand.NewPCG(uint64(count), 99))
+			boxes := randomBoxes(rng, count)
+
+			grid := NewBBoxGrid(boxes)
+			if grid == nil {
+				t.Fatal("expected a grid")
+			}
+
+			fresh, legacy := grid.newCursor(false), grid.newCursor(true)
+
+			for range 300 {
+				x := rng.Float64()*2400 - 700
+				y := rng.Float64()*600 - 200
+
+				q := BBox{MinX: x, MinY: y, MaxX: x + rng.Float64()*600, MaxY: y + rng.Float64()*240}
+				if got, want := fresh.Query(q, nil), legacy.Query(q, nil); !slices.Equal(got, want) {
+					t.Fatalf("Query %v: bitset %v, legacy %v", q, got, want)
+				}
+
+				p1 := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+				p2 := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+
+				got, want := fresh.QuerySegment(p1, p2, 1e-3, nil), legacy.QuerySegment(p1, p2, 1e-3, nil)
+				if !slices.Equal(got, want) {
+					t.Fatalf("QuerySegment (%v→%v): bitset %v, legacy %v", p1, p2, got, want)
+				}
+
+				apex := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+				shadow := NewSegmentShadow(apex, p1, p2, 1e-3)
+
+				got, want = fresh.QueryShadow(&shadow, 1e-3, nil), legacy.QueryShadow(&shadow, 1e-3, nil)
+				if !slices.Equal(got, want) {
+					t.Fatalf("QueryShadow (%v,%v from %v): bitset %v, legacy %v", p1, p2, apex, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestBBoxGridCollectorsAgreeAcrossReusedBuffer repeats the comparison with a
+// buffer that already holds a prefix and is reused between calls, because that
+// is how the propagation walk calls these and because the bitset collector
+// appends its answer in a different place in the call than the sort did.
+func TestBBoxGridCollectorsAgreeAcrossReusedBuffer(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewPCG(21, 22))
+	boxes := randomBoxes(rng, 300)
+
+	grid := NewBBoxGrid(boxes)
+	fresh, legacy := grid.newCursor(false), grid.newCursor(true)
+
+	prefix := []int{-3, -2, -1}
+	gotBuf := slices.Clone(prefix)
+	wantBuf := slices.Clone(prefix)
+
+	for range 400 {
+		x := rng.Float64()*2400 - 700
+		y := rng.Float64()*600 - 200
+		q := BBox{MinX: x, MinY: y, MaxX: x + rng.Float64()*300, MaxY: y + rng.Float64()*120}
+
+		gotBuf = fresh.Query(q, gotBuf[:len(prefix)])
+		wantBuf = legacy.Query(q, wantBuf[:len(prefix)])
+
+		if !slices.Equal(gotBuf, wantBuf) {
+			t.Fatalf("query %v over a reused buffer: bitset %v, legacy %v", q, gotBuf, wantBuf)
+		}
+
+		if !slices.Equal(gotBuf[:len(prefix)], prefix) {
+			t.Fatalf("query %v overwrote the caller's prefix: %v", q, gotBuf[:len(prefix)])
+		}
+	}
+}
+
+// TestBBoxGridQuerySegmentIsSubsetOfItsBox is the other half of the segment
+// walk's contract. The superset test above shows nothing is lost; this shows
+// nothing is invented: every answer intersects the segment's own margin box,
+// and no item comes back twice.
+func TestBBoxGridQuerySegmentIsSubsetOfItsBox(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewPCG(5, 6))
+	boxes := randomBoxes(rng, 400)
+
+	cursor := NewBBoxGrid(boxes).NewCursor()
+
+	const marginM = 1e-3
+
+	for range 500 {
+		p := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+		q := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+
+		got := cursor.QuerySegment(p, q, marginM, nil)
+		if !strictlyAscending(got) {
+			t.Fatalf("segment query answered out of order or with a duplicate: %v", got)
+		}
+
+		box := BBox{
+			MinX: math.Min(p.X, q.X) - marginM,
+			MinY: math.Min(p.Y, q.Y) - marginM,
+			MaxX: math.Max(p.X, q.X) + marginM,
+			MaxY: math.Max(p.Y, q.Y) + marginM,
+		}
+
+		for _, i := range got {
+			if !boxes[i].Intersects(box) {
+				t.Fatalf("segment (%v→%v) answered box %d %v, which its margin box does not reach", p, q, i, boxes[i])
+			}
+		}
+	}
+}
+
+// TestBBoxGridQueryShadowIsSubsetOfItsBox is the same other half for the
+// row-clipped shadow walk.
+func TestBBoxGridQueryShadowIsSubsetOfItsBox(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewPCG(7, 8))
+	boxes := randomBoxes(rng, 400)
+
+	grid := NewBBoxGrid(boxes)
+	cursor := grid.NewCursor()
+
+	for range 300 {
+		apex := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+		a := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+		b := Point2D{X: rng.Float64()*2400 - 700, Y: rng.Float64()*600 - 200}
+
+		shadow := NewSegmentShadow(apex, a, b, 1e-3)
+
+		got := cursor.QueryShadow(&shadow, 1e-3, nil)
+		if !strictlyAscending(got) {
+			t.Fatalf("shadow query answered out of order or with a duplicate: %v", got)
+		}
+
+		full, ok := shadow.Bounds(grid.Bounds(), 1e-3)
+		if !ok {
+			if len(got) != 0 {
+				t.Fatalf("an unreachable shadow answered %v", got)
+			}
+
+			continue
+		}
+
+		for _, i := range got {
+			if !boxes[i].Intersects(full) {
+				t.Fatalf("shadow answered box %d %v, which its clipped box %v does not reach", i, boxes[i], full)
+			}
+		}
+	}
+}
+
+// FuzzBBoxGridCollectorsAgree drives the same equivalence from fuzzed boxes
+// and queries rather than a seeded corpus, so that a degenerate layout the
+// generator above never produces — every box a point, one box spanning the
+// scene, a query exactly on a cell boundary — still has to agree.
+func FuzzBBoxGridCollectorsAgree(f *testing.F) {
+	f.Add(uint64(1), uint64(2), 17)
+	f.Add(uint64(999), uint64(7), 1)
+	f.Add(uint64(42), uint64(42), 130)
+
+	f.Fuzz(func(t *testing.T, seedA, seedB uint64, rawCount int) {
+		count := max(rawCount%257, 1)
+
+		rng := rand.New(rand.NewPCG(seedA, seedB))
+
+		boxes := make([]BBox, 0, count)
+		for range count {
+			x := rng.Float64()*200 - 100
+			y := rng.Float64()*200 - 100
+			w := math.Pow(10, rng.Float64()*4-2)
+			h := math.Pow(10, rng.Float64()*4-2)
+
+			boxes = append(boxes, BBox{MinX: x, MinY: y, MaxX: x + w, MaxY: y + h})
+		}
+
+		grid := NewBBoxGrid(boxes)
+		if grid == nil {
+			t.Skip("no index over this box set")
+		}
+
+		fresh, legacy := grid.newCursor(false), grid.newCursor(true)
+
+		for range 20 {
+			x := rng.Float64()*300 - 150
+			y := rng.Float64()*300 - 150
+			q := BBox{MinX: x, MinY: y, MaxX: x + rng.Float64()*100, MaxY: y + rng.Float64()*100}
+
+			got, want := fresh.Query(q, nil), legacy.Query(q, nil)
+			if !slices.Equal(got, want) {
+				t.Fatalf("Query %v: bitset %v, legacy %v", q, got, want)
+			}
+
+			if !slices.Equal(got, bruteForceQuery(boxes, q)) {
+				t.Fatalf("Query %v: got %v, brute force %v", q, got, bruteForceQuery(boxes, q))
+			}
+
+			p1 := Point2D{X: rng.Float64()*300 - 150, Y: rng.Float64()*300 - 150}
+			p2 := Point2D{X: rng.Float64()*300 - 150, Y: rng.Float64()*300 - 150}
+
+			got, want = fresh.QuerySegment(p1, p2, 1e-3, nil), legacy.QuerySegment(p1, p2, 1e-3, nil)
+			if !slices.Equal(got, want) {
+				t.Fatalf("QuerySegment (%v→%v): bitset %v, legacy %v", p1, p2, got, want)
+			}
+
+			shadow := NewSegmentShadow(
+				Point2D{X: rng.Float64()*300 - 150, Y: rng.Float64()*300 - 150}, p1, p2, 1e-3,
+			)
+
+			got, want = fresh.QueryShadow(&shadow, 1e-3, nil), legacy.QueryShadow(&shadow, 1e-3, nil)
+			if !slices.Equal(got, want) {
+				t.Fatalf("QueryShadow: bitset %v, legacy %v", got, want)
+			}
+		}
+	})
 }
