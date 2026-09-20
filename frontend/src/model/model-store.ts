@@ -40,6 +40,18 @@ interface ModelState {
   addFeature: (feature: ModelFeature) => void;
   updateFeature: (feature: ModelFeature) => void;
   /**
+   * Replaces many features as **one** undo step.
+   *
+   * Not a loop over {@link updateFeature}: that would push one command per
+   * feature, so taking back a sign-off over 608 imported sources would be 608
+   * presses of Ctrl+Z. A bulk action the reader cannot take back in one move
+   * is one they are right to be afraid of.
+   *
+   * Ids the store does not hold are skipped rather than added — this replaces
+   * features, it does not create them.
+   */
+  updateFeatures: (features: ModelFeature[]) => void;
+  /**
    * Replaces a feature's geometry and nothing else, as a **coalescing** edit.
    *
    * Separate from {@link updateFeature} because of where it is called from: a
@@ -248,6 +260,59 @@ export const useModelStore = create<ModelState>((set, get) => {
             ),
             dirty: true,
           }));
+        },
+      });
+    },
+
+    updateFeatures: (features) => {
+      const held = get().features;
+      // Resolved to **positions**, not ids. An id is not a key here: the model
+      // can hold two features under one — `feature.id.duplicate` is a finding
+      // the validator raises rather than a state the store refuses — and a
+      // replacement keyed by id would overwrite both entries with whichever one
+      // the map happened to keep, silently discarding the other's geometry. A
+      // position addresses exactly one feature whatever the model looks like.
+      //
+      // Indexed up front, because the obvious spelling — a `find` over the
+      // store per incoming feature — is quadratic, and a sign-off over an
+      // imported district hands this 608 of them.
+      const free = new Map<string, number[]>();
+      held.forEach((f, index) => {
+        const positions = free.get(f.id);
+        if (positions) positions.push(index);
+        else free.set(f.id, [index]);
+      });
+
+      const next = new Map<number, ModelFeature>();
+      const previous = new Map<number, ModelFeature>();
+      for (const feature of features) {
+        // `shift`, so two incoming features sharing an id take two distinct
+        // positions rather than fighting over the first.
+        const index = free.get(feature.id)?.shift();
+        const current = index === undefined ? undefined : held[index];
+        if (index === undefined || current === undefined) continue;
+        next.set(index, feature);
+        previous.set(index, current);
+      }
+      if (next.size === 0) return;
+
+      // By position on the way back too, which is the same assumption
+      // `removeFeature`'s undo already makes: the stack is linear, so when this
+      // command is undone the array is the shape it was left in.
+      const swap = (replacements: Map<number, ModelFeature>) => {
+        set((s) => ({
+          features: s.features.map((f, index) => replacements.get(index) ?? f),
+          dirty: true,
+        }));
+      };
+
+      commandStack.execute({
+        description: `Update ${String(next.size)} features`,
+        execute: () => {
+          swap(next);
+        },
+        undo: () => {
+          swap(previous);
         },
       });
     },

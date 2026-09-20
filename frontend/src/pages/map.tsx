@@ -42,10 +42,18 @@ import { useGlobalShortcut } from "@/ui/hooks/use-global-shortcut";
 import { backend } from "@/api/backend";
 import type { RunSummary } from "@/api/client";
 import { RECEIVER_PARAM } from "@/results/results-params";
-import type { CalcArea, Geometry, Position } from "@/model/types";
+import type { CalcArea, Geometry, ModelFeature, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
-import { useModelValidation } from "@/model/use-model-validation";
+import {
+  modelValidation,
+  useModelValidation,
+} from "@/model/use-model-validation";
+import {
+  getAcousticsReviewed,
+  markAcousticsReviewed,
+  needsAcousticsReview,
+} from "@/model/source-acoustics";
 import {
   cursorFor,
   cursorPosition,
@@ -442,6 +450,65 @@ function MapWorkspace() {
     [findings, queueCursor, focusFeature],
   );
 
+  /**
+   * Accepts a set of imported sources as reviewed, in one undoable step.
+   *
+   * The store is read here rather than subscribed to: this runs on a click, and
+   * a page that re-rendered on every feature change to keep 608 of them in hand
+   * would pay for the bulk action on every edit that is not one.
+   */
+  const signOffFeatures = useCallback((featureIds: string[]) => {
+    const { features: held, updateFeatures } = useModelStore.getState();
+    const byId = new Map(held.map((f) => [f.id, f]));
+    const next: ModelFeature[] = [];
+    for (const id of featureIds) {
+      const feature = byId.get(id);
+      // Skip what is already signed off: `markAcousticsReviewed` would return a
+      // new object for it anyway, and the undo step should hold only the
+      // features this click actually changed.
+      if (feature && !getAcousticsReviewed(feature)) {
+        next.push(markAcousticsReviewed(feature, true));
+      }
+    }
+    updateFeatures(next);
+  }, []);
+
+  /**
+   * The stepper's "reviewed, next", or `null` when the finding under the cursor
+   * is not one a sign-off retires.
+   *
+   * It does not go through `handleStep`, which closes over the `findings` of
+   * the render it was built in — the queue as it stood *before* the sign-off.
+   * Stepping against that is how accepting the last of three used to wrap back
+   * to the first, while correcting the same finding by hand and pressing "next"
+   * landed on the one that took its place. The two have to mean the same thing,
+   * so the queue is re-derived from the store the write just changed.
+   *
+   * Re-deriving is not a second validation: `modelValidation` is the memo the
+   * hook reads, keyed on the store's array identities, so the render that
+   * follows this write finds the result already computed.
+   */
+  const cursorFeature = useModelStore((s) =>
+    queueCursor === null ? undefined : s.getFeatureById(queueCursor.featureId),
+  );
+  const handleSignOffAndStep = useMemo(() => {
+    if (cursorFeature === undefined || !needsAcousticsReview(cursorFeature)) {
+      return null;
+    }
+    return () => {
+      signOffFeatures([cursorFeature.id]);
+
+      const { features: held, receivers: heldReceivers } =
+        useModelStore.getState();
+      const nextFindings = findingQueue(
+        modelValidation(held, heldReceivers).report,
+      );
+      const next = stepFinding(nextFindings, queueCursor, 1);
+      setQueueCursor(next);
+      if (next) focusFeature(next.featureId);
+    };
+  }, [cursorFeature, signOffFeatures, queueCursor, focusFeature]);
+
   // Alt+arrows rather than bare keys: the docked editor is full of number
   // fields, and the hook only bows out of text entry, not of the whole panel.
   // `enabled` detaches the listener entirely while nobody is stepping.
@@ -575,7 +642,10 @@ function MapWorkspace() {
               role="region"
               aria-label={m.label_validation()}
             >
-              <ValidationPanel onSelectFeature={handleSelectFromValidation} />
+              <ValidationPanel
+                onSelectFeature={handleSelectFromValidation}
+                onSignOffGroup={signOffFeatures}
+              />
             </MapPanel>
           ) : null}
           {queuePosition !== null ? (
@@ -583,6 +653,7 @@ function MapWorkspace() {
               position={queuePosition}
               total={findings.length}
               onStep={handleStep}
+              onSignOff={handleSignOffAndStep}
               onClose={() => {
                 setQueueCursor(null);
               }}

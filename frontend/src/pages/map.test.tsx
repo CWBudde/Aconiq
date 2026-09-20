@@ -227,18 +227,31 @@ vi.mock("@/map/new-feature-dialog", () => ({
 vi.mock("@/map/validation-panel", () => ({
   ValidationPanel: ({
     onSelectFeature,
+    onSignOffGroup,
   }: {
     onSelectFeature: (id: string) => void;
+    onSignOffGroup: (ids: string[]) => void;
   }) => (
-    <button
-      type="button"
-      data-testid="validation-go-to"
-      onClick={() => {
-        onSelectFeature("src-1");
-      }}
-    >
-      go-to
-    </button>
+    <>
+      <button
+        type="button"
+        data-testid="validation-go-to"
+        onClick={() => {
+          onSelectFeature("src-1");
+        }}
+      >
+        go-to
+      </button>
+      <button
+        type="button"
+        data-testid="validation-sign-off"
+        onClick={() => {
+          onSignOffGroup(["src-1", "src-2"]);
+        }}
+      >
+        sign-off
+      </button>
+    </>
   ),
 }));
 // The camera lives inside `MapView`; the page's whole share of it is the
@@ -1702,6 +1715,157 @@ describe("MapPage", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         m.label_finding_position({ position: 1, total: 1 }),
       );
+    });
+
+    it("signs the source under the cursor off and moves on", () => {
+      // The walk over an OSM import in one press: look at the road the camera
+      // flew to, accept its guessed acoustics, land on the next one.
+      const other: ModelFeature = { ...sourceNeedingReview, id: "src-2" };
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview, other],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: m.action_mark_reviewed_and_next(),
+        }),
+      );
+
+      // The finding is gone from the model, and the queue is one shorter.
+      expect(
+        useModelStore.getState().getFeatureById("src-1")?.properties,
+      ).toMatchObject({ source_acoustics_reviewed: true });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 1, total: 1 }),
+      );
+      // And the camera followed to the source that is now first in the queue,
+      // rather than staying on the one just accepted.
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "src-2",
+      );
+    });
+
+    it("steps against the queue the sign-off leaves behind, not the old one", () => {
+      // Standing on the last of three and accepting it used to wrap to the
+      // first, because the step read the queue as it was before the sign-off.
+      // Correcting a finding by hand and pressing "next" lands on whatever took
+      // its place, and accepting one has to mean the same thing.
+      const second: ModelFeature = { ...sourceNeedingReview, id: "src-2" };
+      const third: ModelFeature = { ...sourceNeedingReview, id: "src-3" };
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview, second, third],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_next_finding() }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_next_finding() }),
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 3, total: 3 }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: m.action_mark_reviewed_and_next(),
+        }),
+      );
+
+      // Two left, and the reader is on the last of them — not back at the top.
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "src-2",
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 2, total: 2 }),
+      );
+    });
+
+    it("offers no sign-off once the cursor stands on nothing reviewable", () => {
+      // A defect is not something to accept. The button is absent rather than
+      // disabled, so the stepper never suggests findings can be waved through.
+      // A building with no height: `building.height.required`, which is a
+      // defect to correct and not a judgement to record.
+      const building: ModelFeature = {
+        id: "src-1",
+        kind: "building",
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [10, 51],
+              [10.01, 51],
+              [10.01, 51.01],
+              [10, 51],
+            ],
+          ],
+        },
+      };
+      useModelStore.getState().loadModel({
+        features: [building],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+
+      expect(screen.getByRole("status")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", {
+          name: m.action_mark_reviewed_and_next(),
+        }),
+      ).toBeNull();
+    });
+
+    it("signs a whole group off as one undo step", () => {
+      const other: ModelFeature = { ...sourceNeedingReview, id: "src-2" };
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview, other],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-sign-off"));
+
+      const signed = useModelStore.getState().features;
+      expect(
+        signed.every((f) => f.properties?.["source_acoustics_reviewed"]),
+      ).toBe(true);
+
+      // One press, not 608: the whole acceptance comes back together.
+      act(() => {
+        useModelStore.getState().undo();
+      });
+      expect(
+        useModelStore
+          .getState()
+          .features.some((f) => f.properties?.["source_acoustics_reviewed"]),
+      ).toBe(false);
     });
   });
 });

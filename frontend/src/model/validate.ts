@@ -25,7 +25,7 @@ import {
 import {
   getFeatureNumber,
   getFeatureString,
-  getRLS19ReviewRequired,
+  needsAcousticsReview,
   RLS19_JUNCTION_TYPES,
   RLS19_SPEED_KEYS,
   RLS19_SURFACE_TYPES,
@@ -510,7 +510,11 @@ function validateRLS19SourceAcoustics(
     }
   }
 
-  if (getRLS19ReviewRequired(feature)) {
+  // `needsAcousticsReview`, not `getRLS19ReviewRequired`: the finding is what
+  // the reader has left to do, and a source they have signed off is done. A
+  // warning that no action in the app could retire is one a reader learns to
+  // ignore, and on a city-district OSM import there are hundreds of them.
+  if (needsAcousticsReview(feature)) {
     warnings.push({
       level: "warning",
       code: "source.rls19.review_required",

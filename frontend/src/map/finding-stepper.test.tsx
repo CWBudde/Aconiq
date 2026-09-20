@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { m } from "@/i18n/messages";
 import { FindingStepper } from "./finding-stepper";
 
-function renderStepper(position = 3, total = 608) {
+function renderStepper(
+  position = 3,
+  total = 608,
+  onSignOff: (() => void) | null = null,
+) {
   const onStep = vi.fn<(direction: 1 | -1) => void>();
   const onClose = vi.fn();
   render(
@@ -11,6 +15,7 @@ function renderStepper(position = 3, total = 608) {
       position={position}
       total={total}
       onStep={onStep}
+      onSignOff={onSignOff}
       onClose={onClose}
     />,
   );
@@ -45,6 +50,25 @@ describe("FindingStepper", () => {
       screen.getByRole("button", { name: m.action_stop_stepping() }),
     );
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a sign-off only when the finding under the cursor has one", () => {
+    // Most findings are defects. A greyed-out "accept this" against a
+    // self-intersecting line would suggest the app can wave one through, so the
+    // button is absent rather than disabled.
+    renderStepper();
+    expect(
+      screen.queryByRole("button", {
+        name: m.action_mark_reviewed_and_next(),
+      }),
+    ).not.toBeInTheDocument();
+
+    const onSignOff = vi.fn();
+    renderStepper(3, 608, onSignOff);
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_mark_reviewed_and_next() }),
+    );
+    expect(onSignOff).toHaveBeenCalledTimes(1);
   });
 
   it("announces each step, and names its keyboard shortcuts", () => {

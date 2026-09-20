@@ -5,6 +5,7 @@ import type {
 } from "maplibre-gl";
 import { NOISE_LEVEL_RAMP, rampToExpression } from "./color-ramp";
 import { m } from "@/i18n/messages";
+import { PROP_ACOUSTICS_REVIEWED } from "@/model/source-acoustics";
 
 /**
  * Layer definitions for noise model features.
@@ -307,21 +308,27 @@ export const REVIEW_COLOR = "#a855f7";
 /**
  * The flag an import leaves on a source whose acoustics it had to guess.
  *
- * This is the same question `getRLS19ReviewRequired` asks of the model, and it
+ * This is the same question `needsAcousticsReview` asks of the model, and it
  * gives the same answer by construction: `getFeatureBoolean` accepts a real
  * boolean and nothing else, and MapLibre's `==` against a boolean literal is
  * just as strict — so a source carrying the *string* `"true"` raises no finding
  * and gets no flag, rather than the map and the validator disagreeing.
  *
- * It reads a model property rather than the validation report on purpose. The
+ * Both halves are read, for that same reason: the sign-off retires the finding,
+ * so a flag that ignored it would leave the map insisting on work the panel
+ * considers done. A source with no `source_acoustics_reviewed` property answers
+ * `null` here, and `!= true` holds for it, which is how an untouched import is
+ * still flagged.
+ *
+ * It reads model properties rather than the validation report on purpose. The
  * report is a derived opinion computed over the store, while these layers draw
  * the projected display model; feeding one into the other would make the map a
  * source for the model instead of a projection of it.
  */
 const REVIEW_REQUIRED_FILTER: ExpressionSpecification = [
-  "==",
-  ["get", "source_acoustics_review_required"],
-  true,
+  "all",
+  ["==", ["get", "source_acoustics_review_required"], true],
+  ["!=", ["get", PROP_ACOUSTICS_REVIEWED], true],
 ];
 
 export const REVIEW_LAYERS: LayerSpecification[] = [

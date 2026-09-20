@@ -790,6 +790,58 @@ describe("FeatureEditor RLS-19 provenance", () => {
       screen.queryByText(m.msg_source_acoustics_review_required()),
     ).not.toBeInTheDocument();
   });
+
+  it("lets the reader sign the imported acoustics off, and take it back", () => {
+    // The warning asks for a decision the panel had no way to record, so the
+    // finding survived every correct answer to it. This button is the answer.
+    const imported = {
+      ...lineSource,
+      properties: { source_acoustics_review_required: true },
+    };
+    edit(imported);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_mark_acoustics_reviewed() }),
+    );
+
+    expect(
+      useModelStore.getState().getFeatureById(lineSource.id)?.properties,
+    ).toEqual({
+      source_acoustics_review_required: true,
+      source_acoustics_reviewed: true,
+    });
+    expect(
+      screen.queryByText(m.msg_source_acoustics_review_required()),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_source_acoustics_reviewed()),
+    ).toBeInTheDocument();
+
+    // Still offered in reverse, so an accidental sign-off is visible and
+    // reversible where it was made rather than only on the undo stack.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_unmark_acoustics_reviewed(),
+      }),
+    );
+
+    expect(
+      useModelStore.getState().getFeatureById(lineSource.id)?.properties,
+    ).toEqual({ source_acoustics_review_required: true });
+    expect(
+      screen.getByText(m.msg_source_acoustics_review_required()),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no sign-off on a source no import flagged", () => {
+    // There is nothing to accept: the values are the reader's own.
+    edit(lineSource);
+    expect(
+      screen.queryByRole("button", {
+        name: m.action_mark_acoustics_reviewed(),
+      }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("FeatureEditor RLS-19 select fields", () => {

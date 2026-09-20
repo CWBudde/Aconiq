@@ -306,3 +306,122 @@ describe("mergeModel", () => {
     expect(useModelStore.getState().dirty).toBe(true);
   });
 });
+
+describe("updateFeatures", () => {
+  /** Three sources, so "one step" is distinguishable from "one per feature". */
+  function threeSources(): ModelFeature[] {
+    return ["a", "b", "c"].map((suffix) => ({
+      ...pointSource,
+      id: `src-${suffix}`,
+    }));
+  }
+
+  it("replaces many features as a single undo step", () => {
+    // The reason it exists. A loop over `updateFeature` would push one command
+    // each, so taking back a sign-off over 608 imported sources would be 608
+    // presses of Ctrl+Z — a bulk action nobody could safely try.
+    const store = useModelStore.getState();
+    for (const feature of threeSources()) store.addFeature(feature);
+
+    store.updateFeatures(
+      threeSources().map((f) => ({ ...f, properties: { reviewed: true } })),
+    );
+    expect(
+      useModelStore
+        .getState()
+        .features.every((f) => f.properties !== undefined),
+    ).toBe(true);
+
+    useModelStore.getState().undo();
+
+    expect(
+      useModelStore
+        .getState()
+        .features.every((f) => f.properties === undefined),
+    ).toBe(true);
+  });
+
+  it("keeps the order and the untouched features", () => {
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+    store.addFeature(building);
+
+    store.updateFeatures([{ ...pointSource, heightM: 3 }]);
+
+    const features = useModelStore.getState().features;
+    expect(features.map((f) => f.id)).toEqual(["src-1", "bld-1"]);
+    expect(features[1]).toEqual(building);
+  });
+
+  it("skips ids the store does not hold rather than adding them", () => {
+    // It replaces features; it does not create them. A caller holding a stale
+    // list must not be able to resurrect a deleted source through it.
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+
+    store.updateFeatures([
+      { ...pointSource, heightM: 3 },
+      { ...pointSource, id: "ghost" },
+    ]);
+
+    const features = useModelStore.getState().features;
+    expect(features).toHaveLength(1);
+    expect(features[0]?.heightM).toBe(3);
+  });
+
+  it("replaces one of two features sharing an id, not both", () => {
+    // `feature.id.duplicate` is a finding the validator raises, not a state the
+    // store refuses, so a bulk sign-off can run over a model that holds one.
+    // Addressing by id would overwrite both entries with the same object and
+    // throw the other's geometry away — irreversibly, since the undo map would
+    // be built the same wrong way.
+    const first: ModelFeature = { ...pointSource, heightM: 1 };
+    const second: ModelFeature = { ...pointSource, heightM: 2 };
+    const store = useModelStore.getState();
+    store.addFeature(first);
+    store.addFeature(second);
+
+    store.updateFeatures([{ ...first, properties: { reviewed: true } }]);
+
+    const after = useModelStore.getState().features;
+    expect(after).toHaveLength(2);
+    expect(after[0]?.heightM).toBe(1);
+    expect(after[0]?.properties).toEqual({ reviewed: true });
+    // The second is untouched, height and all.
+    expect(after[1]).toEqual(second);
+
+    useModelStore.getState().undo();
+    expect(useModelStore.getState().features).toEqual([first, second]);
+  });
+
+  it("gives two incoming features sharing an id a position each", () => {
+    const first: ModelFeature = { ...pointSource, heightM: 1 };
+    const second: ModelFeature = { ...pointSource, heightM: 2 };
+    const store = useModelStore.getState();
+    store.addFeature(first);
+    store.addFeature(second);
+
+    store.updateFeatures([
+      { ...first, heightM: 10 },
+      { ...second, heightM: 20 },
+    ]);
+
+    expect(useModelStore.getState().features.map((f) => f.heightM)).toEqual([
+      10, 20,
+    ]);
+  });
+
+  it("pushes nothing when it would change nothing", () => {
+    // An empty command on the stack is a Ctrl+Z that appears to do nothing,
+    // which reads as broken undo.
+    const store = useModelStore.getState();
+    store.addFeature(pointSource);
+    const before = useModelStore.getState().features;
+
+    useModelStore.getState().updateFeatures([]);
+    useModelStore.getState().undo();
+
+    expect(useModelStore.getState().features).not.toBe(before);
+    expect(useModelStore.getState().features).toEqual([]);
+  });
+});

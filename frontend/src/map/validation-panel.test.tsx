@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { ValidationPanel } from "./validation-panel";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature, ModelReceiver, Position } from "@/model/types";
@@ -60,8 +60,27 @@ const receiver: ModelReceiver = {
 
 function renderPanel() {
   const onSelectFeature = vi.fn<(featureId: string) => void>();
-  render(<ValidationPanel onSelectFeature={onSelectFeature} />);
+  const onSignOffGroup = vi.fn<(featureIds: string[]) => void>();
+  render(
+    <ValidationPanel
+      onSelectFeature={onSelectFeature}
+      onSignOffGroup={onSignOffGroup}
+    />,
+  );
   return onSelectFeature;
+}
+
+/** The same render, for the tests that are about the bulk sign-off. */
+function renderPanelWithSignOff() {
+  const onSelectFeature = vi.fn<(featureId: string) => void>();
+  const onSignOffGroup = vi.fn<(featureIds: string[]) => void>();
+  render(
+    <ValidationPanel
+      onSelectFeature={onSelectFeature}
+      onSignOffGroup={onSignOffGroup}
+    />,
+  );
+  return onSignOffGroup;
 }
 
 beforeEach(() => {
@@ -348,5 +367,67 @@ describe("ValidationPanel groups findings that say the same thing", () => {
     fireEvent.click(rows[1] as HTMLElement);
 
     expect(onSelectFeature).toHaveBeenCalledWith("road-0");
+  });
+});
+
+describe("ValidationPanel signs a whole group of review findings off", () => {
+  function manyRoadsNeedingReview(count: number): ModelFeature[] {
+    return Array.from({ length: count }, (_, i) => ({
+      ...roadNeedingReview,
+      id: `road-${String(i)}`,
+    }));
+  }
+
+  it("hands every member of the group back, not only the first", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(3) });
+    });
+    const onSignOffGroup = renderPanelWithSignOff();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_mark_all_acoustics_reviewed(),
+      }),
+    );
+    // Confirmed first: at 608 sources this is the one action on the panel with
+    // a blast radius, so it goes through the dialog rather than the click.
+    expect(onSignOffGroup).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: m.action_mark_all_acoustics_reviewed(),
+      }),
+    );
+
+    expect(onSignOffGroup).toHaveBeenCalledWith(["road-0", "road-1", "road-2"]);
+  });
+
+  it("says how many sources the confirmation covers", () => {
+    act(() => {
+      useModelStore.setState({ features: manyRoadsNeedingReview(30) });
+    });
+    renderPanelWithSignOff();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: m.action_mark_all_acoustics_reviewed(),
+      }),
+    );
+
+    expect(
+      screen.getByText(m.msg_confirm_mark_all_reviewed({ count: 30 })),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no sign-off on a finding that names a defect", () => {
+    // Every other row is something to fix. A bulk "accept" over those would be
+    // a button that hides findings rather than one that retires them.
+    useModelStore.getState().addFeature(buildingWithoutHeight);
+    renderPanelWithSignOff();
+
+    expect(
+      screen.queryByRole("button", {
+        name: m.action_mark_all_acoustics_reviewed(),
+      }),
+    ).not.toBeInTheDocument();
   });
 });

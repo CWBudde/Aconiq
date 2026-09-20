@@ -67,6 +67,28 @@ let cached: {
   value: ModelValidationSummary;
 } | null = null;
 
+/**
+ * The same summary, for a caller that is handling an event rather than
+ * rendering.
+ *
+ * An event handler that has just written to the store holds a `report` from the
+ * render *before* the write, and deriving anything from it — the finding queue,
+ * above all — answers the question the reader asked one edit ago. Reading the
+ * fresh store and asking here is what makes "accept this and move on" land on
+ * the finding that took the accepted one's place rather than wherever the old
+ * queue pointed.
+ *
+ * It costs no extra validation: the cache below is keyed on the two array
+ * identities, so the render that follows the write finds this result waiting
+ * instead of computing its own. The work is moved earlier, not doubled.
+ */
+export function modelValidation(
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): ModelValidationSummary {
+  return validationFor(features, receivers);
+}
+
 function validationFor(
   features: ModelFeature[],
   receivers: ModelReceiver[],

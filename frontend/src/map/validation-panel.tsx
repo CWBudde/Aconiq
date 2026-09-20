@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/ui/components/button";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { useModelValidation } from "@/model/use-model-validation";
 import { validationIssueText } from "@/model/validation-message";
 import type { IssueSeverity, ValidationIssue } from "@/model/types";
@@ -8,7 +9,19 @@ import { m } from "@/i18n/messages";
 
 interface ValidationPanelProps {
   onSelectFeature: (featureId: string) => void;
+  /**
+   * Accepts every source in a group of review findings at once.
+   *
+   * Offered only for {@link REVIEW_CODE}, which is the one finding in this
+   * model that a reader retires by looking rather than by editing. Every other
+   * row names a defect, and a button that made those disappear in bulk would be
+   * a button that hides them.
+   */
+  onSignOffGroup: (featureIds: string[]) => void;
 }
+
+/** The one finding a reader can retire by accepting it. */
+const REVIEW_CODE = "source.rls19.review_required";
 
 /** How many member features an expanded group lists before it stops. */
 const GROUP_PREVIEW = 20;
@@ -78,7 +91,10 @@ function groupIssues(issues: ValidationIssue[]): IssueGroup[] {
   return [...groups.values()];
 }
 
-export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
+export function ValidationPanel({
+  onSelectFeature,
+  onSignOffGroup,
+}: ValidationPanelProps) {
   const { state, errorCount, warningCount, report } = useModelValidation();
 
   // An empty model is not a valid one, and with the map now mounted from the
@@ -118,6 +134,7 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
             key={group.key}
             group={group}
             onSelectFeature={onSelectFeature}
+            onSignOffGroup={onSignOffGroup}
           />
         ))}
       </ul>
@@ -128,13 +145,21 @@ export function ValidationPanel({ onSelectFeature }: ValidationPanelProps) {
 function IssueGroupRow({
   group,
   onSelectFeature,
+  onSignOffGroup,
 }: {
   group: IssueGroup;
   onSelectFeature: (featureId: string) => void;
+  onSignOffGroup: (featureIds: string[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const count = group.featureIds.length;
   const first = group.featureIds[0];
+  // Every code in the group, not just the first: grouping is by sentence, so a
+  // row can carry two codes, and accepting a group must not quietly accept a
+  // finding that has no sign-off of its own.
+  const signOffable =
+    count > 0 && group.codes.every((code) => code === REVIEW_CODE);
   // The member rows are capped rather than virtualised. 608 of them would be
   // 608 mounted nodes inside a 256-pixel scroller to render a list nobody
   // reads to the end; the map flags and the stepper are the real answers to
@@ -228,6 +253,30 @@ function IssueGroupRow({
               ) : null}
             </ul>
           ) : null}
+        </div>
+      ) : null}
+      {signOffable ? (
+        <div className="mt-1 pl-5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-2xs"
+            onClick={() => {
+              setConfirming(true);
+            }}
+          >
+            {m.action_mark_all_acoustics_reviewed()}
+          </Button>
+          <ConfirmDialog
+            open={confirming}
+            onOpenChange={setConfirming}
+            title={m.label_confirm_mark_all_reviewed()}
+            description={m.msg_confirm_mark_all_reviewed({ count })}
+            confirmLabel={m.action_mark_all_acoustics_reviewed()}
+            onConfirm={() => {
+              onSignOffGroup(group.featureIds);
+            }}
+          />
         </div>
       ) : null}
     </li>
