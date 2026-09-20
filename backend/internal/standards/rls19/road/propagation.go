@@ -333,9 +333,18 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 	return scene.receiverLevels(receiver, cfg)
 }
 
+// appendSegmentContributions adds one Teilstück's direct contribution and every
+// mirrored contribution it produces.
+//
+// baseDayDB and baseNightDB are the sound power levels the Teilstück starts
+// from: its length-related emission level L_m,E plus 10·lg(l_i/l_0), already
+// composed by prepareSource because both halves are receiver-independent (see
+// preparedSource). This is the same shape appendReflectedContribs takes, and
+// for the same reason — the source shape settles the starting power, and
+// everything below is the §3.5 chain, which does not care how it was reached.
 func appendSegmentContributions(
 	dayContrib, nightContrib *[]float64,
-	emission EmissionResult,
+	baseDayDB, baseNightDB float64,
 	seg Segment,
 	receiver geo.Point2D,
 	receiverZ float64,
@@ -398,23 +407,15 @@ func appendSegmentContributions(
 
 	att = applyShielding(att, math.Max(barrierLoss, terrainLoss))
 
-	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
-	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
-	// reference length l_0 = 1 m. L_m,E is already per-metre (emission.go converts
-	// veh/h ÷ km/h to veh/m via the −30 dB term), so the weight must NOT be
-	// normalised by the total road length: doing so would make the whole road
-	// radiate the power of a single 1 m long section.
-	lengthWeight := 10 * math.Log10(seg.LengthM/referenceLengthM)
-
-	*dayContrib = append(*dayContrib, emission.LmEDay+lengthWeight-att.Total)
-	*nightContrib = append(*nightContrib, emission.LmENight+lengthWeight-att.Total)
+	*dayContrib = append(*dayContrib, baseDayDB-att.Total)
+	*nightContrib = append(*nightContrib, baseNightDB-att.Total)
 
 	// Reflected paths: each adds an independent energy contribution via
 	// the image-source method. Ground correction uses mean height along
 	// the reflected path (flat terrain approximation for reflected legs).
 	appendReflectedContribs(
 		dayContrib, nightContrib,
-		emission.LmEDay+lengthWeight, emission.LmENight+lengthWeight,
+		baseDayDB, baseNightDB,
 		seg.MidPoint, sourceHeightM, sourceZ, receiver, receiverZ,
 		effectiveBarriers, reflectors, effectiveCfg, scratch,
 	)

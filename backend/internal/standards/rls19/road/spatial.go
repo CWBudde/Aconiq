@@ -61,9 +61,22 @@ type pathScratch struct {
 	rayCrossings     []geo.RayCrossing
 	barrierCrossings []barrierCrossing
 	reflectedPaths   []reflectedPath
+
+	// dayContrib and nightContrib are the energy contributions of one
+	// receiver: one entry per Teilstück plus one per mirrored path. They are
+	// per-receiver rather than per-Teilstück like the rest, and they are the
+	// walk's largest allocation by far — see receiverLevelsOn, which resets
+	// them to zero length and writes them back grown.
+	dayContrib   []float64
+	nightContrib []float64
 }
 
 // newScratch returns the scratch for one receiver walk over this scene.
+//
+// The contribution slices are sized from the scene's total Teilstück count, so
+// a walk without reflections never reallocates them: that is the same one
+// allocation the per-receiver make gave, taken once for the whole walk instead
+// of once per receiver.
 func (s *Scene) newScratch() *pathScratch {
 	return &pathScratch{
 		barrierCursor:     s.barrierGrid.NewCursor(),
@@ -73,6 +86,8 @@ func (s *Scene) newScratch() *pathScratch {
 		rayCrossings:      nil,
 		barrierCrossings:  nil,
 		reflectedPaths:    nil,
+		dayContrib:        make([]float64, 0, s.segmentCount),
+		nightContrib:      make([]float64, 0, s.segmentCount),
 	}
 }
 

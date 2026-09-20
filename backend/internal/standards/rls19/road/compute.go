@@ -3,6 +3,7 @@ package road
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
@@ -43,18 +44,44 @@ type Scene struct {
 	// did before the index existed.
 	barrierGrid *geo.BBoxGrid
 
-	// segmentCount is the total over all sources. It sizes the per-receiver
+	// segmentCount is the total over all sources. It sizes the walk's
 	// contribution slices in one allocation instead of letting them grow from
 	// a guess, which on a 2 km road at the default 1 m Teilstück length was a
-	// dozen reallocations per receiver.
+	// dozen reallocations per receiver. Those slices now live in pathScratch,
+	// so that one allocation is taken once per walk rather than once per
+	// receiver; a nil-scratch call still takes it per receiver.
 	segmentCount int
 }
 
 // preparedSource is one road source reduced to what the propagation walk reads
-// from it: its emission levels and its Teilstücke.
+// from it: its Teilstücke and, per Teilstück, the sound power level the path
+// starts from.
+//
+// baseDayDB and baseNightDB are parallel to segments — index i belongs to
+// segment i — and hold L_m,E + 10·lg(l_i/l_0) (RLS-19 Eq. 10). Both halves are
+// receiver-independent: SplitLineIntoSegments fixes l_i here, and ComputeEmission
+// fixes L_m,E here, so the length weight is the same number for every one of a
+// grid's receivers. Computing it in the walk meant 10 000 receivers × 2 000
+// Teilstücke math.Log10 calls for 2 000 distinct arguments.
+//
+// Holding the *sum* rather than the weight alone also removes the second of the
+// two places the walk used to add it: the direct contribution and the mirrored
+// one both start from this value.
+//
+// It is bit-for-bit what the walk computed. Go evaluates `a + b - c`
+// left-to-right as `(a + b) - c`, so lifting `a + b` out keeps the same
+// association and the same two roundings; and the lifted expression is written
+// in the same shape it had in the walk — `10 * math.Log10(…)` into a variable,
+// then added — so an architecture that contracts a multiply-add contracts the
+// same one it contracted before.
+//
+// The field sits here and not on the exported Segment: it is a function of the
+// source's emission as much as of the segment's length, and Segment is pure
+// geometry that callers outside this package build and read.
 type preparedSource struct {
-	emission EmissionResult
-	segments []Segment
+	segments    []Segment
+	baseDayDB   []float64
+	baseNightDB []float64
 }
 
 // PrepareScene derives the receiver-independent state of a calculation.
@@ -145,7 +172,22 @@ func prepareSource(source RoadSource, segmentLengthM float64) (preparedSource, e
 		return preparedSource{}, nil
 	}
 
-	return preparedSource{emission: emission, segments: segments}, nil
+	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
+	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
+	// reference length l_0 = 1 m. L_m,E is already per-metre (emission.go converts
+	// veh/h ÷ km/h to veh/m via the −30 dB term), so the weight must NOT be
+	// normalised by the total road length: doing so would make the whole road
+	// radiate the power of a single 1 m long section.
+	baseDayDB := make([]float64, len(segments))
+	baseNightDB := make([]float64, len(segments))
+
+	for i, seg := range segments {
+		lengthWeight := 10 * math.Log10(seg.LengthM/referenceLengthM)
+		baseDayDB[i] = emission.LmEDay + lengthWeight
+		baseNightDB[i] = emission.LmENight + lengthWeight
+	}
+
+	return preparedSource{segments: segments, baseDayDB: baseDayDB, baseNightDB: baseNightDB}, nil
 }
 
 // ComputeReceiverLevels computes LrDay/LrNight at one receiver against a scene
@@ -183,8 +225,22 @@ func (s *Scene) receiverLevels(receiver geo.Point2D, cfg PropagationConfig) (Per
 }
 
 // receiverLevelsOn is the propagation walk itself, with every check already
-// made by the caller. It is what the grid loop runs, so it allocates nothing
-// beyond the two contribution slices.
+// made by the caller. It is what the grid loop runs, so with a scratch it
+// allocates nothing at all.
+//
+// The two contribution slices come from the scratch when there is one. They are
+// the largest per-receiver allocation in the walk — one float64 per Teilstück
+// per period, so 32 KB per receiver at 2 000 Teilstücke, a third of a gigabyte
+// over a 10 000-point grid — and nothing reads them after EnergySum has, so the
+// backing array can be handed to the next receiver. Reusing it cannot move a
+// result: the slices are truncated to zero length before the walk, appended to
+// in exactly the order they were before, and EnergySum reads them in slice
+// order, so both the contents and the order are the ones the fresh slices had.
+//
+// A nil scratch still allocates, because a nil scratch is the unindexed
+// reference path pathScratch documents — spatial_test.go computes against it
+// and requires the two to agree to the bit, which it could not do if the
+// reference path shared state with the walk it is checking.
 func (s *Scene) receiverLevelsOn(
 	receiver geo.Point2D,
 	cfg PropagationConfig,
@@ -193,14 +249,21 @@ func (s *Scene) receiverLevelsOn(
 	// Absolute receiver Z = terrain elevation + height above ground.
 	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
 
-	dayContrib := make([]float64, 0, s.segmentCount)
-	nightContrib := make([]float64, 0, s.segmentCount)
+	var dayContrib, nightContrib []float64
+
+	if scratch != nil {
+		dayContrib = scratch.dayContrib[:0]
+		nightContrib = scratch.nightContrib[:0]
+	} else {
+		dayContrib = make([]float64, 0, s.segmentCount)
+		nightContrib = make([]float64, 0, s.segmentCount)
+	}
 
 	for _, source := range s.sources {
-		for _, seg := range source.segments {
+		for i, seg := range source.segments {
 			appendSegmentContributions(
 				&dayContrib, &nightContrib,
-				source.emission,
+				source.baseDayDB[i], source.baseNightDB[i],
 				seg,
 				receiver,
 				receiverZ,
@@ -214,14 +277,26 @@ func (s *Scene) receiverLevelsOn(
 		}
 	}
 
+	var err error
+
 	if len(cfg.ParkingSources) > 0 {
-		err := appendParkingContributions(
+		err = appendParkingContributions(
 			&dayContrib, &nightContrib, cfg.ParkingSources,
 			receiver, receiverZ, s.barriers, &s.reflectors, cfg, scratch,
 		)
-		if err != nil {
-			return PeriodLevels{}, err
-		}
+	}
+
+	// Write back before the error check: the appends above may have grown the
+	// slices past the scratch's backing array, and that growth is exactly what
+	// the next receiver must inherit — the same pattern scratch.reflectedPaths
+	// uses in appendReflectedContribs.
+	if scratch != nil {
+		scratch.dayContrib = dayContrib
+		scratch.nightContrib = nightContrib
+	}
+
+	if err != nil {
+		return PeriodLevels{}, err
 	}
 
 	return PeriodLevels{
