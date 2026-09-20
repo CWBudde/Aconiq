@@ -2,18 +2,36 @@ package osmimport
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/aconiq/backend/internal/buildinfo"
+	overpass "github.com/cwbudde/go-overpass"
 )
 
 // mockHTTP implements overpass.HTTPClient for testing without a real network.
-type mockHTTP struct{ body string }
+//
+// It records the last request so a test can assert on the headers Fetch sends,
+// and answers StatusOK unless status says otherwise.
+type mockHTTP struct {
+	body   string
+	status int
+	last   *http.Request
+}
 
-func (m *mockHTTP) Do(_ *http.Request) (*http.Response, error) {
+func (m *mockHTTP) Do(req *http.Request) (*http.Response, error) {
+	m.last = req
+
+	status := m.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+
 	return &http.Response{
-		StatusCode: http.StatusOK,
+		StatusCode: status,
 		Body:       io.NopCloser(strings.NewReader(m.body)),
 	}, nil
 }
@@ -191,8 +209,8 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"height": "12m"})
-		if h == nil || *h != 12.0 {
-			t.Errorf("expected 12.0, got %v", h)
+		if h.meters != 12.0 || h.assumed {
+			t.Errorf("expected 12.0 read from the tag, got %+v", h)
 		}
 	})
 
@@ -200,17 +218,24 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"building:levels": "4"})
-		if h == nil || *h != 12.0 {
-			t.Errorf("expected 12.0 (4×3m), got %v", h)
+		if h.meters != 12.0 || h.assumed {
+			t.Errorf("expected 12.0 (4x3m) read from the tag, got %+v", h)
 		}
 	})
 
-	t.Run("nil when unknown", func(t *testing.T) {
+	t.Run("assumed when neither tag is present", func(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"building": "yes"})
-		if h != nil {
-			t.Errorf("expected nil, got %v", *h)
+		if h.meters != defaultBuildingHeightM {
+			t.Errorf("expected the default %g, got %+v", defaultBuildingHeightM, h)
+		}
+
+		// The number alone is not the point: an untagged building used to be
+		// dropped, which made the whole import unsaveable. It is now assumed,
+		// and the feature has to say so.
+		if !h.assumed {
+			t.Error("the default height must be reported as assumed")
 		}
 	})
 
@@ -218,8 +243,8 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"height": "7.5 m", "building:levels": "3"})
-		if h == nil || *h != 7.5 {
-			t.Errorf("expected 7.5 from height tag, got %v", h)
+		if h.meters != 7.5 || h.assumed {
+			t.Errorf("expected 7.5 from the height tag, got %+v", h)
 		}
 	})
 }
@@ -231,17 +256,17 @@ func TestBarrierHeight(t *testing.T) {
 		t.Parallel()
 
 		h := barrierHeight(map[string]string{"height": "3.5"})
-		if h == nil || *h != 3.5 {
-			t.Errorf("expected 3.5, got %v", h)
+		if h.meters != 3.5 || h.assumed {
+			t.Errorf("expected 3.5 read from the tag, got %+v", h)
 		}
 	})
 
-	t.Run("default 2m when no tag", func(t *testing.T) {
+	t.Run("assumed 2m when no tag", func(t *testing.T) {
 		t.Parallel()
 
 		h := barrierHeight(map[string]string{"barrier": "wall"})
-		if h == nil || *h != defaultBarrierHeightM {
-			t.Errorf("expected default %g, got %v", defaultBarrierHeightM, h)
+		if h.meters != defaultBarrierHeightM || !h.assumed {
+			t.Errorf("expected an assumed %g, got %+v", defaultBarrierHeightM, h)
 		}
 	})
 }
@@ -314,5 +339,69 @@ func TestBuildQuery(t *testing.T) {
 
 	if !strings.Contains(q, "[timeout:30]") {
 		t.Errorf("expected [timeout:30] in query, but got:\n%s", q)
+	}
+}
+
+func TestFetch_SendsAUserAgent(t *testing.T) {
+	t.Parallel()
+
+	// overpass-api.de answers 406 to Go's default `Go-http-client/1.1`, and
+	// go-overpass sets no User-Agent of its own, so this header is the whole
+	// reason an import works from some networks at all.
+	mock := &mockHTTP{body: highwayJSON}
+
+	if _, err := Fetch(t.Context(), Config{
+		BBox:             BBox{South: 51.5, West: 8.2, North: 51.51, East: 8.21},
+		OverpassEndpoint: "http://mock",
+		HTTPClient:       mock,
+	}); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	if mock.last == nil {
+		t.Fatal("no request reached the client")
+	}
+
+	got := mock.last.Header.Get("User-Agent")
+	if got == "" {
+		t.Fatal("no User-Agent was sent")
+	}
+
+	if !strings.HasPrefix(got, buildinfo.Name+"/") {
+		t.Errorf("User-Agent %q does not name the product", got)
+	}
+
+	// The Overpass usage policy asks for a way to make contact, so the URL is
+	// as load-bearing as the name.
+	if !strings.Contains(got, contactURL) {
+		t.Errorf("User-Agent %q carries no contact URL", got)
+	}
+}
+
+func TestFetch_UpstreamStatusSurvives(t *testing.T) {
+	t.Parallel()
+
+	// The handler turns this status into an error envelope a reader can act on,
+	// which it can only do if the status reaches it. 406 is deliberate: it is
+	// what overpass-api.de answers an unnamed agent, and go-overpass does not
+	// retry it, so the test neither sleeps through a backoff nor hides a retry.
+	mock := &mockHTTP{body: "not acceptable", status: http.StatusNotAcceptable}
+
+	_, err := Fetch(t.Context(), Config{
+		BBox:             BBox{South: 51.5, West: 8.2, North: 51.51, East: 8.21},
+		OverpassEndpoint: "http://mock",
+		HTTPClient:       mock,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a 406 response")
+	}
+
+	var serverErr *overpass.ServerError
+	if !errors.As(err, &serverErr) {
+		t.Fatalf("the upstream status did not survive: %v", err)
+	}
+
+	if serverErr.StatusCode != http.StatusNotAcceptable {
+		t.Errorf("expected status 406, got %d", serverErr.StatusCode)
 	}
 }
