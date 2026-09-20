@@ -1865,6 +1865,20 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       needs arguing for. Drawing is gated on `backend.capabilities.canReprojectForDisplay`, not on
       the store's CRS — keep new gates on the capability, or a model the map can project will be
       refused for being metric.
+- [x] **Map options in Settings**. A third Settings category, Karte, holds the basemap and the
+      tile URL that used to sit under Connection beside the API base URL. The picker on the map
+      stays: both write `map-store`, which is module-scoped, so they are two views of one value
+      and a change reaches the map on its next build rather than needing a provider.
+      Two constraints stay live, both from the persistence this added.
+      **Persisting the layer toggles is what makes `resetLayerVisibility` necessary** — a user who
+      hid a group used to get it back with a refresh, and the Karte tab's reset is now the only
+      way back. It resets to `{}` rather than to a record of `true`s, so each group keeps taking
+      its own `defaultVisible` instead of a third copy of the defaults living in the store.
+      **The stored result indicator is a preference resolved on read, never a seed.** Which bands
+      exist is a property of a run's receiver table, which has not arrived when the value is read,
+      so `map-preferences.ts` deliberately does not validate it and `ResultLayers` resolves it
+      against the table it actually has. Seeding component state from it in an effect is the
+      obvious next edit and is exactly what would strand a run on a band its table lacks.
 - [x] **Keyboard path** (#54). `NewFeatureDialog` takes typed coordinates when it is opened with no
       drawn geometry, and `map/feature-list.tsx` lists features and receivers as Tab-reachable
       controls that set the page's `editingFeatureId`. Two constraints stay live. **The typed
