@@ -94,6 +94,44 @@ func (b BBox) ExpandToIncludePoint(p Point2D) BBox {
 	return b
 }
 
+// SquaredDistanceToPoint returns the squared distance from p to the nearest
+// point of the box, and 0 when p is inside it.
+//
+// Squared, because the callers compare against a squared threshold: a prune
+// that runs once per obstacle per (source, receiver) pair has no room for a
+// square root that the comparison would only undo.
+func (b BBox) SquaredDistanceToPoint(p Point2D) float64 {
+	return squaredGap(b.MinX-p.X, p.X-b.MaxX) + squaredGap(b.MinY-p.Y, p.Y-b.MaxY)
+}
+
+// SquaredDistanceToBBox returns the squared distance between the two nearest
+// points of the two boxes, and 0 when they intersect.
+func (b BBox) SquaredDistanceToBBox(other BBox) float64 {
+	return squaredGap(b.MinX-other.MaxX, other.MinX-b.MaxX) +
+		squaredGap(b.MinY-other.MaxY, other.MinY-b.MaxY)
+}
+
+// squaredGap returns the square of the larger of two signed separations, or 0
+// when neither is positive — the contribution of one axis to a box distance.
+//
+// The comparisons are written out rather than handed to math.Max because this
+// runs once per obstacle per source-receiver pair, and math.Max carries NaN
+// and signed-zero handling that shows up as a measurable share of a grid run.
+// A NaN coordinate here yields 0 for that axis, which only ever widens the
+// search.
+func squaredGap(low, high float64) float64 {
+	gap := low
+	if high > gap {
+		gap = high
+	}
+
+	if gap <= 0 {
+		return 0
+	}
+
+	return gap * gap
+}
+
 func (b BBox) ExpandToIncludeBBox(other BBox) BBox {
 	if other.MinX < b.MinX {
 		b.MinX = other.MinX
