@@ -89,6 +89,11 @@ let kernelLevels: (receiverID: string) => Levels = FLAT_LEVELS;
 // projection at all, and asks with the store's CRS — which is what
 // `transformRequests` is for.
 vi.mock("@/wasm/kernel", () => ({
+  // `runRLS19Road` wires an abort signal to this. Nothing in this file
+  // cancels — the suites below drive `startRun` to completion — but a mock
+  // factory replaces the whole module, so an export it omits is one the
+  // importing module cannot even reference.
+  cancelKernel: () => undefined,
   getKernel: () =>
     Promise.resolve({
       rls19Road: (req: ComputeRequest) =>
@@ -107,8 +112,8 @@ vi.mock("@/wasm/kernel", () => ({
           coordinates: req.coordinates,
         });
       },
-      standards: () => publishedStandards,
-      defaultConfig: () => ({}),
+      standards: () => Promise.resolve(publishedStandards),
+      defaultConfig: () => Promise.resolve({}),
     }),
 }));
 

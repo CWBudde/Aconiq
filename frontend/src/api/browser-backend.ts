@@ -10,6 +10,7 @@ import type {
   ModelSaveResult,
   OsmImportRequest,
   RunContours,
+  RunHooks,
   RunSpec,
 } from "./backend";
 import type {
@@ -37,7 +38,8 @@ import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { buildRasterBinary } from "@/model/raster-bin";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
-import { type AconiqKernel, getKernel } from "@/wasm/kernel";
+import { type AconiqKernel, cancelKernel, getKernel } from "@/wasm/kernel";
+import { CancelledErrorName } from "@/wasm/kernel-client";
 import type {
   Barrier,
   Building,
@@ -1510,6 +1512,48 @@ function findRunByID(current: BrowserBackendState, runId: string): StoredRun {
 }
 
 /**
+ * One browser-mode RLS-19 road run, with whatever the caller attached to it.
+ *
+ * The abort wiring is here rather than inside {@link computeRLS19Road} so that
+ * the listener's lifetime is exactly the run's: registered before the first
+ * kernel call — `resolveComputeModel` projects through the kernel too, and a
+ * cancel during a projection has to land — and removed in a `finally`, so a
+ * signal the caller keeps (a component that outlives one run) does not
+ * accumulate listeners that would tear down a *later* run's kernel.
+ *
+ * Aborting terminates the worker. That is not a coarse choice made for
+ * convenience: the compute runs synchronously on the worker's only thread, so
+ * a cancel *message* would sit in the queue until the work it was meant to
+ * stop had already finished.
+ */
+async function runRLS19Road(
+  kernel: AconiqKernel,
+  spec: RunSpec,
+  hooks?: RunHooks,
+): Promise<RunSummary> {
+  const signal = hooks?.signal;
+  if (signal?.aborted === true) {
+    // Nothing has been started, so there is nothing to terminate — but the
+    // caller asked for no run, and answering with one would be worse than
+    // refusing. Named like the kernel's own cancellation so `isRunCancelled`
+    // recognises it and the UI shows the same neutral notice.
+    const cancelled = new Error("The run was cancelled before it started");
+    cancelled.name = CancelledErrorName;
+    throw cancelled;
+  }
+
+  const abort = () => {
+    cancelKernel();
+  };
+  signal?.addEventListener("abort", abort);
+  try {
+    return await computeRLS19Road(kernel, spec, hooks?.onProgress);
+  } finally {
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+/**
  * One browser-mode RLS-19 road run, from the model store to a persisted run.
  *
  * It is a free function rather than part of `startRun` because turning the
@@ -1517,9 +1561,10 @@ function findRunByID(current: BrowserBackendState, runId: string): StoredRun {
  * boundary: the kernel takes a `ComputeRequest`, not a model. `startRun`
  * decides which extraction to call; this is the only one this build carries.
  */
-async function runRLS19Road(
+async function computeRLS19Road(
   kernel: AconiqKernel,
   spec: RunSpec,
+  onProgress?: RunHooks["onProgress"],
 ): Promise<RunSummary> {
   // Project the whole workspace once, before anything reads a coordinate off
   // it, mirroring `cli.resolveComputeModel`. Never per builder:
@@ -1635,7 +1680,11 @@ async function runRLS19Road(
       },
     };
 
-    const outputs = await kernel.rls19Road(request);
+    // The lock is held across this, and a rejection here — a cancel, most of
+    // all — releases it with nothing written: the bytes and the document both
+    // go in below, and the run id minted above is simply never used. The next
+    // run mints it again.
+    const outputs = await kernel.rls19Road(request, onProgress);
     const receiverTable = buildReceiverTable(outputs);
     const receiverCSV = buildReceiverTableCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
@@ -1661,6 +1710,10 @@ async function runRLS19Road(
       outputs.map((output) => output.Indicators.lr_day),
       outputs.map((output) => output.Indicators.lr_night),
     ]);
+    // Hoisted out of the literal below only because `standards()` is a Promise
+    // now that the kernel lives in a worker. It still costs no round trip —
+    // the worker ships the list with its handshake.
+    const publishedStandards = await kernel.standards();
     const summary = {
       run_id: runId,
       status: "completed",
@@ -1685,9 +1738,9 @@ async function runRLS19Road(
       // shipped modes. Declaring it a second time is the exact duplication
       // `framework.StandardDescriptor.EvidenceTier` exists to prevent, which
       // is why this asks the kernel instead.
-      evidence_tier: kernel
-        .standards()
-        .find((standard) => standard.id === spec.standardId)?.evidence_tier,
+      evidence_tier: publishedStandards.find(
+        (standard) => standard.id === spec.standardId,
+      )?.evidence_tier,
     };
 
     const hashPayload = outputs.map((output) => ({
@@ -1849,6 +1902,10 @@ export const browserBackend = {
     // `getHealth()` awaits `getKernel()` — so refusing to project here would
     // be refusing with the projector loaded.
     canReprojectForDisplay: true,
+    // The kernel runs in a worker this tab owns, and terminating it ends the
+    // computation for real — see `cancelKernel`. Nothing is persisted before
+    // the compute returns, so a cancelled run leaves no trace.
+    runsAreCancellable: true,
   },
 
   async transformCoordinates(
@@ -2072,7 +2129,7 @@ out geom;`;
     return { type: "FeatureCollection", features };
   },
 
-  async startRun(spec: RunSpec): Promise<RunSummary> {
+  async startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary> {
     // Load the kernel before reading the model, so a kernel that cannot load
     // is the failure reported, not a model finding it would never compute.
     const kernel = await getKernel();
@@ -2085,9 +2142,9 @@ out geom;`;
     // cannot disagree with the list `getStandards` serves — both come from the
     // Go descriptor, declared once. The literal was only ever right because the
     // published list happened to have one entry.
-    const published = kernel
-      .standards()
-      .some((standard) => standard.id === spec.standardId);
+    const published = (await kernel.standards()).some(
+      (standard) => standard.id === spec.standardId,
+    );
     if (!published) {
       throw new Error(
         `Standard ${spec.standardId} is not available in browser mode`,
@@ -2101,7 +2158,7 @@ out geom;`;
     // The TypeScript-side twin of Go's `TestEveryStandardHasItsEntryPoint`.
     switch (spec.standardId) {
       case "rls19-road":
-        return runRLS19Road(kernel, spec);
+        return runRLS19Road(kernel, spec, hooks);
       default:
         throw new Error(
           `The kernel publishes ${spec.standardId}, but this build has no model extraction for it`,
