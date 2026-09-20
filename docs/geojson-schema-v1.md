@@ -50,7 +50,17 @@ so a file Aconiq produced says what it is, and read so one can come back.
 
 ### `building` Features
 
-- `height_m` required and `> 0`
+- `height_m` required and `> 0`. Missing is `building.height.required`, zero or
+  negative is `building.height.invalid`. It is required rather than defaulted
+  because it is a screening input: ISO 9613-2 reads it for the line-of-sight
+  test, so a number chosen here would change computed levels without saying so.
+- `height_source` optional, and written by an importer rather than by a reader.
+  Its only value is `assumed`, and it says that `height_m` on this feature is
+  the importer's assumption and not a measurement — `aconiq import --from-osm`
+  sets it on a building whose way carries neither `height` nor `building:levels`
+  (and on a wall or fence with no `height`, which has always been assumed to be
+  2 m). Its **absence records no provenance**, not "read from the source": an
+  ordinary GeoJSON import carries the property only if its own source did.
 - Geometry must be `Polygon` or `MultiPolygon`
 
 ### `barrier` Features
@@ -358,7 +368,27 @@ starts failing.
 - Coordinates must be finite numbers.
 - `LineString` must have at least 2 points.
 - Polygon rings must have at least 4 points and be closed.
-- Basic self-intersection checks are applied to lines and rings.
+- Self-intersection is checked on lines and on rings, and the two are **not**
+  graded alike:
+
+  | Code                                         | Level   |
+  | -------------------------------------------- | ------- |
+  | `geometry.polygon.self_intersection`         | error   |
+  | `geometry.multipolygon.self_intersection`    | error   |
+  | `geometry.linestring.self_intersection`      | warning |
+  | `geometry.multilinestring.self_intersection` | warning |
+
+  A ring's winding is read — point-in-polygon and the screening crossing counts
+  both depend on it — so a footprint that crosses itself has no reliable inside
+  and the model is refused. A line's winding is read by nothing, and a road
+  drawn as one way that touches itself is a roundabout rather than a defect: 45
+  of 2397 ways in a Berlin OSM extract are like that, which is not a proportion
+  a reader can be asked to repair.
+
+  The check compares every pair of segments, so its cost grows with the square
+  of the vertex count. Above 10,000 points it is not attempted and the geometry
+  is reported as unchecked, as a warning named `<code>.skipped`, rather than
+  either walked or silently passed.
 
 ## CRS Plausibility Checks
 

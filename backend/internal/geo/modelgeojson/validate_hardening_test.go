@@ -67,6 +67,10 @@ func TestValidate_SelfIntersectionCheckIsBounded(t *testing.T) {
 }
 
 // Geometries below the bound must still be checked exactly as before.
+//
+// On a line the finding is a warning rather than an error — see
+// checkSelfIntersection — so this asserts the check still runs, which is what
+// the bound is about, and not the severity, which is decided elsewhere.
 func TestValidate_SelfIntersectionStillDetected(t *testing.T) {
 	model := modelWithLine([]any{
 		[]any{0.0, 0.0},
@@ -77,8 +81,8 @@ func TestValidate_SelfIntersectionStillDetected(t *testing.T) {
 
 	report := Validate(model)
 
-	if !hasIssue(report.Errors, "self_intersection") {
-		t.Fatalf("expected a self-intersection error, got %+v", report.Errors)
+	if !hasIssue(report.Warnings, "self_intersection") {
+		t.Fatalf("expected a self-intersection warning, got %+v", report.Warnings)
 	}
 }
 
