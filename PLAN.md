@@ -1999,6 +1999,16 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
       exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
       each decision. `/api/v1/import/terrain` has generated types now and still no caller.
+- [x] **"Gehe zu" moves the camera, and the whole review queue is walkable** (`9d5a45a`). Three
+      constraints stay live. **A focus is not a selection**: everything that names a feature the
+      reader cannot see builds a `FocusRequest`, and `handleFeatureClick` deliberately does not —
+      the same click arms terra-draw, so a camera flight would slide the vertex handles out from
+      under the drag that follows. **The camera reads the display model and holds its request until
+      `display.status` is `ready`**, which is the only way `?select=` into a metric project can
+      work. **The review flag is a model property, never the validation report** — a report computed
+      over the store, fed into layers drawn from the display model, would make the map a source
+      _for_ the model. `useModelValidation` is now a process-wide memo: four callers, one
+      validation.
 - [ ] **The frontend validator is a second code list, and it has drifted once already.**
       (2026-09-20) `model/validate.ts` and `geo/modelgeojson/validate.go` are two hand-maintained
       vocabularies with no generator between them — `schema.ts` types `ValidationIssue.code` as an

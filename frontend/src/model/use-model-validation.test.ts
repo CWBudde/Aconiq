@@ -71,3 +71,30 @@ describe("useModelValidation", () => {
     expect(result.current.state).not.toBe("empty");
   });
 });
+
+describe("useModelValidation is the process-wide memo", () => {
+  it("validates once for two callers looking at the same model", () => {
+    // Four components call this hook on the workspace route — the panel, the
+    // always-mounted toggle badge, the docked editor's per-feature list and
+    // the finding queue. `useMemo` is per instance, so without the shared
+    // cache a 608-source import is validated four times per keystroke.
+    useModelStore.setState({ features: [source], receivers: [receiver] });
+
+    const first = renderHook(() => useModelValidation());
+    const second = renderHook(() => useModelValidation());
+
+    expect(second.result.current.report).toBe(first.result.current.report);
+  });
+
+  it("validates again once the model actually changes", () => {
+    useModelStore.setState({ features: [source], receivers: [receiver] });
+    const { result, rerender } = renderHook(() => useModelValidation());
+    const before = result.current.report;
+
+    useModelStore.setState({ features: [source], receivers: [badReceiver] });
+    rerender();
+
+    expect(result.current.report).not.toBe(before);
+    expect(result.current.errorCount).toBeGreaterThan(0);
+  });
+});

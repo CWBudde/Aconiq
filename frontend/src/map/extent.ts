@@ -69,6 +69,30 @@ export function computeWorkspaceBounds(
 }
 
 /**
+ * The extent of one geometry's coordinates, or `null` when it holds none.
+ *
+ * The single-feature counterpart to {@link computeWorkspaceBounds}, for the
+ * camera that takes a reader to one finding. It is a separate function rather
+ * than `computeWorkspaceBounds([feature], [], null)` because the workspace
+ * traversal takes the three collections a workspace is made of, and a caller
+ * holding one geometry should not have to name the other two as empty.
+ *
+ * A Point answers with a zero-span box — `west === east` — which is correct and
+ * is the caller's problem: `fitBounds` needs a `maxZoom` to make sense of it.
+ */
+export function computeGeometryBounds(coordinates: unknown): Bounds | null {
+  const bounds: Bounds = {
+    west: Number.POSITIVE_INFINITY,
+    south: Number.POSITIVE_INFINITY,
+    east: Number.NEGATIVE_INFINITY,
+    north: Number.NEGATIVE_INFINITY,
+  };
+  visitBounds(coordinates, bounds);
+  if (!Number.isFinite(bounds.west)) return null;
+  return bounds;
+}
+
+/**
  * The same extent as a MapLibre `LngLatBoundsLike`, or `null` when it is not
  * one.
  *

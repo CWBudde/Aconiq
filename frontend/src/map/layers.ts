@@ -1,4 +1,5 @@
 import type {
+  ExpressionSpecification,
   DataDrivenPropertyValueSpecification,
   LayerSpecification,
 } from "maplibre-gl";
@@ -14,7 +15,13 @@ import { m } from "@/i18n/messages";
  *
  * Layer ordering (bottom to top):
  *   basemap → result raster → result contours → calc area → buildings →
- *   barriers → sources → receivers → result receivers
+ *   barriers → review flags → sources → receivers → result receivers →
+ *   focus flash
+ *
+ * The review flags sit directly under the sources they belong to, so a flagged
+ * road reads as a red line on a violet casing rather than as a violet line. The
+ * focus flash is on top of everything and is added lazily by `feature-focus.tsx`
+ * rather than in that one pass — see {@link FLASH_LAYERS}.
  *
  * Everything but the result raster gets that order from the order it is added
  * in — `ModelLayers` adds its own in one pass and `pages/map.tsx` renders
@@ -36,6 +43,8 @@ export const SOURCE_IDS = {
   resultReceivers: "result-receivers",
   resultRaster: "result-raster",
   resultContours: "result-contours",
+  /** Holds the one feature a focus request is announcing, or nothing. */
+  flash: "map-flash",
 } as const;
 
 // --- Layer IDs ---
@@ -49,7 +58,11 @@ export const LAYER_IDS = {
   sourcesPoint: "sources-point",
   sourcesLine: "sources-line",
   sourcesArea: "sources-area-fill",
+  sourcesReviewLine: "sources-review-line",
+  sourcesReviewPoint: "sources-review-point",
   receiversPoint: "receivers-point",
+  flashLine: "map-flash-line",
+  flashPoint: "map-flash-point",
   calcAreaFill: "calc-area-fill",
   calcAreaOutline: "calc-area-outline",
   resultReceiverLevel: "result-receiver-level",
@@ -79,6 +92,67 @@ export const SELECTED_STATE_KEY = "selected";
  * selection survives a monochrome display and a colour-vision deficiency.
  */
 export const SELECTION_COLOR = "#f59e0b";
+
+// --- Focus flash ---
+
+/** How long the halo sits at full strength once the camera has arrived. */
+export const FLASH_HOLD_MS = 900;
+/** How long it takes to fade out afterwards. */
+export const FLASH_FADE_MS = 600;
+/**
+ * The hold a reader who asked for reduced motion gets instead. Longer, because
+ * a ring that appears and disappears with no fade needs the extra dwell to be
+ * noticed at all.
+ */
+export const FLASH_HOLD_REDUCED_MS = 1500;
+export const FLASH_OPACITY = 0.75;
+
+/**
+ * The halo that announces where the camera just took the reader.
+ *
+ * Drawn in {@link SELECTION_COLOR} rather than a colour of its own: it is the
+ * selection announcing itself, not a third meaning, and it is told apart from
+ * the thin selected stroke by being wide and blurred rather than by hue. A
+ * second colour would compete with the one it is pointing at.
+ *
+ * Two layers, not three — a `line` layer draws polygon rings, so buildings,
+ * ground zones and area sources need no fill. Both start invisible; the opacity
+ * and its transition are written per phase by `feature-focus.tsx`, which is
+ * also what adds these layers, lazily and last, so the halo is on top of
+ * everything and a basemap rebuild simply re-adds it on the next request.
+ */
+export const FLASH_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.flashLine,
+    type: "line",
+    source: SOURCE_IDS.flash,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: {
+      "line-color": SELECTION_COLOR,
+      "line-width": 14,
+      "line-blur": 4,
+      "line-opacity": 0,
+    },
+  },
+  {
+    id: LAYER_IDS.flashPoint,
+    type: "circle",
+    source: SOURCE_IDS.flash,
+    filter: ["==", ["geometry-type"], "Point"],
+    paint: {
+      "circle-radius": 22,
+      "circle-blur": 0.4,
+      "circle-color": SELECTION_COLOR,
+      "circle-opacity": 0,
+    },
+  },
+];
+
+/** The opacity property each flash layer fades, paired with its layer id. */
+export const FLASH_OPACITY_PROPERTIES = [
+  [LAYER_IDS.flashLine, "line-opacity"],
+  [LAYER_IDS.flashPoint, "circle-opacity"],
+] as const;
 
 // --- Model layer styles ---
 
@@ -212,6 +286,71 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
         SELECTION_COLOR,
         "#ffffff",
       ],
+    },
+  },
+];
+
+/**
+ * The colour a source still awaiting acoustic review is cased in.
+ *
+ * Violet is the one hue nothing else on this map claims: sources are red,
+ * receivers and the calc area blue, barriers brown, buildings grey, ground
+ * zones green, and the level ramp runs green→red. It must especially not be
+ * {@link SELECTION_COLOR} — a whole imported district is flagged at once, and
+ * in amber all 608 of them would read as selected.
+ *
+ * Colour is not the only signal here either: the dash pattern and the ring are
+ * what carry the meaning on a monochrome display.
+ */
+export const REVIEW_COLOR = "#a855f7";
+
+/**
+ * The flag an import leaves on a source whose acoustics it had to guess.
+ *
+ * This is the same question `getRLS19ReviewRequired` asks of the model, and it
+ * gives the same answer by construction: `getFeatureBoolean` accepts a real
+ * boolean and nothing else, and MapLibre's `==` against a boolean literal is
+ * just as strict — so a source carrying the *string* `"true"` raises no finding
+ * and gets no flag, rather than the map and the validator disagreeing.
+ *
+ * It reads a model property rather than the validation report on purpose. The
+ * report is a derived opinion computed over the store, while these layers draw
+ * the projected display model; feeding one into the other would make the map a
+ * source for the model instead of a projection of it.
+ */
+const REVIEW_REQUIRED_FILTER: ExpressionSpecification = [
+  "==",
+  ["get", "source_acoustics_review_required"],
+  true,
+];
+
+export const REVIEW_LAYERS: LayerSpecification[] = [
+  {
+    id: LAYER_IDS.sourcesReviewLine,
+    type: "line",
+    source: SOURCE_IDS.sources,
+    // A line layer draws a polygon's rings too, so one layer covers line
+    // sources and area sources alike; only points need a shape of their own.
+    filter: ["all", REVIEW_REQUIRED_FILTER, ["!=", ["geometry-type"], "Point"]],
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: {
+      "line-color": REVIEW_COLOR,
+      "line-width": 9,
+      "line-opacity": 0.45,
+      "line-dasharray": [2, 1.5],
+    },
+  },
+  {
+    id: LAYER_IDS.sourcesReviewPoint,
+    type: "circle",
+    source: SOURCE_IDS.sources,
+    filter: ["all", REVIEW_REQUIRED_FILTER, ["==", ["geometry-type"], "Point"]],
+    paint: {
+      "circle-radius": 11,
+      "circle-opacity": 0,
+      "circle-stroke-width": 2.5,
+      "circle-stroke-color": REVIEW_COLOR,
+      "circle-stroke-opacity": 0.6,
     },
   },
 ];
@@ -385,6 +524,12 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
       LAYER_IDS.sourcesLine,
       LAYER_IDS.sourcesPoint,
     ],
+    defaultVisible: true,
+  },
+  {
+    id: "review-required",
+    label: m.label_review_required,
+    layerIds: [LAYER_IDS.sourcesReviewLine, LAYER_IDS.sourcesReviewPoint],
     defaultVisible: true,
   },
   {

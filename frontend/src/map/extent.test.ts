@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeGeometryBounds,
   computeWorkspaceBounds,
   fitViewToWorkspace,
   toLngLatBounds,
@@ -153,5 +154,56 @@ describe("toLngLatBounds", () => {
         north: 1,
       }),
     ).toBeNull();
+  });
+});
+
+describe("computeGeometryBounds", () => {
+  it("walks a line's own coordinates", () => {
+    expect(
+      computeGeometryBounds([
+        [9.7, 52.35],
+        [9.75, 52.38],
+        [9.72, 52.31],
+      ]),
+    ).toEqual({ west: 9.7, south: 52.31, east: 9.75, north: 52.38 });
+  });
+
+  it("gives a point a box of no area at all", () => {
+    // Correct, and the caller's problem: `fitBounds` needs a `maxZoom` to make
+    // sense of a zero span, which is why `feature-focus.tsx` pads it as well.
+    expect(computeGeometryBounds([9.7, 52.35])).toEqual({
+      west: 9.7,
+      south: 52.35,
+      east: 9.7,
+      north: 52.35,
+    });
+  });
+
+  it("reaches every ring of a multipolygon", () => {
+    expect(
+      computeGeometryBounds([
+        [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 0],
+          ],
+        ],
+        [
+          [
+            [5, 5],
+            [6, 5],
+            [6, 6],
+            [5, 5],
+          ],
+        ],
+      ]),
+    ).toEqual({ west: 0, south: 0, east: 6, north: 6 });
+  });
+
+  it("answers null when there is no coordinate in there", () => {
+    expect(computeGeometryBounds([])).toBeNull();
+    expect(computeGeometryBounds(undefined)).toBeNull();
   });
 });

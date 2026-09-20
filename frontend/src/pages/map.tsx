@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { List, ShieldAlert, X } from "lucide-react";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -16,6 +23,9 @@ import { FeatureEditor } from "@/map/feature-editor";
 import { FeatureList } from "@/map/feature-list";
 import { NewFeatureDialog } from "@/map/new-feature-dialog";
 import { ValidationPanel } from "@/map/validation-panel";
+import { FeatureFocus } from "@/map/feature-focus";
+import type { FocusRequest } from "@/map/feature-focus";
+import { FindingStepper } from "@/map/finding-stepper";
 import { UndoRedoBar } from "@/map/undo-redo-bar";
 import { ModelLayers } from "@/map/model-layers";
 import { ResultLayers } from "@/map/result-layers";
@@ -36,6 +46,13 @@ import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
 import { useModelValidation } from "@/model/use-model-validation";
+import {
+  cursorFor,
+  cursorPosition,
+  findingQueue,
+  stepFinding,
+} from "@/model/finding-queue";
+import type { FindingCursor } from "@/model/finding-queue";
 import { m } from "@/i18n/messages";
 
 /**
@@ -175,6 +192,15 @@ function MapWorkspace() {
   // sentinel geometry: the dialog tells the two apart by `geometry === null`,
   // and a placeholder shape would be a coordinate this page invented.
   const [coordinateEntry, setCoordinateEntry] = useState(false);
+  // A focus request is not a selection: every focus selects, but a click on
+  // the canvas selects without moving the camera under the reader's pointer.
+  // `FeatureFocus` serves it; the epoch is what makes asking twice for the same
+  // feature move the camera twice.
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
+  // Where the reader stands in the queue of findings, or null when they are not
+  // walking it. It carries the index as well as the id because fixing the
+  // finding you are standing on takes it out of the queue — see `stepFinding`.
+  const [queueCursor, setQueueCursor] = useState<FindingCursor | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showFeatureList, setShowFeatureList] = useState(false);
   // Local, deliberately: the overlay disappears on its own as soon as the
@@ -200,6 +226,16 @@ function MapWorkspace() {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
   const crs = useModelStore((s) => s.crs);
+
+  // The features a reader has to visit, in report order. `useModelValidation`
+  // memoises process-wide, so `report` is the same object every consumer on
+  // this page holds and this `useMemo` is stable between renders rather than
+  // rebuilding a 608-entry array on each one.
+  const { report: validationReport } = useModelValidation();
+  const findings = useMemo(
+    () => findingQueue(validationReport),
+    [validationReport],
+  );
 
   // The initial viewport is computed once, on mount. `useMemo` recomputed it on
   // every model edit, and MapView treats a new `center`/`zoom` as a reason to
@@ -365,11 +401,69 @@ function MapWorkspace() {
     [navigate, resultRun],
   );
 
-  const handleSelectFromValidation = useCallback((featureId: string) => {
+  /**
+   * Take the reader to a feature: select it, and move the camera to it.
+   *
+   * The one funnel for every way into a feature the reader cannot see — the
+   * validation panel, the feature list, the `?select=` deep link and the
+   * finding stepper. A click on the canvas deliberately does not come through
+   * here: the reader is already looking at what they clicked, and `handleFeatureClick`
+   * arms terra-draw on the same feature, so a camera flight would slide the
+   * vertex handles out from under the drag that follows.
+   *
+   * Stable, like the handler it replaces: `ArrivalParams` has it in an effect's
+   * dependency list.
+   */
+  const focusFeature = useCallback((featureId: string) => {
     setEditingFeatureId(featureId);
     setSelectionEpoch((epoch) => epoch + 1);
+    setFocusRequest((previous) => ({
+      featureId,
+      epoch: (previous?.epoch ?? 0) + 1,
+    }));
     setShowValidation(false);
   }, []);
+
+  /** "Go to" from the validation panel: focus it, and start walking from there. */
+  const handleSelectFromValidation = useCallback(
+    (featureId: string) => {
+      focusFeature(featureId);
+      setQueueCursor(cursorFor(findings, featureId));
+    },
+    [focusFeature, findings],
+  );
+
+  const handleStep = useCallback(
+    (direction: 1 | -1) => {
+      const next = stepFinding(findings, queueCursor, direction);
+      setQueueCursor(next);
+      if (next) focusFeature(next.featureId);
+    },
+    [findings, queueCursor, focusFeature],
+  );
+
+  // Alt+arrows rather than bare keys: the docked editor is full of number
+  // fields, and the hook only bows out of text entry, not of the whole panel.
+  // `enabled` detaches the listener entirely while nobody is stepping.
+  useGlobalShortcut(
+    { key: "ArrowDown", alt: true, enabled: queueCursor !== null },
+    () => {
+      handleStep(1);
+    },
+  );
+  useGlobalShortcut(
+    { key: "ArrowUp", alt: true, enabled: queueCursor !== null },
+    () => {
+      handleStep(-1);
+    },
+  );
+
+  // Where the stepper says the reader is. Derived rather than read off the
+  // cursor, because editing moves the queue under it: the stored index is what
+  // "next" steps from, while this is what the reader is shown, and rendering
+  // the two as one number is how fixing the last of 608 findings read
+  // "608 / 607". `null` also unmounts the stepper once the queue empties.
+  const queuePosition = cursorPosition(findings, queueCursor);
 
   // Stable, because `ArrivalParams` has it in an effect's dependency list and
   // an inline arrow there would re-run the effect on every render.
@@ -390,6 +484,10 @@ function MapWorkspace() {
       >
         <DrawProvider onFinish={handleDrawFinish}>
           <ModelLayers display={display} selectedFeatureId={editingFeatureId} />
+          {/* After the model layers, so a `?select=` deep link arriving on the
+              first paint of a project wins over their one-shot fit to the whole
+              workspace — React runs child effects in tree order. */}
+          <FeatureFocus display={display} request={focusRequest} />
           {/* After the model layers, so the computed levels read on top of
               the sources that produced them rather than under a building fill.
               The result *raster* goes the other way and is inserted below them
@@ -453,9 +551,13 @@ function MapWorkspace() {
             }}
           />
           {showFeatureList ? (
+            // Through the funnel, not `setEditingFeatureId`: picking row 400 of
+            // 608 from a list is the "I cannot see it" case, and the raw setter
+            // also skipped the epoch bump, so re-picking the open feature never
+            // re-armed the geometry editor.
             <FeatureList
               selectedId={editingFeatureId}
-              onSelect={setEditingFeatureId}
+              onSelect={focusFeature}
             />
           ) : null}
           <ValidationToggle
@@ -475,6 +577,16 @@ function MapWorkspace() {
             >
               <ValidationPanel onSelectFeature={handleSelectFromValidation} />
             </MapPanel>
+          ) : null}
+          {queuePosition !== null ? (
+            <FindingStepper
+              position={queuePosition}
+              total={findings.length}
+              onStep={handleStep}
+              onClose={() => {
+                setQueueCursor(null);
+              }}
+            />
           ) : null}
           <ArrivalParams
             drawDisabled={drawingDisabled}

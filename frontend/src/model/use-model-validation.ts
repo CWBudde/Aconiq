@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useModelStore } from "./model-store";
 import { validateProjectModel } from "./validate";
-import type { ValidationReport } from "./types";
+import type { ModelFeature, ModelReceiver, ValidationReport } from "./types";
 
 export type ModelValidationState = "empty" | "valid" | "issues";
 
@@ -36,19 +36,67 @@ export function useModelValidation(): ModelValidationSummary {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
 
-  return useMemo(() => {
-    if (features.length === 0 && receivers.length === 0) {
-      return { state: "empty", errorCount: 0, warningCount: 0, report: null };
-    }
-    const report = validateProjectModel(features, receivers);
-    return {
-      state:
-        report.errors.length + report.warnings.length === 0
-          ? "valid"
-          : "issues",
-      errorCount: report.errors.length,
-      warningCount: report.warnings.length,
-      report,
-    };
-  }, [features, receivers]);
+  return useMemo(
+    () => validationFor(features, receivers),
+    [features, receivers],
+  );
+}
+
+/**
+ * The process-wide memo behind the hook.
+ *
+ * `useMemo` is per component instance, and this hook now has four callers in
+ * one commit — the panel, the toggle badge that is always mounted, the docked
+ * editor's per-feature list, and the workspace's finding queue. On the project
+ * this was built for that is four full validations of 608 features on every
+ * property edit, every undo and every geometry commit.
+ *
+ * Reference equality is the right key and not an approximation: every setter in
+ * `model-store.ts` replaces the array rather than mutating it — `[...s.features,
+ * f]`, `.filter`, `.map`, and both undo paths splice a `[...copy]` — so two
+ * callers see the same array object exactly when they are looking at the same
+ * model.
+ *
+ * A single entry, so at most one superseded model is pinned. The returned
+ * report is now shared by reference, which callers depend on (a `useMemo` over
+ * `report` is stable across renders) and which they must therefore not mutate.
+ */
+let cached: {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+  value: ModelValidationSummary;
+} | null = null;
+
+function validationFor(
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): ModelValidationSummary {
+  if (
+    cached &&
+    cached.features === features &&
+    cached.receivers === receivers
+  ) {
+    return cached.value;
+  }
+
+  const value = computeValidation(features, receivers);
+  cached = { features, receivers, value };
+  return value;
+}
+
+function computeValidation(
+  features: ModelFeature[],
+  receivers: ModelReceiver[],
+): ModelValidationSummary {
+  if (features.length === 0 && receivers.length === 0) {
+    return { state: "empty", errorCount: 0, warningCount: 0, report: null };
+  }
+  const report = validateProjectModel(features, receivers);
+  return {
+    state:
+      report.errors.length + report.warnings.length === 0 ? "valid" : "issues",
+    errorCount: report.errors.length,
+    warningCount: report.warnings.length,
+    report,
+  };
 }

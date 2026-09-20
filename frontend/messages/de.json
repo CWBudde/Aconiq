@@ -674,5 +674,22 @@
     }
   ],
   "label_feature_list": "Objekte",
-  "msg_feature_list_empty": "Das Modell ist noch leer. Zeichnen Sie auf der Karte oder geben Sie Koordinaten ein."
+  "msg_feature_list_empty": "Das Modell ist noch leer. Zeichnen Sie auf der Karte oder geben Sie Koordinaten ein.",
+  "action_next_finding": "Nächster Befund",
+  "action_previous_finding": "Vorheriger Befund",
+  "action_step_findings": "Befunde durchgehen",
+  "action_stop_stepping": "Durchgehen beenden",
+  "label_findings": "Befunde",
+  "label_finding_position": "{position} / {total}",
+  "label_review_required": "Prüfung erforderlich",
+  "msg_validation_more_findings": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} weiterer",
+        "countPlural=other": "{count} weitere"
+      }
+    }
+  ]
 }
