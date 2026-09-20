@@ -2148,14 +2148,8 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       plan-shadow and across a Bild-14 active/inactive boundary is cheap against
       `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
       becoming the default. Until it exists the mode stays opt-in.
-      What it bought, measured on a 44 km Hannover OSM extract with 875 buildings and a 130-cell
-      grid: 5 788 770 Teilstück·receiver pairs down to 147 169, a factor of 39. The wall-clock
-      factor is smaller and the gap is itself a finding — a coarse Teilstück's path is long and
-      crosses more of the city, so per-pair cost rises about 5x and the net is ~7x of CPU. That
-      residue is where the next real win is, and it is in the reflection search, not here.
-      Deviation on the convergence fixture: worst +0.066 dB at 150 m, every sample positive.
-- [ ] **The per-pair cost of a _distant_ Teilstück is the next target.** The measurement above
-      isolates it: cutting Teilstück count by 39x cut CPU by only ~7x, so a Teilstück 500 m out
+- [ ] **The per-pair cost of a _distant_ Teilstück is the next target.** Cutting Teilstück·receiver
+      pairs by 39x on a 44 km OSM extract cut CPU by only about 7x, so a Teilstück 500 m out
       costs roughly five times one at 50 m. The suspect is the reflection and diffraction search
       along a long path — `appendReflectedContribs` was already 91 % of the building-dense
       profile — where the candidate set grows with path length while almost none of those
