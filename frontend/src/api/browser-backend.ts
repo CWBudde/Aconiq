@@ -842,18 +842,37 @@ function parseNumber(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/** The modes `PropagationConfig.Validate` in `road/propagation.go` accepts. */
+const segmentLengthModes: readonly SegmentLengthMode[] = [
+  "fixed",
+  "distance_scaled",
+];
+
 /**
- * Reads segment_length_mode, falling back to fixed for anything it does not
- * recognise rather than passing it on. An unknown value is a refusal in the
- * kernel, and a run that has already been dispatched is the wrong place to
- * discover a typo the run dialog should have caught.
+ * Reads segment_length_mode, and refuses anything it does not recognise.
+ *
+ * Unset is `fixed`, which is the zero value the Go config carries. Anything
+ * else is a refusal, because the CLI refuses it: `PropagationConfig.Validate`
+ * names the two modes and rejects a third. Quietly reading `adaptive` as
+ * `fixed` would compute one thing while the run's own parameter record says
+ * another — the parameters are stamped into provenance, so the record would
+ * be wrong rather than merely unhelpful — and it would make browser mode and
+ * API mode answer the same request differently.
  */
 function parseSegmentLengthMode(
   params: Record<string, string>,
 ): SegmentLengthMode {
-  return params["segment_length_mode"] === "distance_scaled"
-    ? "distance_scaled"
-    : "fixed";
+  const raw = params["segment_length_mode"];
+  if (raw === undefined || raw === "") return "fixed";
+
+  const mode = segmentLengthModes.find((candidate) => candidate === raw);
+  if (mode === undefined) {
+    throw new Error(
+      `segment_length_mode must be one of ${segmentLengthModes.join(", ")}, got "${raw}"`,
+    );
+  }
+
+  return mode;
 }
 
 function findArtifact(
@@ -1632,6 +1651,10 @@ async function computeRLS19Road(
     };
   }
 
+  // Read before the lock is taken, because this one refuses: an unknown mode
+  // should fail the request without having minted a run id first.
+  const segmentLengthMode = parseSegmentLengthMode(spec.params);
+
   // The lock spans the compute, not just the persist: the id is minted
   // from the store before the kernel runs, and a second tab that allocated
   // in the meantime would mint the same id and have its run replaced by
@@ -1658,7 +1681,7 @@ async function computeRLS19Road(
       },
       config: {
         SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
-        SegmentLengthMode: parseSegmentLengthMode(spec.params),
+        SegmentLengthMode: segmentLengthMode,
         MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
         ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
         Buildings: buildings,

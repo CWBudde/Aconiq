@@ -23,8 +23,25 @@
 // must never reach a request, a result or a UI number. The kernel remains the
 // only thing that decides where a Teilstück falls; this only says how many
 // there will be, which is the single number that explains the run's cost.
+//
+// # Under `distance_scaled` that number is an upper bound, and says so
+//
+// `segment_length_mode=distance_scaled` lets the kernel pick a coarser rung of
+// the segment ladder per (source, receiver) pair, per the Anmerkung to RLS-19
+// Nr. 3.2. Which rung it picks depends on the distance from that receiver to
+// that source, and reproducing the ladder here would be duplicating a rule
+// that decides a *level*, which is exactly what the paragraph above forbids.
+// So the count stays the finest split — the fixed-mode number — and every line
+// that prints it labels it as the ceiling it is. On the 44 km extract that
+// motivated the mode, the ceiling is 5.8e6 pairs against about 1.5e5 actually
+// walked.
 
-import type { ComputeRequest, Point2D, RoadSource } from "./types";
+import type {
+  ComputeRequest,
+  Point2D,
+  RoadSource,
+  SegmentLengthMode,
+} from "./types";
 
 /** How often a run in flight repeats itself to the console, at most. */
 const HeartbeatMS = 5000;
@@ -62,7 +79,12 @@ function sourceSegments(source: RoadSource, targetLengthM: number): number {
   return Math.max(Math.ceil(length / targetLengthM), 1);
 }
 
-/** How many Teilstücke the whole request will be split into. */
+/**
+ * How many Teilstücke the whole request will be split into at its finest.
+ *
+ * Under `distance_scaled` this is an upper bound rather than a count: see the
+ * note at the top of the file.
+ */
 export function teilstueckCount(req: ComputeRequest): number {
   const target = req.config?.SegmentLengthM ?? 1;
 
@@ -76,9 +98,13 @@ export function teilstueckCount(req: ComputeRequest): number {
 export interface RunShape {
   receivers: number;
   sources: number;
-  /** Teilstücke over every source, at this request's segment length. */
+  /**
+   * Teilstücke over every source, at this request's segment length. An upper
+   * bound rather than a count when `segmentLengthMode` is `distance_scaled`.
+   */
   segments: number;
   segmentLengthM: number;
+  segmentLengthMode: SegmentLengthMode;
   buildings: number;
   barriers: number;
   workers: number;
@@ -90,6 +116,7 @@ export function describeRun(req: ComputeRequest, workers: number): RunShape {
     sources: req.sources.length,
     segments: teilstueckCount(req),
     segmentLengthM: req.config?.SegmentLengthM ?? 1,
+    segmentLengthMode: req.config?.SegmentLengthMode ?? "fixed",
     buildings: req.config?.Buildings?.length ?? 0,
     barriers: req.barriers.length,
     workers,
@@ -157,12 +184,17 @@ export class RunDiagnostics {
   private describe(): string {
     const s = this.shape;
     const pairs = s.receivers * s.segments;
+    const scaled = s.segmentLengthMode === "distance_scaled";
 
     return (
       `${String(s.receivers)} receivers x ${String(s.segments)} Teilstücke ` +
-      `(${String(s.sources)} sources at ${String(s.segmentLengthM)} m) ` +
-      `= ${pairs.toExponential(2)} source-receiver pairs; ` +
-      `${String(s.buildings)} buildings, ${String(s.barriers)} barriers; ` +
+      `(${String(s.sources)} sources at ${String(s.segmentLengthM)} m, ` +
+      `segment_length_mode=${s.segmentLengthMode}) ` +
+      `= ${scaled ? "at most " : ""}${pairs.toExponential(2)} source-receiver pairs` +
+      (scaled
+        ? " (distance_scaled coarsens a distant source per receiver, so the walk is shorter than this)"
+        : "") +
+      `; ${String(s.buildings)} buildings, ${String(s.barriers)} barriers; ` +
       `${String(s.workers)} worker${s.workers === 1 ? "" : "s"}`
     );
   }
@@ -227,25 +259,33 @@ export class RunDiagnostics {
    * So a building-dense model is told about its buildings first: halving the
    * grid resolution there buys a factor of four against a term that is
    * already thousands, and the honest lever is a smaller calculation area.
+   *
+   * `segment_length_m` is only a lever in `fixed` mode. Under
+   * `distance_scaled` the bound `l_i <= s_i / 2` already decides the split of
+   * everything far enough away to matter, and raising the parameter was
+   * measured to move the pair count by a few per cent — so it is not offered
+   * there, because following it would cost accuracy and buy nothing.
    */
   private advice(): string {
     const s = this.shape;
+    const lever =
+      s.segmentLengthMode === "distance_scaled"
+        ? `the grid resolution (segment_length_m is ${String(s.segmentLengthM)} m, but ` +
+          `distance_scaled already bounds a distant split by its own distance, so ` +
+          `raising it changes little)`
+        : `segment_length_m (currently ${String(s.segmentLengthM)} m) and the grid ` +
+          `resolution`;
 
     if (s.buildings > 0) {
       return (
         `${String(s.buildings)} buildings are in the scene, and reflections off them ` +
         `dominate the cost — each one is a barrier and a reflector at once. ` +
-        `A smaller calculation area is the effective lever; raising ` +
-        `segment_length_m (currently ${String(s.segmentLengthM)} m) and the grid ` +
-        `resolution each help roughly proportionally.`
+        `A smaller calculation area is the effective lever; raising ${lever} ` +
+        `helps roughly proportionally.`
       );
     }
 
-    return (
-      `Cost is receivers x Teilstücke: raising segment_length_m (currently ` +
-      `${String(s.segmentLengthM)} m) or the grid resolution cuts it roughly ` +
-      `proportionally.`
-    );
+    return `Cost is receivers x Teilstücke: raising ${lever} cuts it roughly proportionally.`;
   }
 
   finished(): void {

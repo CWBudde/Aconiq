@@ -202,10 +202,19 @@ describe("describeRun", () => {
       sources: 1,
       segments: 2000,
       segmentLengthM: 1,
+      segmentLengthMode: "fixed",
       buildings: 1,
       barriers: 0,
       workers: 4,
     });
+  });
+
+  // An unset mode is fixed, which is the zero value the Go config carries.
+  it("reads the mode off the request", () => {
+    const req = request([], 1, 1);
+    req.config = { ...config(1), SegmentLengthMode: "distance_scaled" };
+
+    expect(describeRun(req, 1).segmentLengthMode).toBe("distance_scaled");
   });
 });
 
@@ -215,10 +224,13 @@ describe("RunDiagnostics", () => {
     sources: 2,
     segments: 2000,
     segmentLengthM: 1,
+    segmentLengthMode: "fixed",
     buildings: 100,
     barriers: 0,
     workers: 4,
   };
+
+  const scaled: RunShape = { ...shape, segmentLengthMode: "distance_scaled" };
 
   function at(times: number[]): () => number {
     let i = 0;
@@ -298,6 +310,43 @@ describe("RunDiagnostics", () => {
 
     expect(warning).toContain("receivers x Teilstücke");
     expect(warning).not.toContain("reflections");
+  });
+
+  // The pair count is the finest split. Under distance_scaled the kernel
+  // walks a coarser rung per receiver, so printing the number unqualified
+  // overstated the work by up to 39x on the extract that motivated the mode.
+  it("calls the pair count a ceiling under distance_scaled", () => {
+    const sink = recordingSink();
+    new RunDiagnostics(scaled, at([0]), sink);
+
+    expect(sink.lines[0]).toContain("segment_length_mode=distance_scaled");
+    expect(sink.lines[0]).toContain("at most");
+  });
+
+  it("states the pair count plainly under fixed", () => {
+    const sink = recordingSink();
+    new RunDiagnostics(shape, at([0]), sink);
+
+    expect(sink.lines[0]).toContain("segment_length_mode=fixed");
+    expect(sink.lines[0]).not.toContain("at most");
+  });
+
+  // Measured: under distance_scaled the bound l_i <= s_i / 2 already decides
+  // the split of everything far enough away to matter, and raising
+  // segment_length_m from 1 m to 25 m moved the pair count by under 20%. So
+  // the advice that helps in fixed mode is advice to spend accuracy for
+  // nothing here, and must not be given.
+  it("does not offer segment_length_m as a lever under distance_scaled", () => {
+    const sink = recordingSink();
+    const d = new RunDiagnostics(scaled, at([0, 600_000]), sink);
+
+    d.progress(1, 1000);
+
+    const warning = sink.lines.find((line) => line.includes("projected"));
+
+    expect(warning).toContain("grid resolution");
+    expect(warning).toContain("distance_scaled already bounds");
+    expect(warning).not.toContain("raising segment_length_m");
   });
 
   it("stays quiet between heartbeats", () => {
