@@ -23,8 +23,14 @@ import { m } from "@/i18n/messages";
  * went unnoticed. This one keeps both: it renders the children and provides
  * the context, so everything laid over the map is exercised.
  */
-/** A stand-in for the MapLibre map; everything that touches it is stubbed. */
-const stubMap = vi.hoisted(() => ({}) as Map);
+/**
+ * A stand-in for the MapLibre map; everything that touches it is stubbed. The
+ * two emitter methods are the one exception: `useDraw` subscribes to the map's
+ * `remove` event to know when there is nothing left to tear down.
+ */
+const stubMap = vi.hoisted(
+  () => ({ on: vi.fn(), off: vi.fn() }) as unknown as Map,
+);
 
 vi.mock("@/map/map-view", () => ({
   MapView: ({
