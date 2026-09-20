@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { BasemapId } from "./basemap";
 import {
   BASEMAP_IDS,
   BASEMAP_SOURCE_ID,
@@ -22,6 +23,13 @@ import { DEFAULT_TILE_URL, setTileURLOverride } from "./tile-source";
 afterEach(() => {
   localStorage.clear();
 });
+
+/** The raster layer's paint, which is the only thing that differs on screen. */
+function rasterPaint(id: BasemapId): Record<string, unknown> {
+  const layer = basemapStyle(id).layers.find((l) => l.id === "osm-raster");
+  expect(layer, `${id} has no raster layer`).toBeDefined();
+  return (layer?.paint ?? {}) as Record<string, unknown>;
+}
 
 describe("basemapStyle", () => {
   it("builds every basemap on the default tile server", () => {
@@ -54,6 +62,52 @@ describe("basemapStyle", () => {
     expect(basemapStyle("light").name).toBe("osm-light");
     expect(basemapStyle("dark").name).toBe("osm-dark");
     expect(basemapStyle("light")).not.toEqual(basemapStyle("dark"));
+  });
+
+  /**
+   * Every basemap draws the same tiles, so the raster paint is the whole of
+   * what tells them apart on screen. This pair of assertions is the only thing
+   * that holds them visibly distinct: `light` once carried no paint at all and
+   * `bright` a 0.1 saturation nudge over it, which passed the test above — the
+   * two styles differ as objects — while looking like one basemap offered
+   * twice. Comparing against `dark` alone never caught it.
+   */
+  it("paints every basemap, and no two of them alike", () => {
+    for (const id of BASEMAP_IDS) {
+      const paint = rasterPaint(id);
+      expect(
+        Object.keys(paint).length,
+        `${id} carries no raster paint`,
+      ).toBeGreaterThan(0);
+    }
+
+    for (const id of BASEMAP_IDS) {
+      for (const other of BASEMAP_IDS) {
+        if (id === other) continue;
+        expect(rasterPaint(id), `${id} and ${other} paint alike`).not.toEqual(
+          rasterPaint(other),
+        );
+      }
+    }
+  });
+
+  /**
+   * The direction each name promises, not only that the numbers differ.
+   *
+   * `light` is the backdrop the result contours are read over, so it has to
+   * sit back from the raw tiles; `bright` is for reading the map itself, so it
+   * has to sit forward of them. Swapping the two would keep the test above
+   * green and put the loud basemap under every overlay.
+   */
+  it("pushes light back from the raw tiles and bright forward", () => {
+    const light = rasterPaint("light");
+    const bright = rasterPaint("bright");
+
+    expect(light["raster-saturation"]).toBeLessThan(0);
+    expect(light["raster-brightness-min"]).toBeGreaterThan(0);
+
+    expect(bright["raster-saturation"]).toBeGreaterThan(0);
+    expect(bright["raster-contrast"]).toBeGreaterThan(0);
   });
 });
 

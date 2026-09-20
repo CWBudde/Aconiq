@@ -70,20 +70,48 @@ interface BasemapRecipe {
   label: () => string;
 }
 
+/**
+ * The three recipes, and the reason each one carries the paint it does.
+ *
+ * All three draw the same raster tiles, so the paint is the entire difference
+ * between them — and it has to be big enough to see. `light` used to carry no
+ * paint at all and `bright` a 0.1 saturation nudge over it, which made the two
+ * the same picture: the tile server's own output, twice. A basemap the picker
+ * offers by name has to look like its name.
+ *
+ * `light` is the one the map defaults to, and its job is to stay out of the
+ * way of what is drawn on top — the result contours and the model geometry
+ * carry the colour there. Lifting the black point is what does most of the
+ * work: desaturating alone would not, because full-strength grey road casings
+ * compete with a contour line just as well as coloured ones do. The
+ * desaturation stays mild on purpose, so that `light` reads as a pale map and
+ * not as a second `dark`; the three have to differ from each other, not only
+ * from the raw tiles.
+ *
+ * `bright` is the opposite choice, for reading the map itself — finding the
+ * street a receiver sits on, checking a building footprint against what is
+ * there. It pushes saturation and contrast past the raw tiles rather than
+ * matching them.
+ */
 const BASEMAP_RECIPES = {
-  /** Light basemap — good for noise level overlays */
+  /** Muted backdrop — the default, and the one to overlay results on. */
   light: {
     name: "osm-light",
     background: "#eef2e8",
+    paint: {
+      "raster-saturation": -0.25,
+      "raster-contrast": -0.15,
+      "raster-brightness-min": 0.38,
+    },
     label: () => m.label_basemap_light(),
   },
-  /** Standard basemap with terrain context */
+  /** Full-strength basemap, for reading the map rather than the overlay. */
   bright: {
     name: "osm-bright",
     background: "#f4f0e8",
     paint: {
-      "raster-saturation": 0.1,
-      "raster-contrast": 0.05,
+      "raster-saturation": 0.45,
+      "raster-contrast": 0.18,
     },
     label: () => m.label_basemap_bright(),
   },
@@ -130,8 +158,8 @@ export function basemapStyle(
   id: BasemapId,
   tileUrl: string = getTileURL(),
 ): StyleSpecification {
-  // Widened on purpose: the literal type of the light recipe has no `paint`
-  // key at all, so the union has to be read through the declared shape.
+  // Widened on purpose: each recipe's literal type names its own paint keys,
+  // so the union has to be read through the declared shape.
   const recipe: BasemapRecipe = BASEMAP_RECIPES[id];
   return createRasterStyle(
     recipe.name,
