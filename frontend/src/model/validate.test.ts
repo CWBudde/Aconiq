@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateProjectModel } from "./validate";
 import type { ModelFeature, ModelReceiver } from "./types";
+import { SELF_INTERSECTION_POINT_LIMIT } from "./self-intersection";
 
 const validSource: ModelFeature = {
   id: "src-1",
@@ -432,5 +433,149 @@ describe("RLS-19 Parkplatz validation", () => {
         issue.code.startsWith("source.rls19.parking."),
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * The gap that let an OSM import be shown as clean and then refused.
+ *
+ * `validate.ts` had no geometry checks at all, so every
+ * `geometry.*.self_intersection` the backend produces was invisible here — 45
+ * of them across the 2397 ways of a Berlin extract, every one of which the
+ * preview called clean and the save then had an opinion about.
+ *
+ * The severity split is the backend's, not a second opinion — a ring's winding
+ * is read by point-in-polygon and the screening crossing counts, a line's is
+ * read by nothing.
+ */
+describe("self-intersection", () => {
+  const bowTie: [number, number][] = [
+    [0, 0],
+    [10, 10],
+    [10, 0],
+    [0, 10],
+    [0, 0],
+  ];
+
+  it("refuses a footprint whose ring crosses itself", () => {
+    const report = validateProjectModel(
+      [
+        {
+          id: "bld-x",
+          kind: "building",
+          heightM: 10,
+          geometry: { type: "Polygon", coordinates: [bowTie] },
+        },
+      ],
+      [],
+    );
+
+    expect(report.valid).toBe(false);
+    expect(report.errors.map((issue) => issue.code)).toContain(
+      "geometry.polygon.self_intersection",
+    );
+  });
+
+  it("keeps a line that crosses itself, and says so", () => {
+    const report = validateProjectModel(
+      [
+        {
+          id: "src-x",
+          kind: "source",
+          sourceType: "line",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [10, 10],
+              [0, 10],
+              [10, 0],
+            ],
+          },
+        },
+      ],
+      [],
+    );
+
+    // A road drawn as one way that touches itself is a roundabout. Refusing it
+    // made an OSM extract unsaveable over geometry it holds correctly.
+    expect(report.valid).toBe(true);
+    expect(report.warnings.map((issue) => issue.code)).toContain(
+      "geometry.linestring.self_intersection",
+    );
+  });
+
+  it("answers the same for one footprint in degrees and in metres", () => {
+    // The check used to compare a cross product — an area, so the coordinate
+    // unit squared — against a fixed tolerance, so the same building was
+    // self-intersecting in EPSG:4326 and simple in EPSG:25832.
+    const shape: [number, number][] = [
+      [0, 0],
+      [3, 0],
+      [3, 1],
+      [1, 1],
+      [1, 3],
+      [0, 3],
+      [0, 0],
+    ];
+    const rotation = (31 * Math.PI) / 180;
+
+    const ring = (
+      unit: number,
+      originX: number,
+      originY: number,
+    ): [number, number][] =>
+      shape.map(([px, py]) => [
+        originX + (px * Math.cos(rotation) - py * Math.sin(rotation)) * unit,
+        originY + (px * Math.sin(rotation) + py * Math.cos(rotation)) * unit,
+      ]);
+
+    const inDegrees = ring(1e-5, 13.38, 52.51);
+    const inMetres = ring(1e-5 * 111320, 390000, 5819000);
+
+    for (const [name, coordinates] of [
+      ["degrees", inDegrees],
+      ["metres", inMetres],
+    ] as const) {
+      const report = validateProjectModel(
+        [
+          {
+            id: `bld-${name}`,
+            kind: "building",
+            heightM: 10,
+            geometry: { type: "Polygon", coordinates: [coordinates] },
+          },
+        ],
+        [],
+      );
+
+      expect(report.errors, name).toEqual([]);
+    }
+  });
+
+  it("reports the cost bound rather than walking a huge geometry", () => {
+    // Above the limit the quadratic walk is not attempted. In a browser a
+    // frozen tab is worse than an unchecked geometry, so it is reported.
+    const coordinates: [number, number][] = [];
+    for (let i = 0; i <= SELF_INTERSECTION_POINT_LIMIT; i++) {
+      coordinates.push([i % 2, i]);
+    }
+
+    const report = validateProjectModel(
+      [
+        {
+          id: "src-long",
+          kind: "source",
+          sourceType: "line",
+          geometry: { type: "LineString", coordinates },
+        },
+      ],
+      [],
+    );
+
+    expect(report.valid).toBe(true);
+    expect(report.warnings.map((issue) => issue.code)).toContain(
+      "geometry.linestring.self_intersection.skipped",
+    );
   });
 });

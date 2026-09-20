@@ -355,17 +355,21 @@ function inferHeightMeters(
     if (Number.isFinite(levels) && levels > 0) {
       return levels * METERS_PER_LEVEL;
     }
-    if (typeof props["building"] === "string" && props["building"] !== "") {
-      return 9;
-    }
   }
 
-  if (kind === "barrier") {
-    if (typeof props["barrier"] === "string" && props["barrier"] !== "") {
-      return 2;
-    }
-  }
-
+  // No guess beyond this point, deliberately.
+  //
+  // A bare `building` tag used to be answered with 9 m and a bare `barrier`
+  // with 2 m. Both are assumptions, and a building's height is a screening
+  // input — it reaches the line-of-sight test and changes computed dB — so an
+  // assumption made here was an invented number nothing recorded and no reader
+  // could see. It also disagreed with the backend, which refuses a building
+  // with no height at all, so the preview said the model was fine and the save
+  // then failed.
+  //
+  // `osmimport` now answers for an OSM import, once, and marks the feature it
+  // assumed for (`height_source`). Anything else that omits the height gets the
+  // honest `*.height.required` rather than a guess.
   return Number.NaN;
 }
 
