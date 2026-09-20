@@ -353,6 +353,23 @@
   "settings_category_app_desc": "Theme, language, storage, and runtime preferences.",
   "settings_category_advanced": "Connection",
   "settings_category_advanced_desc": "Which backend this UI talks to, and diagnostics.",
+  "settings_category_map": "Map",
+  "settings_category_map_desc": "The basemap, its tile server, and the layer toggles.",
+  "msg_settings_basemap_help": "Which rendering of the background map the model and the results are drawn over. All three draw the same tiles; only the treatment differs.",
+  "msg_settings_map_layers_help": "Which layer groups the map draws. The switches are on the map itself; this is where a forgotten one is undone.",
+  "msg_settings_layers_hidden": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} layer group is currently hidden.",
+        "countPlural=other": "{count} layer groups are currently hidden."
+      }
+    }
+  ],
+  "msg_settings_layers_all_visible": "Every layer group is visible.",
+  "msg_settings_layers_note": "Hidden layers are remembered in this browser, so they stay hidden after a reload. Resetting returns every group to its default.",
+  "action_reset_layers": "Show all layers",
   "label_current": "Current",
   "msg_draft_present": "A saved draft is present.",
   "msg_draft_absent": "No saved draft is stored.",
@@ -652,7 +669,7 @@
   "label_basemap_tile_url": "Basemap tile URL",
   "msg_basemap_tile_url_help": "Raster tile template for the map basemap, with the usual z, x and y placeholders in curly braces. Leave it blank to use the OpenStreetMap default.",
   "msg_basemap_tile_url_current": "Current tile URL",
-  "msg_basemap_tile_url_note": "Stored locally in this browser only. A change takes effect the next time the map is built — reload the page, or switch the basemap.",
+  "msg_basemap_tile_url_note": "Stored locally in this browser only. A change takes effect the next time the map is built — open or reload the map page to pick it up.",
   "action_enter_coordinates": "Enter coordinates",
   "dialog_title_coordinate_feature": "New feature from coordinates",
   "label_coordinates": "Coordinates",

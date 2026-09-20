@@ -60,6 +60,7 @@ const KNOWN_VIOLATIONS: Record<Route, readonly string[]> = {
   "/export": NONE,
   "/export/does-not-exist": NONE,
   "/settings": NONE,
+  "/settings?category=map": NONE,
   "/map": NONE,
 };
 

@@ -353,6 +353,23 @@
   "settings_category_app_desc": "Design, Sprache, Ablage und Laufzeit.",
   "settings_category_advanced": "Verbindung",
   "settings_category_advanced_desc": "Mit welchem Backend diese Oberfläche spricht, plus Diagnose.",
+  "settings_category_map": "Karte",
+  "settings_category_map_desc": "Die Hintergrundkarte, ihr Kachelserver und die Ebenen.",
+  "msg_settings_basemap_help": "Welche Darstellung der Hintergrundkarte Modell und Ergebnisse unterlegt wird. Alle drei zeigen dieselben Kacheln; nur die Aufbereitung unterscheidet sich.",
+  "msg_settings_map_layers_help": "Welche Ebenengruppen die Karte zeichnet. Die Schalter sitzen auf der Karte selbst; hier wird ein vergessener zurückgenommen.",
+  "msg_settings_layers_hidden": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} Ebenengruppe ist derzeit ausgeblendet.",
+        "countPlural=other": "{count} Ebenengruppen sind derzeit ausgeblendet."
+      }
+    }
+  ],
+  "msg_settings_layers_all_visible": "Alle Ebenengruppen sind sichtbar.",
+  "msg_settings_layers_note": "Ausgeblendete Ebenen werden in diesem Browser gemerkt und bleiben auch nach dem Neuladen ausgeblendet. Das Zurücksetzen stellt für jede Gruppe die Vorgabe wieder her.",
+  "action_reset_layers": "Alle Ebenen einblenden",
   "label_current": "Aktuell",
   "msg_draft_present": "Ein gespeicherter Entwurf ist vorhanden.",
   "msg_draft_absent": "Es ist kein gespeicherter Entwurf vorhanden.",
@@ -652,7 +669,7 @@
   "label_basemap_tile_url": "Kachel-URL der Hintergrundkarte",
   "msg_basemap_tile_url_help": "Vorlage für die Rasterkacheln der Hintergrundkarte, mit den üblichen Platzhaltern z, x und y in geschweiften Klammern. Leer lassen, um die OpenStreetMap-Vorgabe zu verwenden.",
   "msg_basemap_tile_url_current": "Aktuelle Kachel-URL",
-  "msg_basemap_tile_url_note": "Wird nur lokal in diesem Browser gespeichert. Eine Änderung wirkt beim nächsten Aufbau der Karte — die Seite neu laden oder die Hintergrundkarte wechseln.",
+  "msg_basemap_tile_url_note": "Wird nur lokal in diesem Browser gespeichert. Eine Änderung wirkt beim nächsten Aufbau der Karte — dazu die Kartenseite öffnen oder neu laden.",
   "action_enter_coordinates": "Koordinaten eingeben",
   "dialog_title_coordinate_feature": "Neues Objekt aus Koordinaten",
   "label_coordinates": "Koordinaten",
