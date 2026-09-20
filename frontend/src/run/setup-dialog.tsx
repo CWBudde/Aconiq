@@ -51,13 +51,14 @@ import {
 import { useProjectSync } from "@/model/use-project-sync";
 import { ParameterField } from "@/run/parameter-field";
 import {
+  parameterDescription,
   parameterGroup,
   parameterGroupLabel,
   PARAMETER_GROUP_ORDER,
   type ParameterGroupKey,
 } from "@/run/parameter-meta";
 import { useRunSetupSelection } from "@/run/use-run-setup-selection";
-import { getStandardLabel } from "@/run/standards-meta";
+import { getStandardDescription, getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,52 @@ function groupParameters(
     key,
     byGroup.get(key) ?? [],
   ]);
+}
+
+/**
+ * The sentence every field in a group shares, if they share one.
+ *
+ * The four fields under "Nachtverkehr" all read "Vorgabe für Quellen ohne
+ * eigenen Wert", and printing it four times says it no better than once while
+ * making the group four lines taller. Hoisted to the group, the sentence is
+ * still each field's accessible description — several controls may name the
+ * same `aria-describedby` id — so nothing is lost to a screen reader either.
+ *
+ * `null` unless *every* member agrees and there is more than one of them: a
+ * group of one has no repetition to remove, and one dissenting field would make
+ * a hoisted sentence a claim about a parameter it is not true of.
+ */
+function sharedDescription(
+  standardId: string,
+  members: ParameterDefinition[],
+): string | null {
+  if (members.length < 2) return null;
+  const first = parameterDescription(
+    standardId,
+    members[0] as ParameterDefinition,
+  );
+  if (first === null) return null;
+  return members.every((p) => parameterDescription(standardId, p) === first)
+    ? first
+    : null;
+}
+
+const groupNoteId = (group: ParameterGroupKey): string =>
+  `param-group-${group}-note`;
+
+/** The hoisted sentence, rendered under the legend — or nothing. */
+function groupNote(
+  standardId: string,
+  group: ParameterGroupKey,
+  members: ParameterDefinition[],
+) {
+  const shared = sharedDescription(standardId, members);
+  if (shared === null) return null;
+  return (
+    <p id={groupNoteId(group)} className="-mt-1 text-xs text-muted-foreground">
+      {shared}
+    </p>
+  );
 }
 
 function ReceiverModeButton({
@@ -473,7 +520,10 @@ function RunSetupForm({
                   <EvidenceTierBadge tier={selectedStandard.evidence_tier} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {selectedStandard.description}
+                  {getStandardDescription(
+                    selectedStandard.id,
+                    selectedStandard.description,
+                  )}
                 </p>
               </div>
             ) : null}
@@ -490,7 +540,13 @@ function RunSetupForm({
           </section>
 
           {/* Parameters */}
-          {selectedProfile && selectedProfile.parameters.length > 0 ? (
+          {/* `selectedStandard` is in the condition because a parameter's
+              description is resolved per standard — only the normative
+              modules have a German one — and a profile never exists
+              without the standard it belongs to anyway. */}
+          {selectedStandard &&
+          selectedProfile &&
+          selectedProfile.parameters.length > 0 ? (
             <section className="space-y-4">
               <SectionHeading variant="eyebrow">
                 {m.label_section_parameters()}
@@ -508,11 +564,19 @@ function RunSetupForm({
                     <legend className="mb-1 text-xs font-medium text-muted-foreground">
                       {parameterGroupLabel(group)}
                     </legend>
+                    {groupNote(selectedStandard.id, group, members)}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                       {members.map((param) => (
                         <ParameterField
                           key={param.name}
+                          standardId={selectedStandard.id}
                           param={param}
+                          describedById={
+                            sharedDescription(selectedStandard.id, members) ===
+                            null
+                              ? undefined
+                              : groupNoteId(group)
+                          }
                           value={params[param.name] ?? ""}
                           onChange={(v) => {
                             selection.setParam(param.name, v);

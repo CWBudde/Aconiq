@@ -97,3 +97,33 @@ export function getStandardLabel(
     (STANDARD_NAMES[standardId] ?? standardId) + tierQualifier(evidenceTier)
   );
 }
+
+/**
+ * What a standard is, in the reader's language.
+ *
+ * The same rule the parameter catalogue follows, and for the same reason: the
+ * backend writes every descriptor in English, and this is the most prominent
+ * line in the run dialog — a German label above a German sentence above an
+ * English paragraph is the mix the rest of this work removed.
+ *
+ * Only the three normative modules, whole. A scaffold keeps the backend's own
+ * words, which are the words its scope statement was reviewed against.
+ */
+const STANDARD_DESCRIPTIONS: Record<string, () => string> = {
+  "rls19-road": m.standard_desc_rls19_road,
+  schall03: m.standard_desc_schall03,
+  iso9613: m.standard_desc_iso9613,
+};
+
+/** Exported for the coverage test, which holds the three to full coverage. */
+export const CATALOGUED_STANDARD_DESCRIPTIONS = Object.keys(
+  STANDARD_DESCRIPTIONS,
+);
+
+/** The catalogue's sentence, or the descriptor's own. Called during render. */
+export function getStandardDescription(
+  standardId: string,
+  fallback: string | undefined,
+): string | undefined {
+  return STANDARD_DESCRIPTIONS[standardId]?.() ?? fallback;
+}

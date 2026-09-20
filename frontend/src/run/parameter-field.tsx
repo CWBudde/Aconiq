@@ -1,4 +1,3 @@
-import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import {
   Select,
@@ -8,60 +7,110 @@ import {
   SelectValue,
 } from "@/ui/components/select";
 import { Switch } from "@/ui/components/switch";
+import { UnitInput } from "@/ui/components/unit-input";
 import type { ParameterDefinition } from "@/api/client";
-import { parameterLabel, parameterUnitSuffix } from "@/run/parameter-meta";
+import { parameterDescription, parameterLabel } from "@/run/parameter-meta";
 
 /**
  * One editable parameter of a run profile.
  *
- * The label is the human name and the declared unit; the backend's own name
- * follows it in a muted `code`, because that name is the CLI and API identity —
- * it is what `--param` and the request body take — and a user reading the
- * dialog should be able to write the command without translating back.
+ * The label is the human name and nothing else. The unit sits on the control,
+ * where it belongs to the value rather than to the name, and the backend's own
+ * name sits under it — that name is the CLI and API identity, it is what
+ * `--param` and the request body take, and a user reading the dialog should be
+ * able to write the command without translating back. It used to share the
+ * label's line, where it collided with the label it was meant to annotate.
  */
 function ParameterLabel({
   id,
+  standardId,
   param,
 }: {
   id: string;
+  standardId: string;
   param: ParameterDefinition;
 }) {
   return (
-    <Label htmlFor={id} className="flex-wrap gap-x-1.5">
-      <span>
-        {parameterLabel(param)}
-        {parameterUnitSuffix(param)}
-        {param.required ? (
-          <span className="ml-1 text-destructive">*</span>
-        ) : null}
-      </span>
-      <code className="font-mono text-xs font-normal text-muted-foreground">
-        {param.name}
-      </code>
+    <Label htmlFor={id}>
+      {parameterLabel(standardId, param)}
+      {param.required ? <span className="ml-1 text-destructive">*</span> : null}
     </Label>
   );
 }
 
+/**
+ * What the parameter is for, or nothing.
+ *
+ * The backend's own name — `traffic_night_pkw` — used to be rendered here, on
+ * the argument that it is what `--param` and the request body take. It is gone.
+ * That argument was made when the label was a humanised form of the name and
+ * the two were a keystroke apart; now the label is the parameter's German name,
+ * the raw one is a second string saying the same thing in a spelling only the
+ * CLI reads, and a dialog with nineteen of them down the side is answering a
+ * question nobody asked while it is open. The CLI documents its own arguments.
+ *
+ * `null` renders no element at all rather than an empty paragraph, so the
+ * caller must not name an id that is not there.
+ */
+function ParameterNote({
+  id,
+  standardId,
+  param,
+}: {
+  id: string;
+  standardId: string;
+  param: ParameterDefinition;
+}) {
+  const description = parameterDescription(standardId, param);
+  if (description === null) return null;
+  return (
+    <p id={id} className="text-xs text-muted-foreground">
+      {description}
+    </p>
+  );
+}
+
 export function ParameterField({
+  standardId,
   param,
   value,
   onChange,
+  describedById,
 }: {
+  standardId: string;
   param: ParameterDefinition;
   value: string;
   onChange: (v: string) => void;
+  /**
+   * A note the group already renders, because every field under it says the
+   * same thing. The field then prints none of its own and points here instead —
+   * the description is not lost, only said once.
+   */
+  describedById?: string | undefined;
 }) {
   const id = `param-${param.name}`;
-  const description = param.description ? (
-    <p className="text-xs text-muted-foreground">{param.description}</p>
-  ) : null;
+  const unitId = `${id}-unit`;
+  const note =
+    describedById === undefined ? (
+      <ParameterNote id={`${id}-note`} standardId={standardId} param={param} />
+    ) : null;
+  // Named only when it is rendered: a dangling `aria-describedby` is a
+  // description a screen reader announces as nothing, which is worse than none.
+  const describedBy = [
+    param.unit ? unitId : null,
+    describedById ?? (note === null ? null : `${id}-note`),
+  ]
+    .filter((part) => part !== null)
+    .join(" ");
+  const describedByProp =
+    describedBy === "" ? undefined : { "aria-describedby": describedBy };
 
   if (param.enum && param.enum.length > 0) {
     return (
       <div className="space-y-1">
-        <ParameterLabel id={id} param={param} />
+        <ParameterLabel id={id} standardId={standardId} param={param} />
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger id={id}>
+          <SelectTrigger id={id} {...describedByProp}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -72,7 +121,7 @@ export function ParameterField({
             ))}
           </SelectContent>
         </Select>
-        {description}
+        {note}
       </div>
     );
   }
@@ -83,14 +132,15 @@ export function ParameterField({
         <div className="flex h-10 items-center gap-3">
           <Switch
             id={id}
+            {...describedByProp}
             checked={value === "true"}
             onCheckedChange={(checked) => {
               onChange(checked ? "true" : "false");
             }}
           />
-          <ParameterLabel id={id} param={param} />
+          <ParameterLabel id={id} standardId={standardId} param={param} />
         </div>
-        {description}
+        {note}
       </div>
     );
   }
@@ -101,11 +151,14 @@ export function ParameterField({
 
   return (
     <div className="space-y-1">
-      <ParameterLabel id={id} param={param} />
-      <Input
+      <ParameterLabel id={id} standardId={standardId} param={param} />
+      <UnitInput
         id={id}
         type={inputType}
         step={step}
+        unit={param.unit}
+        unitId={unitId}
+        {...describedByProp}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
@@ -113,7 +166,7 @@ export function ParameterField({
         min={param.min}
         max={param.max}
       />
-      {description}
+      {note}
     </div>
   );
 }

@@ -345,8 +345,11 @@ describe("RunPage evidence tiers", () => {
 
     expect(screen.queryByTestId("evidence-tier-badge")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
-    // The standard itself is still offered, just without a tier claim.
-    expect(screen.getByText("rls19-road description")).toBeInTheDocument();
+    // The standard itself is still offered, just without a tier claim. What is
+    // shown is the catalogue's sentence, not the fixture's: for the three
+    // normative modules the descriptor's English is replaced, and an absent
+    // tier does not change that — the tier qualifies the name, not the prose.
+    expect(screen.getByText(m.standard_desc_rls19_road())).toBeInTheDocument();
   });
 
   it("shows a neutral badge and no warning for an unrecognised tier", () => {
@@ -1281,23 +1284,30 @@ describe("RunPage standard cascade", () => {
     return screen.getByRole("combobox", { name: m.label_profile() });
   }
 
-  // Addressed by the backend's own name, which is still on screen: the label
-  // now reads "Grid spacing" with `grid_spacing` beside it in a `code`, because
-  // that name is what `--param` and the request body take. A substring match,
-  // so this asserts the raw name is rendered as well as finding the field.
+  // Addressed by id rather than by rendered text. The backend's name used to be
+  // printed beside the label and this helper matched on it; it is no longer on
+  // screen, and the label that replaced it is the parameter's own name in the
+  // reader's language — which is what "labels a parameter" below asserts, and
+  // not a thing every other case should have to restate to find its field.
   function parameter(name: string): HTMLElement {
-    return screen.getByLabelText(new RegExp(name));
+    const field = document.getElementById(`param-${name}`);
+    expect(field, `no control for ${name}`).not.toBeNull();
+    return field as HTMLElement;
   }
 
-  it("labels a parameter and keeps its backend name beside it", () => {
+  it("labels a parameter, and prints its backend name nowhere", () => {
     openRunDialog([standardA]);
 
-    // Both, not either: the label is for reading, the name is what `--param`
-    // and the request body take.
+    // `standardA` is not one of the three modules the catalogue names, so the
+    // label is the humanised form — which is the point: whichever rule produced
+    // it, `grid_spacing` itself does not reach the screen. It said the same
+    // thing as the label in a spelling only the CLI reads, once per field.
     const field = parameter("grid_spacing");
-    const label = field.closest("div")?.querySelector("label");
-    expect(label?.textContent).toContain("Grid spacing");
-    expect(label?.textContent).toContain("grid_spacing");
+    const row = field.closest("div");
+    expect(row?.querySelector("label")?.textContent).toContain("Grid spacing");
+    expect(
+      within(screen.getByRole("dialog")).queryByText(/grid_spacing/),
+    ).toBeNull();
   });
 
   it("groups the parameters under headings", () => {
@@ -1367,12 +1377,14 @@ describe("RunPage standard cascade", () => {
   it("drops the previous profile's fields rather than carrying them over", () => {
     openRunDialog([standardA]);
 
+    // Queried by the control's id rather than by text: this is about whether
+    // the field is mounted at all, not about what it is called.
     selectOption(m.label_profile(), "rural");
-    expect(screen.queryByLabelText(/wind_correction/)).not.toBeNull();
+    expect(document.getElementById("param-wind_correction")).not.toBeNull();
 
     selectOption(m.label_profile(), "urban");
 
-    expect(screen.queryByLabelText(/wind_correction/)).toBeNull();
+    expect(document.getElementById("param-wind_correction")).toBeNull();
     expect(parameter("grid_spacing")).toHaveValue("10");
   });
 
