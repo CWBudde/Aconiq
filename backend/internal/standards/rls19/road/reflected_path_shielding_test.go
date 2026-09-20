@@ -85,7 +85,7 @@ func TestReflectedPath_BarrierLeavesTheDirectPathAlone(t *testing.T) {
 }
 
 // TestReflectedPath_ReflectorDoesNotShieldItself pins the exclusion in
-// barriersExcluding. A building is barrier and reflector at once, and the
+// dropExcludedBarriers. A building is barrier and reflector at once, and the
 // mirrored ray crosses its own reflecting facade by construction — so without
 // the exclusion the building would invent a diffraction edge exactly where the
 // standard sees a reflection.

@@ -410,7 +410,9 @@ func appendParkingContributions(
 	receiver geo.Point2D,
 	receiverZ float64,
 	effectiveBarriers []Barrier,
+	reflectors *reflectorField,
 	cfg PropagationConfig,
+	scratch *pathScratch,
 ) error {
 	for _, parking := range parkingSources {
 		emission, err := ComputeParkingEmission(parking)
@@ -436,7 +438,7 @@ func appendParkingContributions(
 		})
 		att := computeAttenuation(planDist, slantDist, hm, cfg)
 
-		att = applyShielding(att, parkingShielding(parking, receiver, sourceZ, receiverZ, effectiveBarriers, cfg))
+		att = applyShielding(att, parkingShielding(parking, receiver, sourceZ, receiverZ, effectiveBarriers, cfg, scratch))
 
 		*dayContrib = append(*dayContrib, emission.LWDay-att.Total)
 		*nightContrib = append(*nightContrib, emission.LWNight-att.Total)
@@ -449,7 +451,7 @@ func appendParkingContributions(
 			dayContrib, nightContrib,
 			emission.LWDay, emission.LWNight,
 			parking.Center, pointSourceHeightM, sourceZ, receiver, receiverZ,
-			effectiveBarriers, cfg,
+			effectiveBarriers, reflectors, cfg, scratch,
 		)
 	}
 
@@ -464,13 +466,14 @@ func parkingShielding(
 	sourceZ, receiverZ float64,
 	effectiveBarriers []Barrier,
 	cfg PropagationConfig,
+	scratch *pathScratch,
 ) float64 {
 	barrierLoss := 0.0
 	if len(effectiveBarriers) > 0 {
-		barrierLoss = ComputeShielding(
+		barrierLoss = computeShielding(
 			parking.Center, pointSourceHeightM,
 			receiver, cfg.ReceiverHeightM,
-			effectiveBarriers,
+			effectiveBarriers, nil, scratch,
 		).InsertionLoss
 	}
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
 )
@@ -21,18 +22,47 @@ type barrierCrossing struct {
 // barrier standing between the two.
 const barrierEndpointToleranceM = 1e-6
 
+// barrierPolyline reads the plan-view geometry off one barrier.
+func barrierPolyline(b Barrier) []geo.Point2D { return b.Geometry }
+
 // findBarrierCrossings returns all barriers that intersect the line from
 // source to receiver in plan view, sorted by distance from source.
+//
+// It tests every barrier. The propagation walk no longer calls it — that goes
+// through the Scene's index — but a caller holding nothing but a barrier slice
+// still needs the unnarrowed answer.
 func findBarrierCrossings(source, receiver geo.Point2D, barriers []Barrier) []barrierCrossing {
-	rayCrossings := geo.RayCrossings(
-		source, receiver, barriers,
-		func(b Barrier) []geo.Point2D { return b.Geometry },
-		barrierEndpointToleranceM,
+	return barrierCrossingsAmong(source, receiver, barriers, appendAllIndices(nil, len(barriers)), nil)
+}
+
+// barrierCrossingsAmong is findBarrierCrossings restricted to a candidate set.
+//
+// candidates must be ascending and must be a superset of the barriers the ray
+// can cross: geo.AppendRayCrossings sorts stably, so the candidate order is
+// what decides which of two equidistant barriers comes first, and that choice
+// reaches the selected diffraction edge.
+func barrierCrossingsAmong(
+	source, receiver geo.Point2D,
+	barriers []Barrier,
+	candidates []int,
+	scratch *pathScratch,
+) []barrierCrossing {
+	var (
+		rays      []geo.RayCrossing
+		crossings []barrierCrossing
 	)
 
-	crossings := make([]barrierCrossing, 0, len(rayCrossings))
+	if scratch != nil {
+		rays = scratch.rayCrossings[:0]
+		crossings = scratch.barrierCrossings[:0]
+	}
 
-	for _, crossing := range rayCrossings {
+	rays = geo.AppendRayCrossings(
+		rays, source, receiver, barriers, candidates,
+		barrierPolyline, barrierEndpointToleranceM,
+	)
+
+	for _, crossing := range rays {
 		crossings = append(crossings, barrierCrossing{
 			point:          crossing.Point,
 			distFromSource: crossing.DistFromSource,
@@ -40,7 +70,63 @@ func findBarrierCrossings(source, receiver geo.Point2D, barriers []Barrier) []ba
 		})
 	}
 
+	if scratch != nil {
+		scratch.rayCrossings = rays
+		scratch.barrierCrossings = crossings
+	}
+
 	return crossings
+}
+
+// barrierCandidates narrows the barrier set to those whose bounding box the
+// source→receiver ray can reach, minus the reflectors a mirrored path bounced
+// off.
+//
+// Without an index it answers with every barrier, so the two paths differ in
+// the length of the list and in nothing else.
+func barrierCandidates(
+	source, receiver geo.Point2D,
+	barriers []Barrier,
+	exclude []string,
+	scratch *pathScratch,
+) []int {
+	var candidates []int
+	if scratch != nil {
+		candidates = scratch.barrierCandidates[:0]
+	}
+
+	if scratch != nil && scratch.barrierCursor.Ready() {
+		candidates = scratch.barrierCursor.QuerySegment(source, receiver, queryMarginM, candidates)
+	} else {
+		candidates = appendAllIndices(candidates, len(barriers))
+	}
+
+	candidates = dropExcludedBarriers(candidates, barriers, exclude)
+
+	if scratch != nil {
+		scratch.barrierCandidates = candidates
+	}
+
+	return candidates
+}
+
+// dropExcludedBarriers removes, in place, the barriers a mirrored path bounced
+// off. Filtering in place keeps the list ascending, which is what compacting a
+// barrier slice used to do and what the stable sort downstream relies on.
+func dropExcludedBarriers(candidates []int, barriers []Barrier, exclude []string) []int {
+	if len(exclude) == 0 {
+		return candidates
+	}
+
+	kept := candidates[:0]
+
+	for _, index := range candidates {
+		if !slices.Contains(exclude, barriers[index].ID) {
+			kept = append(kept, index)
+		}
+	}
+
+	return kept
 }
 
 // diffractionEdge describes one significant diffraction edge selected by the
@@ -167,6 +253,20 @@ func ComputeShielding(
 	receiver geo.Point2D, receiverHeightM float64,
 	barriers []Barrier,
 ) ShieldingResult {
+	return computeShielding(source, sourceHeightM, receiver, receiverHeightM, barriers, nil, nil)
+}
+
+// computeShielding is ComputeShielding with the two things the propagation
+// walk has and an outside caller does not: the reflector IDs a mirrored path
+// must not be shielded by its own bounce, and the scratch that carries the
+// spatial index. Both are optional and neither changes the answer.
+func computeShielding(
+	source geo.Point2D, sourceHeightM float64,
+	receiver geo.Point2D, receiverHeightM float64,
+	barriers []Barrier,
+	exclude []string,
+	scratch *pathScratch,
+) ShieldingResult {
 	if len(barriers) == 0 {
 		return ShieldingResult{}
 	}
@@ -176,8 +276,13 @@ func ComputeShielding(
 		return ShieldingResult{}
 	}
 
+	candidates := barrierCandidates(source, receiver, barriers, exclude, scratch)
+	if len(candidates) == 0 {
+		return ShieldingResult{}
+	}
+
 	// Step 1: find all barrier crossings sorted by distance from source.
-	crossings := findBarrierCrossings(source, receiver, barriers)
+	crossings := barrierCrossingsAmong(source, receiver, barriers, candidates, scratch)
 	if len(crossings) == 0 {
 		return ShieldingResult{}
 	}
