@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMapStore } from "./map-store";
 import { DEFAULT_BASEMAP, readStoredBasemap } from "./basemap";
+import {
+  LAYER_VISIBILITY_STORAGE_KEY,
+  readStoredLayerVisibility,
+  readStoredResultIndicator,
+} from "./map-preferences";
+import { MODEL_LAYER_GROUPS } from "./layers";
 
 /**
  * The store holds what the map looks like, not what it contains — basemap
@@ -15,6 +21,7 @@ beforeEach(() => {
     basemap: DEFAULT_BASEMAP,
     tilesFailed: false,
     layerVisibility: {},
+    resultIndicator: null,
   });
 });
 
@@ -116,5 +123,52 @@ describe("useMapStore layer visibility", () => {
 
     useMapStore.getState().setLayerVisible("contours", false);
     expect(useMapStore.getState().layerVisibility["contours"]).toBe(false);
+  });
+});
+
+/**
+ * Both of these are written through to localStorage on every change, the way
+ * the basemap already was. The reason they are worth a test each is that the
+ * store is where the write-through lives: a future `set` that forgets to call
+ * the helper leaves the state right and the reload wrong, which is exactly the
+ * failure nobody notices until they reload.
+ */
+describe("useMapStore persistence", () => {
+  /** A real group id, so the stored value survives validation on the way back. */
+  const [firstGroup] = MODEL_LAYER_GROUPS;
+  if (!firstGroup) throw new Error("no model layer groups to test against");
+  const group = firstGroup.id;
+
+  it("remembers a hidden group across a reload", () => {
+    useMapStore.getState().toggleLayer(group);
+
+    expect(readStoredLayerVisibility()).toEqual({ [group]: false });
+  });
+
+  it("remembers a group switched back on", () => {
+    useMapStore.getState().setLayerVisible(group, false);
+    useMapStore.getState().setLayerVisible(group, true);
+
+    expect(readStoredLayerVisibility()).toEqual({ [group]: true });
+  });
+
+  it("forgets everything when the visibility is reset", () => {
+    // The escape hatch for a user who hid a layer and then reloaded into a map
+    // that stayed empty. It resets to `{}` rather than to a record of `true`s,
+    // so each group falls back to its own default rather than to a third copy
+    // of the defaults kept here.
+    useMapStore.getState().toggleLayer(group);
+    useMapStore.getState().resetLayerVisibility();
+
+    expect(useMapStore.getState().layerVisibility).toEqual({});
+    expect(localStorage.getItem(LAYER_VISIBILITY_STORAGE_KEY)).toBeNull();
+  });
+
+  it("remembers the chosen result indicator", () => {
+    useMapStore.getState().setResultIndicator("Lden");
+    expect(readStoredResultIndicator()).toBe("Lden");
+
+    useMapStore.getState().setResultIndicator(null);
+    expect(readStoredResultIndicator()).toBeNull();
   });
 });

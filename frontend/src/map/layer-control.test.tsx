@@ -74,6 +74,10 @@ function visibilityOf(map: FakeMap, layerId: string): unknown[] {
 }
 
 beforeEach(() => {
+  // Both of these are written through to localStorage now, so resetting the
+  // store alone would leave the previous test's choice in the key that the
+  // next `readStored*` call reads.
+  localStorage.clear();
   useMapStore.setState({ basemap: "light", layerVisibility: {} });
 });
 
