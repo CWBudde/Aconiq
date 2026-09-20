@@ -1791,29 +1791,59 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
-- [ ] **An OSM import cannot be saved to the project, and the two validators disagree about why.**
-      Found while reproducing the blank-map report (2026-09-20). A 3327-feature Overpass extract of
-      Berlin Mitte is refused by `POST /api/v1/model` with 614 errors: 441
-      `geometry.*.self_intersection`, 172 `building.height.required`, 1 `building.height.invalid`.
-      Nothing is written, so the import round trip dead-ends — and the frontend does not say so
-      up front, because `model/validate.ts` grades most of the same findings as warnings while
-      `modelgeojson` grades them as errors. The reader is told "582 Warnungen", walks to the map,
-      and only the save fails. Two questions, and they are separable: whether a self-intersecting
-      OSM way is an error at all (the geometry is the source's, not the user's, and no standard
-      module consumes the winding), and whether a building with no `height_m` should be refused or
-      defaulted. `osmimport.buildingHeight` reads `height` then `building:levels` and emits no
-      property when neither is tagged, which for most German OSM extracts is the majority of
-      buildings — 172 of 580 in this one. Decide the severity in `modelgeojson` first; the
-      frontend validator has to follow it, not the other way round.
-- [ ] **`osmimport` sends Go's default User-Agent, and overpass-api.de answers 406.** Backend, filed
-      here because it was found on the same path (2026-09-20). `overpass.NewWithSettings` is handed
-      no UA, so the request carries `Go-http-client/…`; the same query with any named agent returns
-      200 and 2.8 MB. The handler maps the refusal to a bare `upstream_error` / "Overpass API
-      request failed" with the status swallowed, so a blocked agent, a rate limit and a genuine
-      outage are one message. Set a project User-Agent — the Overpass usage policy asks for one —
-      and carry the upstream status into the envelope so the three are distinguishable. Whether
-      this reproduces from every network is unknown: it was seen from the dev sandbox, while the
-      reporter's own runs got data (and intermittent 504s).
+- [x] **An OSM import saves, and the geometry check answers the same in every CRS** (2026-09-20).
+      Three changes that turned out to be one problem. **Two corrections to this entry's own
+      diagnosis first**, because both were wrong and both changed the fix. `model/validate.ts` did
+      not grade these findings as warnings — it had no geometry section at all, so the four
+      `geometry.*.self_intersection` codes were not laxer here, they were unproducible. And
+      `building.height.required` was an error on _both_ sides; the preview never reached it because
+      `normalize.ts:inferHeightMeters` invented 9 m for anything carrying a `building` tag and 2 m
+      for a `barrier`. The "582 Warnungen" were `source.rls19.review_required` on the roads. The
+      reader was never shown a lenient reading of the same finding — they were shown a different
+      model.
+      **Most of the 441 self-intersections were not there.** `orientation` compared a cross product
+      — an area, so the coordinate unit squared — against a fixed `1e-9`, which is large beside two
+      building edges in EPSG:4326 (~1e-10) and negligible beside the same two in EPSG:25832 (~1e0):
+      one footprint, two answers, decided by the CRS it arrived in. A wrong "collinear" then fell
+      through to `onSegment`, a bounding-box test that is sound only for a genuinely collinear
+      triple, so any two edges of a non-convex footprint whose boxes overlapped read as crossing.
+      Measured on a fresh 3198-feature extract: 219 of 631 buildings flagged, **none** of them
+      self-intersecting under an exact predicate; 199 of 2397 ways flagged, 45 real. The tolerance
+      is now relative to the magnitudes that produced the value (`relativeEpsilon`).
+      **The severity split is separate work, not a cover for that bug.** Those 45 remain, and a road
+      drawn as one way that touches itself is a roundabout. A ring's winding is read — by
+      point-in-polygon and by the screening crossing counts — and a line's is read by nothing, so
+      `polygon`/`multipolygon` stay errors and `linestring`/`multilinestring` are warnings.
+      **One default, in one place, on the record.** `osmimport.buildingHeight` answers
+      `defaultBuildingHeightM` (9 m) rather than nothing, and every feature whose height was assumed
+      carries `height_source: "assumed"` — buildings, and the barriers that had been defaulted to
+      2 m silently since the start. Absence of that property records _no provenance_, not "read from
+      OSM", which is `soundplan_base_elevation_m`'s lesson applied. `normalize.ts` stops inventing,
+      so a hand-written file that omits the height now gets the honest `*.height.required` instead
+      of a number. `modelgeojson` is unchanged and still refuses `height_m == nil`.
+      **`validate.ts` produces the four codes now**, at the backend's spellings and severities, from
+      a port in `model/self-intersection.ts`. A port is a thing that drifts; the standing answer is
+      the kernel export filed under Phase F.
+      Verified end to end rather than by unit test alone: `POST /api/v1/import/osm` → 200 and 3198
+      features, the same body to `POST /api/v1/model` → **201**, 45 warnings and 0 errors, where it
+      was 400 with 614. 250 buildings and 156 barriers carry `height_source` in the saved model.
+- [x] **`osmimport` names itself, and an upstream failure says which one it was** (2026-09-20).
+      `Fetch` wraps whatever `overpass.HTTPClient` is in play in a `userAgentClient` sending
+      `aconiq/<version> (+<repo>)`. go-overpass exposes no header hook, so the client interface it
+      already takes is the seam, and the wrapping has to happen inside `Fetch` because neither the
+      handler nor the CLI passes a client. Confirmed over the wire from the sandbox that used to be
+      answered 406: 200 and 2.5 MB.
+      The status was always reachable and never read. `*overpass.ServerError` survives the retry
+      wrapper and `Fetch`'s own wrap, so `overpassAPIError` puts it in `details.upstream_status` and
+      picks the hint from it — busy or timed out, refused outright, or the server's own fault — and
+      the CLI message names it too. `upstream_error` moved into the `errorCode*` block, which it had
+      been bypassing as a bare literal against that block's own stated rule.
+      Two things left as they are, deliberately. **The 502 branch has no integration test**: reaching
+      it needs an httptest server standing in for Overpass, and `validateOverpassEndpoint` admits
+      neither `127.0.0.1` nor `http`, so the mapping is unit-tested as a pure function rather than
+      the allowlist weakened to reach it. And the CLI still classifies the failure `KindUserInput`,
+      which decides the exit code — a 504 from a third party is not the user's input, but changing
+      the kind changes a documented exit code and is its own decision.
 - [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
       nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
       under a document that does not yet name them — is what the sweep reclaims. Both files are
@@ -1989,6 +2019,18 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
       exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
       each decision. `/api/v1/import/terrain` has generated types now and still no caller.
+- [ ] **The frontend validator is a second code list, and it has drifted once already.**
+      (2026-09-20) `model/validate.ts` and `geo/modelgeojson/validate.go` are two hand-maintained
+      vocabularies with no generator between them — `schema.ts` types `ValidationIssue.code` as an
+      open `string`, so nothing reconciles them — and the gap cost an OSM import the preview called
+      clean and the save refused. The self-intersection half is closed by a **port**
+      (`model/self-intersection.ts`), which is the same shape of answer that went stale the first
+      time. The standing fix is the rule `AGENTS.md` already states for `transform` and `contours`:
+      export validation from the WASM kernel so both targets read one severity table, in Go. It
+      needs `POST /api/v1/validate` as well, because http mode has no other route to it, and a
+      decision about running it per keystroke over the network rather than in-process. Still absent
+      from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
+      counts.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
