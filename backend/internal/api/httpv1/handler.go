@@ -1,7 +1,6 @@
 package httpv1
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	stderrors "errors"
@@ -9,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -502,7 +500,24 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 
 	err = h.runExecutor(r.Context(), req)
 	if err != nil {
+		// The subprocess writes its own terminal status, so one that died
+		// before it got there — killed, cancelled with this request when the
+		// browser reloaded, or out of memory — has left a row reading
+		// "running" that nothing else will close. Close the rows this request
+		// is responsible for: those the manifest did not already have when it
+		// started.
+		//
+		// Runs it did not create are left alone, so a concurrent run against
+		// the same project is not failed by this one's error.
+		existing := projectfs.RunIDs(before)
+		_, _ = h.store.FailInterruptedRuns(h.now, func(run project.Run) bool {
+			_, existed := existing[run.ID]
+
+			return existed
+		})
+
 		writeRunCreateError(w, err)
+
 		return
 	}
 
@@ -697,90 +712,6 @@ func validateRunInputPath(field, path string) error {
 	}
 
 	return nil
-}
-
-func newCLIProcessRunExecutor(projectRoot string) runExecutor {
-	return func(ctx context.Context, req createRunRequest) error {
-		executable, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("resolve executable: %w", err)
-		}
-
-		// G702 reports the taint from the request body to argv. The flow is real,
-		// but every field that reaches args is constrained by
-		// createRunRequest.validate before the handler calls this executor:
-		// identifiers and parameter names must match a fixed pattern, and paths
-		// must be relative and inside the project. There is no shell — argv is
-		// passed as a slice.
-		//nolint:gosec // request fields are validated by createRunRequest.validate
-		cmd := exec.CommandContext(ctx, executable, runCommandArgs(projectRoot, req)...)
-
-		var stderr bytes.Buffer
-
-		cmd.Stdout = io.Discard
-		cmd.Stderr = &stderr
-
-		err = cmd.Run()
-		if err != nil {
-			var exitErr *exec.ExitError
-			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", strings.TrimSpace(stderr.String()), err)
-			}
-
-			message := strings.TrimSpace(stderr.String())
-			if message == "" {
-				message = err.Error()
-			}
-
-			return fmt.Errorf("execute run command: %s", message)
-		}
-
-		return nil
-	}
-}
-
-// runCommandArgs turns a validated request into argv for `aconiq run`. Optional
-// fields are omitted rather than passed empty, so the run command applies its
-// own defaults.
-func runCommandArgs(projectRoot string, req createRunRequest) []string {
-	args := []string{"--project", projectRoot, "run"}
-
-	for _, flag := range []struct {
-		name  string
-		value string
-	}{
-		{"--scenario", req.ScenarioID},
-		{"--standard", req.StandardID},
-		{"--standard-version", req.StandardVersion},
-		{"--standard-profile", req.StandardProfile},
-		{"--model", req.ModelPath},
-		{"--receiver-mode", req.ReceiverMode},
-	} {
-		if flag.value != "" {
-			args = append(args, flag.name, flag.value)
-		}
-	}
-
-	if req.Experimental {
-		args = append(args, "--experimental")
-	}
-
-	paramKeys := make([]string, 0, len(req.Params))
-	for key := range req.Params {
-		paramKeys = append(paramKeys, key)
-	}
-
-	slices.Sort(paramKeys)
-
-	for _, key := range paramKeys {
-		args = append(args, "--param", fmt.Sprintf("%s=%s", key, req.Params[key]))
-	}
-
-	for _, inputPath := range req.InputPaths {
-		args = append(args, "--input", inputPath)
-	}
-
-	return args
 }
 
 func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
