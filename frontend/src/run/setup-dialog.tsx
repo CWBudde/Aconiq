@@ -34,6 +34,7 @@ import {
   EvidenceTierWarning,
 } from "@/ui/evidence-tier-badge";
 import { useCreateRun, useStandards } from "@/api/hooks";
+import type { RunProgress } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import {
   asAPIRequestError,
@@ -88,6 +89,71 @@ function RunCreateError({ error }: { error: Error }) {
       <p>{error.message}</p>
       {apiError?.hint !== undefined ? <p>{apiError.hint}</p> : null}
     </Callout>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run progress
+// ---------------------------------------------------------------------------
+
+/**
+ * What the dialog shows while a run is in flight.
+ *
+ * Determinate as soon as the backend has reported once, and a plain phase
+ * label before that. The gap is real work and not a delay: spawning the
+ * worker, instantiating the WASM module and projecting the model through
+ * `resolveComputeModel` all happen before the first receiver is computed, and
+ * a bar pinned at 0% through them reads as a run that is stuck rather than one
+ * that has not started counting. A mode that never reports at all — the HTTP
+ * backend — stays on this label for the whole run, which is exactly today's
+ * behaviour.
+ *
+ * The bar carries an accessible name: a screen reader announcing "62%" with
+ * nothing to attach it to is a worse answer than none, and axe fails an
+ * unnamed progressbar outright. `aria-valuetext` repeats the visible sentence
+ * because "62" out of "1600" is not what a listener wants to hear.
+ */
+function RunProgressPanel({ progress }: { progress: RunProgress | null }) {
+  if (progress === null) {
+    return (
+      <p
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+        data-testid="run-progress-starting"
+      >
+        <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+        {m.status_starting_run()}
+      </p>
+    );
+  }
+
+  const { done, total } = progress;
+  // A run with no receivers is refused before it starts, so the guard is not
+  // for a case that happens — it is for not dividing by a number this
+  // component was handed rather than computed.
+  const percent = total > 0 ? Math.round(Math.min(done / total, 1) * 100) : 0;
+  const label = m.status_run_progress({ done, total });
+
+  return (
+    <div className="space-y-1.5" data-testid="run-progress">
+      <div
+        role="progressbar"
+        aria-label={m.label_run_progress()}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={label}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      >
+        {/* `ease-linear` over the 100 ms the worker throttles to: the bar
+            should move at the speed the receivers are computed at, and an
+            ease-out would make every tick look like it was slowing down. */}
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-150 ease-linear"
+          style={{ width: `${String(percent)}%` }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
   );
 }
 
@@ -249,6 +315,12 @@ function RunSetupForm({
 
   const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
 
+  // Asked of the capability, not of the mode: cancelling means terminating
+  // the kernel this tab owns, and no such lever exists over a run the API is
+  // executing.
+  const cancelRunOffered =
+    createRun.isPending && backend.capabilities.runsAreCancellable;
+
   // A scaffold module carries no normative coefficients, so the API refuses to
   // run one until the request says so. The tier of the standard actually
   // selected decides that — never the checkbox, which only records that the
@@ -314,7 +386,7 @@ function RunSetupForm({
         <Callout variant="destructive" icon={AlertCircle}>
           {m.msg_api_error_standards()}
         </Callout>
-      ) : createRun.isError ? (
+      ) : createRun.isError && !createRun.cancelled ? (
         <RunCreateError error={createRun.error} />
       ) : (
         <div className="space-y-6">
@@ -630,10 +702,33 @@ function RunSetupForm({
         </div>
       )}
 
+      {/* A cancelled run is not a failed one: nothing went wrong and nothing
+          was written, so the form stays on screen with a neutral note rather
+          than being replaced by a red error the user has to dismiss to try
+          again with a smaller grid. */}
+      {createRun.cancelled ? (
+        <Callout variant="warning" icon={Info} data-testid="run-cancelled">
+          {m.msg_run_cancelled()}
+        </Callout>
+      ) : null}
+
+      {createRun.isPending ? (
+        <RunProgressPanel progress={createRun.progress} />
+      ) : null}
+
       {!isLoading && !error ? (
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            {m.action_cancel()}
+          {/* One button, two jobs, because there is only one thing the user
+              can call off at a time: while a cancellable run is in flight it
+              stops the run, and otherwise it closes the dialog. Where the
+              backend cannot stop a run it keeps closing the dialog — a button
+              that dismissed the dialog while the server went on computing
+              would be a lie about what it did. */}
+          <Button
+            variant="ghost"
+            onClick={cancelRunOffered ? createRun.cancel : onClose}
+          >
+            {cancelRunOffered ? m.action_cancel_run() : m.action_cancel()}
           </Button>
           <Button
             onClick={handleSubmit}

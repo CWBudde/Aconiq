@@ -51,7 +51,7 @@ function goDefaultConfig(): Record<string, number> {
 describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
   it("returns the same defaults the Go source declares", async () => {
     const kernel = await getNodeKernel();
-    const defaults = kernel.defaultConfig();
+    const defaults = await kernel.defaultConfig();
     const want = goDefaultConfig();
 
     expect(Object.keys(want).length).toBeGreaterThan(0);

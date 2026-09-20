@@ -20,6 +20,7 @@ import { runInThisContext } from "node:vm";
 
 import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel } from "./kernel";
+import { fromSyncExport, withKernelErrors } from "./kernel-error";
 import type {
   ComputeRequest,
   ContourRequest,
@@ -151,33 +152,62 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
     );
   }
 
+  // Every call goes through `withKernelErrors`, exactly as the worker client
+  // does. `cmd/wasm/main.go` rejects with a bare string rather than an Error,
+  // so without this the two kernels would differ in what they throw — and the
+  // parity suites would be pinning the wrong one.
   return {
     async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
-      const json = await exports.rls19Road(JSON.stringify(req));
+      const json = await withKernelErrors(
+        exports.rls19Road(JSON.stringify(req)),
+      );
       return JSON.parse(json) as ReceiverOutput[];
     },
     async transform(req: TransformRequest): Promise<TransformResponse> {
-      const json = await exports.transform(JSON.stringify(req));
+      const json = await withKernelErrors(
+        exports.transform(JSON.stringify(req)),
+      );
       return JSON.parse(json) as TransformResponse;
     },
     async contours(
       payload: Uint8Array,
       req: ContourRequest,
     ): Promise<ContourResult> {
-      const json = await exports.contours(payload, JSON.stringify(req));
+      const json = await withKernelErrors(
+        exports.contours(payload, JSON.stringify(req)),
+      );
       return JSON.parse(json) as ContourResult;
     },
-    standards(): StandardDescriptor[] {
-      return JSON.parse(exports.standards()) as StandardDescriptor[];
+    // Asynchronous although the Go exports below them are not: `AconiqKernel`
+    // is what the worker-backed kernel can offer, and it cannot offer a
+    // synchronous answer. Mirroring the interface here is what keeps the
+    // parity suites driving the same calling convention the app uses.
+    //
+    // `async`, not a bare `Promise.resolve(...)`, and that distinction is
+    // load-bearing now that `standards` and `loadTerrain` throw on failure
+    // rather than returning a rejected Promise: outside an async function the
+    // throw — or the `JSON.parse` behind it — escapes synchronously, while the
+    // worker-backed kernel rejects. The parity suites would then be driving a
+    // calling convention the app never sees.
+    standards(): Promise<StandardDescriptor[]> {
+      return fromSyncExport(
+        () => JSON.parse(exports.standards()) as StandardDescriptor[],
+      );
     },
-    loadTerrain(data: Uint8Array, crs: string): TerrainInfo {
-      return JSON.parse(exports.loadTerrain(data, crs)) as TerrainInfo;
+    loadTerrain(data: Uint8Array, crs: string): Promise<TerrainInfo> {
+      return fromSyncExport(
+        () => JSON.parse(exports.loadTerrain(data, crs)) as TerrainInfo,
+      );
     },
-    clearTerrain(): void {
-      exports.clearTerrain();
+    clearTerrain(): Promise<void> {
+      return fromSyncExport(() => {
+        exports.clearTerrain();
+      });
     },
-    defaultConfig(): PropagationConfig {
-      return JSON.parse(exports.defaultConfig()) as PropagationConfig;
+    defaultConfig(): Promise<PropagationConfig> {
+      return fromSyncExport(
+        () => JSON.parse(exports.defaultConfig()) as PropagationConfig,
+      );
     },
   };
 }

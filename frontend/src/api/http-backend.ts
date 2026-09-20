@@ -97,6 +97,10 @@ export const httpBackend: Backend = {
     // `POST /api/v1/transform` projects a batch server-side, so API mode has a
     // projector without loading the 4 MB kernel it never otherwise needs.
     canReprojectForDisplay: true,
+    // There is no cancel endpoint. A Cancel button here could only close the
+    // dialog while the server kept computing, and the run would still turn up
+    // in the list — so the UI is told not to offer one.
+    runsAreCancellable: false,
   },
 
   getHealth() {

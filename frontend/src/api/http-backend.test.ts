@@ -81,6 +81,9 @@ describe("httpBackend capabilities", () => {
       // `POST /api/v1/transform` projects server-side, so the map can draw a
       // model stored in a projected CRS without the 4 MB kernel.
       canReprojectForDisplay: true,
+      // There is no cancel endpoint, so the dialog must not offer a button
+      // that could only close itself while the server carried on.
+      runsAreCancellable: false,
     });
   });
 });

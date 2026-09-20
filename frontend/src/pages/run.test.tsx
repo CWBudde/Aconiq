@@ -45,6 +45,10 @@ const state = vi.hoisted(() => {
     runs: unknown[];
     runSpecs: Record<string, unknown>[];
     createRunError: Error | null;
+    createRunPending: boolean;
+    createRunProgress: { done: number; total: number } | null;
+    createRunCancelled: boolean;
+    createRunCancels: number;
     runsAgainstSavedModel: boolean;
     savedModels: unknown[];
     logLines: string[];
@@ -57,6 +61,10 @@ const state = vi.hoisted(() => {
     runs: [],
     runSpecs: [],
     createRunError: null,
+    createRunPending: false,
+    createRunProgress: null,
+    createRunCancelled: false,
+    createRunCancels: 0,
     runsAgainstSavedModel: true,
     savedModels: [],
     logLines: [],
@@ -84,6 +92,9 @@ vi.mock("@/api/backend", () => ({
         runsChangeExternally: state.runsAgainstSavedModel,
         exportsOutliveRunDelete: state.runsAgainstSavedModel,
         canReprojectForDisplay: !state.runsAgainstSavedModel,
+        // The same split the shipped modes have: browser mode owns the worker
+        // and can terminate it, the API has no cancel endpoint.
+        runsAreCancellable: !state.runsAgainstSavedModel,
       };
     },
   },
@@ -120,9 +131,14 @@ vi.mock("@/api/hooks", () => ({
     mutate: (spec: Record<string, unknown>) => {
       state.runSpecs.push(spec);
     },
-    isPending: false,
+    isPending: state.createRunPending,
     isError: state.createRunError !== null,
     error: state.createRunError,
+    progress: state.createRunProgress,
+    cancel: () => {
+      state.createRunCancels += 1;
+    },
+    cancelled: state.createRunCancelled,
   }),
   // A project is always loaded here; `useProjectSync` runs for real on top
   // of these so the gate is tested through the hook, not around it.
@@ -275,6 +291,10 @@ beforeEach(() => {
   state.runs = [];
   state.runSpecs = [];
   state.createRunError = null;
+  state.createRunPending = false;
+  state.createRunProgress = null;
+  state.createRunCancelled = false;
+  state.createRunCancels = 0;
   state.runsAgainstSavedModel = true;
   state.savedModels = [];
   state.logLines = [];
@@ -469,6 +489,94 @@ describe("RunPage run creation errors", () => {
     expect(alert).not.toHaveTextContent(
       m.msg_experimental_opt_in_required_error(),
     );
+  });
+});
+
+/**
+ * What the dialog shows while a run is computing, and what the footer's one
+ * ghost button means at each point.
+ *
+ * The progress itself comes from the kernel worker and is the `Backend` seam's
+ * business; what is asserted here is the half a user sees — that the bar is
+ * determinate and named, that it waits for the first report rather than
+ * sitting at zero, and that Cancel stops the run only where a run can be
+ * stopped.
+ */
+describe("RunPage run progress and cancellation", () => {
+  function cancelButton(name: string): HTMLElement {
+    return screen.getByRole("button", { name });
+  }
+
+  it("labels the phase before the first progress report rather than showing an empty bar", () => {
+    state.runsAgainstSavedModel = false;
+    state.createRunPending = true;
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("run-progress-starting")).toHaveTextContent(
+      m.status_starting_run(),
+    );
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("shows a named, determinate bar once receivers are reported", () => {
+    state.runsAgainstSavedModel = false;
+    state.createRunPending = true;
+    state.createRunProgress = { done: 256, total: 1024 };
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    const bar = screen.getByRole("progressbar", {
+      name: m.label_run_progress(),
+    });
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "1024");
+    expect(bar).toHaveAttribute("aria-valuenow", "256");
+    expect(bar).toHaveAttribute(
+      "aria-valuetext",
+      m.status_run_progress({ done: 256, total: 1024 }),
+    );
+  });
+
+  it("turns the footer's Cancel into a run-cancel while a cancellable run is pending", () => {
+    state.runsAgainstSavedModel = false;
+    state.createRunPending = true;
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    fireEvent.click(cancelButton(m.action_cancel_run()));
+
+    expect(state.createRunCancels).toBe(1);
+    // Cancelling the run must not also dismiss the dialog: the notice that
+    // says nothing was written is shown in it.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("keeps the close-the-dialog Cancel where runs cannot be stopped", () => {
+    // API mode. A button that dismissed the dialog while the server kept
+    // computing would claim to have stopped something it cannot reach.
+    state.createRunPending = true;
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.queryByRole("button", { name: m.action_cancel_run() })).toBe(
+      null,
+    );
+    fireEvent.click(cancelButton(m.action_cancel()));
+    expect(state.createRunCancels).toBe(0);
+  });
+
+  it("reports a cancelled run as a neutral notice, not as a failure", () => {
+    state.runsAgainstSavedModel = false;
+    state.createRunError = Object.assign(new Error("cancelled"), {
+      name: "KernelCancelled",
+    });
+    state.createRunCancelled = true;
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    const notice = screen.getByTestId("run-cancelled");
+    expect(notice).toHaveTextContent(m.msg_run_cancelled());
+    expect(notice).toHaveAttribute("data-variant", "warning");
+    // The red error callout is what a real failure gets, and the form stays
+    // up so the user can start again with a smaller grid.
+    expect(screen.queryByTestId("run-create-error")).toBeNull();
+    expect(startRunButton()).toBeEnabled();
   });
 });
 

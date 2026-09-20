@@ -24,7 +24,16 @@ interface ImportMeta {
  */
 interface Window {
   aconiq?: {
-    rls19Road: (json: string) => Promise<string>;
+    /**
+     * The second argument is optional and asks the kernel to report progress:
+     * it is called with the receivers computed so far and the total, once per
+     * chunk. Go refuses anything that is not a function, so a caller that does
+     * not want progress passes one argument rather than `undefined`.
+     */
+    rls19Road: (
+      json: string,
+      onProgress?: (done: number, total: number) => void,
+    ) => Promise<string>;
     transform: (json: string) => Promise<string>;
     /**
      * Two arguments, and the raster values are the first: they cross as raw
@@ -32,6 +41,7 @@ interface Window {
      * four megabytes of float64. See `AconiqKernel.contours`.
      */
     contours: (payload: Uint8Array, json: string) => Promise<string>;
+    /** Throws an `Error` if the descriptor cannot be marshalled. */
     standards: () => string;
     /**
      * The CRS is a required second argument: the Go GeoTIFF loader reads the
@@ -40,6 +50,10 @@ interface Window {
      * `AconiqKernel.loadTerrain`.
      */
     loadTerrain: (data: Uint8Array, crs: string) => string;
+    // Throws an `Error` on a raster Go cannot read, or a missing CRS. A
+    // TypeScript signature cannot say so; `syncThrowSource` in
+    // backend/cmd/wasm/main.go says why these two throw where the Promise-
+    // returning exports reject.
     clearTerrain: () => void;
     defaultConfig: () => string;
     health: () => string;

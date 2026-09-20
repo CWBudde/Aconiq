@@ -2042,17 +2042,39 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       decision about running it per keystroke over the network rather than in-process. Still absent
       from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
       counts.
+- [x] **The WASM kernel runs off the main thread** (`d81402c`, `0b58c33`, `7ac1db3`). A module
+      Worker behind an RPC client, progress per 256-receiver chunk, cancellation by terminating
+      the worker. Two constraints stay live for anything built on it. Terminating is the only
+      mechanism there is, not the cheapest: the compute runs synchronously inside the Promise
+      executor, so the worker's event loop is pinned and a cancel _message_ could never be
+      dequeued in time. And a Go `js.Func` cannot throw — a panic out of one ends the module and
+      every later call answers "Go program has already exited" — which is why the synchronous
+      exports rethrow from a JavaScript frame.
+- [x] **The RLS-19 road scene is derived once per run, and the obstacle searches are pruned**
+      (`84c66eb`, `ce5121c`). No golden moved, and no distance cutoff was added: every prune skips
+      only work that provably contributes zero. That bound is the constraint to keep — an
+      approximate cutoff is a normative decision, not an optimisation.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
-      WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls
-      `road.ComputeReceiverOutputs` synchronously inside the Promise executor and there is no
-      `Worker` anywhere in `src/`, so a grid run freezes the UI. While there: store one IndexedDB
-      record per run instead of one document — `persist` in `browser-backend.ts` structured-clones
-      every stored run (receiver tables, CSV, export HTML) on each write. The raster bytes are
-      already out of that document, under an `artifact-bytes:` key each
-      (`browser-storage.ts`), because they were the one part large enough to make the re-clone
-      matter; that is one key space for one payload, not the split this item asks for, and the
-      eviction, cap and clear paths each have to forget those records by hand today.
+      WASM. Only the extraction is left; the threading is done.
+- [ ] Store one IndexedDB record per run instead of one document — `persist` in
+      `browser-backend.ts` structured-clones every stored run (receiver tables, CSV, export HTML)
+      on each write. The raster bytes are already out of that document, under an `artifact-bytes:`
+      key each (`browser-storage.ts`), because they were the one part large enough to make the
+      re-clone matter; that is one key space for one payload, not the split this item asks for, and
+      the eviction, cap and clear paths each have to forget those records by hand today.
+- [ ] **Decide what the reflection model admits.** A building-dense model is out of reach at
+      grid-scale receiver counts, and the ceiling is the model rather than the search: ~307 valid
+      Spiegelschallquellen per (Teilstück, receiver) pair, each of which RLS-19 Nr. 3.5 treats as a
+      source in its own right and so gives its own diffraction search. No exact prune reduces that
+      count, because the model says those paths are there, so this needs a normative decision — an
+      occlusion test on the reflected legs, or a defensible distance cutoff. Until then, browser
+      mode should steer users away from a 1 m Teilstück length over a building-dense extract.
+- [ ] `SplitLineIntoSegments` is O(segments x vertices) even now that it is hoisted out of the
+      receiver loop: `interpolateAlongPolyline`/`interpolateZAlongPolyline` re-walk the polyline
+      from vertex 0 for every sub-segment. A single-walk rewrite is O(segments + vertices) but
+      changes float accumulation order, so it needs its own golden review rather than folding into
+      a performance change.
 
 ### Order and gates
 

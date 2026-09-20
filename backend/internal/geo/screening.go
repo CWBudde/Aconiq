@@ -178,26 +178,78 @@ func RayCrossings[T any](
 ) []RayCrossing {
 	var crossings []RayCrossing
 
-	for i, obstacle := range obstacles {
-		point, segment, ok := LineStringIntersectsSegment(polyline(obstacle), source, receiver)
-		if !ok {
-			continue
-		}
-
-		distFromSource := Distance(source, point)
-		if endpointToleranceM > 0 &&
-			(distFromSource < endpointToleranceM || Distance(point, receiver) < endpointToleranceM) {
-			continue
-		}
-
-		crossings = append(crossings, RayCrossing{
-			Point:          point,
-			DistFromSource: distFromSource,
-			ObstacleIndex:  i,
-			SegmentIndex:   segment,
-		})
+	for i := range obstacles {
+		crossings = appendRayCrossing(crossings, source, receiver, obstacles[i], i, polyline, endpointToleranceM)
 	}
 
+	sortRayCrossings(crossings)
+
+	return crossings
+}
+
+// AppendRayCrossings is RayCrossings over a caller-supplied candidate set,
+// appending to dst so that a hot loop can reuse one buffer.
+//
+// candidates indexes obstacles and **must be in ascending order**. The sort
+// below is stable, so obstacles crossed at the same distance keep their slice
+// order; walking the candidates in any other order would reorder exactly those
+// ties, silently and reproducibly. A spatial index answers in an order that is
+// deterministic but is not slice order, which is why BBoxGridCursor.Query
+// sorts before returning — do not undo that.
+//
+// candidates must also be a superset of the obstacles the ray can cross. That
+// is the caller's proof to make, not this function's: everything here does is
+// skip the obstacles it was not handed.
+func AppendRayCrossings[T any](
+	dst []RayCrossing,
+	source, receiver Point2D,
+	obstacles []T,
+	candidates []int,
+	polyline func(T) []Point2D,
+	endpointToleranceM float64,
+) []RayCrossing {
+	start := len(dst)
+
+	for _, i := range candidates {
+		dst = appendRayCrossing(dst, source, receiver, obstacles[i], i, polyline, endpointToleranceM)
+	}
+
+	sortRayCrossings(dst[start:])
+
+	return dst
+}
+
+// appendRayCrossing tests one obstacle and appends its crossing, if any.
+func appendRayCrossing[T any](
+	dst []RayCrossing,
+	source, receiver Point2D,
+	obstacle T,
+	index int,
+	polyline func(T) []Point2D,
+	endpointToleranceM float64,
+) []RayCrossing {
+	point, segment, ok := LineStringIntersectsSegment(polyline(obstacle), source, receiver)
+	if !ok {
+		return dst
+	}
+
+	distFromSource := Distance(source, point)
+	if endpointToleranceM > 0 &&
+		(distFromSource < endpointToleranceM || Distance(point, receiver) < endpointToleranceM) {
+		return dst
+	}
+
+	return append(dst, RayCrossing{
+		Point:          point,
+		DistFromSource: distFromSource,
+		ObstacleIndex:  index,
+		SegmentIndex:   segment,
+	})
+}
+
+// sortRayCrossings orders crossings by distance from the source, stably, so
+// that equidistant obstacles keep the order the caller listed them in.
+func sortRayCrossings(crossings []RayCrossing) {
 	slices.SortStableFunc(crossings, func(a, b RayCrossing) int {
 		switch {
 		case a.DistFromSource < b.DistFromSource:
@@ -208,6 +260,4 @@ func RayCrossings[T any](
 			return 0
 		}
 	})
-
-	return crossings
 }

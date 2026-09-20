@@ -6,6 +6,7 @@ import type { ModelSaveResult, RunSpec } from "./backend";
 import type { RunLog, RunSummary } from "./client";
 import { buildCreateRunRequest } from "./http-backend";
 import {
+  useCreateRun,
   useDeleteRun,
   useIsSavingModel,
   useRunLog,
@@ -22,9 +23,27 @@ const saveState = vi.hoisted(() => ({
 
 const backendState = vi.hoisted(() => ({
   runsChangeExternally: true,
+  runsAreCancellable: false,
   runs: [] as RunSummary[],
   log: { run_id: "", lines: [] } as RunLog,
 }));
+
+/**
+ * What the mocked `startRun` does with the hooks it is handed. Replaced per
+ * test: one wants the reporter called, another wants the signal watched, and
+ * neither can be expressed by a fixture that resolves straight away.
+ */
+const startRun = vi.hoisted(() =>
+  vi.fn<
+    (
+      spec: unknown,
+      hooks?: {
+        onProgress?: (done: number, total: number) => void;
+        signal?: AbortSignal;
+      },
+    ) => Promise<RunSummary>
+  >(),
+);
 
 const getRuns = vi.hoisted(() =>
   vi.fn(() => Promise.resolve(backendState.runs)),
@@ -44,13 +63,23 @@ vi.mock("./backend", () => ({
       get runsChangeExternally() {
         return backendState.runsChangeExternally;
       },
+      get runsAreCancellable() {
+        return backendState.runsAreCancellable;
+      },
     },
     saveModel: () => saveState.respond(),
     getProjectStatus: () => Promise.resolve(null),
     getRuns,
     getRunLog,
+    startRun,
     deleteRun: (runId: string) => Promise.resolve({ runId, retainedPaths: [] }),
   },
+  // The real predicate, restated rather than imported: a mock factory
+  // replaces the whole module, and `hooks.ts` both calls this and re-exports
+  // it. Keeping it in step with `backend.ts` is what the name is for — a
+  // second name here would let the two drift without a test noticing.
+  isRunCancelled: (error: unknown) =>
+    error instanceof Error && error.name === "KernelCancelled",
 }));
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -346,6 +375,138 @@ describe("useRunLog", () => {
 
     await advance(30_000);
     expect(getRunLog).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The half of the run seam the dialog reads: how far a run has got, how to
+ * stop it, and whether the failure it ended with was a stop rather than a
+ * fault.
+ *
+ * `mutate(spec)` must keep taking exactly one argument — every caller passes a
+ * spec and nothing else — so the callback and the signal are assembled here
+ * and asserted through what `startRun` was handed.
+ */
+describe("useCreateRun", () => {
+  /** A run that hangs until the test settles it, with the hooks it was given. */
+  function hangingRun() {
+    let settle: {
+      resolve: (run: RunSummary) => void;
+      reject: (cause: Error) => void;
+    } | null = null;
+    startRun.mockImplementation(
+      () =>
+        new Promise<RunSummary>((resolve, reject) => {
+          settle = { resolve, reject };
+        }),
+    );
+    return {
+      hooks: () => startRun.mock.calls[0]?.[1],
+      reject: (cause: Error) => {
+        settle?.reject(cause);
+      },
+    };
+  }
+
+  function cancelledError(): Error {
+    const error = new Error("kernel cancelled");
+    error.name = "KernelCancelled";
+    return error;
+  }
+
+  beforeEach(() => {
+    backendState.runsAreCancellable = true;
+    startRun.mockReset();
+  });
+
+  it("reports the receivers computed so far, and starts the next run at none", async () => {
+    const run = hangingRun();
+    const { result } = renderHook(() => useCreateRun(), { wrapper });
+
+    expect(result.current.progress).toBeNull();
+    act(() => {
+      result.current.mutate(baseSpec);
+    });
+
+    await waitFor(() => {
+      expect(startRun).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      run.hooks()?.onProgress?.(256, 1024);
+    });
+    expect(result.current.progress).toEqual({ done: 256, total: 1024 });
+  });
+
+  it("aborts the run's signal when cancelled, and calls the failure a cancellation", async () => {
+    const run = hangingRun();
+    const { result } = renderHook(() => useCreateRun(), { wrapper });
+
+    act(() => {
+      result.current.mutate(baseSpec);
+    });
+    await waitFor(() => {
+      expect(startRun).toHaveBeenCalledTimes(1);
+    });
+
+    const signal = run.hooks()?.signal;
+    expect(signal?.aborted).toBe(false);
+    act(() => {
+      result.current.cancel();
+    });
+    expect(signal?.aborted).toBe(true);
+
+    // The backend answers the abort by rejecting, exactly as the kernel does
+    // when its worker is torn down. Only then is the run really cancelled —
+    // which is why the flag is derived from the failure and not from the
+    // button press.
+    act(() => {
+      run.reject(cancelledError());
+    });
+    await waitFor(() => {
+      expect(result.current.cancelled).toBe(true);
+    });
+  });
+
+  it("calls an ordinary failure a failure", async () => {
+    const run = hangingRun();
+    const { result } = renderHook(() => useCreateRun(), { wrapper });
+
+    act(() => {
+      result.current.mutate(baseSpec);
+    });
+    await waitFor(() => {
+      expect(startRun).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      run.reject(new Error("Request failed: 500"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+    expect(result.current.cancelled).toBe(false);
+  });
+
+  it("hands no signal to a backend that cannot stop a run", async () => {
+    // API mode. A signal here would let `cancel()` report a cancellation
+    // while the server went on computing and the run turned up in the list.
+    backendState.runsAreCancellable = false;
+    const run = hangingRun();
+    const { result } = renderHook(() => useCreateRun(), { wrapper });
+
+    act(() => {
+      result.current.mutate(baseSpec);
+    });
+    await waitFor(() => {
+      expect(startRun).toHaveBeenCalledTimes(1);
+    });
+
+    expect(run.hooks()?.signal).toBeUndefined();
+    // And pressing Cancel is a no-op rather than a lie.
+    act(() => {
+      result.current.cancel();
+    });
+    expect(result.current.cancelled).toBe(false);
   });
 });
 

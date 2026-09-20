@@ -23,6 +23,7 @@ import { browserBackend } from "./browser-backend";
 import { httpBackend } from "./http-backend";
 import { IS_WASM_MODE } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
+import { CancelledErrorName } from "@/wasm/kernel-client";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
 
 export interface BackendCapabilities {
@@ -78,6 +79,59 @@ export interface BackendCapabilities {
    * to say so rather than draw a model in the wrong place.
    */
   readonly canReprojectForDisplay: boolean;
+  /**
+   * A run in flight can be stopped, and stopping it really stops the compute.
+   * When set, the run dialog turns its Cancel button into a run-cancel while a
+   * run is pending; when not set, that button keeps closing the dialog.
+   *
+   * Browser mode can, because the kernel lives in a worker this tab owns and
+   * terminating it ends the computation. The API cannot: it has no cancel
+   * endpoint, and a button that only closed the dialog while the server kept
+   * computing would be a lie — the run would still finish and still appear in
+   * the list, having ignored the one instruction the user gave it.
+   */
+  readonly runsAreCancellable: boolean;
+}
+
+/**
+ * What a caller may attach to a run beyond the run's own inputs.
+ *
+ * A second argument rather than fields on {@link RunSpec}: a spec is the value
+ * `buildCreateRunRequest` maps onto the API body, and neither a callback nor a
+ * signal is data a run can be described by.
+ */
+export interface RunHooks {
+  /**
+   * Called with the receivers computed so far, out of how many there are.
+   * Never called by `httpBackend` — the API reports no progress — so a UI that
+   * wants a bar has to survive never hearing from this at all.
+   */
+  onProgress?: (done: number, total: number) => void;
+  /**
+   * Aborting terminates the kernel, which is the only way to stop a WASM
+   * computation: the module has one stack and no cancellation point, so a run
+   * ends when its thread does.
+   *
+   * Only honoured when `capabilities.runsAreCancellable`. A backend that
+   * ignores it is not misbehaving — it is saying it cannot stop — which is why
+   * the capability, and not the presence of a signal, is what the UI reads
+   * before it offers a Cancel button.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * Whether a rejected run was cancelled rather than failed.
+ *
+ * Here rather than at the call sites so the UI never reaches into `@/wasm/`:
+ * which `Error.name` a terminated kernel produces is the worker protocol's
+ * business, and a page that imported it would be a page to edit when the
+ * protocol changes. The distinction earns its keep — a cancellation is not a
+ * failure to report, so it is the difference between a red callout and a
+ * neutral one.
+ */
+export function isRunCancelled(error: unknown): boolean {
+  return error instanceof Error && error.name === CancelledErrorName;
 }
 
 /** What the UI needs from a run deletion, mode-independent. */
@@ -219,7 +273,14 @@ export interface Backend {
   /** A URL the browser can open or download the artifact from. */
   getArtifactURL(artifactId: string): string;
   importFromOSM(req: OsmImportRequest): Promise<GeoJSONFeatureCollection>;
-  startRun(spec: RunSpec): Promise<RunSummary>;
+  /**
+   * Start a run and resolve with it once it has finished.
+   *
+   * `hooks` is optional in both directions: a caller need not pass one, and an
+   * implementation need not honour what it holds. What it must not do is
+   * pretend — see `capabilities.runsAreCancellable`.
+   */
+  startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary>;
   /** Rejects unless `capabilities.canExport`. */
   createExport(runId: string): Promise<RunSummary>;
   /**

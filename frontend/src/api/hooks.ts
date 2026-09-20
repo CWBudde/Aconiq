@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
-import { backend } from "./backend";
+import { backend, isRunCancelled } from "./backend";
 import type { ContourOptions, OsmImportRequest, RunSpec } from "./backend";
 import type {
   ModelSaveRequest,
@@ -232,16 +232,84 @@ export function useImportFromOSM() {
   });
 }
 
+/**
+ * Telling a cancelled run apart from a failed one, re-exported so the UI never
+ * imports from `@/wasm/`. See `backend.ts`.
+ */
+export { isRunCancelled } from "./backend";
+
+/** How far a run has got, as the backend reported it last. */
+export interface RunProgress {
+  /** Receivers computed so far. */
+  done: number;
+  /** Receivers this run will compute in total. */
+  total: number;
+}
+
 export function useCreateRun() {
-  return useMutation({
+  // The bar's state, not the mutation's: react-query holds a result, and
+  // progress is not one — it changes many times per run and is gone once the
+  // run settles. Held here so the dialog gets it without a store of its own.
+  const [progress, setProgress] = useState<RunProgress | null>(null);
+  // The controller of the run in flight, if this mode can stop one. A ref
+  // rather than state: nothing renders differently for holding it, and the
+  // Cancel button must reach *this* run's controller, not the one a render
+  // captured.
+  const abort = useRef<AbortController | null>(null);
+
+  const mutation = useMutation({
     // A refusal is thrown whole: the run dialog reads `code` and `hint` off
     // the envelope to explain one the user can act on.
-    mutationFn: (spec: RunSpec) => backend.startRun(spec),
+    mutationFn: (spec: RunSpec) => {
+      // Cleared here rather than on settle, so the panel of the previous run
+      // cannot be what the next one starts from.
+      setProgress(null);
+      // Only where aborting means something. A signal handed to a backend
+      // that ignores it would let `cancel()` report a cancellation that never
+      // happened while the run went on regardless.
+      const controller = backend.capabilities.runsAreCancellable
+        ? new AbortController()
+        : null;
+      abort.current = controller;
+      return backend.startRun(spec, {
+        onProgress: (done, total) => {
+          setProgress({ done, total });
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.project.all });
     },
+    onSettled: () => {
+      // A settled run's controller aborts nothing, and holding it would let a
+      // late Cancel tear down the kernel a *later* run is using.
+      abort.current = null;
+    },
   });
+
+  /**
+   * Stop the run in flight. A no-op where nothing is running, and where the
+   * mode cannot stop one — `mutationFn` allocates no controller there, which
+   * is the same fact stated once rather than twice.
+   */
+  const cancel = useCallback(() => {
+    abort.current?.abort();
+  }, []);
+
+  return {
+    ...mutation,
+    progress,
+    cancel,
+    /**
+     * Derived from the failure rather than from the button press: pressing
+     * Cancel asks, and only the rejection that follows says the run actually
+     * stopped. A flag set on the press would claim a cancellation for a run
+     * that finished in the meantime.
+     */
+    cancelled: mutation.isError && isRunCancelled(mutation.error),
+  };
 }
 
 export function useCreateExport() {
