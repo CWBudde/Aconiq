@@ -109,6 +109,46 @@ describe("basemapStyle", () => {
     expect(bright["raster-saturation"]).toBeGreaterThan(0);
     expect(bright["raster-contrast"]).toBeGreaterThan(0);
   });
+
+  /**
+   * `light` has to sit back far enough to be seen doing it.
+   *
+   * `bright` deliberately barely touches the tiles — the tile server already
+   * renders a map meant to be read — so the whole gap between the two now
+   * rests on `light`'s black-point lift. A token value there would keep every
+   * other assertion in this file green and hand back the two-names-one-picture
+   * bug these tests exist to catch, so the floor is asserted rather than
+   * implied. It is well under the value in use; this guards a collapse, not a
+   * tweak.
+   */
+  it("lifts light far enough that the lift is what separates it", () => {
+    const lift = rasterPaint("light")["raster-brightness-min"];
+
+    expect(typeof lift).toBe("number");
+    expect(lift).toBeGreaterThanOrEqual(0.2);
+  });
+
+  /**
+   * The other half of that bargain: `bright` has to stay near the tiles.
+   *
+   * The test above says `bright` sits forward of the raw tiles, which any
+   * positive number satisfies — including the 0.45/0.18 it briefly carried,
+   * loud enough that the basemap competed with the model geometry and the
+   * result contours drawn over it. Being forward of the tiles is the
+   * direction; this is the distance.
+   *
+   * A ceiling rather than the exact pair, because the constraint is restraint
+   * and not a particular number: the tile server already renders a map meant
+   * to be read, and `bright` is the choice for reading it, so its paint is a
+   * touch on that rendering rather than a replacement of it. The ceiling sits
+   * well above the values in use and well below the ones that were rejected.
+   */
+  it("keeps bright near the tiles rather than shouting over them", () => {
+    const bright = rasterPaint("bright");
+
+    expect(bright["raster-saturation"]).toBeLessThanOrEqual(0.2);
+    expect(bright["raster-contrast"]).toBeLessThanOrEqual(0.1);
+  });
 });
 
 describe("OFFLINE_STYLE", () => {
