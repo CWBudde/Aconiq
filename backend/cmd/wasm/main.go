@@ -10,8 +10,10 @@
 //	  sources:   [...],
 //	  barriers:  [...],
 //	  config:    { SegmentLengthM: 10, MinDistanceM: 1, ReceiverHeightM: 4 }
-//	}));
+//	}), (done, total) => console.log(done, "of", total));
 //	const outputs = JSON.parse(result); // []ReceiverOutput
+//
+// The progress callback is optional; see rls19RoadFunc.
 //
 // Coordinates must be in a metric CRS before they reach rls19Road — see
 // aconiq.transform, and internal/wasmkernel for why.
@@ -43,10 +45,36 @@ type computeRequest struct {
 }
 
 // rls19RoadFunc computes RLS-19 road traffic noise levels.
-// Takes a single JSON string argument, returns a Promise<string> (JSON).
+// Signature: (request: string, onProgress?: (done, total) => void)
+// => Promise<string> (JSON).
+//
+// The second argument is how a run reports how far it has got. It is optional
+// because the callers that do not draw a bar should not pay for one, and
+// because the export took exactly one argument until the kernel moved off the
+// main thread: `kernel.worker.ts` still makes a one-argument call unless its
+// caller asked for progress.
+//
+// The computation and every progress report it makes run on the worker's only
+// thread, synchronously, inside the Promise executor — an executor runs
+// synchronously, which is the whole reason the kernel needed a thread of its
+// own. There is therefore nothing to gain from a goroutine: GOMAXPROCS is 1
+// under js/wasm, so one would move the same work behind a scheduler and hand
+// the caller a longer stack to read. The worker's own handler is a throttled
+// postMessage, which queues a message rather than waiting on an event loop, so
+// reporting synchronously into it does not stall the walk.
 func rls19RoadFunc(_ js.Value, args []js.Value) any {
-	if len(args) != 1 {
-		return jsReject("rls19Road: expected exactly 1 JSON string argument")
+	if len(args) != 1 && len(args) != 2 {
+		return jsReject("rls19Road: expected 1 or 2 arguments (string request JSON, optional progress callback)")
+	}
+
+	onProgress := js.Undefined()
+
+	if len(args) == 2 {
+		if args[1].Type() != js.TypeFunction {
+			return jsReject("rls19Road: expected the second argument to be a progress callback function")
+		}
+
+		onProgress = args[1]
 	}
 
 	input := args[0].String()
@@ -76,7 +104,14 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 
 		req.Config = cfg
 
-		outputs, err := road.ComputeReceiverOutputs(req.Receivers, req.Sources, req.Barriers, req.Config)
+		// Chunked so the walk can report between chunks. The chunk size is
+		// wasmkernel's default: it decides where the walk pauses and nothing
+		// else, because the scene is receiver-independent and every receiver
+		// is computed from it alone.
+		outputs, err := wasmkernel.ComputeRLS19Road(
+			req.Receivers, req.Sources, req.Barriers, req.Config,
+			0, progressReporter(onProgress),
+		)
 		if err != nil {
 			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: computation error: %v", err)))
 			return nil
@@ -91,6 +126,51 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 		resolve.Invoke(js.ValueOf(string(out)))
 		return nil
 	}))
+}
+
+// progressReporter turns the caller's JavaScript callback into the function
+// wasmkernel.ComputeRLS19Road reports through, or nil when there was none.
+//
+// nil rather than a callback that does nothing: the compute loop checks for it
+// once per chunk, and a one-argument call should cost nothing at all.
+func progressReporter(callback js.Value) func(done, total int) {
+	if callback.Type() != js.TypeFunction {
+		return nil
+	}
+
+	// A listener that threw once will throw again on every chunk for the rest
+	// of the run, so it is called until it does and then not again.
+	live := true
+
+	return func(done, total int) {
+		if !live {
+			return
+		}
+
+		live = invokeQuietly(callback, done, total)
+	}
+}
+
+// invokeQuietly calls a JavaScript function and contains an exception, saying
+// whether it got through.
+//
+// Containing it is not defensiveness for its own sake. js.Value.Invoke turns a
+// JavaScript exception into a Go panic, and a panic out of a js.Func is caught
+// by nothing: wasm_exec.js resumes the Go scheduler and reads `event.result`
+// afterwards, with no throw hook in between, so the panic ends the program and
+// every later call into the kernel answers "Go program has already exited".
+// Progress is cosmetic, and a progress bar must not be able to kill the
+// computation it is drawing.
+func invokeQuietly(callback js.Value, args ...any) (delivered bool) {
+	defer func() {
+		if recover() != nil {
+			delivered = false
+		}
+	}()
+
+	callback.Invoke(args...)
+
+	return true
 }
 
 // transformFunc projects a batch of coordinates between two CRS.
@@ -139,9 +219,9 @@ func transformFunc(_ js.Value, args []js.Value) any {
 //
 // It answers with a Promise, like rls19Road and transform and unlike
 // standards: marching squares over that grid is not work to do inside a
-// synchronous call, and jsReject hands back a rejected *Promise*, so a
-// synchronous export that failed would give the caller "[object Promise]"
-// where it expected JSON.
+// synchronous call. jsReject is therefore the right refusal here and the wrong
+// one for a synchronous export, which has an error channel of its own — see
+// syncThrowSource.
 func contoursFunc(_ js.Value, args []js.Value) any {
 	if len(args) != 2 {
 		return jsReject("contours: expected 2 arguments (Uint8Array payload, string request JSON)")
@@ -176,22 +256,25 @@ func contoursFunc(_ js.Value, args []js.Value) any {
 
 // standardsFunc returns the standards this kernel can run, in the same JSON
 // shape `GET /api/v1/standards` answers with.
-// Signature: () => string (JSON)
+// Signature: () => string (JSON), throws on failure
 //
 // Unlike defaultConfig/health/projectStatus below, the marshal error is not
 // swallowed: an empty standards list renders the run page unusable, and a
-// silent one would look like a kernel that supports nothing.
+// silent one would look like a kernel that supports nothing. It reaches the
+// caller as a thrown Error, which is what `kernel.worker.ts` catches around
+// the handshake — see syncThrowSource for how a Go function manages to throw.
 func standardsFunc(_ js.Value, _ []js.Value) any {
 	out, err := wasmkernel.StandardsJSON()
 	if err != nil {
-		return jsReject(fmt.Sprintf("standards: marshal error: %v", err))
+		return jsError(fmt.Sprintf("standards: marshal error: %v", err))
 	}
 
 	return js.ValueOf(string(out))
 }
 
 // loadTerrainFunc loads a GeoTIFF terrain model from a Uint8Array.
-// Signature: (data: Uint8Array, crs: string) => string (terrain.Info JSON)
+// Signature: (data: Uint8Array, crs: string) => string (terrain.Info JSON),
+// throws on failure — see syncThrowSource.
 //
 // The CRS is a second argument rather than something the kernel works out: the
 // GeoTIFF loader reads the tie point and the pixel scale and no
@@ -200,7 +283,7 @@ func standardsFunc(_ js.Value, _ []js.Value) any {
 // the only one who knows, so the caller states it.
 func loadTerrainFunc(_ js.Value, args []js.Value) any {
 	if len(args) != 2 {
-		return jsReject("loadTerrain: expected 2 arguments (Uint8Array data, string crs)")
+		return jsError("loadTerrain: expected 2 arguments (Uint8Array data, string crs)")
 	}
 
 	jsArr := args[0]
@@ -210,7 +293,7 @@ func loadTerrainFunc(_ js.Value, args []js.Value) any {
 
 	info, err := wasmkernel.LoadTerrain(buf, args[1].String())
 	if err != nil {
-		return jsReject(fmt.Sprintf("loadTerrain: %v", err))
+		return jsError(fmt.Sprintf("loadTerrain: %v", err))
 	}
 
 	return js.ValueOf(string(info))
@@ -298,13 +381,80 @@ func jsReject(msg string) js.Value {
 	return js.Global().Get("Promise").Call("reject", js.ValueOf(msg))
 }
 
+// jsError is what a *synchronous* export returns in place of its JSON when it
+// fails. throwingSyncExport turns it into a throw.
+//
+// An Error rather than a bare string, unlike jsReject: the string is what the
+// asynchronous exports have always rejected with and `kernel-error.ts`
+// normalises either, but a value that has to survive a `result instanceof
+// Error` test on the way out has to be one.
+func jsError(msg string) js.Value {
+	return js.Global().Get("Error").New(msg)
+}
+
+// syncThrowSource is the JavaScript half of the synchronous exports' error
+// channel: given a Go function, it returns one that rethrows what the Go
+// function returned, if that turns out to be an Error.
+//
+// It is in JavaScript because a Go function cannot throw. syscall/js turns a
+// JavaScript exception into a Go panic, and a panic out of a js.Func is caught
+// by nothing — wasm_exec.js resumes the Go scheduler and then reads
+// `event.result`, with no throw hook in between — so the panic ends the
+// program, the call evaluates to `undefined`, and every later call into the
+// kernel answers "Go program has already exited". One JavaScript frame above
+// the Go function is the nearest place a throw can actually happen.
+//
+// What it replaces is a genuine defect: standards and loadTerrain used to
+// report failure with jsReject, a rejected *Promise*. A synchronous caller
+// that JSON.parses the result got "[object Promise]" — `kernel-node.ts` does
+// exactly that — and the rejection nobody awaited surfaced as an unhandled
+// one. Both callers already expect a throw: `kernel.worker.ts` wraps the
+// handshake's standards() in a try/catch, and reaches loadTerrain() through an
+// async function.
+//
+// The sentence crosses verbatim. serializeKernelError reads `.message` off an
+// Error, and these messages are the ones `aconiq run` prints.
+const syncThrowSource = `
+	return function () {
+		const result = call.apply(null, arguments);
+		if (result instanceof Error) {
+			throw result;
+		}
+		return result;
+	};
+`
+
+// throwingSyncExport wraps a synchronous Go export in syncThrowSource.
+//
+// Building the wrapper needs the Function constructor, which a Content
+// Security Policy without 'unsafe-eval' refuses. Nothing this kernel is served
+// from sets one — neither the Vite dev server, the gh-pages build nor `aconiq
+// serve` emits a CSP header — but a kernel that failed to start would be a far
+// worse outcome than a worse error message, so a refusal is contained and the
+// bare Go function is registered instead. A failure then reaches the caller as
+// an Error object where JSON was expected: still visible, just less readable,
+// which is the side of the old defect to fail on.
+func throwingSyncExport(fn js.Func) (wrapped js.Value) {
+	defer func() {
+		if recover() != nil {
+			wrapped = fn.Value
+		}
+	}()
+
+	rethrow := js.Global().Get("Function").New("call", syncThrowSource)
+
+	return rethrow.Invoke(fn)
+}
+
 func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
 	aconiq.Set("contours", js.FuncOf(contoursFunc))
-	aconiq.Set("standards", js.FuncOf(standardsFunc))
-	aconiq.Set("loadTerrain", js.FuncOf(loadTerrainFunc))
+	// The two synchronous exports that can fail go through the rethrowing
+	// wrapper; the ones below cannot fail, so they are registered bare.
+	aconiq.Set("standards", throwingSyncExport(js.FuncOf(standardsFunc)))
+	aconiq.Set("loadTerrain", throwingSyncExport(js.FuncOf(loadTerrainFunc)))
 	aconiq.Set("clearTerrain", js.FuncOf(clearTerrainFunc))
 	aconiq.Set("defaultConfig", js.FuncOf(defaultConfigFunc))
 	aconiq.Set("health", js.FuncOf(healthFunc))
