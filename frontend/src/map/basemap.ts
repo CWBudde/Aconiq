@@ -90,8 +90,16 @@ interface BasemapRecipe {
  *
  * `bright` is the opposite choice, for reading the map itself — finding the
  * street a receiver sits on, checking a building footprint against what is
- * there. It pushes saturation and contrast past the raw tiles rather than
- * matching them.
+ * there. It barely touches the tiles, and that restraint is the point: the
+ * tile server already renders a map meant to be read, and pushing saturation
+ * hard past it turns every road casing and land-use patch into a colour that
+ * shouts. What separates it from `light` is `light` being pulled back, not
+ * `bright` being pushed forward.
+ *
+ * That is a live constraint on `light` rather than a free choice. These two
+ * were once the same picture — `light` carried no paint at all and `bright`
+ * this same small lift — and it is only the black-point lift on `light` that
+ * tells them apart now. Softening `light` collapses the pair again.
  */
 const BASEMAP_RECIPES = {
   /** Muted backdrop — the default, and the one to overlay results on. */
@@ -105,13 +113,13 @@ const BASEMAP_RECIPES = {
     },
     label: () => m.label_basemap_light(),
   },
-  /** Full-strength basemap, for reading the map rather than the overlay. */
+  /** The tiles as their server draws them, for reading the map itself. */
   bright: {
     name: "osm-bright",
     background: "#f4f0e8",
     paint: {
-      "raster-saturation": 0.45,
-      "raster-contrast": 0.18,
+      "raster-saturation": 0.1,
+      "raster-contrast": 0.05,
     },
     label: () => m.label_basemap_bright(),
   },

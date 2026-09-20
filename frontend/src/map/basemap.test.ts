@@ -109,6 +109,24 @@ describe("basemapStyle", () => {
     expect(bright["raster-saturation"]).toBeGreaterThan(0);
     expect(bright["raster-contrast"]).toBeGreaterThan(0);
   });
+
+  /**
+   * `light` has to sit back far enough to be seen doing it.
+   *
+   * `bright` deliberately barely touches the tiles — the tile server already
+   * renders a map meant to be read — so the whole gap between the two now
+   * rests on `light`'s black-point lift. A token value there would keep every
+   * other assertion in this file green and hand back the two-names-one-picture
+   * bug these tests exist to catch, so the floor is asserted rather than
+   * implied. It is well under the value in use; this guards a collapse, not a
+   * tweak.
+   */
+  it("lifts light far enough that the lift is what separates it", () => {
+    const lift = rasterPaint("light")["raster-brightness-min"];
+
+    expect(typeof lift).toBe("number");
+    expect(lift).toBeGreaterThanOrEqual(0.2);
+  });
 });
 
 describe("OFFLINE_STYLE", () => {
