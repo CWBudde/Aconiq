@@ -7,8 +7,28 @@ import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import { PageHeader } from "@/ui/page-header";
 import { useImportFromOSM } from "@/api/hooks";
+import { asAPIRequestError } from "@/api/api-error";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 import { m } from "@/i18n/messages";
+
+/**
+ * What the reader is told when the Overpass fetch fails.
+ *
+ * The hint is the load-bearing half and it used to be dropped. The API
+ * distinguishes a rate limit, a refusal and an outage — they arrive as one
+ * `upstream_error` with the upstream status in `details` and the remedy in
+ * `hint` — and rendering `err.message` alone put the reader back where the
+ * envelope change was meant to move them from: "failed with status 429" says
+ * nothing about whether waiting will help.
+ */
+export function osmFailureText(err: unknown): string {
+  const apiError = asAPIRequestError(err);
+  if (apiError?.hint) {
+    return `${apiError.message} — ${apiError.hint}`;
+  }
+
+  return err instanceof Error ? err.message : m.error_osm_fetch_failed();
+}
 
 function BBoxField({
   id,
@@ -153,9 +173,7 @@ export function OsmImport({
           onCollection(collection);
         },
         onError: (err: unknown) => {
-          onError(
-            err instanceof Error ? err.message : m.error_osm_fetch_failed(),
-          );
+          onError(osmFailureText(err));
         },
       },
     );

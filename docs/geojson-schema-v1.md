@@ -54,18 +54,13 @@ so a file Aconiq produced says what it is, and read so one can come back.
   negative is `building.height.invalid`. It is required rather than defaulted
   because it is a screening input: ISO 9613-2 reads it for the line-of-sight
   test, so a number chosen here would change computed levels without saying so.
-- `height_source` optional, and written by an importer rather than by a reader.
-  Its only value is `assumed`, and it says that `height_m` on this feature is
-  the importer's assumption and not a measurement — `aconiq import --from-osm`
-  sets it on a building whose way carries neither `height` nor `building:levels`
-  (and on a wall or fence with no `height`, which has always been assumed to be
-  2 m). Its **absence records no provenance**, not "read from the source": an
-  ordinary GeoJSON import carries the property only if its own source did.
+- `height_source` optional — see [Height provenance](#height-provenance).
 - Geometry must be `Polygon` or `MultiPolygon`
 
 ### `barrier` Features
 
 - `height_m` required and `> 0`
+- `height_source` optional — see [Height provenance](#height-provenance).
 - Geometry must be `LineString` or `MultiLineString`
 
 ### `receiver` Features
@@ -362,6 +357,28 @@ starts failing.
   enumerated to third order over every facade. Gl. 20's D_refl is never applied
   to a building wall — it is scoped to reflektierende Schallschutzwände mit
   absorbierendem Sockel.
+
+## Height provenance
+
+`height_source` is an optional property on any feature that carries `height_m`.
+It is written by an importer rather than by a reader, and its only value today
+is `assumed`: the height on this feature is the importer's assumption and not a
+measurement.
+
+`aconiq import --from-osm` and the browser's OSM import both set it on
+
+- a **building** whose way carries neither `height` nor `building:levels`, and
+- a **barrier** (wall or fence) with no `height` tag, which has always been
+  assumed to be 2 m — silently, until this property existed.
+
+Its **absence records no provenance**, not "read from the source". An ordinary
+GeoJSON import carries the property only if its own source wrote it, so absence
+means nothing was recorded either way.
+
+It matters because a building's height is an input and not a label: ISO 9613-2
+reads it for the line-of-sight test, so a run over assumed heights is a run over
+a number nobody measured. A consumer that must not do that reads this property;
+one that does not care can ignore it.
 
 ## Geometry Sanity Checks
 

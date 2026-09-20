@@ -22,10 +22,19 @@ import type { Point2D } from "./geometry";
  * The cost bound, matching `maxSelfIntersectionPoints`.
  *
  * The check compares every pair of segments, so its cost grows with the square
- * of the vertex count. 10,000 points is about 5*10^7 segment-pair tests; a
- * machine-generated import an order of magnitude larger would freeze the tab,
- * which in a browser is worse than on a server. Geometries above the bound are
- * reported as unchecked rather than rejected.
+ * of the vertex count. Geometries above the bound are reported as unchecked
+ * rather than rejected.
+ *
+ * The bound is the backend's, deliberately, and it is not free: measured here,
+ * a non-intersecting 10,000-point geometry costs ~600 ms on the main thread,
+ * 2,000 points ~20 ms. A lower browser-only bound would buy that back and
+ * reintroduce the divergence this file exists to close — the skip is *lenient*,
+ * so a ring the browser skipped and the backend checked would be a save error
+ * the preview never showed. The OSM API caps a way at 2,000 nodes, so the
+ * expensive case is not one an import produces.
+ *
+ * What actually fixes it is one implementation, off the main thread: the WASM
+ * kernel export filed under Phase F.
  */
 export const SELF_INTERSECTION_POINT_LIMIT = 10_000;
 
