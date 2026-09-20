@@ -42,6 +42,45 @@ type computeRequest struct {
 	// coordinates in this request name no CRS of their own and a DTM has to be
 	// queried in the one it was written in. See wasmkernel.ComputeProjection.
 	Projection *wasmkernel.ComputeProjection `json:"projection,omitempty"`
+
+	// Shard names which member of a Worker pool is asking, when one is.
+	// Absent means the whole run, which is what `rls19Road` always is —
+	// only `rls19RoadShard` reads it.
+	//
+	// The rest of this struct is the *whole run's* even when a shard is set:
+	// Receivers is every receiver, not the shard's slice. See
+	// wasmkernel.ComputeRLS19RoadShard for why that is load-bearing rather
+	// than wasteful.
+	Shard *wasmkernel.Shard `json:"shard,omitempty"`
+}
+
+// prepareComputeRequest parses a request and resolves the ground under it.
+//
+// Shared by rls19Road and rls19RoadShard so the two cannot come to disagree
+// about what a request means — which matters more than usual here, because
+// the whole point of the shard export is that N Workers reach the identical
+// configuration.
+func prepareComputeRequest(input string) (computeRequest, error) {
+	var req computeRequest
+	if err := json.Unmarshal([]byte(input), &req); err != nil {
+		return computeRequest{}, fmt.Errorf("invalid input JSON: %w", err)
+	}
+
+	req.Config = withPropagationDefaults(req.Config)
+
+	// The terrain is the ground h_m is measured above as well as the one
+	// elevation the receiver heights stack on, so both travel into the
+	// config — and both in the CRS this request computes in. Browser mode
+	// resolves the ground the way `aconiq run` does or it is answering a
+	// different question.
+	cfg, err := wasmkernel.ApplyTerrain(req.Config, req.Receivers, req.Projection)
+	if err != nil {
+		return computeRequest{}, fmt.Errorf("%w", err)
+	}
+
+	req.Config = cfg
+
+	return req, nil
 }
 
 // rls19RoadFunc computes RLS-19 road traffic noise levels.
@@ -82,27 +121,12 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
 		resolve, reject := promArgs[0], promArgs[1]
 
-		var req computeRequest
-		if err := json.Unmarshal([]byte(input), &req); err != nil {
-			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: invalid input JSON: %v", err)))
-			return nil
-		}
-
-		req.Config = withPropagationDefaults(req.Config)
-
-		// The terrain is the ground h_m is measured above as well as the one
-		// elevation the receiver heights stack on, so both travel into the
-		// config — and both in the CRS this request computes in. Browser mode
-		// resolves the ground the way `aconiq run` does or it is answering a
-		// different question.
-		cfg, err := wasmkernel.ApplyTerrain(req.Config, req.Receivers, req.Projection)
+		req, err := prepareComputeRequest(input)
 		if err != nil {
 			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19Road: %v", err)))
 
 			return nil
 		}
-
-		req.Config = cfg
 
 		// Chunked so the walk can report between chunks. The chunk size is
 		// wasmkernel's default: it decides where the walk pauses and nothing
@@ -124,6 +148,78 @@ func rls19RoadFunc(_ js.Value, args []js.Value) any {
 		}
 
 		resolve.Invoke(js.ValueOf(string(out)))
+		return nil
+	}))
+}
+
+// rls19RoadShardFunc computes one Worker's share of an RLS-19 road run.
+//
+// Same request shape as rls19Road, plus a `shard` of {index, count}, and it
+// resolves to a JSON array of {chunk, start, outputs} rather than a flat
+// receiver list. The client sorts those by `chunk` and concatenates: the
+// order four Workers reply in is the order the machine happened to schedule
+// them, and docs/policies/determinism.md requires the merge to be
+// independent of that.
+//
+// A separate export rather than a field on rls19Road, although the request
+// already carries the shard: the two resolve to different shapes, and an
+// export whose return type depends on whether a field was set is a contract
+// nobody can read off the call site.
+//
+// progress reports this shard's own receivers. Summing the shards is the
+// client's job, because only it knows the run's total.
+func rls19RoadShardFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 && len(args) != 2 {
+		return jsReject("rls19RoadShard: expected 1 or 2 arguments (string request JSON, optional progress callback)")
+	}
+
+	onProgress := js.Undefined()
+
+	if len(args) == 2 {
+		if args[1].Type() != js.TypeFunction {
+			return jsReject("rls19RoadShard: expected the second argument to be a progress callback function")
+		}
+
+		onProgress = args[1]
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		req, err := prepareComputeRequest(input)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadShard: %v", err)))
+
+			return nil
+		}
+
+		if req.Shard == nil {
+			reject.Invoke(js.ValueOf("rls19RoadShard: the request carries no shard; use rls19Road for a whole run"))
+
+			return nil
+		}
+
+		chunks, err := wasmkernel.ComputeRLS19RoadShard(
+			req.Receivers, req.Sources, req.Barriers, req.Config,
+			*req.Shard, 0, progressReporter(onProgress),
+		)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadShard: computation error: %v", err)))
+
+			return nil
+		}
+
+		out, err := json.Marshal(chunks)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadShard: marshal error: %v", err)))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
 		return nil
 	}))
 }
@@ -449,6 +545,7 @@ func throwingSyncExport(fn js.Func) (wrapped js.Value) {
 func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
+	aconiq.Set("rls19RoadShard", js.FuncOf(rls19RoadShardFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
 	aconiq.Set("contours", js.FuncOf(contoursFunc))
 	// The two synchronous exports that can fail go through the rethrowing

@@ -34,6 +34,23 @@ interface Window {
       json: string,
       onProgress?: (done: number, total: number) => void,
     ) => Promise<string>;
+    /**
+     * One Worker's share of a run. Same request as `rls19Road` plus a
+     * `shard` of `{index, count}`, resolving to `{chunk, start, outputs}[]`
+     * rather than a flat receiver list — the caller sorts by `chunk`, because
+     * the order Workers reply in is the order the machine scheduled them.
+     *
+     * The request carries the *whole* run's receivers even so. See
+     * `wasmkernel.ComputeRLS19RoadShard`: the grid's terrain elevation is
+     * derived from the centroid of the receiver list the kernel is handed, so
+     * a shard given only its own slice would compute over different ground.
+     *
+     * `onProgress` counts this shard's receivers, not the run's.
+     */
+    rls19RoadShard: (
+      json: string,
+      onProgress?: (done: number, total: number) => void,
+    ) => Promise<string>;
     transform: (json: string) => Promise<string>;
     /**
      * Two arguments, and the raster values are the first: they cross as raw

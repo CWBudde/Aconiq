@@ -111,7 +111,7 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
-`window.aconiq` exposes `rls19Road`, `transform`, `standards`, `contours`, `loadTerrain`,
+`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `transform`, `standards`, `contours`, `loadTerrain`,
 `clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Four of those carry contracts worth
 knowing before writing browser-mode code:
 
