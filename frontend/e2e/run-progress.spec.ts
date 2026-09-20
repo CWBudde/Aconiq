@@ -19,10 +19,10 @@ import { appPath, message, navLink, useLocale, waitForPage } from "./app";
  * The area is what makes the run long enough to watch: it replaces the source
  * extent for the auto receiver grid, so the number of receivers is set by the
  * polygon rather than by the road. A road long enough to produce the same grid
- * would also produce thousands of segments and take minutes. The kernel
- * reports every 256 receivers, so a grid of this size reports dozens of times
- * — and a run that reported once, at the end, would let a bar that never
- * moved pass this file.
+ * would also produce thousands of segments and take minutes. The kernel sizes
+ * its chunks to report about ten times a second whatever a receiver costs, so
+ * a grid of this size reports many times over — and a run that reported once,
+ * at the end, would let a bar that never moved pass this file.
  *
  * Roughly 1.6 km by 0.8 km at 51.5°N; at the default 10 m grid that is about
  * 13,000 receivers.
@@ -123,7 +123,7 @@ test.describe("Run progress", () => {
     await expect(bar).toBeVisible({ timeout: 30_000 });
 
     // Determinate, and about the right thing: the maximum is the receiver
-    // count, not a percentage, so a screen reader reads "256 of 13041" rather
+    // count, not a percentage, so a screen reader reads "512 of 13041" rather
     // than a number with no unit.
     const total = Number(await bar.getAttribute("aria-valuemax"));
     expect(total).toBeGreaterThan(256);

@@ -783,5 +783,12 @@
         "countPlural=other": "{count} sources will be marked as reviewed. The imported acoustic values are left as they are, and the whole step can be undone in one move."
       }
     }
-  ]
+  ],
+  "msg_grid_receiver_estimate": "Receivers in the grid: {count} ({width} × {height})",
+  "msg_grid_receiver_warning": "That is a lot of receivers. The run may take a very long time — a coarser grid spacing shortens it considerably.",
+  "action_use_grid_resolution": "Use {resolution} m spacing",
+  "msg_grid_extent_unknown": "No extent yet: without a source or a calculation area there is nothing to lay a grid over.",
+  "msg_grid_estimate_failed": "The grid size cannot be worked out right now.",
+  "msg_grid_resolution_invalid": "The grid spacing must be greater than 0 m.",
+  "status_grid_estimate": "Working out the grid size…"
 }

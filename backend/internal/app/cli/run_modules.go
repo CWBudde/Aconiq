@@ -81,6 +81,7 @@ type runModuleInput struct {
 	model        modelgeojson.Model
 	terrain      terrain.Model
 	receiverMode string
+	workers      int
 	runDir       string
 	runID        string
 	cacheDir     string

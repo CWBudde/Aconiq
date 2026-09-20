@@ -89,6 +89,29 @@ test-coverage:
 coverage-report:
     bash scripts/coverage-report.sh
 
+# Run the compute benchmarks
+#
+# Scoped to the two packages the RLS-19 propagation cost actually lives in
+# rather than ./..., because `go test -bench .` over the whole backend runs the
+# CLI and import suites' benchmarks too and buries the numbers you came for.
+#
+# `-count 6` because a single run of a benchmark on a laptop is noise: benchstat
+# wants several samples per side to say anything about a difference. To compare
+# two revisions:
+#
+#     just bench > /tmp/before.txt      # on the base revision
+#     just bench > /tmp/after.txt       # on yours
+#     benchstat /tmp/before.txt /tmp/after.txt
+#
+# Read allocs/op and B/op as the reliable columns and sec/op as the noisy one —
+# allocation counts are exactly reproducible, wall time on a shared runner is
+# not, which is why a CI gate on this would have to gate on the former and
+# merely report the latter.
+bench *ARGS:
+    cd backend && go test -run '^$' -bench . -benchmem -count 6 {{ARGS}} \
+        ./internal/geo/... ./internal/acoustics/... \
+        ./internal/standards/rls19/road/... ./internal/wasmkernel/...
+
 # Check the backend coverage floor (requires a prior test-coverage)
 #
 # Reports only unless COVERAGE_FLOOR is set:

@@ -7,13 +7,13 @@ import {
   browserBackend,
   buildBuildings,
   buildRoadSources,
-  getFeatureBBox,
   MAX_STORED_RUNS,
   overpassWayToFeature,
   PERSISTED_STATE_VERSION,
   resetBrowserBackendForTests,
 } from "./browser-backend";
 import * as storage from "./browser-storage";
+import { getFeatureBBox } from "@/model/grid-estimate";
 import { useModelStore } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";

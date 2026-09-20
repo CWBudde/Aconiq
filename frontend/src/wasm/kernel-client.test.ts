@@ -177,10 +177,50 @@ describe("kernel worker call correlation", () => {
     port.emit({ kind: "result", id, ok: true, value: "[]" });
 
     await expect(call).resolves.toEqual([]);
+    // The leading [0, 0] is the dispatch report — see the test below. This
+    // request carries no receivers, so the total it states is 0.
     expect(seen).toEqual([
+      [0, 0],
       [40, 100],
       [100, 100],
     ]);
+  });
+
+  /**
+   * The kernel reports between chunks, and everything before the first chunk
+   * — the request crossing to the worker, `road.PrepareScene` — is silence it
+   * cannot break. On a building-dense scene that silence ran to tens of
+   * seconds, and the dialog showed an indeterminate "starting the run"
+   * throughout, which is what a hung kernel looks like too.
+   *
+   * So the client opens the account itself, synchronously, before the call is
+   * even posted: a reader watching a long run learns how big it is straight
+   * away, and the bar is determinate from the first frame.
+   */
+  it("reports zero of the receiver count before dispatching the call", async () => {
+    const { port, client } = await connected();
+
+    const seen: [number, number][] = [];
+    const request = {
+      ...emptyRequest,
+      receivers: [
+        { id: "r1", point: { x: 0, y: 40 }, height_m: 4 },
+        { id: "r2", point: { x: 10, y: 40 }, height_m: 4 },
+        { id: "r3", point: { x: 20, y: 40 }, height_m: 4 },
+      ],
+    };
+
+    const call = client.rls19Road(request, (done, total) => {
+      seen.push([done, total]);
+    });
+
+    // Before anything the worker could have answered: the call has only just
+    // been posted, and nothing has been emitted back.
+    expect(seen).toEqual([[0, 3]]);
+
+    const id = port.sent[0]?.id ?? -1;
+    port.emit({ kind: "result", id, ok: true, value: "[]" });
+    await expect(call).resolves.toEqual([]);
   });
 
   it("asks for no progress when the caller passed no listener", async () => {
@@ -188,8 +228,9 @@ describe("kernel worker call correlation", () => {
 
     const call = client.rls19Road(emptyRequest);
     const id = port.sent[0]?.id ?? -1;
-    // The Go export still refuses a second argument, so the worker must be
-    // told not to pass one.
+    // The Go export takes the callback as an optional second argument, so a
+    // caller that wants no reports must be able to say so — and the worker
+    // then makes the one-argument call.
     expect(port.sent[0]).toMatchObject({ progress: false });
 
     port.emit({ kind: "result", id, ok: true, value: "[]" });

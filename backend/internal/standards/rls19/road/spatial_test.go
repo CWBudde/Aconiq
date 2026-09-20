@@ -118,6 +118,13 @@ func indexTestReceivers() []geo.PointReceiver {
 // TestIndexedWalkMatchesUnindexedWalk is the determinism guard on the whole
 // stack: the same scene, walked with and without the spatial index, must come
 // out identical to the last bit.
+//
+// It guards every reuse the scratch carries, not only the index cursors. The
+// indexed side runs the receivers off one scratch, so its contribution slices
+// arrive at each receiver holding the previous receiver's numbers below the
+// length they are truncated to; the nil side allocates them fresh. A reuse
+// that let a stale entry through — a missed [:0], a write-back of the wrong
+// slice — shows up here as a level that does not match.
 func TestIndexedWalkMatchesUnindexedWalk(t *testing.T) {
 	t.Parallel()
 

@@ -15,6 +15,7 @@
 
 import type { StandardDescriptor } from "@/standards/descriptor";
 import { connectKernel, type KernelClient } from "./kernel-client";
+import { ShardProgress, mergeChunks, poolSize } from "./kernel-pool";
 import type { KernelProgressListener } from "./protocol";
 import { spawnKernelWorker } from "./spawn-worker";
 import type {
@@ -129,6 +130,23 @@ let kernelPromise: Promise<AconiqKernel> | null = null;
 let activeClient: KernelClient | null = null;
 
 /**
+ * The extra workers a run is currently spread across, beside
+ * {@link activeClient}.
+ *
+ * They live for one run: spawned when a run turns out to be big enough to be
+ * worth splitting, terminated in the `finally` after it. Holding four
+ * instantiated Go heaps open between runs would cost tens of megabytes each
+ * for a user who may never start another, and the browser's compiled-module
+ * cache makes the respawn cheap -- it is Go runtime init, not a 4.6 MB fetch.
+ *
+ * They are tracked at module scope rather than inside the run so that
+ * {@link cancelKernel} can reach them: terminating is the only way to stop a
+ * WASM computation, and a cancel that stopped only the primary would leave
+ * three workers burning a core each until they finished work nobody wants.
+ */
+let poolExtras: KernelClient[] = [];
+
+/**
  * The last DTM handed to {@link AconiqKernel.loadTerrain}, kept so a respawned
  * worker can be given it again.
  *
@@ -193,6 +211,7 @@ export function cancelKernel(): void {
   activeClient = null;
   kernelPromise = null;
   client?.cancel();
+  releasePoolExtras();
 
   if (!wasLoaded) return;
 
@@ -235,7 +254,7 @@ async function loadKernel(): Promise<AconiqKernel> {
  */
 function retainingTerrain(client: KernelClient): AconiqKernel {
   return {
-    rls19Road: (req, onProgress) => client.rls19Road(req, onProgress),
+    rls19Road: (req, onProgress) => runOverPool(client, req, onProgress),
     transform: (req) => client.transform(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
@@ -250,4 +269,164 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
       retainedTerrain = null;
     },
   };
+}
+
+/**
+ * Compute a run, spread across a Worker pool when it is large enough to pay
+ * for one.
+ *
+ * Below the threshold this is `client.rls19Road(req, onProgress)` and nothing
+ * else — byte for byte the path every run took before the pool existed, which
+ * is what keeps a small run from paying for machinery it cannot use.
+ *
+ * Above it, every worker receives the *whole* request plus its
+ * `{index, count}` and derives its own receiver window. That is deliberate
+ * and not an oversight: `wasmkernel.ComputeRLS19RoadShard` explains why a
+ * shard handed only its own slice would compute over different ground.
+ *
+ * The extras are terminated in the `finally`, including when the run throws,
+ * so a failed or cancelled run does not leave workers computing results
+ * nobody will read.
+ */
+async function runOverPool(
+  client: KernelClient,
+  req: ComputeRequest,
+  onProgress?: KernelProgressListener,
+): Promise<ReceiverOutput[]> {
+  const total = req.receivers.length;
+  const size = poolSize(navigator.hardwareConcurrency, total);
+
+  if (size <= 1) {
+    return client.rls19Road(req, onProgress);
+  }
+
+  // Zero of n once, for the run — not once per shard. Each shard reporting
+  // its own zero would make the bar jump as the others checked in. Same
+  // reasoning as the single-worker path in `KernelClient.rls19Road`, which is
+  // why that one does it and the shard call does not.
+  onProgress?.(0, total);
+
+  const progress = new ShardProgress(total, onProgress);
+
+  let clients: KernelClient[];
+
+  try {
+    clients = [client, ...(await growPool(size - 1))];
+  } catch {
+    // A pool that will not spawn is not a failed run. One worker is already
+    // there and can do the whole thing, slower.
+    return client.rls19Road(req, onProgress);
+  }
+
+  try {
+    const settled = await Promise.all(
+      clients.map((shardClient, index) =>
+        shardClient.rls19RoadShard(
+          req,
+          { index, count: clients.length },
+          progress.forShard(index),
+        ),
+      ),
+    );
+
+    return mergeChunks(settled.flat(), total);
+  } finally {
+    releasePoolExtras();
+  }
+}
+
+/**
+ * Which generation of the pool is current.
+ *
+ * {@link releasePoolExtras} bumps it. A {@link growPool} still in flight
+ * compares the value it started under against the current one and throws its
+ * workers away if they no longer belong to anybody — without it, a
+ * `cancelKernel()` during startup clears the list and a late-completing
+ * `growPool` then republishes workers the cancellation can no longer reach.
+ */
+let poolGeneration = 0;
+
+/**
+ * Start `count` extra workers, each carrying whatever terrain the primary
+ * holds.
+ *
+ * The terrain replay is not optional. A DTM lives inside a worker's own
+ * linear memory, so an extra that skipped it would compute its share over sea
+ * level while the primary computed over real ground — and the two halves of
+ * the raster would disagree with nothing to say why.
+ *
+ * # Nothing started here may escape unreferenced
+ *
+ * `Promise.allSettled` rather than `Promise.all`, and it matters. `all`
+ * rejects on the first failure while its siblings keep running, so a worker
+ * that connects a moment later lands in no list anybody holds: it cannot be
+ * terminated, and its Go heap stays until the tab closes. Repeated partial
+ * failures then leak whole WASM instances — and since the likeliest reason a
+ * spawn failed in the first place is memory pressure, that is the worst
+ * possible thing to respond with. `allSettled` waits for every outcome, so by
+ * the time the failure is inspected `started` is complete and every one of
+ * them can be cancelled.
+ *
+ * The same reasoning covers the cancellation window, via
+ * {@link poolGeneration}: the workers are published to `poolExtras` only
+ * after both checks pass, and thrown away if a cancel arrived meanwhile.
+ */
+async function growPool(count: number): Promise<KernelClient[]> {
+  const generation = poolGeneration;
+  const started: KernelClient[] = [];
+
+  const outcomes = await Promise.allSettled(
+    Array.from({ length: count }, async () => {
+      const extra = await connectKernel(spawnKernelWorker());
+
+      // Recorded before the replay, so a terrain failure still leaves the
+      // worker reachable for the cleanup below.
+      started.push(extra);
+
+      if (retainedTerrain !== null) {
+        await extra.loadTerrain(retainedTerrain.data, retainedTerrain.crs);
+      }
+    }),
+  );
+
+  const failure = outcomes.find((outcome) => outcome.status === "rejected");
+  const cancelled = poolGeneration !== generation;
+
+  if (failure !== undefined || cancelled) {
+    for (const extra of started) {
+      extra.cancel();
+    }
+
+    if (failure !== undefined) {
+      // A rejection is not guaranteed to be an Error — connectKernel rejects
+      // with one, but nothing in the type system says so.
+      throw failure.reason instanceof Error
+        ? failure.reason
+        : new Error(String(failure.reason));
+    }
+
+    throw new Error(
+      "kernel pool: the run was cancelled while the pool started",
+    );
+  }
+
+  poolExtras = [...poolExtras, ...started];
+
+  return started;
+}
+
+/**
+ * Terminate every extra worker and forget them.
+ *
+ * Bumping the generation is what makes this reach a pool that has not
+ * finished starting yet; see {@link poolGeneration}.
+ */
+function releasePoolExtras(): void {
+  const extras = poolExtras;
+  poolExtras = [];
+  poolGeneration += 1;
+
+  for (const extra of extras) {
+    extra.cancel();
+  }
 }

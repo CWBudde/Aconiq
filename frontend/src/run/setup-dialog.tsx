@@ -49,6 +49,7 @@ import {
   retryProjectHydration,
 } from "@/model/use-project-hydration";
 import { useProjectSync } from "@/model/use-project-sync";
+import { GridEstimateNote } from "@/run/grid-estimate-note";
 import { ParameterField } from "@/run/parameter-field";
 import {
   parameterDescription,
@@ -57,6 +58,7 @@ import {
   PARAMETER_GROUP_ORDER,
   type ParameterGroupKey,
 } from "@/run/parameter-meta";
+import { useGridExtent } from "@/run/use-grid-extent";
 import { useRunSetupSelection } from "@/run/use-run-setup-selection";
 import { getStandardDescription, getStandardLabel } from "@/run/standards-meta";
 import { m } from "@/i18n/messages";
@@ -101,13 +103,21 @@ function RunCreateError({ error }: { error: Error }) {
  * What the dialog shows while a run is in flight.
  *
  * Determinate as soon as the backend has reported once, and a plain phase
- * label before that. The gap is real work and not a delay: spawning the
- * worker, instantiating the WASM module and projecting the model through
- * `resolveComputeModel` all happen before the first receiver is computed, and
- * a bar pinned at 0% through them reads as a run that is stuck rather than one
- * that has not started counting. A mode that never reports at all — the HTTP
- * backend — stays on this label for the whole run, which is exactly today's
- * behaviour.
+ * label before that. What is left on that label is the stretch before the
+ * receiver count is even known: spawning the worker, instantiating the WASM
+ * module and projecting the model through `resolveComputeModel`. A mode that
+ * never reports at all — the HTTP backend — stays on it for the whole run,
+ * which is exactly today's behaviour there.
+ *
+ * It used to cover far more than that, and that was the bug: browser mode
+ * reported only between chunks of 256 receivers, so a scene with buildings in
+ * it — tens of milliseconds a receiver — spent twenty seconds and more on
+ * "starting the run" with nothing to show. The fix is on both sides of the
+ * boundary and not in this component: `kernel-client.ts` reports 0 of n the
+ * moment it dispatches, so the reader at least learns the size of the job,
+ * and `wasmkernel.ComputeRLS19Road` now sizes its chunks by how long they
+ * take rather than by a fixed count. A bar at 0 of 13,000 is not a bar that
+ * has stalled; a spinner that has said "starting" for a minute is.
  *
  * The bar carries an accessible name: a screen reader announcing "62%" with
  * nothing to attach it to is a worse answer than none, and axe fails an
@@ -362,6 +372,12 @@ function RunSetupForm({
 
   const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
 
+  // The extent the automatic grid would cover, in metres. Only in auto-grid
+  // mode: a custom receiver set is the points the user placed, and no
+  // resolution describes it. The projection it needs runs once per model, not
+  // once per keystroke — see `useGridExtent`.
+  const gridExtent = useGridExtent(receiverMode === "auto-grid");
+
   // Asked of the capability, not of the mode: cancelling means terminating
   // the kernel this tab owns, and no such lever exists over a run the API is
   // executing.
@@ -565,6 +581,22 @@ function RunSetupForm({
                       {parameterGroupLabel(group)}
                     </legend>
                     {groupNote(selectedStandard.id, group, members)}
+                    {/* Above the fields rather than below them: the cost of
+                        the grid is what the reader should have in mind while
+                        choosing a resolution, and a number that appears
+                        underneath is a number found after the decision. */}
+                    {group === "grid" ? (
+                      <GridEstimateNote
+                        state={gridExtent}
+                        params={params}
+                        onUseResolution={(resolutionM) => {
+                          selection.setParam(
+                            "grid_resolution_m",
+                            String(resolutionM),
+                          );
+                        }}
+                      />
+                    ) : null}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                       {members.map((param) => (
                         <ParameterField

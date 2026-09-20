@@ -165,3 +165,35 @@ func BenchmarkComputeReceiverOutputsBuildings(b *testing.B) {
 		}
 	})
 }
+
+// BenchmarkComputeReceiverOutputsParallel is the same open-field grid as
+// BenchmarkComputeReceiverOutputs, over a pool.
+//
+// workers=1 is not a separate implementation: ComputeReceiverOutputsParallel
+// delegates below two workers, so that row is the sequential walk and the
+// others are measured against it. The scaling is sub-linear and expected to
+// be: the walk is memory-bound on the scene's arrays long before it is
+// compute-bound, and hyperthreads add little.
+func BenchmarkComputeReceiverOutputsParallel(b *testing.B) {
+	sources := []RoadSource{benchRoadSource()}
+	cfg := benchConfig(1, nil)
+
+	for _, count := range []int{2500, 10000} {
+		receivers := benchReceivers(count)
+
+		for _, workers := range []int{1, 2, 4, 8} {
+			b.Run(fmt.Sprintf("receivers=%d/workers=%d", count, workers), func(b *testing.B) {
+				b.ReportAllocs()
+
+				for b.Loop() {
+					_, err := ComputeReceiverOutputsParallel(
+						b.Context(), receivers, sources, nil, cfg, workers,
+					)
+					if err != nil {
+						b.Fatalf("compute failed: %v", err)
+					}
+				}
+			})
+		}
+	}
+}

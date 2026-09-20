@@ -2,26 +2,56 @@ package wasmkernel
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
 )
 
-// DefaultChunkSize is how many receivers ComputeRLS19Road computes between two
-// progress reports when the caller states no preference.
+// How ComputeRLS19Road sizes its chunks when the caller states no preference.
 //
-// It is a compromise between two costs that pull in opposite directions. Too
-// small and the walk pays a JavaScript call per handful of receivers — under
-// js/wasm every `cb.Invoke` crosses the wasm boundary and resumes the Go
-// scheduler, which is not free. Too large and a long run reports nothing for
-// seconds at a time, which is the defect the progress channel exists to fix.
-// 256 receivers is a few milliseconds of propagation work on the grids browser
-// mode actually runs, so a bar moves smoothly without the reporting showing up
-// in a profile.
+// A fixed count cannot work here, and the first version of this file learned
+// that the hard way: it reported every 256 receivers, which is a few
+// milliseconds on an open-field grid and *twenty seconds* on a scene with
+// twenty buildings in it, because a building is a barrier and a reflector at
+// once and RLS-19 Nr. 3.5 gives every Spiegelschallquelle its own diffraction
+// search. Browser mode therefore sat on "starting the run" for the whole of a
+// real model's first chunk, which is the exact failure the progress channel
+// exists to rule out.
 //
-// It is deliberately not a limit on anything numeric: see ComputeRLS19Road on
-// why the chunk size cannot move a single decibel.
-const DefaultChunkSize = 256
+// So the walk measures instead of assuming: it computes a small first chunk,
+// times it, and sizes the next one to land near ProgressInterval. That holds
+// the reporting cadence roughly constant however expensive one receiver turns
+// out to be — which is not something this package can know in advance, since
+// it depends on the building count, the Teilstück length and the reflection
+// order of the model in front of it.
+const (
+	// InitialChunkSize is the first chunk, before there is anything to
+	// measure. Small enough that even a very expensive receiver reports
+	// within about a second, and the handful of extra boundaries it costs a
+	// cheap scene are paid back within the first few chunks — growth is
+	// geometric.
+	InitialChunkSize = 8
+
+	// MaxChunkSize caps the growth. An open-field grid computes a receiver in
+	// tens of microseconds, so the target interval alone would ask for chunks
+	// of hundreds of thousands and a run would report twice; this keeps a bar
+	// moving on the cheap scenes too.
+	MaxChunkSize = 4096
+
+	// ProgressInterval is the cadence the adaptive size aims for. It matches
+	// the throttle in `kernel.worker.ts`, so roughly every chunk the walk
+	// reports is a message the main thread actually draws.
+	ProgressInterval = 100 * time.Millisecond
+
+	// chunkGrowthLimit bounds how fast the size may rise between two chunks.
+	// One chunk that happened to be cheap — receivers behind the only
+	// building in the scene, a warm cache — must not put the next one
+	// minutes away. Shrinking is deliberately not limited: a chunk that
+	// overran its budget has already cost the user the wait, and the walk
+	// should not spend a second one confirming it.
+	chunkGrowthLimit = 4
+)
 
 // ComputeRLS19Road computes receivers in deterministic chunks, reporting
 // progress between them.
@@ -39,6 +69,11 @@ const DefaultChunkSize = 256
 // done == total on a successful walk. A nil progress is allowed and means the
 // walk reports nothing; that is the one-argument `aconiq.rls19Road` path.
 //
+// It says nothing about how long the *first* chunk takes, and a caller drawing
+// a bar should not wait for it to say something: `kernel-client.ts` reports
+// 0 of n itself the moment it dispatches the call, so the reader sees a
+// determinate bar across the scene preparation as well.
+//
 // **Chunking cannot change a result.** The scene is receiver-independent and
 // each receiver is computed from it alone, so the chunk size decides only where
 // the walk pauses to report, never what it computes or in what order it appends
@@ -48,7 +83,11 @@ const DefaultChunkSize = 256
 // all of them, by full struct equality rather than a tolerance, because "same
 // inputs, same outputs" here means the bits.
 //
-// chunkSize <= 0 means DefaultChunkSize.
+// That is what makes the adaptive size below admissible at all. Where the
+// chunks fall depends on how fast the machine turned out to be, so two runs of
+// the same model report different *sequences* — but a progress report is not
+// an output, and the outputs are identical bit for bit. The chunk size the
+// caller passes is honoured exactly; chunkSize <= 0 asks for the adaptive one.
 func ComputeRLS19Road(
 	receivers []geo.PointReceiver,
 	sources []road.RoadSource,
@@ -57,10 +96,6 @@ func ComputeRLS19Road(
 	chunkSize int,
 	progress func(done, total int),
 ) ([]road.ReceiverOutput, error) {
-	if chunkSize <= 0 {
-		chunkSize = DefaultChunkSize
-	}
-
 	total := len(receivers)
 
 	// Delegated rather than restated. The empty-receiver refusal is
@@ -77,73 +112,127 @@ func ComputeRLS19Road(
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	scene, err := prepareScene(receivers, sources, barriers, cfg)
+	scene, err := road.PrepareSceneFor(receivers, sources, barriers, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 
-	outputs := make([]road.ReceiverOutput, 0, total)
+	walk := newProgressWalk(chunkSize, total, progress)
 
-	for done := 0; done < total; {
-		end := min(done+chunkSize, total)
-
-		chunk, err := scene.ComputeReceivers(receivers[done:end], cfg)
-		if err != nil {
-			return nil, fmt.Errorf("%w", err)
-		}
-
-		outputs = append(outputs, chunk...)
-		done = end
-
-		if progress != nil {
-			progress(done, total)
-		}
+	outputs, err := walk.over(scene, receivers, cfg, make([]road.ReceiverOutput, 0, total))
+	if err != nil {
+		return nil, err
 	}
 
 	return outputs, nil
 }
 
-// prepareScene derives the receiver-independent half once, keeping
-// ComputeReceiverOutputs' order of refusals.
+// progressWalk carries the reporting cadence across however many slices of
+// receivers a caller hands it.
 //
-// That order is load-bearing and not obvious. ComputeReceiverOutputs prepares
-// the scene *lazily*, on the first receiver that has cleared its own checks, so
-// a model that is wrong in both ways at once — a receiver with no ID and a
-// source with no ID — reports the receiver. Preparing eagerly, which is exactly
-// what this function does to get the saving it exists for, would swap the two
-// around.
+// It exists because a shard walks several disjoint slices of the receiver
+// list and the reports have to keep counting up across them: a bar that
+// restarted at every partition boundary would be worse than no bar. The
+// adaptive chunk size carries across too, so a shard measures the scene once
+// rather than re-learning it from InitialChunkSize on every slice.
 //
-// So the eager preparation is speculative: when it succeeds nothing was
-// reordered, because a scene that prepares cleanly has no refusal to lose the
-// race. When it fails, the refusal the caller hears is not ours to choose, and
-// ComputeReceiverOutputs is asked to word it. That costs a second
-// PrepareScene, on a path that is returning an error and computing nothing.
-func prepareScene(
+// This is the *progress* cadence and nothing else. Where the partition falls
+// is `internal/partition`'s business and is a pure function of the receiver
+// count; this one reads a clock, which is exactly why the two must not be the
+// same number.
+type progressWalk struct {
+	chunkSize int
+	adaptive  bool
+	done      int
+	total     int
+	progress  func(done, total int)
+}
+
+func newProgressWalk(chunkSize, total int, progress func(done, total int)) *progressWalk {
+	// A caller that named a size gets it for every chunk; one that did not is
+	// measured, starting small.
+	adaptive := chunkSize <= 0
+	if adaptive {
+		chunkSize = InitialChunkSize
+	}
+
+	return &progressWalk{
+		chunkSize: chunkSize,
+		adaptive:  adaptive,
+		done:      0,
+		total:     total,
+		progress:  progress,
+	}
+}
+
+// over computes one slice of receivers, appending to dst and reporting as it
+// goes.
+func (w *progressWalk) over(
+	scene *road.Scene,
 	receivers []geo.PointReceiver,
-	sources []road.RoadSource,
-	barriers []road.Barrier,
 	cfg road.PropagationConfig,
-) (*road.Scene, error) {
-	// The first receiver's height, as ComputeReceiverOutputs would have used
-	// it: ReceiverHeightM is the one config field a receiver overrides, and
-	// PrepareScene reads it only to validate it.
-	firstCfg := cfg
-	firstCfg.ReceiverHeightM = receivers[0].HeightM
+	dst []road.ReceiverOutput,
+) ([]road.ReceiverOutput, error) {
+	for at := 0; at < len(receivers); {
+		end := min(at+w.chunkSize, len(receivers))
 
-	scene, err := road.PrepareScene(sources, barriers, firstCfg)
-	if err == nil {
-		return scene, nil
+		startedAt := time.Now()
+
+		chunk, err := scene.ComputeReceivers(receivers[at:end], cfg)
+		if err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+
+		elapsed := time.Since(startedAt)
+
+		dst = append(dst, chunk...)
+
+		if w.adaptive {
+			w.chunkSize = nextChunkSize(w.chunkSize, end-at, elapsed)
+		}
+
+		w.done += end - at
+		at = end
+
+		if w.progress != nil {
+			w.progress(w.done, w.total)
+		}
 	}
 
-	_, refusal := road.ComputeReceiverOutputs(receivers, sources, barriers, cfg)
-	if refusal != nil {
-		return nil, fmt.Errorf("%w", refusal)
+	return dst, nil
+}
+
+// nextChunkSize is how many receivers to compute before the next report, given
+// that computing computed of them took elapsed.
+//
+// Straight-line extrapolation: receivers within one scene cost roughly the
+// same, because what makes them expensive — the Teilstück count, the buildings
+// standing between them and the road — is a property of the scene rather than
+// of the receiver. Where that is wrong it is wrong by a factor, and the growth
+// limit and the floor keep a factor from becoming a stall.
+func nextChunkSize(current, computed int, elapsed time.Duration) int {
+	ceiling := min(current*chunkGrowthLimit, MaxChunkSize)
+
+	// Below the clock's resolution. Not a measurement of "instant" but the
+	// absence of one, so grow by the limit and measure again next time rather
+	// than dividing by a zero.
+	if elapsed <= 0 {
+		return ceiling
 	}
 
-	// Unreachable as the two are written today — ComputeReceiverOutputs
-	// prepares from the same first receiver, so it cannot succeed where
-	// PrepareScene failed. Returning the refusal we already have rather than a
-	// nil scene keeps that an error instead of a panic if it ever stops being
-	// true.
-	return nil, fmt.Errorf("%w", err)
+	wanted := float64(computed) * (float64(ProgressInterval) / float64(elapsed))
+
+	// One receiver is the floor, however far over budget the chunk ran: the
+	// walk has no smaller unit to pause at, and a scene where a single
+	// receiver takes longer than the interval is one the reader most needs to
+	// see moving.
+	if wanted < 1 {
+		return 1
+	}
+
+	if wanted > float64(ceiling) {
+		return ceiling
+	}
+
+	return int(wanted)
 }

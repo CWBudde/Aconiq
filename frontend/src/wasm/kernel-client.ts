@@ -16,6 +16,7 @@
 import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel } from "./kernel";
 import { reviveKernelError } from "./kernel-error";
+import type { ChunkOutput, Shard } from "./kernel-pool";
 import type {
   KernelCall,
   KernelProgressListener,
@@ -293,6 +294,16 @@ export class KernelClient implements AconiqKernel {
     req: ComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]> {
+    // Zero of n, before the call is even dispatched. The kernel cannot report
+    // this: it reports between chunks, and everything ahead of the first one
+    // — JSON.stringify of a grid-sized request, the structured clone across
+    // to the worker, `road.PrepareScene` — happens before it has a chunk to
+    // report. On a scene with buildings in it that stretch is tens of
+    // seconds, and a reader watching an indeterminate "starting the run"
+    // through it has no way to tell a slow model from a hung one. A
+    // determinate bar at 0 of 13,000 says which.
+    onProgress?.(0, req.receivers.length);
+
     const value = await this.call(
       (id) => ({
         id,
@@ -306,6 +317,42 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "rls19Road"),
     ) as ReceiverOutput[];
+  }
+
+  /**
+   * One shard of a run.
+   *
+   * `req` is the whole run's request, not this shard's slice of it. That is
+   * the contract `wasmkernel.ComputeRLS19RoadShard` documents and depends on:
+   * the grid's single terrain elevation is derived from the centroid of the
+   * receiver list the kernel is handed, so a shard sent only its own
+   * receivers would sample the DTM somewhere else and produce different
+   * levels across its whole share, silently.
+   *
+   * No `onProgress?.(0, n)` here, unlike {@link rls19Road}. The pool reports
+   * the run's own zero once, before it dispatches to anybody; each shard
+   * reporting its own zero would make the bar jump backwards as the others
+   * checked in.
+   */
+  async rls19RoadShard(
+    req: ComputeRequest,
+    shard: Shard,
+    onProgress?: KernelProgressListener,
+  ): Promise<ChunkOutput[]> {
+    const value = await this.call(
+      (id) => ({
+        id,
+        method: "rls19RoadShard",
+        json: JSON.stringify({ ...req, shard }),
+        progress: onProgress !== undefined,
+      }),
+      [],
+      onProgress,
+    );
+
+    return JSON.parse(
+      KernelClient.json(value, "rls19RoadShard"),
+    ) as ChunkOutput[];
   }
 
   async transform(req: TransformRequest): Promise<TransformResponse> {

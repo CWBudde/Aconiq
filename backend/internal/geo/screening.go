@@ -1,6 +1,9 @@
 package geo
 
-import "slices"
+import (
+	"math"
+	"slices"
+)
 
 // This file holds the plan-view screening geometry that every standard with
 // barrier diffraction needs and none of them owns: finding where a
@@ -247,9 +250,58 @@ func appendRayCrossing[T any](
 	})
 }
 
+// rayCrossingInsertionMax is the length up to which sortRayCrossings sorts by
+// insertion rather than by slices.SortStableFunc. It is a measured number, not
+// a guess: BenchmarkSortRayCrossings runs both implementations over the same
+// inputs, and insertion wins by a wide margin to 64 and is still ahead at 256.
+// The cut is set at 64 anyway, because insertion is O(m²) and a ray through a
+// dense city can cross far more barriers than the handful that is typical —
+// past the cut the asymptotics have to win eventually, and there is no reason
+// to find out where by shipping it.
+const rayCrossingInsertionMax = 64
+
 // sortRayCrossings orders crossings by distance from the source, stably, so
 // that equidistant obstacles keep the order the caller listed them in.
+//
+// The permutation is the one slices.SortStableFunc produces, to the bit, and
+// not merely an equally valid sort of the same keys. Determinism policy leaves
+// no output tolerance here, so that is worth spelling out rather than trusting:
+//
+//   - A stable sort's output is uniquely determined. For any two elements a and
+//     b, a precedes b in the result exactly when key(a) < key(b), or when the
+//     keys are equal and a came earlier in the input. That is a total order on
+//     the input positions, so exactly one arrangement satisfies it.
+//   - The insertion loop below shifts a predecessor rightwards only while its
+//     key is **strictly** greater than the key being placed. It therefore stops
+//     at the first predecessor that is not strictly greater — one with a
+//     smaller key, or one with an equal key — and drops the element after it.
+//     An element thus lands after every earlier element with an equal key and
+//     after every element with a smaller key, which is the arrangement above.
+//
+// The argument needs a comparator that is a total preorder, and a NaN key is
+// not: `>` is false in both directions, so an insertion sort leaves a NaN
+// wherever it found it while SortStableFunc over an inconsistent comparator
+// promises nothing at all. NaN is not reachable from any input a propagation
+// walk produces — DistFromSource is Hypot of two differences of coordinates
+// that LineStringIntersectsSegment has already discarded a non-finite
+// parameter for, and a projected CRS puts those coordinates around 1e6, ten
+// orders short of where a coordinate difference could overflow to an infinity
+// and make 0*Inf out of the intersection point. "Not reachable in practice"
+// is not "not reachable", though, and a divergence here would be silent, so
+// the check below is cheap insurance rather than a proof: a non-finite key
+// sends the whole slice down the SortStableFunc path it took before, which
+// cannot differ from itself.
 func sortRayCrossings(crossings []RayCrossing) {
+	if len(crossings) < 2 {
+		return
+	}
+
+	if len(crossings) <= rayCrossingInsertionMax && rayCrossingKeysOrdered(crossings) {
+		insertionSortRayCrossings(crossings)
+
+		return
+	}
+
 	slices.SortStableFunc(crossings, func(a, b RayCrossing) int {
 		switch {
 		case a.DistFromSource < b.DistFromSource:
@@ -260,4 +312,34 @@ func sortRayCrossings(crossings []RayCrossing) {
 			return 0
 		}
 	})
+}
+
+// rayCrossingKeysOrdered reports whether every key admits a total preorder
+// under `<`, which for a float64 means only that none of them is NaN.
+func rayCrossingKeysOrdered(crossings []RayCrossing) bool {
+	for i := range crossings {
+		if math.IsNaN(crossings[i].DistFromSource) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// insertionSortRayCrossings is the stable sort of the doc comment above, kept
+// separate so that a test can hold it against slices.SortStableFunc directly.
+// The inner guard must stay strictly `>`; `>=` would reverse equal keys and
+// silently reorder equidistant obstacles.
+func insertionSortRayCrossings(crossings []RayCrossing) {
+	for i := 1; i < len(crossings); i++ {
+		placed := crossings[i]
+
+		j := i - 1
+		for j >= 0 && crossings[j].DistFromSource > placed.DistFromSource {
+			crossings[j+1] = crossings[j]
+			j--
+		}
+
+		crossings[j+1] = placed
+	}
 }

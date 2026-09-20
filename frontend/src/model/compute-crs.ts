@@ -16,7 +16,7 @@
  *
  * It runs once, over the whole workspace, before any scene is built — never per
  * builder. `buildParkingSources` computes a shoelace area in m² and a centroid,
- * and `getFeatureBBox`/`getPolygonBBox` feed a receiver grid whose padding and
+ * and `resolveGridExtent` feeds a receiver grid whose padding and
  * resolution are metres by contract. All of them need the model already in
  * metres. This mirrors `cli.resolveComputeModel`, which projects the model and
  * then lets extraction run unchanged.
@@ -109,15 +109,110 @@ export async function resolveComputeModel(
 ): Promise<ComputeModel> {
   refuseUnreachablePropertyGeometry(workspace.features);
 
+  const hit = cachedProjection(workspace);
+  if (hit !== null) {
+    return hit;
+  }
+
   // `async` rather than a plain promise-returning function: it is what turns
   // the refusal above into a rejection instead of a synchronous throw, which
   // every caller and every test here expects.
-  const projected = await projectWorkspace(
+  const projected = projectWorkspace(
     (req) => kernel.transform(req),
     workspace,
     AUTO_TARGET_CRS,
   );
+
+  rememberProjection(workspace, projected);
+
   return projected;
+}
+
+/**
+ * The last workspace projected, and the projection of it.
+ *
+ * Every run calls {@link resolveComputeModel}, and for a workspace nobody has
+ * touched since the last run the answer is identical — but producing it costs
+ * a round trip into the kernel plus two full traversals of the model and two
+ * JSON passes over every coordinate, all on the main thread, all before the
+ * progress bar can appear. On a large workspace that is the visible stall
+ * between pressing the button and the bar showing up.
+ *
+ * Size one. A run projects the *current* workspace; the previous one comes
+ * back only through undo, which replaces the arrays anyway (see below), so a
+ * second slot would hold something nothing asks for.
+ */
+let projectionCache: {
+  features: ModelFeature[];
+  receivers: ModelReceiver[];
+  calcArea: CalcArea | null;
+  crs: string;
+  projected: Promise<ComputeModel>;
+} | null = null;
+
+/**
+ * The cached projection of this workspace, or null.
+ *
+ * Keyed on **reference identity** of the three collections, which is sound
+ * rather than a guess: `model-store.ts` replaces its arrays on every mutation
+ * (`[...s.features, f]`, `.map`, `.filter`) and never mutates one in place, and
+ * `projectGeometry` below already leans on that same invariant for the
+ * `applied: false` path. Import, undo and redo all replace the arrays too, so
+ * each of them invalidates by construction.
+ *
+ * What deliberately does *not* invalidate: a respawned kernel worker.
+ * `transform` is a pure function of (source CRS, target CRS, coordinates)
+ * under docs/policies/determinism.md, so a fresh worker returns the same
+ * doubles and re-asking it would buy nothing.
+ */
+function cachedProjection(workspace: Workspace): Promise<ComputeModel> | null {
+  const entry = projectionCache;
+
+  if (
+    entry === null ||
+    entry.features !== workspace.features ||
+    entry.receivers !== workspace.receivers ||
+    entry.calcArea !== workspace.calcArea ||
+    entry.crs !== workspace.crs
+  ) {
+    return null;
+  }
+
+  return entry.projected;
+}
+
+/**
+ * Cache the *promise*, not the resolved model, so two runs started back to
+ * back share one round trip rather than racing two.
+ *
+ * A rejection drops the entry: a transform that failed once — a worker that
+ * died mid-call, say — must not be the answer for the rest of the session,
+ * which is the same reasoning `getKernel` applies to a failed kernel load.
+ */
+function rememberProjection(
+  workspace: Workspace,
+  projected: Promise<ComputeModel>,
+): void {
+  const entry = {
+    features: workspace.features,
+    receivers: workspace.receivers,
+    calcArea: workspace.calcArea,
+    crs: workspace.crs,
+    projected,
+  };
+
+  projectionCache = entry;
+
+  projected.catch(() => {
+    if (projectionCache === entry) {
+      projectionCache = null;
+    }
+  });
+}
+
+/** Drop the memoised projection. For tests, which share module state. */
+export function resetComputeModelCacheForTests(): void {
+  projectionCache = null;
 }
 
 /**

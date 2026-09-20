@@ -1022,6 +1022,26 @@ editing several of its files rather than one package of its own.
         **Note what this costs under Priority 5's versioning rule**: `rls19-road` is normative-tier,
         and a change to a normative module's computed levels is a breaking change there regardless
         of direction or size. This is a release decision, not a cleanup.
+        **Take `math.Pow` with it, in the same commit.** `EnergySum` converts each level with
+        `math.Pow(10, level/10)`, and Go's `math.Pow` has no base-10 fast path — it is
+        Frexp/Modf/Log/Exp/Sqrt/Ldexp. `math.Exp(level * ln10Over10)` is one `Exp`. Measured with
+        `BenchmarkLevelToEnergy` over 2 000 terms: **193 µs → 18 µs native (10.7x)** and
+        **482 µs → 118 µs under js/wasm (4.1x)**. Note the browser ratio is the _smaller_ one, the
+        opposite of the intuition — native `math.Exp` has an assembly implementation that
+        `math.Pow` cannot reach, and `js/wasm` has neither. `Pow` is ~95% of `EnergySum`, and
+        `EnergySum` was 51.5% of the open-field profile before the pool landed, so this is worth
+        roughly **1.8x** on an open-field run on its own.
+        It differs by about one ulp, so it moves the same goldens compensation moves — which is
+        exactly why the two belong in one commit and one announced breaking change rather than two.
+        Predict and then verify: compensation _recovers_ low bits (~2.8e-14 dB) while `Exp`
+        _perturbs_ each term by ~4.8e-16 dB through `10·lg`, so the combined delta should stay in
+        the 1e-14 band and be dominated by compensation. A materially larger delta is a finding to
+        chase before re-cutting anything. Report it three ways — `Exp` alone, compensation alone,
+        both — with a column for how many receivers move _after_ 0.1 dB rounding, because that is
+        the column that says whether any assessed result changed.
+        Keep the blast radius to these five. The other ~20 `math.Pow(10, …)` sites
+        (`schall03/compute.go`, `iso9613/propagation.go`, `rls19/road/emission.go`) each belong to
+        a module with its own goldens, and `schall03` is normative tier.
   - [ ] **Decide the two outliers, or declare them.** `bimschv16.energySumDB` has no NaN/Inf guard
         and no silence threshold; `schall03.EnergeticSumLevels` works in `-Inf` internally and
         returns NaN on a `+Inf` term rather than skipping it. Both now carry a comment saying why
@@ -2062,8 +2082,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
       counts.
 - [x] **The WASM kernel runs off the main thread** (`d81402c`, `0b58c33`, `7ac1db3`). A module
-      Worker behind an RPC client, progress per 256-receiver chunk, cancellation by terminating
-      the worker. Two constraints stay live for anything built on it. Terminating is the only
+      Worker behind an RPC client, time-sized progress chunks, cancellation by terminating
+      the worker. Three constraints stay live for anything built on it. A progress channel has to
+      be measured against the _expensive_ scene: chunking by a fixed receiver count reported every
+      few milliseconds on open field and only every twenty seconds with buildings in the model, so
+      the kernel times its chunks and the client reports 0 of n before it dispatches at all.
+      Terminating is the only
       mechanism there is, not the cheapest: the compute runs synchronously inside the Promise
       executor, so the worker's event loop is pinned and a cancel _message_ could never be
       dequeued in time. And a Go `js.Func` cannot throw — a panic out of one ends the module and
@@ -2073,6 +2097,24 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       (`84c66eb`, `ce5121c`). No golden moved, and no distance cutoff was added: every prune skips
       only work that provably contributes zero. That bound is the constraint to keep — an
       approximate cutoff is a normative decision, not an optimisation.
+- [x] **An RLS-19 grid run is ~9.8x faster, and no golden moved** (`a434528`, `012fdf6`,
+      `fc462ef`, `4fa9f73`, `9ebc016`, `f4488c9`, `7491b3d`). Three constraints stay live for
+      anyone extending it. **Bit-identity here is structural**: there is no reduction across
+      receivers in RLS-19, so a split changes no floating-point operand and the merge is a
+      concatenation by chunk index — do not weaken that into "the partition is deterministic".
+      **The browser must shard by window, not by slice**: `TerrainAtGridCenter` derives the
+      grid's one ground elevation from the centroid of the receiver list it is handed, so a
+      Worker sent only its own receivers computes over different ground, silently
+      (`TestShardsAgreeOnTheGridCentreElevation`). **Three cadences are separate numbers**: the
+      kernel's progress chunk size is adaptive on elapsed time, the worker's `postMessage`
+      throttle is a wire-rate limiter, and `internal/partition` is pure in two integers and must
+      never see a clock. Also closes line 1116's complaint that the worker-count guarantee was
+      vacuous for every standard a user would actually run.
+- [x] **The run dialog states the receiver count before the run** (`1f81996`). The grid
+      arithmetic is shared with `buildReceiverGrid` rather than duplicated, and must stay that
+      way: a preview computed by a second copy would go on quoting a number the run had stopped
+      producing. Browser mode still has no receiver cap. A _time_ estimate wants a 16-receiver
+      kernel probe, left as a named follow-up at both sites.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM. Only the extraction is left; the threading is done.
@@ -2082,13 +2124,81 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       key each (`browser-storage.ts`), because they were the one part large enough to make the
       re-clone matter; that is one key space for one payload, not the split this item asks for, and
       the eviction, cap and clear paths each have to forget those records by hand today.
-- [ ] **Decide what the reflection model admits.** A building-dense model is out of reach at
-      grid-scale receiver counts, and the ceiling is the model rather than the search: ~307 valid
-      Spiegelschallquellen per (Teilstück, receiver) pair, each of which RLS-19 Nr. 3.5 treats as a
-      source in its own right and so gives its own diffraction search. No exact prune reduces that
-      count, because the model says those paths are there, so this needs a normative decision — an
-      occlusion test on the reflected legs, or a defensible distance cutoff. Until then, browser
-      mode should steer users away from a 1 m Teilstück length over a building-dense extract.
+- [x] **What the reflection model admits: decided, against the standard's text** (`d2032fc`).
+      All three candidates for pruning the ~307 Spiegelschallquellen per (Teilstück, receiver)
+      pair are rejected, and each rejection is a belief this work proved wrong rather than a
+      preference — do not re-propose one without new text.
+      **Occlusion test:** not licensed. Nr. 3.5.5 gives an obstruction a finite `D_z` and Nr. 3.6
+      treats Spiegelschallquellen "wie Originalschallquellen", so discarding a blocked path
+      under-predicts, where every declared deviation over-predicts.
+      **Distance or energy cutoff:** byte-exactness needs Δ ≈ 160–170 dB and the divergence
+      spread across a 2 km model is ~34 dB, so an exact cutoff prunes nothing, ever, on this
+      model; any useful Δ moves assessed levels with no text behind it.
+      **First-order only:** contradicts "Es sind Reflexionen erster und zweiter Ordnung zu
+      berücksichtigen", and `EvidenceTier` is per descriptor, so it would make one standard ID
+      emit both normative and non-normative levels.
+      Line 2076's doctrine therefore stands unamended.
+- [ ] **Receiver-dependent Teilstück length — the option the standard does license.** Nr. 3.3
+      requires source lines be split "_abhängig vom Immissionsort_ … in geeignete Teilstücke", and
+      the Anmerkung to Nr. 3.2 publishes the rule `l_i ≤ s_i / 2` for free propagation over flat
+      ground — the direct analogue of the 10 m step cap CNOSSOS has written down, and more
+      permissive. It attacks the `receivers × Teilstücke` factor rather than the `× 307` one, so it
+      multiplies with the pool rather than competing with it: a receiver 200 m out admits 100 m
+      Teilstücke against the 1 m being used.
+      Shape: a level-of-detail ladder built once in `PrepareScene` (splits at `L, 2L, 4L, …`), the
+      coarsest level satisfying `l ≤ s/2` chosen per (source, receiver) and verified per Teilstück
+      against its own midpoint. Do **not** move segmentation back per-receiver — that undoes
+      `84c66eb` and reinstates the O(segments × vertices) cost below.
+      The precondition is the constraint: the Faustregel holds "bei freier Schallausbreitung über
+      ebenem Boden", so coarsening must be inhibited inside a barrier/building plan-shadow and
+      across a Bild-14 active/inactive boundary — both cheap against `Scene.barrierGrid` and
+      `reflectors.grid`. That means it bites hardest on open field and is throttled in dense urban,
+      which is the opposite of where the pain is; measure the conservative form before assuming the
+      aggressive one is needed. Ship it as a declared `segment_length_mode` parameter stamped
+      through `ProvenanceMetadata`, defaulted to `fixed`, so the first release moves no golden.
+- [ ] **Correctness debt the reflection reading exposed, and it is _slower_, not faster.** The
+      Anmerkung to Nr. 3.5.5 requires mirrored paths to raise _Spiegelbeugungskanten_ and be run
+      through the Gummibandmethode over the whole unfolded path. That is exactly declared deviation
+      3 ("obstacles are not mirrored into the unfolded frame, so only the last leg is exact"), and
+      closing it means mirroring barriers into the unfolded frame. It is the change in this area
+      with a sentence of the standard behind it. Likewise per-facade rather than per-reflector
+      exclusion in `dropExcludedBarriers`, which closes deviation 2.
+- [ ] **Delete the pre-bitset grid collector.** `bboxGridUseBitset`,
+      `BBoxGridCursor.legacy`/`seen`/`generation`, `nextGeneration`, the legacy branches in
+      `collect` and `finish`, the `collect=legacy` benchmark arm and the two `CollectorsAgree`
+      tests. It is scaffolding that exists so the bitset could be proven equal to what it
+      replaced, and production never allocates it — but it is a second implementation of a
+      contract, and those go stale.
+- [ ] **Send a receiver grid to the kernel as a descriptor, not as JSON objects.** A
+      10 000-receiver run stringifies ~875 KB in and parses ~1.48 MB back, four full passes, all
+      on the main thread at the two moments the UI most needs to be responsive. The receivers are
+      a regular grid — origin, spacing, width, height — and the result echoes each receiver back
+      although the caller already holds it. It also multiplies by the pool: each Worker parses the
+      whole receiver list today, which is the one real cost of sharding by window.
+      Three things have to be pinned or it is not exact: the coordinate expression must not be
+      fused (JS rounds `minX + col*res` twice; Go may contract it to an FMA, and does on arm64),
+      ID synthesis must match `padStart` including the six-character `"R10000"` case, and
+      `hashPayload` must produce the same bytes — which gets its own test, one request down both
+      paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
+- [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
+      of the receivers), show it, then compute the full grid and replace it. The final numbers are
+      the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,
+      spacing an exact multiple — so every coarse receiver _is_ a fine-grid receiver and the
+      refine pass can reuse them. The coarse pass must never persist as a run, or must be marked
+      provisional: a half-resolution raster that later reads as a finished run in the run list is
+      the failure to design against.
+- [ ] **Give browser mode a chunk cache.** Native has a two-tier content-hashed one
+      (`engine/runner.go`); the browser has none, so changing one traffic parameter recomputes
+      every receiver. The same content hash works against IndexedDB, and the chunk the pool hands a Worker is the chunk to key on.
+      It needs its own object store (`DB_VERSION = 2`, upgrade path) plus an eviction policy and a
+      quota check: a cache that fills the origin's quota and then fails every write is worse than
+      no cache.
+- [ ] **A perf gate, once the engine is generalised.** `just bench` exists; what does not is CI
+      comparing it against the merge base with `benchstat`. Gate hard on `allocs/op` and `B/op` —
+      exactly reproducible on a shared runner, and the signal the allocation work moved — and
+      report-only on `sec/op`, which will flap. Do not check in a baseline file; it goes stale and
+      encodes one runner's speed. `aconiq bench` cannot grade RLS-19 until Priority 7's
+      "generalise the engine" lands, because it hard-codes `dummy-freefield`.
 - [ ] `SplitLineIntoSegments` is O(segments x vertices) even now that it is hoisted out of the
       receiver loop: `interpolateAlongPolyline`/`interpolateZAlongPolyline` re-walk the polyline
       from vertex 0 for every sub-segment. A single-walk rewrite is O(segments + vertices) but

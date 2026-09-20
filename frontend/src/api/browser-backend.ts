@@ -30,6 +30,12 @@ import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
 import { resolveComputeModel } from "@/model/compute-crs";
 import {
+  gridShape,
+  gridSizingFromParams,
+  resolveGridExtent,
+  type GridExtent,
+} from "@/model/grid-estimate";
+import {
   getFeatureNumber,
   getFeatureString,
   RLS19_SURFACE_TYPES,
@@ -916,67 +922,6 @@ function nextRunID(current: BrowserBackendState): string {
   return `run-${formatRunIndex(current.runHighWaterMark)}`;
 }
 
-// Exported for the receiver-grid extent test: a Parkplatz is an extended
-// footprint, and a grid padded around a point inside it would sit entirely
-// within the source. This walks every coordinate, so a polygon contributes all
-// its vertices — the CLI needs an explicit extent list to achieve the same.
-export function getFeatureBBox(features: ModelFeature[]): {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-} | null {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  function visit(coords: unknown): void {
-    if (!Array.isArray(coords)) return;
-    if (
-      coords.length >= 2 &&
-      typeof coords[0] === "number" &&
-      typeof coords[1] === "number"
-    ) {
-      const x = coords[0];
-      const y = coords[1];
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-      return;
-    }
-    for (const item of coords) visit(item);
-  }
-
-  for (const feature of features) visit(feature.geometry.coordinates);
-
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
-}
-
-function getPolygonBBox(
-  rings: number[][][],
-): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const ring of rings) {
-    for (const pos of ring) {
-      const [x, y] = pos;
-      if (x !== undefined && y !== undefined) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
-}
-
 function toPoint2D(position: unknown): Point2D | null {
   if (
     Array.isArray(position) &&
@@ -1294,21 +1239,33 @@ type BrowserGridLayout = {
   georeference?: RasterGeoreference;
 };
 
+/**
+ * The receivers an automatic grid is made of.
+ *
+ * The shape — how many cells, and where cell (0,0) sits — is
+ * `model/grid-estimate`'s, not this function's, because the run dialog quotes
+ * it back to the user before the run starts. This is the half that cannot be
+ * shared: turning the shape into ids and positions is a run's business, and
+ * the preview has no use for 42 000 of them.
+ */
 function buildReceiverGrid(
-  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  bbox: GridExtent,
   params: Record<string, string>,
 ): { receivers: PointReceiver[] } & BrowserGridLayout {
-  const resolution = parseNumber(params, "grid_resolution_m", 10);
-  const padding = parseNumber(params, "grid_padding_m", 20);
+  const sizing = gridSizingFromParams(params);
   const receiverHeight = parseNumber(params, "receiver_height_m", 4);
 
-  const minX = bbox.minX - padding;
-  const minY = bbox.minY - padding;
-  const maxX = bbox.maxX + padding;
-  const maxY = bbox.maxY + padding;
-
-  const width = Math.max(1, Math.floor((maxX - minX) / resolution) + 1);
-  const height = Math.max(1, Math.floor((maxY - minY) / resolution) + 1);
+  const shape = gridShape(bbox, sizing);
+  if (shape === null) {
+    // Unreachable through the dialog, which offers no way to submit a
+    // resolution of zero, and reachable through a stored parameter map. It
+    // used to be an infinite loop.
+    throw new Error(
+      "grid_resolution_m must be a positive number of metres to build a receiver grid",
+    );
+  }
+  const { width, height, originX: minX, originY: minY } = shape;
+  const resolution = sizing.resolutionM;
 
   const receivers: PointReceiver[] = [];
   let seq = 1;
@@ -1590,9 +1547,8 @@ async function computeRLS19Road(
   // Project the whole workspace once, before anything reads a coordinate off
   // it, mirroring `cli.resolveComputeModel`. Never per builder:
   // `buildParkingSources` computes a shoelace area in m² and a centroid, and
-  // `getFeatureBBox`/`getPolygonBBox` feed a receiver grid whose padding and
-  // resolution are metres by contract. Every one of them needs the model
-  // already in metres.
+  // `resolveGridExtent` feeds a receiver grid whose padding and resolution are
+  // metres by contract. Every one of them needs the model already in metres.
   const store = useModelStore.getState();
   const computeModel = await resolveComputeModel(kernel, {
     features: store.features,
@@ -1639,21 +1595,14 @@ async function computeRLS19Road(
     // describes the raster truthfully — one column, one row per receiver.
     layout = { width: 1, height: storeReceivers.length };
   } else {
-    const calcArea = computeModel.calcArea;
-    let bbox: {
-      minX: number;
-      minY: number;
-      maxX: number;
-      maxY: number;
-    } | null = null;
-    if (calcArea) {
-      bbox = getPolygonBBox(calcArea.geometry.coordinates);
-    }
-    if (!bbox) {
-      bbox = getFeatureBBox(
-        features.filter((feature) => feature.kind === "source"),
-      );
-    }
+    // The same extent the run dialog previewed, from the same function, over
+    // the same store — the dialog reaches it through `useGridExtent`. Two
+    // implementations here would let the dialog promise a grid the run then
+    // does not produce.
+    const bbox = resolveGridExtent({
+      features,
+      calcArea: computeModel.calcArea,
+    });
     if (!bbox) {
       throw new Error("Could not derive source extent from the current model");
     }

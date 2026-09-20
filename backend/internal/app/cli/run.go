@@ -16,6 +16,7 @@ func newRunCommand() *cobra.Command {
 		rawParams       []string
 		inputPaths      []string
 		experimental    bool
+		workers         int
 	)
 
 	cmd := &cobra.Command{
@@ -32,6 +33,7 @@ func newRunCommand() *cobra.Command {
 				rawParams:       rawParams,
 				inputPaths:      inputPaths,
 				experimental:    experimental,
+				workers:         workers,
 			})
 		},
 	}
@@ -46,6 +48,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter key=value (repeatable)")
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
 	cmd.Flags().BoolVar(&experimental, "experimental", false, "Acknowledge that a scaffold-tier standard emits invented levels and run it anyway")
+	cmd.Flags().IntVar(&workers, "workers", 0, "Compute worker count (0 = one per available CPU)")
 
 	return cmd
 }
