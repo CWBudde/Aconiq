@@ -1791,6 +1791,29 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
+- [ ] **An OSM import cannot be saved to the project, and the two validators disagree about why.**
+      Found while reproducing the blank-map report (2026-09-20). A 3327-feature Overpass extract of
+      Berlin Mitte is refused by `POST /api/v1/model` with 614 errors: 441
+      `geometry.*.self_intersection`, 172 `building.height.required`, 1 `building.height.invalid`.
+      Nothing is written, so the import round trip dead-ends — and the frontend does not say so
+      up front, because `model/validate.ts` grades most of the same findings as warnings while
+      `modelgeojson` grades them as errors. The reader is told "582 Warnungen", walks to the map,
+      and only the save fails. Two questions, and they are separable: whether a self-intersecting
+      OSM way is an error at all (the geometry is the source's, not the user's, and no standard
+      module consumes the winding), and whether a building with no `height_m` should be refused or
+      defaulted. `osmimport.buildingHeight` reads `height` then `building:levels` and emits no
+      property when neither is tagged, which for most German OSM extracts is the majority of
+      buildings — 172 of 580 in this one. Decide the severity in `modelgeojson` first; the
+      frontend validator has to follow it, not the other way round.
+- [ ] **`osmimport` sends Go's default User-Agent, and overpass-api.de answers 406.** Backend, filed
+      here because it was found on the same path (2026-09-20). `overpass.NewWithSettings` is handed
+      no UA, so the request carries `Go-http-client/…`; the same query with any named agent returns
+      200 and 2.8 MB. The handler maps the refusal to a bare `upstream_error` / "Overpass API
+      request failed" with the status swallowed, so a blocked agent, a rate limit and a genuine
+      outage are one message. Set a project User-Agent — the Overpass usage policy asks for one —
+      and carry the upstream status into the envelope so the three are distinguishable. Whether
+      this reproduces from every network is unknown: it was seen from the dev sandbox, while the
+      reporter's own runs got data (and intermittent 504s).
 - [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
       nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
       under a document that does not yet name them — is what the sweep reclaims. Both files are
