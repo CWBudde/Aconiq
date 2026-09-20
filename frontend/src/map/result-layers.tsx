@@ -364,7 +364,17 @@ export function ResultLayers({
   // is resolved on read rather than written into state: seeding it from an
   // effect would paint one commit with no layer at all, and a run switched
   // underneath would keep a band the new table may not have.
-  const [chosen, setChosen] = useState<string | null>(null);
+  //
+  // It lives in the store, and therefore in localStorage, so the choice holds
+  // across a remount instead of snapping back to the first band every time the
+  // result layers are rebuilt. That changes where the value is kept and
+  // nothing about the line below: a *remembered* band the current table does
+  // not list is resolved away here in exactly the same way an unset one is.
+  // Which is the whole reason it may be persisted without validating it on the
+  // way in — there is no list of indicators to validate against until a run's
+  // table has arrived.
+  const chosen = useMapStore((s) => s.resultIndicator);
+  const setChosen = useMapStore((s) => s.setResultIndicator);
   const indicator =
     chosen !== null && indicators.includes(chosen)
       ? chosen

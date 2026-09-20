@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { API_BASE_URL_OVERRIDE_KEY } from "@/api/mode";
 import { DEFAULT_TILE_URL, TILE_URL_OVERRIDE_KEY } from "@/map/tile-source";
+import { BASEMAP_STORAGE_KEY, basemapLabel } from "@/map/basemap";
+import { LAYER_VISIBILITY_STORAGE_KEY } from "@/map/map-preferences";
+import { useMapStore } from "@/map/map-store";
 import { DRAFT_KEY } from "@/model/use-autosave";
 import { ThemeProvider } from "@/ui/theme-provider";
 import SettingsPage from "./settings";
@@ -42,29 +45,32 @@ function renderPage(initialEntries: string[] = ["/settings"]) {
 // down rather than on click; `userEvent` fires the full pointer sequence. The
 // tab's accessible name is its title *and* its description, so the match is on
 // the title rather than the whole string.
-async function openConnection() {
+async function openCategory(title: string) {
   const user = userEvent.setup();
   renderPage();
-  await user.click(
-    screen.getByRole("tab", {
-      name: new RegExp(m.settings_category_advanced(), "i"),
-    }),
-  );
+  await user.click(screen.getByRole("tab", { name: new RegExp(title, "i") }));
 }
 
+const openConnection = () => openCategory(m.settings_category_advanced());
+const openMap = () => openCategory(m.settings_category_map());
+
 /**
- * One of the Connection card's two settings, by the group it is labelled with.
- * Both carry a "Save changes" and a "Reset to default" button, so every query
- * for one has to say which setting it means — as does a screen reader, which
- * is why the groups are there in the first place.
+ * A settings field, by the group it is labelled with. The API base URL on the
+ * Connection tab and the tile URL on the Karte tab each carry a "Save changes"
+ * and a "Reset to default" button, so every query for one has to say which
+ * setting it means — as does a screen reader, which is why the groups are
+ * there in the first place.
  */
-function connectionField(label: string): HTMLElement {
+function settingsField(label: string): HTMLElement {
   return screen.getByRole("group", { name: label });
 }
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.classList.remove("light", "dark");
+  // The basemap and the layer toggles live in a module-scoped store, so a
+  // choice made in one test is still made in the next one unless it is undone.
+  useMapStore.setState({ basemap: "light", layerVisibility: {} });
 });
 
 describe("SettingsPage", () => {
@@ -119,7 +125,7 @@ describe("SettingsPage", () => {
   it("saves and clears the advanced API endpoint override", async () => {
     await openConnection();
 
-    const field = connectionField(m.label_api_base_url());
+    const field = settingsField(m.label_api_base_url());
     const endpointInput = within(field).getByLabelText(m.label_api_base_url());
     fireEvent.change(endpointInput, {
       target: { value: "https://example.com/" },
@@ -143,9 +149,9 @@ describe("SettingsPage", () => {
   it("saves and clears the basemap tile URL override", async () => {
     // The map is built from this key, not from a prop: nothing on this page
     // holds a map, so committing the setting *is* writing the key.
-    await openConnection();
+    await openMap();
 
-    const field = connectionField(m.label_basemap_tile_url());
+    const field = settingsField(m.label_basemap_tile_url());
     const tileInput = within(field).getByLabelText(m.label_basemap_tile_url());
     expect(tileInput).toHaveValue(DEFAULT_TILE_URL);
 
@@ -173,9 +179,9 @@ describe("SettingsPage", () => {
   it("holds the tile URL as a draft until it is saved", async () => {
     // The draft/committed split: typing must not reach storage, or a half-typed
     // host would be what the next map build asks for tiles.
-    await openConnection();
+    await openMap();
 
-    const field = connectionField(m.label_basemap_tile_url());
+    const field = settingsField(m.label_basemap_tile_url());
     const save = within(field).getByRole("button", {
       name: m.action_save_changes(),
     });
@@ -194,10 +200,83 @@ describe("SettingsPage", () => {
     expect(reset).toBeDisabled();
   });
 
+  it("opens the Karte category and puts it in the URL", async () => {
+    await openMap();
+
+    expect(
+      screen.getByRole("heading", { name: m.settings_category_map() }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?category=map",
+    );
+  });
+
+  it("restores the Karte category from the URL", () => {
+    renderPage(["/settings?category=map"]);
+
+    expect(
+      screen.getByRole("heading", { name: m.settings_category_map() }),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the basemap, which is what the map reads when it is built", () => {
+    // The page holds no map: the store is the whole commit, and it is the same
+    // store the picker on the map writes to.
+    renderPage(["/settings?category=map"]);
+
+    const group = settingsField(m.section_basemap());
+    const dark = within(group).getByRole("button", {
+      name: basemapLabel("dark"),
+    });
+    expect(dark).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(dark);
+
+    expect(useMapStore.getState().basemap).toBe("dark");
+    expect(localStorage.getItem(BASEMAP_STORAGE_KEY)).toBe("dark");
+    expect(dark).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(group).getByRole("button", { name: basemapLabel("light") }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("offers no way back once every layer is hidden, except this one", () => {
+    // Hiding a layer group survives a reload now, so a user who hid one and
+    // forgot has no refresh to fall back on. This button is the fallback.
+    useMapStore.setState({ layerVisibility: { buildings: false } });
+    renderPage(["/settings?category=map"]);
+
+    // Singular, because exactly one group is hidden: German does not let a
+    // count message get away with one form the way a bare number would.
+    expect(
+      screen.getByText(m.msg_settings_layers_hidden({ count: 1 })),
+    ).toBeInTheDocument();
+    expect(m.msg_settings_layers_hidden({ count: 1 })).not.toBe(
+      m.msg_settings_layers_hidden({ count: 2 }),
+    );
+
+    const reset = screen.getByRole("button", { name: m.action_reset_layers() });
+    expect(reset).toBeEnabled();
+
+    fireEvent.click(reset);
+
+    expect(useMapStore.getState().layerVisibility).toEqual({});
+    expect(localStorage.getItem(LAYER_VISIBILITY_STORAGE_KEY)).toBeNull();
+    expect(reset).toBeDisabled();
+  });
+
+  it("does not offer the reset when nothing is hidden", () => {
+    renderPage(["/settings?category=map"]);
+
+    expect(
+      screen.getByRole("button", { name: m.action_reset_layers() }),
+    ).toBeDisabled();
+  });
+
   it("says when a tile URL change takes effect", () => {
     // A change here does nothing to a map that is already built, and the map
     // is on another route — so the copy has to say so.
-    renderPage(["/settings?category=advanced"]);
+    renderPage(["/settings?category=map"]);
 
     expect(screen.getByText(m.msg_basemap_tile_url_note())).toBeInTheDocument();
   });
@@ -232,7 +311,7 @@ describe("SettingsPage", () => {
 });
 
 describe("SettingsPage heading order", () => {
-  it.each(["app", "advanced"])(
+  it.each(["app", "advanced", "map"])(
     "keeps heading levels contiguous in the %s category",
     (category) => {
       // The shell's h1 sits above this page, so a level of 2 is the entry;

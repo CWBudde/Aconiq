@@ -42,6 +42,9 @@ export const ROUTES = [
   "/export",
   `/export/${UNKNOWN_RUN_ID}`,
   "/settings",
+  // The Karte category, which is a distinct set of cards and headings
+  // rather than another view of the same ones.
+  "/settings?category=map",
   "/map",
 ] as const;
 

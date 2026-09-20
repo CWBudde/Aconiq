@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import { type BasemapId, readStoredBasemap, storeBasemap } from "./basemap";
-
-interface LayerVisibility {
-  [groupId: string]: boolean;
-}
+import {
+  type LayerVisibility,
+  readStoredLayerVisibility,
+  readStoredResultIndicator,
+  storeLayerVisibility,
+  storeResultIndicator,
+} from "./map-preferences";
 
 interface MapState {
   /** Current basemap style ID */
@@ -24,10 +27,42 @@ interface MapState {
   /** The notice's Retry: try the real basemap again. */
   clearTilesFailed: () => void;
 
-  /** Layer group visibility */
+  /**
+   * Layer group visibility, remembered across reloads.
+   *
+   * Only the groups the user has actually touched appear here; a group that is
+   * absent takes its own `defaultVisible`, which is why this resets to `{}`
+   * rather than to a record of `true`s. Spelling the defaults out here would
+   * be a third copy of them, after the group definitions and
+   * `applyLayerVisibility`.
+   *
+   * Persisting it is what makes {@link resetLayerVisibility} necessary: before,
+   * a user who had hidden everything got it back with a refresh, and now the
+   * map stays empty until something says otherwise. The Map settings tab is
+   * that something.
+   */
   layerVisibility: LayerVisibility;
   toggleLayer: (groupId: string) => void;
   setLayerVisible: (groupId: string, visible: boolean) => void;
+  resetLayerVisibility: () => void;
+
+  /**
+   * Which band of a result table the map paints, or `null` for "whatever the
+   * table lists first".
+   *
+   * A preference, not a promise: `ResultLayers` resolves it against the
+   * indicators the current run's table actually carries, and falls back to the
+   * first when this names one the table lacks. Do not seed component state
+   * from it — the comment at that resolution says why.
+   */
+  resultIndicator: string | null;
+  setResultIndicator: (indicator: string | null) => void;
+}
+
+/** Write through to storage, then to state — the order `setBasemap` set. */
+function persistVisibility(visibility: LayerVisibility): LayerVisibility {
+  storeLayerVisibility(visibility);
+  return visibility;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -45,21 +80,30 @@ export const useMapStore = create<MapState>((set) => ({
     set({ tilesFailed: false });
   },
 
-  layerVisibility: {},
+  layerVisibility: readStoredLayerVisibility(),
   toggleLayer: (groupId) => {
     set((state) => ({
-      layerVisibility: {
+      layerVisibility: persistVisibility({
         ...state.layerVisibility,
         [groupId]: !(state.layerVisibility[groupId] ?? true),
-      },
+      }),
     }));
   },
   setLayerVisible: (groupId, visible) => {
     set((state) => ({
-      layerVisibility: {
+      layerVisibility: persistVisibility({
         ...state.layerVisibility,
         [groupId]: visible,
-      },
+      }),
     }));
+  },
+  resetLayerVisibility: () => {
+    set({ layerVisibility: persistVisibility({}) });
+  },
+
+  resultIndicator: readStoredResultIndicator(),
+  setResultIndicator: (indicator) => {
+    storeResultIndicator(indicator);
+    set({ resultIndicator: indicator });
   },
 }));

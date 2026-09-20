@@ -1,7 +1,10 @@
 import { useState } from "react";
 import {
+  Check,
   History,
   Languages,
+  Layers,
+  Map,
   Monitor,
   Moon,
   Server,
@@ -25,6 +28,9 @@ import {
   hasTileURLOverride,
   setTileURLOverride,
 } from "@/map/tile-source";
+import { BASEMAP_IDS, type BasemapId, basemapLabel } from "@/map/basemap";
+import { MODEL_LAYER_GROUPS, RESULT_LAYER_GROUPS } from "@/map/layers";
+import { useMapStore } from "@/map/map-store";
 import { m } from "@/i18n/messages";
 import { changeLocale, useLocale } from "@/locale";
 import { localStorageKey as localeStorageKey } from "@/i18n/runtime";
@@ -40,10 +46,12 @@ import { cn } from "@/ui/lib/utils";
 
 /**
  * The ids are a URL contract: they are what `?category=` carries, so they
- * outlive the labels above them. "app" is General and "advanced" is
- * Connection; renaming either would break a bookmark to buy a prettier URL.
+ * outlive the labels above them. "app" is General, "advanced" is Connection
+ * and "map" is Karte; renaming any of them would break a bookmark to buy a
+ * prettier URL. Adding one, as "map" was, costs nothing — an id that meant
+ * nothing before fell back to General, and no existing link changes meaning.
  */
-type CategoryId = "app" | "advanced";
+type CategoryId = "app" | "advanced" | "map";
 
 type Category = {
   id: CategoryId;
@@ -288,12 +296,6 @@ function AdvancedSettings({
   onSave,
   onReset,
   hasOverride,
-  tileUrl,
-  tileUrlDraft,
-  setTileUrlDraft,
-  onSaveTileUrl,
-  onResetTileUrl,
-  hasTileOverride,
 }: {
   apiBaseUrl: string;
   apiBaseUrlDraft: string;
@@ -301,12 +303,6 @@ function AdvancedSettings({
   onSave: () => void;
   onReset: () => void;
   hasOverride: boolean;
-  tileUrl: string;
-  tileUrlDraft: string;
-  setTileUrlDraft: (value: string) => void;
-  onSaveTileUrl: () => void;
-  onResetTileUrl: () => void;
-  hasTileOverride: boolean;
 }) {
   const effectiveApiBaseUrl = apiBaseUrl || "same-origin";
 
@@ -333,9 +329,12 @@ function AdvancedSettings({
         </div>
       </div>
 
-      {/* Two settings on one card, each with its own Save and Reset. Without
-          the groups a screen reader reads four buttons called "Save changes"
-          and "Reset to default" with nothing to tell them apart. */}
+      {/* The group is kept although this card is down to one setting: it is
+          what names the Save and Reset buttons for a screen reader, and the
+          Karte tab's tile URL carries the same pair of labels. Two tabs is not
+          two documents to someone reading the accessibility tree of whichever
+          one is open, but the label costs nothing and the rule it follows —
+          every Save button says what it saves — is worth keeping local. */}
       <div
         role="group"
         aria-label={m.label_api_base_url()}
@@ -378,51 +377,197 @@ function AdvancedSettings({
           </Button>
         </div>
       </div>
-
-      {/* The same draft/committed split as the field above: the input edits a
-          draft, Save normalises and commits it. Unlike the API base URL, this
-          one is not read again until a map is built — see the note below. */}
-      <div
-        role="group"
-        aria-label={m.label_basemap_tile_url()}
-        className="mt-6 grid gap-5 border-t pt-6 lg:grid-cols-[minmax(0,1fr)_18rem]"
-      >
-        <div className="space-y-4">
-          <FormField
-            id="basemap-tile-url"
-            label={m.label_basemap_tile_url()}
-            hint={m.msg_basemap_tile_url_help()}
-            value={tileUrlDraft}
-            onChange={(event) => {
-              setTileUrlDraft(event.target.value);
-            }}
-            placeholder={DEFAULT_TILE_URL}
-          />
-          <Callout variant="neutral" title={m.msg_basemap_tile_url_current()}>
-            <p className="break-all font-mono text-foreground">{tileUrl}</p>
-            <p className="mt-2">{m.msg_basemap_tile_url_note()}</p>
-          </Callout>
-        </div>
-
-        <div className="space-y-2 self-start rounded-md border p-4">
-          <Button
-            className="w-full"
-            onClick={onSaveTileUrl}
-            disabled={tileUrlDraft.trim() === tileUrl}
-          >
-            {m.action_save_changes()}
-          </Button>
-          <Button
-            className="w-full"
-            variant="outline"
-            onClick={onResetTileUrl}
-            disabled={!hasTileOverride}
-          >
-            {m.action_reset_to_default()}
-          </Button>
-        </div>
-      </div>
     </Card>
+  );
+}
+
+/**
+ * Everything about how the map is drawn, in one place.
+ *
+ * The basemap used to be reachable only from the panel on the map, and the
+ * tile URL sat on the Connection tab beside the API base URL as though it were
+ * a backend endpoint. It is not: it says how the map looks, not which
+ * computation answers. Connection is left meaning one thing.
+ *
+ * The picker on the map stays. Both write the same store, so they cannot
+ * drift, and a basemap is judged by looking at a map rather than at a list of
+ * three words.
+ */
+function MapSettings({
+  basemap,
+  setBasemap,
+  hiddenLayerCount,
+  onResetLayers,
+  tileUrl,
+  tileUrlDraft,
+  setTileUrlDraft,
+  onSaveTileUrl,
+  onResetTileUrl,
+  hasTileOverride,
+}: {
+  basemap: BasemapId;
+  setBasemap: (id: BasemapId) => void;
+  hiddenLayerCount: number;
+  onResetLayers: () => void;
+  tileUrl: string;
+  tileUrlDraft: string;
+  setTileUrlDraft: (value: string) => void;
+  onSaveTileUrl: () => void;
+  onResetTileUrl: () => void;
+  hasTileOverride: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <Card className="p-6">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <PageHeader
+            title={m.settings_category_map()}
+            description={m.settings_category_map_desc()}
+          />
+          <div className="grid gap-2 sm:grid-cols-2 lg:w-[30rem]">
+            <PreferencePill
+              label={m.section_basemap()}
+              value={basemapLabel(basemap)}
+            />
+            <PreferencePill
+              label={m.msg_basemap_tile_url_current()}
+              value={
+                hasTileOverride
+                  ? m.msg_api_endpoint_override_active()
+                  : m.msg_api_endpoint_override_default()
+              }
+            />
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* The same shape as the theme card on the General tab: a few mutually
+            exclusive choices, all visible, marked with `aria-pressed` and the
+            filled variant rather than hidden behind a select.
+
+            The picker on the map cannot carry a tick — `map/layer-control.tsx`
+            records why at length, and the reason is that panel's geometry, not
+            a stylistic rule: equal grid columns sized to the widest cell plus a
+            content-sized panel mean an icon widens the whole panel by a
+            different amount per label and pushes it into the feature-count
+            pill beside it. None of that applies to a settings card, which has
+            room, so here the mark is explicit. */}
+        <SettingsCard
+          icon={Map}
+          title={m.section_basemap()}
+          description={m.msg_settings_basemap_help()}
+        >
+          {/* Grouped and labelled the way the picker on the map is: three
+              buttons that are one choice, not three independent toggles. */}
+          <div
+            role="group"
+            aria-label={m.section_basemap()}
+            className="grid gap-3 sm:grid-cols-3"
+          >
+            {BASEMAP_IDS.map((id) => {
+              const active = basemap === id;
+              return (
+                <Button
+                  key={id}
+                  variant={active ? "default" : "outline"}
+                  aria-pressed={active}
+                  onClick={() => {
+                    setBasemap(id);
+                  }}
+                >
+                  {active ? <Check aria-hidden="true" /> : null}
+                  {basemapLabel(id)}
+                </Button>
+              );
+            })}
+          </div>
+        </SettingsCard>
+
+        {/* The escape hatch that persisting the layer toggles made necessary.
+            The ten switches themselves stay on the map, where the thing they
+            hide is visible; duplicating them here would be a second write path
+            to keep in step for no gain. */}
+        <SettingsCard
+          icon={Layers}
+          title={m.section_model()}
+          description={m.msg_settings_map_layers_help()}
+        >
+          <div className="space-y-4">
+            <div className="rounded-md border p-4">
+              <p className="text-sm font-medium">
+                {hiddenLayerCount > 0
+                  ? m.msg_settings_layers_hidden({ count: hiddenLayerCount })
+                  : m.msg_settings_layers_all_visible()}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {m.msg_settings_layers_note()}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={onResetLayers}
+                disabled={hiddenLayerCount === 0}
+                variant="outline"
+              >
+                {m.action_reset_layers()}
+              </Button>
+            </div>
+          </div>
+        </SettingsCard>
+      </div>
+
+      <Card className="p-6">
+        {/* The same draft/committed split the API base URL uses: the input
+            edits a draft, Save normalises and commits it. The group is what
+            tells a screen reader which "Save changes" this is — the Connection
+            tab carries a button by the same name.
+
+            Unlike the API base URL, this one is not read again until a map is
+            built. Writing the key is the whole commit; there is no live map on
+            this route to push the new tiles into. */}
+        <div
+          role="group"
+          aria-label={m.label_basemap_tile_url()}
+          className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]"
+        >
+          <div className="space-y-4">
+            <FormField
+              id="basemap-tile-url"
+              label={m.label_basemap_tile_url()}
+              hint={m.msg_basemap_tile_url_help()}
+              value={tileUrlDraft}
+              onChange={(event) => {
+                setTileUrlDraft(event.target.value);
+              }}
+              placeholder={DEFAULT_TILE_URL}
+            />
+            <Callout variant="neutral" title={m.msg_basemap_tile_url_current()}>
+              <p className="break-all font-mono text-foreground">{tileUrl}</p>
+              <p className="mt-2">{m.msg_basemap_tile_url_note()}</p>
+            </Callout>
+          </div>
+
+          <div className="space-y-2 self-start rounded-md border p-4">
+            <Button
+              className="w-full"
+              onClick={onSaveTileUrl}
+              disabled={tileUrlDraft.trim() === tileUrl}
+            >
+              {m.action_save_changes()}
+            </Button>
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={onResetTileUrl}
+              disabled={!hasTileOverride}
+            >
+              {m.action_reset_to_default()}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -443,6 +588,23 @@ export default function SettingsPage() {
     hasTileURLOverride(),
   );
 
+  // Read straight from the map's store rather than lifted into this page: it
+  // is module-scoped, so the picker in the map's layer control and this one
+  // are two views of one value and cannot disagree. A change here reaches the
+  // map the next time it is built, which is what a basemap switch does anyway
+  // — `map-view.tsx` keys its init effect on this.
+  const basemap = useMapStore((s) => s.basemap);
+  const setBasemap = useMapStore((s) => s.setBasemap);
+  const layerVisibility = useMapStore((s) => s.layerVisibility);
+  const resetLayerVisibility = useMapStore((s) => s.resetLayerVisibility);
+
+  // Only groups switched *off* count. An entry is written for every group the
+  // user touches, including the ones they turned back on, so counting keys
+  // would report a layer that is plainly visible as hidden.
+  const hiddenLayerCount = [...MODEL_LAYER_GROUPS, ...RESULT_LAYER_GROUPS]
+    .map((group) => layerVisibility[group.id] ?? group.defaultVisible)
+    .filter((visible) => !visible).length;
+
   const visibleApiBaseUrl = apiBaseUrl || "same-origin";
   const runtimeLabel =
     backend.capabilities.kind === "browser"
@@ -462,6 +624,12 @@ export default function SettingsPage() {
       icon: Settings,
       title: m.settings_category_app,
       description: m.settings_category_app_desc,
+    },
+    {
+      id: "map",
+      icon: Map,
+      title: m.settings_category_map,
+      description: m.settings_category_map_desc,
     },
     {
       id: "advanced",
@@ -513,7 +681,10 @@ export default function SettingsPage() {
   }
 
   // Writing the key is the whole commit: nothing re-reads it until a map is
-  // built, so there is no live map to push the new tiles into from here.
+  // built, so there is no live map to push the new tiles into from here. The
+  // same is true of the layer reset below, for the same reason — Settings and
+  // the map are different routes, and `ModelLayers` re-applies the store's
+  // visibility as it adds the layers.
   function saveTileUrl() {
     setTileURLOverride(tileUrlDraft.trim());
     const next = getTileURL();
@@ -569,6 +740,20 @@ export default function SettingsPage() {
               localeLabel={localeLabel}
             />
           </TabsContent>
+          <TabsContent value="map" className="mt-0">
+            <MapSettings
+              basemap={basemap}
+              setBasemap={setBasemap}
+              hiddenLayerCount={hiddenLayerCount}
+              onResetLayers={resetLayerVisibility}
+              tileUrl={tileUrl}
+              tileUrlDraft={tileUrlDraft}
+              setTileUrlDraft={setTileUrlDraft}
+              onSaveTileUrl={saveTileUrl}
+              onResetTileUrl={resetTileUrl}
+              hasTileOverride={tileUrlOverridePresent}
+            />
+          </TabsContent>
           <TabsContent value="advanced" className="mt-0">
             <AdvancedSettings
               apiBaseUrl={visibleApiBaseUrl}
@@ -577,12 +762,6 @@ export default function SettingsPage() {
               onSave={saveApiBaseUrl}
               onReset={resetApiBaseUrl}
               hasOverride={apiBaseUrlOverridePresent}
-              tileUrl={tileUrl}
-              tileUrlDraft={tileUrlDraft}
-              setTileUrlDraft={setTileUrlDraft}
-              onSaveTileUrl={saveTileUrl}
-              onResetTileUrl={resetTileUrl}
-              hasTileOverride={tileUrlOverridePresent}
             />
           </TabsContent>
         </div>

@@ -339,7 +339,14 @@ beforeEach(() => {
   state.contoursError = null;
   state.requests = [];
   state.bytesAskedFor = [];
-  useMapStore.setState({ basemap: "light", layerVisibility: {} });
+  // `resultIndicator` is in the store, and therefore persisted, so a picker
+  // click in one test would otherwise choose the band the next one starts on.
+  localStorage.clear();
+  useMapStore.setState({
+    basemap: "light",
+    layerVisibility: {},
+    resultIndicator: null,
+  });
 });
 
 describe("ResultLayers", () => {
@@ -869,6 +876,59 @@ describe("ResultLayers: the result raster", () => {
     // no fourth. The contour source is added whether or not there are lines to
     // put in it, so its toggle answers the same way in every state.
     expect(map.sources.size).toBe(3);
+  });
+
+  it("keeps the chosen band when the layers are torn down and rebuilt", async () => {
+    // The choice used to be component state, so leaving the map and coming
+    // back silently reverted to the table's first band while the picker still
+    // read as a deliberate choice the user had made.
+    const first = new FakeMap();
+    const { unmount } = render(
+      <MapContext value={first as unknown as MapLibreMap | null}>
+        <ResultLayers requestedRunId={null} />
+      </MapContext>,
+    );
+
+    await waitFor(() => {
+      expect(first.sources.get(SOURCE_IDS.resultRaster)).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "LrNight" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "LrNight" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    unmount();
+    renderLayers(new FakeMap());
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "LrNight" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  it("falls back to the first band when the remembered one is not in this table", async () => {
+    // A remembered indicator is a preference, not a promise. The band a run
+    // was left on may simply not exist in the next run's table, and resolving
+    // that on read — rather than seeding state from the stored value — is what
+    // keeps a stale name from painting nothing at all.
+    useMapStore.setState({ resultIndicator: "Lden" });
+
+    renderLayers(new FakeMap());
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "LrDay" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    // Still remembered, not overwritten: going back to a run that does have
+    // the band must return to it.
+    expect(useMapStore.getState().resultIndicator).toBe("Lden");
   });
 
   it("brings the raster back after a newer run has loaded", async () => {
