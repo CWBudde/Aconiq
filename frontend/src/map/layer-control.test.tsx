@@ -244,6 +244,42 @@ describe("the basemap picker", () => {
     }
   });
 
+  it("marks the current basemap visibly, not only to a screen reader", () => {
+    // `aria-pressed` is the state; this is the pixel that carries it. The
+    // picker used to mark the current basemap with the `secondary` variant, a
+    // few per cent of grey on a translucent panel — present in the DOM,
+    // invisible on screen. The filled variant is what a sighted reader
+    // actually sees, so it is asserted rather than left to a theme.
+    renderControl(new FakeMap());
+
+    expect(pickerButton("light").className).toContain("bg-primary");
+    for (const id of BASEMAP_IDS.filter((other) => other !== "light")) {
+      expect(pickerButton(id).className).not.toContain("bg-primary");
+    }
+  });
+
+  it("moves the visible mark with the choice", () => {
+    renderControl(new FakeMap());
+    fireEvent.click(pickerButton("dark"));
+
+    expect(pickerButton("dark").className).toContain("bg-primary");
+    expect(pickerButton("light").className).not.toContain("bg-primary");
+  });
+
+  it("marks the choice without widening the button", () => {
+    // The three buttons are equal columns of a grid that sizes to its widest
+    // cell, inside a panel that sizes to its content — so anything the mark
+    // adds to the current button widens the whole panel, by a different amount
+    // per label, and pushes it into the pill beside it. The mark has to be
+    // paint, not content.
+    renderControl(new FakeMap());
+
+    for (const id of BASEMAP_IDS) {
+      expect(pickerButton(id).querySelector("svg")).toBeNull();
+      expect(pickerButton(id)).toHaveAccessibleName(basemapLabel(id));
+    }
+  });
+
   it("writes the choice to the store, which is what rebuilds the map", () => {
     // The store is the only channel: `MapView` keys its init effect on it, so
     // nothing here touches MapLibre. A picker that called `setStyle` instead

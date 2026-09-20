@@ -64,6 +64,21 @@ function LayerToggle({ group }: { group: LayerGroup }) {
  * `aria-disabled` — the current basemap's button stays pressable, and pressing
  * it again is a no-op the store absorbs.
  *
+ * The current choice is marked by the filled variant, which inverts the text
+ * colour as well as the fill. `aria-pressed` alone says it only to a screen
+ * reader, and the `secondary` variant that used to carry it visually is a few
+ * per cent of grey — on this panel's translucent background that is not a mark
+ * at all.
+ *
+ * A tick beside the label would be the more obvious mark, and it is left out
+ * for a layout reason rather than a stylistic one: the three buttons are equal
+ * columns of a grid that sizes to its widest cell, and the panel sizes to its
+ * content. An icon on the current button therefore widens the whole panel — by
+ * a different amount per label, so the panel jitters as the choice moves — and
+ * the panel grows leftward into the feature-count pill beside it. Giving the
+ * basemaps their own row each, the way the layer toggles above are laid out,
+ * is what would buy the room for one.
+ *
  * Switching rebuilds the map (`map-view.tsx` keys its init effect on it), which
  * is also what restores the model layers; the viewport is carried across.
  */
@@ -82,7 +97,7 @@ function BasemapPicker() {
         return (
           <Button
             key={id}
-            variant={active ? "secondary" : "ghost"}
+            variant={active ? "default" : "ghost"}
             size="sm"
             className="h-7 px-2 text-xs"
             aria-pressed={active}
@@ -90,7 +105,9 @@ function BasemapPicker() {
               setBasemap(id);
             }}
           >
-            {basemapLabel(id)}
+            <span className={active ? "" : "text-muted-foreground"}>
+              {basemapLabel(id)}
+            </span>
           </Button>
         );
       })}
