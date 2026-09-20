@@ -117,8 +117,38 @@ func ComputeRLS19Road(
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	outputs := make([]road.ReceiverOutput, 0, total)
+	walk := newProgressWalk(chunkSize, total, progress)
 
+	outputs, err := walk.over(scene, receivers, cfg, make([]road.ReceiverOutput, 0, total))
+	if err != nil {
+		return nil, err
+	}
+
+	return outputs, nil
+}
+
+// progressWalk carries the reporting cadence across however many slices of
+// receivers a caller hands it.
+//
+// It exists because a shard walks several disjoint slices of the receiver
+// list and the reports have to keep counting up across them: a bar that
+// restarted at every partition boundary would be worse than no bar. The
+// adaptive chunk size carries across too, so a shard measures the scene once
+// rather than re-learning it from InitialChunkSize on every slice.
+//
+// This is the *progress* cadence and nothing else. Where the partition falls
+// is `internal/partition`'s business and is a pure function of the receiver
+// count; this one reads a clock, which is exactly why the two must not be the
+// same number.
+type progressWalk struct {
+	chunkSize int
+	adaptive  bool
+	done      int
+	total     int
+	progress  func(done, total int)
+}
+
+func newProgressWalk(chunkSize, total int, progress func(done, total int)) *progressWalk {
 	// A caller that named a size gets it for every chunk; one that did not is
 	// measured, starting small.
 	adaptive := chunkSize <= 0
@@ -126,32 +156,50 @@ func ComputeRLS19Road(
 		chunkSize = InitialChunkSize
 	}
 
-	for done := 0; done < total; {
-		end := min(done+chunkSize, total)
+	return &progressWalk{
+		chunkSize: chunkSize,
+		adaptive:  adaptive,
+		done:      0,
+		total:     total,
+		progress:  progress,
+	}
+}
+
+// over computes one slice of receivers, appending to dst and reporting as it
+// goes.
+func (w *progressWalk) over(
+	scene *road.Scene,
+	receivers []geo.PointReceiver,
+	cfg road.PropagationConfig,
+	dst []road.ReceiverOutput,
+) ([]road.ReceiverOutput, error) {
+	for at := 0; at < len(receivers); {
+		end := min(at+w.chunkSize, len(receivers))
 
 		startedAt := time.Now()
 
-		chunk, err := scene.ComputeReceivers(receivers[done:end], cfg)
+		chunk, err := scene.ComputeReceivers(receivers[at:end], cfg)
 		if err != nil {
 			return nil, fmt.Errorf("%w", err)
 		}
 
 		elapsed := time.Since(startedAt)
 
-		outputs = append(outputs, chunk...)
+		dst = append(dst, chunk...)
 
-		if adaptive {
-			chunkSize = nextChunkSize(chunkSize, end-done, elapsed)
+		if w.adaptive {
+			w.chunkSize = nextChunkSize(w.chunkSize, end-at, elapsed)
 		}
 
-		done = end
+		w.done += end - at
+		at = end
 
-		if progress != nil {
-			progress(done, total)
+		if w.progress != nil {
+			w.progress(w.done, w.total)
 		}
 	}
 
-	return outputs, nil
+	return dst, nil
 }
 
 // nextChunkSize is how many receivers to compute before the next report, given
