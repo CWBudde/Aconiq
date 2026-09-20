@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ValidationPanel } from "./validation-panel";
 import { useModelStore } from "@/model/model-store";
-import type { ModelFeature, ModelReceiver } from "@/model/types";
+import type { ModelFeature, ModelReceiver, Position } from "@/model/types";
 import { m } from "@/i18n/messages";
 
 /**
@@ -272,6 +272,46 @@ describe("ValidationPanel groups findings that say the same thing", () => {
 
     const codes = screen.getAllByText("source.rls19.speed.invalid");
     expect(codes).toHaveLength(2);
+  });
+
+  it("merges two codes that render the same sentence, and names both", () => {
+    // `geometry.linestring.self_intersection` and its `multilinestring` twin
+    // both come out of `validation-message.ts` as one sentence, so splitting
+    // them leaves two rows a reader cannot tell apart — the complaint this
+    // panel exists to answer, at smaller scale. The codes are still shown,
+    // because the code is what a reader greps for.
+    const bowtie: Position[] = [
+      [10, 51],
+      [10.01, 51.01],
+      [10.01, 51],
+      [10, 51.01],
+    ];
+    act(() => {
+      useModelStore.setState({
+        features: [
+          {
+            ...road,
+            id: "line-1",
+            geometry: { type: "LineString", coordinates: bowtie },
+          },
+          {
+            ...road,
+            id: "multi-1",
+            geometry: { type: "MultiLineString", coordinates: [bowtie] },
+          },
+        ],
+      });
+    });
+    renderPanel();
+
+    expect(
+      screen.getAllByText(m.msg_validation_geometry_line_self_intersection()),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "geometry.linestring.self_intersection, geometry.multilinestring.self_intersection",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("caps an expanded group and says how many it did not list", () => {

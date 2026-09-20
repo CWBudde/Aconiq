@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cursorFor, findingQueue, stepFinding } from "./finding-queue";
+import {
+  cursorFor,
+  cursorPosition,
+  findingQueue,
+  stepFinding,
+} from "./finding-queue";
 import type { ValidationIssue, ValidationReport } from "./types";
 
 function warning(featureId: string): ValidationIssue {
@@ -132,6 +137,42 @@ describe("stepFinding", () => {
     expect(stepFinding(["a"], { featureId: "c", index: 2 }, 1)).toEqual({
       featureId: "a",
       index: 0,
+    });
+  });
+});
+
+describe("cursorPosition", () => {
+  it("has no position without a cursor or without a queue", () => {
+    expect(cursorPosition(["a"], null)).toBeNull();
+    expect(cursorPosition([], { featureId: "a", index: 0 })).toBeNull();
+  });
+
+  it("is 1-based for a finding that is still open", () => {
+    expect(cursorPosition(["a", "b", "c"], { featureId: "b", index: 1 })).toBe(
+      2,
+    );
+  });
+
+  it("follows the finding when an earlier one is fixed", () => {
+    // "a" was corrected, so "b" is now first. The stored index still says 1.
+    expect(cursorPosition(["b", "c"], { featureId: "b", index: 1 })).toBe(1);
+  });
+
+  it("never reads past the end of the queue", () => {
+    // The reader corrected the last of 608 findings. Rendering the stored
+    // index raw is how this used to say "608 / 607".
+    expect(cursorPosition(["a"], { featureId: "b", index: 1 })).toBe(1);
+  });
+
+  it("points at the finding that took the fixed one's place", () => {
+    // Which is also where `stepFinding` goes next, so the number the reader
+    // sees and the one "next" acts on cannot disagree.
+    const queue = ["a", "c"];
+    const cursor = { featureId: "b", index: 1 };
+    expect(cursorPosition(queue, cursor)).toBe(2);
+    expect(stepFinding(queue, cursor, 1)).toEqual({
+      featureId: "c",
+      index: 1,
     });
   });
 });

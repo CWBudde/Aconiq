@@ -124,11 +124,17 @@ export function FeatureFocus({ display, request }: FeatureFocusProps): null {
 
   // Covers unmount and the map being rebuilt under a basemap switch: a timer
   // that fires afterwards would reach a map that throws on every call.
+  //
+  // Capturing the array here is only safe because `flash` **truncates it and
+  // never replaces it**. It used to assign a fresh one per request, which left
+  // this cleanup holding the first flash's array while the live timers sat in
+  // the newest — so every flash after the first ran on past unmount. A single
+  // flash could not show it, which is why the regression test in
+  // `feature-focus.test.tsx` fires two.
   useEffect(() => {
     const timers = timersRef.current;
     return () => {
-      for (const id of timers) clearTimeout(id);
-      timers.length = 0;
+      clearFlashTimers(timers);
     };
   }, [map]);
 
@@ -194,8 +200,9 @@ function flash(
 ): void {
   // A superseded flash must not let its own cleanup wipe the one that replaced
   // it: stepping the queue quickly is the ordinary case, not an edge one.
-  for (const id of timersRef.current) clearTimeout(id);
-  timersRef.current = [];
+  // Truncated, never reassigned — the unmount cleanup has to be able to find
+  // these timers, and a fresh array here would leave it holding the old one.
+  clearFlashTimers(timersRef.current);
 
   if (!ensureFlashLayers(map)) return;
 
@@ -244,6 +251,12 @@ function flash(
       cameraDuration + hold + fade + 50,
     ),
   );
+}
+
+/** Cancels every pending flash timer, emptying the array in place. */
+function clearFlashTimers(timers: number[]): void {
+  for (const id of timers) clearTimeout(id);
+  timers.length = 0;
 }
 
 /** Adds the flash source and layers if this map does not have them yet. */

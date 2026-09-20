@@ -17,7 +17,14 @@ const GROUP_PREVIEW = 20;
 interface IssueGroup {
   key: string;
   level: IssueSeverity;
-  code: string;
+  /**
+   * The codes that render this sentence, in first-appearance order. Usually
+   * one, occasionally two — `geometry.linestring.self_intersection` and its
+   * `multilinestring` twin are one sentence — and all of them are shown,
+   * because the code is what a reader greps for and printing only the first
+   * would name a finding half the group does not have.
+   */
+  codes: string[];
   text: string;
   featureIds: string[];
 }
@@ -25,16 +32,22 @@ interface IssueGroup {
 /**
  * Collapses findings that say the same thing into one row each.
  *
- * The key is the rendered **sentence**, not the code. Several codes take
- * parameters — `source.rls19.traffic.invalid` names a different field each
- * time — so grouping by code alone would put one headline over rows it is only
- * half true for. Grouping by what the reader actually reads merges exactly the
- * findings that are indistinguishable on screen, which on an OSM import of a
- * city district is 608 copies of "check the imported acoustics".
+ * The key is the severity and the rendered **sentence**, and deliberately not
+ * the code. Several codes take parameters — `source.rls19.traffic.invalid`
+ * names a different field each time — so grouping by code alone would put one
+ * headline over rows it is only half true for; and several codes share one
+ * sentence, so keeping the code in the key would split a group whose rows a
+ * reader cannot tell apart, which is the complaint this whole panel answers.
+ * Grouping by what the reader actually reads merges exactly the findings that
+ * are indistinguishable on screen, which on an OSM import of a city district is
+ * 608 copies of "check the imported acoustics".
  *
  * That also makes `validation-message.ts` the thing that decides what "the same
  * finding" means, which is the right place for the decision: it is already the
  * one place a code becomes prose.
+ *
+ * The severity stays in the key because it is not in the sentence — it is the
+ * icon — and an error must never be filed under a warning's row.
  *
  * Groups come out in first-appearance order over errors then warnings, so the
  * errors still lead.
@@ -44,10 +57,11 @@ function groupIssues(issues: ValidationIssue[]): IssueGroup[] {
 
   for (const issue of issues) {
     const text = validationIssueText(issue);
-    const key = `${issue.level}|${issue.code}|${text}`;
+    const key = `${issue.level}|${text}`;
 
     const existing = groups.get(key);
     if (existing) {
+      if (!existing.codes.includes(issue.code)) existing.codes.push(issue.code);
       if (issue.featureId !== "") existing.featureIds.push(issue.featureId);
       continue;
     }
@@ -55,7 +69,7 @@ function groupIssues(issues: ValidationIssue[]): IssueGroup[] {
     groups.set(key, {
       key,
       level: issue.level,
-      code: issue.code,
+      codes: [issue.code],
       text,
       featureIds: issue.featureId === "" ? [] : [issue.featureId],
     });
@@ -145,7 +159,7 @@ function IssueGroupRow({
         <div className="min-w-0 flex-1">
           <p className="text-xs">{group.text}</p>
           <p className="font-mono text-2xs text-muted-foreground">
-            {group.code}
+            {group.codes.join(", ")}
           </p>
         </div>
         {count > 1 ? (

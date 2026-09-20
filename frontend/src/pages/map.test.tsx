@@ -1663,5 +1663,45 @@ describe("MapPage", () => {
       );
       expect(screen.queryByRole("status")).toBeNull();
     });
+
+    it("never counts past the end of the queue after a fix", () => {
+      // Standing on the last finding and correcting it used to render
+      // "2 / 1" — the stored index is what "next" steps from, and rendering
+      // it raw is a different question from where the reader now is.
+      const other: ModelFeature = {
+        ...sourceNeedingReview,
+        id: "src-2",
+      };
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview, other],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 1, total: 2 }),
+      );
+
+      // Walk to the last one, then fix it out from under the cursor.
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_next_finding() }),
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 2, total: 2 }),
+      );
+
+      act(() => {
+        useModelStore.getState().updateFeature({ ...other, properties: {} });
+      });
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 1, total: 1 }),
+      );
+    });
   });
 });

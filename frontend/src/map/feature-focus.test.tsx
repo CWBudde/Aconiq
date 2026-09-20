@@ -307,6 +307,33 @@ describe("FeatureFocus flash", () => {
     expect(data.features).toHaveLength(1);
   });
 
+  it("touches nothing after a second flash is unmounted", () => {
+    // The regression this file missed the first time: `flash()` used to
+    // replace the timer array, while the cleanup held the one captured when
+    // its effect ran. Flash 1 was covered by accident — the focus effect runs
+    // before the cleanup effect registers, so the array it captured was flash
+    // 1's. Every flash after that leaked its timers past unmount.
+    const map = new FakeMap();
+    const { rerender, unmount } = renderFocus(map, ready(), {
+      featureId: "road-1",
+      epoch: 1,
+    });
+    rerender(
+      <MapContext value={map as unknown as MapLibreMap}>
+        <FeatureFocus
+          display={ready()}
+          request={{ featureId: "rcv-1", epoch: 2 }}
+        />
+      </MapContext>,
+    );
+
+    unmount();
+    const settled = map.callCount;
+    vi.advanceTimersByTime(10_000);
+
+    expect(map.callCount).toBe(settled);
+  });
+
   it("touches nothing after it is unmounted", () => {
     // A timer firing after `map.remove()` reaches a map that throws on
     // every call.

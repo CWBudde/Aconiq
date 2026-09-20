@@ -73,6 +73,35 @@ export function stepFinding(
   return { featureId, index };
 }
 
+/**
+ * Where the stepper says the reader is, reconciled against the current queue.
+ *
+ * The cursor is *stored* state — it is what the reader last navigated to — but
+ * the queue moves underneath it, because fixing the finding you are standing on
+ * is the entire point of the walk. Rendering `cursor.index` raw is how a reader
+ * who corrects the last of 608 sources is shown `608 / 607`, and how fixing an
+ * earlier one shifts every later position by one without saying so.
+ *
+ * It is a display reconciliation and not a write back into the cursor: moving
+ * the stored index would change what {@link stepFinding} does next, and the
+ * reader pressing "next" after a fix must still land on the finding that took
+ * the fixed one's place rather than one past it.
+ */
+export function cursorPosition(
+  queue: string[],
+  cursor: FindingCursor | null,
+): number | null {
+  if (cursor === null || queue.length === 0) return null;
+
+  const at = queue.indexOf(cursor.featureId);
+  // Still open — but something before it may have been fixed since.
+  if (at >= 0) return at + 1;
+
+  // Fixed and gone: its old slot now holds whatever followed it, which is
+  // exactly where `stepFinding` will go next.
+  return Math.min(cursor.index, queue.length - 1) + 1;
+}
+
 /** The cursor that starts a walk at `featureId`, or `null` if it is not queued. */
 export function cursorFor(
   queue: string[],

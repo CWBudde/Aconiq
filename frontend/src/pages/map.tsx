@@ -46,7 +46,12 @@ import type { CalcArea, Geometry, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
 import { useModelValidation } from "@/model/use-model-validation";
-import { cursorFor, findingQueue, stepFinding } from "@/model/finding-queue";
+import {
+  cursorFor,
+  cursorPosition,
+  findingQueue,
+  stepFinding,
+} from "@/model/finding-queue";
 import type { FindingCursor } from "@/model/finding-queue";
 import { m } from "@/i18n/messages";
 
@@ -453,13 +458,12 @@ function MapWorkspace() {
     },
   );
 
-  // The queue empties when the last finding is fixed, and the stepper goes with
-  // it rather than counting to "1 / 0".
-  useEffect(() => {
-    if (findings.length === 0 && queueCursor !== null) {
-      setQueueCursor(null);
-    }
-  }, [findings, queueCursor]);
+  // Where the stepper says the reader is. Derived rather than read off the
+  // cursor, because editing moves the queue under it: the stored index is what
+  // "next" steps from, while this is what the reader is shown, and rendering
+  // the two as one number is how fixing the last of 608 findings read
+  // "608 / 607". `null` also unmounts the stepper once the queue empties.
+  const queuePosition = cursorPosition(findings, queueCursor);
 
   // Stable, because `ArrivalParams` has it in an effect's dependency list and
   // an inline arrow there would re-run the effect on every render.
@@ -574,9 +578,9 @@ function MapWorkspace() {
               <ValidationPanel onSelectFeature={handleSelectFromValidation} />
             </MapPanel>
           ) : null}
-          {queueCursor ? (
+          {queuePosition !== null ? (
             <FindingStepper
-              position={queueCursor.index + 1}
+              position={queuePosition}
               total={findings.length}
               onStep={handleStep}
               onClose={() => {
