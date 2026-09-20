@@ -94,12 +94,22 @@ export interface ChunkOutput {
  * results to merge "in a fixed order independent of worker scheduling", with
  * no "first finished worker wins".
  *
- * A gap or a duplicate throws rather than returning a short array. A short
- * array is the dangerous failure here — it becomes a smaller raster that
- * renders perfectly plausibly and is wrong, and nothing downstream would
+ * A gap, a duplicate or a short result throws rather than being returned. A
+ * short array is the dangerous failure here — it becomes a smaller raster
+ * that renders perfectly plausibly and is wrong, and nothing downstream would
  * notice.
+ *
+ * `expected` is why this takes a second argument. Checking that chunk *i*
+ * sits at position *i* and starts where its predecessor ended catches a hole
+ * in the middle, but it cannot see a missing chunk at the *end*: chunks 0 to
+ * n-2 satisfy every one of those checks on their own, and the walk simply
+ * stops early. Only the run's own receiver count knows how long the answer
+ * was supposed to be.
  */
-export function mergeChunks(chunks: ChunkOutput[]): ReceiverOutput[] {
+export function mergeChunks(
+  chunks: ChunkOutput[],
+  expected: number,
+): ReceiverOutput[] {
   const ordered = [...chunks].sort((a, b) => a.chunk - b.chunk);
   const merged: ReceiverOutput[] = [];
 
@@ -120,6 +130,13 @@ export function mergeChunks(chunks: ChunkOutput[]): ReceiverOutput[] {
 
     merged.push(...chunk.outputs);
   });
+
+  if (merged.length !== expected) {
+    throw new Error(
+      `kernel pool: merged ${String(merged.length)} receivers, expected ${String(expected)}` +
+        ` — a shard's final chunk is missing or short`,
+    );
+  }
 
   return merged;
 }

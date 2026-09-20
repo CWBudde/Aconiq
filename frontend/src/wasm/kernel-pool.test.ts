@@ -68,11 +68,10 @@ describe("mergeChunks", () => {
   it("orders by chunk index, not by arrival", () => {
     // The order a Promise.all settles in is the order the workers happened to
     // finish, which is exactly what must not decide the receiver order.
-    const merged = mergeChunks([
-      chunk(2, 4, 2),
-      chunk(0, 0, 2),
-      chunk(1, 2, 2),
-    ]);
+    const merged = mergeChunks(
+      [chunk(2, 4, 2), chunk(0, 0, 2), chunk(1, 2, 2)],
+      6,
+    );
 
     expect(merged.map((o) => o.Receiver.id)).toEqual([
       "R0",
@@ -86,32 +85,53 @@ describe("mergeChunks", () => {
 
   it("gives the same answer whatever order the shards report in", () => {
     const pieces = [chunk(0, 0, 3), chunk(1, 3, 3), chunk(2, 6, 1)];
-    const forwards = mergeChunks(pieces);
-    const backwards = mergeChunks([...pieces].reverse());
+    const forwards = mergeChunks(pieces, 7);
+    const backwards = mergeChunks([...pieces].reverse(), 7);
 
     expect(backwards).toEqual(forwards);
   });
 
   it("merges an empty run to nothing", () => {
-    expect(mergeChunks([])).toEqual([]);
+    expect(mergeChunks([], 0)).toEqual([]);
   });
 
   it("refuses a missing chunk rather than returning a short run", () => {
     // The dangerous case: a silently short array becomes a smaller raster
     // that renders plausibly and is wrong.
-    expect(() => mergeChunks([chunk(0, 0, 2), chunk(2, 4, 2)])).toThrow(
+    expect(() => mergeChunks([chunk(0, 0, 2), chunk(2, 4, 2)], 6)).toThrow(
       /expected chunk 1/,
     );
   });
 
   it("refuses a duplicated chunk", () => {
-    expect(() => mergeChunks([chunk(0, 0, 2), chunk(0, 0, 2)])).toThrow(
+    expect(() => mergeChunks([chunk(0, 0, 2), chunk(0, 0, 2)], 4)).toThrow(
       /expected chunk 1/,
     );
   });
 
+  it("refuses a run whose last chunk never arrived", () => {
+    // The hole the index and start checks cannot see: chunks 0..n-2 satisfy
+    // both on their own, and the walk just stops early. Only the run's own
+    // receiver count knows the answer was meant to be longer.
+    expect(() => mergeChunks([chunk(0, 0, 2), chunk(1, 2, 2)], 6)).toThrow(
+      /merged 4 receivers, expected 6/,
+    );
+  });
+
+  it("refuses a run whose last chunk came back short", () => {
+    expect(() => mergeChunks([chunk(0, 0, 2), chunk(1, 2, 1)], 4)).toThrow(
+      /merged 3 receivers, expected 4/,
+    );
+  });
+
+  it("refuses an empty reply for a non-empty run", () => {
+    expect(() => mergeChunks([], 100)).toThrow(
+      /merged 0 receivers, expected 100/,
+    );
+  });
+
   it("refuses a chunk that does not start where the previous one ended", () => {
-    expect(() => mergeChunks([chunk(0, 0, 2), chunk(1, 99, 2)])).toThrow(
+    expect(() => mergeChunks([chunk(0, 0, 2), chunk(1, 99, 2)], 4)).toThrow(
       /starts at receiver 99/,
     );
   });
