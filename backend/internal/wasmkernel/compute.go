@@ -112,9 +112,9 @@ func ComputeRLS19Road(
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	scene, err := prepareScene(receivers, sources, barriers, cfg)
+	scene, err := road.PrepareSceneFor(receivers, sources, barriers, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	outputs := make([]road.ReceiverOutput, 0, total)
@@ -187,49 +187,4 @@ func nextChunkSize(current, computed int, elapsed time.Duration) int {
 	}
 
 	return int(wanted)
-}
-
-// prepareScene derives the receiver-independent half once, keeping
-// ComputeReceiverOutputs' order of refusals.
-//
-// That order is load-bearing and not obvious. ComputeReceiverOutputs prepares
-// the scene *lazily*, on the first receiver that has cleared its own checks, so
-// a model that is wrong in both ways at once — a receiver with no ID and a
-// source with no ID — reports the receiver. Preparing eagerly, which is exactly
-// what this function does to get the saving it exists for, would swap the two
-// around.
-//
-// So the eager preparation is speculative: when it succeeds nothing was
-// reordered, because a scene that prepares cleanly has no refusal to lose the
-// race. When it fails, the refusal the caller hears is not ours to choose, and
-// ComputeReceiverOutputs is asked to word it. That costs a second
-// PrepareScene, on a path that is returning an error and computing nothing.
-func prepareScene(
-	receivers []geo.PointReceiver,
-	sources []road.RoadSource,
-	barriers []road.Barrier,
-	cfg road.PropagationConfig,
-) (*road.Scene, error) {
-	// The first receiver's height, as ComputeReceiverOutputs would have used
-	// it: ReceiverHeightM is the one config field a receiver overrides, and
-	// PrepareScene reads it only to validate it.
-	firstCfg := cfg
-	firstCfg.ReceiverHeightM = receivers[0].HeightM
-
-	scene, err := road.PrepareScene(sources, barriers, firstCfg)
-	if err == nil {
-		return scene, nil
-	}
-
-	_, refusal := road.ComputeReceiverOutputs(receivers, sources, barriers, cfg)
-	if refusal != nil {
-		return nil, fmt.Errorf("%w", refusal)
-	}
-
-	// Unreachable as the two are written today — ComputeReceiverOutputs
-	// prepares from the same first receiver, so it cannot succeed where
-	// PrepareScene failed. Returning the refusal we already have rather than a
-	// nil scene keeps that an error instead of a panic if it ever stops being
-	// true.
-	return nil, fmt.Errorf("%w", err)
 }
