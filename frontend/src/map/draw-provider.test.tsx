@@ -86,8 +86,34 @@ function Consumer() {
   return <span data-testid="mode">{api.activeMode}</span>;
 }
 
-/** A stand-in for the MapLibre map; the adapter is stubbed, so it is opaque. */
-const stubMap = {} as Map;
+/**
+ * A stand-in for the MapLibre map; the adapter is stubbed, so the map is
+ * opaque to terra-draw. It is an event emitter and nothing else, because the
+ * one thing `useDraw` asks the map itself is whether it has been removed.
+ */
+interface FakeMap {
+  on: ReturnType<typeof vi.fn>;
+  off: ReturnType<typeof vi.fn>;
+  /** Plays a map event, standing in for what MapLibre would fire. */
+  fire: (event: string) => void;
+}
+
+function fakeMap(): FakeMap {
+  const handlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+  return {
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      (handlers[event] ??= []).push(handler);
+    }),
+    off: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      handlers[event] = (handlers[event] ?? []).filter((h) => h !== handler);
+    }),
+    fire: (event: string) => {
+      for (const handler of handlers[event] ?? []) handler();
+    },
+  };
+}
+
+let stubMap = fakeMap() as unknown as Map;
 
 function tree(map: Map | null) {
   return (
@@ -111,6 +137,7 @@ beforeEach(() => {
   instances.length = 0;
   finished.length = 0;
   api = null;
+  stubMap = fakeMap() as unknown as Map;
 });
 
 describe("DrawProvider", () => {
@@ -175,22 +202,45 @@ describe("DrawProvider", () => {
     expect(screen.getByTestId("mode")).toHaveTextContent("point");
   });
 
-  it("survives a teardown against a map that is already gone", () => {
+  it("skips the teardown once the map has been removed", () => {
     // React destroys a deleted subtree's effects parent-first, so `MapView`
-    // has already called `map.remove()` when this cleanup runs and terra-draw
-    // tears down against a dead map. Unguarded, that threw `getSource` of
-    // undefined — which React surfaced as a crashed page on whatever route the
-    // user had just navigated to.
+    // has already called `map.remove()` when this cleanup runs — and a basemap
+    // switch rebuilds the map the same way, one render earlier. MapLibre's
+    // `remove()` deletes the style, so terra-draw's `stop()` against that map
+    // throws `getSource` of undefined. There is nothing left to tear down on a
+    // removed map (its listeners and layers went with it), so the hook must
+    // not try, and must not report a failure it did not have.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderWithin(stubMap);
+    (stubMap as unknown as FakeMap).fire("remove");
+
+    view.unmount();
+
+    expect(instances[0]?.stop).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("reports, but survives, a teardown that fails on a live map", () => {
+    // The map is still there, so `stop()` failing means an adapter is left on
+    // it. That is worth a warning — but not a throw, which React would surface
+    // as a crashed page on whatever route the user had just navigated to.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const view = renderWithin(stubMap);
     instances[0]?.stop.mockImplementation(() => {
-      throw new TypeError(
-        "Cannot read properties of undefined (reading 'getSource')",
-      );
+      throw new Error("adapter refused to unregister");
     });
 
     expect(() => {
       view.unmount();
     }).not.toThrow();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "useDraw: terra-draw teardown failed",
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 });
 
@@ -314,7 +364,7 @@ describe("DrawProvider editing surface", () => {
     });
     expect(api?.getFeature("src-1")).toEqual(point);
 
-    view.rerender(tree({} as Map));
+    view.rerender(tree(fakeMap() as unknown as Map));
 
     expect(instances).toHaveLength(2);
     expect(api?.instanceEpoch).not.toBe(before);

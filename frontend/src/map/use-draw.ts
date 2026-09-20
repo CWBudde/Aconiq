@@ -50,6 +50,15 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
   useEffect(() => {
     if (!map) return;
 
+    // Whether MapLibre has already torn this map down — see the cleanup.
+    // `remove` fires at the very end of `map.remove()`, so by the time this
+    // hook cleans up after it the flag is set.
+    let mapRemoved = false;
+    const markRemoved = () => {
+      mapRemoved = true;
+    };
+    map.on("remove", markRemoved);
+
     const draw = new TerraDraw({
       adapter: new TerraDrawMapLibreGLAdapter({ map }),
       modes: [
@@ -159,17 +168,25 @@ export function useDraw(options: UseDrawOptions = {}): UseDrawReturn {
     setInstanceEpoch((epoch) => epoch + 1);
 
     return () => {
-      try {
-        draw.stop();
-      } catch (error) {
-        // React destroys a deleted subtree's effects parent-first, so
-        // `MapView`'s cleanup has already called `map.remove()` by the time
-        // this runs: terra-draw then tears down against a map whose internals
-        // are gone and throws `getSource` of undefined. There is nothing left
-        // to clean up on a removed map, so this is genuinely nothing to do —
-        // but it is reported, because the same call failing for any other
-        // reason would leak an adapter onto a live map.
-        console.warn("useDraw: terra-draw teardown failed", error);
+      map.off("remove", markRemoved);
+      // This cleanup runs *after* the map is gone, both ways the map goes.
+      // React destroys a deleted subtree's effects parent-first, so on leaving
+      // the page `MapView`'s cleanup has already called `map.remove()`; and a
+      // basemap switch rebuilds the map through that same cleanup one render
+      // before this one runs. MapLibre's `remove()` deletes the style, so
+      // `draw.stop()` against a removed map throws `getSource` of undefined
+      // from the adapter's `clear()`. Nothing is lost by not calling it: the
+      // adapter's listeners hung on a canvas the map already took out of the
+      // DOM, and the layers it would remove went with the style. So a removed
+      // map is skipped — silently, because there was no failure — and the
+      // warning is kept for the case that matters: a live map whose teardown
+      // fails, which would leave an adapter on it.
+      if (!mapRemoved) {
+        try {
+          draw.stop();
+        } catch (error) {
+          console.warn("useDraw: terra-draw teardown failed", error);
+        }
       }
       drawRef.current = null;
     };
