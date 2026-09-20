@@ -135,7 +135,7 @@ function goParameterUnits(): Record<string, string> {
  * declarations survive `descriptorjson` and the WASM boundary intact.
  */
 async function kernelRoadProfile(): Promise<ProfileInfo> {
-  const standards = (await getNodeKernel()).standards();
+  const standards = await (await getNodeKernel()).standards();
   const road = standards.find((standard) => standard.id === "rls19-road");
   expect(road, "the kernel publishes no rls19-road descriptor").toBeDefined();
   const profile = road?.versions[0]?.profiles[0];
@@ -159,7 +159,7 @@ describe.skipIf(skipReason !== null)("kernel rls19-road descriptor", () => {
   });
 
   it("carries the evidence tier the Go module declares", async () => {
-    const standards = (await getNodeKernel()).standards();
+    const standards = await (await getNodeKernel()).standards();
     const road = standards.find((standard) => standard.id === "rls19-road");
     // Priority 4's whole point: the tier travels with the descriptor instead
     // of being declared a second time in the frontend, where it could drift.
@@ -170,7 +170,7 @@ describe.skipIf(skipReason !== null)("kernel rls19-road descriptor", () => {
   it("advertises only what the kernel can run", async () => {
     // A kernel listing the whole registry would offer twelve standards it has
     // no entry point for — the dishonesty the evidence tier exists to prevent.
-    const standards = (await getNodeKernel()).standards();
+    const standards = await (await getNodeKernel()).standards();
     expect(standards.map((standard) => standard.id)).toEqual(["rls19-road"]);
   });
 });

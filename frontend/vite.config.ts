@@ -40,6 +40,15 @@ export default defineConfig({
       },
     },
   },
+  // The compute kernel runs in a module worker (`src/wasm/kernel.worker.ts`),
+  // which is what lets it load `public/wasm_exec.js` with a dynamic `import()`
+  // instead of `importScripts`. Vite's default worker format is "iife", and an
+  // IIFE bundle cannot carry that import — so this has to match the
+  // `{ type: "module" }` in `src/wasm/spawn-worker.ts` or the worker fails at
+  // build time rather than at run time.
+  worker: {
+    format: "es",
+  },
   build: {
     outDir: "dist",
     sourcemap: true,

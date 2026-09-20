@@ -1,10 +1,22 @@
-// Lazy loader for the Aconiq WASM computation kernel.
+// The Aconiq WASM computation kernel, as the app sees it.
 //
 // Usage:
 //   const kernel = await getKernel();
 //   const outputs = await kernel.rls19Road({ receivers, sources, barriers });
+//
+// The kernel runs in a Web Worker (`kernel.worker.ts`), and there is exactly
+// one production path into it. There is deliberately no main-thread fallback:
+// `cmd/wasm/main.go` computes inside a Promise executor, which runs
+// synchronously, so a main-thread kernel does not yield for the length of a
+// run and freezes the tab — the defect this file exists to have fixed. A
+// second implementation kept "for tests" would be a third reading of what the
+// kernel does, exercised by nothing, and no test needs one: every suite either
+// mocks this module or imports `kernel-node.ts` directly.
 
 import type { StandardDescriptor } from "@/standards/descriptor";
+import { connectKernel, type KernelClient } from "./kernel-client";
+import type { KernelProgressListener } from "./protocol";
+import { spawnKernelWorker } from "./spawn-worker";
 import type {
   ComputeRequest,
   ContourRequest,
@@ -16,9 +28,21 @@ import type {
   TransformResponse,
 } from "./types";
 
+export type { KernelProgressListener } from "./protocol";
+
 export interface AconiqKernel {
-  /** Compute RLS-19 road traffic noise levels for all receivers. */
-  rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]>;
+  /**
+   * Compute RLS-19 road traffic noise levels for all receivers.
+   *
+   * `onProgress` is called with how many receivers are done out of how many
+   * there are, throttled by the worker. It is optional and ignored by the
+   * kernels that cannot report — including today's WASM build, whose Go
+   * export still takes exactly one argument.
+   */
+  rls19Road(
+    req: ComputeRequest,
+    onProgress?: KernelProgressListener,
+  ): Promise<ReceiverOutput[]>;
   /**
    * Project a batch of coordinates between two CRS.
    *
@@ -40,6 +64,11 @@ export interface AconiqKernel {
    * decoder `aconiq export` uses, so the browser never carries a second reading
    * of the byte contract.
    *
+   * Those same four megabytes are *transferred* to the worker rather than
+   * copied, so `payload`'s buffer is detached when this returns. The one
+   * caller reads it fresh out of IndexedDB for this call and never looks at it
+   * again; a caller that needs to keep its bytes must pass a copy.
+   *
    * Every band is traced in one call and told apart by
    * {@link ContourLine.band_name}; a caller showing one band filters rather
    * than asking again.
@@ -57,8 +86,13 @@ export interface AconiqKernel {
    * It comes from the kernel rather than from a hardcoded list so that the
    * evidence tier, the parameter defaults and the surface enum are declared
    * once, by the Go module. The hardcoded copy this replaced had drifted twice.
+   *
+   * A Promise despite answering from a cache: the worker ships the list with
+   * its handshake, so this costs no round trip, but one calling convention for
+   * the whole interface is worth more than saving an `await` at two call
+   * sites that are already inside `await getKernel()`.
    */
-  standards(): StandardDescriptor[];
+  standards(): Promise<StandardDescriptor[]>;
   /**
    * Load a GeoTIFF DTM into the kernel, replacing whatever was loaded before.
    *
@@ -72,108 +106,116 @@ export interface AconiqKernel {
    *
    * A run over a loaded terrain must therefore also send
    * {@link ComputeRequest.projection}; the kernel refuses it otherwise.
+   *
+   * The bytes are retained, not consumed: a worker that is terminated and
+   * respawned is reloaded with the last DTM, so a cancelled run does not
+   * silently drop the terrain out from under the next one.
    */
-  loadTerrain(data: Uint8Array, crs: string): TerrainInfo;
+  loadTerrain(data: Uint8Array, crs: string): Promise<TerrainInfo>;
   /** Drop the loaded terrain. Runs afterwards compute without one. */
-  clearTerrain(): void;
+  clearTerrain(): Promise<void>;
   /** Return the default PropagationConfig. */
-  defaultConfig(): PropagationConfig;
+  defaultConfig(): Promise<PropagationConfig>;
 }
 
-// Singleton promise — WASM is only loaded once.
+// Singleton promise — the kernel is only loaded once.
 let kernelPromise: Promise<AconiqKernel> | null = null;
 
+/**
+ * The live client, when there is one. Held beside {@link kernelPromise}
+ * because cancelling has to reach the worker *now*, not after whatever
+ * `kernelPromise` is still waiting for.
+ */
+let activeClient: KernelClient | null = null;
+
+/**
+ * The last DTM handed to {@link AconiqKernel.loadTerrain}, kept so a respawned
+ * worker can be given it again.
+ *
+ * A terrain is not part of a request — it is state inside the WASM module —
+ * so terminating the worker would otherwise lose it, and the next run would
+ * quietly compute over sea level. That is precisely the "miss every lookup and
+ * read as flat ground" failure `loadTerrain`'s CRS argument exists to prevent,
+ * arriving by another route.
+ */
+let retainedTerrain: { data: Uint8Array; crs: string } | null = null;
+
 export function getKernel(): Promise<AconiqKernel> {
-  if (!kernelPromise) {
-    kernelPromise = loadKernel();
-  }
+  kernelPromise ??= loadKernel();
   return kernelPromise;
 }
 
-async function loadWasmExecScript(): Promise<void> {
-  if (typeof window.Go !== "undefined") return;
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `${import.meta.env.BASE_URL}wasm_exec.js`;
-    script.onload = () => {
-      resolve();
-    };
-    script.onerror = () => {
-      reject(
-        new Error(
-          "Failed to load wasm_exec.js. Run `just wasm-build` to generate the WASM kernel.",
-        ),
-      );
-    };
-    document.head.appendChild(script);
-  });
+/**
+ * Tear the kernel down, failing everything in flight, and start a fresh one.
+ *
+ * Terminating the worker is the only way to stop a WASM computation: the
+ * module has one stack and no cancellation point, so a run ends when its
+ * thread does. Every pending call rejects with an `Error` named
+ * `KernelCancelled`.
+ *
+ * A replacement is started immediately rather than on the next `getKernel()`,
+ * because instantiating the module takes long enough to be felt and the user
+ * who just cancelled a run is the user most likely to start another.
+ */
+export function cancelKernel(): void {
+  const client = activeClient;
+  const wasLoaded = kernelPromise !== null;
+
+  activeClient = null;
+  kernelPromise = null;
+  client?.cancel();
+
+  if (!wasLoaded) return;
+
+  // Pre-warm. The `catch` is not error handling — whoever awaits `getKernel()`
+  // sees the rejection — it only keeps a respawn nobody has asked for yet from
+  // surfacing as an unhandled rejection.
+  const warm = loadKernel();
+  void warm.catch(() => undefined);
+  kernelPromise = warm;
 }
 
 async function loadKernel(): Promise<AconiqKernel> {
-  await loadWasmExecScript();
-
-  const GoRuntime = window.Go;
-  if (!GoRuntime) {
+  if (typeof Worker === "undefined") {
     throw new Error(
-      "wasm_exec.js was loaded but did not define window.Go. Re-run `just wasm-build` to regenerate a matching wasm_exec.js.",
+      "The Aconiq kernel runs in a Web Worker, and this environment has none. Browser mode needs a browser; a test wanting the real kernel loads it with getNodeKernel() from src/wasm/kernel-node.ts.",
     );
   }
 
-  const go = new GoRuntime();
-  const wasmUrl = `${import.meta.env.BASE_URL}aconiq.wasm`;
+  const client = await connectKernel(spawnKernelWorker());
+  activeClient = client;
 
-  let result: WebAssembly.WebAssemblyInstantiatedSource;
-  try {
-    result = await WebAssembly.instantiateStreaming(
-      fetch(wasmUrl),
-      go.importObject,
-    );
-  } catch {
-    throw new Error(
-      `Failed to load ${wasmUrl}. Run \`just wasm-build\` to generate the WASM kernel.`,
-    );
+  // Replay whatever terrain the previous worker held. Done before the kernel
+  // is handed out so that no run can observe the gap.
+  if (retainedTerrain !== null) {
+    await client.loadTerrain(retainedTerrain.data, retainedTerrain.crs);
   }
 
-  // Fire-and-forget: Go's main() blocks on select{} so this promise never resolves.
-  // All JS exports are registered synchronously before the scheduler yields.
-  void go.run(result.instance);
+  return retainingTerrain(client);
+}
 
-  // Captured once: `window.aconiq` is undefined until the Go module registers
-  // its exports, so narrowing it here is what keeps the returned methods safe.
-  const exports = window.aconiq;
-  if (!exports) {
-    throw new Error(
-      "WASM kernel not initialised: the Go module ran but did not register window.aconiq. Load the kernel via getKernel() and make sure public/aconiq.wasm is the current build (`just wasm-build`).",
-    );
-  }
-
+/**
+ * The client, with the terrain bookkeeping {@link retainedTerrain} needs.
+ *
+ * A wrapper rather than state inside `KernelClient`, because the retention has
+ * to outlive the client it was recorded against — that is the whole point of
+ * it.
+ */
+function retainingTerrain(client: KernelClient): AconiqKernel {
   return {
-    async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
-      const json = await exports.rls19Road(JSON.stringify(req));
-      return JSON.parse(json) as ReceiverOutput[];
+    rls19Road: (req, onProgress) => client.rls19Road(req, onProgress),
+    transform: (req) => client.transform(req),
+    contours: (payload, req) => client.contours(payload, req),
+    standards: () => client.standards(),
+    defaultConfig: () => client.defaultConfig(),
+    async loadTerrain(data, crs) {
+      const info = await client.loadTerrain(data, crs);
+      retainedTerrain = { data, crs };
+      return info;
     },
-    async transform(req: TransformRequest): Promise<TransformResponse> {
-      const json = await exports.transform(JSON.stringify(req));
-      return JSON.parse(json) as TransformResponse;
-    },
-    async contours(
-      payload: Uint8Array,
-      req: ContourRequest,
-    ): Promise<ContourResult> {
-      const json = await exports.contours(payload, JSON.stringify(req));
-      return JSON.parse(json) as ContourResult;
-    },
-    standards(): StandardDescriptor[] {
-      return JSON.parse(exports.standards()) as StandardDescriptor[];
-    },
-    loadTerrain(data: Uint8Array, crs: string): TerrainInfo {
-      return JSON.parse(exports.loadTerrain(data, crs)) as TerrainInfo;
-    },
-    clearTerrain(): void {
-      exports.clearTerrain();
-    },
-    defaultConfig(): PropagationConfig {
-      return JSON.parse(exports.defaultConfig()) as PropagationConfig;
+    async clearTerrain() {
+      await client.clearTerrain();
+      retainedTerrain = null;
     },
   };
 }
