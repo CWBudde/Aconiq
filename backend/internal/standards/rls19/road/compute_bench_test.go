@@ -176,21 +176,24 @@ func BenchmarkComputeReceiverOutputsBuildings(b *testing.B) {
 // compute-bound, and hyperthreads add little.
 func BenchmarkComputeReceiverOutputsParallel(b *testing.B) {
 	sources := []RoadSource{benchRoadSource()}
-	receivers := benchReceivers(2500)
 	cfg := benchConfig(1, nil)
 
-	for _, workers := range []int{1, 2, 4, 8} {
-		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
-			b.ReportAllocs()
+	for _, count := range []int{2500, 10000} {
+		receivers := benchReceivers(count)
 
-			for b.Loop() {
-				_, err := ComputeReceiverOutputsParallel(
-					b.Context(), receivers, sources, nil, cfg, workers,
-				)
-				if err != nil {
-					b.Fatalf("compute failed: %v", err)
+		for _, workers := range []int{1, 2, 4, 8} {
+			b.Run(fmt.Sprintf("receivers=%d/workers=%d", count, workers), func(b *testing.B) {
+				b.ReportAllocs()
+
+				for b.Loop() {
+					_, err := ComputeReceiverOutputsParallel(
+						b.Context(), receivers, sources, nil, cfg, workers,
+					)
+					if err != nil {
+						b.Fatalf("compute failed: %v", err)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
