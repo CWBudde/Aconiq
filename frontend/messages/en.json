@@ -356,7 +356,7 @@
   "settings_category_map": "Map",
   "settings_category_map_desc": "The basemap, its tile server, and the layer toggles.",
   "msg_settings_basemap_help": "Which rendering of the background map the model and the results are drawn over. All three draw the same tiles; only the treatment differs.",
-  "msg_settings_map_layers_help": "Which layer groups the map draws. The switches are on the map itself; this is where a forgotten one is undone.",
+  "msg_settings_map_layers_help": "Which layer groups the map draws. The switches are on the map itself; this is where anything hidden there can be shown again.",
   "msg_settings_layers_hidden": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

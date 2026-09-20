@@ -356,7 +356,7 @@
   "settings_category_map": "Karte",
   "settings_category_map_desc": "Die Hintergrundkarte, ihr Kachelserver und die Ebenen.",
   "msg_settings_basemap_help": "Welche Darstellung der Hintergrundkarte Modell und Ergebnisse unterlegt wird. Alle drei zeigen dieselben Kacheln; nur die Aufbereitung unterscheidet sich.",
-  "msg_settings_map_layers_help": "Welche Ebenengruppen die Karte zeichnet. Die Schalter sitzen auf der Karte selbst; hier wird ein vergessener zurückgenommen.",
+  "msg_settings_map_layers_help": "Welche Ebenengruppen die Karte zeichnet. Die Schalter sitzen auf der Karte selbst; hier lässt sich wieder einblenden, was dort ausgeblendet wurde.",
   "msg_settings_layers_hidden": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
