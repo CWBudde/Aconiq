@@ -25,6 +25,16 @@ type runCommandRequest struct {
 	rawParams       []string
 	inputPaths      []string
 	experimental    bool
+
+	// workers is --workers: how many goroutines the compute walks receivers
+	// over, 0 meaning one per available CPU.
+	//
+	// It is a flag and not a --param on purpose. A declared run parameter
+	// lands in provenance.parameters, and recording a scheduling knob as an
+	// input to the calculation would say the result depends on it -- when the
+	// whole guarantee, and the 1-worker-vs-N hash test behind it, is that it
+	// does not. It goes in the run log instead.
+	workers int
 }
 
 // requireExperimentalOptIn refuses a run against a standard whose tier demands
@@ -246,6 +256,7 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		model:        model,
 		terrain:      runTerrain,
 		receiverMode: req.receiverMode,
+		workers:      req.workers,
 		runDir:       prepared.runDir,
 		runID:        prepared.run.ID,
 		cacheDir:     state.Config.CacheDir,

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -129,7 +130,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	// carries — correct on flat ground, blind to a rise in between.
 	propagationConfig.TerrainModel = input.terrain
 
-	receiverOutputs, err := rls19road.ComputeReceiverOutputs(receivers, roadSources, barriers, propagationConfig)
+	receiverOutputs, err := computeRLS19RoadReceivers(input, receivers, roadSources, barriers, propagationConfig)
 	if err != nil {
 		input.log.addf("rls19 compute failed: %v", err)
 
@@ -383,4 +384,53 @@ func runISO9613Module(input runModuleInput) (runModuleResult, error) {
 		outputHash: outputHash,
 		finishedAt: finishedAt,
 	}, nil
+}
+
+// resolveComputeWorkers turns --workers into a goroutine count.
+//
+// Zero means "decide for me", which is one per available CPU. A negative
+// value is read the same way rather than refused: it is a typo, not an
+// instruction, and failing a run over it would be the least useful possible
+// response to one.
+//
+// One is honoured exactly, because it is how a reader reproduces a run
+// single-threaded to check that the pool did not change the answer — the same
+// comparison TestOneWorkerAndNWorkersHashAlike makes.
+func resolveComputeWorkers(requested int) int {
+	if requested > 0 {
+		return requested
+	}
+
+	return rls19road.DefaultWorkers()
+}
+
+// computeRLS19RoadReceivers walks the receivers over a goroutine pool.
+//
+// context.Background() rather than the command's: no Compute* in any
+// standards module takes a context today, and threading cmd.Context() end to
+// end is its own tracked change (PLAN.md Priority 7). The pool takes one
+// anyway, so that it is ready when that lands.
+//
+// The worker count goes in the run log and deliberately not in provenance.
+// Recording a scheduling knob as an input to the calculation would assert
+// that the result depends on it, and the guarantee -- with
+// TestOneWorkerAndNWorkersHashAlike behind it -- is that it does not.
+func computeRLS19RoadReceivers(
+	input runModuleInput,
+	receivers []geo.PointReceiver,
+	roadSources []rls19road.RoadSource,
+	barriers []rls19road.Barrier,
+	cfg rls19road.PropagationConfig,
+) ([]rls19road.ReceiverOutput, error) {
+	workers := resolveComputeWorkers(input.workers)
+	input.log.addf("compute workers: %d", workers)
+
+	outputs, err := rls19road.ComputeReceiverOutputsParallel(
+		context.Background(), receivers, roadSources, barriers, cfg, workers,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return outputs, nil
 }
