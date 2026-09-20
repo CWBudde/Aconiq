@@ -78,3 +78,23 @@ export async function withKernelErrors<T>(work: Promise<T>): Promise<T> {
     throw reviveKernelError(serializeKernelError(cause));
   }
 }
+
+/**
+ * Read a *synchronous* kernel export, as a Promise that rejects on failure.
+ *
+ * The sibling of {@link withKernelErrors}, and needed because `standards` and
+ * `loadTerrain` throw rather than reject: they are synchronous exports, and
+ * `syncThrowSource` in `backend/cmd/wasm/main.go` explains why a Go function
+ * has to reach one JavaScript frame up to throw at all. A throw before the
+ * Promise exists is not something `withKernelErrors` can catch, and left
+ * unwrapped it would escape synchronously out of a method declared to return
+ * a Promise — so the Node kernel would fail in a shape the worker-backed one
+ * never uses, and the parity suites would be pinning the wrong convention.
+ */
+export function fromSyncExport<T>(read: () => T): Promise<T> {
+  try {
+    return Promise.resolve(read());
+  } catch (cause) {
+    return Promise.reject(reviveKernelError(serializeKernelError(cause)));
+  }
+}

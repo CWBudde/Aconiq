@@ -118,6 +118,14 @@ export class KernelClient implements AconiqKernel {
    * with it rather than posting into a worker that is gone.
    */
   private failure: Error | null = null;
+  /**
+   * Set by {@link cancel}, so {@link fail} can tell a cancellation from a
+   * worker that died on its own. Only the latter needs {@link onLost}:
+   * `kernel.ts` already replaces the singleton when it cancels.
+   */
+  private cancelling = false;
+  /** Notified when the worker is lost for a reason nobody asked for. */
+  private lostListener: ((cause: Error) => void) | null = null;
   private standardsCache: StandardDescriptor[] = [];
   private defaultConfigCache: PropagationConfig | null = null;
   private readonly handshake: Promise<void>;
@@ -169,9 +177,27 @@ export class KernelClient implements AconiqKernel {
    * does. `kernel.ts` spawns a replacement.
    */
   cancel(): void {
+    this.cancelling = true;
     this.fail(
       namedError(CancelledErrorName, "the Aconiq kernel run was cancelled"),
     );
+  }
+
+  /**
+   * Register the one listener told when this worker dies unprompted.
+   *
+   * A client that has failed is unusable for good — every later call rejects
+   * with the stored reason — so whoever is holding it has to let it go.
+   * Without this the `error` and `messageerror` events settled the calls in
+   * flight and nothing else, and the singleton in `kernel.ts` went on handing
+   * out the dead client: one unexpected worker exit and browser mode stayed
+   * broken until the page was reloaded.
+   *
+   * Not fired for {@link cancel}, which the caller already knows about.
+   */
+  onLost(listener: (cause: Error) => void): void {
+    this.lostListener = listener;
+    if (this.failure !== null && !this.cancelling) listener(this.failure);
   }
 
   private fail(cause: Error): void {
@@ -188,6 +214,8 @@ export class KernelClient implements AconiqKernel {
     this.pending.clear();
 
     this.port.terminate();
+
+    if (!this.cancelling) this.lostListener?.(reason);
   }
 
   private receive(message: WorkerMessage): void {
@@ -324,13 +352,16 @@ export class KernelClient implements AconiqKernel {
   }
 
   async loadTerrain(data: Uint8Array, crs: string): Promise<TerrainInfo> {
-    // Copied rather than transferred, unlike `contours`: `kernel.ts` retains
-    // these bytes so it can replay the DTM into a respawned worker, and a
-    // transfer would detach the copy it is retaining.
+    // The caller's bytes are copied, because `kernel.ts` retains them to
+    // replay the DTM into a respawned worker and a transfer would detach what
+    // it is holding. The copy is then transferred rather than passed along:
+    // it is private to this call, so leaving it off the transfer list only
+    // bought structured clone a second full pass over a DTM that can be tens
+    // of megabytes.
     const buffer = data.slice().buffer;
     const value = await this.call(
       (id) => ({ id, method: "loadTerrain", crs, payload: buffer }),
-      [],
+      [buffer],
     );
     return JSON.parse(KernelClient.json(value, "loadTerrain")) as TerrainInfo;
   }

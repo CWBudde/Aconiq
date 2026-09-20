@@ -220,16 +220,23 @@ describe("kernel worker call correlation", () => {
     await expect(call).resolves.toMatchObject({ interval: 5 });
   });
 
-  it("copies the terrain bytes rather than transferring them", async () => {
+  it("leaves the caller's terrain bytes intact, and transfers the copy", async () => {
     const { port, client } = await connected();
 
     const dtm = new Uint8Array(16);
     const call = client.loadTerrain(dtm, "EPSG:25832");
 
     // `kernel.ts` retains these bytes so a respawned worker can be given the
-    // DTM again; transferring would detach the copy it is retaining.
-    expect(port.transferred[0]).toEqual([]);
+    // DTM again, so the caller's own buffer must survive the call.
     expect(dtm.byteLength).toBe(16);
+
+    // What crosses is the private copy, and it goes in the transfer list: a
+    // DTM can be tens of megabytes, and leaving it off only bought structured
+    // clone a second full pass over bytes nobody else can see.
+    const transferred = port.transferred[0];
+    expect(transferred).toHaveLength(1);
+    expect(transferred?.[0]).not.toBe(dtm.buffer);
+    expect((transferred?.[0] as ArrayBuffer).byteLength).toBe(16);
 
     port.emit({
       kind: "result",
@@ -312,6 +319,48 @@ describe("kernel worker teardown", () => {
     // Terminating is the only way to interrupt a WASM call: the module has one
     // stack and no cancellation point.
     expect(port.terminated).toBeGreaterThan(0);
+  });
+
+  it("tells its owner when the worker dies unprompted, so the singleton can go", async () => {
+    const { port, client } = await connected();
+
+    const lost: Error[] = [];
+    client.onLost((cause) => lost.push(cause));
+
+    port.emitError("worker terminated unexpectedly");
+
+    // Without this the failed client stayed in `kernel.ts`'s singleton and
+    // every later getKernel() handed it out again: one unexpected worker exit
+    // and browser mode was broken until the page reloaded.
+    expect(lost).toHaveLength(1);
+    expect(lost[0]).toMatchObject({ name: WorkerLostErrorName });
+  });
+
+  it("tells a listener registered after the loss, not only before it", async () => {
+    const { port, client } = await connected();
+
+    port.emitError("worker terminated unexpectedly");
+
+    const lost: Error[] = [];
+    client.onLost((cause) => lost.push(cause));
+
+    // The owner registers the listener right after connectKernel resolves, so
+    // this is a narrow race — but losing it would leave the singleton holding
+    // a dead client, which is the failure this hook exists to prevent.
+    expect(lost).toHaveLength(1);
+  });
+
+  it("does not report a cancellation as a loss", async () => {
+    const { client } = await connected();
+
+    const lost: Error[] = [];
+    client.onLost((cause) => lost.push(cause));
+
+    client.cancel();
+
+    // `kernel.ts` already replaced the singleton on its way into cancel();
+    // reporting it again would race a second respawn against that one.
+    expect(lost).toHaveLength(0);
   });
 
   it("drops a reply that arrives after its call was cancelled", async () => {

@@ -1526,20 +1526,39 @@ function findRunByID(current: BrowserBackendState, runId: string): StoredRun {
  * a cancel *message* would sit in the queue until the work it was meant to
  * stop had already finished.
  */
+/**
+ * Whether the caller has abandoned this run, read fresh.
+ *
+ * A function rather than `signal?.aborted === true` at each site because
+ * `AbortSignal.aborted` is declared `readonly`, so once one check has narrowed
+ * it TypeScript keeps that narrowing across the `await`s that follow — and the
+ * whole point of checking again later is that it can have flipped in between.
+ */
+function runAbandoned(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+function cancelledRun(message: string): Error {
+  // Named like the kernel's own cancellation so `isRunCancelled` recognises it
+  // and the UI shows the same neutral notice, whichever side noticed first.
+  const cancelled = new Error(message);
+  cancelled.name = CancelledErrorName;
+
+  return cancelled;
+}
+
 async function runRLS19Road(
   kernel: AconiqKernel,
   spec: RunSpec,
   hooks?: RunHooks,
 ): Promise<RunSummary> {
   const signal = hooks?.signal;
-  if (signal?.aborted === true) {
+  if (runAbandoned(signal)) {
     // Nothing has been started, so there is nothing to terminate — but the
     // caller asked for no run, and answering with one would be worse than
     // refusing. Named like the kernel's own cancellation so `isRunCancelled`
     // recognises it and the UI shows the same neutral notice.
-    const cancelled = new Error("The run was cancelled before it started");
-    cancelled.name = CancelledErrorName;
-    throw cancelled;
+    throw cancelledRun("The run was cancelled before it started");
   }
 
   const abort = () => {
@@ -1547,7 +1566,7 @@ async function runRLS19Road(
   };
   signal?.addEventListener("abort", abort);
   try {
-    return await computeRLS19Road(kernel, spec, hooks?.onProgress);
+    return await computeRLS19Road(kernel, spec, hooks);
   } finally {
     signal?.removeEventListener("abort", abort);
   }
@@ -1564,8 +1583,10 @@ async function runRLS19Road(
 async function computeRLS19Road(
   kernel: AconiqKernel,
   spec: RunSpec,
-  onProgress?: RunHooks["onProgress"],
+  hooks?: RunHooks,
 ): Promise<RunSummary> {
+  const onProgress = hooks?.onProgress;
+  const signal = hooks?.signal;
   // Project the whole workspace once, before anything reads a coordinate off
   // it, mirroring `cli.resolveComputeModel`. Never per builder:
   // `buildParkingSources` computes a shoelace area in m² and a centroid, and
@@ -1685,6 +1706,15 @@ async function computeRLS19Road(
     // go in below, and the run id minted above is simply never used. The next
     // run mints it again.
     const outputs = await kernel.rls19Road(request, onProgress);
+
+    // Cancelling once the compute has returned terminates a worker that is
+    // already idle, so without this the run would go on to persist itself and
+    // resolve successfully while the button the user just pressed still said
+    // Cancel. Checked before the first write, so there is nothing to undo.
+    if (runAbandoned(signal)) {
+      throw cancelledRun("The run was cancelled before its results were saved");
+    }
+
     const receiverTable = buildReceiverTable(outputs);
     const receiverCSV = buildReceiverTableCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
@@ -1871,6 +1901,16 @@ async function computeRLS19Road(
     // is missing reads as a corrupted run, while a byte record no document
     // names is merely orphaned.
     await saveRasterBytes(rasterBinArtifact.id, rasterBinary, runId);
+
+    // The raster can be tens of megabytes, so the write above is wide enough
+    // to abort inside. Dropping the bytes leaves the same state the guard
+    // before them would have: no document names them, and `forgetArtifactBytes`
+    // is the path a failed persist already takes for exactly this reason.
+    if (runAbandoned(signal)) {
+      forgetArtifactBytes([storedRun]);
+
+      throw cancelledRun("The run was cancelled before its results were saved");
+    }
 
     try {
       await persistRun(storedRun, "run");
@@ -2130,6 +2170,15 @@ out geom;`;
   },
 
   async startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary> {
+    // Before the kernel, not after. `runRLS19Road` checks this too, but by
+    // then a caller who asked for no run has already paid for spawning the
+    // worker, instantiating four megabytes of WASM and replaying whatever DTM
+    // was loaded. The later check stays, because a signal can abort during
+    // exactly that startup.
+    if (runAbandoned(hooks?.signal)) {
+      throw cancelledRun("The run was cancelled before it started");
+    }
+
     // Load the kernel before reading the model, so a kernel that cannot load
     // is the failure reported, not a model finding it would never compute.
     const kernel = await getKernel();

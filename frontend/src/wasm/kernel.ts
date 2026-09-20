@@ -141,8 +141,37 @@ let activeClient: KernelClient | null = null;
 let retainedTerrain: { data: Uint8Array; crs: string } | null = null;
 
 export function getKernel(): Promise<AconiqKernel> {
-  kernelPromise ??= loadKernel();
+  if (kernelPromise === null) {
+    const loading = loadKernel();
+    kernelPromise = loading;
+    // A kernel that failed to load must not be the answer for the rest of the
+    // session. `kernelPromise` is the *promise*, so without this a rejected
+    // load stays cached and every later getKernel() re-reads the same
+    // rejection: one blip fetching four megabytes of WASM and browser mode
+    // never recovers. Clearing it lets the next caller try again.
+    void loading.catch(() => {
+      if (kernelPromise === loading) kernelPromise = null;
+    });
+  }
+
   return kernelPromise;
+}
+
+/**
+ * Drop a kernel that died on its own, so the next {@link getKernel} builds a
+ * new one.
+ *
+ * A `KernelClient` that has failed rejects every later call with the reason it
+ * failed for, so holding on to one is holding on to a broken browser mode.
+ * Unlike {@link cancelKernel} this does not pre-warm a replacement: nobody
+ * asked for the teardown, so there is no reason to think a run is coming, and
+ * a worker that died once may well die again on sight.
+ */
+function releaseLostKernel(lost: KernelClient): void {
+  if (activeClient !== lost) return;
+
+  activeClient = null;
+  kernelPromise = null;
 }
 
 /**
@@ -184,6 +213,9 @@ async function loadKernel(): Promise<AconiqKernel> {
 
   const client = await connectKernel(spawnKernelWorker());
   activeClient = client;
+  client.onLost(() => {
+    releaseLostKernel(client);
+  });
 
   // Replay whatever terrain the previous worker held. Done before the kernel
   // is handed out so that no run can observe the gap.

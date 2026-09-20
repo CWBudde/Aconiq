@@ -25,6 +25,8 @@ interface KernelCall {
   onProgress: KernelProgressListener | undefined;
   /** Settles the call, as the worker's reply would. */
   finish: () => void;
+  /** Settles it the other way: a compute that finished before the abort. */
+  succeed: () => void;
 }
 
 const calls: KernelCall[] = [];
@@ -50,7 +52,7 @@ vi.mock("@/wasm/kernel", () => ({
       rls19Road: (req: ComputeRequest, onProgress?: KernelProgressListener) =>
         // Never resolved: a completed run is `browser-backend.test.ts`'s
         // subject, and this file only ever ends one by cancelling it.
-        new Promise((_resolve, reject) => {
+        new Promise((resolve, reject) => {
           calls.push({
             request: req,
             onProgress,
@@ -58,6 +60,14 @@ vi.mock("@/wasm/kernel", () => ({
               const cancelled = new Error("kernel cancelled");
               cancelled.name = CancelledErrorName;
               reject(cancelled);
+            },
+            succeed: () => {
+              resolve(
+                req.receivers.map((receiver) => ({
+                  Receiver: receiver,
+                  Indicators: { lr_day: 50, lr_night: 40 },
+                })),
+              );
             },
           });
         }),
@@ -200,6 +210,59 @@ describe("browserBackend.startRun cancellation", () => {
     await expect(storage.listArtifactBytesIDs()).resolves.toEqual([]);
     const status = await browserBackend.getProjectStatus();
     expect(status.run_count).toBe(0);
+  });
+
+  it("keeps nothing when the abort lands after the compute but before the save", async () => {
+    const controller = new AbortController();
+    const saving = vi.spyOn(storage, "saveArtifactBytes");
+    const run = browserBackend.startRun(RUN_SPEC, {
+      signal: controller.signal,
+    });
+    const call = await pendingCall();
+
+    // Order matters, and it is the order of the bug: the kernel answers
+    // first, so cancelling afterwards terminates a worker that is already
+    // idle and rejects nothing. Aborting before `succeed()` would instead be
+    // the stub's `cancelKernel` rejecting the pending call, which is the case
+    // above — and would pass whether or not this side checks anything.
+    call.succeed();
+    controller.abort();
+
+    await expect(run).rejects.toSatisfy(isRunCancelled);
+    await expect(browserBackend.getRuns()).resolves.toEqual([]);
+    await expect(storage.listArtifactBytesIDs()).resolves.toEqual([]);
+    const status = await browserBackend.getProjectStatus();
+    expect(status.run_count).toBe(0);
+
+    // And the raster was never written in the first place. The guard after
+    // the save would have cleaned it up either way, so this is what makes
+    // the earlier one worth having: on a real grid that write is tens of
+    // megabytes into IndexedDB for a run the user has already abandoned.
+    expect(saving).not.toHaveBeenCalled();
+  });
+
+  it("leaves no orphaned raster behind when the abort lands during the save", async () => {
+    const controller = new AbortController();
+    // The raster write is the wide one — tens of megabytes on a real grid —
+    // so it is the step most likely to be interrupted. Aborting inside it
+    // leaves bytes already in the store, which nothing would ever name again.
+    const saving = vi
+      .spyOn(storage, "saveArtifactBytes")
+      .mockImplementation(async (id, bytes) => {
+        controller.abort();
+        saving.mockRestore();
+        await storage.saveArtifactBytes(id, bytes);
+      });
+
+    const run = browserBackend.startRun(RUN_SPEC, {
+      signal: controller.signal,
+    });
+    const call = await pendingCall();
+    call.succeed();
+
+    await expect(run).rejects.toSatisfy(isRunCancelled);
+    await expect(storage.listArtifactBytesIDs()).resolves.toEqual([]);
+    await expect(browserBackend.getRuns()).resolves.toEqual([]);
   });
 
   it("refuses a run whose signal is already aborted, without loading anything", async () => {
