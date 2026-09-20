@@ -65,6 +65,16 @@ export function poolSize(cores: number | undefined, receivers: number): number {
 }
 
 /**
+ * Which member of a pool is asking.
+ *
+ * Mirrors `wasmkernel.Shard`. `{index: 0, count: 1}` is the whole run.
+ */
+export interface Shard {
+  index: number;
+  count: number;
+}
+
+/**
  * One partition chunk's results, as a shard reports them.
  *
  * `chunk` is the index the merge orders by — never the order shards happened

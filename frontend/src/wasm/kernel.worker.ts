@@ -36,14 +36,20 @@ import type {
  */
 interface AconiqExports {
   /**
-   * The second argument is the seam the progress track lands on, and it is
-   * optional on purpose: `rls19RoadFunc` currently refuses anything but
-   * exactly one argument, so passing a callback to today's kernel would turn
-   * every run into "expected exactly 1 JSON string argument". The worker
-   * therefore makes a one-argument call unless the caller actually asked for
-   * progress, and this signature is what the Go side has to grow into.
+   * The second argument is optional because the Go export distinguishes one
+   * argument from two: it hands the walk a progress callback only when it is
+   * given one, so a caller that does not want progress must pass a single
+   * argument rather than `undefined`.
    */
   rls19Road(json: string, onProgress?: KernelProgressListener): Promise<string>;
+  /**
+   * One shard of a run, resolving to `{chunk, start, outputs}[]` rather than
+   * a flat receiver list. Same one-or-two-argument rule as `rls19Road`.
+   */
+  rls19RoadShard(
+    json: string,
+    onProgress?: KernelProgressListener,
+  ): Promise<string>;
   transform(json: string): Promise<string>;
   contours(payload: Uint8Array, json: string): Promise<string>;
   standards(): string;
@@ -200,6 +206,10 @@ async function dispatch(call: KernelCall): Promise<string | null> {
       return call.progress
         ? exports.rls19Road(call.json, throttledProgress(call.id))
         : exports.rls19Road(call.json);
+    case "rls19RoadShard":
+      return call.progress
+        ? exports.rls19RoadShard(call.json, throttledProgress(call.id))
+        : exports.rls19RoadShard(call.json);
     case "transform":
       return exports.transform(call.json);
     case "contours":

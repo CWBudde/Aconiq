@@ -14,6 +14,7 @@
 /** The kernel entry points the worker dispatches to, by name. */
 export type KernelMethod =
   | "rls19Road"
+  | "rls19RoadShard"
   | "transform"
   | "contours"
   | "loadTerrain"
@@ -35,6 +36,20 @@ export type KernelCall =
        * progress callback when this is true, because the Go export still
        * refuses any second argument — see `kernel.worker.ts`.
        */
+      progress: boolean;
+    }
+  | {
+      id: number;
+      method: "rls19RoadShard";
+      /**
+       * The whole run's request with a `shard` of `{index, count}` on it —
+       * every receiver, not this shard's slice. The kernel derives the grid's
+       * terrain elevation from the centroid of the list it is handed, so a
+       * shard sent only its own receivers would compute over different
+       * ground. See `wasmkernel.ComputeRLS19RoadShard`.
+       */
+      json: string;
+      /** As `rls19Road`, but counting this shard's receivers. */
       progress: boolean;
     }
   | { id: number; method: "transform"; json: string }
@@ -123,10 +138,7 @@ export type KernelResult =
  * result by an older client, which ignores what it does not recognise.
  */
 export type WorkerMessage =
-  | KernelReady
-  | KernelFatal
-  | KernelProgress
-  | KernelResult;
+  KernelReady | KernelFatal | KernelProgress | KernelResult;
 
 /** Called with the worker's progress reports for one `rls19Road` call. */
 export type KernelProgressListener = (done: number, total: number) => void;
