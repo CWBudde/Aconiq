@@ -27,11 +27,34 @@ import (
 // order of the model in front of it.
 const (
 	// InitialChunkSize is the first chunk, before there is anything to
-	// measure. Small enough that even a very expensive receiver reports
-	// within about a second, and the handful of extra boundaries it costs a
-	// cheap scene are paid back within the first few chunks — growth is
-	// geometric.
-	InitialChunkSize = 8
+	// measure. One receiver, because the first report is the only one whose
+	// latency the walk cannot bound: every later chunk is sized from a
+	// measurement, and this one is sized from a guess.
+	//
+	// It used to be 8, which is invisible on the scenes the guess was made
+	// against — 8 open-field receivers is under a tenth of a second — and
+	// catastrophic on the scenes a user actually builds. A receiver in a
+	// 100-building extract costs about two seconds, and one in a city-sized
+	// OSM import tens of seconds, so "wait for eight of them" is the
+	// difference between a bar that moves within a second and one that reads
+	// "0 of 9202" for minutes. That reads as a hung tab, which is the exact
+	// failure the progress channel exists to rule out — and the user cannot
+	// tell it apart from a hung tab, because at that point nothing has been
+	// reported at all.
+	//
+	// One costs the cheap scenes two extra chunk boundaries: growth is
+	// geometric at chunkGrowthLimit, so 1 reaches MaxChunkSize in seven
+	// chunks where 8 took five. A boundary is one slice header and one
+	// throttled postMessage, so that is a few microseconds against the
+	// minutes it buys on the expensive scenes.
+	//
+	// It also makes the adaptive sizer self-correcting in the direction that
+	// matters. nextChunkSize targets ProgressInterval, so a scene costing
+	// seconds per receiver asks for a fraction of a receiver, floors at one,
+	// and stays there — the walk reports every single receiver for as long as
+	// receivers are expensive, which is exactly where per-receiver progress is
+	// worth having and exactly where a fixed size cannot provide it.
+	InitialChunkSize = 1
 
 	// MaxChunkSize caps the growth. An open-field grid computes a receiver in
 	// tens of microseconds, so the target interval alone would ask for chunks
