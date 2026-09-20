@@ -1791,59 +1791,39 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
-- [x] **An OSM import saves, and the geometry check answers the same in every CRS** (2026-09-20).
-      Three changes that turned out to be one problem. **Two corrections to this entry's own
-      diagnosis first**, because both were wrong and both changed the fix. `model/validate.ts` did
-      not grade these findings as warnings — it had no geometry section at all, so the four
-      `geometry.*.self_intersection` codes were not laxer here, they were unproducible. And
-      `building.height.required` was an error on _both_ sides; the preview never reached it because
-      `normalize.ts:inferHeightMeters` invented 9 m for anything carrying a `building` tag and 2 m
-      for a `barrier`. The "582 Warnungen" were `source.rls19.review_required` on the roads. The
-      reader was never shown a lenient reading of the same finding — they were shown a different
-      model.
-      **Most of the 441 self-intersections were not there.** `orientation` compared a cross product
-      — an area, so the coordinate unit squared — against a fixed `1e-9`, which is large beside two
-      building edges in EPSG:4326 (~1e-10) and negligible beside the same two in EPSG:25832 (~1e0):
-      one footprint, two answers, decided by the CRS it arrived in. A wrong "collinear" then fell
-      through to `onSegment`, a bounding-box test that is sound only for a genuinely collinear
-      triple, so any two edges of a non-convex footprint whose boxes overlapped read as crossing.
-      Measured on a fresh 3198-feature extract: 219 of 631 buildings flagged, **none** of them
-      self-intersecting under an exact predicate; 199 of 2397 ways flagged, 45 real. The tolerance
-      is now relative to the magnitudes that produced the value (`relativeEpsilon`).
-      **The severity split is separate work, not a cover for that bug.** Those 45 remain, and a road
-      drawn as one way that touches itself is a roundabout. A ring's winding is read — by
-      point-in-polygon and by the screening crossing counts — and a line's is read by nothing, so
-      `polygon`/`multipolygon` stay errors and `linestring`/`multilinestring` are warnings.
-      **One default, in one place, on the record.** `osmimport.buildingHeight` answers
-      `defaultBuildingHeightM` (9 m) rather than nothing, and every feature whose height was assumed
-      carries `height_source: "assumed"` — buildings, and the barriers that had been defaulted to
-      2 m silently since the start. Absence of that property records _no provenance_, not "read from
-      OSM", which is `soundplan_base_elevation_m`'s lesson applied. `normalize.ts` stops inventing,
-      so a hand-written file that omits the height now gets the honest `*.height.required` instead
-      of a number. `modelgeojson` is unchanged and still refuses `height_m == nil`.
-      **`validate.ts` produces the four codes now**, at the backend's spellings and severities, from
-      a port in `model/self-intersection.ts`. A port is a thing that drifts; the standing answer is
-      the kernel export filed under Phase F.
-      Verified end to end rather than by unit test alone: `POST /api/v1/import/osm` → 200 and 3198
-      features, the same body to `POST /api/v1/model` → **201**, 45 warnings and 0 errors, where it
-      was 400 with 614. 250 buildings and 156 barriers carry `height_source` in the saved model.
-- [x] **`osmimport` names itself, and an upstream failure says which one it was** (2026-09-20).
-      `Fetch` wraps whatever `overpass.HTTPClient` is in play in a `userAgentClient` sending
-      `aconiq/<version> (+<repo>)`. go-overpass exposes no header hook, so the client interface it
-      already takes is the seam, and the wrapping has to happen inside `Fetch` because neither the
-      handler nor the CLI passes a client. Confirmed over the wire from the sandbox that used to be
-      answered 406: 200 and 2.5 MB.
-      The status was always reachable and never read. `*overpass.ServerError` survives the retry
-      wrapper and `Fetch`'s own wrap, so `overpassAPIError` puts it in `details.upstream_status` and
-      picks the hint from it — busy or timed out, refused outright, or the server's own fault — and
-      the CLI message names it too. `upstream_error` moved into the `errorCode*` block, which it had
-      been bypassing as a bare literal against that block's own stated rule.
-      Two things left as they are, deliberately. **The 502 branch has no integration test**: reaching
-      it needs an httptest server standing in for Overpass, and `validateOverpassEndpoint` admits
-      neither `127.0.0.1` nor `http`, so the mapping is unit-tested as a pure function rather than
-      the allowlist weakened to reach it. And the CLI still classifies the failure `KindUserInput`,
-      which decides the exit code — a 504 from a third party is not the user's input, but changing
-      the kind changes a documented exit code and is its own decision.
+- [x] **An OSM import saves, and the geometry check answers the same in every CRS**
+      (2026-09-20, `a309df0`/`f8ffc15`/`c37ed9f`). Four constraints stay live; the reasoning is in
+      those commits.
+      **`orientation`'s tolerance is relative, and must stay relative.** It compared a cross product
+      — an area, so the coordinate unit squared — against a fixed `1e-9`, which made one footprint
+      self-intersecting in EPSG:4326 and simple in EPSG:25832. A wrong "collinear" falls through to
+      `onSegment`, a bounding-box test sound only for a genuinely collinear triple, so the error is
+      not a near miss: 219 of 631 buildings in a Berlin extract, none of them self-intersecting.
+      **A ring's self-intersection is an error and a line's is a warning**, because a ring's winding
+      is read by point-in-polygon and the screening crossing counts and a line's is read by nothing.
+      A road drawn as one way that touches itself is a roundabout — 45 of 2397 ways in that extract.
+      **An assumed height must say so.** `osmimport` answers `defaultBuildingHeightM` for an
+      untagged building and marks the feature `height_source: "assumed"`, as it does for the
+      barriers it had been defaulting to 2 m silently. **Absence of that property records no
+      provenance**, not "read from OSM" — `soundplan_base_elevation_m`'s lesson. `modelgeojson` is
+      unchanged and still refuses `height_m == nil`; the assumption belongs to the importer.
+      **This entry's own earlier diagnosis was wrong twice**, and both errors changed the fix:
+      `validate.ts` had no geometry section rather than a laxer one, and `building.height.required`
+      agreed across both validators but was never reached because the normalizer invented a height
+      first. Read a claim about the two validators disagreeing as unproven until measured.
+- [x] **`osmimport` names itself, and an upstream failure says which one it was**
+      (2026-09-20, `a309df0`/`11af7fa`). Three constraints stay live.
+      **The User-Agent is load-bearing, not politeness.** overpass-api.de answers Go's default
+      `Go-http-client/1.1` with 406. go-overpass exposes no header hook, so the wrapping happens
+      inside `Fetch` over the `overpass.HTTPClient` it already takes — not at the call sites, since
+      neither the handler nor the CLI passes a client.
+      **`details.upstream_status` is what separates the three causes.** A blocked agent, a rate
+      limit and an outage have three different remedies and used to arrive as one sentence.
+      **The 502 branch has no integration test and should not grow one cheaply**: reaching it needs
+      an httptest server standing in for Overpass, and `validateOverpassEndpoint` admits neither
+      `127.0.0.1` nor `http`. The mapping is a pure function so it can be tested without weakening
+      the allowlist. Still open: the CLI classifies the failure `KindUserInput`, which decides the
+      exit code, and a 504 from a third party is not the user's input.
 - [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
       nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
       under a document that does not yet name them — is what the sweep reclaims. Both files are
