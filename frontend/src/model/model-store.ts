@@ -266,24 +266,42 @@ export const useModelStore = create<ModelState>((set, get) => {
 
     updateFeatures: (features) => {
       const held = get().features;
-      // Indexed both ways before anything is replaced. The obvious spelling —
-      // a `find` over the store per incoming feature — is quadratic, and a
-      // sign-off over an imported district hands this 608 of them.
-      const heldById = new Map(held.map((f) => [f.id, f]));
+      // Resolved to **positions**, not ids. An id is not a key here: the model
+      // can hold two features under one — `feature.id.duplicate` is a finding
+      // the validator raises rather than a state the store refuses — and a
+      // replacement keyed by id would overwrite both entries with whichever one
+      // the map happened to keep, silently discarding the other's geometry. A
+      // position addresses exactly one feature whatever the model looks like.
+      //
+      // Indexed up front, because the obvious spelling — a `find` over the
+      // store per incoming feature — is quadratic, and a sign-off over an
+      // imported district hands this 608 of them.
+      const free = new Map<string, number[]>();
+      held.forEach((f, index) => {
+        const positions = free.get(f.id);
+        if (positions) positions.push(index);
+        else free.set(f.id, [index]);
+      });
 
-      const next = new Map<string, ModelFeature>();
-      const previous = new Map<string, ModelFeature>();
+      const next = new Map<number, ModelFeature>();
+      const previous = new Map<number, ModelFeature>();
       for (const feature of features) {
-        const current = heldById.get(feature.id);
-        if (current === undefined) continue;
-        next.set(feature.id, feature);
-        previous.set(feature.id, current);
+        // `shift`, so two incoming features sharing an id take two distinct
+        // positions rather than fighting over the first.
+        const index = free.get(feature.id)?.shift();
+        const current = index === undefined ? undefined : held[index];
+        if (index === undefined || current === undefined) continue;
+        next.set(index, feature);
+        previous.set(index, current);
       }
       if (next.size === 0) return;
 
-      const swap = (replacements: Map<string, ModelFeature>) => {
+      // By position on the way back too, which is the same assumption
+      // `removeFeature`'s undo already makes: the stack is linear, so when this
+      // command is undone the array is the shape it was left in.
+      const swap = (replacements: Map<number, ModelFeature>) => {
         set((s) => ({
-          features: s.features.map((f) => replacements.get(f.id) ?? f),
+          features: s.features.map((f, index) => replacements.get(index) ?? f),
           dirty: true,
         }));
       };

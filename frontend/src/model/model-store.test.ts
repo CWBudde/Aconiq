@@ -369,6 +369,48 @@ describe("updateFeatures", () => {
     expect(features[0]?.heightM).toBe(3);
   });
 
+  it("replaces one of two features sharing an id, not both", () => {
+    // `feature.id.duplicate` is a finding the validator raises, not a state the
+    // store refuses, so a bulk sign-off can run over a model that holds one.
+    // Addressing by id would overwrite both entries with the same object and
+    // throw the other's geometry away — irreversibly, since the undo map would
+    // be built the same wrong way.
+    const first: ModelFeature = { ...pointSource, heightM: 1 };
+    const second: ModelFeature = { ...pointSource, heightM: 2 };
+    const store = useModelStore.getState();
+    store.addFeature(first);
+    store.addFeature(second);
+
+    store.updateFeatures([{ ...first, properties: { reviewed: true } }]);
+
+    const after = useModelStore.getState().features;
+    expect(after).toHaveLength(2);
+    expect(after[0]?.heightM).toBe(1);
+    expect(after[0]?.properties).toEqual({ reviewed: true });
+    // The second is untouched, height and all.
+    expect(after[1]).toEqual(second);
+
+    useModelStore.getState().undo();
+    expect(useModelStore.getState().features).toEqual([first, second]);
+  });
+
+  it("gives two incoming features sharing an id a position each", () => {
+    const first: ModelFeature = { ...pointSource, heightM: 1 };
+    const second: ModelFeature = { ...pointSource, heightM: 2 };
+    const store = useModelStore.getState();
+    store.addFeature(first);
+    store.addFeature(second);
+
+    store.updateFeatures([
+      { ...first, heightM: 10 },
+      { ...second, heightM: 20 },
+    ]);
+
+    expect(useModelStore.getState().features.map((f) => f.heightM)).toEqual([
+      10, 20,
+    ]);
+  });
+
   it("pushes nothing when it would change nothing", () => {
     // An empty command on the stack is a Ctrl+Z that appears to do nothing,
     // which reads as broken undo.

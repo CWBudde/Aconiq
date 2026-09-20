@@ -1754,6 +1754,50 @@ describe("MapPage", () => {
       );
     });
 
+    it("steps against the queue the sign-off leaves behind, not the old one", () => {
+      // Standing on the last of three and accepting it used to wrap to the
+      // first, because the step read the queue as it was before the sign-off.
+      // Correcting a finding by hand and pressing "next" lands on whatever took
+      // its place, and accepting one has to mean the same thing.
+      const second: ModelFeature = { ...sourceNeedingReview, id: "src-2" };
+      const third: ModelFeature = { ...sourceNeedingReview, id: "src-3" };
+      useModelStore.getState().loadModel({
+        features: [sourceNeedingReview, second, third],
+        receivers: [],
+        calcArea: null,
+      });
+      renderPage();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: new RegExp(m.label_validation()) }),
+      );
+      fireEvent.click(screen.getByTestId("validation-go-to"));
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_next_finding() }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_next_finding() }),
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 3, total: 3 }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: m.action_mark_reviewed_and_next(),
+        }),
+      );
+
+      // Two left, and the reader is on the last of them — not back at the top.
+      expect(screen.getByTestId("feature-focus")).toHaveAttribute(
+        "data-request",
+        "src-2",
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        m.label_finding_position({ position: 2, total: 2 }),
+      );
+    });
+
     it("offers no sign-off once the cursor stands on nothing reviewable", () => {
       // A defect is not something to accept. The button is absent rather than
       // disabled, so the stepper never suggests findings can be waved through.

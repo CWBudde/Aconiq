@@ -45,7 +45,10 @@ import { RECEIVER_PARAM } from "@/results/results-params";
 import type { CalcArea, Geometry, ModelFeature, Position } from "@/model/types";
 import type { DrawMode } from "@/map/use-draw";
 import { useModelStore } from "@/model/model-store";
-import { useModelValidation } from "@/model/use-model-validation";
+import {
+  modelValidation,
+  useModelValidation,
+} from "@/model/use-model-validation";
 import {
   getAcousticsReviewed,
   markAcousticsReviewed,
@@ -474,10 +477,16 @@ function MapWorkspace() {
    * The stepper's "reviewed, next", or `null` when the finding under the cursor
    * is not one a sign-off retires.
    *
-   * Signing off first and stepping second is deliberate: the feature leaves the
-   * queue as it is accepted, and `stepFinding` reads the queue it is handed —
-   * so stepping against the *old* queue is what would skip the source that took
-   * this one's place.
+   * It does not go through `handleStep`, which closes over the `findings` of
+   * the render it was built in — the queue as it stood *before* the sign-off.
+   * Stepping against that is how accepting the last of three used to wrap back
+   * to the first, while correcting the same finding by hand and pressing "next"
+   * landed on the one that took its place. The two have to mean the same thing,
+   * so the queue is re-derived from the store the write just changed.
+   *
+   * Re-deriving is not a second validation: `modelValidation` is the memo the
+   * hook reads, keyed on the store's array identities, so the render that
+   * follows this write finds the result already computed.
    */
   const cursorFeature = useModelStore((s) =>
     queueCursor === null ? undefined : s.getFeatureById(queueCursor.featureId),
@@ -488,9 +497,17 @@ function MapWorkspace() {
     }
     return () => {
       signOffFeatures([cursorFeature.id]);
-      handleStep(1);
+
+      const { features: held, receivers: heldReceivers } =
+        useModelStore.getState();
+      const nextFindings = findingQueue(
+        modelValidation(held, heldReceivers).report,
+      );
+      const next = stepFinding(nextFindings, queueCursor, 1);
+      setQueueCursor(next);
+      if (next) focusFeature(next.featureId);
     };
-  }, [cursorFeature, signOffFeatures, handleStep]);
+  }, [cursorFeature, signOffFeatures, queueCursor, focusFeature]);
 
   // Alt+arrows rather than bare keys: the docked editor is full of number
   // fields, and the hook only bows out of text entry, not of the whole panel.
