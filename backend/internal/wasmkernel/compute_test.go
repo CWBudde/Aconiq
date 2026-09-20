@@ -91,8 +91,10 @@ func TestComputeRLS19RoadMatchesTheUnchunkedWalk(t *testing.T) {
 		t.Fatalf("reference walk produced %d outputs, want %d", len(want), len(receivers))
 	}
 
-	// 0 is not a chunk size but the request to use DefaultChunkSize, and it is
-	// the one every browser-mode run takes.
+	// 0 is not a chunk size but the request for the adaptive one, and it is
+	// the one every browser-mode run takes. It is also the only case here
+	// whose chunk boundaries are decided by a clock, so it is the one that
+	// says timing cannot reach the numbers.
 	for _, chunkSize := range []int{1, 7, 256, len(receivers), 0} {
 		t.Run(chunkName(chunkSize), func(t *testing.T) {
 			t.Parallel()
@@ -113,7 +115,7 @@ func TestComputeRLS19RoadMatchesTheUnchunkedWalk(t *testing.T) {
 
 func chunkName(chunkSize int) string {
 	if chunkSize == 0 {
-		return "default chunk size"
+		return "adaptive chunk size"
 	}
 
 	return "chunks of " + strconv.Itoa(chunkSize)
@@ -197,6 +199,70 @@ func TestComputeRLS19RoadReportsProgressToCompletion(t *testing.T) {
 				t.Fatalf("got %d reports for chunk size %d, want %d", len(reports), chunkSize, wantReports)
 			}
 		})
+	}
+}
+
+// The defect this file's adaptive sizing exists for: a fixed 256-receiver
+// chunk meant the first report arrived only after 256 receivers had been
+// computed, and on a scene with buildings in it one receiver costs tens of
+// milliseconds — so browser mode showed "starting the run" for twenty seconds
+// and more before the bar could appear at all.
+//
+// The assertion is therefore about the *first* report rather than the cadence
+// after it: how quickly the walk then settles onto ProgressInterval is a
+// property of the machine, and a test that timed it would be measuring the CI
+// runner. What must hold on any machine is that no more than a handful of
+// receivers are computed before the reader hears anything.
+func TestComputeRLS19RoadAdaptiveChunkReportsEarly(t *testing.T) {
+	t.Parallel()
+
+	receivers := sampleReceivers()
+
+	if len(receivers) <= wasmkernel.InitialChunkSize {
+		t.Fatalf(
+			"the sample has %d receivers, too few to distinguish the first chunk from the whole walk",
+			len(receivers),
+		)
+	}
+
+	var reports []int
+
+	_, err := wasmkernel.ComputeRLS19Road(
+		receivers, sampleSources(), nil, road.DefaultPropagationConfig(), 0,
+		func(done, total int) {
+			if total != len(receivers) {
+				t.Errorf("report of %d: total = %d, want %d", done, total, len(receivers))
+			}
+
+			reports = append(reports, done)
+		},
+	)
+	if err != nil {
+		t.Fatalf("ComputeRLS19Road: %v", err)
+	}
+
+	if len(reports) == 0 {
+		t.Fatal("the adaptive walk reported no progress at all")
+	}
+
+	if reports[0] > wasmkernel.InitialChunkSize {
+		t.Fatalf(
+			"the first report came after %d receivers, want at most %d",
+			reports[0], wasmkernel.InitialChunkSize,
+		)
+	}
+
+	previous := 0
+	for i, done := range reports {
+		if done <= previous {
+			t.Fatalf("report %d: done = %d, which does not advance on %d", i, done, previous)
+		}
+
+		previous = done
+	}
+
+	if previous != len(receivers) {
+		t.Fatalf("the last report said %d of %d", previous, len(receivers))
 	}
 }
 

@@ -2043,8 +2043,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
       counts.
 - [x] **The WASM kernel runs off the main thread** (`d81402c`, `0b58c33`, `7ac1db3`). A module
-      Worker behind an RPC client, progress per 256-receiver chunk, cancellation by terminating
-      the worker. Two constraints stay live for anything built on it. Terminating is the only
+      Worker behind an RPC client, time-sized progress chunks, cancellation by terminating
+      the worker. Three constraints stay live for anything built on it. A progress channel has to
+      be measured against the _expensive_ scene: chunking by a fixed receiver count reported every
+      few milliseconds on open field and only every twenty seconds with buildings in the model, so
+      the kernel times its chunks and the client reports 0 of n before it dispatches at all.
+      Terminating is the only
       mechanism there is, not the cheapest: the compute runs synchronously inside the Promise
       executor, so the worker's event loop is pinned and a cancel _message_ could never be
       dequeued in time. And a Go `js.Func` cannot throw — a panic out of one ends the module and

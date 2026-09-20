@@ -293,6 +293,16 @@ export class KernelClient implements AconiqKernel {
     req: ComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]> {
+    // Zero of n, before the call is even dispatched. The kernel cannot report
+    // this: it reports between chunks, and everything ahead of the first one
+    // — JSON.stringify of a grid-sized request, the structured clone across
+    // to the worker, `road.PrepareScene` — happens before it has a chunk to
+    // report. On a scene with buildings in it that stretch is tens of
+    // seconds, and a reader watching an indeterminate "starting the run"
+    // through it has no way to tell a slow model from a hung one. A
+    // determinate bar at 0 of 13,000 says which.
+    onProgress?.(0, req.receivers.length);
+
     const value = await this.call(
       (id) => ({
         id,
