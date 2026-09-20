@@ -2,6 +2,7 @@ package road
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/aconiq/backend/internal/acoustics"
@@ -15,6 +16,12 @@ type PropagationConfig struct {
 	// SegmentLengthM is the target sub-segment length for the Teilstueckverfahren.
 	// Shorter values give more accurate results at higher computation cost.
 	SegmentLengthM float64
+
+	// SegmentLengthMode decides whether SegmentLengthM is used everywhere or
+	// only where the receiver is close enough to need it. The zero value is
+	// SegmentLengthFixed, which is the behaviour every caller had before the
+	// field existed.
+	SegmentLengthMode SegmentLengthMode
 
 	// MinDistanceM is the minimum propagation distance (clamped).
 	MinDistanceM float64
@@ -68,6 +75,13 @@ func DefaultPropagationConfig() PropagationConfig {
 func (cfg PropagationConfig) Validate() error {
 	if !isFinite(cfg.SegmentLengthM) || cfg.SegmentLengthM <= 0 {
 		return errors.New("segment_length_m must be finite and > 0")
+	}
+
+	switch cfg.SegmentLengthMode {
+	case "", SegmentLengthFixed, SegmentLengthDistanceScaled:
+	default:
+		return fmt.Errorf("segment_length_mode must be %q or %q, got %q",
+			SegmentLengthFixed, SegmentLengthDistanceScaled, cfg.SegmentLengthMode)
 	}
 
 	if !isFinite(cfg.MinDistanceM) || cfg.MinDistanceM <= 0 {

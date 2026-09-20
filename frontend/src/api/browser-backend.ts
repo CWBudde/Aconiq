@@ -53,6 +53,7 @@ import type {
   PointReceiver,
   ReceiverOutput,
   RoadSource,
+  SegmentLengthMode,
   TransformRequest,
   TransformResponse,
 } from "@/wasm/types";
@@ -839,6 +840,20 @@ function parseNumber(
 ): number {
   const parsed = Number.parseFloat(params[key] ?? "");
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Reads segment_length_mode, falling back to fixed for anything it does not
+ * recognise rather than passing it on. An unknown value is a refusal in the
+ * kernel, and a run that has already been dispatched is the wrong place to
+ * discover a typo the run dialog should have caught.
+ */
+function parseSegmentLengthMode(
+  params: Record<string, string>,
+): SegmentLengthMode {
+  return params["segment_length_mode"] === "distance_scaled"
+    ? "distance_scaled"
+    : "fixed";
 }
 
 function findArtifact(
@@ -1643,6 +1658,7 @@ async function computeRLS19Road(
       },
       config: {
         SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
+        SegmentLengthMode: parseSegmentLengthMode(spec.params),
         MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
         ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
         Buildings: buildings,

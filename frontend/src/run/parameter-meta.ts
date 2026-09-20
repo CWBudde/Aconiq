@@ -264,6 +264,7 @@ const PARAMETER_LABELS: Record<string, () => string> = {
   surface_type: m.param_label_surface_type,
   gradient_percent: m.param_label_gradient_percent,
   segment_length_m: m.param_label_segment_length_m,
+  segment_length_mode: m.param_label_segment_length_mode,
   // schall03
   schall03_engine: m.param_label_schall03_engine,
   rail_train_class: m.param_label_rail_train_class,
@@ -313,6 +314,7 @@ const PARAMETER_DESCRIPTIONS: Record<string, () => string> = {
   // rls19-road
   surface_type: m.param_desc_surface_type,
   segment_length_m: m.param_desc_segment_length_m,
+  segment_length_mode: m.param_desc_segment_length_mode,
   // schall03
   schall03_engine: m.param_desc_schall03_engine,
   air_absorption_db_per_km: m.param_desc_air_absorption_db_per_km,

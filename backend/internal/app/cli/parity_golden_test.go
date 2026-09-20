@@ -91,10 +91,14 @@ var parityRunParams = map[string]string{
 	"traffic_night_lkw2": "20",
 	"traffic_night_krad": "2",
 	"segment_length_m":   "5",
-	"min_distance_m":     "3",
-	"receiver_height_m":  "4",
-	"grid_resolution_m":  "10",
-	"grid_padding_m":     "50",
+	// Explicitly fixed. The parity goldens are the reference both targets are
+	// measured against, so they hold the mode whose numbers predate the
+	// parameter; distance_scaled has convergence tests of its own.
+	"segment_length_mode": string(rls19road.SegmentLengthFixed),
+	"min_distance_m":      "3",
+	"receiver_height_m":   "4",
+	"grid_resolution_m":   "10",
+	"grid_padding_m":      "50",
 }
 
 // parityReceiverSnapshot mirrors rls19_test20.ReceiverSnapshot rather than

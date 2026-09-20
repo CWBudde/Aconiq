@@ -143,6 +143,7 @@ var runParams = struct {
 
 	// RLS-19 road: its own speed, gradient and traffic vocabulary.
 	SurfaceType, SegmentLengthM        paramBinding
+	SegmentLengthMode                  paramBinding
 	SpeedPkwKPH, SpeedLkw1KPH          paramBinding
 	SpeedLkw2KPH, SpeedKradKPH         paramBinding
 	GradientPercent                    paramBinding
@@ -260,6 +261,7 @@ var runParams = struct {
 
 	SurfaceType:       "surface_type",
 	SegmentLengthM:    "segment_length_m",
+	SegmentLengthMode: "segment_length_mode",
 	SpeedPkwKPH:       "speed_pkw_kph",
 	SpeedLkw1KPH:      "speed_lkw1_kph",
 	SpeedLkw2KPH:      "speed_lkw2_kph",

@@ -846,6 +846,14 @@ finding from a linter that is otherwise enforced:
 | `nilnil`                                   |     7 |                                                                                                  |
 | remainder                                  |    13 | `wrapcheck` 2, `nilerr` 2, `dogsled` 2, and 7 singletons                                         |
 
+`internal/app/cli/run_options.go` adds two more, on `rls19RoadParamBindings` and
+`schall03ParamBindings`. These are declarative parameter lists, one per standard; dupl matches
+them on token shape because both bind the same handful of `paramBinding` methods the same number
+of times. They share no parameter that is not already bound through a shared helper, so there is
+nothing to extract, and factoring by shape alone would hide which standard declares what. Both
+carry `//nolint:dupl` with that reason. Same category as the `schall03/beiblatt1.go` coefficient
+tables above: legitimate, not deferred.
+
 The first row is the one worth knowing about: it is why the complexity hotspot list above does not
 contain the worst functions in the codebase. `run_pipeline.go`'s dispatch switch is suppressed
 wholesale, so it never appears in a count, and the same is true of eleven extraction functions in

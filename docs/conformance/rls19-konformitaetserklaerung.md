@@ -71,6 +71,60 @@ result depend on how the source geometry happens to be split. Earlier revisions
 of this module normalised by the total length; see "Implementation corrections"
 below.
 
+### Teilstuecklaenge: `segment_length_mode` (Nr. 3.3, Anmerkung zu Nr. 3.2)
+
+Die Teilstuecklaenge ist ueber den Laufparameter `segment_length_mode`
+waehlbar. Der Vorgabewert ist `fixed`; er ist zugleich der Nullwert, sodass
+jeder Lauf, der den Parameter nicht setzt, exakt die Zahlen liefert, die er
+vorher geliefert hat.
+
+| Wert              | Bedeutung                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `fixed`           | Jede Quelllinie wird ueberall mit `segment_length_m` geteilt (Vorgabe).                |
+| `distance_scaled` | Entfernte Quelllinien duerfen groeber geteilt werden, hoechstens bis `l_i <= s_i / 2`. |
+
+**Normative Grundlage.** Nr. 3.3 verlangt die Unterteilung der Quelllinien
+"abhaengig vom Immissionsort ... in geeignete Teilstuecke". Die Anmerkung zu
+Nr. 3.2 nennt die Faustregel, die "geeignet" pruefbar macht: ein Teilstueck
+ist hinreichend kurz, wenn seine Laenge hoechstens die Haelfte seines Abstands
+zum Immissionsort betraegt. `distance_scaled` wendet genau diese Schranke an
+und nichts darueber hinaus; es ist kein Abschneiden von Beitraegen. Kein
+Beitrag entfaellt, keine Spiegelschallquelle entfaellt, kein Abstand und keine
+Energieschwelle begrenzt die Rechnung.
+
+**Umsetzung.** In `PrepareScene` wird je Quelle eine Leiter von Teilungen bei
+`l`, `2l`, `4l`, ... vorberechnet. Ein Immissionsort waehlt daraus die
+groebste Sprosse, deren Teilstuecklaenge die Schranke einhaelt; als `s` wird
+der Abstand zum naechstgelegenen Punkt der gesamten Quelllinie verwendet,
+sodass die Schranke fuer jedes einzelne Teilstueck dieser Quelle zugleich
+erfuellt ist. Feiner als `segment_length_m` wird nie geteilt: der Modus ist
+eine Erlaubnis zu vergroebern, keine Anweisung zu verfeinern.
+
+**Abweichung und Richtung.** Die Vergroeberung veraendert den Pegel. Auf der
+Pruefgeometrie der Konvergenzmessung (60 m langer Fahrweg, Immissionsorte in
+5 bis 800 m Abstand) betraegt die groesste Abweichung **+0,066 dB** bei 150 m;
+alle gemessenen Abweichungen sind **positiv**, der Pegel wird also
+ueberschaetzt. Das ist die Richtung, in die alle bereits erklaerten
+Abweichungen dieses Moduls weisen. Eine Ueberschaetzung ist im Rahmen der 16. BImSchV die vertretbare Richtung; eine Unterschaetzung waere es nicht.
+
+Die Abweichung liegt unterhalb der Berichtsaufloesung von 0,1 dB, aber nicht
+so weit darunter, dass sie folgenlos waere: ein Immissionsort kann durch sie
+eine Rundungsgrenze ueberschreiten und im Bericht um einen Schritt abweichen.
+
+**Voraussetzung, die nicht geprueft wird.** Die Faustregel der Anmerkung gilt
+"bei freier Schallausbreitung ueber ebenem Boden". `distance_scaled` prueft
+diese Voraussetzung nicht: eine Quelllinie im Abschattungsbereich eines
+Gebaeudes oder eines Hindernisses wird ebenso vergroebert wie eine frei
+einsehbare. Deshalb ist der Modus ausdruecklich waehlbar und nicht Vorgabe.
+Die vorsichtigere Form — Vergroeberung unterbunden im Grundriss-Schatten von
+Hindernissen und ueber Wirksamkeitsgrenzen nach Bild 14 hinweg — ist in
+`PLAN.md` als Bedingung dafuer verzeichnet, dass dieser Modus jemals Vorgabe
+werden koennte.
+
+**Nachweisbarkeit.** Der gewaehlte Modus wird wie jeder Laufparameter in
+`provenance.json` und `run-summary.json` festgeschrieben. Aus einem Ergebnis
+ist damit ablesbar, mit welcher Teilungsregel es entstanden ist.
+
 ### Reflections (§3.6, Tabelle 8)
 
 | Feature                                                             | Status      |
