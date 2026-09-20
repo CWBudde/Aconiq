@@ -14,8 +14,15 @@ import { RECEIVER_PARAM } from "@/results/results-params";
 import { Button } from "@/ui/components/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { focusMainContent } from "@/ui/main-content";
-import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
+import { UnitInput } from "@/ui/components/unit-input";
+import {
+  UNIT_DECIBEL,
+  UNIT_KILOMETERS_PER_HOUR,
+  UNIT_METER,
+  UNIT_PERCENT,
+  UNIT_PER_HOUR,
+} from "@/standards/units";
 import {
   Select,
   SelectContent,
@@ -260,12 +267,15 @@ function ReceiverEditor({
         <Label htmlFor="receiver-height" className="text-xs">
           {m.label_height_m()}
         </Label>
-        <Input
+        <UnitInput
           id="receiver-height"
           type="number"
           step="0.1"
           min="0.1"
           className="h-8 text-xs"
+          unit={UNIT_METER}
+          unitId="receiver-height-unit"
+          aria-describedby="receiver-height-unit"
           value={heightValue}
           onChange={(e) => {
             setHeightValue(e.target.value);
@@ -701,6 +711,13 @@ interface NumberFieldSpec {
   /** Older spellings the same value arrives under; replaced on write. */
   aliases?: string[];
   label: () => string;
+  /**
+   * The unit symbol, rendered on the control by `UnitInput` rather than in the
+   * label. Spelled as `framework.Unit*` spells it — `1/h`, not `Fz/h` — because
+   * the backend owns that vocabulary and two spellings of one unit reaching a
+   * reader is the defect the shared constants exist to prevent.
+   */
+  unit?: string;
   min?: number;
   max?: number;
   step?: number;
@@ -748,6 +765,7 @@ const VEHICLE_CLASSES = ["pkw", "lkw1", "lkw2", "krad"] as const;
 const SPEED_FIELDS: NumberFieldSpec[] = VEHICLE_CLASSES.map((vehicleClass) => ({
   propertyKey: `speed_${vehicleClass}_kph`,
   label: () => vehicleClassLabel(vehicleClass),
+  unit: UNIT_KILOMETERS_PER_HOUR,
   min: 0.1,
   step: 1,
 }));
@@ -756,6 +774,7 @@ const TRAFFIC_DAY_FIELDS: NumberFieldSpec[] = VEHICLE_CLASSES.map(
   (vehicleClass) => ({
     propertyKey: `traffic_day_${vehicleClass}`,
     label: () => vehicleClassLabel(vehicleClass),
+    unit: UNIT_PER_HOUR,
     min: 0,
     step: 1,
   }),
@@ -765,6 +784,7 @@ const TRAFFIC_NIGHT_FIELDS: NumberFieldSpec[] = VEHICLE_CLASSES.map(
   (vehicleClass) => ({
     propertyKey: `traffic_night_${vehicleClass}`,
     label: () => vehicleClassLabel(vehicleClass),
+    unit: UNIT_PER_HOUR,
     min: 0,
     step: 1,
   }),
@@ -773,6 +793,7 @@ const TRAFFIC_NIGHT_FIELDS: NumberFieldSpec[] = VEHICLE_CLASSES.map(
 const ROAD_UNIFORM_SPEED_FIELD: NumberFieldSpec = {
   propertyKey: "road_speed_kph",
   label: m.label_uniform_speed_kph,
+  unit: UNIT_KILOMETERS_PER_HOUR,
   min: 0.1,
   step: 1,
 };
@@ -783,6 +804,7 @@ const ROAD_GRADIENT_FIELD: NumberFieldSpec = {
   propertyKey: "gradient_percent",
   aliases: ["road_gradient_percent"],
   label: m.label_gradient_percent,
+  unit: UNIT_PERCENT,
   min: -12,
   max: 12,
   step: 0.1,
@@ -793,6 +815,7 @@ const ROAD_JUNCTION_FIELDS: NumberFieldSpec[] = [
     propertyKey: "junction_distance_m",
     aliases: ["road_junction_distance_m"],
     label: m.label_junction_distance_m,
+    unit: UNIT_METER,
     min: 0,
     step: 1,
   },
@@ -801,6 +824,7 @@ const ROAD_JUNCTION_FIELDS: NumberFieldSpec[] = [
     // count and speed above.
     propertyKey: "reflection_surcharge_db",
     label: m.label_reflection_surcharge_db,
+    unit: UNIT_DECIBEL,
     step: 0.1,
   },
 ];
@@ -885,14 +909,14 @@ function RLS19RoadFields({ feature }: { feature: ModelFeature }) {
         fields={ROAD_JUNCTION_FIELDS}
         columns={2}
       />
-      <FieldGroup label={m.label_traffic_day()}>
+      <FieldGroup label={m.param_group_traffic_day()}>
         <NumberFieldGrid
           feature={feature}
           fields={TRAFFIC_DAY_FIELDS}
           columns={2}
         />
       </FieldGroup>
-      <FieldGroup label={m.label_traffic_night()}>
+      <FieldGroup label={m.param_group_traffic_night()}>
         <NumberFieldGrid
           feature={feature}
           fields={TRAFFIC_NIGHT_FIELDS}
@@ -929,6 +953,7 @@ const PARKING_MOVEMENT_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_PARKING_MOVEMENTS_DAY,
     label: m.label_parking_movements_day,
+    unit: UNIT_PER_HOUR,
     min: 0,
     step: 0.01,
     defaultable: false,
@@ -937,6 +962,7 @@ const PARKING_MOVEMENT_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_PARKING_MOVEMENTS_NIGHT,
     label: m.label_parking_movements_night,
+    unit: UNIT_PER_HOUR,
     min: 0,
     step: 0.01,
     defaultable: false,
@@ -947,6 +973,7 @@ const PARKING_MOVEMENT_FIELDS: NumberFieldSpec[] = [
 const PARKING_ELEVATION_FIELD: NumberFieldSpec = {
   propertyKey: PROP_ELEVATION_M,
   label: m.label_elevation_m,
+  unit: UNIT_METER,
   step: 0.1,
   defaultable: false,
   helper: m.msg_field_default_zero,
@@ -989,6 +1016,7 @@ const RAIL_TRACK_NUMBER_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_SCHALL03_STRECKE_MAX_KPH,
     label: m.label_rail_strecke_max_kph,
+    unit: UNIT_KILOMETERS_PER_HOUR,
     min: 0.1,
     step: 1,
     defaultable: false,
@@ -1007,6 +1035,7 @@ const RAIL_TRACK_NUMBER_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_SCHALL03_CURVE_RADIUS_M,
     label: m.label_rail_curve_radius_m,
+    unit: UNIT_METER,
     min: 0,
     step: 1,
     defaultable: false,
@@ -1024,6 +1053,7 @@ const RAIL_TRACK_NUMBER_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_ELEVATION_M,
     label: m.label_elevation_m,
+    unit: UNIT_METER,
     step: 0.1,
     defaultable: false,
     helper: m.msg_field_default_zero,
@@ -1070,6 +1100,7 @@ const RAIL_BARRIER_NUMBER_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_SCHALL03_BASE_HEIGHT_M,
     label: m.label_rail_base_height_m,
+    unit: UNIT_METER,
     min: 0,
     step: 0.1,
     defaultable: false,
@@ -1078,6 +1109,7 @@ const RAIL_BARRIER_NUMBER_FIELDS: NumberFieldSpec[] = [
   {
     propertyKey: PROP_SCHALL03_THICKNESS_M,
     label: m.label_rail_thickness_m,
+    unit: UNIT_METER,
     min: 0,
     step: 0.1,
     defaultable: false,
@@ -1365,7 +1397,7 @@ function PropertyNumberField({
   feature: ModelFeature;
   spec: NumberFieldSpec;
 }) {
-  const { propertyKey, aliases = [], min, max, step } = spec;
+  const { propertyKey, aliases = [], min, max, step, unit } = spec;
   const updateFeature = useModelStore((s) => s.updateFeature);
   const current = getFeatureNumber(feature, propertyKey, ...aliases);
   const [value, setValue] = useState(current == null ? "" : String(current));
@@ -1410,27 +1442,30 @@ function PropertyNumberField({
   }, [aliases, feature, propertyKey, spec, updateFeature, value]);
 
   const noteId = `${feature.id}-${propertyKey}-note`;
+  const unitId = `${feature.id}-${propertyKey}-unit`;
 
   return (
     <div className="grid gap-1">
       <Label htmlFor={`${feature.id}-${propertyKey}`} className="text-2xs">
         {spec.label()}
       </Label>
-      <Input
+      {/* No placeholder. It read "Use run default" — word for word what the
+          note below the field already says, and in a panel this narrow the
+          duplicate did not fit beside the unit anyway. The select further down
+          this file keeps its placeholder, because a closed select has no note
+          of its own to say it with. */}
+      <UnitInput
         id={`${feature.id}-${propertyKey}`}
         type="number"
         min={min != null ? String(min) : undefined}
         max={max != null ? String(max) : undefined}
         step={step != null ? String(step) : undefined}
         className="h-8 text-xs"
-        placeholder={
-          spec.defaultable === false
-            ? undefined
-            : m.placeholder_use_run_default()
-        }
+        unit={unit}
+        unitId={unitId}
         value={value}
         aria-invalid={violation !== null}
-        aria-describedby={noteId}
+        aria-describedby={unit === undefined ? noteId : `${unitId} ${noteId}`}
         onChange={(e) => {
           setValue(e.target.value);
         }}
@@ -1634,12 +1669,15 @@ function HeightField({ feature }: { feature: ModelFeature }) {
       <Label htmlFor="height" className="text-xs">
         {m.label_height_m()}
       </Label>
-      <Input
+      <UnitInput
         id="height"
         type="number"
         step="0.1"
         min="0.1"
         className="h-8 text-xs"
+        unit={UNIT_METER}
+        unitId="height-unit"
+        aria-describedby="height-unit"
         value={value}
         onChange={(e) => {
           setValue(e.target.value);

@@ -17,6 +17,8 @@ import {
 import { Button } from "@/ui/components/button";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
+import { UnitInput } from "@/ui/components/unit-input";
+import { UNIT_METER } from "@/standards/units";
 import {
   Select,
   SelectContent,
@@ -491,12 +493,21 @@ export function NewFeatureDialog({
 
           {kind === "building" || kind === "barrier" || kind === "receiver" ? (
             <div className="grid gap-1.5">
-              <Label className="text-xs">{m.label_height_m()}</Label>
-              <Input
+              <Label htmlFor="new-feature-height" className="text-xs">
+                {m.label_height_m()}
+              </Label>
+              {/* The label carried the unit until the affix existed; it needs
+                  an id either way, because the affix is named rather than
+                  decorative and the label had never been tied to the field. */}
+              <UnitInput
+                id="new-feature-height"
                 type="number"
                 step="0.1"
                 min="0.1"
                 className="h-8 text-xs"
+                unit={UNIT_METER}
+                unitId="new-feature-height-unit"
+                aria-describedby="new-feature-height-unit"
                 value={height}
                 onChange={(e) => {
                   setHeight(e.target.value);
