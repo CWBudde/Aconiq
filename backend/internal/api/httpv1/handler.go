@@ -1,15 +1,14 @@
 package httpv1
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -108,6 +107,11 @@ type Handler struct {
 	sseInterval time.Duration
 	registry    *framework.Registry
 	runExecutor runExecutor
+	// logger carries the few things this package has to say that no response
+	// can carry: a cleanup that failed after the request had already been
+	// answered, and a run it declined to attribute. Never nil — the
+	// constructor falls back to slog.Default().
+	logger *slog.Logger
 }
 
 type runExecutor func(context.Context, createRunRequest) error
@@ -248,6 +252,9 @@ type ServeOptions struct {
 	// APIToken, when non-empty, must be presented as a bearer token on every
 	// request. Empty means the transport controls stand alone.
 	APIToken string
+	// Logger receives what the handler cannot put in a response — a failed
+	// cleanup, most of all. Nil falls back to slog.Default().
+	Logger *slog.Logger
 }
 
 // NewServeHandler builds a handler suitable for `aconiq serve` with CORS enabled.
@@ -259,6 +266,7 @@ func NewServeHandler(store projectfs.Store, clock func() time.Time, registry fra
 		corsOrigins:  opts.CORSOrigins,
 		allowedHosts: hostsFromListenAddr(opts.ListenAddr),
 		apiToken:     opts.APIToken,
+		logger:       opts.Logger,
 	})
 }
 
@@ -271,6 +279,7 @@ type handlerOptions struct {
 	allowedHosts []string // extra Host header values beyond loopback
 	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
+	logger       *slog.Logger // nil falls back to slog.Default()
 }
 
 // lockManifest serialises one read-modify-write of `.noise/project.json`
@@ -306,6 +315,11 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		sseInterval = 2 * time.Second
 	}
 
+	logger := opts.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	handler := Handler{
 		store:       store,
 		now:         now,
@@ -313,6 +327,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		registry:    opts.registry,
 		runExecutor: opts.runExecutor,
 		manifest:    &sync.Mutex{},
+		logger:      logger,
 	}
 	if handler.runExecutor == nil {
 		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
@@ -502,7 +517,9 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 
 	err = h.runExecutor(r.Context(), req)
 	if err != nil {
+		h.closeRunInterruptedBy(before)
 		writeRunCreateError(w, err)
+
 		return
 	}
 
@@ -697,90 +714,6 @@ func validateRunInputPath(field, path string) error {
 	}
 
 	return nil
-}
-
-func newCLIProcessRunExecutor(projectRoot string) runExecutor {
-	return func(ctx context.Context, req createRunRequest) error {
-		executable, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("resolve executable: %w", err)
-		}
-
-		// G702 reports the taint from the request body to argv. The flow is real,
-		// but every field that reaches args is constrained by
-		// createRunRequest.validate before the handler calls this executor:
-		// identifiers and parameter names must match a fixed pattern, and paths
-		// must be relative and inside the project. There is no shell — argv is
-		// passed as a slice.
-		//nolint:gosec // request fields are validated by createRunRequest.validate
-		cmd := exec.CommandContext(ctx, executable, runCommandArgs(projectRoot, req)...)
-
-		var stderr bytes.Buffer
-
-		cmd.Stdout = io.Discard
-		cmd.Stderr = &stderr
-
-		err = cmd.Run()
-		if err != nil {
-			var exitErr *exec.ExitError
-			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", strings.TrimSpace(stderr.String()), err)
-			}
-
-			message := strings.TrimSpace(stderr.String())
-			if message == "" {
-				message = err.Error()
-			}
-
-			return fmt.Errorf("execute run command: %s", message)
-		}
-
-		return nil
-	}
-}
-
-// runCommandArgs turns a validated request into argv for `aconiq run`. Optional
-// fields are omitted rather than passed empty, so the run command applies its
-// own defaults.
-func runCommandArgs(projectRoot string, req createRunRequest) []string {
-	args := []string{"--project", projectRoot, "run"}
-
-	for _, flag := range []struct {
-		name  string
-		value string
-	}{
-		{"--scenario", req.ScenarioID},
-		{"--standard", req.StandardID},
-		{"--standard-version", req.StandardVersion},
-		{"--standard-profile", req.StandardProfile},
-		{"--model", req.ModelPath},
-		{"--receiver-mode", req.ReceiverMode},
-	} {
-		if flag.value != "" {
-			args = append(args, flag.name, flag.value)
-		}
-	}
-
-	if req.Experimental {
-		args = append(args, "--experimental")
-	}
-
-	paramKeys := make([]string, 0, len(req.Params))
-	for key := range req.Params {
-		paramKeys = append(paramKeys, key)
-	}
-
-	slices.Sort(paramKeys)
-
-	for _, key := range paramKeys {
-		args = append(args, "--param", fmt.Sprintf("%s=%s", key, req.Params[key]))
-	}
-
-	for _, inputPath := range req.InputPaths {
-		args = append(args, "--input", inputPath)
-	}
-
-	return args
 }
 
 func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {

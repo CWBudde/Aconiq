@@ -129,25 +129,26 @@ type bubRoadRunOptions struct {
 }
 
 type rls19RoadRunOptions struct {
-	GridResolutionM  float64
-	GridPaddingM     float64
-	ReceiverHeightM  float64
-	SurfaceType      string
-	SpeedPkwKPH      float64
-	SpeedLkw1KPH     float64
-	SpeedLkw2KPH     float64
-	SpeedKradKPH     float64
-	GradientPercent  float64
-	TrafficDayPkw    float64
-	TrafficDayLkw1   float64
-	TrafficDayLkw2   float64
-	TrafficDayKrad   float64
-	TrafficNightPkw  float64
-	TrafficNightLkw1 float64
-	TrafficNightLkw2 float64
-	TrafficNightKrad float64
-	SegmentLengthM   float64
-	MinDistanceM     float64
+	GridResolutionM   float64
+	GridPaddingM      float64
+	ReceiverHeightM   float64
+	SurfaceType       string
+	SpeedPkwKPH       float64
+	SpeedLkw1KPH      float64
+	SpeedLkw2KPH      float64
+	SpeedKradKPH      float64
+	GradientPercent   float64
+	TrafficDayPkw     float64
+	TrafficDayLkw1    float64
+	TrafficDayLkw2    float64
+	TrafficDayKrad    float64
+	TrafficNightPkw   float64
+	TrafficNightLkw1  float64
+	TrafficNightLkw2  float64
+	TrafficNightKrad  float64
+	SegmentLengthM    float64
+	SegmentLengthMode string
+	MinDistanceM      float64
 }
 
 type schall03RunOptions struct {
@@ -649,6 +650,8 @@ func (o cnossosRailRunOptions) PropagationConfig() cnossosrail.PropagationConfig
 }
 
 // schall03ParamBindings binds the schall03 parameter schema.
+//
+//nolint:dupl // see rls19RoadParamBindings: same shape, different vocabulary
 func schall03ParamBindings(options *schall03RunOptions) []boundParam {
 	return []boundParam{
 		runParams.GridResolutionM.float(&options.GridResolutionM),
@@ -743,6 +746,16 @@ func parseBUBRoadRunOptions(params map[string]string) (bubRoadRunOptions, error)
 
 // rls19RoadParamBindings binds the rls19-road parameter schema, which carries
 // its own speed and traffic vocabulary rather than the shared road one.
+//
+// dupl matches this against schall03ParamBindings: two declarative lists of
+// the same length, binding the same handful of methods, are the same token
+// sequence to it whatever the parameters are called. There is nothing to
+// extract — the two standards share no parameter that is not already bound
+// through the shared helpers — and factoring by shape alone would put
+// rls19-road's vocabulary and schall03's behind one indirection that hides
+// which standard declares what. See docs/lint-triage.md.
+//
+//nolint:dupl // a parameter list per standard; the shape matches, the meaning does not
 func rls19RoadParamBindings(options *rls19RoadRunOptions) []boundParam {
 	return []boundParam{
 		runParams.SurfaceType.str(&options.SurfaceType),
@@ -763,6 +776,7 @@ func rls19RoadParamBindings(options *rls19RoadRunOptions) []boundParam {
 		runParams.TrafficNightLkw2.float(&options.TrafficNightLkw2),
 		runParams.TrafficNightKrad.float(&options.TrafficNightKrad),
 		runParams.SegmentLengthM.float(&options.SegmentLengthM),
+		runParams.SegmentLengthMode.str(&options.SegmentLengthMode),
 		runParams.MinDistanceM.float(&options.MinDistanceM),
 	}
 }
@@ -867,9 +881,10 @@ func (o bubRoadRunOptions) PropagationConfig() bubroad.PropagationConfig {
 
 func (o rls19RoadRunOptions) PropagationConfig() rls19road.PropagationConfig {
 	return rls19road.PropagationConfig{
-		SegmentLengthM:  o.SegmentLengthM,
-		MinDistanceM:    o.MinDistanceM,
-		ReceiverHeightM: o.ReceiverHeightM,
+		SegmentLengthM:    o.SegmentLengthM,
+		SegmentLengthMode: rls19road.SegmentLengthMode(o.SegmentLengthMode),
+		MinDistanceM:      o.MinDistanceM,
+		ReceiverHeightM:   o.ReceiverHeightM,
 	}
 }
 

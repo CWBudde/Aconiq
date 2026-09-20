@@ -15,6 +15,7 @@
 
 import type { StandardDescriptor } from "@/standards/descriptor";
 import { connectKernel, type KernelClient } from "./kernel-client";
+import { RunDiagnostics, describeRun } from "./kernel-diagnostics";
 import { ShardProgress, mergeChunks, poolSize } from "./kernel-pool";
 import type { KernelProgressListener } from "./protocol";
 import { spawnKernelWorker } from "./spawn-worker";
@@ -293,20 +294,56 @@ async function runOverPool(
   req: ComputeRequest,
   onProgress?: KernelProgressListener,
 ): Promise<ReceiverOutput[]> {
+  const size = poolSize(navigator.hardwareConcurrency, req.receivers.length);
+
+  // Started before the pool is, so the elapsed time the console reports is
+  // the time the user has actually been waiting — worker startup and scene
+  // preparation included. Those are invisible to the progress bar, and on a
+  // large model they are a noticeable part of the wait.
+  const diagnostics = new RunDiagnostics(describeRun(req, size));
+
+  // The kernel is now asked to report progress whether or not the caller
+  // wanted a bar, because the diagnostics are a consumer in their own right:
+  // a run with no bar is exactly the one where the console is all there is.
+  // The cost is bounded by `kernel.worker.ts`'s throttle — about ten messages
+  // a second carrying two integers.
+  const report: KernelProgressListener = (done, total) => {
+    diagnostics.progress(done, total);
+    onProgress?.(done, total);
+  };
+
+  try {
+    const outputs = await computeOverPool(client, req, size, report);
+    diagnostics.finished();
+
+    return outputs;
+  } catch (cause) {
+    diagnostics.failed(cause);
+
+    throw cause;
+  }
+}
+
+/** {@link runOverPool} without the narration: pick a pool, use it, merge. */
+async function computeOverPool(
+  client: KernelClient,
+  req: ComputeRequest,
+  size: number,
+  report: KernelProgressListener,
+): Promise<ReceiverOutput[]> {
   const total = req.receivers.length;
-  const size = poolSize(navigator.hardwareConcurrency, total);
 
   if (size <= 1) {
-    return client.rls19Road(req, onProgress);
+    return client.rls19Road(req, report);
   }
 
   // Zero of n once, for the run — not once per shard. Each shard reporting
   // its own zero would make the bar jump as the others checked in. Same
   // reasoning as the single-worker path in `KernelClient.rls19Road`, which is
   // why that one does it and the shard call does not.
-  onProgress?.(0, total);
+  report(0, total);
 
-  const progress = new ShardProgress(total, onProgress);
+  const progress = new ShardProgress(total, report);
 
   let clients: KernelClient[];
 
@@ -315,7 +352,7 @@ async function runOverPool(
   } catch {
     // A pool that will not spawn is not a failed run. One worker is already
     // there and can do the whole thing, slower.
-    return client.rls19Road(req, onProgress);
+    return client.rls19Road(req, report);
   }
 
   try {

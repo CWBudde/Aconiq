@@ -2138,24 +2138,24 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       berücksichtigen", and `EvidenceTier` is per descriptor, so it would make one standard ID
       emit both normative and non-normative levels.
       Line 2076's doctrine therefore stands unamended.
-- [ ] **Receiver-dependent Teilstück length — the option the standard does license.** Nr. 3.3
-      requires source lines be split "_abhängig vom Immissionsort_ … in geeignete Teilstücke", and
-      the Anmerkung to Nr. 3.2 publishes the rule `l_i ≤ s_i / 2` for free propagation over flat
-      ground — the direct analogue of the 10 m step cap CNOSSOS has written down, and more
-      permissive. It attacks the `receivers × Teilstücke` factor rather than the `× 307` one, so it
-      multiplies with the pool rather than competing with it: a receiver 200 m out admits 100 m
-      Teilstücke against the 1 m being used.
-      Shape: a level-of-detail ladder built once in `PrepareScene` (splits at `L, 2L, 4L, …`), the
-      coarsest level satisfying `l ≤ s/2` chosen per (source, receiver) and verified per Teilstück
-      against its own midpoint. Do **not** move segmentation back per-receiver — that undoes
-      `84c66eb` and reinstates the O(segments × vertices) cost below.
-      The precondition is the constraint: the Faustregel holds "bei freier Schallausbreitung über
-      ebenem Boden", so coarsening must be inhibited inside a barrier/building plan-shadow and
-      across a Bild-14 active/inactive boundary — both cheap against `Scene.barrierGrid` and
-      `reflectors.grid`. That means it bites hardest on open field and is throttled in dense urban,
-      which is the opposite of where the pain is; measure the conservative form before assuming the
-      aggressive one is needed. Ship it as a declared `segment_length_mode` parameter stamped
-      through `ProvenanceMetadata`, defaulted to `fixed`, so the first release moves no golden.
+- [ ] **Inhibit distance-scaled coarsening where the Faustregel's precondition fails.** The
+      `segment_length_mode` parameter landed and `distance_scaled` is selectable, stamped through
+      provenance and declared in `docs/conformance/rls19-konformitaetserklaerung.md`. What it does
+      not yet do is check the precondition it rests on. The Anmerkung to Nr. 3.2 states
+      `l_i ≤ s_i / 2` "bei freier Schallausbreitung über ebenem Boden", and the implementation
+      applies it to every source line alike — a road in a building's plan-shadow is coarsened
+      exactly as a freely visible one is. Inhibiting the coarsening inside a barrier/building
+      plan-shadow and across a Bild-14 active/inactive boundary is cheap against
+      `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
+      becoming the default. Until it exists the mode stays opt-in.
+- [ ] **The per-pair cost of a _distant_ Teilstück is the next target.** Cutting Teilstück·receiver
+      pairs by 39x on a 44 km OSM extract cut CPU by only about 7x, so a Teilstück 500 m out
+      costs roughly five times one at 50 m. The suspect is the reflection and diffraction search
+      along a long path — `appendReflectedContribs` was already 91 % of the building-dense
+      profile — where the candidate set grows with path length while almost none of those
+      candidates can contribute audibly. Profile a coarse-rung scene before proposing a fix; note
+      that an energy cutoff is still rejected for the reasons recorded above, so whatever this is,
+      it has to be exact.
 - [ ] **Correctness debt the reflection reading exposed, and it is _slower_, not faster.** The
       Anmerkung to Nr. 3.5.5 requires mirrored paths to raise _Spiegelbeugungskanten_ and be run
       through the Gummibandmethode over the whole unfolded path. That is exactly declared deviation
@@ -2180,6 +2180,36 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       ID synthesis must match `padStart` including the six-character `"R10000"` case, and
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
+- [ ] **Make a run asynchronous, so it does not live inside an HTTP request.** The run-create
+      endpoint calls the executor synchronously and spawns `aconiq run` under
+      `exec.CommandContext(r.Context(), …)`. Three consequences, all of them observed on a real
+      run: a browser reload cancels the request and kills the computation; the server's
+      `WriteTimeout` was a ceiling on how long a run could legally take (it was 30 s, against
+      runs of minutes — now removed, which is a workaround and not the fix); and a subprocess
+      that dies leaves the manifest saying `running` forever, because the terminal status is
+      written by the subprocess and by nothing else.
+      The last of those is now reconciled — `Store.FailInterruptedRuns` runs at `serve` startup
+      and on the failed-executor path — but reconciliation is cleanup after a design that should
+      not lose the work in the first place. Return `202` with the run id, compute in a goroutine
+      the request does not own, and let the UI poll `GET /api/v1/runs/{id}`. That also gives the
+      progress feed the API mode has never had: today `run.log` holds one line until the run
+      ends, because every `input.log.addf` is buffered and flushed at the end, so a long API-mode
+      run is indistinguishable from a hung one. `parse-timeline.ts` says as much in its header.
+- [ ] **Tell the user what a run will cost in _time_, and let them refuse it.** The receiver
+      count preview landed; the time estimate named as its follow-up is the part that matters,
+      because the cost is not proportional to anything the dialog currently shows. Measured on a
+      25 km network at a 25 m Teilstück length, one receiver costs 555 µs with no buildings in
+      the scene and 2.91 s with a hundred — a factor of ~5 200, because Nr. 3.6 requires first-
+      and second-order reflections and Nr. 3.5 gives every Spiegelschallquelle its own
+      diffraction search. At 400 buildings it is 12.9 s. Receiver count and Teilstück count are
+      each roughly linear on top of that, so halving the grid resolution buys 4x against a term
+      already in the thousands: **building count, not raster width, decides whether a run
+      finishes**, and no amount of parallelism reaches it (4 Workers on 9 202 receivers is 8 h at
+      400 buildings, 1 h 52 at 100). A 16-receiver kernel probe is the only honest estimate,
+      since it is the one measurement that knows whether the scene has buildings in it; show a
+      band, warn above a threshold, and offer the resolution that would bring it under a minute.
+      Until that exists the console diagnostics (`kernel-diagnostics.ts`) are the only warning a
+      user gets, and they arrive only after the first receiver.
 - [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
       of the receivers), show it, then compute the full grid and replace it. The final numbers are
       the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,

@@ -530,6 +530,16 @@ func Descriptor() framework.StandardDescriptor {
 								{Name: "traffic_night_lkw2", Kind: framework.ParameterKindFloat, Unit: framework.UnitPerHour, DefaultValue: "20", Min: &minZero, Description: "Night Lkw2 per hour"},
 								{Name: "traffic_night_krad", Kind: framework.ParameterKindFloat, Unit: framework.UnitPerHour, DefaultValue: "2", Min: &minZero, Description: "Night Krad per hour"},
 								{Name: "segment_length_m", Kind: framework.ParameterKindFloat, Unit: framework.UnitMeter, DefaultValue: "1", Min: &minPositive, Description: "Sub-segment length for Teilstueckverfahren"},
+								{
+									Name:         "segment_length_mode",
+									Kind:         framework.ParameterKindString,
+									DefaultValue: string(SegmentLengthFixed),
+									Enum: []string{
+										string(SegmentLengthFixed),
+										string(SegmentLengthDistanceScaled),
+									},
+									Description: "Whether segment_length_m applies everywhere (fixed) or only as close as the receiver requires, per the Anmerkung to RLS-19 Nr. 3.2 (distance_scaled)",
+								},
 								{Name: "min_distance_m", Kind: framework.ParameterKindFloat, Unit: framework.UnitMeter, DefaultValue: "3", Min: &minPositive, Description: "Minimum propagation distance"},
 							},
 						},

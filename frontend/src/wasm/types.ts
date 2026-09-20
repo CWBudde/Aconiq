@@ -131,11 +131,26 @@ export interface Reflector {
 
 // PropagationConfig has no json tags in Go → PascalCase keys.
 //
+/**
+ * `distance_scaled` lets a source line far from the receiver be split more
+ * coarsely, up to the `l_i <= s_i / 2` bound the Anmerkung to RLS-19 Nr. 3.2
+ * publishes. It changes the level — by +0.066 dB at worst on the convergence
+ * fixture, always upward — so it is a declared parameter, not a switch the UI
+ * may flip on the user's behalf.
+ */
+export type SegmentLengthMode = "fixed" | "distance_scaled";
+
 // Browser mode builds only Buildings and ParkingSources today; Terrain and
 // Reflectors are mirrored because the kernel accepts them and the parity tests
 // drive them, not because a model can express them yet.
 export interface PropagationConfig {
   SegmentLengthM: number;
+  /**
+   * Which Teilstück length rule the kernel applies. Absent means "fixed",
+   * because the Go field's zero value is fixed mode — so a request that has
+   * never heard of this option computes exactly what it always did.
+   */
+  SegmentLengthMode?: SegmentLengthMode;
   MinDistanceM: number;
   ReceiverHeightM: number;
   ReceiverTerrainZ?: number;

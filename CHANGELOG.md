@@ -19,6 +19,22 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 ### Added
 
+- RLS-19 road: a `segment_length_mode` run parameter, `fixed` (default) or `distance_scaled`.
+  `distance_scaled` lets a distant source line be split more coarsely, up to the bound the
+  Anmerkung to RLS-19 Nr. 3.2 publishes for exactly this — `l_i <= s_i / 2`, the Teilstück no
+  longer than half its distance to the receiver — which Nr. 3.3 asks for in so many words when it
+  requires source lines be divided "abhängig vom Immissionsort". It is not a cutoff: no
+  contribution, mirror source or search is dropped.
+  It is opt-in and stamped into `provenance.json`, because it changes the level. On the
+  convergence fixture the worst deviation is +0.066 dB at 150 m and every sample is positive, so
+  it over-predicts — the direction every other declared deviation in this module takes. That is
+  under the 0.1 dB reporting resolution but not so far under that a receiver cannot cross a
+  rounding boundary. The precondition the Faustregel states ("bei freier Schallausbreitung über
+  ebenem Boden") is **not** checked, which is why the default is unchanged; see
+  `docs/conformance/rls19-konformitaetserklaerung.md`.
+  Measured on a 44 km OSM extract with 875 buildings over a 130-cell grid: 5 788 770
+  Teilstück·receiver pairs down to 147 169.
+
 - `aconiq` CLI with ten commands: `init`, `import`, `validate`, `run`, `compare`, `status`,
   `export`, `serve`, `openapi` and `bench`.
 - Project format v1: a `.noise/` folder holding the manifest, per-run logs, `provenance.json`,
@@ -101,6 +117,25 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 Entries marked **numeric** change computed levels. Results produced before them are not comparable
 with results produced after them.
 
+- Parallel compute no longer starves its own worker pool on a small receiver grid.
+  `partition.Size` floored the chunk size at `MinChunk` (64) unconditionally, so it also decided
+  the chunk *count*: a 130-receiver grid over twelve workers came out as three chunks, three
+  goroutines ran, nine idled, and the wall clock was one goroutine walking 64 receivers in
+  series. The floor is now clamped against `total/workers`, so every worker gets a chunk whenever
+  there are receivers enough to give it one. Chunk sizes on large runs are unchanged, and no
+  output moves — the partition never affected a value, only which goroutine computed it.
+  Receiver count was never a proxy for receiver cost: the same 130 receivers are milliseconds
+  over open ground and minutes inside a city extract.
+- A run whose process dies no longer shows as running forever. The terminal status is written by
+  the `aconiq run` subprocess and by nothing else, so a subprocess that was killed, ran out of
+  memory, or was cancelled with its HTTP request — which is what a browser reload during a run
+  does — left a manifest row saying `running` that nothing would ever close, and the UI drew a
+  spinner for it indefinitely. `Store.FailInterruptedRuns` now closes such rows at `aconiq serve`
+  startup and on the failed-executor path, where it closes only the rows that request created.
+- `aconiq serve` no longer imposes a 30-second ceiling on how long a run may take. The server's
+  `WriteTimeout` applied to `POST /api/v1/runs`, which computes the run inside the request, so
+  any model needing more than half a minute exceeded it. `ReadTimeout` and `IdleTimeout` are
+  unchanged. Making a run not hold a request open at all is tracked in `PLAN.md`.
 - **numeric** ISO 9613-2: `A_atm` now evaluates the ISO 9613-1 absorption coefficient analytically
   at the stated air temperature and relative humidity, instead of snapping to the nearest of the six
   ISO 9613-2 Table 2 rows. The snap weighted temperature five times more heavily than humidity, so

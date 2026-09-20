@@ -38,7 +38,7 @@ const MODULES: { id: string; dir: string; file: string; count: number }[] = [
     // The expected counts are the guard against a silently vacuous regex: a
     // changed declaration style drops matches, and a comparison over an empty
     // list passes. They are asserted, not just documented.
-    count: 19,
+    count: 20,
   },
   { id: "schall03", dir: "schall03", file: "params.go", count: 20 },
   { id: "iso9613", dir: "iso9613", file: "params.go", count: 14 },

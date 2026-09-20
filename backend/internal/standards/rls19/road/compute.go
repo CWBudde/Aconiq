@@ -3,7 +3,6 @@ package road
 import (
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
@@ -82,6 +81,19 @@ type preparedSource struct {
 	segments    []Segment
 	baseDayDB   []float64
 	baseNightDB []float64
+
+	// line and coarser are the distance-scaled Teilstück ladder, and are set
+	// only when PropagationConfig.SegmentLengthMode asks for one. In fixed
+	// mode coarser is nil, levelFor returns the three fields above without
+	// measuring anything, and line is left nil rather than retaining the
+	// offset centreline the split has finished with.
+	//
+	// The fields above stay the ladder's rung zero, so everything that reads
+	// a prepared source without knowing about rungs — segmentCount, the
+	// refusals, the tests — keeps reading the finest split, which is the one
+	// the user asked for.
+	line    []geo.Point2D
+	coarser []sourceLevel
 }
 
 // PrepareScene derives the receiver-independent state of a calculation.
@@ -118,7 +130,7 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 	}
 
 	for _, source := range sources {
-		prepared, err := prepareSource(source, cfg.SegmentLengthM)
+		prepared, err := prepareSource(source, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +151,7 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 // prepareSource validates one source, computes its emission and splits its
 // source line into Teilstücke. A prepared source with no segments is a source
 // whose geometry is degenerate; that is not an error, it is silence.
-func prepareSource(source RoadSource, segmentLengthM float64) (preparedSource, error) {
+func prepareSource(source RoadSource, cfg PropagationConfig) (preparedSource, error) {
 	err := source.Validate()
 	if err != nil {
 		return preparedSource{}, err
@@ -162,9 +174,16 @@ func prepareSource(source RoadSource, segmentLengthM float64) (preparedSource, e
 
 	sourceLine := source.EffectiveCenterline()
 
-	// Split the source line into sub-segments (Teilstueckverfahren).
-	segments := SplitLineIntoSegments(sourceLine, elevations, segmentLengthM)
-	if len(segments) == 0 {
+	// Split the source line into sub-segments (Teilstueckverfahren), and with
+	// them the length weighting (RLS-19 Eq. 10): the sub-segment sound power
+	// level is the length-related emission level L_m,E [dB(A)/m] plus
+	// 10·lg(l_i / l_0) with the reference length l_0 = 1 m. L_m,E is already
+	// per-metre (emission.go converts veh/h ÷ km/h to veh/m via the −30 dB
+	// term), so the weight must NOT be normalised by the total road length:
+	// doing so would make the whole road radiate the power of a single 1 m
+	// long section.
+	finest, ok := newSourceLevel(sourceLine, elevations, emission, cfg.SegmentLengthM)
+	if !ok {
 		return preparedSource{}, nil
 	}
 
@@ -172,22 +191,18 @@ func prepareSource(source RoadSource, segmentLengthM float64) (preparedSource, e
 		return preparedSource{}, nil
 	}
 
-	// Length weighting (RLS-19 Eq. 10): the sub-segment sound power level is the
-	// length-related emission level L_m,E [dB(A)/m] plus 10·lg(l_i / l_0) with the
-	// reference length l_0 = 1 m. L_m,E is already per-metre (emission.go converts
-	// veh/h ÷ km/h to veh/m via the −30 dB term), so the weight must NOT be
-	// normalised by the total road length: doing so would make the whole road
-	// radiate the power of a single 1 m long section.
-	baseDayDB := make([]float64, len(segments))
-	baseNightDB := make([]float64, len(segments))
-
-	for i, seg := range segments {
-		lengthWeight := 10 * math.Log10(seg.LengthM/referenceLengthM)
-		baseDayDB[i] = emission.LmEDay + lengthWeight
-		baseNightDB[i] = emission.LmENight + lengthWeight
+	prepared := preparedSource{
+		segments:    finest.segments,
+		baseDayDB:   finest.baseDayDB,
+		baseNightDB: finest.baseNightDB,
 	}
 
-	return preparedSource{segments: segments, baseDayDB: baseDayDB, baseNightDB: baseNightDB}, nil
+	if cfg.SegmentLengthMode.resolved() == SegmentLengthDistanceScaled {
+		prepared.line = sourceLine
+		prepared.coarser = buildCoarserLevels(sourceLine, elevations, emission, finest, cfg.SegmentLengthM)
+	}
+
+	return prepared, nil
 }
 
 // ValidateReceivers makes computeReceivers' per-receiver refusals over the
@@ -356,11 +371,17 @@ func (s *Scene) receiverLevelsOn(
 		nightContrib = make([]float64, 0, s.segmentCount)
 	}
 
-	for _, source := range s.sources {
-		for i, seg := range source.segments {
+	for i := range s.sources {
+		// By pointer, and via levelFor, because in distance-scaled mode which
+		// Teilstücke this receiver reads is a function of where it stands.
+		// In fixed mode levelFor is a nil check and these are the same three
+		// slices the loop used to index directly.
+		segments, baseDayDB, baseNightDB := s.sources[i].levelFor(receiver)
+
+		for j, seg := range segments {
 			appendSegmentContributions(
 				&dayContrib, &nightContrib,
-				source.baseDayDB[i], source.baseNightDB[i],
+				baseDayDB[j], baseNightDB[j],
 				seg,
 				receiver,
 				receiverZ,

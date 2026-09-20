@@ -103,15 +103,45 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "build standards registry", err)
 	}
 
+	// A run's terminal status is written by the `aconiq run` subprocess that
+	// computes it, and that subprocess lives inside one HTTP request. So a
+	// server that is starting has none of its own in flight, and any run the
+	// manifest still calls running belongs to a process that is gone —
+	// killed, crashed, or cancelled with the request when a browser reloaded.
+	// Left alone it is a spinner in the UI that never stops.
+	interrupted, err := store.FailInterruptedRuns(nowUTC, nil)
+	if err != nil {
+		return fmt.Errorf("reconcile interrupted runs: %w", err)
+	}
+
+	if interrupted > 0 {
+		state.Logger.Warn("closed interrupted runs", "count", interrupted)
+	}
+
 	server := &http.Server{
 		Addr: cfg.listenAddr,
 		Handler: httpv1.NewServeHandler(store, nowUTC, registry, httpv1.ServeOptions{
 			CORSOrigins: cfg.corsOrigins,
 			ListenAddr:  cfg.listenAddr,
 			APIToken:    cfg.apiToken,
+			Logger:      state.Logger,
 		}),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout: 15 * time.Second,
+
+		// No write deadline. POST /api/v1/runs computes the run inside the
+		// request — an RLS-19 grid over a city extract is minutes, and there
+		// is no upper bound on it — so any deadline here is a deadline on how
+		// large a model the API may be asked about. At 30 s it silently
+		// capped that at about one small scene.
+		//
+		// ReadTimeout still bounds how long a client may take to send its
+		// request, and IdleTimeout still reaps kept-alive connections, so the
+		// slow-client exposure this removes is only on the response side of a
+		// loopback-only server that already refuses non-loopback Hosts.
+		//
+		// The real fix is for a run not to hold a request open at all; that is
+		// tracked in PLAN.md as making runs asynchronous.
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 

@@ -57,6 +57,7 @@
       "min_distance_m": "3",
       "receiver_height_m": "4",
       "segment_length_m": "1",
+      "segment_length_mode": "fixed",
       "speed_krad_kph": "100",
       "speed_lkw1_kph": "100",
       "speed_lkw2_kph": "80",

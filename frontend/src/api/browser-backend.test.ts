@@ -629,6 +629,54 @@ describe("browserBackend.startRun standard gates", () => {
   });
 });
 
+/**
+ * `segment_length_mode` is an enum, and the CLI refuses a value outside it:
+ * `PropagationConfig.Validate` names the two modes. Browser mode used to read
+ * anything it did not recognise as `fixed`, so a typo computed one thing while
+ * the run's own parameter record — which is stamped into provenance — said
+ * another. The two targets have to refuse the same request.
+ */
+describe("browserBackend.startRun segment_length_mode", () => {
+  beforeEach(async () => {
+    await resetStores();
+    useModelStore.setState({
+      features: [ROAD],
+      receivers: [
+        {
+          id: "R1",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+  });
+
+  it("refuses a mode the kernel does not accept", async () => {
+    await expect(
+      browserBackend.startRun({
+        ...RUN_SPEC,
+        params: { ...RUN_SPEC.params, segment_length_mode: "adaptive" },
+      }),
+    ).rejects.toThrow("segment_length_mode must be one of");
+  });
+
+  it("accepts the two modes, and an unset one as fixed", async () => {
+    for (const mode of ["fixed", "distance_scaled"]) {
+      const run = await browserBackend.startRun({
+        ...RUN_SPEC,
+        params: { ...RUN_SPEC.params, segment_length_mode: mode },
+      });
+
+      expect(run.standard_id).toBe("rls19-road");
+    }
+
+    const unset = await browserBackend.startRun(RUN_SPEC);
+    expect(unset.standard_id).toBe("rls19-road");
+  });
+});
+
 describe("persisted state", () => {
   let warn: ReturnType<typeof vi.spyOn>;
 
