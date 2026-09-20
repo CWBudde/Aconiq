@@ -138,7 +138,10 @@ export type KernelResult =
  * result by an older client, which ignores what it does not recognise.
  */
 export type WorkerMessage =
-  KernelReady | KernelFatal | KernelProgress | KernelResult;
+  | KernelReady
+  | KernelFatal
+  | KernelProgress
+  | KernelResult;
 
 /** Called with the worker's progress reports for one `rls19Road` call. */
 export type KernelProgressListener = (done: number, total: number) => void;
