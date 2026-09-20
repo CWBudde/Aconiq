@@ -445,3 +445,79 @@ describe("readCollectionCRS", () => {
     expect(normalizeModelGeoJSON(validCollection).crs).toBeNull();
   });
 });
+
+/**
+ * A height is read or it is absent — it is never invented here.
+ *
+ * A bare `building` tag used to become 9 m and a bare `barrier` 2 m. Both were
+ * assumptions, and a building's height is a screening input: it reaches the
+ * line-of-sight test and changes computed dB. They also disagreed with the
+ * backend, which refuses a building with no height, so the preview called a
+ * model clean that the save then rejected. `osmimport` now answers once, on
+ * the record (`height_source`), and anything else gets `*.height.required`.
+ */
+describe("height inference", () => {
+  const featureWith = (
+    properties: Record<string, unknown>,
+    geometry: GeoJSONFeatureCollection["features"][number]["geometry"],
+  ): GeoJSONFeatureCollection => ({
+    type: "FeatureCollection",
+    features: [{ type: "Feature", properties, geometry }],
+  });
+
+  const square = {
+    type: "Polygon" as const,
+    coordinates: [
+      [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+        [0, 0],
+      ],
+    ],
+  };
+
+  const line = {
+    type: "LineString" as const,
+    coordinates: [
+      [0, 0],
+      [1, 1],
+    ],
+  };
+
+  it("leaves a building with only a building tag without a height", () => {
+    const result = normalizeModelGeoJSON(
+      featureWith({ kind: "building", building: "yes" }, square),
+    );
+
+    expect(result.features[0]?.heightM).toBeUndefined();
+  });
+
+  it("leaves a barrier with only a barrier tag without a height", () => {
+    const result = normalizeModelGeoJSON(
+      featureWith({ kind: "barrier", barrier: "wall" }, line),
+    );
+
+    expect(result.features[0]?.heightM).toBeUndefined();
+  });
+
+  it("still reads building:levels, which is a measurement and not a guess", () => {
+    const result = normalizeModelGeoJSON(
+      featureWith(
+        { kind: "building", building: "yes", "building:levels": 4 },
+        square,
+      ),
+    );
+
+    expect(result.features[0]?.heightM).toBe(12);
+  });
+
+  it("still reads an explicit height_m", () => {
+    const result = normalizeModelGeoJSON(
+      featureWith({ kind: "building", building: "yes", height_m: 7.5 }, square),
+    );
+
+    expect(result.features[0]?.heightM).toBe(7.5);
+  });
+});

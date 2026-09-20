@@ -227,6 +227,54 @@ const ISSUES: {
     featureId: "p1",
     params: { field: "rls19_parking_movements_per_space_night" },
   },
+  "geometry.linestring.self_intersection": {
+    level: "warning",
+    code: "geometry.linestring.self_intersection",
+    featureId: "g1",
+    params: {},
+  },
+  "geometry.multilinestring.self_intersection": {
+    level: "warning",
+    code: "geometry.multilinestring.self_intersection",
+    featureId: "g1",
+    params: {},
+  },
+  "geometry.polygon.self_intersection": {
+    level: "error",
+    code: "geometry.polygon.self_intersection",
+    featureId: "g1",
+    params: {},
+  },
+  "geometry.multipolygon.self_intersection": {
+    level: "error",
+    code: "geometry.multipolygon.self_intersection",
+    featureId: "g1",
+    params: {},
+  },
+  "geometry.linestring.self_intersection.skipped": {
+    level: "warning",
+    code: "geometry.linestring.self_intersection.skipped",
+    featureId: "g1",
+    params: { points: 12000, limit: 10000 },
+  },
+  "geometry.multilinestring.self_intersection.skipped": {
+    level: "warning",
+    code: "geometry.multilinestring.self_intersection.skipped",
+    featureId: "g1",
+    params: { points: 12000, limit: 10000 },
+  },
+  "geometry.polygon.self_intersection.skipped": {
+    level: "warning",
+    code: "geometry.polygon.self_intersection.skipped",
+    featureId: "g1",
+    params: { points: 12000, limit: 10000 },
+  },
+  "geometry.multipolygon.self_intersection.skipped": {
+    level: "warning",
+    code: "geometry.multipolygon.self_intersection.skipped",
+    featureId: "g1",
+    params: { points: 12000, limit: 10000 },
+  },
 };
 
 const CODES = Object.keys(ISSUES) as ValidationCode[];

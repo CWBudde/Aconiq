@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -20,6 +21,7 @@ import (
 	"github.com/aconiq/backend/internal/io/gpkgimport"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	overpass "github.com/cwbudde/go-overpass"
 	"github.com/spf13/cobra"
 )
 
@@ -257,6 +259,22 @@ func runOSMImport(
 	return writeOSMImportArtifacts(cmd, state, store, proj, model, report, osmBBox, normalizedPath, dumpPath, reportPath)
 }
 
+// overpassFailureMessage names the upstream status when there is one.
+//
+// "OSM/Overpass query failed" was the whole message for every cause, so a
+// blocked client, a rate limit and a server outage read identically — and only
+// one of the three is worth retrying unchanged. go-overpass carries the status
+// in a *overpass.ServerError, which survives osmimport's wrapping, so this
+// costs a type assertion and nothing else.
+func overpassFailureMessage(err error) string {
+	var serverErr *overpass.ServerError
+	if errors.As(err, &serverErr) {
+		return fmt.Sprintf("OSM/Overpass query failed with status %d", serverErr.StatusCode)
+	}
+
+	return "OSM/Overpass query failed"
+}
+
 // fetchAndNormalizeOSM fetches OSM data and normalizes it into the model.
 func fetchAndNormalizeOSM(
 	cmd *cobra.Command,
@@ -279,7 +297,7 @@ func fetchAndNormalizeOSM(
 		OverpassEndpoint: osmEndpoint,
 	})
 	if err != nil {
-		return modelgeojson.Model{}, modelgeojson.ValidationReport{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "OSM/Overpass query failed", err)
+		return modelgeojson.Model{}, modelgeojson.ValidationReport{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", overpassFailureMessage(err), err)
 	}
 
 	payload, err := json.Marshal(fc)

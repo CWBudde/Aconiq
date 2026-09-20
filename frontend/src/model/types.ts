@@ -38,6 +38,9 @@ export type IssueSeverity = "error" | "warning";
 /** A finding that interpolates nothing. */
 export type NoIssueParams = Record<string, never>;
 
+/** A check that was not run because the geometry exceeded its cost bound. */
+export type SkippedCheckParams = { points: number; limit: number };
+
 /**
  * Every finding `validate.ts` can produce, and the values its sentence needs.
  *
@@ -77,6 +80,36 @@ export interface ValidationIssueParams {
 
   "receiver.coordinates.invalid": NoIssueParams;
   "receiver.height.invalid": NoIssueParams;
+
+  /*
+   * Self-intersection, mirroring `modelgeojson.checkSelfIntersection` — the
+   * spellings are the backend's, deliberately, because two lists that mean the
+   * same thing and say it differently are how this drifted in the first place.
+   *
+   * They exist here because the backend's existed without them: the save
+   * refused a model the preview had called clean, and the reader found out one
+   * screen later with nothing earlier to explain it.
+   *
+   * The severities are the backend's too. A ring's winding is read — by
+   * point-in-polygon and by the screening crossing counts — so a footprint
+   * that crosses itself has no reliable inside and the model is refused. A
+   * line's winding is read by nothing, and a road drawn as one way that
+   * touches itself is a roundabout, so it is reported and kept.
+   *
+   * The `.skipped` pair reports the cost bound rather than an answer: above
+   * `SELF_INTERSECTION_POINT_LIMIT` the quadratic walk is not attempted, and
+   * saying so beats both hanging and a silent pass. `points` and `limit` are
+   * vertex counts, not measurements.
+   */
+  "geometry.linestring.self_intersection": NoIssueParams;
+  "geometry.multilinestring.self_intersection": NoIssueParams;
+  "geometry.polygon.self_intersection": NoIssueParams;
+  "geometry.multipolygon.self_intersection": NoIssueParams;
+
+  "geometry.linestring.self_intersection.skipped": SkippedCheckParams;
+  "geometry.multilinestring.self_intersection.skipped": SkippedCheckParams;
+  "geometry.polygon.self_intersection.skipped": SkippedCheckParams;
+  "geometry.multipolygon.self_intersection.skipped": SkippedCheckParams;
 
   "source.rls19.surface_type.invalid": { value: string };
   "source.rls19.junction_type.invalid": { value: string };

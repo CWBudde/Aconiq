@@ -789,7 +789,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Overpass API request failed */
+            /** @description Overpass API request failed. When the server answered at all, details.upstream_status carries the status it sent. */
             502: {
                 headers: {
                     [name: string]: unknown;

@@ -524,7 +524,7 @@ func openapiImportPathItems() map[string]any {
 					},
 					"400": openapiErrorResponse("Invalid OSM import request"),
 					"405": methodNotAllowedResponse(),
-					"502": openapiErrorResponse("Overpass API request failed"),
+					"502": openapiErrorResponse("Overpass API request failed. When the server answered at all, details.upstream_status carries the status it sent."),
 				},
 			},
 		},

@@ -116,5 +116,22 @@ export function validationIssueText(issue: ValidationIssue): string {
       return m.msg_validation_source_rls19_parking_movements_invalid(
         issue.params,
       );
+
+    // One sentence per severity rather than per geometry type. A reader acts
+    // on "this outline crosses itself" or "this line crosses itself"; which of
+    // the four GeoJSON spellings carried it changes nothing they would do, and
+    // the code is still the backend's so a report stays traceable.
+    case "geometry.linestring.self_intersection":
+    case "geometry.multilinestring.self_intersection":
+      return m.msg_validation_geometry_line_self_intersection();
+    case "geometry.polygon.self_intersection":
+    case "geometry.multipolygon.self_intersection":
+      return m.msg_validation_geometry_ring_self_intersection();
+
+    case "geometry.linestring.self_intersection.skipped":
+    case "geometry.multilinestring.self_intersection.skipped":
+    case "geometry.polygon.self_intersection.skipped":
+    case "geometry.multipolygon.self_intersection.skipped":
+      return m.msg_validation_geometry_self_intersection_skipped(issue.params);
   }
 }

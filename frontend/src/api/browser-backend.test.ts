@@ -231,6 +231,73 @@ describe("overpassWayToFeature", () => {
     expect(feature?.properties["surface_type"]).toBe("SMA");
     expect(feature?.properties["road_speed_kph_inferred"]).toBe(true);
   });
+
+  /*
+   * Browser mode must answer the height question the way the Go importer does.
+   *
+   * It did not: it read only the `height` tag and fell back to a bare 9 m, so
+   * `building:levels` was ignored even where the way carried it, and nothing
+   * recorded that the number was assumed. A building's height reaches the
+   * line-of-sight test, so that was a computed-level difference between the two
+   * backends for one input.
+   */
+  const ring = [
+    { lon: 7, lat: 50 },
+    { lon: 7.001, lat: 50 },
+    { lon: 7.001, lat: 50.001 },
+    { lon: 7, lat: 50 },
+  ];
+
+  it("reads building:levels when the way carries no height tag", () => {
+    const feature = overpassWayToFeature({
+      type: "way",
+      id: 43,
+      tags: { building: "yes", "building:levels": "4" },
+      geometry: ring,
+    });
+
+    expect(feature?.properties["height_m"]).toBe(12);
+    expect(feature?.properties["height_source"]).toBeUndefined();
+  });
+
+  it("marks an assumed building height rather than passing it off as read", () => {
+    const feature = overpassWayToFeature({
+      type: "way",
+      id: 44,
+      tags: { building: "yes" },
+      geometry: ring,
+    });
+
+    expect(feature?.properties["height_m"]).toBe(9);
+    expect(feature?.properties["height_source"]).toBe("assumed");
+  });
+
+  it("marks an assumed barrier height too", () => {
+    const feature = overpassWayToFeature({
+      type: "way",
+      id: 45,
+      tags: { barrier: "wall" },
+      geometry: [
+        { lon: 7, lat: 50 },
+        { lon: 7.1, lat: 50.1 },
+      ],
+    });
+
+    expect(feature?.properties["height_m"]).toBe(2);
+    expect(feature?.properties["height_source"]).toBe("assumed");
+  });
+
+  it("leaves a read height unmarked", () => {
+    const feature = overpassWayToFeature({
+      type: "way",
+      id: 46,
+      tags: { building: "yes", height: "7.5 m" },
+      geometry: ring,
+    });
+
+    expect(feature?.properties["height_m"]).toBe(7.5);
+    expect(feature?.properties["height_source"]).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

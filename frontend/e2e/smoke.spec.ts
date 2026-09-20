@@ -78,6 +78,43 @@ test.describe("Language switch", () => {
   });
 });
 
+test.describe("Map canvas", () => {
+  test("the MapLibre container fills the map area", async ({ page }) => {
+    // The one assertion jsdom cannot make, and the bug it exists to catch is
+    // invisible to every other check in the suite.
+    //
+    // `map-view.tsx` mounts MapLibre into a `absolute inset-0` div inside a
+    // flex parent. MapLibre's own stylesheet declares
+    // `.maplibregl-map { position: relative }`, and Tailwind v4 puts every
+    // utility inside `@layer utilities` — so while that stylesheet was
+    // imported *unlayered* (from the component), it beat `.absolute`
+    // outright: unlayered rules win over layered ones whatever their
+    // specificity or order. The container then stopped being positioned,
+    // became an ordinary `flex: 0 1 auto` item and collapsed to zero width.
+    //
+    // Nothing failed. MapLibre initialised, fired `load`, took its layers and
+    // its `fitBounds` — into a viewport 0 px across. No error, no console
+    // output, no failing unit test: just a blank page where the basemap and
+    // the model should be. `globals.css` imports the stylesheet into a
+    // `vendor` layer to fix it, and only a real layout engine can tell.
+    await page.goto(appPath("/model"));
+    await waitForPage(page);
+
+    const container = page.locator(".maplibregl-map");
+    await expect(container).toBeVisible();
+
+    const box = await container.boundingBox();
+    // Against the parent rather than an absolute number, so the assertion
+    // holds at whatever viewport the run uses.
+    const parent = await container.locator("xpath=..").boundingBox();
+    if (box === null || parent === null) {
+      throw new Error("the map container has no layout box at all");
+    }
+    expect(box.width).toBeGreaterThan(parent.width - 1);
+    expect(box.height).toBeGreaterThan(parent.height - 1);
+  });
+});
+
 test.describe("Keyboard navigation", () => {
   test("the skip link is the first Tab stop and moves focus to the content", async ({
     page,

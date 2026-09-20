@@ -2375,7 +2375,7 @@ export function overpassWayToFeature(
     if (tags["building:levels"]) {
       properties["building:levels"] = tags["building:levels"];
     }
-    properties["height_m"] = parseTagHeight(tags["height"]) ?? 9;
+    applyOSMHeight(properties, osmBuildingHeight(tags));
     return {
       type: "Feature",
       id: featureId,
@@ -2390,7 +2390,7 @@ export function overpassWayToFeature(
   if (tags["barrier"]) {
     properties["kind"] = "barrier";
     properties["barrier"] = tags["barrier"];
-    properties["height_m"] = parseTagHeight(tags["height"]) ?? 2;
+    applyOSMHeight(properties, osmBarrierHeight(tags));
     return {
       type: "Feature",
       id: featureId,
@@ -2403,6 +2403,72 @@ export function overpassWayToFeature(
   }
 
   return null;
+}
+
+/**
+ * The OSM height rules, matching `osmimport.buildingHeight` and
+ * `osmimport.barrierHeight` in the Go importer.
+ *
+ * They are matched deliberately and they were not before: this path read only
+ * the `height` tag and fell back to a bare 9 m, so it ignored `building:levels`
+ * even where the way carried it — a four-storey building tagged with levels and
+ * no height came out at 9 m — and it marked nothing, so browser mode produced
+ * assumed heights that neither the model nor the reader could tell from
+ * measured ones. A building's height reaches the line-of-sight test, so that is
+ * a computed-level difference between the two backends for one input.
+ *
+ * This is the third place that has had to answer "how tall is an untagged
+ * building?", which is two too many. Phase F's kernel item — move the OSM
+ * mapping into the WASM kernel — is what removes this copy rather than keeping
+ * it in step by hand.
+ */
+const OSM_METERS_PER_LEVEL = 3;
+const OSM_DEFAULT_BUILDING_HEIGHT_M = 3 * OSM_METERS_PER_LEVEL;
+const OSM_DEFAULT_BARRIER_HEIGHT_M = 2;
+
+interface OSMHeight {
+  meters: number;
+  assumed: boolean;
+}
+
+function osmBuildingHeight(tags: Record<string, string>): OSMHeight {
+  const tagged = parseTagHeight(tags["height"]);
+  if (tagged != null && tagged > 0) {
+    return { meters: tagged, assumed: false };
+  }
+
+  const levels = Number.parseFloat(tags["building:levels"] ?? "");
+  if (Number.isFinite(levels) && levels > 0) {
+    return { meters: levels * OSM_METERS_PER_LEVEL, assumed: false };
+  }
+
+  return { meters: OSM_DEFAULT_BUILDING_HEIGHT_M, assumed: true };
+}
+
+function osmBarrierHeight(tags: Record<string, string>): OSMHeight {
+  const tagged = parseTagHeight(tags["height"]);
+  if (tagged != null && tagged > 0) {
+    return { meters: tagged, assumed: false };
+  }
+
+  return { meters: OSM_DEFAULT_BARRIER_HEIGHT_M, assumed: true };
+}
+
+/**
+ * Writes the height, and says so when it was assumed rather than read.
+ *
+ * Absence of `height_source` records no provenance rather than "read from OSM",
+ * which is the same reading the Go importer and the schema doc take.
+ */
+function applyOSMHeight(
+  properties: Record<string, unknown>,
+  height: OSMHeight,
+): void {
+  properties["height_m"] = height.meters;
+
+  if (height.assumed) {
+    properties["height_source"] = "assumed";
+  }
 }
 
 function parseTagHeight(value: string | undefined): number | null {

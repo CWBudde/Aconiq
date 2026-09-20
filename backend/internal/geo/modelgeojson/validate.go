@@ -475,6 +475,15 @@ const maxSelfIntersectionPoints = 10000
 
 // checkSelfIntersection runs the self-intersection test within its cost bound
 // and records the outcome on the report.
+//
+// `closed` decides the severity as well as the geometry, because the two follow
+// from each other. A ring's winding is consumed — point-in-polygon and the
+// screening crossing counts both read it — so a footprint that crosses itself
+// has no reliable inside, and refusing it is the honest answer. A line's winding
+// is consumed by nothing: a road drawn as one way that touches itself is a
+// roundabout, not a defect, and refusing it made the OSM import unsaveable over
+// geometry it holds correctly. 45 of 2397 ways in a Berlin extract are like
+// that, which is an ordinary proportion and not one a reader can fix.
 func checkSelfIntersection(points []point2, closed bool, code, id, message string, report *ValidationReport) {
 	if len(points) > maxSelfIntersectionPoints {
 		addWarning(report, code+".skipped", id,
@@ -483,9 +492,17 @@ func checkSelfIntersection(points []point2, closed bool, code, id, message strin
 		return
 	}
 
-	if hasSelfIntersection(points, closed) {
-		addError(report, code, id, message)
+	if !hasSelfIntersection(points, closed) {
+		return
 	}
+
+	if closed {
+		addError(report, code, id, message)
+
+		return
+	}
+
+	addWarning(report, code, id, message)
 }
 
 func hasSelfIntersection(points []point2, closed bool) bool {
@@ -560,12 +577,38 @@ func segmentsIntersect(a, b, c, d point2) bool {
 	return false
 }
 
-func orientation(a, b, c point2) int {
-	value := (b.y-a.y)*(c.x-b.x) - (b.x-a.x)*(c.y-b.y)
+// relativeEpsilon is the tolerance orientation applies to a cross product,
+// as a fraction of the magnitudes that produced it. It sits a few orders above
+// float64's own rounding, which leaves a genuinely collinear triple (~1e-16 of
+// scale) and a genuinely turning one (~1e-1) far apart.
+const relativeEpsilon = 1e-12
 
-	const epsilon = 1e-9
+// orientation classifies the turn at b along a → b → c: 0 collinear, 1 one way,
+// 2 the other.
+//
+// The tolerance is relative, and that is the whole point. The value is a cross
+// product, so its unit is the coordinate unit *squared*: one edge of a building
+// measures ~1e-4 in EPSG:4326 and ~10 in EPSG:25832, which puts the cross
+// product of two of them at ~1e-8 against ~1e2. The fixed 1e-9 this used to
+// compare against therefore answered "collinear" for nearly every pair of short
+// edges in degrees and for nearly none of the same building's in metres — one
+// footprint, two answers, decided by the CRS it happened to arrive in.
+//
+// A wrong "collinear" is not a near miss either, because it hands the decision
+// to onSegment, which is a bounding-box overlap test and sound only when the
+// triple really is collinear. So any two edges of a non-convex footprint whose
+// boxes overlapped were reported as crossing. On a 3198-feature Berlin extract
+// that was 219 of 631 buildings, every one of which is a simple polygon, and it
+// is why an OSM import could not be saved at all.
+func orientation(a, b, c point2) int {
+	abx, aby := b.x-a.x, b.y-a.y
+	bcx, bcy := c.x-b.x, c.y-b.y
+
+	value := aby*bcx - abx*bcy
+	tolerance := relativeEpsilon * (math.Abs(abx) + math.Abs(aby)) * (math.Abs(bcx) + math.Abs(bcy))
+
 	switch {
-	case math.Abs(value) <= epsilon:
+	case math.Abs(value) <= tolerance:
 		return 0
 	case value > 0:
 		return 1

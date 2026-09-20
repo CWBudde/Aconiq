@@ -1,4 +1,21 @@
 /*
+ * The cascade layers, declared before anything imports into them so the order
+ * is this file's decision rather than an accident of import order.
+ *
+ * `vendor` is the one that is not Tailwind's. Third-party CSS pulled in from a
+ * component — `import "maplibre-gl/dist/maplibre-gl.css"` — arrives *unlayered*,
+ * and unlayered rules beat every layered rule there is, specificity and source
+ * order included. So `.maplibregl-map { position: relative }` silently defeated
+ * the `absolute` on the element MapLibre is mounted into: the container stopped
+ * being positioned, became an ordinary `flex: 0 1 auto` item of its flex parent
+ * and collapsed to zero width. The map still initialised, still fired `load`,
+ * still took its layers and its `fitBounds` — into a viewport 0 px across, which
+ * throws nothing and logs nothing. Naming the layer here is what puts the
+ * utilities back on top.
+ */
+@layer theme, base, vendor, components, utilities;
+
+/*
  * Fonts are self-hosted: this is an offline-first tool and must not fetch
  * anything at runtime. Vite copies the woff2 files into dist/assets. Plain CSS
  * imports have to precede Tailwind's own @import.
@@ -12,6 +29,13 @@
 
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/*
+ * MapLibre's stylesheet, imported here rather than from `src/map/map-view.tsx`
+ * so that it lands in `vendor` instead of above the whole cascade. See the
+ * layer declaration at the top of this file.
+ */
+@import "maplibre-gl/dist/maplibre-gl.css" layer(vendor);
 
 @custom-variant dark (&:is(.dark *));
 

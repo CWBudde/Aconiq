@@ -1791,6 +1791,39 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
+- [x] **An OSM import saves, and the geometry check answers the same in every CRS**
+      (2026-09-20, `a309df0`/`f8ffc15`/`c37ed9f`). Four constraints stay live; the reasoning is in
+      those commits.
+      **`orientation`'s tolerance is relative, and must stay relative.** It compared a cross product
+      — an area, so the coordinate unit squared — against a fixed `1e-9`, which made one footprint
+      self-intersecting in EPSG:4326 and simple in EPSG:25832. A wrong "collinear" falls through to
+      `onSegment`, a bounding-box test sound only for a genuinely collinear triple, so the error is
+      not a near miss: 219 of 631 buildings in a Berlin extract, none of them self-intersecting.
+      **A ring's self-intersection is an error and a line's is a warning**, because a ring's winding
+      is read by point-in-polygon and the screening crossing counts and a line's is read by nothing.
+      A road drawn as one way that touches itself is a roundabout — 45 of 2397 ways in that extract.
+      **An assumed height must say so.** `osmimport` answers `defaultBuildingHeightM` for an
+      untagged building and marks the feature `height_source: "assumed"`, as it does for the
+      barriers it had been defaulting to 2 m silently. **Absence of that property records no
+      provenance**, not "read from OSM" — `soundplan_base_elevation_m`'s lesson. `modelgeojson` is
+      unchanged and still refuses `height_m == nil`; the assumption belongs to the importer.
+      **This entry's own earlier diagnosis was wrong twice**, and both errors changed the fix:
+      `validate.ts` had no geometry section rather than a laxer one, and `building.height.required`
+      agreed across both validators but was never reached because the normalizer invented a height
+      first. Read a claim about the two validators disagreeing as unproven until measured.
+- [x] **`osmimport` names itself, and an upstream failure says which one it was**
+      (2026-09-20, `a309df0`/`11af7fa`). Three constraints stay live.
+      **The User-Agent is load-bearing, not politeness.** overpass-api.de answers Go's default
+      `Go-http-client/1.1` with 406. go-overpass exposes no header hook, so the wrapping happens
+      inside `Fetch` over the `overpass.HTTPClient` it already takes — not at the call sites, since
+      neither the handler nor the CLI passes a client.
+      **`details.upstream_status` is what separates the three causes.** A blocked agent, a rate
+      limit and an outage have three different remedies and used to arrive as one sentence.
+      **The 502 branch has no integration test and should not grow one cheaply**: reaching it needs
+      an httptest server standing in for Overpass, and `validateOverpassEndpoint` admits neither
+      `127.0.0.1` nor `http`. The mapping is a pure function so it can be tested without weakening
+      the allowlist. Still open: the CLI classifies the failure `KindUserInput`, which decides the
+      exit code, and a 504 from a third party is not the user's input.
 - [x] **A raster byte write that hits quota is retried, and browser mode sweeps the byte records
       nothing names** (2026-09-19). Shipped together: the retry's intermediate state — bytes stored
       under a document that does not yet name them — is what the sweep reclaims. Both files are
@@ -1966,6 +1999,18 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
       exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
       each decision. `/api/v1/import/terrain` has generated types now and still no caller.
+- [ ] **The frontend validator is a second code list, and it has drifted once already.**
+      (2026-09-20) `model/validate.ts` and `geo/modelgeojson/validate.go` are two hand-maintained
+      vocabularies with no generator between them — `schema.ts` types `ValidationIssue.code` as an
+      open `string`, so nothing reconciles them — and the gap cost an OSM import the preview called
+      clean and the save refused. The self-intersection half is closed by a **port**
+      (`model/self-intersection.ts`), which is the same shape of answer that went stale the first
+      time. The standing fix is the rule `AGENTS.md` already states for `transform` and `contours`:
+      export validation from the WASM kernel so both targets read one severity table, in Go. It
+      needs `POST /api/v1/validate` as well, because http mode has no other route to it, and a
+      decision about running it per keystroke over the network rather than in-process. Still absent
+      from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
+      counts.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM; then move the kernel off the main thread — `backend/cmd/wasm/main.go` calls

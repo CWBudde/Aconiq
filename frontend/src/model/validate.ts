@@ -7,6 +7,11 @@ import type {
   ValidationReport,
 } from "./types";
 import { isGeometryCompatible } from "./types";
+import type { Point2D } from "./geometry";
+import {
+  hasSelfIntersection,
+  SELF_INTERSECTION_POINT_LIMIT,
+} from "./self-intersection";
 import {
   polygonParts,
   PROP_PARKING_FACILITY_TYPE,
@@ -80,6 +85,7 @@ export function validateProjectModel(
     ids.add(feature.id);
 
     validateFeature(feature, errors, warnings);
+    validateGeometry(feature, errors, warnings);
   }
 
   for (const receiver of receivers) {
@@ -191,6 +197,128 @@ function validateFeature(
       break;
     }
   }
+}
+
+/**
+ * Self-intersection, for every feature that carries a line or a ring.
+ *
+ * The browser had no geometry checks at all — not a laxer opinion, an absent
+ * one — which is how an import could be shown as clean in the preview and then
+ * refused by the save one screen later, with nothing earlier to explain it.
+ *
+ * The severities are the backend's rather than a second opinion: a ring that
+ * crosses itself has no reliable inside, because point-in-polygon and the
+ * screening crossing counts both read its winding, so the model is refused; a
+ * line's winding is read by nothing and a road drawn as one way that touches
+ * itself is a roundabout, so it is reported and kept. A Berlin OSM extract
+ * carries 45 of the latter across 2397 ways and none of the former.
+ *
+ * Coordinate finiteness, ring closure and minimum vertex counts are still the
+ * backend's alone. `normalize.ts` and the drawing tools do not produce them,
+ * so they are a narrower gap than this one was.
+ */
+function validateGeometry(
+  feature: ModelFeature,
+  errors: ValidationIssue[],
+  warnings: ValidationIssue[],
+): void {
+  const { id } = feature;
+
+  const report = (
+    code: ValidationCode,
+    points: Point2D[],
+    closed: boolean,
+  ): void => {
+    const intersects = hasSelfIntersection(points, closed);
+
+    if (intersects === null) {
+      warnings.push({
+        level: "warning",
+        code: `${code}.skipped` as ValidationCode,
+        featureId: id,
+        params: {
+          points: points.length,
+          limit: SELF_INTERSECTION_POINT_LIMIT,
+        },
+      } as ValidationIssue);
+      return;
+    }
+
+    if (!intersects) return;
+
+    // Closed decides the severity as well as the geometry; see the note above.
+    (closed ? errors : warnings).push({
+      level: closed ? "error" : "warning",
+      code,
+      featureId: id,
+      params: {},
+    } as ValidationIssue);
+  };
+
+  switch (feature.geometry.type) {
+    case "LineString": {
+      const line = parseLine(feature.geometry.coordinates);
+      if (line) report("geometry.linestring.self_intersection", line, false);
+      break;
+    }
+    case "MultiLineString": {
+      for (const line of parseLines(feature.geometry.coordinates)) {
+        report("geometry.multilinestring.self_intersection", line, false);
+      }
+      break;
+    }
+    case "Polygon":
+    case "MultiPolygon": {
+      const parts = polygonParts(feature);
+      if (!parts) break;
+
+      const code =
+        feature.geometry.type === "Polygon"
+          ? "geometry.polygon.self_intersection"
+          : "geometry.multipolygon.self_intersection";
+
+      for (const rings of parts) {
+        for (const ring of rings) {
+          report(code, ring, true);
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/** One line's positions, or null when the coordinates are not a line. */
+function parseLine(coordinates: unknown): Point2D[] | null {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return null;
+
+  const points: Point2D[] = [];
+  for (const position of coordinates) {
+    if (
+      !Array.isArray(position) ||
+      typeof position[0] !== "number" ||
+      typeof position[1] !== "number"
+    ) {
+      return null;
+    }
+    points.push({ x: position[0], y: position[1] });
+  }
+
+  return points;
+}
+
+/** Every member line of a MultiLineString that parses. */
+function parseLines(coordinates: unknown): Point2D[][] {
+  if (!Array.isArray(coordinates)) return [];
+
+  const lines: Point2D[][] = [];
+  for (const member of coordinates) {
+    const line = parseLine(member);
+    if (line) lines.push(line);
+  }
+
+  return lines;
 }
 
 /**

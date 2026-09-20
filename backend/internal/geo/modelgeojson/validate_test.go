@@ -1,6 +1,7 @@
 package modelgeojson
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -375,4 +376,120 @@ func TestValidateUnknownKindMessageListsEveryKind(t *testing.T) {
 			t.Fatalf("kind rejection message %q does not mention %q", message, kind)
 		}
 	}
+}
+
+// A road drawn as one way that touches itself is a roundabout, not a defect,
+// and nothing in the model reads a line's winding — so it is reported and the
+// model still saves. 45 of 2397 ways in a Berlin OSM extract are like this.
+func TestValidateSelfIntersectingLineIsAWarning(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "s-1", "kind": "source", "source_type": "line"},
+      "geometry": {"type": "LineString", "coordinates": [[0,0],[10,10],[0,10],[10,0]]}
+    }
+  ]
+}`)
+
+	model, err := Normalize(payload, "EPSG:4326", "input.geojson")
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	report := Validate(model)
+	if !report.Valid {
+		t.Fatalf("a self-intersecting line must not refuse the model, got %#v", report.Errors)
+	}
+
+	if !hasCode(report.Warnings, "geometry.linestring.self_intersection") {
+		t.Fatalf("expected a self-intersection warning, got %#v", report.Warnings)
+	}
+}
+
+// The same footprint must get the same answer whichever CRS it arrives in.
+//
+// It did not. orientation compared a cross product — an area, so the coordinate
+// unit squared — against a fixed 1e-9. That is large next to two short edges in
+// degrees (~1e-10) and negligible next to the same two in metres (~1e0), so the
+// predicate answered "collinear" in one CRS and "turning" in the other. A false
+// "collinear" then falls through to onSegment, which is a bounding-box test and
+// sound only when the triple really is collinear, and any two edges of a
+// non-convex footprint whose boxes overlap read as crossing.
+//
+// The shape below is a rotated L: small, because a synthetic reproducer needs
+// short edges to get the cross product down there. Real OSM footprints reach
+// the same place at ordinary sizes by having many more vertices — it flagged
+// 219 of 631 buildings in a Berlin extract, every one of them a simple polygon,
+// and that is why an OSM import could not be saved at all.
+func TestValidateSelfIntersectionIsScaleInvariant(t *testing.T) {
+	t.Parallel()
+
+	shape := [][2]float64{{0, 0}, {3, 0}, {3, 1}, {1, 1}, {1, 3}, {0, 3}, {0, 0}}
+
+	const rotation = 31 * math.Pi / 180
+
+	ring := func(unit, originX, originY float64) []point2 {
+		out := make([]point2, 0, len(shape))
+		for _, p := range shape {
+			x := p[0]*math.Cos(rotation) - p[1]*math.Sin(rotation)
+			y := p[0]*math.Sin(rotation) + p[1]*math.Cos(rotation)
+			out = append(out, point2{x: originX + x*unit, y: originY + y*unit})
+		}
+
+		return out
+	}
+
+	const degreeUnit = 1e-5
+
+	for _, tc := range []struct {
+		name string
+		ring []point2
+	}{
+		// EPSG:4326 near Berlin, and the same footprint in EPSG:25832 metres.
+		{name: "degrees", ring: ring(degreeUnit, 13.38, 52.51)},
+		{name: "metres", ring: ring(degreeUnit*111320, 390000, 5819000)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if hasSelfIntersection(tc.ring, true) {
+				t.Errorf("a simple L-shaped footprint was reported as self-intersecting in %s", tc.name)
+			}
+		})
+	}
+}
+
+// A genuine bow-tie must still be caught at building scale, where the whole
+// ring spans a ten-thousandth of a degree — the relative tolerance has to be
+// tight enough to see a crossing that small.
+func TestValidateSelfIntersectionStillCaughtAtBuildingScale(t *testing.T) {
+	t.Parallel()
+
+	const s = 1e-4
+
+	ring := []point2{
+		{x: 13.38, y: 52.51},
+		{x: 13.38 + s, y: 52.51 + s},
+		{x: 13.38 + s, y: 52.51},
+		{x: 13.38, y: 52.51 + s},
+		{x: 13.38, y: 52.51},
+	}
+
+	if !hasSelfIntersection(ring, true) {
+		t.Error("a bow-tie footprint the size of a real building was not detected")
+	}
+}
+
+func hasCode(issues []ValidationIssue, code string) bool {
+	for _, issue := range issues {
+		if issue.Code == code {
+			return true
+		}
+	}
+
+	return false
 }

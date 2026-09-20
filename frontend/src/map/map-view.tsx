@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { Map, MapMouseEvent, MapGeoJSONFeature } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { Button } from "@/ui/components/button";
 import { Card } from "@/ui/components/card";
 import { m } from "@/i18n/messages";
