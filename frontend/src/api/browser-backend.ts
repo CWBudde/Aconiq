@@ -1890,6 +1890,11 @@ async function computeRLS19Road(
         `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
         `${startedAt} rls19_buildings=${String(buildings.length)}`,
         `${startedAt} receivers=${String(gridReceivers.length)}`,
+        ...(maskedCells.length > 0
+          ? [
+              `${startedAt} grid_masked_cells=${String(maskedCells.length)} (receivers inside a building footprint; computed, written to the raster as nodata)`,
+            ]
+          : []),
         projection.applied
           ? `${startedAt} compute_crs=${projection.computeCRS} (projected from ${projection.projectCRS})`
           : `${startedAt} compute_crs=${projection.computeCRS}`,

@@ -575,6 +575,12 @@ describe.skipIf(skipReason !== null)(
         receiver_count: 121,
         grid_masked_cells: 16,
       });
+
+      // run.log says it too, in the words the CLI's run.log uses.
+      const log = await browserBackend.getRunLog(run.id);
+      expect(
+        log.lines.some((line) => line.includes(" grid_masked_cells=16 (")),
+      ).toBe(true);
     });
   },
 );
