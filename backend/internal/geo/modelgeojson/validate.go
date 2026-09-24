@@ -505,6 +505,24 @@ func checkSelfIntersection(points []point2, closed bool, code, id, message strin
 	addWarning(report, code, id, message)
 }
 
+// RingSelfIntersects reports whether a closed ring of [x, y] pairs crosses
+// itself, by exactly the test Validate refuses a polygon for. An importer that
+// would rather drop one broken footprint than have Validate refuse the whole
+// model asks this first. Rings above the cost bound Validate applies are
+// reported as not intersecting, as Validate itself does.
+func RingSelfIntersects(ring [][2]float64) bool {
+	if len(ring) > maxSelfIntersectionPoints {
+		return false
+	}
+
+	points := make([]point2, len(ring))
+	for i, p := range ring {
+		points[i] = point2{x: p[0], y: p[1]}
+	}
+
+	return hasSelfIntersection(points, true)
+}
+
 func hasSelfIntersection(points []point2, closed bool) bool {
 	if len(points) < 4 {
 		return false

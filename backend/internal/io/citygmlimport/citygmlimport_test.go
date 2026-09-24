@@ -387,3 +387,127 @@ func TestImportReportPopulatedWhenAllSkipped(t *testing.T) {
 		t.Fatalf("details: want 1 entry, got %d", len(r.Details))
 	}
 }
+
+// LGLN's LoD2 tiles are CityGML 1.0 and split most buildings into parts, each
+// with its own height. Every part must become a feature, the container
+// building must not be reported as skipped, and the courtyard of a plain
+// building must survive as a hole.
+func TestReadCityGML10BuildingParts(t *testing.T) {
+	t.Parallel()
+
+	ground := func(ring string) string {
+		return `<bldg:boundedBy><bldg:GroundSurface><bldg:lod2MultiSurface><gml:MultiSurface><gml:surfaceMember>
+          <gml:Polygon>` + ring + `</gml:Polygon>
+        </gml:surfaceMember></gml:MultiSurface></bldg:lod2MultiSurface></bldg:GroundSurface></bldg:boundedBy>`
+	}
+	exterior := func(x0, y0, x1, y1 string) string {
+		return `<gml:exterior><gml:LinearRing><gml:posList srsDimension="3">` +
+			x0 + ` ` + y0 + ` 50 ` + x1 + ` ` + y0 + ` 50 ` + x1 + ` ` + y1 + ` 50 ` + x0 + ` ` + y1 + ` 50 ` + x0 + ` ` + y0 + ` 50` +
+			`</gml:posList></gml:LinearRing></gml:exterior>`
+	}
+
+	payload := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<core:CityModel xmlns:core="http://www.opengis.net/citygml/1.0"
+                xmlns:bldg="http://www.opengis.net/citygml/building/1.0"
+                xmlns:gml="http://www.opengis.net/gml">
+  <gml:boundedBy><gml:Envelope srsName="urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH" srsDimension="3">
+    <gml:lowerCorner>550000 5803000 40</gml:lowerCorner><gml:upperCorner>551000 5804000 90</gml:upperCorner>
+  </gml:Envelope></gml:boundedBy>
+  <core:cityObjectMember>
+    <bldg:Building gml:id="DENI_parent">
+      <bldg:function>31001_1000</bldg:function>
+      <bldg:consistsOfBuildingPart><bldg:BuildingPart gml:id="DENI_part_a">
+        <bldg:measuredHeight uom="urn:adv:uom:m">18.5</bldg:measuredHeight>
+        ` + ground(exterior("550100", "5803100", "550110", "5803110")) + `
+      </bldg:BuildingPart></bldg:consistsOfBuildingPart>
+      <bldg:consistsOfBuildingPart><bldg:BuildingPart gml:id="DENI_part_b">
+        <bldg:measuredHeight uom="urn:adv:uom:m">7.25</bldg:measuredHeight>
+        ` + ground(exterior("550110", "5803100", "550120", "5803110")) + `
+      </bldg:BuildingPart></bldg:consistsOfBuildingPart>
+    </bldg:Building>
+  </core:cityObjectMember>
+  <core:cityObjectMember>
+    <bldg:Building gml:id="DENI_courtyard">
+      <bldg:measuredHeight uom="urn:adv:uom:m">12</bldg:measuredHeight>
+      ` + ground(exterior("550200", "5803200", "550240", "5803240")+
+		`<gml:interior><gml:LinearRing><gml:posList srsDimension="3">550210 5803210 50 550210 5803230 50 550230 5803230 50 550230 5803210 50 550210 5803210 50</gml:posList></gml:LinearRing></gml:interior>`) + `
+    </bldg:Building>
+  </core:cityObjectMember>
+</core:CityModel>`)
+
+	result, err := ReadWithCRS(payload)
+	if err != nil {
+		t.Fatalf("ReadWithCRS: %v", err)
+	}
+
+	if result.EPSGCode != 25832 {
+		t.Errorf("EPSG = %d, want 25832", result.EPSGCode)
+	}
+
+	if result.Report.Total != 3 || result.Report.Imported != 3 || result.Report.Skipped != 0 {
+		t.Errorf("report = %+v, want 3 candidates, all imported", result.Report)
+	}
+
+	want := []struct {
+		id     string
+		height float64
+		parent any
+		rings  int
+	}{
+		{"DENI_part_a", 18.5, "DENI_parent", 1},
+		{"DENI_part_b", 7.25, "DENI_parent", 1},
+		{"DENI_courtyard", 12, nil, 2},
+	}
+
+	if len(result.Collection.Features) != len(want) {
+		t.Fatalf("features = %d, want %d", len(result.Collection.Features), len(want))
+	}
+
+	for i, w := range want {
+		props := result.Collection.Features[i].Properties
+		if props["id"] != w.id || props["height_m"] != w.height || props["citygml_parent_id"] != w.parent {
+			t.Errorf("feature %d properties = %v, want id %s height %g parent %v", i, props, w.id, w.height, w.parent)
+		}
+
+		rings, _ := result.Collection.Features[i].Geometry.Coordinates.([]any)
+		if len(rings) != w.rings {
+			t.Errorf("feature %d has %d rings, want %d", i, len(rings), w.rings)
+		}
+	}
+}
+
+// A footprint that doubles back over itself would make validation refuse the
+// whole import; the importer skips that one building and reports why.
+func TestReadSkipsSelfIntersectingFootprint(t *testing.T) {
+	t.Parallel()
+
+	building := func(id, posList string) string {
+		return `<core:cityObjectMember><bldg:Building gml:id="` + id + `">
+      <bldg:measuredHeight>9</bldg:measuredHeight>
+      <bldg:boundedBy><bldg:GroundSurface><bldg:lod2MultiSurface><gml:MultiSurface><gml:surfaceMember>
+        <gml:Polygon><gml:exterior><gml:LinearRing><gml:posList srsDimension="2">` + posList + `</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>
+      </gml:surfaceMember></gml:MultiSurface></bldg:lod2MultiSurface></bldg:GroundSurface></bldg:boundedBy>
+    </bldg:Building></core:cityObjectMember>`
+	}
+
+	payload := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0"
+                xmlns:bldg="http://www.opengis.net/citygml/building/2.0"
+                xmlns:gml="http://www.opengis.net/gml">
+  ` + building("bowtie", "0 0 10 10 10 0 0 10 0 0") + `
+  ` + building("square", "20 0 30 0 30 10 20 10 20 0") + `
+</core:CityModel>`)
+
+	result, err := ReadWithCRS(payload)
+	if err != nil {
+		t.Fatalf("ReadWithCRS: %v", err)
+	}
+
+	if len(result.Collection.Features) != 1 || result.Collection.Features[0].Properties["id"] != "square" {
+		t.Fatalf("features = %+v, want only the square", result.Collection.Features)
+	}
+
+	if len(result.Report.Details) != 1 || result.Report.Details[0].Reason != SkipSelfIntersects {
+		t.Errorf("skipped = %+v, want bowtie for %q", result.Report.Details, SkipSelfIntersects)
+	}
+}
