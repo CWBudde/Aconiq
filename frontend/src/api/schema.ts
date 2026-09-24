@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import/lgln": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import LGLN LoD2 buildings for a WGS84 bounding box
+         * @description Finds the LGLN Niedersachsen LoD2 CityGML tiles intersecting the box, downloads them into .noise/cache/lgln (reused on the next request), and answers with one building per CityGML Building or BuildingPart whose footprint centroid lies in the box, in EPSG:4326. Nothing is saved to the model.
+         */
+        post: operations["importLGLN"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/import/osm": {
         parameters: {
             query?: never;
@@ -336,6 +356,28 @@ export interface components {
             /** Format: date-time */
             time: string;
             version: string;
+        };
+        ImportLGLNRequest: {
+            east: number;
+            north: number;
+            south: number;
+            west: number;
+        };
+        ImportLGLNResponse: {
+            /** @description Source note the licence (CC BY 4.0) requires wherever the buildings are shown. */
+            attribution: string;
+            features: Record<string, never>[];
+            /** @description Buildings the parser left out, counted by reason. */
+            skipped: {
+                [key: string]: number;
+            };
+            tiles: {
+                /** Format: date */
+                date: string;
+                id: string;
+            }[];
+            /** @enum {string} */
+            type: "FeatureCollection";
         };
         ImportOSMRequest: {
             east: number;
@@ -701,6 +743,96 @@ export interface operations {
             };
             /** @description Method not allowed */
             405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    importLGLN: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLGLNRequest"];
+            };
+        };
+        responses: {
+            /** @description LGLN buildings as a GeoJSON feature collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportLGLNResponse"];
+                };
+            };
+            /** @description Invalid bounding box, a box outside Lower Saxony, or more tiles than one request may download (`lgln_too_many_tiles`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body was not sent as the media type this endpoint parses (`unsupported_media_type`) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The LGLN service could not be used (`lgln_unavailable`) */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
