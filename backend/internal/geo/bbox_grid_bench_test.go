@@ -125,76 +125,59 @@ func benchGridCases(b *testing.B) []benchGridCase {
 	return cases
 }
 
-// benchCollectors is the pair every grid benchmark runs, so the bitset emit
-// and the stamp-and-sort path it replaces are measured over identical inputs
-// in one run. Drop the legacy arm when the legacy collector goes.
-var benchCollectors = []struct {
-	name   string
-	legacy bool
-}{
-	{name: "collect=bitset", legacy: false},
-	{name: "collect=legacy", legacy: true},
-}
-
 func BenchmarkBBoxGridQuery(b *testing.B) {
 	for _, tc := range benchGridCases(b) {
-		for _, collector := range benchCollectors {
-			b.Run(tc.name+"/"+collector.name, func(b *testing.B) {
-				cursor := tc.grid.newCursor(collector.legacy)
-				buffer := make([]int, 0, 1024)
+		b.Run(tc.name, func(b *testing.B) {
+			cursor := tc.grid.NewCursor()
+			buffer := make([]int, 0, 1024)
 
-				b.ReportAllocs()
-				b.ResetTimer()
+			b.ReportAllocs()
+			b.ResetTimer()
 
-				for i := range b.N {
-					buffer = cursor.Query(tc.queries[i%len(tc.queries)], buffer[:0])
-				}
+			for i := range b.N {
+				buffer = cursor.Query(tc.queries[i%len(tc.queries)], buffer[:0])
+			}
 
-				runtimeSink = len(buffer)
-			})
-		}
+			runtimeSink = len(buffer)
+		})
 	}
 }
 
 func BenchmarkBBoxGridQuerySegment(b *testing.B) {
 	for _, tc := range benchGridCases(b) {
-		for _, collector := range benchCollectors {
-			b.Run(tc.name+"/"+collector.name, func(b *testing.B) {
-				cursor := tc.grid.newCursor(collector.legacy)
-				buffer := make([]int, 0, 1024)
+		b.Run(tc.name, func(b *testing.B) {
+			cursor := tc.grid.NewCursor()
+			buffer := make([]int, 0, 1024)
 
-				b.ReportAllocs()
-				b.ResetTimer()
+			b.ReportAllocs()
+			b.ResetTimer()
 
-				for i := range b.N {
-					segment := tc.segments[i%len(tc.segments)]
-					buffer = cursor.QuerySegment(segment[0], segment[1], 1e-3, buffer[:0])
-				}
+			for i := range b.N {
+				segment := tc.segments[i%len(tc.segments)]
+				buffer = cursor.QuerySegment(segment[0], segment[1], 1e-3, buffer[:0])
+			}
 
-				runtimeSink = len(buffer)
-			})
-		}
+			runtimeSink = len(buffer)
+		})
 	}
 }
 
 func BenchmarkBBoxGridQueryShadow(b *testing.B) {
 	for _, tc := range benchGridCases(b) {
-		for _, collector := range benchCollectors {
-			b.Run(tc.name+"/"+collector.name, func(b *testing.B) {
-				cursor := tc.grid.newCursor(collector.legacy)
-				buffer := make([]int, 0, 1024)
+		b.Run(tc.name, func(b *testing.B) {
+			cursor := tc.grid.NewCursor()
+			buffer := make([]int, 0, 1024)
 
-				b.ReportAllocs()
-				b.ResetTimer()
+			b.ReportAllocs()
+			b.ResetTimer()
 
-				for i := range b.N {
-					shadow := tc.shadows[i%len(tc.shadows)]
-					buffer = cursor.QueryShadow(&shadow, 1e-3, buffer[:0])
-				}
+			for i := range b.N {
+				shadow := tc.shadows[i%len(tc.shadows)]
+				buffer = cursor.QueryShadow(&shadow, 1e-3, buffer[:0])
+			}
 
-				runtimeSink = len(buffer)
-			})
-		}
+			runtimeSink = len(buffer)
+		})
 	}
 }
 

@@ -200,17 +200,6 @@ func gridAxisIndex(offset, cellSize float64, count int) int {
 	return int(cell)
 }
 
-// bboxGridUseBitset selects the candidate collector a cursor is built with.
-//
-// The bitset collector marks one bit per item and emits the marks in index
-// order; the legacy collector it replaced stamped a uint32 generation per item,
-// concatenated the cells' hits in walk order and sorted the tail. Both are
-// still here only so TestBBoxGridCollectorsAgree can hold one against the other
-// over a randomised corpus. Once that has been read and believed, delete this
-// const, BBoxGridCursor.legacy, the seen/generation fields, nextGeneration and
-// the legacy branches in collect and finish — all in one commit.
-const bboxGridUseBitset = true
-
 // BBoxGridCursor is one goroutine's view of a grid. It carries the scratch a
 // query needs — the per-item marks — so that the query itself allocates
 // nothing and the grid stays shareable.
@@ -250,53 +239,25 @@ type BBoxGridCursor struct {
 	// loTouched and hiTouched bound the summary words this query has written,
 	// so the scan starts and stops at the marks instead of at the array.
 	loTouched, hiTouched int
-
-	// legacy selects the pre-bitset collector; see bboxGridUseBitset. Under it
-	// seen[i] == generation means item i has been tested in the current query.
-	legacy     bool
-	seen       []uint32
-	generation uint32
 }
 
 // NewCursor returns a cursor over this grid, or nil for a nil grid so that a
 // caller can hold the result unconditionally.
 func (g *BBoxGrid) NewCursor() *BBoxGridCursor {
-	return g.newCursor(!bboxGridUseBitset)
-}
-
-// newCursor builds a cursor over either collector. Tests reach for it to run
-// the two against each other; production goes through NewCursor.
-func (g *BBoxGrid) newCursor(legacy bool) *BBoxGridCursor {
 	if g == nil {
 		return nil
-	}
-
-	cursor := &BBoxGridCursor{
-		grid:      g,
-		marks:     nil,
-		touched:   nil,
-		loTouched: 0,
-		hiTouched: -1,
-		legacy:    legacy,
-		seen:      nil,
-
-		generation: 0,
-	}
-
-	if legacy {
-		cursor.seen = make([]uint32, len(g.boxes))
-
-		return cursor
 	}
 
 	words := (len(g.boxes) + 63) / 64
 	summary := (words + 63) / 64
 
-	cursor.marks = make([]uint64, 2*words)
-	cursor.touched = make([]uint64, summary)
-	cursor.loTouched = summary
-
-	return cursor
+	return &BBoxGridCursor{
+		grid:      g,
+		marks:     make([]uint64, 2*words),
+		touched:   make([]uint64, summary),
+		loTouched: summary,
+		hiTouched: -1,
+	}
 }
 
 // fill lays out the cell lists. It counts first and places second so that the
@@ -375,27 +336,25 @@ func (c *BBoxGridCursor) Query(q BBox, dst []int) []int {
 
 	// A query reaching across most of the grid is cheaper answered by walking
 	// the items than by walking the cells: the cell lists then hold every item
-	// several times over, so the walk pays for a deduplication and a sort it
-	// can avoid. Walking items answers ascending by construction.
+	// several times over, so the walk pays for a deduplication and an emit
+	// pass it can avoid. Walking items answers ascending by construction.
 	if 2*(x1-x0+1)*(y1-y0+1) >= len(grid.boxes) {
 		return grid.scanAll(q, dst)
 	}
 
 	c.beginQuery()
 
-	start := len(dst)
-
 	for y := y0; y <= y1; y++ {
 		row := y * grid.nx
 		for x := x0; x <= x1; x++ {
 			cell := row + x
-			dst = c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], q, dst)
+			c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], q)
 		}
 	}
 
-	dst = c.collect(grid.wide, q, dst)
+	c.collect(grid.wide, q)
 
-	return c.finish(start, dst)
+	return c.finish(dst)
 }
 
 // shadowRowLimit is how many grid rows a shadow query will clip one at a
@@ -438,8 +397,6 @@ func (c *BBoxGridCursor) QueryShadow(shadow *SegmentShadow, marginM float64, dst
 
 	c.beginQuery()
 
-	start := len(dst)
-
 	for y := y0; y <= y1; y++ {
 		low := grid.bounds.MinY + float64(y)*grid.cellSize
 
@@ -457,13 +414,13 @@ func (c *BBoxGridCursor) QueryShadow(shadow *SegmentShadow, marginM float64, dst
 
 		for x := x0; x <= x1; x++ {
 			cell := row + x
-			dst = c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], full, dst)
+			c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], full)
 		}
 	}
 
-	dst = c.collect(grid.wide, full, dst)
+	c.collect(grid.wide, full)
 
-	return c.finish(start, dst)
+	return c.finish(dst)
 }
 
 // QuerySegment appends, in ascending order, the index of every indexed box
@@ -499,8 +456,6 @@ func (c *BBoxGridCursor) QuerySegment(p, q Point2D, marginM float64, dst []int) 
 
 	c.beginQuery()
 
-	start := len(dst)
-
 	y0 := gridAxisIndex(bounds.MinY-grid.bounds.MinY, grid.cellSize, grid.ny)
 	y1 := gridAxisIndex(bounds.MaxY-grid.bounds.MinY, grid.cellSize, grid.ny)
 
@@ -519,13 +474,13 @@ func (c *BBoxGridCursor) QuerySegment(p, q Point2D, marginM float64, dst []int) 
 
 		for x := x0; x <= x1; x++ {
 			cell := row + x
-			dst = c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], bounds, dst)
+			c.collect(grid.items[grid.starts[cell]:grid.starts[cell+1]], bounds)
 		}
 	}
 
-	dst = c.collect(grid.wide, bounds, dst)
+	c.collect(grid.wide, bounds)
 
-	return c.finish(start, dst)
+	return c.finish(dst)
 }
 
 // segmentSpanInBand returns the x extent of the part of segment [p,q] whose y
@@ -577,15 +532,9 @@ func (c *BBoxGridCursor) Ready() bool {
 // beginQuery resets the per-query scratch. Every early return in a query — an
 // unusable cursor, a degenerate or disjoint query box, an unreachable shadow,
 // the scanAll shortcut, QueryShadow's delegation past shadowRowLimit — must
-// come before this call, exactly as it came before nextGeneration: a walk that
-// marks nothing must also leave nothing behind.
+// come before this call: a walk that marks nothing must also leave nothing
+// behind.
 func (c *BBoxGridCursor) beginQuery() {
-	if c.legacy {
-		c.nextGeneration()
-
-		return
-	}
-
 	// An empty [loTouched, hiTouched] range. finish clears every word it
 	// visits, so marks and touched are already zero on entry and only the
 	// bounds need resetting.
@@ -594,28 +543,9 @@ func (c *BBoxGridCursor) beginQuery() {
 }
 
 // collect takes one cell list — or the wide list — through the Intersects
-// test, skipping the items this query has already tested.
-//
-// Under the bitset collector nothing is appended and dst comes back unchanged;
-// the answer is emitted by finish. Returning dst anyway is what lets the three
-// query walks stay one body across both collectors.
-func (c *BBoxGridCursor) collect(list []int32, q BBox, dst []int) []int {
-	if c.legacy {
-		for _, item := range list {
-			if c.seen[item] == c.generation {
-				continue
-			}
-
-			c.seen[item] = c.generation
-
-			if c.grid.boxes[item].Intersects(q) {
-				dst = append(dst, int(item))
-			}
-		}
-
-		return dst
-	}
-
+// test, skipping the items this query has already tested. It only marks; the
+// answer is emitted by finish.
+func (c *BBoxGridCursor) collect(list []int32, q BBox) {
 	for _, item := range list {
 		word := int(item) >> 6
 		slot := word << 1 // The tested word; slot|1 is the answered word.
@@ -649,38 +579,25 @@ func (c *BBoxGridCursor) collect(list []int32, q BBox, dst []int) []int {
 			c.marks[slot|1] |= bit
 		}
 	}
-
-	return dst
 }
 
 // finish turns the marks a walk left into the query's answer, appended to dst
-// in ascending item order, and returns the extended slice. start is where this
-// query's own output begins; everything before it is the caller's and is never
-// read or moved.
+// in ascending item order, and returns the extended slice. Everything already
+// in dst is the caller's and is never read or moved.
 //
-// The bitset path emits nothing that the sort it replaces did not, in the order
-// that sort produced, and the two claims come out of the same property: bit
-// order is item order. Both levels are scanned low to high and TrailingZeros64
-// takes the lowest set bit first, so the nested walk visits summary words, then
-// item words, then items, each ascending — which composes to items ascending,
-// the unique arrangement slices.Sort left behind. The walk's own order never
-// reaches the output, and the duplicates the sort had to carry are the ones the
-// tested bit already suppressed. The set is likewise unchanged: a mark is set on
-// an item's first sighting and only ever suppresses a repeat, never a first
-// occurrence, and Intersects still runs exactly once per distinct candidate.
-// That it now runs in a different order is immaterial — it is a pure predicate
-// over one box and the query.
+// The answer is ascending and duplicate-free because bit order is item order.
+// Both levels are scanned low to high and TrailingZeros64 takes the lowest set
+// bit first, so the nested walk visits summary words, then item words, then
+// items, each ascending — which composes to items ascending. The walk's own
+// order never reaches the output, and a repeat sighting was already suppressed
+// by the tested bit. A mark is set on an item's first sighting and only ever
+// suppresses a repeat, never a first occurrence, so Intersects runs exactly
+// once per distinct candidate; the order it runs in is immaterial, since it is
+// a pure predicate over one box and the query.
 //
-// The uint32 generation's wraparound case goes with the legacy path and is not
-// replaced by a wider counter: there is no counter left to wrap, because the
-// emit pass clears every word it reads and hands the next query a zeroed bitset.
-func (c *BBoxGridCursor) finish(start int, dst []int) []int {
-	if c.legacy {
-		slices.Sort(dst[start:])
-
-		return dst
-	}
-
+// There is no per-query counter to wrap: the emit pass clears every word it
+// reads and hands the next query a zeroed bitset.
+func (c *BBoxGridCursor) finish(dst []int) []int {
 	for summary := c.loTouched; summary <= c.hiTouched; summary++ {
 		words := c.touched[summary]
 		c.touched[summary] = 0
@@ -703,19 +620,4 @@ func (c *BBoxGridCursor) finish(start int, dst []int) []int {
 	}
 
 	return dst
-}
-
-// nextGeneration advances the legacy stamp, wiping the stamps on the one query
-// in four billion that would otherwise wrap onto a live value.
-func (c *BBoxGridCursor) nextGeneration() {
-	c.generation++
-	if c.generation != 0 {
-		return
-	}
-
-	for i := range c.seen {
-		c.seen[i] = 0
-	}
-
-	c.generation = 1
 }

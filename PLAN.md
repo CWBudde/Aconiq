@@ -2163,12 +2163,6 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       closing it means mirroring barriers into the unfolded frame. It is the change in this area
       with a sentence of the standard behind it. Likewise per-facade rather than per-reflector
       exclusion in `dropExcludedBarriers`, which closes deviation 2.
-- [ ] **Delete the pre-bitset grid collector.** `bboxGridUseBitset`,
-      `BBoxGridCursor.legacy`/`seen`/`generation`, `nextGeneration`, the legacy branches in
-      `collect` and `finish`, the `collect=legacy` benchmark arm and the two `CollectorsAgree`
-      tests. It is scaffolding that exists so the bitset could be proven equal to what it
-      replaced, and production never allocates it — but it is a second implementation of a
-      contract, and those go stale.
 - [ ] **Send a receiver grid to the kernel as a descriptor, not as JSON objects.** A
       10 000-receiver run stringifies ~875 KB in and parses ~1.48 MB back, four full passes, all
       on the main thread at the two moments the UI most needs to be responsive. The receivers are
