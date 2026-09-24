@@ -37,7 +37,7 @@ Status date: 2026-03-06
 Implemented in `backend/internal/report/results`:
 
 - Metadata: width, height, bands, nodata, units, band names, CRS, georeference
-- Indexing: `At(x,y,band)`, `Set(x,y,band,value)`
+- Indexing: `At(x,y,band)`, `Set(x,y,band,value)`, and `SetReceiver(layout,index,values...)` for a grid run's receivers
 - Utilities: `Fill`, `Values`, validation
 
 Persistence files:
@@ -56,6 +56,27 @@ writing one, and `LoadRaster` checks the file is exactly `cell_count * 8` bytes.
 Row 0 is the **southernmost** row, because `geo.GridReceiverSet.Generate` walks
 Y ascending and the raster is laid out in the order its receivers were
 generated. The sidecar says so rather than leaving it to be known; see below.
+
+### Nodata cells in a grid raster
+
+A cell holding the sidecar's `nodata` value (`-9999`) carries no level. In an
+automatic receiver grid that is the cell of a receiver standing **strictly inside
+a building footprint**: a level there is not an Immissionsort, and a contour
+traced through it would describe nothing. Such a receiver is still computed and
+still present in the receiver table, in its row — so the table keeps one row per
+cell, `output_hash` (computed over the table) is unaffected, and the raster keeps
+its shape. `run-summary.json` carries the count as `grid_masked_cells`, and only
+when it is non-zero.
+
+A receiver on a facade or a courtyard edge is not masked, nor is one inside a
+courtyard. Both targets mask through one function, `geo.MaskPointsInFootprints`
+— the CLI directly, the browser through the WASM kernel's `maskFootprints` — so
+they cannot disagree on a cell. Writers set cells through
+`Raster.SetReceiver`, which applies the layout's mask
+(`GridLayout.NoDataCells`).
+
+Contours skip any cell with a nodata corner, COG overviews average around
+nodata, and the map draws it transparent.
 
 ### Raster sidecar — where the cells are
 

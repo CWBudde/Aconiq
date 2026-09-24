@@ -26,6 +26,8 @@ import type {
   ComputeRequest,
   ContourRequest,
   ContourResult,
+  FootprintMaskRequest,
+  FootprintMaskResponse,
   PropagationConfig,
   ReceiverOutput,
   TerrainInfo,
@@ -363,6 +365,18 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "transform"),
     ) as TransformResponse;
+  }
+
+  async maskFootprints(
+    req: FootprintMaskRequest,
+  ): Promise<FootprintMaskResponse> {
+    const value = await this.call(
+      (id) => ({ id, method: "maskFootprints", json: JSON.stringify(req) }),
+      [],
+    );
+    return JSON.parse(
+      KernelClient.json(value, "maskFootprints"),
+    ) as FootprintMaskResponse;
   }
 
   async contours(

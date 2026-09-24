@@ -75,6 +75,36 @@ type GridLayout struct {
 	Height int
 	CRS    string
 	Geo    *Georeference
+
+	// NoDataCells marks the cells a raster writer must leave at the nodata
+	// sentinel, indexed as the receivers are (row-major, south-up). It is
+	// either empty or Width*Height long. Today it marks grid receivers that
+	// stand inside a building footprint: they are not Immissionsorte.
+	//
+	// A masked receiver is still computed and still in the receiver table.
+	// Dropping it instead would punch a hole in the receiver slice, and the
+	// grid would stop being a raster — inferGridShape needs len % width == 0,
+	// and every writer maps a cell as i % Width. Keeping it also keeps the
+	// table's row order, and with it output_hash.
+	NoDataCells []bool
+}
+
+// IsNoData reports whether cell i must be written as nodata.
+func (l GridLayout) IsNoData(i int) bool {
+	return i >= 0 && i < len(l.NoDataCells) && l.NoDataCells[i]
+}
+
+// NoDataCount reports how many cells are masked.
+func (l GridLayout) NoDataCount() int {
+	n := 0
+
+	for _, masked := range l.NoDataCells {
+		if masked {
+			n++
+		}
+	}
+
+	return n
 }
 
 // RasterMetadata describes a dense raster container.
@@ -221,6 +251,31 @@ func (r *Raster) Set(x, y, band int, value float64) error {
 	}
 
 	r.data[idx] = value
+
+	return nil
+}
+
+// SetReceiver writes grid receiver index's values into its cell, one per band
+// in band order. Receiver order is grid order — row-major from the origin — so
+// the index stands in for coordinates: cell (index % Width, index / Width).
+//
+// A cell the layout masks is left at nodata. Every raster writer goes through
+// here rather than calling Set in a loop of its own, so a writer cannot publish
+// a level the grid has declared unpublishable by forgetting the mask.
+func (r *Raster) SetReceiver(layout GridLayout, index int, values ...float64) error {
+	if layout.IsNoData(index) {
+		return nil
+	}
+
+	x := index % r.meta.Width
+	y := index / r.meta.Width
+
+	for band, value := range values {
+		err := r.Set(x, y, band, value)
+		if err != nil {
+			return fmt.Errorf("receiver %d, band %d: %w", index, band, err)
+		}
+	}
 
 	return nil
 }

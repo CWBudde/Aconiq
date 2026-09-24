@@ -218,3 +218,47 @@ func TestSaveRasterOmitsAbsentGeoreference(t *testing.T) {
 		t.Fatalf("sidecar carries a georeference it was never given:\n%s", encoded)
 	}
 }
+
+func TestSetReceiverLeavesAMaskedCellAtNoData(t *testing.T) {
+	t.Parallel()
+
+	bands := []string{"LrDay", "LrNight"}
+
+	raster, err := NewRaster(RasterMetadata{
+		Width: 3, Height: 2, Bands: 2, NoData: -9999,
+		Units: UniformUnits(bands, UnitDecibel), BandNames: bands,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	layout := GridLayout{Width: 3, Height: 2, NoDataCells: []bool{false, false, false, false, true, false}}
+	if layout.NoDataCount() != 1 {
+		t.Fatalf("NoDataCount = %d, want 1", layout.NoDataCount())
+	}
+
+	for i := range 6 {
+		err := raster.SetReceiver(layout, i, float64(50+i), float64(40+i))
+		if err != nil {
+			t.Fatalf("receiver %d: %v", i, err)
+		}
+	}
+
+	// Receiver 4 is cell (1, 1): row-major from the origin.
+	for band, want := range []float64{-9999, -9999} {
+		got, _ := raster.At(1, 1, band)
+		if got != want {
+			t.Errorf("masked cell band %d = %v, want nodata", band, got)
+		}
+	}
+
+	got, _ := raster.At(2, 1, 1)
+	if got != 45 {
+		t.Errorf("receiver 5 night = %v, want 45", got)
+	}
+
+	// A layout with no mask masks nothing, and an index past it is not masked.
+	if (GridLayout{}).IsNoData(0) || layout.IsNoData(99) || layout.IsNoData(-1) {
+		t.Error("IsNoData answered true outside the mask")
+	}
+}

@@ -34,6 +34,11 @@ import (
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
+// gridMaskedCellsKey counts the grid cells a raster leaves at nodata because
+// their receiver stands inside a building footprint. Browser mode writes the
+// same key.
+const gridMaskedCellsKey = "grid_masked_cells"
+
 // newRunSummary builds the keys every standard-backed run summary carries.
 // Callers add only what is specific to their standard on top of it.
 //
@@ -85,9 +90,17 @@ func addComputeCRS(summary map[string]any, projection computeProjection) {
 
 // writeGridRunSummary stamps the raster grid dimensions onto a run summary and
 // writes it next to the exported result bundle.
+//
+// grid_masked_cells is written only when a building masked a cell, so a run
+// over a model without buildings writes the summary it always did. It says
+// why receiver_count and the raster's valid-cell count differ.
 func writeGridRunSummary(resultsDir string, summary map[string]any, layout results.GridLayout) (string, error) {
 	summary["grid_width"] = layout.Width
 	summary["grid_height"] = layout.Height
+
+	if masked := layout.NoDataCount(); masked > 0 {
+		summary[gridMaskedCellsKey] = masked
+	}
 
 	summaryPath := filepath.Join(resultsDir, "run-summary.json")
 
@@ -192,11 +205,7 @@ func persistDummyRaster(
 	}
 
 	for receiverIndex, receiver := range receivers {
-		level := levelByReceiver[receiver.ID]
-		x := receiverIndex % layout.Width
-		y := receiverIndex / layout.Width
-
-		err := raster.Set(x, y, 0, level)
+		err := raster.SetReceiver(layout, receiverIndex, levelByReceiver[receiver.ID])
 		if err != nil {
 			return results.RasterPersistence{}, domainerrors.New(domainerrors.KindInternal, "cli.persistDummyRunOutputs", "set raster value", err)
 		}

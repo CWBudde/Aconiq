@@ -23,6 +23,8 @@ import type {
   ComputeRequest,
   ContourRequest,
   ContourResult,
+  FootprintMaskRequest,
+  FootprintMaskResponse,
   PropagationConfig,
   ReceiverOutput,
   TerrainInfo,
@@ -54,6 +56,16 @@ export interface AconiqKernel {
    * to where a model sits. See `@/model/compute-crs`, which is the only caller.
    */
   transform(req: TransformRequest): Promise<TransformResponse>;
+  /**
+   * Which of a batch of points stand strictly inside a building footprint.
+   *
+   * The frontend's only point-in-polygon for this question, for the reason
+   * `transform` is its only projection: `aconiq run` answers it with
+   * `geo.MaskPointsInFootprints`, and so does this. A second implementation
+   * would be a second rule for the facade — where a point on the edge is
+   * *not* masked — and the two targets would blank different cells.
+   */
+  maskFootprints(req: FootprintMaskRequest): Promise<FootprintMaskResponse>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -257,6 +269,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
   return {
     rls19Road: (req, onProgress) => runOverPool(client, req, onProgress),
     transform: (req) => client.transform(req),
+    maskFootprints: (req) => client.maskFootprints(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),

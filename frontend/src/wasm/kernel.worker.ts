@@ -51,6 +51,7 @@ interface AconiqExports {
     onProgress?: KernelProgressListener,
   ): Promise<string>;
   transform(json: string): Promise<string>;
+  maskFootprints(json: string): Promise<string>;
   contours(payload: Uint8Array, json: string): Promise<string>;
   standards(): string;
   loadTerrain(data: Uint8Array, crs: string): string;
@@ -212,6 +213,8 @@ async function dispatch(call: KernelCall): Promise<string | null> {
         : exports.rls19RoadShard(call.json);
     case "transform":
       return exports.transform(call.json);
+    case "maskFootprints":
+      return exports.maskFootprints(call.json);
     case "contours":
       // The bytes arrived transferred, so this view owns them outright; Go
       // copies them in with js.CopyBytesToGo either way.

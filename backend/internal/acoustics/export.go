@@ -125,18 +125,9 @@ func writeIndicatorRaster(baseDir string, standardID string, outputs []ReceiverO
 	}
 
 	for index, output := range outputs {
-		x := index % grid.Width
-
-		y := index / grid.Width
-
-		err := raster.Set(x, y, 0, output.Indicators.Lden)
+		err := raster.SetReceiver(grid, index, output.Indicators.Lden, output.Indicators.Lnight)
 		if err != nil {
-			return "", "", fmt.Errorf("set raster band %s: %w", IndicatorLden, err)
-		}
-
-		err = raster.Set(x, y, 1, output.Indicators.Lnight)
-		if err != nil {
-			return "", "", fmt.Errorf("set raster band %s: %w", IndicatorLnight, err)
+			return "", "", fmt.Errorf("set raster: %w", err)
 		}
 	}
 

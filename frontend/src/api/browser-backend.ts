@@ -50,6 +50,7 @@ import type {
   Barrier,
   Building,
   ComputeRequest,
+  FootprintMaskRequest,
   PointReceiver,
   ReceiverOutput,
   RoadSource,
@@ -1263,6 +1264,32 @@ export function buildBuildings(features: ModelFeature[]): Building[] {
 }
 
 /**
+ * The footprints a grid run's raster is masked with, holes and all — the
+ * browser half of `cli.buildingNoDataCells`.
+ *
+ * Not {@link buildBuildings}: the kernel's `Building` is an extruded exterior
+ * ring, so that function keeps `rings[0]` and drops the courtyards, and
+ * masking with it would blank the open air inside a block. A feature whose
+ * geometry is not a polygon is skipped rather than refused, because
+ * `buildBuildings` has already refused it by the time this runs.
+ */
+export function buildingFootprints(
+  features: ModelFeature[],
+): FootprintMaskRequest["footprints"] {
+  const footprints: FootprintMaskRequest["footprints"] = [];
+
+  for (const feature of features) {
+    if (feature.kind !== "building") continue;
+
+    for (const rings of polygonParts(feature) ?? []) {
+      footprints.push(rings.map((ring) => ring.map((p) => [p.x, p.y])));
+    }
+  }
+
+  return footprints;
+}
+
+/**
  * The grid layout a run computed on, mirroring `results.GridLayout` on the Go
  * side: the shape, and where it sits. `georeference` is absent for explicit
  * receivers, which are points rather than a grid.
@@ -1606,6 +1633,10 @@ async function computeRLS19Road(
 
   let gridReceivers: PointReceiver[];
   let layout: BrowserGridLayout;
+  // Indices of the grid receivers standing inside a building. They are
+  // computed and kept in the receiver table like any other; only the raster
+  // writes them as nodata — `results.GridLayout.NoDataCells` on the Go side.
+  let maskedCells: number[] = [];
 
   if (spec.receiverMode === "custom") {
     const storeReceivers = computeModel.receivers;
@@ -1642,6 +1673,17 @@ async function computeRLS19Road(
     }
     const receiverGrid = buildReceiverGrid(bbox, spec.params);
     gridReceivers = receiverGrid.receivers;
+    // Asked of the kernel, not answered here: `aconiq run` masks through
+    // `geo.MaskPointsInFootprints`, and a second point-in-polygon would be a
+    // second rule for a receiver standing exactly on a facade.
+    const footprints = buildingFootprints(features);
+    if (footprints.length > 0) {
+      const mask = await kernel.maskFootprints({
+        points: gridReceivers.flatMap((r) => [r.point.x, r.point.y]),
+        footprints,
+      });
+      maskedCells = mask.masked;
+    }
     layout = {
       width: receiverGrid.width,
       height: receiverGrid.height,
@@ -1724,10 +1766,13 @@ async function computeRLS19Road(
     // string — 64 characters where a float64 array belongs — because
     // `StoredArtifactContent` could not represent bytes at all, so nothing
     // could read back the raster a browser run had just computed.
-    const rasterBinary = buildRasterBinary(rasterMetadata, [
-      outputs.map((output) => output.Indicators.lr_day),
-      outputs.map((output) => output.Indicators.lr_night),
-    ]);
+    const lrDay = outputs.map((output) => output.Indicators.lr_day);
+    const lrNight = outputs.map((output) => output.Indicators.lr_night);
+    for (const cell of maskedCells) {
+      lrDay[cell] = rasterMetadata.nodata;
+      lrNight[cell] = rasterMetadata.nodata;
+    }
+    const rasterBinary = buildRasterBinary(rasterMetadata, [lrDay, lrNight]);
     // Hoisted out of the literal below only because `standards()` is a Promise
     // now that the kernel lives in a worker. It still costs no round trip —
     // the worker ships the list with its handshake.
@@ -1740,6 +1785,11 @@ async function computeRLS19Road(
       source_count: sources.length,
       parking_source_count: parking.sources.length,
       receiver_count: outputs.length,
+      // `cli.gridMaskedCellsKey`, and like it written only when a building
+      // masked something, so a model without buildings summarises as before.
+      ...(maskedCells.length > 0
+        ? { grid_masked_cells: maskedCells.length }
+        : undefined),
       reporting_precision_db: 0.1,
       // The CLI's own key names (`cli.provenanceProjectCRSKey` and
       // `provenanceComputeCRSKey`), because results are expressed in the

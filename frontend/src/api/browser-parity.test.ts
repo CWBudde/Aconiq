@@ -438,6 +438,147 @@ describe.skipIf(skipReason !== null)("browser run path vs. CLI goldens", () => {
   });
 });
 
+// The CLI's TestGridReceiversInsideABuildingAreNoDataInTheRaster, on the
+// browser path: the same 11x11 grid over [0,100]², the same block [20,80]²
+// around the same courtyard [40,60]², so both targets are held to the same
+// sixteen cells. The facade and the courtyard edge carry receivers, and the
+// rule for them — not masked — is the one only the shared Go function states.
+describe.skipIf(skipReason !== null)(
+  "browser grid run masks receivers inside a building",
+  () => {
+    beforeEach(async () => {
+      await clearPersistedState();
+      resetBrowserBackendForTests();
+    });
+
+    it("writes them as nodata in the raster and keeps them in the table", async () => {
+      const collection: GeoJSONFeatureCollection = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "road",
+            properties: { kind: "source", source_type: "line" },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [-100, -40],
+                [200, -40],
+              ],
+            },
+          },
+          {
+            type: "Feature",
+            id: "block",
+            properties: { kind: "building", height_m: 12 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [20, 20],
+                  [80, 20],
+                  [80, 80],
+                  [20, 80],
+                  [20, 20],
+                ],
+                [
+                  [40, 40],
+                  [60, 40],
+                  [60, 60],
+                  [40, 60],
+                  [40, 40],
+                ],
+              ],
+            },
+          },
+        ],
+      };
+
+      const { features, skipped } = normalizeModelGeoJSON(collection);
+      expect(skipped).toEqual([]);
+
+      useModelStore.setState({
+        features,
+        receivers: [],
+        calcArea: {
+          id: "area",
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [0, 0],
+                [100, 0],
+                [100, 100],
+                [0, 100],
+                [0, 0],
+              ],
+            ],
+          },
+        },
+        crs: "EPSG:25832",
+      });
+
+      const run = await browserBackend.startRun({
+        standardId: "rls19-road",
+        version: "2019",
+        profile: "default",
+        params: { ...RUN_PARAMS, grid_padding_m: "0" },
+        receiverMode: "auto-grid",
+      });
+      expect(run.status).toBe("completed");
+
+      const artifactOf = (kind: string) =>
+        run.artifacts.find((artifact) => artifact.kind === kind)?.id ?? "";
+
+      const table = await browserBackend.getArtifactContent<ReceiverTable>(
+        artifactOf("run.result.receiver_table_json"),
+      );
+      expect(table.records).toHaveLength(11 * 11);
+
+      const values = new Float64Array(
+        await browserBackend.getArtifactBytes(
+          artifactOf("run.result.raster_binary"),
+        ),
+      );
+      const cells = table.records.length;
+
+      let masked = 0;
+      table.records.forEach((record, i) => {
+        const inBlock =
+          record.x > 20 && record.x < 80 && record.y > 20 && record.y < 80;
+        const inCourtyard =
+          record.x >= 40 && record.x <= 60 && record.y >= 40 && record.y <= 60;
+        const wantMasked = inBlock && !inCourtyard;
+        if (wantMasked) masked++;
+
+        const day = record.values["LrDay"];
+        const night = record.values["LrNight"];
+        // Computed either way: the mask is the raster's business only.
+        expect(Number.isFinite(day), `receiver ${record.id} LrDay`).toBe(true);
+
+        expect(values[i], `LrDay cell of ${record.id}`).toBe(
+          wantMasked ? -9999 : day,
+        );
+        expect(values[cells + i], `LrNight cell of ${record.id}`).toBe(
+          wantMasked ? -9999 : night,
+        );
+      });
+
+      expect(masked).toBe(16);
+
+      const summary = await browserBackend.getArtifactContent<
+        Record<string, unknown>
+      >(artifactOf("run.result.summary"));
+      expect(summary).toMatchObject({
+        grid_width: 11,
+        grid_height: 11,
+        receiver_count: 121,
+        grid_masked_cells: 16,
+      });
+    });
+  },
+);
+
 if (skipReason !== null) {
   describe("browser run path vs. CLI goldens", () => {
     it.skip(`skipped: ${skipReason}`, () => {

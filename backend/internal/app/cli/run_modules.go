@@ -59,12 +59,26 @@ func (l *runLog) addReceiverCount(receiverMode string, receiverCount int, gridWi
 // addGridExtent records which extent the automatic receiver grid was built
 // over. It is the line a user reads to answer "did it use the area I drew?".
 // Custom receiver mode builds no grid, so there is nothing to record.
-func (l *runLog) addGridExtent(receiverMode string, calcArea *geo.BBox) {
+func (l *runLog) addGridExtent(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) {
+	for _, line := range gridExtentLines(receiverMode, calcArea, layout) {
+		l.addf("%s", line)
+	}
+}
+
+// gridExtentLines is the grid's run.log record: the extent, and — only when a
+// building masked any cell, so a model without buildings logs what it always
+// did — how many cells the raster leaves at nodata.
+func gridExtentLines(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) []string {
 	if receiverMode == receiverModeCustom {
-		return
+		return nil
 	}
 
-	l.addf("grid_extent=%s", gridExtentLabel(calcArea))
+	lines := []string{"grid_extent=" + gridExtentLabel(calcArea)}
+	if masked := layout.NoDataCount(); masked > 0 {
+		lines = append(lines, fmt.Sprintf("grid_masked_cells=%d (receivers inside a building footprint; computed, written to the raster as nodata)", masked))
+	}
+
+	return lines
 }
 
 func (l *runLog) all() []string {
@@ -180,7 +194,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 
 	input.log.addf("%s=%d", m.sourceCountKey, len(sources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
 	outputs, err := m.compute(receivers, sources, options)
 	if err != nil {
@@ -243,7 +257,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 
 	input.log.addf("sources=%d", len(sources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
 	engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
 		if event.Stage == "compute" && event.Message == "chunk_done" {

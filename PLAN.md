@@ -619,6 +619,16 @@ browser and on the command line. Changing it is a decision that moves both targe
 not a divergence introduced on one side. (Schall 03 already refuses a terrain that covers no
 receiver rather than taking Z = 0; RLS-19 does not, in either target.)
 
+**A grid receiver inside a building is computed, tabled, and written to the raster as nodata.**
+The receiver keeps its row, so `output_hash` and the raster's shape are untouched; only the cell
+is `-9999`, set through `Raster.SetReceiver`, which every grid writer goes through. The rule is
+**strict interior**: a point on a facade or a courtyard edge is not masked, which is why this is
+`geo.PointInPolygonInterior` and not `PointInPolygon` (whose edge-is-inside rule stays for
+receiver assignment). Both targets reach one function, `geo.MaskPointsInFootprints` — browser mode
+through the kernel's `maskFootprints` — so any change to the rule moves both at once. The mask
+reads every `building` feature, holes included; `buildBuildings`' exterior-only footprints must not
+be reused for it, or courtyards go dark.
+
 ### Open
 
 The geographic refusal is no longer written out twice. `crstransform.GeographicRefusal` is the
@@ -671,21 +681,6 @@ byte at both refusal sites. Four things it leaves live:
       obstacles, at every order including the first. Declared as deviation 3 in the conformance
       declaration. Closing it means mirroring the obstacle set per leg, which is a larger change
       than the origin fix was, and the sign of the error has not been established.
-- [ ] **Grid receivers land inside building footprints.** `run_receivers.go` does no building
-      masking, so in auto-grid mode a receiver inside a footprint is now shielded by the one ring
-      edge its ray crosses instead of standing free. RLS-19 behaves the same way, so this is
-      consistent rather than novel, but it is a visible output change on urban grid runs and the
-      value at such a point is not an Immissionsort.
-      The shape of the fix is decided, so that it is not re-argued: **compute the receiver, keep it
-      in the table, and write its raster cell as the existing `-9999` nodata sentinel.** Dropping
-      masked receivers from the slice is the tempting option and it does not work —
-      `inferGridShape` requires `len(receivers) % width == 0` and `persistDummyRaster` maps
-      `x = i % gridWidth`, so a punched grid stops being a raster. Keeping membership and row order
-      also keeps `output_hash` comparable and moves the parity goldens by value rather than by
-      shape. Two things it has to settle when taken: `geo.pointInRing` treats an on-edge point as
-      inside, so a grid aligned to a footprint edge masks that edge; and `browser-backend.ts`'s
-      `buildReceiverGrid` is a second grid builder that already has the footprints in hand at the
-      call site, so both targets move together or `browser-parity.test.ts` fails.
 - [ ] **The SoundPLAN import produces no DTM, so the Schall 03 ground-datum fix does not reach it.**
       `import_soundplan.go` records only the _name_ of the file the elevation data came from
       (`GeoTmp.geo`, `Höhen.txt`, `.dgm`) in its import report, and registers no `artifact-terrain` —
