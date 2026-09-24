@@ -32,4 +32,12 @@ describe("backend capabilities", () => {
     expect(browserBackend.capabilities.runsChangeExternally).toBe(false);
     expect(httpBackend.capabilities.runsChangeExternally).toBe(true);
   });
+
+  it("only the API can load LGLN buildings, and browser mode says why", async () => {
+    expect(httpBackend.capabilities.canImportLGLN).toBe(true);
+    expect(browserBackend.capabilities.canImportLGLN).toBe(false);
+    await expect(browserBackend.importFromLGLN()).rejects.toThrow(
+      /aconiq serve/,
+    );
+  });
 });

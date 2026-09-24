@@ -4,6 +4,7 @@ import type { Query } from "@tanstack/react-query";
 import { backend, isRunCancelled } from "./backend";
 import type { ContourOptions, OsmImportRequest, RunSpec } from "./backend";
 import type {
+  LglnImportRequest,
   ModelSaveRequest,
   RasterMetadata,
   ReceiverTable,
@@ -224,6 +225,12 @@ export function useRasterMetadata(artifactId: string | null) {
   );
 
   return { ...query, data: withUnits };
+}
+
+export function useImportFromLGLN() {
+  return useMutation({
+    mutationFn: (req: LglnImportRequest) => backend.importFromLGLN(req),
+  });
 }
 
 export function useImportFromOSM() {

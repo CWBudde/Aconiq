@@ -792,5 +792,61 @@
   "msg_grid_extent_unknown": "No extent yet: without a source or a calculation area there is nothing to lay a grid over.",
   "msg_grid_estimate_failed": "The grid size cannot be worked out right now.",
   "msg_grid_resolution_invalid": "The grid spacing must be greater than 0 m.",
-  "status_grid_estimate": "Working out the grid size…"
+  "status_grid_estimate": "Working out the grid size…",
+  "action_import_from_lgln": "3D buildings (LGLN)",
+  "heading_import_from_lgln": "Import 3D buildings from LGLN",
+  "msg_import_lgln_description": "Loads the official LoD2 building models of Lower Saxony (LGLN) for a bounding box. They replace the OpenStreetMap buildings inside it; roads, barriers, receivers and buildings from other sources stay.",
+  "msg_lgln_needs_server": "Needs the local server. The LGLN tiles are downloaded and read by `aconiq serve`, which this browser-only mode does not have.",
+  "msg_lgln_bbox_shared": "The same bounding box as the OpenStreetMap tab.",
+  "action_use_model_extent": "Use model extent",
+  "msg_lgln_model_extent_unavailable": "The model's extent can only be used when the workspace is in WGS84 (EPSG:4326).",
+  "msg_lgln_tile_estimate": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Covers ca. {count} LGLN tile of 1 km × 1 km.",
+        "countPlural=other": "Covers ca. {count} LGLN tiles of 1 km × 1 km."
+      }
+    }
+  ],
+  "msg_lgln_tile_estimate_too_many": "The server loads at most 9 tiles per request. Make the bounding box smaller.",
+  "action_fetch_from_lgln": "Load buildings",
+  "status_lgln_loading": "Loading buildings…",
+  "msg_lgln_first_load_slow": "The first load of a tile downloads about 50 MB and can take a minute. Later loads of the same tile come from the server's cache.",
+  "error_lgln_too_many_tiles": "The bounding box covers more than 9 LGLN tiles of 1 km. Make it smaller and try again.",
+  "error_lgln_unavailable": "The LGLN download service is not reachable right now. Try again later.",
+  "error_lgln_fetch_failed": "Loading the LGLN buildings failed",
+  "msg_lgln_replaces_osm": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} OpenStreetMap building inside the bounding box is removed.",
+        "countPlural=other": "{count} OpenStreetMap buildings inside the bounding box are removed."
+      }
+    }
+  ],
+  "msg_lgln_adds": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} LGLN building is added.",
+        "countPlural=other": "{count} LGLN buildings are added."
+      }
+    }
+  ],
+  "msg_lgln_workspace_projected": "The workspace is not in WGS84, so its buildings cannot be compared with the bounding box: no OpenStreetMap building is removed.",
+  "msg_lgln_tiles_read": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Read from {count} tile.",
+        "countPlural=other": "Read from {count} tiles."
+      }
+    }
+  ],
+  "action_import_lgln_apply": "Replace OSM buildings"
 }

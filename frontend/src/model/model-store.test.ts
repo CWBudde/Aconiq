@@ -425,3 +425,186 @@ describe("updateFeatures", () => {
     expect(useModelStore.getState().features).toEqual([]);
   });
 });
+
+describe("replaceBuildingsInBBox", () => {
+  // A ~10 m square footprint centred on (x, y), in degrees.
+  function footprint(x: number, y: number): ModelFeature["geometry"] {
+    const d = 0.00005;
+    return {
+      type: "Polygon",
+      coordinates: [
+        [
+          [x - d, y - d],
+          [x + d, y - d],
+          [x + d, y + d],
+          [x - d, y + d],
+          [x - d, y - d],
+        ],
+      ],
+    };
+  }
+
+  const bbox = { south: 52.37, west: 9.73, north: 52.38, east: 9.74 };
+
+  const osmInside: ModelFeature = {
+    id: "osm-way-1",
+    kind: "building",
+    heightM: 9,
+    properties: { osm_id: "1" },
+    geometry: footprint(9.735, 52.375),
+  };
+  const osmOutside: ModelFeature = {
+    id: "osm-way-2",
+    kind: "building",
+    heightM: 9,
+    properties: { osm_id: "2" },
+    geometry: footprint(9.75, 52.375),
+  };
+  const drawnInside: ModelFeature = {
+    id: "bld-drawn",
+    kind: "building",
+    heightM: 6,
+    geometry: footprint(9.736, 52.376),
+  };
+  const osmRoad: ModelFeature = {
+    id: "osm-way-3",
+    kind: "source",
+    sourceType: "line",
+    properties: { osm_id: "3", highway: "residential" },
+    geometry: {
+      type: "LineString",
+      coordinates: [
+        [9.731, 52.371],
+        [9.739, 52.379],
+      ],
+    },
+  };
+  const insideReceiver: ModelReceiver = {
+    id: "rcv-in",
+    heightM: 4,
+    geometry: { type: "Point", coordinates: [9.735, 52.374] },
+  };
+  const lgln: ModelFeature = {
+    id: "DENILD0100000001",
+    kind: "building",
+    heightM: 11.4,
+    properties: { import_format: "lgln-lod2" },
+    geometry: footprint(9.735, 52.375),
+  };
+  const lglnModel = { features: [lgln], receivers: [], calcArea: null };
+
+  function seed() {
+    useModelStore.getState().loadModel({
+      features: [osmInside, osmOutside, drawnInside, osmRoad],
+      receivers: [insideReceiver],
+      calcArea: null,
+      crs: "EPSG:4326",
+    });
+  }
+
+  it("removes only the OSM buildings inside the box and adds the LGLN ones", () => {
+    seed();
+
+    const result = useModelStore
+      .getState()
+      .replaceBuildingsInBBox(lglnModel, bbox);
+
+    expect(result.removed).toBe(1);
+    expect(result.skipped.features).toBe(0);
+    const state = useModelStore.getState();
+    expect(state.features.map((f) => f.id)).toEqual([
+      "osm-way-2",
+      "bld-drawn",
+      "osm-way-3",
+      "DENILD0100000001",
+    ]);
+    expect(state.receivers).toEqual([insideReceiver]);
+  });
+
+  it("recognises an OSM building by its osm_id tag when the id was renamed", () => {
+    useModelStore.getState().loadModel({
+      features: [{ ...osmInside, id: "renamed" }],
+      receivers: [],
+      calcArea: null,
+    });
+
+    const result = useModelStore
+      .getState()
+      .replaceBuildingsInBBox(lglnModel, bbox);
+
+    expect(result.removed).toBe(1);
+  });
+
+  it("undoes the whole replacement in one step", () => {
+    seed();
+    const before = useModelStore.getState();
+
+    useModelStore.getState().replaceBuildingsInBBox(lglnModel, bbox);
+    useModelStore.getState().undo();
+
+    const after = useModelStore.getState();
+    expect(after.features).toEqual(before.features);
+    expect(after.receivers).toEqual(before.receivers);
+    expect(after.canUndo).toBe(false);
+
+    useModelStore.getState().redo();
+    expect(useModelStore.getState().features.map((f) => f.id)).toEqual([
+      "osm-way-2",
+      "bld-drawn",
+      "osm-way-3",
+      "DENILD0100000001",
+    ]);
+  });
+
+  it("does not duplicate on a repeated load, and pushes nothing for it", () => {
+    seed();
+    useModelStore.getState().replaceBuildingsInBBox(lglnModel, bbox);
+    const once = useModelStore.getState().features;
+
+    const result = useModelStore
+      .getState()
+      .replaceBuildingsInBBox(lglnModel, bbox);
+
+    expect(result).toEqual({
+      removed: 0,
+      skipped: { features: 1, receivers: 0, calcArea: false },
+    });
+    expect(useModelStore.getState().features).toBe(once);
+    // One undo takes back the first load; there is no second step.
+    useModelStore.getState().undo();
+    expect(useModelStore.getState().canUndo).toBe(false);
+  });
+
+  it("keeps a previous LGLN building even though it lies inside the box", () => {
+    useModelStore.getState().loadModel({
+      features: [{ ...lgln, id: "DENILD0100000009" }],
+      receivers: [],
+      calcArea: null,
+    });
+
+    const result = useModelStore
+      .getState()
+      .replaceBuildingsInBBox(lglnModel, bbox);
+
+    expect(result.removed).toBe(0);
+    expect(useModelStore.getState().features).toHaveLength(2);
+  });
+
+  it("removes nothing from a projected workspace", () => {
+    useModelStore.getState().loadModel({
+      features: [osmInside],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+
+    const result = useModelStore
+      .getState()
+      .replaceBuildingsInBBox(lglnModel, bbox);
+
+    expect(result.removed).toBe(0);
+    expect(useModelStore.getState().features.map((f) => f.id)).toContain(
+      "osm-way-1",
+    );
+  });
+});

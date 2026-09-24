@@ -95,6 +95,7 @@ vi.mock("@/api/backend", () => ({
         // The same split the shipped modes have: browser mode owns the worker
         // and can terminate it, the API has no cancel endpoint.
         runsAreCancellable: !state.runsAgainstSavedModel,
+        canImportLGLN: state.runsAgainstSavedModel,
       };
     },
   },

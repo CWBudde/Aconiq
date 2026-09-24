@@ -16,6 +16,7 @@ import type {
 import type {
   ArtifactRef,
   HealthResponse,
+  LglnImportResponse,
   ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
@@ -1989,6 +1990,9 @@ export const browserBackend = {
     // computation for real — see `cancelKernel`. Nothing is persisted before
     // the compute returns, so a cancelled run leaves no trace.
     runsAreCancellable: true,
+    // A tile is a ~50 MB CityGML download that the server fetches, parses with
+    // the Go importer and caches on disk; the kernel carries none of that.
+    canImportLGLN: false,
   },
 
   async transformCoordinates(
@@ -2210,6 +2214,19 @@ out geom;`;
         },
       );
     return { type: "FeatureCollection", features };
+  },
+
+  /**
+   * Refused, the way `getModel` is: the method exists so the interface has no
+   * mode-specific hole, and `capabilities.canImportLGLN` keeps the page from
+   * offering it. The sentence names the remedy, for a caller that forgot.
+   */
+  importFromLGLN(): Promise<LglnImportResponse> {
+    return Promise.reject(
+      new Error(
+        "Importing LGLN buildings is not available in browser mode; start the local server with `aconiq serve`",
+      ),
+    );
   },
 
   async startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary> {

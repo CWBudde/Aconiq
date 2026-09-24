@@ -792,5 +792,61 @@
   "msg_grid_extent_unknown": "Noch keine Ausdehnung: ohne Schallquelle oder Berechnungsgebiet lässt sich kein Raster aufspannen.",
   "msg_grid_estimate_failed": "Die Rastergröße lässt sich derzeit nicht ermitteln.",
   "msg_grid_resolution_invalid": "Die Rasterweite muss größer als 0 m sein.",
-  "status_grid_estimate": "Rastergröße wird ermittelt…"
+  "status_grid_estimate": "Rastergröße wird ermittelt…",
+  "action_import_from_lgln": "3D-Gebäude (LGLN)",
+  "heading_import_from_lgln": "3D-Gebäude vom LGLN importieren",
+  "msg_import_lgln_description": "Lädt die amtlichen LoD2-Gebäudemodelle Niedersachsens (LGLN) für einen Begrenzungsrahmen. Sie ersetzen die OpenStreetMap-Gebäude darin; Straßen, Schallschirme, Immissionsorte und Gebäude aus anderen Quellen bleiben erhalten.",
+  "msg_lgln_needs_server": "Benötigt den lokalen Server. Die LGLN-Kacheln lädt und liest `aconiq serve`, das es in diesem reinen Browser-Modus nicht gibt.",
+  "msg_lgln_bbox_shared": "Derselbe Begrenzungsrahmen wie im OpenStreetMap-Tab.",
+  "action_use_model_extent": "Modellausdehnung verwenden",
+  "msg_lgln_model_extent_unavailable": "Die Modellausdehnung lässt sich nur übernehmen, wenn der Arbeitsbereich in WGS84 (EPSG:4326) vorliegt.",
+  "msg_lgln_tile_estimate": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Umfasst ca. {count} LGLN-Kachel à 1 km × 1 km.",
+        "countPlural=other": "Umfasst ca. {count} LGLN-Kacheln à 1 km × 1 km."
+      }
+    }
+  ],
+  "msg_lgln_tile_estimate_too_many": "Der Server lädt höchstens 9 Kacheln pro Anfrage. Bitte den Begrenzungsrahmen verkleinern.",
+  "action_fetch_from_lgln": "Gebäude laden",
+  "status_lgln_loading": "Gebäude werden geladen…",
+  "msg_lgln_first_load_slow": "Beim ersten Laden einer Kachel werden etwa 50 MB heruntergeladen; das kann eine Minute dauern. Spätere Abrufe derselben Kachel kommen aus dem Cache des Servers.",
+  "error_lgln_too_many_tiles": "Der Begrenzungsrahmen umfasst mehr als 9 LGLN-Kacheln à 1 km. Bitte verkleinern und erneut versuchen.",
+  "error_lgln_unavailable": "Der LGLN-Downloaddienst ist gerade nicht erreichbar. Bitte später erneut versuchen.",
+  "error_lgln_fetch_failed": "Laden der LGLN-Gebäude fehlgeschlagen",
+  "msg_lgln_replaces_osm": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} OpenStreetMap-Gebäude im Begrenzungsrahmen wird entfernt.",
+        "countPlural=other": "{count} OpenStreetMap-Gebäude im Begrenzungsrahmen werden entfernt."
+      }
+    }
+  ],
+  "msg_lgln_adds": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} LGLN-Gebäude wird hinzugefügt.",
+        "countPlural=other": "{count} LGLN-Gebäude werden hinzugefügt."
+      }
+    }
+  ],
+  "msg_lgln_workspace_projected": "Der Arbeitsbereich liegt nicht in WGS84 vor, daher lassen sich seine Gebäude nicht mit dem Begrenzungsrahmen vergleichen: Es wird kein OpenStreetMap-Gebäude entfernt.",
+  "msg_lgln_tiles_read": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Aus {count} Kachel gelesen.",
+        "countPlural=other": "Aus {count} Kacheln gelesen."
+      }
+    }
+  ],
+  "action_import_lgln_apply": "OSM-Gebäude ersetzen"
 }

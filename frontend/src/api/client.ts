@@ -12,14 +12,17 @@ import type { components } from "./schema";
  * `components["schemas"]["RunSummary"]` — and so that the parts of the contract
  * the document *cannot* state have one place to be stated in.
  *
- * There are three of those, each marked below:
+ * There are four of those, each marked below:
  *
  *   1. the two model endpoints, whose GeoJSON body the spec declares as a bare
  *      `object`;
  *   2. the artifact-content endpoint, whose payloads are files rather than
  *      schemas — `ReceiverTable` and `RasterMetadata` are the shapes the run
  *      writes into a project, not shapes the API declares;
- *   3. the request headers, which are transport and not a schema at all.
+ *   3. the request headers, which are transport and not a schema at all;
+ *   4. the LGLN building import, whose response is a GeoJSON
+ *      FeatureCollection with three members beside `features` — the same
+ *      reason as (1).
  *
  * Anything else added here is drift waiting to happen: put it in `openapi.go`
  * and regenerate.
@@ -235,4 +238,49 @@ export interface RasterMetadata {
    * "a grid at the origin".
    */
   georeference?: RasterGeoreference;
+}
+
+/* -------------------------------------------------------------------------
+ * (4) The LGLN LoD2 building import.
+ *
+ * `POST /api/v1/import/lgln` answers with a GeoJSON FeatureCollection in
+ * EPSG:4326 — one `kind: "building"` feature per LoD2 building part, with
+ * `height_m`, `import_format: "lgln-lod2"` and the CityGML `gml:id` as its id —
+ * plus three members the collection carries beside `features`. The features
+ * are the v1 input schema, which the spec can only declare as a bare object,
+ * so the response is stated here, as the model endpoints are.
+ *
+ * Refusals use the ordinary envelope; the two codes a page explains are in
+ * `api-error.ts` beside the others.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Body of `POST /api/v1/import/lgln`, in WGS84 degrees. Deliberately the OSM
+ * import's box, flat, so both tabs can hand the server the same one.
+ */
+export interface LglnImportRequest {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+/** One 1 km LoD2 tile the server read to answer, and the date it carries. */
+export interface LglnTile {
+  id: string;
+  date: string;
+}
+
+/**
+ * Response of `POST /api/v1/import/lgln`.
+ *
+ * Only buildings whose footprint centroid lies inside the requested box are
+ * returned, so two adjacent boxes never both bring the same building.
+ */
+export interface LglnImportResponse extends GeoJSONFeatureCollection {
+  tiles: LglnTile[];
+  /** The licence line the data must be shown with (dl-de/by-2-0). */
+  attribution: string;
+  /** Why objects were left out, keyed by reason, with how many. */
+  skipped: Record<string, number>;
 }
