@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   browserBackend,
   buildBuildings,
+  buildingFootprints,
   buildRoadSources,
   MAX_STORED_RUNS,
   overpassWayToFeature,
@@ -1804,6 +1805,60 @@ describe("persisted state", () => {
       expect(heldDuringSweep).toBe(true);
       expect(await storage.loadArtifactBytes(keptBytesID)).not.toBeNull();
     });
+  });
+});
+
+describe("buildingFootprints", () => {
+  it("keeps the courtyards buildBuildings drops, and splits a MultiPolygon", () => {
+    const exterior: [number, number][] = [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+      [0, 0],
+    ];
+    const courtyard: [number, number][] = [
+      [3, 3],
+      [7, 3],
+      [7, 7],
+      [3, 7],
+      [3, 3],
+    ];
+    const features: ModelFeature[] = [
+      {
+        id: "block",
+        kind: "building",
+        heightM: 12,
+        properties: {},
+        geometry: {
+          type: "MultiPolygon",
+          coordinates: [[exterior, courtyard], [exterior]],
+        },
+      },
+      {
+        id: "screen",
+        kind: "barrier",
+        heightM: 3,
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+        },
+      },
+    ];
+
+    // A courtyard masked as building would blank open air, so the mask needs
+    // the holes the kernel's extruded Building has no use for.
+    expect(buildingFootprints(features)).toEqual([
+      [exterior, courtyard],
+      [exterior],
+    ]);
+    expect(buildBuildings(features).map((b) => b.footprint.length)).toEqual([
+      5, 5,
+    ]);
   });
 });
 

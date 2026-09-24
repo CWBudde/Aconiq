@@ -247,6 +247,23 @@ export interface TransformRequest {
 }
 
 /**
+ * Which receivers stand inside a building. Mirrors
+ * `wasmkernel.FootprintMaskRequest`: `points` are interleaved `x, y` pairs, as
+ * {@link TransformRequest.coordinates} are, and each footprint is one polygon
+ * — exterior ring first, holes after, each ring a list of `[x, y]`. Both in the
+ * compute CRS.
+ */
+export interface FootprintMaskRequest {
+  points: number[];
+  footprints: [number, number][][][];
+}
+
+/** The indices into the request's points that are masked, ascending. */
+export interface FootprintMaskResponse {
+  masked: number[];
+}
+
+/**
  * Where the coordinates ended up. `target_crs` is the CRS they are actually in,
  * which for an `auto` request is the resolved zone. `applied` is false only
  * when nothing moved, and then `coordinates` are the input values verbatim.

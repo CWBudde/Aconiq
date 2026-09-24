@@ -86,6 +86,15 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 ### Changed
 
+- **Auto-grid rasters no longer publish a level inside a building.** A grid receiver standing
+  strictly inside a building footprint is still computed and still listed in the receiver table,
+  but its raster cell is now the `-9999` nodata value, for every standard and in both the CLI and
+  browser mode. Contours, GeoTIFF/COG exports and the map therefore show footprints as holes,
+  where they used to show whatever level the propagation code produced inside the walls — a value
+  that is not an Immissionsort. Receivers on a facade or courtyard edge, and inside a courtyard,
+  are not masked. The receiver table and `output_hash` are unchanged; `run-summary.json` gains
+  `grid_masked_cells` when anything was masked, and `run.log` a matching line.
+
 - The CLI was renamed from `noise` to `aconiq`.
 - Scaffold-tier module descriptions state what they do **not** implement. `cnossos-*`, `bub-*` and
   `buf-aircraft` contain no coefficient from Directive (EU) 2015/996 Annex II and must not be

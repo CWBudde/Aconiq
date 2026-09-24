@@ -16,6 +16,7 @@ export type KernelMethod =
   | "rls19Road"
   | "rls19RoadShard"
   | "transform"
+  | "maskFootprints"
   | "contours"
   | "loadTerrain"
   | "clearTerrain";
@@ -53,6 +54,7 @@ export type KernelCall =
       progress: boolean;
     }
   | { id: number; method: "transform"; json: string }
+  | { id: number; method: "maskFootprints"; json: string }
   | {
       id: number;
       method: "contours";

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -180,8 +181,58 @@ func resolveGridReceivers(
 	receivers, layout, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildGrid(calcArea)
 	})
+	if err != nil || receiverMode == receiverModeCustom {
+		return receivers, layout, calcArea, err
+	}
 
-	return receivers, layout, calcArea, err
+	layout.NoDataCells, err = buildingNoDataCells(model, receivers)
+	if err != nil {
+		return nil, results.GridLayout{}, nil, err
+	}
+
+	return receivers, layout, calcArea, nil
+}
+
+// buildingNoDataCells marks the grid receivers standing inside a building
+// footprint. They are computed like any other and stay in the receiver table;
+// only the raster writes them as nodata, because a level inside a building is
+// not an Immissionsort and a contour drawn through it describes nothing.
+//
+// It applies to every standard, whether or not the module models buildings
+// acoustically: the question is where a level may be published, not how it
+// was reached. It returns nil when nothing is masked, so a model without
+// buildings produces the layout it always did.
+func buildingNoDataCells(model modelgeojson.Model, receivers []geo.PointReceiver) ([]bool, error) {
+	var footprints [][][]geo.Point2D
+
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindBuilding {
+			continue
+		}
+
+		polygons, err := polygonsFromFeature(feature, modelgeojson.FeatureKindBuilding)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, "cli.buildingNoDataCells", fmt.Sprintf("feature %q", feature.ID), err)
+		}
+
+		footprints = append(footprints, polygons...)
+	}
+
+	if len(footprints) == 0 {
+		return nil, nil
+	}
+
+	points := make([]geo.Point2D, len(receivers))
+	for i, receiver := range receivers {
+		points[i] = receiver.Point
+	}
+
+	masked := geo.MaskPointsInFootprints(points, footprints)
+	if !slices.Contains(masked, true) {
+		return nil, nil
+	}
+
+	return masked, nil
 }
 
 func resolveReceiverSet(

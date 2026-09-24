@@ -111,9 +111,9 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
-`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `transform`, `standards`, `contours`, `loadTerrain`,
-`clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Four of those carry contracts worth
-knowing before writing browser-mode code:
+`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `transform`, `maskFootprints`, `standards`,
+`contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Five of
+those carry contracts worth knowing before writing browser-mode code:
 
 - **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
   coordinates and a `target_crs` of `"auto"`, and makes the CRS decision `aconiq run` makes — so
@@ -129,6 +129,11 @@ knowing before writing browser-mode code:
   frontend must not grow a marching squares of its own, for the reason it must not grow a second
   projection. It is a Promise, unlike `transform`: tracing a 500×500 grid is not work to hand back
   synchronously.
+- **`maskFootprints`** answers which grid receivers stand strictly inside a building, through
+  `geo.MaskPointsInFootprints` — the call `aconiq run` makes for the same question. Their raster
+  cells are written as nodata on both targets; the receivers stay in the table. The frontend must
+  not grow a point-in-polygon of its own for this: the rule on a facade (not masked) is the one
+  place two implementations would disagree.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -248,7 +253,10 @@ See `docs/geojson-schema-v1.md`.
 
 ### Result Containers v1
 
-- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/report/results`
+- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/report/results`.
+  In an auto grid, a receiver strictly inside a building footprint is computed and kept in the
+  receiver table, but its cell is nodata (`GridLayout.NoDataCells`, written through
+  `Raster.SetReceiver`)
 - **Receiver table:** CSV + JSON, with ordered indicators and validation
 
 See `docs/result-containers-v1.md`.

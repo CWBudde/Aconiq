@@ -131,7 +131,7 @@ func computeSchall03Normative(
 	// barrier features in the model.
 	result.logf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
 	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
-	result.logGridExtent(receiverMode, calcArea)
+	result.logGridExtent(receiverMode, calcArea, layout)
 
 	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
 	if err != nil {
@@ -184,7 +184,7 @@ func computeSchall03Preview(
 
 	result.logf("schall03_sources=%d", len(railSources))
 	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
-	result.logGridExtent(receiverMode, calcArea)
+	result.logGridExtent(receiverMode, calcArea, layout)
 
 	result.Outputs, err = schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
 	if err != nil {
@@ -379,10 +379,8 @@ func (r *schall03RunResult) logReceivers(receiverMode string, receiverCount, gri
 
 // logGridExtent mirrors runLog.addGridExtent for the Schall 03 chain, which
 // carries its own log lines.
-func (r *schall03RunResult) logGridExtent(receiverMode string, calcArea *geo.BBox) {
-	if receiverMode == receiverModeCustom {
-		return
+func (r *schall03RunResult) logGridExtent(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) {
+	for _, line := range gridExtentLines(receiverMode, calcArea, layout) {
+		r.logf("%s", line)
 	}
-
-	r.logf("grid_extent=%s", gridExtentLabel(calcArea))
 }

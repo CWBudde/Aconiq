@@ -112,7 +112,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	input.log.addf("rls19_buildings=%d", len(buildings))
 	input.log.addf("rls19_parking_sources=%d", len(parkingSources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
 	propagationConfig := options.PropagationConfig()
 	propagationConfig.Buildings = buildings
@@ -356,7 +356,7 @@ func runISO9613Module(input runModuleInput) (runModuleResult, error) {
 	input.log.addf("iso9613_barriers=%d", len(barriers))
 	input.log.addf("iso9613_ground_zones=%d", len(groundZones))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
 	propagationConfig := options.PropagationConfig()
 	propagationConfig.Barriers = barriers

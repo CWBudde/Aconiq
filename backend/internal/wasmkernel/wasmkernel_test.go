@@ -66,7 +66,7 @@ func TestNonStandardEntryPointsAreRegistered(t *testing.T) {
 
 	source := wasmEntryPointSource(t)
 
-	for _, entry := range []string{"transform", "contours", "loadTerrain", "clearTerrain"} {
+	for _, entry := range []string{"transform", "maskFootprints", "contours", "loadTerrain", "clearTerrain"} {
 		if !strings.Contains(source, `aconiq.Set("`+entry+`"`) {
 			t.Errorf("cmd/wasm/main.go registers no %q entry point", entry)
 		}

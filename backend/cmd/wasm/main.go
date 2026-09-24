@@ -304,6 +304,34 @@ func transformFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// maskFootprintsFunc answers which receivers stand inside a building.
+// Signature: (json: string) => Promise<string> (JSON)
+//
+// A Promise like transform, for the same reason: a city-sized grid against a
+// few thousand footprints is not work to hand back on the caller's stack.
+func maskFootprintsFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("maskFootprints: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.MaskFootprints([]byte(input))
+		if err != nil {
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // contoursFunc traces ISO-band contour lines over a run's raster.
 // Signature: (payload: Uint8Array, request: string) => Promise<string> (JSON)
 //
@@ -548,6 +576,7 @@ func main() {
 	aconiq.Set("rls19RoadShard", js.FuncOf(rls19RoadShardFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
 	aconiq.Set("contours", js.FuncOf(contoursFunc))
+	aconiq.Set("maskFootprints", js.FuncOf(maskFootprintsFunc))
 	// The two synchronous exports that can fail go through the rethrowing
 	// wrapper; the ones below cannot fail, so they are registered bare.
 	aconiq.Set("standards", throwingSyncExport(js.FuncOf(standardsFunc)))

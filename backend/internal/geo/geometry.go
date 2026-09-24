@@ -86,16 +86,52 @@ func PointInPolygon(p Point2D, rings [][]Point2D) bool {
 	return true
 }
 
-func pointInRing(p Point2D, ring []Point2D) bool {
+// PointInPolygonInterior reports whether p lies strictly inside the polygon:
+// inside the exterior, outside every hole, and on no ring's edge. Rings follow
+// PointInPolygon's format.
+//
+// It differs from PointInPolygon only on the boundary, and deliberately. That
+// function counts an edge as inside, which is right for assigning a receiver
+// to an area; this one answers "is this point within a building", where a
+// point on the facade line is not — a receiver grid aligned with a footprint
+// would otherwise lose the whole row of cells along it.
+func PointInPolygonInterior(p Point2D, rings [][]Point2D) bool {
+	if len(rings) == 0 || len(rings[0]) < 4 {
+		return false
+	}
+
+	inside, onEdge := pointInRingStrict(p, rings[0])
+	if onEdge || !inside {
+		return false
+	}
+
+	for i := 1; i < len(rings); i++ {
+		ring := rings[i]
+		if len(ring) < 4 {
+			continue
+		}
+
+		inHole, onHoleEdge := pointInRingStrict(p, ring)
+		if onHoleEdge || inHole {
+			return false
+		}
+	}
+
+	return true
+}
+
+// pointInRingStrict is pointInRing with the edge case reported rather than
+// folded into the answer: inside is the even-odd test and is meaningless when
+// onEdge is true.
+func pointInRingStrict(p Point2D, ring []Point2D) (bool, bool) {
 	inside := false
 
 	for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
 		pi := ring[i]
 		pj := ring[j]
 
-		// On-edge is treated as inside for stable receiver assignment.
 		if DistancePointToSegment(p, pj, pi) < 1e-12 {
-			return true
+			return false, true
 		}
 
 		intersects := ((pi.Y > p.Y) != (pj.Y > p.Y)) &&
@@ -105,7 +141,15 @@ func pointInRing(p Point2D, ring []Point2D) bool {
 		}
 	}
 
-	return inside
+	return inside, false
+}
+
+// pointInRing counts an on-edge point as inside, for stable receiver
+// assignment.
+func pointInRing(p Point2D, ring []Point2D) bool {
+	inside, onEdge := pointInRingStrict(p, ring)
+
+	return inside || onEdge
 }
 
 // SegmentIntersection computes the intersection point of segments (a1,a2) and (b1,b2).

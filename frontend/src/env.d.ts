@@ -52,6 +52,8 @@ interface Window {
       onProgress?: (done: number, total: number) => void,
     ) => Promise<string>;
     transform: (json: string) => Promise<string>;
+    /** See `AconiqKernel.maskFootprints`. */
+    maskFootprints: (json: string) => Promise<string>;
     /**
      * Two arguments, and the raster values are the first: they cross as raw
      * bytes rather than inside the JSON, because a 500x500 two-band grid is

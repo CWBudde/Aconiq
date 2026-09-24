@@ -90,17 +90,9 @@ func ExportResultBundle(baseDir string, outputs []ReceiverOutput, grid results.G
 	}
 
 	for index, output := range outputs {
-		x := index % grid.Width
-		y := index / grid.Width
-
-		err := raster.Set(x, y, 0, output.Indicators.LrDay)
+		err := raster.SetReceiver(grid, index, output.Indicators.LrDay, output.Indicators.LrNight)
 		if err != nil {
-			return ExportOutputs{}, fmt.Errorf("set raster band %s: %w", IndicatorLrDay, err)
-		}
-
-		err = raster.Set(x, y, 1, output.Indicators.LrNight)
-		if err != nil {
-			return ExportOutputs{}, fmt.Errorf("set raster band %s: %w", IndicatorLrNight, err)
+			return ExportOutputs{}, fmt.Errorf("set raster: %w", err)
 		}
 	}
 
