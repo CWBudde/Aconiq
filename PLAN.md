@@ -2570,7 +2570,16 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] Contribution breakdown per receiver or selected result.
 - [ ] Run-to-run diff layer; scenario change-set summary for model and parameter differences.
 - [ ] Performance guardrails for large feature counts — clustering or tile fallback.
-- [ ] Building-footprint import pipelines beyond GeoJSON.
+- [ ] Building-footprint import pipelines beyond GeoJSON and the LGLN LoD2 import (file upload
+      of CityGML/GeoPackage/FlatGeobuf in the UI).
+- [ ] LGLN LoD2 follow-ups:
+  - browser/WASM mode: the tile host sends `Access-Control-Allow-Origin: *`, so what is missing is
+    a CityGML entry point in the kernel.
+  - `aconiq import --from-lgln "south,west,north,east"`; the CLI import also still replaces the
+    whole model instead of merging, so CityGML after OSM loses the roads.
+  - Height semantics: LGLN `measuredHeight` is ground to ridge. Decide whether screening should
+    use an eaves or mean roof height from the LoD2 roof surfaces.
+  - Other Länder publish LoD2 through different portals; only Lower Saxony is wired.
 - [ ] Per-source acoustics: UI coverage for editing/clearing/restoring overrides; surface overrides
       and inferred review flags in popups or run-setup summaries; decide whether further
       OSM-derived defaults are deterministic enough to enable; define follow-on source-editing

@@ -59,11 +59,16 @@ All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`.
 `aconiq import` reads:
 
 - **GeoJSON** — the canonical model format for the main workflow
-- **GeoPackage** (`.gpkg`, with `--layer`), **FlatGeobuf** (`.fgb`), **CityGML** (`.gml`/`.citygml`) — CRS auto-detected where the format carries it, otherwise `--input-crs`
+- **GeoPackage** (`.gpkg`, with `--layer`), **FlatGeobuf** (`.fgb`), **CityGML** 1.0/2.0/3.0 (`.gml`/`.citygml`, every `BuildingPart` becomes its own building) — CRS auto-detected where the format carries it, otherwise `--input-crs`
 - **SoundPLAN** project directories via `--from-soundplan`
 - **OpenStreetMap** via `--from-osm "south,west,north,east"` against an Overpass endpoint
 - **CSV** attribute/traffic tables merged into model features via `--traffic`
 - **GeoTIFF** digital terrain models via `--terrain`, queried with bilinear interpolation
+
+The web UI's Import page (against `aconiq serve`) can also load the official **LGLN LoD2
+buildings** for a box in Lower Saxony. The server finds the 1 km CityGML tiles through the LGLN
+STAC API, caches them in `.noise/cache/lgln/`, and the UI swaps them in for the OSM buildings in
+that box. The data is CC BY 4.0 — keep the "Quelle: LGLN (year)" note the import shows.
 
 ### Model Schema
 

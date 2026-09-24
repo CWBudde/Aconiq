@@ -166,6 +166,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `io/citygmlimport/`         | CityGML building import                                                                                            |
 | `io/csvimport/`             | CSV attribute/traffic tables merged into model features                                                            |
 | `io/fgbimport/`             | FlatGeobuf (`.fgb`) import                                                                                         |
+| `io/lglnimport/`            | LGLN Niedersachsen LoD2 tiles: STAC search, cached download, buildings clipped to a box by centroid                |
 | `io/gpkgimport/`            | GeoPackage (`.gpkg`) import, including WKB decoding                                                                |
 | `io/osmimport/`             | OpenStreetMap import via the Overpass API                                                                          |
 | `io/projectfs/`             | Project folder store (JSON manifest in `.noise/project.json`)                                                      |
@@ -214,6 +215,7 @@ GET  /api/v1/runs/{id}/contours        contour lines from the run's result raste
 GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                    SSE: heartbeat + project status snapshots
 POST /api/v1/import/osm
+POST /api/v1/import/lgln               LGLN LoD2 buildings for a WGS84 box (tiles cached in `.noise/cache/lgln/`)
 POST /api/v1/import/terrain
 GET  /api/v1/model                     the saved model, optionally reprojected (`?crs=`)
 POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract)

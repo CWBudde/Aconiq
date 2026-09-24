@@ -358,6 +358,28 @@ starts failing.
   to a building wall — it is scoped to reflektierende Schallschutzwände mit
   absorbierendem Sockel.
 
+## Import provenance
+
+Importers stamp where a feature came from. None of these properties is read by a
+standard; they exist so a reader, and the UI's merge step, can tell sources apart.
+
+- `import_format` — `citygml` for a CityGML file import, `lgln-lod2` for a building
+  from the LGLN LoD2 import (`POST /api/v1/import/lgln`). The UI replaces OSM
+  buildings (`osm-way-*` ids) whose footprint centroid lies in the import box, and
+  never a feature carrying `lgln-lod2`.
+- `lgln_tile` — the LGLN tile id (`LoD2_32_<E km>_<N km>_1_ni`) the building came from.
+- `citygml_source_id`, `citygml_class`, `citygml_function`, `citygml_usage`,
+  `citygml_lod` — copied from the CityGML object.
+- `citygml_parent_id` — set on a feature made from a `BuildingPart`: the `gml:id` of
+  the `Building` it belongs to. Each part is its own feature with its own
+  `height_m`, because LoD2 data splits a building exactly where its roof height
+  changes.
+
+A CityGML building's `height_m` is its `measuredHeight`, or else the Z extent of
+its geometry. In the LGLN data that is ground to highest roof point — the ridge,
+not the eaves. A footprint that crosses itself is skipped and reported, rather
+than letting validation refuse the whole file.
+
 ## Height provenance
 
 `height_source` is an optional property on any feature that carries `height_m`.
