@@ -142,10 +142,11 @@ linters:
       # `$ref`, `responses` and the rest of the OpenAPI keyword set repeat by
       # construction. The spellings are fixed by the OpenAPI specification, not
       # by us, so a constant buys no typo protection and makes the spec builder
-      # unreadable. The file contains nothing but that builder, so scoping the
-      # exclusion to it excludes exactly this vocabulary.
+      # unreadable. The files contain nothing but that builder, so scoping the
+      # exclusion to them excludes exactly this vocabulary. openapi_<area>.go
+      # are parts split off openapi.go to stay under the file-length limit.
       - linters: [goconst]
-        path: internal/api/httpv1/openapi\.go
+        path: internal/api/httpv1/openapi(_[a-z0-9]+)?\.go
 
       # goconst group 3 — JSON output-contract keys. These sit inside the
       # `map[string]any{…}` literals that serialise the CLI `--json` output, the

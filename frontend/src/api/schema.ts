@@ -366,6 +366,15 @@ export interface components {
         ImportLGLNResponse: {
             /** @description Source note the licence (CC BY 4.0) requires wherever the buildings are shown. */
             attribution: string;
+            /** @description Named CRS of the feature coordinates; always `EPSG:4326` (longitude, latitude). */
+            crs: {
+                properties: {
+                    /** @enum {string} */
+                    name: "EPSG:4326";
+                };
+                /** @enum {string} */
+                type: "name";
+            };
             features: Record<string, never>[];
             /** @description Buildings the parser left out, counted by reason. */
             skipped: {

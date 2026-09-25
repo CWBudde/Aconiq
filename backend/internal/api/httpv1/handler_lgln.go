@@ -27,9 +27,11 @@ type importLGLNTile struct {
 
 // importLGLNResponse is a GeoJSON FeatureCollection with three foreign
 // members: which tiles the buildings came from, the source note the licence
-// requires, and the parser's skip counts.
+// requires, and the parser's skip counts. It names its CRS, EPSG:4326, so a
+// client merging it into a projected model can tell degrees from metres.
 type importLGLNResponse struct {
 	Type        string                        `json:"type"`
+	CRS         map[string]any                `json:"crs"`
 	Features    []modelgeojson.GeoJSONFeature `json:"features"`
 	Tiles       []importLGLNTile              `json:"tiles"`
 	Attribution string                        `json:"attribution"`
@@ -70,6 +72,7 @@ func (h Handler) handleImportLGLN(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, importLGLNResponse{
 		Type:        modelgeojson.TypeFeatureCollection,
+		CRS:         modelgeojson.NamedCRS("EPSG:4326"),
 		Features:    result.Collection.Features,
 		Tiles:       tiles,
 		Attribution: lglnimport.Attribution(result.Tiles),

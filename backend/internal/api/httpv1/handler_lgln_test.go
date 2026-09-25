@@ -94,6 +94,10 @@ func TestImportLGLNEmptyAreaAnswersEmptyCollection(t *testing.T) {
 		t.Errorf("response = %+v", resp)
 	}
 
+	if name, _ := resp.CRS["properties"].(map[string]any)["name"].(string); name != "EPSG:4326" {
+		t.Errorf("crs = %v, want the named EPSG:4326", resp.CRS)
+	}
+
 	if resp.Tiles == nil || resp.Skipped == nil {
 		t.Errorf("tiles and skipped must be present, even when empty: %s", rec.Body.String())
 	}

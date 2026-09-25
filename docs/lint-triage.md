@@ -185,8 +185,8 @@ assumed; see the debt pass below.
 1. **OpenAPI 3 wire vocabulary** (`internal/api/httpv1/openapi.go`, 39 findings). `type`, `string`,
    `$ref`, `properties`, `responses` and the rest of the OpenAPI keyword set repeat because the
    spec is built as nested `map[string]any`. The spellings are fixed by the OpenAPI specification,
-   so a constant buys no typo protection. Path-scoped; that file contains nothing but the spec
-   builder.
+   so a constant buys no typo protection. Path-scoped to `openapi.go` and the `openapi_<area>.go`
+   parts split off it for length; those files contain nothing but the spec builder.
 2. ~~**CLI and standard-module parameter names** (`run_options.go`, `run_options_beb.go`,
    `run_extract_rls19.go`, `import_soundplan.go`, and
    `{schall03,iso9613}/{model,propagation,indicators}.go`; 99 findings). Group 2 above, unchanged: PLAN.md Priority 7's
