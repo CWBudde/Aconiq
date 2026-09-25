@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/io/citygmlimport"
 )
 
 // utm32 projects a WGS84 point into EPSG:25832, the CRS LGLN tiles use, so a
@@ -135,6 +136,48 @@ func TestLoadFiltersByCentroidDedupsAndReprojects(t *testing.T) {
 	centroid, ok := geo.PolygonCentroid(rings)
 	if !ok || !hannover.containsCentroid(centroid) {
 		t.Errorf("centroid %v not in WGS84 box %v", centroid, hannover)
+	}
+}
+
+func TestLoadCountsSkipsOfATileWithNothingUsable(t *testing.T) {
+	t.Parallel()
+
+	// One building, and its footprint crosses itself: the tile has nothing
+	// usable, which is an empty result with a skip count, not an error.
+	bowtie := `<?xml version="1.0" encoding="UTF-8"?>
+<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0"
+  xmlns:bldg="http://www.opengis.net/citygml/building/2.0"
+  xmlns:gml="http://www.opengis.net/gml">
+  <core:cityObjectMember><bldg:Building gml:id="DENI_bowtie">
+    <bldg:measuredHeight uom="m">9</bldg:measuredHeight>
+    <bldg:boundedBy><bldg:GroundSurface><bldg:lod2MultiSurface><gml:MultiSurface><gml:surfaceMember>
+      <gml:Polygon><gml:exterior><gml:LinearRing><gml:posList srsName="EPSG:25832" srsDimension="2">550000 5803000 550010 5803010 550010 5803000 550000 5803010 550000 5803000</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon>
+    </gml:surfaceMember></gml:MultiSurface></bldg:lod2MultiSurface></bldg:GroundSurface></bldg:boundedBy>
+  </bldg:Building></core:cityObjectMember>
+</core:CityModel>
+`
+
+	var f *fixture
+
+	f = newFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		writePage(t, w, []map[string]any{
+			item("LoD2_32_550_5803_1_ni", "2024-06-12", f.tiles.URL+"/a.gml"),
+		}, "")
+	}, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(bowtie))
+	})
+
+	result, err := f.client().Load(context.Background(), hannover, t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(result.Collection.Features) != 0 {
+		t.Errorf("features = %d, want 0", len(result.Collection.Features))
+	}
+
+	if result.Skipped[string(citygmlimport.SkipSelfIntersects)] != 1 {
+		t.Errorf("skipped = %v, want the bowtie counted", result.Skipped)
 	}
 }
 

@@ -193,6 +193,35 @@ func importCandidates(buildings []types.Building) []candidate {
 	return out
 }
 
+// footprintSkipReason says why a footprint cannot become a building, or ""
+// when it can.
+func footprintSkipReason(fp *types.Polygon) SkipReason {
+	if fp == nil {
+		return SkipNoFootprint
+	}
+
+	if len(fp.Exterior.Points) < 4 {
+		return SkipDegeneratePoly
+	}
+
+	// A footprint that crosses itself has no reliable inside, and validation
+	// refuses the whole model over it. Surveyed data does contain the odd one
+	// (a ring doubling back over a shared wall), so drop that building and
+	// say so rather than lose every other one in the file. Validation checks
+	// every ring, so a crossed courtyard hole counts the same.
+	if modelgeojson.RingSelfIntersects(ringPairs(fp.Exterior)) {
+		return SkipSelfIntersects
+	}
+
+	for _, hole := range fp.Interior {
+		if len(hole.Points) >= 4 && modelgeojson.RingSelfIntersects(ringPairs(hole)) {
+			return SkipSelfIntersects
+		}
+	}
+
+	return ""
+}
+
 // buildingToFeature converts a CityGML building to a GeoJSON feature.
 // Returns the feature and an empty SkipReason on success, or a zero feature
 // and the reason on failure.
@@ -207,21 +236,8 @@ func buildingToFeature(b *types.Building, index int) (modelgeojson.GeoJSONFeatur
 		return modelgeojson.GeoJSONFeature{}, SkipInvalidHeight
 	}
 
-	// Get footprint polygon.
-	if b.Footprint == nil {
-		return modelgeojson.GeoJSONFeature{}, SkipNoFootprint
-	}
-
-	if len(b.Footprint.Exterior.Points) < 4 {
-		return modelgeojson.GeoJSONFeature{}, SkipDegeneratePoly
-	}
-
-	// A footprint that crosses itself has no reliable inside, and validation
-	// refuses the whole model over it. Surveyed data does contain the odd one
-	// (a ring doubling back over a shared wall), so drop that building and
-	// say so rather than lose every other one in the file.
-	if modelgeojson.RingSelfIntersects(ringPairs(b.Footprint.Exterior)) {
-		return modelgeojson.GeoJSONFeature{}, SkipSelfIntersects
+	if reason := footprintSkipReason(b.Footprint); reason != "" {
+		return modelgeojson.GeoJSONFeature{}, reason
 	}
 
 	// Build ID.

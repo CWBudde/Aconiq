@@ -1,6 +1,9 @@
 package citygmlimport
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestReadExtractsBuildingFootprintsAndHeight(t *testing.T) {
 	t.Parallel()
@@ -509,5 +512,33 @@ func TestReadSkipsSelfIntersectingFootprint(t *testing.T) {
 
 	if len(result.Report.Details) != 1 || result.Report.Details[0].Reason != SkipSelfIntersects {
 		t.Errorf("skipped = %+v, want bowtie for %q", result.Report.Details, SkipSelfIntersects)
+	}
+}
+
+func TestReadSkipsSelfIntersectingHole(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0"
+                xmlns:bldg="http://www.opengis.net/citygml/building/2.0"
+                xmlns:gml="http://www.opengis.net/gml">
+  <core:cityObjectMember><bldg:Building gml:id="crossed-courtyard">
+    <bldg:measuredHeight>9</bldg:measuredHeight>
+    <bldg:boundedBy><bldg:GroundSurface><bldg:lod2MultiSurface><gml:MultiSurface><gml:surfaceMember>
+      <gml:Polygon>
+        <gml:exterior><gml:LinearRing><gml:posList srsDimension="2">0 0 30 0 30 30 0 30 0 0</gml:posList></gml:LinearRing></gml:exterior>
+        <gml:interior><gml:LinearRing><gml:posList srsDimension="2">10 10 20 20 20 10 10 20 10 10</gml:posList></gml:LinearRing></gml:interior>
+      </gml:Polygon>
+    </gml:surfaceMember></gml:MultiSurface></bldg:lod2MultiSurface></bldg:GroundSurface></bldg:boundedBy>
+  </bldg:Building></core:cityObjectMember>
+</core:CityModel>`)
+
+	result, err := ReadWithCRS(payload)
+	if !errors.Is(err, ErrNoBuildings) {
+		t.Fatalf("err = %v, want ErrNoBuildings", err)
+	}
+
+	if len(result.Report.Details) != 1 || result.Report.Details[0].Reason != SkipSelfIntersects {
+		t.Errorf("skipped = %+v, want the building for %q", result.Report.Details, SkipSelfIntersects)
 	}
 }

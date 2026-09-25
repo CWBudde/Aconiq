@@ -92,19 +92,21 @@ func tileBuildings(path string, tile Tile, bb BBox) ([]modelgeojson.GeoJSONFeatu
 	}
 
 	parsed, err := citygmlimport.ReadWithCRS(data)
-	if err != nil {
-		// A tile of fields and forest has no building at all; that is an
-		// empty tile, not a broken one.
-		if parsed.Report.Total == 0 && errors.Is(err, citygmlimport.ErrNoBuildings) {
-			return nil, nil, nil
-		}
-
-		return nil, nil, fmt.Errorf("parse tile %s: %w", tile.ID, err)
-	}
 
 	skipped := make(map[string]int)
 	for _, s := range parsed.Report.Details {
 		skipped[string(s.Reason)]++
+	}
+
+	if err != nil {
+		// A tile of fields and forest has no building at all, and one whose
+		// every building was skipped has none usable. Both are empty tiles,
+		// not broken ones; the second still reports what it skipped.
+		if errors.Is(err, citygmlimport.ErrNoBuildings) {
+			return nil, skipped, nil
+		}
+
+		return nil, nil, fmt.Errorf("parse tile %s: %w", tile.ID, err)
 	}
 
 	code := parsed.EPSGCode
