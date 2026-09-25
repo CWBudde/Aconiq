@@ -107,6 +107,12 @@ func (c *Client) store(ctx context.Context, id string, body io.Reader, cacheDir,
 		return fmt.Errorf("%w: tile %s is empty", ErrUnavailable, id)
 	}
 
+	// A body that ended cleanly after the caller gave up is still not a tile
+	// the caller wants cached.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("tile %s: %w", id, err)
+	}
+
 	if err := tmp.Sync(); err != nil {
 		return fmt.Errorf("sync tile %s: %w", id, err)
 	}

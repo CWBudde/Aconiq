@@ -472,12 +472,23 @@ func TestFetchTileFailuresLeaveNoFile(t *testing.T) {
 
 func TestFetchTileCancelledMidBody(t *testing.T) {
 	started := make(chan struct{})
+	cancelled := make(chan struct{})
 
+	// The handler holds the body open until the client has cancelled, then
+	// aborts the connection. Returning normally would end the chunked body
+	// cleanly, and a client that read that end before noticing its own
+	// cancellation would store a truncated tile.
 	f := newFixture(t, func(http.ResponseWriter, *http.Request) {}, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("<CityModel>"))
 		w.(http.Flusher).Flush()
 		close(started)
-		<-r.Context().Done()
+
+		select {
+		case <-cancelled:
+		case <-r.Context().Done():
+		}
+
+		panic(http.ErrAbortHandler)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -486,6 +497,7 @@ func TestFetchTileCancelledMidBody(t *testing.T) {
 	go func() {
 		<-started
 		cancel()
+		close(cancelled)
 	}()
 
 	tile := Tile{ID: "LoD2_32_550_5803_1_ni", Updated: "2024-06-12", GMLURL: f.tiles.URL + "/t.gml"}
