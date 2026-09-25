@@ -12,6 +12,8 @@
 import type {
   APIValidationIssue,
   HealthResponse,
+  LglnImportRequest,
+  LglnImportResponse,
   ModelResponse,
   ModelSaveRequest,
   ProjectStatusResponse,
@@ -91,6 +93,16 @@ export interface BackendCapabilities {
    * the list, having ignored the one instruction the user gave it.
    */
   readonly runsAreCancellable: boolean;
+  /**
+   * The official LGLN LoD2 buildings can be loaded for a box. When set, the
+   * import page's LGLN tab is live; when not set, the tab is shown disabled
+   * and says it needs `aconiq serve`.
+   *
+   * Only the API can: a tile is a ~50 MB CityGML download that `aconiq serve`
+   * fetches, parses with the Go importer and caches for every later request.
+   * The WASM kernel carries no CityGML reader and the tab no tile cache.
+   */
+  readonly canImportLGLN: boolean;
 }
 
 /**
@@ -273,6 +285,12 @@ export interface Backend {
   /** A URL the browser can open or download the artifact from. */
   getArtifactURL(artifactId: string): string;
   importFromOSM(req: OsmImportRequest): Promise<GeoJSONFeatureCollection>;
+  /**
+   * The LGLN LoD2 buildings whose footprint centroid lies inside the box.
+   * Rejects unless `capabilities.canImportLGLN`. Can take tens of seconds the
+   * first time a tile is touched: the server downloads it before it answers.
+   */
+  importFromLGLN(req: LglnImportRequest): Promise<LglnImportResponse>;
   /**
    * Start a run and resolve with it once it has finished.
    *

@@ -84,7 +84,62 @@ describe("httpBackend capabilities", () => {
       // There is no cancel endpoint, so the dialog must not offer a button
       // that could only close itself while the server carried on.
       runsAreCancellable: false,
+      // The server downloads, parses and caches the LoD2 tiles.
+      canImportLGLN: true,
     });
+  });
+});
+
+describe("httpBackend.importFromLGLN", () => {
+  it("posts the flat box the OSM import posts, and nothing else", async () => {
+    const answer = {
+      type: "FeatureCollection",
+      features: [],
+      tiles: [{ id: "32_550_5803", date: "2024-05-01" }],
+      attribution: "© LGLN",
+      skipped: {},
+    };
+    const mock = stubFetch(jsonResponse(answer));
+
+    // An OSM request is assignable to the LGLN one; its endpoint must not
+    // travel.
+    const osmShaped = {
+      south: 52.37,
+      west: 9.73,
+      north: 52.38,
+      east: 9.74,
+      overpass_endpoint: "https://overpass.example/api",
+    };
+    const result = await httpBackend.importFromLGLN(osmShaped);
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/import/lgln"));
+    expect(init.method).toBe("POST");
+    const headers = headersOf(init);
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers[CLIENT_HEADER_NAME]).toBeDefined();
+    expect(JSON.parse(init.body as string)).toEqual({
+      south: 52.37,
+      west: 9.73,
+      north: 52.38,
+      east: 9.74,
+    });
+    expect(result).toEqual(answer);
+  });
+
+  it("keeps the envelope of a refusal", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope("lgln_too_many_tiles", "bbox covers 12 tiles, limit is 9"),
+        400,
+      ),
+    );
+
+    const error = await httpBackend
+      .importFromLGLN({ south: 52, west: 9, north: 52.1, east: 9.2 })
+      .catch((e: unknown) => e);
+
+    expect(asAPIRequestError(error)?.code).toBe("lgln_too_many_tiles");
   });
 });
 

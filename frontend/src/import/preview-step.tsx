@@ -19,6 +19,21 @@ import { m } from "@/i18n/messages";
 const PREVIEW_ERROR_LIMIT = 5;
 
 /**
+ * What confirming an LGLN load will do, planned by `planReplaceBuildings`
+ * before the reader chooses — and what the data must be shown with.
+ */
+export interface LglnPreview {
+  /** OSM buildings inside the box that the replacement removes. */
+  removed: number;
+  /** LGLN buildings that land (ids the workspace already holds are skipped). */
+  added: number;
+  /** False when the workspace is projected, so nothing could be compared. */
+  comparable: boolean;
+  tileCount: number;
+  attribution: string;
+}
+
+/**
  * What the import found, before anything of it reaches the workspace: the
  * counts, the skipped features, and the validation findings.
  *
@@ -33,9 +48,11 @@ export function PreviewStep({
   report,
   workspaceEmpty,
   mergeSkips,
+  lgln = null,
   onBack,
   onAdd,
   onReplace,
+  onReplaceBuildings,
 }: {
   features: ModelFeature[];
   receivers: ModelReceiver[];
@@ -47,9 +64,16 @@ export function PreviewStep({
   workspaceEmpty: boolean;
   /** What Add would leave behind, so the reader reads it before choosing. */
   mergeSkips: MergeSkips;
+  /**
+   * Set when the import came from the LGLN tab. The choice between Add and
+   * Replace then gives way to the one thing an LGLN load is for: replacing
+   * the OSM buildings in its box, which {@link onReplaceBuildings} does.
+   */
+  lgln?: LglnPreview | null;
   onBack: () => void;
   onAdd: () => void;
   onReplace: () => void;
+  onReplaceBuildings?: () => void;
 }) {
   const countByKind = (kind: ModelFeature["kind"]) =>
     String(features.filter((f) => f.kind === kind).length);
@@ -138,6 +162,25 @@ export function PreviewStep({
         </Callout>
       ) : null}
 
+      {lgln === null ? null : (
+        <Callout variant="info" icon={Info}>
+          <ul className="space-y-1">
+            {lgln.comparable ? (
+              <>
+                <li>{m.msg_lgln_replaces_osm({ count: lgln.removed })}</li>
+                <li>{m.msg_lgln_adds({ count: lgln.added })}</li>
+              </>
+            ) : (
+              <li>{m.msg_lgln_workspace_projected()}</li>
+            )}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {m.msg_lgln_tiles_read({ count: lgln.tileCount })}{" "}
+            {lgln.attribution}
+          </p>
+        </Callout>
+      )}
+
       {/* What Add would skip, said here rather than in a dialog: the reader
           decides between Add and Replace on this screen, so this is where the
           consequence has to be readable. */}
@@ -162,7 +205,17 @@ export function PreviewStep({
             nothing to lose and therefore nothing to choose between: Add and
             Replace would do the same thing. The asymmetry is deliberate — the
             choice appears exactly when it has a consequence. */}
-        {workspaceEmpty ? (
+        {lgln !== null ? (
+          // Named for what it does: with no OSM building in the box there is
+          // nothing to replace, and the button is a plain import.
+          // Disabled for a projected workspace: the buildings are in degrees
+          // and would be stored as metres.
+          <Button onClick={onReplaceBuildings} disabled={!lgln.comparable}>
+            {lgln.comparable && lgln.removed > 0
+              ? m.action_import_lgln_apply()
+              : m.action_import_features({ count: importedCount })}
+          </Button>
+        ) : workspaceEmpty ? (
           <Button onClick={onAdd}>
             {m.action_import_features({ count: importedCount })}
           </Button>

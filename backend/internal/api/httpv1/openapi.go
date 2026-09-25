@@ -85,6 +85,7 @@ func openapiPathItems() map[string]any {
 		openapiStatusPathItems(),
 		openapiRunPathItems(),
 		openapiImportPathItems(),
+		openapiLGLNPathItems(),
 		openapiModelPathItems(),
 		openapiTransformPathItems(),
 	} {
@@ -835,6 +836,7 @@ func openapiSchemas() map[string]any {
 		openapiErrorSchemas(),
 		openapiProjectSchemas(),
 		openapiRunSchemas(),
+		openapiLGLNSchemas(),
 		openapiRunDeleteSchemas(),
 		openapiStandardSchemas(),
 		openapiModelSchemas(),

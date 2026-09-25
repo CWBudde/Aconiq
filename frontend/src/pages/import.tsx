@@ -8,10 +8,15 @@ import { PageHeader } from "@/ui/page-header";
 import { FileImport } from "@/import/file-import";
 import { OsmImport } from "@/import/osm-import";
 import type { OsmQuery } from "@/import/osm-import";
+import { LglnImport } from "@/import/lgln-import";
+import { backend } from "@/api/backend";
+import type { LglnImportResponse } from "@/api/client";
+import type { LonLatBBox } from "@/model/footprint";
 import { PreviewStep } from "@/import/preview-step";
 import {
   countModelObjects,
   planMerge,
+  planReplaceBuildings,
   useModelStore,
 } from "@/model/model-store";
 import type { LoadedModel } from "@/model/model-store";
@@ -31,9 +36,20 @@ import { SELECT_PARAM } from "@/map/map-params";
 import { m } from "@/i18n/messages";
 
 type ImportStep = "upload" | "preview" | "done";
-type ImportSource = "file" | "osm";
+type ImportSource = "file" | "osm" | "lgln";
 
-const IMPORT_SOURCES: readonly ImportSource[] = ["file", "osm"];
+const IMPORT_SOURCES: readonly ImportSource[] = ["file", "osm", "lgln"];
+
+/**
+ * What an LGLN load brought besides its features: the box it was asked for,
+ * which the replacement needs again at confirm time, and what the preview has
+ * to show with the data.
+ */
+interface LglnLoad {
+  bbox: LonLatBBox;
+  tileCount: number;
+  attribution: string;
+}
 
 function isImportSource(value: string): value is ImportSource {
   return (IMPORT_SOURCES as readonly string[]).includes(value);
@@ -51,6 +67,10 @@ export default function ImportPage() {
   // The Overpass query lives here rather than in `OsmImport`, because the tab
   // strip unmounts an inactive panel: a box typed — or geolocated — into the
   // OSM tab would be gone the moment the reader glanced at the file tab.
+  //
+  // The LGLN tab reads and writes the same box. Its buildings are meant to
+  // replace the ones an OSM fetch brought, so the box they are loaded for is
+  // the one the OSM fetch used unless the reader changes it.
   const [osmQuery, setOsmQuery] = useState<OsmQuery>({
     south: "",
     west: "",
@@ -69,13 +89,19 @@ export default function ImportPage() {
   const [importCRS, setImportCRS] = useState<string | null>(null);
   const [skippedCount, setSkippedCount] = useState(0);
   const [report, setReport] = useState<ValidationReport | null>(null);
+  // Set only while the import in hand came from the LGLN tab: it switches the
+  // preview from Add/Replace to replacing the OSM buildings in its box.
+  const [lglnLoad, setLglnLoad] = useState<LglnLoad | null>(null);
   const [error, setError] = useState<string | null>(null);
   const loadModel = useModelStore((s) => s.loadModel);
   const mergeModel = useModelStore((s) => s.mergeModel);
+  const replaceBuildingsInBBox = useModelStore((s) => s.replaceBuildingsInBBox);
+  const workspaceCRS = useModelStore((s) => s.crs);
   const workspaceFeatures = useModelStore((s) => s.features);
   const workspaceReceivers = useModelStore((s) => s.receivers);
   const workspaceCalcArea = useModelStore((s) => s.calcArea);
   const navigate = useNavigate();
+  const lglnAvailable = backend.capabilities.canImportLGLN;
 
   /** Everything the import brings, receivers and calculation area included. */
   const importedCount = countModelObjects({ features, receivers, calcArea });
@@ -90,8 +116,38 @@ export default function ImportPage() {
   // Computed here, at preview time, and not inside the merge: the reader has
   // to see what Add will leave behind *before* choosing it. A dialog that
   // reports it afterwards is where the surprise lives.
+  //
+  // An LGLN load is planned the same way, with the OSM buildings it removes
+  // counted first, so the preview can say "removes n, adds m" before the
+  // reader commits to it.
+  const replacePlan = useMemo(
+    () =>
+      lglnLoad === null
+        ? null
+        : planReplaceBuildings(
+            {
+              features: workspaceFeatures,
+              receivers: workspaceReceivers,
+              calcArea: workspaceCalcArea,
+              crs: workspaceCRS,
+            },
+            { features, receivers, calcArea },
+            lglnLoad.bbox,
+          ),
+    [
+      lglnLoad,
+      workspaceFeatures,
+      workspaceReceivers,
+      workspaceCalcArea,
+      workspaceCRS,
+      features,
+      receivers,
+      calcArea,
+    ],
+  );
   const mergeSkips = useMemo(
     () =>
+      replacePlan?.merge.skipped ??
       planMerge(
         {
           features: workspaceFeatures,
@@ -101,6 +157,7 @@ export default function ImportPage() {
         { features, receivers, calcArea },
       ).skipped,
     [
+      replacePlan,
       workspaceFeatures,
       workspaceReceivers,
       workspaceCalcArea,
@@ -152,6 +209,28 @@ export default function ImportPage() {
       setStep("preview");
     },
     [],
+  );
+
+  // Every source but LGLN clears the LGLN context, so a file picked after an
+  // LGLN load is previewed as the file it is.
+  const handleCollection = useCallback(
+    (collection: GeoJSONFeatureCollection) => {
+      setLglnLoad(null);
+      handleNormalizeAndPreview(collection);
+    },
+    [handleNormalizeAndPreview],
+  );
+
+  const handleLglnCollection = useCallback(
+    (collection: LglnImportResponse, bbox: LonLatBBox) => {
+      setLglnLoad({
+        bbox,
+        tileCount: collection.tiles.length,
+        attribution: collection.attribution,
+      });
+      handleNormalizeAndPreview(collection);
+    },
+    [handleNormalizeAndPreview],
   );
 
   // Replace goes through `loadModel`, which drops the workspace outright and
@@ -218,6 +297,63 @@ export default function ImportPage() {
     importedCount,
     loadModel,
     errorsFor,
+  ]);
+
+  // The LGLN confirm: one undoable step that removes the OSM buildings in the
+  // box and merges the rest, planned by the same function the preview read.
+  const handleReplaceBuildings = useCallback(() => {
+    if (lglnLoad === null) return;
+    const current = {
+      features: workspaceFeatures,
+      receivers: workspaceReceivers,
+      calcArea: workspaceCalcArea,
+      crs: workspaceCRS,
+    };
+    const incoming = {
+      features,
+      receivers,
+      calcArea,
+      ...(importCRS !== null && { crs: importCRS }),
+    };
+    const plan = planReplaceBuildings(current, incoming, lglnLoad.bbox);
+    if (!plan.comparable) return;
+    replaceBuildingsInBBox(incoming, lglnLoad.bbox);
+    const landed = plan.merge;
+    const gone = new Set(plan.removed);
+    setDoneCount(
+      landed.features.length +
+        landed.receivers.length +
+        (landed.calcArea !== null && workspaceCalcArea === null ? 1 : 0),
+    );
+    setDoneErrors(
+      errorsFor(
+        {
+          features: [
+            ...workspaceFeatures.filter((f) => !gone.has(f)),
+            ...landed.features,
+          ],
+          receivers: [...workspaceReceivers, ...landed.receivers],
+          calcArea: landed.calcArea,
+        },
+        [
+          ...landed.features.map((f) => f.id),
+          ...landed.receivers.map((r) => r.id),
+        ],
+      ),
+    );
+    setStep("done");
+  }, [
+    lglnLoad,
+    features,
+    receivers,
+    calcArea,
+    importCRS,
+    replaceBuildingsInBBox,
+    errorsFor,
+    workspaceFeatures,
+    workspaceReceivers,
+    workspaceCalcArea,
+    workspaceCRS,
   ]);
 
   const handleAdd = useCallback(() => {
@@ -301,11 +437,21 @@ export default function ImportPage() {
                 <TabsTrigger value="osm">
                   {m.action_import_from_osm()}
                 </TabsTrigger>
+                <TabsTrigger value="lgln" disabled={!lglnAvailable}>
+                  {m.action_import_from_lgln()}
+                </TabsTrigger>
               </TabsList>
+              {/* A disabled tab cannot be opened to read why, so the reason
+                  stands under the tab strip instead. */}
+              {lglnAvailable ? null : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {m.msg_lgln_needs_server()}
+                </p>
+              )}
 
               <TabsContent value="file">
                 <FileImport
-                  onCollection={handleNormalizeAndPreview}
+                  onCollection={handleCollection}
                   onError={setError}
                 />
               </TabsContent>
@@ -314,7 +460,16 @@ export default function ImportPage() {
                 <OsmImport
                   query={osmQuery}
                   onQueryChange={setOsmQuery}
-                  onCollection={handleNormalizeAndPreview}
+                  onCollection={handleCollection}
+                  onError={setError}
+                />
+              </TabsContent>
+
+              <TabsContent value="lgln">
+                <LglnImport
+                  bbox={osmQuery}
+                  onBBoxChange={setOsmQuery}
+                  onCollection={handleLglnCollection}
                   onError={setError}
                 />
               </TabsContent>
@@ -333,6 +488,18 @@ export default function ImportPage() {
             report={report}
             workspaceEmpty={workspaceEmpty}
             mergeSkips={mergeSkips}
+            lgln={
+              lglnLoad === null || replacePlan === null
+                ? null
+                : {
+                    removed: replacePlan.removed.length,
+                    added: replacePlan.merge.features.length,
+                    comparable: replacePlan.comparable,
+                    tileCount: lglnLoad.tileCount,
+                    attribution: lglnLoad.attribution,
+                  }
+            }
+            onReplaceBuildings={handleReplaceBuildings}
             onBack={() => {
               setStep("upload");
             }}

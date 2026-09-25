@@ -53,6 +53,18 @@ export const ERROR_CODE_RUN_NOT_FINISHED = "run_not_finished";
  */
 export const ERROR_CODE_EXPORT_INSIDE_RUN = "export_inside_run";
 
+/**
+ * The box handed to `POST /api/v1/import/lgln` covers more 1 km LoD2 tiles
+ * than the server loads for one request (9). Mirrors the LGLN handler's code.
+ */
+export const ERROR_CODE_LGLN_TOO_MANY_TILES = "lgln_too_many_tiles";
+
+/**
+ * The LGLN download service could not be reached, or answered with an error.
+ * Mirrors the LGLN handler's code.
+ */
+export const ERROR_CODE_LGLN_UNAVAILABLE = "lgln_unavailable";
+
 /** An error envelope from the local API, kept whole. */
 export class APIRequestError extends Error {
   readonly code: string;

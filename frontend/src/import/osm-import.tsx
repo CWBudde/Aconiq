@@ -6,6 +6,9 @@ import { Card } from "@/ui/components/card";
 import { Input } from "@/ui/components/input";
 import { Label } from "@/ui/components/label";
 import { PageHeader } from "@/ui/page-header";
+import { BBoxFields } from "./bbox-fields";
+import { parseBBox } from "./bbox";
+import type { BBoxText } from "./bbox";
 import { useImportFromOSM } from "@/api/hooks";
 import { asAPIRequestError } from "@/api/api-error";
 import type { GeoJSONFeatureCollection } from "@/model/types";
@@ -30,50 +33,14 @@ export function osmFailureText(err: unknown): string {
   return err instanceof Error ? err.message : m.error_osm_fetch_failed();
 }
 
-function BBoxField({
-  id,
-  label,
-  value,
-  placeholder,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Input
-        id={id}
-        type="number"
-        step="any"
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-        placeholder={placeholder}
-      />
-      <Label htmlFor={id} className="text-center text-xs text-muted-foreground">
-        {label}
-      </Label>
-    </div>
-  );
-}
-
 /**
- * The Overpass query the reader is composing.
+ * The Overpass query the reader is composing: the shared box, plus the
+ * endpoint only this tab has.
  *
- * Held as text, not numbers, so a half-typed value survives a re-render;
  * `toFixed` below writes an input value, not a display string, so it stays
  * outside the locale-aware formatters.
  */
-export interface OsmQuery {
-  south: string;
-  west: string;
-  north: string;
-  east: string;
+export interface OsmQuery extends BBoxText {
   endpoint: string;
 }
 
@@ -150,22 +117,15 @@ export function OsmImport({
 
   const handleOSMFetch = useCallback(() => {
     onError(null);
-    const south = parseFloat(query.south);
-    const west = parseFloat(query.west);
-    const north = parseFloat(query.north);
-    const east = parseFloat(query.east);
-
-    if (isNaN(south) || isNaN(west) || isNaN(north) || isNaN(east)) {
+    const bbox = parseBBox(query);
+    if (bbox === null) {
       onError(m.msg_bbox_required());
       return;
     }
 
     osmMutation.mutate(
       {
-        south,
-        west,
-        north,
-        east,
+        ...bbox,
         ...(query.endpoint ? { overpass_endpoint: query.endpoint } : {}),
       },
       {
@@ -195,36 +155,13 @@ export function OsmImport({
         <LocateFixed aria-hidden="true" />
         {geolocating ? m.status_locating() : m.action_use_current_location()}
       </Button>
-      <div className="grid grid-cols-4 gap-3">
-        <BBoxField
-          id="osm-south"
-          label={m.label_south()}
-          value={query.south}
-          placeholder="52.49"
-          onChange={setField("south")}
-        />
-        <BBoxField
-          id="osm-west"
-          label={m.label_west()}
-          value={query.west}
-          placeholder="13.35"
-          onChange={setField("west")}
-        />
-        <BBoxField
-          id="osm-north"
-          label={m.label_north()}
-          value={query.north}
-          placeholder="52.52"
-          onChange={setField("north")}
-        />
-        <BBoxField
-          id="osm-east"
-          label={m.label_east()}
-          value={query.east}
-          placeholder="13.40"
-          onChange={setField("east")}
-        />
-      </div>
+      <BBoxFields
+        idPrefix="osm"
+        value={query}
+        onFieldChange={(field, value) => {
+          setField(field)(value);
+        }}
+      />
       <div className="flex flex-col gap-1">
         <Label htmlFor="osm-endpoint" className="text-xs text-muted-foreground">
           {m.label_overpass_endpoint_optional()}

@@ -20,6 +20,7 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/terrain"
+	"github.com/aconiq/backend/internal/io/lglnimport"
 	"github.com/aconiq/backend/internal/io/osmimport"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/jsonio"
@@ -88,6 +89,12 @@ const (
 	// "you were blocked", "you were rate limited" and "it is down" send a reader
 	// to three different remedies and used to arrive as one sentence.
 	errorCodeUpstreamError = "upstream_error"
+	// errorCodeLGLNTooManyTiles answers an LGLN import whose bounding box
+	// intersects more tiles than one request may download.
+	errorCodeLGLNTooManyTiles = "lgln_too_many_tiles"
+	// errorCodeLGLNUnavailable answers an LGLN import the LGLN service could
+	// not serve: unreachable, failing, or answering with something unusable.
+	errorCodeLGLNUnavailable = "lgln_unavailable"
 
 	// The transport-level controls in security.go. They are refusals to route,
 	// not endpoint answers, so they can appear on any path.
@@ -107,6 +114,7 @@ type Handler struct {
 	sseInterval time.Duration
 	registry    *framework.Registry
 	runExecutor runExecutor
+	lgln        *lglnimport.Client
 	// logger carries the few things this package has to say that no response
 	// can carry: a cleanup that failed after the request had already been
 	// answered, and a run it declined to attribute. Never nil — the
@@ -279,7 +287,8 @@ type handlerOptions struct {
 	allowedHosts []string // extra Host header values beyond loopback
 	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
-	logger       *slog.Logger // nil falls back to slog.Default()
+	lgln         *lglnimport.Client // nil falls back to lglnimport.NewClient()
+	logger       *slog.Logger       // nil falls back to slog.Default()
 }
 
 // lockManifest serialises one read-modify-write of `.noise/project.json`
@@ -327,8 +336,13 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		registry:    opts.registry,
 		runExecutor: opts.runExecutor,
 		manifest:    &sync.Mutex{},
+		lgln:        opts.lgln,
 		logger:      logger,
 	}
+	if handler.lgln == nil {
+		handler.lgln = lglnimport.NewClient()
+	}
+
 	if handler.runExecutor == nil {
 		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
 	}
@@ -345,6 +359,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
 	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
 	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
+	mux.HandleFunc("/api/v1/import/lgln", handler.handleImportLGLN)
 	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
 	mux.HandleFunc("/api/v1/model", handler.handleModel)
 	mux.HandleFunc("/api/v1/transform", handler.handleTransform)
@@ -1158,7 +1173,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/terrain, or /api/v1/model.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/lgln, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 

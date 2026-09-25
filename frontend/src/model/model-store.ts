@@ -8,6 +8,8 @@ import type {
   Position,
 } from "./types";
 import { CommandStack } from "./command-stack";
+import { bboxContains, footprintCentroid, isLonLatCRS } from "./footprint";
+import type { LonLatBBox } from "./footprint";
 
 /**
  * The CRS a workspace is in when nothing says otherwise. `aconiq init` defaults
@@ -83,6 +85,15 @@ interface ModelState {
   removeReceiver: (id: string) => void;
   loadModel: (model: LoadedModel) => void;
   mergeModel: (model: LoadedModel) => MergeSkips;
+  /**
+   * Replaces the OpenStreetMap buildings inside `bbox` with `model`, as **one**
+   * undoable step. See {@link planReplaceBuildings} for what is removed and
+   * what lands.
+   */
+  replaceBuildingsInBBox: (
+    model: LoadedModel,
+    bbox: LonLatBBox,
+  ) => ReplaceBuildingsResult;
   hydrateModel: (model: LoadedModel) => void;
   getReceiverById: (id: string) => ModelReceiver | undefined;
 
@@ -205,6 +216,95 @@ export function planMerge(
       calcArea: current.calcArea !== null && incoming.calcArea !== null,
     },
   };
+}
+
+/** The `import_format` the LGLN LoD2 import stamps on every building. */
+export const LGLN_IMPORT_FORMAT = "lgln-lod2";
+
+/**
+ * Whether a feature is a building the OpenStreetMap import brought.
+ *
+ * Both importers — `internal/io/osmimport` behind `aconiq serve` and
+ * `overpassWayToFeature` in browser mode — mint `osm-way-<id>` and set
+ * `osm_id`; neither sets an `import_format`. Either mark counts, so an id the
+ * reader renamed still identifies the building by its tag. A building that
+ * says it came from LGLN is never one, whatever else it carries.
+ */
+export function isOSMBuilding(feature: ModelFeature): boolean {
+  if (feature.kind !== "building") return false;
+  if (feature.properties?.["import_format"] === LGLN_IMPORT_FORMAT) {
+    return false;
+  }
+  return (
+    feature.id.startsWith("osm-way-") ||
+    feature.properties?.["osm_id"] !== undefined
+  );
+}
+
+/** What a {@link planReplaceBuildings} would do. */
+export interface ReplaceBuildingsPlan {
+  /** The workspace's OSM buildings the replacement removes. */
+  removed: ModelFeature[];
+  /** What then lands of `incoming`, with {@link planMerge}'s semantics. */
+  merge: MergePlan;
+  /**
+   * False when the workspace holds something in a projected CRS. Its
+   * coordinates cannot be compared against a box in degrees, and the LGLN
+   * buildings, which are in degrees, cannot be put beside them: nothing is
+   * reprojected on the way in. The replacement is refused, and the page has
+   * to say why.
+   */
+  comparable: boolean;
+}
+
+/** What {@link ModelState.replaceBuildingsInBBox} did, for the caller to report. */
+export interface ReplaceBuildingsResult {
+  removed: number;
+  skipped: MergeSkips;
+}
+
+/**
+ * What replacing the OSM buildings in `bbox` with `incoming` would do,
+ * computed without touching the store so the preview can say it first.
+ *
+ * Removed: every {@link isOSMBuilding} whose footprint centroid lies inside
+ * the box — the rule the LGLN server applies to its own buildings, so a
+ * building on the box edge is either in both sets or in neither. Everything
+ * else stays: roads, barriers, receivers, the calculation area, a building the
+ * reader drew, and the buildings a previous LGLN load brought.
+ *
+ * Then `incoming` is merged exactly as {@link planMerge} merges, into the
+ * workspace without the removed buildings. That is what makes a second load of
+ * the same box a no-op: the LGLN ids are already held, so every one is skipped.
+ */
+export function planReplaceBuildings(
+  current: LoadedModel,
+  incoming: LoadedModel,
+  bbox: LonLatBBox,
+): ReplaceBuildingsPlan {
+  const empty =
+    current.features.length === 0 &&
+    current.receivers.length === 0 &&
+    current.calcArea === null;
+  const comparable = empty || isLonLatCRS(current.crs ?? DEFAULT_MODEL_CRS);
+  const removed = comparable
+    ? current.features.filter((feature) => {
+        if (!isOSMBuilding(feature)) return false;
+        const centroid = footprintCentroid(feature.geometry);
+        return centroid !== null && bboxContains(bbox, centroid);
+      })
+    : [];
+
+  const gone = new Set(removed);
+  const merge = planMerge(
+    {
+      ...current,
+      features: current.features.filter((feature) => !gone.has(feature)),
+    },
+    incoming,
+  );
+
+  return { removed, merge, comparable };
 }
 
 const commandStack = new CommandStack();
@@ -584,6 +684,74 @@ export const useModelStore = create<ModelState>((set, get) => {
       });
 
       return plan.skipped;
+    },
+
+    // `mergeModel` with a removal in front of it, still as *one* command: the
+    // reader who regrets swapping a district's buildings wants the OSM ones
+    // back with the same Ctrl+Z that takes the LGLN ones away.
+    //
+    // Undo restores the arrays as they were rather than filtering the added
+    // ids back out, because the removed buildings have positions to return
+    // to. The stack is linear, so when this is undone the workspace is the
+    // one `execute` left — the assumption `removeFeature`'s undo makes too.
+    replaceBuildingsInBBox: (model, bbox) => {
+      const state = get();
+      const plan = planReplaceBuildings(
+        {
+          features: state.features,
+          receivers: state.receivers,
+          calcArea: state.calcArea,
+          crs: state.crs,
+        },
+        model,
+        bbox,
+      );
+      const { removed, merge } = plan;
+      const result = { removed: removed.length, skipped: merge.skipped };
+
+      // Lon/lat buildings in a metric model would be stored as metres.
+      if (!plan.comparable) {
+        return { removed: 0, skipped: merge.skipped };
+      }
+
+      if (
+        removed.length === 0 &&
+        merge.features.length === 0 &&
+        merge.receivers.length === 0 &&
+        merge.calcArea === state.calcArea &&
+        merge.crs === state.crs
+      ) {
+        return result;
+      }
+
+      const before = {
+        features: state.features,
+        receivers: state.receivers,
+        calcArea: state.calcArea,
+        crs: state.crs,
+      };
+      const gone = new Set(removed);
+
+      commandStack.execute({
+        description: `Replace ${String(removed.length)} OSM buildings with ${String(merge.features.length)} features`,
+        execute: () => {
+          set((s) => ({
+            features: [
+              ...s.features.filter((f) => !gone.has(f)),
+              ...merge.features,
+            ],
+            receivers: [...s.receivers, ...merge.receivers],
+            calcArea: merge.calcArea,
+            crs: merge.crs,
+            dirty: true,
+          }));
+        },
+        undo: () => {
+          set({ ...before, dirty: true });
+        },
+      });
+
+      return result;
     },
 
     // `loadModel`'s twin for content that comes *from* the project rather than

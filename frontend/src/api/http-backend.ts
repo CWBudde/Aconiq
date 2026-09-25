@@ -15,6 +15,8 @@ import type {
   CreateRunRequest,
   DeleteRunResponse,
   HealthResponse,
+  LglnImportRequest,
+  LglnImportResponse,
   ModelResponse,
   ModelSaveResponse,
   ProjectStatusResponse,
@@ -101,6 +103,8 @@ export const httpBackend: Backend = {
     // dialog while the server kept computing, and the run would still turn up
     // in the list — so the UI is told not to offer one.
     runsAreCancellable: false,
+    // `POST /api/v1/import/lgln` downloads, parses and caches the tiles.
+    canImportLGLN: true,
   },
 
   getHealth() {
@@ -194,6 +198,19 @@ export const httpBackend: Backend = {
 
   importFromOSM(req: OsmImportRequest) {
     return postJSON<GeoJSONFeatureCollection>("/api/v1/import/osm", req);
+  },
+
+  importFromLGLN(req: LglnImportRequest) {
+    // The four numbers and nothing else, whatever the caller's object holds —
+    // an `OsmImportRequest` is assignable here and would otherwise carry its
+    // Overpass endpoint to a route that has no use for it.
+    const body: LglnImportRequest = {
+      south: req.south,
+      west: req.west,
+      north: req.north,
+      east: req.east,
+    };
+    return postJSON<LglnImportResponse>("/api/v1/import/lgln", body);
   },
 
   startRun(spec) {

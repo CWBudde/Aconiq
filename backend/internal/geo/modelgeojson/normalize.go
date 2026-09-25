@@ -225,15 +225,18 @@ func (m Model) ToFeatureCollection() FeatureCollection {
 		Features: features,
 	}
 	if m.ProjectCRS != "" {
-		collection.CRS = map[string]any{
-			"type": "name",
-			"properties": map[string]any{
-				"name": m.ProjectCRS,
-			},
-		}
+		collection.CRS = NamedCRS(m.ProjectCRS)
 	}
 
 	return collection
+}
+
+// NamedCRS is the GeoJSON 2008 `crs` member naming code, e.g. "EPSG:4326".
+func NamedCRS(code string) map[string]any {
+	return map[string]any{
+		"type":       "name",
+		"properties": map[string]any{"name": code},
+	}
 }
 
 // ToDump produces a compact JSON-friendly model debug view.
