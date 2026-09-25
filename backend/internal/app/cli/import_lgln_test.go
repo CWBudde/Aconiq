@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/lglnimport"
@@ -216,6 +219,57 @@ func TestImportLGLNIntoEmptyProject(t *testing.T) {
 	_, err := os.Stat(filepath.Join(projectDir, ".noise", "cache", "lgln"))
 	if err != nil {
 		t.Errorf("tile cache not written under .noise/cache/lgln: %v", err)
+	}
+}
+
+func TestImportLGLNHonoursCacheDir(t *testing.T) {
+	serveLGLN(t, lglnTileBuilding{id: "DENI_a", lon: 9.741, lat: 52.376})
+
+	projectDir := t.TempDir()
+	cacheDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "LGLN", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "--cache-dir", cacheDir, "import", "--from-lgln", hannoverLGLNFlag)
+
+	_, err := os.Stat(filepath.Join(cacheDir, "lgln"))
+	if err != nil {
+		t.Errorf("tile cache not written under --cache-dir: %v", err)
+	}
+
+	_, err = os.Stat(filepath.Join(projectDir, ".noise", "cache", "lgln"))
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("tile cache written under the project despite --cache-dir: %v", err)
+	}
+}
+
+func TestLGLNLoadErrorKinds(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want domainerrors.Kind
+	}{
+		{"too many tiles", &lglnimport.TooManyTilesError{}, domainerrors.KindUserInput},
+		{"outside coverage", lglnimport.ErrOutsideCoverage, domainerrors.KindUserInput},
+		{"invalid bbox", lglnimport.ErrInvalidBBox, domainerrors.KindUserInput},
+		{"service unavailable", lglnimport.ErrUnavailable, domainerrors.KindInternal},
+		{"invalid tile", lglnimport.ErrInvalidTile, domainerrors.KindInternal},
+		{"timeout", context.DeadlineExceeded, domainerrors.KindInternal},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var appErr *domainerrors.AppError
+			if !errors.As(lglnLoadError(tc.err), &appErr) {
+				t.Fatalf("lglnLoadError(%v) is not an AppError", tc.err)
+			}
+
+			if appErr.Kind != tc.want {
+				t.Errorf("kind = %s, want %s", appErr.Kind, tc.want)
+			}
+		})
 	}
 }
 

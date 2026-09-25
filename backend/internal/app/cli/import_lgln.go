@@ -59,7 +59,7 @@ func runLGLNImport(
 		ctx = cmd.Root().Context()
 	}
 
-	cacheDir := filepath.Join(store.Root(), ".noise", "cache", "lgln")
+	cacheDir := filepath.Join(state.Config.CacheDir, "lgln")
 
 	result, err := newLGLNClient().Load(ctx, bb, cacheDir)
 	if err != nil {
@@ -200,8 +200,9 @@ func parseLGLNBBox(s string) (lglnimport.BBox, error) {
 }
 
 // lglnLoadError classifies a failed Load the way the HTTP handler does: a bad
-// box is the user's to fix, everything else lies with the download service.
-// Each message is followed by the cause, which carries the specifics.
+// box is the user's to fix, everything else — the download service, a tile that
+// does not parse, the cache — is not, so it is internal. Each message is
+// followed by the cause, which carries the specifics.
 func lglnLoadError(err error) error {
 	var tooMany *lglnimport.TooManyTilesError
 
@@ -215,7 +216,7 @@ func lglnLoadError(err error) error {
 	case errors.Is(err, lglnimport.ErrInvalidBBox):
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "invalid --from-lgln bbox", err)
 	default:
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "LGLN LoD2 download failed", err)
+		return domainerrors.New(domainerrors.KindInternal, "cli.import", "LGLN LoD2 download failed", err)
 	}
 }
 
