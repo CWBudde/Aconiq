@@ -134,7 +134,7 @@ func TestLoadFiltersByCentroidDedupsAndReprojects(t *testing.T) {
 	}
 
 	centroid, ok := geo.PolygonCentroid(rings)
-	if !ok || !hannover.containsCentroid(centroid) {
+	if !ok || !hannover.Contains(centroid) {
 		t.Errorf("centroid %v not in WGS84 box %v", centroid, hannover)
 	}
 }
@@ -231,8 +231,8 @@ func TestContainsCentroidIncludesEdges(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		if got := bb.containsCentroid(tc.p); got != tc.want {
-			t.Errorf("containsCentroid(%v) = %v, want %v", tc.p, got, tc.want)
+		if got := bb.Contains(tc.p); got != tc.want {
+			t.Errorf("Contains(%v) = %v, want %v", tc.p, got, tc.want)
 		}
 	}
 }
