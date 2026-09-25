@@ -35,13 +35,18 @@ func newImportCommand() *cobra.Command {
 		terrainPath   string
 		osmBBox       string
 		osmEndpoint   string
+		lglnBBox      string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "import",
-		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, or SoundPLAN model data into the project",
+		Short: "Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM or LGLN LoD2 model data into the project",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runImport(cmd, inputPath, soundPlanPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint)
+			sources := importSources{
+				inputPath: inputPath, soundPlanPath: soundPlanPath, osmBBox: osmBBox, lglnBBox: lglnBBox,
+			}
+
+			return runImport(cmd, sources, layerName, inputCRS, trafficPath, terrainPath, osmEndpoint)
 		},
 	}
 
@@ -53,12 +58,23 @@ func newImportCommand() *cobra.Command {
 	cmd.Flags().StringVar(&terrainPath, "terrain", "", "Path to GeoTIFF DTM file for terrain elevation data")
 	cmd.Flags().StringVar(&osmBBox, "from-osm", "", "Bounding box for OSM import: \"south,west,north,east\" in WGS84 degrees")
 	cmd.Flags().StringVar(&osmEndpoint, "overpass-endpoint", "", "Overpass API endpoint (optional, defaults to overpass-api.de)")
+	cmd.Flags().StringVar(&lglnBBox, "from-lgln", "", "Bounding box for LGLN LoD2 buildings (Lower Saxony): \"south,west,north,east\" in WGS84 degrees; merged into the existing model, replacing the OSM buildings in the box")
 
 	return cmd
 }
 
-func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS, trafficPath, terrainPath, osmBBox, osmEndpoint string) error {
-	err := validateImportFlags(inputPath, soundPlanPath, trafficPath, terrainPath, osmBBox)
+// importSources are the mutually exclusive primary sources of an import.
+type importSources struct {
+	inputPath     string
+	soundPlanPath string
+	osmBBox       string
+	lglnBBox      string
+}
+
+func runImport(cmd *cobra.Command, sources importSources, layerName, inputCRS, trafficPath, terrainPath, osmEndpoint string) error {
+	inputPath, soundPlanPath, osmBBox := sources.inputPath, sources.soundPlanPath, sources.osmBBox
+
+	err := validateImportFlags(sources, trafficPath, terrainPath)
 	if err != nil {
 		return err
 	}
@@ -96,11 +112,20 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 		cmd.SetOut(io.Discard)
 	}
 
-	err = runPrimaryImport(
-		cmd, state, store, &proj,
-		inputPath, soundPlanPath, layerName, inputCRS, osmBBox, osmEndpoint,
-		normalizedPath, dumpPath, reportPath, soundPlanReportPath,
-	)
+	var lglnSummary *lglnImportSummary
+
+	if sources.lglnBBox != "" {
+		var summary lglnImportSummary
+
+		summary, err = runLGLNImport(cmd, state, store, &proj, sources.lglnBBox, normalizedPath)
+		lglnSummary = &summary
+	} else {
+		err = runPrimaryImport(
+			cmd, state, store, &proj,
+			inputPath, soundPlanPath, layerName, inputCRS, osmBBox, osmEndpoint,
+			normalizedPath, dumpPath, reportPath, soundPlanReportPath,
+		)
+	}
 
 	if err == nil && trafficPath != "" {
 		err = mergeTrafficCSV(cmd, state, trafficPath, normalizedPath, dumpPath, store.Root())
@@ -113,10 +138,13 @@ func runImport(cmd *cobra.Command, inputPath, soundPlanPath, layerName, inputCRS
 	if jsonMode && err == nil {
 		cmd.SetOut(origOut)
 
-		return writeCommandOutput(
-			cmd.OutOrStdout(), true,
-			buildImportJSONResult(store.Root(), inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath),
-		)
+		result := buildImportJSONResult(store.Root(), inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath)
+		if lglnSummary != nil {
+			result["lgln_bbox"] = sources.lglnBBox
+			result["lgln"] = *lglnSummary
+		}
+
+		return writeCommandOutput(cmd.OutOrStdout(), true, result)
 	}
 
 	return err
@@ -199,21 +227,26 @@ func buildImportJSONResult(root, inputPath, soundPlanPath, osmBBox, trafficPath,
 	return result
 }
 
-func validateImportFlags(inputPath, soundPlanPath, trafficPath, terrainPath, osmBBox string) error {
-	if osmBBox != "" && inputPath != "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --input", nil)
+func validateImportFlags(sources importSources, trafficPath, terrainPath string) error {
+	given := make([]string, 0, 4)
+
+	for _, source := range []struct{ flag, value string }{
+		{"--input", sources.inputPath},
+		{"--from-soundplan", sources.soundPlanPath},
+		{"--from-osm", sources.osmBBox},
+		{"--from-lgln", sources.lglnBBox},
+	} {
+		if source.value != "" {
+			given = append(given, source.flag)
+		}
 	}
 
-	if osmBBox != "" && soundPlanPath != "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --from-osm together with --from-soundplan", nil)
+	if len(given) > 1 {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use "+strings.Join(given, " together with "), nil)
 	}
 
-	if inputPath != "" && soundPlanPath != "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use --input together with --from-soundplan", nil)
-	}
-
-	if inputPath == "" && soundPlanPath == "" && trafficPath == "" && osmBBox == "" && terrainPath == "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-soundplan, --from-osm, --terrain, or --traffic is required", nil)
+	if len(given) == 0 && trafficPath == "" && terrainPath == "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-soundplan, --from-osm, --from-lgln, --terrain, or --traffic is required", nil)
 	}
 
 	return nil

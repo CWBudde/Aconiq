@@ -137,7 +137,7 @@ func tileBuildings(path string, tile Tile, bb BBox) ([]modelgeojson.GeoJSONFeatu
 			return nil, nil, fmt.Errorf("tile %s: CRS transform: %w", tile.ID, err)
 		}
 
-		if !bb.containsCentroid(lonLat) {
+		if !bb.Contains(lonLat) {
 			continue
 		}
 
@@ -155,10 +155,10 @@ func tileBuildings(path string, tile Tile, bb BBox) ([]modelgeojson.GeoJSONFeatu
 	return out, skipped, nil
 }
 
-// containsCentroid includes the edges. The frontend decides which OSM
-// buildings an LGLN import replaces by the same test, so the two must agree
-// exactly, edges included.
-func (b BBox) containsCentroid(p geo.Point2D) bool {
+// Contains reports whether a WGS84 point lies in the box, edges included. The
+// frontend and `aconiq import --from-lgln` decide which OSM buildings an LGLN
+// import replaces by the same test, so they must agree exactly, edges included.
+func (b BBox) Contains(p geo.Point2D) bool {
 	return p.X >= b.West && p.X <= b.East && p.Y >= b.South && p.Y <= b.North
 }
 

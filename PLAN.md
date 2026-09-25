@@ -2575,8 +2575,8 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] LGLN LoD2 follow-ups:
   - browser/WASM mode: the tile host sends `Access-Control-Allow-Origin: *`, so what is missing is
     a CityGML entry point in the kernel.
-  - `aconiq import --from-lgln "south,west,north,east"`; the CLI import also still replaces the
-    whole model instead of merging, so CityGML after OSM loses the roads.
+  - `aconiq import --input` still replaces the whole model, so a CityGML file imported after OSM
+    loses the roads; only `--from-lgln` merges.
   - Height semantics: LGLN `measuredHeight` is ground to ridge. Decide whether screening should
     use an eaves or mean roof height from the LoD2 roof surfaces.
   - Other Länder publish LoD2 through different portals; only Lower Saxony is wired.

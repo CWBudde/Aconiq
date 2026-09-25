@@ -364,7 +364,7 @@ Importers stamp where a feature came from. None of these properties is read by a
 standard; they exist so a reader, and the UI's merge step, can tell sources apart.
 
 - `import_format` — `citygml` for a CityGML file import, `lgln-lod2` for a building
-  from the LGLN LoD2 import (`POST /api/v1/import/lgln`). The UI replaces OSM
+  from the LGLN LoD2 import (`POST /api/v1/import/lgln`, `aconiq import --from-lgln`). Both replace OSM
   buildings (`osm-way-*` ids) whose footprint centroid lies in the import box, and
   never a feature carrying `lgln-lod2`.
 - `lgln_tile` — the LGLN tile id (`LoD2_32_<E km>_<N km>_1_ni`) the building came from.
