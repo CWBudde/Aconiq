@@ -9,6 +9,7 @@ import { FileImport } from "@/import/file-import";
 import { OsmImport } from "@/import/osm-import";
 import type { OsmQuery } from "@/import/osm-import";
 import { LglnImport } from "@/import/lgln-import";
+import { backend } from "@/api/backend";
 import type { LglnImportResponse } from "@/api/client";
 import type { LonLatBBox } from "@/model/footprint";
 import { PreviewStep } from "@/import/preview-step";
@@ -100,6 +101,7 @@ export default function ImportPage() {
   const workspaceReceivers = useModelStore((s) => s.receivers);
   const workspaceCalcArea = useModelStore((s) => s.calcArea);
   const navigate = useNavigate();
+  const lglnAvailable = backend.capabilities.canImportLGLN;
 
   /** Everything the import brings, receivers and calculation area included. */
   const importedCount = countModelObjects({ features, receivers, calcArea });
@@ -314,6 +316,7 @@ export default function ImportPage() {
       ...(importCRS !== null && { crs: importCRS }),
     };
     const plan = planReplaceBuildings(current, incoming, lglnLoad.bbox);
+    if (!plan.comparable) return;
     replaceBuildingsInBBox(incoming, lglnLoad.bbox);
     const landed = plan.merge;
     const gone = new Set(plan.removed);
@@ -434,10 +437,17 @@ export default function ImportPage() {
                 <TabsTrigger value="osm">
                   {m.action_import_from_osm()}
                 </TabsTrigger>
-                <TabsTrigger value="lgln">
+                <TabsTrigger value="lgln" disabled={!lglnAvailable}>
                   {m.action_import_from_lgln()}
                 </TabsTrigger>
               </TabsList>
+              {/* A disabled tab cannot be opened to read why, so the reason
+                  stands under the tab strip instead. */}
+              {lglnAvailable ? null : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {m.msg_lgln_needs_server()}
+                </p>
+              )}
 
               <TabsContent value="file">
                 <FileImport

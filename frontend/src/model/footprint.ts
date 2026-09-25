@@ -131,31 +131,60 @@ function ringCentroid(
 }
 
 /**
- * The area centroid of a footprint's exterior ring, or `null` for a geometry
- * that is not a polygon or holds no usable vertex.
+ * One polygon's centroid and net area: the exterior's area moment minus each
+ * hole's, which is what `geo.PolygonCentroid` on the server computes. A hole
+ * that encloses nothing removes nothing. A polygon whose holes leave no area
+ * falls back to the exterior's centroid with zero area.
+ */
+function polygonCentroid(
+  polygon: unknown,
+): { centroid: Position; area: number } | null {
+  if (!Array.isArray(polygon)) return null;
+  const [exteriorRing, ...holeRings] = polygon as unknown[];
+  const exterior = ringCentroid(exteriorRing);
+  if (exterior === null || exterior.area === 0) return exterior;
+
+  let area = exterior.area;
+  let mx = exterior.area * exterior.centroid[0];
+  let my = exterior.area * exterior.centroid[1];
+  for (const ring of holeRings) {
+    const hole = ringCentroid(ring);
+    if (hole === null || hole.area === 0) continue;
+    area -= hole.area;
+    mx -= hole.area * hole.centroid[0];
+    my -= hole.area * hole.centroid[1];
+  }
+
+  if (!(area > Number.EPSILON * 16 * exterior.area)) {
+    return { centroid: exterior.centroid, area: 0 };
+  }
+  return { centroid: [mx / area, my / area], area };
+}
+
+/**
+ * The area centroid of a footprint, or `null` for a geometry that is not a
+ * polygon or holds no usable vertex.
  *
- * Holes are ignored: they decide how much wall there is, not which box a
- * building stands in. A MultiPolygon is the area-weighted mean of its parts'
- * exterior centroids; one whose parts all enclose nothing falls back to the
- * mean of those parts' vertex averages.
+ * Holes are subtracted, as the server does: a courtyard moves the centroid,
+ * and a building on the box edge must land on the same side for both. A
+ * MultiPolygon is the area-weighted mean of its parts' centroids; one whose
+ * parts all enclose nothing falls back to the mean of those parts' centroids.
  */
 export function footprintCentroid(geometry: Geometry): Position | null {
   const coords: unknown = geometry.coordinates;
   if (!Array.isArray(coords)) return null;
 
-  let exteriors: unknown[];
+  let polygons: unknown[];
   if (geometry.type === "Polygon") {
-    exteriors = [coords[0]];
+    polygons = [coords];
   } else if (geometry.type === "MultiPolygon") {
-    exteriors = coords.map((part: unknown): unknown =>
-      Array.isArray(part) ? (part as unknown[])[0] : undefined,
-    );
+    polygons = coords;
   } else {
     return null;
   }
 
-  const parts = exteriors
-    .map(ringCentroid)
+  const parts = polygons
+    .map(polygonCentroid)
     .filter((part): part is { centroid: Position; area: number } => {
       return part !== null;
     });

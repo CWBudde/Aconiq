@@ -590,7 +590,7 @@ describe("replaceBuildingsInBBox", () => {
     expect(useModelStore.getState().features).toHaveLength(2);
   });
 
-  it("removes nothing from a projected workspace", () => {
+  it("refuses a projected workspace, removing and adding nothing", () => {
     useModelStore.getState().loadModel({
       features: [osmInside],
       receivers: [],
@@ -603,8 +603,27 @@ describe("replaceBuildingsInBBox", () => {
       .replaceBuildingsInBBox(lglnModel, bbox);
 
     expect(result.removed).toBe(0);
-    expect(useModelStore.getState().features.map((f) => f.id)).toContain(
+    expect(useModelStore.getState().features.map((f) => f.id)).toEqual([
       "osm-way-1",
+    ]);
+    expect(useModelStore.getState().crs).toBe("EPSG:25832");
+  });
+
+  it("takes the LGLN CRS into an empty workspace, whatever it declared", () => {
+    useModelStore.getState().loadModel({
+      features: [],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+
+    useModelStore
+      .getState()
+      .replaceBuildingsInBBox({ ...lglnModel, crs: "EPSG:4326" }, bbox);
+
+    expect(useModelStore.getState().features).toHaveLength(
+      lglnModel.features.length,
     );
+    expect(useModelStore.getState().crs).toBe("EPSG:4326");
   });
 });

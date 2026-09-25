@@ -248,9 +248,11 @@ export interface ReplaceBuildingsPlan {
   /** What then lands of `incoming`, with {@link planMerge}'s semantics. */
   merge: MergePlan;
   /**
-   * False when the workspace is in a projected CRS, where its coordinates
-   * cannot be compared against a box in degrees — so nothing is removed and
-   * the page has to say why.
+   * False when the workspace holds something in a projected CRS. Its
+   * coordinates cannot be compared against a box in degrees, and the LGLN
+   * buildings, which are in degrees, cannot be put beside them: nothing is
+   * reprojected on the way in. The replacement is refused, and the page has
+   * to say why.
    */
   comparable: boolean;
 }
@@ -280,7 +282,11 @@ export function planReplaceBuildings(
   incoming: LoadedModel,
   bbox: LonLatBBox,
 ): ReplaceBuildingsPlan {
-  const comparable = isLonLatCRS(current.crs ?? DEFAULT_MODEL_CRS);
+  const empty =
+    current.features.length === 0 &&
+    current.receivers.length === 0 &&
+    current.calcArea === null;
+  const comparable = empty || isLonLatCRS(current.crs ?? DEFAULT_MODEL_CRS);
   const removed = comparable
     ? current.features.filter((feature) => {
         if (!isOSMBuilding(feature)) return false;
@@ -702,6 +708,11 @@ export const useModelStore = create<ModelState>((set, get) => {
       );
       const { removed, merge } = plan;
       const result = { removed: removed.length, skipped: merge.skipped };
+
+      // Lon/lat buildings in a metric model would be stored as metres.
+      if (!plan.comparable) {
+        return { removed: 0, skipped: merge.skipped };
+      }
 
       if (
         removed.length === 0 &&

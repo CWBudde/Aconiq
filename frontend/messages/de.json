@@ -837,7 +837,7 @@
       }
     }
   ],
-  "msg_lgln_workspace_projected": "Der Arbeitsbereich liegt nicht in WGS84 vor, daher lassen sich seine Gebäude nicht mit dem Begrenzungsrahmen vergleichen: Es wird kein OpenStreetMap-Gebäude entfernt.",
+  "msg_lgln_workspace_projected": "Der Arbeitsbereich liegt in einem projizierten Koordinatensystem vor, die LGLN-Gebäude dagegen in WGS84-Grad: Ohne Umprojektion lassen sie sich nicht hinzufügen. Laden Sie sie stattdessen in einen WGS84-Arbeitsbereich.",
   "msg_lgln_tiles_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

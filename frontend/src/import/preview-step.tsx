@@ -166,11 +166,13 @@ export function PreviewStep({
         <Callout variant="info" icon={Info}>
           <ul className="space-y-1">
             {lgln.comparable ? (
-              <li>{m.msg_lgln_replaces_osm({ count: lgln.removed })}</li>
+              <>
+                <li>{m.msg_lgln_replaces_osm({ count: lgln.removed })}</li>
+                <li>{m.msg_lgln_adds({ count: lgln.added })}</li>
+              </>
             ) : (
               <li>{m.msg_lgln_workspace_projected()}</li>
             )}
-            <li>{m.msg_lgln_adds({ count: lgln.added })}</li>
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
             {m.msg_lgln_tiles_read({ count: lgln.tileCount })}{" "}
@@ -206,7 +208,9 @@ export function PreviewStep({
         {lgln !== null ? (
           // Named for what it does: with no OSM building in the box there is
           // nothing to replace, and the button is a plain import.
-          <Button onClick={onReplaceBuildings}>
+          // Disabled for a projected workspace: the buildings are in degrees
+          // and would be stored as metres.
+          <Button onClick={onReplaceBuildings} disabled={!lgln.comparable}>
             {lgln.comparable && lgln.removed > 0
               ? m.action_import_lgln_apply()
               : m.action_import_features({ count: importedCount })}

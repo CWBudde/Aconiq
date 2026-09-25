@@ -837,7 +837,7 @@
       }
     }
   ],
-  "msg_lgln_workspace_projected": "The workspace is not in WGS84, so its buildings cannot be compared with the bounding box: no OpenStreetMap building is removed.",
+  "msg_lgln_workspace_projected": "The workspace is in a projected CRS, and the LGLN buildings are in WGS84 degrees: they cannot be added to it without reprojection. Load them into a WGS84 workspace instead.",
   "msg_lgln_tiles_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

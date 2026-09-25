@@ -91,7 +91,7 @@ describe("footprintCentroid", () => {
     expect(c).toEqual([1, 1]);
   });
 
-  it("ignores holes", () => {
+  it("subtracts holes, as the server does", () => {
     const c = footprintCentroid({
       type: "Polygon",
       coordinates: [
@@ -111,8 +111,9 @@ describe("footprintCentroid", () => {
         ],
       ],
     });
-    expect(c?.[0]).toBeCloseTo(2, 12);
-    expect(c?.[1]).toBeCloseTo(2, 12);
+    // Exterior 16 at (2, 2), hole 1 at (3, 3): (32 - 3) / 15.
+    expect(c?.[0]).toBeCloseTo(29 / 15, 12);
+    expect(c?.[1]).toBeCloseTo(29 / 15, 12);
   });
 
   it("weights the parts of a MultiPolygon by area", () => {
