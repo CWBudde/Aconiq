@@ -25,7 +25,9 @@ func skippedTasks(count int) []TaskResult {
 }
 
 func TestFullySkippedSuiteIsNotReportedAsPassed(t *testing.T) {
-	t.Parallel()
+	// Pinned off, not inherited: this asserts the non-strict status, and the
+	// release checklist runs the whole tree with the flag set.
+	t.Setenv(acceptance.StrictSuiteEnv, "0")
 
 	report := buildReport(suiteManifest{Name: "schall03-ci-safe"}, ModeCISafe, time.Time{}, skippedTasks(3))
 

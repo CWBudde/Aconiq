@@ -2526,15 +2526,6 @@ the comparison into evidence (the assertion itself is Priority 3).
 
 ## Priority 14 — QA hardening and conformance packaging
 
-- [ ] **`ACONIQ_STRICT_ACCEPTANCE=1` fails a test that asserts the non-strict behaviour.**
-      `go test ./internal/qa/...` under that flag fails `TestFullySkippedSuiteIsNotReportedAsPassed`
-      with `expected status="skipped", got "failed"`. Strict mode is precisely what promotes a
-      fully-skipped suite to `failed`, and the test asserts `skipped` unconditionally, so the two
-      contradict each other by construction. Pre-existing on `main` and invisible to the ordinary
-      gate, but it **blocks step 3 of the release checklist** in `docs/policies/releases.md`, which
-      exists to prove the acceptance suites produced evidence rather than skipping. Fix the test to
-      read the mode rather than the runner.
-
 `just update-golden` is trustworthy again, and the entry that stood here named the wrong test.
 The bullet blamed `TestCISafeSuiteExecutesTasks` and `TestRunCISafeSuiteProducesPassingReport`;
 both are **readers**. The writer was a third test, `TestUpdateCISafeExpectedSnapshots`, which
