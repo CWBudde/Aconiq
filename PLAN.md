@@ -1,6 +1,6 @@
 # PLAN.md — Aconiq Roadmap
 
-Status: 28 August 2026
+Status: 27 September 2026
 
 This file tracks **what is still ahead**. Completed work is recorded in git history, in
 `docs/conformance/`, and in the per-module baseline notes under `docs/`. Nothing here is a
@@ -89,6 +89,62 @@ values differ, and so does `LateralDirectivityDB`, and both move numbers for imp
 Scaffold-tier modules now require an explicit `--experimental` opt-in on `aconiq run`; the
 boundaries are published in `docs/conformance/cnossos-umfangserklaerung.md` and
 `docs/conformance/beb-umfangserklaerung.md`.
+
+## Open decisions
+
+Items below are waiting on a decision, not on code. Each is described in full where it is filed;
+this list only collects them, so that a reader can see what an agent must not settle on its own.
+Remove a line when its entry closes.
+
+A **live constraint** in the entries further down is something else: an invariant already in force
+that later work must keep. It is not open work and waits on nothing.
+
+**Release and versioning** — Priority 5's rule makes any change to a normative module's computed
+levels breaking, so these belong together, ideally before or with the first tag:
+
+- Cut the first release (P5). A maintainer decision by design.
+- Compensate `EnergySum` and take `math.Exp` with it; re-cuts five goldens by 1–2 ulps (P7).
+- Derive the eight hand-maintained provenance key lists from the descriptor; moves digests (P7).
+- Converge or declare the two energy-sum outliers, `bimschv16` and `schall03` (P7).
+
+**Scope and conformance claims**
+
+- ISO 9613-2 line and area sources: widens the declared point-source-only scope (P10).
+- ISO 9613-2 image-source reflections: wait for SoundPLAN buildings (P13), or re-scope onto the
+  GeoJSON import (P10).
+- The 16. BImSchV scope: sections, annexes, and whether to go beyond explicit receivers (P11).
+- Whether real CNOSSOS / BUB / BUF implementations are on the roadmap at all (research backlog).
+- Validate the project CRS at `init`: would refuse projects that run today (P7).
+- NTv2 (BeTA2007) datum shifts: only if cadastral interoperability is ever claimed (research).
+
+**Editorial and domain choices**
+
+- The `FzComposition` lookup table for SoundPLAN 1990 `TS03` train types (P13). Together with the
+  licensed fixture, this is what makes Priority 3's comparison measure the normative chain.
+- LGLN LoD2 building height for screening: ridge, eaves or mean roof height (deferred tracks).
+- Whether further OSM-derived per-source defaults are deterministic enough to enable (deferred).
+- Localise the `Headline()` report row, and against which message source (P4).
+- DOCX or Typst/PDF only, and the Gutachten template requirements (P12).
+
+**Behaviour and API**
+
+- Whether a deleted run's export bundle keeps addressable artifact refs (P8, Phase D).
+- An uncovered DTM query reads 0 m in RLS-19 on both targets; keep it or refuse like Schall 03
+  (P2). Either way both targets move in one commit.
+- The exit-code kind of an Overpass upstream failure, today `KindUserInput` (P8, Phase D).
+- Validation from the Go kernel plus `POST /api/v1/validate`, and whether to run it per keystroke
+  over the network (P8, Phase F).
+- `--allowed-hosts` for a real-interface bind, and a token escape hatch for SSE (P6).
+- A glyph source for contour labels that `OFFLINE_STYLE` can live with (deferred tracks).
+
+**Inside the code**
+
+- Which of the nine remaining in-place writers should replace atomically (P7).
+- Whether the three remaining persist/hash special cases stay bespoke (P7).
+- Making `distance_scaled` the default: only once its Faustregel precondition is checked (Phase F).
+
+**External, not ours to decide:** the licence question for getting the SoundPLAN reference project
+into CI (P3), a Schall 03 _2014_ reference project, and enabling Issues on the repository (P5).
 
 ---
 
@@ -563,7 +619,8 @@ sample goes through `terrainInComputeCRS`.
 
 ## Priority 2 — Make the CLI run the normative code
 
-**Closed.** `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
+**The gap this priority named is closed**; the open list further down is follow-up work the wiring
+exposed. `aconiq run --standard schall03` reaches `ComputeNormativeReceiverLevelsWithScene`.
 The gap this priority described was not a code-quality issue but a mismatch between what the
 conformance declaration claimed and what the binary did: `run_pipeline.go` called
 `ComputeReceiverOutputs`, whose `BuiltinDataPack()` supplies invented spectra
@@ -2249,7 +2306,7 @@ and `en`.
 
 `AGENTS.md` and `README.md` are rewritten and every structural claim in them was checked against
 the repository (`1257365`). `AGENTS.md` now defers all status to this file, carries a 29-row
-package table and all ten CLI commands, and describes the standards modules by evidence tier rather
+package table and every CLI command `root.go` registers, and describes the standards modules by evidence tier rather
 than as peers. The "all linters enabled" claim is gone from `AGENTS.md` and from
 `docs/policies/formatting.md`, which also carried it — `README.md` never did.
 
@@ -2610,14 +2667,9 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 
 ### Standards and validation data
 
-- [ ] **RLS-19: obtain the FGSV text and Korrekturblatt 2/2020.** Blocks verification of seven
-      coefficient sets (see Priority 1.9) that currently have no normative cross-check.
 - [ ] CNOSSOS Road/Rail/Industry/Aircraft: obtain the JRC reference report coefficient sets and
       worked examples, and decide whether real implementations are on the roadmap at all (P4).
 - [ ] BUB/BUF/BEB: obtain current documents and annexes; define exact input requirements per module.
-- [ ] Schall 03: clarify redistribution rights for the normative tables. The project's own note
-      holds that Schall 03 coefficients are an amtliches Werk and can be embedded directly — if so,
-      the out-of-repo data-pack mechanism (P2) may be unnecessary.
 - [ ] TA Lärm: survey published Gutachten for structural conventions and assessment patterns.
 - [ ] 16. BImSchV: clarify combined assessment rules for road plus rail.
 
