@@ -124,7 +124,9 @@ levels breaking, so these belong together, ideally before or with the first tag:
 - LGLN LoD2 building height for screening: ridge, eaves or mean roof height (deferred tracks).
 - Whether further OSM-derived per-source defaults are deterministic enough to enable (deferred).
 - Localise the `Headline()` report row, and against which message source (P4).
-- DOCX or Typst/PDF only, and the Gutachten template requirements (P12).
+- DOCX or Typst/PDF only, the Gutachten template requirements, and a template versioning policy
+  (P12).
+- The 16. BImSchV combined assessment rules for road plus rail (research).
 
 **Behaviour and API**
 
@@ -142,6 +144,16 @@ levels breaking, so these belong together, ideally before or with the first tag:
 - Which of the nine remaining in-place writers should replace atomically (P7).
 - Whether the three remaining persist/hash special cases stay bespoke (P7).
 - Making `distance_scaled` the default: only once its Faustregel precondition is checked (Phase F).
+
+**Research-backlog policies** — each needs a decision before code can follow it:
+
+- Numeric tolerances per standard and test suite, kept apart from 1e-6 dB determinism checks.
+- The long-term dependency strategy for GeoTIFF writing.
+- The preferred contour algorithm and its quality requirements.
+- The DTO-generation strategy and backward-compatibility policy.
+- Which exports are must-have and which are deferred.
+- Map-layer performance thresholds and tile-fallback triggers.
+- The accessibility baseline for map-heavy interactions.
 
 **External, not ours to decide:** the licence question for getting the SoundPLAN reference project
 into CI (P3), a Schall 03 _2014_ reference project, and enabling Issues on the repository (P5).
@@ -2685,8 +2697,6 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 
 - [ ] Standardize numeric tolerances per standard and test suite — and stop presenting 1e-6 dB
       determinism checks as conformance tolerances.
-- [ ] Define the stable summation strategy and document exactly where it must apply, or amend
-      `docs/policies/determinism.md` §3 to match what is implemented (see P1.3).
 
 ### UX and workflow questions
 
