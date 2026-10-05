@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/aconiq/backend/internal/io/projectfs"
 	overpass "github.com/cwbudde/go-overpass"
 )
 
@@ -99,5 +101,143 @@ func TestOverpassAPIErrorNamesTheUpstreamStatus(t *testing.T) {
 				t.Errorf("message %q does not name the status", decoded.Error.Message)
 			}
 		})
+	}
+}
+
+func TestImportOSMEndpointRejectsBadMethod(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	req := newAPIRequest(http.MethodGet, "/api/v1/import/osm", nil)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "method_not_allowed" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
+	}
+}
+
+func TestImportOSMEndpointRejectsBadBBoxSouthGeNorth(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	body := strings.NewReader(`{"south":52.5,"west":13.3,"north":52.0,"east":13.5}`)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "bad_request" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
+	}
+}
+
+func TestImportOSMEndpointRejectsBadBBoxWestGeEast(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	body := strings.NewReader(`{"south":52.0,"west":13.5,"north":52.5,"east":13.3}`)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "bad_request" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
+	}
+}
+
+func TestImportOSMEndpointRejectsOutOfRangeCoordinates(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	body := strings.NewReader(`{"south":-91.0,"west":13.3,"north":52.5,"east":13.5}`)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "bad_request" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
+	}
+}
+
+func TestImportOSMEndpointRejectsMalformedBody(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+	body := strings.NewReader(`not-json`)
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/osm", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response errorResponse
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Code != "bad_request" {
+		t.Fatalf("unexpected error code: %q", response.Error.Code)
 	}
 }
