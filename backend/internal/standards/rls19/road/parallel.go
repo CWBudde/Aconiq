@@ -74,12 +74,20 @@ func ComputeReceiverOutputsParallel(
 	workers int,
 ) ([]ReceiverOutput, error) {
 	if workers <= 1 || len(receivers) == 0 {
-		return ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+		return ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
 	}
 
 	chunks := partition.Over(len(receivers), partition.Size(len(receivers), workers))
 	if len(chunks) <= 1 {
-		return ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+		return ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
+	}
+
+	// The sequential walk checks ctx before receiver 0, ahead of the scene;
+	// checking here keeps a cancelled run's answer the same in both, and spares
+	// preparing a scene nobody will walk.
+	err := ctx.Err()
+	if err != nil {
+		return nil, fmt.Errorf("compute receiver %q: %w", receivers[0].ID, err)
 	}
 
 	// Order matters between these two, and it is the sequential walk's order.
@@ -89,7 +97,7 @@ func ComputeReceiverOutputsParallel(
 	// Only once the scene is good are the remaining refusals purely
 	// receiver-shaped, and only then can ValidateReceivers report them in the
 	// order the sequential walk would have.
-	scene, err := PrepareSceneFor(receivers, sources, barriers, cfg)
+	scene, err := PrepareSceneForContext(ctx, receivers, sources, barriers, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +155,10 @@ func (s *Scene) computeChunks(
 					continue
 				}
 
-				outputs, err := s.ComputeReceivers(receivers[chunk.Start:chunk.End], cfg)
+				// The caller's ctx, not computeCtx: a sibling's refusal must not
+				// turn a chunk already in flight into a cancellation, which
+				// collectChunks would then report ahead of the real refusal.
+				outputs, err := s.ComputeReceiversContext(ctx, receivers[chunk.Start:chunk.End], cfg)
 				results[chunk.Index] = chunkResult{outputs: outputs, err: err, done: true}
 
 				if err != nil {

@@ -1,6 +1,7 @@
 package acoustics
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -24,7 +25,12 @@ type PeriodLevelsFunc[S any] func(receiver geo.PointReceiver, sources []S) (Peri
 // batch. Reporting a level for a receiver that cannot be identified, or that
 // sits nowhere, would put a number into a receiver table that no consumer can
 // trace back to a place.
+//
+// The context is checked before each receiver, so a cancellation stops the
+// walk within one receiver's work and returns ctx.Err() with no outputs. The
+// check reads no number the walk computes, so it cannot move a level.
 func ComputeReceiverOutputs[S any](
+	ctx context.Context,
 	receivers []geo.PointReceiver,
 	sources []S,
 	periodLevels PeriodLevelsFunc[S],
@@ -36,6 +42,11 @@ func ComputeReceiverOutputs[S any](
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
 	for _, receiver := range receivers {
+		err := ctx.Err()
+		if err != nil {
+			return nil, fmt.Errorf("compute receiver %q: %w", receiver.ID, err)
+		}
+
 		if receiver.ID == "" {
 			return nil, errors.New("receiver id is required")
 		}

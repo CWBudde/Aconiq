@@ -1,6 +1,7 @@
 package iso9613
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -65,12 +66,23 @@ func ComputeReceiverLevel(receiver geo.PointReceiver, sources []PointSource, cfg
 
 // ComputeReceiverOutputs computes ISO 9613-2 preview outputs for all receivers in order.
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []PointSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsContext(context.Background(), receivers, sources, cfg)
+}
+
+// ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
+// ctx is done it stops before the next receiver and returns ctx.Err().
+func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []PointSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 	for _, receiver := range receivers {
+		err := ctx.Err()
+		if err != nil {
+			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
+		}
+
 		indicators, err := ComputeReceiverIndicators(receiver, sources, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)

@@ -1,7 +1,9 @@
 package exposure
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -478,5 +480,39 @@ func sampleAircraft() bufaircraft.AircraftSource {
 		MovementDay:           bufaircraft.MovementPeriod{MovementsPerHour: 12},
 		MovementEvening:       bufaircraft.MovementPeriod{MovementsPerHour: 6},
 		MovementNight:         bufaircraft.MovementPeriod{MovementsPerHour: 2},
+	}
+}
+
+func TestComputeOutputsContextStopsOnACancelledContext(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, _, err := ComputeOutputsContext(
+		ctx,
+		[]BuildingUnit{sampleBuilding()},
+		[]road.RoadSource{sampleRoad()},
+		DefaultExposureConfig(),
+		road.DefaultPropagationConfig(),
+		4,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("road: expected context.Canceled, got %v", err)
+	}
+
+	cfg := DefaultExposureConfig()
+	cfg.UpstreamMappingStandard = UpstreamStandardBUFAircraft
+
+	_, _, err = ComputeOutputsFromAircraftContext(
+		ctx,
+		[]BuildingUnit{sampleBuilding()},
+		[]bufaircraft.AircraftSource{sampleAircraft()},
+		cfg,
+		bufaircraft.DefaultPropagationConfig(),
+		4,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("aircraft: expected context.Canceled, got %v", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -241,7 +242,8 @@ func TestComputeReceiverOutputsParallelRefusesAnEmptyReceiverSet(t *testing.T) {
 }
 
 // A caller who gave up must hear that, and must never be handed the chunks
-// that happened to finish first as though they were the whole run.
+// that happened to finish first as though they were the whole run. workers=1
+// is the delegating path, which once dropped the context on the floor.
 func TestComputeReceiverOutputsParallelHonoursACancelledContext(t *testing.T) {
 	t.Parallel()
 
@@ -251,13 +253,71 @@ func TestComputeReceiverOutputsParallelHonoursACancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	outputs, err := road.ComputeReceiverOutputsParallel(ctx, receivers, sources, barriers, cfg, 4)
-	if err == nil {
-		t.Fatalf("a cancelled context produced %d receivers and no error", len(outputs))
+	for _, workers := range parallelWorkerCounts {
+		outputs, err := road.ComputeReceiverOutputsParallel(ctx, receivers, sources, barriers, cfg, workers)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("workers=%d: err = %v, want context.Canceled", workers, err)
+		}
+
+		if outputs != nil {
+			t.Fatalf("workers=%d: a cancelled run returned %d receivers; it must return none", workers, len(outputs))
+		}
+	}
+}
+
+func TestComputeReceiverOutputsContextHonoursACancelledContext(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, cfg := parallelScene()
+	receivers := parallelReceivers(49)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	outputs, err := road.ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 
 	if outputs != nil {
 		t.Fatalf("a cancelled run returned %d receivers; it must return none", len(outputs))
+	}
+
+	scene, err := road.PrepareScene(sources, barriers, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outputs, err = scene.ComputeReceiversContext(ctx, receivers, cfg)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("scene: err = %v, want context.Canceled", err)
+	}
+
+	if outputs != nil {
+		t.Fatalf("scene: a cancelled run returned %d receivers; it must return none", len(outputs))
+	}
+}
+
+// A live context is only ever read, never folded into a level, so the
+// context-taking walk must agree with the plain one to the bit.
+func TestComputeReceiverOutputsContextMatchesTheContextFreeWalk(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, cfg := parallelScene()
+	receivers := parallelReceivers(49)
+
+	want, err := road.ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := road.ComputeReceiverOutputsContext(t.Context(), receivers, sources, barriers, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("a live context moved a result")
 	}
 }
 

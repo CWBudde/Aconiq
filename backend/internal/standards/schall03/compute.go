@@ -1,6 +1,7 @@
 package schall03
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -525,18 +526,42 @@ type ReceiverOutput struct {
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RailSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	return ComputeReceiverOutputsWithDataPack(receivers, sources, cfg, BuiltinDataPack())
+	return ComputeReceiverOutputsContext(context.Background(), receivers, sources, cfg)
+}
+
+// ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
+// ctx is done it stops before the next receiver and returns ctx.Err().
+func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []RailSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsWithDataPackContext(ctx, receivers, sources, cfg, BuiltinDataPack())
 }
 
 // ComputeReceiverOutputsWithDataPack computes indicators using an explicit
 // preview or external Schall 03 data pack.
 func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources []RailSource, cfg PropagationConfig, pack DataPack) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsWithDataPackContext(context.Background(), receivers, sources, cfg, pack)
+}
+
+// ComputeReceiverOutputsWithDataPackContext is ComputeReceiverOutputsWithDataPack
+// under a context: once ctx is done it stops before the next receiver and
+// returns ctx.Err().
+func ComputeReceiverOutputsWithDataPackContext(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RailSource,
+	cfg PropagationConfig,
+	pack DataPack,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 	for _, receiver := range receivers {
+		err := ctx.Err()
+		if err != nil {
+			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
+		}
+
 		if receiver.ID == "" {
 			return nil, errors.New("receiver id is required")
 		}
@@ -575,6 +600,17 @@ func ComputeNormativeReceiverOutputsForScene(
 	receivers []ReceiverInput,
 	scene NormativeScene,
 ) ([]ReceiverOutput, error) {
+	return ComputeNormativeReceiverOutputsForSceneContext(context.Background(), receivers, scene)
+}
+
+// ComputeNormativeReceiverOutputsForSceneContext is
+// ComputeNormativeReceiverOutputsForScene under a context: once ctx is done it
+// stops before the next receiver and returns ctx.Err().
+func ComputeNormativeReceiverOutputsForSceneContext(
+	ctx context.Context,
+	receivers []ReceiverInput,
+	scene NormativeScene,
+) ([]ReceiverOutput, error) {
 	segments := scene.Segments
 
 	if len(receivers) == 0 {
@@ -588,6 +624,11 @@ func ComputeNormativeReceiverOutputsForScene(
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
 	for _, receiver := range receivers {
+		err := ctx.Err()
+		if err != nil {
+			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
+		}
+
 		levels, err := ComputeNormativeReceiverLevelsForScene(receiver, scene)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
