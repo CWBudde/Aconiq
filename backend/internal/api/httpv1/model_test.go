@@ -750,3 +750,48 @@ func TestProjectStatusStreamKeyFollowsTheModelHash(t *testing.T) {
 		t.Errorf("the stream event does not carry the saved model's hash: %#v", status.Model)
 	}
 }
+
+// Re-saving the same bytes leaves the hash alone and moves only
+// model.updated_at, which the REST status reports. A key listing members by
+// hand left that one out, so the stream withheld an update REST already showed.
+func TestProjectStatusStreamKeyFollowsAResaveOfTheSameModel(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Stream Model Resave")
+	handler := NewHandler(store, nil)
+	streamer := Handler{store: store, now: time.Now}
+	body := `{"model": ` + validModelFeatureCollection + `}`
+
+	first := postModel(t, handler, body)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", first.Code, first.Body.String())
+	}
+
+	firstEvent, firstKey := streamer.buildProjectStatusStreamEvent()
+
+	second := postModel(t, handler, body)
+	if second.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", second.Code, second.Body.String())
+	}
+
+	secondEvent, secondKey := streamer.buildProjectStatusStreamEvent()
+
+	before, okBefore := firstEvent["project"].(projectStatusResponse)
+	after, okAfter := secondEvent["project"].(projectStatusResponse)
+
+	if !okBefore || !okAfter || before.Model == nil || after.Model == nil {
+		t.Fatalf("unexpected stream project members: %#v, %#v", firstEvent["project"], secondEvent["project"])
+	}
+
+	if before.Model.Hash != after.Model.Hash {
+		t.Fatalf("the same bytes saved twice should keep the hash: %q, %q", before.Model.Hash, after.Model.Hash)
+	}
+
+	if before.Model.UpdatedAt.Equal(after.Model.UpdatedAt) {
+		t.Fatalf("the resave did not move model.updated_at (%s)", after.Model.UpdatedAt)
+	}
+
+	if firstKey == secondKey {
+		t.Errorf("the dedupe key did not move when the model was saved again: %q", secondKey)
+	}
+}

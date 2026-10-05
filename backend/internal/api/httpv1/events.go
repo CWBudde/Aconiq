@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -130,35 +128,16 @@ func (h Handler) buildProjectStatusStreamEvent() (map[string]any, string) {
 	}
 
 	status := h.projectStatus(proj)
-	lastRunID := ""
-	lastRunState := ""
-	lastRunUpdated := ""
-
-	if len(proj.Runs) > 0 {
-		last := proj.Runs[len(proj.Runs)-1]
-		lastRunID = last.ID
-		lastRunState = last.Status
-		lastRunUpdated = last.FinishedAt.UTC().Format(time.RFC3339Nano)
-	}
 
 	// Every member the payload can change by must appear in the key, or the
-	// stream serves the first snapshot forever. The model hash is the one that
-	// moves without any run moving: saving a model changes the payload and
-	// nothing else here.
-	modelHash := ""
-	if status.Model != nil {
-		modelHash = status.Model.Hash
+	// stream serves the first snapshot forever. Listing them by hand missed
+	// some — re-saving the same model bytes moves model.updated_at and nothing
+	// else — so the key is the encoded status itself. Should encoding fail, the
+	// clock stands in: a duplicate event is harmless, a suppressed one is not.
+	key := "available:" + now.Format(time.RFC3339Nano)
+	if encoded, err := json.Marshal(status); err == nil {
+		key = "available:" + string(encoded)
 	}
-
-	key := strings.Join([]string{
-		"available",
-		proj.ProjectID,
-		strconv.Itoa(len(proj.Runs)),
-		lastRunID,
-		lastRunState,
-		lastRunUpdated,
-		modelHash,
-	}, ":")
 
 	return map[string]any{
 		"time":              now,
