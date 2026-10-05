@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
@@ -31,14 +32,7 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
 
-		// G702 reports the taint from the request body to argv. The flow is real,
-		// but every field that reaches args is constrained by
-		// createRunRequest.validate before the handler calls this executor:
-		// identifiers and parameter names must match a fixed pattern, and paths
-		// must be relative and inside the project. There is no shell — argv is
-		// passed as a slice.
-		//nolint:gosec // request fields are validated by createRunRequest.validate
-		cmd := exec.CommandContext(ctx, executable, runCommandArgs(projectRoot, req)...)
+		cmd := newRunProcess(ctx, executable, runCommandArgs(projectRoot, req))
 
 		var stderr bytes.Buffer
 
@@ -62,6 +56,53 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 
 		return nil
 	}
+}
+
+// runInterruptGrace is how long an interrupted `aconiq run` child has to record
+// its own run as failed before it is killed. A run stops between two
+// receivers, so this bounds one receiver's work plus the manifest write.
+const runInterruptGrace = 10 * time.Second
+
+// newRunProcess prepares the `aconiq run` child for one request.
+//
+// When ctx ends — the client went away, or the server is shutting down — the
+// child is interrupted rather than killed, which is what exec.CommandContext
+// would do by default. On SIGINT `aconiq run` stops between receivers and
+// records its run as failed itself; a killed child leaves it reading "running"
+// for closeRunInterruptedBy to find. Only a child still running
+// runInterruptGrace later is killed.
+func newRunProcess(ctx context.Context, executable string, args []string) *exec.Cmd {
+	// G702 reports the taint from the request body to argv. The flow is real,
+	// but every field that reaches args is constrained by
+	// createRunRequest.validate before the handler calls this executor:
+	// identifiers and parameter names must match a fixed pattern, and paths
+	// must be relative and inside the project. There is no shell — argv is
+	// passed as a slice.
+	//nolint:gosec // request fields are validated by createRunRequest.validate
+	cmd := exec.CommandContext(ctx, executable, args...)
+	cmd.Cancel = func() error {
+		return interruptProcess(cmd.Process)
+	}
+	cmd.WaitDelay = runInterruptGrace
+
+	return cmd
+}
+
+// interruptProcess asks a process to stop. Where a process cannot be sent
+// os.Interrupt — Windows — it is killed instead, which is the behaviour
+// before interrupting existed.
+func interruptProcess(process *os.Process) error {
+	err := process.Signal(os.Interrupt)
+	if err == nil || stderrors.Is(err, os.ErrProcessDone) {
+		return nil
+	}
+
+	err = process.Kill()
+	if err != nil {
+		return fmt.Errorf("kill run process: %w", err)
+	}
+
+	return nil
 }
 
 // runCommandArgs turns a validated request into argv for `aconiq run`. Optional
@@ -112,11 +153,10 @@ func runCommandArgs(projectRoot string, req createRunRequest) []string {
 // died without recording one.
 //
 // The terminal status is written by the `aconiq run` child and by nothing
-// else, so a child that was killed, cancelled together with its HTTP request —
-// which is what a browser reload during a run does — or shot by the OOM killer
-// leaves a row reading "running" that nothing will ever come back to. The UI
-// then draws a spinner forever, and is right to: the manifest is the only
-// thing it can ask.
+// else, so a child that was killed — shot by the OOM killer, or still running
+// runInterruptGrace after its HTTP request was cancelled — leaves a row
+// reading "running" that nothing will ever come back to. The UI then draws a
+// spinner forever, and is right to: the manifest is the only thing it can ask.
 //
 // # Why ownership is worked out by difference, and why that needs a count
 //
