@@ -20,7 +20,7 @@ import (
 	"github.com/aconiq/backend/internal/jsonio"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
 	"github.com/aconiq/backend/internal/report/reporting"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/spf13/cobra"
 )
 

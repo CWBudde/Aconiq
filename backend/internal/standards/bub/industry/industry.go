@@ -5,7 +5,7 @@ import (
 
 	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	cnossosindustry "github.com/aconiq/backend/internal/standards/cnossos/industry"
 	"github.com/aconiq/backend/internal/standards/framework"
 )

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/report/contour"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/aconiq/backend/internal/wasmkernel"
 )
 

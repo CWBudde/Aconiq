@@ -16,7 +16,7 @@ import (
 
 	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"
 )
 

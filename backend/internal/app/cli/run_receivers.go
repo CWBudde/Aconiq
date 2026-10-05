@@ -7,7 +7,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	bubroad "github.com/aconiq/backend/internal/standards/bub/road"
 	bufaircraft "github.com/aconiq/backend/internal/standards/buf/aircraft"
 	cnossosaircraft "github.com/aconiq/backend/internal/standards/cnossos/aircraft"

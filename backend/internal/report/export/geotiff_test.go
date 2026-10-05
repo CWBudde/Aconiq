@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 func TestExportGeoTIFF(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/qa/golden"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 func TestIndustrySourceValidate(t *testing.T) {

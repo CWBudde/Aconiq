@@ -619,11 +619,11 @@ exclusion gone.
 
 Origin of the 190, measured from the pre-fix JSON output:
 
-| Origin                   | Count | Detail                                                                                                               |
-| ------------------------ | ----: | -------------------------------------------------------------------------------------------------------------------- |
-| In-module, cross-package |   115 | `internal/io/projectfs`, `internal/report/results`, `internal/standards/*`, `internal/engine`, `internal/assessment` |
-| Standard library         |    62 | `database/sql` 21, `os` 18, `encoding/json` 14, `path/filepath` 3, `fmt` 2, `io` 2, `io/fs` 1, `strconv` 1           |
-| Third party              |    13 | `github.com/gogama/flatgeobuf`                                                                                       |
+| Origin                   | Count | Detail                                                                                                        |
+| ------------------------ | ----: | ------------------------------------------------------------------------------------------------------------- |
+| In-module, cross-package |   115 | `internal/io/projectfs`, `internal/results`, `internal/standards/*`, `internal/engine`, `internal/assessment` |
+| Standard library         |    62 | `database/sql` 21, `os` 18, `encoding/json` 14, `path/filepath` 3, `fmt` 2, `io` 2, `io/fs` 1, `strconv` 1    |
+| Third party              |    13 | `github.com/gogama/flatgeobuf`                                                                                |
 
 Fixed in five disjoint shares, partitioned by package so no two touched the same file: `app/cli`
 52; `report/export` + `geo` 29; `io` + `engine` + `api` + `qa` + `app/config` 26;
@@ -789,12 +789,12 @@ chance to observe a flush failure and swallowing it means a truncated or unflush
 reported to the user as a successful export — in a tool whose entire product is auditable output
 files:
 
-| Site                                     | What it writes                                 |
-| ---------------------------------------- | ---------------------------------------------- |
-| `report/export/gpkg.go:39,72,508`        | the three GeoPackage export databases          |
-| `report/reporting/report_typst.go:45`    | the PDF the Typst compiler writes into         |
-| `report/results/receiver_table_io.go:72` | the receiver-table CSV                         |
-| `app/cli/export.go:582`                  | the destination of the export-bundle file copy |
+| Site                                  | What it writes                                 |
+| ------------------------------------- | ---------------------------------------------- |
+| `report/export/gpkg.go:39,72,508`     | the three GeoPackage export databases          |
+| `report/reporting/report_typst.go:45` | the PDF the Typst compiler writes into         |
+| `results/receiver_table_io.go:72`     | the receiver-table CSV                         |
+| `app/cli/export.go:582`               | the destination of the export-bundle file copy |
 
 Those now use a named error return and a deferred close that reports the close error when no
 earlier error has won:

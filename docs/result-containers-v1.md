@@ -18,7 +18,7 @@ Status date: 2026-03-06
   separate package rather than a subset of `export` because the kernel cannot
   import `export`: the GeoPackage writer reaches `modernc.org/sqlite` through
   `database/sql`, and linking that into the WASM binary to reach one file of
-  marching squares is not a trade worth making. `report/results`, which the
+  marching squares is not a trade worth making. `results`, which the
   geometry does need, has no non-stdlib dependency at all.
 - `contour.FromRaster` requires a **declared** georeference and refuses a raster
   without one (`ErrNotAGrid`), where `aconiq export` can still infer the
@@ -34,7 +34,7 @@ Status date: 2026-03-06
 
 ## Raster Container API
 
-Implemented in `backend/internal/report/results`:
+Implemented in `backend/internal/results`:
 
 - Metadata: width, height, bands, nodata, units, band names, CRS, georeference
 - Indexing: `At(x,y,band)`, `Set(x,y,band,value)`, and `SetReceiver(layout,index,values...)` for a grid run's receivers
@@ -118,7 +118,7 @@ looks entirely plausible.
 
 `frontend/src/model/raster-bin.ts` is the TypeScript half, as
 `receiver-csv.ts` is for the CSV. Go is canonical; the mirror is pinned against
-it by `backend/internal/report/results/testdata/raster-parity/`, written by
+it by `backend/internal/results/testdata/raster-parity/`, written by
 `raster_parity_test.go` and read by `raster-bin.parity.test.ts`.
 
 It is **both halves of the contract**, not just the writer. `buildRasterBinary`
@@ -152,7 +152,7 @@ rather than writing one at the origin — which is what it used to do, silently.
 
 ## Receiver Table API
 
-Implemented in `backend/internal/report/results`:
+Implemented in `backend/internal/results`:
 
 - `ReceiverTable` with ordered indicators and a unit **per indicator**
 - `ReceiverRecord` with coordinates, height, and per-indicator values
@@ -196,10 +196,10 @@ the browser build — and a run must produce the same file either way. **Go's
 `encoding/csv.Writer`, with the default `Comma` and `UseCRLF = false`, is
 canonical.** The TypeScript side mirrors it; where they disagree, Go is right.
 
-- `backend/internal/report/results/receiver_table_io.go` —
+- `backend/internal/results/receiver_table_io.go` —
   `WriteReceiverTableCSV`, a thin shell around `csv.Writer`.
 - `frontend/src/model/receiver-csv.ts` — `buildReceiverTableCSV`, the mirror.
-- `backend/internal/report/results/testdata/csv-parity/` — the fixtures. Written
+- `backend/internal/results/testdata/csv-parity/` — the fixtures. Written
   by `receiver_table_csv_test.go`, read by
   `frontend/src/model/receiver-csv.parity.test.ts`.
 

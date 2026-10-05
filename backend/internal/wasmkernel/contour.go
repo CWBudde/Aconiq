@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/aconiq/backend/internal/report/contour"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // ContourResult is what `aconiq.contours` answers with, and ContourLine is one

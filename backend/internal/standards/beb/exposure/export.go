@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/aconiq/backend/internal/jsonio"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // ExportOutputs describes written files for BEB outputs.

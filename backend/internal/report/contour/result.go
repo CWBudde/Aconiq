@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The refusals FromRaster distinguishes, as sentinels rather than as message

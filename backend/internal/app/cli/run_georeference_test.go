@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	exportfmt "github.com/aconiq/backend/internal/report/export"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The raster sidecar is the only artifact that says where a run's cells sit on

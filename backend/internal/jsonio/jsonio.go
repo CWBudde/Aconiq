@@ -6,7 +6,7 @@
 // writers called `writeJSONFile` or `writeJSON`, in `app/cli`, `engine`,
 // `io/projectfs`, `report/reporting` and both `qa/acceptance` runners, plus the
 // same two lines inlined in `projectfs.Save`. The nine that stayed inlined at
-// their `os.WriteFile` call followed — in `report/results`, `report/export`,
+// their `os.WriteFile` call followed — in `results`, `report/export`,
 // `app/cli`, `qa/golden`, `api/httpv1` and `standards/beb/exposure`. Every byte
 // any of them produces is pinned by a golden file or by a run digest, so one
 // copy drifting is a diff in files nobody meant to touch.

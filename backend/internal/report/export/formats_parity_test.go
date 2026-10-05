@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/qa/golden"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The raster centre→corner georeference contract.

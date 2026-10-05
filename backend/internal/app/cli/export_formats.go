@@ -16,7 +16,7 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/report/contour"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // formatExportContext holds the data shared by all per-format export helpers.

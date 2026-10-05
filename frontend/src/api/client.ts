@@ -172,7 +172,7 @@ export type ModelResponse = Omit<Schemas["ModelResponse"], "model"> & {
  * JSON for a receiver table or a raster sidecar, `application/octet-stream`
  * for the raster itself. The endpoint declares no schema because it has no one
  * schema, so these mirror the Go writers in
- * `backend/internal/report/results/` rather than the API document.
+ * `backend/internal/results/` rather than the API document.
  * ---------------------------------------------------------------------- */
 
 export interface ReceiverRecord {
@@ -204,7 +204,7 @@ export interface ReceiverTable {
 
 /**
  * Where a raster's cells sit on the ground. Mirrors `results.Georeference` in
- * `backend/internal/report/results/raster.go`.
+ * `backend/internal/results/raster.go`.
  *
  * `origin_x`/`origin_y` is the **centre of cell (0,0)**, not a corner: a grid
  * receiver is a point in the middle of the cell it stands for, so the origin is

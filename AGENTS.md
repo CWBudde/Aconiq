@@ -176,7 +176,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `report/contour/`           | Marching squares and contour reprojection — below the CLI, the kernel and `httpv1`, which all call it              |
 | `report/export/`            | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
 | `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
-| `report/results/`           | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
+| `results/`                  | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
 | `standards/`                | The registry that assembles the standards modules the CLI can run                                                  |
 | `standards/descriptorjson/` | The one JSON encoding of a standards descriptor, shared by the HTTP API and the WASM kernel                        |
 | `standards/framework/`      | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |
@@ -255,7 +255,7 @@ See `docs/geojson-schema-v1.md`.
 
 ### Result Containers v1
 
-- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/report/results`.
+- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/results`.
   In an auto grid, a receiver strictly inside a building footprint is computed and kept in the
   receiver table, but its cell is nodata (`GridLayout.NoDataCells`, written through
   `Raster.SetReceiver`)

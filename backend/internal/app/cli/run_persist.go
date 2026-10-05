@@ -18,7 +18,7 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/projectfs"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
 	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 func TestComputeReceiverOutputsDeterministicPointScope(t *testing.T) {

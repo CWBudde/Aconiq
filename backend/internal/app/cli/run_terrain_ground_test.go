@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/io/projectfs"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
 )
 

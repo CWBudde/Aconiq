@@ -18,7 +18,7 @@ import (
 
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/jsonio"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/aconiq/backend/internal/standards/framework"
 )
 

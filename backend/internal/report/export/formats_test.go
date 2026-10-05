@@ -3,7 +3,7 @@ package export
 import (
 	"testing"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 func TestParseFormats(t *testing.T) {
