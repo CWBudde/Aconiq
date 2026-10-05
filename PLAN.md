@@ -144,7 +144,7 @@ levels breaking, so these belong together, ideally before or with the first tag:
 
 **Inside the code**
 
-- Which of the nine remaining in-place writers should replace atomically (P7).
+- Whether `atomicfile` and the streaming writers' temp-and-rename should fsync (P7).
 - Whether the three remaining persist/hash special cases stay bespoke (P7).
 - Making `distance_scaled` the default: only once its Faustregel precondition is checked (Phase F).
 
@@ -1187,9 +1187,9 @@ editing several of its files rather than one package of its own.
       And **the import report stays in the importer** — it is not part of the model.
       `cli.writeJSONFile`'s other call sites were non-atomic too; that is closed below.
 - [ ] **Generalise the engine.** `engine/runner.go:20,485` hard-codes `dummy/freefield`, so all ten
-      real standards run single-threaded from the CLI, bypassing chunking, caching and
-      cancellation — which makes the "identical output regardless of worker count" guarantee
-      vacuous for everything a user would actually run. Parameterise on a
+      real standards run single-threaded from the CLI, bypassing chunking and caching — which
+      makes the "identical output regardless of worker count" guarantee vacuous for everything a
+      user would actually run. Parameterise on a
       `Kernel func(ctx, []Receiver) ([]ReceiverResult, error)`.
 - [x] **The shared chunk cache key names the resolved standard.** (2026-09-20, #75)
       `RunConfig.StandardKey` carries id, version and profile — three fields, because a joined
@@ -1204,14 +1204,20 @@ editing several of its files rather than one package of its own.
       all. They share it because both pass the same `RunID` and `computeOrLoadChunk` consults the
       run-local cache first — which is also why `TestBenchGeneratesSummaryAndReusesCache` passes
       with a sabotaged warm key and cannot guard this.
-- [ ] **Thread `cmd.Context()` end to end.** `run_modules.go:266` and `bench.go:422` pass
-      `context.Background()`, so Ctrl-C during a long grid calculation does nothing; the engine's
-      full `context.Canceled` handling (`handleRunComputeError`, `runner.go:211-245`) is reachable
-      only from `TestCancellationLeavesConsistentState`. **No `Compute*` in any standards module
-      takes a context** — 10 modules, zero cancellation. `report/export/gpkg.go` calls
-      `context.Background()` 7 times on the export path for the same reason.
-      (The line numbers this entry used to carry pointed at `run_pipeline.go`, which no longer
-      exists. Cite a function name, not a line, for anything that will outlive one commit.)
+- [x] **Ctrl-C stops a run, and the run says so.** (2026-10-06, #93) `cli.Execute` installs a
+      signal context; every standard's run, `bench`, and the GeoPackage export and import take it,
+      and every compute loop the run pipeline calls checks it once per receiver. An interrupted run
+      is recorded `failed` with `run cancelled` in its log and no `results/`, and
+      `TestEveryStandardStopsOnACancelledContext` pins that for all 13 standards. Four constraints
+      are live. **A module entry point keeps its context-free signature and gains a `…Context`
+      twin**; the plain one delegates with `context.Background()` so `wasmkernel`, the acceptance
+      runners and the tests stay on it, and the run pipeline must call the twin — the registry-wide
+      test fails the standard that does not. **The check reads no number**: every run digest is
+      byte-identical to `main`. **Only the first signal is caught** — `interruptContext` drops
+      its handler once it fires, so a second Ctrl-C kills whatever does not check, such as one
+      Schall 03 receiver over a large scene. And **a cancelled run is `failed`, not a status of its
+      own**, with exit code 1; the API's child gets SIGINT and `runInterruptGrace` (10 s) before the
+      kill, so `closeRunInterruptedBy` now only meets children that ignored it.
 - [x] **The feeder-goroutine leak is closed** — by `ac33895`, not by the batch that ticked this.
       (2026-09-19) The live constraint is the one `computeChunks` now states in a comment: the
       feeder's `select` must watch `computeCtx`, not `ctx`, because production passes
