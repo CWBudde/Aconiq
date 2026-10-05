@@ -11,7 +11,7 @@ import (
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/numeric"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 

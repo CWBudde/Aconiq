@@ -13,7 +13,7 @@ import (
 	typst "github.com/Dadido3/go-typst"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/jsonio"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 func TestBuildRunReportGeneratesRequiredSections(t *testing.T) {

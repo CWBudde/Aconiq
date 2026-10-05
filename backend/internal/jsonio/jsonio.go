@@ -6,7 +6,7 @@
 // writers called `writeJSONFile` or `writeJSON`, in `app/cli`, `engine`,
 // `io/projectfs`, `report/reporting` and both `qa/acceptance` runners, plus the
 // same two lines inlined in `projectfs.Save`. The nine that stayed inlined at
-// their `os.WriteFile` call followed — in `report/results`, `report/export`,
+// their write call followed — in `results`, `report/export`,
 // `app/cli`, `qa/golden`, `api/httpv1` and `standards/beb/exposure`. Every byte
 // any of them produces is pinned by a golden file or by a run digest, so one
 // copy drifting is a diff in files nobody meant to touch.
@@ -30,9 +30,11 @@
 // replaced a file through a temp file and a rename "while the others write in
 // place", and that difference was not a decision — it meant the same artifacts
 // were replaced atomically through the HTTP API and non-atomically through the
-// CLI. `internal/atomicfile` now holds that mechanism, and both
-// `projectfs.writeJSONFile` and `cli.writeJSONFile` go through it. The
-// remaining in-place writers are listed above and have not been reviewed.
+// CLI. `internal/atomicfile` now holds that mechanism, and every file writer
+// above goes through it except the two snapshot writers in `qa/acceptance` and
+// the one in `qa/golden`, which run only under UPDATE_GOLDEN.
+// `api/httpv1.writeJSON` writes no file. The writers that still write in place
+// are the streaming ones, which encode no JSON; atomicfile's doc names them.
 package jsonio
 
 import (

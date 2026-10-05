@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // GeoTransform describes the affine mapping from pixel to projected coordinates.

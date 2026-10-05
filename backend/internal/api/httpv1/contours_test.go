@@ -12,7 +12,7 @@ import (
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/report/contour"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The fixture raster is deliberately larger than the 2x2 marching squares

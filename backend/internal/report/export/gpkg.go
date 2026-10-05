@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	_ "modernc.org/sqlite"
 )
 

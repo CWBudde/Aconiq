@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/contour"
 )
@@ -67,7 +68,7 @@ func ExportContourGeoJSON(path string, contours []ContourLine) error {
 		return fmt.Errorf("marshal contour geojson: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := atomicfile.WriteFile(path, data); err != nil {
 		return fmt.Errorf("write contour geojson %s: %w", path, err)
 	}
 

@@ -2,11 +2,16 @@ package httpv1
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 // sseOutcome carries the reader goroutine's single answer.
@@ -147,5 +152,113 @@ func TestWaitForSSEEventDataReadsACompleteFrame(t *testing.T) {
 
 	if available, ok := payload["project_available"].(bool); !ok || available {
 		t.Errorf("project_available = %#v, want false", payload["project_available"])
+	}
+}
+
+func TestEventsEndpointStreamsProjectStatusAndHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Phase23 Stream", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock:       time.Now,
+		sseInterval: 10 * time.Millisecond,
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/api/v1/events")
+	if err != nil {
+		t.Fatalf("request events: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("unexpected content-type: %q", got)
+	}
+
+	eventData, err := waitForSSEEventData(resp.Body, 1500*time.Millisecond, func(seen map[string]string) bool {
+		return seen["project_status"] != "" && seen["heartbeat"] != ""
+	})
+	if err != nil {
+		t.Fatalf("read stream events: %v", err)
+	}
+
+	var statusPayload map[string]any
+
+	err = json.Unmarshal([]byte(eventData["project_status"]), &statusPayload)
+	if err != nil {
+		t.Fatalf("decode project_status payload: %v", err)
+	}
+
+	projectAvailable, ok := statusPayload["project_available"].(bool)
+	if !ok || !projectAvailable {
+		t.Fatalf("expected project_available=true, got %#v", statusPayload["project_available"])
+	}
+}
+
+func TestEventsEndpointReportsMissingProject(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock:       time.Now,
+		sseInterval: 10 * time.Millisecond,
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/api/v1/events")
+	if err != nil {
+		t.Fatalf("request events: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	eventData, err := waitForSSEEventData(resp.Body, 1500*time.Millisecond, func(seen map[string]string) bool {
+		return seen["project_status"] != ""
+	})
+	if err != nil {
+		t.Fatalf("read stream events: %v", err)
+	}
+
+	var statusPayload map[string]any
+
+	err = json.Unmarshal([]byte(eventData["project_status"]), &statusPayload)
+	if err != nil {
+		t.Fatalf("decode project_status payload: %v", err)
+	}
+
+	projectAvailable, ok := statusPayload["project_available"].(bool)
+	if !ok || projectAvailable {
+		t.Fatalf("expected project_available=false, got %#v", statusPayload["project_available"])
+	}
+
+	errorPayload, ok := statusPayload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected error payload in stream event, got %#v", statusPayload["error"])
+	}
+
+	if errorPayload["code"] != "not_found" {
+		t.Fatalf("expected stream error code not_found, got %#v", errorPayload["code"])
 	}
 }

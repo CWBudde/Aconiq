@@ -25,7 +25,7 @@ snapshots". Both are written by a Go test and read by a frontend test:
   `*.golden.json` levels, written by `parity_golden_test.go` and read by
   `frontend/src/api/browser-parity.test.ts`, which checks that browser mode
   builds the same scene out of the same model that the CLI does.
-- `backend/internal/report/results/testdata/csv-parity/` —
+- `backend/internal/results/testdata/csv-parity/` —
   `receiver_table.golden.json` (the input), `receiver_table.golden.csv` (the
   bytes) and `float_spelling.golden.json`, written by
   `receiver_table_csv_test.go` and read by

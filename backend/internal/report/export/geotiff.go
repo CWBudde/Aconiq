@@ -8,8 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // GeoTIFF tag IDs.
@@ -219,7 +220,7 @@ func writeGeoTIFFFile(path string, data []float64, width int, height int, nodata
 
 // writeTIFFBytes writes the assembled TIFF/COG bytes to disk, wrapping any error.
 func writeTIFFBytes(path string, buf []byte) error {
-	if err := os.WriteFile(path, buf, 0o600); err != nil {
+	if err := atomicfile.WriteFile(path, buf); err != nil {
 		return fmt.Errorf("write geotiff %s: %w", path, err)
 	}
 

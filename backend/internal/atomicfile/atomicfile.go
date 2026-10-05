@@ -1,7 +1,12 @@
 // Package atomicfile holds one way of replacing a file's contents: write a
-// temporary file beside the destination, then rename it over the top. Both
-// JSON writers that persist project artifacts - `app/cli.writeJSONFile` and
-// `io/projectfs.writeJSONFile` - go through it.
+// temporary file beside the destination, then rename it over the top.
+//
+// The rule is that every writer that replaces a project or export artifact
+// from a finished buffer goes through it - the manifest and the other JSON
+// artifacts, terrain.tif, run.log, the engine's run state and chunk caches,
+// result rasters and receiver tables, reports, bundle files and the OpenAPI
+// document. A reader of any of them, in this process or in an `aconiq run`
+// subprocess, sees the old file or the new one, never a prefix.
 //
 // It exists for the reason internal/jsonio exists: the bytes were already
 // shared, the mechanism around them was not. `io/projectfs` replaced a file
@@ -11,11 +16,25 @@
 // left a truncated run summary, validation report or import report where a
 // reader expects whole JSON.
 //
+// Writers that stream do not go through it yet, because it takes a []byte and
+// they hold none: the report PDF (the typst compiler writes into the file, so
+// a failed compile leaves a partial PDF), the receiver-table CSV, the export
+// bundle's file copies, and the three GeoPackage exports, which SQLite writes
+// itself. They need a streaming variant - a temporary file handed out as an
+// io.Writer and renamed on success, as io/lglnimport's tile download already
+// does by hand. Writers that replace nothing are out of scope: an append
+// (projectfs.appendRunLogNote), an http.ResponseWriter, and the golden and
+// acceptance snapshot writers, which run only under UPDATE_GOLDEN.
+//
+// A rename makes the replacement atomic for readers, not durable: nothing is
+// fsynced, so a power loss can still leave an empty or stale file behind.
+//
 // What stays with the callers is the encoding and the error taxonomy, because
-// neither is shared. `app/cli` and `io/projectfs` both wrap a failure as
+// neither is shared. `app/cli` and `io/projectfs` wrap a failure as
 // domainerrors.New under their own op string, which is what the CLI derives
-// its exit code from; jsonio.Marshal says only that marshalling failed. This
-// package says only that the write failed.
+// its exit code from, and the rest wrap it with fmt.Errorf in their own words;
+// jsonio.Marshal says only that marshalling failed. This package says only
+// that the write failed, and names the file by its base name alone.
 package atomicfile
 
 import (

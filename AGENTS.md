@@ -6,7 +6,7 @@ This file provides guidance to AI agents (Claude Code, Codex etc.) when working 
 
 `PLAN.md` is the single source of truth for project status and open work. It is forward-only: it records what is still ahead, not what is done. Completed work is recorded in git history, in `docs/conformance/`, and in the per-module baseline notes under `docs/`.
 
-The one exception is a priority's **`### Landed`** checklist. Where the completed items are load-bearing for everything after them — the build and the CI gates, above all — they stay as a short `- [x]` list, because a reader has to know which gates already hold before trusting the open items underneath. Those entries are checklist lines, not retrospectives: name the change, cite the commit, and add only what changes future behaviour, such as a constraint that is still live or a belief the work proved wrong. The detail belongs in the commit message. An entry that reads like a delivery report has outgrown this file.
+The one exception is a priority's **`### Landed`** checklist. Where the completed items are load-bearing for everything after them — the build and the CI gates, above all — they stay as a short `- [x]` list, because a reader has to know which gates already hold before trusting the open items underneath. Those entries are checklist lines, not retrospectives: name the change, cite the pull request that landed it (`#NN` — `main` is squash-merged, so branch commit hashes do not survive), and add only what changes future behaviour, such as a constraint that is still live or a belief the work proved wrong. The detail belongs in the commit message. An entry that reads like a delivery report has outgrown this file.
 
 Do not restate status here, and do not infer it from this file. Read `PLAN.md`.
 
@@ -62,7 +62,7 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 `just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-test-coverage`, `fe-coverage-report`, `fe-e2e`, `fe-bundle-check`, `fe-api` / `fe-api-check`, and `fe-ci` (api contract + typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
 
-`frontend/src/api/schema.ts` is generated from the API's OpenAPI document by `frontend/scripts/generate-api-client.mjs`, which exports the spec with `go run ./cmd/aconiq openapi` and never stores it. `just fe-api` rewrites the file; `just fe-api-check` regenerates into a temp file and fails on the diff, which is the gate in `fe-ci`. Do not hand-edit that file — put the change in `backend/internal/api/httpv1/openapi.go` and regenerate. The hand-written half of the contract lives in `frontend/src/api/client.ts`.
+`frontend/src/api/schema.ts` is generated from the API's OpenAPI document by `frontend/scripts/generate-api-client.mjs`, which exports the spec with `go run ./cmd/aconiq openapi` and never stores it. `just fe-api` rewrites the file; `just fe-api-check` regenerates into a temp file and fails on the diff, which is the gate in `fe-ci`. Do not hand-edit that file — put the change in the `backend/internal/api/httpv1/openapi_<area>.go` file for that route area (shared pieces live in `openapi.go`) and regenerate. The hand-written half of the contract lives in `frontend/src/api/client.ts`.
 
 ### Aggregates
 
@@ -176,7 +176,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `report/contour/`           | Marching squares and contour reprojection — below the CLI, the kernel and `httpv1`, which all call it              |
 | `report/export/`            | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
 | `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
-| `report/results/`           | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
+| `results/`                  | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
 | `standards/`                | The registry that assembles the standards modules the CLI can run                                                  |
 | `standards/descriptorjson/` | The one JSON encoding of a standards descriptor, shared by the HTTP API and the WASM kernel                        |
 | `standards/framework/`      | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |
@@ -223,7 +223,7 @@ POST /api/v1/transform                 project a coordinate batch between two CR
 GET  /api/v1/openapi.json
 ```
 
-Responses use a standardized JSON error envelope (`code`, `message`, `details`, `hint`). Keep `handler.go` and `openapi.go` in sync — the spec is hand-built, not generated from the mux.
+Responses use a standardized JSON error envelope (`code`, `message`, `details`, `hint`). Keep the route handlers and their `openapi_<area>.go` sections in sync — the spec is hand-built, not generated from the mux.
 
 ### Project Format v1
 
@@ -255,7 +255,7 @@ See `docs/geojson-schema-v1.md`.
 
 ### Result Containers v1
 
-- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/report/results`.
+- **Raster:** custom binary (`float64` little-endian) + JSON metadata sidecar, in `internal/results`.
   In an auto grid, a receiver strictly inside a building footprint is computed and kept in the
   receiver table, but its cell is nodata (`GridLayout.NoDataCells`, written through
   `Raster.SetReceiver`)

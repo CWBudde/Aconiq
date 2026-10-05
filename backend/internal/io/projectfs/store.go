@@ -453,7 +453,10 @@ func writeRunLog(path string, lines []string) error {
 
 	text := strings.Join(lines, "\n") + "\n"
 
-	err := os.WriteFile(path, []byte(text), 0o600)
+	// Replaced like every other run artifact, so `GET /runs/{id}/log` never
+	// serves a prefix. appendRunLogNote stays an O_APPEND write: it adds one
+	// line to a run that is already dead, and has no whole buffer to swap in.
+	err := atomicfile.WriteFile(path, []byte(text))
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.writeRunLog", "write run log", err)
 	}

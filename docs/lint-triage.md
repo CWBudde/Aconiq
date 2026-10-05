@@ -205,15 +205,15 @@ assumed; see the debt pass below.
 **Fixed in code** (49 findings, group 3 of the original analysis plus everything else that was
 genuinely constant-worthy):
 
-| Constants introduced                                                                                                                                                                      | Home                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `TypeFeatureCollection`, `GeometryType{Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon}`, `FeatureKind{Source,Building,Barrier,Receiver}`, `SourceType{Point,Line,Area}` | `internal/geo/modelgeojson/types.go`         |
-| `ArtifactKind{ModelNormalizedGeoJSON,ModelDumpJSON,ModelValidationReport,RunResult*}`, `ArtifactKindRunResultPrefix`, `ArtifactID{ModelNormalized,ModelDump,ModelValidation}`             | `internal/domain/project/model.go`           |
-| `errorCode{BadRequest,NotFound,InternalError}`                                                                                                                                            | `internal/api/httpv1/handler.go`             |
-| `commandNameCompare`; `commandNameBench`, `benchRunID`; `sampleIndicator{Lden,Lnight}`                                                                                                    | `internal/app/cli/{compare,bench,export}.go` |
-| `defaultScenarioID`, `defaultStandardProfile`                                                                                                                                             | `internal/io/projectfs/store.go`             |
-| `taskStatus{Passed,Skipped}` (next to the existing `taskStatusFailed`); `evidenceClass{Synthetic,Derived}`, `provenance{Synthetic,Derived}`                                               | `internal/qa/acceptance/`                    |
-| `c1Effect{Schiene,Reflexion}`                                                                                                                                                             | `internal/standards/schall03/tables.go`      |
+| Constants introduced                                                                                                                                                                      | Home                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `TypeFeatureCollection`, `GeometryType{Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon}`, `FeatureKind{Source,Building,Barrier,Receiver}`, `SourceType{Point,Line,Area}` | `internal/geo/modelgeojson/types.go`                |
+| `ArtifactKind{ModelNormalizedGeoJSON,ModelDumpJSON,ModelValidationReport,RunResult*}`, `ArtifactKindRunResultPrefix`, `ArtifactID{ModelNormalized,ModelDump,ModelValidation}`             | `internal/domain/project/model.go`                  |
+| `errorCode{BadRequest,NotFound,InternalError}`                                                                                                                                            | `internal/api/httpv1/response.go`                   |
+| `commandNameCompare`; `commandNameBench`, `benchRunID`; `sampleIndicator{Lden,Lnight}`                                                                                                    | `internal/app/cli/{compare,bench,export_sample}.go` |
+| `defaultScenarioID`, `defaultStandardProfile`                                                                                                                                             | `internal/io/projectfs/store.go`                    |
+| `taskStatus{Passed,Skipped}` (next to the existing `taskStatusFailed`); `evidenceClass{Synthetic,Derived}`, `provenance{Synthetic,Derived}`                                               | `internal/qa/acceptance/`                           |
+| `c1Effect{Schiene,Reflexion}`                                                                                                                                                             | `internal/standards/schall03/tables.go`             |
 
 The GeoJSON tags are now sourced from `modelgeojson` in every importer
 (`osmimport`, `gpkgimport`, `fgbimport`, `citygmlimport`) and in `internal/app/cli`, replacing the
@@ -619,11 +619,11 @@ exclusion gone.
 
 Origin of the 190, measured from the pre-fix JSON output:
 
-| Origin                   | Count | Detail                                                                                                               |
-| ------------------------ | ----: | -------------------------------------------------------------------------------------------------------------------- |
-| In-module, cross-package |   115 | `internal/io/projectfs`, `internal/report/results`, `internal/standards/*`, `internal/engine`, `internal/assessment` |
-| Standard library         |    62 | `database/sql` 21, `os` 18, `encoding/json` 14, `path/filepath` 3, `fmt` 2, `io` 2, `io/fs` 1, `strconv` 1           |
-| Third party              |    13 | `github.com/gogama/flatgeobuf`                                                                                       |
+| Origin                   | Count | Detail                                                                                                        |
+| ------------------------ | ----: | ------------------------------------------------------------------------------------------------------------- |
+| In-module, cross-package |   115 | `internal/io/projectfs`, `internal/results`, `internal/standards/*`, `internal/engine`, `internal/assessment` |
+| Standard library         |    62 | `database/sql` 21, `os` 18, `encoding/json` 14, `path/filepath` 3, `fmt` 2, `io` 2, `io/fs` 1, `strconv` 1    |
+| Third party              |    13 | `github.com/gogama/flatgeobuf`                                                                                |
 
 Fixed in five disjoint shares, partitioned by package so no two touched the same file: `app/cli`
 52; `report/export` + `geo` 29; `io` + `engine` + `api` + `qa` + `app/config` 26;
@@ -789,12 +789,12 @@ chance to observe a flush failure and swallowing it means a truncated or unflush
 reported to the user as a successful export — in a tool whose entire product is auditable output
 files:
 
-| Site                                     | What it writes                                 |
-| ---------------------------------------- | ---------------------------------------------- |
-| `report/export/gpkg.go:39,72,508`        | the three GeoPackage export databases          |
-| `report/reporting/report_typst.go:45`    | the PDF the Typst compiler writes into         |
-| `report/results/receiver_table_io.go:72` | the receiver-table CSV                         |
-| `app/cli/export.go:582`                  | the destination of the export-bundle file copy |
+| Site                                  | What it writes                                 |
+| ------------------------------------- | ---------------------------------------------- |
+| `report/export/gpkg.go:39,72,508`     | the three GeoPackage export databases          |
+| `report/reporting/report_typst.go:45` | the PDF the Typst compiler writes into         |
+| `results/receiver_table_io.go:72`     | the receiver-table CSV                         |
+| `app/cli/export.go:582`               | the destination of the export-bundle file copy |
 
 Those now use a named error return and a deferred close that reports the close error when no
 earlier error has won:
@@ -945,7 +945,7 @@ struct's own schema.
 ### Corrections to this document's own record
 
 The `//nolint` table above says `dupl` **13, of which P7 calls all but 8 illegitimate**. Measured
-across the two passes: 2 were deleted in `0e00155`, the 3 in `run_persist.go` remain and are Part
+across the two passes: 2 were deleted in #7, the 3 in `run_persist.go` remain and are Part
 1's, the 8 in `schall03/beiblatt1.go` are genuine coefficient tables, and this pass added 2. The P7
 item's arithmetic — "remove the 12 illegitimate of 20 total" — never matched the tree.
 
@@ -954,7 +954,7 @@ item's arithmetic — "remove the 12 illegitimate of 20 total" — never matched
 - The three geometry helpers each hardcoded one standard in their unsupported-geometry message
   regardless of caller, so `lineStringsFromFeature` told Schall 03, BUB road, RLS-19 and CNOSSOS rail
   users that "cnossos-road supports LineString/MultiLineString only". Fixed by threading
-  `standardID`, as `0e00155` had already done for the aircraft pair.
+  `standardID`, as #7 had already done for the aircraft pair.
 - `extractCnossosIndustrySources`' source-type switch has no `default` arm, so a type that is in the
   standard's `SupportedSourceTypes` but is neither point nor area silently yields no sources. That
   behaviour is preserved and now stated in a comment rather than implied by an absence; it is

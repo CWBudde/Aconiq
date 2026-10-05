@@ -2,7 +2,7 @@
  * Browser-CLI parity for the raster binary, at the byte level.
  *
  * `results.SaveRaster` is canonical. The fixtures below belong to the Go tree —
- * `backend/internal/report/results/raster_parity_test.go` writes them, and
+ * `backend/internal/results/raster_parity_test.go` writes them, and
  * `just update-golden` regenerates them — so nothing here restates what the
  * bytes ought to be. It reads what the CLI actually produced and asserts the
  * browser builder produces the same thing.
@@ -28,7 +28,7 @@ import { buildRasterBinary, readRasterBand } from "./raster-bin";
 // fileURLToPath then refuses.
 const FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../backend/internal/report/results/testdata/raster-parity",
+  "../../../backend/internal/results/testdata/raster-parity",
 );
 
 interface ParityFixture {

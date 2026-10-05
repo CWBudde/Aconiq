@@ -2,7 +2,7 @@
  * Browser-CLI parity for the receiver-table CSV, at the byte level.
  *
  * Go's `encoding/csv` is canonical. The fixtures below belong to the Go tree —
- * `backend/internal/report/results/receiver_table_csv_test.go` writes them, and
+ * `backend/internal/results/receiver_table_csv_test.go` writes them, and
  * `just update-golden` regenerates them — so nothing here restates what the
  * bytes ought to be. It reads what the CLI actually produced and asserts the
  * browser builder produces the same thing.
@@ -28,7 +28,7 @@ import { buildReceiverTableCSV, formatCSVFloat } from "./receiver-csv";
 // fileURLToPath then refuses.
 const FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../backend/internal/report/results/testdata/csv-parity",
+  "../../../backend/internal/results/testdata/csv-parity",
 );
 
 function readFixture(name: string): string {

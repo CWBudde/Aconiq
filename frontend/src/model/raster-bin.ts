@@ -2,13 +2,13 @@
  * The raster binary codec — the browser half of a byte contract.
  *
  * `results.SaveRaster` / `results.LoadRaster` in
- * `backend/internal/report/results/raster_io.go` are canonical. They write and
+ * `backend/internal/results/raster_io.go` are canonical. They write and
  * read a headerless little-endian `float64` array, tagged `float64-le-v1` in
  * the sidecar, and a browser-mode run must produce the same bytes for the same
  * grid — and read back what the CLI wrote. The contract is written out in
  * `docs/result-containers-v1.md`, section "Raster binary — byte contract", and
  * pinned from both sides by
- * `backend/internal/report/results/testdata/raster-parity/`.
+ * `backend/internal/results/testdata/raster-parity/`.
  *
  * Both halves live here on purpose. The writer used to be the only one, and a
  * one-way mirror is where the two directions drift: a reader written beside

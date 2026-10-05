@@ -4,7 +4,11 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
+	"time"
 
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
@@ -95,4 +99,159 @@ func writeDeleteRunError(w http.ResponseWriter, runID string, err error) {
 	default:
 		writeDomainError(w, err)
 	}
+}
+
+type artifactRefResponse struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type runSummaryResponse struct {
+	ID            string                `json:"id"`
+	ScenarioID    string                `json:"scenario_id"`
+	Context       string                `json:"context,omitempty"`
+	StandardID    string                `json:"standard_id"`
+	Version       string                `json:"version"`
+	Profile       string                `json:"profile,omitempty"`
+	ReceiverMode  string                `json:"receiver_mode,omitempty"`
+	ReceiverSetID string                `json:"receiver_set_id,omitempty"`
+	Status        string                `json:"status"`
+	StartedAt     time.Time             `json:"started_at"`
+	FinishedAt    time.Time             `json:"finished_at"`
+	LogPath       string                `json:"log_path"`
+	Artifacts     []artifactRefResponse `json:"artifacts"`
+}
+
+type runLogResponse struct {
+	RunID string   `json:"run_id"`
+	Lines []string `json:"lines"`
+}
+
+func (h Handler) handleRuns(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleRunsList(w, r)
+	case http.MethodPost:
+		h.handleRunCreate(w, r)
+	default:
+		writeAPIError(w, http.StatusMethodNotAllowed, apiError{
+			Code:    errorCodeMethodNotAllowed,
+			Message: fmt.Sprintf("method %s is not allowed for %s", r.Method, r.URL.Path),
+		})
+	}
+}
+
+func (h Handler) handleRunsList(w http.ResponseWriter, _ *http.Request) {
+	proj, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
+	for _, v := range slices.Backward(proj.Runs) {
+		summaries = append(summaries, summarizeRun(proj, v))
+	}
+
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+func summarizeRun(proj project.Project, run project.Run) runSummaryResponse {
+	artifacts := make([]artifactRefResponse, 0)
+
+	for _, a := range proj.Artifacts {
+		if a.RunID != run.ID {
+			continue
+		}
+
+		artifacts = append(artifacts, artifactRefResponse{
+			ID:        a.ID,
+			Kind:      a.Kind,
+			Path:      a.Path,
+			CreatedAt: a.CreatedAt,
+		})
+	}
+
+	return runSummaryResponse{
+		ID:            run.ID,
+		ScenarioID:    run.ScenarioID,
+		Context:       run.Standard.Context,
+		StandardID:    run.Standard.ID,
+		Version:       run.Standard.Version,
+		Profile:       run.Standard.Profile,
+		ReceiverMode:  run.ReceiverMode,
+		ReceiverSetID: run.ReceiverSetID,
+		Status:        run.Status,
+		StartedAt:     run.StartedAt,
+		FinishedAt:    run.FinishedAt,
+		LogPath:       run.LogPath,
+		Artifacts:     artifacts,
+	}
+}
+
+func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	runID := r.PathValue("id")
+	if runID == "" {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    errorCodeBadRequest,
+			Message: messageRunIDRequired,
+		})
+
+		return
+	}
+
+	proj, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	var logPath string
+
+	for _, run := range proj.Runs {
+		if run.ID == runID {
+			logPath = run.LogPath
+			break
+		}
+	}
+
+	if logPath == "" {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    errorCodeNotFound,
+			Message: fmt.Sprintf("run %q not found", runID),
+		})
+
+		return
+	}
+
+	raw, readErr := readProjectFile(h.store.Root(), logPath)
+	if readErr != nil {
+		writeProjectFileError(w, readErr, "failed to read run log")
+		return
+	}
+
+	lines := splitLogLines(string(raw))
+	writeJSON(w, http.StatusOK, runLogResponse{
+		RunID: runID,
+		Lines: lines,
+	})
+}
+
+func splitLogLines(text string) []string {
+	raw := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+
+	lines := make([]string, 0, len(raw))
+	for _, line := range raw {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	return lines
 }

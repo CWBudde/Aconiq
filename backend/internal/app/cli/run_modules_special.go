@@ -7,7 +7,8 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/geo/terrain"
+	"github.com/aconiq/backend/internal/results"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
@@ -433,4 +434,37 @@ func computeRLS19RoadReceivers(
 	}
 
 	return outputs, nil
+}
+
+// receiverGridCenter computes the centroid of a set of receivers.
+func receiverGridCenter(receivers []geo.PointReceiver) (float64, float64) {
+	if len(receivers) == 0 {
+		return 0, 0
+	}
+
+	var sumX, sumY float64
+
+	for _, r := range receivers {
+		sumX += r.Point.X
+		sumY += r.Point.Y
+	}
+
+	n := float64(len(receivers))
+
+	return sumX / n, sumY / n
+}
+
+// terrainElevationAt queries the terrain model for elevation at (x, y).
+// Returns 0 if terrain is nil or the point is outside bounds.
+func terrainElevationAt(tm terrain.Model, x, y float64) float64 {
+	if tm == nil {
+		return 0
+	}
+
+	elev, ok := tm.ElevationAt(x, y)
+	if !ok {
+		return 0
+	}
+
+	return elev
 }

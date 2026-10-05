@@ -4,11 +4,11 @@
  * Go's `encoding/csv.Writer` (default `Comma`, `UseCRLF = false`) is canonical.
  * Everything here mirrors it: the CLI writes a receivers CSV through
  * `WriteReceiverTableCSV` in
- * `backend/internal/report/results/receiver_table_io.go`, and a browser-mode run
+ * `backend/internal/results/receiver_table_io.go`, and a browser-mode run
  * must produce the same bytes for the same table. The contract is written out in
  * `docs/result-containers-v1.md`, section "Receiver table CSV — byte contract",
  * and pinned from both sides by
- * `backend/internal/report/results/testdata/csv-parity/`.
+ * `backend/internal/results/testdata/csv-parity/`.
  *
  * Deliberately import-free. `model/` must not grow a dependency on `api/client`
  * for the sake of two field names, so the input types below are declared

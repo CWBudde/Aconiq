@@ -14,7 +14,7 @@
 // that package cannot be imported by the kernel: its GeoPackage writer reaches
 // modernc.org/sqlite through database/sql, which would link libc and an SQL
 // engine into a WebAssembly binary to reach one file of geometry. This package
-// depends on internal/report/results — which has no non-stdlib dependencies at
+// depends on internal/results — which has no non-stdlib dependencies at
 // all — and on internal/geo for the reprojection, and on nothing else. Keep it
 // that way: an import added here is an import added to the browser bundle.
 //
@@ -29,7 +29,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // Line is a single contour at a given dB level.

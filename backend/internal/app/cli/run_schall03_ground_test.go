@@ -14,7 +14,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/io/projectfs"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 

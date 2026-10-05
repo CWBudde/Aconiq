@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The grid is 11x11 at 10 m over the drawn area [0,100]², and the building is

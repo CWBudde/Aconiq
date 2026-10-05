@@ -10,6 +10,7 @@ import (
 	"time"
 
 	typst "github.com/Dadido3/go-typst"
+	"github.com/aconiq/backend/internal/atomicfile"
 )
 
 const reportTypstTemplateVersion = "report-pdf-v1"
@@ -24,7 +25,7 @@ func writeTypst(path string, ctx reportContext) error {
 		return err
 	}
 
-	err = os.WriteFile(path, source, 0o600)
+	err = atomicfile.WriteFile(path, source)
 	if err != nil {
 		return fmt.Errorf("write report typst %s: %w", path, err)
 	}
@@ -32,6 +33,10 @@ func writeTypst(path string, ctx reportContext) error {
 	return nil
 }
 
+// writePDF streams the compiler's output straight into path, so a compile that
+// fails part-way leaves a partial PDF there. It is the one report writer not
+// replaced through atomicfile: the compiler wants an io.Writer, and atomicfile
+// takes a finished buffer.
 func writePDF(path string, ctx reportContext, generatedAt time.Time, opts BuildOptions) (err error) {
 	source, err := renderTypstSource(ctx)
 	if err != nil {

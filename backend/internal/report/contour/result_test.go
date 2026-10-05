@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // gridRaster builds a small south-up raster with a declared georeference and a

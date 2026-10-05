@@ -353,3 +353,14 @@ func reportRunCompletion(cmd *cobra.Command, state commandState, prepared prepar
 
 	return nil
 }
+
+// findArtifactPath returns the path for the artifact with the given ID, or empty string if not found.
+func findArtifactPath(proj project.Project, id string) string {
+	for _, a := range proj.Artifacts {
+		if a.ID == id {
+			return a.Path
+		}
+	}
+
+	return ""
+}

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/qa/golden"
-	"github.com/aconiq/backend/internal/report/results"
+	"github.com/aconiq/backend/internal/results"
 )
 
 // The cross-target contract of FromRaster.
