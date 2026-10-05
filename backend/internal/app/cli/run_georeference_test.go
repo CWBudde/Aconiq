@@ -250,7 +250,9 @@ func TestExportRefusesAGeoreferencedFormatWithoutATransform(t *testing.T) {
 		"geotiff":         ctx.exportGeoTIFF,
 		"cog":             ctx.exportCOG,
 		"contour-geojson": ctx.exportContourGeoJSON,
-		"contour-gpkg":    ctx.exportContourGeoPackage,
+		"contour-gpkg": func(out map[string][]string) error {
+			return ctx.exportContourGeoPackage(t.Context(), out)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -297,7 +299,9 @@ func TestAnUnreadableRasterRefusesOnlyTheFormatsThatReadIt(t *testing.T) {
 		"geotiff":         ctx.exportGeoTIFF,
 		"cog":             ctx.exportCOG,
 		"contour-geojson": ctx.exportContourGeoJSON,
-		"contour-gpkg":    ctx.exportContourGeoPackage,
+		"contour-gpkg": func(out map[string][]string) error {
+			return ctx.exportContourGeoPackage(t.Context(), out)
+		},
 	} {
 		err := export(map[string][]string{})
 		if err == nil {
@@ -307,7 +311,7 @@ func TestAnUnreadableRasterRefusesOnlyTheFormatsThatReadIt(t *testing.T) {
 
 	out := map[string][]string{}
 
-	err = ctx.exportGeoPackage(out)
+	err = ctx.exportGeoPackage(t.Context(), out)
 	if err != nil {
 		t.Fatalf("gpkg refused over a raster it never reads: %v", err)
 	}
@@ -340,7 +344,7 @@ func TestAnUnreadableReceiverTableRefusesOnlyTheFormatsThatReadIt(t *testing.T) 
 		RasterMetadataList: []string{rasterPath},
 	})
 
-	err = ctx.exportGeoPackage(map[string][]string{})
+	err = ctx.exportGeoPackage(t.Context(), map[string][]string{})
 	if err == nil {
 		t.Fatal("an unreadable receiver table exported as though the run had none")
 	}
@@ -405,7 +409,7 @@ func TestExportGeoPackageRefusesAnUnreadableModelGeoJSON(t *testing.T) {
 
 	ctx := newFormatExportContext(dir, "EPSG:25832", "EPSG:25832", copiedRunResults{}, 5.0, modelPath)
 
-	err = ctx.exportGeoPackage(map[string][]string{})
+	err = ctx.exportGeoPackage(t.Context(), map[string][]string{})
 	if err == nil {
 		t.Fatal("an unreadable model GeoJSON exported as though the bundle carried none")
 	}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/aconiq/backend/internal/app/config"
 	"github.com/aconiq/backend/internal/app/logging"
@@ -23,10 +25,13 @@ type commandStateKey struct{}
 
 // Execute runs the aconiq CLI and maps known user errors to a dedicated exit code.
 func Execute(args []string) int {
+	ctx, stop := interruptContext(context.Background())
+	defer stop()
+
 	rootCmd := newRootCommand()
 	rootCmd.SetArgs(args)
 
-	err := rootCmd.Execute()
+	err := rootCmd.ExecuteContext(ctx)
 
 	state, hasState := stateFromCommand(rootCmd)
 	if hasState {
@@ -52,6 +57,18 @@ func Execute(args []string) int {
 	}
 
 	return 1
+}
+
+// interruptContext is cancelled by the first SIGINT or SIGTERM. That signal is
+// a request to stop: a run checks the context between receivers and records
+// itself as failed rather than being killed mid-write. Once it has arrived the
+// handler is dropped again, so a second Ctrl-C reaches the default handler and
+// ends the process outright — the way out of anything that never checks.
+func interruptContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	context.AfterFunc(ctx, stop)
+
+	return ctx, stop
 }
 
 func newRootCommand() *cobra.Command {

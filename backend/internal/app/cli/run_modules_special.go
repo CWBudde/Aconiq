@@ -77,7 +77,7 @@ func extractRLS19Scene(input runModuleInput, roadSources []rls19road.RoadSource)
 	}, nil
 }
 
-func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
+func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := parseRLS19RoadRunOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
@@ -131,7 +131,7 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 	// carries — correct on flat ground, blind to a rise in between.
 	propagationConfig.TerrainModel = input.terrain
 
-	receiverOutputs, err := computeRLS19RoadReceivers(input, receivers, roadSources, barriers, propagationConfig)
+	receiverOutputs, err := computeRLS19RoadReceivers(ctx, input, receivers, roadSources, barriers, propagationConfig)
 	if err != nil {
 		input.log.addf("rls19 compute failed: %v", err)
 
@@ -160,13 +160,13 @@ func runRLS19RoadModule(input runModuleInput) (runModuleResult, error) {
 // knowable here, so the manifest is completed rather than guessed at
 // CreateRun time — and before anything is persisted, so a failure to record it
 // leaves no results behind.
-func runSchall03Module(input runModuleInput) (runModuleResult, error) {
+func runSchall03Module(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := parseSchall03RunOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
 	}
 
-	result, computeErr := computeSchall03Run(input.model, input.terrain, options, input.standard.SupportedSourceTypes, input.receiverMode)
+	result, computeErr := computeSchall03Run(ctx, input.model, input.terrain, options, input.standard.SupportedSourceTypes, input.receiverMode)
 	input.log.addLines(result.LogLines)
 
 	if computeErr != nil {
@@ -208,7 +208,7 @@ func runSchall03Module(input runModuleInput) (runModuleResult, error) {
 // runBEBExposureModule aggregates exposure per building rather than computing
 // receiver levels, so its "receivers" are buildings and its sources come from
 // whichever mapping standard it sits downstream of.
-func runBEBExposureModule(input runModuleInput) (runModuleResult, error) {
+func runBEBExposureModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	if input.receiverMode == receiverModeCustom {
 		return runModuleResult{}, beforeRunError{err: domainerrors.New(
 			domainerrors.KindUserInput, "cli.run", "custom receiver mode is not supported for building exposure runs", nil,
@@ -227,7 +227,7 @@ func runBEBExposureModule(input runModuleInput) (runModuleResult, error) {
 		return runModuleResult{}, err
 	}
 
-	outputs, summary, sourceCount, err := computeBEBExposure(input, options, buildings)
+	outputs, summary, sourceCount, err := computeBEBExposure(ctx, input, options, buildings)
 	if err != nil {
 		return runModuleResult{}, err
 	}
@@ -251,6 +251,7 @@ func runBEBExposureModule(input runModuleInput) (runModuleResult, error) {
 // computeBEBExposure runs the upstream mapping standard the BEB options name
 // and aggregates its sources onto the buildings.
 func computeBEBExposure(
+	ctx context.Context,
 	input runModuleInput,
 	options bebExposureRunOptions,
 	buildings []bebexposure.BuildingUnit,
@@ -266,7 +267,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(roadSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputs(buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsContext(ctx, buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM)
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
@@ -284,7 +285,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(aircraftSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputsFromAircraft(buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsFromAircraftContext(ctx, buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM)
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
@@ -317,7 +318,7 @@ func logBEBUpstream(input runModuleInput, options bebExposureRunOptions, sourceC
 // descriptor parameter can express a per-path diffraction geometry either.
 // This is the same bespoke shape rls19-road and schall03 already have, for
 // the same reason.
-func runISO9613Module(input runModuleInput) (runModuleResult, error) {
+func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := parseISO9613RunOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
@@ -363,7 +364,7 @@ func runISO9613Module(input runModuleInput) (runModuleResult, error) {
 	propagationConfig.Barriers = barriers
 	propagationConfig.GroundZones = groundZones
 
-	outputs, err := iso9613.ComputeReceiverOutputs(receivers, sources, propagationConfig)
+	outputs, err := iso9613.ComputeReceiverOutputsContext(ctx, receivers, sources, propagationConfig)
 	if err != nil {
 		input.log.addf("iso9613 compute failed: %v", err)
 
@@ -405,18 +406,15 @@ func resolveComputeWorkers(requested int) int {
 	return rls19road.DefaultWorkers()
 }
 
-// computeRLS19RoadReceivers walks the receivers over a goroutine pool.
-//
-// context.Background() rather than the command's: no Compute* in any
-// standards module takes a context today, and threading cmd.Context() end to
-// end is its own tracked change (PLAN.md Priority 7). The pool takes one
-// anyway, so that it is ready when that lands.
+// computeRLS19RoadReceivers walks the receivers over a goroutine pool, which
+// stops between receivers once ctx is done.
 //
 // The worker count goes in the run log and deliberately not in provenance.
 // Recording a scheduling knob as an input to the calculation would assert
 // that the result depends on it, and the guarantee -- with
 // TestOneWorkerAndNWorkersHashAlike behind it -- is that it does not.
 func computeRLS19RoadReceivers(
+	ctx context.Context,
 	input runModuleInput,
 	receivers []geo.PointReceiver,
 	roadSources []rls19road.RoadSource,
@@ -427,7 +425,7 @@ func computeRLS19RoadReceivers(
 	input.log.addf("compute workers: %d", workers)
 
 	outputs, err := rls19road.ComputeReceiverOutputsParallel(
-		context.Background(), receivers, roadSources, barriers, cfg, workers,
+		ctx, receivers, roadSources, barriers, cfg, workers,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)

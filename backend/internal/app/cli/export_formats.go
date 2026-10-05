@@ -8,6 +8,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,6 +88,7 @@ type formatExportContext struct {
 }
 
 func executeFormatExports(
+	ctx context.Context,
 	formats []exportfmt.Format,
 	bundleDir string,
 	projectCRS string,
@@ -95,12 +97,12 @@ func executeFormatExports(
 	contourInterval float64,
 	modelGeoJSONPath string,
 ) (map[string][]string, error) {
-	ctx := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
+	fc := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
 
 	out := make(map[string][]string)
 
 	for _, f := range formats {
-		err := ctx.exportFormat(f, out)
+		err := fc.exportFormat(ctx, f, out)
 		if err != nil {
 			return nil, err
 		}
@@ -295,18 +297,18 @@ func (c *formatExportContext) rasterGeoTransform() (exportfmt.GeoTransform, erro
 	return exportfmt.GeoTransform{}, errNoGeoTransform
 }
 
-func (c *formatExportContext) exportFormat(f exportfmt.Format, out map[string][]string) error {
+func (c *formatExportContext) exportFormat(ctx context.Context, f exportfmt.Format, out map[string][]string) error {
 	switch f {
 	case exportfmt.FormatGeoTIFF:
 		return c.exportGeoTIFF(out)
 	case exportfmt.FormatCOG:
 		return c.exportCOG(out)
 	case exportfmt.FormatGeoPackage:
-		return c.exportGeoPackage(out)
+		return c.exportGeoPackage(ctx, out)
 	case exportfmt.FormatContourGeoJSON:
 		return c.exportContourGeoJSON(out)
 	case exportfmt.FormatContourGeoPackage:
-		return c.exportContourGeoPackage(out)
+		return c.exportContourGeoPackage(ctx, out)
 	}
 
 	return nil
@@ -376,7 +378,7 @@ func (c *formatExportContext) exportCOG(out map[string][]string) error {
 	return nil
 }
 
-func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
+func (c *formatExportContext) exportGeoPackage(ctx context.Context, out map[string][]string) error {
 	var gpkgPaths []string
 
 	receiverTable, err := c.receiverTableForExport()
@@ -391,7 +393,7 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 
 		gpkgPath := filepath.Join(c.formatsDir, "receivers.gpkg")
 
-		err := exportfmt.ExportReceiverGeoPackage(gpkgPath, *receiverTable, c.resultsCRS, c.resultsEPSG)
+		err := exportfmt.ExportReceiverGeoPackageContext(ctx, gpkgPath, *receiverTable, c.resultsCRS, c.resultsEPSG)
 		if err != nil {
 			return fmt.Errorf("geopackage export: %w", err)
 		}
@@ -399,7 +401,7 @@ func (c *formatExportContext) exportGeoPackage(out map[string][]string) error {
 		gpkgPaths = append(gpkgPaths, relativePath(c.bundleDir, gpkgPath))
 	}
 
-	modelPath, err := c.exportModelGeoPackage()
+	modelPath, err := c.exportModelGeoPackage(ctx)
 	if err != nil {
 		return err
 	}
@@ -462,7 +464,7 @@ func contoursInWGS84(contours []exportfmt.ContourLine, resultsCRS string) ([]exp
 // Split out of exportGeoPackage because the two halves write different files
 // under different CRS - `model.gpkg` carries the project CRS, `receivers.gpkg`
 // the results CRS - and holding both in one function nested three deep.
-func (c *formatExportContext) exportModelGeoPackage() (string, error) {
+func (c *formatExportContext) exportModelGeoPackage(ctx context.Context) (string, error) {
 	if c.modelGeoJSONPath == "" {
 		return "", nil
 	}
@@ -489,7 +491,7 @@ func (c *formatExportContext) exportModelGeoPackage() (string, error) {
 
 	modelGpkgPath := filepath.Join(c.formatsDir, "model.gpkg")
 
-	err = exportfmt.ExportModelFeaturesGeoPackage(modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
+	err = exportfmt.ExportModelFeaturesGeoPackageContext(ctx, modelGpkgPath, modelFeatures, c.projectCRS, c.epsgCode)
 	if err != nil {
 		return "", fmt.Errorf("model geopackage export: %w", err)
 	}
@@ -536,7 +538,7 @@ func (c *formatExportContext) exportContourGeoJSON(out map[string][]string) erro
 	return nil
 }
 
-func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) error {
+func (c *formatExportContext) exportContourGeoPackage(ctx context.Context, out map[string][]string) error {
 	if c.resultsCRSErr != nil {
 		return fmt.Errorf("contour geopackage export: %w", c.resultsCRSErr)
 	}
@@ -564,7 +566,7 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 
 	contourGpkgPath := filepath.Join(c.formatsDir, "contours.gpkg")
 
-	err = exportfmt.ExportContourGeoPackage(contourGpkgPath, contours, c.resultsCRS, c.resultsEPSG)
+	err = exportfmt.ExportContourGeoPackageContext(ctx, contourGpkgPath, contours, c.resultsCRS, c.resultsEPSG)
 	if err != nil {
 		return fmt.Errorf("contour geopackage export: %w", err)
 	}

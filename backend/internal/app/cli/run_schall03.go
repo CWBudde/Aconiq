@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -75,6 +76,7 @@ func schall03MissingNormativeInputsError(configured string) error {
 // computeSchall03Run resolves the engine, extracts its inputs from the model
 // and computes receiver levels.
 func computeSchall03Run(
+	ctx context.Context,
 	model modelgeojson.Model,
 	terrainModel terrain.Model,
 	options schall03RunOptions,
@@ -97,13 +99,14 @@ func computeSchall03Run(
 	}
 
 	if engine == schall03.EngineNormative {
-		return computeSchall03Normative(result, model, terrainModel, options, supportedSourceTypes, receiverMode)
+		return computeSchall03Normative(ctx, result, model, terrainModel, options, supportedSourceTypes, receiverMode)
 	}
 
-	return computeSchall03Preview(result, model, options, supportedSourceTypes, receiverMode)
+	return computeSchall03Preview(ctx, result, model, options, supportedSourceTypes, receiverMode)
 }
 
 func computeSchall03Normative(
+	ctx context.Context,
 	result schall03RunResult,
 	model modelgeojson.Model,
 	terrainModel terrain.Model,
@@ -147,7 +150,7 @@ func computeSchall03Normative(
 	// The DTM goes into the scene, not just into the receivers' datum: the
 	// propagation chain samples it along every subsegment→receiver path for
 	// Gl. 15's h_m.
-	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForScene(receiverInputs, schall03.NormativeScene{
+	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForSceneContext(ctx, receiverInputs, schall03.NormativeScene{
 		Segments: scene.Segments,
 		Walls:    scene.Walls,
 		Barriers: scene.Barriers,
@@ -161,6 +164,7 @@ func computeSchall03Normative(
 }
 
 func computeSchall03Preview(
+	ctx context.Context,
 	result schall03RunResult,
 	model modelgeojson.Model,
 	options schall03RunOptions,
@@ -186,7 +190,7 @@ func computeSchall03Preview(
 	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
 	result.logGridExtent(receiverMode, calcArea, layout)
 
-	result.Outputs, err = schall03.ComputeReceiverOutputs(receivers, railSources, options.PropagationConfig())
+	result.Outputs, err = schall03.ComputeReceiverOutputsContext(ctx, receivers, railSources, options.PropagationConfig())
 	if err != nil {
 		return schall03RunResult{}, fmt.Errorf("compute Schall 03 preview receiver levels: %w", err)
 	}

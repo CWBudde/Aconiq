@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -96,9 +97,9 @@ type finishExportInputs struct {
 // finishExportBundle runs the --format and --emit-sample-results outputs and
 // persists the bundle. The format artifacts join the report ones in a single
 // manifest write, so a failed save leaves no half-registered bundle.
-func finishExportBundle(in finishExportInputs, summary *exportSummary) (string, error) {
+func finishExportBundle(ctx context.Context, in finishExportInputs, summary *exportSummary) (string, error) {
 	formatArtifacts, err := applyOptionalExportOutputs(
-		summary, in.opts, in.bundleDir, in.proj.CRS, in.staged,
+		ctx, summary, in.opts, in.bundleDir, in.proj.CRS, in.staged,
 		formatArtifactInputs{
 			storeRoot: in.store.Root(),
 			runID:     in.run.ID,
@@ -198,7 +199,7 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 		return err
 	}
 
-	summaryPath, err := finishExportBundle(finishExportInputs{
+	summaryPath, err := finishExportBundle(cmd.Context(), finishExportInputs{
 		store:           store,
 		proj:            proj,
 		run:             run,
@@ -354,6 +355,7 @@ func stageExportBundle(
 // applyOptionalExportOutputs handles the optional sample-result bundle and the
 // additional export formats (GeoTIFF, GeoPackage, contours).
 func applyOptionalExportOutputs(
+	ctx context.Context,
 	summary *exportSummary,
 	opts exportOptions,
 	bundleDir string,
@@ -386,7 +388,7 @@ func applyOptionalExportOutputs(
 	}
 
 	exportedPaths, fmtErr := executeFormatExports(
-		formats, bundleDir, projectCRS, resultsCRS,
+		ctx, formats, bundleDir, projectCRS, resultsCRS,
 		staged.runResults, opts.contourInterval,
 		staged.modelGeoJSONPath,
 	)
