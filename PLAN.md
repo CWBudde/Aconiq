@@ -6,6 +6,9 @@ This file tracks **what is still ahead**. Completed work is recorded in git hist
 `docs/conformance/`, and in the per-module baseline notes under `docs/`. Nothing here is a
 status report.
 
+Cite a merged change by its pull request (`#NN`), not by a branch commit hash: `main` is built by
+squash merge, so branch commits never reach it and their hashes resolve nowhere else.
+
 Ordering principle: correctness and evidence come before features. A calculation that is wrong
 by 23 dB is not improved by a nicer report template.
 
@@ -83,7 +86,7 @@ an unlabelled module cannot be registered at all. This table is the declared sta
 
 Two claims in this table were overstated and are corrected above. `bub-rail`/`bub-industry` are
 aliases for all _acoustic_ purposes but carry their own descriptor and `ExportResultBundle`, and
-`buf-aircraft` is an alias package over `cnossos/aircraft` since `c331b48`, so the acoustics are
+`buf-aircraft` is an alias package over `cnossos/aircraft` since #73, so the acoustics are
 one implementation — but it is not acoustically identical: seven descriptor default parameter
 values differ, and so does `LateralDirectivityDB`, and both move numbers for imported sources.
 Scaffold-tier modules now require an explicit `--experimental` opt-in on `aconiq run`; the
@@ -211,7 +214,7 @@ commit messages; the consequences each one exposed are open items below.
       snapshots byte-identical, the 843-test inventory unchanged, and the two normative lookup
       tables re-checked value by value. This also lands P7's "split the god files" for
       `run_extract.go` (3 087 → 89 lines) and `run_options.go`.
-- [x] **Lint audit pass** (`7babf60`). `exclusions.presets` is gone; the 41 `errcheck` findings it
+- [x] **Lint audit pass** (#6). `exclusions.presets` is gone; the 41 `errcheck` findings it
       hid are fixed in code, so `errcheck` is enforced at 0 with no exclusion. gosec G304 keeps its
       exclusion as one explicit named rule. The gate's composition is now what
       `docs/lint-triage.md` says it is — nothing is suppressed by a set nobody enumerated. Two
@@ -302,7 +305,7 @@ commit messages; the consequences each one exposed are open items below.
       a pull request, blocks deletion and force-pushes, and has no bypass actors, so it binds the
       owner too. `strict_required_status_checks_policy` is deliberately off.
 
-- [x] **The merge gate is green again** (`48b63b2`). Both checks that failed the moment the
+- [x] **The merge gate is green again** (#5). Both checks that failed the moment the
       ruleset went live were infrastructure, not debt. Two traps worth not rediscovering:
       `actions/setup-go` resolves `go-version-file` to go.mod's `go` directive and **ignores
       `toolchain`**, which bites only binaries built by `go install tool@version` (everything run
@@ -312,7 +315,7 @@ commit messages; the consequences each one exposed are open items below.
       sync with `paraglideVitePlugin` in `vite.config.ts`. The frontend carries **no** residual
       type debt — the old "55 TypeScript errors" framing was wrong, and Priority 8 inherits none.
 
-- [x] **`frontend-ci` no longer deadlocks on path filtering** (`48b63b2`, `585f2e0`). A required
+- [x] **`frontend-ci` no longer deadlocks on path filtering** (#5). A required
       check that is skipped by path filtering never reports, so a docs-only pull request would
       have waited forever; its `pull_request` trigger is now unfiltered. `push` was narrowed to
       `[main]` in `go-ci.yml`, `frontend-ci.yml` and `repo-hygiene.yml`, which also ended every
@@ -320,11 +323,11 @@ commit messages; the consequences each one exposed are open items below.
       touches `frontend/`, so it would have run under the old filter too — the first genuinely
       docs-only pull request is the real test.
 
-- [x] **The formatting gate is read-only** (`68b72a5`). `just check-formatted` mirrors the files a
+- [x] **The formatting gate is read-only** (#13). `just check-formatted` mirrors the files a
       commit could contain into a temporary directory, formats the copy and diffs it back;
       `treefmt --fail-on-change` formats in place and is no longer used as a check. Anything that
       grows a formatting step inherits the same obligation — treefmt writes wherever it is pointed.
-- [x] **One pinned toolchain** (`68b72a5`). `tools.versions` is the only place a tool version is
+- [x] **One pinned toolchain** (#13). `tools.versions` is the only place a tool version is
       written. Every workflow reads it through `.github/actions/toolchain`, and
       `just install-tools` installs exactly those versions, including the two awkward cases:
       treefmt, which no `go install` will accept (a fixture path in its module zip contains an
@@ -337,7 +340,7 @@ commit messages; the consequences each one exposed are open items below.
       This also closed the `golangci-lint` skew item, on a false premise: `.trunk/` is gitignored
       and was never tracked, so its 2.11.4 pin is one developer's local tooling and never was a
       third pin in the repository. The scanners configured there are still unused — Priority 9.
-- [x] **`govulncheck` blocks, and a daily scan finds advisories before they block** (`d36c544`).
+- [x] **`govulncheck` blocks, and a daily scan finds advisories before they block** (#13).
       The decision, the rejected alternative and the red-button procedure are in
       `docs/policies/vulnerability-scanning.md`: it reports reachable calls rather than mere
       presence, so it gates merges, and the job now also runs daily on `main` and files an issue on
@@ -1150,7 +1153,7 @@ editing several of its files rather than one package of its own.
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
-- [x] **The in-process manifest read-modify-write is serialised.** (2026-09-19, `420735b`)
+- [x] **The in-process manifest read-modify-write is serialised.** (2026-09-19, #74)
       Two constraints are live. **The `Handler` mutex must stay a pointer**: `mux.HandleFunc` takes
       a method value, which copies the `Handler` once per route, so a `sync.Mutex` value becomes
       fourteen independent mutexes — with one, `go vet` reports "passes lock by value" for all 25
@@ -1162,7 +1165,7 @@ editing several of its files rather than one package of its own.
       no in-process `Save`, and the unlisted `DELETE /runs/{id}` is the third. And it missed that
       both writers derived the temp file from the destination, so every writer in every process
       shared one name — `writeFileAtomic` is the only half of this a cross-process writer reaches.
-- [x] **The SoundPLAN import goes through `Store.SaveModel`.** (2026-09-19, `84b62e0`)
+- [x] **The SoundPLAN import goes through `Store.SaveModel`.** (2026-09-19, #74)
       `SaveModel` takes variadic extra artifact refs, so the importer's report lands in the same
       manifest save and the three path parameters are gone — the caller seeded all three from
       `store.ModelArtifactPaths()` anyway. Two constraints are live. **The real cost of the second
@@ -1210,7 +1213,7 @@ editing several of its files rather than one package of its own.
       whose `Validate` accepts only the CNOSSOS categories, so BUB sources must be validated
       through `bubroad.ValidateSource`; the struct's JSON tag is `road_category` for both
       standards, while the CLI parameter stays `road_function_class`.
-  - [x] **`buf/aircraft` is an alias package over `cnossos/aircraft`.** (2026-09-19, `c331b48`)
+  - [x] **`buf/aircraft` is an alias package over `cnossos/aircraft`.** (2026-09-19, #73)
         Three constraints are live. **Keeping it digest-neutral is what bounds the saving to
         −657 LOC** rather than the −1 050 this entry promised: the descriptor with its seven
         divergent defaults, `BuiltinModelVersion`, the compliance boundary, `StandardData()`'s
@@ -1228,7 +1231,7 @@ editing several of its files rather than one package of its own.
         outside them is three: `persistDummyRunOutputs`, `persistBEBExposureRunOutputs` and
         `hashBEBExposureOutputs`, each of which writes a different shape and may well be right as
         it stands. Decide that before generalising further.
-  - [x] **`AirAbsorption` and `ClampDistance` have one home too.** (2026-09-19, `72d24b9`)
+  - [x] **`AirAbsorption` and `ClampDistance` have one home too.** (2026-09-19, #73)
         Two constraints are live. **The parenthesisation is test-pinned now**, by
         `TestAirAbsorptionDividesBeforeMultiplying`: `a * (d / 1000)` and `(a * d) / 1000` differ
         in the last ulp, and every per-module test compares at `1e-9` and would not notice. It
@@ -1244,7 +1247,7 @@ editing several of its files rather than one package of its own.
         it was false; it stays excluded because `acoustics` cannot import `standards/*`, which
         makes any shared version an identity wrapper.
   - [x] **`json.MarshalIndent` appears in exactly one place in non-test code.** (2026-09-19,
-        `4ca3910`) Two constraints are live. **`qa/golden.AssertJSONSnapshot` compares rather than
+        #73) Two constraints are live. **`qa/golden.AssertJSONSnapshot` compares rather than
         writes**, and is what pins the indentation and trailing newline of 59 goldens — a run
         digest does not, because `digestPayload` re-encodes compact and key-sorted before hashing.
         **`api/httpv1.writeJSON`'s marshal-failure branch is intact** — canned body, status
@@ -1274,7 +1277,7 @@ editing several of its files rather than one package of its own.
       where the failure occurs. There are 690 inline `errors.New` strings in non-test code and zero
       package-level sentinels; add typed/sentinel errors for the recurring conditions and classify
       at the source. This is what makes the exit-code taxonomy testable (Priority 3).
-- [x] **The export panics on a user-supplied CRS are errors.** (2026-09-19, `015be47`)
+- [x] **The export panics on a user-supplied CRS are errors.** (2026-09-19, #74)
       Three constraints are live. **The refusal sits at the export boundary, not at `init`**: what
       a project may contain is unchanged, so `init --crs EPSG:102100` and `run` still succeed and
       only the export says no. **A GeoKey value is `uint16` by the GeoTIFF specification**, so a
@@ -1316,12 +1319,6 @@ editing several of its files rather than one package of its own.
       **An empty CRS stays legal and stays `0`** — it means no projection was declared — and so
       does a `WKT:` identifier. And **`app/cli` holds the reason on the context rather than
       raising it in the constructor**, because only the GeoPackage formats read an EPSG code.
-- [ ] **Every commit hash this file cites from a merged PR is unresolvable.** `main` is built by
-      squash merge, so the branch commits vanish: of `015be47`, `420735b`, `84b62e0`, `86d3bd6`
-      (#74), `c331b48`, `72d24b9`, `4ca3910` (#73) and `27d2d52`, **none** is an ancestor of
-      `main`. They resolve on a machine whose branches are unpruned and nowhere else. Retrofit
-      them to PR numbers, which is what the entries above now cite: every squash commit's subject
-      ends with `(#NN)`, so a PR number is both stable and greppable in `git log`.
 - [ ] **The other in-place writers have not been reviewed.** `internal/atomicfile` now exists and
       the two JSON writers use it; `jsonio`'s package doc names nine more sites that write at
       their `os.WriteFile` call, in `report/results`, `report/export`, `app/cli`, `qa/golden`,
@@ -1342,7 +1339,7 @@ editing several of its files rather than one package of its own.
       nothing now exceeds the project's own configured `revive file-length-limit: 1500`, so the
       remaining question is readability rather than a breached limit.
 - [x] **`cnossosIndustryParts` refuses a source type it has no geometry handler for.**
-      (2026-09-19, `86d3bd6`) Decided: an error, not a silent drop. The live constraint is that
+      (2026-09-19, #74) Decided: an error, not a silent drop. The live constraint is that
       **the arm is unreachable, and the two declarations that keep it so are the thing to watch** —
       the guard above the switch admits only a `source_type` the profile lists in
       `SupportedSourceTypes`, and cnossos-industry's single profile lists exactly the two the
@@ -1388,70 +1385,66 @@ register and Fachbegriffe (Immissionsort, Schallquelle, Schallschirm/Lärmschutz
 Landed; the gates below hold and every later phase builds on them:
 
 - [x] `POST /api/v1/model` replaces the project model through `projectfs.Store.SaveModel`, the path
-      `aconiq import` uses too (`061524e`, hardened in `2379e37`). Refused models write nothing.
+      `aconiq import` uses too (#21, hardened after review in the same PR). Refused models write
+      nothing.
 - [x] One `Backend` interface selected once; pages and hooks branch on `capabilities`, never on the
-      mode, and every non-OK response goes through `api-error.ts` (`f07bb20`).
+      mode, and every non-OK response goes through `api-error.ts` (#21).
 - [x] "Save to project" in the header; `dirty` means "differs from the project", so imports and
       restored drafts start dirty, only a successful save clears it, and the run dialog refuses to
-      start on unsaved changes (`fb2cba7`). The calculation area is not in the payload — see the
+      start on unsaved changes (#21). The calculation area is not in the payload — see the
       Phase C item.
 - [x] Runs poll by activity (2 s active, 15 s idle, never in browser mode); the run log polls while
-      running and is invalidated from the runs list on completion (`6e96e7d`, `afe6333`).
+      running and is invalidated from the runs list on completion (#21).
 - [x] Browser-mode runs live in IndexedDB as one versioned document with a 20-run cap and quota
-      eviction; the draft document is versioned too (`8b8fa1a`).
-- [x] A lost WebGL context recovers on its own; the "Map unavailable" panel has Retry (`c282100`).
+      eviction; the draft document is versioned too (#21).
+- [x] A lost WebGL context recovers on its own; the "Map unavailable" panel has Retry (#21).
 - [x] The E2E suite runs in WASM mode under `/Aconiq/` (`just fe-e2e`, `frontend-e2e` job) and
-      carries the axe baseline (`fb80e87`, `11d9894`): WCAG A/AA clean on every route in `de` and
+      carries the axe baseline (#21): WCAG A/AA clean on every route in `de` and
       `en`; `best-practice` findings are pinned per route in `KNOWN_VIOLATIONS` in both directions,
       so the list must be pruned as Phase B lands.
 
 ### Phase B — Design system foundation
 
-Landed; the gates below hold and the pages are built on them:
+Landed in #22; the gates below hold and the pages are built on them:
 
 - [x] Semantic tokens `success`/`warning`/`info` (+ `-foreground`) beside `destructive`, with
       `tokens.test.ts` measuring every text/surface pair at ≥ 4.5:1 in both themes — dark
-      `--destructive` was 2.1:1 (`4125c6a`). IBM Plex is self-hosted (`b079903`); the type scale is
-      six steps, 11–20 px, and `rounded-lg` is the largest radius, so `text-2xl`+ and `rounded-xl`+
-      emit no CSS by design (`f0bc32a`, `docs/frontend-design-system.md`); `prefers-reduced-motion`
-      collapses animation (`055838f`); the axe baseline also runs under `colorScheme: "dark"`
-      (`3edb89c`).
-- [x] The eleven missing shadcn primitives with a Toaster mounted once (`7c5219f`, `831bde8`), and
-      the shared `StatusBadge`, `Callout`, `PageHeader`/`SectionHeading`, `KeyValueList`,
-      `EmptyState`, `MasterDetail`/`ListItem`, `CopyButton`/`CopyField`, `MapPanel` and the
-      locale-aware `ui/format.ts` (`3b8943a`, `4c23505`, `1c0effb`).
+      `--destructive` was 2.1:1. IBM Plex is self-hosted; the type scale is six steps, 11–20 px,
+      and `rounded-lg` is the largest radius, so `text-2xl`+ and `rounded-xl`+ emit no CSS by
+      design (`docs/frontend-design-system.md`); `prefers-reduced-motion` collapses animation; the
+      axe baseline also runs under `colorScheme: "dark"`.
+- [x] The eleven missing shadcn primitives with a Toaster mounted once, and the shared
+      `StatusBadge`, `Callout`, `PageHeader`/`SectionHeading`, `KeyValueList`, `EmptyState`,
+      `MasterDetail`/`ListItem`, `CopyButton`/`CopyField`, `MapPanel` and the locale-aware
+      `ui/format.ts`.
 - [x] Every page and map panel sits on those components: no Tailwind palette class and no `dark:`
       patch is left outside `ui/components/`, the tab strips are `Tabs`, the checkbox and the
-      boolean parameter are `Checkbox`/`Switch`, and `window.alert` is gone (`001c7e7`,
-      `ac9e965`, `4cec7f3`, `5dbac60`, `062c178`, `7f9d17d`, `9f4c5d9`, `0c533f1`). The populated
-      map workspace carries an `sr-only` `<h2>`, so `waitForPage` in `e2e/app.ts` holds for every
+      boolean parameter are `Checkbox`/`Switch`, and `window.alert` is gone. The populated map
+      workspace carries an `sr-only` `<h2>`, so `waitForPage` in `e2e/app.ts` holds for every
       route state. Still hardcoded: the "Map unavailable"/"Retry" strings in `map-view.tsx`,
       because `map-view.test.tsx` mocks the messages module to `""` — Phase E.
 - [x] One `<main>`, a labelled `<nav>` with `aria-current`, a skip link, `<html lang>` from the
-      locale, contiguous headings and one `useGlobalShortcut` hook with the text-entry guard
-      (`9935196`, `887ab91`, `21c3111`). `KNOWN_VIOLATIONS` in `e2e/a11y.spec.ts` is empty on every
-      route and stays two-way, so a best-practice regression fails the suite.
+      locale, contiguous headings and one `useGlobalShortcut` hook with the text-entry guard.
+      `KNOWN_VIOLATIONS` in `e2e/a11y.spec.ts` is empty on every route and stays two-way, so a
+      best-practice regression fails the suite.
 
 ### Phase C — Information architecture and pages
 
 The backend contracts this phase needs have landed, and the characterisation nets are in place
-before the pages they protect are cut apart. One caveat on the citations below: the nine hashes in
-the landed items are pre-rebase objects reachable from no branch — every phase reaches `main`
-squashed, so this phase is `87da006` and nothing else. They are accurate as history and useless as
-`git show` targets, which is the general rule for a per-branch hash in this file.
+before the pages they protect are cut apart.
 
 - [x] **The calculation area is a model feature.** `calc-area` is a fifth kind in the v1 GeoJSON
       schema — Polygon only, no `height_m`, at most one (`model.calc_area.duplicate` refuses a
       second) — so it travels through `POST /api/v1/model`, is reprojected by `NormalizeWithCRS`
-      like everything else, and is honoured by `aconiq run` as well as by the API (`32b3175`,
-      `35a8942`). `buildReceiversFromPoints` takes the extent from it when present; `run.log`
+      like everything else, and is honoured by `aconiq run` as well as by the API (#23).
+      `buildReceiversFromPoints` takes the extent from it when present; `run.log`
       records `grid_extent=calc_area|source_extent`, and the over-cap refusal names which extent
       produced it, because a user can now trip the 250 000-receiver cap by drawing. **Padding still
       applies to the drawn area** — `browser-backend.ts` already pads it and `browser-parity.test.ts`
       pins the two kernels together, so suppressing it here would be a silent divergence; set
       `grid_padding_m` to 0 for the area exactly. `schema_version` stays 1: it has write sites and
       no reader, and `ToFeatureCollection` does not emit it.
-- [x] **`GET /api/v1/model` and a model hash on `ProjectStatusResponse`** (`ed8eebb`). Both, because
+- [x] **`GET /api/v1/model` and a model hash on `ProjectStatusResponse`** (#23). Both, because
       they answer different questions: the GET returns the content a reloaded workspace needs, with
       `?crs=` reusing `NormalizeWithCRS` in reverse (the frontend has no proj4). **The hash is a
       receipt, never recomputed by the client** — `POST /api/v1/model` returns the hash of what it
@@ -1461,22 +1454,22 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       which is what makes a file-bytes hash a content identity; `TestSaveModelIsByteDeterministic`
       pins it. The model hash is part of the SSE dedupe key, or the stream would serve a stale hash
       forever with every test still green.
-- [x] **`DELETE /api/v1/runs/{id}`** plus `aconiq delete-run` (`e6d3680`). Manifest first, then
+- [x] **`DELETE /api/v1/runs/{id}`** plus `aconiq delete-run` (#23). Manifest first, then
       `os.OpenRoot` + `RemoveAll`, so a failed removal leaves orphan bytes rather than a manifest
       that lies. Refused with 409 while a run is still writing its directory. Export bundles are
       kept and reported in `retained_paths`: a bundle may already have been delivered. It answers
       200 with a body rather than 204, both so the UI can say the bundle was kept and because
       `http-backend.ts`'s request helper always parses JSON.
-- [x] **One project-status builder** (`3f7e861`), which also closed the three `context` fields that
+- [x] **One project-status builder** (#23), which also closed the three `context` fields that
       were emitted but absent from schemas declaring `additionalProperties: false`
       (`StandardDescriptor` — required, it has no `omitempty` — plus `RunSummary` and
       `LastRunStatus`). Phase F's premise is generating a strict client from this document, so it
       cannot start by fixing backend bugs.
-- [x] **Characterisation nets before the splits** (`2e0d0d6`, `5539395`, `e3c1507`): first tests
+- [x] **Characterisation nets before the splits** (#23): first tests
       for `results.tsx` and `export.tsx`, and coverage for `run.tsx`'s timeline and cascade. The
       cascade test asserts the _sequence_ of values a parameter field held, via a `MutationObserver`
       — a final-DOM assertion cannot catch an effect-based rewrite of the render-phase update,
-      because `fireEvent` flushes effects before it returns. A locale key-parity test (`35c5b53`)
+      because `fireEvent` flushes effects before it returns. A locale key-parity test
       guards the ~40 key changes the rest of this phase makes; nothing in `src/` reads `de.json`,
       so a forgotten translation was previously invisible.
 
@@ -1601,7 +1594,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       because "Results on the map" below named `NOISE_LEVEL_RAMP`. That instruction has expired:
       `result-layers.tsx` imports it, so the module is now reached by the code rather than only by
       a promise in this file.
-- [x] **Split run/results/export** (`9b591a0`..`0a57d78`). `pages/run.tsx` is a route module
+- [x] **Split run/results/export** (#30). `pages/run.tsx` is a route module
       again and its parts live in `src/run/`, with `useRunSetupSelection` and `useRunFromRoute`
       carrying the cascade and the URL→run rule. Six constraints follow.
       **Not `pages/run/` as this file asked for**: `pages/map.tsx` already answers this the
@@ -1637,7 +1630,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       the registry and read by both targets would make the drift a test failure instead of a raw
       id on screen.
 - [x] **The receiver table is a window, and it says how big the table is**
-      (`f315baf`..`7f88df7`). `ReceiversTab` moved to `src/results/receiver-table.tsx` and
+      (#33). `ReceiversTab` moved to `src/results/receiver-table.tsx` and
       mounts only the rows near the viewport. Five constraints stay live; each is argued where
       it is enforced.
       **The window is spacer `<tr>`s, never absolute positioning** — absolutely positioned rows
@@ -1659,7 +1652,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       stack slot per argument, so where it gives out depends on what the caller already spent —
       125 000 survives in bare node and throws under vitest. `results/summarise.ts` counts in
       one loop and has no ceiling.
-- [x] **Import page** (`9349769`..`9bc7322`). The wizard reads the whole v1 schema, adds to the
+- [x] **Import page** (#34). The wizard reads the whole v1 schema, adds to the
       workspace or replaces it, and its three flows live in `src/import/` beside the route module.
       Four constraints are still live.
       **Skipping, not re-minting, is what makes a re-import idempotent**, over one id namespace
@@ -1711,7 +1704,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       report's `IsClosed` compares x, y _and_ z, so a footprint that closes in plan but differs in
       elevation would otherwise gain a zero-length closing segment.
 - [x] **The model's `calc-area` wins the raster comparison; the import report is the fallback**
-      (`5432253`, `8b31087`). `calc_area_source` records which area was chosen and `calc_area_role`
+      (#32). `calc_area_source` records which area was chosen and `calc_area_role`
       what it did there — the GM-metadata path places receivers from the grid's own origin and
       consults the area only for the row direction, so `model` there does not mean "the model's area
       placed these".
@@ -1814,7 +1807,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       `sourceType` is derived from the geometry, with the correction offered explicitly rather than
       applied on open — deriving alone would have left an imported contradiction visible and
       unrepairable, and a silent write would dirty a project for a panel that was only looked at.
-- [x] **Results on the map, as receiver levels** (`c7bcbb3`). `ResultLayers` draws the newest
+- [x] **Results on the map, as receiver levels** (#55). `ResultLayers` draws the newest
       completed run's receiver table from `NOISE_LEVEL_RAMP`. Four constraints follow.
       `newRunSummary` writes `project_crs` and `compute_crs` (provenance's own keys, which browser
       mode already wrote), because provenance is not an `ArtifactRef` and the API never serves it;
@@ -1876,8 +1869,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       bundles anywhere and a path test would recognise only the ones that landed in the default
       directory. The affected kinds are the five `export.format_*` ones.
 - [x] **An OSM import saves, and the geometry check answers the same in every CRS**
-      (2026-09-20, `a309df0`/`f8ffc15`/`c37ed9f`). Four constraints stay live; the reasoning is in
-      those commits.
+      (2026-09-20, #76). Four constraints stay live; the reasoning is in that PR's commit message.
       **`orientation`'s tolerance is relative, and must stay relative.** It compared a cross product
       — an area, so the coordinate unit squared — against a fixed `1e-9`, which made one footprint
       self-intersecting in EPSG:4326 and simple in EPSG:25832. A wrong "collinear" falls through to
@@ -1896,7 +1888,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       agreed across both validators but was never reached because the normalizer invented a height
       first. Read a claim about the two validators disagreeing as unproven until measured.
 - [x] **`osmimport` names itself, and an upstream failure says which one it was**
-      (2026-09-20, `a309df0`/`11af7fa`). Three constraints stay live.
+      (2026-09-20, #76). Three constraints stay live.
       **The User-Agent is load-bearing, not politeness.** overpass-api.de answers Go's default
       `Go-http-client/1.1` with 406. go-overpass exposes no header hook, so the wrapping happens
       inside `Fetch` over the `overpass.HTTPClient` it already takes — not at the call sites, since
@@ -2112,7 +2104,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       **The spec is generated on the fly and never stored**, and `openapi-typescript` is pinned
       exactly with `defaultNonNullable` off; `frontend/scripts/generate-api-client.mjs` says why at
       each decision. `/api/v1/import/terrain` has generated types now and still no caller.
-- [x] **"Gehe zu" moves the camera, and the whole review queue is walkable** (`9d5a45a`). Three
+- [x] **"Gehe zu" moves the camera, and the whole review queue is walkable** (#79). Three
       constraints stay live. **A focus is not a selection**: everything that names a feature the
       reader cannot see builds a `FocusRequest`, and `handleFeatureClick` deliberately does not —
       the same click arms terra-draw, so a camera flight would slide the vertex handles out from
@@ -2122,7 +2114,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       over the store, fed into layers drawn from the display model, would make the map a source
       _for_ the model. `useModelValidation` is now a process-wide memo: four callers, one
       validation.
-- [x] **An imported source's acoustics can be signed off** (`726672a`, `8ce7f1e`). Three
+- [x] **An imported source's acoustics can be signed off** (#81). Three
       constraints stay live. **The sign-off is a second property, `source_acoustics_reviewed`, not a
       flip of the import's flag** — the flag records what OSM gave us and a run stamps it into
       provenance, so overwriting it would erase the only evidence the acoustics were guessed. **An
@@ -2145,7 +2137,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       decision about running it per keystroke over the network rather than in-process. Still absent
       from `validate.ts` meanwhile: finite coordinates on features, ring closure, and minimum vertex
       counts.
-- [x] **The WASM kernel runs off the main thread** (`d81402c`, `0b58c33`, `7ac1db3`). A module
+- [x] **The WASM kernel runs off the main thread** (#82). A module
       Worker behind an RPC client, time-sized progress chunks, cancellation by terminating
       the worker. Three constraints stay live for anything built on it. A progress channel has to
       be measured against the _expensive_ scene: chunking by a fixed receiver count reported every
@@ -2158,13 +2150,12 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       every later call answers "Go program has already exited" — which is why the synchronous
       exports rethrow from a JavaScript frame.
 - [x] **The RLS-19 road scene is derived once per run, and the obstacle searches are pruned**
-      (`84c66eb`, `ce5121c`). No golden moved, and no distance cutoff was added: every prune skips
+      (#82). No golden moved, and no distance cutoff was added: every prune skips
       only work that provably contributes zero. That bound is the constraint to keep — an
       approximate cutoff is a normative decision, not an optimisation.
-- [x] **An RLS-19 grid run is ~9.8x faster, and no golden moved** (`a434528`, `012fdf6`,
-      `fc462ef`, `4fa9f73`, `9ebc016`, `f4488c9`, `7491b3d`). Three constraints stay live for
-      anyone extending it. **Bit-identity here is structural**: there is no reduction across
-      receivers in RLS-19, so a split changes no floating-point operand and the merge is a
+- [x] **An RLS-19 grid run is ~9.8x faster, and no golden moved** (#85). Three constraints stay
+      live for anyone extending it. **Bit-identity here is structural**: there is no reduction
+      across receivers in RLS-19, so a split changes no floating-point operand and the merge is a
       concatenation by chunk index — do not weaken that into "the partition is deterministic".
       **The browser must shard by window, not by slice**: `TerrainAtGridCenter` derives the
       grid's one ground elevation from the centroid of the receiver list it is handed, so a
@@ -2174,7 +2165,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       throttle is a wire-rate limiter, and `internal/partition` is pure in two integers and must
       never see a clock. Also closes line 1116's complaint that the worker-count guarantee was
       vacuous for every standard a user would actually run.
-- [x] **The run dialog states the receiver count before the run** (`1f81996`). The grid
+- [x] **The run dialog states the receiver count before the run** (#85). The grid
       arithmetic is shared with `buildReceiverGrid` rather than duplicated, and must stay that
       way: a preview computed by a second copy would go on quoting a number the run had stopped
       producing. Browser mode still has no receiver cap. A _time_ estimate wants a 16-receiver
@@ -2188,7 +2179,7 @@ squashed, so this phase is `87da006` and nothing else. They are accurate as hist
       key each (`browser-storage.ts`), because they were the one part large enough to make the
       re-clone matter; that is one key space for one payload, not the split this item asks for, and
       the eviction, cap and clear paths each have to forget those records by hand today.
-- [x] **What the reflection model admits: decided, against the standard's text** (`d2032fc`).
+- [x] **What the reflection model admits: decided, against the standard's text** (#85).
       All three candidates for pruning the ~307 Spiegelschallquellen per (Teilstück, receiver)
       pair are rejected, and each rejection is a belief this work proved wrong rather than a
       preference — do not re-propose one without new text.
@@ -2357,7 +2348,7 @@ behind the gate" from a heading, check what the item actually is.
 ## Priority 10 — ISO 9613-2 geometry extensions
 
 - [x] **The screening geometry is one implementation, in `internal/geo/screening.go`.** (2026-09-19,
-      `4329237`) `UpperConvexHull`, `ObstructsLineOfSight`, `SelectDiffractionEdges` and
+      #71) `UpperConvexHull`, `ObstructsLineOfSight`, `SelectDiffractionEdges` and
       `RayCrossings`, shared by RLS-19, Schall 03 and ISO 9613-2.
       Three constraints are live for a fourth caller. `SelectDiffractionEdges` takes **pre-filtered**
       candidates and returns indices, because Schall 03 merges the two crossings a ray makes through
@@ -2383,7 +2374,7 @@ behind the gate" from a heading, check what the item actually is.
       declares point-source-only scope; widening either is a claim about what the module conforms
       to, which is the user's call.
 - [x] **Spatial ground zones: G is resolved per region from polygon geometry.** (2026-09-19,
-      `14c4204`, `4c49c9c`) A `ground-zone` feature kind carries a `Polygon` and a `ground_factor`
+      #72) A `ground-zone` feature kind carries a `Polygon` and a `ground_factor`
       in [0,1], and `ResolveRegionFactors` hands `GroundEffectBands` three different numbers.
       Four constraints are live. **A region's G is the length-weighted mean over its own span**,
       which is where this entry's own call for "a point-in-polygon lookup per region" was wrong:
@@ -2399,7 +2390,7 @@ behind the gate" from a heading, check what the item actually is.
       extraction is still RLS-19-only", and a zone is a horizontal polygon with no height
       reference.
 - [x] **A_bar is reachable: ISO 9613-2 detects its barriers from the model.** (2026-09-19,
-      `1efc6d8`, `ec607ae`) The scene travels on `PropagationConfig.Barriers`, `BandAttenuation`
+      #71) The scene travels on `PropagationConfig.Barriers`, `BandAttenuation`
       derives the per-path geometry, and `iso9613` has the bespoke module shape `rls19-road` and
       `schall03` already had.
       Four constraints are live. `PropagationConfig.Barrier` still **wins when set**, so a caller

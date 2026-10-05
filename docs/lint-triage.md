@@ -945,7 +945,7 @@ struct's own schema.
 ### Corrections to this document's own record
 
 The `//nolint` table above says `dupl` **13, of which P7 calls all but 8 illegitimate**. Measured
-across the two passes: 2 were deleted in `0e00155`, the 3 in `run_persist.go` remain and are Part
+across the two passes: 2 were deleted in #7, the 3 in `run_persist.go` remain and are Part
 1's, the 8 in `schall03/beiblatt1.go` are genuine coefficient tables, and this pass added 2. The P7
 item's arithmetic — "remove the 12 illegitimate of 20 total" — never matched the tree.
 
@@ -954,7 +954,7 @@ item's arithmetic — "remove the 12 illegitimate of 20 total" — never matched
 - The three geometry helpers each hardcoded one standard in their unsupported-geometry message
   regardless of caller, so `lineStringsFromFeature` told Schall 03, BUB road, RLS-19 and CNOSSOS rail
   users that "cnossos-road supports LineString/MultiLineString only". Fixed by threading
-  `standardID`, as `0e00155` had already done for the aircraft pair.
+  `standardID`, as #7 had already done for the aircraft pair.
 - `extractCnossosIndustrySources`' source-type switch has no `default` arm, so a type that is in the
   standard's `SupportedSourceTypes` but is neither point nor area silently yields no sources. That
   behaviour is preserved and now stated in a comment rather than implied by an absence; it is
