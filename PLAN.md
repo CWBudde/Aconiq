@@ -1158,6 +1158,14 @@ editing several of its files rather than one package of its own.
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
+- [ ] **Two `aconiq run` processes on one project lose a run.** Measured 2026-10-05: two
+      concurrent runs, 20 rounds, failed 19 of 40 on `main` and 13 of 40 with #PR — the rate is
+      timing, not either change. Each process loads `.noise/project.json`, appends its run and
+      saves, so the later save drops the other's entry, and the loser fails in `cli.finalizeRun`
+      with "run … not found in project manifest". `atomicfile` makes each save whole; it cannot
+      make two read-modify-writes see each other. The fix is a cross-process lock (no locking
+      dependency in `go.mod` yet) or the in-process pipeline below; `POST /runs` beside a terminal
+      `aconiq run` hits the same race. The shared chunk cache is not affected.
 - [x] **The in-process manifest read-modify-write is serialised.** (2026-09-19, #74)
       Two constraints are live. **The `Handler` mutex must stay a pointer**: `mux.HandleFunc` takes
       a method value, which copies the `Handler` once per route, so a `sync.Mutex` value becomes
