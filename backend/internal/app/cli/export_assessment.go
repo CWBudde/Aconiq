@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/assessment/bimschv16"
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/results"
@@ -60,10 +61,7 @@ func maybeBuild16BImSchVAssessment(bundleDir, modelGeoJSONPath, receiverTablePat
 		return "", false, fmt.Errorf("encode 16. BImSchV assessment: %w", err)
 	}
 
-	// G703: outPath is bundleDir plus two fixed path segments; only bundleDir
-	// comes from --out, which is the destination the user asked for.
-	//nolint:gosec // fixed file name under the requested bundle directory
-	if err := os.WriteFile(outPath, payload, 0o600); err != nil {
+	if err := atomicfile.WriteFile(outPath, payload); err != nil {
 		return "", false, fmt.Errorf("write 16. BImSchV assessment: %w", err)
 	}
 

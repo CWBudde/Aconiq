@@ -66,6 +66,46 @@ func TestRasterIndexingAndRoundtrip(t *testing.T) {
 	}
 }
 
+// SaveRaster replaces both files through a temporary file each; overwriting an
+// existing raster must leave exactly the pair behind and nothing beside it.
+func TestSaveRasterOverwriteLeavesOnlyThePair(t *testing.T) {
+	t.Parallel()
+
+	bandNames := []string{"Lden"}
+
+	raster, err := NewRaster(RasterMetadata{
+		Width: 2, Height: 2, Bands: 1, NoData: -9999,
+		Units:     UniformUnits(bandNames, UnitDecibel),
+		BandNames: bandNames,
+	})
+	if err != nil {
+		t.Fatalf("new raster: %v", err)
+	}
+
+	dir := t.TempDir()
+
+	for range 2 {
+		_, err = SaveRaster(filepath.Join(dir, "grid"), raster)
+		if err != nil {
+			t.Fatalf("save raster: %v", err)
+		}
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+
+	if strings.Join(names, ",") != "grid.bin,grid.json" {
+		t.Fatalf("directory holds %v, want only grid.bin and grid.json", names)
+	}
+}
+
 func TestRasterBoundsError(t *testing.T) {
 	t.Parallel()
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/geo/crstransform"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/contour"
@@ -1262,7 +1263,7 @@ func WriteOpenAPISpec(path string, serverURL string) error {
 		return fmt.Errorf("create openapi output directory: %w", err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o600)
+	err = atomicfile.WriteFile(path, encoded)
 	if err != nil {
 		return fmt.Errorf("write openapi spec %s: %w", path, err)
 	}

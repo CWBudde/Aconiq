@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -881,11 +882,7 @@ func reprojectModelGeoJSON(geojsonPath string, projectCRS string, targetCRS stri
 		return fmt.Errorf("marshal re-projected GeoJSON: %w", err)
 	}
 
-	// G703: geojsonPath is a file this function has just read from inside the
-	// export bundle the CLI itself laid out; only the bundle root comes from
-	// --out, which is the destination the user asked for.
-	//nolint:gosec // in-place rewrite of a bundle file the exporter created
-	if err := os.WriteFile(geojsonPath, out, 0o600); err != nil {
+	if err := atomicfile.WriteFile(geojsonPath, out); err != nil {
 		return fmt.Errorf("write re-projected GeoJSON %s: %w", geojsonPath, err)
 	}
 

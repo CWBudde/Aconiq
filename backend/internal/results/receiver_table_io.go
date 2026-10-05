@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/jsonio"
 )
 
@@ -70,7 +71,7 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 		return fmt.Errorf("encode receiver table json: %w", err)
 	}
 
-	err = os.WriteFile(path, payload, 0o600)
+	err = atomicfile.WriteFile(path, payload)
 	if err != nil {
 		return fmt.Errorf("write receiver table json %s: %w", path, err)
 	}
@@ -81,7 +82,10 @@ func SaveReceiverTableJSON(path string, table ReceiverTable) error {
 // SaveReceiverTableCSV writes receiver table as CSV.
 //
 // The table is validated before the file is created, so an invalid table
-// leaves no half-written artifact behind.
+// leaves no half-written artifact behind. A write that fails after that does:
+// the CSV is streamed into the destination rather than replaced through
+// atomicfile like the JSON beside it, because atomicfile takes a whole buffer
+// and this writer exists not to hold one.
 func SaveReceiverTableCSV(path string, table ReceiverTable) (err error) {
 	err = table.Validate()
 	if err != nil {

@@ -163,18 +163,9 @@ func TestCancellationLeavesConsistentState(t *testing.T) {
 		t.Fatalf("expected canceled state, got %s", state.Status)
 	}
 
-	chunksDir := filepath.Join(cacheDir, "cancel-test", "chunks")
-
-	entries, readDirErr := os.ReadDir(chunksDir)
-	if readDirErr != nil {
-		t.Fatalf("read chunks dir: %v", readDirErr)
-	}
-
-	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".tmp") {
-			t.Fatalf("unexpected tmp file left behind: %s", entry.Name())
-		}
-	}
+	// The whole cache, not only the run's chunks directory: run-state.json
+	// and the shared-chunks entries are replaced through temporary files too.
+	assertNoTemporaryFiles(t, cacheDir)
 }
 
 func TestChunkCacheReuse(t *testing.T) {
@@ -225,6 +216,78 @@ func TestChunkCacheReuse(t *testing.T) {
 
 	if second.UsedCachedChunks == 0 {
 		t.Fatalf("expected cached chunks to be reused")
+	}
+
+	assertNoTemporaryFiles(t, cacheDir)
+}
+
+// TestConcurrentWritesToOneSharedChunkBothSucceed is the race the shared cache
+// is built to have: a shared-chunks entry is keyed by content, so two runs that
+// compute the same chunk write the same path at the same time. The temporary
+// name used to come from time.Now().UnixNano(); two writers reading the same
+// tick shared one temporary file, and the second rename failed with ENOENT
+// because the first had already moved it. Every write must succeed, and what
+// is left must be one writer's whole file.
+func TestConcurrentWritesToOneSharedChunkBothSucceed(t *testing.T) {
+	t.Parallel()
+
+	sharedDir := filepath.Join(t.TempDir(), "shared-chunks")
+	path := filepath.Join(sharedDir, "ab", "abcdef.json")
+
+	const (
+		writers = 8
+		rounds  = 25
+	)
+
+	var wg sync.WaitGroup
+
+	for w := range writers {
+		wg.Go(func() {
+			results := []ReceiverResult{{ReceiverID: fmt.Sprintf("rx-%d", w), LevelDB: float64(w)}}
+
+			for range rounds {
+				err := writeChunk(path, results)
+				if err != nil {
+					t.Errorf("writer %d: %v", w, err)
+
+					return
+				}
+			}
+		})
+	}
+
+	wg.Wait()
+
+	got, ok, err := readChunk(path)
+	if err != nil {
+		t.Fatalf("read chunk: %v", err)
+	}
+
+	if !ok || len(got) != 1 || got[0].ReceiverID != fmt.Sprintf("rx-%d", int(got[0].LevelDB)) {
+		t.Fatalf("chunk is not one writer's whole file: ok=%v %+v", ok, got)
+	}
+
+	assertNoTemporaryFiles(t, sharedDir)
+}
+
+// assertNoTemporaryFiles fails if any file under root still carries a
+// temporary name - a write that was neither renamed nor removed.
+func assertNoTemporaryFiles(t *testing.T, root string) {
+	t.Helper()
+
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tmp") {
+			t.Errorf("temporary file left behind: %s", path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
 	}
 }
 

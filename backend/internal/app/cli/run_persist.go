@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/acoustics"
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/engine"
@@ -934,7 +935,10 @@ func finalizeRun(
 
 	logPath := filepath.Join(store.Root(), filepath.FromSlash(run.LogPath))
 
-	err = os.WriteFile(logPath, []byte(logContent), 0o600)
+	// The manifest above already says the run is done, so the UI may fetch
+	// the log while this replaces it. A rename hands it the provisional log or
+	// the final one; an in-place rewrite could hand it a truncated prefix.
+	err = atomicfile.WriteFile(logPath, []byte(logContent))
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.finalizeRun", "write run log "+logPath, err)
 	}
