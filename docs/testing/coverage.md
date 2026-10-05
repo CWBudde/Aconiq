@@ -96,7 +96,7 @@ trips them, tight enough that a real regression does.
 | ---------- | --------- | -------- | ----- | ---------------------------------------------------------------------------------------------- |
 | 2026-09-12 | `87da006` | 77.3%    | 75    | First measurement. 12,822 / 16,584 statements, 219 files, 43 / 47 packages with a test file.   |
 | 2026-09-17 | `f7e0885` | 71.2%    | 75    | **Below the floor**, and honestly so — no measurement defect here. 12,464 / 17,512 statements. |
-| 2026-09-17 | `317fdfa` | 78.9%    | 76    | Shortfall closed and the floor ratcheted. 13,825 / 17,512 statements.                          |
+| 2026-09-17 | #44       | 78.9%    | 76    | Shortfall closed and the floor ratcheted. 13,825 / 17,512 statements.                          |
 
 The backend drop is real and it is not spread evenly. The tree grew by ~930
 statements between those rows while the covered count barely moved, and almost all
@@ -127,8 +127,8 @@ carrying 4,333 statements, a quarter of the tree.
 | ---------- | --------- | ---------- | -------- | --------- | ----- | ----------------- |
 | 2026-09-12 | `87da006` | 73.6%      | 83.9%    | 77.9%     | 73.6% | 71 / 71 / 75 / 81 |
 | 2026-09-17 | `f7e0885` | 81.8%      | 87.0%    | 83.3%     | 81.8% | 71 / 71 / 75 / 81 |
-| 2026-09-17 | `317fdfa` | 86.8%      | 87.8%    | 86.1%     | 86.8% | 84 / 84 / 84 / 85 |
-| 2026-09-19 | `7c7fc05` | 91.1%      | 89.1%    | 91.4%     | 91.1% | 89 / 89 / 89 / 88 |
+| 2026-09-17 | #44       | 86.8%      | 87.8%    | 86.1%     | 86.8% | 84 / 84 / 84 / 85 |
+| 2026-09-19 | #68       | 91.1%      | 89.1%    | 91.4%     | 91.1% | 89 / 89 / 89 / 88 |
 
 At the last row, 15,357 / 16,861 statements over 113 test files. By area:
 `src/results` 99.7%, `src/map` 96.1%, `src/pages` 95.8%, `src/model` 93.2%,
@@ -177,7 +177,7 @@ leaving it in the denominator. The published figure was **35.8%** against a true
 81.8%, with `src/pages` and `src/import` reading 0.0% where they are in fact 94.4%
 and 84.7%, and the comment blamed the floors.
 
-It is the same defect as `48b63b2`, which added the `compile:i18n` step to
+It is the same defect as #5, which added the `compile:i18n` step to
 `frontend-ci` for `tsc`; `frontend-coverage` never got it. The floors were never
 the problem, and they are only being moved now because the last row measured a
 tree with `src/map` covered: 62.6% → 94.0%, the last genuinely thin area, closing
