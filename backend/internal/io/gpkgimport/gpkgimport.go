@@ -111,14 +111,18 @@ type LayerInfo struct {
 
 // ListLayers returns all feature layers in the GeoPackage.
 func ListLayers(path string) ([]LayerInfo, error) {
+	return ListLayersContext(context.Background(), path)
+}
+
+// ListLayersContext is ListLayers under a context: once ctx is done the query
+// stops and the error wraps ctx.Err().
+func ListLayersContext(ctx context.Context, path string) ([]LayerInfo, error) {
 	db, err := openReadOnly(path)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { _ = db.Close() }()
-
-	ctx := context.Background()
 
 	rows, err := db.QueryContext(ctx, `SELECT table_name, description FROM gpkg_contents WHERE data_type = 'features'`)
 	if err != nil {
@@ -171,6 +175,12 @@ func ReadLayer(path string, layerName string) (modelgeojson.FeatureCollection, e
 // ReadLayerWithCRS reads features from a named layer and also extracts the CRS
 // from the GeoPackage spatial_ref_sys table.
 func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
+	return ReadLayerWithCRSContext(context.Background(), path, layerName)
+}
+
+// ReadLayerWithCRSContext is ReadLayerWithCRS under a context: once ctx is
+// done the read stops and the error wraps ctx.Err().
+func ReadLayerWithCRSContext(ctx context.Context, path string, layerName string) (ReadResult, error) {
 	quotedTable, err := quoteIdentifier(layerName)
 	if err != nil {
 		return ReadResult{}, err
@@ -182,8 +192,6 @@ func ReadLayerWithCRS(path string, layerName string) (ReadResult, error) {
 	}
 
 	defer func() { _ = db.Close() }()
-
-	ctx := context.Background()
 
 	geomCol, err := queryGeomColumn(ctx, db, layerName)
 	if err != nil {

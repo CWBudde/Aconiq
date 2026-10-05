@@ -18,7 +18,14 @@ import (
 
 // ExportReceiverGeoPackage writes a receiver table as an OGC GeoPackage
 // with attributed point features.
-func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) (err error) {
+func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs string, srsID int) error {
+	return ExportReceiverGeoPackageContext(context.Background(), path, table, crs, srsID)
+}
+
+// ExportReceiverGeoPackageContext is ExportReceiverGeoPackage under a context:
+// a cancelled ctx leaves a file already at path alone, and a cancellation
+// during the write rolls the insert back and returns an error wrapping ctx.Err().
+func ExportReceiverGeoPackageContext(ctx context.Context, path string, table results.ReceiverTable, crs string, srsID int) (err error) {
 	err = validateSRSID(srsID)
 	if err != nil {
 		return err
@@ -27,6 +34,11 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 	err = table.Validate()
 	if err != nil {
 		return fmt.Errorf("validate receiver table: %w", err)
+	}
+
+	err = ctx.Err()
+	if err != nil {
+		return fmt.Errorf("export receiver geopackage: %w", err)
 	}
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
@@ -48,17 +60,17 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 		}
 	}()
 
-	err = initGeoPackage(db, crs, srsID)
+	err = initGeoPackage(ctx, db, crs, srsID)
 	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	err = createReceiverTable(db, table, srsID)
+	err = createReceiverTable(ctx, db, table, srsID)
 	if err != nil {
 		return fmt.Errorf("create receiver table: %w", err)
 	}
 
-	err = insertReceivers(db, table, srsID)
+	err = insertReceivers(ctx, db, table, srsID)
 	if err != nil {
 		return fmt.Errorf("insert receivers: %w", err)
 	}
@@ -67,10 +79,22 @@ func ExportReceiverGeoPackage(path string, table results.ReceiverTable, crs stri
 }
 
 // ExportContourGeoPackage writes contour lines as an OGC GeoPackage.
-func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) (err error) {
+func ExportContourGeoPackage(path string, contours []ContourLine, crs string, srsID int) error {
+	return ExportContourGeoPackageContext(context.Background(), path, contours, crs, srsID)
+}
+
+// ExportContourGeoPackageContext is ExportContourGeoPackage under a context:
+// a cancelled ctx leaves a file already at path alone, and a cancellation
+// during the write rolls the insert back and returns an error wrapping ctx.Err().
+func ExportContourGeoPackageContext(ctx context.Context, path string, contours []ContourLine, crs string, srsID int) (err error) {
 	err = validateSRSID(srsID)
 	if err != nil {
 		return err
+	}
+
+	err = ctx.Err()
+	if err != nil {
+		return fmt.Errorf("export contour geopackage: %w", err)
 	}
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
@@ -91,17 +115,17 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 		}
 	}()
 
-	err = initGeoPackage(db, crs, srsID)
+	err = initGeoPackage(ctx, db, crs, srsID)
 	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	err = createContourTable(db, srsID)
+	err = createContourTable(ctx, db, srsID)
 	if err != nil {
 		return fmt.Errorf("create contour table: %w", err)
 	}
 
-	err = insertContours(db, contours, srsID)
+	err = insertContours(ctx, db, contours, srsID)
 	if err != nil {
 		return fmt.Errorf("insert contours: %w", err)
 	}
@@ -109,9 +133,7 @@ func ExportContourGeoPackage(path string, contours []ContourLine, crs string, sr
 	return nil
 }
 
-func initGeoPackage(db *sql.DB, crs string, srsID int) error {
-	ctx := context.Background()
-
+func initGeoPackage(ctx context.Context, db *sql.DB, crs string, srsID int) error {
 	// Set GeoPackage application_id.
 	_, err := db.ExecContext(ctx, "PRAGMA application_id = 0x47504B47") // 'GPKG'
 	if err != nil {
@@ -205,9 +227,7 @@ func initGeoPackage(db *sql.DB, crs string, srsID int) error {
 	return nil
 }
 
-func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) error {
-	ctx := context.Background()
-
+func createReceiverTable(ctx context.Context, db *sql.DB, table results.ReceiverTable, srsID int) error {
 	// Build column definitions for indicator values.
 	colDefs := make([]string, 0, len(table.IndicatorOrder)+5)
 	colDefs = append(
@@ -264,9 +284,7 @@ func createReceiverTable(db *sql.DB, table results.ReceiverTable, srsID int) err
 	return nil
 }
 
-func insertReceivers(db *sql.DB, table results.ReceiverTable, srsID int) error {
-	ctx := context.Background()
-
+func insertReceivers(ctx context.Context, db *sql.DB, table results.ReceiverTable, srsID int) error {
 	// Build the INSERT statement.
 	colNames := make([]string, 0, len(table.IndicatorOrder)+5)
 
@@ -320,16 +338,10 @@ func insertReceivers(db *sql.DB, table results.ReceiverTable, srsID int) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction for table receivers: %w", err)
-	}
-
-	return nil
+	return commitTx(ctx, tx, "receivers")
 }
 
-func createContourTable(db *sql.DB, srsID int) error {
-	ctx := context.Background()
-
+func createContourTable(ctx context.Context, db *sql.DB, srsID int) error {
 	_, err := db.ExecContext(ctx, `CREATE TABLE contours (
 		fid INTEGER PRIMARY KEY AUTOINCREMENT,
 		geom BLOB,
@@ -362,9 +374,7 @@ func createContourTable(db *sql.DB, srsID int) error {
 	return nil
 }
 
-func insertContours(db *sql.DB, contours []ContourLine, srsID int) error {
-	ctx := context.Background()
-
+func insertContours(ctx context.Context, db *sql.DB, contours []ContourLine, srsID int) error {
 	if len(contours) == 0 {
 		return nil
 	}
@@ -397,11 +407,26 @@ func insertContours(db *sql.DB, contours []ContourLine, srsID int) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction for table contours: %w", err)
+	return commitTx(ctx, tx, "contours")
+}
+
+// commitTx commits the transaction writing table. database/sql rolls a
+// transaction back by itself once its context ends, so a cancellation that
+// lands just before the commit can surface as sql.ErrTxDone, which does not
+// say why; the context's error is returned instead, so callers can tell a
+// cancelled export from a failed one.
+func commitTx(ctx context.Context, tx *sql.Tx, table string) error {
+	err := tx.Commit()
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	ctxErr := ctx.Err()
+	if ctxErr != nil {
+		err = ctxErr
+	}
+
+	return fmt.Errorf("commit transaction for table %s: %w", table, err)
 }
 
 // encodeGPKGPoint encodes a point as GeoPackage standard binary geometry (GP).
@@ -513,10 +538,23 @@ type ModelFeature struct {
 
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
 // as an OGC GeoPackage with mixed geometry types.
-func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) (err error) {
+func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs string, srsID int) error {
+	return ExportModelFeaturesGeoPackageContext(context.Background(), path, features, crs, srsID)
+}
+
+// ExportModelFeaturesGeoPackageContext is ExportModelFeaturesGeoPackage under a
+// context: a cancelled ctx leaves a file already at path alone, and a
+// cancellation during the write rolls the insert back and returns an error
+// wrapping ctx.Err().
+func ExportModelFeaturesGeoPackageContext(ctx context.Context, path string, features []ModelFeature, crs string, srsID int) (err error) {
 	err = validateSRSID(srsID)
 	if err != nil {
 		return err
+	}
+
+	err = ctx.Err()
+	if err != nil {
+		return fmt.Errorf("export model features geopackage: %w", err)
 	}
 
 	err = os.MkdirAll(filepath.Dir(path), 0o750)
@@ -537,17 +575,17 @@ func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs str
 		}
 	}()
 
-	err = initGeoPackage(db, crs, srsID)
+	err = initGeoPackage(ctx, db, crs, srsID)
 	if err != nil {
 		return fmt.Errorf("init geopackage: %w", err)
 	}
 
-	err = createModelFeaturesTable(db, features, srsID)
+	err = createModelFeaturesTable(ctx, db, features, srsID)
 	if err != nil {
 		return fmt.Errorf("create model_features table: %w", err)
 	}
 
-	err = insertModelFeatures(db, features, srsID)
+	err = insertModelFeatures(ctx, db, features, srsID)
 	if err != nil {
 		return fmt.Errorf("insert model features: %w", err)
 	}
@@ -555,9 +593,7 @@ func ExportModelFeaturesGeoPackage(path string, features []ModelFeature, crs str
 	return nil
 }
 
-func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) error {
-	ctx := context.Background()
-
+func createModelFeaturesTable(ctx context.Context, db *sql.DB, features []ModelFeature, srsID int) error {
 	_, err := db.ExecContext(ctx, `CREATE TABLE model_features (
 		fid INTEGER PRIMARY KEY AUTOINCREMENT,
 		geom BLOB,
@@ -595,9 +631,7 @@ func createModelFeaturesTable(db *sql.DB, features []ModelFeature, srsID int) er
 	return nil
 }
 
-func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
-	ctx := context.Background()
-
+func insertModelFeatures(ctx context.Context, db *sql.DB, features []ModelFeature, srsID int) error {
 	if len(features) == 0 {
 		return nil
 	}
@@ -629,11 +663,7 @@ func insertModelFeatures(db *sql.DB, features []ModelFeature, srsID int) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction for table model_features: %w", err)
-	}
-
-	return nil
+	return commitTx(ctx, tx, "model_features")
 }
 
 func parseModelGeometry(geomType string, coords any, srsID int) ([]byte, error) {
