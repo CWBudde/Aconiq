@@ -203,6 +203,11 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 		return runModuleResult{}, err
 	}
 
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
+	}
+
 	persisted, outputHash, finishedAt, err := m.persist(
 		input.runDir, outputs, layout, len(sources), input.receiverMode, input.standard.EvidenceTier,
 		input.projection,
@@ -218,6 +223,24 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 		outputHash: outputHash,
 		finishedAt: finishedAt,
 	}, nil
+}
+
+// stopBeforePersist is a run's last cancellation check. The compute loops
+// check before each receiver, so a signal that arrives while the last one
+// computes passes all of them; caught here, the run still writes no results.
+//
+// Persistence is not interrupted once it starts. A run asked to stop while it
+// writes finishes writing and completes: the alternative is a results
+// directory that is half there under a run marked failed.
+func stopBeforePersist(ctx context.Context, log *runLog) error {
+	err := ctx.Err()
+	if err != nil {
+		log.addf("stopped before persisting outputs: %v", err)
+
+		return fmt.Errorf("persist outputs: %w", err)
+	}
+
+	return nil
 }
 
 // endPersist binds the shared END persist path to one standard, so a table
@@ -297,6 +320,11 @@ func runDummyModule(ctx context.Context, input runModuleInput) (runModuleResult,
 		input.log.addf("engine failed: %v", err)
 
 		return runModuleResult{}, fmt.Errorf("run compute engine: %w", err)
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
 	}
 
 	persisted, err := persistDummyRunOutputs(

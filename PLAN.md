@@ -1208,7 +1208,7 @@ editing several of its files rather than one package of its own.
       signal context; every standard's run, `bench`, and the GeoPackage export and import take it,
       and every compute loop the run pipeline calls checks it once per receiver. An interrupted run
       is recorded `failed` with `run cancelled` in its log and no `results/`, and
-      `TestEveryStandardStopsOnACancelledContext` pins that for all 13 standards. Four constraints
+      `TestEveryStandardStopsOnACancelledContext` pins that for all 13 standards. Five constraints
       are live. **A module entry point keeps its context-free signature and gains a `…Context`
       twin**; the plain one delegates with `context.Background()` so `wasmkernel`, the acceptance
       runners and the tests stay on it, and the run pipeline must call the twin — the registry-wide
@@ -1217,7 +1217,9 @@ editing several of its files rather than one package of its own.
       its handler once it fires, so a second Ctrl-C kills whatever does not check, such as one
       Schall 03 receiver over a large scene. And **a cancelled run is `failed`, not a status of its
       own**, with exit code 1; the API's child gets SIGINT and `runInterruptGrace` (10 s) before the
-      kill, so `closeRunInterruptedBy` now only meets children that ignored it.
+      kill, so `closeRunInterruptedBy` now only meets children that ignored it. **A run stops at
+      `stopBeforePersist` at the latest, never during persistence** — every module calls it
+      between compute and persist, or a signal during the last receiver completes the run.
 - [x] **The feeder-goroutine leak is closed** — by `ac33895`, not by the batch that ticked this.
       (2026-09-19) The live constraint is the one `computeChunks` now states in a comment: the
       feeder's `select` must watch `computeCtx`, not `ctx`, because production passes

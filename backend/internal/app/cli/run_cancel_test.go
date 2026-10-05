@@ -7,10 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/io/projectfs"
+	"github.com/aconiq/backend/internal/results"
 	"github.com/aconiq/backend/internal/standards"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 // Every registered standard is run under a context that is already cancelled.
@@ -75,6 +80,55 @@ func TestEveryStandardStopsOnACancelledContext(t *testing.T) {
 				t.Fatalf("expected no result payload after a cancelled run, found %d entries", len(entries))
 			}
 		})
+	}
+}
+
+// A signal that arrives while the last receiver computes passes every check
+// the loops make, because each one runs before its receiver. The compute below
+// stands in for that receiver: it sees the cancellation land and still
+// returns a complete result. The run must stop there rather than persist it
+// and be recorded as completed.
+func TestACancellationDuringTheLastReceiverPersistsNothing(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	persisted := false
+
+	module := receiverRunModule[struct{}, struct{}, struct{}]{
+		sourceCountKey: "sources",
+		extractFailure: "extract failed",
+		computeFailure: "compute failed",
+		parseOptions:   func(map[string]string) (struct{}, error) { return struct{}{}, nil },
+		extract: func(modelgeojson.Model, struct{}, []string) ([]struct{}, error) {
+			return []struct{}{{}}, nil
+		},
+		buildReceivers: func([]struct{}, *geo.BBox, struct{}) ([]geo.PointReceiver, results.GridLayout, error) {
+			return []geo.PointReceiver{{ID: "r1"}}, results.GridLayout{}, nil
+		},
+		compute: func(context.Context, []geo.PointReceiver, []struct{}, struct{}) ([]struct{}, error) {
+			cancel()
+
+			return []struct{}{{}}, nil
+		},
+		persist: func(string, []struct{}, results.GridLayout, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
+			persisted = true
+
+			return persistedRunOutputs{}, "", time.Time{}, nil
+		},
+	}
+
+	_, err := module.run(ctx, runModuleInput{
+		receiverMode: receiverModeAutoGrid,
+		log:          newRunLog(),
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	if persisted {
+		t.Fatal("outputs were persisted after the run was cancelled")
 	}
 }
 

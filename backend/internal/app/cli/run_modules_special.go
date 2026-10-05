@@ -115,27 +115,18 @@ func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleRes
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	propagationConfig := options.PropagationConfig()
-	propagationConfig.Buildings = buildings
-	propagationConfig.ParkingSources = parkingSources
-
-	if input.terrain != nil && len(receivers) > 0 {
-		centerX, centerY := receiverGridCenter(receivers)
-		propagationConfig.ReceiverTerrainZ = terrainElevationAt(input.terrain, centerX, centerY)
-	}
-
-	// The DTM is the ground h_m is measured above, so it travels with the
-	// config rather than being reduced to the single elevation above. It is
-	// already wrapped into the compute CRS. A project without one leaves it
-	// nil, and the module falls back to the ground elevations the model
-	// carries — correct on flat ground, blind to a rise in between.
-	propagationConfig.TerrainModel = input.terrain
+	propagationConfig := rls19RoadPropagationConfig(options, scene, input, receivers)
 
 	receiverOutputs, err := computeRLS19RoadReceivers(ctx, input, receivers, roadSources, barriers, propagationConfig)
 	if err != nil {
 		input.log.addf("rls19 compute failed: %v", err)
 
 		return runModuleResult{}, fmt.Errorf("compute RLS-19 receiver outputs: %w", err)
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
 	}
 
 	persisted, outputHash, finishedAt, err := persistRLS19RoadRunOutputs(
@@ -153,6 +144,33 @@ func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleRes
 		outputHash: outputHash,
 		finishedAt: finishedAt,
 	}, nil
+}
+
+// rls19RoadPropagationConfig completes the module's propagation config with
+// what the scene and the project contribute: buildings, Parkplätze and terrain.
+func rls19RoadPropagationConfig(
+	options rls19RoadRunOptions,
+	scene rls19Scene,
+	input runModuleInput,
+	receivers []geo.PointReceiver,
+) rls19road.PropagationConfig {
+	propagationConfig := options.PropagationConfig()
+	propagationConfig.Buildings = scene.buildings
+	propagationConfig.ParkingSources = scene.parkingSources
+
+	if input.terrain != nil && len(receivers) > 0 {
+		centerX, centerY := receiverGridCenter(receivers)
+		propagationConfig.ReceiverTerrainZ = terrainElevationAt(input.terrain, centerX, centerY)
+	}
+
+	// The DTM is the ground h_m is measured above, so it travels with the
+	// config rather than being reduced to the single elevation above. It is
+	// already wrapped into the compute CRS. A project without one leaves it
+	// nil, and the module falls back to the ground elevations the model
+	// carries — correct on flat ground, blind to a rise in between.
+	propagationConfig.TerrainModel = input.terrain
+
+	return propagationConfig
 }
 
 // runSchall03Module drives the normative Schall 03 chain, which resolves which
@@ -173,6 +191,11 @@ func runSchall03Module(ctx context.Context, input runModuleInput) (runModuleResu
 		input.log.addf("schall03 run failed: %v", computeErr)
 
 		return runModuleResult{}, computeErr
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
 	}
 
 	err = input.mergeProvenance(schall03.ResolvedProvenanceMetadata(result.Engine))
@@ -228,6 +251,11 @@ func runBEBExposureModule(ctx context.Context, input runModuleInput) (runModuleR
 	}
 
 	outputs, summary, sourceCount, err := computeBEBExposure(ctx, input, options, buildings)
+	if err != nil {
+		return runModuleResult{}, err
+	}
+
+	err = stopBeforePersist(ctx, input.log)
 	if err != nil {
 		return runModuleResult{}, err
 	}
@@ -369,6 +397,11 @@ func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResul
 		input.log.addf("iso9613 compute failed: %v", err)
 
 		return runModuleResult{}, fmt.Errorf("compute ISO 9613-2 receiver outputs: %w", err)
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
 	}
 
 	persisted, outputHash, finishedAt, err := persistISO9613RunOutputs(
