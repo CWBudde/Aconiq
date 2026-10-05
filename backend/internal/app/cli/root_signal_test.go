@@ -3,6 +3,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"syscall"
 	"testing"
 	"time"
@@ -25,5 +27,16 @@ func TestInterruptContextIsCancelledByTheFirstSignal(t *testing.T) {
 	case <-ctx.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("the context was not cancelled by SIGINT")
+	}
+
+	// The run log prints the cause, so it has to name the signal on every Go
+	// release the module builds with — not only where NotifyContext sets one.
+	cause := context.Cause(ctx)
+	if cause == nil || cause.Error() != "interrupt signal received" {
+		t.Fatalf("expected the cause to name the signal, got %v", cause)
+	}
+
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("expected ctx.Err() to stay context.Canceled, got %v", ctx.Err())
 	}
 }

@@ -64,11 +64,27 @@ func Execute(args []string) int {
 // itself as failed rather than being killed mid-write. Once it has arrived the
 // handler is dropped again, so a second Ctrl-C reaches the default handler and
 // ends the process outright — the way out of anything that never checks.
+//
+// The cause names the signal, which is what the run log prints. It is set
+// here rather than left to signal.NotifyContext, which only sets one from Go
+// 1.26 on; ctx.Err() is context.Canceled either way.
 func interruptContext(parent context.Context) (context.Context, context.CancelFunc) {
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	context.AfterFunc(ctx, stop)
+	ctx, cancel := context.WithCancelCause(parent)
 
-	return ctx, stop
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		select {
+		case received := <-signals:
+			signal.Stop(signals)
+			cancel(fmt.Errorf("%v signal received", received))
+		case <-ctx.Done():
+			signal.Stop(signals)
+		}
+	}()
+
+	return ctx, func() { cancel(nil) }
 }
 
 func newRootCommand() *cobra.Command {
