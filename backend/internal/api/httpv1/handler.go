@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/terrain"
@@ -1127,7 +1128,12 @@ func (h Handler) storeTerrainArtifact(data []byte) error {
 		return fmt.Errorf("failed to create model directory: %w", err)
 	}
 
-	err = os.WriteFile(filepath.Join(terrainDir, "terrain.tif"), data, 0o600)
+	// Replaced, not rewritten: an `aconiq run` subprocess may be reading the
+	// previous DTM, and it takes no lock of ours. The rename is also why the
+	// write may happen outside the manifest lock - that lock serialises the
+	// manifest's read-modify-write, and the artifact row names the same fixed
+	// path whichever DTM is behind it.
+	err = atomicfile.WriteFile(filepath.Join(terrainDir, "terrain.tif"), data)
 	if err != nil {
 		return fmt.Errorf("failed to write terrain file: %w", err)
 	}

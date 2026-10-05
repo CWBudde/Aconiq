@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -661,11 +662,10 @@ func runTerrainImport(
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "create model directory", err)
 	}
 
-	// G703 tracks the taint from --terrain, but that path is only ever read.
-	// destPath is store.Root() joined with the defaultTerrainPath constant, so
-	// nothing caller-controlled reaches the destination.
-	//nolint:gosec // destination is a fixed path under the project root
-	err = os.WriteFile(destPath, srcData, 0o600)
+	// Replaced through a rename rather than rewritten in place, because a run
+	// - possibly an `aconiq run` started from the HTTP API - may be reading
+	// the previous DTM at this moment.
+	err = atomicfile.WriteFile(destPath, srcData)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.import", "write terrain file", err)
 	}

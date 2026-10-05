@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/jsonio"
 )
 
@@ -106,7 +107,12 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		binary.LittleEndian.PutUint64(binaryPayload[i*8:], math.Float64bits(value))
 	}
 
-	err = os.WriteFile(dataPath, binaryPayload, 0o600)
+	// The payload goes first and the sidecar that names it second, so a reader
+	// starting from the sidecar - LoadRaster does - never finds it pointing at
+	// a .bin that is not there yet. Each file is replaced whole; the pair is
+	// not, and a reader landing between the two renames of an overwrite pairs
+	// the new payload with the old sidecar.
+	err = atomicfile.WriteFile(dataPath, binaryPayload)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster data %s: %w", dataPath, err)
 	}
@@ -126,7 +132,7 @@ func SaveRaster(basePath string, raster *Raster) (RasterPersistence, error) {
 		return RasterPersistence{}, fmt.Errorf("encode raster metadata: %w", err)
 	}
 
-	err = os.WriteFile(metadataPath, encodedMeta, 0o600)
+	err = atomicfile.WriteFile(metadataPath, encodedMeta)
 	if err != nil {
 		return RasterPersistence{}, fmt.Errorf("write raster metadata %s: %w", metadataPath, err)
 	}

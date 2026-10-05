@@ -16,6 +16,7 @@ import (
 	texttemplate "text/template"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
@@ -921,7 +922,7 @@ func writeJSON(path string, value any) error {
 		return fmt.Errorf("encode report json: %w", err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o600)
+	err = atomicfile.WriteFile(path, encoded)
 	if err != nil {
 		return fmt.Errorf("write report json %s: %w", path, err)
 	}
@@ -942,7 +943,7 @@ func writeMarkdown(path string, ctx reportContext) error {
 		return fmt.Errorf("execute markdown template: %w", err)
 	}
 
-	err = os.WriteFile(path, buf.Bytes(), 0o600)
+	err = atomicfile.WriteFile(path, buf.Bytes())
 	if err != nil {
 		return fmt.Errorf("write report markdown %s: %w", path, err)
 	}
@@ -963,7 +964,7 @@ func writeHTML(path string, ctx reportContext) error {
 		return fmt.Errorf("execute html template: %w", err)
 	}
 
-	err = os.WriteFile(path, buf.Bytes(), 0o600)
+	err = atomicfile.WriteFile(path, buf.Bytes())
 	if err != nil {
 		return fmt.Errorf("write report html %s: %w", path, err)
 	}

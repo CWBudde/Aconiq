@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
@@ -680,31 +681,25 @@ func readChunk(path string) ([]ReceiverResult, bool, error) {
 	return results, true, nil
 }
 
+// writeChunk persists one chunk's results. A shared-chunks entry is keyed by
+// content, so two runs computing the same chunk - in one process or in two -
+// write the same path at the same time. Each writer gets its own temporary
+// file from atomicfile, so both renames succeed and the survivor is one
+// writer's whole file. The temporary name used to come from the clock, which
+// two writers can read alike: they then shared one file, and the second rename
+// failed because the first had already moved it.
 func writeChunk(path string, results []ReceiverResult) error {
-	err := os.MkdirAll(filepath.Dir(path), 0o750)
-	if err != nil {
-		return fmt.Errorf("create chunk cache directory %s: %w", filepath.Dir(path), err)
-	}
-
-	tmpPath := fmt.Sprintf("%s.%d.tmp", path, time.Now().UnixNano())
-
-	err = writeJSONFile(tmpPath, results)
-	if err != nil {
-		return err
-	}
-
-	err = os.Rename(tmpPath, path)
-	if err != nil {
-		return fmt.Errorf("persist chunk cache %s: %w", path, err)
-	}
-
-	return nil
+	return writeJSONFile(path, results)
 }
 
 func writeRunState(path string, state RunState) error {
 	return writeJSONFile(path, state)
 }
 
+// writeJSONFile replaces path through atomicfile rather than rewriting it in
+// place. run-state.json is rewritten after every chunk and is there to be read
+// while the run is still going, and a chunk file may be read by a concurrent
+// run the moment it appears; neither reader should find a truncated document.
 func writeJSONFile(path string, value any) error {
 	encoded, err := jsonio.Marshal(value)
 	if err != nil {
@@ -716,7 +711,7 @@ func writeJSONFile(path string, value any) error {
 		return fmt.Errorf("create directory for %s: %w", path, err)
 	}
 
-	err = os.WriteFile(path, encoded, 0o600)
+	err = atomicfile.WriteFile(path, encoded)
 	if err != nil {
 		return fmt.Errorf("write json %s: %w", path, err)
 	}
@@ -724,6 +719,12 @@ func writeJSONFile(path string, value any) error {
 	return nil
 }
 
+// cleanupTmpFiles removes temporary files a writer left in root. atomicfile
+// removes its own on every failure it returns, so what this finds is a write
+// cut short by a crash. atomicfile names its files `<base>.<random>.tmp`, and
+// the ".tmp" extension is all this matches on. It is only called on the run-local chunk directory,
+// after every worker has returned - a temporary file removed under a writer
+// still holding it would fail that writer's rename.
 func cleanupTmpFiles(root string) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {

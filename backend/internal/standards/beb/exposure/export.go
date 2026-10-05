@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/report/results"
 )
@@ -198,7 +199,7 @@ func writeBEBSummary(summaryPath string, summary Summary) error {
 		return fmt.Errorf("marshal beb summary: %w", err)
 	}
 
-	err = os.WriteFile(summaryPath, payload, 0o600)
+	err = atomicfile.WriteFile(summaryPath, payload)
 	if err != nil {
 		return fmt.Errorf("write beb summary %s: %w", summaryPath, err)
 	}
