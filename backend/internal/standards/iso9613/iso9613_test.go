@@ -1,6 +1,8 @@
 package iso9613
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +57,62 @@ func TestComputeReceiverOutputsDeterministicPointScope(t *testing.T) {
 
 	if outputs[0].Indicators != outputsAgain[0].Indicators || outputs[1].Indicators != outputsAgain[1].Indicators {
 		t.Fatalf("expected deterministic outputs, got %#v and %#v", outputs, outputsAgain)
+	}
+}
+
+// A cancelled context stops the walk before the first receiver, and the error
+// still names the receiver and carries context.Canceled for errors.Is.
+func TestComputeReceiverOutputsContextStopsOnCancel(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	sources := []PointSource{{ID: "s1", Point: geo.Point2D{X: 0, Y: 0}, SourceHeightM: 10, SoundPowerLevelDB: 100}}
+	receivers := []geo.PointReceiver{{ID: "r1", Point: geo.Point2D{X: 10, Y: 0}, HeightM: 4}}
+
+	outputs, err := ComputeReceiverOutputsContext(ctx, receivers, sources, DefaultPropagationConfig())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	if outputs != nil {
+		t.Fatalf("expected no outputs from a cancelled walk, got %d", len(outputs))
+	}
+}
+
+// Under a live context the variant returns exactly what the context-free entry
+// point returns: the check reads no number the walk computes.
+func TestComputeReceiverOutputsContextMatchesWithoutContext(t *testing.T) {
+	t.Parallel()
+
+	sources := []PointSource{
+		{ID: "s1", Point: geo.Point2D{X: 0, Y: 0}, SourceHeightM: 10, SoundPowerLevelDB: 100},
+		{ID: "s2", Point: geo.Point2D{X: 30, Y: 0}, SourceHeightM: 5, SoundPowerLevelDB: 96},
+	}
+	receivers := []geo.PointReceiver{
+		{ID: "r1", Point: geo.Point2D{X: 10, Y: 0}, HeightM: 4},
+		{ID: "r2", Point: geo.Point2D{X: 20, Y: 10}, HeightM: 4},
+	}
+
+	want, err := ComputeReceiverOutputs(receivers, sources, DefaultPropagationConfig())
+	if err != nil {
+		t.Fatalf("compute outputs: %v", err)
+	}
+
+	got, err := ComputeReceiverOutputsContext(t.Context(), receivers, sources, DefaultPropagationConfig())
+	if err != nil {
+		t.Fatalf("compute outputs under context: %v", err)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d outputs, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("output %d: got %#v, want %#v", i, got[i], want[i])
+		}
 	}
 }
 

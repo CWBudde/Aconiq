@@ -1,6 +1,7 @@
 package road
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -274,6 +275,19 @@ func PrepareSceneFor(
 	barriers []Barrier,
 	cfg PropagationConfig,
 ) (*Scene, error) {
+	return PrepareSceneForContext(context.Background(), receivers, sources, barriers, cfg)
+}
+
+// PrepareSceneForContext is PrepareSceneFor under a context. ctx reaches only
+// the walk that words a refusal, so a caller who gave up while a bad model was
+// being worded hears ctx.Err() rather than the refusal.
+func PrepareSceneForContext(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	barriers []Barrier,
+	cfg PropagationConfig,
+) (*Scene, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -289,7 +303,7 @@ func PrepareSceneFor(
 		return scene, nil
 	}
 
-	_, refusal := ComputeReceiverOutputs(receivers, sources, barriers, cfg)
+	_, refusal := ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
 	if refusal != nil {
 		return nil, fmt.Errorf("%w", refusal)
 	}
@@ -320,11 +334,17 @@ func (s *Scene) ComputeReceiverLevels(receiver geo.Point2D, cfg PropagationConfi
 // ComputeReceivers computes indicators for all receivers in order against a
 // scene the caller prepared.
 func (s *Scene) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return s.ComputeReceiversContext(context.Background(), receivers, cfg)
+}
+
+// ComputeReceiversContext is ComputeReceivers under a context: once ctx is
+// done it stops before the next receiver and returns ctx.Err().
+func (s *Scene) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
-	return computeReceivers(receivers, cfg, func(PropagationConfig) (*Scene, error) {
+	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
 		return s, nil
 	})
 }
@@ -430,11 +450,23 @@ func (s *Scene) receiverLevelsOn(
 // It prepares the scene itself. A caller that computes several grids over the
 // same model should prepare it once with PrepareScene and call ComputeReceivers.
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource, barriers []Barrier, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsContext(context.Background(), receivers, sources, barriers, cfg)
+}
+
+// ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
+// ctx is done it stops before the next receiver and returns ctx.Err().
+func ComputeReceiverOutputsContext(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	barriers []Barrier,
+	cfg PropagationConfig,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
-	return computeReceivers(receivers, cfg, func(first PropagationConfig) (*Scene, error) {
+	return computeReceivers(ctx, receivers, cfg, func(first PropagationConfig) (*Scene, error) {
 		return prepareScene(sources, barriers, first)
 	})
 }
@@ -446,7 +478,11 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []RoadSource,
 // used to happen: every receiver re-prepared the scene, so a malformed receiver
 // was reported ahead of a malformed source. Preparing eagerly would swap the
 // two errors around for a model that is wrong in both ways at once.
+//
+// ctx is checked before each receiver, ahead of that receiver's own checks, and
+// reads nothing the walk computes, so it cannot move a level.
 func computeReceivers(
+	ctx context.Context,
 	receivers []geo.PointReceiver,
 	cfg PropagationConfig,
 	prepare func(PropagationConfig) (*Scene, error),
@@ -459,6 +495,11 @@ func computeReceivers(
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
 	for _, receiver := range receivers {
+		err := ctx.Err()
+		if err != nil {
+			return nil, fmt.Errorf("compute receiver %q: %w", receiver.ID, err)
+		}
+
 		if receiver.ID == "" {
 			return nil, errors.New("receiver id is required")
 		}
@@ -470,7 +511,7 @@ func computeReceivers(
 		receiverCfg := cfg
 		receiverCfg.ReceiverHeightM = receiver.HeightM
 
-		err := receiverCfg.Validate()
+		err = receiverCfg.Validate()
 		if err != nil {
 			return nil, err
 		}

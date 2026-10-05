@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -83,7 +84,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 		return err
 	}
 
-	result, err := computeRun(prepared, state, req)
+	result, err := computeRun(cmd.Context(), prepared, state, req)
 	if err != nil {
 		return err
 	}
@@ -204,7 +205,7 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 // computeRun loads the inputs and hands them to the standard's module. From
 // here on a failure is a failed run: it is recorded in the manifest and in the
 // log, rather than returned as if nothing had happened.
-func computeRun(prepared preparedRun, state commandState, req runCommandRequest) (runModuleResult, error) {
+func computeRun(ctx context.Context, prepared preparedRun, state commandState, req runCommandRequest) (runModuleResult, error) {
 	model, err := loadValidatedModel(prepared.modelPath, prepared.project.CRS, prepared.relModelPath)
 	if err != nil {
 		prepared.log.addf("failed to load model: %v", err)
@@ -250,7 +251,7 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
-	result, err := module(runModuleInput{
+	result, err := module(ctx, runModuleInput{
 		standard:     prepared.standard,
 		params:       prepared.params,
 		model:        model,
@@ -272,6 +273,12 @@ func computeRun(prepared preparedRun, state commandState, req runCommandRequest)
 		var before beforeRunError
 		if errors.As(err, &before) {
 			return runModuleResult{}, before.err
+		}
+
+		// A cancellation is recorded as a failed run, as any other stop in the
+		// module is; the log says which it was, since the status cannot.
+		if errors.Is(err, context.Canceled) {
+			prepared.log.addf("run cancelled: %v", context.Cause(ctx))
 		}
 
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)

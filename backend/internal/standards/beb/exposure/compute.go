@@ -1,6 +1,7 @@
 package exposure
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -37,12 +38,18 @@ var (
 
 // ComputeOutputs computes building exposure results and aggregate totals.
 func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg ExposureConfig, propagation road.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return ComputeOutputsContext(context.Background(), buildings, roads, cfg, propagation, receiverHeightM)
+}
+
+// ComputeOutputsContext is ComputeOutputs under a context: once ctx is done the
+// facade receivers stop before the next one and ctx.Err() is returned.
+func ComputeOutputsContext(ctx context.Context, buildings []BuildingUnit, roads []road.RoadSource, cfg ExposureConfig, propagation road.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
 	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
 		if len(roads) == 0 {
 			return nil, errors.New("at least one road source is required")
 		}
 
-		roadOutputs, err := road.ComputeReceiverOutputs(receivers, roads, propagation)
+		roadOutputs, err := road.ComputeReceiverOutputsContext(ctx, receivers, roads, propagation)
 		if err != nil {
 			return nil, fmt.Errorf("compute road receiver outputs: %w", err)
 		}
@@ -53,12 +60,18 @@ func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg Expos
 
 // ComputeOutputsFromAircraft computes BEB outputs from BUF aircraft receiver levels.
 func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufaircraft.AircraftSource, cfg ExposureConfig, propagation bufaircraft.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return ComputeOutputsFromAircraftContext(context.Background(), buildings, aircraftSources, cfg, propagation, receiverHeightM)
+}
+
+// ComputeOutputsFromAircraftContext is ComputeOutputsFromAircraft under a
+// context, with the same cancellation as ComputeOutputsContext.
+func ComputeOutputsFromAircraftContext(ctx context.Context, buildings []BuildingUnit, aircraftSources []bufaircraft.AircraftSource, cfg ExposureConfig, propagation bufaircraft.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
 	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
 		if len(aircraftSources) == 0 {
 			return nil, errors.New("at least one aircraft source is required")
 		}
 
-		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputs(receivers, aircraftSources, propagation)
+		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputsContext(ctx, receivers, aircraftSources, propagation)
 		if err != nil {
 			return nil, fmt.Errorf("compute aircraft receiver outputs: %w", err)
 		}

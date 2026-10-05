@@ -1,6 +1,7 @@
 package acoustics
 
 import (
+	"context"
 	"errors"
 	"math"
 	"testing"
@@ -25,7 +26,7 @@ func TestComputeReceiverOutputsKeepsTheReceiverOrder(t *testing.T) {
 		finiteReceiver("b", 1),
 	}
 
-	outputs, err := ComputeReceiverOutputs(receivers, []testSource{{levelDB: 60}},
+	outputs, err := ComputeReceiverOutputs(t.Context(), receivers, []testSource{{levelDB: 60}},
 		func(receiver geo.PointReceiver, sources []testSource) (PeriodLevels, error) {
 			base := sources[0].levelDB + receiver.Point.X
 
@@ -91,7 +92,7 @@ func TestComputeReceiverOutputsRefusesUnusableReceivers(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ComputeReceiverOutputs(testCase.receivers, []testSource{}, levels)
+			_, err := ComputeReceiverOutputs(t.Context(), testCase.receivers, []testSource{}, levels)
 			if err == nil || err.Error() != testCase.wantErr {
 				t.Fatalf("unexpected error: got %v want %q", err, testCase.wantErr)
 			}
@@ -104,11 +105,51 @@ func TestComputeReceiverOutputsPropagatesTheModuleError(t *testing.T) {
 
 	sentinel := errors.New("source is not valid")
 
-	_, err := ComputeReceiverOutputs([]geo.PointReceiver{finiteReceiver("r1", 0)}, []testSource{},
+	_, err := ComputeReceiverOutputs(t.Context(), []geo.PointReceiver{finiteReceiver("r1", 0)}, []testSource{},
 		func(geo.PointReceiver, []testSource) (PeriodLevels, error) {
 			return PeriodLevels{}, sentinel
 		})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected the module's error unwrapped, got %v", err)
+	}
+}
+
+// The walk checks the context before each receiver, so a cancellation lands
+// between two receivers rather than after the whole batch: a grid of a million
+// receivers stops within one receiver's work, not at the end.
+func TestComputeReceiverOutputsStopsBetweenReceiversOnCancel(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	receivers := []geo.PointReceiver{
+		finiteReceiver("a", 0),
+		finiteReceiver("b", 1),
+		finiteReceiver("c", 2),
+		finiteReceiver("d", 3),
+	}
+
+	calls := 0
+
+	outputs, err := ComputeReceiverOutputs(ctx, receivers, []testSource{},
+		func(geo.PointReceiver, []testSource) (PeriodLevels, error) {
+			calls++
+			if calls == 2 {
+				cancel()
+			}
+
+			return PeriodLevels{Lday: 50, Levening: 45, Lnight: 40}, nil
+		})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	if outputs != nil {
+		t.Fatalf("expected no outputs from a cancelled walk, got %d", len(outputs))
+	}
+
+	if calls != 2 {
+		t.Fatalf("expected the walk to stop after the receiver that cancelled, got %d calls", calls)
 	}
 }

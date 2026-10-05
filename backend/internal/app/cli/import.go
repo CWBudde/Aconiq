@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -411,7 +412,7 @@ func runGeometryImport(
 	absoluteInput := resolvePath(store.Root(), inputPath)
 	relInput := relativePath(store.Root(), absoluteInput)
 
-	result, err := loadInputPayload(absoluteInput, layerName)
+	result, err := loadInputPayload(cmd.Context(), absoluteInput, layerName)
 	if err != nil {
 		return err
 	}
@@ -524,12 +525,12 @@ func epsgToString(code int) string {
 // loadInputPayload reads the input file as GeoJSON bytes with optional CRS auto-detection.
 // For .gpkg files it uses gpkgimport; for .fgb files it uses fgbimport;
 // for .gml/.citygml files it uses citygmlimport; for all others it reads the file directly as GeoJSON.
-func loadInputPayload(absoluteInput string, layerName string) (inputPayload, error) {
+func loadInputPayload(ctx context.Context, absoluteInput string, layerName string) (inputPayload, error) {
 	ext := strings.ToLower(filepath.Ext(absoluteInput))
 
 	switch ext {
 	case ".gpkg":
-		return readGPKGAsGeoJSON(absoluteInput, layerName)
+		return readGPKGAsGeoJSON(ctx, absoluteInput, layerName)
 	case ".fgb":
 		return readFGBAsGeoJSON(absoluteInput, layerName)
 	case ".gml", ".citygml", ".xml":
@@ -549,9 +550,9 @@ func loadInputPayload(absoluteInput string, layerName string) (inputPayload, err
 }
 
 // readGPKGAsGeoJSON opens a GeoPackage file and returns its layer as marshalled GeoJSON bytes.
-func readGPKGAsGeoJSON(path string, layerName string) (inputPayload, error) {
+func readGPKGAsGeoJSON(ctx context.Context, path string, layerName string) (inputPayload, error) {
 	if layerName == "" {
-		layers, err := gpkgimport.ListLayers(path)
+		layers, err := gpkgimport.ListLayersContext(ctx, path)
 		if err != nil {
 			return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "list GeoPackage layers", err)
 		}
@@ -566,7 +567,7 @@ func readGPKGAsGeoJSON(path string, layerName string) (inputPayload, error) {
 		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", msg, nil)
 	}
 
-	result, err := gpkgimport.ReadLayerWithCRS(path, layerName)
+	result, err := gpkgimport.ReadLayerWithCRSContext(ctx, path, layerName)
 	if err != nil {
 		return inputPayload{}, domainerrors.New(domainerrors.KindUserInput, "cli.import", "read GeoPackage layer "+layerName, err)
 	}

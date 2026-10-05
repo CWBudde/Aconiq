@@ -1,11 +1,14 @@
 package gpkgimport
 
 import (
+	"context"
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -300,5 +303,55 @@ func TestListLayers_FileNotFound(t *testing.T) {
 	_, err := ListLayers(filepath.Join(os.TempDir(), "does_not_exist.gpkg"))
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
+	}
+}
+
+func TestListLayersContext_Cancelled(t *testing.T) {
+	t.Parallel()
+
+	path := createTestGPKG(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := ListLayersContext(ctx, path)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestReadLayerWithCRSContext_Cancelled(t *testing.T) {
+	t.Parallel()
+
+	path := createTestGPKG(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := ReadLayerWithCRSContext(ctx, path, "noise_features")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+// Under a live context the variant reads exactly what the context-free entry
+// point reads.
+func TestReadLayerWithCRSContext_MatchesWithoutContext(t *testing.T) {
+	t.Parallel()
+
+	path := createTestGPKG(t)
+
+	want, err := ReadLayerWithCRS(path, "noise_features")
+	if err != nil {
+		t.Fatalf("ReadLayerWithCRS: %v", err)
+	}
+
+	got, err := ReadLayerWithCRSContext(t.Context(), path, "noise_features")
+	if err != nil {
+		t.Fatalf("ReadLayerWithCRSContext: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v, want %#v", got, want)
 	}
 }

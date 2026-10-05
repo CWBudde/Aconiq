@@ -125,7 +125,7 @@ type runModuleResult struct {
 // runModule executes one standard. Implementations log what they did through
 // input.log — including the line describing their own failure — and return the
 // error; the pipeline owns what happens to the run afterwards.
-type runModule func(runModuleInput) (runModuleResult, error)
+type runModule func(context.Context, runModuleInput) (runModuleResult, error)
 
 // beforeRunError marks a failure that happened before the module touched
 // anything: option parsing, and the receiver mode a standard refuses. The
@@ -163,11 +163,11 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 	parseOptions   func(map[string]string) (Opt, error)
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
 	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, results.GridLayout, error)
-	compute        func([]geo.PointReceiver, []Src, Opt) ([]Out, error)
+	compute        func(context.Context, []geo.PointReceiver, []Src, Opt) ([]Out, error)
 	persist        func(runDir string, outputs []Out, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
 }
 
-func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleResult, error) {
+func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := m.parseOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
@@ -196,10 +196,15 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	outputs, err := m.compute(receivers, sources, options)
+	outputs, err := m.compute(ctx, receivers, sources, options)
 	if err != nil {
 		input.log.addf("%s: %v", m.computeFailure, err)
 
+		return runModuleResult{}, err
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
 		return runModuleResult{}, err
 	}
 
@@ -220,6 +225,24 @@ func (m receiverRunModule[Opt, Src, Out]) run(input runModuleInput) (runModuleRe
 	}, nil
 }
 
+// stopBeforePersist is a run's last cancellation check. The compute loops
+// check before each receiver, so a signal that arrives while the last one
+// computes passes all of them; caught here, the run still writes no results.
+//
+// Persistence is not interrupted once it starts. A run asked to stop while it
+// writes finishes writing and completes: the alternative is a results
+// directory that is half there under a run marked failed.
+func stopBeforePersist(ctx context.Context, log *runLog) error {
+	err := ctx.Err()
+	if err != nil {
+		log.addf("stopped before persisting outputs: %v", err)
+
+		return fmt.Errorf("persist outputs: %w", err)
+	}
+
+	return nil
+}
+
 // endPersist binds the shared END persist path to one standard, so a table
 // entry names its standard once. Every END module computes
 // acoustics.ReceiverOutput, which is what lets one persist function serve them.
@@ -233,7 +256,7 @@ func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, resu
 // dummy-freefield is a test fixture, and it is also the only module the engine
 // can currently drive — generalising that is PLAN.md Priority 7's "generalise
 // the engine".
-func runDummyModule(input runModuleInput) (runModuleResult, error) {
+func runDummyModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := parseDummyRunOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
@@ -278,7 +301,7 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		})
 	}
 
-	runOutput, err := engineRunner.Run(context.Background(), engine.RunConfig{
+	runOutput, err := engineRunner.Run(ctx, engine.RunConfig{
 		RunID:          input.runID,
 		Workers:        options.Workers,
 		ChunkSize:      options.ChunkSize,
@@ -297,6 +320,11 @@ func runDummyModule(input runModuleInput) (runModuleResult, error) {
 		input.log.addf("engine failed: %v", err)
 
 		return runModuleResult{}, fmt.Errorf("run compute engine: %w", err)
+	}
+
+	err = stopBeforePersist(ctx, input.log)
+	if err != nil {
+		return runModuleResult{}, err
 	}
 
 	persisted, err := persistDummyRunOutputs(

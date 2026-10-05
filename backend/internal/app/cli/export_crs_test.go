@@ -158,7 +158,7 @@ func TestExportRefusesACRSItCannotParse(t *testing.T) {
 
 	ctx := newFormatExportContext(dir, badCRS, badCRS, copiedRunResults{}, 5.0, modelPath)
 
-	err = ctx.exportGeoPackage(map[string][]string{})
+	err = ctx.exportGeoPackage(t.Context(), map[string][]string{})
 	if err == nil {
 		t.Fatal("a CRS that is not a CRS exported as srs_id 0 without complaint")
 	}
@@ -217,7 +217,7 @@ func TestExportRefusesOnlyTheFormatsThatCarryTheUnreadableCRS(t *testing.T) {
 
 		// No raster, so this returns before it would need the results CRS;
 		// what matters is that it does not refuse over the project's.
-		err := ctx.exportContourGeoPackage(map[string][]string{})
+		err := ctx.exportContourGeoPackage(t.Context(), map[string][]string{})
 		if err != nil {
 			t.Fatalf("the contour export refused over a CRS it does not carry: %v", err)
 		}
@@ -255,7 +255,7 @@ func TestExportRefusesOnlyTheFormatsThatCarryTheUnreadableCRS(t *testing.T) {
 
 		// No receiver table, so the only thing this writes is model.gpkg,
 		// which is labelled with the project CRS.
-		err = ctx.exportGeoPackage(map[string][]string{})
+		err = ctx.exportGeoPackage(t.Context(), map[string][]string{})
 		if err != nil {
 			t.Fatalf("the model GeoPackage refused over a CRS it does not carry: %v", err)
 		}

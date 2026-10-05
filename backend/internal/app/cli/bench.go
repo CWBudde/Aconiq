@@ -191,7 +191,7 @@ func runBenchCommand(cmd *cobra.Command, scenarioNames []string, workers int, ch
 	}
 
 	for _, scenario := range scenarios {
-		result, err := runBenchScenario(suiteDir, scenario, workers, chunkSize, sourceIndexCellM)
+		result, err := runBenchScenario(cmd.Context(), suiteDir, scenario, workers, chunkSize, sourceIndexCellM)
 		if err != nil {
 			return err
 		}
@@ -282,6 +282,7 @@ func resolveBenchScenarios(names []string) ([]benchScenarioSpec, error) {
 }
 
 func runBenchScenario(
+	ctx context.Context,
 	suiteDir string,
 	spec benchScenarioSpec,
 	workers int,
@@ -299,7 +300,7 @@ func runBenchScenario(
 
 	runner := engine.NewRunner(nil)
 
-	reference, referenceOut, err := measureBenchRun(runner, scenarioDir, "reference", engine.RunConfig{
+	reference, referenceOut, err := measureBenchRun(ctx, runner, scenarioDir, "reference", engine.RunConfig{
 		RunID:            "reference",
 		Workers:          1,
 		ChunkSize:        chunkSize,
@@ -315,7 +316,7 @@ func runBenchScenario(
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run reference benchmark scenario "+spec.Name, err)
 	}
 
-	cold, coldOut, err := measureBenchRun(runner, scenarioDir, benchRunID, engine.RunConfig{
+	cold, coldOut, err := measureBenchRun(ctx, runner, scenarioDir, benchRunID, engine.RunConfig{
 		RunID:            benchRunID,
 		Workers:          workers,
 		ChunkSize:        chunkSize,
@@ -331,7 +332,7 @@ func runBenchScenario(
 		return benchScenarioResult{}, domainerrors.New(domainerrors.KindInternal, "cli.bench", "run cold benchmark scenario "+spec.Name, err)
 	}
 
-	warm, warmOut, err := measureBenchRun(runner, scenarioDir, benchRunID, engine.RunConfig{
+	warm, warmOut, err := measureBenchRun(ctx, runner, scenarioDir, benchRunID, engine.RunConfig{
 		RunID:            benchRunID,
 		Workers:          workers,
 		ChunkSize:        chunkSize,
@@ -411,6 +412,7 @@ func buildBenchScenario(spec benchScenarioSpec) ([]engine.Receiver, []engine.Sou
 }
 
 func measureBenchRun(
+	ctx context.Context,
 	runner *engine.Runner,
 	scenarioDir string,
 	runID string,
@@ -429,7 +431,7 @@ func measureBenchRun(
 	runtime.ReadMemStats(&before)
 
 	startedAt := time.Now()
-	out, err := runner.Run(context.Background(), cfg)
+	out, err := runner.Run(ctx, cfg)
 	duration := time.Since(startedAt)
 
 	if err != nil {

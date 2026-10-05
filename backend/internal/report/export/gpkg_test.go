@@ -1,8 +1,10 @@
 package export
 
 import (
+	"context"
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -496,4 +498,121 @@ func geometryHeaderSRSID(t *testing.T, path string, query string) int32 {
 	}
 
 	return int32(binary.LittleEndian.Uint32(geom[4:8]))
+}
+
+// Each GeoPackage export refuses a cancelled context with an error that carries
+// context.Canceled, and leaves a file already at the path alone: a cancelled
+// export must not cost the user the previous one.
+func TestGeoPackageExportsStopOnCancel(t *testing.T) {
+	t.Parallel()
+
+	indicators := []string{"Lden"}
+	table := results.ReceiverTable{
+		IndicatorOrder: indicators,
+		Units:          results.UniformUnits(indicators, results.UnitDecibel),
+		Records: []results.ReceiverRecord{
+			{ID: "rx-001", X: 100, Y: 200, HeightM: 4, Values: map[string]float64{"Lden": 56.3}},
+		},
+	}
+	contours := []ContourLine{{Level: 55, BandName: "Lden", Points: [][2]float64{{0, 0}, {10, 10}}}}
+	features := []ModelFeature{{ID: "src-1", Kind: "source", SourceType: "point", GeometryType: "Point", Coordinates: []any{100.0, 200.0}}}
+
+	cases := []struct {
+		name   string
+		export func(ctx context.Context, path string) error
+	}{
+		{"receivers", func(ctx context.Context, path string) error {
+			return ExportReceiverGeoPackageContext(ctx, path, table, "EPSG:25832", 25832)
+		}},
+		{"contours", func(ctx context.Context, path string) error {
+			return ExportContourGeoPackageContext(ctx, path, contours, "EPSG:25832", 25832)
+		}},
+		{"model features", func(ctx context.Context, path string) error {
+			return ExportModelFeaturesGeoPackageContext(ctx, path, features, "EPSG:25832", 25832)
+		}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "out.gpkg")
+
+			err := os.WriteFile(path, []byte("previous export"), 0o600)
+			if err != nil {
+				t.Fatalf("seed previous export: %v", err)
+			}
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+
+			err = testCase.export(ctx, path)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("expected context.Canceled, got %v", err)
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read previous export: %v", err)
+			}
+
+			if string(got) != "previous export" {
+				t.Fatalf("cancelled export touched the existing file: %q", got)
+			}
+		})
+	}
+}
+
+// database/sql rolls a transaction back by itself once its context ends, so a
+// cancellation that lands between the last insert and the commit can surface
+// from Commit as sql.ErrTxDone. commitTx reports the cancellation instead, and
+// none of the transaction's rows survive.
+func TestCommitTxReportsCancellationAndRollsBack(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "tx.gpkg"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	defer func() { _ = db.Close() }()
+
+	// One connection: the count below then waits for the rollback to hand it
+	// back instead of racing it.
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(t.Context(), "CREATE TABLE t (v INTEGER)")
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO t (v) VALUES (1)")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	cancel()
+
+	err = commitTx(ctx, tx, "t")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	var count int
+
+	err = db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM t").Scan(&count)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+
+	if count != 0 {
+		t.Fatalf("cancelled transaction left %d rows behind", count)
+	}
 }

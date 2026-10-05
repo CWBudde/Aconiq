@@ -1,6 +1,7 @@
 package industry
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aconiq/backend/internal/acoustics"
@@ -81,7 +82,13 @@ func ComputeReceiverPeriodLevels(receiver geo.PointReceiver, sources []IndustryS
 }
 
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []IndustrySource, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	outputs, err := cnossosindustry.ComputeReceiverOutputs(receivers, sources, cfg)
+	return ComputeReceiverOutputsContext(context.Background(), receivers, sources, cfg)
+}
+
+// ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
+// ctx is done it stops before the next receiver and returns ctx.Err().
+func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []IndustrySource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	outputs, err := cnossosindustry.ComputeReceiverOutputsContext(ctx, receivers, sources, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("compute receiver outputs: %w", err)
 	}

@@ -12,6 +12,7 @@
 package aircraft
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aconiq/backend/internal/acoustics"
@@ -122,4 +123,12 @@ func ComputeReceiverPeriodLevels(receiver geo.PointReceiver, sources []AircraftS
 //nolint:wrapcheck // preserves the error text of the implementation this alias replaced
 func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []AircraftSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	return cnossosaircraft.ComputeReceiverOutputs(receivers, sources, cfg)
+}
+
+// ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
+// ctx is done it stops before the next receiver and returns ctx.Err().
+//
+//nolint:wrapcheck // preserves the error text of the implementation this alias replaced
+func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []AircraftSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return cnossosaircraft.ComputeReceiverOutputsContext(ctx, receivers, sources, cfg)
 }
