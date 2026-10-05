@@ -994,6 +994,11 @@ first tag.
       `git describe` string rather than something a reader can resolve to a download.
 - [ ] **Enable Issues on the repository.** The templates are committed; the setting is a GitHub
       admin action nobody in the repository can perform.
+- [ ] **A run's provenance does not record its terrain.** `run_pipeline.go` hashes the model and
+      any `--input` paths into `InputPaths`, but not `.noise/model/terrain.tif`, which
+      `loadRunTerrain` reads and which moves levels wherever a module uses the DTM. Swapping the
+      DTM therefore changes results under unchanged input hashes. Hashing it changes
+      `provenance.json`, so it is a release decision under the versioning rule above.
 
 ## Priority 6 — Security hardening
 
@@ -1268,8 +1273,10 @@ editing several of its files rather than one package of its own.
         premise was wrong** while it stood: the source types really were distinct Go types, whose
         nested `AirportRef` and `MovementPeriod` were declared per package, so no conversion was
         possible. That is what the alias removed.
-- [ ] Move `internal/report/results` to `internal/results` — every standards module imports it,
-      so compute currently depends on the reporting tree.
+- [x] **`internal/results` no longer sits under the reporting tree.** (2026-10-05, #PR) A pure
+      move; the package name stayed `results`. The live constraint is that **two frontend parity
+      tests reach its testdata by relative path** (`raster-bin.parity.test.ts`,
+      `receiver-csv.parity.test.ts`), so moving it again breaks `fe-test`, not `go test`.
 - [ ] Replace `context.Value` dependency injection (`app/cli/root.go:127-149`) with an explicit
       `app` struct.
 - [ ] Give `domain/errors` real reach into the domain. It appears in 20 files, essentially all at
@@ -1319,25 +1326,33 @@ editing several of its files rather than one package of its own.
       **An empty CRS stays legal and stays `0`** — it means no projection was declared — and so
       does a `WKT:` identifier. And **`app/cli` holds the reason on the context rather than
       raising it in the constructor**, because only the GeoPackage formats read an EPSG code.
-- [ ] **The other in-place writers have not been reviewed.** `internal/atomicfile` now exists and
-      the two JSON writers use it; `jsonio`'s package doc names nine more sites that write at
-      their `os.WriteFile` call, in `report/results`, `report/export`, `app/cli`, `qa/golden`,
-      `api/httpv1` and `standards/beb/exposure`. Decide which of them should replace rather than
-      overwrite. Two are already settled and stay as they are: `qa/golden.AssertJSONSnapshot`
-      compares rather than writes, and `api/httpv1.writeJSON` answers an `http.ResponseWriter`.
-- [ ] **`engine.writeChunk` builds its temporary name from the clock**,
-      `fmt.Sprintf("%s.%d.tmp", path, time.Now().UnixNano())` — a third mechanism beside in-place
-      and `os.CreateTemp`, unique in practice rather than by construction. It is the pattern
-      `atomicfile.WriteFile`'s doc comment warns about, one step less broken: a nanosecond
-      timestamp collides less often than a fixed name, not never.
-- [ ] **`projectfs.writeRunLog` writes plain text in place**, the one writer in that package that
-      does not go through `atomicfile`. It is not JSON, which is why the pass that converged the
-      others left it.
-- [ ] Split the god files. Re-measured: `api/httpv1/handler.go` (1 358), `app/cli/export.go`
-      (1 244), `report/reporting/report.go` (1 192), `run_options.go` (1 016), `run_persist.go`
-      (914). `run_extract.go` and `run_pipeline.go` are done — 3 087 → 36 and 887 → 238 — and
-      nothing now exceeds the project's own configured `revive file-length-limit: 1500`, so the
-      remaining question is readability rather than a breached limit.
+- [x] **Every whole-buffer artifact writer replaces rather than overwrites.** (2026-10-05, #PR)
+      `terrain.tif` (both writers), the engine's chunk cache, `run-state.json` and
+      `run-output.json`, both `run.log` rewrites, the run result JSON and rasters, and the bundle
+      and report writers now go through `atomicfile.WriteFile`; `engine.writeChunk`'s clock-named
+      temporary file is gone, and a test pins that concurrent writes to one shared chunk both
+      succeed. Four constraints are live. **Replacement is atomic for readers, not durable** —
+      `atomicfile` never fsyncs, so a power loss can still leave an empty or stale file. **A crash
+      leaves `<base>.<random>.tmp` behind**, and only the run-local `chunks/` directory is swept.
+      **A raster is two files**, each replaced whole, so a reader between the two renames of an
+      overwrite pairs the new `.bin` with the old sidecar. And **an append opened on `run.log`
+      before a rewrite lands on the replaced inode** — harmless while `appendRunLogNote` only
+      touches dead runs.
+      `cli.finalizeRun`'s `run.log` rewrite was a second in-place writer this list never named.
+- [ ] **The streaming writers still write in place**: `reporting.writePDF` (a failed Typst
+      compile leaves a partial PDF), `results.SaveReceiverTableCSV`, `cli.copyFileIfExists` and the
+      three GeoPackage exports, which SQLite writes itself. They hold no buffer for
+      `atomicfile.WriteFile`; they need a streaming temp-and-rename helper, for which
+      `io/lglnimport/fetch.go` is the precedent (and the only writer that already syncs). Decide
+      the fsync question for both helpers at the same time.
+- [x] **The god files are split.** (2026-10-05, #PR) `handler.go`, `openapi.go`, `report.go`,
+      `compare.go`, `compare_raster.go`, `export.go`, `run_options.go` and `run_persist.go` (987 to
+      1 446 lines) were split by route area, per-format writer and standard family, as pure moves:
+      declaration inventories, test lists, the OpenAPI document and the report templates are
+      byte-identical. No non-test file now exceeds 965 lines. One constraint is live: **an
+      OpenAPI file must be named `openapi_<area>.go`**, a single lowercase segment, or it falls
+      outside the `goconst` exclusion in `.golangci.yml` and the wire vocabulary comes back as
+      findings.
 - [x] **`cnossosIndustryParts` refuses a source type it has no geometry handler for.**
       (2026-09-19, #74) Decided: an error, not a silent drop. The live constraint is that
       **the arm is unreachable, and the two declarations that keep it so are the thing to watch** —

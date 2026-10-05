@@ -205,15 +205,15 @@ assumed; see the debt pass below.
 **Fixed in code** (49 findings, group 3 of the original analysis plus everything else that was
 genuinely constant-worthy):
 
-| Constants introduced                                                                                                                                                                      | Home                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `TypeFeatureCollection`, `GeometryType{Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon}`, `FeatureKind{Source,Building,Barrier,Receiver}`, `SourceType{Point,Line,Area}` | `internal/geo/modelgeojson/types.go`         |
-| `ArtifactKind{ModelNormalizedGeoJSON,ModelDumpJSON,ModelValidationReport,RunResult*}`, `ArtifactKindRunResultPrefix`, `ArtifactID{ModelNormalized,ModelDump,ModelValidation}`             | `internal/domain/project/model.go`           |
-| `errorCode{BadRequest,NotFound,InternalError}`                                                                                                                                            | `internal/api/httpv1/handler.go`             |
-| `commandNameCompare`; `commandNameBench`, `benchRunID`; `sampleIndicator{Lden,Lnight}`                                                                                                    | `internal/app/cli/{compare,bench,export}.go` |
-| `defaultScenarioID`, `defaultStandardProfile`                                                                                                                                             | `internal/io/projectfs/store.go`             |
-| `taskStatus{Passed,Skipped}` (next to the existing `taskStatusFailed`); `evidenceClass{Synthetic,Derived}`, `provenance{Synthetic,Derived}`                                               | `internal/qa/acceptance/`                    |
-| `c1Effect{Schiene,Reflexion}`                                                                                                                                                             | `internal/standards/schall03/tables.go`      |
+| Constants introduced                                                                                                                                                                      | Home                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `TypeFeatureCollection`, `GeometryType{Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon}`, `FeatureKind{Source,Building,Barrier,Receiver}`, `SourceType{Point,Line,Area}` | `internal/geo/modelgeojson/types.go`                |
+| `ArtifactKind{ModelNormalizedGeoJSON,ModelDumpJSON,ModelValidationReport,RunResult*}`, `ArtifactKindRunResultPrefix`, `ArtifactID{ModelNormalized,ModelDump,ModelValidation}`             | `internal/domain/project/model.go`                  |
+| `errorCode{BadRequest,NotFound,InternalError}`                                                                                                                                            | `internal/api/httpv1/response.go`                   |
+| `commandNameCompare`; `commandNameBench`, `benchRunID`; `sampleIndicator{Lden,Lnight}`                                                                                                    | `internal/app/cli/{compare,bench,export_sample}.go` |
+| `defaultScenarioID`, `defaultStandardProfile`                                                                                                                                             | `internal/io/projectfs/store.go`                    |
+| `taskStatus{Passed,Skipped}` (next to the existing `taskStatusFailed`); `evidenceClass{Synthetic,Derived}`, `provenance{Synthetic,Derived}`                                               | `internal/qa/acceptance/`                           |
+| `c1Effect{Schiene,Reflexion}`                                                                                                                                                             | `internal/standards/schall03/tables.go`             |
 
 The GeoJSON tags are now sourced from `modelgeojson` in every importer
 (`osmimport`, `gpkgimport`, `fgbimport`, `citygmlimport`) and in `internal/app/cli`, replacing the

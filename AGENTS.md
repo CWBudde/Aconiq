@@ -62,7 +62,7 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 `just fe-install`, `fe-dev`, `fe-build`, `fe-typecheck`, `fe-lint`, `fe-lint-fix`, `fe-test`, `fe-test-coverage`, `fe-coverage-report`, `fe-e2e`, `fe-bundle-check`, `fe-api` / `fe-api-check`, and `fe-ci` (api contract + typecheck + lint + test + build + bundle-check). `just fe-build-wasm` builds the frontend in WASM-only mode.
 
-`frontend/src/api/schema.ts` is generated from the API's OpenAPI document by `frontend/scripts/generate-api-client.mjs`, which exports the spec with `go run ./cmd/aconiq openapi` and never stores it. `just fe-api` rewrites the file; `just fe-api-check` regenerates into a temp file and fails on the diff, which is the gate in `fe-ci`. Do not hand-edit that file — put the change in `backend/internal/api/httpv1/openapi.go` and regenerate. The hand-written half of the contract lives in `frontend/src/api/client.ts`.
+`frontend/src/api/schema.ts` is generated from the API's OpenAPI document by `frontend/scripts/generate-api-client.mjs`, which exports the spec with `go run ./cmd/aconiq openapi` and never stores it. `just fe-api` rewrites the file; `just fe-api-check` regenerates into a temp file and fails on the diff, which is the gate in `fe-ci`. Do not hand-edit that file — put the change in the `backend/internal/api/httpv1/openapi_<area>.go` file for that route area (shared pieces live in `openapi.go`) and regenerate. The hand-written half of the contract lives in `frontend/src/api/client.ts`.
 
 ### Aggregates
 
@@ -223,7 +223,7 @@ POST /api/v1/transform                 project a coordinate batch between two CR
 GET  /api/v1/openapi.json
 ```
 
-Responses use a standardized JSON error envelope (`code`, `message`, `details`, `hint`). Keep `handler.go` and `openapi.go` in sync — the spec is hand-built, not generated from the mux.
+Responses use a standardized JSON error envelope (`code`, `message`, `details`, `hint`). Keep the route handlers and their `openapi_<area>.go` sections in sync — the spec is hand-built, not generated from the mux.
 
 ### Project Format v1
 
