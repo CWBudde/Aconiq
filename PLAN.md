@@ -1159,7 +1159,7 @@ editing several of its files rather than one package of its own.
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
 - [ ] **Two `aconiq run` processes on one project lose a run.** Measured 2026-10-05: two
-      concurrent runs, 20 rounds, failed 19 of 40 on `main` and 13 of 40 with #PR — the rate is
+      concurrent runs, 20 rounds, failed 19 of 40 on `main` and 13 of 40 with #92 — the rate is
       timing, not either change. Each process loads `.noise/project.json`, appends its run and
       saves, so the later save drops the other's entry, and the loser fails in `cli.finalizeRun`
       with "run … not found in project manifest". `atomicfile` makes each save whole; it cannot
@@ -1281,7 +1281,7 @@ editing several of its files rather than one package of its own.
         premise was wrong** while it stood: the source types really were distinct Go types, whose
         nested `AirportRef` and `MovementPeriod` were declared per package, so no conversion was
         possible. That is what the alias removed.
-- [x] **`internal/results` no longer sits under the reporting tree.** (2026-10-05, #PR) A pure
+- [x] **`internal/results` no longer sits under the reporting tree.** (2026-10-05, #92) A pure
       move; the package name stayed `results`. The live constraint is that **two frontend parity
       tests reach its testdata by relative path** (`raster-bin.parity.test.ts`,
       `receiver-csv.parity.test.ts`), so moving it again breaks `fe-test`, not `go test`.
@@ -1334,7 +1334,7 @@ editing several of its files rather than one package of its own.
       **An empty CRS stays legal and stays `0`** — it means no projection was declared — and so
       does a `WKT:` identifier. And **`app/cli` holds the reason on the context rather than
       raising it in the constructor**, because only the GeoPackage formats read an EPSG code.
-- [x] **Every whole-buffer artifact writer replaces rather than overwrites.** (2026-10-05, #PR)
+- [x] **Every whole-buffer artifact writer replaces rather than overwrites.** (2026-10-05, #92)
       `terrain.tif` (both writers), the engine's chunk cache, `run-state.json` and
       `run-output.json`, both `run.log` rewrites, the run result JSON and rasters, and the bundle
       and report writers now go through `atomicfile.WriteFile`; `engine.writeChunk`'s clock-named
@@ -1353,7 +1353,7 @@ editing several of its files rather than one package of its own.
       `atomicfile.WriteFile`; they need a streaming temp-and-rename helper, for which
       `io/lglnimport/fetch.go` is the precedent (and the only writer that already syncs). Decide
       the fsync question for both helpers at the same time.
-- [x] **The god files are split.** (2026-10-05, #PR) `handler.go`, `openapi.go`, `report.go`,
+- [x] **The god files are split.** (2026-10-05, #92) `handler.go`, `openapi.go`, `report.go`,
       `compare.go`, `compare_raster.go`, `export.go`, `run_options.go` and `run_persist.go` (987 to
       1 446 lines) were split by route area, per-format writer and standard family, as pure moves:
       declaration inventories, test lists, the OpenAPI document and the report templates are
