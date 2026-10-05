@@ -1,18 +1,24 @@
 // GIS format exports for `aconiq export --format`.
 //
 // Split out of export.go, which carries the command, the bundle staging and
-// the report generation. These are the georeferenced outputs — GeoTIFF, COG,
-// GeoPackage and contours — plus the one decision they all depend on: where
-// the raster sits on the ground.
+// the manifest write. These are the georeferenced outputs — GeoTIFF, COG,
+// GeoPackage and contours — the manifest entries their files get, plus the
+// one decision they all depend on: where the raster sits on the ground.
 
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/report/contour"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
@@ -566,4 +572,125 @@ func (c *formatExportContext) exportContourGeoPackage(out map[string][]string) e
 	out[string(exportfmt.FormatContourGeoPackage)] = []string{relativePath(c.bundleDir, contourGpkgPath)}
 
 	return nil
+}
+
+// formatArtifactInputs is what an artifact ref needs beyond the file itself.
+type formatArtifactInputs struct {
+	storeRoot string
+	runID     string
+	exportID  string
+	createdAt time.Time
+}
+
+// formatArtifactKinds maps a format name to the artifact kind its files get.
+//
+// A format missing from this map produces no ref rather than a generic one: a
+// consumer switching on `Kind` would render an unlabelled row, and the export
+// page's kind table is explicitly required to carry a row per kind.
+var formatArtifactKinds = map[string]string{
+	string(exportfmt.FormatGeoTIFF):           project.ArtifactKindExportFormatGeoTIFF,
+	string(exportfmt.FormatCOG):               project.ArtifactKindExportFormatCOG,
+	string(exportfmt.FormatGeoPackage):        project.ArtifactKindExportFormatGeoPackage,
+	string(exportfmt.FormatContourGeoJSON):    project.ArtifactKindExportFormatContourGeoJSON,
+	string(exportfmt.FormatContourGeoPackage): project.ArtifactKindExportFormatContourGPKG,
+}
+
+// formatExportArtifacts turns the written format files into manifest entries.
+//
+// Until now these files existed only in `export-summary.json`'s
+// `exported_formats` — reachable by reading that one file and by nothing else.
+// No `ArtifactRef` meant no id, so `GET /api/v1/artifacts/{id}/content` could
+// not serve them and the frontend had no URL for a GeoTIFF or a contour set.
+//
+// The paths arrive bundle-relative, because that is what the summary records;
+// an `ArtifactRef.Path` is project-root-relative, so each is rejoined to the
+// bundle and re-relativised. One ref per file, not per format: GeoTIFF and COG
+// write one file per raster band.
+func formatExportArtifacts(
+	exportedPaths map[string][]string,
+	bundleDir string,
+	in formatArtifactInputs,
+) []project.ArtifactRef {
+	// Map iteration order must not reach the manifest: the artifact list is
+	// part of a file this project hashes and diffs.
+	formatNames := slices.Sorted(maps.Keys(exportedPaths))
+
+	refs := make([]project.ArtifactRef, 0, len(exportedPaths))
+
+	for _, formatName := range formatNames {
+		kind, ok := formatArtifactKinds[formatName]
+		if !ok {
+			continue
+		}
+
+		for index, bundleRelative := range exportedPaths[formatName] {
+			absolute := filepath.Join(bundleDir, filepath.FromSlash(bundleRelative))
+
+			refs = append(refs, project.ArtifactRef{
+				// The export id makes the ref unique per bundle and the index
+				// unique per file within it, so re-exporting one run replaces
+				// nothing and collides with nothing.
+				ID:        fmt.Sprintf("artifact-export-%s-%s-%d", in.exportID, formatName, index),
+				RunID:     in.runID,
+				Kind:      kind,
+				Path:      relativePath(in.storeRoot, absolute),
+				CreatedAt: in.createdAt,
+			})
+		}
+	}
+
+	return refs
+}
+
+// loadModelFeaturesFromGeoJSON reads a normalized model GeoJSON file and converts
+// its features into export.ModelFeature values for GeoPackage export.
+func loadModelFeaturesFromGeoJSON(geojsonPath string) ([]exportfmt.ModelFeature, error) {
+	data, err := os.ReadFile(geojsonPath)
+	if err != nil {
+		return nil, fmt.Errorf("read model geojson: %w", err)
+	}
+
+	var fc struct {
+		Features []struct {
+			Properties map[string]any `json:"properties"`
+			Geometry   struct {
+				Type        string `json:"type"`
+				Coordinates any    `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+
+	err = json.Unmarshal(data, &fc)
+	if err != nil {
+		return nil, fmt.Errorf("parse model geojson: %w", err)
+	}
+
+	out := make([]exportfmt.ModelFeature, 0, len(fc.Features))
+
+	for _, f := range fc.Features {
+		mf := exportfmt.ModelFeature{
+			GeometryType: f.Geometry.Type,
+			Coordinates:  f.Geometry.Coordinates,
+		}
+
+		if id, ok := f.Properties["id"].(string); ok {
+			mf.ID = id
+		}
+
+		if kind, ok := f.Properties["kind"].(string); ok {
+			mf.Kind = kind
+		}
+
+		if st, ok := f.Properties["source_type"].(string); ok {
+			mf.SourceType = st
+		}
+
+		if h, ok := f.Properties["height_m"].(float64); ok {
+			mf.HeightM = h
+		}
+
+		out = append(out, mf)
+	}
+
+	return out, nil
 }
