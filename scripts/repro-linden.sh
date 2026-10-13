@@ -33,7 +33,8 @@
 # receiver points instead of the auto-grid.
 #
 # Output: wall and CPU time (from /usr/bin/time -v when it exists, from the
-# bash `time` keyword otherwise), DIR/cpu.pprof, and its top 25 functions.
+# clock and the `times` builtin otherwise), DIR/cpu.pprof, and its top 25
+# functions. INT and TERM are forwarded to the run; see "Signals" below.
 
 set -euo pipefail
 
@@ -105,14 +106,71 @@ run_args=(
 
 echo "==> aconiq ${run_args[*]}"
 
-status=0
+# Signals. A killed recipe must never leave a computing aconiq behind: an
+# earlier version of this script died on SIGTERM while the run it had started
+# went on computing for two hours, reparented to init. So the run is started in
+# the background, in a process group of its own (`set -m`), and this script
+# stays in the foreground waiting for it, forwarding INT and TERM to it.
+#
+# The process group is the point. A Ctrl-C at the terminal reaches every
+# process in the foreground group; were aconiq in it, it would hear the
+# terminal's SIGINT and the forwarded one, and a second signal ends aconiq
+# outright, without its profile. In a group of its own it hears exactly the one
+# forwarded here, which it treats as a request to stop: it records the run as
+# failed and writes the profile. Both signals are forwarded as SIGINT because
+# /usr/bin/time ignores SIGINT but dies on SIGTERM, which would orphan aconiq
+# again; aconiq handles the two alike.
+#
+# aconiq checks for cancellation between receivers, so on a building-dense
+# scene the stop can take as long as one receiver does — on Linden, tens of
+# minutes. A second Ctrl-C (see the two-second rule below) is forwarded too,
+# and ends aconiq at once, without the profile.
+set -m
+
+start_ns="$(date +%s%N)"
 if [ -x /usr/bin/time ]; then
-	/usr/bin/time -v -o "$time_report" "$aconiq" "${run_args[@]}" || status=$?
-	echo "==> Timing"
+	/usr/bin/time -v -o "$time_report" "$aconiq" "${run_args[@]}" &
+else
+	"$aconiq" "${run_args[@]}" &
+fi
+child=$!
+
+# One stop request often arrives here twice: `just` forwards the signal it gets
+# to this script, and a Ctrl-C at the terminal, or GNU timeout, signals the
+# whole group, this script included. Forwarding both would be the second signal
+# that kills aconiq without its profile, so a signal within two seconds of the
+# last one forwarded is dropped. A deliberate second Ctrl-C comes later.
+last_forward=0
+stop_child() {
+	local now
+	now="$(date +%s)"
+	if [ $((now - last_forward)) -ge 2 ]; then
+		last_forward="$now"
+		echo "==> Signal received; asking aconiq to stop (it writes the profile on the way out)" >&2
+		kill -INT -- "-$child" 2>/dev/null || true
+	fi
+}
+trap stop_child INT TERM
+
+# `wait` returns early when a trapped signal arrives, so wait until the child
+# is really gone; bash keeps the exit status of a reaped background job, so the
+# final `wait` reports it either way.
+while kill -0 "$child" 2>/dev/null; do
+	wait "$child" || true
+done
+status=0
+wait "$child" || status=$?
+end_ns="$(date +%s%N)"
+
+echo "==> Timing"
+if [ -s "$time_report" ]; then
 	grep -E 'Elapsed \(wall clock\)|User time|System time|Percent of CPU|Maximum resident' "$time_report"
 else
-	echo "==> Timing (bash time: real = wall, user + sys = CPU)"
-	time "$aconiq" "${run_args[@]}" || status=$?
+	echo "Wall: $(((end_ns - start_ns) / 1000000)) ms"
+	# Not piped: in a pipeline `times` would run in a subshell that has no
+	# children. The second line is aconiq's CPU, user then system.
+	echo "CPU (user system) of this shell, then of aconiq:"
+	times
 fi
 
 if [ "$status" -ne 0 ]; then
@@ -124,4 +182,7 @@ if [ -s "$profile" ]; then
 	go tool pprof -top -nodecount=25 "$aconiq" "$profile"
 fi
 
-exit "$status"
+# The run's status is the script's. A subshell rather than `exit`, because
+# ShellCheck 0.11 reads a top-level `exit` as the end of anything the trap
+# could still call, and reports stop_child as never invoked (SC2329).
+(exit "$status")
