@@ -31,11 +31,13 @@ const manifestLockFileName = "project.json.lock"
 //
 // # How
 //
-// An advisory lock on manifestLockFileName: flock(2) on the Unix systems that
-// have it, LockFileEx on Windows. Both are released by the kernel when the
-// process dies, so a killed `aconiq run` cannot leave the project locked. On
-// a platform with neither — js/wasm, which has no project folder to share —
-// only the in-process mutex below applies.
+// An advisory lock on manifestLockFileName: flock(2) on every Unix but AIX
+// (Linux, Android, macOS, iOS, the BSDs, Solaris, illumos), an fcntl record
+// lock on AIX, LockFileEx on Windows. All three are released by the kernel
+// when the process dies, so a killed `aconiq run` cannot leave the project
+// locked. Only on js/wasm, wasip1 and plan9 is there no file lock, and only
+// the in-process mutex below applies; js/wasm, the one of them this
+// repository builds for, has no project folder another process could share.
 //
 // The in-process mutex is taken first and always. flock already excludes two
 // descriptors in one process, but the mutex is what holds on the fallback
