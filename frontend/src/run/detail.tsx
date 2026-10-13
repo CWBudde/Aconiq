@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Info, RefreshCw, Terminal, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Info,
+  RefreshCw,
+  Square,
+  Terminal,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/ui/components/button";
 import { Callout } from "@/ui/callout";
@@ -9,10 +16,12 @@ import { SectionHeading } from "@/ui/page-header";
 import { StatusBadge } from "@/ui/status-badge";
 import { isFinished, runTiming } from "@/ui/run-status";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
-import { useDeleteRun, useRunLog } from "@/api/hooks";
+import { useCancelRun, useDeleteRun, useRunLog } from "@/api/hooks";
 import { backend } from "@/api/backend";
 import { asAPIRequestError } from "@/api/api-error";
 import type { ArtifactRef, RunSummary } from "@/api/client";
+import { RunProgressBar } from "@/run/progress-bar";
+import { progressOfRun } from "@/run/run-progress";
 import { ProgressTimeline } from "@/run/timeline";
 import { useStandardLabel } from "@/run/use-standard-label";
 import { m } from "@/i18n/messages";
@@ -134,10 +143,10 @@ export function RunDetail({
   /** Called once the run is gone, so the page can move focus off the pane. */
   onDeleted: () => void;
 }) {
-  const { data: log, isLoading: logLoading } = useRunLog(
-    run.id,
-    run.status === "running" || run.status === "pending",
-  );
+  const active = run.status === "running" || run.status === "pending";
+  const { data: log, isLoading: logLoading } = useRunLog(run.id, active);
+  const cancelRun = useCancelRun();
+  const cancelOffered = active && backend.capabilities.canCancelRunningRun;
   const lines = log?.lines ?? [];
   const standardLabel = useStandardLabel();
   const deleteRun = useDeleteRun();
@@ -220,10 +229,15 @@ export function RunDetail({
       ) : null}
 
       {/* Progress timeline */}
-      <section>
+      <section className="space-y-3">
         <SectionHeading variant="eyebrow" className="mb-2">
           {m.section_progress()}
         </SectionHeading>
+        {/* While the server computes the run, how far it has got. It comes
+            with the run itself, from the polled list, so a page reloaded in
+            the middle of a run picks the bar up where it is: there is nothing
+            to reattach to but the run's id. */}
+        {active ? <RunProgressBar progress={progressOfRun(run)} /> : null}
         {logLoading ? (
           <LoadingLine />
         ) : (
@@ -266,12 +280,53 @@ export function RunDetail({
         </Callout>
       ) : null}
 
-      {/* Actions. There is no Cancel: the API has no cancel endpoint and the
-          WASM kernel completes inside `startRun`, so no capability flag would
-          ever enable one. Delete is offered only once the run has finished —
-          the API refuses `run_not_finished` while its directory is still being
-          written, and a button that is always refused is not an offer. */}
+      {/* A stop that was asked for is said so until the run actually ends:
+          the request returns long before the process does, and a button that
+          simply went quiet would read as ignored. */}
+      {cancelOffered && cancelRun.isSuccess ? (
+        <Callout
+          variant="neutral"
+          icon={Info}
+          data-testid="run-cancel-requested"
+        >
+          {m.msg_run_cancel_requested()}
+        </Callout>
+      ) : null}
+      {cancelRun.isError ? (
+        <Callout
+          variant="destructive"
+          icon={AlertCircle}
+          data-testid="run-cancel-error"
+          data-error-code={asAPIRequestError(cancelRun.error)?.code}
+          title={m.msg_run_cancel_failed()}
+        >
+          <p>{cancelRun.error.message}</p>
+          {asAPIRequestError(cancelRun.error)?.hint !== undefined ? (
+            <p>{asAPIRequestError(cancelRun.error)?.hint}</p>
+          ) : null}
+        </Callout>
+      ) : null}
+
+      {/* Actions. Cancel is offered for a running run where the backend can
+          stop one it is not holding inside `startRun` — the API, which
+          supervises the process. Delete is offered only once the run has
+          finished — the API refuses `run_not_finished` while its directory is
+          still being written, and a button that is always refused is not an
+          offer. */}
       <section className="flex gap-2">
+        {cancelOffered ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={cancelRun.isPending || cancelRun.isSuccess}
+            onClick={() => {
+              cancelRun.mutate(run.id);
+            }}
+          >
+            <Square aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+            {m.action_cancel_run()}
+          </Button>
+        ) : null}
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
           {m.action_retry()}

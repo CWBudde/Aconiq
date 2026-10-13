@@ -42,6 +42,21 @@ const (
 	// errorCodeRunNotFinished answers a delete of a run that is still pending or
 	// running: its directory is being written by a live `aconiq run`.
 	errorCodeRunNotFinished = "run_not_finished"
+	// errorCodeRunNotRunning answers a cancel of a run that has already
+	// finished, failed or been cancelled: there is nothing left to stop.
+	errorCodeRunNotRunning = "run_not_running"
+	// errorCodeRunNotOwned answers a cancel of a run that is running, but in a
+	// process this server did not start — an `aconiq run` in a terminal, or a
+	// run of a server since restarted. It is not run_not_running: the run is
+	// live, and the remedy is to stop it where it was started.
+	errorCodeRunNotOwned = "run_not_owned"
+	// errorCodeServerStopping answers a run request that arrives while the
+	// server is shutting down.
+	errorCodeServerStopping = "server_stopping"
+	// errorCodeRunFailed answers a run request whose run could not be started:
+	// the run command failed before it created the run's row, or never
+	// created one at all.
+	errorCodeRunFailed = "run_failed"
 	// errorCodeExportInsideRun answers a delete whose export bundle sits inside
 	// the run directory: the bundle is kept, so the directory cannot go.
 	errorCodeExportInsideRun = "export_inside_run"

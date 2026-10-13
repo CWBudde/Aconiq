@@ -187,19 +187,15 @@ func TestRunLogRouteStillWinsOverTheRunResource(t *testing.T) {
 		t.Fatalf("expected the log endpoint to answer 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// And a GET of the run resource itself is now a 405, not a 404: the resource
-	// is routed, the method is simply not offered.
-	assertErrorCode(t, getRun(t, handler, run.ID), http.StatusMethodNotAllowed, errorCodeMethodNotAllowed)
-}
+	// And the run resource itself answers GET with the run, not with its log.
+	if got := getRun(t, handler, run.ID); got.ID != run.ID {
+		t.Fatalf("GET of the run resource answered %+v", got)
+	}
 
-func getRun(t *testing.T, handler http.Handler, runID string) *httptest.ResponseRecorder {
-	t.Helper()
-
-	req := newAPIRequest(http.MethodGet, "/api/v1/runs/"+runID, nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	return rec
+	// A method the resource does not offer is a 405, not a 404.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, newAPIRequest(http.MethodPut, "/api/v1/runs/"+run.ID, nil))
+	assertErrorCode(t, rec, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed)
 }
 
 func TestOpenAPIDocumentsRunDelete(t *testing.T) {

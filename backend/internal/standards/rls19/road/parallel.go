@@ -73,13 +73,49 @@ func ComputeReceiverOutputsParallel(
 	cfg PropagationConfig,
 	workers int,
 ) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsParallelProgress(ctx, receivers, sources, barriers, cfg, workers, nil)
+}
+
+// ComputeReceiverOutputsParallelProgress is ComputeReceiverOutputsParallel
+// with a progress report, on the terms ProgressFunc states. A nil progress is
+// ComputeReceiverOutputsParallel exactly.
+//
+// # Per receiver, not per chunk
+//
+// The report comes after every receiver rather than at chunk boundaries,
+// because a chunk can be a very long time. partition.Size hands 130 receivers
+// over 12 workers out as chunks of 10, and on a building-dense city extract a
+// receiver costs minutes of CPU — so a chunk-boundary report would first
+// arrive the better part of an hour into the run, which is indistinguishable
+// from a hung one. Counting receivers needs nothing from the partition: it is
+// the one number every chunk can add to without knowing where it sits.
+//
+// # Why progress cannot move a result
+//
+// The counter is written by the walk and read by nothing in it. The partition
+// is still partition.Size's — a pure function of two integers, which never
+// sees the clock a progress consumer is free to read — and the merge is still
+// by chunk index. TestProgressLeavesTheParallelOutputsBitIdentical pins that
+// with and without a progress func, at every worker count the other tests
+// use.
+func ComputeReceiverOutputsParallelProgress(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	barriers []Barrier,
+	cfg PropagationConfig,
+	workers int,
+	progress ProgressFunc,
+) ([]ReceiverOutput, error) {
+	counter := newProgressCounter(len(receivers), progress)
+
 	if workers <= 1 || len(receivers) == 0 {
-		return ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
+		return computeReceiverOutputsCounted(ctx, receivers, sources, barriers, cfg, counter)
 	}
 
 	chunks := partition.Over(len(receivers), partition.Size(len(receivers), workers))
 	if len(chunks) <= 1 {
-		return ComputeReceiverOutputsContext(ctx, receivers, sources, barriers, cfg)
+		return computeReceiverOutputsCounted(ctx, receivers, sources, barriers, cfg, counter)
 	}
 
 	// The sequential walk checks ctx before receiver 0, ahead of the scene;
@@ -106,7 +142,7 @@ func ComputeReceiverOutputsParallel(
 		return nil, err
 	}
 
-	return scene.computeChunks(ctx, receivers, cfg, chunks, workers)
+	return scene.computeChunks(ctx, receivers, cfg, chunks, workers, counter)
 }
 
 // chunkResult is one chunk's answer, kept beside its error so the collector
@@ -137,6 +173,7 @@ func (s *Scene) computeChunks(
 	cfg PropagationConfig,
 	chunks []partition.Chunk,
 	workers int,
+	counter *progressCounter,
 ) ([]ReceiverOutput, error) {
 	results := make([]chunkResult, len(chunks))
 	jobs := make(chan partition.Chunk)
@@ -162,7 +199,7 @@ func (s *Scene) computeChunks(
 				// The caller's ctx, not computeCtx: a sibling's refusal must not
 				// turn a chunk already in flight into a cancellation, which
 				// collectChunks would then report ahead of the real refusal.
-				outputs, err := walker.ComputeReceiversContext(ctx, receivers[chunk.Start:chunk.End], cfg)
+				outputs, err := walker.computeReceiversCounted(ctx, receivers[chunk.Start:chunk.End], cfg, counter)
 				results[chunk.Index] = chunkResult{outputs: outputs, err: err, done: true}
 
 				if err != nil {

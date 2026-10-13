@@ -6,6 +6,7 @@ import type { ModelSaveResult, RunSpec } from "./backend";
 import type { RunLog, RunSummary } from "./client";
 import { buildCreateRunRequest } from "./http-backend";
 import {
+  useCancelRun,
   useCreateRun,
   useDeleteRun,
   useIsSavingModel,
@@ -45,6 +46,10 @@ const startRun = vi.hoisted(() =>
   >(),
 );
 
+const cancelRun = vi.hoisted(() =>
+  vi.fn<(runId: string) => Promise<RunSummary>>(),
+);
+
 const getRuns = vi.hoisted(() =>
   vi.fn(() => Promise.resolve(backendState.runs)),
 );
@@ -73,6 +78,7 @@ vi.mock("./backend", () => ({
     getRunLog,
     startRun,
     deleteRun: (runId: string) => Promise.resolve({ runId, retainedPaths: [] }),
+    cancelRun,
   },
   // The real predicate, restated rather than imported: a mock factory
   // replaces the whole module, and `hooks.ts` both calls this and re-exports
@@ -507,6 +513,31 @@ describe("useCreateRun", () => {
       result.current.cancel();
     });
     expect(result.current.cancelled).toBe(false);
+  });
+});
+
+describe("useCancelRun", () => {
+  it("asks the backend to stop the run and refetches the list it is in", async () => {
+    // The answer comes before the run has stopped, so what changes the page
+    // is the next read of the list — which the invalidation asks for now
+    // rather than at the next poll.
+    queryClient.clear();
+    cancelRun.mockResolvedValue(runWithStatus("running"));
+    queryClient.setQueryData(queryKeys.runs.list(), [runWithStatus("running")]);
+
+    const { result } = renderHook(() => useCancelRun(), { wrapper });
+    act(() => {
+      result.current.mutate("run-running");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(cancelRun).toHaveBeenCalledWith("run-running");
+    expect(
+      queryClient.getQueryState(queryKeys.runs.list())?.isInvalidated,
+    ).toBe(true);
   });
 });
 

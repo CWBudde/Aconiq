@@ -56,6 +56,9 @@ const state = vi.hoisted(() => {
     deletedArtifactIds: string[];
     retainedPaths: string[];
     deleteRunError: Error | null;
+    cancelledRunIds: string[];
+    cancelRunRequested: boolean;
+    cancelRunError: Error | null;
   } = {
     standards: [],
     runs: [],
@@ -72,6 +75,9 @@ const state = vi.hoisted(() => {
     deletedArtifactIds: [] as string[],
     retainedPaths: [] as string[],
     deleteRunError: null as Error | null,
+    cancelledRunIds: [] as string[],
+    cancelRunRequested: false,
+    cancelRunError: null as Error | null,
   };
   return value;
 });
@@ -93,8 +99,10 @@ vi.mock("@/api/backend", () => ({
         exportsOutliveRunDelete: state.runsAgainstSavedModel,
         canReprojectForDisplay: !state.runsAgainstSavedModel,
         // The same split the shipped modes have: browser mode owns the worker
-        // and can terminate it, the API has no cancel endpoint.
+        // and can terminate it; the API's `startRun` resolves on the 202.
         runsAreCancellable: !state.runsAgainstSavedModel,
+        // ...and the API stops a run it is computing from the run's panel.
+        canCancelRunningRun: state.runsAgainstSavedModel,
         canImportLGLN: state.runsAgainstSavedModel,
       };
     },
@@ -127,6 +135,15 @@ vi.mock("@/api/hooks", () => ({
     isPending: false,
     isError: state.deleteRunError !== null,
     error: state.deleteRunError,
+  }),
+  useCancelRun: () => ({
+    mutate: (runId: string) => {
+      state.cancelledRunIds.push(runId);
+    },
+    isPending: false,
+    isSuccess: state.cancelRunRequested,
+    isError: state.cancelRunError !== null,
+    error: state.cancelRunError,
   }),
   useCreateRun: () => ({
     mutate: (spec: Record<string, unknown>) => {
@@ -303,6 +320,9 @@ beforeEach(() => {
   state.deletedArtifactIds = [];
   state.retainedPaths = [];
   state.deleteRunError = null;
+  state.cancelledRunIds = [];
+  state.cancelRunRequested = false;
+  state.cancelRunError = null;
   useModelStore.getState().reset();
   resetProjectSyncStore();
   resetProjectHydration();
@@ -917,6 +937,137 @@ describe("RunPage run deletion", () => {
     );
     expect(alert).toHaveTextContent("inside the run directory");
     expect(alert).toHaveTextContent("Move the export bundle out");
+  });
+});
+
+/**
+ * In API mode a run is computed in the background: `startRun` resolves on the
+ * 202 and the run is followed through the polled list. So the page has to show
+ * a running run's progress from the run itself — which is also all a reloaded
+ * page has to go on — and offer to stop it there.
+ */
+describe("RunPage background run", () => {
+  function runningRun(
+    progress?: RunSummary["progress"],
+    status: RunSummary["status"] = "running",
+  ): RunSummary {
+    return {
+      id: "run-bg",
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "2019",
+      profile: "default",
+      status,
+      started_at: "2026-10-13T12:00:00Z",
+      finished_at: "2026-10-13T12:00:00Z",
+      log_path: ".noise/runs/run-bg/run.log",
+      artifacts: [],
+      ...(progress === undefined ? {} : { progress }),
+    };
+  }
+
+  // What a reload in the middle of a run lands on: no dialog, no mutation,
+  // only the list the server answers with.
+  function showReloadedPage(run: RunSummary) {
+    state.runs = [run];
+    state.standards = [standard("rls19-road", "normative")];
+    render(
+      <MemoryRouter>
+        <RunPage />
+      </MemoryRouter>,
+    );
+  }
+
+  it("reattaches to a running run and draws its progress with the time left", () => {
+    showReloadedPage(
+      runningRun({
+        done: 3,
+        total: 10,
+        started_at: "2026-10-13T12:00:01Z",
+        updated_at: "2026-10-13T12:00:31Z",
+        eta_seconds: 70,
+      }),
+    );
+
+    const bar = screen.getByRole("progressbar", {
+      name: m.label_run_progress(),
+    });
+    expect(bar.getAttribute("aria-valuenow")).toBe("3");
+    expect(bar.getAttribute("aria-valuemax")).toBe("10");
+    expect(
+      screen.getByText(m.status_run_progress({ done: 3, total: 10 })),
+    ).toBeTruthy();
+    // 70 s rounds up to two minutes rather than reading as one.
+    expect(screen.getByTestId("run-progress-eta").textContent).toBe(
+      m.status_run_eta_minutes({ minutes: 2 }),
+    );
+  });
+
+  it("says the run is starting until the first report arrives", () => {
+    showReloadedPage(runningRun());
+
+    expect(screen.getByTestId("run-progress-starting")).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("draws no bar for a run that has finished", () => {
+    showReloadedPage(runningRun(undefined, "completed"));
+
+    expect(screen.queryByTestId("run-progress")).toBeNull();
+    expect(screen.queryByTestId("run-progress-starting")).toBeNull();
+  });
+
+  it("stops the run it shows when Cancel is pressed", () => {
+    showReloadedPage(runningRun());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_cancel_run() }),
+    );
+
+    expect(state.cancelledRunIds).toEqual(["run-bg"]);
+  });
+
+  it("says a stop was asked for until the run ends", () => {
+    state.cancelRunRequested = true;
+    showReloadedPage(runningRun());
+
+    expect(screen.getByTestId("run-cancel-requested")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: m.action_cancel_run() })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("shows the server's own words when the stop is refused", () => {
+    state.cancelRunError = new APIRequestError({
+      code: "run_not_owned",
+      message: 'run "run-bg" was not started by this server',
+      hint: "Stop it where it was started.",
+    });
+    showReloadedPage(runningRun());
+
+    const callout = screen.getByTestId("run-cancel-error");
+    expect(callout.getAttribute("data-error-code")).toBe("run_not_owned");
+    expect(
+      within(callout).getByText("Stop it where it was started."),
+    ).toBeTruthy();
+  });
+
+  it("offers no Cancel on a finished run, nor where the backend cannot stop one", () => {
+    showReloadedPage(runningRun(undefined, "failed"));
+    expect(
+      screen.queryByRole("button", { name: m.action_cancel_run() }),
+    ).toBeNull();
+  });
+
+  it("offers no panel Cancel in browser mode, where runs end inside startRun", () => {
+    state.runsAgainstSavedModel = false;
+    showReloadedPage(runningRun());
+
+    expect(
+      screen.queryByRole("button", { name: m.action_cancel_run() }),
+    ).toBeNull();
   });
 });
 

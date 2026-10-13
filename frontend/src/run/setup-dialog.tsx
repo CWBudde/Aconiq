@@ -34,7 +34,7 @@ import {
   EvidenceTierWarning,
 } from "@/ui/evidence-tier-badge";
 import { useCreateRun, useStandards } from "@/api/hooks";
-import type { RunProgress } from "@/api/hooks";
+import { RunProgressBar } from "@/run/progress-bar";
 import { backend } from "@/api/backend";
 import {
   asAPIRequestError,
@@ -92,79 +92,6 @@ function RunCreateError({ error }: { error: Error }) {
       <p>{error.message}</p>
       {apiError?.hint !== undefined ? <p>{apiError.hint}</p> : null}
     </Callout>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Run progress
-// ---------------------------------------------------------------------------
-
-/**
- * What the dialog shows while a run is in flight.
- *
- * Determinate as soon as the backend has reported once, and a plain phase
- * label before that. What is left on that label is the stretch before the
- * receiver count is even known: spawning the worker, instantiating the WASM
- * module and projecting the model through `resolveComputeModel`. A mode that
- * never reports at all — the HTTP backend — stays on it for the whole run,
- * which is exactly today's behaviour there.
- *
- * It used to cover far more than that, and that was the bug: browser mode
- * reported only between chunks of 256 receivers, so a scene with buildings in
- * it — tens of milliseconds a receiver — spent twenty seconds and more on
- * "starting the run" with nothing to show. The fix is on both sides of the
- * boundary and not in this component: `kernel-client.ts` reports 0 of n the
- * moment it dispatches, so the reader at least learns the size of the job,
- * and `wasmkernel.ComputeRLS19Road` now sizes its chunks by how long they
- * take rather than by a fixed count. A bar at 0 of 13,000 is not a bar that
- * has stalled; a spinner that has said "starting" for a minute is.
- *
- * The bar carries an accessible name: a screen reader announcing "62%" with
- * nothing to attach it to is a worse answer than none, and axe fails an
- * unnamed progressbar outright. `aria-valuetext` repeats the visible sentence
- * because "62" out of "1600" is not what a listener wants to hear.
- */
-function RunProgressPanel({ progress }: { progress: RunProgress | null }) {
-  if (progress === null) {
-    return (
-      <p
-        className="flex items-center gap-2 text-xs text-muted-foreground"
-        data-testid="run-progress-starting"
-      >
-        <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
-        {m.status_starting_run()}
-      </p>
-    );
-  }
-
-  const { done, total } = progress;
-  // A run with no receivers is refused before it starts, so the guard is not
-  // for a case that happens — it is for not dividing by a number this
-  // component was handed rather than computed.
-  const percent = total > 0 ? Math.round(Math.min(done / total, 1) * 100) : 0;
-  const label = m.status_run_progress({ done, total });
-
-  return (
-    <div className="space-y-1.5" data-testid="run-progress">
-      <div
-        role="progressbar"
-        aria-label={m.label_run_progress()}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={done}
-        aria-valuetext={label}
-        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-      >
-        {/* `ease-linear` over the 100 ms the worker throttles to: the bar
-            should move at the speed the receivers are computed at, and an
-            ease-out would make every tick look like it was slowing down. */}
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-150 ease-linear"
-          style={{ width: `${String(percent)}%` }}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-    </div>
   );
 }
 
@@ -378,9 +305,10 @@ function RunSetupForm({
   // once per keystroke — see `useGridExtent`.
   const gridExtent = useGridExtent(receiverMode === "auto-grid");
 
-  // Asked of the capability, not of the mode: cancelling means terminating
-  // the kernel this tab owns, and no such lever exists over a run the API is
-  // executing.
+  // Asked of the capability, not of the mode: cancelling here means
+  // terminating the kernel this tab owns. The API's `startRun` is pending only
+  // until the server has accepted the run, and the run it starts is stopped
+  // from that run's panel instead.
   const cancelRunOffered =
     createRun.isPending && backend.capabilities.runsAreCancellable;
 
@@ -809,7 +737,7 @@ function RunSetupForm({
       ) : null}
 
       {createRun.isPending ? (
-        <RunProgressPanel progress={createRun.progress} />
+        <RunProgressBar progress={createRun.progress} />
       ) : null}
 
       {!isLoading && !error ? (

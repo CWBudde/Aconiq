@@ -36,6 +36,14 @@ type runCommandRequest struct {
 	// whole guarantee, and the 1-worker-vs-N hash test behind it, is that it
 	// does not. It goes in the run log instead.
 	workers int
+
+	// runID is the hidden --run-id: the id to record the run under, chosen by
+	// the caller. `aconiq serve` is the caller — it mints the id before it
+	// starts this process, so it can answer 202 with the id, find the row, and
+	// close that one row should this process die without closing it. Empty
+	// mints one here. projectfs.CreateRun validates it, so a malformed or
+	// already-used id is refused before anything is written.
+	runID string
 }
 
 // requireExperimentalOptIn refuses a run against a standard whose tier demands
@@ -160,6 +168,7 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 	}
 
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
+		RunID:      req.runID,
 		ScenarioID: req.scenarioID,
 		Standard: project.StandardRef{
 			Context: resolvedStandard.Context,
@@ -182,6 +191,18 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		return preparedRun{}, fmt.Errorf("create run for scenario %s: %w", req.scenarioID, err)
 	}
 
+	log := newRunLog(
+		run.StartedAt.Format(time.RFC3339)+" run started",
+		fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
+		fmt.Sprintf("%s evidence_tier=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.EvidenceTier),
+		fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
+		fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
+	)
+
+	// From here on run.log is written as it grows, so a run that is still
+	// computing can be read — by `GET /runs/{id}/log` above all.
+	log.streamTo(filepath.Join(store.Root(), filepath.FromSlash(run.LogPath)))
+
 	return preparedRun{
 		store:        store,
 		project:      proj,
@@ -192,13 +213,7 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		modelPath:    resolvedModelPath,
 		relModelPath: relModelPath,
 		runDir:       filepath.Join(store.Root(), ".noise", "runs", run.ID),
-		log: newRunLog(
-			run.StartedAt.Format(time.RFC3339)+" run started",
-			fmt.Sprintf("%s standard=%s version=%s profile=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.StandardID, resolvedStandard.Version, resolvedStandard.Profile),
-			fmt.Sprintf("%s evidence_tier=%s", run.StartedAt.Format(time.RFC3339), resolvedStandard.EvidenceTier),
-			fmt.Sprintf("%s model=%s", run.StartedAt.Format(time.RFC3339), relModelPath),
-			fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
-		),
+		log:          log,
 	}, nil
 }
 
@@ -262,6 +277,7 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 		runID:        prepared.run.ID,
 		cacheDir:     state.Config.CacheDir,
 		log:          prepared.log,
+		progress:     newRunProgress(ctx, prepared.store, prepared.run.ID, prepared.log),
 		projection:   projection,
 		mergeProvenance: func(metadata map[string]string) error {
 			return prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, metadata)

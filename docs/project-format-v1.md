@@ -21,7 +21,11 @@ Rationale:
 `<project-root>/`
 
 - `.noise/project.json` : project manifest (v1)
-- `.noise/runs/<run-id>/run.log` : run-local log
+- `.noise/runs/<run-id>/run.log` : run-local log, written as the run goes rather than only at its end
+- `.noise/runs/<run-id>/progress.json` : how far the receiver walk has got (`done`, `total`,
+  `started_at`, `updated_at`, `eta_seconds`), rewritten at most once a second while the run computes.
+  A report, not a result: nothing reads it back into the run, it is not an artifact, and only
+  standards that count receivers as they go (`rls19-road`, `iso9613`) write it
 - `.noise/runs/<run-id>/provenance.json` : run provenance manifest
 - `.noise/artifacts/` : generated artifacts (reserved)
 - `.noise/logs/` : shared logs (reserved)

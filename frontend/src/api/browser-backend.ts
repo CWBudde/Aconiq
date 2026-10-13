@@ -1990,6 +1990,9 @@ export const browserBackend = {
     // computation for real — see `cancelKernel`. Nothing is persisted before
     // the compute returns, so a cancelled run leaves no trace.
     runsAreCancellable: true,
+    // A run never outlives `startRun` here, so no run is ever `running` in the
+    // list for a panel to offer a Cancel on; the dialog's Cancel is the one.
+    canCancelRunningRun: false,
     // A tile is a ~50 MB CityGML download that the server fetches, parses with
     // the Go importer and caches on disk; the kernel carries none of that.
     canImportLGLN: false,
@@ -2273,6 +2276,16 @@ out geom;`;
           `The kernel publishes ${spec.standardId}, but this build has no model extraction for it`,
         );
     }
+  },
+
+  cancelRun(): Promise<RunSummary> {
+    // `canCancelRunningRun` is false: a run in this mode completes or is
+    // cancelled inside `startRun`, through the signal its hooks carry.
+    return Promise.reject(
+      new Error(
+        "Browser mode has no running run to cancel; a run is stopped from the run dialog",
+      ),
+    );
   },
 
   async createExport(runId: string): Promise<RunSummary> {

@@ -392,7 +392,9 @@ func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResul
 	propagationConfig.Barriers = barriers
 	propagationConfig.GroundZones = groundZones
 
-	outputs, err := iso9613.ComputeReceiverOutputsContext(ctx, receivers, sources, propagationConfig)
+	input.progress.start(len(receivers))
+
+	outputs, err := iso9613.ComputeReceiverOutputsProgress(ctx, receivers, sources, propagationConfig, input.progress.report)
 	if err != nil {
 		input.log.addf("iso9613 compute failed: %v", err)
 
@@ -457,8 +459,12 @@ func computeRLS19RoadReceivers(
 	workers := resolveComputeWorkers(input.workers)
 	input.log.addf("compute workers: %d", workers)
 
-	outputs, err := rls19road.ComputeReceiverOutputsParallel(
-		ctx, receivers, roadSources, barriers, cfg, workers,
+	// The walk reports each receiver as it completes; runProgress throttles
+	// that to the log and progress.json. Nothing the walk computes reads it.
+	input.progress.start(len(receivers))
+
+	outputs, err := rls19road.ComputeReceiverOutputsParallelProgress(
+		ctx, receivers, roadSources, barriers, cfg, workers, input.progress.report,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)

@@ -104,11 +104,11 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 	}
 
 	// A run's terminal status is written by the `aconiq run` subprocess that
-	// computes it, and that subprocess lives inside one HTTP request. So a
-	// server that is starting has none of its own in flight, and any run the
-	// manifest still calls running belongs to a process that is gone —
-	// killed, crashed, or cancelled with the request when a browser reloaded.
-	// Left alone it is a spinner in the UI that never stops.
+	// computes it, or — when that process dies without writing it — by the
+	// server that started it. A server that is starting has started nothing,
+	// so any run the manifest still calls running belongs to a process that
+	// is gone: killed, crashed, or orphaned by a server that did not live to
+	// close it. Left alone it is a spinner in the UI that never stops.
 	interrupted, err := store.FailInterruptedRuns(nowUTC, nil)
 	if err != nil {
 		return fmt.Errorf("reconcile interrupted runs: %w", err)
@@ -118,29 +118,26 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 		state.Logger.Warn("closed interrupted runs", "count", interrupted)
 	}
 
+	handler := httpv1.NewServeHandler(store, nowUTC, registry, httpv1.ServeOptions{
+		CORSOrigins: cfg.corsOrigins,
+		ListenAddr:  cfg.listenAddr,
+		APIToken:    cfg.apiToken,
+		Logger:      state.Logger,
+	})
+
 	server := &http.Server{
-		Addr: cfg.listenAddr,
-		Handler: httpv1.NewServeHandler(store, nowUTC, registry, httpv1.ServeOptions{
-			CORSOrigins: cfg.corsOrigins,
-			ListenAddr:  cfg.listenAddr,
-			APIToken:    cfg.apiToken,
-			Logger:      state.Logger,
-		}),
+		Addr:        cfg.listenAddr,
+		Handler:     handler,
 		ReadTimeout: 15 * time.Second,
 
-		// No write deadline. POST /api/v1/runs computes the run inside the
-		// request — an RLS-19 grid over a city extract is minutes, and there
-		// is no upper bound on it — so any deadline here is a deadline on how
-		// large a model the API may be asked about. At 30 s it silently
-		// capped that at about one small scene.
+		// No write deadline, and it is still deliberate although no run lives
+		// inside a request any more. GET /api/v1/events is a stream that stays
+		// open for as long as the page does, and a deadline would cut it off.
 		//
 		// ReadTimeout still bounds how long a client may take to send its
 		// request, and IdleTimeout still reaps kept-alive connections, so the
-		// slow-client exposure this removes is only on the response side of a
+		// slow-client exposure this leaves is only on the response side of a
 		// loopback-only server that already refuses non-loopback Hosts.
-		//
-		// The real fix is for a run not to hold a request open at all; that is
-		// tracked in PLAN.md as making runs asynchronous.
 		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
@@ -172,17 +169,36 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 
 		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "listen on "+cfg.listenAddr, err)
 	case <-runCtx.Done():
-		return shutdownServer(server, errCh, cfg.shutdownTimeout, state)
+		return shutdownServer(server, handler, errCh, cfg.shutdownTimeout, state)
 	}
 }
 
-func shutdownServer(server *http.Server, errCh <-chan error, timeout time.Duration, state commandState) error {
+// serveRunStopTimeout is how long a stopping server waits for its runs. A run
+// that is interrupted gets the API's interrupt grace (10 s) to record itself
+// before it is killed, and the server then closes its row; this leaves a few
+// seconds over that for the manifest write. A run still in flight past it is
+// left to the next `aconiq serve`, whose startup sweep closes it.
+const serveRunStopTimeout = 15 * time.Second
+
+func shutdownServer(server *http.Server, handler *httpv1.ServeHandler, errCh <-chan error, timeout time.Duration, state commandState) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	err := server.Shutdown(shutdownCtx)
+	shutdownErr := server.Shutdown(shutdownCtx)
+
+	// After Shutdown, so a request still waiting for its run to register has
+	// had its chance to be answered. And whether or not Shutdown met its
+	// deadline: the runs are not any request's, so nothing else stops them.
+	runsCtx, cancelRuns := context.WithTimeout(context.Background(), serveRunStopTimeout)
+	defer cancelRuns()
+
+	err := handler.StopRuns(runsCtx)
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "graceful shutdown", err)
+		state.Logger.Warn("runs still in flight at exit; the next serve closes them", "error", err)
+	}
+
+	if shutdownErr != nil {
+		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "graceful shutdown", shutdownErr)
 	}
 
 	err = <-errCh

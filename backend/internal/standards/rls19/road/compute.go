@@ -330,13 +330,24 @@ func (s *Scene) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationC
 // ComputeReceiversContext is ComputeReceivers under a context: once ctx is
 // done it stops before the next receiver and returns ctx.Err().
 func (s *Scene) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return s.computeReceiversCounted(ctx, receivers, cfg, nil)
+}
+
+// computeReceiversCounted is ComputeReceiversContext with a counter that is
+// told about each receiver as it completes. A nil counter counts nothing.
+func (s *Scene) computeReceiversCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
 		return s, nil
-	}, nil)
+	}, nil, counter)
 }
 
 // Walker is one goroutine's walk over a prepared Scene. It keeps the walk's
@@ -366,13 +377,24 @@ func (s *Scene) NewWalker() *Walker {
 // ComputeReceiversContext is Scene.ComputeReceiversContext on the walker's
 // scratch.
 func (w *Walker) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return w.computeReceiversCounted(ctx, receivers, cfg, nil)
+}
+
+// computeReceiversCounted is ComputeReceiversContext with a counter that is
+// told about each receiver as it completes. A nil counter counts nothing.
+func (w *Walker) computeReceiversCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
 		return w.scene, nil
-	}, w.scratch)
+	}, w.scratch, counter)
 }
 
 // ComputeReceivers is ComputeReceiversContext without a context.
@@ -486,13 +508,27 @@ func ComputeReceiverOutputsContext(
 	barriers []Barrier,
 	cfg PropagationConfig,
 ) ([]ReceiverOutput, error) {
+	return computeReceiverOutputsCounted(ctx, receivers, sources, barriers, cfg, nil)
+}
+
+// computeReceiverOutputsCounted is ComputeReceiverOutputsContext with a counter
+// that is told about each receiver as it completes. A nil counter counts
+// nothing.
+func computeReceiverOutputsCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	barriers []Barrier,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	return computeReceivers(ctx, receivers, cfg, func(first PropagationConfig) (*Scene, error) {
 		return prepareScene(sources, barriers, first)
-	}, nil)
+	}, nil, counter)
 }
 
 // computeReceivers walks the receivers in the order given.
@@ -504,7 +540,9 @@ func ComputeReceiverOutputsContext(
 // two errors around for a model that is wrong in both ways at once.
 //
 // ctx is checked before each receiver, ahead of that receiver's own checks, and
-// reads nothing the walk computes, so it cannot move a level.
+// reads nothing the walk computes, so it cannot move a level. counter is told
+// once a receiver's output has been appended, and nothing here reads it back
+// either.
 //
 // scratch is the walk's scratch when the caller holds one for the scene
 // prepare returns (see Walker), and nil to have one made for this call.
@@ -514,6 +552,7 @@ func computeReceivers(
 	cfg PropagationConfig,
 	prepare func(PropagationConfig) (*Scene, error),
 	scratch *pathScratch,
+	counter *progressCounter,
 ) ([]ReceiverOutput, error) {
 	var scene *Scene
 
@@ -564,6 +603,8 @@ func computeReceivers(
 			Receiver:   receiver,
 			Indicators: periodLevels.ToReceiverIndicators(),
 		})
+
+		counter.add(1)
 	}
 
 	return outputs, nil

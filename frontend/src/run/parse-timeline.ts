@@ -4,11 +4,17 @@ import { m } from "@/i18n/messages";
 /**
  * The run pipeline as a timeline, recovered from the run log.
  *
- * Deliberately a parser rather than a contract: the CLI writes the log, the API
- * serves it verbatim, and neither promises a machine-readable progress feed. So
- * the stages below are the fixed sequence a run goes through and the patterns
- * are how each one announces itself; a log line nobody recognises simply leaves
- * its stage pending.
+ * Deliberately a parser rather than a contract: the CLI writes the log and the
+ * API serves it verbatim. The stages below are the fixed sequence a run goes
+ * through and the patterns are how each one announces itself; a log line
+ * nobody recognises simply leaves its stage pending.
+ *
+ * The log is written as the run goes, so in API mode a running run's timeline
+ * moves while it computes rather than only once it has finished. The
+ * machine-readable progress feed is not this: it is the run's `progress`
+ * (`RunSummary.progress`, read from `progress.json`), which `RunProgressBar`
+ * draws. The "computed X of Y receivers" lines that same feed writes into the
+ * log are what marks the compute stage here.
  */
 
 export interface TimelineStep {
@@ -34,7 +40,9 @@ const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
     },
     {
       key: "compute",
-      pattern: /stage=compute/,
+      // The engine's stage events, or the receiver-count progress lines the
+      // standards that walk receivers themselves (RLS-19, ISO 9613) write.
+      pattern: /stage=compute|computed \d+ of \d+ receivers/,
       label: m.timeline_computing,
     },
     {

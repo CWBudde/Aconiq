@@ -1,6 +1,7 @@
 package httpv1
 
 import (
+	"context"
 	stderrors "errors"
 	"fmt"
 	"net/http"
@@ -8,8 +9,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 type createRunRequest struct {
@@ -46,36 +50,118 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	before, err := h.store.Load()
-	if err != nil {
-		writeDomainError(w, err)
-		return
-	}
+	// The server names the run, so that from here on it can find it, cancel it
+	// and close it by id rather than by working out which row is whose.
+	runID := projectfs.NewRunID()
 
-	err = h.runExecutor(r.Context(), req)
-	if err != nil {
-		h.closeRunInterruptedBy(before)
-		writeRunCreateError(w, err)
-
-		return
-	}
-
-	after, err := h.store.Load()
-	if err != nil {
-		writeDomainError(w, err)
-		return
-	}
-
-	if len(after.Runs) <= len(before.Runs) {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "run_failed",
-			Message: "run execution completed without creating a run record",
+	run, started := h.runs.start(r.Context(), runID, func(ctx context.Context) error {
+		return h.runExecutor(ctx, runID, req)
+	}, h.settleRun)
+	if !started {
+		writeAPIError(w, http.StatusServiceUnavailable, apiError{
+			Code:    errorCodeServerStopping,
+			Message: "the server is shutting down and starts no new runs",
 		})
 
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, summarizeRun(after, after.Runs[len(after.Runs)-1]))
+	h.answerStartedRun(w, r, runID, run)
+}
+
+// answerStartedRun waits until the run's row is in the manifest and answers
+// 202 with it — or, if the child stops before it ever creates one, answers
+// with the reason it gave.
+//
+// # Why wait for the row at all
+//
+// A 202 names a run, and a client's next request is about that run: a GET
+// straight after must find it. The row is written by the child, in
+// projectfs.CreateRun, and the child's refusals all come before it — an
+// unknown standard, a bad parameter, a missing scenario — so waiting for the
+// row is also what keeps those refusals synchronous, as the 400s they were.
+//
+// # Why this does not write the row itself
+//
+// It would be the simpler way to have a row before answering, and it would
+// add a second process writing project.json at the moment the child writes
+// it too. That cross-process read-modify-write is the race PLAN.md measured
+// losing runs, and no in-process lock reaches the child. So the server only
+// reads here; the child stays the one writer of its own row, as it was.
+//
+// The run belongs to the server and not to this request: a client that goes
+// away while this waits leaves the run computing, which is the point.
+func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID string, run *supervisedRun) {
+	timeout := time.NewTimer(h.runStartTimeout)
+	defer timeout.Stop()
+
+	poll := time.NewTicker(runStartPollInterval)
+	defer poll.Stop()
+
+	for {
+		proj, row, found := h.findRun(runID)
+		if found {
+			w.Header().Set("Location", "/api/v1/runs/"+runID)
+			writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
+
+			return
+		}
+
+		select {
+		case <-run.done:
+			// One last look: a run quick enough to create its row and finish
+			// between two polls is still a run, and is answered as one.
+			proj, row, found := h.findRun(runID)
+			if found {
+				w.Header().Set("Location", "/api/v1/runs/"+runID)
+				writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
+
+				return
+			}
+
+			if run.err != nil {
+				writeRunCreateError(w, run.err)
+
+				return
+			}
+
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    errorCodeRunFailed,
+				Message: "run execution completed without creating a run record",
+			})
+
+			return
+		case <-timeout.C:
+			h.runs.cancel(runID, errRunNotStarted)
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    errorCodeRunFailed,
+				Message: fmt.Sprintf("run %q did not start within %s and was stopped", runID, h.runStartTimeout),
+			})
+
+			return
+		case <-r.Context().Done():
+			return
+		case <-poll.C:
+		}
+	}
+}
+
+// findRun loads the manifest and looks the run up in it. A manifest that
+// cannot be read reads as "not yet": the caller is polling, and it has a
+// deadline of its own.
+func (h Handler) findRun(runID string) (project.Project, project.Run, bool) {
+	proj, err := h.store.Load()
+	if err != nil {
+		return project.Project{}, project.Run{}, false
+	}
+
+	for _, run := range proj.Runs {
+		if run.ID == runID {
+			return proj, run, true
+		}
+	}
+
+	return project.Project{}, project.Run{}, false
 }
 
 // experimentalOptInGate refuses a run against a scaffold-tier standard that the
@@ -128,7 +214,7 @@ func writeRunCreateError(w http.ResponseWriter, err error) {
 	}
 
 	writeAPIError(w, http.StatusInternalServerError, apiError{
-		Code:    "run_failed",
+		Code:    errorCodeRunFailed,
 		Message: err.Error(),
 	})
 }

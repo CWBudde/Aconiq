@@ -2278,21 +2278,20 @@ before the pages they protect are cut apart.
       ID synthesis must match `padStart` including the six-character `"R10000"` case, and
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
-- [ ] **Make a run asynchronous, so it does not live inside an HTTP request.** The run-create
-      endpoint calls the executor synchronously and spawns `aconiq run` under
-      `exec.CommandContext(r.Context(), …)`. Three consequences, all of them observed on a real
-      run: a browser reload cancels the request and kills the computation; the server's
-      `WriteTimeout` was a ceiling on how long a run could legally take (it was 30 s, against
-      runs of minutes — now removed, which is a workaround and not the fix); and a subprocess
-      that dies leaves the manifest saying `running` forever, because the terminal status is
-      written by the subprocess and by nothing else.
-      The last of those is now reconciled — `Store.FailInterruptedRuns` runs at `serve` startup
-      and on the failed-executor path — but reconciliation is cleanup after a design that should
-      not lose the work in the first place. Return `202` with the run id, compute in a goroutine
-      the request does not own, and let the UI poll `GET /api/v1/runs/{id}`. That also gives the
-      progress feed the API mode has never had: today `run.log` holds one line until the run
-      ends, because every `input.log.addf` is buffered and flushed at the end, so a long API-mode
-      run is indistinguishable from a hung one. `parse-timeline.ts` says as much in its header.
+- [ ] **What the asynchronous run left open: progress for every standard, and a cancel that
+      stops inside a receiver.** `POST /runs` answers `202` with a server-minted id, the run
+      lives under a context the request does not own, and `rls19-road` and `iso9613` stream
+      `run.log` and write `progress.json`. Three things are still ahead.
+      **Schall 03 writes no progress**, because `computeSchall03Run` buffers its log lines in
+      `schall03RunResult` and appends them after the compute, so a progress line would land
+      ahead of the lines that preceded it; it has to log through `runLog` first. The scaffold
+      modules (`receiverRunModule`) and `beb-exposure` write none either.
+      **A cancel rarely lets the child record itself on a dense scene**: the run checks its
+      context once per receiver, and one Linden receiver is minutes of CPU, so the child is
+      killed after `runInterruptGrace` and the server writes the `run cancelled` line instead.
+      A check between sources inside `receiverLevelsOn` reads no number and would close that.
+      **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
+      run's progress now, because `EventSource` cannot send the `--api-token` header.
 - [ ] **Tell the user what a run will cost in _time_, and let them refuse it.** The receiver
       count preview landed; the time estimate named as its follow-up is the part that matters,
       because the cost is not proportional to anything the dialog currently shows. Measured on a

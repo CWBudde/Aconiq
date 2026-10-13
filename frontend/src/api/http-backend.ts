@@ -99,10 +99,12 @@ export const httpBackend: Backend = {
     // `POST /api/v1/transform` projects a batch server-side, so API mode has a
     // projector without loading the 4 MB kernel it never otherwise needs.
     canReprojectForDisplay: true,
-    // There is no cancel endpoint. A Cancel button here could only close the
-    // dialog while the server kept computing, and the run would still turn up
-    // in the list — so the UI is told not to offer one.
+    // `startRun` is pending only until the server answers 202, so there is
+    // nothing for the dialog's Cancel to stop. The run it started is stopped
+    // from its own panel, through `cancelRun`.
     runsAreCancellable: false,
+    // `POST /api/v1/runs/{id}/cancel` interrupts the process computing it.
+    canCancelRunningRun: true,
     // `POST /api/v1/import/lgln` downloads, parses and caches the tiles.
     canImportLGLN: true,
   },
@@ -214,7 +216,21 @@ export const httpBackend: Backend = {
   },
 
   startRun(spec) {
+    // 202 with the run, normally still `running`: the server computes it in
+    // the background and the request ends as soon as the run's row exists.
+    // So this resolves in milliseconds, a reload no longer kills the run, and
+    // the run is followed through `getRuns`, whose summaries carry its
+    // `progress`. A refusal the run command makes up front is still a 400.
     return postJSON<RunSummary>("/api/v1/runs", buildCreateRunRequest(spec));
+  },
+
+  cancelRun(runId) {
+    // No body: the id is the whole request. `request` still sends the client
+    // header every state-changing request needs.
+    return request<RunSummary>(
+      `/api/v1/runs/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" },
+    );
   },
 
   createExport() {

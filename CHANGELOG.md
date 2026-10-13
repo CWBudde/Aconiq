@@ -86,6 +86,20 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 ### Changed
 
+- **`POST /api/v1/runs` answers `202 Accepted` as soon as the run has started, and the run no
+  longer lives inside the request.** The server mints the run id, starts `aconiq run` under a
+  context the request does not own, and answers once the run's row is in the manifest, with a
+  `Location` header naming it. A browser reload no longer kills a run. `GET /api/v1/runs/{id}`
+  answers one run, and while it computes its summary carries `progress` (`done`, `total`,
+  `eta_seconds`) — as do the run list and the `last_run` of `GET /api/v1/project/status` and
+  the SSE `project_status` event. `POST /api/v1/runs/{id}/cancel` interrupts a run this server
+  started, and stopping the server interrupts its runs. A child that dies without closing its
+  row has that row, and only that row, closed by the server. `run.log` is written as the run
+  goes, and `rls19-road` and `iso9613` write a throttled `computed X of Y receivers` line and a
+  `.noise/runs/<id>/progress.json` beside it. The UI shows the bar, the time left and a Cancel
+  button on the run's panel, and picks a running run back up after a reload. Refusals the run
+  command makes before it creates a run are still answered synchronously with `400`. No computed
+  level moves.
 - **Auto-grid rasters no longer publish a level inside a building.** A grid receiver standing
   strictly inside a building footprint is still computed and still listed in the receiver table,
   but its raster cell is now the `-9999` nodata value, for every standard and in both the CLI and
