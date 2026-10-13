@@ -68,23 +68,71 @@ func (s Store) FailOpenRun(runID string, now func() time.Time, note string) (boo
 	return closed > 0, err
 }
 
+// failOpenRuns closes the open runs keep does not keep.
+//
+// It looks before it locks. The startup sweep runs on every `aconiq serve`,
+// and on almost every one there is nothing to close — so taking the lock
+// first, which creates `.noise/project.json.lock`, would refuse to serve a
+// project on a read-only mount (an archived study, a shared drive) for a write
+// it was never going to make. Only when an open run is found is the lock taken
+// and the manifest re-read, because another writer may have closed it in the
+// meantime and the decision has to be made on the copy that is saved.
 func (s Store) failOpenRuns(now func() time.Time, keep func(project.Run) bool, note string) (int, error) {
+	proj, err := s.Load()
+	if err != nil {
+		return 0, fmt.Errorf("load project: %w", err)
+	}
+
+	if len(openRunsToClose(proj, keep)) == 0 {
+		return 0, nil
+	}
+
 	unlock, err := s.LockManifest()
 	if err != nil {
 		return 0, fmt.Errorf("lock project: %w", err)
 	}
 	defer unlock()
 
-	proj, err := s.Load()
+	proj, err = s.Load()
 	if err != nil {
 		return 0, fmt.Errorf("load project: %w", err)
 	}
 
-	closed := 0
+	toClose := openRunsToClose(proj, keep)
+	if len(toClose) == 0 {
+		return 0, nil
+	}
 
-	for i := range proj.Runs {
-		run := proj.Runs[i]
+	at := now().UTC()
 
+	for _, i := range toClose {
+		proj.Runs[i].Status = project.RunStatusFailed
+		proj.Runs[i].FinishedAt = at
+	}
+
+	err = s.Save(proj)
+	if err != nil {
+		return 0, fmt.Errorf("save project: %w", err)
+	}
+
+	// The status alone says "failed", which reads like the computation
+	// refused something. Say what actually happened, in the file the UI
+	// already shows for a run. A log that cannot be appended to is not worth
+	// failing the reconciliation over — the status is the part that stops the
+	// spinner.
+	for _, i := range toClose {
+		_ = s.appendRunLogNote(proj.Runs[i].ID, at.Format(time.RFC3339)+" "+note)
+	}
+
+	return len(toClose), nil
+}
+
+// openRunsToClose is the indexes of the runs still running or pending that
+// keep does not keep.
+func openRunsToClose(proj project.Project, keep func(project.Run) bool) []int {
+	var indexes []int
+
+	for i, run := range proj.Runs {
 		if run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
 			continue
 		}
@@ -93,28 +141,10 @@ func (s Store) failOpenRuns(now func() time.Time, keep func(project.Run) bool, n
 			continue
 		}
 
-		proj.Runs[i].Status = project.RunStatusFailed
-		proj.Runs[i].FinishedAt = now().UTC()
-		closed++
-
-		// The status alone says "failed", which reads like the computation
-		// refused something. Say what actually happened, in the file the UI
-		// already shows for a run. A log that cannot be appended to is not
-		// worth failing the reconciliation over — the status is the part that
-		// stops the spinner.
-		_ = s.appendRunLogNote(run.ID, now().UTC().Format(time.RFC3339)+" "+note)
+		indexes = append(indexes, i)
 	}
 
-	if closed == 0 {
-		return 0, nil
-	}
-
-	err = s.Save(proj)
-	if err != nil {
-		return 0, fmt.Errorf("save project: %w", err)
-	}
-
-	return closed, nil
+	return indexes
 }
 
 // RunIDs is the set of run ids a manifest snapshot held.
