@@ -533,7 +533,9 @@ func appendReflectedContribs(
 		scratch.reflectedPaths = reflPaths
 	}
 
-	for _, rp := range reflPaths {
+	for k := range reflPaths {
+		rp := &reflPaths[k]
+
 		// Ground correction uses the mean height along the reflected path
 		// (flat-terrain approximation for reflected legs). Terrain edges are
 		// left off the mirrored leg for the same reason: the image path does
@@ -574,7 +576,7 @@ func appendReflectedContribs(
 // building does not shield that building's own mirrored path. That direction
 // over-predicts the level and is declared in the conformance document.
 func reflectedPathShielding(
-	rp reflectedPath,
+	rp *reflectedPath,
 	sourceHeightM float64,
 	receiver geo.Point2D,
 	effectiveBarriers []Barrier,
@@ -584,6 +586,6 @@ func reflectedPathShielding(
 	return computeShielding(
 		rp.imagePoint, sourceHeightM,
 		receiver, cfg.ReceiverHeightM,
-		effectiveBarriers, rp.reflectorIDs, scratch,
+		effectiveBarriers, rp.reflectors(), scratch,
 	).InsertionLoss
 }

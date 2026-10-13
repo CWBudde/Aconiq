@@ -1,0 +1,42 @@
+[
+  {
+    "receiver": "r-0-0",
+    "lr_day": "78.266375",
+    "lr_night": "71.799737",
+    "lr_day_bits": "4053910c47fe7943",
+    "lr_night_bits": "4051f32ee5e5f241",
+    "segment_mode": "fixed",
+    "segment_length_m": "6",
+    "city": "small"
+  },
+  {
+    "receiver": "r-1-0",
+    "lr_day": "77.375808",
+    "lr_night": "70.909170",
+    "lr_day_bits": "4053580d3b0d5316",
+    "lr_night_bits": "4051ba2fd8f4cc15",
+    "segment_mode": "fixed",
+    "segment_length_m": "6",
+    "city": "small"
+  },
+  {
+    "receiver": "r-0-0",
+    "lr_day": "78.302147",
+    "lr_night": "71.835510",
+    "lr_day_bits": "405393566007a8a8",
+    "lr_night_bits": "4051f578fdef21a7",
+    "segment_mode": "distance_scaled",
+    "segment_length_m": "1",
+    "city": "small"
+  },
+  {
+    "receiver": "r-1-0",
+    "lr_day": "77.316636",
+    "lr_night": "70.849999",
+    "lr_day_bits": "40535443c4e83a2d",
+    "lr_night_bits": "4051b66662cfb32e",
+    "segment_mode": "distance_scaled",
+    "segment_length_m": "1",
+    "city": "small"
+  }
+]

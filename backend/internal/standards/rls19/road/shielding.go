@@ -95,9 +95,12 @@ func barrierCandidates(
 		candidates = scratch.barrierCandidates[:0]
 	}
 
-	if scratch != nil && scratch.barrierCursor.Ready() {
+	switch fan := scratch.fanFor(receiver, barriers); {
+	case fan != nil:
+		candidates = fan.appendCandidates(candidates, source)
+	case scratch != nil && scratch.barrierCursor.Ready():
 		candidates = scratch.barrierCursor.QuerySegment(source, receiver, queryMarginM, candidates)
-	} else {
+	default:
 		candidates = appendAllIndices(candidates, len(barriers))
 	}
 
@@ -151,12 +154,34 @@ func selectDiffractionEdges(
 	sourceHeightM, receiverHeightM, totalDistM float64,
 	crossings []barrierCrossing,
 ) []diffractionEdge {
+	return selectDiffractionEdgesIn(&edgeBuffers{}, sourceHeightM, receiverHeightM, totalDistM, crossings)
+}
+
+// edgeBuffers is the working memory of selectDiffractionEdgesIn. A mirrored
+// path is shielded like any other, and a building-dense model shields
+// thousands of them per Teilstück, so the five slices the selection needs are
+// kept on the walk's scratch rather than allocated per path.
+type edgeBuffers struct {
+	obstructing []barrierCrossing
+	screening   []geo.ScreeningPoint
+	hull        geo.HullBuffer
+	selected    []int
+	edges       []diffractionEdge
+}
+
+// selectDiffractionEdgesIn is selectDiffractionEdges working in buf. The edges
+// it returns live in buf and are only valid until its next call.
+func selectDiffractionEdgesIn(
+	buf *edgeBuffers,
+	sourceHeightM, receiverHeightM, totalDistM float64,
+	crossings []barrierCrossing,
+) []diffractionEdge {
 	if len(crossings) == 0 {
 		return nil
 	}
 
 	// Filter to obstructing crossings (barrier top above line of sight).
-	var obstructing []barrierCrossing
+	obstructing := buf.obstructing[:0]
 
 	for _, c := range crossings {
 		if geo.ObstructsLineOfSight(c.distFromSource, c.barrier.HeightM, sourceHeightM, receiverHeightM, totalDistM) {
@@ -164,11 +189,13 @@ func selectDiffractionEdges(
 		}
 	}
 
+	buf.obstructing = obstructing
+
 	if len(obstructing) == 0 {
 		return nil
 	}
 
-	candidates := make([]geo.ScreeningPoint, 0, len(obstructing))
+	candidates := buf.screening[:0]
 	for _, c := range obstructing {
 		candidates = append(candidates, geo.ScreeningPoint{
 			DistFromSource: c.distFromSource,
@@ -176,9 +203,19 @@ func selectDiffractionEdges(
 		})
 	}
 
-	var edges []diffractionEdge
+	buf.screening = candidates
 
-	for _, index := range geo.SelectDiffractionEdges(sourceHeightM, receiverHeightM, totalDistM, candidates) {
+	selected := geo.AppendDiffractionEdges(buf.selected[:0], &buf.hull, sourceHeightM, receiverHeightM, totalDistM, candidates)
+
+	buf.selected = selected
+
+	if len(selected) == 0 {
+		return nil
+	}
+
+	edges := buf.edges[:0]
+
+	for _, index := range selected {
 		c := obstructing[index]
 		edges = append(edges, diffractionEdge{
 			distFromSource: c.distFromSource,
@@ -186,6 +223,8 @@ func selectDiffractionEdges(
 			barrier:        c.barrier,
 		})
 	}
+
+	buf.edges = edges
 
 	return edges
 }
@@ -288,7 +327,13 @@ func computeShielding(
 	}
 
 	// Step 2-3: select significant diffraction edges via Gummibandmethode.
-	edges := selectDiffractionEdges(sourceHeightM, receiverHeightM, directDist, crossings)
+	var edges []diffractionEdge
+	if scratch != nil {
+		edges = selectDiffractionEdgesIn(&scratch.edges, sourceHeightM, receiverHeightM, directDist, crossings)
+	} else {
+		edges = selectDiffractionEdges(sourceHeightM, receiverHeightM, directDist, crossings)
+	}
+
 	if len(edges) == 0 {
 		return ShieldingResult{}
 	}
