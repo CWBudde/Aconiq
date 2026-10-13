@@ -147,9 +147,11 @@ with results produced after them.
   longer lose each other's rows. Each loaded `.noise/project.json`, changed it and saved it, so
   the later save dropped the other's run — measured at 19 of 40 runs lost. Run creation and
   completion, run deletion, the server's closing of an interrupted run, the terrain and model
-  routes, and the artifact refs `validate`, `export`, `compare` and the terrain import record now
-  take an advisory lock on `.noise/project.json.lock` (flock on Unix, `LockFileEx` on Windows).
-  The model import still saves a manifest it read at its start; see `PLAN.md`.
+  routes, the model save behind `aconiq import` and `POST /api/v1/model`, and the artifact refs
+  `validate`, `export` and `compare` record now take an advisory lock on
+  `.noise/project.json.lock` (flock on Unix, `LockFileEx` on Windows) and re-read the manifest
+  under it. An `aconiq import` that fetched for minutes no longer saves the copy it loaded at its
+  start, which put a run completed meanwhile back to `running` without its results.
 
 - Parallel compute no longer starves its own worker pool on a small receiver grid.
   `partition.Size` floored the chunk size at `MinChunk` (64) unconditionally, so it also decided

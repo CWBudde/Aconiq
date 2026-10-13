@@ -92,6 +92,90 @@ func TestSaveModelWritesArtifactsAndManifest(t *testing.T) {
 	assertModelArtifactRefs(t, proj.Artifacts)
 }
 
+// `aconiq import` loads the manifest, fetches for minutes, then saves the
+// model. A run `aconiq serve` completed in between must survive that save:
+// saving the import's stale copy put the row back to `running`, dropped its
+// artifact refs, and the next startup sweep then failed it.
+func TestSaveModelKeepsWhatAnotherWriterSavedSinceTheCallerLoaded(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	_, err = store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	// The importer's copy, loaded before the "fetch".
+	stale, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	// Meanwhile a run is created and completed, with a result artifact.
+	run, _, err := store.CreateRun(CreateRunSpec{
+		ScenarioID: "default",
+		Standard:   project.StandardRef{ID: "rls19-road", Version: "2019", Profile: "default"},
+		Status:     project.RunStatusRunning,
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	unlock, err := store.LockManifest()
+	if err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+
+	current, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	current.Runs[0].Status = project.RunStatusCompleted
+	current.Artifacts = append(current.Artifacts, project.ArtifactRef{ID: "artifact-run-result", RunID: run.ID, Kind: "run.result.summary", Path: "x"})
+
+	err = store.Save(current)
+
+	unlock()
+
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	model := modelgeojson.Model{SchemaVersion: 1, ProjectCRS: "EPSG:25832", Features: []modelgeojson.Feature{}}
+
+	err = store.SaveModel(&stale, model, modelgeojson.Validate(model))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	saved, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if len(saved.Runs) != 1 || saved.Runs[0].Status != project.RunStatusCompleted {
+		t.Fatalf("the completed run did not survive the model save: %+v", saved.Runs)
+	}
+
+	if !slices.ContainsFunc(saved.Artifacts, func(a project.ArtifactRef) bool { return a.ID == "artifact-run-result" }) {
+		t.Fatal("the run's artifact ref was dropped by the model save")
+	}
+
+	if !slices.ContainsFunc(saved.Artifacts, func(a project.ArtifactRef) bool { return a.ID == project.ArtifactIDModelNormalized }) {
+		t.Fatal("the model ref was not recorded")
+	}
+
+	// The caller's copy is what was saved, not what it had.
+	if len(stale.Runs) != 1 || stale.Runs[0].Status != project.RunStatusCompleted {
+		t.Fatalf("the caller's copy was not refreshed: %+v", stale.Runs)
+	}
+}
+
 func TestSaveModelReplacesExistingRefsInsteadOfDuplicating(t *testing.T) {
 	t.Parallel()
 

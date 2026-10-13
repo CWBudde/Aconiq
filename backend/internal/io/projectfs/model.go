@@ -137,6 +137,18 @@ func (s Store) ModelHash() (string, error) {
 // ref to land with the three model refs rather than in a second
 // read-modify-write. It is variadic because the three callers that register
 // nothing extra should not have to say so.
+//
+// # The manifest it saves is re-read, not the caller's
+//
+// proj is the copy the caller loaded at its start, and `aconiq import` loads it
+// before an Overpass, LGLN or SoundPLAN fetch that can take minutes. Saving
+// that copy would put back whatever another process changed meanwhile — a run
+// `aconiq serve` completed would read `running` again, without its artifact
+// refs, and be swept to failed. So the refs are upserted into the manifest as
+// it is now, re-read under LockManifest, and *proj is replaced with what was
+// saved. Nothing else the caller changed on proj is saved: the model is the
+// only thing this function owns. The lock is taken here, so a caller must not
+// hold it.
 func (s Store) SaveModel(
 	proj *project.Project,
 	model modelgeojson.Model,
@@ -165,12 +177,10 @@ func (s Store) SaveModel(
 	}
 
 	now := time.Now().UTC()
-	for _, ref := range []project.ArtifactRef{
+	refs := []project.ArtifactRef{
 		{ID: project.ArtifactIDModelNormalized, Kind: project.ArtifactKindModelNormalizedGeoJSON, Path: s.RelativePath(paths.Normalized), CreatedAt: now},
 		{ID: project.ArtifactIDModelDump, Kind: project.ArtifactKindModelDumpJSON, Path: s.RelativePath(paths.Dump), CreatedAt: now},
 		{ID: project.ArtifactIDModelValidation, Kind: project.ArtifactKindModelValidationReport, Path: s.RelativePath(paths.Validation), CreatedAt: now},
-	} {
-		proj.Artifacts = upsertArtifactRef(proj.Artifacts, ref)
 	}
 
 	for _, ref := range extraRefs {
@@ -178,10 +188,32 @@ func (s Store) SaveModel(
 			ref.CreatedAt = now
 		}
 
-		proj.Artifacts = upsertArtifactRef(proj.Artifacts, ref)
+		refs = append(refs, ref)
 	}
 
-	return s.Save(*proj)
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	current, err := s.Load()
+	if err != nil {
+		return err
+	}
+
+	for _, ref := range refs {
+		current.Artifacts = upsertArtifactRef(current.Artifacts, ref)
+	}
+
+	err = s.Save(current)
+	if err != nil {
+		return err
+	}
+
+	*proj = current
+
+	return nil
 }
 
 func (s Store) modelDir() string {
