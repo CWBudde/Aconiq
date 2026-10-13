@@ -114,33 +114,7 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 // the project exactly as it found it — no manifest entry, no run directory, no
 // log.
 func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (preparedRun, error) {
-	params, err := parseKeyValueFlags(req.rawParams)
-	if err != nil {
-		return preparedRun{}, err
-	}
-
-	err = validateReceiverMode(req.receiverMode)
-	if err != nil {
-		return preparedRun{}, err
-	}
-
-	registry, err := standards.NewRegistry()
-	if err != nil {
-		return preparedRun{}, domainerrors.New(domainerrors.KindInternal, "cli.run", "initialize standards registry", err)
-	}
-
-	resolvedStandard, err := registry.Resolve(req.standardID, req.standardVersion, req.standardProfile)
-	if err != nil {
-		return preparedRun{}, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
-	}
-
-	resolvedParams, err := resolvedStandard.RunParameterSchema.NormalizeAndValidate(params)
-	if err != nil {
-		return preparedRun{}, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
-	}
-
-	// A tier whose levels are invented may not be run by accident.
-	err = requireExperimentalOptIn(resolvedStandard, req.experimental)
+	resolvedStandard, resolvedParams, err := resolveRunRequest(req)
 	if err != nil {
 		return preparedRun{}, err
 	}
@@ -232,6 +206,45 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		log:          log,
 		inputs:       inputs,
 	}, nil
+}
+
+// resolveRunRequest settles what the request asks for: its parameters, its
+// receiver mode, the standard version and profile they resolve to, and the
+// evidence-tier opt-in that standard needs. Every refusal is a user-input
+// error, made before anything is read from the project.
+func resolveRunRequest(req runCommandRequest) (framework.ResolvedProfile, map[string]string, error) {
+	params, err := parseKeyValueFlags(req.rawParams)
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, err
+	}
+
+	err = validateReceiverMode(req.receiverMode)
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, err
+	}
+
+	registry, err := standards.NewRegistry()
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, domainerrors.New(domainerrors.KindInternal, "cli.run", "initialize standards registry", err)
+	}
+
+	resolvedStandard, err := registry.Resolve(req.standardID, req.standardVersion, req.standardProfile)
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+	}
+
+	resolvedParams, err := resolvedStandard.RunParameterSchema.NormalizeAndValidate(params)
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, domainerrors.New(domainerrors.KindUserInput, "cli.run", err.Error(), nil)
+	}
+
+	// A tier whose levels are invented may not be run by accident.
+	err = requireExperimentalOptIn(resolvedStandard, req.experimental)
+	if err != nil {
+		return framework.ResolvedProfile{}, nil, err
+	}
+
+	return resolvedStandard, resolvedParams, nil
 }
 
 // runInputs is what a run computes from, loaded and checked before the run
