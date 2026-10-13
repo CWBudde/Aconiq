@@ -148,9 +148,11 @@ type handlerOptions struct {
 // which copies the Handler once per route, so a sync.Mutex value here would
 // become fourteen independent mutexes that lock nothing against each other.
 //
-// This covers the in-process half only. The `aconiq run` child writes the same
-// file from another process, which no mutex can reach; what protects the
-// manifest's integrity there is projectfs.writeFileAtomic's unique temp name.
+// This is the in-process half. The `aconiq run` children write the same file
+// from other processes, which no mutex reaches: that half is
+// projectfs.Store.LockManifest, a file lock. The routes that load and save
+// the manifest themselves take it inside this mutex; DeleteRun and
+// FailOpenRun take it on their own, so it is never held around them.
 func (h Handler) lockManifest() func() {
 	h.manifest.Lock()
 

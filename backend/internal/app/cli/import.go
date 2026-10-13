@@ -673,17 +673,18 @@ func runTerrainImport(
 
 	// Register artifact.
 	now := nowUTC()
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
+
+	saved, err := saveArtifactRefs(store, project.ArtifactRef{
 		ID:        "artifact-terrain",
 		Kind:      "model.terrain_geotiff",
 		Path:      defaultTerrainPath,
 		CreatedAt: now,
 	})
-
-	err = store.Save(*proj)
 	if err != nil {
-		return fmt.Errorf("save project manifest: %w", err)
+		return err
 	}
+
+	*proj = saved
 
 	state.Logger.Info(
 		"terrain import completed",

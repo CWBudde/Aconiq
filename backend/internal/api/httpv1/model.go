@@ -225,6 +225,15 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 	// lock released on some paths and not others is the bug this prevents.
 	defer h.lockManifest()()
 
+	// And the cross-process half, for the same span: an `aconiq run` child
+	// may be saving the manifest at this moment.
+	unlockFile, err := h.store.LockManifest()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	defer unlockFile()
+
 	proj, err := h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)

@@ -65,6 +65,31 @@ func finalizeRun(
 		finishedAt = nowUTC()
 	}
 
+	err := saveRunStatus(store, run, status, finishedAt, artifacts)
+	if err != nil {
+		return err
+	}
+
+	return writeFinalRunLog(store, run, status, finishedAt, logLines)
+}
+
+// saveRunStatus records the run's terminal status and artifacts in the
+// manifest, under the cross-process manifest lock: another `aconiq run` on the
+// same project may be creating or finishing its own run at this moment, and
+// without the lock the later save drops the other's change.
+func saveRunStatus(
+	store projectfs.Store,
+	run project.Run,
+	status string,
+	finishedAt time.Time,
+	artifacts []project.ArtifactRef,
+) error {
+	unlock, err := store.LockManifest()
+	if err != nil {
+		return fmt.Errorf("lock project manifest: %w", err)
+	}
+	defer unlock()
+
 	proj, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load project manifest: %w", err)
@@ -97,6 +122,11 @@ func finalizeRun(
 		return fmt.Errorf("save project manifest: %w", err)
 	}
 
+	return nil
+}
+
+// writeFinalRunLog replaces run.log with the run's whole log.
+func writeFinalRunLog(store projectfs.Store, run project.Run, status string, finishedAt time.Time, logLines []string) error {
 	if len(logLines) == 0 {
 		logLines = []string{fmt.Sprintf("%s run finalized with status=%s", finishedAt.Format(time.RFC3339), status)}
 	}
@@ -108,7 +138,7 @@ func finalizeRun(
 	// The manifest above already says the run is done, so the UI may fetch
 	// the log while this replaces it. A rename hands it the provisional log or
 	// the final one; an in-place rewrite could hand it a truncated prefix.
-	err = atomicfile.WriteFile(logPath, []byte(logContent))
+	err := atomicfile.WriteFile(logPath, []byte(logContent))
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.finalizeRun", "write run log "+logPath, err)
 	}

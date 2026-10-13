@@ -75,6 +75,12 @@ func (s Store) DeleteRun(runID string) (DeleteRunResult, error) {
 		return DeleteRunResult{}, err
 	}
 
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return DeleteRunResult{}, err
+	}
+	defer unlock()
+
 	proj, err := s.Load()
 	if err != nil {
 		return DeleteRunResult{}, err

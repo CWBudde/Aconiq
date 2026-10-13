@@ -21,6 +21,9 @@ Rationale:
 `<project-root>/`
 
 - `.noise/project.json` : project manifest (v1)
+- `.noise/project.json.lock` : empty file every manifest read-modify-write takes an advisory lock on
+  (flock on Unix, `LockFileEx` on Windows), so concurrent `aconiq run` processes and `aconiq serve`
+  cannot drop each other's rows. Safe to delete while nothing is running
 - `.noise/runs/<run-id>/run.log` : run-local log, written as the run goes rather than only at its end
 - `.noise/runs/<run-id>/progress.json` : how far the receiver walk has got (`done`, `total`,
   `started_at`, `updated_at`, `eta_seconds`), rewritten at most once a second while the run computes.

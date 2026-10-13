@@ -69,6 +69,12 @@ func (s Store) FailOpenRun(runID string, now func() time.Time, note string) (boo
 }
 
 func (s Store) failOpenRuns(now func() time.Time, keep func(project.Run) bool, note string) (int, error) {
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return 0, fmt.Errorf("lock project: %w", err)
+	}
+	defer unlock()
+
 	proj, err := s.Load()
 	if err != nil {
 		return 0, fmt.Errorf("load project: %w", err)

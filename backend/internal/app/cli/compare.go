@@ -389,6 +389,12 @@ func persistCompareReport(store projectfs.Store, report soundPlanCompareReport) 
 		return err
 	}
 
+	unlock, err := store.LockManifest()
+	if err != nil {
+		return fmt.Errorf("lock project manifest: %w", err)
+	}
+	defer unlock()
+
 	proj, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load project manifest: %w", err)

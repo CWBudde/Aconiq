@@ -219,7 +219,17 @@ func (s Store) Save(proj project.Project) error {
 }
 
 // CreateRun appends a run entry, creates a log file, and writes a provenance manifest.
+//
+// The whole of it holds LockManifest: the load, the id check and the save are
+// one read-modify-write, and a concurrent one in another process must not
+// save in between.
 func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceManifest, error) {
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return project.Run{}, project.ProvenanceManifest{}, err
+	}
+	defer unlock()
+
 	proj, err := s.Load()
 	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, err

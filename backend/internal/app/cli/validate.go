@@ -120,16 +120,17 @@ func persistValidationReport(store projectfs.Store, proj *project.Project, repor
 		return err
 	}
 
-	proj.Artifacts = upsertArtifact(proj.Artifacts, project.ArtifactRef{
+	saved, err := saveArtifactRefs(store, project.ArtifactRef{
 		ID:        project.ArtifactIDModelValidation,
 		Kind:      project.ArtifactKindModelValidationReport,
 		Path:      relativePath(store.Root(), reportPath),
 		CreatedAt: nowUTC(),
 	})
-
-	if err := store.Save(*proj); err != nil {
-		return fmt.Errorf("save project manifest: %w", err)
+	if err != nil {
+		return err
 	}
+
+	*proj = saved
 
 	return nil
 }

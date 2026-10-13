@@ -10,6 +10,7 @@ import (
 	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/jsonio"
 )
 
@@ -71,6 +72,39 @@ func upsertArtifact(artifacts []project.ArtifactRef, artifact project.ArtifactRe
 	out = append(out, artifact)
 
 	return out
+}
+
+// saveArtifactRefs records refs in the manifest as one locked
+// read-modify-write: it re-reads the manifest under projectfs.LockManifest,
+// upserts the refs into what is there now, and saves that.
+//
+// It is for the commands that load the manifest at their start and only add
+// artifact refs at their end — validate, export, the terrain import. Saving
+// the copy they loaded would drop whatever another process wrote in between,
+// a run that `aconiq serve` started above all. Re-reading at the end keeps
+// the window to the lock, and the lock closes it.
+func saveArtifactRefs(store projectfs.Store, refs ...project.ArtifactRef) (project.Project, error) {
+	unlock, err := store.LockManifest()
+	if err != nil {
+		return project.Project{}, fmt.Errorf("lock project manifest: %w", err)
+	}
+	defer unlock()
+
+	proj, err := store.Load()
+	if err != nil {
+		return project.Project{}, fmt.Errorf("load project manifest: %w", err)
+	}
+
+	for _, ref := range refs {
+		proj.Artifacts = upsertArtifact(proj.Artifacts, ref)
+	}
+
+	err = store.Save(proj)
+	if err != nil {
+		return project.Project{}, fmt.Errorf("save project manifest: %w", err)
+	}
+
+	return proj, nil
 }
 
 func summarizeValidationErrors(errors []string, limit int) string {

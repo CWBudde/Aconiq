@@ -83,11 +83,13 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 //
 // # Why this does not write the row itself
 //
-// It would be the simpler way to have a row before answering, and it would
-// add a second process writing project.json at the moment the child writes
-// it too. That cross-process read-modify-write is the race PLAN.md measured
-// losing runs, and no in-process lock reaches the child. So the server only
-// reads here; the child stays the one writer of its own row, as it was.
+// It would be the simpler way to have a row before answering, but the child
+// would then have to adopt a row it did not create, with the provenance and
+// run directory CreateRun writes beside it, and every refusal it makes up
+// front would leave a row behind for the server to clean up. So the server
+// only reads here, and the child stays the one writer of its own row; the
+// manifest lock (projectfs.Store.LockManifest) keeps that write from racing
+// any other.
 //
 // The run belongs to the server and not to this request: a client that goes
 // away while this waits leaves the run computing, which is the point.

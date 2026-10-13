@@ -134,6 +134,14 @@ func (h Handler) storeTerrainArtifact(data []byte) error {
 
 	defer h.lockManifest()()
 
+	// The cross-process half: an `aconiq run` child may be saving the
+	// manifest at this moment.
+	unlockFile, err := h.store.LockManifest()
+	if err != nil {
+		return fmt.Errorf("failed to lock project manifest: %w", err)
+	}
+	defer unlockFile()
+
 	proj, err := h.store.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load project: %w", err)

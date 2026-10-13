@@ -112,7 +112,7 @@ func finishExportBundle(ctx context.Context, in finishExportInputs, summary *exp
 	}
 
 	return persistExportBundle(
-		in.store, in.proj, in.run, in.bundleDir, *summary,
+		in.store, in.run, in.bundleDir, *summary,
 		append(in.reportArtifacts, formatArtifacts...),
 	)
 }
@@ -238,10 +238,10 @@ func runExportCommand(cmd *cobra.Command, opts exportOptions) error {
 }
 
 // persistExportBundle writes the export summary and records the bundle plus the
-// generated report artifacts in the project manifest.
+// generated report artifacts in the project manifest, re-read under the
+// manifest lock rather than the copy the export started from.
 func persistExportBundle(
 	store projectfs.Store,
-	proj project.Project,
 	run project.Run,
 	bundleDir string,
 	summary exportSummary,
@@ -254,19 +254,17 @@ func persistExportBundle(
 		return "", err
 	}
 
-	proj.Artifacts = append(proj.Artifacts, project.ArtifactRef{
+	refs := append([]project.ArtifactRef{{
 		ID:        fmt.Sprintf("artifact-export-%s-%d", run.ID, time.Now().UTC().UnixNano()),
 		RunID:     run.ID,
 		Kind:      project.ArtifactKindExportBundle,
 		Path:      relativePath(store.Root(), summaryPath),
 		CreatedAt: nowUTC(),
-	})
+	}}, reportArtifacts...)
 
-	proj.Artifacts = append(proj.Artifacts, reportArtifacts...)
-
-	err = store.Save(proj)
+	_, err = saveArtifactRefs(store, refs...)
 	if err != nil {
-		return "", fmt.Errorf("save project manifest: %w", err)
+		return "", err
 	}
 
 	return summaryPath, nil
