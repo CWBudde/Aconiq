@@ -163,11 +163,7 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 
 	select {
 	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-
-		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "listen on "+cfg.listenAddr, err)
+		return stopAfterListenerError(server, handler, err, cfg.listenAddr, state)
 	case <-runCtx.Done():
 		return shutdownServer(server, handler, errCh, cfg.shutdownTimeout, state)
 	}
@@ -189,19 +185,13 @@ func shutdownServer(server *http.Server, handler *httpv1.ServeHandler, errCh <-c
 	// After Shutdown, so a request still waiting for its run to register has
 	// had its chance to be answered. And whether or not Shutdown met its
 	// deadline: the runs are not any request's, so nothing else stops them.
-	runsCtx, cancelRuns := context.WithTimeout(context.Background(), serveRunStopTimeout)
-	defer cancelRuns()
-
-	err := handler.StopRuns(runsCtx)
-	if err != nil {
-		state.Logger.Warn("runs still in flight at exit; the next serve closes them", "error", err)
-	}
+	stopServeRuns(handler, state)
 
 	if shutdownErr != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "graceful shutdown", shutdownErr)
 	}
 
-	err = <-errCh
+	err := <-errCh
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return domainerrors.New(domainerrors.KindInternal, "cli.serve", "server stop", err)
 	}
@@ -209,4 +199,43 @@ func shutdownServer(server *http.Server, handler *httpv1.ServeHandler, errCh <-c
 	state.Logger.Info("serve stopped")
 
 	return nil
+}
+
+// runStopper is the part of the serve handler a stopping server needs: the
+// runs it started outlive every request, so they are stopped by name.
+type runStopper interface {
+	StopRuns(ctx context.Context) error
+}
+
+// stopAfterListenerError ends a server whose listener failed under it.
+//
+// The listener going is not the process going: runs this server started are
+// children computing under contexts no request owns, and returning straight
+// away left them running with nobody to close their rows. So the remaining
+// connections are closed and the runs stopped exactly as a signal stops them,
+// and the listener's error is what the command still reports.
+func stopAfterListenerError(server *http.Server, runs runStopper, listenErr error, listenAddr string, state commandState) error {
+	// The listener is gone; Close ends the connections it leaves behind.
+	_ = server.Close()
+
+	stopServeRuns(runs, state)
+
+	if errors.Is(listenErr, http.ErrServerClosed) {
+		return nil
+	}
+
+	return domainerrors.New(domainerrors.KindInternal, "cli.serve", "listen on "+listenAddr, listenErr)
+}
+
+// stopServeRuns interrupts the server's runs and waits serveRunStopTimeout for
+// them to settle. What is still in flight after that is left to the next
+// `aconiq serve`, whose startup sweep closes it.
+func stopServeRuns(runs runStopper, state commandState) {
+	ctx, cancel := context.WithTimeout(context.Background(), serveRunStopTimeout)
+	defer cancel()
+
+	err := runs.StopRuns(ctx)
+	if err != nil {
+		state.Logger.Warn("runs still in flight at exit; the next serve closes them", "error", err)
+	}
 }
