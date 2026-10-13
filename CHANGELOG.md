@@ -143,6 +143,14 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 Entries marked **numeric** change computed levels. Results produced before them are not comparable
 with results produced after them.
 
+- Two `aconiq run` processes on one project, or two runs started through `aconiq serve`, no
+  longer lose each other's rows. Each loaded `.noise/project.json`, changed it and saved it, so
+  the later save dropped the other's run — measured at 19 of 40 runs lost. Run creation and
+  completion, run deletion, the server's closing of an interrupted run, the terrain and model
+  routes, and the artifact refs `validate`, `export`, `compare` and the terrain import record now
+  take an advisory lock on `.noise/project.json.lock` (flock on Unix, `LockFileEx` on Windows).
+  The model import still saves a manifest it read at its start; see `PLAN.md`.
+
 - Parallel compute no longer starves its own worker pool on a small receiver grid.
   `partition.Size` floored the chunk size at `MinChunk` (64) unconditionally, so it also decided
   the chunk *count*: a 130-receiver grid over twelve workers came out as three chunks, three
