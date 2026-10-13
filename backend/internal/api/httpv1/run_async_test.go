@@ -489,6 +489,39 @@ func TestShutdownInterruptsRunsAndRefusesNewOnes(t *testing.T) {
 	}
 }
 
+// A project that was never initialised is answered before any child starts,
+// with the 404 not_found envelope every other route gives it. Starting the
+// child instead turned its exit code 2 into a 400 carrying stderr.
+func TestCreateRunInAnUninitialisedProjectIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	executed := false
+
+	handler, runs := newRunTestHandler(t, store, handlerOptions{
+		clock: time.Now,
+		runExecutor: func(context.Context, string, createRunRequest) error {
+			executed = true
+
+			return nil
+		},
+	})
+
+	rec, _ := postRun(t, handler)
+
+	runs.wg.Wait()
+
+	assertErrorCode(t, rec, http.StatusNotFound, errorCodeNotFound)
+
+	if executed {
+		t.Fatal("a run was started in a project that does not exist")
+	}
+}
+
 func TestGetRunAnswersNotFoundForAnUnknownRun(t *testing.T) {
 	t.Parallel()
 

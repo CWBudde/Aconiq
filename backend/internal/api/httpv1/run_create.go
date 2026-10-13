@@ -50,6 +50,16 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A project that is not there is answered here, in its own envelope — 404
+	// not_found with the init hint, as every other route answers it — rather
+	// than by starting a child whose exit code 2 would come back as a 400
+	// with the child's stderr for a message.
+	_, err = h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
 	// The server names the run, so that from here on it can find it, cancel it
 	// and close it by id rather than by working out which row is whose.
 	runID := projectfs.NewRunID()
