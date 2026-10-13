@@ -266,7 +266,10 @@ export function RunDetail({
               className="flex items-center gap-2 text-xs text-muted-foreground"
               data-testid="run-progress-running"
             >
-              <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              <Loader2
+                aria-hidden="true"
+                className="h-3.5 w-3.5 animate-spin"
+              />
               {m.msg_run_in_progress()}
             </p>
           ) : (
