@@ -17,13 +17,20 @@ func newRunCommand() *cobra.Command {
 		inputPaths      []string
 		experimental    bool
 		workers         int
+		cpuProfile      string
+		memProfile      string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Execute a run and persist result artifacts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return executeRunCommand(cmd, runCommandRequest{
+			profiles, err := startRunProfiles(cpuProfile, memProfile)
+			if err != nil {
+				return err
+			}
+
+			runErr := executeRunCommand(cmd, runCommandRequest{
 				scenarioID:      scenarioID,
 				standardID:      standardID,
 				standardVersion: standardVersion,
@@ -35,6 +42,8 @@ func newRunCommand() *cobra.Command {
 				experimental:    experimental,
 				workers:         workers,
 			})
+
+			return finishRunProfiles(cmd, profiles, runErr)
 		},
 	}
 
@@ -49,6 +58,8 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
 	cmd.Flags().BoolVar(&experimental, "experimental", false, "Acknowledge that a scaffold-tier standard emits invented levels and run it anyway")
 	cmd.Flags().IntVar(&workers, "workers", 0, "Compute worker count (0 = one per available CPU)")
+	cmd.Flags().StringVar(&cpuProfile, "cpuprofile", "", "Write a pprof CPU profile of the command to this file (written on failure and cancellation too)")
+	cmd.Flags().StringVar(&memProfile, "memprofile", "", "Write a pprof heap profile, taken after a GC at the end of the command, to this file")
 
 	return cmd
 }
