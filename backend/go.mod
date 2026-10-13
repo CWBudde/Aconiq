@@ -2,7 +2,7 @@ module github.com/aconiq/backend
 
 go 1.25.0
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	github.com/Dadido3/go-typst v0.10.0
