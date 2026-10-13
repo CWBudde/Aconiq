@@ -114,11 +114,7 @@ func (h Handler) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.runs.cancel(runID, errRunCancelRequested) {
-		writeAPIError(w, http.StatusConflict, apiError{
-			Code:    errorCodeRunNotOwned,
-			Message: fmt.Sprintf("run %q was not started by this server", runID),
-			Hint:    "Stop it where it was started: Ctrl-C in the terminal running `aconiq run`.",
-		})
+		writeAPIError(w, http.StatusConflict, h.uncancellableRun(runID))
 
 		return
 	}
@@ -132,6 +128,31 @@ func (h Handler) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, run))
+}
+
+// uncancellableRun says why a run that read as open cannot be cancelled by
+// this server.
+//
+// The manifest is read again first. Between the read that found the run open
+// and the cancel, a run of this server's may have finished and settled — its
+// id leaves the supervisor once its row is closed — and answering that with
+// run_not_owned would send the user to a terminal that never ran it. A run
+// that has ended in the meantime is run_not_running, as it would have been a
+// moment earlier; only one still open is someone else's.
+func (h Handler) uncancellableRun(runID string) apiError {
+	_, run, found, err := h.findRun(runID)
+	if err == nil && found && run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
+		return apiError{
+			Code:    errorCodeRunNotRunning,
+			Message: fmt.Sprintf("run %q is %s and has nothing left to stop", runID, run.Status),
+		}
+	}
+
+	return apiError{
+		Code:    errorCodeRunNotOwned,
+		Message: fmt.Sprintf("run %q was not started by this server", runID),
+		Hint:    "Stop it where it was started: Ctrl-C in the terminal running `aconiq run`.",
+	}
 }
 
 func (h Handler) handleRunDelete(w http.ResponseWriter, r *http.Request) {

@@ -384,6 +384,35 @@ func TestCancelRefusesARunThisServerDidNotStart(t *testing.T) {
 	}
 }
 
+// The race the cancel route has to get right: it reads the run as open, and
+// before it reaches the supervisor the run finishes and settles. The answer is
+// then run_not_running — the run ended — and not run_not_owned, which would
+// send the user to a terminal that never ran it. A run still open that the
+// supervisor does not hold is someone else's.
+func TestCancelThatLosesTheRaceToTheRunsEndSaysItEnded(t *testing.T) {
+	t.Parallel()
+
+	store, _ := runGateFixture(t)
+	h := Handler{store: store, now: time.Now}
+
+	ended := startRun(t, store)
+
+	err := closeFakeRun(store, ended.ID, project.RunStatusCompleted)
+	if err != nil {
+		t.Fatalf("close run: %v", err)
+	}
+
+	if got := h.uncancellableRun(ended.ID).Code; got != errorCodeRunNotRunning {
+		t.Fatalf("a run that ended before the cancel reached it: code %q, want %q", got, errorCodeRunNotRunning)
+	}
+
+	foreign := startRun(t, store)
+
+	if got := h.uncancellableRun(foreign.ID).Code; got != errorCodeRunNotOwned {
+		t.Fatalf("a run open in another process: code %q, want %q", got, errorCodeRunNotOwned)
+	}
+}
+
 // A child that dies without closing its row — killed, out of memory — gets
 // that row, and only that row, closed by the server. The run started from a
 // terminal beside it is still computing and must be left alone; the old
