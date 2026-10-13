@@ -15,6 +15,7 @@
   "action_import_from_osm": "Von OpenStreetMap",
   "status_starting_run": "Wird gestartet…",
   "label_run_progress": "Berechnungsfortschritt",
+  "label_run_failure_reason": "Warum die Berechnung fehlgeschlagen ist",
   "status_run_progress": "{done} von {total} Immissionsorten berechnet",
   "status_run_eta_seconds": "noch etwa {seconds} s",
   "status_run_eta_minutes": "noch etwa {minutes} min",

@@ -93,6 +93,31 @@ export function parseTimeline(
   return steps;
 }
 
+/** The log's own timestamp prefix, e.g. `2026-10-13T22:37:45Z `. */
+const LOG_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z /;
+
+/** Lines that close a failed run without saying why it failed. */
+const NOT_A_REASON = /^(?:run failed|computed \d+ of \d+ receivers)$/;
+
+/**
+ * Why a failed run failed, as its log says it: the last line before the
+ * closing "run failed" that names a cause — "run cancelled: …",
+ * "run refused: …", "run interrupted: …", "<module> compute failed: …".
+ *
+ * A run that fails after `aconiq serve` has answered 202 has no response left
+ * to carry the reason, so the log is where it is, and this is what lets the
+ * run panel say it rather than leaving the reader to scroll for it. `null`
+ * when the log names nothing.
+ */
+export function failureReason(lines: string[]): string | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const message = (lines[i] ?? "").replace(LOG_TIMESTAMP, "").trim();
+    if (message === "" || NOT_A_REASON.test(message)) continue;
+    return message;
+  }
+  return null;
+}
+
 /** What the step's marker says out loud. */
 export function stepStateLabel(step: TimelineStep): string {
   if (step.done) return m.timeline_status_done();

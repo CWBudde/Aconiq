@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   AlertCircle,
   Info,
+  Loader2,
   RefreshCw,
   Square,
   Terminal,
@@ -22,6 +23,7 @@ import { asAPIRequestError } from "@/api/api-error";
 import type { ArtifactRef, RunSummary } from "@/api/client";
 import { RunProgressBar } from "@/run/progress-bar";
 import { progressOfRun } from "@/run/run-progress";
+import { failureReason } from "@/run/parse-timeline";
 import { ProgressTimeline } from "@/run/timeline";
 import { useStandardLabel } from "@/run/use-standard-label";
 import { m } from "@/i18n/messages";
@@ -148,6 +150,8 @@ export function RunDetail({
   const cancelRun = useCancelRun();
   const cancelOffered = active && backend.capabilities.canCancelRunningRun;
   const lines = log?.lines ?? [];
+  const progress = progressOfRun(run);
+  const reason = run.status === "failed" ? failureReason(lines) : null;
   const standardLabel = useStandardLabel();
   const deleteRun = useDeleteRun();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -228,6 +232,20 @@ export function RunDetail({
         </Callout>
       ) : null}
 
+      {/* Why a failed run failed. A run the server accepted has no response
+          left to carry its failure, so the reason is the last thing its log
+          names — said here, rather than left for the reader to scroll to. */}
+      {run.status === "failed" && reason !== null ? (
+        <Callout
+          variant="destructive"
+          icon={AlertCircle}
+          data-testid="run-failure-reason"
+          title={m.label_run_failure_reason()}
+        >
+          <p className="break-words font-mono text-xs">{reason}</p>
+        </Callout>
+      ) : null}
+
       {/* Progress timeline */}
       <section className="space-y-3">
         <SectionHeading variant="eyebrow" className="mb-2">
@@ -236,8 +254,25 @@ export function RunDetail({
         {/* While the server computes the run, how far it has got. It comes
             with the run itself, from the polled list, so a page reloaded in
             the middle of a run picks the bar up where it is: there is nothing
-            to reattach to but the run's id. */}
-        {active ? <RunProgressBar progress={progressOfRun(run)} /> : null}
+            to reattach to but the run's id.
+
+            A run with no report shows a plain running label, not the bar's
+            "Starting…": the row exists, so the run has started, and a
+            standard that reports no progress (Schall 03, the scaffolds) would
+            otherwise claim to be starting for its whole run. */}
+        {active ? (
+          progress === null ? (
+            <p
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+              data-testid="run-progress-running"
+            >
+              <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              {m.msg_run_in_progress()}
+            </p>
+          ) : (
+            <RunProgressBar progress={progress} />
+          )
+        ) : null}
         {logLoading ? (
           <LoadingLine />
         ) : (

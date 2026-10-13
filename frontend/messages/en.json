@@ -15,6 +15,7 @@
   "action_import_from_osm": "From OpenStreetMap",
   "status_starting_run": "Starting…",
   "label_run_progress": "Calculation progress",
+  "label_run_failure_reason": "Why the calculation failed",
   "status_run_progress": "{done} of {total} receivers computed",
   "status_run_eta_seconds": "about {seconds} s left",
   "status_run_eta_minutes": "about {minutes} min left",

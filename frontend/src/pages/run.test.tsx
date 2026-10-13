@@ -1003,11 +1003,39 @@ describe("RunPage background run", () => {
     );
   });
 
-  it("says the run is starting until the first report arrives", () => {
+  it("says the run is running, not starting, while it has no report", () => {
+    // The row exists, so the run has started; a standard that reports no
+    // progress (Schall 03, the scaffolds) would otherwise read "Starting…"
+    // for its whole run.
     showReloadedPage(runningRun());
 
-    expect(screen.getByTestId("run-progress-starting")).toBeTruthy();
+    expect(screen.getByTestId("run-progress-running").textContent).toContain(
+      m.msg_run_in_progress(),
+    );
+    expect(screen.queryByTestId("run-progress-starting")).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("says why a failed run failed, from the last cause its log names", () => {
+    state.logLines = [
+      "2026-10-13T22:37:19Z run started",
+      "2026-10-13T22:37:20Z computed 0 of 130 receivers",
+      "2026-10-13T22:37:45Z rls19 compute failed: context canceled",
+      "2026-10-13T22:37:45Z run cancelled: interrupt signal received",
+      "2026-10-13T22:37:45Z run failed",
+    ];
+    showReloadedPage(runningRun(undefined, "failed"));
+
+    expect(screen.getByTestId("run-failure-reason").textContent).toContain(
+      "run cancelled: interrupt signal received",
+    );
+  });
+
+  it("names no failure reason for a run that did not fail", () => {
+    state.logLines = ["2026-10-13T22:37:45Z run completed"];
+    showReloadedPage(runningRun(undefined, "completed"));
+
+    expect(screen.queryByTestId("run-failure-reason")).toBeNull();
   });
 
   it("draws no bar for a run that has finished", () => {
