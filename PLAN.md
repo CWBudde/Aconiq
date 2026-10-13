@@ -2278,18 +2278,20 @@ before the pages they protect are cut apart.
       ID synthesis must match `padStart` including the six-character `"R10000"` case, and
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
-- [ ] **What the asynchronous run left open: progress for every standard, and a cancel that
-      stops inside a receiver.** `POST /runs` answers `202` with a server-minted id, the run
-      lives under a context the request does not own, and `rls19-road` and `iso9613` stream
-      `run.log` and write `progress.json`. Three things are still ahead.
+- [ ] **What the asynchronous run left open: progress for every standard, and cancellation
+      inside a receiver beyond RLS-19.** `POST /runs` answers `202` with a server-minted id, the
+      run lives under a context the request does not own, `rls19-road` and `iso9613` stream
+      `run.log` and write `progress.json`, and RLS-19 checks its context before every
+      Teilstück. Three things are still ahead.
       **Schall 03 writes no progress**, because `computeSchall03Run` buffers its log lines in
       `schall03RunResult` and appends them after the compute, so a progress line would land
       ahead of the lines that preceded it; it has to log through `runLog` first. The scaffold
       modules (`receiverRunModule`) and `beb-exposure` write none either.
-      **A cancel rarely lets the child record itself on a dense scene**: the run checks its
-      context once per receiver, and one Linden receiver is minutes of CPU, so the child is
-      killed after `runInterruptGrace` and the server writes the `run cancelled` line instead.
-      A check between sources inside `receiverLevelsOn` reads no number and would close that.
+      **Schall 03 and ISO 9613-2 still check only between receivers.** One Schall 03 receiver
+      over a large scene can outlast `runInterruptGrace`, and then the child is killed and the
+      server writes the `run cancelled` line instead of the child. The RLS-19 pattern — a
+      non-blocking receive on `ctx.Done()` per propagation unit, reading no number — carries
+      over.
       **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
       run's progress now, because `EventSource` cannot send the `--api-token` header.
 - [ ] **Tell the user what a run will cost in _time_, and let them refuse it.** The receiver

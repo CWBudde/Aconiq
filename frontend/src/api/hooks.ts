@@ -265,7 +265,7 @@ export interface RunProgress {
 /**
  * Ask a running run to stop (`capabilities.canCancelRunningRun`).
  *
- * The run does not stop on the spot — it stops between two receivers — so
+ * The run does not stop on the spot — it stops at its next check — so
  * success means "the server has passed the request on", not "the run has
  * ended". The list is invalidated so the next poll fetches the run as it
  * stands, and polling carries it to `failed` from there.

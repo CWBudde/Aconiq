@@ -112,8 +112,8 @@ func (s *runSupervisor) start(
 }
 
 // cancel asks one run to stop, and reports whether it is one of this
-// server's. The run's process is interrupted, not killed: it stops between
-// receivers and records itself; see newRunProcess for the grace after which
+// server's. The run's process is interrupted, not killed: it stops at its next
+// context check and records itself; see newRunProcess for the grace after which
 // it is killed anyway.
 func (s *runSupervisor) cancel(runID string, cause error) bool {
 	s.mu.Lock()

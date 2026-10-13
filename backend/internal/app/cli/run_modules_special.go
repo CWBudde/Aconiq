@@ -442,7 +442,7 @@ func resolveComputeWorkers(requested int) int {
 }
 
 // computeRLS19RoadReceivers walks the receivers over a goroutine pool, which
-// stops between receivers once ctx is done.
+// stops before the next Teilstück once ctx is done.
 //
 // The worker count goes in the run log and deliberately not in provenance.
 // Recording a scheduling knob as an input to the calculation would assert

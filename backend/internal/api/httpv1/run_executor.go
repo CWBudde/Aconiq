@@ -56,18 +56,18 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 }
 
 // runInterruptGrace is how long an interrupted `aconiq run` child has to record
-// its own run as failed before it is killed. A run stops between two
-// receivers, so this bounds one receiver's work plus the manifest write; a
-// child still busy after it is killed, and the server closes its row instead
-// (settleRun).
+// its own run as failed before it is killed. RLS-19 stops before its next
+// Teilstück and the other standards before their next receiver, so this
+// bounds that much work plus the manifest write; a child still busy after it
+// is killed, and the server closes its row instead (settleRun).
 const runInterruptGrace = 10 * time.Second
 
 // newRunProcess prepares the `aconiq run` child for one run.
 //
 // When ctx ends — a client cancelled the run, or the server is shutting down —
 // the child is interrupted rather than killed, which is what
-// exec.CommandContext would do by default. On SIGINT `aconiq run` stops between
-// receivers and records its run as failed itself, with "run cancelled" in its
+// exec.CommandContext would do by default. On SIGINT `aconiq run` stops at its
+// next context check and records its run as failed itself, with "run cancelled" in its
 // log; a killed child leaves its row reading "running" for settleRun to close.
 // Only a child still running runInterruptGrace later is killed.
 func newRunProcess(ctx context.Context, executable string, args []string) *exec.Cmd {

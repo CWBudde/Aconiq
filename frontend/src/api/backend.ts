@@ -320,7 +320,7 @@ export interface Backend {
   startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary>;
   /**
    * Ask a running run to stop, and resolve with it as it stands — usually
-   * still `running`: it stops between two receivers and then reads `failed`
+   * still `running`: it stops at its next check and then reads `failed`
    * with "run cancelled" in its log. Rejects unless
    * `capabilities.canCancelRunningRun`.
    */

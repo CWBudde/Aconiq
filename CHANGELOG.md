@@ -98,8 +98,11 @@ anyone who ran an earlier working tree holds results those changes invalidate.
   goes, and `rls19-road` and `iso9613` write a throttled `computed X of Y receivers` line and a
   `.noise/runs/<id>/progress.json` beside it. The UI shows the bar, the time left and a Cancel
   button on the run's panel, and picks a running run back up after a reload. Refusals the run
-  command makes before it creates a run are still answered synchronously with `400`. No computed
-  level moves.
+  command makes before it creates a run are still answered synchronously with `400`. RLS-19 now
+  checks for a stop before every Teilstück rather than only between receivers, so Ctrl-C,
+  SIGTERM and the API's cancel end a run on the Linden extract in about a second instead of
+  after the receiver in flight — minutes of CPU, and over an hour on a loaded machine. No
+  computed level moves.
 - **Auto-grid rasters no longer publish a level inside a building.** A grid receiver standing
   strictly inside a building footprint is still computed and still listed in the receiver table,
   but its raster cell is now the `-9999` nodata value, for every standard and in both the CLI and

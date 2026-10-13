@@ -69,9 +69,10 @@ func (h Handler) handleRunGet(w http.ResponseWriter, r *http.Request) {
 
 // handleRunCancel asks a run this server started to stop.
 //
-// The answer is 202, not 200: the child is interrupted and stops between two
-// receivers, which on a building-dense scene can be minutes of one receiver's
-// work, so the run is still `running` when this returns. It ends `failed`,
+// The answer is 202, not 200: the child is interrupted and stops at its next
+// context check — before every Teilstück for RLS-19, about a second on the
+// Linden extract, but between receivers for the standards that check only
+// there — so the run is still `running` when this returns. It ends `failed`,
 // with "run cancelled" in its log — either the child's own line, or the
 // server's, if the child had to be killed after runInterruptGrace.
 //

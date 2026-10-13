@@ -19,7 +19,7 @@
   "status_run_eta_seconds": "noch etwa {seconds} s",
   "status_run_eta_minutes": "noch etwa {minutes} min",
   "status_run_eta_hours": "noch etwa {hours} h {minutes} min",
-  "msg_run_cancel_requested": "Abbruch angefordert. Die Berechnung endet nach dem Immissionsort, den sie gerade berechnet – spätestens nach etwa zehn Sekunden.",
+  "msg_run_cancel_requested": "Abbruch angefordert. Die Berechnung endet in wenigen Sekunden.",
   "msg_run_cancel_failed": "Die Berechnung konnte nicht abgebrochen werden.",
   "action_cancel_run": "Berechnung abbrechen",
   "msg_run_cancelled": "Die Berechnung wurde abgebrochen. Es wurde nichts ins Projekt geschrieben.",

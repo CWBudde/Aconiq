@@ -146,8 +146,9 @@ func openapiRunResourcePathItems() map[string]any {
 			"post": map[string]any{
 				"summary":     "Stop a running run",
 				"operationId": "cancelRun",
-				"description": "Interrupts the `aconiq run` process computing the run. It stops between two " +
-					"receivers and records the run as `failed`, with `run cancelled` in its log; a process " +
+				"description": "Interrupts the `aconiq run` process computing the run. It stops at its next " +
+					"check — before every Teilstück for `rls19-road`, between receivers for the other " +
+					"standards — and records the run as `failed`, with `run cancelled` in its log; a process " +
 					"still busy ten seconds later is killed and the server records the same. The answer comes " +
 					"before either, so the run usually still reads `running` in it — poll " +
 					"`GET /api/v1/runs/{id}` for the end. Only a run this server started can be stopped here.",

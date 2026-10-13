@@ -19,7 +19,7 @@
   "status_run_eta_seconds": "about {seconds} s left",
   "status_run_eta_minutes": "about {minutes} min left",
   "status_run_eta_hours": "about {hours} h {minutes} min left",
-  "msg_run_cancel_requested": "Stop requested. The calculation ends after the receiver it is computing, within about ten seconds.",
+  "msg_run_cancel_requested": "Stop requested. The calculation ends within a few seconds.",
   "msg_run_cancel_failed": "The calculation could not be cancelled.",
   "action_cancel_run": "Cancel calculation",
   "msg_run_cancelled": "The calculation was cancelled. Nothing was written to the project.",
