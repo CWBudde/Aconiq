@@ -2242,6 +2242,10 @@ before the pages they protect are cut apart.
       candidates can contribute audibly. Profile a coarse-rung scene before proposing a fix; note
       that an energy cutoff is still rejected for the reasons recorded above, so whatever this is,
       it has to be exact.
+- [x] **The Linden scene can be profiled through the real binary** (#96). `aconiq run --cpuprofile`
+      and `--memprofile` write pprof profiles, on a failed or cancelled run too, and
+      `just repro-linden DIR` reruns the scene from `SOURCE_PROJECT` or a fresh OSM import (which
+      has no calc-area). Measure every change to the per-pair cost against it.
 - [ ] **Correctness debt the reflection reading exposed, and it is _slower_, not faster.** The
       Anmerkung to Nr. 3.5.5 requires mirrored paths to raise _Spiegelbeugungskanten_ and be run
       through the Gummibandmethode over the whole unfolded path. That is exactly declared deviation

@@ -23,23 +23,24 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 
 ### Go
 
-| Command                | What it does                                                     |
-| ---------------------- | ---------------------------------------------------------------- |
-| `just build`           | Build the CLI → `bin/aconiq`                                     |
-| `just test`            | Run all Go tests                                                 |
-| `just test-race`       | Run tests with the race detector                                 |
-| `just test-coverage`   | Run tests with a coverage report (`backend/coverage.html`)       |
-| `just coverage-report` | Render the coverage Markdown CI publishes                        |
-| `just coverage-check`  | Check the coverage floor (`COVERAGE_FLOOR` to enforce)           |
-| `just update-golden`   | Update golden snapshots (`UPDATE_GOLDEN=1 go test ./...`)        |
-| `just lint`            | Run golangci-lint v2 over `backend/`                             |
-| `just lint-fix`        | Same, with `--fix`                                               |
-| `just vet`             | `go vet` (compiler-adjacent checks golangci-lint does not cover) |
-| `just check-tidy`      | Verify `go.mod`/`go.sum` are tidy                                |
-| `just govulncheck`     | Scan dependencies and the stdlib for known CVEs                  |
-| `just license-check`   | Fail on restricted/forbidden/unknown dependency licenses         |
-| `just license-report`  | CSV report of all dependency licenses                            |
-| `just wasm-build`      | Build the WASM kernel → `frontend/public/aconiq.wasm`            |
+| Command                 | What it does                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `just build`            | Build the CLI → `bin/aconiq`                                                                     |
+| `just test`             | Run all Go tests                                                                                 |
+| `just test-race`        | Run tests with the race detector                                                                 |
+| `just test-coverage`    | Run tests with a coverage report (`backend/coverage.html`)                                       |
+| `just coverage-report`  | Render the coverage Markdown CI publishes                                                        |
+| `just coverage-check`   | Check the coverage floor (`COVERAGE_FLOOR` to enforce)                                           |
+| `just update-golden`    | Update golden snapshots (`UPDATE_GOLDEN=1 go test ./...`)                                        |
+| `just lint`             | Run golangci-lint v2 over `backend/`                                                             |
+| `just lint-fix`         | Same, with `--fix`                                                                               |
+| `just vet`              | `go vet` (compiler-adjacent checks golangci-lint does not cover)                                 |
+| `just check-tidy`       | Verify `go.mod`/`go.sum` are tidy                                                                |
+| `just govulncheck`      | Scan dependencies and the stdlib for known CVEs                                                  |
+| `just license-check`    | Fail on restricted/forbidden/unknown dependency licenses                                         |
+| `just license-report`   | CSV report of all dependency licenses                                                            |
+| `just wasm-build`       | Build the WASM kernel → `frontend/public/aconiq.wasm`                                            |
+| `just repro-linden DIR` | Rerun the Hannover-Linden RLS-19 scene headlessly with a CPU profile (`scripts/repro-linden.sh`) |
 
 ### Formatting
 
@@ -193,7 +194,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `aconiq import`     | Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM/Overpass, LGLN LoD2, CSV, GeoTIFF terrain |
 | `aconiq compare`    | Compare a run against imported SoundPLAN receiver results with a dB tolerance                             |
 | `aconiq validate`   | Validate the normalized model and emit a validation report                                                |
-| `aconiq run`        | Run one scenario against one standard/version/profile                                                     |
+| `aconiq run`        | Run one scenario against one standard/version/profile; `--cpuprofile`/`--memprofile` write pprof profiles |
 | `aconiq delete-run` | Remove a run, its artifact refs and `.noise/runs/<id>/`; export bundles are kept                          |
 | `aconiq status`     | Report project, scenario and run state                                                                    |
 | `aconiq export`     | Export a run bundle, generate reports, and emit GIS formats (`--format`)                                  |

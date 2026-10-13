@@ -112,6 +112,21 @@ bench *ARGS:
         ./internal/geo/... ./internal/acoustics/... \
         ./internal/standards/rls19/road/... ./internal/wasmkernel/...
 
+# The benchmarks above measure synthetic scenes; this measures the real one the
+# per-pair-cost work in PLAN.md is about, through the binary a user runs. DIR
+# becomes a project folder; extra args go to `aconiq run`:
+#
+#     just repro-linden /tmp/linden --param segment_length_mode=distance_scaled
+#     SOURCE_PROJECT=~/aconiq-workspace just repro-linden /tmp/linden
+#
+# Without SOURCE_PROJECT it imports the scene from OpenStreetMap, which needs
+# network access and carries no calc-area; scripts/repro-linden.sh says what
+# that means and how CALC_AREA_GEOJSON supplies one.
+
+# Reproduce the Hannover-Linden-Mitte RLS-19 run headlessly, with a CPU profile
+repro-linden DIR *ARGS: build
+    ./scripts/repro-linden.sh {{DIR}} {{ARGS}}
+
 # Check the backend coverage floor (requires a prior test-coverage)
 #
 # Reports only unless COVERAGE_FLOOR is set:
