@@ -9,6 +9,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/geo/terrain"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
@@ -79,6 +80,7 @@ type preparedRun struct {
 	relModelPath string
 	runDir       string
 	log          *runLog
+	inputs       runInputs
 }
 
 func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
@@ -167,6 +169,17 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		return preparedRun{}, err
 	}
 
+	// Everything that can refuse the run on its inputs is decided here, before
+	// the row exists: the model, the CRS it is computed in, the terrain in that
+	// CRS, and whether the standard is wired at all. A refusal then leaves no
+	// row, and `aconiq serve` — which answers once the row exists — still
+	// answers it synchronously, with the child's exit code, rather than with a
+	// 202 for a run that is already failed.
+	inputs, err := loadRunInputs(store, proj, state, resolvedStandard.StandardID, resolvedModelPath, relModelPath)
+	if err != nil {
+		return preparedRun{}, err
+	}
+
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
 		RunID:      req.runID,
 		ScenarioID: req.scenarioID,
@@ -199,6 +212,9 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		fmt.Sprintf("%s receiver_mode=%s", run.StartedAt.Format(time.RFC3339), req.receiverMode),
 	)
 
+	// What loading the inputs had to say, in the order it said it.
+	log.addLines(inputs.logLines)
+
 	// From here on run.log is written as it grows, so a run that is still
 	// computing can be read — by `GET /runs/{id}/log` above all.
 	log.streamTo(filepath.Join(store.Root(), filepath.FromSlash(run.LogPath)))
@@ -214,32 +230,83 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		relModelPath: relModelPath,
 		runDir:       filepath.Join(store.Root(), ".noise", "runs", run.ID),
 		log:          log,
+		inputs:       inputs,
 	}, nil
+}
+
+// runInputs is what a run computes from, loaded and checked before the run
+// exists.
+type runInputs struct {
+	model      modelgeojson.Model
+	projection computeProjection
+	terrain    terrain.Model
+	module     runModule
+	// logLines is what loading them had to say, stamped when it was said, for
+	// the run log once there is one.
+	logLines []string
+}
+
+// loadRunInputs loads the model, moves it into the compute CRS, aligns the
+// terrain with that CRS and looks up the standard's module. Each refusal is a
+// user-input error where the cause is the project or the request — a model
+// that is missing or does not validate, a CRS that cannot be projected, a
+// terrain that cannot be queried in it — so the run command exits 2.
+func loadRunInputs(
+	store projectfs.Store,
+	proj project.Project,
+	state commandState,
+	standardID string,
+	modelPath string,
+	relModelPath string,
+) (runInputs, error) {
+	var inputs runInputs
+
+	logf := func(format string, args ...any) {
+		inputs.logLines = append(inputs.logLines, nowUTC().Format(time.RFC3339)+" "+fmt.Sprintf(format, args...))
+	}
+
+	model, err := loadValidatedModel(modelPath, proj.CRS, relModelPath)
+	if err != nil {
+		return runInputs{}, err
+	}
+
+	model, projection, err := resolveComputeModel(model, proj.CRS)
+	if err != nil {
+		return runInputs{}, err
+	}
+
+	if projection.Applied {
+		logf("project_crs=%s is geographic; computing in compute_crs=%s", projection.ProjectCRS, projection.ComputeCRS)
+	}
+
+	// The terrain is stored in the project CRS and is not moved with the
+	// model, so a projected run has to query it through a transform.
+	runTerrain, err := newTerrainInComputeCRS(loadRunTerrain(store, proj, state, logf), projection)
+	if err != nil {
+		return runInputs{}, domainerrors.New(domainerrors.KindUserInput, "cli.run",
+			"the project terrain cannot be queried in the compute CRS: "+err.Error(), err)
+	}
+
+	module, err := runModuleFor(standardID)
+	if err != nil {
+		return runInputs{}, err
+	}
+
+	inputs.model = model
+	inputs.projection = projection
+	inputs.terrain = runTerrain
+	inputs.module = module
+
+	return inputs, nil
 }
 
 // computeRun loads the inputs and hands them to the standard's module. From
 // here on a failure is a failed run: it is recorded in the manifest and in the
 // log, rather than returned as if nothing had happened.
 func computeRun(ctx context.Context, prepared preparedRun, state commandState, req runCommandRequest) (runModuleResult, error) {
-	model, err := loadValidatedModel(prepared.modelPath, prepared.project.CRS, prepared.relModelPath)
-	if err != nil {
-		prepared.log.addf("failed to load model: %v", err)
+	projection := prepared.inputs.projection
 
-		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
-	}
-
-	model, projection, err := resolveComputeModel(model, prepared.project.CRS)
-	if err != nil {
-		prepared.log.addf("failed to project model for compute: %v", err)
-
-		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
-	}
-
-	if projection.Applied {
-		prepared.log.addf("project_crs=%s is geographic; computing in compute_crs=%s", projection.ProjectCRS, projection.ComputeCRS)
-	}
-
-	err = prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, map[string]string{
+	err := prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, map[string]string{
 		provenanceProjectCRSKey: projection.ProjectCRS,
 		provenanceComputeCRSKey: projection.ComputeCRS,
 	})
@@ -249,28 +316,11 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
 	}
 
-	// The terrain is stored in the project CRS and is not moved with the
-	// model, so a projected run has to query it through a transform.
-	runTerrain, err := newTerrainInComputeCRS(loadRunTerrain(prepared, state), projection)
-	if err != nil {
-		prepared.log.addf("failed to align terrain with the compute CRS: %v", err)
-
-		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(),
-			domainerrors.New(domainerrors.KindInternal, "cli.computeRun", "align terrain with the compute CRS", err))
-	}
-
-	module, err := runModuleFor(prepared.standard.StandardID)
-	if err != nil {
-		prepared.log.addf("run wiring missing: %v", err)
-
-		return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), err)
-	}
-
-	result, err := module(ctx, runModuleInput{
+	result, err := prepared.inputs.module(ctx, runModuleInput{
 		standard:     prepared.standard,
 		params:       prepared.params,
-		model:        model,
-		terrain:      runTerrain,
+		model:        prepared.inputs.model,
+		terrain:      prepared.inputs.terrain,
 		receiverMode: req.receiverMode,
 		workers:      req.workers,
 		runDir:       prepared.runDir,
@@ -284,11 +334,16 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 		},
 	})
 	if err != nil {
-		// A failure before the module touched anything leaves the run as it
-		// found it; anything else is a failed run and is recorded as one.
+		// A refusal before the module touched anything — an option it cannot
+		// parse, a receiver mode it does not support — used to leave the row
+		// reading `running`, for `aconiq serve` to close later with no reason
+		// given. It is a failed run like any other now, with the refusal as
+		// the last thing its log says, so the run panel can show why.
 		var before beforeRunError
 		if errors.As(err, &before) {
-			return runModuleResult{}, before.err
+			prepared.log.addf("run refused: %v", before.err)
+
+			return runModuleResult{}, finalizeRunFailure(prepared.store, prepared.run, prepared.log.all(), before.err)
 		}
 
 		// A cancellation is recorded as a failed run, as any other stop in the
@@ -306,21 +361,21 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 // loadRunTerrain returns the project's imported DTM, or nil. A terrain that
 // fails to load is a warning rather than a failure: the run continues without
 // elevation, and says so in both the log and the structured logger.
-func loadRunTerrain(prepared preparedRun, state commandState) terrain.Model {
-	artifactPath := findArtifactPath(prepared.project, "artifact-terrain")
+func loadRunTerrain(store projectfs.Store, proj project.Project, state commandState, logf func(string, ...any)) terrain.Model {
+	artifactPath := findArtifactPath(proj, "artifact-terrain")
 	if artifactPath == "" {
 		return nil
 	}
 
-	model, err := terrain.Load(filepath.Join(prepared.store.Root(), artifactPath))
+	model, err := terrain.Load(filepath.Join(store.Root(), artifactPath))
 	if err != nil {
 		state.Logger.Warn("terrain DTM load failed, continuing without terrain", "error", err)
-		prepared.log.addf("terrain load warning: %v", err)
+		logf("terrain load warning: %v", err)
 
 		return nil
 	}
 
-	prepared.log.addf("terrain loaded from %s", artifactPath)
+	logf("terrain loaded from %s", artifactPath)
 
 	return model
 }

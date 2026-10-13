@@ -209,10 +209,10 @@ type runModule func(context.Context, runModuleInput) (runModuleResult, error)
 
 // beforeRunError marks a failure that happened before the module touched
 // anything: option parsing, and the receiver mode a standard refuses. The
-// pipeline returns these as they are rather than marking the run failed, which
-// is what it did before this dispatch existed — the run is left in `running`.
-// That is questionable and is not this refactor's question; PLAN.md Priority 3
-// owns the exit-code and run-state taxonomy.
+// pipeline records the run failed with a "run refused: …" line and returns the
+// error unwrapped, so its kind still decides the exit code. It used to leave
+// the row reading `running`, which `aconiq serve` then closed with no reason a
+// reader could find.
 type beforeRunError struct {
 	err error
 }
