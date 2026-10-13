@@ -120,6 +120,34 @@ func openapiCreateRunOperation() map[string]any {
 	}
 }
 
+// openapiCancelRunOperation describes POST /api/v1/runs/{id}/cancel.
+func openapiCancelRunOperation(runIDParameter []map[string]any, runSummaryContent map[string]any) map[string]any {
+	return map[string]any{
+		"summary":     "Stop a running run",
+		"operationId": "cancelRun",
+		"description": "Interrupts the `aconiq run` process computing the run. It stops at its next " +
+			"check — before every Teilstück for `rls19-road`, between receivers for the other " +
+			"standards — and records the run as `failed`, with `run cancelled` in its log; a process " +
+			"still busy ten seconds later is killed and the server records the same. The answer comes " +
+			"before either, so the run usually still reads `running` in it — poll " +
+			"`GET /api/v1/runs/{id}` for the end. Only a run this server started can be stopped here.",
+		"parameters": runIDParameter,
+		"responses": map[string]any{
+			"202": map[string]any{
+				"description": "The run has been told to stop; its summary as it stands",
+				"content":     runSummaryContent,
+			},
+			"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
+			"405": methodNotAllowedResponse(),
+			"409": openapiErrorResponse(
+				"The run has already finished (`" + errorCodeRunNotRunning + "`), or it is running in a " +
+					"process this server did not start (`" + errorCodeRunNotOwned + "`)",
+			),
+			"500": openapiErrorResponse("The project manifest could not be read; nothing was signalled"),
+		},
+	}
+}
+
 // openapiRunResourcePathItems describes the single-run resource. Go 1.22 routing
 // gives the more specific /api/v1/runs/{id}/log precedence over this pattern.
 func openapiRunResourcePathItems() map[string]any {
@@ -143,29 +171,7 @@ func openapiRunResourcePathItems() map[string]any {
 
 	return map[string]any{
 		"/api/v1/runs/{id}/cancel": map[string]any{
-			"post": map[string]any{
-				"summary":     "Stop a running run",
-				"operationId": "cancelRun",
-				"description": "Interrupts the `aconiq run` process computing the run. It stops at its next " +
-					"check — before every Teilstück for `rls19-road`, between receivers for the other " +
-					"standards — and records the run as `failed`, with `run cancelled` in its log; a process " +
-					"still busy ten seconds later is killed and the server records the same. The answer comes " +
-					"before either, so the run usually still reads `running` in it — poll " +
-					"`GET /api/v1/runs/{id}` for the end. Only a run this server started can be stopped here.",
-				"parameters": runIDParameter,
-				"responses": map[string]any{
-					"202": map[string]any{
-						"description": "The run has been told to stop; its summary as it stands",
-						"content":     runSummaryContent,
-					},
-					"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
-					"405": methodNotAllowedResponse(),
-					"409": openapiErrorResponse(
-						"The run has already finished (`" + errorCodeRunNotRunning + "`), or it is running in a " +
-							"process this server did not start (`" + errorCodeRunNotOwned + "`)",
-					),
-				},
-			},
+			"post": openapiCancelRunOperation(runIDParameter, runSummaryContent),
 		},
 		"/api/v1/runs/{id}": map[string]any{
 			"get": map[string]any{

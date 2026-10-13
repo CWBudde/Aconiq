@@ -489,6 +489,67 @@ func TestShutdownInterruptsRunsAndRefusesNewOnes(t *testing.T) {
 	}
 }
 
+// A manifest that cannot be read is a storage failure, not a missing run: GET
+// and cancel answer 500, and cancel signals nothing, so the caller is not told
+// its run does not exist while it goes on computing.
+func TestUnreadableManifestIsNotReportedAsAMissingRun(t *testing.T) {
+	t.Parallel()
+
+	store, _ := runGateFixture(t)
+	child := newFakeChild(store)
+
+	handler, runs := newRunTestHandler(t, store, handlerOptions{clock: time.Now, runExecutor: child.execute})
+
+	_, accepted := postRun(t, handler)
+
+	// A directory where the manifest should be: Load fails with an I/O error,
+	// which is neither "not initialised" nor "no such run".
+	manifest := filepath.Join(store.Root(), ".noise", "project.json")
+
+	saved, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	err = os.Remove(manifest)
+	if err != nil {
+		t.Fatalf("remove manifest: %v", err)
+	}
+
+	err = os.Mkdir(manifest, 0o750)
+	if err != nil {
+		t.Fatalf("replace manifest: %v", err)
+	}
+
+	rec := cancelRun(handler, accepted.ID)
+	assertErrorCode(t, rec, http.StatusInternalServerError, errorCodeInternalError)
+
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, newAPIRequest(http.MethodGet, "/api/v1/runs/"+accepted.ID, nil))
+	assertErrorCode(t, getRec, http.StatusInternalServerError, errorCodeInternalError)
+
+	select {
+	case cause := <-child.cause:
+		t.Fatalf("a cancel answered with an error still signalled the run: %v", cause)
+	default:
+	}
+
+	// Put the manifest back so the run can close itself.
+	err = os.Remove(manifest)
+	if err != nil {
+		t.Fatalf("remove directory: %v", err)
+	}
+
+	err = os.WriteFile(manifest, saved, 0o600)
+	if err != nil {
+		t.Fatalf("restore manifest: %v", err)
+	}
+
+	child.release <- nil
+
+	runs.wg.Wait()
+}
+
 // A project that was never initialised is answered before any child starts,
 // with the 404 not_found envelope every other route gives it. Starting the
 // child instead turned its exit code 2 into a 400 carrying stderr.

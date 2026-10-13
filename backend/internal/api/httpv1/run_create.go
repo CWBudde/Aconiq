@@ -111,7 +111,9 @@ func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID 
 	defer poll.Stop()
 
 	for {
-		proj, row, found := h.findRun(runID)
+		// A manifest that cannot be read is "not yet" here, and only here: the
+		// child is writing it, this is polling, and there is a deadline below.
+		proj, row, found, _ := h.findRun(runID)
 		if found {
 			w.Header().Set("Location", "/api/v1/runs/"+runID)
 			writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
@@ -123,7 +125,7 @@ func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID 
 		case <-run.done:
 			// One last look: a run quick enough to create its row and finish
 			// between two polls is still a run, and is answered as one.
-			proj, row, found := h.findRun(runID)
+			proj, row, found, loadErr := h.findRun(runID)
 			if found {
 				w.Header().Set("Location", "/api/v1/runs/"+runID)
 				writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
@@ -133,6 +135,12 @@ func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID 
 
 			if run.err != nil {
 				writeRunCreateError(w, run.err)
+
+				return
+			}
+
+			if loadErr != nil {
+				writeDomainError(w, loadErr)
 
 				return
 			}
@@ -158,22 +166,24 @@ func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID 
 	}
 }
 
-// findRun loads the manifest and looks the run up in it. A manifest that
-// cannot be read reads as "not yet": the caller is polling, and it has a
-// deadline of its own.
-func (h Handler) findRun(runID string) (project.Project, project.Run, bool) {
+// findRun loads the manifest and looks the run up in it. "Not in the
+// manifest" (false, nil) and "the manifest could not be read" (false, err)
+// are different answers: the first is a 404, the second a storage failure,
+// and conflating them told a client its run did not exist while it went on
+// computing.
+func (h Handler) findRun(runID string) (project.Project, project.Run, bool, error) {
 	proj, err := h.store.Load()
 	if err != nil {
-		return project.Project{}, project.Run{}, false
+		return project.Project{}, project.Run{}, false, fmt.Errorf("load project manifest: %w", err)
 	}
 
 	for _, run := range proj.Runs {
 		if run.ID == runID {
-			return proj, run, true
+			return proj, run, true, nil
 		}
 	}
 
-	return project.Project{}, project.Run{}, false
+	return project.Project{}, project.Run{}, false, nil
 }
 
 // experimentalOptInGate refuses a run against a scaffold-tier standard that the

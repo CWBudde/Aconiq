@@ -86,7 +86,15 @@ func (h Handler) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 
 	runID := r.PathValue("id")
 
-	proj, run, found := h.findRun(runID)
+	// An unreadable manifest is reported as what it is, a storage failure,
+	// and nothing is signalled: the caller learns the cancel did not happen
+	// rather than being told the run does not exist while it computes on.
+	proj, run, found, err := h.findRun(runID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
 	if !found {
 		writeAPIError(w, http.StatusNotFound, apiError{
 			Code:    errorCodeNotFound,
@@ -117,8 +125,9 @@ func (h Handler) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 
 	// Read again: a child that was between receivers may already have closed
 	// its row, and the caller is better served by that than by the row as it
-	// was before the signal.
-	if latest, latestRun, ok := h.findRun(runID); ok {
+	// was before the signal. The signal has gone either way, so a read that
+	// fails here falls back to the row read above rather than to an error.
+	if latest, latestRun, ok, _ := h.findRun(runID); ok {
 		proj, run = latest, latestRun
 	}
 
