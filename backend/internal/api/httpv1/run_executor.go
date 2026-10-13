@@ -8,15 +8,12 @@ package httpv1
 // limit.
 
 import (
-	"bytes"
 	"context"
 	stderrors "errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"slices"
-	"strings"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -31,19 +28,20 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 
 		cmd := newRunProcess(ctx, executable, runCommandArgs(projectRoot, runID, req))
 
-		var stderr bytes.Buffer
+		var stdout, stderr tailBuffer
 
-		cmd.Stdout = io.Discard
+		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 
 		err = cmd.Run()
 		if err != nil {
+			message := childErrorMessage(stdout.Bytes(), stderr.Bytes())
+
 			var exitErr *exec.ExitError
 			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", strings.TrimSpace(stderr.String()), err)
+				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", message, err)
 			}
 
-			message := strings.TrimSpace(stderr.String())
 			if message == "" {
 				message = err.Error()
 			}
