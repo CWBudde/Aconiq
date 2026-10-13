@@ -12,6 +12,16 @@ import (
 // scratch withheld so that every obstacle is tested — and require the two to
 // agree to the bit. A prune that is merely "close" fails here, which is the
 // point: docs/policies/determinism.md does not have a tolerance in it.
+//
+// What the nil scratch does *not* withhold is the receiver-side reflection
+// search. mirrorsFor(nil) builds the same wedge table the indexed walk uses,
+// only from every wall instead of from the wall index, and the wedge tests
+// and slope windows run on both sides. So these tests check the index and the
+// barrier fan, and that the table comes out the same with and without the
+// index — but they no longer check the reflection search independently. That
+// rests on reflections_reference_test.go, which keeps the source-side search
+// as written, and on reflections_receiver_test.go, which holds the two to the
+// bit.
 
 // indexTestSources is a short kinked road, so that the Teilstücke sit at
 // different angles to the obstacles rather than all at one.

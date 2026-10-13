@@ -15,6 +15,16 @@ import (
 // way of producing exactly these paths, in exactly this order — the property
 // tests in reflections_receiver_test.go compare the two to the bit — so the
 // reference must stay as it was written and must not be "fixed" to agree.
+//
+// One known way the two can legitimately differ, documented in
+// reflections_receiver.go under "The one way it can differ": this reference
+// prunes second bounces with a source-side shadow whose fixed 1 mm margin can
+// round wrongly when the source stands a few millimetres off the first wall's
+// line and the second wall is far away. The production search can then return
+// one second-order path more than this reference — a path the unchanged exact
+// test accepts and this reference pruned in error. A mismatch of that shape
+// (an extra path, never a missing or changed one) is that, not a defect. None
+// has been seen.
 
 // referencePaths is the old appendPaths.
 func (f *reflectorField) referencePaths(

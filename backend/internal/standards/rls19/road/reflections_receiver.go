@@ -87,6 +87,25 @@ import (
 // receiverShadowMargin, sized to the scene, because a query cannot carry a
 // distance-dependent widening.
 //
+// # The one way it can differ from the search it replaced
+//
+// "Exact" above means: it accepts exactly the paths the exact test accepts.
+// The source-side search did not quite do that. Before the exact test it
+// pruned second bounces with geo.SegmentShadow cast from the image source S',
+// with a fixed 1 mm margin (queryMarginM) that is also the shadow's degeneracy
+// threshold. By the argument above, its error at the second wall is
+// ε·|P2−S'|/d, d the image source's distance from w1's line — so with the
+// source a few millimetres off w1's line (d of the same order, since S' is S
+// mirrored) and w2 a kilometre away, rounding can exceed that millimetre and
+// the old prune can drop a path the exact test would have accepted. This
+// search applies no source-side prune, so in that case it keeps the path: it
+// can only ever *add* a path the old search wrongly pruned, never drop or
+// change one. No such case has turned up in any comparison — the property
+// tests, the city goldens, or the full Linden calc-area, all bit-identical — but
+// the possibility is real, and a seeded mismatch of exactly that shape (an
+// extra second-order path, source millimetres off the first wall's line, a
+// distant second wall) is this and not a defect.
+//
 // # What it keeps
 //
 // The order of the paths is the old order: first order in wall order, then
@@ -100,10 +119,13 @@ import (
 // # What it costs
 //
 // The entry list is the price: one per wall pair the receiver can see a
-// second-order path through, ~600 000 on an 8 000-facade city block model,
-// 32 bytes each plus 8 bytes of staging, rebuilt per receiver into buffers
-// the walk keeps. It is per walk — per goroutine of a parallel run, per
-// Worker in the browser — never per receiver held at once.
+// second-order path through, 32 bytes each plus 8 bytes of staging, rebuilt
+// per receiver into buffers the walk keeps. It is held per walker — per worker
+// of a parallel run, for the worker's lifetime (see Walker), per Worker in the
+// browser — never per receiver. It is not bounded: the pair count grows
+// faster than the facade count, ~600 000 pairs on an 8 000-facade synthetic
+// city and ~1 M (~40 MB) on the 8 083-facade Linden extract, and a larger
+// extract costs proportionally more per worker. PLAN.md tracks that.
 
 const (
 	// wedgeMarginM is the absolute widening of every wedge boundary.
