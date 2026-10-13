@@ -2239,7 +2239,7 @@ before the pages they protect are cut apart.
       per-receiver barrier fan (`reflections_receiver.go`, `shielding_fan.go`), both exact: on
       three Linden receivers in `distance_scaled` mode 1 724 s CPU became 46 s with a
       byte-identical receiver table, and the synthetic city of `city_scene_test.go` went from 408 s
-      to 8 s per receiver. Fixed mode at 1 m is still ~730 s CPU per Linden receiver (measured
+      to 8 s per receiver. Fixed mode at 1 m is still ~540 s CPU per Linden receiver (measured
       under load), because ~44 000 Teilstücke each shield their ~300 mirrored paths one by one,
       and that shielding is now 70 % of the profile: per path (measured on the synthetic city) the
       fan hands over ~12 buildings, the ray crosses ~12, and ~110 facade edges go through
@@ -2247,11 +2247,11 @@ before the pages they protect are cut apart.
       exact is cheaper arithmetic, not fewer candidates: a sign pre-test that rejects an edge
       before the two divisions (it needs an error-bound argument, and the function is shared with
       Schall 03 and ISO 9613-2), and integer reflector exclusion in place of
-      `dropExcludedBarriers`' string compares (~6 %). Memory to watch: ~1 M wall pairs per Linden
-      receiver, ~40 MB per worker; and one fixed-mode receiver peaks at 2.7 GB RSS against 186 MB
-      in `distance_scaled` — the per-receiver contribution slices, which hold one float64 per
-      mirrored path and period until `EnergySum` reads them, so a streaming energy sum would be
-      the fix if it can keep the order.
+      `dropExcludedBarriers`' string compares (~6 %). Memory is now bounded per worker: the
+      receiver-side table (~1 M wall pairs, ~40 MB on Linden) is reused from one receiver to the
+      next, and the contributions are energy-summed as they arise (`periodSums`) instead of being
+      held — they used to reach 2.7 GB for one fixed-mode receiver, and RSS grew without bound on
+      a 20-worker run. Three fixed-mode Linden receivers now peak at 173 MB RSS (1 607 s CPU).
 - [x] **The Linden scene can be profiled through the real binary** (#96). `aconiq run --cpuprofile`
       and `--memprofile` write pprof profiles, on a failed or cancelled run too, and
       `just repro-linden DIR` reruns the scene from `SOURCE_PROJECT` or a fresh OSM import (which

@@ -30,8 +30,8 @@ func DefaultWorkers() int {
 // # Why this is bit-identical rather than merely close
 //
 // There is no reduction across receivers anywhere in RLS-19. A receiver's
-// level is acoustics.EnergySum over that receiver's own contributions, in the
-// scene's source-and-Teilstück order, and no split touches that order. So this
+// level is the energy sum (acoustics.EnergyAccumulator) of that receiver's own
+// contributions, in the scene's source-and-Teilstück order, and no split touches that order. So this
 // changes no floating-point operation and no floating-point operand — only
 // which goroutine executes an unchanged sequence. That is a stronger claim
 // than the usual "the partition is deterministic", and it is the reason

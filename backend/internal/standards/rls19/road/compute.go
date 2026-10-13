@@ -43,14 +43,6 @@ type Scene struct {
 	// bounding box, and a nil index means "test them all" — the walk the code
 	// did before the index existed.
 	barrierGrid *geo.BBoxGrid
-
-	// segmentCount is the total over all sources. It sizes the walk's
-	// contribution slices in one allocation instead of letting them grow from
-	// a guess, which on a 2 km road at the default 1 m Teilstück length was a
-	// dozen reallocations per receiver. Those slices now live in pathScratch,
-	// so that one allocation is taken once per walk rather than once per
-	// receiver; a nil-scratch call still takes it per receiver.
-	segmentCount int
 }
 
 // preparedSource is one road source reduced to what the propagation walk reads
@@ -90,7 +82,7 @@ type preparedSource struct {
 	// offset centreline the split has finished with.
 	//
 	// The fields above stay the ladder's rung zero, so everything that reads
-	// a prepared source without knowing about rungs — segmentCount, the
+	// a prepared source without knowing about rungs — the
 	// refusals, the tests — keeps reading the finest split, which is the one
 	// the user asked for.
 	line    []geo.Point2D
@@ -123,11 +115,10 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 	effectiveBarriers := buildingBarriers(barriers, cfg.Buildings)
 
 	scene := &Scene{
-		sources:      make([]preparedSource, 0, len(sources)),
-		barriers:     effectiveBarriers,
-		reflectors:   newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
-		barrierGrid:  newBarrierGrid(effectiveBarriers),
-		segmentCount: 0,
+		sources:     make([]preparedSource, 0, len(sources)),
+		barriers:    effectiveBarriers,
+		reflectors:  newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
+		barrierGrid: newBarrierGrid(effectiveBarriers),
 	}
 
 	for _, source := range sources {
@@ -143,7 +134,6 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 		}
 
 		scene.sources = append(scene.sources, prepared)
-		scene.segmentCount += len(prepared.segments)
 	}
 
 	return scene, nil
@@ -360,19 +350,18 @@ func (s *Scene) receiverLevels(receiver geo.Point2D, cfg PropagationConfig) (Per
 // made by the caller. It is what the grid loop runs, so with a scratch it
 // allocates nothing at all.
 //
-// The two contribution slices come from the scratch when there is one. They are
-// the largest per-receiver allocation in the walk — one float64 per Teilstück
-// per period, so 32 KB per receiver at 2 000 Teilstücke, a third of a gigabyte
-// over a 10 000-point grid — and nothing reads them after EnergySum has, so the
-// backing array can be handed to the next receiver. Reusing it cannot move a
-// result: the slices are truncated to zero length before the walk, appended to
-// in exactly the order they were before, and EnergySum reads them in slice
-// order, so both the contents and the order are the ones the fresh slices had.
+// The contributions are energy-summed as they are produced rather than
+// collected first. They used to be gathered into one slice per period and
+// handed to acoustics.EnergySum at the end, and that slice holds one float64
+// per Teilstück and per mirrored path: on a building-dense model in fixed mode
+// that is ~44 000 Teilstücke times thousands of paths, gigabytes per receiver
+// and per worker, held only to be read once. EnergySum is a plain sum in slice
+// order, and periodSums adds the same terms in the same order through the same
+// acoustics.EnergyAccumulator EnergySum runs on, so the levels are the ones
+// the slices gave, to the bit.
 //
-// A nil scratch still allocates, because a nil scratch is the unindexed
-// reference path pathScratch documents — spatial_test.go computes against it
-// and requires the two to agree to the bit, which it could not do if the
-// reference path shared state with the walk it is checking.
+// A nil scratch is the unindexed reference path pathScratch documents —
+// spatial_test.go computes against it and requires the two to agree to the bit.
 func (s *Scene) receiverLevelsOn(
 	receiver geo.Point2D,
 	cfg PropagationConfig,
@@ -381,15 +370,7 @@ func (s *Scene) receiverLevelsOn(
 	// Absolute receiver Z = terrain elevation + height above ground.
 	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
 
-	var dayContrib, nightContrib []float64
-
-	if scratch != nil {
-		dayContrib = scratch.dayContrib[:0]
-		nightContrib = scratch.nightContrib[:0]
-	} else {
-		dayContrib = make([]float64, 0, s.segmentCount)
-		nightContrib = make([]float64, 0, s.segmentCount)
-	}
+	var sums periodSums
 
 	for i := range s.sources {
 		// By pointer, and via levelFor, because in distance-scaled mode which
@@ -400,7 +381,7 @@ func (s *Scene) receiverLevelsOn(
 
 		for j, seg := range segments {
 			appendSegmentContributions(
-				&dayContrib, &nightContrib,
+				&sums,
 				baseDayDB[j], baseNightDB[j],
 				seg,
 				receiver,
@@ -415,32 +396,34 @@ func (s *Scene) receiverLevelsOn(
 		}
 	}
 
-	var err error
-
 	if len(cfg.ParkingSources) > 0 {
-		err = appendParkingContributions(
-			&dayContrib, &nightContrib, cfg.ParkingSources,
+		err := appendParkingContributions(
+			&sums, cfg.ParkingSources,
 			receiver, receiverZ, s.barriers, &s.reflectors, cfg, scratch,
 		)
-	}
-
-	// Write back before the error check: the appends above may have grown the
-	// slices past the scratch's backing array, and that growth is exactly what
-	// the next receiver must inherit — the same pattern scratch.reflectedPaths
-	// uses in appendReflectedContribs.
-	if scratch != nil {
-		scratch.dayContrib = dayContrib
-		scratch.nightContrib = nightContrib
-	}
-
-	if err != nil {
-		return PeriodLevels{}, err
+		if err != nil {
+			return PeriodLevels{}, err
+		}
 	}
 
 	return PeriodLevels{
-		LrDay:   acoustics.EnergySum(dayContrib),
-		LrNight: acoustics.EnergySum(nightContrib),
+		LrDay:   sums.day.Level(),
+		LrNight: sums.night.Level(),
 	}, nil
+}
+
+// periodSums is the running energy sum of one receiver's contributions, one
+// per period. Contributions arrive in walk order — each Teilstück's direct
+// path, then its mirrored paths, then the parking lots — and are added in that
+// order.
+type periodSums struct {
+	day, night acoustics.EnergyAccumulator
+}
+
+// add adds one contribution to both periods.
+func (p *periodSums) add(dayDB, nightDB float64) {
+	p.day.Add(dayDB)
+	p.night.Add(nightDB)
 }
 
 // ComputeReceiverOutputs computes indicators for all receivers in order.
