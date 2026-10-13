@@ -336,7 +336,48 @@ func (s *Scene) ComputeReceiversContext(ctx context.Context, receivers []geo.Poi
 
 	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
 		return s, nil
-	})
+	}, nil)
+}
+
+// Walker is one goroutine's walk over a prepared Scene. It keeps the walk's
+// scratch from one call to the next, so a caller that computes a grid in
+// chunks — the CLI's worker pool, the browser kernel's progress chunks —
+// builds the receiver-side tables, the index cursors and their buffers once
+// per worker rather than once per chunk.
+//
+// The scratch is where the receiver-side reflection table lives, and that
+// table grows with the number of wall pairs a receiver can see (~1 M pairs,
+// ~40 MB, on a 44 km city extract). Rebuilding it per chunk cost an allocation
+// of that size every few receivers; holding it per worker costs it once.
+//
+// A Walker is not safe for concurrent use; give each goroutine its own. Reuse
+// cannot move a level: every buffer on the scratch is truncated or rebuilt
+// before it is read, and the receiver-side tables are keyed on the receiver.
+type Walker struct {
+	scene   *Scene
+	scratch *pathScratch
+}
+
+// NewWalker returns a walk over the scene with scratch of its own.
+func (s *Scene) NewWalker() *Walker {
+	return &Walker{scene: s, scratch: s.newScratch()}
+}
+
+// ComputeReceiversContext is Scene.ComputeReceiversContext on the walker's
+// scratch.
+func (w *Walker) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	if len(receivers) == 0 {
+		return nil, errors.New("at least one receiver is required")
+	}
+
+	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
+		return w.scene, nil
+	}, w.scratch)
+}
+
+// ComputeReceivers is ComputeReceiversContext without a context.
+func (w *Walker) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return w.ComputeReceiversContext(context.Background(), receivers, cfg)
 }
 
 // receiverLevels is the propagation walk for one receiver, on scratch of its
@@ -451,7 +492,7 @@ func ComputeReceiverOutputsContext(
 
 	return computeReceivers(ctx, receivers, cfg, func(first PropagationConfig) (*Scene, error) {
 		return prepareScene(sources, barriers, first)
-	})
+	}, nil)
 }
 
 // computeReceivers walks the receivers in the order given.
@@ -464,16 +505,17 @@ func ComputeReceiverOutputsContext(
 //
 // ctx is checked before each receiver, ahead of that receiver's own checks, and
 // reads nothing the walk computes, so it cannot move a level.
+//
+// scratch is the walk's scratch when the caller holds one for the scene
+// prepare returns (see Walker), and nil to have one made for this call.
 func computeReceivers(
 	ctx context.Context,
 	receivers []geo.PointReceiver,
 	cfg PropagationConfig,
 	prepare func(PropagationConfig) (*Scene, error),
+	scratch *pathScratch,
 ) ([]ReceiverOutput, error) {
-	var (
-		scene   *Scene
-		scratch *pathScratch
-	)
+	var scene *Scene
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))
 
@@ -508,7 +550,9 @@ func computeReceivers(
 			// One scratch for the whole walk: it carries the index cursors,
 			// whose per-item stamps are the only thing standing between a
 			// query and a freshly allocated map.
-			scratch = scene.newScratch()
+			if scratch == nil {
+				scratch = scene.newScratch()
+			}
 		}
 
 		periodLevels, err := scene.receiverLevelsOn(receiver.Point, receiverCfg, scratch)

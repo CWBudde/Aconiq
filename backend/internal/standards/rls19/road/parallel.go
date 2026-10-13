@@ -150,6 +150,10 @@ func (s *Scene) computeChunks(
 
 	for range min(workers, len(chunks)) {
 		wg.Go(func() {
+			// One walker per worker for the worker's lifetime, so the
+			// receiver-side tables are built once per worker, not per chunk.
+			walker := s.NewWalker()
+
 			for chunk := range jobs {
 				if computeCtx.Err() != nil {
 					continue
@@ -158,7 +162,7 @@ func (s *Scene) computeChunks(
 				// The caller's ctx, not computeCtx: a sibling's refusal must not
 				// turn a chunk already in flight into a cancellation, which
 				// collectChunks would then report ahead of the real refusal.
-				outputs, err := s.ComputeReceiversContext(ctx, receivers[chunk.Start:chunk.End], cfg)
+				outputs, err := walker.ComputeReceiversContext(ctx, receivers[chunk.Start:chunk.End], cfg)
 				results[chunk.Index] = chunkResult{outputs: outputs, err: err, done: true}
 
 				if err != nil {
