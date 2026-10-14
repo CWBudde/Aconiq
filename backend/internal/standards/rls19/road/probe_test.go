@@ -322,6 +322,71 @@ func TestEstimateSamplesDeterministically(t *testing.T) {
 		fixed.Alts[0].Units != first.Inputs.Units {
 		t.Fatalf("a fixed-mode estimate should cost the distance-scaled run (%d units), got %+v", first.Inputs.Units, fixed.Alts)
 	}
+
+	// It reports a preparation of its own (which one is pinned by
+	// TestDistanceScaledAlternativeReportsItsOwnPreparation), and its wall
+	// time includes it.
+	alt := fixed.Alts[0]
+	if alt.PrepareSeconds == nil || *alt.PrepareSeconds < 0 {
+		t.Fatalf("the alternative's preparation %v", alt.PrepareSeconds)
+	}
+
+	if alt.WallSeconds.Low < *alt.PrepareSeconds {
+		t.Fatalf("the alternative's wall %+v leaves out its preparation %v", alt.WallSeconds, *alt.PrepareSeconds)
+	}
+}
+
+// TestDistanceScaledAlternativeReportsItsOwnPreparation pins what the
+// alternative's preparation is: the fixed run's measured preparation with the
+// fixed scene's sources swapped for the ones the alternative prepared. It
+// reads both from the scenes rather than asserting anything about their
+// size, so it holds on a clock too coarse to time this scene's sources.
+func TestDistanceScaledAlternativeReportsItsOwnPreparation(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, cfg := probeScene(SegmentLengthFixed)
+	receivers := probeReceivers(3)
+
+	fixed, err := PrepareSceneFor(receivers, sources, barriers, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A preparation the fixed scene's own sources cannot outlast, so the
+	// expected figure cannot go negative whatever the clock read.
+	prepare := fixed.sourcesPrepare + time.Second
+
+	kernel, got, err := distanceScaledAlternative(fixed, receivers, sources, cfg, prepare).NewKernel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	built, ok := kernel.(*estimateKernel)
+	if !ok {
+		t.Fatalf("the alternative's kernel is a %T", kernel)
+	}
+
+	scaled := built.scene
+	if scaled.sources[0].coarser == nil {
+		t.Fatal("the alternative's scene is not distance-scaled")
+	}
+
+	if want := prepare - fixed.sourcesPrepare + scaled.sourcesPrepare; got != want || got < 0 {
+		t.Fatalf("the alternative reports %v of preparation, want %v (%v - %v fixed + %v scaled sources)",
+			got, want, prepare, fixed.sourcesPrepare, scaled.sourcesPrepare)
+	}
+}
+
+// TestAlternativePrepareSwapsTheSources is the arithmetic on its own, with
+// durations a clock could not produce by accident.
+func TestAlternativePrepareSwapsTheSources(t *testing.T) {
+	t.Parallel()
+
+	fixed, scaled := &Scene{sourcesPrepare: 3 * time.Second}, &Scene{sourcesPrepare: 7 * time.Second}
+
+	if got := alternativePrepare(10*time.Second, fixed, scaled); got != 14*time.Second {
+		t.Fatalf("a 10 s preparation with 3 s of fixed sources swapped for 7 s of scaled ones gave %v, want 14 s", got)
+	}
 }
 
 // TestEstimateRefusesWhatTheRunRefuses keeps the estimate from answering a

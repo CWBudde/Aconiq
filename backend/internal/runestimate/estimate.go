@@ -131,13 +131,20 @@ const (
 // costed from the same measurement.
 //
 // Measured is false when the budget ran out before the variant could be
-// probed; Units and both bands are then absent rather than guessed.
+// probed; Units, both bands and PrepareSeconds are then absent rather than
+// guessed.
+//
+// PrepareSeconds is the scene preparation a run in the variant would spend,
+// which WallSeconds includes. It is the variant's own, not
+// ProbeReport.PrepareSeconds: the variant may prepare part of the scene
+// differently from the run the estimate was asked for.
 type Alternative struct {
-	Params      map[string]string `json:"params"`
-	Measured    bool              `json:"measured"`
-	Units       int64             `json:"units,omitempty"`
-	CPUSeconds  *Band             `json:"cpu_s,omitempty"`
-	WallSeconds *Band             `json:"wall_s,omitempty"`
+	Params         map[string]string `json:"params"`
+	Measured       bool              `json:"measured"`
+	Units          int64             `json:"units,omitempty"`
+	CPUSeconds     *Band             `json:"cpu_s,omitempty"`
+	WallSeconds    *Band             `json:"wall_s,omitempty"`
+	PrepareSeconds *float64          `json:"prepare_s,omitempty"`
 }
 
 // Unavailable is the estimate of a standard that has no probe.

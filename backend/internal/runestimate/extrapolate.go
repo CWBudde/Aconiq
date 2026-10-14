@@ -150,10 +150,23 @@ func extrapolate(points []geo.Point2D, m measurement, opts Options) Estimate {
 	}
 }
 
+// costAlternative prices an alternative's measurement on the run's workers and
+// schedule, with the preparation the alternative reported for its own scene
+// in place of the run's.
 func costAlternative(params map[string]string, points []geo.Point2D, m measurement, opts Options) Alternative {
-	cpu, wall, _ := costRun(points, m, opts)
+	opts.Prepare = m.prepare
 
-	return Alternative{Params: params, Measured: true, Units: m.total, CPUSeconds: &cpu, WallSeconds: &wall}
+	cpu, wall, _ := costRun(points, m, opts)
+	prepare := m.prepare.Seconds()
+
+	return Alternative{
+		Params:         params,
+		Measured:       true,
+		Units:          m.total,
+		CPUSeconds:     &cpu,
+		WallSeconds:    &wall,
+		PrepareSeconds: &prepare,
+	}
 }
 
 // costRun is the CPU band, the wall band and the per-receiver point costs of

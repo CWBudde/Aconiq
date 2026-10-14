@@ -552,11 +552,13 @@ export interface components {
             /** @description Variants of the run costed by their own probe — today the distance-scaled Teilstücke of a fixed-mode RLS-19 run */
             alternatives?: {
                 cpu_s?: components["schemas"]["EstimateBand"];
-                /** @description False when the budget ran out before the variant was probed; `units`, `cpu_s` and `wall_s` are then absent */
+                /** @description False when the budget ran out before the variant was probed; `units`, `cpu_s`, `wall_s` and `prepare_s` are then absent */
                 measured: boolean;
                 params: {
                     [key: string]: string;
                 };
+                /** @description Scene preparation a run in the variant would spend, included in `wall_s` — the variant's own, which differs from `probe.prepare_s` where the variant prepares part of the scene differently */
+                prepare_s?: number;
                 /** @description Work units of the variant */
                 units?: number;
                 wall_s?: components["schemas"]["EstimateBand"];

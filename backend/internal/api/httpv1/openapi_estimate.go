@@ -154,11 +154,16 @@ func openapiEstimateAlternativeSchema() map[string]any {
 			"measured": map[string]any{
 				"type": "boolean",
 				"description": "False when the budget ran out before the variant was probed; " +
-					"`units`, `cpu_s` and `wall_s` are then absent",
+					"`units`, `cpu_s`, `wall_s` and `prepare_s` are then absent",
 			},
 			"units":  map[string]any{"type": "integer", "description": "Work units of the variant"},
 			"cpu_s":  map[string]any{"$ref": "#/components/schemas/EstimateBand"},
 			"wall_s": map[string]any{"$ref": "#/components/schemas/EstimateBand"},
+			"prepare_s": map[string]any{
+				"type": "number",
+				"description": "Scene preparation a run in the variant would spend, included in `wall_s` — " +
+					"the variant's own, which differs from `probe.prepare_s` where the variant prepares part of the scene differently",
+			},
 		},
 	}
 }

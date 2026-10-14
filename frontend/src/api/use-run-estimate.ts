@@ -14,7 +14,10 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useShallow } from "zustand/shallow";
 import { backend, type RunSpec } from "./backend";
+import type { Workspace } from "@/model/compute-crs";
+import { useModelStore } from "@/model/model-store";
 import type { RunEstimate } from "@/model/run-estimate";
 
 /** How long the spec has to sit still before it is estimated. */
@@ -59,17 +62,42 @@ export type RunEstimateState =
   | { status: "ready"; estimate: RunEstimate };
 
 /**
- * The estimate of `spec`, or idle when `spec` is null — a dialog whose run
- * would be refused has nothing to estimate.
+ * The part of the model store a run request reads, as one object whose
+ * identity changes exactly when one of its fields does.
  *
- * `model` is any object whose identity changes whenever the model the run
- * would read changes — the store's feature list — so an edit to the model asks
- * again even though the parameters did not move.
+ * It is the {@link Workspace} `prepareRLS19Request` hands
+ * `resolveComputeModel` — the features, the placed receivers, the calc area
+ * and the CRS the coordinates are in — and nothing else: the dirty flag and
+ * the undo history move on every edit without being a model input, and a
+ * terrain reaches the browser kernel through `loadTerrain`, not through the
+ * store or the request. `useShallow` keeps the previous object while all four
+ * fields are the same references, so the identity is the revision.
  */
-export function useRunEstimate(
-  spec: RunSpec | null,
-  model: object,
-): RunEstimateState {
+function useRunWorkspace(): Workspace {
+  return useModelStore(
+    useShallow((s) => ({
+      features: s.features,
+      receivers: s.receivers,
+      calcArea: s.calcArea,
+      crs: s.crs,
+    })),
+  );
+}
+
+/**
+ * The estimate of `spec` over the current model, or idle when `spec` is
+ * null — a dialog whose run would be refused has nothing to estimate.
+ *
+ * The model is part of the question, not only the spec: an edit to any of the
+ * store fields the run request reads (see {@link useRunWorkspace}) — a
+ * feature, a receiver placed or moved, the calc area, the CRS — makes the
+ * estimate in hand non-current and asks again, even though the parameters did
+ * not move. Where a run reads the saved model instead, the dialog does not
+ * ask while there are unsaved edits, so the store still stands for what the
+ * backend will read.
+ */
+export function useRunEstimate(spec: RunSpec | null): RunEstimateState {
+  const model = useRunWorkspace();
   // Keyed on the serialised spec, not the object: the dialog builds a fresh
   // one every render, and an identity that changes every render would never
   // settle.

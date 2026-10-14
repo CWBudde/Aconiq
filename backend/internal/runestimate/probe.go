@@ -55,9 +55,16 @@ type Walker interface {
 // NewKernel builds the variant's kernel, and is called only once the run's
 // own probe is done and only if the budget has time left for the variant:
 // preparing it is part of what the budget bounds.
+//
+// It also returns how long a run in the variant would spend preparing its
+// scene, on the wall clock as Options.Prepare is. That is the variant's own
+// figure and not Options.Prepare, because the variant may prepare part of
+// its scene differently — distance-scaled Teilstücke build a ladder per
+// source that fixed ones do not — and only the caller knows which part of
+// the run's preparation the variant shares and which it redoes.
 type AlternativeKernel struct {
 	Params    map[string]string
-	NewKernel func() (Kernel, error)
+	NewKernel func() (Kernel, time.Duration, error)
 }
 
 // Options shape one estimate.
@@ -81,6 +88,7 @@ type Options struct {
 
 	// Prepare is how long preparing the scene took. It is added to the wall
 	// time as it is: the run prepares the same scene once, on one thread.
+	// An alternative is priced with the preparation its NewKernel reports.
 	Prepare time.Duration
 
 	// Alternatives are probed after the run itself, from alternativeShare
@@ -264,7 +272,7 @@ func probeAlternative(
 
 	share := now.Add(deadline.Sub(now) / time.Duration(remainingAlternatives))
 
-	kernel, err := alt.NewKernel()
+	kernel, prepare, err := alt.NewKernel()
 	if err != nil {
 		return measurement{}, err
 	}
@@ -282,6 +290,7 @@ func probeAlternative(
 		clock:       clock,
 	})
 	m.total = total
+	m.prepare = prepare
 
 	return m, err
 }
@@ -359,6 +368,10 @@ type measurement struct {
 	probes    []receiverProbe
 	timed     int
 	exhausted bool
+
+	// prepare is the scene preparation an alternative's NewKernel reported;
+	// the run's own is Options.Prepare.
+	prepare time.Duration
 }
 
 // receiverProbe is what one probe receiver measured.

@@ -99,6 +99,33 @@ describe("suggestFasterRun", () => {
     expect(both?.resolutionM).toBeLessThanOrEqual(grid?.resolutionM ?? 0);
   });
 
+  // The distance-scaled run prepares its own scene — a ladder per source the
+  // fixed scene never built — and both distance-scaled buttons have to quote
+  // that preparation, not the fixed run's.
+  it("prices distance-scaled with a coarser grid on the alternative's own preparation", () => {
+    const base = longEstimate();
+    const scaledAlt = base.alternatives?.[0];
+    if (scaledAlt === undefined) throw new Error("no alternative");
+    const estimate: RunEstimate = {
+      ...base,
+      alternatives: [{ ...scaledAlt, prepare_s: 20 }],
+    };
+
+    const both = suggestFasterRun(estimate, EXTENT, SIZING, {}).find(
+      (s) => s.distanceScaled && s.resolutionM !== undefined,
+    );
+    const borrowed = suggestFasterRun(base, EXTENT, SIZING, {}).find(
+      (s) => s.distanceScaled && s.resolutionM !== undefined,
+    );
+
+    // Its wall time carries the 20 s, not the fixed run's 0.5 s ...
+    expect(both?.wall.low).toBeGreaterThanOrEqual(20);
+    // ... and the grid was sized so the minute still holds with them in it,
+    // which takes fewer receivers than the fixed run's preparation allowed.
+    expect(both?.wall.estimate).toBeLessThanOrEqual(ESTIMATE_TARGET_SECONDS);
+    expect(both?.receivers).toBeLessThan(borrowed?.receivers ?? 0);
+  });
+
   it("offers no distance-scaled run the budget never measured", () => {
     const estimate: RunEstimate = {
       ...longEstimate(),
