@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,6 +20,32 @@ func UpdateEnabled() bool {
 	default:
 		return false
 	}
+}
+
+// SkipAMD64BitsEnv is the switch `just test-arm64` sets; see SkipAMD64Bits.
+const SkipAMD64BitsEnv = "ACONIQ_SKIP_AMD64_GOLDENS"
+
+// SkipAMD64Bits reports whether the caller is to leave out a comparison
+// against a golden that holds amd64's floating-point bits, and logs the
+// omission when it does.
+//
+// Go contracts multiply-adds into one fused instruction on arm64, and the
+// standard library's math assembly differs there, so such a golden cannot
+// hold on that machine. A test that compares against one skips that
+// comparison alone and keeps every other assertion: two identical runs must
+// still agree, a run must still complete. The switch is honoured only off
+// amd64, so the jobs that check these goldens can never skip them, whatever
+// their environment says.
+func SkipAMD64Bits(t *testing.T) bool {
+	t.Helper()
+
+	if runtime.GOARCH == "amd64" || os.Getenv(SkipAMD64BitsEnv) != "1" {
+		return false
+	}
+
+	t.Logf("not compared against the golden, which holds amd64's bits (%s=1 on %s)", SkipAMD64BitsEnv, runtime.GOARCH)
+
+	return true
 }
 
 // AssertJSONSnapshot compares a JSON-serializable value against a golden file.

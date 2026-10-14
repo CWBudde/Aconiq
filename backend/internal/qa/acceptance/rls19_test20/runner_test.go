@@ -26,12 +26,20 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 		t.Fatalf("run ci-safe suite: %v", err)
 	}
 
-	if report.Status != "passed" {
-		t.Fatalf("expected passed report, got %#v", report)
+	if report.TaskCount == 0 {
+		t.Fatalf("unexpected task counts: %#v", report)
 	}
 
-	if report.TaskCount == 0 || report.PassedCount != report.TaskCount {
-		t.Fatalf("unexpected task counts: %#v", report)
+	// The status and the pass count are the comparison against snapshots that
+	// hold amd64's bits; everything else here holds on any machine.
+	if !golden.SkipAMD64Bits(t) {
+		if report.Status != "passed" {
+			t.Fatalf("expected passed report, got %#v", report)
+		}
+
+		if report.PassedCount != report.TaskCount {
+			t.Fatalf("unexpected task counts: %#v", report)
+		}
 	}
 
 	if report.ReportPath == "" {

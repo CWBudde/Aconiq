@@ -162,9 +162,9 @@ jobs:
   # compute to the same bit — could not fail anywhere CI looked. GOAMD64=v3 is
   # not a substitute: in Go 1.26 it fuses `x*y + z` only (AMD64.rules), where
   # arm64 also fuses the subtracting and negated forms (ARM64.rules) and runs
-  # different math assembly. `just test-arm64` skips the three goldens that hold
-  # amd64's bits and says why. Not a required check; it reports on every pull
-  # request.
+  # different math assembly. `just test-arm64` leaves out only the comparisons
+  # against goldens that hold amd64's bits, and says why. Not a required check;
+  # it reports on every pull request.
   go-arm64:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04-arm
