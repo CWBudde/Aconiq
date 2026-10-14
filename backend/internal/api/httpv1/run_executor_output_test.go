@@ -5,49 +5,118 @@ import (
 	"testing"
 )
 
-// The run command logs to stderr, and a refusal is the error attribute of
-// the last record that has one, unquoted — the run command's own words rather
-// than "request failed".
-func TestChildErrorMessageReadsTheLoggedError(t *testing.T) {
+// readChildFailure reads what a failed child said about its failure from
+// each stderr layout the run command produces.
+func TestReadChildFailure(t *testing.T) {
 	t.Parallel()
 
-	stderr := strings.Join([]string{
-		`time=2026-10-14T01:54:03.276+02:00 level=INFO msg="command started" command="aconiq run" args=[]`,
-		`time=2026-10-14T01:54:03.277+02:00 level=ERROR msg="command finished" status=error error="cli.loadValidatedModel: model file not found: /p/.noise/model/model.normalized.geojson: open \"x\": no such file or directory"`,
-		`time=2026-10-14T01:54:03.277+02:00 level=ERROR msg="command failed" user_error=true error="cli.loadValidatedModel: model file not found: /p/.noise/model/model.normalized.geojson: open \"x\": no such file or directory"`,
-	}, "\n")
+	const refusal = `cli.loadValidatedModel: model file not found: /p/.noise/model/model.normalized.geojson: open "x": no such file or directory`
 
-	got := childErrorMessage([]byte(stderr))
+	const quotedRefusal = `"cli.loadValidatedModel: model file not found: /p/.noise/model/model.normalized.geojson: open \"x\": no such file or directory"`
 
-	want := `cli.loadValidatedModel: model file not found: /p/.noise/model/model.normalized.geojson: open "x": no such file or directory`
-	if got != want {
-		t.Fatalf("message = %q, want %q", got, want)
-	}
-}
+	const (
+		textStarted = `time=2026-10-14T01:54:03.276+02:00 level=INFO msg="command started" command="aconiq run" args=[]`
+		textWarning = `time=2026-10-14T01:54:03.277+02:00 level=WARN msg="terrain DTM load failed, continuing without terrain" error="open dtm.tif: no such file or directory"`
+		jsonStarted = `{"time":"t","level":"INFO","msg":"command started","command":"aconiq run"}`
+		jsonWarning = `{"time":"t","level":"WARN","msg":"terrain DTM load failed, continuing without terrain","error":"open dtm.tif: no such file or directory"}`
+	)
 
-// Under --json the records are JSON, one per line; the error is read from
-// those the same way.
-func TestChildErrorMessageReadsAJSONLoggedError(t *testing.T) {
-	t.Parallel()
+	for _, testCase := range []struct {
+		name   string
+		stderr []string
+		want   childFailure
+	}{
+		{
+			// A refusal is the error attribute of the last ERROR record,
+			// unquoted — the run command's own words.
+			name: "text refusal",
+			stderr: []string{
+				textStarted,
+				`time=t level=ERROR msg="command finished" status=error error=` + quotedRefusal,
+				`time=t level=ERROR msg="command failed" user_error=true error=` + quotedRefusal,
+			},
+			want: childFailure{message: refusal, mayBeUserError: true},
+		},
+		{
+			name: "JSON refusal",
+			stderr: []string{
+				jsonStarted,
+				`{"time":"t","level":"ERROR","msg":"command finished","status":"error","error":` + quotedRefusal + `}`,
+				`{"time":"t","level":"ERROR","msg":"command failed","user_error":true,"error":` + quotedRefusal + `}`,
+			},
+			want: childFailure{message: refusal, mayBeUserError: true},
+		},
+		{
+			// An internal failure is logged the same way, without the
+			// user-error flag.
+			name: "internal failure",
+			stderr: []string{
+				textStarted,
+				`time=t level=ERROR msg="command failed" user_error=false error="write results: disk full"`,
+			},
+			want: childFailure{message: "write results: disk full"},
+		},
+		{
+			// A warning carries an error attribute but did not fail the
+			// run; the failure is the ERROR record after it.
+			name:   "warning before the refusal",
+			stderr: []string{textStarted, textWarning, `time=t level=ERROR msg="command failed" user_error=true error=` + quotedRefusal},
+			want:   childFailure{message: refusal, mayBeUserError: true},
+		},
+		{
+			// Killed after a warning: nothing on stderr names the failure,
+			// so the caller falls back to how the process exited.
+			name:   "killed after a text warning",
+			stderr: []string{textStarted, textWarning},
+			want:   childFailure{},
+		},
+		{
+			name:   "killed after a JSON warning",
+			stderr: []string{jsonStarted, jsonWarning},
+			want:   childFailure{},
+		},
+		{
+			name:   "killed with only the start record",
+			stderr: []string{textStarted},
+			want:   childFailure{},
+		},
+		{
+			// A panic: the records, then the runtime's panic line and
+			// trace. The panic line is the reason, the trace is not.
+			name: "panic",
+			stderr: []string{
+				textStarted,
+				"panic: runtime error: index out of range [3] with length 3",
+				"",
+				"goroutine 1 [running]:",
+				"main.main()",
+				"\t/src/main.go:12 +0x1d",
+			},
+			want: childFailure{message: "panic: runtime error: index out of range [3] with length 3"},
+		},
+		{
+			// Before the command has a logger — config it cannot resolve —
+			// it prints the bare error, and exits 2 when the error is the
+			// user's. With no record at all, the bare line is the message
+			// and the exit status is believed.
+			name:   "bare error before the logger",
+			stderr: []string{"  config.FromFlags: failed to resolve runtime configuration "},
+			want:   childFailure{message: "config.FromFlags: failed to resolve runtime configuration", mayBeUserError: true},
+		},
+		{
+			name:   "nothing at all",
+			stderr: nil,
+			want:   childFailure{mayBeUserError: true},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	stderr := `{"time":"t","level":"INFO","msg":"command started","command":"aconiq run"}
-{"time":"t","level":"ERROR","msg":"command finished","status":"error","error":"cli.run: model file not found"}
-`
-
-	got := childErrorMessage([]byte(stderr))
-	if got != "cli.run: model file not found" {
-		t.Fatalf("message = %q", got)
-	}
-}
-
-// Before the command has a logger — cobra refusing a flag — it prints the bare
-// error. With no record to read, stderr itself is the message.
-func TestChildErrorMessageFallsBackToBareStderr(t *testing.T) {
-	t.Parallel()
-
-	got := childErrorMessage([]byte("  unknown flag: --frobnicate \n"))
-	if got != "unknown flag: --frobnicate" {
-		t.Fatalf("message = %q, want stderr's", got)
+			got := readChildFailure([]byte(strings.Join(testCase.stderr, "\n") + "\n"))
+			if got != testCase.want {
+				t.Fatalf("got %+v, want %+v", got, testCase.want)
+			}
+		})
 	}
 }
 

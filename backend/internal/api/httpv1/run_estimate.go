@@ -40,8 +40,6 @@ import (
 	"os/exec"
 	"sync"
 	"time"
-
-	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 )
 
 // estimateExecutor prices one run request and returns the estimate JSON.
@@ -164,18 +162,7 @@ func awaitEstimateProcess(cmd *exec.Cmd) (json.RawMessage, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		message := childErrorMessage(stderr.Bytes())
-
-		var exitErr *exec.ExitError
-		if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-			return nil, domainerrors.New(domainerrors.KindUserInput, "httpv1.estimateExecutor", message, err)
-		}
-
-		if message == "" {
-			message = err.Error()
-		}
-
-		return nil, fmt.Errorf("estimate run: %s", message)
+		return nil, childProcessError(err, stderr.Bytes(), "httpv1.estimateExecutor", "estimate run")
 	}
 
 	output, overflowed := stdout.Bytes()

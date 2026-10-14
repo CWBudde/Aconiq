@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -138,18 +139,25 @@ func TestJSONCommandWritesOneDocumentToStdoutAndItsLogToStderr(t *testing.T) {
 	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "phase17", "rls19_road_model.geojson"))
 
 	for _, testCase := range []struct {
-		name string
-		args []string
-		mode string
+		name    string
+		args    []string
+		command string
+		mode    string
 	}{
-		{name: "status", args: []string{"--project", projectDir, "--json", "status"}},
+		{name: "status", args: []string{"--project", projectDir, "--json", "status"}, command: "status"},
 		{
 			name: "run --estimate",
 			args: []string{
 				"--project", projectDir, "--json", "run", "--standard", "rls19-road",
 				"--estimate", "--estimate-budget", "100ms", "--workers", "2",
 			},
-			mode: "estimate",
+			command: "run",
+			mode:    "estimate",
+		},
+		{
+			name:    "openapi",
+			args:    []string{"--project", projectDir, "--json", "openapi", "--out", filepath.Join(t.TempDir(), "openapi.v1.json")},
+			command: "openapi",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -161,6 +169,10 @@ func TestJSONCommandWritesOneDocumentToStdoutAndItsLogToStderr(t *testing.T) {
 			}
 
 			document := assertOneJSONDocument(t, stdout)
+			if document["command"] != testCase.command {
+				t.Fatalf("command = %v, want %q", document["command"], testCase.command)
+			}
+
 			if testCase.mode != "" && document["mode"] != testCase.mode {
 				t.Fatalf("mode = %v, want %q", document["mode"], testCase.mode)
 			}

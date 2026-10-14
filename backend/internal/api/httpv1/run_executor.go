@@ -46,18 +46,27 @@ func awaitRunProcess(cmd *exec.Cmd) error {
 		return nil
 	}
 
-	message := childErrorMessage(stderr.Bytes())
+	return childProcessError(err, stderr.Bytes(), "httpv1.runExecutor", "execute run command")
+}
+
+// childProcessError is the error a failed `aconiq run` child is answered
+// with: a user error in the child's own words when it refused the request
+// (exit status 2, and its log says so), otherwise an error carrying the
+// child's reason, or how the process exited when it gave none.
+func childProcessError(err error, stderr []byte, op string, prefix string) error {
+	failure := readChildFailure(stderr)
 
 	var exitErr *exec.ExitError
-	if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-		return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", message, err)
+	if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 && failure.mayBeUserError {
+		return domainerrors.New(domainerrors.KindUserInput, op, failure.message, err)
 	}
 
+	message := failure.message
 	if message == "" {
 		message = err.Error()
 	}
 
-	return fmt.Errorf("execute run command: %s", message)
+	return fmt.Errorf("%s: %s", prefix, message)
 }
 
 // runInterruptGrace is how long an interrupted `aconiq run` child has to record

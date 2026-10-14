@@ -5,7 +5,9 @@ import (
 	stderrors "errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
+	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 )
@@ -50,8 +52,37 @@ func TestHelperProcessCLIChild(t *testing.T) {
 		writeChild(os.Stderr, `time=t level=ERROR msg="command finished" status=error error=`+quoted+"\n")
 		writeChild(os.Stderr, `time=t level=ERROR msg="command failed" user_error=true error=`+quoted+"\n")
 		os.Exit(2)
+	case "run-killed":
+		// A run killed mid-computation — out of memory, or past the
+		// interrupt grace — after a warning that carries an error attribute
+		// but did not fail the run (a terrain DTM that would not load).
+		writeChild(os.Stderr, `time=t level=INFO msg="command started" command="aconiq run" args=[]`+"\n")
+		writeChild(os.Stderr, `time=t level=WARN msg="terrain DTM load failed, continuing without terrain" error="open dtm.tif: no such file or directory"`+"\n")
+		killSelf()
+	case "run-panicked":
+		// What the Go runtime writes for an unrecovered panic, after the
+		// records the command had logged: the panic line, then the trace,
+		// and exit status 2.
+		writeChild(os.Stderr, `time=t level=INFO msg="command started" command="aconiq run" args=[]`+"\n")
+		writeChild(os.Stderr, childPanic+"\n\ngoroutine 1 [running]:\nmain.main()\n\t/src/main.go:12 +0x1d\nexit status 2\n")
+		os.Exit(2)
 	}
 
+	os.Exit(1)
+}
+
+// childPanic is the panic line the panicking child writes.
+const childPanic = "panic: runtime error: index out of range [3] with length 3"
+
+// killSelf ends this process the way the kernel's OOM killer or a SIGKILL
+// would: without a word on any stream.
+func killSelf() {
+	self, err := os.FindProcess(os.Getpid())
+	if err == nil {
+		_ = self.Kill()
+	}
+
+	time.Sleep(time.Minute)
 	os.Exit(1)
 }
 
@@ -135,4 +166,48 @@ func TestRunProcessAnswersARefusalInTheCommandsWords(t *testing.T) {
 
 	err := awaitRunProcess(newCLIChild(t, "run-refused"))
 	assertRefusalInTheCommandsWords(t, err)
+}
+
+// A killed child says nothing, and its log ends with the records it wrote
+// while it was well — here a warning with an error attribute that did not
+// fail the run. Neither is the failure: the reason is the process's own exit.
+func TestRunProcessKilledReportsTheSignalNotItsLastLogRecord(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("a killed process exits with a status, not a signal, on Windows")
+	}
+
+	err := awaitRunProcess(newCLIChild(t, "run-killed"))
+	if err == nil {
+		t.Fatal("a killed run returned no error")
+	}
+
+	if domainerrors.IsUserError(err) {
+		t.Fatalf("a killed run is not a user error: %v", err)
+	}
+
+	if err.Error() != "execute run command: signal: killed" {
+		t.Fatalf("error %q, want the signal", err)
+	}
+}
+
+// A panicking child's reason is its panic line — the first line of which the
+// run supervisor's note keeps — not a log record and not the trace. A panic
+// exits with status 2, as a refusal does, but it is not the user's doing.
+func TestRunProcessPanickedReportsThePanicLine(t *testing.T) {
+	t.Parallel()
+
+	err := awaitRunProcess(newCLIChild(t, "run-panicked"))
+	if err == nil {
+		t.Fatal("a panicked run returned no error")
+	}
+
+	if domainerrors.IsUserError(err) {
+		t.Fatalf("a panic is not a user error: %v", err)
+	}
+
+	if err.Error() != "execute run command: "+childPanic {
+		t.Fatalf("error %q, want the panic line", err)
+	}
 }

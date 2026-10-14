@@ -80,62 +80,132 @@ func (h *headBuffer) Bytes() ([]byte, bool) {
 	return bytes.Clone(h.buf), h.overflowed
 }
 
-// logErrorPattern finds the error attribute of a slog text record — the form
-// the run command's "command finished" line carries its error in:
+// Patterns over one slog text record. A record begins with its time, or with
+// its level when the time is zero; the error attribute is the form the run
+// command's failure records carry their error in:
 // error="cli.loadValidatedModel: model file not found: …".
-var logErrorPattern = regexp.MustCompile(`\berror=("(?:[^"\\]|\\.)*"|\S+)`)
+var (
+	textRecordLevelPattern = regexp.MustCompile(`^(?:time=\S+ )?level=(\S+)`)
+	textRecordErrorPattern = regexp.MustCompile(`\berror=("(?:[^"\\]|\\.)*"|\S+)`)
+	textRecordUserPattern  = regexp.MustCompile(`\buser_error=true\b`)
+)
 
-// childErrorMessage is what the run command said was wrong, in its own words,
-// read from its stderr.
+// childFailure is what a failed run child's stderr says about its failure.
+type childFailure struct {
+	// message is the reason in the child's own words, or "" when stderr
+	// names none and the caller has only the process's exit to go by.
+	message string
+
+	// mayBeUserError says whether an exit status of 2 may be read as a user
+	// error. It is false when the child logged and never logged a refusal: a
+	// Go panic exits 2 as well, and a panic is not the user's doing.
+	mayBeUserError bool
+}
+
+// logRecord is the part of one slog record the failure is read from.
+type logRecord struct {
+	level     string
+	err       string
+	userError bool
+}
+
+// readChildFailure reads what the run command said was wrong, in its own
+// words, from its stderr.
 //
-// The command logs to stderr, through slog — text records by default, JSON
-// records under --json — and ends a failed command with a record carrying the
-// error. The message is the error attribute of the last record that has one.
-// Before the command has a logger (a flag cobra cannot parse) it prints the
-// bare error instead, and with no record to read, stderr is the message.
-func childErrorMessage(stderr []byte) string {
-	var last string
+// The command logs to stderr through slog — text records by default, JSON
+// records under --json — and ends a failed command with ERROR records that
+// carry the error and whether it was the user's. The reason is the error of
+// the last such record. Records at other levels are not the failure, even
+// with an error attribute: a WARN that terrain would not load is a run that
+// went on without it.
+//
+// A child that logged but never logged a failure was stopped by something
+// other than itself. Killed, it says nothing more and the reason is "" — the
+// caller falls back to the exit status. Panicking, the runtime adds the panic
+// line and a trace, and the reason is the first line that is not a record.
+// A child with no record at all failed before it had a logger, and printed
+// the bare error; its first line is the reason.
+func readChildFailure(stderr []byte) childFailure {
+	var (
+		failure     childFailure
+		sawRecord   bool
+		sawUserErr  bool
+		firstNonLog string
+	)
 
 	scanner := bufio.NewScanner(bytes.NewReader(stderr))
 	scanner.Buffer(make([]byte, 0, 4096), maxChildOutputBytes)
 
 	for scanner.Scan() {
-		if message, ok := logRecordError(scanner.Bytes()); ok {
-			last = message
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		record, isRecord := parseLogRecord(line)
+		if !isRecord {
+			if firstNonLog == "" {
+				firstNonLog = string(line)
+			}
+
+			continue
+		}
+
+		sawRecord = true
+
+		if strings.HasPrefix(record.level, "ERROR") && record.err != "" {
+			failure.message = record.err
+			sawUserErr = sawUserErr || record.userError
 		}
 	}
 
-	if last != "" {
-		return last
+	switch {
+	case failure.message != "":
+		failure.mayBeUserError = sawUserErr
+	case sawRecord:
+		failure.message = firstNonLog
+	default:
+		failure.message = firstNonLog
+		failure.mayBeUserError = true
 	}
 
-	return strings.TrimSpace(string(stderr))
+	return failure
 }
 
-// logRecordError returns the error attribute of one slog record, JSON or text.
-func logRecordError(line []byte) (string, bool) {
-	trimmed := bytes.TrimSpace(line)
-
-	if bytes.HasPrefix(trimmed, []byte("{")) {
-		var record struct {
-			Error string `json:"error"`
+// parseLogRecord reads one line as a slog record, JSON or text. A line that is
+// neither — a panic, a bare error — is not a record.
+func parseLogRecord(line []byte) (logRecord, bool) {
+	if bytes.HasPrefix(line, []byte("{")) {
+		var fields struct {
+			Level     string `json:"level"`
+			Error     any    `json:"error"`
+			UserError bool   `json:"user_error"`
 		}
 
-		err := json.Unmarshal(trimmed, &record)
+		err := json.Unmarshal(line, &fields)
 		if err == nil {
-			return record.Error, record.Error != ""
+			message, _ := fields.Error.(string)
+
+			return logRecord{level: fields.Level, err: message, userError: fields.UserError}, true
 		}
 	}
 
-	match := logErrorPattern.FindSubmatch(trimmed)
-	if match == nil {
-		return "", false
+	level := textRecordLevelPattern.FindSubmatch(line)
+	if level == nil {
+		return logRecord{}, false
 	}
 
-	value := string(match[1])
-	if unquoted, err := strconv.Unquote(value); err == nil {
-		value = unquoted
+	record := logRecord{
+		level:     string(level[1]),
+		userError: textRecordUserPattern.Match(line),
 	}
 
-	return value, true
+	if match := textRecordErrorPattern.FindSubmatch(line); match != nil {
+		record.err = string(match[1])
+		if unquoted, err := strconv.Unquote(record.err); err == nil {
+			record.err = unquoted
+		}
+	}
+
+	return record, true
 }
